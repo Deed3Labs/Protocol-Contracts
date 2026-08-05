@@ -24,13 +24,6 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      // Two entries: the app, and the unlinked design-preview harness at /design-preview.html.
-      // The harness ships so the redesign can be reviewed on the branch deploy without signing
-      // in. Drop this input (and the file) before merging to main.
-      input: {
-        main: resolve(__dirname, 'index.html'),
-        designPreview: resolve(__dirname, 'design-preview.html'),
-      },
       // @solana/* MUST be bundled — Privy imports @solana/kit EAGERLY, so externalizing it left a bare
       // "@solana/kit" specifier the browser can't resolve → blank screen. Only externalize the genuinely
       // lazy/unused Privy features that pull UNINSTALLED transitive deps (e.g. @farcaster/mini-app-solana

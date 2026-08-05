@@ -1,5 +1,4 @@
 import { usePay } from '@/context/PayContext';
-import type { PaySummary } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
 const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -12,17 +11,8 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
  *
  * Flat list, hairline dividers, no card.
  */
-export default function EquitySources({
-  className,
-  summary: summaryOverride,
-}: {
-  className?: string;
-  /** Overrides the live PaySummary. Only used by the design preview harness. */
-  summary?: PaySummary | null;
-}) {
-  const pay = usePay();
-  const summary = summaryOverride ?? pay.summary;
-  const loading = summaryOverride ? false : pay.loading;
+export default function EquitySources({ className }: { className?: string }) {
+  const { summary, loading } = usePay();
 
   const sources = summary?.sources;
   const rows = [
@@ -57,7 +47,7 @@ export default function EquitySources({
       </h2>
 
       <div className="mt-3 flex items-baseline gap-2">
-        <span className="text-[2rem] font-light leading-none tracking-tight tabular-nums text-foreground">
+        <span className="text-[1.75rem] font-light leading-none tracking-tight tabular-nums text-foreground">
           {loading ? '—' : fmt(total)}
         </span>
         <span className="text-sm text-muted-foreground">credits earned</span>

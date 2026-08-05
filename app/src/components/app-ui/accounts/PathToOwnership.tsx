@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { usePay } from '@/context/PayContext';
-import type { PaySummary } from '@/utils/apiClient';
 import {
   buildOwnershipPath,
   OWNERSHIP_STAGES,
@@ -15,32 +14,16 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 /**
  * Path to Ownership — the band.
  *
- * One continuous instrument spanning the page: every tick is a month of the member's tenure,
- * tick height is the equity earned that month, and the vertical hairlines are the stage
- * boundaries. Months already lived are solid; months ahead are drawn as outlines and are
- * explicitly labelled a projection.
+ * One continuous instrument spanning the page: every bar is a month of the member's tenure,
+ * labelled with its month and its credits, and its height is the equity earned that month.
+ * Months already lived are solid; months ahead are drawn as dashed outlines and are explicitly
+ * labelled a projection. The stage rail beneath tracks the same arc in credits.
  *
  * This is the page's differentiator, so it is the only element allowed to be this large. It
- * replaces the old stepper (which was onboarding UI) and the progress bar.
+ * replaces the old stepper, which was onboarding UI wearing a progress bar.
  */
-export default function PathToOwnership({
-  className,
-  summary: summaryOverride,
-  showMonthLabels = false,
-}: {
-  className?: string;
-  /** Overrides the live PaySummary. Only used by the design preview harness. */
-  summary?: PaySummary | null;
-  /**
-   * PROPOSAL, off by default: print the month abbreviation above each bar and the credit amount
-   * inside it, so the bars read as months without hovering. Wired up for review in the design
-   * preview harness before it goes anywhere near the live page.
-   */
-  showMonthLabels?: boolean;
-}) {
-  const pay = usePay();
-  const summary = summaryOverride ?? pay.summary;
-  const loading = summaryOverride ? false : pay.loading;
+export default function PathToOwnership({ className }: { className?: string }) {
+  const { summary, loading } = usePay();
   const [scenarioKey, setScenarioKey] = useState<string>('actual');
   const [hovered, setHovered] = useState<number | null>(null);
 
@@ -57,9 +40,6 @@ export default function PathToOwnership({
     [path.ticks],
   );
 
-  // Hairlines sit at the true crossing point. Labels do NOT — they're an evenly spaced legend
-  // underneath (as in the Figma), because data-derived label positions pile up and overprint
-  // each other whenever several stages are still far away.
   // Equal-width stage segments, filled by real credit thresholds. Equal widths (rather than
   // duration-proportional) keep every stage readable no matter how far out it is, and make the
   // rail immune to the label pile-up that data-derived positions caused.
@@ -102,7 +82,7 @@ export default function PathToOwnership({
             Your path to ownership
           </h2>
           <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="text-[2rem] font-light leading-none tracking-tight tabular-nums text-foreground">
+            <span className="text-[1.75rem] font-light leading-none tracking-tight tabular-nums text-foreground">
               {(path.share * 100).toFixed(1)}%
             </span>
             <span className="text-sm text-muted-foreground tabular-nums">
@@ -117,7 +97,7 @@ export default function PathToOwnership({
           </div>
           {path.titleDate ? (
             <>
-              <div className="mt-3 text-[2rem] font-light leading-none tracking-tight text-foreground">
+              <div className="mt-3 text-2xl font-light leading-none tracking-tight text-foreground">
                 {path.titleDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </div>
               <div className="mt-1 text-sm text-muted-foreground tabular-nums">
@@ -131,7 +111,7 @@ export default function PathToOwnership({
             </>
           ) : (
             <>
-              <div className="mt-3 text-[2rem] font-light leading-none text-muted-foreground/40">—</div>
+              <div className="mt-3 text-2xl font-light leading-none text-muted-foreground/40">—</div>
               <div className="mt-1 text-sm text-muted-foreground">Not enough history yet</div>
             </>
           )}
@@ -183,14 +163,14 @@ export default function PathToOwnership({
             const h = Math.max((tick.equity / maxEquity) * 100, 3);
             // Only label every other bar once the series gets long, or they collide.
             const labelEvery = path.ticks.length > 20 ? 2 : 1;
-            const showLabel = showMonthLabels && tick.label && i % labelEvery === 0;
+            const showLabel = Boolean(tick.label) && i % labelEvery === 0;
             return (
               <div
                 key={`${tick.label}-${i}`}
                 onMouseEnter={() => setHovered(i)}
                 className="group relative flex h-full flex-1 flex-col justify-end"
               >
-                {showMonthLabels && (
+                {(
                   <span
                     className={cn(
                       'mb-1 block truncate text-center text-[9px] leading-none',
@@ -214,7 +194,7 @@ export default function PathToOwnership({
                   )}
                 >
                   {/* amount inside the bar — only where there's genuinely room for it */}
-                  {showMonthLabels && !tick.projected && h > 30 && (
+                  {!tick.projected && h > 30 && (
                     <span className="absolute inset-x-0 top-1 truncate text-center text-[9px] leading-none text-background tabular-nums">
                       {Math.round(tick.equity) >= 1000
                         ? `${(tick.equity / 1000).toFixed(1)}k`
@@ -232,7 +212,7 @@ export default function PathToOwnership({
             steps are solid, the current step fills to how far through it you are. */}
         <div className="mt-5 grid grid-cols-5 gap-px">
           {segments.map((s) => (
-            <div key={s.stage.key} className="h-1 bg-secondary" aria-hidden>
+            <div key={s.stage.key} className="h-1.5 bg-secondary" aria-hidden>
               <div
                 className={cn('h-full', s.current ? 'bg-foreground' : 'bg-foreground/70')}
                 style={{ width: `${s.fill}%` }}

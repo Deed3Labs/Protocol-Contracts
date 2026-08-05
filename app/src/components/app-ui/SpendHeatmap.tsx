@@ -63,7 +63,7 @@ export default function SpendHeatmap({
 
   return (
     <div className={cn('flex flex-col', flat ? 'py-6' : 'rounded-xl border border-border bg-card p-5', className)}>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between">
         <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Spend this month</span>
         <div className="flex items-center gap-1">
           {headerIcons.map((Icon, i) => (
@@ -74,7 +74,7 @@ export default function SpendHeatmap({
         </div>
       </div>
 
-      <p className="mb-4 text-[2rem] font-light leading-none tracking-tight text-foreground tabular-nums">
+      <p className="mb-4 text-[1.75rem] font-light leading-none tracking-tight text-foreground tabular-nums">
         ${totalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </p>
 

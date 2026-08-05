@@ -22,7 +22,7 @@ export default function ExternalAccountsPanel({ className }: { className?: strin
 
   return (
     <section className={cn('flex flex-col py-6', className)}>
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
           External accounts
         </span>
@@ -37,7 +37,7 @@ export default function ExternalAccountsPanel({ className }: { className?: strin
         </button>
       </div>
 
-      <p className="mb-4 text-[2rem] font-light leading-none tracking-tight tabular-nums text-foreground">
+      <p className="mb-4 text-[1.75rem] font-light leading-none tracking-tight tabular-nums text-foreground">
         {loading ? <span className="text-muted-foreground/40">—</span> : fmtUsd(totalBalance)}
       </p>
 
