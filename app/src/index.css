@@ -158,7 +158,9 @@
   -moz-osx-font-smoothing: grayscale;
 
   /* Light mode — neutral */
-  --radius: 0.5rem;
+  /* Square by design: every corner is 0. rounded-full (avatars, dots, pills that must be
+     circular) is unaffected because it doesn't derive from --radius. */
+  --radius: 0rem;
   --background: 245 245 245;
   --foreground: 10 10 10;
   --card: 255 255 255;
@@ -364,10 +366,12 @@ body.onboarding-scroll-enabled {
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 0.25rem);
-  --radius-md: calc(var(--radius) - 0.125rem);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 0.25rem);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
   --color-background: rgb(var(--background));
   --color-foreground: rgb(var(--foreground));
   --color-card: rgb(var(--card));

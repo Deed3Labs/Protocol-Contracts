@@ -42,13 +42,14 @@ export default function MetricRow({
         <div
           key={label}
           className={cn(
-            'flex flex-col gap-3 border-border py-6 pr-6',
-            // hairlines between columns, and between stacked rows on narrow screens
+            // Padding lives on the column, not the row, so the row's bottom hairline and the
+            // dividers between columns stay full-bleed to the shell edges.
+            'flex flex-col gap-3 border-border px-5 py-6 lg:px-8',
             i > 0 && 'border-t sm:border-t-0',
-            i % 2 === 1 && 'sm:border-l sm:pl-6',
+            i % 2 === 1 && 'sm:border-l',
             i % 2 === 0 && i > 0 && 'sm:border-t lg:border-t-0',
             'lg:border-t-0',
-            i > 0 && 'lg:border-l lg:pl-6',
+            i > 0 && 'lg:border-l',
           )}
         >
           <div className="flex items-start justify-between gap-3">
@@ -58,7 +59,7 @@ export default function MetricRow({
             <Icon className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={1.5} />
           </div>
 
-          <span className="text-3xl font-semibold tracking-tight tabular-nums text-foreground">
+          <span className="text-[2rem] font-light leading-none tracking-tight tabular-nums text-foreground">
             {loading ? <span className="text-muted-foreground/40">—</span> : fmtUsd(value)}
           </span>
 

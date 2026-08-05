@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
-import { Wallet, Banknote, PiggyBank, Landmark, ShieldCheck } from 'lucide-react';
-import { useKyc } from '@/context/KycContext';
+import { Wallet, Banknote, PiggyBank, Landmark } from 'lucide-react';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useLinkedWallets } from '@/context/LinkedWalletsContext';
@@ -16,6 +15,7 @@ import BalanceAnalyticsChart from '@/components/app-ui/charts/BalanceAnalyticsCh
 import MetricRow from '@/components/app-ui/accounts/MetricRow';
 import PathToOwnership from '@/components/app-ui/accounts/PathToOwnership';
 import EquitySources from '@/components/app-ui/accounts/EquitySources';
+import VerifyPopdown from '@/components/app-ui/accounts/VerifyPopdown';
 
 /**
  * Accounts — the dashboard.
@@ -32,7 +32,6 @@ import EquitySources from '@/components/app-ui/accounts/EquitySources';
  * attempt (49d513e) to be reverted. Accounts uses its own MetricRow instead.
  */
 export default function AccountsPage() {
-  const { verified, openKyc } = useKyc();
   const bal = useClearBalances();
   const ext = useExternalAccounts();
   const { externalWallets } = useLinkedWallets();
@@ -126,23 +125,10 @@ export default function AccountsPage() {
     return { spendByDay: totals, spendDetailByDay: detail };
   }, [items]);
   return (
-    <div className="animate-fade-in">
-      {!verified && (
-        <button
-          type="button"
-          onClick={() => openKyc()}
-          className="flex w-full items-center gap-3 rounded-xl border border-info/20 bg-info/5 p-3 text-left transition-colors hover:bg-info/10"
-        >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info">
-            <ShieldCheck className="h-[18px] w-[18px]" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium text-foreground">Verify your identity</span>
-            <span className="block text-xs text-muted-foreground">Unlock bank deposits, withdrawals, transfers &amp; bill pay.</span>
-          </span>
-          <span className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">Verify</span>
-        </button>
-      )}
+    // Bleeds out of the shell's horizontal padding so every hairline runs edge to edge; each
+    // region re-applies the padding to its own content.
+    <div className="animate-fade-in -mx-5 -mt-6 lg:-mx-8">
+      <VerifyPopdown />
 
       <MetricRow
         loading={bal.loading}
@@ -154,30 +140,33 @@ export default function AccountsPage() {
         ]}
       />
 
-      {/* The hero. Full width — this is what the page is for. */}
-      <PathToOwnership className="border-b border-border" />
-
+      {/* Row 2 — matches the Figma split: the ownership band left, the balance chart right. */}
       <div className="grid border-b border-border lg:grid-cols-3">
-        <BalanceAnalyticsChart className="lg:col-span-2 lg:border-r lg:border-border lg:pr-6" />
-        <EquitySources className="border-t border-border lg:border-t-0 lg:pl-6" />
+        <PathToOwnership className="px-5 lg:col-span-2 lg:border-r lg:border-border lg:px-8" />
+        <BalanceAnalyticsChart className="border-t border-border px-5 lg:border-t-0 lg:px-8" />
       </div>
 
-      <div className="grid border-b border-border lg:grid-cols-2">
-        <UpcomingCalendar flat items={upcoming} className="lg:border-r lg:border-border lg:pr-6" />
+      {/* Row 3 — the trackers, three columns as in the Figma. Equity Sources fills the slot the
+          Figma left empty. */}
+      <div className="grid border-b border-border lg:grid-cols-3">
+        <UpcomingCalendar flat items={upcoming} className="px-5 lg:border-r lg:border-border lg:px-8" />
         <SpendHeatmap
           flat
           spendingByDay={spendByDay}
           detailByDay={spendDetailByDay}
-          className="border-t border-border lg:border-t-0 lg:pl-6"
+          className="border-t border-border px-5 lg:border-t-0 lg:border-r lg:border-border lg:px-8"
         />
+        <EquitySources className="border-t border-border px-5 lg:border-t-0 lg:px-8" />
       </div>
 
       {/* Money movement stays reachable from home — actions are controls, not content cards. */}
-      <div className="border-b border-border py-6">
+      <div className="border-b border-border px-5 py-6 lg:px-8">
         <QuickActions />
       </div>
 
-      <RecentActivity limit={5} />
+      <div className="px-5 pt-6 lg:px-8">
+        <RecentActivity limit={5} />
+      </div>
     </div>
   );
 }

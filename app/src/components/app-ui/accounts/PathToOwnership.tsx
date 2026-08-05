@@ -88,12 +88,12 @@ export default function PathToOwnership({
             Your path to ownership
           </h2>
           <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="text-4xl font-semibold tracking-tight tabular-nums text-foreground sm:text-5xl">
+            <span className="text-5xl font-light leading-none tracking-tight tabular-nums text-foreground sm:text-6xl">
               {(path.share * 100).toFixed(1)}%
             </span>
             <span className="text-sm text-muted-foreground">
               of title &middot;{' '}
-              <span className="font-medium text-foreground tabular-nums">{fmt(path.earned)}</span> of{' '}
+              <span className="font-normal text-foreground tabular-nums">{fmt(path.earned)}</span> of{' '}
               <span className="tabular-nums">{fmt(TARGET_CREDITS)}</span> credits
             </span>
           </div>
@@ -120,14 +120,14 @@ export default function PathToOwnership({
             </div>
           ) : (
             <>
-              <div className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+              <div className="mt-2 text-3xl font-light leading-none tracking-tight text-foreground">
                 {path.titleDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </div>
               <div className="mt-1 text-sm text-muted-foreground tabular-nums">
                 {path.monthsToTitle} months at {fmt(Math.round(path.runRate))} credits/mo
               </div>
               {monthsSaved > 0 && (
-                <div className="mt-1 text-sm font-medium text-positive tabular-nums">
+                <div className="mt-1 text-sm font-normal text-positive tabular-nums">
                   {monthsSaved} {monthsSaved === 1 ? 'month' : 'months'} sooner
                 </div>
               )}

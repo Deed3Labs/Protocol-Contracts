@@ -57,7 +57,7 @@ export default function EquitySources({
       </h2>
 
       <div className="mt-3 flex items-baseline gap-2">
-        <span className="text-3xl font-semibold tracking-tight tabular-nums text-foreground">
+        <span className="text-[2rem] font-light leading-none tracking-tight tabular-nums text-foreground">
           {loading ? '—' : fmt(total)}
         </span>
         <span className="text-sm text-muted-foreground">credits earned</span>
@@ -70,11 +70,11 @@ export default function EquitySources({
             className="flex items-baseline justify-between gap-4 border-b border-border py-3 last:border-b-0"
           >
             <span className="min-w-0">
-              <span className="block text-sm font-medium text-foreground">{row.label}</span>
+              <span className="block text-sm font-normal text-foreground">{row.label}</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">{row.hint}</span>
             </span>
             <span className="shrink-0 text-right">
-              <span className="block text-base font-semibold tabular-nums text-foreground">
+              <span className="block text-base font-normal tabular-nums text-foreground">
                 {fmt(row.value)}
               </span>
               {total > 0 && (
@@ -90,10 +90,10 @@ export default function EquitySources({
       {/* vesting split — real, and the distinction members actually ask about */}
       <div className="mt-4 flex items-baseline justify-between gap-4 border-t border-border pt-4 text-sm">
         <span className="text-muted-foreground">
-          Vested <span className="font-medium tabular-nums text-foreground">{fmt(vested)}</span>
+          Vested <span className="font-normal tabular-nums text-foreground">{fmt(vested)}</span>
         </span>
         <span className="text-muted-foreground">
-          Pending <span className="font-medium tabular-nums text-foreground">{fmt(pending)}</span>
+          Pending <span className="font-normal tabular-nums text-foreground">{fmt(pending)}</span>
         </span>
       </div>
     </section>

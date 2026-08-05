@@ -57,9 +57,9 @@ function Harness() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <div className="mx-auto max-w-[1180px] px-6 pb-24 sm:px-10">
+      <div className="pb-24">
         {/* harness chrome — not part of the design */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border py-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-5 py-4 lg:px-8">
           <div>
             <div className="text-sm font-semibold">Accounts — design preview</div>
             <div className="text-xs text-muted-foreground">
@@ -95,13 +95,27 @@ function Harness() {
           ]}
         />
 
-        <PathToOwnership summary={SAMPLE} className="border-b border-border" />
+        <div className="grid border-b border-border lg:grid-cols-3">
+          <PathToOwnership
+            summary={SAMPLE}
+            className="px-5 lg:col-span-2 lg:border-r lg:border-border lg:px-8"
+          />
+          <div className="flex items-center justify-center border-t border-border px-5 py-16 text-sm text-muted-foreground lg:border-t-0 lg:px-8">
+            Balance chart
+          </div>
+        </div>
 
         <div className="grid border-b border-border lg:grid-cols-3">
-          <div className="flex items-center justify-center border-border py-16 text-sm text-muted-foreground lg:col-span-2 lg:border-r lg:pr-6">
-            Balance chart (unchanged component)
+          <div className="flex items-center justify-center px-5 py-16 text-sm text-muted-foreground lg:border-r lg:border-border lg:px-8">
+            Upcoming transactions
           </div>
-          <EquitySources summary={SAMPLE} className="border-t border-border lg:border-t-0 lg:pl-6" />
+          <div className="flex items-center justify-center border-t border-border px-5 py-16 text-sm text-muted-foreground lg:border-t-0 lg:border-r lg:border-border lg:px-8">
+            Spend this month
+          </div>
+          <EquitySources
+            summary={SAMPLE}
+            className="border-t border-border px-5 lg:border-t-0 lg:px-8"
+          />
         </div>
       </div>
     </div>
