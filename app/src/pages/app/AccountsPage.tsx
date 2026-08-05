@@ -10,12 +10,12 @@ import { useUpcoming } from '@/hooks/useUpcoming';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
 import UpcomingCalendar from '@/components/app-ui/UpcomingCalendar';
 import BalanceAnalyticsChart from '@/components/app-ui/charts/BalanceAnalyticsChart';
-import MetricRow from '@/components/app-ui/accounts/MetricRow';
+import MetricRow from '@/components/app-ui/MetricRow';
 import PathToOwnership from '@/components/app-ui/accounts/PathToOwnership';
 import EquitySources from '@/components/app-ui/accounts/EquitySources';
 import VerifyPopdown from '@/components/app-ui/accounts/VerifyPopdown';
 import ExternalAccountsPanel from '@/components/app-ui/accounts/ExternalAccountsPanel';
-import ActivityTable from '@/components/app-ui/accounts/ActivityTable';
+import ActivityTable from '@/components/app-ui/ActivityTable';
 
 /**
  * Accounts — the dashboard.
@@ -26,10 +26,6 @@ import ActivityTable from '@/components/app-ui/accounts/ActivityTable';
  *
  * Path to Ownership is the hero — it's the reason a member opens this over Monarch or Origin —
  * so it spans the full width and the balance chart is demoted beside Equity Sources.
- *
- * Note: the shared StatBar/RecentActivity are deliberately NOT used or modified here. They're
- * rendered by four other pages, and rewriting them is what forced the previous flat-design
- * attempt (49d513e) to be reverted. Accounts uses its own MetricRow instead.
  */
 export default function AccountsPage() {
   const bal = useClearBalances();
@@ -151,9 +147,8 @@ export default function AccountsPage() {
       {/* The trackers — three columns, with external accounts (and its empty state) filling the
           slot the Figma left blank. */}
       <div className="grid border-b border-border lg:grid-cols-3">
-        <UpcomingCalendar flat items={upcoming} className="px-5 lg:border-r lg:border-border lg:px-8" />
+        <UpcomingCalendar items={upcoming} className="px-5 lg:border-r lg:border-border lg:px-8" />
         <SpendHeatmap
-          flat
           spendingByDay={spendByDay}
           detailByDay={spendDetailByDay}
           className="border-t border-border px-5 lg:border-t-0 lg:border-r lg:border-border lg:px-8"

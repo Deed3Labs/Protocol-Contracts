@@ -14,7 +14,7 @@ export default function CardVisual({ className, onManage }: { className?: string
   const { name } = useMemberProfile();
 
   return (
-    <div className={cn('overflow-hidden rounded-xl border border-border bg-card', className)}>
+    <div className={cn('overflow-hidden border border-border', className)}>
       <div className="p-5">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-medium text-foreground">Your card</h3>

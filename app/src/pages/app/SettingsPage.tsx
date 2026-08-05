@@ -50,14 +50,14 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="animate-fade-in space-y-5">
+    <div className="animate-fade-in -mx-5 -mt-6 lg:-mx-8">
       <header>
         <h1 className="font-display text-3xl tracking-tight text-foreground">Settings</h1>
         <p className="mt-1 text-sm text-muted-foreground">Manage your profile, accounts, and preferences.</p>
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="rounded-xl border border-border bg-card p-5 lg:col-span-2">
+      <div className="grid border-b border-border lg:grid-cols-3">
+        <div className="px-5 py-6 lg:px-8 lg:col-span-2 lg:border-r lg:border-border">
           <div className="flex items-center gap-4">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-secondary text-xl font-medium text-secondary-foreground">
               {profile.avatarUrl ? <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" /> : profile.initials}
@@ -129,7 +129,7 @@ export default function SettingsPage() {
           chevron
           onClick={() => openContacts()}
         />
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center gap-3 border-b border-border py-4">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
             <UserSearch className="h-5 w-5" />
           </span>
@@ -158,7 +158,7 @@ export default function SettingsPage() {
         <SectionCard icon={ShieldCheck} tint="neutral" title="Security" subtitle="Passcode & biometrics" chevron onClick={() => setModal('security')} />
         <SectionCard icon={BellRing} tint="neutral" title="Notifications" subtitle="Alerts & reminders" chevron onClick={() => setModal('notifications')} />
 
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center gap-3 border-b border-border py-4">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-secondary-foreground">
             <ActiveIcon className="h-5 w-5" />
           </span>
@@ -176,7 +176,7 @@ export default function SettingsPage() {
                 aria-pressed={theme === id}
                 className={cn(
                   'flex h-7 w-7 items-center justify-center rounded-md transition-colors',
-                  theme === id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                  theme === id ? 'bg-background text-foreground' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
                 <Icon className="h-4 w-4" />

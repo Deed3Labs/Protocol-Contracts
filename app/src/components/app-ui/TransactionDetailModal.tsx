@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Wallet, Hash, TrendingUp, Clock } from 'lucide-react';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import ActivityDetailModal, { type DetailInfo, type Tone } from '@/components/app-ui/ActivityDetailModal';
-import { CATEGORY } from '@/components/app-ui/RecentActivity';
+import { CATEGORY } from '@/lib/activityCategory';
 import { useContacts } from '@/context/ContactsContext';
 import { getMerchantMeta, setMerchantMeta, type MerchantMeta } from '@/utils/apiClient';
 import type { ActivityItem, ActivityStatus } from '@/hooks/useClearTransactions';

@@ -3,24 +3,26 @@ import { cn } from '@/lib/utils';
 
 export interface Metric {
   label: string;
-  value: number;
+  /** number -> formatted per `format`; string -> rendered verbatim (already formatted). */
+  value: number | string;
   change?: string;
   changePositive?: boolean;
   icon: LucideIcon;
+  /** 'usd' (default) renders $1,234.56; 'plain' renders 1,234 — for credits, counts, months. */
+  format?: 'usd' | 'plain';
+  /** Small trailing unit, e.g. "months". Rendered at body size beside the figure. */
+  suffix?: string;
 }
 
 const fmtUsd = (v: number) =>
   `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fmtPlain = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 /**
- * The metric row — Accounts only.
+ * The metric row.
  *
- * Deliberately NOT the shared StatBar: that component is used by five pages, and rewriting it to
- * this flat treatment is what forced the previous flat-design attempt to be reverted. This is a
- * page-local component so Accounts can change without touching Pay, Borrow, Assurance or
- * Transactions.
- *
- * Columns are separated by 1px hairlines only — no boxes, no fills, no shadows.
+ * The metric row for every page. Replaces the old StatBar, which boxed each metric; columns here
+ * are separated by 1px hairlines only — no boxes, no fills, no shadows.
  */
 export default function MetricRow({
   metrics,
@@ -40,7 +42,7 @@ export default function MetricRow({
         className,
       )}
     >
-      {metrics.map(({ label, value, change, changePositive, icon: Icon }, i) => (
+      {metrics.map(({ label, value, change, changePositive, icon: Icon, format = 'usd', suffix }, i) => (
         <div
           key={label}
           className={cn(
@@ -62,8 +64,19 @@ export default function MetricRow({
             <Icon className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={1.5} />
           </div>
 
-          <span className="text-2xl font-light leading-none tracking-tight tabular-nums text-foreground lg:text-[1.75rem]">
-            {loading ? <span className="text-muted-foreground/40">—</span> : fmtUsd(value)}
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-2xl font-light leading-none tracking-tight tabular-nums text-foreground lg:text-[1.75rem]">
+              {loading ? (
+                <span className="text-muted-foreground/40">—</span>
+              ) : typeof value === 'string' ? (
+                value
+              ) : format === 'usd' ? (
+                fmtUsd(value)
+              ) : (
+                fmtPlain(value)
+              )}
+            </span>
+            {suffix && !loading && <span className="text-sm text-muted-foreground">{suffix}</span>}
           </span>
 
           {change && (

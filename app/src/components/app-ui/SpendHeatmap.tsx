@@ -26,13 +26,10 @@ export default function SpendHeatmap({
   spendingByDay,
   detailByDay,
   className,
-  flat = false,
 }: {
   spendingByDay: Record<number, number>;
   detailByDay?: Record<number, SpendDetail[]>;
   className?: string;
-  /** Flat surface (no card wrapper) — used by Accounts. Transactions keeps the boxed default. */
-  flat?: boolean;
 }) {
   const [activeDay, setActiveDay] = useState<number | null>(null);
   const today = new Date();
@@ -62,7 +59,7 @@ export default function SpendHeatmap({
   };
 
   return (
-    <div className={cn('flex flex-col', flat ? 'py-6' : 'rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('flex flex-col py-6', className)}>
       <div className="mb-3 flex items-center justify-between">
         <span className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Spend this month</span>
         <div className="flex items-center gap-1">

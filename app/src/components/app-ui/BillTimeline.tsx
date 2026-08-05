@@ -26,7 +26,7 @@ export default function BillTimeline({
   let running = 0;
 
   return (
-    <div className={cn('rounded-xl border border-border bg-card p-5', className)}>
+    <div className={cn('flex flex-col', className)}>
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">Bill timeline</span>
         <span className="text-xs text-muted-foreground">{bills.length} bills</span>

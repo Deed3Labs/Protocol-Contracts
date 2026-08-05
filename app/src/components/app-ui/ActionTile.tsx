@@ -28,8 +28,8 @@ export default function ActionTile({
       className={cn(
         'group relative flex min-h-[108px] flex-col justify-between gap-4 overflow-hidden rounded-lg border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99]',
         primary
-          ? 'border-transparent bg-primary text-primary-foreground hover:shadow-[0_12px_30px_-12px_rgba(0,0,0,0.5)]'
-          : 'border-border bg-card text-foreground hover:border-foreground/20 hover:shadow-[0_10px_24px_-14px_rgba(0,0,0,0.3)]',
+          ? 'border-transparent bg-primary text-primary-foreground hover:opacity-90'
+          : 'border-border text-foreground hover:border-foreground/30 hover:bg-foreground/[0.03]',
         className,
       )}
     >

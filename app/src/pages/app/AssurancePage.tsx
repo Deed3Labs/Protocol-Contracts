@@ -3,7 +3,7 @@ import {
   ShieldCheck, Home, Briefcase, HeartPulse, Smartphone, Users, PiggyBank, Award, Lock, Check,
   Sparkles, Zap, ArrowRight, Loader2, type LucideIcon,
 } from 'lucide-react';
-import StatBar from '@/components/app-ui/StatBar';
+import MetricRow from '@/components/app-ui/MetricRow';
 import { ConstructionGate, PreviewBadge, IS_LIVE_APP } from '@/components/app-ui/ComingSoon';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { CLRUSD_BALANCE } from '@/context/CreditContext';
@@ -85,7 +85,7 @@ export default function AssurancePage() {
       title="Assurance is coming soon"
       subtitle="The Assurance Pool is still being built — smart contracts in progress. It'll open up here soon."
     >
-    <div className="animate-fade-in space-y-5">
+    <div className="animate-fade-in -mx-5 -mt-6 lg:-mx-8">
       <header>
         <div className="flex items-center gap-2.5">
           <h1 className="font-display text-3xl tracking-tight text-foreground">Assurance</h1>
@@ -96,8 +96,8 @@ export default function AssurancePage() {
         </p>
       </header>
 
-      <StatBar
-        stats={[
+      <MetricRow
+        metrics={[
           { label: 'Protections active', value: `${activeCount} of 5`, icon: ShieldCheck },
           { label: 'Pool members', value: '12,480', icon: Users },
           { label: 'Unlock power', value: fmt(SAVINGS), icon: PiggyBank },
@@ -105,9 +105,9 @@ export default function AssurancePage() {
         ]}
       />
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid border-b border-border lg:grid-cols-3">
         {/* active coverage — featured */}
-        <div className="rounded-xl border border-border bg-card p-5 lg:col-span-2">
+        <div className="px-5 py-6 lg:px-8 lg:col-span-2 lg:border-r lg:border-border">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">Active coverage</span>
             <span className="inline-flex items-center gap-1 rounded-full bg-positive/10 px-2 py-0.5 text-[11px] font-medium text-positive">
@@ -163,7 +163,7 @@ export default function AssurancePage() {
         </div>
 
         {/* your unlock power */}
-        <div className="rounded-xl border border-border bg-card p-5">
+        <div className="border-t border-border px-5 py-6 lg:border-t-0 lg:border-l lg:border-border lg:px-8">
           <h3 className="text-sm font-semibold text-foreground">Your unlock power</h3>
           <div className="mt-3 grid grid-cols-2 divide-x divide-border">
             <div className="pr-4">
@@ -249,7 +249,7 @@ function ProtectionCard({ p, isNext, unlocked, onAccelerate, onViewCoverage }: {
 
   if (unlocked) {
     return (
-      <div className="flex flex-col rounded-xl border border-positive/30 bg-card p-4">
+      <div className="flex flex-col border-b border-positive/30 py-4">
         <div className="flex items-center gap-2.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-positive/10 text-positive">
             <Icon className="h-[18px] w-[18px]" />
@@ -269,7 +269,7 @@ function ProtectionCard({ p, isNext, unlocked, onAccelerate, onViewCoverage }: {
   }
 
   return (
-    <div className={cn('flex flex-col rounded-xl border bg-card p-4', isNext ? 'border-info/40' : 'border-border')}>
+    <div className={cn('flex flex-col border-b py-4', isNext ? 'border-info/40' : 'border-border')}>
       <div className="flex items-center gap-2.5">
         <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', isNext ? 'bg-info/10 text-info' : 'bg-secondary text-muted-foreground')}>
           <Icon className="h-[18px] w-[18px]" />

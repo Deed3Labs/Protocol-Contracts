@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { TrendingUp, RefreshCw, Wallet, ArrowUpRight, Minus, Plus, ShieldCheck, Sparkles, ArrowRight, Trash2, X } from 'lucide-react';
-import StatBar from '@/components/app-ui/StatBar';
+import MetricRow from '@/components/app-ui/MetricRow';
 import { ConstructionGate, PreviewBadge, IS_LIVE_APP } from '@/components/app-ui/ComingSoon';
 import { useCredit, type CreditProduct, type PurposeLine } from '@/context/CreditContext';
 import { cn } from '@/lib/utils';
@@ -32,7 +32,7 @@ export default function BorrowPage() {
       title="Borrow is coming soon"
       subtitle="We're finishing the smart contracts behind borrowing against your equity. It'll light up here soon."
     >
-    <div className="animate-fade-in space-y-5">
+    <div className="animate-fade-in -mx-5 -mt-6 lg:-mx-8">
       <header>
         <div className="flex items-center gap-2.5">
           <h1 className="font-display text-3xl tracking-tight text-foreground">Borrow</h1>
@@ -43,8 +43,8 @@ export default function BorrowPage() {
         </p>
       </header>
 
-      <StatBar
-        stats={[
+      <MetricRow
+        metrics={[
           { label: 'Total borrowing power', value: fmt(totalPower), icon: TrendingUp },
           { label: 'Available now', value: fmt(available), icon: Wallet },
           { label: 'Currently borrowed', value: fmt(borrowed), icon: ArrowUpRight },
@@ -52,9 +52,9 @@ export default function BorrowPage() {
         ]}
       />
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid border-b border-border lg:grid-cols-3">
         {/* base Stable Credit line */}
-        <div className="rounded-xl border border-border bg-card p-5 lg:col-span-2">
+        <div className="px-5 py-6 lg:px-8 lg:col-span-2 lg:border-r lg:border-border">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">Your credit line</span>
             <span className="rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium text-secondary-foreground">Backed by savings</span>
@@ -62,7 +62,7 @@ export default function BorrowPage() {
 
           <div className="mt-2 flex items-end justify-between gap-4">
             <div>
-              <div className="font-display text-4xl tracking-tight text-foreground tabular-nums">{fmt2(available)}</div>
+              <div className="text-[1.75rem] font-light leading-none tracking-tight text-foreground tabular-nums">{fmt2(available)}</div>
               <div className="mt-0.5 text-xs text-muted-foreground">available of {fmt2(baseLimit)} limit</div>
             </div>
             <div className="text-right">
@@ -133,7 +133,7 @@ export default function BorrowPage() {
         </div>
 
         {/* how it works */}
-        <div className="rounded-xl border border-border bg-card p-5">
+        <div className="border-t border-border px-5 py-6 lg:border-t-0 lg:border-l lg:border-border lg:px-8">
           <h3 className="text-sm font-semibold text-foreground">How Clear credit works</h3>
           <ul className="mt-3 space-y-3 text-xs leading-relaxed text-muted-foreground">
             <li className="flex gap-2.5">
@@ -166,7 +166,7 @@ export default function BorrowPage() {
         </div>
 
         {addOpen && (
-          <div className="mb-3 flex flex-col gap-2 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-end">
+          <div className="mb-3 flex flex-col gap-2 border border-border p-3 sm:flex-row sm:items-end">
             <label className="flex-1">
               <span className="mb-1 block text-[11px] font-medium text-muted-foreground">Line name</span>
               <input
@@ -232,7 +232,7 @@ function ProductCard({ product, onBorrow }: { product: CreditProduct; onBorrow: 
   const { icon: Icon, name, desc, limit, status, terms } = product;
   const soon = status === 'soon';
   return (
-    <div className={cn('flex flex-col rounded-xl border border-border bg-card p-4', soon && 'opacity-70')}>
+    <div className={cn('flex flex-col border-b border-border py-4', soon && 'opacity-70')}>
       <div className="flex items-center gap-2.5">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
           <Icon className="h-[18px] w-[18px]" />
@@ -270,7 +270,7 @@ function PurposeLineCard({
   const Icon = line.icon;
   const pct = line.limit > 0 ? Math.min(100, (line.used / line.limit) * 100) : 0;
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="border-t border-border px-5 py-6 lg:border-t-0 lg:border-l lg:border-border lg:px-8">
       <div className="flex items-center gap-2.5">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-secondary text-foreground">
           <Icon className="h-4 w-4" />
