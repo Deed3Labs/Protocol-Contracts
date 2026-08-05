@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "protocol-app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "5220", "--strictPort"],
+      "port": 5220,
+      "cwd": "app"
+    }
+  ]
+}

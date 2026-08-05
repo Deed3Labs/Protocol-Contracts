@@ -12,7 +12,11 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ["@xmtp/wasm-bindings", "@xmtp/browser-sdk"],
+    // @farcaster/mini-app-solana is excluded for the same reason build.rollupOptions.external lists it
+    // below: it pulls UNINSTALLED transitive deps (@solana/wallet-adapter-react, @farcaster/miniapp-sdk),
+    // which crashed esbuild's dep pre-bundling and took the whole dev server down on startup. The chunk
+    // never loads in this EVM-only app, so excluding it from optimization is safe.
+    exclude: ["@xmtp/wasm-bindings", "@xmtp/browser-sdk", "@farcaster/mini-app-solana"],
     include: ["@xmtp/proto", "buffer"],
   },
   define: {

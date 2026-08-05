@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { Wallet, Banknote, PiggyBank, Landmark, ShieldCheck } from 'lucide-react';
-import StatBar from '@/components/app-ui/StatBar';
 import { useKyc } from '@/context/KycContext';
 import { useExternalAccounts } from '@/context/ExternalAccountsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
@@ -9,19 +8,28 @@ import { useLinkedWalletBalances } from '@/hooks/useLinkedWalletBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useClearPortfolioHistory } from '@/hooks/useClearPortfolioHistory';
 import { useUpcoming } from '@/hooks/useUpcoming';
-import { useMemberProfile } from '@/hooks/useMemberProfile';
 import QuickActions from '@/components/app-ui/QuickActions';
-import CtaStack from '@/components/app-ui/CtaStack';
 import RecentActivity from '@/components/app-ui/RecentActivity';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
 import UpcomingCalendar from '@/components/app-ui/UpcomingCalendar';
 import BalanceAnalyticsChart from '@/components/app-ui/charts/BalanceAnalyticsChart';
-import ClearDeedCard from '@/components/app-ui/ClearDeedCard';
+import MetricRow from '@/components/app-ui/accounts/MetricRow';
+import PathToOwnership from '@/components/app-ui/accounts/PathToOwnership';
+import EquitySources from '@/components/app-ui/accounts/EquitySources';
 
 /**
- * Accounts — the dashboard. Stat row (Total / Cash / Savings / External), a big
- * balance-analytics chart, quick actions, recent activity, Clear Deed progress,
- * and the upcoming/spend calendars.
+ * Accounts — the dashboard.
+ *
+ * Flat, divider-based layout: no card wrappers around content groups. Regions are separated by
+ * 1px hairlines and the 8/16/24 whitespace system, and the same hairline recurs inside the data
+ * displays (calendar, heatmap, band) so the grid language holds at every scale.
+ *
+ * Path to Ownership is the hero — it's the reason a member opens this over Monarch or Origin —
+ * so it spans the full width and the balance chart is demoted beside Equity Sources.
+ *
+ * Note: the shared StatBar/RecentActivity are deliberately NOT used or modified here. They're
+ * rendered by four other pages, and rewriting them is what forced the previous flat-design
+ * attempt (49d513e) to be reverted. Accounts uses its own MetricRow instead.
  */
 export default function AccountsPage() {
   const { verified, openKyc } = useKyc();
@@ -35,7 +43,6 @@ export default function AccountsPage() {
   const { items } = useClearTransactions();
   const history = useClearPortfolioHistory();
   const upcoming = useUpcoming();
-  const { firstName } = useMemberProfile();
 
   // Real trailing-7-day change for a metric. Prefers the backend balance-history series (exact, and
   // it includes external); falls back to net 7-day transaction flow when history isn't backfilled yet
@@ -119,13 +126,7 @@ export default function AccountsPage() {
     return { spendByDay: totals, spendDetailByDay: detail };
   }, [items]);
   return (
-    <div className="animate-fade-in space-y-5">
-      <div>
-        <h1 className="font-display text-3xl tracking-tight text-foreground">Good morning, {firstName}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Here's where your money stands today.</p>
-      </div>
-
-
+    <div className="animate-fade-in">
       {!verified && (
         <button
           type="button"
@@ -143,9 +144,9 @@ export default function AccountsPage() {
         </button>
       )}
 
-      <StatBar
+      <MetricRow
         loading={bal.loading}
-        stats={[
+        metrics={[
           { label: 'Total balance', value: cash + savings + ext.totalBalance, icon: Wallet, ...weekChange('totalUsd', cash + savings + ext.totalBalance) },
           { label: 'Cash · USDC', value: cash, icon: Banknote, ...weekChange('onchainUsd', cash + savings) },
           { label: 'Savings · CLRUSD', value: savings, icon: PiggyBank, ...weekChange('onchainUsd', cash + savings) },
@@ -153,18 +154,27 @@ export default function AccountsPage() {
         ]}
       />
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <BalanceAnalyticsChart className="lg:col-span-2" />
-        <div className="flex flex-col gap-5">
-          <CtaStack />
-          <QuickActions />
-        </div>
+      {/* The hero. Full width — this is what the page is for. */}
+      <PathToOwnership className="border-b border-border" />
+
+      <div className="grid border-b border-border lg:grid-cols-3">
+        <BalanceAnalyticsChart className="lg:col-span-2 lg:border-r lg:border-border lg:pr-6" />
+        <EquitySources className="border-t border-border lg:border-t-0 lg:pl-6" />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <UpcomingCalendar items={upcoming} />
-        <SpendHeatmap spendingByDay={spendByDay} detailByDay={spendDetailByDay} />
-        <ClearDeedCard />
+      <div className="grid border-b border-border lg:grid-cols-2">
+        <UpcomingCalendar flat items={upcoming} className="lg:border-r lg:border-border lg:pr-6" />
+        <SpendHeatmap
+          flat
+          spendingByDay={spendByDay}
+          detailByDay={spendDetailByDay}
+          className="border-t border-border lg:border-t-0 lg:pl-6"
+        />
+      </div>
+
+      {/* Money movement stays reachable from home — actions are controls, not content cards. */}
+      <div className="border-b border-border py-6">
+        <QuickActions />
       </div>
 
       <RecentActivity limit={5} />
