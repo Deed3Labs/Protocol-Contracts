@@ -150,7 +150,7 @@ export default function PwaInstallTakeover() {
           <X className="h-4 w-4" />
         </button>
 
-        <img src={ClearPathLogo} alt="Clear" className="mx-auto h-16 w-16 rounded-2xl border border-border object-cover shadow-md" />
+        <img src={ClearPathLogo} alt="Clear" className="app-mark mx-auto h-16 w-16 object-cover" />
         <h2 className="mt-4 font-display text-2xl tracking-tight text-foreground">Install Clear</h2>
         <p className="mx-auto mt-1.5 max-w-xs text-sm leading-relaxed text-muted-foreground">
           Add Clear to your {target} for the full app — instant access, push notifications, and a native feel.

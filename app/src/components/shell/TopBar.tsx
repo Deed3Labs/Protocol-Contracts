@@ -35,7 +35,7 @@ export default function TopBar({
     <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md">
       <div className="flex h-16 items-center gap-3 border-b border-border px-5 lg:px-8">
         {/* mobile: logo · divider · Menu pill — matches the old portfolio top nav */}
-        <img src={ClearPathLogo} alt="Clear" className="h-9 w-9 shrink-0 rounded border border-border object-cover lg:hidden" />
+        <img src={ClearPathLogo} alt="Clear" className="app-mark h-9 w-9 shrink-0 object-cover lg:hidden" />
         <div className="h-5 w-px shrink-0 bg-border lg:hidden" aria-hidden />
         <button
           type="button"

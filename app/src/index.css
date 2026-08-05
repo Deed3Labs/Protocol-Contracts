@@ -296,6 +296,22 @@
   --chart-5: #ddccb0;
 }
 
+/*
+ * The app mark keeps its rounded corners even though every other corner in the app is square.
+ * CSS has no equivalent of Figma's corner smoothing, so this masks the image with a smoothed
+ * superellipse path — a ~22% corner at roughly 60% smoothing, which is what the logo is drawn
+ * with. Applied to the <img>, so the mark reads correctly at any size.
+ */
+.app-mark {
+  --squircle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath d='M50 0C77.6 0 88.4 0 94.2 5.8C100 11.6 100 22.4 100 50C100 77.6 100 88.4 94.2 94.2C88.4 100 77.6 100 50 100C22.4 100 11.6 100 5.8 94.2C0 88.4 0 77.6 0 50C0 22.4 0 11.6 5.8 5.8C11.6 0 22.4 0 50 0Z' fill='%23000'/%3E%3C/svg%3E");
+  -webkit-mask-image: var(--squircle);
+  mask-image: var(--squircle);
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
 html {
   scroll-behavior: smooth;
   overflow-x: hidden;

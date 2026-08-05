@@ -123,7 +123,7 @@ export default function OnboardingView({
             </button>
           ) : (
             <div className="flex items-center gap-2">
-              <img src={ClearPathLogo} alt="Clear" className="h-7 w-7 rounded-md border border-border object-cover" />
+              <img src={ClearPathLogo} alt="Clear" className="app-mark h-7 w-7 object-cover" />
               <Wordmark className="text-base" />
             </div>
           )}

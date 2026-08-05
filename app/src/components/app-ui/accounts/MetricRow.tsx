@@ -34,7 +34,9 @@ export default function MetricRow({
   return (
     <div
       className={cn(
-        'grid grid-cols-1 border-b border-border sm:grid-cols-2 lg:grid-cols-4',
+        // 2×2 on phones, a single row from lg. Never one metric per row — four stacked
+        // full-width figures pushed everything below the fold on mobile.
+        'grid grid-cols-2 border-b border-border lg:grid-cols-4',
         className,
       )}
     >
@@ -44,10 +46,11 @@ export default function MetricRow({
           className={cn(
             // Padding lives on the column, not the row, so the row's bottom hairline and the
             // dividers between columns stay full-bleed to the shell edges.
-            'flex flex-col gap-3 border-border px-5 py-6 lg:px-8',
-            i > 0 && 'border-t sm:border-t-0',
-            i % 2 === 1 && 'sm:border-l',
-            i % 2 === 0 && i > 0 && 'sm:border-t lg:border-t-0',
+            'flex flex-col gap-2 border-border px-5 py-5 lg:gap-3 lg:px-8 lg:py-6',
+            // 2×2: right-hand cells get a left rule, the bottom pair gets a top rule.
+            i % 2 === 1 && 'border-l',
+            i > 1 && 'border-t',
+            // single row from lg: rules between every column, none above.
             'lg:border-t-0',
             i > 0 && 'lg:border-l',
           )}
@@ -59,7 +62,7 @@ export default function MetricRow({
             <Icon className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={1.5} />
           </div>
 
-          <span className="text-[2rem] font-light leading-none tracking-tight tabular-nums text-foreground">
+          <span className="text-2xl font-light leading-none tracking-tight tabular-nums text-foreground lg:text-[2rem]">
             {loading ? <span className="text-muted-foreground/40">—</span> : fmtUsd(value)}
           </span>
 

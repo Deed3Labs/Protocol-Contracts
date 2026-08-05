@@ -71,7 +71,7 @@ export default function SidebarNav({
   return (
     <div className="flex h-full flex-col">
       <div className={cn('flex h-16 items-center border-b border-border', collapsed ? 'justify-center px-2' : 'gap-2.5 px-5')}>
-        <img src={ClearPathLogo} alt="Clear" className="h-9 w-9 shrink-0 rounded-md border border-border object-cover" />
+        <img src={ClearPathLogo} alt="Clear" className="app-mark h-9 w-9 shrink-0 object-cover" />
         {!collapsed && (
           <div className="min-w-0 flex-1">
             <Wordmark className="text-xl" />

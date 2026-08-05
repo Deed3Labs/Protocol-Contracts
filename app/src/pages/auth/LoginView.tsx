@@ -99,7 +99,7 @@ export default function LoginView({
         <Aurora />
 
         <div className="relative flex items-center gap-3">
-          <img src={ClearPathLogo} alt="Clear" className="h-10 w-10 rounded-xl border border-border object-cover" />
+          <img src={ClearPathLogo} alt="Clear" className="app-mark h-10 w-10 object-cover" />
           <Wordmark className="text-2xl" />
         </div>
 

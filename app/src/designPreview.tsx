@@ -24,25 +24,25 @@ import type { PaySummary } from '@/utils/apiClient';
 const SAMPLE: PaySummary = {
   dueThisMonth: 1600,
   paid30: 1600,
-  totalEquity: 18_420,
-  vestedEquity: 15_260,
-  pendingEquity: 3_160,
-  equityThisMonth: 1_800,
+  totalEquity: 6_180,
+  vestedEquity: 5_100,
+  pendingEquity: 1_080,
+  equityThisMonth: 560,
   streak: 14,
-  sources: { rent: 13_400, match: 3_820, bills: 1_200 },
+  sources: { rent: 4_200, match: 1_480, bills: 500 },
   series: [
-    { label: 'Aug', rent: 1600, equity: 1600 },
-    { label: 'Sep', rent: 1600, equity: 1600 },
-    { label: 'Oct', rent: 1600, equity: 1750 },
-    { label: 'Nov', rent: 1600, equity: 1600 },
-    { label: 'Dec', rent: 1600, equity: 2100 },
-    { label: 'Jan', rent: 1600, equity: 1600 },
-    { label: 'Feb', rent: 1600, equity: 1900 },
-    { label: 'Mar', rent: 1600, equity: 1600 },
-    { label: 'Apr', rent: 1600, equity: 2270 },
-    { label: 'May', rent: 1600, equity: 1600 },
-    { label: 'Jun', rent: 1600, equity: 1800 },
-    { label: 'Jul', rent: 1600, equity: 1800 },
+    { label: 'Aug', rent: 1600, equity: 480 },
+    { label: 'Sep', rent: 1600, equity: 500 },
+    { label: 'Oct', rent: 1600, equity: 620 },
+    { label: 'Nov', rent: 1600, equity: 500 },
+    { label: 'Dec', rent: 1600, equity: 700 },
+    { label: 'Jan', rent: 1600, equity: 500 },
+    { label: 'Feb', rent: 1600, equity: 610 },
+    { label: 'Mar', rent: 1600, equity: 500 },
+    { label: 'Apr', rent: 1600, equity: 730 },
+    { label: 'May', rent: 1600, equity: 500 },
+    { label: 'Jun', rent: 1600, equity: 540 },
+    { label: 'Jul', rent: 1600, equity: 560 },
   ],
 };
 
@@ -75,6 +75,7 @@ type Skin = 'light' | 'dusk' | 'dark';
 function Harness() {
   const [skin, setSkin] = useState<Skin>('light');
   const [sparse, setSparse] = useState(false);
+  const [barLabels, setBarLabels] = useState(true);
   const data = sparse ? SPARSE : SAMPLE;
 
   useEffect(() => {
@@ -96,6 +97,13 @@ function Harness() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setBarLabels((v) => !v)}
+              className="border border-border px-3 py-1.5 text-xs font-medium text-foreground"
+            >
+              Bar labels: {barLabels ? 'ON' : 'OFF'}
+            </button>
             <button
               type="button"
               onClick={() => setSparse((v) => !v)}
@@ -133,7 +141,7 @@ function Harness() {
           ]}
         />
 
-        <PathToOwnership summary={data} className="border-b border-border px-5 lg:px-8" />
+        <PathToOwnership summary={data} showMonthLabels={barLabels} className="border-b border-border px-5 lg:px-8" />
 
         <div className="grid border-b border-border lg:grid-cols-3">
           <div className="flex items-center justify-center px-5 py-16 text-sm text-muted-foreground lg:col-span-2 lg:border-r lg:border-border lg:px-8">

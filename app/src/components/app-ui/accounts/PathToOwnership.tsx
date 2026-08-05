@@ -26,10 +26,17 @@ const fmt = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 0 
 export default function PathToOwnership({
   className,
   summary: summaryOverride,
+  showMonthLabels = false,
 }: {
   className?: string;
   /** Overrides the live PaySummary. Only used by the design preview harness. */
   summary?: PaySummary | null;
+  /**
+   * PROPOSAL, off by default: print the month abbreviation above each bar and the credit amount
+   * inside it, so the bars read as months without hovering. Wired up for review in the design
+   * preview harness before it goes anywhere near the live page.
+   */
+  showMonthLabels?: boolean;
 }) {
   const pay = usePay();
   const summary = summaryOverride ?? pay.summary;
@@ -174,16 +181,30 @@ export default function PathToOwnership({
         >
           {path.ticks.map((tick, i) => {
             const h = Math.max((tick.equity / maxEquity) * 100, 3);
+            // Only label every other bar once the series gets long, or they collide.
+            const labelEvery = path.ticks.length > 20 ? 2 : 1;
+            const showLabel = showMonthLabels && tick.label && i % labelEvery === 0;
             return (
               <div
                 key={`${tick.label}-${i}`}
                 onMouseEnter={() => setHovered(i)}
-                className="group relative flex h-full flex-1 items-end"
+                className="group relative flex h-full flex-1 flex-col justify-end"
               >
+                {showMonthLabels && (
+                  <span
+                    className={cn(
+                      'mb-1 block truncate text-center text-[9px] leading-none',
+                      tick.projected ? 'text-muted-foreground/50' : 'text-muted-foreground',
+                      tick.current && 'text-foreground',
+                    )}
+                  >
+                    {showLabel ? tick.label : ' '}
+                  </span>
+                )}
                 <div
                   style={{ height: `${h}%` }}
                   className={cn(
-                    'w-full transition-opacity',
+                    'relative w-full transition-opacity',
                     tick.projected
                       ? 'border-t border-dashed border-foreground/50 bg-foreground/[0.10]'
                       : 'bg-foreground/80',
@@ -191,7 +212,16 @@ export default function PathToOwnership({
                     hovered === i && 'opacity-100',
                     hovered !== null && hovered !== i && 'opacity-40',
                   )}
-                />
+                >
+                  {/* amount inside the bar — only where there's genuinely room for it */}
+                  {showMonthLabels && !tick.projected && h > 30 && (
+                    <span className="absolute inset-x-0 top-1 truncate text-center text-[9px] leading-none text-background tabular-nums">
+                      {Math.round(tick.equity) >= 1000
+                        ? `${(tick.equity / 1000).toFixed(1)}k`
+                        : Math.round(tick.equity)}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}

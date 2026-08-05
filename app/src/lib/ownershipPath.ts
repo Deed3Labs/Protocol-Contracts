@@ -21,9 +21,9 @@ export interface OwnershipStage {
 export const OWNERSHIP_STAGES: OwnershipStage[] = [
   { key: 'enrolled', label: 'Enrolled', at: 0, meaning: 'You joined the co-op.' },
   { key: 'foundation', label: 'Foundation', at: 2_500, meaning: 'Your first credits are vesting.' },
-  { key: 'qualified', label: 'Qualified', at: 12_500, meaning: 'You can reserve a home.' },
-  { key: 'reserved', label: 'Reserved', at: 30_000, meaning: 'A specific home is held for you.' },
-  { key: 'movein', label: 'Move-in', at: 60_000, meaning: 'You hold title to the structure.' },
+  { key: 'qualified', label: 'Qualified', at: 5_000, meaning: 'You can reserve a home.' },
+  { key: 'reserved', label: 'Reserved', at: 10_000, meaning: 'A specific home is held for you.' },
+  { key: 'movein', label: 'Move-in', at: 15_000, meaning: 'You hold title to the structure.' },
 ];
 
 export const TARGET_CREDITS = OWNERSHIP_STAGES[OWNERSHIP_STAGES.length - 1].at;
