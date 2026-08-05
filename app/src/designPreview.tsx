@@ -45,12 +45,36 @@ const SAMPLE: PaySummary = {
   ],
 };
 
+// Matches the real near-empty account that produced "October 2162 / 1634 months".
+const SPARSE: PaySummary = {
+  dueThisMonth: 0, paid30: 0, totalEquity: 110, vestedEquity: 110, pendingEquity: 0,
+  equityThisMonth: 60, streak: 1,
+  sources: { rent: 0, match: 110, bills: 0 },
+  series: [
+    { label: 'Jun', rent: 0, equity: 50 },
+    { label: 'Jul', rent: 0, equity: 60 },
+  ],
+};
+
+const UPCOMING = [
+  { id: 'u1', name: 'Rent', amount: 1600, day: 1, direction: 'out' as const },
+  { id: 'u2', name: 'Auto-save', amount: 200, day: 5, direction: 'out' as const },
+  { id: 'u3', name: 'Renters insurance', amount: 28, day: 5, direction: 'out' as const },
+  { id: 'u4', name: 'Payroll', amount: 2400, day: 12, direction: 'in' as const },
+  { id: 'u5', name: 'Utilities', amount: 90, day: 19, direction: 'out' as const },
+  { id: 'u6', name: 'Phone', amount: 55, day: 19, direction: 'out' as const },
+  { id: 'u7', name: 'Internet', amount: 70, day: 19, direction: 'out' as const },
+  { id: 'u8', name: 'Gym', amount: 40, day: 19, direction: 'out' as const },
+];
+
 const SPEND: Record<number, number> = { 2: 23, 3: 8, 5: 60, 8: 120, 12: 687, 15: 23, 19: 938, 20: 125, 22: 1, 23: 23, 24: 114, 26: 45 };
 
 type Skin = 'light' | 'dusk' | 'dark';
 
 function Harness() {
   const [skin, setSkin] = useState<Skin>('light');
+  const [sparse, setSparse] = useState(false);
+  const data = sparse ? SPARSE : SAMPLE;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -70,7 +94,15 @@ function Harness() {
               Real components, sample data. Not a product route.
             </div>
           </div>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSparse((v) => !v)}
+              className="border border-border px-3 py-1.5 text-xs font-medium text-foreground"
+            >
+              {sparse ? 'New member (sparse)' : 'Established member'}
+            </button>
+            <div className="flex gap-1">
             {(['light', 'dusk', 'dark'] as Skin[]).map((s) => (
               <button
                 key={s}
@@ -87,6 +119,7 @@ function Harness() {
                 {s}
               </button>
             ))}
+            </div>
           </div>
         </div>
 
@@ -99,17 +132,17 @@ function Harness() {
           ]}
         />
 
-        <PathToOwnership summary={SAMPLE} className="border-b border-border px-5 lg:px-8" />
+        <PathToOwnership summary={data} className="border-b border-border px-5 lg:px-8" />
 
         <div className="grid border-b border-border lg:grid-cols-3">
           <div className="flex items-center justify-center px-5 py-16 text-sm text-muted-foreground lg:col-span-2 lg:border-r lg:border-border lg:px-8">
             Balance chart
           </div>
-          <EquitySources summary={SAMPLE} className="border-t border-border px-5 lg:border-t-0 lg:px-8" />
+          <EquitySources summary={data} className="border-t border-border px-5 lg:border-t-0 lg:px-8" />
         </div>
 
         <div className="grid border-b border-border lg:grid-cols-3">
-          <UpcomingCalendar flat items={[]} className="px-5 lg:border-r lg:border-border lg:px-8" />
+          <UpcomingCalendar flat items={UPCOMING} className="px-5 lg:border-r lg:border-border lg:px-8" />
           <SpendHeatmap flat spendingByDay={SPEND} className="border-t border-border px-5 lg:border-t-0 lg:border-r lg:border-border lg:px-8" />
           <div className="flex flex-col justify-center border-t border-border px-5 py-16 text-sm text-muted-foreground lg:border-t-0 lg:px-8">
             External accounts (empty state)

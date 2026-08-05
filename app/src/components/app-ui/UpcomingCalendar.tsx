@@ -142,7 +142,7 @@ export default function UpcomingCalendar({
                 hasItems && 'cursor-pointer focus-visible:ring-1 focus-visible:ring-foreground/60',
               )}
             >
-              <span className={cn('text-[10px] font-medium', isToday ? 'flex h-4 w-4 items-center justify-center rounded-lg bg-foreground text-[9px] text-background' : 'text-foreground')}>
+              <span className={cn('text-[10px] font-medium', isToday ? 'flex h-4 w-4 items-center justify-center rounded-full bg-foreground text-[9px] text-background' : 'text-foreground')}>
                 {day}
               </span>
               {hasItems ? (
@@ -151,13 +151,13 @@ export default function UpcomingCalendar({
                     const st = KIND_STYLE[classifyUpcoming(it)];
                     const Icon = st.icon;
                     return (
-                      <span key={it.id} className={cn('flex h-4 w-4 items-center justify-center rounded-lg border border-foreground/20', st.bg)}>
+                      <span key={it.id} className={cn('flex h-4 w-4 items-center justify-center rounded-full border border-foreground/20', st.bg)}>
                         <Icon className={cn('h-2.5 w-2.5', st.fg)} />
                       </span>
                     );
                   })}
                   {overflow && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-lg border border-foreground/20 bg-secondary text-secondary-foreground">
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full border border-foreground/20 bg-secondary text-secondary-foreground">
                       <Plus className="h-2 w-2" />
                     </span>
                   )}

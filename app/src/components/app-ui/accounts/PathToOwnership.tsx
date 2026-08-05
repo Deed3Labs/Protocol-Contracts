@@ -49,26 +49,18 @@ export default function PathToOwnership({
     [path.ticks],
   );
 
-  // Stage boundaries as a percentage across the band, placed where cumulative credits cross them.
-  // `labelPct` is nudged so early stages (which can cross within a month or two of each other)
-  // don't stack their labels on top of one another — the hairline stays at the true position.
+  // Hairlines sit at the true crossing point. Labels do NOT — they're an evenly spaced legend
+  // underneath (as in the Figma), because data-derived label positions pile up and overprint
+  // each other whenever several stages are still far away.
   const markers = useMemo(() => {
     const total = path.ticks.length || 1;
-    const raw = OWNERSHIP_STAGES.map((stage) => {
+    return OWNERSHIP_STAGES.map((stage) => {
       const idx = path.ticks.findIndex((t) => t.cumulative >= stage.at);
       return {
         stage,
         reached: path.earned >= stage.at,
         pct: stage.at === 0 ? 0 : ((idx < 0 ? total : idx) / total) * 100,
       };
-    });
-
-    const MIN_GAP = 13; // percent — roughly the width of the longest stage label
-    let cursor = -Infinity;
-    return raw.map((m) => {
-      const labelPct = Math.min(Math.max(m.pct, cursor + MIN_GAP), 100);
-      cursor = labelPct;
-      return { ...m, labelPct };
     });
   }, [path.ticks, path.earned]);
 
@@ -91,53 +83,41 @@ export default function PathToOwnership({
             <span className="text-[2rem] font-light leading-none tracking-tight tabular-nums text-foreground">
               {(path.share * 100).toFixed(1)}%
             </span>
-            <span className="text-sm text-muted-foreground">
-              of title &middot;{' '}
-              <span className="font-normal text-foreground tabular-nums">{fmt(path.earned)}</span> of{' '}
-              <span className="tabular-nums">{fmt(TARGET_CREDITS)}</span> credits
+            <span className="text-sm text-muted-foreground tabular-nums">
+              {fmt(path.earned)} of {fmt(TARGET_CREDITS)} credits
             </span>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">{path.stage.label}</span> &middot;{' '}
-            {path.stage.meaning}
-            {path.nextStage && (
-              <>
-                {' '}
-                Next: <span className="text-foreground">{path.nextStage.label}</span>,{' '}
-                <span className="tabular-nums">{fmt(path.toNextStage)}</span> credits to go.
-              </>
-            )}
-          </p>
         </div>
 
         <div className="text-left sm:text-right">
           <div className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
             Projected move-in
           </div>
-          {path.insufficientHistory || !path.titleDate ? (
-            <div className="mt-2 max-w-[16rem] text-sm text-muted-foreground">
-              Not enough payment history to project yet — make a payment to start the estimate.
-            </div>
-          ) : (
+          {path.titleDate ? (
             <>
-              <div className="mt-2 text-[2rem] font-light leading-none tracking-tight text-foreground">
+              <div className="mt-3 text-[2rem] font-light leading-none tracking-tight text-foreground">
                 {path.titleDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </div>
               <div className="mt-1 text-sm text-muted-foreground tabular-nums">
-                {path.monthsToTitle} months at {fmt(Math.round(path.runRate))} credits/mo
+                {path.monthsToTitle} months
+                {monthsSaved > 0 && (
+                  <span className="text-positive"> &middot; {monthsSaved} sooner</span>
+                )}
               </div>
-              {monthsSaved > 0 && (
-                <div className="mt-1 text-sm font-normal text-positive tabular-nums">
-                  {monthsSaved} {monthsSaved === 1 ? 'month' : 'months'} sooner
-                </div>
-              )}
+            </>
+          ) : (
+            <>
+              <div className="mt-3 text-[2rem] font-light leading-none text-muted-foreground/40">—</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                {path.paceTooSlow ? 'Pace too slow to estimate' : 'Not enough history yet'}
+              </div>
             </>
           )}
         </div>
       </div>
 
       {/* scenario lenses — same chip vocabulary as the chart's time ranges */}
-      <div className="mt-6 flex flex-wrap items-center gap-1.5">
+      <div className="mt-5 flex flex-wrap items-center gap-1.5">
         {SCENARIOS.map((s) => (
           <button
             key={s.key}
@@ -145,7 +125,7 @@ export default function PathToOwnership({
             onClick={() => setScenarioKey(s.key)}
             aria-pressed={s.key === scenarioKey}
             className={cn(
-              'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+              'px-2.5 py-1 text-xs font-medium transition-colors',
               s.key === scenarioKey
                 ? 'bg-secondary text-foreground'
                 : 'text-muted-foreground hover:text-foreground',
@@ -154,31 +134,23 @@ export default function PathToOwnership({
             {s.label}
           </button>
         ))}
-        <span className="ml-1 text-xs text-muted-foreground">
-          {scenario.extraMonthly > 0 ? 'Projection — what saving more would do' : 'Your current pace'}
-        </span>
       </div>
 
       {/* the band */}
       <div className="relative mt-5 select-none">
-        {/* readout for the hovered month, pinned above the band so the band never reflows */}
+        {/* Hover readout only — the row keeps its height so the band never reflows, but it stays
+            empty at rest rather than carrying a permanent caption. */}
         <div className="mb-2 h-5 text-xs text-muted-foreground">
-          {active ? (
+          {loading ? (
+            <span>Loading…</span>
+          ) : active ? (
             <span className="tabular-nums">
-              <span className="font-medium text-foreground">{active.label || 'Projected'}</span>
+              <span className="text-foreground">{active.label || 'Projected'}</span>
               {' · '}
               {fmt(Math.round(active.equity))} credits
-              {' · '}
-              {fmt(Math.round(active.cumulative))} cumulative
               {active.projected && ' · projected'}
             </span>
-          ) : (
-            <span>
-              {loading
-                ? 'Loading your history…'
-                : `${path.ticks.filter((t) => !t.projected).length} months of payments, then projected`}
-            </span>
-          )}
+          ) : null}
         </div>
 
         <div
@@ -225,28 +197,23 @@ export default function PathToOwnership({
           )}
         </div>
 
-        {/* stage labels sit under the band, positioned at their boundary */}
-        <div className="relative mt-2 h-8">
+        {/* Stage legend — evenly spaced, so labels can never overprint each other no matter how
+            far out the remaining stages are. The hairlines above carry the true positions. */}
+        <div className="mt-2 grid grid-cols-5">
           {markers.map((m, i) => (
-            <div
+            <span
               key={m.stage.key}
-              style={{ left: `${m.labelPct}%` }}
+              title={m.stage.meaning}
               className={cn(
-                'absolute top-0 whitespace-nowrap',
-                i === 0 && 'translate-x-0',
-                i > 0 && i < markers.length - 1 && '-translate-x-1/2',
-                i === markers.length - 1 && '-translate-x-full',
+                'truncate text-[10px] font-medium uppercase tracking-widest',
+                i === 0 && 'text-left',
+                i > 0 && i < markers.length - 1 && 'text-center',
+                i === markers.length - 1 && 'text-right',
+                m.reached ? 'text-foreground' : 'text-muted-foreground/50',
               )}
             >
-              <span
-                className={cn(
-                  'text-[10px] font-medium uppercase tracking-widest',
-                  m.reached ? 'text-foreground' : 'text-muted-foreground/60',
-                )}
-              >
-                {m.stage.label}
-              </span>
-            </div>
+              {m.stage.label}
+            </span>
           ))}
         </div>
       </div>

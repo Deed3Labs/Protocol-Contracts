@@ -60,7 +60,15 @@ export interface OwnershipPath {
   titleDate: Date | null;
   /** True when there's too little history to project — the UI must say so rather than guess. */
   insufficientHistory: boolean;
+  /**
+   * True when the current pace is so slow the estimate is meaningless (a brand-new member with a
+   * handful of credits projects centuries out). The UI must not print that date.
+   */
+  paceTooSlow: boolean;
 }
+
+/** Beyond this, a move-in estimate is noise, not information. */
+const MAX_CREDIBLE_MONTHS = 240; // 20 years
 
 /** Months of forward projection to draw. Enough to show the shape, not so many it implies precision. */
 const PROJECTION_MONTHS = 18;
@@ -129,8 +137,10 @@ export function buildOwnershipPath(
   const remaining = Math.max(TARGET_CREDITS - earned, 0);
   const monthsToTitle = runRate > 0 && remaining > 0 ? Math.ceil(remaining / runRate) : null;
 
+  const paceTooSlow = monthsToTitle !== null && monthsToTitle > MAX_CREDIBLE_MONTHS;
+
   let titleDate: Date | null = null;
-  if (monthsToTitle !== null && !insufficientHistory) {
+  if (monthsToTitle !== null && !insufficientHistory && !paceTooSlow) {
     const d = new Date();
     d.setDate(1);
     d.setMonth(d.getMonth() + monthsToTitle);
@@ -149,6 +159,7 @@ export function buildOwnershipPath(
     monthsToTitle,
     titleDate,
     insufficientHistory,
+    paceTooSlow,
   };
 }
 
