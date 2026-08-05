@@ -7,6 +7,7 @@ import PathToOwnership from '@/components/app-ui/accounts/PathToOwnership';
 import EquitySources from '@/components/app-ui/accounts/EquitySources';
 import UpcomingCalendar from '@/components/app-ui/UpcomingCalendar';
 import SpendHeatmap from '@/components/app-ui/SpendHeatmap';
+import ExternalAccountsPanel from '@/components/app-ui/accounts/ExternalAccountsPanel';
 import type { PaySummary } from '@/utils/apiClient';
 
 /**
@@ -144,9 +145,7 @@ function Harness() {
         <div className="grid border-b border-border lg:grid-cols-3">
           <UpcomingCalendar flat items={UPCOMING} className="px-5 lg:border-r lg:border-border lg:px-8" />
           <SpendHeatmap flat spendingByDay={SPEND} className="border-t border-border px-5 lg:border-t-0 lg:border-r lg:border-border lg:px-8" />
-          <div className="flex flex-col justify-center border-t border-border px-5 py-16 text-sm text-muted-foreground lg:border-t-0 lg:px-8">
-            External accounts (empty state)
-          </div>
+          <ExternalAccountsPanel className="border-t border-border px-5 lg:border-t-0 lg:px-8" />
         </div>
       </div>
     </div>

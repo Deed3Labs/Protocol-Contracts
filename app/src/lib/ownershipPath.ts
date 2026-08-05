@@ -61,14 +61,23 @@ export interface OwnershipPath {
   /** True when there's too little history to project — the UI must say so rather than guess. */
   insufficientHistory: boolean;
   /**
-   * True when the current pace is so slow the estimate is meaningless (a brand-new member with a
-   * handful of credits projects centuries out). The UI must not print that date.
+   * True when the member's own pace is too slow (or too short) to extrapolate from, so the date
+   * comes from REFERENCE_MONTHLY instead. The UI must label the estimate accordingly.
    */
-  paceTooSlow: boolean;
+  usingReference: boolean;
+  /** The rate the projection actually used — observed pace, or the reference pace. */
+  projectedRate: number;
 }
 
 /** Beyond this, a move-in estimate is noise, not information. */
 const MAX_CREDIBLE_MONTHS = 240; // 20 years
+
+/**
+ * Reference savings pace, in dollars a month into the ESA. Savings are matched 1:1, so dollars
+ * convert straight to credits. Used to project a move-in date for members whose own history is
+ * too short or too slow to extrapolate from.
+ */
+export const REFERENCE_MONTHLY = 500;
 
 /** Months of forward projection to draw. Enough to show the shape, not so many it implies precision. */
 const PROJECTION_MONTHS = 18;
@@ -110,16 +119,27 @@ export function buildOwnershipPath(
   const runRate = observed + extraMonthly;
   const insufficientHistory = series.length < 2;
 
+  // --- which rate do we project at? ---------------------------------------------------------
+  // A brand-new member's observed pace projects centuries out, which is worse than useless. When
+  // the observed pace can't carry an estimate, fall back to a reference pace — what a member
+  // saving REFERENCE_MONTHLY into their ESA would earn (matched 1:1, so dollars == credits) —
+  // and flag it so the UI can say the estimate is based on that rather than on their history.
+  const remaining = Math.max(TARGET_CREDITS - earned, 0);
+  const observedMonths = runRate > 0 && remaining > 0 ? Math.ceil(remaining / runRate) : null;
+  const paceTooSlow = observedMonths !== null && observedMonths > MAX_CREDIBLE_MONTHS;
+  const usingReference = insufficientHistory || paceTooSlow || runRate <= 0;
+  const projectedRate = usingReference ? REFERENCE_MONTHLY + extraMonthly : runRate;
+
   // --- projection --------------------------------------------------------------------------
   let projectedRunning = cumulativeStart;
-  if (runRate > 0) {
+  if (projectedRate > 0) {
     const lastLabel = series[series.length - 1]?.label;
     const start = monthIndexFromLabel(lastLabel);
     for (let i = 1; i <= PROJECTION_MONTHS && projectedRunning < TARGET_CREDITS; i++) {
-      projectedRunning += runRate;
+      projectedRunning += projectedRate;
       ticks.push({
         label: start === null ? '' : MONTHS[(start + i) % 12],
-        equity: runRate,
+        equity: projectedRate,
         cumulative: projectedRunning,
         projected: true,
         current: false,
@@ -134,13 +154,11 @@ export function buildOwnershipPath(
   }
   const nextStage = OWNERSHIP_STAGES[stageIndex + 1] ?? null;
 
-  const remaining = Math.max(TARGET_CREDITS - earned, 0);
-  const monthsToTitle = runRate > 0 && remaining > 0 ? Math.ceil(remaining / runRate) : null;
-
-  const paceTooSlow = monthsToTitle !== null && monthsToTitle > MAX_CREDIBLE_MONTHS;
+  const monthsToTitle =
+    projectedRate > 0 && remaining > 0 ? Math.ceil(remaining / projectedRate) : null;
 
   let titleDate: Date | null = null;
-  if (monthsToTitle !== null && !insufficientHistory && !paceTooSlow) {
+  if (monthsToTitle !== null && monthsToTitle <= MAX_CREDIBLE_MONTHS) {
     const d = new Date();
     d.setDate(1);
     d.setMonth(d.getMonth() + monthsToTitle);
@@ -159,7 +177,8 @@ export function buildOwnershipPath(
     monthsToTitle,
     titleDate,
     insufficientHistory,
-    paceTooSlow,
+    usingReference,
+    projectedRate,
   };
 }
 

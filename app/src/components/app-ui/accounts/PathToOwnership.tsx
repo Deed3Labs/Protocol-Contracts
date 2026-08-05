@@ -4,6 +4,7 @@ import type { PaySummary } from '@/utils/apiClient';
 import {
   buildOwnershipPath,
   OWNERSHIP_STAGES,
+  REFERENCE_MONTHLY,
   SCENARIOS,
   TARGET_CREDITS,
 } from '@/lib/ownershipPath';
@@ -52,17 +53,31 @@ export default function PathToOwnership({
   // Hairlines sit at the true crossing point. Labels do NOT — they're an evenly spaced legend
   // underneath (as in the Figma), because data-derived label positions pile up and overprint
   // each other whenever several stages are still far away.
-  const markers = useMemo(() => {
-    const total = path.ticks.length || 1;
-    return OWNERSHIP_STAGES.map((stage) => {
-      const idx = path.ticks.findIndex((t) => t.cumulative >= stage.at);
-      return {
-        stage,
-        reached: path.earned >= stage.at,
-        pct: stage.at === 0 ? 0 : ((idx < 0 ? total : idx) / total) * 100,
-      };
-    });
-  }, [path.ticks, path.earned]);
+  // Equal-width stage segments, filled by real credit thresholds. Equal widths (rather than
+  // duration-proportional) keep every stage readable no matter how far out it is, and make the
+  // rail immune to the label pile-up that data-derived positions caused.
+  const segments = useMemo(
+    () =>
+      OWNERSHIP_STAGES.map((stage, i) => {
+        const next = OWNERSHIP_STAGES[i + 1];
+        const span = next ? next.at - stage.at : 0;
+        const into = path.earned - stage.at;
+        const fill = !next
+          ? path.earned >= stage.at
+            ? 100
+            : 0
+          : span > 0
+            ? Math.max(0, Math.min(into / span, 1)) * 100
+            : 0;
+        return {
+          stage,
+          fill,
+          reached: path.earned >= stage.at,
+          current: path.stageIndex === i,
+        };
+      }),
+    [path.earned, path.stageIndex],
+  );
 
   const monthsSaved =
     path.monthsToTitle !== null && baseline.monthsToTitle !== null
@@ -99,7 +114,9 @@ export default function PathToOwnership({
                 {path.titleDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </div>
               <div className="mt-1 text-sm text-muted-foreground tabular-nums">
-                {path.monthsToTitle} months
+                {path.usingReference
+                  ? `if you save $${REFERENCE_MONTHLY}/mo`
+                  : `${path.monthsToTitle} months`}
                 {monthsSaved > 0 && (
                   <span className="text-positive"> &middot; {monthsSaved} sooner</span>
                 )}
@@ -108,9 +125,7 @@ export default function PathToOwnership({
           ) : (
             <>
               <div className="mt-3 text-[2rem] font-light leading-none text-muted-foreground/40">—</div>
-              <div className="mt-1 text-sm text-muted-foreground">
-                {path.paceTooSlow ? 'Pace too slow to estimate' : 'Not enough history yet'}
-              </div>
+              <div className="mt-1 text-sm text-muted-foreground">Not enough history yet</div>
             </>
           )}
         </div>
@@ -181,39 +196,49 @@ export default function PathToOwnership({
             );
           })}
 
-          {/* stage boundaries — the same 1px hairline used everywhere else */}
-          {markers.map((m) =>
-            m.pct <= 0 || m.pct >= 100 ? null : (
-              <div
-                key={m.stage.key}
-                aria-hidden
-                style={{ left: `${m.pct}%` }}
-                className={cn(
-                  'pointer-events-none absolute top-0 bottom-0 w-px',
-                  m.reached ? 'bg-foreground/30' : 'bg-border',
-                )}
-              />
-            ),
-          )}
         </div>
 
-        {/* Stage legend — evenly spaced, so labels can never overprint each other no matter how
-            far out the remaining stages are. The hairlines above carry the true positions. */}
-        <div className="mt-2 grid grid-cols-5">
-          {markers.map((m, i) => (
-            <span
-              key={m.stage.key}
-              title={m.stage.meaning}
+        {/* Stage rail — five equal steps split by the same hairline used everywhere else. Reached
+            steps are solid, the current step fills to how far through it you are. */}
+        <div className="mt-5 grid grid-cols-5 gap-px">
+          {segments.map((s) => (
+            <div key={s.stage.key} className="h-1 bg-secondary" aria-hidden>
+              <div
+                className={cn('h-full', s.current ? 'bg-foreground' : 'bg-foreground/70')}
+                style={{ width: `${s.fill}%` }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-2 grid grid-cols-5 gap-px">
+          {segments.map((s, i) => (
+            <div
+              key={s.stage.key}
               className={cn(
-                'truncate text-[10px] font-medium uppercase tracking-widest',
-                i === 0 && 'text-left',
-                i > 0 && i < markers.length - 1 && 'text-center',
-                i === markers.length - 1 && 'text-right',
-                m.reached ? 'text-foreground' : 'text-muted-foreground/50',
+                'min-w-0',
+                i === segments.length - 1 ? 'text-right' : 'text-left',
               )}
             >
-              {m.stage.label}
-            </span>
+              <span
+                title={s.stage.meaning}
+                className={cn(
+                  'block truncate text-[10px] font-medium uppercase tracking-widest',
+                  s.current
+                    ? 'text-foreground'
+                    : s.reached
+                      ? 'text-muted-foreground'
+                      : 'text-muted-foreground/50',
+                )}
+              >
+                {s.stage.label}
+              </span>
+              {s.current && path.nextStage && (
+                <span className="mt-0.5 block truncate text-[10px] text-muted-foreground tabular-nums">
+                  {fmt(path.toNextStage)} to go
+                </span>
+              )}
+            </div>
           ))}
         </div>
       </div>
