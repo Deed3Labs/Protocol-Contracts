@@ -6,6 +6,7 @@ import AppChrome from '@/components/shell/AppChrome';
 import HomePage from '@/pages/app/HomePage';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
+import CardPage from '@/pages/app/CardPage';
 import RebuildPlaceholder from '@/pages/app/RebuildPlaceholder';
 import {
   HOME_IN_USE,
@@ -14,6 +15,8 @@ import {
   SAVINGS_DAY_ONE,
   ACTIVITY_IN_USE,
   ACTIVITY_DAY_ONE,
+  CARD_IN_USE,
+  CARD_DAY_ONE,
 } from '@/data/clearPlaceholder';
 
 /**
@@ -48,7 +51,7 @@ export default function PreviewApp() {
             <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
             <Route path="/send" element={<RebuildPlaceholder page="Send" />} />
             <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
-            <Route path="/card" element={<RebuildPlaceholder page="Card" />} />
+            <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppChrome>

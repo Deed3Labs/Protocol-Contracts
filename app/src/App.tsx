@@ -23,6 +23,7 @@ import AppShell from "@/components/shell/AppShell";
 import HomePage from "@/pages/app/HomePage";
 import SavingsPage from "@/pages/app/SavingsPage";
 import ActivityPage from "@/pages/app/ActivityPage";
+import CardPage from "@/pages/app/CardPage";
 import RebuildPlaceholder from "@/pages/app/RebuildPlaceholder";
 
 function App() {
@@ -102,7 +103,7 @@ function App() {
                       <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
                       <Route path="/send" element={<RebuildPlaceholder page="Send" />} />
                       <Route path="/activity" element={<ActivityPage />} />
-                      <Route path="/card" element={<RebuildPlaceholder page="Card" />} />
+                      <Route path="/card" element={<CardPage />} />
                       {/* Not a nav item — reached from the avatar menu (spec §1). */}
                       <Route path="/settings" element={<RebuildPlaceholder page="Settings" />} />
                     </Route>

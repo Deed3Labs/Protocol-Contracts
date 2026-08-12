@@ -210,6 +210,20 @@ export function creditsToGo(unlocksAt: number, credits: number): number {
   return Math.max(0, unlocksAt - credits);
 }
 
+export interface CardData {
+  /** Before activation there's no PAN to show and nothing to freeze. */
+  activated: boolean;
+  last4: string;
+  cardholder: string;
+  /** MM/YY. */
+  expiry: string;
+  /** Network wordmark, e.g. "VISA". */
+  network: string;
+  frozen: boolean;
+  /** Card transactions only — Activity shows everything (spec §9). */
+  transactions: ActivityRow[];
+}
+
 export interface HomeData {
   cash: number;
   credit: Credit;

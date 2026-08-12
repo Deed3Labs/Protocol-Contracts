@@ -1,4 +1,11 @@
-import type { HomeData, SavingsData, Milestone, AssuranceItem, ActivityData } from '@/lib/clearModel';
+import type {
+  HomeData,
+  SavingsData,
+  Milestone,
+  AssuranceItem,
+  ActivityData,
+  CardData,
+} from '@/lib/clearModel';
 
 /**
  * Placeholder data for the rebuild — the design spec's own example values, so the
@@ -130,3 +137,28 @@ export const ACTIVITY_IN_USE: ActivityData = {
 };
 
 export const ACTIVITY_DAY_ONE: ActivityData = { cycleNet: 0, rows: [] };
+
+export const CARD_IN_USE: CardData = {
+  activated: true,
+  last4: '8836',
+  cardholder: 'Kai M',
+  expiry: '04/29',
+  network: 'VISA',
+  frozen: false,
+  transactions: [
+    { id: 'c1', name: 'Shell', date: 'Oct 26', source: 'credit', kind: 'spending', amount: -52.1 },
+    { id: 'c2', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44 },
+    { id: 'c3', name: 'Chipotle', date: 'Oct 23', source: 'cash', kind: 'spending', amount: -14.2 },
+  ],
+};
+
+/** Day one — the card exists but hasn't been activated, so it has no number yet. */
+export const CARD_DAY_ONE: CardData = {
+  activated: false,
+  last4: '',
+  cardholder: 'Kai M',
+  expiry: '',
+  network: 'VISA',
+  frozen: false,
+  transactions: [],
+};
