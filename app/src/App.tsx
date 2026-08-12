@@ -21,6 +21,7 @@ import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
 import HomePage from "@/pages/app/HomePage";
+import SavingsPage from "@/pages/app/SavingsPage";
 import RebuildPlaceholder from "@/pages/app/RebuildPlaceholder";
 
 function App() {
@@ -96,7 +97,7 @@ function App() {
                         placeholder until its real page is built (spec §10 order). */}
                     <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                       <Route path="/" element={<HomePage />} />
-                      <Route path="/savings" element={<RebuildPlaceholder page="Savings" />} />
+                      <Route path="/savings" element={<SavingsPage />} />
                       <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
                       <Route path="/send" element={<RebuildPlaceholder page="Send" />} />
                       <Route path="/activity" element={<RebuildPlaceholder page="Activity" />} />

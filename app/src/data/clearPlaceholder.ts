@@ -1,4 +1,4 @@
-import type { HomeData } from '@/lib/clearModel';
+import type { HomeData, SavingsData, Milestone, AssuranceItem } from '@/lib/clearModel';
 
 /**
  * Placeholder data for the rebuild — the design spec's own example values, so the
@@ -70,4 +70,48 @@ export const HOME_DAY_ONE: HomeData = {
   ],
   recent: [],
   backing: { assetBacked: [], unsecured: [] },
+};
+
+/**
+ * Milestones and protections are properties of the product, not of a member's
+ * balance, so both states share them — only the credit balance moves, and the
+ * done/current/locked states fall out of that.
+ */
+const MILESTONES: Milestone[] = [
+  { id: 'start', title: 'Start saving', credits: 1000 },
+  { id: 'assurance', title: 'Unlock full assurance', credits: 4000 },
+  { id: 'community', title: 'Choose your community', credits: 8000 },
+  { id: 'reserve', title: 'Reserve your home', credits: 12000 },
+  { id: 'deed', title: 'Sign your ELPA & Clear Deed', credits: 15000, note: 'move in' },
+];
+
+/**
+ * Only "Home repair assurance" is a confirmed product name. The other four are
+ * placeholders and MUST keep rendering as written until the real names arrive —
+ * do not invent replacements.
+ */
+const ASSURANCE: AssuranceItem[] = [
+  { id: 'a1', name: 'Home repair assurance', unlocksAt: 0 },
+  { id: 'a2', name: '[PLACEHOLDER — replace]', unlocksAt: 1000, placeholder: true },
+  { id: 'a3', name: '[PLACEHOLDER — replace]', unlocksAt: 4000, placeholder: true },
+  { id: 'a4', name: '[PLACEHOLDER — replace]', unlocksAt: 8000, placeholder: true },
+  { id: 'a5', name: '[PLACEHOLDER — replace]', unlocksAt: 15000, placeholder: true },
+];
+
+export const SAVINGS_IN_USE: SavingsData = {
+  savings: HOME_IN_USE.savings,
+  milestones: MILESTONES,
+  assurance: ASSURANCE,
+  vesting: [
+    { id: 'v1', date: 'Nov 3', credits: 500 },
+    { id: 'v2', date: 'Nov 17', credits: 500 },
+    { id: 'v3', date: 'Dec 1', credits: 500 },
+  ],
+};
+
+export const SAVINGS_DAY_ONE: SavingsData = {
+  savings: HOME_DAY_ONE.savings,
+  milestones: MILESTONES,
+  assurance: ASSURANCE,
+  vesting: [],
 };

@@ -94,6 +94,66 @@ export interface LimitBacking {
   unsecured: LimitBackingRow[];
 }
 
+export interface Milestone {
+  id: string;
+  title: string;
+  /** Equity credits needed to reach it. */
+  credits: number;
+  /** Trailing note, e.g. "move in". */
+  note?: string;
+}
+
+export interface AssuranceItem {
+  id: string;
+  name: string;
+  /** Credits needed before this protection turns on. */
+  unlocksAt: number;
+  /** Name still to be confirmed — rendered as-is, do not invent a replacement. */
+  placeholder?: boolean;
+}
+
+export interface VestingRow {
+  id: string;
+  /** Display date, e.g. "Nov 3". */
+  date: string;
+  credits: number;
+}
+
+export interface SavingsData {
+  savings: Savings;
+  milestones: Milestone[];
+  assurance: AssuranceItem[];
+  vesting: VestingRow[];
+}
+
+export type MilestoneState = 'done' | 'current' | 'future';
+
+/**
+ * Milestone progress is derived from credits, never stored: everything at or
+ * below the current balance is done, the next one up is current, the rest are
+ * ahead. That keeps the path honest when credits move.
+ */
+export function milestoneStates(milestones: Milestone[], credits: number): MilestoneState[] {
+  let currentTaken = false;
+  return milestones.map((m) => {
+    if (credits >= m.credits) return 'done';
+    if (!currentTaken) {
+      currentTaken = true;
+      return 'current';
+    }
+    return 'future';
+  });
+}
+
+export function isAssuranceActive(item: AssuranceItem, credits: number): boolean {
+  return credits >= item.unlocksAt;
+}
+
+/** Credits still needed to unlock a protection. */
+export function creditsToGo(unlocksAt: number, credits: number): number {
+  return Math.max(0, unlocksAt - credits);
+}
+
 export interface HomeData {
   cash: number;
   credit: Credit;

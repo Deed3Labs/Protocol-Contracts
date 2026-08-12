@@ -4,8 +4,9 @@ import { Bell } from 'lucide-react';
 import { ThemeProvider } from '@/context/ThemeContext';
 import AppChrome from '@/components/shell/AppChrome';
 import HomePage from '@/pages/app/HomePage';
+import SavingsPage from '@/pages/app/SavingsPage';
 import RebuildPlaceholder from '@/pages/app/RebuildPlaceholder';
-import { HOME_IN_USE, HOME_DAY_ONE } from '@/data/clearPlaceholder';
+import { HOME_IN_USE, HOME_DAY_ONE, SAVINGS_IN_USE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 
 /**
  * Dev-only visual harness for the member-app rebuild.
@@ -35,7 +36,7 @@ export default function PreviewApp() {
         >
           <Routes>
             <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} />} />
-            <Route path="/savings" element={<RebuildPlaceholder page="Savings" />} />
+            <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
             <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
             <Route path="/send" element={<RebuildPlaceholder page="Send" />} />
             <Route path="/activity" element={<RebuildPlaceholder page="Activity" />} />
