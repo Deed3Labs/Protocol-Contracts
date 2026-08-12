@@ -4,7 +4,7 @@ import { Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
 import { cn } from '@/lib/utils';
-import { navItems, type NavItem } from './navItems';
+import { navItems, type NavItem } from '@/components/shell/navItems';
 
 // Reserve the widest label so the active tab — and therefore the whole pill — keeps a
 // constant width as you switch pages, rather than resizing per active label.

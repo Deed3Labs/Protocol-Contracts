@@ -12,7 +12,17 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ["@xmtp/wasm-bindings", "@xmtp/browser-sdk"],
+    // The same lazy/unused Privy features that `build.rollupOptions.external` drops (see below)
+    // also have to be kept out of dev pre-bundling: esbuild resolves imports eagerly, so
+    // @farcaster/mini-app-solana's uninstalled peers (@solana/wallet-adapter-react,
+    // @farcaster/miniapp-sdk) aborted `vite dev` at startup. Their chunks never load at runtime.
+    exclude: [
+      "@xmtp/wasm-bindings",
+      "@xmtp/browser-sdk",
+      "@farcaster/mini-app-solana",
+      "@abstract-foundation/agw-client",
+      "@stripe/crypto",
+    ],
     include: ["@xmtp/proto", "buffer"],
   },
   define: {

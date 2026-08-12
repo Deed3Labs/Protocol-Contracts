@@ -198,6 +198,32 @@
   --chart-3: #737373;
   --chart-4: #a3a3a3;
   --chart-5: #d4d4d4;
+
+  /* Third text level. The spec uses three weights below the surface — value,
+     label, sub-label — where this app had only two (foreground, muted-foreground).
+     This is the middle one: labels like "Clear credit used". */
+  --foreground-secondary: 82 82 82;
+
+  /* ---- Product tokens: credit tiers & savings vesting --------------------
+     These encode product meaning, not taste (design spec §2) — a bar segment's
+     color tells you which tier is being drawn and what it costs. The FILLS are
+     the spec's exact values and stay constant across all three themes, so a
+     tier always looks like itself. Only the -fg (text) variants are retuned
+     per theme, because the fill colors are too dark to read as text on dark.
+     Tints come from opacity modifiers (bg-tier-boost/10), matching how
+     --positive/--negative are already used in this app. */
+  --tier-savings: 15 110 86; /* #0F6E56 — savings-backed, free */
+  --tier-asset: 29 158 117; /* #1D9E75 — asset-backed */
+  --tier-income: 186 117 23; /* #BA7517 — income-backed */
+  --tier-boost: 127 119 221; /* #7F77DD — boost, and the cash→credit crossing accent */
+  --vest-cash: 15 110 86; /* #0F6E56 — savings: cash */
+  --vest-vested: 93 202 165; /* #5DCAA5 — savings: vested */
+  --vest-vesting: 159 225 203; /* #9FE1CB — savings: vesting */
+
+  --tier-savings-fg: 15 110 86; /* #0F6E56 */
+  --tier-asset-fg: 22 122 91;
+  --tier-income-fg: 133 79 11; /* #854F0B */
+  --tier-boost-fg: 83 74 183; /* #534AB7 */
 }
 
 .dark {
@@ -245,6 +271,16 @@
   --chart-3: #a3a3a3;
   --chart-4: #737373;
   --chart-5: #404040;
+
+  /* Third text level — brighter than muted on dark */
+  --foreground-secondary: 212 212 212;
+
+  /* Tier text, lifted for legibility on near-black. Fills are inherited
+     from :root unchanged — only the text weights move. */
+  --tier-savings-fg: 79 191 156; /* #4FBF9C */
+  --tier-asset-fg: 88 209 168;
+  --tier-income-fg: 224 163 74; /* #E0A34A */
+  --tier-boost-fg: 167 159 240; /* #A79FF0 */
 }
 
 .dusk {
@@ -292,6 +328,16 @@
   --chart-3: #9a836a;
   --chart-4: #c0a98c;
   --chart-5: #ddccb0;
+
+  /* Third text level — warm brown between ink and muted */
+  --foreground-secondary: 92 77 58;
+
+  /* Tier text, warmed slightly so it sits on cream without going cold.
+     Fills are inherited from :root unchanged. */
+  --tier-savings-fg: 13 96 75;
+  --tier-asset-fg: 21 116 86;
+  --tier-income-fg: 124 73 10;
+  --tier-boost-fg: 76 67 168;
 }
 
 html {
@@ -396,6 +442,18 @@ body.onboarding-scroll-enabled {
   --color-cp-savings-fg: rgb(var(--cp-savings-fg));
   --color-cp-external: rgb(var(--cp-external));
   --color-cp-external-fg: rgb(var(--cp-external-fg));
+  --color-foreground-secondary: rgb(var(--foreground-secondary));
+  --color-tier-savings: rgb(var(--tier-savings));
+  --color-tier-savings-fg: rgb(var(--tier-savings-fg));
+  --color-tier-asset: rgb(var(--tier-asset));
+  --color-tier-asset-fg: rgb(var(--tier-asset-fg));
+  --color-tier-income: rgb(var(--tier-income));
+  --color-tier-income-fg: rgb(var(--tier-income-fg));
+  --color-tier-boost: rgb(var(--tier-boost));
+  --color-tier-boost-fg: rgb(var(--tier-boost-fg));
+  --color-vest-cash: rgb(var(--vest-cash));
+  --color-vest-vested: rgb(var(--vest-vested));
+  --color-vest-vesting: rgb(var(--vest-vesting));
 }
 
 /* Animation utilities */
@@ -480,10 +538,11 @@ body.onboarding-scroll-enabled {
   border: none;
 }
 
-/* Floating mobile tab bar offset. Sits just above the safe area in the browser; lifts
-   higher when installed (PWA standalone) so it's within easy thumb reach. */
+/* Floating mobile tab bar offset. Spec §1 asks for bottom: 24px; the safe-area
+   inset wins when it's larger, so the pill never sits under the home indicator.
+   Lifts higher when installed (PWA standalone) for thumb reach. */
 .mobile-tabbar {
-  bottom: max(env(safe-area-inset-bottom), 1rem);
+  bottom: max(env(safe-area-inset-bottom), 1.5rem);
 }
 @media (display-mode: standalone) {
   .mobile-tabbar {
