@@ -25,6 +25,7 @@ import SavingsPage from "@/pages/app/SavingsPage";
 import ActivityPage from "@/pages/app/ActivityPage";
 import CardPage from "@/pages/app/CardPage";
 import SendPage from "@/pages/app/SendPage";
+import EarnPage from "@/pages/app/EarnPage";
 import RebuildPlaceholder from "@/pages/app/RebuildPlaceholder";
 
 function App() {
@@ -96,12 +97,19 @@ function App() {
                     <Route path="/claim/:token" element={<ClaimFunds />} />
                     
                     {/* Member app — protected. Routes follow the nav in
-                        docs/ux/clear-app-design-spec.md §1. Every element is a
-                        placeholder until its real page is built (spec §10 order). */}
+                        docs/ux/clear-app-design-spec.md §1.
+
+                        NOT READY TO MERGE: each page below falls back to its
+                        default prop, which is placeholder data from
+                        data/clearPlaceholder.ts — so this build shows invented
+                        balances. Wire each route to the real contexts
+                        (useClearBalances / useClearTransactions / CreditContext /
+                        useMemberProfile) before this branch goes anywhere near
+                        dev. */}
                     <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                       <Route path="/" element={<HomePage />} />
                       <Route path="/savings" element={<SavingsPage />} />
-                      <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
+                      <Route path="/earn" element={<EarnPage />} />
                       <Route path="/send" element={<SendPage />} />
                       <Route path="/activity" element={<ActivityPage />} />
                       <Route path="/card" element={<CardPage />} />

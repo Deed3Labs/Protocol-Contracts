@@ -8,7 +8,7 @@ import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
 import SendPage from '@/pages/app/SendPage';
-import RebuildPlaceholder from '@/pages/app/RebuildPlaceholder';
+import EarnPage from '@/pages/app/EarnPage';
 import {
   HOME_IN_USE,
   HOME_DAY_ONE,
@@ -20,6 +20,8 @@ import {
   CARD_DAY_ONE,
   SEND_IN_USE,
   SEND_DAY_ONE,
+  EARN_IN_USE,
+  EARN_DAY_ONE,
 } from '@/data/clearPlaceholder';
 
 /**
@@ -51,7 +53,7 @@ export default function PreviewApp() {
           <Routes>
             <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} />} />
             <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
-            <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
+            <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
             <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
             <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
             <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />

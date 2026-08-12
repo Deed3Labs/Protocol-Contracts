@@ -6,6 +6,8 @@ import type {
   ActivityData,
   CardData,
   SendData,
+  EarnData,
+  BondTerm,
 } from '@/lib/clearModel';
 
 /**
@@ -178,4 +180,30 @@ export const SEND_DAY_ONE: SendData = {
   handle: '@kaim',
   codeUrl: 'https://useclear.org/pay/kaim',
   recent: [],
+};
+
+/** The bond ladder is a property of the product — offered whether or not you hold any. */
+const BOND_TERMS: BondTerm[] = [
+  { months: 12, price: 939, face: 1000, rate: 6.5 },
+  { months: 24, price: 865, face: 1000, rate: 7.5 },
+  { months: 36, price: 783, face: 1000, rate: 8.5 },
+  { months: 60, price: 621, face: 1000, rate: 10 },
+];
+
+export const EARN_IN_USE: EarnData = {
+  earnedToDate: 412.6,
+  pool: { apy: 6.8, lent: 740000, capacity: 1000000, position: 2500, earned: 41.2 },
+  terms: BOND_TERMS,
+  bonds: [
+    { id: 'b1', face: 5000, months: 24, paid: 4325, maturesOn: 'Mar 14, 2028', monthsLeft: 19 },
+    { id: 'b2', face: 2500, months: 12, paid: 2400, maturesOn: 'Jan 8, 2027', monthsLeft: 5 },
+  ],
+};
+
+/** Day one — the pool and the ladder still exist, this member just isn't in them. */
+export const EARN_DAY_ONE: EarnData = {
+  earnedToDate: 0,
+  pool: { apy: 6.8, lent: 740000, capacity: 1000000, position: 0, earned: 0 },
+  terms: BOND_TERMS,
+  bonds: [],
 };

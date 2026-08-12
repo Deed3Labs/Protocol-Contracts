@@ -210,6 +210,59 @@ export function creditsToGo(unlocksAt: number, credits: number): number {
   return Math.max(0, unlocksAt - credits);
 }
 
+export interface YieldPool {
+  /** Variable, e.g. 6.8 for 6.8% APY. */
+  apy: number;
+  /** Lent out to members, and the pool's total size. */
+  lent: number;
+  capacity: number;
+  /** What this member has in, and what it has made. */
+  position: number;
+  earned: number;
+}
+
+export interface BondTerm {
+  months: number;
+  /** What you pay today. */
+  price: number;
+  /** What it pays out at maturity. */
+  face: number;
+  /** Effective annual rate, e.g. 6.5. */
+  rate: number;
+}
+
+export interface HeldBond {
+  id: string;
+  face: number;
+  months: number;
+  paid: number;
+  /** Display date, e.g. "Mar 14, 2028". */
+  maturesOn: string;
+  monthsLeft: number;
+}
+
+export interface EarnData {
+  pool: YieldPool;
+  terms: BondTerm[];
+  bonds: HeldBond[];
+  earnedToDate: number;
+}
+
+/** A bond's contribution is what was paid for it, not its face value. */
+export function bondsTotal(bonds: HeldBond[]): number {
+  return bonds.reduce((sum, b) => sum + b.paid, 0);
+}
+
+/** Everything currently earning: the pool position plus what's tied up in bonds. */
+export function earningTotal(data: EarnData): number {
+  return data.pool.position + bondsTotal(data.bonds);
+}
+
+/** Share of the pool lent out, 0–1. */
+export function poolUtilization(pool: YieldPool): number {
+  return pool.capacity > 0 ? Math.min(1, pool.lent / pool.capacity) : 0;
+}
+
 export interface Contact {
   id: string;
   name: string;
