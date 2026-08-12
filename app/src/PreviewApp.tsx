@@ -5,8 +5,16 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import AppChrome from '@/components/shell/AppChrome';
 import HomePage from '@/pages/app/HomePage';
 import SavingsPage from '@/pages/app/SavingsPage';
+import ActivityPage from '@/pages/app/ActivityPage';
 import RebuildPlaceholder from '@/pages/app/RebuildPlaceholder';
-import { HOME_IN_USE, HOME_DAY_ONE, SAVINGS_IN_USE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
+import {
+  HOME_IN_USE,
+  HOME_DAY_ONE,
+  SAVINGS_IN_USE,
+  SAVINGS_DAY_ONE,
+  ACTIVITY_IN_USE,
+  ACTIVITY_DAY_ONE,
+} from '@/data/clearPlaceholder';
 
 /**
  * Dev-only visual harness for the member-app rebuild.
@@ -39,7 +47,7 @@ export default function PreviewApp() {
             <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
             <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
             <Route path="/send" element={<RebuildPlaceholder page="Send" />} />
-            <Route path="/activity" element={<RebuildPlaceholder page="Activity" />} />
+            <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
             <Route path="/card" element={<RebuildPlaceholder page="Card" />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

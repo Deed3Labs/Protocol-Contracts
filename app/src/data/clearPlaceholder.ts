@@ -1,4 +1,4 @@
-import type { HomeData, SavingsData, Milestone, AssuranceItem } from '@/lib/clearModel';
+import type { HomeData, SavingsData, Milestone, AssuranceItem, ActivityData } from '@/lib/clearModel';
 
 /**
  * Placeholder data for the rebuild — the design spec's own example values, so the
@@ -33,9 +33,9 @@ export const HOME_IN_USE: HomeData = {
     { id: 'card', label: 'Activate your card to start spending', cta: 'Activate', done: false },
   ],
   recent: [
-    { id: 'r1', name: 'Shell', date: 'Oct 26', source: 'credit', amount: -52.1 },
-    { id: 'r2', name: 'Stater Bros', date: 'Oct 25', source: 'credit', amount: -118.44 },
-    { id: 'r3', name: 'Payroll deposit', date: 'Oct 25', source: 'cash account', amount: 2000 },
+    { id: 'r1', name: 'Shell', date: 'Oct 26', source: 'credit', kind: 'spending', amount: -52.1 },
+    { id: 'r2', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44 },
+    { id: 'r3', name: 'Payroll deposit', date: 'Oct 25', source: 'cash account', kind: 'deposit', amount: 2000 },
   ],
   backing: {
     assetBacked: [
@@ -115,3 +115,18 @@ export const SAVINGS_DAY_ONE: SavingsData = {
   assurance: ASSURANCE,
   vesting: [],
 };
+
+export const ACTIVITY_IN_USE: ActivityData = {
+  cycleNet: -1842,
+  pendingClaim: { amount: 40, recipient: 'Marcus T.', sentOn: 'Oct 26', expiresInDays: 12 },
+  rows: [
+    { id: 't1', name: 'Shell', date: 'Today · Oct 26', source: 'credit', kind: 'spending', amount: -52.1 },
+    { id: 't2', name: 'Sent to Marcus T.', date: 'Today · Oct 26', source: 'pending', kind: 'sent', amount: -40 },
+    { id: 't3', name: 'Payroll deposit', date: 'Oct 25', source: 'cash account', kind: 'deposit', amount: 2000 },
+    { id: 't4', name: 'Equity credits vested', date: 'Oct 25', source: 'savings', kind: 'savings', amount: 500 },
+    { id: 't5', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44 },
+    { id: 't6', name: 'Chipotle', date: 'Oct 23', source: 'cash', kind: 'spending', amount: -14.2 },
+  ],
+};
+
+export const ACTIVITY_DAY_ONE: ActivityData = { cycleNet: 0, rows: [] };

@@ -398,13 +398,16 @@ body.onboarding-scroll-enabled {
   touch-action: pan-y !important;
 }
 
-/* Allow scrolling in containers */
-.overflow-y-auto, .overflow-y-scroll {
+/* Allow scrolling in containers. These must stay unlayered: the `* { scrollbar-width: thin }`
+   rule above is unlayered too, and would otherwise beat any Tailwind utility trying to
+   hide a scrollbar (unlayered styles win over @layer utilities). */
+.overflow-y-auto, .overflow-y-scroll, .overflow-x-auto, .overflow-x-scroll {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 
-.overflow-y-auto::-webkit-scrollbar, .overflow-y-scroll::-webkit-scrollbar {
+.overflow-y-auto::-webkit-scrollbar, .overflow-y-scroll::-webkit-scrollbar,
+.overflow-x-auto::-webkit-scrollbar, .overflow-x-scroll::-webkit-scrollbar {
   width: 0px;
   height: 0px;
 }

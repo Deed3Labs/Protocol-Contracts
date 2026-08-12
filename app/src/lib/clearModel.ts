@@ -68,14 +68,70 @@ export interface SetupTask {
   done: boolean;
 }
 
+/** Where the money moved from — spec §8 requires this tag on every row. */
+export type ActivitySource = 'credit' | 'cash' | 'savings' | 'cash account' | 'pending';
+
+/** What the row is, which is what the Activity filter chips select on. */
+export type ActivityKind = 'spending' | 'deposit' | 'savings' | 'sent';
+
 export interface ActivityRow {
   id: string;
   name: string;
   date: string;
-  /** Where the money moved from — spec §8 requires this on every row. */
-  source: 'credit' | 'cash' | 'savings' | 'cash account' | 'pending';
+  source: ActivitySource;
+  kind: ActivityKind;
   /** Negative debits, positive credits. */
   amount: number;
+}
+
+export interface PendingClaim {
+  amount: number;
+  /** Who the money is waiting on. */
+  recipient: string;
+  sentOn: string;
+  expiresInDays: number;
+}
+
+export interface ActivityData {
+  rows: ActivityRow[];
+  /** Net movement across the current cycle, shown beside the filters. */
+  cycleNet: number;
+  /** Set when money has been sent to someone who isn't a member yet. */
+  pendingClaim?: PendingClaim;
+}
+
+export const ACTIVITY_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'spending', label: 'Spending' },
+  { id: 'deposit', label: 'Deposits' },
+  { id: 'savings', label: 'Savings' },
+  { id: 'sent', label: 'Sent' },
+] as const;
+
+export type ActivityFilter = (typeof ACTIVITY_FILTERS)[number]['id'];
+
+export function filterActivity(rows: ActivityRow[], filter: ActivityFilter): ActivityRow[] {
+  return filter === 'all' ? rows : rows.filter((r) => r.kind === filter);
+}
+
+/**
+ * Group rows under date headers, preserving the order they arrive in — the list
+ * is already newest-first and the labels are display strings ("Today · Oct 26"),
+ * so this must not re-sort or re-parse them.
+ */
+export function groupByDate(rows: ActivityRow[]): { date: string; rows: ActivityRow[] }[] {
+  const groups: { date: string; rows: ActivityRow[] }[] = [];
+  for (const row of rows) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === row.date) last.rows.push(row);
+    else groups.push({ date: row.date, rows: [row] });
+  }
+  return groups;
+}
+
+/** Source tags read lowercase inline ("Oct 26 · credit") and capitalised in a column. */
+export function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 export interface LimitBackingRow {

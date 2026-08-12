@@ -22,6 +22,7 @@ import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
 import HomePage from "@/pages/app/HomePage";
 import SavingsPage from "@/pages/app/SavingsPage";
+import ActivityPage from "@/pages/app/ActivityPage";
 import RebuildPlaceholder from "@/pages/app/RebuildPlaceholder";
 
 function App() {
@@ -100,7 +101,7 @@ function App() {
                       <Route path="/savings" element={<SavingsPage />} />
                       <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
                       <Route path="/send" element={<RebuildPlaceholder page="Send" />} />
-                      <Route path="/activity" element={<RebuildPlaceholder page="Activity" />} />
+                      <Route path="/activity" element={<ActivityPage />} />
                       <Route path="/card" element={<RebuildPlaceholder page="Card" />} />
                       {/* Not a nav item — reached from the avatar menu (spec §1). */}
                       <Route path="/settings" element={<RebuildPlaceholder page="Settings" />} />

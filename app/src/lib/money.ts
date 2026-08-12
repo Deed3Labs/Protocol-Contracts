@@ -15,9 +15,13 @@ export function money(value: number, opts: { cents?: boolean } = {}): string {
   })}`;
 }
 
-/** Signed transaction amount: "+$2,000.00" / "−$52.10" (true minus, not a hyphen). */
-export function signedMoney(value: number): string {
-  return `${value < 0 ? '−' : '+'}${money(value, { cents: true })}`;
+/**
+ * Signed amount with a true minus sign, not a hyphen: "+$2,000.00" / "−$52.10".
+ * Transactions keep their cents; pass `{ cents: false }` for round summary
+ * figures like a cycle total.
+ */
+export function signedMoney(value: number, opts: { cents?: boolean } = {}): string {
+  return `${value < 0 ? '−' : '+'}${money(value, { cents: opts.cents ?? true })}`;
 }
 
 /** Whole-number counts, e.g. equity credits: "15,000". */
