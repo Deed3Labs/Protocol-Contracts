@@ -8,8 +8,9 @@ import CashAccountCard from '@/components/clear/CashAccountCard';
 import SavingsSummaryCard from '@/components/clear/SavingsSummaryCard';
 import RecentActivityCard from '@/components/clear/RecentActivityCard';
 import LimitBreakdown from '@/components/clear/LimitBreakdown';
+import AccountDetailsDialog from '@/components/clear/AccountDetailsDialog';
 import { HOME_IN_USE } from '@/data/clearPlaceholder';
-import { isCreditEngaged, savingsTotal, type HomeData } from '@/lib/clearModel';
+import { creditLimit, isCreditEngaged, savingsTotal, type HomeData } from '@/lib/clearModel';
 
 /**
  * Home — design spec §4.
@@ -26,9 +27,10 @@ import { isCreditEngaged, savingsTotal, type HomeData } from '@/lib/clearModel';
  */
 export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   // Nothing has ever landed in the account: no cycle running, no savings, no cash.
-  const dayOne = data.credit.cycleLimit === 0 && savingsTotal(data.savings) === 0 && data.cash === 0;
+  const dayOne = creditLimit(data.credit) === 0 && savingsTotal(data.savings) === 0 && data.cash === 0;
   const engaged = isCreditEngaged(data.cash, data.credit);
 
   const balance = <BalanceBlock cash={data.cash} credit={data.credit} emptyState={dayOne} />;
@@ -52,9 +54,14 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const cycle = <CycleCard cycle={data.cycle} />;
   const cycleCard = <CycleCard cycle={data.cycle} variant="card" />;
   const credit = (
-    <ClearCreditCard credit={data.credit} engaged={engaged} onViewBreakdown={() => setBreakdownOpen(true)} />
+    <ClearCreditCard
+      credit={data.credit}
+      engaged={engaged}
+      onViewBreakdown={() => setBreakdownOpen(true)}
+      onAddBoost={() => setBreakdownOpen(true)}
+    />
   );
-  const cash = <CashAccountCard account={data.cashAccount} />;
+  const cash = <CashAccountCard account={data.cashAccount} onDetails={() => setAccountOpen(true)} />;
   const activity = <RecentActivityCard rows={data.recent} />;
 
   return (
@@ -88,6 +95,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       </div>
 
       <LimitBreakdown backing={data.backing} open={breakdownOpen} onOpenChange={setBreakdownOpen} />
+      <AccountDetailsDialog account={data.cashAccount} open={accountOpen} onOpenChange={setAccountOpen} />
     </>
   );
 }

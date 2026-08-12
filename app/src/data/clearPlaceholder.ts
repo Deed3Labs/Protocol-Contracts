@@ -23,19 +23,26 @@ import type {
 export const HOME_IN_USE: HomeData = {
   cash: 0,
   credit: {
-    cycleLimit: 4000,
-    carryCost: 2,
+    carryCost: 10.4,
     carryFreeUnder: 3000,
     tiers: [
       { key: 'savings', label: 'Savings (CLRUSD)', shortLabel: 'Savings', rate: 'free', used: 3000, limit: 3000, added: true },
-      { key: 'asset', label: 'Asset-backed', rate: '0.65–0.75%', used: 200, limit: 8300, added: true },
+      { key: 'asset', label: 'Asset-backed', rate: '0.65–0.75%', used: 2400, limit: 8300, added: true },
       { key: 'income', label: 'Income-backed', shortLabel: 'Income', rate: '1.5% / cycle', used: 0, limit: 1000, added: true },
       { key: 'boost', label: 'Boost', rate: '3% / cycle', used: 0, limit: 500, added: false },
     ],
   },
   cycle: { lengthDays: 30, daysLeft: 6, clearsOn: 'Nov 1 payday' },
   savings: { cash: 3000, vested: 1500, vesting: 1500, credits: 1500, creditsGoal: 15000 },
-  cashAccount: { balance: 0, nextDepositOn: 'Nov 1', nextDepositEstimate: 2000, directDepositActive: true },
+  cashAccount: {
+    balance: 0,
+    nextDepositOn: 'Nov 1',
+    nextDepositEstimate: 2000,
+    directDepositActive: true,
+    accountNumber: '9800 0142 7731',
+    routingNumber: '084106768',
+    bankName: 'Lead Bank',
+  },
   tasks: [
     { id: 'account', label: 'Account created', done: true },
     { id: 'deposit', label: 'Add your first deposit', cta: 'Add', done: true },
@@ -55,7 +62,14 @@ export const HOME_IN_USE: HomeData = {
     ],
     unsecured: [
       { label: 'Income-backed', contribution: 1000, detail: '50% of ~$2,000/mo · 1.5%', tier: 'income' },
-      { label: 'Clear Boost', contribution: 500, detail: 'Opt-in · 3%', tier: 'boost', dimmed: true },
+      {
+        label: 'Clear Boost',
+        contribution: 500,
+        detail: 'Not added · opt-in · 3% per cycle',
+        tier: 'boost',
+        notAdded: true,
+        addAmount: 500,
+      },
     ],
   },
 };
@@ -64,14 +78,21 @@ export const HOME_IN_USE: HomeData = {
 export const HOME_DAY_ONE: HomeData = {
   cash: 0,
   credit: {
-    cycleLimit: 0,
     carryCost: 0,
     carryFreeUnder: 0,
     tiers: HOME_IN_USE.credit.tiers.map((t) => ({ ...t, used: 0, limit: 0, added: false })),
   },
   cycle: { lengthDays: 30, daysLeft: 0, clearsOn: '' },
   savings: { cash: 0, vested: 0, vesting: 0, credits: 0, creditsGoal: 15000 },
-  cashAccount: { balance: 0, nextDepositOn: '', nextDepositEstimate: 0, directDepositActive: false },
+  cashAccount: {
+    balance: 0,
+    nextDepositOn: '',
+    nextDepositEstimate: 0,
+    directDepositActive: false,
+    accountNumber: '9800 0142 7731',
+    routingNumber: '084106768',
+    bankName: 'Lead Bank',
+  },
   tasks: [
     { id: 'account', label: 'Account created', done: true },
     { id: 'deposit', label: 'Add your first deposit', cta: 'Add', done: false },

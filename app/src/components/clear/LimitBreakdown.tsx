@@ -1,4 +1,5 @@
 import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
 import { money } from '@/lib/money';
 import {
@@ -10,24 +11,44 @@ import {
 } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
-function Row({ row, last }: { row: LimitBackingRow; last: boolean }) {
+function Row({ row, last, onAdd }: { row: LimitBackingRow; last: boolean; onAdd?: () => void }) {
   return (
-    <div
-      className={cn('py-2', !last && 'border-b-[0.5px] border-border', row.dimmed && 'opacity-50')}
-    >
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="flex min-w-0 items-center gap-1.5">
+    <div className={cn('py-2', !last && 'border-b-[0.5px] border-border')}>
+      <div className="flex items-center justify-between gap-3">
+        <span
+          className={cn(
+            'flex min-w-0 items-center gap-1.5',
+            row.notAdded && 'text-muted-foreground',
+          )}
+        >
           <span aria-hidden className={cn('h-1.5 w-1.5 shrink-0 rounded-full', TIER_FILL[row.tier])} />
           <span className="truncate">{row.label}</span>
         </span>
-        <span className="shrink-0 tabular-nums">{money(row.contribution)}</span>
+
+        {/* An opt-in tier isn't a number yet — it's an offer, so it gets the action
+            rather than a greyed-out figure. */}
+        {row.notAdded ? (
+          <Button variant="clear" size="xs" className="shrink-0" onClick={onAdd}>
+            Add {money(row.addAmount ?? row.contribution)}
+          </Button>
+        ) : (
+          <span className="shrink-0 tabular-nums">{money(row.contribution)}</span>
+        )}
       </div>
       <p className="pl-[14px] text-[11px] text-muted-foreground">{row.detail}</p>
     </div>
   );
 }
 
-function Section({ title, rows }: { title: string; rows: LimitBackingRow[] }) {
+function Section({
+  title,
+  rows,
+  onAdd,
+}: {
+  title: string;
+  rows: LimitBackingRow[];
+  onAdd?: (row: LimitBackingRow) => void;
+}) {
   if (rows.length === 0) return null;
   return (
     <>
@@ -36,7 +57,7 @@ function Section({ title, rows }: { title: string; rows: LimitBackingRow[] }) {
       </p>
       <div className="mb-3.5 text-xs">
         {rows.map((row, i) => (
-          <Row key={row.label} row={row} last={i === rows.length - 1} />
+          <Row key={row.label} row={row} last={i === rows.length - 1} onAdd={() => onAdd?.(row)} />
         ))}
       </div>
     </>
@@ -46,18 +67,21 @@ function Section({ title, rows }: { title: string; rows: LimitBackingRow[] }) {
 /**
  * "What backs your limit" — design spec §4, the sub-view behind the credit card.
  *
- * Section headers show each group's full capacity; the total at the foot is the
- * limit actually being extended, so an opt-in tier that hasn't been added is
- * listed but not counted.
+ * Every figure here counts only what's actually backing the limit, so the section
+ * subtotals and the footer total agree with the number on the credit card. An
+ * opt-in tier that hasn't been added is still listed — as an offer with an Add
+ * action — but contributes nothing until it's taken up.
  */
 export default function LimitBreakdown({
   backing,
   open,
   onOpenChange,
+  onAdd,
 }: {
   backing: LimitBacking;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onAdd?: (row: LimitBackingRow) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -76,8 +100,8 @@ export default function LimitBreakdown({
         </DialogDescription>
 
         <div className="mt-1">
-          <Section title="ASSET-BACKED" rows={backing.assetBacked} />
-          <Section title="UNSECURED" rows={backing.unsecured} />
+          <Section title="ASSET-BACKED" rows={backing.assetBacked} onAdd={onAdd} />
+          <Section title="UNSECURED" rows={backing.unsecured} onAdd={onAdd} />
 
           <div className="flex items-baseline justify-between gap-3 border-t-[0.5px] border-border pt-2.5">
             <span className="text-xs text-foreground-secondary">Total limit</span>

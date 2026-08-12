@@ -2,7 +2,15 @@ import { Button } from '@/components/ui/button';
 import Card, { CardRule } from './Card';
 import SegmentedBar, { type Segment } from './SegmentedBar';
 import { money } from '@/lib/money';
-import { creditUsed, orderedTiers, TIER_FILL, type Credit, type CreditTier } from '@/lib/clearModel';
+import {
+  addableTier,
+  creditLimit,
+  creditUsed,
+  orderedTiers,
+  TIER_FILL,
+  type Credit,
+  type CreditTier,
+} from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 function TierDot({ tier }: { tier: CreditTier['key'] }) {
@@ -40,13 +48,17 @@ export default function ClearCreditCard({
   credit,
   engaged,
   onViewBreakdown,
+  onAddBoost,
 }: {
   credit: Credit;
   engaged: boolean;
   onViewBreakdown?: () => void;
+  onAddBoost?: () => void;
 }) {
   const tiers = orderedTiers(credit.tiers);
   const used = creditUsed(credit);
+  const limit = creditLimit(credit);
+  const addable = addableTier(credit);
 
   const segments: Segment[] = tiers.map((t) => ({
     value: t.used,
@@ -60,16 +72,11 @@ export default function ClearCreditCard({
         <span className="text-[13px] text-foreground-secondary">Clear credit used</span>
         <span className="shrink-0 text-[17px] font-medium tabular-nums">
           {money(used)}{' '}
-          <span className="text-[13px] font-normal text-foreground-secondary">of {money(credit.cycleLimit)}</span>
+          <span className="text-[13px] font-normal text-foreground-secondary">of {money(limit)}</span>
         </span>
       </div>
 
-      <SegmentedBar
-        segments={segments}
-        total={credit.cycleLimit}
-        label="Credit used by tier"
-        className="mb-2.5"
-      />
+      <SegmentedBar segments={segments} total={limit} label="Credit used by tier" className="mb-2.5" />
 
       <div className="text-xs text-muted-foreground">
         {tiers.map((t) => (
@@ -85,9 +92,18 @@ export default function ClearCreditCard({
         Drops to {money(0)} when you get back under {money(credit.carryFreeUnder)}
       </p>
 
-      <Button variant="clear" size="xs" className="mt-2.5 w-full" onClick={onViewBreakdown}>
-        View limit breakdown
-      </Button>
+      {/* Adding the opt-in tier is offered next to the breakdown that explains it,
+          and only while there's something left to add. */}
+      <div className="mt-2.5 flex gap-2">
+        {addable && (
+          <Button variant="clear" size="xs" className="flex-1" onClick={onAddBoost}>
+            Add Clear {addable.label}
+          </Button>
+        )}
+        <Button variant="clear" size="xs" className="flex-1" onClick={onViewBreakdown}>
+          Limit breakdown
+        </Button>
+      </div>
     </Card>
   );
 }

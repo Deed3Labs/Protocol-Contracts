@@ -17,21 +17,14 @@ export interface CreditTier {
   /** Cost of carrying a balance on this tier, e.g. "free", "1.5% / cycle". */
   rate: string;
   used: number;
-  /** What this tier can back. Not the same as the cycle limit. */
+  /** What this tier can back. The credit limit is the sum of these across added tiers. */
   limit: number;
-  /** Boost is opt-in; an unadded tier renders dimmed and lends nothing. */
+  /** Boost is opt-in; a tier that hasn't been added lends nothing and isn't in the limit. */
   added: boolean;
 }
 
 export interface Credit {
   tiers: CreditTier[];
-  /**
-   * How much credit can be drawn this cycle. Fixed within the cycle (rule 3) —
-   * only `used` moves in realtime. This is the denominator for the credit bar and
-   * for "available to spend"; it is NOT the sum of the tier limits, which is what
-   * backs the limit (see LimitBacking).
-   */
-  cycleLimit: number;
   /** Interest accrued so far this cycle. */
   carryCost: number;
   /** Carry cost drops to zero back under this figure. */
@@ -58,6 +51,10 @@ export interface CashAccount {
   nextDepositOn: string;
   nextDepositEstimate: number;
   directDepositActive: boolean;
+  /** Virtual-account details, shown behind "Account details" for direct deposit. */
+  accountNumber: string;
+  routingNumber: string;
+  bankName: string;
 }
 
 export interface SetupTask {
@@ -141,8 +138,14 @@ export interface LimitBackingRow {
   /** "$6,895 value today · 95% · 0.65%" */
   detail: string;
   tier: TierKey;
-  /** Opt-in and not taken up yet — renders dimmed. */
-  dimmed?: boolean;
+  /**
+   * Opt-in and not taken up yet. Excluded from both the section subtotal and the
+   * total — it isn't backing anything until it's added — and offered with an
+   * Add action rather than being dimmed out.
+   */
+  notAdded?: boolean;
+  /** What adding it would contribute, for the Add button's label. */
+  addAmount?: number;
 }
 
 export interface LimitBacking {
@@ -330,9 +333,26 @@ export function creditUsed(credit: Credit): number {
   return credit.tiers.reduce((sum, t) => sum + t.used, 0);
 }
 
+/**
+ * The credit limit: what the added tiers back, summed. There is only one limit —
+ * it equals the total in the limit breakdown, because it IS that total.
+ *
+ * An opt-in tier that hasn't been taken up lends nothing until it's added, so it
+ * doesn't count. Fixed within a cycle (rule 3) because the tier limits are;
+ * only `used` moves in realtime.
+ */
+export function creditLimit(credit: Credit): number {
+  return credit.tiers.filter((t) => t.added).reduce((sum, t) => sum + t.limit, 0);
+}
+
 /** Credit still available this cycle. Never negative. */
 export function creditLeft(credit: Credit): number {
-  return Math.max(0, credit.cycleLimit - creditUsed(credit));
+  return Math.max(0, creditLimit(credit) - creditUsed(credit));
+}
+
+/** The opt-in tier a member could still switch on, if there is one. */
+export function addableTier(credit: Credit): CreditTier | undefined {
+  return credit.tiers.find((t) => !t.added && t.limit > 0);
 }
 
 /**
@@ -357,20 +377,18 @@ export function savingsTotal(s: Savings): number {
   return s.cash + s.vested + s.vesting;
 }
 
-/** A section's full capacity, including tiers the member hasn't opted into. */
+/** What a section actually backs. Opt-in rows not yet added contribute nothing. */
 export function sectionTotal(rows: LimitBackingRow[]): number {
-  return rows.reduce((sum, r) => sum + r.contribution, 0);
+  return rows.filter((r) => !r.notAdded).reduce((sum, r) => sum + r.contribution, 0);
 }
 
 /**
- * The limit actually being extended. Excludes opt-in tiers that haven't been
- * added — Boost is listed under its section's capacity but doesn't count toward
- * the limit until it's taken up.
+ * The limit being extended — both sections summed, and the same figure as
+ * `creditLimit()`. The breakdown explains the number on the credit card, so the
+ * two must never disagree.
  */
 export function backingTotal(b: LimitBacking): number {
-  return [...b.assetBacked, ...b.unsecured]
-    .filter((r) => !r.dimmed)
-    .reduce((sum, r) => sum + r.contribution, 0);
+  return sectionTotal(b.assetBacked) + sectionTotal(b.unsecured);
 }
 
 /** Bar fill and legend-dot color per tier. */
