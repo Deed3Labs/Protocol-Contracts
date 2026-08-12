@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clear App — Reference Screens</title>
+<style>
+:root{
+  --surface-0:#E8E5DD; --surface-1:#F1EFE8; --surface-2:#FAF9F5;
+  --border:#D4D1C7; --border-strong:#B4B2A9; --border-accent:#7F77DD;
+  --text-primary:#2C2C2A; --text-secondary:#5F5E5A; --text-muted:#888780;
+  --text-success:#0F6E56; --text-accent:#534AB7;
+  --bg-success:#E3F3ED; --bg-accent:#E9E7FA;
+  --radius:8px;
+  --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  --tier-savings:#0F6E56; --tier-asset:#1D9E75;
+  --tier-income:#BA7517; --tier-income-text:#854F0B;
+  --tier-boost:#7F77DD; --tier-boost-text:#534AB7;
+  --vest-cash:#0F6E56; --vest-vested:#5DCAA5; --vest-vesting:#9FE1CB;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:2rem;background:var(--surface-1);font-family:var(--font-sans);color:var(--text-primary)}
+h1{font-size:20px;font-weight:500;margin:0 0 .25rem}
+h2{font-size:11px;font-weight:500;color:var(--text-muted);letter-spacing:.3px;margin:2.5rem 0 .75rem;text-transform:uppercase}
+.note{font-size:13px;color:var(--text-secondary);max-width:640px;line-height:1.6;margin:0 0 2rem}
+button{font-family:inherit;font-size:12px;padding:5px 12px;border:0.5px solid var(--border);background:var(--surface-2);color:var(--text-primary);border-radius:6px;cursor:pointer}
+input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var(--border);background:var(--surface-2);color:var(--text-primary);border-radius:6px}
+
+.desktop{background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:1.25rem;max-width:840px}
+.phone{width:320px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem;position:relative;padding-bottom:96px}
+.row{display:flex;gap:16px;flex-wrap:wrap}
+
+.topbar{display:flex;justify-content:space-between;align-items:center;padding-bottom:14px;border-bottom:0.5px solid var(--border);margin-bottom:18px}
+.topbar .wm{font-size:15px;font-weight:500}
+.topbar nav{display:flex;gap:16px;font-size:13px;color:var(--text-secondary)}
+.topbar nav .on{color:var(--text-primary)}
+
+.card{border:0.5px solid var(--border);border-radius:12px;padding:13px 15px}
+.card.accent{border-color:var(--border-accent)}
+.bar{display:flex;height:8px;border-radius:4px;overflow:hidden}
+.track{height:6px;background:var(--surface-0);border-radius:3px;overflow:hidden}
+.lbl{font-size:13px;color:var(--text-secondary)}
+.val{font-size:17px;font-weight:500}
+.big{font-size:38px;font-weight:500;letter-spacing:-.8px;margin:0 0 4px}
+.big-m{font-size:32px;font-weight:500;letter-spacing:-.5px;margin:0 0 5px}
+.sub{font-size:12px;color:var(--text-secondary);margin:0}
+.legend{font-size:12px;color:var(--text-muted);line-height:1.9}
+.legend div{display:flex;justify-content:space-between}
+.hr{margin-top:11px;padding-top:11px;border-top:0.5px solid var(--border)}
+.dim{opacity:.5}
+.task{background:var(--bg-accent);border-radius:var(--radius);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;color:var(--text-accent);font-size:13px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.stack{display:flex;flex-direction:column;gap:12px}
+.txn{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border);font-size:13px}
+.txn:last-child{border-bottom:0}
+.txn .m{margin:0}
+.txn .s{margin:2px 0 0;font-size:11px;color:var(--text-muted)}
+.pos{color:var(--text-success)}
+
+/* FLOATING MOBILE NAV — the one change from the reference mockups */
+.fabnav{
+  position:absolute;bottom:20px;left:16px;right:16px;
+  display:flex;justify-content:space-around;align-items:center;
+  padding:10px 6px;
+  background:color-mix(in srgb, var(--surface-2) 82%, transparent);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:0.5px solid var(--border);border-radius:28px;
+  box-shadow:0 6px 24px rgba(0,0,0,.10), 0 1px 3px rgba(0,0,0,.06);
+}
+.fabnav a{font-size:10px;color:var(--text-muted);text-decoration:none;text-align:center;line-height:1.4;display:flex;flex-direction:column;align-items:center}
+.fabnav a.on{color:var(--text-primary)}
+.fabnav .ic{display:block;line-height:0;margin-bottom:3px}
+
+.cardface{background:#2C2C2A;border:0.5px solid #5F5E5A;border-radius:12px;padding:16px;height:168px;display:flex;flex-direction:column;justify-content:space-between}
+.cardface .wm{font-size:13px;font-weight:500;color:#F1EFE8}
+.chip{width:36px;height:27px;background:#888780;border-radius:4px}
+.pan{font-family:var(--font-mono);font-size:15px;color:#F1EFE8;margin:0 0 6px;letter-spacing:1px}
+.meta{display:flex;justify-content:space-between;align-items:flex-end;font-size:11px;color:#B4B2A9}
+</style>
+</head>
+<body>
+
+<h1>Clear App — Reference Screens</h1>
+<p class="note">Static reference markup. Colors, spacing, and structure are authoritative; the implementation approach is not — build against the project's own component library and tokens. The mobile nav here is the floating pill (the one deliberate change from the original mockups).</p>
+
+<!-- ===================== HOME — DESKTOP, IN USE ===================== -->
+<h2>Home — desktop — in use</h2>
+<div class="desktop">
+  <div class="topbar"><span class="wm">Clear</span><nav><span class="on">Home</span><span>Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav></div>
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px">
+    <div>
+      <p class="sub" style="margin-bottom:4px">Available to spend</p>
+      <p class="big">$800</p>
+      <p class="sub"><span style="color:var(--tier-boost-text);font-weight:500">$0 cash</span> &nbsp;+&nbsp; $800 credit left</p>
+    </div>
+    <div style="width:220px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span class="lbl">30-day cycle</span><span>6 days left</span></div>
+      <div class="track"><div style="width:80%;height:100%;background:var(--text-secondary)"></div></div>
+      <p style="font-size:11px;color:var(--text-muted);margin:6px 0 0;text-align:right">Clears on Nov 1 payday</p>
+    </div>
+  </div>
+
+  <div class="task" style="margin-bottom:14px"><span>Activate your card to start spending</span><button>Activate</button></div>
+
+  <div class="grid2" style="margin-bottom:12px">
+    <div class="card accent">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><span class="lbl">Clear credit used</span><span class="val">$3,200 <span style="font-size:13px;font-weight:400;color:var(--text-secondary)">of $4,000</span></span></div>
+      <div class="bar" style="margin-bottom:10px">
+        <div style="width:75%;background:var(--tier-savings)"></div>
+        <div style="width:5%;background:var(--tier-asset)"></div>
+        <div style="width:12%;background:var(--tier-income)"></div>
+        <div style="width:8%;background:#FAC775"></div>
+      </div>
+      <div class="legend">
+        <div><span><span style="color:var(--tier-savings)">&#9679;</span> Savings (CLRUSD) · free</span><span>$3,000 of $3,000</span></div>
+        <div><span><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed · 0.65–0.75%</span><span>$200 of $8,300</span></div>
+        <div><span><span style="color:var(--tier-income-text)">&#9679;</span> Income-backed · 1.5% / cycle</span><span>$0 of $1,000</span></div>
+        <div class="dim"><span><span style="color:var(--tier-boost-text)">&#9679;</span> Boost · 3% / cycle</span><span>not added</span></div>
+      </div>
+      <div class="hr" style="display:flex;justify-content:space-between;align-items:baseline"><span class="sub">Carry cost so far</span><span style="font-size:13px;font-weight:500">$2.00</span></div>
+      <p style="font-size:11px;color:var(--text-muted);margin:7px 0 0">Drops to $0 when you get back under $3,000</p>
+      <button style="width:100%;margin-top:10px">View limit breakdown</button>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="lbl">Cash account</span><span class="val">$0</span></div>
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 9px">Next deposit Nov 1 · ~$2,000 est.</p>
+        <div style="border-top:0.5px solid var(--border);padding-top:9px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;color:var(--text-success)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg> Direct deposit active</span><button>Account details</button>
+        </div>
+      </div>
+      <div class="card" style="flex:1">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><span class="lbl">Savings <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><span class="val">$6,000</span></div>
+        <div class="bar" style="margin-bottom:10px">
+          <div style="width:50%;background:var(--vest-cash)"></div>
+          <div style="width:25%;background:var(--vest-vested)"></div>
+          <div style="width:25%;background:var(--vest-vesting)"></div>
+        </div>
+        <div class="legend">
+          <div><span><span style="color:var(--vest-cash)">&#9679;</span> Cash (CLRUSD)</span><span>$3,000</span></div>
+          <div><span><span style="color:var(--vest-vested)">&#9679;</span> Vested <span style="color:var(--vest-vesting)">&#9679;</span> Vesting</span><span>$1,500 · $1,500</span></div>
+        </div>
+        <div class="hr" style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px">1,500 of 15,000 credits</span><button>Add</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><span class="lbl">Recent activity</span><span style="font-size:12px;color:var(--text-accent)">See all</span></div>
+    <div class="txn"><div><p class="m">Shell</p><p class="s">Oct 26 · credit</p></div><span>−$52.10</span></div>
+    <div class="txn"><div><p class="m">Stater Bros</p><p class="s">Oct 25 · credit</p></div><span>−$118.44</span></div>
+    <div class="txn"><div><p class="m">Payroll deposit</p><p class="s">Oct 25 · cash account</p></div><span class="pos">+$2,000.00</span></div>
+  </div>
+</div>
+
+<!-- ===================== HOME — MOBILE (both states) ===================== -->
+<h2>Home — mobile — day one &amp; in use</h2>
+<div class="row">
+
+  <div class="phone">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span class="wm" style="font-size:15px;font-weight:500">Clear</span><span style="color:var(--text-secondary)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span></div>
+    <p class="sub" style="margin-bottom:4px">Available to spend</p>
+    <p class="big-m">$0</p>
+    <p class="sub" style="margin-bottom:1.1rem">Add money to get started</p>
+
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:11px">
+      <div style="padding:10px 13px;font-size:12px;color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg> Account created</div>
+      <div style="padding:10px 13px;border-top:0.5px solid var(--border);background:var(--bg-accent);display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;color:var(--text-accent)">Add your first deposit</span><button style="padding:3px 9px">Add</button></div>
+      <div style="padding:10px 13px;border-top:0.5px solid var(--border);display:flex;justify-content:space-between"><span style="font-size:12px;color:var(--text-secondary)">Set up direct deposit</span><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div style="padding:10px 13px;border-top:0.5px solid var(--border);display:flex;justify-content:space-between"><span style="font-size:12px;color:var(--text-secondary)">Activate your card</span><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="lbl" style="font-size:12px">Savings <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><span style="font-size:16px;font-weight:500">$0</span></div>
+      <div class="track" style="margin:10px 0 8px;height:5px"></div>
+      <p style="font-size:11px;color:var(--text-muted);margin:0;line-height:1.6">Every $1 saved is matched $1 in credits and raises your limit by $1.</p>
+    </div>
+
+    <div class="fabnav">
+      <a href="#" class="on"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span>Home</a>
+      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 2v20"/><path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Savings</a>
+      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m4 16 5-6 4 4 7-8"/><path d="M15 6h5v5"/></svg></span>Earn</a>
+      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/></svg></span>Send</a>
+      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>Card</a>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Clear</span><span style="color:var(--text-secondary)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span></div>
+    <p class="sub" style="margin-bottom:4px">Available to spend</p>
+    <p class="big-m">$800</p>
+    <p class="sub" style="margin-bottom:1rem"><span style="color:var(--tier-boost-text);font-weight:500">$0 cash</span> + $800 credit left</p>
+
+    <div class="card" style="padding:10px 13px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:7px"><span class="lbl" style="font-size:12px">30-day cycle</span><span>6 days left</span></div>
+      <div class="track" style="height:5px"><div style="width:80%;height:100%;background:var(--text-secondary)"></div></div>
+    </div>
+
+    <div class="card" style="padding:10px 13px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="lbl" style="font-size:12px">Cash account</span><span style="font-size:16px;font-weight:500">$0</span></div>
+      <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0">Next deposit Nov 1 · ~$2,000</p>
+    </div>
+
+    <div class="card accent" style="padding:10px 13px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><span class="lbl" style="font-size:12px">Credit used</span><span style="font-size:16px;font-weight:500">$3,200 <span style="font-size:12px;font-weight:400;color:var(--text-secondary)">of $4,000</span></span></div>
+      <div class="bar" style="margin-bottom:8px">
+        <div style="width:75%;background:var(--tier-savings)"></div><div style="width:5%;background:var(--tier-asset)"></div><div style="width:12%;background:var(--tier-income)"></div><div style="width:8%;background:#FAC775"></div>
+      </div>
+      <div class="legend" style="font-size:11px">
+        <div><span><span style="color:var(--tier-savings)">&#9679;</span> Savings · free</span><span>$3,000 of $3,000</span></div>
+        <div><span><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed · 0.65–0.75%</span><span>$200 of $8,300</span></div>
+        <div><span><span style="color:var(--tier-income-text)">&#9679;</span> Income · 1.5%</span><span>$0 of $1,000</span></div>
+        <div class="dim"><span><span style="color:var(--tier-boost-text)">&#9679;</span> Boost · 3%</span><span>not added</span></div>
+      </div>
+      <div class="hr" style="margin-top:9px;padding-top:9px;display:flex;justify-content:space-between"><span style="font-size:11px;color:var(--text-secondary)">Carry cost</span><span style="font-size:12px;font-weight:500">$2.00</span></div>
+    </div>
+
+    <div class="card" style="padding:10px 13px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><span class="lbl" style="font-size:12px">Savings <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><span style="font-size:16px;font-weight:500">$6,000</span></div>
+      <div class="bar" style="margin-bottom:8px"><div style="width:50%;background:var(--vest-cash)"></div><div style="width:25%;background:var(--vest-vested)"></div><div style="width:25%;background:var(--vest-vesting)"></div></div>
+      <p style="font-size:11px;color:var(--text-muted);margin:0">1,500 of 15,000 credits</p>
+    </div>
+
+    <div class="fabnav">
+      <a href="#" class="on"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span>Home</a>
+      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 2v20"/><path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Savings</a>
+      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m4 16 5-6 4 4 7-8"/><path d="M15 6h5v5"/></svg></span>Earn</a>
+      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/></svg></span>Send</a>
+      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>Card</a>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== LIMIT BREAKDOWN ===================== -->
+<h2>Limit breakdown (sub-view of Home)</h2>
+<div class="card" style="max-width:340px;background:var(--surface-2)">
+  <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px"><span style="color:var(--text-secondary)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></span><span style="font-size:13px;font-weight:500">What backs your limit</span></div>
+  <p style="font-size:11px;color:var(--text-muted);margin:0 0 7px;letter-spacing:.3px">ASSET-BACKED · $11,300</p>
+  <div style="font-size:12px;margin-bottom:14px">
+    <div style="padding:8px 0;border-bottom:0.5px solid var(--border)"><div style="display:flex;justify-content:space-between"><span><span style="color:var(--tier-savings)">&#9679;</span> Savings (CLRUSD)</span><span>$3,000</span></div><div style="color:var(--text-muted);font-size:11px;padding-left:14px">$3,000 balance · 100% · free</div></div>
+    <div style="padding:8px 0;border-bottom:0.5px solid var(--border)"><div style="display:flex;justify-content:space-between"><span><span style="color:var(--tier-savings)">&#9679;</span> BurnerBonds</span><span>$6,550</span></div><div style="color:var(--text-muted);font-size:11px;padding-left:14px">$6,895 value today · 95% · 0.65%</div></div>
+    <div style="padding:8px 0"><div style="display:flex;justify-content:space-between"><span><span style="color:var(--vest-vested)">&#9679;</span> Yield pool</span><span>$1,750</span></div><div style="color:var(--text-muted);font-size:11px;padding-left:14px">$2,500 position · 70% · 0.75%</div></div>
+  </div>
+  <p style="font-size:11px;color:var(--text-muted);margin:0 0 7px;letter-spacing:.3px">UNSECURED · $1,500</p>
+  <div style="font-size:12px;margin-bottom:14px">
+    <div style="padding:8px 0;border-bottom:0.5px solid var(--border)"><div style="display:flex;justify-content:space-between"><span><span style="color:var(--tier-income-text)">&#9679;</span> Income-backed</span><span>$1,000</span></div><div style="color:var(--text-muted);font-size:11px;padding-left:14px">50% of ~$2,000/mo · 1.5%</div></div>
+    <div style="padding:8px 0" class="dim"><div style="display:flex;justify-content:space-between"><span><span style="color:var(--tier-boost-text)">&#9679;</span> Clear Boost</span><span>$500</span></div><div style="color:var(--text-muted);font-size:11px;padding-left:14px">Opt-in · 3%</div></div>
+  </div>
+  <div style="border-top:0.5px solid var(--border);padding-top:11px;display:flex;justify-content:space-between;align-items:baseline"><span class="sub">Total limit</span><span style="font-size:15px;font-weight:500">$12,300</span></div>
+  <p style="font-size:11px;color:var(--text-muted);margin:9px 0 0;line-height:1.6">Your bonds are worth more each month, so this limit grows on its own.</p>
+</div>
+
+<!-- ===================== SAVINGS ===================== -->
+<h2>Savings — desktop</h2>
+<div class="desktop">
+  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span class="on">Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav></div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:18px">
+    <div><p class="sub" style="margin-bottom:4px">Savings balance</p><p class="big">$6,000</p><p class="sub">1,500 of 15,000 credits toward your Clear Deed</p></div>
+    <div style="display:flex;gap:8px"><button>Add money</button><button>Auto-save</button></div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <p class="lbl" style="margin:0 0 12px">Your path to a home</p>
+      <div style="font-size:12px;line-height:1.5">
+        <div style="display:flex;gap:10px;padding-bottom:11px"><span style="color:var(--text-success)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span><div><p style="margin:0">Start saving</p><p style="margin:2px 0 0;color:var(--text-muted)">1,000 credits · done</p></div></div>
+        <div style="display:flex;gap:10px;padding-bottom:11px"><span style="color:var(--text-accent)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 2a10 10 0 0 1 0 20"/><path d="M12 22A10 10 0 0 1 12 2" stroke-dasharray="3 3"/></svg></span><div><p style="margin:0">Unlock full assurance</p><p style="margin:2px 0 0;color:var(--text-muted)">4,000 credits · 2,500 to go</p></div></div>
+        <div style="display:flex;gap:10px;padding-bottom:11px" class="dim"><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><circle cx="12" cy="12" r="10"/></svg></span><div><p style="margin:0">Choose your community</p><p style="margin:2px 0 0;color:var(--text-muted)">8,000 credits</p></div></div>
+        <div style="display:flex;gap:10px;padding-bottom:11px" class="dim"><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><circle cx="12" cy="12" r="10"/></svg></span><div><p style="margin:0">Reserve your home</p><p style="margin:2px 0 0;color:var(--text-muted)">12,000 credits</p></div></div>
+        <div style="display:flex;gap:10px" class="dim"><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><circle cx="12" cy="12" r="10"/></svg></span><div><p style="margin:0">Sign your ELPA &amp; Clear Deed</p><p style="margin:2px 0 0;color:var(--text-muted)">15,000 credits · move in</p></div></div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px"><span class="lbl">Assurance</span><span style="font-size:12px;color:var(--text-muted)">2 of 5 active</span></div>
+        <div style="font-size:12px">
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid var(--border)"><span><span style="color:var(--tier-asset)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg></span> Home repair assurance</span><span style="color:var(--text-success)">Active</span></div>
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid var(--border)"><span style="color:var(--text-muted)"><span style="color:var(--tier-asset)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg></span> [PLACEHOLDER — replace]</span><span style="color:var(--text-success)">Active</span></div>
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid var(--border)"><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg> [PLACEHOLDER — replace]</span><span style="color:var(--text-muted)">2,500 to go</span></div>
+          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid var(--border)"><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg> [PLACEHOLDER — replace]</span><span style="color:var(--text-muted)">6,500 to go</span></div>
+          <div style="display:flex;justify-content:space-between;padding:7px 0"><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg> [PLACEHOLDER — replace]</span><span style="color:var(--text-muted)">13,500 to go</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <p class="lbl" style="margin:0 0 9px">Credits vesting</p>
+        <div style="font-size:12px;line-height:1.95">
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">Nov 3</span><span>500</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">Nov 17</span><span>500</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">Dec 1</span><span>500</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== EARN ===================== -->
+<h2>Earn — desktop</h2>
+<div class="desktop">
+  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span class="on">Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav></div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:18px">
+    <div><p class="sub" style="margin-bottom:4px">Earning</p><p class="big">$9,225</p><p class="sub">$2,500 in the pool &nbsp;+&nbsp; $6,725 in bonds</p></div>
+    <div style="text-align:right"><p class="sub" style="margin-bottom:3px">Earned to date</p><p style="font-size:20px;font-weight:500;color:var(--text-success);margin:0">+$412.60</p></div>
+  </div>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:12px">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px"><span class="lbl">Yield pool</span><span style="font-size:11px;color:var(--text-muted)">Withdraw anytime</span></div>
+      <p style="font-size:28px;font-weight:500;margin:0 0 2px">6.8%<span style="font-size:14px;font-weight:400;color:var(--text-secondary)"> APY</span></p>
+      <p style="font-size:11px;color:var(--text-muted);margin:0 0 14px">Variable · rises with lending demand</p>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:5px"><span>Utilization</span><span>74%</span></div>
+      <div class="track"><div style="width:74%;height:100%;background:var(--tier-boost)"></div></div>
+      <p style="font-size:11px;color:var(--text-muted);margin:6px 0 14px">$740k of $1.0M lent to members</p>
+      <div style="border-top:0.5px solid var(--border);padding-top:11px;font-size:12px;line-height:2;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Your position</span><span>$2,500.00</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Earned</span><span class="pos">+$41.20</span></div>
+      </div>
+      <div style="display:flex;gap:8px"><button style="flex:1">Deposit</button><button style="flex:1">Withdraw</button></div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px"><span class="lbl">BurnerBonds</span><span style="font-size:11px;color:var(--text-muted)">Fixed term · locked to maturity</span></div>
+      <div style="font-size:12px">
+        <div style="display:grid;grid-template-columns:62px 1fr 62px;padding:9px 0;border-bottom:0.5px solid var(--border)"><span>12 mo</span><span style="color:var(--text-muted)">Pay $939 → get $1,000</span><span style="text-align:right">6.5%</span></div>
+        <div style="display:grid;grid-template-columns:62px 1fr 62px;padding:9px 0;border-bottom:0.5px solid var(--border)"><span>24 mo</span><span style="color:var(--text-muted)">Pay $865 → get $1,000</span><span style="text-align:right">7.5%</span></div>
+        <div style="display:grid;grid-template-columns:62px 1fr 62px;padding:9px 0;border-bottom:0.5px solid var(--border)"><span>36 mo</span><span style="color:var(--text-muted)">Pay $783 → get $1,000</span><span style="text-align:right">8.5%</span></div>
+        <div style="display:grid;grid-template-columns:62px 1fr 62px;padding:9px 0"><span>60 mo</span><span style="color:var(--text-muted)">Pay $621 → get $1,000</span><span style="text-align:right">10.0%</span></div>
+      </div>
+      <button style="width:100%;margin-top:12px">Buy a bond</button>
+      <p class="lbl" style="margin:16px 0 7px;padding-top:13px;border-top:0.5px solid var(--border)">Your bonds</p>
+      <div style="font-size:12px">
+        <div class="txn"><div><p class="m">$5,000 face · 24 mo</p><p class="s">Paid $4,325 · matures Mar 14, 2028</p></div><span style="font-size:11px;color:var(--text-muted)">19 mo left</span></div>
+        <div class="txn"><div><p class="m">$2,500 face · 12 mo</p><p class="s">Paid $2,400 · matures Jan 8, 2027</p></div><span style="font-size:11px;color:var(--text-muted)">5 mo left</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== ACTIVITY + SEND + CARD ===================== -->
+<h2>Activity — desktop</h2>
+<div class="desktop">
+  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span>Earn</span><span>Send</span><span class="on">Activity</span><span>Card</span></nav></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;gap:7px"><button style="border-color:var(--border-accent);color:var(--text-accent)">All</button><button>Spending</button><button>Deposits</button><button>Savings</button><button>Sent</button></div>
+    <span style="font-size:12px" class="lbl">This cycle: <span style="color:var(--text-primary)">−$1,842</span></span>
+  </div>
+  <div class="task" style="margin-bottom:16px"><div><p style="margin:0">$40 waiting for Marcus T. to claim</p><p style="margin:2px 0 0;font-size:11px;opacity:.8">Sent Oct 26 · expires in 12 days</p></div><button>Remind</button></div>
+  <p style="font-size:11px;color:var(--text-muted);margin:0 0 3px">Today · Oct 26</p>
+  <div style="font-size:13px;margin-bottom:16px">
+    <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:10px 0;border-bottom:0.5px solid var(--border)"><span>Shell</span><span style="color:var(--text-muted);font-size:12px">Credit</span><span style="text-align:right">−$52.10</span></div>
+    <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:10px 0"><span>Sent to Marcus T.</span><span style="color:var(--text-muted);font-size:12px">Pending</span><span style="text-align:right">−$40.00</span></div>
+  </div>
+  <p style="font-size:11px;color:var(--text-muted);margin:0 0 3px">Oct 25</p>
+  <div style="font-size:13px">
+    <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:10px 0;border-bottom:0.5px solid var(--border)"><span>Payroll deposit</span><span style="color:var(--text-muted);font-size:12px">Cash account</span><span style="text-align:right" class="pos">+$2,000.00</span></div>
+    <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:10px 0"><span>Equity credits vested</span><span style="color:var(--text-muted);font-size:12px">Savings</span><span style="text-align:right" class="pos">+$500.00</span></div>
+  </div>
+</div>
+
+<h2>Send &amp; Card — mobile</h2>
+<div class="row">
+  <div class="phone">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Send</span><span style="color:var(--text-secondary)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M3 12h18"/></svg></span></div>
+    <div style="text-align:center;margin-bottom:14px">
+      <div style="width:130px;height:130px;margin:0 auto 10px;background:var(--surface-0);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary)"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM21 14v3M14 21h7"/></svg></div>
+      <p style="font-size:12px;color:var(--text-muted);margin:0">Show to get paid · @kaim</p>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px"><button style="flex:1">Scan to pay</button><button style="flex:1">Request</button></div>
+    <input style="width:100%;margin-bottom:12px;color:var(--text-muted)" value="Search name or @handle">
+    <p class="lbl" style="font-size:12px;margin:0 0 8px">Recent</p>
+    <div style="font-size:13px">
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-accent)">DR</div><div><p class="m">Diego R.</p><p class="s">Member</p></div></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success)">TB</div><div><p class="m">TinyBox Systems</p><p class="s">Clear Partner</p></div></div>
+    </div>
+    <div class="fabnav">
+      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span>Home</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 2v20"/><path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Savings</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m4 16 5-6 4 4 7-8"/><path d="M15 6h5v5"/></svg></span>Earn</a><a href="#" class="on"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/></svg></span>Send</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>Card</a>
+    </div>
+  </div>
+
+  <div class="phone">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Card</span><span style="color:var(--text-secondary)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg></span></div>
+    <div class="cardface" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="wm">Clear</span><span style="color:#888780"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="transform:rotate(90deg)"><path d="M12 20h.01M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 14 0"/></svg></span></div>
+      <div class="chip"></div>
+      <div><p class="pan">•••• •••• •••• 8836</p><div class="meta"><span>Kai M · 04/29</span><span>VISA</span></div></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px"><button style="flex:1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 2v20M4.9 7 19.1 17M19.1 7 4.9 17"/></svg> Freeze</button><button style="flex:1">Details</button></div>
+    <p class="lbl" style="font-size:12px;margin:0 0 2px">Card transactions</p>
+    <div style="font-size:13px">
+      <div class="txn"><div><p class="m">Shell</p><p class="s">Oct 26 · credit</p></div><span>−$52.10</span></div>
+      <div class="txn"><div><p class="m">Stater Bros</p><p class="s">Oct 25 · credit</p></div><span>−$118.44</span></div>
+      <div class="txn"><div><p class="m">Chipotle</p><p class="s">Oct 23 · cash</p></div><span>−$14.20</span></div>
+    </div>
+    <div class="fabnav">
+      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span>Home</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 2v20"/><path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Savings</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m4 16 5-6 4 4 7-8"/><path d="M15 6h5v5"/></svg></span>Earn</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/></svg></span>Send</a><a href="#" class="on"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>Card</a>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

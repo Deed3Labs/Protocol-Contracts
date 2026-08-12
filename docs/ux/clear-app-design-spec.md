@@ -2,6 +2,8 @@
 
 Reference spec for rebuilding the member-facing app. Archive existing nav pages; build these.
 
+**Visual reference:** [`docs/reference/clear-app-reference-screens.html`](../reference/clear-app-reference-screens.html) — static markup of every screen described here (open it in a browser). Its colors, spacing, and structure are authoritative; its implementation approach is not — build against the app's own component library and tokens.
+
 ---
 
 ## 1. Navigation
