@@ -5,6 +5,7 @@ import type {
   AssuranceItem,
   ActivityData,
   CardData,
+  SendData,
 } from '@/lib/clearModel';
 
 /**
@@ -161,4 +162,20 @@ export const CARD_DAY_ONE: CardData = {
   network: 'VISA',
   frozen: false,
   transactions: [],
+};
+
+export const SEND_IN_USE: SendData = {
+  handle: '@kaim',
+  codeUrl: 'https://useclear.org/pay/kaim',
+  recent: [
+    { id: 'p1', name: 'Diego R.', initials: 'DR', role: 'member' },
+    { id: 'p2', name: 'TinyBox Systems', initials: 'TB', role: 'partner' },
+  ],
+};
+
+/** Day one — the code exists from the moment the account does; nobody paid yet. */
+export const SEND_DAY_ONE: SendData = {
+  handle: '@kaim',
+  codeUrl: 'https://useclear.org/pay/kaim',
+  recent: [],
 };

@@ -7,6 +7,7 @@ import HomePage from '@/pages/app/HomePage';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
+import SendPage from '@/pages/app/SendPage';
 import RebuildPlaceholder from '@/pages/app/RebuildPlaceholder';
 import {
   HOME_IN_USE,
@@ -17,6 +18,8 @@ import {
   ACTIVITY_DAY_ONE,
   CARD_IN_USE,
   CARD_DAY_ONE,
+  SEND_IN_USE,
+  SEND_DAY_ONE,
 } from '@/data/clearPlaceholder';
 
 /**
@@ -49,7 +52,7 @@ export default function PreviewApp() {
             <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} />} />
             <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
             <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
-            <Route path="/send" element={<RebuildPlaceholder page="Send" />} />
+            <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
             <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
             <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
             <Route path="*" element={<Navigate to="/" replace />} />

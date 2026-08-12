@@ -210,6 +210,34 @@ export function creditsToGo(unlocksAt: number, credits: number): number {
   return Math.max(0, unlocksAt - credits);
 }
 
+export interface Contact {
+  id: string;
+  name: string;
+  /** Shown in the avatar circle. */
+  initials: string;
+  role: 'member' | 'partner';
+}
+
+export const CONTACT_ROLE_LABEL: Record<Contact['role'], string> = {
+  member: 'Member',
+  partner: 'Clear Partner',
+};
+
+export interface SendData {
+  /** The member's own handle, e.g. "@kaim". */
+  handle: string;
+  /** What the QR encodes — the link that opens a payment to this member. */
+  codeUrl: string;
+  recent: Contact[];
+}
+
+/** Match a contact on name or handle, for the Send search field. */
+export function searchContacts(contacts: Contact[], query: string): Contact[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return contacts;
+  return contacts.filter((c) => c.name.toLowerCase().includes(q));
+}
+
 export interface CardData {
   /** Before activation there's no PAN to show and nothing to freeze. */
   activated: boolean;

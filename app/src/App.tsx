@@ -24,6 +24,7 @@ import HomePage from "@/pages/app/HomePage";
 import SavingsPage from "@/pages/app/SavingsPage";
 import ActivityPage from "@/pages/app/ActivityPage";
 import CardPage from "@/pages/app/CardPage";
+import SendPage from "@/pages/app/SendPage";
 import RebuildPlaceholder from "@/pages/app/RebuildPlaceholder";
 
 function App() {
@@ -101,7 +102,7 @@ function App() {
                       <Route path="/" element={<HomePage />} />
                       <Route path="/savings" element={<SavingsPage />} />
                       <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
-                      <Route path="/send" element={<RebuildPlaceholder page="Send" />} />
+                      <Route path="/send" element={<SendPage />} />
                       <Route path="/activity" element={<ActivityPage />} />
                       <Route path="/card" element={<CardPage />} />
                       {/* Not a nav item — reached from the avatar menu (spec §1). */}
