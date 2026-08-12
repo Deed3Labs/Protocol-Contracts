@@ -133,10 +133,16 @@ Header shows combined `Earning` total split as `$X in the pool + $Y in bonds`, w
 
 ## 7. Send page
 
-- **Your Clear code** — QR, `@handle`, "Show to get paid". On mobile this leads.
+- **Your Clear code** — QR, `@handle`, "Show to get paid"
 - `Scan to pay` · `Request`
 - Search by name / phone / @handle
-- **Recent** — avatar circle with initials, name, and role badge (`Member` / `Clear Partner`)
+- **Recent** — avatar circle with initials, name, and role label (`Member` / `Clear Partner`). Avatar tints vary **per person, not per role** — two members can hold different colors; the role is carried by the label.
+
+The two layouts differ structurally, not just in width.
+
+**Mobile:** the code leads — showing a QR is how most payments start here — then the two actions, then search and **Recent**.
+
+**Desktop:** even 2-col split. Left is a `Send money` card holding the search and **Recent**. Right stacks the code card — smaller, titled `Your Clear code` over `Show this to get paid · @handle` — above an actions card with full-width `Scan to pay` and `Request money`, footed by *"Sending to members and Clear Partners is free and instant."*
 
 ---
 
@@ -157,8 +163,8 @@ Header shows combined `Earning` total split as `$X in the pool + $Y in bonds`, w
 - Contents: "Clear" wordmark, contactless icon (rotated 90°), chip rectangle (34×25, `#888780`, 4px radius), masked PAN in mono with last 4, cardholder name · expiry, network mark
 - Actions: `Freeze` · `Details`
 - Caption: *"Spends your cash first, then your credit line. No transfers needed."*
-- **Card transactions** list (card only — distinct from Activity, which shows everything)
-- Desktop: 250px card column | transactions column
+- **Card transactions** list (card only — distinct from Activity, which shows everything), with the statement period right-aligned beside the heading
+- Desktop: card column | transactions column. Size the card column as **~31% of the content width, not a fixed 250px** — the reference's 250px is measured against its 840px frame, so held fixed the card shrinks to a stamp on a wide screen. The card face's own contents (wordmark, chip, PAN) step up with it; left at their fixed sizes a larger face reads half-empty.
 
 ---
 
