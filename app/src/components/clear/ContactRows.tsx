@@ -2,12 +2,26 @@ import { CONTACT_ROLE_LABEL, type Contact } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /**
- * Recent recipients — design spec §7. Initials avatar, name, and the role badge
+ * Avatar tints vary per person, not per role — the reference gives two members
+ * different colors, so the tint is identity, not meaning. The role is carried by
+ * the label underneath. Picked deterministically from the id so a contact keeps
+ * the same color every time it's rendered.
+ */
+const AVATAR_TINTS = [
+  'bg-tier-boost/10 text-tier-boost-fg',
+  'bg-tier-savings/10 text-tier-savings-fg',
+  'bg-secondary text-foreground-secondary',
+];
+
+function tintFor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return AVATAR_TINTS[hash % AVATAR_TINTS.length];
+}
+
+/**
+ * Recent recipients — design spec §7. Initials avatar, name, and the role label
  * that distinguishes a member from a Clear Partner (a business you can pay).
- *
- * The two roles are tinted differently on purpose: paying a person and paying a
- * business aren't the same act, and the color is the fastest way to tell which
- * you're about to do.
  */
 export default function ContactRows({
   contacts,
@@ -38,9 +52,7 @@ export default function ContactRows({
             aria-hidden
             className={cn(
               'flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-[11px]',
-              contact.role === 'partner'
-                ? 'bg-tier-savings/10 text-tier-savings-fg'
-                : 'bg-tier-boost/10 text-tier-boost-fg',
+              tintFor(contact.id),
             )}
           >
             {contact.initials}

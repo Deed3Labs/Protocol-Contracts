@@ -14,31 +14,42 @@ export default function ClearCardFace({ card, className }: { card: CardData; cla
   return (
     <div
       className={cn(
-        'relative flex aspect-[1.586/1] flex-col justify-between rounded-xl border-[0.5px] p-4',
+        // Contents step up with the card on desktop — the spec's sizes are against
+        // a 250px card, and left fixed they leave a large face looking half-empty.
+        'relative flex aspect-[1.586/1] flex-col justify-between rounded-xl border-[0.5px] p-4 lg:p-5',
         className,
       )}
       style={{ backgroundColor: '#2C2C2A', borderColor: '#5F5E5A' }}
       aria-label={card.activated ? `Clear card ending ${card.last4}` : 'Clear card — not activated'}
     >
       <div className="flex items-center justify-between">
-        <span className="text-[13px] font-medium" style={{ color: '#F1EFE8' }}>
+        <span className="text-[13px] font-medium lg:text-[15px]" style={{ color: '#F1EFE8' }}>
           Clear
         </span>
         {/* Contactless: the arcs rotated a quarter turn, as on a real card */}
-        <Wifi className="h-4 w-4 rotate-90" strokeWidth={1.75} style={{ color: '#888780' }} aria-hidden />
+        <Wifi
+          className="h-4 w-4 rotate-90 lg:h-[18px] lg:w-[18px]"
+          strokeWidth={1.75}
+          style={{ color: '#888780' }}
+          aria-hidden
+        />
       </div>
 
       {/* Chip — 34×25 with a 4px radius */}
-      <div className="h-[25px] w-[34px] rounded" style={{ backgroundColor: '#888780' }} aria-hidden />
+      <div
+        className="h-[25px] w-[34px] rounded lg:h-[29px] lg:w-[40px]"
+        style={{ backgroundColor: '#888780' }}
+        aria-hidden
+      />
 
       <div>
         <p
-          className="mb-1.5 font-mono text-[15px] tracking-[1px]"
+          className="mb-1.5 font-mono text-[15px] tracking-[1px] lg:text-[17px]"
           style={{ color: '#F1EFE8' }}
         >
           {card.activated ? `•••• •••• •••• ${card.last4}` : '•••• •••• •••• ••••'}
         </p>
-        <div className="flex items-end justify-between text-[11px]" style={{ color: '#B4B2A9' }}>
+        <div className="flex items-end justify-between text-[11px] lg:text-xs" style={{ color: '#B4B2A9' }}>
           <span>
             {card.cardholder}
             {card.expiry && ` · ${card.expiry}`}

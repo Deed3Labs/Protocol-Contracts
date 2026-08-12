@@ -148,10 +148,13 @@ export const CARD_IN_USE: CardData = {
   expiry: '04/29',
   network: 'VISA',
   frozen: false,
+  period: 'October',
   transactions: [
     { id: 'c1', name: 'Shell', date: 'Oct 26', source: 'credit', kind: 'spending', amount: -52.1 },
     { id: 'c2', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44 },
-    { id: 'c3', name: 'Chipotle', date: 'Oct 23', source: 'cash', kind: 'spending', amount: -14.2 },
+    { id: 'c3', name: 'Verizon', date: 'Oct 24', source: 'credit', kind: 'spending', amount: -85 },
+    { id: 'c4', name: 'Chipotle', date: 'Oct 23', source: 'cash', kind: 'spending', amount: -14.2 },
+    { id: 'c5', name: 'Costco', date: 'Oct 22', source: 'cash', kind: 'spending', amount: -212.66 },
   ],
 };
 
@@ -163,6 +166,7 @@ export const CARD_DAY_ONE: CardData = {
   expiry: '',
   network: 'VISA',
   frozen: false,
+  period: '',
   transactions: [],
 };
 
@@ -172,6 +176,7 @@ export const SEND_IN_USE: SendData = {
   recent: [
     { id: 'p1', name: 'Diego R.', initials: 'DR', role: 'member' },
     { id: 'p2', name: 'TinyBox Systems', initials: 'TB', role: 'partner' },
+    { id: 'p3', name: 'Maria C.', initials: 'MC', role: 'member' },
   ],
 };
 

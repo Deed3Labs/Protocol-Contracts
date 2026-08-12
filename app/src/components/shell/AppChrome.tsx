@@ -41,7 +41,7 @@ export default function AppChrome({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1120px] px-5 pb-24 pt-4 lg:px-8 lg:pb-12 lg:pt-7">
+      <main className="mx-auto w-full max-w-[1280px] px-5 pb-24 pt-4 lg:px-10 lg:pb-12 lg:pt-7">
         {children}
       </main>
 

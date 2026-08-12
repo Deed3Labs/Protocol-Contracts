@@ -301,6 +301,8 @@ export interface CardData {
   /** Network wordmark, e.g. "VISA". */
   network: string;
   frozen: boolean;
+  /** Statement period the transactions below cover, e.g. "October". */
+  period: string;
   /** Card transactions only — Activity shows everything (spec §9). */
   transactions: ActivityRow[];
 }

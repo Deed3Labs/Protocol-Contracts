@@ -46,7 +46,10 @@ export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
 
   const transactions = (
     <>
-      <p className="mb-0.5 text-xs text-foreground-secondary">Card transactions</p>
+      <div className="mb-1 flex items-baseline justify-between gap-3">
+        <span className="text-[13px] text-foreground-secondary">Card transactions</span>
+        {card.period && <span className="text-xs text-muted-foreground">{card.period}</span>}
+      </div>
       <TransactionRows
         rows={card.transactions}
         emptyMessage={
@@ -60,8 +63,11 @@ export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
 
   return (
     <>
-      {/* Desktop: a fixed 250px card column beside the transactions */}
-      <div className="lg:grid lg:grid-cols-[250px_1fr] lg:items-start lg:gap-6">
+      {/* Desktop: the card column takes ~31% of the content width — the spec's
+          250px was against an 840px reference frame, so it has to scale with the
+          container rather than stay fixed, or the card shrinks to a stamp on a
+          wide screen. */}
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,2.2fr)] lg:items-start lg:gap-8">
         <div className="flex flex-col gap-3">
           <ClearCardFace card={card} />
           {actions}
