@@ -20,12 +20,7 @@ import UserOnboarding from "@/pages/auth/UserOnboarding";
 import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
-import AccountsPage from "@/pages/app/AccountsPage";
-import PayPage from "@/pages/app/PayPage";
-import TransactionsPage from "@/pages/app/TransactionsPage";
-import SettingsPage from "@/pages/app/SettingsPage";
-import BorrowPage from "@/pages/app/BorrowPage";
-import AssurancePage from "@/pages/app/AssurancePage";
+import RebuildPlaceholder from "@/pages/app/RebuildPlaceholder";
 
 function App() {
   // Check if splash has been shown in this session
@@ -95,19 +90,23 @@ function App() {
                     <Route path="/share" element={<ShareTarget />} />
                     <Route path="/claim/:token" element={<ClaimFunds />} />
                     
-                    {/* Redesigned app — protected, bottom tab navigation */}
+                    {/* Member app — protected. Routes follow the nav in
+                        docs/ux/clear-app-design-spec.md §1. Every element is a
+                        placeholder until its real page is built (spec §10 order). */}
                     <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
-                      <Route path="/" element={<AccountsPage />} />
-                      <Route path="/pay" element={<PayPage />} />
-                      <Route path="/borrow" element={<BorrowPage />} />
-                      <Route path="/assurance" element={<AssurancePage />} />
-                      <Route path="/transactions" element={<TransactionsPage />} />
-                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="/" element={<RebuildPlaceholder page="Home" />} />
+                      <Route path="/savings" element={<RebuildPlaceholder page="Savings" />} />
+                      <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
+                      <Route path="/send" element={<RebuildPlaceholder page="Send" />} />
+                      <Route path="/activity" element={<RebuildPlaceholder page="Activity" />} />
+                      <Route path="/card" element={<RebuildPlaceholder page="Card" />} />
+                      {/* Not a nav item — reached from the avatar menu (spec §1). */}
+                      <Route path="/settings" element={<RebuildPlaceholder page="Settings" />} />
                     </Route>
 
-                    {/* Legacy pages (src/pages/legacy + parked src/pages/app homes) are kept in the repo
-                        for reference but are intentionally NOT routed — no /legacy/* path is reachable;
-                        they fall through to the catch-all below. */}
+                    {/* Archived pages (src/pages/_archive + src/pages/legacy) are kept on disk
+                        for reference but are intentionally NOT routed — they fall through to
+                        the catch-all below. */}
 
                     {/* Redirect unknown routes to login */}
                     <Route path="*" element={<Navigate to="/login" replace />} />
