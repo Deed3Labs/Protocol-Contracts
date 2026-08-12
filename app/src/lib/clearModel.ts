@@ -16,6 +16,8 @@ export interface CreditTier {
   shortLabel?: string;
   /** Cost of carrying a balance on this tier, e.g. "free", "1.5% / cycle". */
   rate: string;
+  /** The same rate as a fraction, for working out what carrying a balance costs. */
+  ratePerCycle?: number;
   used: number;
   /** What this tier can back. The credit limit is the sum of these across added tiers. */
   limit: number;
@@ -55,6 +57,8 @@ export interface CashAccount {
   accountNumber: string;
   routingNumber: string;
   bankName: string;
+  /** Who the direct deposit comes from, named in the account-details surface. */
+  employer: string;
 }
 
 export interface SetupTask {

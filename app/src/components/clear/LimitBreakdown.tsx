@@ -1,6 +1,5 @@
-import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogClose } from '@/components/ui/dialog';
+import Modal from './Modal';
 import { money } from '@/lib/money';
 import {
   backingTotal,
@@ -84,22 +83,14 @@ export default function LimitBreakdown({
   onAdd?: (row: LimitBackingRow) => void;
 }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[380px] rounded-xl p-[15px]">
-        <div className="mb-1 flex items-center gap-2.5">
-          <DialogClose
-            aria-label="Back"
-            className="text-foreground-secondary transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
-          </DialogClose>
-          <DialogTitle className="text-[13px] font-medium">What backs your limit</DialogTitle>
-        </div>
-        <DialogDescription className="sr-only">
-          The positions and income that set your Clear credit limit.
-        </DialogDescription>
-
-        <div className="mt-1">
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="What backs your limit"
+      description="The positions and income that set your Clear credit limit."
+      onBack={() => onOpenChange(false)}
+    >
+      <div>
           <Section title="ASSET-BACKED" rows={backing.assetBacked} onAdd={onAdd} />
           <Section title="UNSECURED" rows={backing.unsecured} onAdd={onAdd} />
 
@@ -107,11 +98,10 @@ export default function LimitBreakdown({
             <span className="text-xs text-foreground-secondary">Total limit</span>
             <span className="text-[15px] font-medium tabular-nums">{money(backingTotal(backing))}</span>
           </div>
-          <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-            Your bonds are worth more each month, so this limit grows on its own.
-          </p>
-        </div>
-      </DialogContent>
-    </Dialog>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+          Your bonds are worth more each month, so this limit grows on its own.
+        </p>
+      </div>
+    </Modal>
   );
 }

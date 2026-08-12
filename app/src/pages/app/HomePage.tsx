@@ -9,8 +9,9 @@ import SavingsSummaryCard from '@/components/clear/SavingsSummaryCard';
 import RecentActivityCard from '@/components/clear/RecentActivityCard';
 import LimitBreakdown from '@/components/clear/LimitBreakdown';
 import AccountDetailsDialog from '@/components/clear/AccountDetailsDialog';
+import AddBoostDialog from '@/components/clear/AddBoostDialog';
 import { HOME_IN_USE } from '@/data/clearPlaceholder';
-import { creditLimit, isCreditEngaged, savingsTotal, type HomeData } from '@/lib/clearModel';
+import { addableTier, creditLimit, isCreditEngaged, savingsTotal, type HomeData } from '@/lib/clearModel';
 
 /**
  * Home — design spec §4.
@@ -28,10 +29,12 @@ import { creditLimit, isCreditEngaged, savingsTotal, type HomeData } from '@/lib
 export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [boostOpen, setBoostOpen] = useState(false);
 
   // Nothing has ever landed in the account: no cycle running, no savings, no cash.
   const dayOne = creditLimit(data.credit) === 0 && savingsTotal(data.savings) === 0 && data.cash === 0;
   const engaged = isCreditEngaged(data.cash, data.credit);
+  const boost = addableTier(data.credit);
 
   const balance = <BalanceBlock cash={data.cash} credit={data.credit} emptyState={dayOne} />;
   const savings = <SavingsSummaryCard savings={data.savings} emptyState={dayOne} />;
@@ -58,7 +61,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       credit={data.credit}
       engaged={engaged}
       onViewBreakdown={() => setBreakdownOpen(true)}
-      onAddBoost={() => setBreakdownOpen(true)}
+      onAddBoost={() => setBoostOpen(true)}
     />
   );
   const cash = <CashAccountCard account={data.cashAccount} onDetails={() => setAccountOpen(true)} />;
@@ -94,7 +97,25 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         <div className="mt-3">{activity}</div>
       </div>
 
-      <LimitBreakdown backing={data.backing} open={breakdownOpen} onOpenChange={setBreakdownOpen} />
+      {/* Add from the breakdown hands off to the same surface as the card's own
+          button, so there's one place the decision gets made. */}
+      <LimitBreakdown
+        backing={data.backing}
+        open={breakdownOpen}
+        onOpenChange={setBreakdownOpen}
+        onAdd={() => {
+          setBreakdownOpen(false);
+          setBoostOpen(true);
+        }}
+      />
+      {boost && (
+        <AddBoostDialog
+          credit={data.credit}
+          tier={boost}
+          open={boostOpen}
+          onOpenChange={setBoostOpen}
+        />
+      )}
       <AccountDetailsDialog account={data.cashAccount} open={accountOpen} onOpenChange={setAccountOpen} />
     </>
   );
