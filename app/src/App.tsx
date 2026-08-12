@@ -20,6 +20,7 @@ import UserOnboarding from "@/pages/auth/UserOnboarding";
 import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
+import HomePage from "@/pages/app/HomePage";
 import RebuildPlaceholder from "@/pages/app/RebuildPlaceholder";
 
 function App() {
@@ -94,7 +95,7 @@ function App() {
                         docs/ux/clear-app-design-spec.md §1. Every element is a
                         placeholder until its real page is built (spec §10 order). */}
                     <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
-                      <Route path="/" element={<RebuildPlaceholder page="Home" />} />
+                      <Route path="/" element={<HomePage />} />
                       <Route path="/savings" element={<RebuildPlaceholder page="Savings" />} />
                       <Route path="/earn" element={<RebuildPlaceholder page="Earn" />} />
                       <Route path="/send" element={<RebuildPlaceholder page="Send" />} />
