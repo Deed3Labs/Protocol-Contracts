@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import PageHeader from '@/components/clear/PageHeader';
 import MilestonePath from '@/components/clear/MilestonePath';
 import AssuranceList from '@/components/clear/AssuranceList';
 import VestingList from '@/components/clear/VestingList';
+import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
 import { SAVINGS_IN_USE } from '@/data/clearPlaceholder';
 import { money, count } from '@/lib/money';
 import { savingsTotal, type SavingsData } from '@/lib/clearModel';
@@ -17,6 +19,7 @@ import { savingsTotal, type SavingsData } from '@/lib/clearModel';
  * empty copy, since it has no rows at all.
  */
 export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsData }) {
+  const [addOpen, setAddOpen] = useState(false);
   const { savings } = data;
 
   return (
@@ -27,7 +30,7 @@ export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsD
         sub={`${count(savings.credits)} of ${count(savings.creditsGoal)} credits toward your Clear Deed`}
         trailing={
           <div className="flex gap-2">
-            <Button variant="clear" size="xs" className="flex-1 lg:flex-none">
+            <Button variant="clear" size="xs" className="flex-1 lg:flex-none" onClick={() => setAddOpen(true)}>
               Add money
             </Button>
             <Button variant="clear" size="xs" className="flex-1 lg:flex-none">
@@ -44,6 +47,8 @@ export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsD
           <VestingList rows={data.vesting} />
         </div>
       </div>
+
+      <AddToSavingsDialog data={data} open={addOpen} onOpenChange={setAddOpen} />
     </>
   );
 }

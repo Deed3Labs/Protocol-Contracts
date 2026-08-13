@@ -8,7 +8,13 @@ import type { ActivityRow } from '@/lib/clearModel';
  * full Activity page. On mobile "See all" is the only route to Activity, which
  * isn't in the tab bar.
  */
-export default function RecentActivityCard({ rows }: { rows: ActivityRow[] }) {
+export default function RecentActivityCard({
+  rows,
+  onSelect,
+}: {
+  rows: ActivityRow[];
+  onSelect?: (row: ActivityRow) => void;
+}) {
   return (
     <Card>
       <div className="flex items-baseline justify-between gap-3">
@@ -20,6 +26,7 @@ export default function RecentActivityCard({ rows }: { rows: ActivityRow[] }) {
 
       <div className="mt-0.5">
         <TransactionRows
+          onSelect={onSelect}
           rows={rows}
           emptyMessage="Nothing yet — your spending will show up here."
         />

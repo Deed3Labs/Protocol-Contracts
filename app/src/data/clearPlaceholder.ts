@@ -11,6 +11,14 @@ import type {
 } from '@/lib/clearModel';
 
 /**
+ * Where the flow surfaces draw from. Home's scenario is deliberately late-cycle —
+ * cash spent to zero, credit engaged — but the reference draws its purchase and
+ * deposit modals at a funded moment, so they get their own figure rather than
+ * showing "pay from $0".
+ */
+const PAY_FROM = { label: 'Cash account', balance: 6200 };
+
+/**
  * Placeholder data for the rebuild — the design spec's own example values, so the
  * built pages can be diffed against the reference screens directly.
  *
@@ -133,6 +141,8 @@ const ASSURANCE: AssuranceItem[] = [
 
 export const SAVINGS_IN_USE: SavingsData = {
   savings: HOME_IN_USE.savings,
+  payFrom: PAY_FROM,
+  creditLimitToday: 12300,
   milestones: MILESTONES,
   assurance: ASSURANCE,
   vesting: [
@@ -144,6 +154,8 @@ export const SAVINGS_IN_USE: SavingsData = {
 
 export const SAVINGS_DAY_ONE: SavingsData = {
   savings: HOME_DAY_ONE.savings,
+  payFrom: PAY_FROM,
+  creditLimitToday: 0,
   milestones: MILESTONES,
   assurance: ASSURANCE,
   vesting: [],
@@ -153,7 +165,21 @@ export const ACTIVITY_IN_USE: ActivityData = {
   cycleNet: -1842,
   pendingClaim: { amount: 40, recipient: 'Marcus T.', sentOn: 'Oct 26', expiresInDays: 12 },
   rows: [
-    { id: 't1', name: 'Shell', date: 'Today · Oct 26', source: 'credit', kind: 'spending', amount: -52.1 },
+    {
+      id: 't1',
+      name: 'Shell',
+      date: 'Today · Oct 26',
+      source: 'credit',
+      kind: 'spending',
+      amount: -52.1,
+      location: 'Redlands, CA',
+      datetime: 'Oct 26, 2026 · 8:14 AM',
+      paidFromTier: 'asset',
+      paidFromLabel: 'Asset-backed credit',
+      rate: '0.65% per cycle',
+      cardLast4: '8836',
+      status: 'Settled',
+    },
     { id: 't2', name: 'Sent to Marcus T.', date: 'Today · Oct 26', source: 'pending', kind: 'sent', amount: -40 },
     { id: 't3', name: 'Payroll deposit', date: 'Oct 25', source: 'cash account', kind: 'deposit', amount: 2000 },
     { id: 't4', name: 'Equity credits vested', date: 'Oct 25', source: 'savings', kind: 'savings', amount: 500 },
@@ -171,6 +197,8 @@ export const CARD_IN_USE: CardData = {
   expiry: '04/29',
   network: 'VISA',
   frozen: false,
+  pan: '4241 8890 1174 8836',
+  cvc: '318',
   period: 'October',
   transactions: [
     { id: 'c1', name: 'Shell', date: 'Oct 26', source: 'credit', kind: 'spending', amount: -52.1 },
@@ -189,6 +217,8 @@ export const CARD_DAY_ONE: CardData = {
   expiry: '',
   network: 'VISA',
   frozen: false,
+  pan: '',
+  cvc: '',
   period: '',
   transactions: [],
 };
@@ -196,10 +226,11 @@ export const CARD_DAY_ONE: CardData = {
 export const SEND_IN_USE: SendData = {
   handle: '@kaim',
   codeUrl: 'https://useclear.org/pay/kaim',
+  payFrom: PAY_FROM,
   recent: [
-    { id: 'p1', name: 'Diego R.', initials: 'DR', role: 'member' },
-    { id: 'p2', name: 'TinyBox Systems', initials: 'TB', role: 'partner' },
-    { id: 'p3', name: 'Maria C.', initials: 'MC', role: 'member' },
+    { id: 'p1', name: 'Diego R.', handle: '@diegor', initials: 'DR', role: 'member' },
+    { id: 'p2', name: 'TinyBox Systems', handle: '@tinybox', initials: 'TB', role: 'partner' },
+    { id: 'p3', name: 'Maria C.', handle: '@mariac', initials: 'MC', role: 'member' },
   ],
 };
 
@@ -207,6 +238,7 @@ export const SEND_IN_USE: SendData = {
 export const SEND_DAY_ONE: SendData = {
   handle: '@kaim',
   codeUrl: 'https://useclear.org/pay/kaim',
+  payFrom: PAY_FROM,
   recent: [],
 };
 
@@ -220,6 +252,10 @@ const BOND_TERMS: BondTerm[] = [
 
 export const EARN_IN_USE: EarnData = {
   earnedToDate: 412.6,
+  payFrom: PAY_FROM,
+  bondLtv: 0.95,
+  poolLtv: 0.7,
+  reserveDate: 'Mar 2029',
   pool: { apy: 6.8, lent: 740000, capacity: 1000000, position: 2500, earned: 41.2 },
   terms: BOND_TERMS,
   bonds: [
@@ -231,6 +267,10 @@ export const EARN_IN_USE: EarnData = {
 /** Day one — the pool and the ladder still exist, this member just isn't in them. */
 export const EARN_DAY_ONE: EarnData = {
   earnedToDate: 0,
+  payFrom: PAY_FROM,
+  bondLtv: 0.95,
+  poolLtv: 0.7,
+  reserveDate: 'Mar 2029',
   pool: { apy: 6.8, lent: 740000, capacity: 1000000, position: 0, earned: 0 },
   terms: BOND_TERMS,
   bonds: [],

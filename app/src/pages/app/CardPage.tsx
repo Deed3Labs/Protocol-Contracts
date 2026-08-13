@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import ClearCardFace from '@/components/clear/ClearCardFace';
 import CardDetailsDialog from '@/components/clear/CardDetailsDialog';
 import TransactionRows from '@/components/clear/TransactionRows';
+import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { CARD_IN_USE } from '@/data/clearPlaceholder';
-import type { CardData } from '@/lib/clearModel';
+import type { ActivityRow, CardData } from '@/lib/clearModel';
 
 /**
  * Card — design spec §9.
@@ -20,6 +21,7 @@ import type { CardData } from '@/lib/clearModel';
 export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
   const [frozen, setFrozen] = useState(data.frozen);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [selected, setSelected] = useState<ActivityRow | null>(null);
   const card = { ...data, frozen };
 
   const actions = card.activated ? (
@@ -51,6 +53,7 @@ export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
         {card.period && <span className="text-xs text-muted-foreground">{card.period}</span>}
       </div>
       <TransactionRows
+        onSelect={setSelected}
         rows={card.transactions}
         emptyMessage={
           card.activated
@@ -77,6 +80,13 @@ export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
       </div>
 
       <CardDetailsDialog card={card} open={detailsOpen} onOpenChange={setDetailsOpen} />
+      {selected && (
+        <TransactionDetailDialog
+          row={selected}
+          open={selected !== null}
+          onOpenChange={(o) => !o && setSelected(null)}
+        />
+      )}
     </>
   );
 }

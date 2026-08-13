@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input';
 import Card from '@/components/clear/Card';
 import ClearCode from '@/components/clear/ClearCode';
 import ContactRows from '@/components/clear/ContactRows';
-import { SEND_IN_USE } from '@/data/clearPlaceholder';
-import { searchContacts, type SendData } from '@/lib/clearModel';
+import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
+import { SEND_IN_USE, HOME_IN_USE } from '@/data/clearPlaceholder';
+import { searchContacts, type Contact, type SendData } from '@/lib/clearModel';
 
 /**
  * Send — design spec §7.
@@ -19,6 +20,7 @@ import { searchContacts, type SendData } from '@/lib/clearModel';
  */
 export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
   const [query, setQuery] = useState('');
+  const [recipient, setRecipient] = useState<Contact | null>(null);
   const matches = searchContacts(data.recent, query);
   const searching = query.trim().length > 0;
 
@@ -41,6 +43,7 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
 
   const contacts = (
     <ContactRows
+      onSelect={setRecipient}
       contacts={matches}
       emptyMessage={
         searching
@@ -104,6 +107,16 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
           </Card>
         </div>
       </div>
+
+      {recipient && (
+        <SendMoneyDialog
+          contact={recipient}
+          credit={HOME_IN_USE.credit}
+          cash={HOME_IN_USE.cash}
+          open={recipient !== null}
+          onOpenChange={(o) => !o && setRecipient(null)}
+        />
+      )}
     </>
   );
 }

@@ -83,6 +83,31 @@ export interface ActivityRow {
   kind: ActivityKind;
   /** Negative debits, positive credits. */
   amount: number;
+
+  // Detail-view extras, shown when a row is opened.
+  location?: string;
+  /** e.g. "Oct 26, 2026 · 8:14 AM". */
+  datetime?: string;
+  paidFromTier?: TierKey;
+  paidFromLabel?: string;
+  /** Rate that applied to this particular draw, e.g. "0.65% per cycle". */
+  rate?: string;
+  cardLast4?: string;
+  status?: string;
+}
+
+/** Where a flow draws the money from, and what's in it. */
+export interface PayFrom {
+  label: string;
+  balance: number;
+}
+
+/**
+ * The tier a draw lands on: the cheapest added tier with headroom left
+ * (rule 7). Returns undefined when every tier is used up.
+ */
+export function nextDrawTier(credit: Credit): CreditTier | undefined {
+  return orderedTiers(credit.tiers).find((t) => t.added && t.used < t.limit);
 }
 
 export interface PendingClaim {
@@ -184,6 +209,10 @@ export interface VestingRow {
 
 export interface SavingsData {
   savings: Savings;
+  /** Where a deposit into savings draws from. */
+  payFrom: PayFrom;
+  /** The limit today, so a deposit can show what it becomes. */
+  creditLimitToday: number;
   milestones: Milestone[];
   assurance: AssuranceItem[];
   vesting: VestingRow[];
@@ -253,6 +282,18 @@ export interface EarnData {
   terms: BondTerm[];
   bonds: HeldBond[];
   earnedToDate: number;
+  /** Where bond purchases and pool deposits draw from. */
+  payFrom: PayFrom;
+  /** Loan-to-value the tiers lend at, for showing what a purchase adds to the limit. */
+  bondLtv: number;
+  poolLtv: number;
+  /** When the member is on track to reserve a home, e.g. "Mar 2029". */
+  reserveDate: string;
+}
+
+/** What buying a bond at this price adds to the credit limit, at the bond LTV. */
+export function bondAddsToLimit(price: number, ltv: number): number {
+  return Math.round(price * ltv);
 }
 
 /** A bond's contribution is what was paid for it, not its face value. */
@@ -273,6 +314,8 @@ export function poolUtilization(pool: YieldPool): number {
 export interface Contact {
   id: string;
   name: string;
+  /** e.g. "@diegor". */
+  handle?: string;
   /** Shown in the avatar circle. */
   initials: string;
   role: 'member' | 'partner';
@@ -286,6 +329,8 @@ export const CONTACT_ROLE_LABEL: Record<Contact['role'], string> = {
 export interface SendData {
   /** The member's own handle, e.g. "@kaim". */
   handle: string;
+  /** Where a send draws from, and the fee/settlement copy that goes with it. */
+  payFrom: PayFrom;
   /** What the QR encodes — the link that opens a payment to this member. */
   codeUrl: string;
   recent: Contact[];
@@ -308,6 +353,9 @@ export interface CardData {
   /** Network wordmark, e.g. "VISA". */
   network: string;
   frozen: boolean;
+  /** Full number and security code — only ever shown behind a timed reveal. */
+  pan: string;
+  cvc: string;
   /** Statement period the transactions below cover, e.g. "October". */
   period: string;
   /** Card transactions only — Activity shows everything (spec §9). */

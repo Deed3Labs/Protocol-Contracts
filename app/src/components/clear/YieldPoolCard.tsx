@@ -11,7 +11,13 @@ import { poolUtilization, type YieldPool } from '@/lib/clearModel';
  * comes out whenever you want it. Bonds get a discrete ladder for the opposite
  * reason.
  */
-export default function YieldPoolCard({ pool }: { pool: YieldPool }) {
+export default function YieldPoolCard({
+  pool,
+  onDeposit,
+}: {
+  pool: YieldPool;
+  onDeposit?: () => void;
+}) {
   const utilization = poolUtilization(pool);
 
   return (
@@ -50,7 +56,7 @@ export default function YieldPoolCard({ pool }: { pool: YieldPool }) {
       </div>
 
       <div className="mt-auto flex gap-2">
-        <Button variant="clear" size="xs" className="flex-1">
+        <Button variant="clear" size="xs" className="flex-1" onClick={onDeposit}>
           Deposit
         </Button>
         <Button variant="clear" size="xs" className="flex-1" disabled={pool.position <= 0}>

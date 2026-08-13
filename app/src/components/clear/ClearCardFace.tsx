@@ -10,7 +10,16 @@ import { cn } from '@/lib/utils';
  * dark. The 0.5px #5F5E5A border is load-bearing — without it the dark face
  * disappears into a dark page.
  */
-export default function ClearCardFace({ card, className }: { card: CardData; className?: string }) {
+export default function ClearCardFace({
+  card,
+  className,
+  revealNumber,
+}: {
+  card: CardData;
+  className?: string;
+  /** Show the full number — only ever inside the timed reveal on Card details. */
+  revealNumber?: boolean;
+}) {
   return (
     <div
       className={cn(
@@ -47,7 +56,11 @@ export default function ClearCardFace({ card, className }: { card: CardData; cla
           className="mb-1.5 font-mono text-[15px] tracking-[1px] lg:text-[17px]"
           style={{ color: '#F1EFE8' }}
         >
-          {card.activated ? `•••• •••• •••• ${card.last4}` : '•••• •••• •••• ••••'}
+          {!card.activated
+            ? '•••• •••• •••• ••••'
+            : revealNumber && card.pan
+              ? card.pan
+              : `•••• •••• •••• ${card.last4}`}
         </p>
         <div className="flex items-end justify-between text-[11px] lg:text-xs" style={{ color: '#B4B2A9' }}>
           <span>

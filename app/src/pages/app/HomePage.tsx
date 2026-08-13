@@ -10,8 +10,17 @@ import RecentActivityCard from '@/components/clear/RecentActivityCard';
 import LimitBreakdown from '@/components/clear/LimitBreakdown';
 import AccountDetailsDialog from '@/components/clear/AccountDetailsDialog';
 import AddBoostDialog from '@/components/clear/AddBoostDialog';
-import { HOME_IN_USE } from '@/data/clearPlaceholder';
-import { addableTier, creditLimit, isCreditEngaged, savingsTotal, type HomeData } from '@/lib/clearModel';
+import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
+import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
+import { HOME_IN_USE, SAVINGS_IN_USE } from '@/data/clearPlaceholder';
+import {
+  addableTier,
+  creditLimit,
+  isCreditEngaged,
+  savingsTotal,
+  type ActivityRow,
+  type HomeData,
+} from '@/lib/clearModel';
 
 /**
  * Home — design spec §4.
@@ -30,6 +39,8 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [boostOpen, setBoostOpen] = useState(false);
+  const [addSavingsOpen, setAddSavingsOpen] = useState(false);
+  const [selected, setSelected] = useState<ActivityRow | null>(null);
 
   // Nothing has ever landed in the account: no cycle running, no savings, no cash.
   const dayOne = creditLimit(data.credit) === 0 && savingsTotal(data.savings) === 0 && data.cash === 0;
@@ -37,7 +48,13 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const boost = addableTier(data.credit);
 
   const balance = <BalanceBlock cash={data.cash} credit={data.credit} emptyState={dayOne} />;
-  const savings = <SavingsSummaryCard savings={data.savings} emptyState={dayOne} />;
+  const savings = (
+    <SavingsSummaryCard
+      savings={data.savings}
+      emptyState={dayOne}
+      onAdd={() => setAddSavingsOpen(true)}
+    />
+  );
 
   if (dayOne) {
     return (
@@ -65,7 +82,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
     />
   );
   const cash = <CashAccountCard account={data.cashAccount} onDetails={() => setAccountOpen(true)} />;
-  const activity = <RecentActivityCard rows={data.recent} />;
+  const activity = <RecentActivityCard rows={data.recent} onSelect={setSelected} />;
 
   return (
     <>
@@ -117,6 +134,20 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         />
       )}
       <AccountDetailsDialog account={data.cashAccount} open={accountOpen} onOpenChange={setAccountOpen} />
+      {/* Savings deposit is the same surface Savings uses; the credit limit it
+          quotes comes from this page's own tiers so the two can't disagree. */}
+      <AddToSavingsDialog
+        data={{ ...SAVINGS_IN_USE, savings: data.savings, creditLimitToday: creditLimit(data.credit) }}
+        open={addSavingsOpen}
+        onOpenChange={setAddSavingsOpen}
+      />
+      {selected && (
+        <TransactionDetailDialog
+          row={selected}
+          open={selected !== null}
+          onOpenChange={(o) => !o && setSelected(null)}
+        />
+      )}
     </>
   );
 }

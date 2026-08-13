@@ -2,10 +2,12 @@ import { useState } from 'react';
 import FilterChips from '@/components/clear/FilterChips';
 import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
 import ActivityList from '@/components/clear/ActivityList';
+import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { ACTIVITY_IN_USE } from '@/data/clearPlaceholder';
 import { signedMoney } from '@/lib/money';
 import {
   ACTIVITY_FILTERS,
+  type ActivityRow,
   filterActivity,
   type ActivityData,
   type ActivityFilter,
@@ -20,6 +22,7 @@ import {
  */
 export default function ActivityPage({ data = ACTIVITY_IN_USE }: { data?: ActivityData }) {
   const [filter, setFilter] = useState<ActivityFilter>('all');
+  const [selected, setSelected] = useState<ActivityRow | null>(null);
   const rows = filterActivity(data.rows, filter);
 
   return (
@@ -46,7 +49,15 @@ export default function ActivityPage({ data = ACTIVITY_IN_USE }: { data?: Activi
           Nothing in this filter for the current cycle.
         </p>
       ) : (
-        <ActivityList rows={rows} />
+        <ActivityList rows={rows} onSelect={setSelected} />
+      )}
+
+      {selected && (
+        <TransactionDetailDialog
+          row={selected}
+          open={selected !== null}
+          onOpenChange={(o) => !o && setSelected(null)}
+        />
       )}
     </>
   );

@@ -12,7 +12,13 @@ import { cn } from '@/lib/utils';
  * Money in is positive and takes the success color; money out stays in the
  * primary text color, so spending doesn't read as an error.
  */
-export default function ActivityList({ rows }: { rows: ActivityRow[] }) {
+export default function ActivityList({
+  rows,
+  onSelect,
+}: {
+  rows: ActivityRow[];
+  onSelect?: (row: ActivityRow) => void;
+}) {
   const groups = groupByDate(rows);
 
   if (groups.length === 0) {
@@ -31,10 +37,13 @@ export default function ActivityList({ rows }: { rows: ActivityRow[] }) {
 
           <div className="text-[13px]">
             {group.rows.map((row, i) => (
-              <div
+              <button
                 key={row.id}
+                type="button"
+                onClick={() => onSelect?.(row)}
                 className={cn(
-                  'grid grid-cols-[1fr_auto] items-center gap-3 py-2.5 lg:grid-cols-[1fr_110px_90px]',
+                  'grid w-full grid-cols-[1fr_auto] items-center gap-3 py-2.5 text-left transition-colors lg:grid-cols-[1fr_110px_90px]',
+                  onSelect && 'hover:bg-secondary/60',
                   i < group.rows.length - 1 && 'border-b-[0.5px] border-border',
                 )}
               >
@@ -56,7 +65,7 @@ export default function ActivityList({ rows }: { rows: ActivityRow[] }) {
                 >
                   {signedMoney(row.amount)}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </div>

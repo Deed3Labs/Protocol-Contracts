@@ -12,9 +12,11 @@ import { cn } from '@/lib/utils';
 export default function TransactionRows({
   rows,
   emptyMessage,
+  onSelect,
 }: {
   rows: ActivityRow[];
   emptyMessage: string;
+  onSelect?: (row: ActivityRow) => void;
 }) {
   if (rows.length === 0) {
     return <p className="py-3 text-xs text-muted-foreground">{emptyMessage}</p>;
@@ -23,10 +25,13 @@ export default function TransactionRows({
   return (
     <div>
       {rows.map((row, i) => (
-        <div
+        <button
           key={row.id}
+          type="button"
+          onClick={() => onSelect?.(row)}
           className={cn(
-            'flex items-center justify-between gap-3 py-2.5 text-[13px]',
+            'flex w-full items-center justify-between gap-3 py-2.5 text-left text-[13px] transition-colors',
+            onSelect && 'hover:bg-secondary/60',
             i < rows.length - 1 && 'border-b-[0.5px] border-border',
           )}
         >
@@ -39,7 +44,7 @@ export default function TransactionRows({
           <span className={cn('shrink-0 tabular-nums', row.amount > 0 && 'text-tier-savings-fg')}>
             {signedMoney(row.amount)}
           </span>
-        </div>
+        </button>
       ))}
     </div>
   );

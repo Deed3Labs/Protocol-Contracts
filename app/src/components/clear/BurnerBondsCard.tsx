@@ -12,7 +12,15 @@ import { cn } from '@/lib/utils';
  * the money is locked until then. The visual language says "choose a row", where
  * the pool's says "watch a number".
  */
-export default function BurnerBondsCard({ terms, bonds }: { terms: BondTerm[]; bonds: HeldBond[] }) {
+export default function BurnerBondsCard({
+  terms,
+  bonds,
+  onBuy,
+}: {
+  terms: BondTerm[];
+  bonds: HeldBond[];
+  onBuy?: () => void;
+}) {
   return (
     <Card className="flex flex-col">
       <div className="mb-3 flex items-baseline justify-between gap-3">
@@ -38,7 +46,7 @@ export default function BurnerBondsCard({ terms, bonds }: { terms: BondTerm[]; b
         ))}
       </div>
 
-      <Button variant="clear" size="xs" className="mt-3 w-full">
+      <Button variant="clear" size="xs" className="mt-3 w-full" onClick={onBuy}>
         Buy a bond
       </Button>
 

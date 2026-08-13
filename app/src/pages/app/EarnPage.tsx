@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import PageHeader from '@/components/clear/PageHeader';
 import YieldPoolCard from '@/components/clear/YieldPoolCard';
 import BurnerBondsCard from '@/components/clear/BurnerBondsCard';
+import BuyBondDialog from '@/components/clear/BuyBondDialog';
+import PoolDepositDialog from '@/components/clear/PoolDepositDialog';
 import { EARN_IN_USE } from '@/data/clearPlaceholder';
 import { money, signedMoney } from '@/lib/money';
 import { bondsTotal, earningTotal, type EarnData } from '@/lib/clearModel';
@@ -15,6 +18,8 @@ import { bondsTotal, earningTotal, type EarnData } from '@/lib/clearModel';
  * differently.
  */
 export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
+  const [buyOpen, setBuyOpen] = useState(false);
+  const [depositOpen, setDepositOpen] = useState(false);
   const inBonds = bondsTotal(data.bonds);
 
   return (
@@ -44,9 +49,12 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
           cards stretch to a common height, with the pool's actions pinned to the
           bottom, so the two products read as a matched pair rather than a list. */}
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
-        <YieldPoolCard pool={data.pool} />
-        <BurnerBondsCard terms={data.terms} bonds={data.bonds} />
+        <YieldPoolCard pool={data.pool} onDeposit={() => setDepositOpen(true)} />
+        <BurnerBondsCard terms={data.terms} bonds={data.bonds} onBuy={() => setBuyOpen(true)} />
       </div>
+
+      <BuyBondDialog data={data} open={buyOpen} onOpenChange={setBuyOpen} />
+      <PoolDepositDialog data={data} open={depositOpen} onOpenChange={setDepositOpen} />
     </>
   );
 }
