@@ -50,6 +50,8 @@ Follow the existing design system. Key usages:
 
 Cards: `border-radius: 12px`, `padding: 13px 15px`. Bars: `height: 8px`, `border-radius: 4px`.
 
+**Modals** are centered on desktop, bottom sheets on mobile. They're task surfaces, not inline expansions — expanding in place shifts the rest of the page and breaks Home's two-column balance. Header is the title left, close **✕** right; a surface that reads as a sub-view of the page behind it uses a back **←** instead.
+
 ---
 
 ## 3. Core display rules
@@ -58,7 +60,7 @@ These are product decisions, not styling. Do not deviate.
 
 1. **Never show a negative balance.** Show "used of available."
 2. **`available = cash + (limit − used)`.** Cash spends first; credit engages only at zero.
-3. **The limit is fixed within a cycle.** Only `used` moves in realtime. Limit changes are announced as events at cycle boundaries.
+3. **The limit is fixed within a cycle.** Only `used` moves in realtime. Limit changes are announced as events at cycle boundaries. **There is exactly one limit**, and it's the sum of what the *added* tiers back — the same figure the limit breakdown totals. An opt-in tier that hasn't been added backs nothing and isn't in it. Never show a second, differently-derived limit next to it.
 4. **One bar means one thing.** The credit bar shows credit used out of limit — it sits empty while spending cash, fills only after crossing into credit.
 5. **The ESA is never summed into "available to spend."** It's locked.
 6. **Mark the crossing** from cash to credit visibly but not alarmingly: the `$0 cash` figure turns `#534AB7` and the credit card gains `--border-accent`.
@@ -87,22 +89,34 @@ Stack in order: balance → task strip → cycle → cash account → clear cred
 ### Clear credit card
 
 ```
-Clear credit used            $3,200 of $4,000
-[████████████░░░░░░]   ← 4 segments
+Clear credit used            $5,400 of $12,300
+[████████░░░░░░░░░░]   ← 4 segments, sized from real usage
 ● Savings (CLRUSD) · free          $3,000 of $3,000
-● Asset-backed · 0.65–0.75%        $200 of $8,300
+● Asset-backed · 0.65–0.75%        $2,400 of $8,300
 ● Income-backed · 1.5% / cycle     $0 of $1,000
 ● Boost · 3% / cycle               not added        (50% opacity)
 ─────────────────────────
-Carry cost so far                  $2.00
+Carry cost so far                  $10.40
 Drops to $0 when you get back under $3,000
-[ View limit breakdown ]
+[ Add Clear Boost ]  [ Limit breakdown ]
 ```
 
-Boost row and its button render at 45–50% opacity when not added.
+The Boost legend row renders at 45–50% opacity when not added. `Add Clear Boost` shows only while there's an opt-in tier left to add.
 
 ### Limit breakdown (sub-view)
 Grouped into **ASSET-BACKED** and **UNSECURED** headers. Each row: name, contribution to limit, and a sub-line showing `underlying position · LTV · rate`. Footer: total limit, then the line *"Your bonds are worth more each month, so this limit grows on its own."*
+
+Subtotals and the total count only what's actually backing the limit, so they agree with the credit card. An opt-in tier that hasn't been added is still listed, but as an **offer** — `[Add $500]` in place of its figure, sub-line `Not added · opt-in · 3% per cycle` — and contributes nothing. It isn't a number yet.
+
+### Add Clear Boost (modal)
+Reached from either the credit card or the breakdown's Add — both land here, so the decision has one home.
+
+Subtitle "Extra credit when everything cheaper is used up", the amount at `32px`, then `3% per cycle · only charged on what you use`. A card of three rows: `Your limit today` · `With Boost` · `Cost if you use $500 for a full cycle`. **Compute all three** — they must not drift from the credit card. Then an accent block: *"Boost is drawn last. Your savings and asset-backed credit are used first, so you only reach it after everything cheaper is gone."* Filled primary `Add Clear Boost`, then *"You can remove it any time you're not carrying a balance on it."*
+
+### Account details (modal)
+Reached from the Cash account card.
+
+Routing and account numbers **hidden by default**, each row with its own reveal and copy — this gets opened in public, and copy works without revealing, so the common case never puts the number on screen. Account number reveals its last 4 while hidden; routing masks entirely. Then a direct-deposit card with Active status and the payer named, and two actions: `Send instructions to my employer` · `Download prefilled form`.
 
 ### Savings card
 Total balance headline. 3-segment bar (cash / vested / vesting). Two legend lines: cash first, then vested + vesting together. Footer: `1,500 of 15,000 credits` + `[Add]` button.
@@ -161,7 +175,7 @@ The two layouts differ structurally, not just in width.
 
 - Card visual: dark fill `#2C2C2A`, **0.5px border `#5F5E5A`** (needed or the shape vanishes in dark mode), aspect ratio ≈ 1.586:1
 - Contents: "Clear" wordmark, contactless icon (rotated 90°), chip rectangle (34×25, `#888780`, 4px radius), masked PAN in mono with last 4, cardholder name · expiry, network mark
-- Actions: `Freeze` · `Details`
+- Actions: `Freeze` · `Details`. Freeze marks the card face itself — it's a state of the object. `Details` opens a modal with the masked number, cardholder, expiry, network and status; **the number stays masked there too**, since revealing a real PAN needs an issuer call and re-authentication.
 - Caption: *"Spends your cash first, then your credit line. No transfers needed."*
 - **Card transactions** list (card only — distinct from Activity, which shows everything), with the statement period right-aligned beside the heading
 - Desktop: card column | transactions column. Size the card column as **~31% of the content width, not a fixed 250px** — the reference's 250px is measured against its 840px frame, so held fixed the card shrinks to a stamp on a wide screen. The card face's own contents (wordmark, chip, PAN) step up with it; left at their fixed sizes a larger face reads half-empty.
