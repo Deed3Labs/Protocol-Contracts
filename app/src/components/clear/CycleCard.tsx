@@ -20,7 +20,10 @@ export default function CycleCard({ cycle, variant = 'bare' }: { cycle: Cycle; v
       <div className="h-1.5 overflow-hidden rounded-[3px] bg-border">
         <div className="h-full bg-foreground-secondary" style={{ width: `${elapsed * 100}%` }} />
       </div>
-      {variant === 'bare' && cycle.clearsOn && (
+      {/* Shown in both layouts. The reference's mobile cycle card omits it, but
+          when the cycle clears is the whole point of the countdown — dropping it
+          on mobile leaves "6 days left" with nothing to land on. */}
+      {cycle.clearsOn && (
         <p className="mt-1.5 text-right text-[11px] text-muted-foreground">Clears on {cycle.clearsOn}</p>
       )}
     </>
