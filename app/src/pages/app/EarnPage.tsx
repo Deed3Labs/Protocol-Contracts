@@ -29,8 +29,9 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
             {money(inBonds)} in bonds
           </>
         }
+        trailingInline
         trailing={
-          <div className="lg:text-right">
+          <div className="text-right">
             <p className="mb-1 text-xs text-foreground-secondary">Earned to date</p>
             <p className="font-display text-xl font-medium leading-none text-tier-savings-fg">
               {signedMoney(data.earnedToDate)}
