@@ -86,6 +86,208 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 <p class="note">Static reference markup. Colors, spacing, and structure are authoritative; the implementation approach is not — build against the project's own component library and tokens. The mobile nav here is the floating pill (the one deliberate change from the original mockups).</p>
 
 <!-- ===================== HOME — DESKTOP, IN USE ===================== -->
+
+<h2>Onboarding — desktop</h2>
+<p class="note" style="margin-bottom:1rem">Split layout: static brand panel left, flow panel right. The left panel copy changes per step; the right panel is the same component set as mobile.</p>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:0;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) 360px;max-width:840px;margin-bottom:14px">
+  <div style="background:var(--surface-0);padding:2.5rem 2rem;display:flex;flex-direction:column;justify-content:center">
+    <p style="font-size:15px;font-weight:500;margin:0 0 auto">Clear</p>
+    <p style="font-size:26px;font-weight:500;margin:2.5rem 0 8px;letter-spacing:-.4px;line-height:1.3">Your rent is making someone else rich.</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0;line-height:1.7;max-width:300px">Clear is a member-owned cooperative. Save toward a home, spend what you save, and borrow against it when you need to — without a credit check.</p>
+  </div>
+  <div style="padding:1.5rem;display:flex;flex-direction:column;min-height:420px"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">1 · ENTER</p>
+    <p style="font-size:22px;font-weight:500;margin:0 0 6px;letter-spacing:-.3px">Clear</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 22px;line-height:1.6">Save for a home. Spend what you save. No credit check.</p>
+    <input style="width:100%;margin-bottom:8px;color:var(--text-muted);font-size:13px" value="Phone or email">
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary);margin-bottom:14px">Continue</button>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><div style="flex:1;height:0.5px;background:var(--border)"></div><span style="font-size:11px;color:var(--text-muted)">or</span><div style="flex:1;height:0.5px;background:var(--border)"></div></div>
+    <button style="width:100%;margin-bottom:8px">Continue with Google</button>
+    <button style="width:100%">Continue with Apple</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:auto 0 0;text-align:center;line-height:1.5">Signing in and signing up are the same. We'll figure out which.</p></div>
+</div>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:0;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) 360px;max-width:840px;margin-bottom:14px">
+  <div style="background:var(--surface-0);padding:2.5rem 2rem;display:flex;flex-direction:column;justify-content:center">
+    <p style="font-size:15px;font-weight:500;margin:0 0 auto">Clear</p>
+    <p style="font-size:26px;font-weight:500;margin:2.5rem 0 8px;letter-spacing:-.4px;line-height:1.3">A code, not a password.</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0;line-height:1.7;max-width:300px">We text or email you a six-digit code. Next time your phone unlocks the app &mdash; there is no password to forget or leak.</p>
+  </div>
+  <div style="padding:1.5rem;display:flex;flex-direction:column;min-height:420px"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">2 · VERIFY</p>
+    <p style="font-size:20px;font-weight:500;margin:0 0 6px">Enter your code</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 20px;line-height:1.6">Sent to (909) 555-0148</p>
+    <div style="display:flex;gap:7px;margin-bottom:16px">
+      <div style="flex:1;height:46px;border:0.5px solid var(--border-accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;font-family:var(--font-mono)">4</div>
+      <div style="flex:1;height:46px;border:0.5px solid var(--border-accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;font-family:var(--font-mono)">9</div>
+      <div style="flex:1;height:46px;border:0.5px solid var(--border-accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;font-family:var(--font-mono)">2</div>
+      <div style="flex:1;height:46px;border:0.5px solid var(--border);border-radius:8px"></div>
+      <div style="flex:1;height:46px;border:0.5px solid var(--border);border-radius:8px"></div>
+      <div style="flex:1;height:46px;border:0.5px solid var(--border);border-radius:8px"></div>
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);margin:0">Resend in 0:24</p>
+    <p style="font-size:11px;color:var(--text-muted);margin:auto 0 0;line-height:1.5">Next time, use Face ID instead.</p></div>
+</div>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:0;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) 360px;max-width:840px;margin-bottom:14px">
+  <div style="background:var(--surface-0);padding:2.5rem 2rem;display:flex;flex-direction:column;justify-content:center">
+    <p style="font-size:15px;font-weight:500;margin:0 0 auto">Clear</p>
+    <p style="font-size:26px;font-weight:500;margin:2.5rem 0 8px;letter-spacing:-.4px;line-height:1.3">Member-owned, not customer-owned.</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0;line-height:1.7;max-width:300px">What you save is your stake. One member, one vote &mdash; decisions about what we build and where get made by the people living in the homes, not by whoever saved the most.</p>
+  </div>
+  <div style="padding:1.5rem;display:flex;flex-direction:column;min-height:420px"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">3 · JOIN</p>
+    <p style="font-size:20px;font-weight:500;margin:0 0 6px">Join the co-op</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Clear is member-owned. Joining makes you a part-owner, not a customer.</p>
+    <div class="card" style="padding:12px 14px;margin-bottom:12px;font-size:12px;line-height:1.7">
+      <div style="display:flex;gap:9px;padding-bottom:9px;border-bottom:0.5px solid var(--border)"><span style="color:var(--tier-savings)">&#9679;</span><div><p style="margin:0">What you save is your share</p><p style="margin:2px 0 0;color:var(--text-muted)">Your Equity Savings Account is your ownership stake. No buy-in, no fee to join.</p></div></div>
+      <div style="display:flex;gap:9px;padding:9px 0;border-bottom:0.5px solid var(--border)"><span style="color:var(--tier-savings)">&#9679;</span><div><p style="margin:0">One member, one vote</p><p style="margin:2px 0 0;color:var(--text-muted)">However much you save, your vote counts the same as everyone else's.</p></div></div>
+      <div style="display:flex;gap:9px;padding-top:9px"><span style="color:var(--tier-savings)">&#9679;</span><div><p style="margin:0">Yours to withdraw</p><p style="margin:2px 0 0;color:var(--text-muted)">If you leave, your balance leaves with you.</p></div></div>
+    </div>
+    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:5px">ZIP code</label>
+    <input style="width:100%;margin-bottom:12px;font-size:13px" value="92373">
+    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:5px">Invite code <span style="color:var(--text-muted)">(optional)</span></label>
+    <input style="width:100%;margin-bottom:14px;font-size:13px" value="IE-7742">
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)">Agree &amp; join</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0;text-align:center;line-height:1.5">Membership agreement &amp; bylaws</p></div>
+</div>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:0;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) 360px;max-width:840px;margin-bottom:14px">
+  <div style="background:var(--surface-0);padding:2.5rem 2rem;display:flex;flex-direction:column;justify-content:center">
+    <p style="font-size:15px;font-weight:500;margin:0 0 auto">Clear</p>
+    <p style="font-size:26px;font-weight:500;margin:2.5rem 0 8px;letter-spacing:-.4px;line-height:1.3">We open regions when enough people are waiting.</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0;line-height:1.7;max-width:300px">Clear starts in one place and grows to the next. Adding your ZIP tells us where to go.</p>
+  </div>
+  <div style="padding:1.5rem;display:flex;flex-direction:column;min-height:420px"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">WAITLIST</p>
+    <p style="font-size:20px;font-weight:500;margin:0 0 6px">Not in your area yet</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Clear is starting in the Inland Empire. We're not open in <strong>43215</strong> — but we're keeping a list.</p>
+    <div style="background:var(--bg-accent);border-radius:var(--radius);padding:12px 14px;margin-bottom:14px">
+      <p style="font-size:12px;color:var(--text-accent);margin:0;line-height:1.6">You're #184 on the list for Columbus, OH. We open regions where enough people are waiting.</p>
+    </div>
+    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:5px">Email for updates</label>
+    <input style="width:100%;margin-bottom:12px;font-size:13px" value="kai@example.com">
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary);margin-bottom:8px">Keep me posted</button>
+    <button style="width:100%;font-size:12px">Share Clear with a neighbor</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:auto 0 0;text-align:center;line-height:1.5">Moving to the IE? Change your ZIP any time.</p></div>
+</div>
+
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:0;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) 360px;max-width:840px;margin-bottom:14px">
+  <div style="background:var(--surface-0);padding:2.5rem 2rem;display:flex;flex-direction:column;justify-content:center">
+    <p style="font-size:15px;font-weight:500;margin:0 0 auto">Clear</p>
+    <p style="font-size:26px;font-weight:500;margin:2.5rem 0 8px;letter-spacing:-.4px;line-height:1.3">We only ask once, and only when it matters.</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0;line-height:1.7;max-width:300px">Identity checks are required before anyone can hold money for you. We wait until your first deposit so you can look around first.</p>
+  </div>
+  <div style="padding:1.5rem;display:flex;flex-direction:column;min-height:420px"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">4 · VERIFY IDENTITY <span style="color:var(--text-accent)">— AT FIRST DEPOSIT</span></p>
+    <p style="font-size:20px;font-weight:500;margin:0 0 6px">One-time check</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Required before we can hold money for you. Takes about two minutes.</p>
+    <div style="font-size:12px;line-height:1.6;margin-bottom:16px">
+      <div style="display:flex;gap:9px;padding-bottom:11px"><span style="color:var(--text-muted)">1</span><p style="margin:0">Legal name &amp; date of birth</p></div>
+      <div style="display:flex;gap:9px;padding-bottom:11px"><span style="color:var(--text-muted)">2</span><p style="margin:0">Home address</p></div>
+      <div style="display:flex;gap:9px;padding-bottom:11px"><span style="color:var(--text-muted)">3</span><div><p style="margin:0">SSN</p><p style="margin:2px 0 0;color:var(--text-muted)">Not a credit check. Doesn't affect your score.</p></div></div>
+      <div style="display:flex;gap:9px"><span style="color:var(--text-muted)">4</span><p style="margin:0">Photo of your ID</p></div>
+    </div>
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary);margin-top:auto">Start</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0;text-align:center">You can look around first — this only blocks deposits.</p></div>
+</div>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:0;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) 360px;max-width:840px;margin-bottom:14px">
+  <div style="background:var(--surface-0);padding:2.5rem 2rem;display:flex;flex-direction:column;justify-content:center">
+    <p style="font-size:15px;font-weight:500;margin:0 0 auto">Clear</p>
+    <p style="font-size:26px;font-weight:500;margin:2.5rem 0 8px;letter-spacing:-.4px;line-height:1.3">Someone already put money in your account.</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0;line-height:1.7;max-width:300px">Members can send to anyone. If they are not a member yet, the money waits until they join &mdash; and joining is free.</p>
+  </div>
+  <div style="padding:1.5rem;display:flex;flex-direction:column;min-height:420px"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">CLAIM · 1</p>
+    <div style="background:var(--bg-success);border-radius:var(--radius);padding:14px;text-align:center;margin-bottom:18px">
+      <p style="font-size:12px;color:var(--text-success);margin:0 0 4px">Diego R. sent you</p>
+      <p style="font-size:30px;font-weight:500;color:var(--text-success);margin:0;letter-spacing:-.5px">$40</p>
+    </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Claim it with your phone number. Clear is a member-owned co-op in the Inland Empire — Diego's already a member.</p>
+    <input style="width:100%;margin-bottom:8px;color:var(--text-muted);font-size:13px" value="Phone or email">
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)">Claim $40</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:auto 0 0;text-align:center;line-height:1.5">Expires in 12 days</p></div>
+</div>
+
+<h2>Onboarding — mobile</h2>
+<p class="note" style="margin-bottom:1rem">Full-screen steps. Identity verification is deferred to the first deposit, not required at signup.</p>
+<div class="row">
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem;width:264px;min-height:400px;display:flex;flex-direction:column"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">1 · ENTER</p>
+    <p style="font-size:22px;font-weight:500;margin:0 0 6px;letter-spacing:-.3px">Clear</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 22px;line-height:1.6">Save for a home. Spend what you save. No credit check.</p>
+    <input style="width:100%;margin-bottom:8px;color:var(--text-muted);font-size:13px" value="Phone or email">
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary);margin-bottom:14px">Continue</button>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px"><div style="flex:1;height:0.5px;background:var(--border)"></div><span style="font-size:11px;color:var(--text-muted)">or</span><div style="flex:1;height:0.5px;background:var(--border)"></div></div>
+    <button style="width:100%;margin-bottom:8px">Continue with Google</button>
+    <button style="width:100%">Continue with Apple</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:auto 0 0;text-align:center;line-height:1.5">Signing in and signing up are the same. We'll figure out which.</p></div>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem;width:264px;min-height:400px;display:flex;flex-direction:column"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">2 · VERIFY</p>
+    <p style="font-size:20px;font-weight:500;margin:0 0 6px">Enter your code</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 20px;line-height:1.6">Sent to (909) 555-0148</p>
+    <div style="display:flex;gap:7px;margin-bottom:16px">
+      <div style="flex:1;height:46px;border:0.5px solid var(--border-accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;font-family:var(--font-mono)">4</div>
+      <div style="flex:1;height:46px;border:0.5px solid var(--border-accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;font-family:var(--font-mono)">9</div>
+      <div style="flex:1;height:46px;border:0.5px solid var(--border-accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;font-family:var(--font-mono)">2</div>
+      <div style="flex:1;height:46px;border:0.5px solid var(--border);border-radius:8px"></div>
+      <div style="flex:1;height:46px;border:0.5px solid var(--border);border-radius:8px"></div>
+      <div style="flex:1;height:46px;border:0.5px solid var(--border);border-radius:8px"></div>
+    </div>
+    <p style="font-size:12px;color:var(--text-muted);margin:0">Resend in 0:24</p>
+    <p style="font-size:11px;color:var(--text-muted);margin:auto 0 0;line-height:1.5">Next time, use Face ID instead.</p></div>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem;width:264px;min-height:400px;display:flex;flex-direction:column"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">3 · JOIN</p>
+    <p style="font-size:20px;font-weight:500;margin:0 0 6px">Join the co-op</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Clear is member-owned. Joining makes you a part-owner, not a customer.</p>
+    <div class="card" style="padding:12px 14px;margin-bottom:12px;font-size:12px;line-height:1.7">
+      <div style="display:flex;gap:9px;padding-bottom:9px;border-bottom:0.5px solid var(--border)"><span style="color:var(--tier-savings)">&#9679;</span><div><p style="margin:0">What you save is your share</p><p style="margin:2px 0 0;color:var(--text-muted)">Your Equity Savings Account is your ownership stake. No buy-in, no fee to join.</p></div></div>
+      <div style="display:flex;gap:9px;padding:9px 0;border-bottom:0.5px solid var(--border)"><span style="color:var(--tier-savings)">&#9679;</span><div><p style="margin:0">One member, one vote</p><p style="margin:2px 0 0;color:var(--text-muted)">However much you save, your vote counts the same as everyone else's.</p></div></div>
+      <div style="display:flex;gap:9px;padding-top:9px"><span style="color:var(--tier-savings)">&#9679;</span><div><p style="margin:0">Yours to withdraw</p><p style="margin:2px 0 0;color:var(--text-muted)">If you leave, your balance leaves with you.</p></div></div>
+    </div>
+    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:5px">ZIP code</label>
+    <input style="width:100%;margin-bottom:12px;font-size:13px" value="92373">
+    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:5px">Invite code <span style="color:var(--text-muted)">(optional)</span></label>
+    <input style="width:100%;margin-bottom:14px;font-size:13px" value="IE-7742">
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)">Agree &amp; join</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0;text-align:center;line-height:1.5">Membership agreement &amp; bylaws</p></div>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem;width:264px;min-height:400px;display:flex;flex-direction:column"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">4 · VERIFY IDENTITY <span style="color:var(--text-accent)">— AT FIRST DEPOSIT</span></p>
+    <p style="font-size:20px;font-weight:500;margin:0 0 6px">One-time check</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Required before we can hold money for you. Takes about two minutes.</p>
+    <div style="font-size:12px;line-height:1.6;margin-bottom:16px">
+      <div style="display:flex;gap:9px;padding-bottom:11px"><span style="color:var(--text-muted)">1</span><p style="margin:0">Legal name &amp; date of birth</p></div>
+      <div style="display:flex;gap:9px;padding-bottom:11px"><span style="color:var(--text-muted)">2</span><p style="margin:0">Home address</p></div>
+      <div style="display:flex;gap:9px;padding-bottom:11px"><span style="color:var(--text-muted)">3</span><div><p style="margin:0">SSN</p><p style="margin:2px 0 0;color:var(--text-muted)">Not a credit check. Doesn't affect your score.</p></div></div>
+      <div style="display:flex;gap:9px"><span style="color:var(--text-muted)">4</span><p style="margin:0">Photo of your ID</p></div>
+    </div>
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary);margin-top:auto">Start</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0;text-align:center">You can look around first — this only blocks deposits.</p></div>
+</div>
+
+<h2>Onboarding — waitlist &amp; claim variant</h2>
+<div class="row">
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem;width:264px;min-height:400px;display:flex;flex-direction:column"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">OUT OF AREA</p>
+    <p style="font-size:20px;font-weight:500;margin:0 0 6px">Not in your area yet</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Clear is starting in the Inland Empire. We're not open in <strong>43215</strong> — but we're keeping a list.</p>
+    <div style="background:var(--bg-accent);border-radius:var(--radius);padding:12px 14px;margin-bottom:14px">
+      <p style="font-size:12px;color:var(--text-accent);margin:0;line-height:1.6">You're #184 on the list for Columbus, OH. We open regions where enough people are waiting.</p>
+    </div>
+    <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:5px">Email for updates</label>
+    <input style="width:100%;margin-bottom:12px;font-size:13px" value="kai@example.com">
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary);margin-bottom:8px">Keep me posted</button>
+    <button style="width:100%;font-size:12px">Share Clear with a neighbor</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:auto 0 0;text-align:center;line-height:1.5">Moving to the IE? Change your ZIP any time.</p></div>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem;width:264px;min-height:400px;display:flex;flex-direction:column"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">CLAIM · 1</p>
+    <div style="background:var(--bg-success);border-radius:var(--radius);padding:14px;text-align:center;margin-bottom:18px">
+      <p style="font-size:12px;color:var(--text-success);margin:0 0 4px">Diego R. sent you</p>
+      <p style="font-size:30px;font-weight:500;color:var(--text-success);margin:0;letter-spacing:-.5px">$40</p>
+    </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Claim it with your phone number. Clear is a member-owned co-op in the Inland Empire — Diego's already a member.</p>
+    <input style="width:100%;margin-bottom:8px;color:var(--text-muted);font-size:13px" value="Phone or email">
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)">Claim $40</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:auto 0 0;text-align:center;line-height:1.5">Expires in 12 days</p></div>
+<div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem;width:264px;min-height:400px;display:flex;flex-direction:column"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">CLAIM · 2 — INVITE PREFILLED</p>
+    <p style="font-size:20px;font-weight:500;margin:0 0 6px">Join the co-op</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Your $40 is waiting. Joining is free — the full amount lands in your account.</p>
+    <div class="card" style="padding:12px 14px;margin-bottom:12px;font-size:12px;line-height:1.9">
+      <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">You receive</span><span>$40.00</span></div>
+      <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Cost to join</span><span>None</span></div>
+      <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Your vote</span><span>Same as every member</span></div>
+    </div>
+    <div style="background:var(--bg-accent);border-radius:var(--radius);padding:10px 12px;margin-bottom:14px">
+      <p style="font-size:11px;color:var(--text-accent);margin:0;line-height:1.5">Invited by Diego R. — no code needed.</p>
+    </div>
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)">Agree &amp; join</button></div>
+</div>
+
 <h2>Home — desktop — in use</h2>
 <div class="desktop">
   <div class="topbar"><span class="wm">Clear</span><nav><span class="on">Home</span><span>Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav></div>
@@ -501,6 +703,12 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
       <button style="flex:1;padding:5px 0;border:0;background:transparent;color:var(--text-secondary);font-size:11px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg> Light</button>
       <button style="flex:1;padding:5px 0;border:0;background:var(--surface-2);border-radius:6px;font-size:11px;box-shadow:0 1px 2px rgba(0,0,0,.08)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M12 3v6M5.6 10.6 4.2 9.2M18.4 10.6l1.4-1.4M2 18h20M6 18a6 6 0 0 1 12 0"/></svg> Dusk</button>
       <button style="flex:1;padding:5px 0;border:0;background:transparent;color:var(--text-secondary);font-size:11px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8"/></svg> Dark</button>
+    </div>
+
+    <div style="border:0.5px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:11px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px"><span style="font-size:12px">Acceleration</span><span style="font-size:11px;color:var(--text-muted)">Not active</span></div>
+      <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px;line-height:1.5">Reach member benefits sooner instead of earning them over time.</p>
+      <button style="width:100%;font-size:11px;padding:4px 0">See what it unlocks</button>
     </div>
 
     <div style="font-size:13px">
