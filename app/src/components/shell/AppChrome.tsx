@@ -32,6 +32,12 @@ export default function AppChrome({
     '/contacts': 'Contacts',
     '/partners': 'Clear Partners',
     '/settings': 'Settings',
+    '/assurance': 'Assurance',
+    '/alerts': 'Alerts',
+    '/scan': 'Scan to pay',
+    '/learn/patronage': 'How patronage works',
+    '/learn/assurance-reserve': 'The assurance reserve',
+    '/learn/disputes': 'Dispute resolution',
   };
   const fallbackTitle = pathname.replace(/^\//, '').split('/')[0];
   const title =

@@ -9,6 +9,8 @@ import type {
   EarnData,
   BondTerm,
   SettingsData,
+  Alert,
+  AssuranceReserve,
   Contact,
   Partner,
   PartnersData,
@@ -169,12 +171,84 @@ const MILESTONES: Milestone[] = [
  * placeholders and MUST keep rendering as written until the real names arrive —
  * do not invent replacements.
  */
+/**
+ * Four of the five names and descriptions are placeholders the product owner
+ * still has to supply. They render as written — never invent a replacement.
+ */
 const ASSURANCE: AssuranceItem[] = [
-  { id: 'a1', name: 'Home repair assurance', unlocksAt: 0 },
-  { id: 'a2', name: '[PLACEHOLDER — replace]', unlocksAt: 1000, placeholder: true },
-  { id: 'a3', name: '[PLACEHOLDER — replace]', unlocksAt: 4000, placeholder: true },
-  { id: 'a4', name: '[PLACEHOLDER — replace]', unlocksAt: 8000, placeholder: true },
-  { id: 'a5', name: '[PLACEHOLDER — replace]', unlocksAt: 15000, placeholder: true },
+  {
+    id: 'a1',
+    name: 'Home repair assurance',
+    description:
+      'Covers qualifying repairs on your unit once you move in, up to an annual cap.',
+    unlocksAt: 0,
+  },
+  {
+    id: 'a2',
+    name: '[PLACEHOLDER — replace]',
+    description: 'Real protection name and description needed.',
+    unlocksAt: 1000,
+    placeholder: true,
+  },
+  {
+    id: 'a3',
+    name: '[PLACEHOLDER — replace]',
+    description: 'Real protection name and description needed.',
+    unlocksAt: 4000,
+    placeholder: true,
+  },
+  {
+    id: 'a4',
+    name: '[PLACEHOLDER — replace]',
+    description: 'Real protection name and description needed.',
+    unlocksAt: 8000,
+    placeholder: true,
+  },
+  {
+    id: 'a5',
+    name: '[PLACEHOLDER — replace]',
+    description: 'Real protection name and description needed.',
+    unlocksAt: 15000,
+    placeholder: true,
+  },
+];
+
+export const ASSURANCE_RESERVE: AssuranceReserve = {
+  balance: 412800,
+  membersCovered: 184,
+  claimsPaidThisYear: 8400,
+  reportCadence: 'Quarterly',
+};
+
+export const ALERTS: Alert[] = [
+  {
+    id: 'n1',
+    group: 'Today',
+    tone: 'boost',
+    title: "You're using Clear Credit",
+    detail: "Your cash ran out at Shell. You're now on savings-backed credit — free until $3,000.",
+  },
+  {
+    id: 'n2',
+    group: 'Today',
+    tone: 'asset',
+    title: '500 credits vested',
+    detail: '1,500 of 15,000 toward your Clear Deed.',
+  },
+  {
+    id: 'n3',
+    group: 'This week',
+    tone: 'muted',
+    title: 'Rebalance by Nov 12',
+    detail: '6 days left in this cycle. Your payday on Nov 1 should clear it automatically.',
+  },
+  {
+    id: 'n4',
+    group: 'This week',
+    tone: 'boost',
+    title: 'Vote open: which region next?',
+    detail: 'Closes in 6 days.',
+  },
 ];
 
 export const SAVINGS_IN_USE: SavingsData = {
@@ -548,7 +622,11 @@ export const SETTINGS: SettingsData = {
   patronage: {
     fiscalYear: '2026 fiscal year',
     status: 'In progress',
-    basis: 412,
+    basisRows: [
+      { label: 'Carry cost you paid on credit', amount: 18.4 },
+      { label: 'Interchange from your card spend', amount: 367 },
+      { label: 'Acceleration fee, if any', amount: 0 },
+    ],
     history: [],
   },
   ballot: {

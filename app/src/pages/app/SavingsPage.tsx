@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import SegmentedBar from '@/components/clear/SegmentedBar';
 import CreditsProgress from '@/components/clear/CreditsProgress';
@@ -27,6 +28,7 @@ import { savingsTotal, type SavingsData } from '@/lib/clearModel';
  * nothing unlocked. Only the vesting list has its own empty copy.
  */
 export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsData }) {
+  const navigate = useNavigate();
   const [addOpen, setAddOpen] = useState(false);
   const [autoSaveOpen, setAutoSaveOpen] = useState(false);
   const { savings } = data;
@@ -106,7 +108,11 @@ export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsD
             projection={data.projection}
             onAdjust={() => setAutoSaveOpen(true)}
           />
-          <AssuranceList items={data.assurance} credits={savings.credits} />
+          <AssuranceList
+            items={data.assurance}
+            credits={savings.credits}
+            onOpen={() => navigate('/assurance')}
+          />
           <VestingList rows={data.vesting} />
         </div>
       </div>

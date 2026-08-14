@@ -25,6 +25,10 @@ import SavingsPage from "@/pages/app/SavingsPage";
 import ActivityPage from "@/pages/app/ActivityPage";
 import CardPage from "@/pages/app/CardPage";
 import ContactsPage from "@/pages/app/ContactsPage";
+import AssurancePage from "@/pages/app/AssurancePage";
+import AlertsPage from "@/pages/app/AlertsPage";
+import ScanPage from "@/pages/app/ScanPage";
+import ExplainerPage from "@/pages/app/ExplainerPage";
 import PartnersPage from "@/pages/app/PartnersPage";
 import SendPage from "@/pages/app/SendPage";
 import EarnPage from "@/pages/app/EarnPage";
@@ -117,6 +121,10 @@ function App() {
                       <Route path="/card" element={<CardPage />} />
                       <Route path="/contacts" element={<ContactsPage />} />
                       <Route path="/partners" element={<PartnersPage />} />
+                      <Route path="/assurance" element={<AssurancePage />} />
+                      <Route path="/alerts" element={<AlertsPage />} />
+                      <Route path="/scan" element={<ScanPage />} />
+                      <Route path="/learn/:topic" element={<ExplainerPage />} />
                       {/* Not a nav item — reached from the avatar menu (spec §1). */}
                       <Route path="/settings" element={<SettingsPage />} />
                     </Route>

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Copy, CircleCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -55,6 +56,7 @@ type SectionId =
 type SubId = 'bylaws' | 'patronage' | 'voting' | 'legal' | 'logins';
 
 export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData }) {
+  const navigate = useNavigate();
   const { profile } = data;
   const [section, setSection] = useState<SectionId>('account');
   /** Mobile only: null means the section list, otherwise the pushed sub-page. */
@@ -373,7 +375,7 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
     help: {
       label: 'Help',
       title: 'Help',
-      content: <HelpPanel topics={data.helpTopics} />,
+      content: <HelpPanel topics={data.helpTopics} onDispute={() => navigate('/learn/disputes')} />,
     },
   };
 
@@ -386,7 +388,12 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
     bylaws: { title: 'Bylaws', content: <BylawsPanel bylaws={data.bylaws} /> },
     patronage: {
       title: 'Patronage & distributions',
-      content: <PatronagePanel patronage={data.patronage} />,
+      content: (
+        <PatronagePanel
+          patronage={data.patronage}
+          onExplain={() => navigate('/learn/patronage')}
+        />
+      ),
     },
     voting: {
       title: 'Voting',

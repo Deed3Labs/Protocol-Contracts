@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import { ThemeProvider } from '@/context/ThemeContext';
 import AppChrome from '@/components/shell/AppChrome';
@@ -8,6 +8,10 @@ import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
 import ContactsPage from '@/pages/app/ContactsPage';
+import AssurancePage from '@/pages/app/AssurancePage';
+import AlertsPage from '@/pages/app/AlertsPage';
+import ScanPage from '@/pages/app/ScanPage';
+import ExplainerPage from '@/pages/app/ExplainerPage';
 import PartnersPage from '@/pages/app/PartnersPage';
 import SendPage from '@/pages/app/SendPage';
 import EarnPage from '@/pages/app/EarnPage';
@@ -94,13 +98,13 @@ export default function PreviewApp() {
               <>
                 <AppChrome
                   trailing={
-                    <button
-                      type="button"
-                      aria-label="Notifications"
+                    <Link
+                      to="/alerts"
+                      aria-label="Alerts"
                       className="p-1 text-foreground-secondary"
                     >
                       <Bell className="h-[18px] w-[18px]" strokeWidth={1.75} />
-                    </button>
+                    </Link>
                   }
                 >
                   <Routes>
@@ -112,6 +116,13 @@ export default function PreviewApp() {
                     <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
                     <Route path="/contacts" element={<ContactsPage contacts={empty ? [] : CONTACTS} />} />
                     <Route path="/partners" element={<PartnersPage />} />
+                    <Route
+                      path="/assurance"
+                      element={<AssurancePage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />}
+                    />
+                    <Route path="/alerts" element={<AlertsPage alerts={empty ? [] : undefined} />} />
+                    <Route path="/scan" element={<ScanPage />} />
+                    <Route path="/learn/:topic" element={<ExplainerPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>

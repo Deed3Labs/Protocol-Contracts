@@ -1,7 +1,7 @@
 import Card from '@/components/clear/Card';
 import SettingRows from '@/components/clear/SettingRows';
 import { money } from '@/lib/money';
-import type { Patronage } from '@/lib/clearModel';
+import { patronageBasis, type Patronage } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /**
@@ -34,7 +34,9 @@ export default function PatronagePanel({
           </div>
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-foreground-secondary">Your patronage basis</span>
-            <span className="tabular-nums">{money(patronage.basis)} of activity</span>
+            <span className="tabular-nums">
+              {money(patronageBasis(patronage.basisRows), { cents: true })} of activity
+            </span>
           </div>
           <div className="flex items-baseline justify-between gap-3">
             <span className="text-foreground-secondary">Declared to date</span>

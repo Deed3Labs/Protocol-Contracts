@@ -6,6 +6,8 @@
  * their own arithmetic on balances.
  */
 
+import { count } from './money';
+
 export type TierKey = 'savings' | 'asset' | 'income' | 'boost';
 
 export interface CreditTier {
@@ -252,10 +254,66 @@ export interface Milestone {
 export interface AssuranceItem {
   id: string;
   name: string;
+  /** What it actually covers, shown on the detail page. */
+  description: string;
   /** Credits needed before this protection turns on. */
   unlocksAt: number;
   /** Name still to be confirmed — rendered as-is, do not invent a replacement. */
   placeholder?: boolean;
+}
+
+/**
+ * Where a protection stands, in the words the detail page uses. Active from the
+ * start says so rather than claiming a credit threshold it never had.
+ */
+export function assuranceStatus(item: AssuranceItem, credits: number): string {
+  if (!isAssuranceActive(item, credits)) return `${count(item.unlocksAt - credits)} credits to go`;
+  return item.unlocksAt > 0 ? `Active since ${count(item.unlocksAt)} credits` : 'Active';
+}
+
+/** The shared fund behind the protections — spec §5. */
+export interface AssuranceReserve {
+  balance: number;
+  membersCovered: number;
+  claimsPaidThisYear: number;
+  /** How often the co-op publishes its reserve report. */
+  reportCadence: string;
+}
+
+/**
+ * One thing that happened, or is about to. Alerts are notifications with a
+ * history, not a dropdown — the credit crossing and the rebalance date are things
+ * a member goes looking for again.
+ */
+export interface Alert {
+  id: string;
+  title: string;
+  detail: string;
+  /** Display grouping, e.g. "Today", "This week". */
+  group: string;
+  /** Matches the tier or state the alert is about. */
+  tone: 'boost' | 'asset' | 'muted';
+}
+
+/**
+ * The reference paints the neutral dot with a stronger border colour than this
+ * project has a token for; muted-foreground is the nearest one and reads at the
+ * same weight against the card.
+ */
+export const ALERT_DOT: Record<Alert['tone'], string> = {
+  boost: 'bg-tier-boost',
+  asset: 'bg-tier-asset',
+  muted: 'bg-muted-foreground',
+};
+
+/** What a member's patronage share is calculated from — spec §10. */
+export interface PatronageBasisRow {
+  label: string;
+  amount: number;
+}
+
+export function patronageBasis(rows: PatronageBasisRow[]): number {
+  return rows.reduce((sum, r) => sum + r.amount, 0);
 }
 
 export interface VestingRow {
@@ -520,8 +578,8 @@ export interface Bylaws {
 export interface Patronage {
   fiscalYear: string;
   status: string;
-  /** What the member's share is calculated from. */
-  basis: number;
+  /** The activity the share is calculated from; the basis is their sum. */
+  basisRows: PatronageBasisRow[];
   /** Declared so far this year; absent while the year is still running. */
   declared?: number;
   history: { id: string; year: string; amount: number }[];

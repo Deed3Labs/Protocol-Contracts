@@ -100,9 +100,11 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
         <ClearCode handle={data.handle} codeUrl={data.codeUrl} />
 
         <div className="mb-4 mt-3 flex gap-2">
-          <Button variant="clear" size="xs" className="flex-1">
-            <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Scan to pay
+          <Button variant="clear" size="xs" className="flex-1" asChild>
+            <Link to="/scan">
+              <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Scan to pay
+            </Link>
           </Button>
           <Button
             variant="clear"
@@ -151,9 +153,11 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
 
         <div className="flex flex-col gap-3">
           <ClearCode handle={data.handle} codeUrl={data.codeUrl} variant="titled" />
-          <Button variant="clear" size="sm" className="w-full text-xs">
-            <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Scan to pay
+          <Button variant="clear" size="sm" className="w-full text-xs" asChild>
+            <Link to="/scan">
+              <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Scan to pay
+            </Link>
           </Button>
           {network}
         </div>
