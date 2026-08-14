@@ -53,7 +53,10 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 .task{background:var(--bg-accent);border-radius:var(--radius);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;color:var(--text-accent);font-size:13px}
 .grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 .stack{display:flex;flex-direction:column;gap:12px}
-.txn{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border);font-size:13px}
+.txn{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px}
+.txn > div:first-child{min-width:0}
+.txn .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.txn > span:last-child{flex-shrink:0;white-space:nowrap}
 .txn:last-child{border-bottom:0}
 .txn .m{margin:0}
 .txn .s{margin:2px 0 0;font-size:11px;color:var(--text-muted)}
@@ -78,6 +81,10 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 .chip{width:36px;height:27px;background:#888780;border-radius:4px}
 .pan{font-family:var(--font-mono);font-size:15px;color:#F1EFE8;margin:0 0 6px;letter-spacing:1px}
 .meta{display:flex;justify-content:space-between;align-items:flex-end;font-size:11px;color:#B4B2A9}
+
+.phone .legend div{gap:12px}
+.phone .legend div span:last-child{flex-shrink:0;white-space:nowrap}
+.phone p.m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -290,76 +297,71 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 
 <h2>Home — desktop — in use</h2>
 <div class="desktop">
-  <div class="topbar"><span class="wm">Clear</span><nav><span class="on">Home</span><span>Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav></div>
-
-  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px">
+  <div class="topbar"><span class="wm">Clear</span><nav><span style="color:var(--text-primary)">Home</span><span>Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav></div>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:end;margin-bottom:16px">
     <div>
       <p class="sub" style="margin-bottom:4px">Available to spend</p>
-      <p class="big">$6,900</p>
-      <p class="sub"><span style="color:var(--tier-boost-text);font-weight:500">$0 cash</span> &nbsp;+&nbsp; $6,900 credit left</p>
+      <p style="font-size:40px;font-weight:500;margin:0 0 10px;letter-spacing:-.8px">$6,900</p>
+      <div class="bar" style="max-width:340px;margin-bottom:8px;height:6px;border-radius:3px"><div style="width:44%;background:var(--tier-boost)"></div><div style="flex:1;background:var(--border-strong)"></div></div>
+      <p class="sub"><span style="color:var(--tier-boost-text);font-weight:500">$0 cash</span> &middot; $5,400 used &middot; $6,900 left</p>
     </div>
-    <div style="width:220px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span class="lbl">30-day cycle</span><span>6 days left</span></div>
-      <div class="track"><div style="width:80%;height:100%;background:var(--text-secondary)"></div></div>
-      <p style="font-size:11px;color:var(--text-muted);margin:6px 0 0;text-align:right">Clears on Nov 1 payday</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button style="padding:9px 0;font-size:12px">Add money</button><button style="padding:9px 0;font-size:12px">Send</button>
+      <button style="padding:9px 0;font-size:12px">Save</button><button style="padding:9px 0;font-size:12px">Pay</button>
     </div>
   </div>
-
-  <div class="task" style="margin-bottom:14px"><span>Activate your card to start spending</span><button>Activate</button></div>
-
-  <div class="grid2" style="margin-bottom:12px">
-    <div class="card accent">
+  <div class="card" style="padding:12px 16px;display:grid;grid-template-columns:auto 1fr auto;gap:20px;align-items:center;margin-bottom:12px">
+    <div><p class="sub" style="margin:0">30-day cycle</p><p style="font-size:14px;margin:2px 0 0">6 days to rebalance</p></div>
+    <div class="track" style="height:5px"><div style="width:80%;height:100%;background:var(--text-secondary)"></div></div>
+    <div style="text-align:right"><p style="font-size:12px;color:var(--text-success);margin:0">Clears automatically</p><p style="font-size:12px;color:var(--text-muted);margin:2px 0 0">Nov 1 payday &middot; ~$2,000</p></div>
+  </div>
+  <div class="task" style="margin-bottom:16px"><span style="font-size:13px">Activate your card to start spending</span><button style="font-size:12px;padding:4px 12px">Activate</button></div>
+  <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:12px;align-items:start;margin-bottom:12px">
+    <div class="card accent" style="padding:15px 17px">
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><span class="lbl">Clear credit used</span><span class="val">$5,400 <span style="font-size:13px;font-weight:400;color:var(--text-secondary)">of $12,300</span></span></div>
       <div class="bar" style="margin-bottom:10px">
-        <div style="width:24.4%;background:var(--tier-savings)"></div>
-        <div style="width:19.5%;background:var(--tier-asset)"></div>
-        <div style="width:48%;background:var(--vest-vesting)"></div>
-        <div style="width:8.1%;background:#FAC775"></div>
-      </div>
-      <div class="legend">
-        <div><span><span style="color:var(--tier-savings)">&#9679;</span> Savings (CLRUSD) · free</span><span>$3,000 of $3,000</span></div>
-        <div><span><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed · 0.65–0.75%</span><span>$2,400 of $8,300</span></div>
-        <div><span><span style="color:var(--tier-income-text)">&#9679;</span> Income-backed · 1.5% / cycle</span><span>$0 of $1,000</span></div>
-        <div class="dim"><span><span style="color:var(--tier-boost-text)">&#9679;</span> Boost · 3% / cycle</span><span>not added</span></div>
-      </div>
-      <div class="hr" style="display:flex;justify-content:space-between;align-items:baseline"><span class="sub">Carry cost so far</span><span style="font-size:13px;font-weight:500">$10.40</span></div>
-      <p style="font-size:11px;color:var(--text-muted);margin:7px 0 0">Drops to $0 when you get back under $3,000</p>
-      <div style="display:flex;gap:8px;margin-top:10px"><button style="flex:1">Add Clear Boost</button><button style="flex:1">Limit breakdown</button></div>
+      <div style="width:24.4%;background:var(--tier-savings)"></div><div style="width:19.5%;background:var(--tier-asset)"></div>
+      <div style="width:48%;background:var(--vest-vesting)"></div><div style="width:8.1%;background:#FAC775"></div></div>
+    <div class="legend" style="font-size:12px">
+      <div><span><span style="color:var(--tier-savings)">&#9679;</span> Savings (CLRUSD) &middot; free</span><span>$3,000 of $3,000</span></div>
+      <div><span><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed &middot; 0.65&ndash;0.75%</span><span>$2,400 of $8,300</span></div>
+      <div><span><span style="color:var(--tier-income-text)">&#9679;</span> Income-backed &middot; 1.5% / cycle</span><span>$0 of $1,000</span></div>
+      <div class="dim"><span><span style="color:var(--tier-boost-text)">&#9679;</span> Boost &middot; 3% / cycle</span><span>not added</span></div>
     </div>
-
+      <div class="hr" style="display:flex;justify-content:space-between;align-items:baseline"><span class="sub">Carry cost so far</span><span style="font-size:13px;font-weight:500">$10.40</span></div>
+      <p style="font-size:11px;color:var(--text-muted);margin:6px 0 0">Drops to $0 when you get back under $3,000</p>
+      <div style="display:flex;gap:8px;margin-top:11px"><button style="flex:1;font-size:11px">Add Clear Boost</button><button style="flex:1;font-size:11px">Limit breakdown</button></div>
+    </div>
     <div class="stack">
-      <div class="card">
+      <div class="card" style="padding:15px 17px">
         <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="lbl">Cash account</span><span class="val">$0</span></div>
-        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 9px">Next deposit Nov 1 · ~$2,000 est.</p>
-        <div style="border-top:0.5px solid var(--border);padding-top:9px;display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:11px;color:var(--text-success)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg> Direct deposit active</span><button>Account details</button>
-        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin:4px 0 9px">Next deposit Nov 1 &middot; ~$2,000 est.</p>
+        <div style="border-top:0.5px solid var(--border);padding-top:9px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;color:var(--text-success)">Direct deposit active</span><button style="font-size:11px;padding:4px 10px">Details</button></div>
       </div>
-      <div class="card" style="flex:1">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><span class="lbl">Savings <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><span class="val">$6,000</span></div>
-        <div class="bar" style="margin-bottom:10px">
-          <div style="width:50%;background:var(--vest-cash)"></div>
-          <div style="width:25%;background:var(--vest-vested)"></div>
-          <div style="width:25%;background:var(--vest-vesting)"></div>
-        </div>
-        <div class="legend">
-          <div><span><span style="color:var(--vest-cash)">&#9679;</span> Cash (CLRUSD)</span><span>$3,000</span></div>
-          <div><span><span style="color:var(--vest-vested)">&#9679;</span> Vested <span style="color:var(--vest-vesting)">&#9679;</span> Vesting</span><span>$1,500 · $1,500</span></div>
-        </div>
-        <div class="hr" style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px">1,500 of 15,000 credits</span><button>Add</button></div>
-      </div>
+      <div class="card" style="padding:15px 17px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><span class="lbl">Savings</span><span class="val">$6,000</span></div>
+    <div class="bar" style="margin-bottom:9px"><div style="width:50%;background:var(--vest-cash)"></div><div style="width:25%;background:var(--vest-vested)"></div><div style="width:25%;background:var(--vest-vesting)"></div></div>
+    <div class="legend" style="font-size:12px">
+      <div><span><span style="color:var(--vest-cash)">&#9679;</span> Cash (CLRUSD)</span><span>$3,000</span></div>
+      <div><span><span style="color:var(--vest-vested)">&#9679;</span> Vested &nbsp; <span style="color:var(--vest-vesting)">&#9679;</span> Vesting</span><span>$1,500 &middot; $1,500</span></div>
+    </div>
+    <div class="hr">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span>1,500 of 15,000 credits</span><span style="color:var(--text-muted)">On track for Feb 2028</span></div>
+      <div class="track"><div style="width:10%;height:100%;background:var(--tier-savings)"></div></div>
+    </div></div>
     </div>
   </div>
-
-  <div class="card">
+  <div class="card" style="padding:15px 17px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><span class="lbl">Recent activity</span><span style="font-size:12px;color:var(--text-accent)">See all</span></div>
-    <div class="txn"><div><p class="m">Shell</p><p class="s">Oct 26 · credit</p></div><span>−$52.10</span></div>
-    <div class="txn"><div><p class="m">Stater Bros</p><p class="s">Oct 25 · credit</p></div><span>−$118.44</span></div>
-    <div class="txn"><div><p class="m">Payroll deposit</p><p class="s">Oct 25 · cash account</p></div><span class="pos">+$2,000.00</span></div>
+    <div style="font-size:13px">
+      <div style="display:grid;grid-template-columns:1fr 130px 100px;padding:10px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Shell</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed</span><span style="text-align:right">&minus;$52.10</span></div>
+      <div style="display:grid;grid-template-columns:1fr 130px 100px;padding:10px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Stater Bros</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed</span><span style="text-align:right">&minus;$118.44</span></div>
+      <div style="display:grid;grid-template-columns:1fr 130px 100px;padding:10px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Payroll deposit</span><span style="color:var(--text-muted);font-size:12px">Cash account</span><span style="text-align:right;color:var(--text-success)">+$2,000.00</span></div>
+      <div style="display:grid;grid-template-columns:1fr 130px 100px;padding:10px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Equity credits vested</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--vest-vested)">&#9679;</span> Savings</span><span style="text-align:right;color:var(--text-success)">+$500.00</span></div>
+      <div style="display:grid;grid-template-columns:1fr 130px 100px;padding:10px 0;align-items:center"><span>Verizon</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed</span><span style="text-align:right">&minus;$85.00</span></div>
+    </div>
   </div>
 </div>
 
-<!-- ===================== HOME — MOBILE (both states) ===================== -->
 <h2>Home — mobile — day one &amp; in use</h2>
 <div class="row">
 
@@ -466,7 +468,10 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
     <div><p class="sub" style="margin-bottom:4px">Savings balance</p>
     <p style="font-size:38px;font-weight:500;letter-spacing:-.8px;margin:0 0 12px">$6,000</p>
     <div class="bar" style="margin-bottom:9px"><div style="width:50%;background:var(--vest-cash)"></div><div style="width:25%;background:var(--vest-vested)"></div><div style="width:25%;background:var(--vest-vesting)"></div></div>
-    <div class="legend" style="font-size:12px"><div><span><span style="color:var(--vest-cash)">&#9679;</span> Cash (CLRUSD) &nbsp; <span style="color:var(--vest-vested)">&#9679;</span> Vested &nbsp; <span style="color:var(--vest-vesting)">&#9679;</span> Vesting</span><span>$3,000 &middot; $1,500 &middot; $1,500</span></div></div></div>
+    <div class="legend" style="font-size:12px">
+      <div><span><span style="color:var(--vest-cash)">&#9679;</span> Cash (CLRUSD)</span><span>$3,000</span></div>
+      <div><span><span style="color:var(--vest-vested)">&#9679;</span> Vested &nbsp; <span style="color:var(--vest-vesting)">&#9679;</span> Vesting</span><span>$1,500 &middot; $1,500</span></div>
+    </div></div>
     <div style="display:flex;gap:8px"><button style="flex:1">Add money</button><button style="flex:1">Auto-save</button></div>
   </div>
 
@@ -517,7 +522,10 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
   <p class="sub" style="margin-bottom:4px">Savings balance</p>
     <p style="font-size:32px;font-weight:500;letter-spacing:-.8px;margin:0 0 12px">$6,000</p>
     <div class="bar" style="margin-bottom:9px"><div style="width:50%;background:var(--vest-cash)"></div><div style="width:25%;background:var(--vest-vested)"></div><div style="width:25%;background:var(--vest-vesting)"></div></div>
-    <div class="legend" style="font-size:12px"><div><span><span style="color:var(--vest-cash)">&#9679;</span> Cash (CLRUSD) &nbsp; <span style="color:var(--vest-vested)">&#9679;</span> Vested &nbsp; <span style="color:var(--vest-vesting)">&#9679;</span> Vesting</span><span>$3,000 &middot; $1,500 &middot; $1,500</span></div></div>
+    <div class="legend" style="font-size:12px">
+      <div><span><span style="color:var(--vest-cash)">&#9679;</span> Cash (CLRUSD)</span><span>$3,000</span></div>
+      <div><span><span style="color:var(--vest-vested)">&#9679;</span> Vested &nbsp; <span style="color:var(--vest-vesting)">&#9679;</span> Vesting</span><span>$1,500 &middot; $1,500</span></div>
+    </div>
   <div style="display:flex;gap:8px;margin:14px 0"><button style="flex:1;font-size:12px;padding:6px 0">Add money</button><button style="flex:1;font-size:12px;padding:6px 0">Auto-save</button></div>
 
   <div class="card" style="padding:12px 14px;margin-bottom:11px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px">
@@ -598,133 +606,359 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 
 <h2>Earn — desktop</h2>
 <div class="desktop">
-  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span class="on">Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav></div>
-  <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:18px">
-    <div><p class="sub" style="margin-bottom:4px">Earning</p><p class="big">$9,225</p><p class="sub">$2,500 in the pool &nbsp;+&nbsp; $6,725 in bonds</p></div>
-    <div style="text-align:right"><p class="sub" style="margin-bottom:3px">Earned to date</p><p style="font-size:20px;font-weight:500;color:var(--text-success);margin:0">+$412.60</p></div>
+  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span style="color:var(--text-primary)">Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav></div>
+
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:end;margin-bottom:20px">
+    <div><p class="sub" style="margin-bottom:4px">Earning</p>
+    <p style="font-size:38px;font-weight:500;letter-spacing:-.8px;margin:0 0 10px">$9,225</p>
+    <div class="bar" style="margin-bottom:9px"><div style="width:27%;background:var(--tier-boost)"></div><div style="width:73%;background:var(--tier-savings)"></div></div>
+    <div class="legend" style="font-size:12px"><div><span><span style="color:var(--tier-boost-text)">&#9679;</span> Yield pool &nbsp; <span style="color:var(--tier-savings)">&#9679;</span> BurnerBonds</span><span>$2,500 &middot; $6,725</span></div></div></div>
+    <div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card" style="padding:12px 14px">
+        <p class="lbl" style="font-size:12px;margin:0 0 3px">Earned to date</p>
+        <p style="font-size:20px;font-weight:500;color:var(--text-success);margin:0">+$412.60</p>
+      </div>
+      <div class="card" style="padding:12px 14px">
+        <p class="lbl" style="font-size:12px;margin:0 0 3px">Backs your credit limit</p>
+        <p style="font-size:20px;font-weight:500;margin:0">$8,300</p>
+      </div>
+    </div></div>
   </div>
-  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:12px">
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px"><span class="lbl">Yield pool</span><span style="font-size:11px;color:var(--text-muted)">Withdraw anytime</span></div>
-      <p style="font-size:28px;font-weight:500;margin:0 0 2px">6.8%<span style="font-size:14px;font-weight:400;color:var(--text-secondary)"> APY</span></p>
-      <p style="font-size:11px;color:var(--text-muted);margin:0 0 14px">Variable · rises with lending demand</p>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:5px"><span>Utilization</span><span>74%</span></div>
-      <div class="track"><div style="width:74%;height:100%;background:var(--tier-boost)"></div></div>
-      <p style="font-size:11px;color:var(--text-muted);margin:6px 0 14px">$740k of $1.0M lent to members</p>
-      <div style="border-top:0.5px solid var(--border);padding-top:11px;font-size:12px;line-height:2;margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Your position</span><span>$2,500.00</span></div>
-        <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Earned</span><span class="pos">+$41.20</span></div>
-      </div>
-      <div style="display:flex;gap:8px"><button style="flex:1">Deposit</button><button style="flex:1">Withdraw</button></div>
+
+  <div style="background:var(--bg-accent);border-radius:var(--radius);padding:11px 15px;margin-bottom:16px">
+    <p style="font-size:12px;color:var(--text-accent);margin:0;line-height:1.6">Locking money up doesn't cost you access to it. Both products back your Clear Credit line &mdash; borrow against them for under 1% a cycle instead of cashing out.</p>
+  </div>
+
+  <p class="lbl" style="margin:0 0 10px">Your positions</p>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start;margin-bottom:20px">
+    <div class="card" style="padding:15px 17px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><span class="lbl">Yield pool</span><span style="font-size:11px;color:var(--text-muted)">Withdraw anytime</span></div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:11px"><span style="font-size:26px;font-weight:500">6.8%</span><span style="font-size:12px;color:var(--text-secondary)">APY &middot; variable</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:5px"><span>Utilization</span><span>74% &middot; $740k of $1.0M lent</span></div>
+    <div class="track" style="margin-bottom:11px"><div style="width:74%;height:100%;background:var(--tier-boost)"></div></div>
+    <div style="border-top:0.5px solid var(--border);padding-top:10px;font-size:12px;line-height:1.95;margin-bottom:11px">
+      <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Your position</span><span>$2,500.00</span></div>
+      <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Earned</span><span class="pos">+$41.20</span></div>
+      <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Backs limit at 70%</span><span>$1,750</span></div>
     </div>
-    <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px"><span class="lbl">BurnerBonds</span><span style="font-size:11px;color:var(--text-muted)">Fixed term · locked to maturity</span></div>
+    <div style="display:flex;gap:8px"><button style="flex:1;font-size:12px">Deposit</button><button style="flex:1;font-size:12px">Withdraw</button></div></div>
+    <div class="card" style="padding:15px 17px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><span class="lbl">BurnerBonds</span><span style="font-size:11px;color:var(--text-muted)">Backs limit at 95%</span></div>
       <div style="font-size:12px">
-        <div style="display:grid;grid-template-columns:62px 1fr 62px;padding:9px 0;border-bottom:0.5px solid var(--border)"><span>12 mo</span><span style="color:var(--text-muted)">Pay $939 → get $1,000</span><span style="text-align:right">6.5%</span></div>
-        <div style="display:grid;grid-template-columns:62px 1fr 62px;padding:9px 0;border-bottom:0.5px solid var(--border)"><span>24 mo</span><span style="color:var(--text-muted)">Pay $865 → get $1,000</span><span style="text-align:right">7.5%</span></div>
-        <div style="display:grid;grid-template-columns:62px 1fr 62px;padding:9px 0;border-bottom:0.5px solid var(--border)"><span>36 mo</span><span style="color:var(--text-muted)">Pay $783 → get $1,000</span><span style="text-align:right">8.5%</span></div>
-        <div style="display:grid;grid-template-columns:62px 1fr 62px;padding:9px 0"><span>60 mo</span><span style="color:var(--text-muted)">Pay $621 → get $1,000</span><span style="text-align:right">10.0%</span></div>
+      <div style="padding:11px 0;border-bottom:0.5px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px"><span style="font-size:13px">$5,000 at maturity</span><span style="color:var(--text-muted)">Mar 2028</span></div>
+        <div class="track" style="height:5px;margin-bottom:6px"><div style="width:21%;height:100%;background:var(--tier-savings)"></div></div>
+        <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>Paid $4,325 &middot; worth <span style="color:var(--text-primary)">$4,459</span> today</span><span>19 mo left</span></div>
       </div>
-      <button style="width:100%;margin-top:12px">Buy a bond</button>
-      <p class="lbl" style="margin:16px 0 7px;padding-top:13px;border-top:0.5px solid var(--border)">Your bonds</p>
-      <div style="font-size:12px">
-        <div class="txn"><div><p class="m">$5,000 face · 24 mo</p><p class="s">Paid $4,325 · matures Mar 14, 2028</p></div><span style="font-size:11px;color:var(--text-muted)">19 mo left</span></div>
-        <div class="txn"><div><p class="m">$2,500 face · 12 mo</p><p class="s">Paid $2,400 · matures Jan 8, 2027</p></div><span style="font-size:11px;color:var(--text-muted)">5 mo left</span></div>
+      <div style="padding:11px 0">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px"><span style="font-size:13px">$2,500 at maturity</span><span style="color:var(--text-muted)">Jan 2027</span></div>
+        <div class="track" style="height:5px;margin-bottom:6px"><div style="width:58%;height:100%;background:var(--tier-savings)"></div></div>
+        <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>Paid $2,400 &middot; worth <span style="color:var(--text-primary)">$2,436</span> today</span><span>5 mo left</span></div>
       </div>
+    </div>
+    </div>
+  </div>
+
+  <p class="lbl" style="margin:0 0 10px">Buy a bond</p>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:12px;align-items:start">
+    <div class="card" style="padding:15px 17px"><div style="display:grid;grid-template-columns:52px 1fr 46px;gap:10px;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border);">
+        <span style="font-size:12px">12 mo</span>
+        <div><div class="track" style="height:6px;margin-bottom:4px"><div style="width:65%;height:100%;background:var(--tier-savings)"></div></div>
+        <span style="font-size:11px;color:var(--text-muted)">Pay $939 &rarr; get $1,000</span></div>
+        <span style="font-size:13px;text-align:right">6.5%</span></div><div style="display:grid;grid-template-columns:52px 1fr 46px;gap:10px;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border);">
+        <span style="font-size:12px">24 mo</span>
+        <div><div class="track" style="height:6px;margin-bottom:4px"><div style="width:75%;height:100%;background:var(--tier-savings)"></div></div>
+        <span style="font-size:11px;color:var(--text-muted)">Pay $865 &rarr; get $1,000</span></div>
+        <span style="font-size:13px;text-align:right">7.5%</span></div><div style="display:grid;grid-template-columns:52px 1fr 46px;gap:10px;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border);">
+        <span style="font-size:12px">36 mo</span>
+        <div><div class="track" style="height:6px;margin-bottom:4px"><div style="width:85%;height:100%;background:var(--tier-savings)"></div></div>
+        <span style="font-size:11px;color:var(--text-muted)">Pay $783 &rarr; get $1,000</span></div>
+        <span style="font-size:13px;text-align:right">8.5%</span></div><div style="display:grid;grid-template-columns:52px 1fr 46px;gap:10px;align-items:center;padding:10px 0;">
+        <span style="font-size:12px">60 mo</span>
+        <div><div class="track" style="height:6px;margin-bottom:4px"><div style="width:100%;height:100%;background:var(--tier-savings)"></div></div>
+        <span style="font-size:11px;color:var(--text-muted)">Pay $621 &rarr; get $1,000</span></div>
+        <span style="font-size:13px;text-align:right">10.0%</span></div></div>
+    <div class="card" style="padding:15px 17px">
+      <p class="lbl" style="font-size:12px;margin:0 0 8px">Longer terms pay more</p>
+      <p style="font-size:11px;color:var(--text-muted);margin:0 0 12px;line-height:1.7">A 60-month bond nearly doubles your money. It's locked &mdash; but it still backs 95% of its value as credit, so you're not giving up access.</p>
+      <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)">Buy a bond</button>
     </div>
   </div>
 </div>
 
-<!-- ===================== ACTIVITY + SEND + CARD ===================== -->
 <h2>Earn — mobile</h2>
 <div class="row"><div class="phone">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Earn</span></div>
   <p class="sub" style="margin-bottom:4px">Earning</p>
-  <p class="big-m">$9,225</p>
-  <p class="sub" style="margin-bottom:1rem">$2,500 pool + $6,725 bonds &middot; <span class="pos">+$412.60</span></p>
-  <div class="card" style="padding:11px 13px;margin-bottom:11px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="lbl" style="font-size:12px">Yield pool</span><span style="font-size:11px;color:var(--text-muted)">Withdraw anytime</span></div>
-    <p style="font-size:26px;font-weight:500;margin:4px 0 2px">6.8%<span style="font-size:13px;font-weight:400;color:var(--text-secondary)"> APY</span></p>
-    <p style="font-size:11px;color:var(--text-muted);margin:0 0 11px">Variable &middot; rises with lending demand</p>
-    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:5px"><span>Utilization</span><span>74%</span></div>
+    <p style="font-size:32px;font-weight:500;letter-spacing:-.8px;margin:0 0 10px">$9,225</p>
+    <div class="bar" style="margin-bottom:9px"><div style="width:27%;background:var(--tier-boost)"></div><div style="width:73%;background:var(--tier-savings)"></div></div>
+    <div class="legend" style="font-size:12px"><div><span><span style="color:var(--tier-boost-text)">&#9679;</span> Yield pool &nbsp; <span style="color:var(--tier-savings)">&#9679;</span> BurnerBonds</span><span>$2,500 &middot; $6,725</span></div></div>
+  <div style="margin:14px 0 11px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card" style="padding:12px 14px">
+        <p class="lbl" style="font-size:12px;margin:0 0 3px">Earned to date</p>
+        <p style="font-size:20px;font-weight:500;color:var(--text-success);margin:0">+$412.60</p>
+      </div>
+      <div class="card" style="padding:12px 14px">
+        <p class="lbl" style="font-size:12px;margin:0 0 3px">Backs your credit limit</p>
+        <p style="font-size:20px;font-weight:500;margin:0">$8,300</p>
+      </div>
+    </div></div>
+
+  <div style="background:var(--bg-accent);border-radius:var(--radius);padding:10px 13px;margin-bottom:14px">
+    <p style="font-size:11px;color:var(--text-accent);margin:0;line-height:1.6">Both products back your Clear Credit line &mdash; borrow against them for under 1% a cycle instead of cashing out.</p>
+  </div>
+
+  <p class="lbl" style="font-size:12px;margin:0 0 8px">Your positions</p>
+  <div class="card" style="padding:12px 14px;margin-bottom:11px"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><span class="lbl">Yield pool</span><span style="font-size:11px;color:var(--text-muted)">Withdraw anytime</span></div>
+    <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:11px"><span style="font-size:26px;font-weight:500">6.8%</span><span style="font-size:12px;color:var(--text-secondary)">APY &middot; variable</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-bottom:5px"><span>Utilization</span><span>74% &middot; $740k of $1.0M lent</span></div>
     <div class="track" style="margin-bottom:11px"><div style="width:74%;height:100%;background:var(--tier-boost)"></div></div>
-    <div style="border-top:0.5px solid var(--border);padding-top:9px;font-size:12px;line-height:1.95;margin-bottom:10px">
+    <div style="border-top:0.5px solid var(--border);padding-top:10px;font-size:12px;line-height:1.95;margin-bottom:11px">
       <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Your position</span><span>$2,500.00</span></div>
       <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Earned</span><span class="pos">+$41.20</span></div>
+      <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Backs limit at 70%</span><span>$1,750</span></div>
     </div>
-    <div style="display:flex;gap:8px"><button style="flex:1;font-size:12px;padding:5px 0">Deposit</button><button style="flex:1;font-size:12px;padding:5px 0">Withdraw</button></div>
-  </div>
-  <div class="card" style="padding:11px 13px;margin-bottom:11px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><span class="lbl" style="font-size:12px">BurnerBonds</span><span style="font-size:11px;color:var(--text-muted)">Locked to maturity</span></div>
+    <div style="display:flex;gap:8px"><button style="flex:1;font-size:12px">Deposit</button><button style="flex:1;font-size:12px">Withdraw</button></div></div>
+  <div class="card" style="padding:12px 14px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px"><span class="lbl" style="font-size:12px">BurnerBonds</span><span style="font-size:11px;color:var(--text-muted)">Backs limit at 95%</span></div>
     <div style="font-size:12px">
-      <div class="txn"><div><p class="m">12 months</p><p class="s">$939 &rarr; $1,000</p></div><span>6.5%</span></div>
-      <div class="txn"><div><p class="m">24 months</p><p class="s">$865 &rarr; $1,000</p></div><span>7.5%</span></div>
-      <div class="txn"><div><p class="m">36 months</p><p class="s">$783 &rarr; $1,000</p></div><span>8.5%</span></div>
-      <div class="txn"><div><p class="m">60 months</p><p class="s">$621 &rarr; $1,000</p></div><span>10.0%</span></div>
-    </div>
-    <button style="width:100%;font-size:12px;padding:5px 0;margin-top:11px">Buy a bond</button>
-  </div>
-  <div class="card" style="padding:11px 13px">
-    <p class="lbl" style="font-size:12px;margin:0 0 7px">Your bonds</p>
-    <div style="font-size:12px">
-      <div class="txn"><div><p class="m">$5,000 face &middot; 24 mo</p><p class="s">Matures Mar 14, 2028</p></div><span style="font-size:11px;color:var(--text-muted)">19 mo</span></div>
-      <div class="txn"><div><p class="m">$2,500 face &middot; 12 mo</p><p class="s">Matures Jan 8, 2027</p></div><span style="font-size:11px;color:var(--text-muted)">5 mo</span></div>
+      <div style="padding:11px 0;border-bottom:0.5px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px"><span style="font-size:13px">$5,000 at maturity</span><span style="color:var(--text-muted)">Mar 2028</span></div>
+        <div class="track" style="height:5px;margin-bottom:6px"><div style="width:21%;height:100%;background:var(--tier-savings)"></div></div>
+        <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>Paid $4,325 &middot; worth <span style="color:var(--text-primary)">$4,459</span> today</span><span>19 mo left</span></div>
+      </div>
+      <div style="padding:11px 0">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px"><span style="font-size:13px">$2,500 at maturity</span><span style="color:var(--text-muted)">Jan 2027</span></div>
+        <div class="track" style="height:5px;margin-bottom:6px"><div style="width:58%;height:100%;background:var(--tier-savings)"></div></div>
+        <div style="display:flex;justify-content:space-between;color:var(--text-muted)"><span>Paid $2,400 &middot; worth <span style="color:var(--text-primary)">$2,436</span> today</span><span>5 mo left</span></div>
+      </div>
     </div>
   </div>
-  <div class="fabnav"><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span>Home</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M12 2v20"/><path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Savings</a><a href="#" class="on"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m4 16 5-6 4 4 7-8"/><path d="M15 6h5v5"/></svg></span>Earn</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/></svg></span>Send</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>Card</a></div>
+
+  <p class="lbl" style="font-size:12px;margin:0 0 8px">Buy a bond</p>
+  <div class="card" style="padding:12px 14px">
+    <div style="display:grid;grid-template-columns:52px 1fr 46px;gap:10px;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border);">
+        <span style="font-size:12px">12 mo</span>
+        <div><div class="track" style="height:6px;margin-bottom:4px"><div style="width:65%;height:100%;background:var(--tier-savings)"></div></div>
+        <span style="font-size:11px;color:var(--text-muted)">Pay $939 &rarr; get $1,000</span></div>
+        <span style="font-size:13px;text-align:right">6.5%</span></div><div style="display:grid;grid-template-columns:52px 1fr 46px;gap:10px;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border);">
+        <span style="font-size:12px">24 mo</span>
+        <div><div class="track" style="height:6px;margin-bottom:4px"><div style="width:75%;height:100%;background:var(--tier-savings)"></div></div>
+        <span style="font-size:11px;color:var(--text-muted)">Pay $865 &rarr; get $1,000</span></div>
+        <span style="font-size:13px;text-align:right">7.5%</span></div><div style="display:grid;grid-template-columns:52px 1fr 46px;gap:10px;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border);">
+        <span style="font-size:12px">36 mo</span>
+        <div><div class="track" style="height:6px;margin-bottom:4px"><div style="width:85%;height:100%;background:var(--tier-savings)"></div></div>
+        <span style="font-size:11px;color:var(--text-muted)">Pay $783 &rarr; get $1,000</span></div>
+        <span style="font-size:13px;text-align:right">8.5%</span></div><div style="display:grid;grid-template-columns:52px 1fr 46px;gap:10px;align-items:center;padding:10px 0;">
+        <span style="font-size:12px">60 mo</span>
+        <div><div class="track" style="height:6px;margin-bottom:4px"><div style="width:100%;height:100%;background:var(--tier-savings)"></div></div>
+        <span style="font-size:11px;color:var(--text-muted)">Pay $621 &rarr; get $1,000</span></div>
+        <span style="font-size:13px;text-align:right">10.0%</span></div>
+    <button style="width:100%;font-size:12px;margin-top:12px;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)">Buy a bond</button>
+  </div>
+
+  <div class="fabnav">
+    <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span>Home</a>
+    <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M12 2v20"/><path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Savings</a>
+    <a href="#" class="on"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m4 16 5-6 4 4 7-8"/><path d="M15 6h5v5"/></svg></span>Earn</a>
+    <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/></svg></span>Send</a>
+    <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>Card</a>
+  </div>
 </div></div>
 
 <h2>Send — desktop</h2>
 <div class="desktop">
-  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span>Earn</span><span class="on">Send</span><span>Activity</span><span>Card</span></nav></div>
-  <div class="grid2">
-    <div class="card">
-      <p class="lbl" style="margin:0 0 12px">Send money</p>
-      <input style="width:100%;margin-bottom:14px;color:var(--text-muted)" value="Search name, phone or @handle">
-      <p class="lbl" style="font-size:12px;margin:0 0 9px">Recent</p>
-      <div style="font-size:13px">
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-accent)">DR</div><div><p class="m">Diego R.</p><p class="s">Member</p></div></div>
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success)">TB</div><div><p class="m">TinyBox Systems</p><p class="s">Clear Partner</p></div></div>
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary)">MC</div><div><p class="m">Maria C.</p><p class="s">Member</p></div></div>
+  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span>Earn</span><span style="color:var(--text-primary)">Send</span><span>Activity</span><span>Card</span></nav></div>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:24px;align-items:start">
+    <div>
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <input style="flex:1;font-size:13px;color:var(--text-muted)" value="Name, phone, or @handle">
+        <button style="font-size:12px">Request</button>
       </div>
+      <div class="task" style="margin-bottom:18px">
+        <div><p style="font-size:13px;margin:0">$40 waiting for Marcus T. to claim</p><p style="font-size:11px;margin:2px 0 0;opacity:.8">Not a member yet &middot; expires in 12 days</p></div>
+        <button style="font-size:11px;padding:4px 11px">Remind</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+        <span class="lbl" style="font-size:12px">Contacts</span><span style="font-size:12px;color:var(--text-accent)">Manage</span>
+      </div>
+      <div style="margin-bottom:20px"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-accent);flex-shrink:0">DR</div><div style="min-width:0"><p class="m">Diego R.</p><p class="s">@diegor</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">MC</div><div style="min-width:0"><p class="m">Maria C.</p><p class="s">@mariac</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">MT</div><div style="min-width:0"><p class="m">Marcus T.</p><p class="s">(909) 555-0177</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">AL</div><div style="min-width:0"><p class="m">Ana L.</p><p class="s">@anal</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+        <span class="lbl" style="font-size:12px">Clear Partners near you</span><span style="font-size:12px;color:var(--text-accent)">See all 14</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">TB</div><div style="min-width:0"><p class="m">TinyBox Systems</p><p class="s">Modular homes &middot; Redlands</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">VE</div><div style="min-width:0"><p class="m">Vega Electric</p><p class="s">Trades &middot; Redlands</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">RC</div><div style="min-width:0"><p class="m">Rincon Coffee</p><p class="s">Food &amp; drink &middot; Riverside</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">HS</div><div style="min-width:0"><p class="m">Highland Supply</p><p class="s">Materials &middot; Highland</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div>
     </div>
     <div class="stack">
-      <div class="card" style="text-align:center">
-        <div style="width:110px;height:110px;margin:0 auto 12px;background:var(--surface-0);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary)"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM21 14v3M14 21h7"/></svg></div>
-        <p style="font-size:13px;margin:0 0 3px">Your Clear code</p>
-        <p style="font-size:12px;color:var(--text-muted);margin:0">Show this to get paid &middot; @kaim</p>
+      <div class="card" style="padding:16px;text-align:center">
+        <div style="width:120px;height:120px;margin:0 auto 12px;background:var(--surface-0);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary)"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM21 14v3M14 21h7"/></svg></div>
+        <p style="font-size:13px;margin:0 0 3px">Your Clear code</p><p style="font-size:12px;color:var(--text-muted);margin:0">@kaim</p>
       </div>
-      <div class="card" style="flex:1">
-        <button style="width:100%;margin-bottom:9px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M3 12h18"/></svg> Scan to pay</button>
-        <button style="width:100%">Request money</button>
-        <p style="font-size:11px;color:var(--text-muted);margin:12px 0 0;line-height:1.6">Sending to members and Clear Partners is free and instant.</p>
+      <button style="width:100%;font-size:12px">Scan to pay</button>
+      <div class="card" style="padding:14px 16px">
+        <p class="lbl" style="margin:0 0 6px">Kept in the network</p>
+        <p style="font-size:22px;font-weight:500;margin:0 0 2px">$215</p>
+        <p style="font-size:11px;color:var(--text-muted);margin:0;line-height:1.6">sent to members and partners this cycle. No fees, instant.</p>
       </div>
     </div>
   </div>
+</div>
+
+<h2>Clear Partners — desktop</h2>
+<div class="desktop">
+  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span>Earn</span><span style="color:var(--text-primary)">Send</span><span>Activity</span><span>Card</span></nav></div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><span style="color:var(--text-secondary)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></span><span style="font-size:20px;font-weight:500">Clear Partners</span></div>
+  <p class="sub" style="margin-bottom:16px">14 businesses in the Inland Empire accept Clear Pay. Paying them keeps money inside the co-op.</p>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:24px;align-items:start">
+    <div>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <input style="flex:1;font-size:13px;color:var(--text-muted)" value="Search partners">
+        <button style="font-size:12px;border-color:var(--border-accent);color:var(--text-accent)">All</button>
+        <button style="font-size:12px">Trades</button>
+        <button style="font-size:12px">Food</button>
+        <button style="font-size:12px">Materials</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">TB</div><div style="min-width:0"><p class="m">TinyBox Systems</p><p class="s">Modular homes &middot; Redlands</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">VE</div><div style="min-width:0"><p class="m">Vega Electric</p><p class="s">Trades &middot; Redlands</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">RC</div><div style="min-width:0"><p class="m">Rincon Coffee</p><p class="s">Food &amp; drink &middot; Riverside</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">HS</div><div style="min-width:0"><p class="m">Highland Supply</p><p class="s">Materials &middot; Highland</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">OM</div><div style="min-width:0"><p class="m">Orange St Market</p><p class="s">Groceries &middot; Redlands</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">CP</div><div style="min-width:0"><p class="m">Cortez Plumbing</p><p class="s">Trades &middot; San Bernardino</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div>
+    </div>
+    <div class="stack">
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="height:150px;background:var(--surface-0);display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:12px">Map view</div>
+        <div style="padding:12px 14px"><p style="font-size:12px;color:var(--text-muted);margin:0;line-height:1.6">Partners shown are within 20 miles of Redlands.</p></div>
+      </div>
+      <div class="card" style="padding:14px 16px">
+        <p class="lbl" style="margin:0 0 6px">Know a business?</p>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 11px;line-height:1.6">Members refer most partners. They get paid instantly with no processing fee.</p>
+        <button style="width:100%;font-size:12px">Refer a business</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>Contacts — desktop &amp; mobile</h2>
+<div class="desktop" style="margin-bottom:14px">
+  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span>Earn</span><span style="color:var(--text-primary)">Send</span><span>Activity</span><span>Card</span></nav></div>
+  <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px">
+    <div style="width:52px;height:52px;border-radius:50%;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-accent);flex-shrink:0">KM</div>
+    <div><p style="font-size:20px;font-weight:500;margin:0">Kai Moore</p><p class="sub" style="margin-top:3px">@kaim &middot; Member since March 2026</p></div>
+  </div>
+  <div style="display:grid;grid-template-columns:190px minmax(0,1fr);gap:24px">
+    <div style="font-size:13px">
+      <div style="padding:8px 11px;color:var(--text-secondary)">Account</div>
+      <div style="padding:8px 11px;color:var(--text-secondary)">Membership</div>
+      <div style="padding:8px 11px;border-radius:8px;background:var(--surface-0)">Contacts</div>
+      <div style="padding:8px 11px;color:var(--text-secondary)">Security</div>
+      <div style="padding:8px 11px;color:var(--text-secondary)">Notifications</div>
+      <div style="padding:8px 11px;color:var(--text-secondary)">Linked accounts</div>
+      <div style="padding:8px 11px;color:var(--text-secondary)">Appearance</div>
+      <div style="padding:8px 11px;color:var(--text-secondary)">Advanced</div>
+    </div>
+    <div><p style="font-size:16px;font-weight:500;margin:0 0 12px">Contacts</p><div class="card" style="padding:15px 17px">
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input style="flex:1;font-size:13px;color:var(--text-muted)" value="Search contacts">
+      <button style="font-size:12px">Add</button>
+    </div>
+    <p class="lbl" style="font-size:11px;margin:0 0 2px">Members</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-accent);flex-shrink:0">DR</div><div style="min-width:0"><p class="m">Diego R.</p><p class="s">@diegor</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">MC</div><div style="min-width:0"><p class="m">Maria C.</p><p class="s">@mariac</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div>
+    <p class="lbl" style="font-size:11px;margin:16px 0 2px">Not members yet</p>
+    <div style="font-size:13px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">MT</div><div><p class="m">Marcus T.</p><p class="s">(909) 555-0177</p></div></div>
+        <button style="padding:3px 10px;font-size:11px">Invite</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0">
+        <div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">JW</div><div><p class="m">Jenna W.</p><p class="s">jenna@example.com</p></div></div>
+        <button style="padding:3px 10px;font-size:11px">Invite</button>
+      </div>
+    </div>
+    <div style="background:var(--surface-0);border-radius:var(--radius);padding:11px 13px;margin-top:14px">
+      <p style="font-size:11px;color:var(--text-secondary);margin:0;line-height:1.6">Sending to someone who isn't a member creates a claim link. They join to collect it.</p>
+    </div>
+    <button style="width:100%;font-size:12px;margin-top:12px">Sync phone contacts</button></div></div>
+  </div>
+</div>
+<div class="row">
+  <div class="phone"><div style="display:flex;align-items:center;gap:10px;margin-bottom:1.1rem"><span style="color:var(--text-secondary)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></span><span style="font-size:15px;font-weight:500">Contacts</span></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input style="flex:1;font-size:13px;color:var(--text-muted)" value="Search contacts">
+      <button style="font-size:12px">Add</button>
+    </div>
+    <p class="lbl" style="font-size:11px;margin:0 0 2px">Members</p>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-accent);flex-shrink:0">DR</div><div style="min-width:0"><p class="m">Diego R.</p><p class="s">@diegor</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">MC</div><div style="min-width:0"><p class="m">Maria C.</p><p class="s">@mariac</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div>
+    <p class="lbl" style="font-size:11px;margin:16px 0 2px">Not members yet</p>
+    <div style="font-size:13px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">MT</div><div><p class="m">Marcus T.</p><p class="s">(909) 555-0177</p></div></div>
+        <button style="padding:3px 10px;font-size:11px">Invite</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0">
+        <div style="display:flex;align-items:center;gap:10px"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">JW</div><div><p class="m">Jenna W.</p><p class="s">jenna@example.com</p></div></div>
+        <button style="padding:3px 10px;font-size:11px">Invite</button>
+      </div>
+    </div>
+    <div style="background:var(--surface-0);border-radius:var(--radius);padding:11px 13px;margin-top:14px">
+      <p style="font-size:11px;color:var(--text-secondary);margin:0;line-height:1.6">Sending to someone who isn't a member creates a claim link. They join to collect it.</p>
+    </div>
+    <button style="width:100%;font-size:12px;margin-top:12px">Sync phone contacts</button></div>
+  <div style="width:340px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:1.1rem;box-shadow:0 8px 32px rgba(0,0,0,.12)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Add a contact</span><span style="color:var(--text-secondary);cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+  <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:5px">Name</label>
+  <input style="width:100%;margin-bottom:12px;font-size:13px" value="Marcus Tate">
+  <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:5px">Phone, email, or @handle</label>
+  <input style="width:100%;margin-bottom:14px;font-size:13px" value="(909) 555-0177">
+  <div class="card" style="padding:11px 13px;margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;font-size:12px"><span class="lbl" style="font-size:12px">Status</span><span style="color:var(--text-muted)">Not a member yet</span></div>
+    <p style="font-size:11px;color:var(--text-muted);margin:7px 0 0;line-height:1.6">You can still send them money &mdash; they'll get a link and have 14 days to claim it.</p>
+  </div>
+  <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)">Save contact</button>
+</div>
 </div>
 
 <h2>Activity — desktop</h2>
 <div class="desktop">
-  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span>Earn</span><span>Send</span><span class="on">Activity</span><span>Card</span></nav></div>
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-    <div style="display:flex;gap:7px"><button style="border-color:var(--border-accent);color:var(--text-accent)">All</button><button>Spending</button><button>Deposits</button><button>Savings</button><button>Sent</button></div>
-    <span style="font-size:12px" class="lbl">This cycle: <span style="color:var(--text-primary)">−$1,842</span></span>
-  </div>
-  <div class="task" style="margin-bottom:16px"><div><p style="margin:0">$40 waiting for Marcus T. to claim</p><p style="margin:2px 0 0;font-size:11px;opacity:.8">Sent Oct 26 · expires in 12 days</p></div><button>Remind</button></div>
-  <p style="font-size:11px;color:var(--text-muted);margin:0 0 3px">Today · Oct 26</p>
-  <div style="font-size:13px;margin-bottom:16px">
-    <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:10px 0;border-bottom:0.5px solid var(--border)"><span>Shell</span><span style="color:var(--text-muted);font-size:12px">Credit</span><span style="text-align:right">−$52.10</span></div>
-    <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:10px 0"><span>Sent to Marcus T.</span><span style="color:var(--text-muted);font-size:12px">Pending</span><span style="text-align:right">−$40.00</span></div>
-  </div>
-  <p style="font-size:11px;color:var(--text-muted);margin:0 0 3px">Oct 25</p>
-  <div style="font-size:13px">
-    <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:10px 0;border-bottom:0.5px solid var(--border)"><span>Payroll deposit</span><span style="color:var(--text-muted);font-size:12px">Cash account</span><span style="text-align:right" class="pos">+$2,000.00</span></div>
-    <div style="display:grid;grid-template-columns:1fr 110px 90px;padding:10px 0"><span>Equity credits vested</span><span style="color:var(--text-muted);font-size:12px">Savings</span><span style="text-align:right" class="pos">+$500.00</span></div>
+  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span>Earn</span><span>Send</span><span style="color:var(--text-primary)">Activity</span><span>Card</span></nav></div>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:24px;align-items:start">
+    <div>
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <input style="flex:1;font-size:13px;color:var(--text-muted)" value="Search merchant or amount">
+        <button style="font-size:12px">Filters</button><button style="font-size:12px">Export</button>
+      </div>
+      <div class="task" style="margin-bottom:16px">
+        <div><p style="font-size:13px;margin:0">$40 waiting for Marcus T. to claim</p><p style="font-size:11px;margin:2px 0 0;opacity:.8">Sent Oct 26 &middot; expires in 12 days</p></div>
+        <button style="font-size:11px;padding:4px 11px">Remind</button>
+      </div>
+      <p style="font-size:11px;color:var(--text-muted);margin:0 0 3px">Today &middot; Oct 26</p>
+      <div style="font-size:13px">
+      <div style="display:grid;grid-template-columns:1fr 130px 100px;padding:10px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Shell</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed</span><span style="text-align:right">&minus;$52.10</span></div>
+      <div style="display:grid;grid-template-columns:1fr 130px 100px;padding:10px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Stater Bros</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed</span><span style="text-align:right">&minus;$118.44</span></div>
+      <div style="display:grid;grid-template-columns:1fr 130px 100px;padding:10px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Payroll deposit</span><span style="color:var(--text-muted);font-size:12px">Cash account</span><span style="text-align:right;color:var(--text-success)">+$2,000.00</span></div>
+      <div style="display:grid;grid-template-columns:1fr 130px 100px;padding:10px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Equity credits vested</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--vest-vested)">&#9679;</span> Savings</span><span style="text-align:right;color:var(--text-success)">+$500.00</span></div>
+      <div style="display:grid;grid-template-columns:1fr 130px 100px;padding:10px 0;align-items:center"><span>Verizon</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed</span><span style="text-align:right">&minus;$85.00</span></div>
+    </div>
+    </div>
+    <div class="stack">
+      <div class="card" style="padding:14px 16px">
+        <p class="lbl" style="margin:0 0 10px">This cycle</p>
+        <p style="font-size:24px;font-weight:500;margin:0 0 2px">$1,842</p>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 12px">spent &middot; 6 days left</p>
+        <div class="legend" style="font-size:12px">
+          <div><span><span style="color:var(--tier-savings)">&#9679;</span> From cash</span><span>$1,242</span></div>
+          <div><span><span style="color:var(--tier-asset)">&#9679;</span> From credit</span><span>$600</span></div>
+        </div>
+        <div class="hr" style="display:flex;justify-content:space-between;font-size:12px"><span class="lbl" style="font-size:12px">Carry cost</span><span>$10.40</span></div>
+      </div>
+      <div class="card" style="padding:14px 16px">
+        <p class="lbl" style="margin:0 0 10px">Where it went</p>
+        <div class="legend" style="font-size:12px;line-height:2.1">
+          <div><span>Groceries</span><span>$412</span></div><div><span>Fuel</span><span>$188</span></div>
+          <div><span>Bills</span><span>$285</span></div><div><span>Everything else</span><span>$957</span></div>
+        </div>
+      </div>
+      <div class="card" style="padding:14px 16px">
+        <p class="lbl" style="margin:0 0 6px">Inside the co-op</p>
+        <p style="font-size:24px;font-weight:500;margin:0 0 2px">$35</p>
+        <p style="font-size:11px;color:var(--text-muted);margin:0;line-height:1.6">of $1,842 stayed with members and Clear Partners this cycle.</p>
+      </div>
+    </div>
   </div>
 </div>
-
-
-
 
 <h2>Activity — mobile</h2>
 <div class="row"><div class="phone">
@@ -755,69 +989,89 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 
 <h2>Card — desktop</h2>
 <div class="desktop">
-  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span class="on">Card</span></nav></div>
-  <div style="display:grid;grid-template-columns:250px minmax(0,1fr);gap:24px">
-    <div>
-      <div class="cardface" style="height:158px;margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center"><span class="wm">Clear</span><span style="color:#888780"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="transform:rotate(90deg)"><path d="M12 20h.01M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 14 0"/></svg></span></div>
-        <div class="chip" style="width:34px;height:25px"></div>
-        <div><p class="pan" style="font-size:14px">&bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; 8836</p><div class="meta"><span>Kai M &middot; 04/29</span><span>VISA</span></div></div>
+  <div class="topbar"><span class="wm">Clear</span><nav><span>Home</span><span>Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span style="color:var(--text-primary)">Card</span></nav></div>
+  <div style="display:grid;grid-template-columns:270px minmax(0,1fr);gap:24px;align-items:start">
+    <div class="stack">
+      <div>
+        <div class="cardface" style="height:170px;margin-bottom:10px">
+          <span class="wm">Clear</span>
+          <div class="chip"></div>
+          <div><p class="pan" style="font-size:14px">&bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; &bull;&bull;&bull;&bull; 8836</p><div class="meta"><span>Kai M &middot; 04/29</span><span>VISA</span></div></div>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <button style="flex:1;font-size:11px;padding:6px 0;border-color:var(--border-accent);color:var(--text-accent)">Physical</button>
+          <button style="flex:1;font-size:11px;padding:6px 0">Virtual</button>
+        </div>
+        <div style="display:flex;gap:8px"><button style="flex:1;font-size:12px">Freeze</button><button style="flex:1;font-size:12px">Details</button></div>
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px"><button style="flex:1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 2v20M4.9 7 19.1 17M19.1 7 4.9 17"/></svg> Freeze</button><button style="flex:1">Details</button></div>
-      <p style="font-size:11px;color:var(--text-muted);margin:0;line-height:1.6">Spends your cash first, then your credit line. No transfers needed.</p>
+      <div class="card" style="padding:14px 16px">
+        <p class="lbl" style="margin:0 0 8px">Controls</p>
+        <div style="font-size:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border)"><span>Contactless</span><div style="width:34px;height:20px;border-radius:10px;background:#1D9E75;position:relative;flex-shrink:0"><div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;right:2px"></div></div></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border)"><span>Online payments</span><div style="width:34px;height:20px;border-radius:10px;background:#1D9E75;position:relative;flex-shrink:0"><div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;right:2px"></div></div></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:0.5px solid var(--border)"><span>ATM withdrawals</span><div style="width:34px;height:20px;border-radius:10px;background:var(--border-strong);position:relative;flex-shrink:0"><div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px"></div></div></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0"><span>International</span><div style="width:34px;height:20px;border-radius:10px;background:var(--border-strong);position:relative;flex-shrink:0"><div style="width:16px;height:16px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px"></div></div></div>
+        </div>
+        <div style="margin-top:10px;padding-top:10px;border-top:0.5px solid var(--border);font-size:12px;line-height:1.9">
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">Per transaction</span><span>$2,000</span></div>
+          <div style="display:flex;justify-content:space-between"><span style="color:var(--text-muted)">Per day</span><span>$3,000</span></div>
+        </div>
+        <button style="width:100%;font-size:11px;padding:5px 0;margin-top:9px">Adjust limits</button>
+      </div>
+      <button style="width:100%;font-size:12px">Add to Apple Wallet</button>
     </div>
     <div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px"><span class="lbl">Card transactions</span><span style="font-size:12px;color:var(--text-muted)">October</span></div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px"><span class="lbl">Card transactions</span><span style="font-size:12px;color:var(--text-muted)">October &middot; $1,842</span></div>
       <div style="font-size:13px">
-        <div class="txn"><div><p class="m">Shell</p><p class="s">Oct 26 &middot; credit</p></div><span>&minus;$52.10</span></div>
-        <div class="txn"><div><p class="m">Stater Bros</p><p class="s">Oct 25 &middot; credit</p></div><span>&minus;$118.44</span></div>
-        <div class="txn"><div><p class="m">Verizon</p><p class="s">Oct 24 &middot; credit</p></div><span>&minus;$85.00</span></div>
-        <div class="txn"><div><p class="m">Chipotle</p><p class="s">Oct 23 &middot; cash</p></div><span>&minus;$14.20</span></div>
-        <div class="txn"><div><p class="m">Costco</p><p class="s">Oct 22 &middot; cash</p></div><span>&minus;$212.66</span></div>
+        <div style="display:grid;grid-template-columns:1fr 140px 100px;padding:11px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Shell</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed</span><span style="text-align:right">&minus;$52.10</span></div>
+        <div style="display:grid;grid-template-columns:1fr 140px 100px;padding:11px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Stater Bros</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed</span><span style="text-align:right">&minus;$118.44</span></div>
+        <div style="display:grid;grid-template-columns:1fr 140px 100px;padding:11px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Verizon</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-asset)">&#9679;</span> Asset-backed</span><span style="text-align:right">&minus;$85.00</span></div>
+        <div style="display:grid;grid-template-columns:1fr 140px 100px;padding:11px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Chipotle</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-savings)">&#9679;</span> Cash</span><span style="text-align:right">&minus;$14.20</span></div>
+        <div style="display:grid;grid-template-columns:1fr 140px 100px;padding:11px 0;border-bottom:0.5px solid var(--border);align-items:center"><span>Costco</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-savings)">&#9679;</span> Cash</span><span style="text-align:right">&minus;$212.66</span></div>
+        <div style="display:grid;grid-template-columns:1fr 140px 100px;padding:11px 0;align-items:center"><span>TinyBox Systems</span><span style="color:var(--text-muted);font-size:12px"><span style="color:var(--tier-savings)">&#9679;</span> Cash</span><span style="text-align:right">&minus;$180.00</span></div>
       </div>
+      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Spends your cash first, then your credit line. No transfers needed.</p>
     </div>
   </div>
 </div>
 
-<h2>Send &amp; Card — mobile</h2>
-<div class="row">
-  <div class="phone">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Send</span><span style="color:var(--text-secondary)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M3 12h18"/></svg></span></div>
-    <div style="text-align:center;margin-bottom:14px">
-      <div style="width:130px;height:130px;margin:0 auto 10px;background:var(--surface-0);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary)"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM21 14v3M14 21h7"/></svg></div>
-      <p style="font-size:12px;color:var(--text-muted);margin:0">Show to get paid · @kaim</p>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:14px"><button style="flex:1">Scan to pay</button><button style="flex:1">Request</button></div>
-    <input style="width:100%;margin-bottom:12px;color:var(--text-muted)" value="Search name or @handle">
-    <p class="lbl" style="font-size:12px;margin:0 0 8px">Recent</p>
-    <div style="font-size:13px">
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border)"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-accent)">DR</div><div><p class="m">Diego R.</p><p class="s">Member</p></div></div>
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success)">TB</div><div><p class="m">TinyBox Systems</p><p class="s">Clear Partner</p></div></div>
-    </div>
-    <div class="fabnav">
-      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span>Home</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 2v20"/><path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Savings</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m4 16 5-6 4 4 7-8"/><path d="M15 6h5v5"/></svg></span>Earn</a><a href="#" class="on"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/></svg></span>Send</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>Card</a>
-    </div>
+<h2>Send — mobile</h2>
+<div class="row"><div class="phone">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Send</span></div>
+  <div style="text-align:center;margin-bottom:14px">
+    <div style="width:120px;height:120px;margin:0 auto 10px;background:var(--surface-0);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary)"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM21 14v3M14 21h7"/></svg></div>
+    <p style="font-size:12px;color:var(--text-muted);margin:0">Show to get paid &middot; @kaim</p>
   </div>
+  <div style="display:flex;gap:8px;margin-bottom:12px"><button style="flex:1;font-size:12px;padding:6px 0">Scan to pay</button><button style="flex:1;font-size:12px;padding:6px 0">Request</button></div>
+  <input style="width:100%;margin-bottom:12px;font-size:13px;color:var(--text-muted)" value="Name, phone, or @handle">
+  <div class="task" style="padding:9px 12px;margin-bottom:14px;display:block">
+    <p style="font-size:12px;margin:0">$40 waiting for Marcus T.</p><p style="font-size:11px;margin:2px 0 0;opacity:.8">Expires in 12 days &middot; Remind</p>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px"><span class="lbl" style="font-size:12px">Contacts</span><span style="font-size:11px;color:var(--text-accent)">Manage</span></div>
+  <div style="margin-bottom:16px"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-accent);flex-shrink:0">DR</div><div style="min-width:0"><p class="m">Diego R.</p><p class="s">@diegor</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">MC</div><div style="min-width:0"><p class="m">Maria C.</p><p class="s">@mariac</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0">MT</div><div style="min-width:0"><p class="m">Marcus T.</p><p class="s">(909) 555-0177</p></div></div><span style="flex-shrink:0"><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></span></div></div>
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px"><span class="lbl" style="font-size:12px">Clear Partners</span><span style="font-size:11px;color:var(--text-accent)">See all 14</span></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">TB</div><div style="min-width:0"><p class="m">TinyBox Systems</p><p class="s">Modular homes &middot; Redlands</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">VE</div><div style="min-width:0"><p class="m">Vega Electric</p><p class="s">Trades &middot; Redlands</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">RC</div><div style="min-width:0"><p class="m">Rincon Coffee</p><p class="s">Food &amp; drink &middot; Riverside</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div>
+  <div class="fabnav"><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span>Home</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M12 2v20"/><path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Savings</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m4 16 5-6 4 4 7-8"/><path d="M15 6h5v5"/></svg></span>Earn</a><a href="#" class="on"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/></svg></span>Send</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>Card</a></div>
+</div></div>
 
-  <div class="phone">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Card</span><span style="color:var(--text-secondary)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg></span></div>
-    <div class="cardface" style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center"><span class="wm">Clear</span><span style="color:#888780"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="transform:rotate(90deg)"><path d="M12 20h.01M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 14 0"/></svg></span></div>
-      <div class="chip"></div>
-      <div><p class="pan">•••• •••• •••• 8836</p><div class="meta"><span>Kai M · 04/29</span><span>VISA</span></div></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:16px"><button style="flex:1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 2v20M4.9 7 19.1 17M19.1 7 4.9 17"/></svg> Freeze</button><button style="flex:1">Details</button></div>
-    <p class="lbl" style="font-size:12px;margin:0 0 2px">Card transactions</p>
-    <div style="font-size:13px">
-      <div class="txn"><div><p class="m">Shell</p><p class="s">Oct 26 · credit</p></div><span>−$52.10</span></div>
-      <div class="txn"><div><p class="m">Stater Bros</p><p class="s">Oct 25 · credit</p></div><span>−$118.44</span></div>
-      <div class="txn"><div><p class="m">Chipotle</p><p class="s">Oct 23 · cash</p></div><span>−$14.20</span></div>
-    </div>
-    <div class="fabnav">
-      <a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span>Home</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M12 2v20"/><path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Savings</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m4 16 5-6 4 4 7-8"/><path d="M15 6h5v5"/></svg></span>Earn</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/></svg></span>Send</a><a href="#" class="on"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>Card</a>
-    </div>
+<h2>Clear Partners — mobile</h2>
+<div class="row"><div class="phone">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><span style="color:var(--text-secondary)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></span><span style="font-size:15px;font-weight:500">Clear Partners</span></div>
+  <p class="sub" style="margin-bottom:12px">14 businesses accept Clear Pay nearby.</p>
+  <input style="width:100%;margin-bottom:10px;font-size:13px;color:var(--text-muted)" value="Search partners">
+  <div style="display:flex;gap:6px;margin-bottom:12px">
+    <button style="font-size:11px;padding:4px 11px;border-color:var(--border-accent);color:var(--text-accent)">All</button>
+    <button style="font-size:11px;padding:4px 11px">Trades</button>
+    <button style="font-size:11px;padding:4px 11px">Food</button>
   </div>
-</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">TB</div><div style="min-width:0"><p class="m">TinyBox Systems</p><p class="s">Modular homes &middot; Redlands</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">VE</div><div style="min-width:0"><p class="m">Vega Electric</p><p class="s">Trades &middot; Redlands</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">RC</div><div style="min-width:0"><p class="m">Rincon Coffee</p><p class="s">Food &amp; drink &middot; Riverside</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">HS</div><div style="min-width:0"><p class="m">Highland Supply</p><p class="s">Materials &middot; Highland</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">OM</div><div style="min-width:0"><p class="m">Orange St Market</p><p class="s">Groceries &middot; Redlands</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div><div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;font-size:13px"><div style="display:flex;align-items:center;gap:11px;min-width:0"><div style="width:30px;height:30px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-success);flex-shrink:0">CP</div><div style="min-width:0"><p class="m">Cortez Plumbing</p><p class="s">Trades &middot; San Bernardino</p></div></div><span style="color:var(--text-muted);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><path d="m9 18 6-6-6-6"/></svg></span></div>
+  <div class="card" style="padding:12px 14px;margin-top:14px">
+    <p class="lbl" style="font-size:12px;margin:0 0 6px">Know a business?</p>
+    <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;line-height:1.6">They get paid instantly with no processing fee.</p>
+    <button style="width:100%;font-size:12px">Refer a business</button>
+  </div>
+  <div class="fabnav"><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></span>Home</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M12 2v20"/><path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>Savings</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m4 16 5-6 4 4 7-8"/><path d="M15 6h5v5"/></svg></span>Earn</a><a href="#" class="on"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/></svg></span>Send</a><a href="#"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>Card</a></div>
+</div></div>
 
 <h2>Profile &amp; settings — desktop</h2>
 <div class="desktop">
