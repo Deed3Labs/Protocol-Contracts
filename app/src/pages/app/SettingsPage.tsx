@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import Card, { CardRule } from '@/components/clear/Card';
 import SettingRows from '@/components/clear/SettingRows';
+import ToggleRows from '@/components/clear/ToggleRows';
+import { money } from '@/lib/money';
 import ThemePicker from '@/components/clear/ThemePicker';
 import InfoBlock from '@/components/clear/InfoBlock';
 import AccelerationDialog from '@/components/settings/AccelerationDialog';
@@ -138,17 +140,48 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
       label: 'Security',
       title: 'Security',
       content: (
-        <SettingRows
-          rows={[
-            { label: 'Face ID', value: data.faceIdOn ? 'On' : 'Off' },
-            {
-              label: 'Trusted devices',
-              value: String(data.devices.length),
-              onSelect: () => setDevicesOpen(true),
-            },
-            { label: 'Login history' },
-          ]}
-        />
+        <>
+          <ToggleRows
+            rows={[
+              {
+                id: 'faceid',
+                label: 'Face ID',
+                detail: 'Sign in without a code',
+                defaultOn: data.faceIdOn,
+              },
+              {
+                id: 'faceid-payments',
+                label: 'Require Face ID for payments',
+                detail: `Over ${money(data.paymentFaceIdOver)}`,
+                defaultOn: true,
+              },
+            ]}
+          />
+
+          <SettingRows
+            className="mt-3.5 border-t-[0.5px] border-border pt-1"
+            rows={[
+              {
+                label: 'Trusted devices',
+                value: String(data.devices.length),
+                onSelect: () => setDevicesOpen(true),
+              },
+              { label: 'Login history', value: `Last: ${data.lastLogin}` },
+              {
+                label: 'Recovery contacts',
+                value:
+                  data.recoveryContacts.length === 0
+                    ? 'None set'
+                    : String(data.recoveryContacts.length),
+              },
+            ]}
+          />
+
+          {/* Says the quiet part out loud: there is nothing here to phish. */}
+          <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
+            There's no password on your account. Sign-in uses your phone, email, or Face ID.
+          </InfoBlock>
+        </>
       ),
     },
 

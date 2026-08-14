@@ -29,8 +29,10 @@ export default function ActivityPage({ data = ACTIVITY_IN_USE }: { data?: Activi
     <>
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
         <FilterChips options={ACTIVITY_FILTERS} value={filter} onChange={setFilter} />
+        {/* Desktop only: on a phone the cycle total already leads the Home page,
+            and repeating it here costs a row above the list. */}
         {data.rows.length > 0 && (
-          <span className="shrink-0 text-xs text-foreground-secondary">
+          <span className="hidden shrink-0 text-xs text-foreground-secondary lg:inline">
             This cycle:{' '}
             <span className="text-foreground">{signedMoney(data.cycleNet, { cents: false })}</span>
           </span>

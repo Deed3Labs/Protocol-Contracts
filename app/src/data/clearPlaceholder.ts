@@ -142,6 +142,7 @@ const ASSURANCE: AssuranceItem[] = [
 
 export const SAVINGS_IN_USE: SavingsData = {
   savings: HOME_IN_USE.savings,
+  projection: { onTrackFor: 'Feb 2028', perPayday: 500, extraMonthly: 250, withExtra: 'Apr 2027' },
   payFrom: PAY_FROM,
   creditLimitToday: 12300,
   milestones: MILESTONES,
@@ -155,6 +156,7 @@ export const SAVINGS_IN_USE: SavingsData = {
 
 export const SAVINGS_DAY_ONE: SavingsData = {
   savings: HOME_DAY_ONE.savings,
+  projection: { onTrackFor: 'Feb 2028', perPayday: 500, extraMonthly: 250, withExtra: 'Apr 2027' },
   payFrom: PAY_FROM,
   creditLimitToday: 0,
   milestones: MILESTONES,
@@ -185,6 +187,15 @@ export const ACTIVITY_IN_USE: ActivityData = {
     { id: 't3', name: 'Payroll deposit', date: 'Oct 25', source: 'cash account', kind: 'deposit', amount: 2000 },
     { id: 't4', name: 'Equity credits vested', date: 'Oct 25', source: 'savings', kind: 'savings', amount: 500 },
     { id: 't5', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44 },
+    {
+      id: 't7',
+      name: 'Diego R.',
+      date: 'Oct 25',
+      source: 'received',
+      // Money in from a member — the Deposits filter is "money arriving", not just payroll.
+      kind: 'deposit',
+      amount: 35,
+    },
     { id: 't6', name: 'Chipotle', date: 'Oct 23', source: 'cash', kind: 'spending', amount: -14.2 },
   ],
 };
@@ -305,6 +316,9 @@ export const SETTINGS: SettingsData = {
   ],
   accelerationCyclesToBoost: 4,
   faceIdOn: true,
+  paymentFaceIdOver: 200,
+  lastLogin: 'today, 8:02 AM',
+  recoveryContacts: [],
   devices: [
     { id: 'd1', name: 'iPhone 16 Pro', detail: 'Redlands, CA · active now', current: true },
     { id: 'd2', name: 'MacBook Pro', detail: 'Redlands, CA · 2 days ago' },

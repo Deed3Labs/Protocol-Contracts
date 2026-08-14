@@ -17,16 +17,31 @@ export default function PendingClaimBanner({
   onRemind?: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-tier-boost/10 px-3.5 py-2.5 text-tier-boost-fg">
+    <div className="rounded-lg bg-tier-boost/10 px-3 py-2.5 text-tier-boost-fg lg:flex lg:items-center lg:justify-between lg:gap-3 lg:px-3.5">
       <div className="min-w-0">
-        <p className="text-[13px]">
-          {money(claim.amount)} waiting for {claim.recipient} to claim
+        <p className="text-xs lg:text-[13px]">
+          {money(claim.amount)} waiting for {claim.recipient}
+          <span className="hidden lg:inline"> to claim</span>
         </p>
+        {/* Mobile folds the reminder into the line — a separate button costs a row
+            that the expiry copy needs more. */}
         <p className="mt-0.5 text-[11px] opacity-80">
-          Sent {claim.sentOn} · expires in {claim.expiresInDays} days
+          <span className="hidden lg:inline">Sent {claim.sentOn} · expires</span>
+          <span className="lg:hidden">Expires</span> in {claim.expiresInDays} days
+          <span aria-hidden className="lg:hidden">
+            {' · '}
+          </span>
+          <button type="button" onClick={onRemind} className="underline lg:hidden">
+            Remind
+          </button>
         </p>
       </div>
-      <Button variant="clear" size="xs" className="border-tier-boost/30" onClick={onRemind}>
+      <Button
+        variant="clear"
+        size="xs"
+        className="hidden border-tier-boost/30 lg:inline-flex"
+        onClick={onRemind}
+      >
         Remind
       </Button>
     </div>

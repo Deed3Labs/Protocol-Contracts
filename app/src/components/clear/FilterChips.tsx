@@ -14,7 +14,7 @@ export default function FilterChips<T extends string>({
   onChange,
   className,
 }: {
-  options: readonly { id: T; label: string }[];
+  options: readonly { id: T; label: string; mobile?: boolean }[];
   value: T;
   onChange: (id: T) => void;
   className?: string;
@@ -37,7 +37,13 @@ export default function FilterChips<T extends string>({
           size="xs"
           aria-pressed={value === opt.id}
           onClick={() => onChange(opt.id)}
-          className={cn('shrink-0', value === opt.id && 'border-tier-boost text-tier-boost-fg')}
+          className={cn(
+            'shrink-0',
+            // Filters not marked for mobile stay in the DOM but off a phone's
+            // strip — a chip you have to scroll to find isn't doing its job.
+            !opt.mobile && 'hidden lg:inline-flex',
+            value === opt.id && 'border-tier-boost text-tier-boost-fg',
+          )}
         >
           {opt.label}
         </Button>

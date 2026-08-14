@@ -70,7 +70,14 @@ export interface SetupTask {
 }
 
 /** Where the money moved from — spec §8 requires this tag on every row. */
-export type ActivitySource = 'credit' | 'cash' | 'savings' | 'cash account' | 'pending';
+export type ActivitySource =
+  | 'credit'
+  | 'cash'
+  | 'savings'
+  | 'cash account'
+  | 'pending'
+  /** Money in from another member. */
+  | 'received';
 
 /** What the row is, which is what the Activity filter chips select on. */
 export type ActivityKind = 'spending' | 'deposit' | 'savings' | 'sent';
@@ -126,11 +133,16 @@ export interface ActivityData {
   pendingClaim?: PendingClaim;
 }
 
+/**
+ * `mobile` marks the three that fit a phone without scrolling the strip. The rest
+ * are desktop-only rather than dropped — the filter still exists, it just isn't
+ * worth a chip at 375px.
+ */
 export const ACTIVITY_FILTERS = [
-  { id: 'all', label: 'All' },
-  { id: 'spending', label: 'Spending' },
+  { id: 'all', label: 'All', mobile: true },
+  { id: 'spending', label: 'Spending', mobile: true },
   { id: 'deposit', label: 'Deposits' },
-  { id: 'savings', label: 'Savings' },
+  { id: 'savings', label: 'Savings', mobile: true },
   { id: 'sent', label: 'Sent' },
 ] as const;
 
@@ -153,6 +165,14 @@ export function groupByDate(rows: ActivityRow[]): { date: string; rows: Activity
     else groups.push({ date: row.date, rows: [row] });
   }
   return groups;
+}
+
+/**
+ * Mobile group headers use only the relative part: the reference shows "Today"
+ * where desktop shows "Today · Oct 26". Labels without a separator are unchanged.
+ */
+export function shortDate(label: string): string {
+  return label.split(' · ')[0];
 }
 
 /** Source tags read lowercase inline ("Oct 26 · credit") and capitalised in a column. */
@@ -207,8 +227,19 @@ export interface VestingRow {
   credits: number;
 }
 
+/** When the Clear Deed lands at the current rate, and what would move it. */
+export interface SavingsProjection {
+  /** e.g. "Feb 2028". */
+  onTrackFor: string;
+  perPayday: number;
+  extraMonthly: number;
+  /** The date the extra contribution would bring it to. */
+  withExtra: string;
+}
+
 export interface SavingsData {
   savings: Savings;
+  projection: SavingsProjection;
   /** Where a deposit into savings draws from. */
   payFrom: PayFrom;
   /** The limit today, so a deposit can show what it becomes. */
@@ -383,6 +414,12 @@ export interface SettingsData {
   accelerationPlans: AccelerationPlan[];
   accelerationCyclesToBoost: number;
   faceIdOn: boolean;
+  /** Payments above this amount ask for biometrics again. */
+  paymentFaceIdOver: number;
+  /** Last sign-in, already formatted — "today, 8:02 AM". */
+  lastLogin: string;
+  /** Members who can vouch for a locked-out account. Empty reads "None set". */
+  recoveryContacts: string[];
   devices: TrustedDevice[];
   notificationGroups: NotificationGroup[];
   linkedAccountCount: number;

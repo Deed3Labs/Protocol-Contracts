@@ -1,48 +1,93 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import PageHeader from '@/components/clear/PageHeader';
+import SegmentedBar from '@/components/clear/SegmentedBar';
+import CreditsProgress from '@/components/clear/CreditsProgress';
 import MilestonePath from '@/components/clear/MilestonePath';
+import ProjectionCard from '@/components/clear/ProjectionCard';
 import AssuranceList from '@/components/clear/AssuranceList';
 import VestingList from '@/components/clear/VestingList';
 import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
 import { SAVINGS_IN_USE } from '@/data/clearPlaceholder';
-import { money, count } from '@/lib/money';
+import { money } from '@/lib/money';
 import { savingsTotal, type SavingsData } from '@/lib/clearModel';
 
 /**
- * Savings — design spec §5. Assurance lives here rather than on its own page,
- * because protections are unlocked by saving.
+ * Savings — design spec §5. Assurance lives here rather than on its own page in
+ * summary form, with the detail a level down.
  *
- * There's no separate empty state to design: the milestone path, the protections
- * list and the credit counters all derive from the credit balance, so day one is
- * the same page with nothing yet unlocked. Only the vesting list needs its own
- * empty copy, since it has no rows at all.
+ * The header carries the composition, not just the total: the balance, the
+ * cash/vested/vesting split, and the actions. Progress toward the Clear Deed then
+ * runs full width beneath it, because it measures the goal rather than any one
+ * account — everything else on the page is either the route to it or what it
+ * unlocks along the way.
+ *
+ * Day one needs no separate design: the milestone states, the protections and the
+ * counters all derive from the credit balance, so at zero it's the same page with
+ * nothing unlocked. Only the vesting list has its own empty copy.
  */
 export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsData }) {
   const [addOpen, setAddOpen] = useState(false);
   const { savings } = data;
+  const total = savingsTotal(savings);
+
+  const actions = (
+    <div className="flex gap-2">
+      <Button variant="clear" size="xs" className="flex-1" onClick={() => setAddOpen(true)}>
+        Add money
+      </Button>
+      <Button variant="clear" size="xs" className="flex-1">
+        Auto-save
+      </Button>
+    </div>
+  );
 
   return (
     <>
-      <PageHeader
-        label="Savings balance"
-        value={money(savingsTotal(savings))}
-        sub={`${count(savings.credits)} of ${count(savings.creditsGoal)} credits toward your Clear Deed`}
-        trailing={
-          <div className="flex gap-2">
-            <Button variant="clear" size="xs" className="flex-1 lg:flex-none" onClick={() => setAddOpen(true)}>
-              Add money
-            </Button>
-            <Button variant="clear" size="xs" className="flex-1 lg:flex-none">
-              Auto-save
-            </Button>
-          </div>
-        }
-      />
+      {/* Balance and its composition, with the actions beside it on desktop */}
+      <div className="mb-5 grid items-end gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-6">
+        <div>
+          <p className="mb-1 text-xs text-foreground-secondary">Savings balance</p>
+          <p className="font-display mb-3 text-[32px] font-medium leading-none tracking-[-0.5px] lg:text-[38px] lg:tracking-[-0.8px]">
+            {money(total)}
+          </p>
 
-      <div className="grid items-start gap-3 lg:grid-cols-2">
+          <SegmentedBar
+            className="mb-2.5"
+            total={total}
+            label="Savings by state"
+            segments={[
+              { value: savings.cash, className: 'bg-vest-cash', label: 'Cash' },
+              { value: savings.vested, className: 'bg-vest-vested', label: 'Vested' },
+              { value: savings.vesting, className: 'bg-vest-vesting', label: 'Vesting' },
+            ]}
+          />
+
+          {/* One legend line — the three figures read as a split, not three facts */}
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-vest-cash" /> Cash (CLRUSD)
+              <span aria-hidden className="ml-1.5 h-1.5 w-1.5 rounded-full bg-vest-vested" /> Vested
+              <span aria-hidden className="ml-1.5 h-1.5 w-1.5 rounded-full bg-vest-vesting" /> Vesting
+            </span>
+            <span className="tabular-nums">
+              {money(savings.cash)} · {money(savings.vested)} · {money(savings.vesting)}
+            </span>
+          </div>
+        </div>
+
+        {actions}
+      </div>
+
+      <div className="mb-3">
+        <CreditsProgress savings={savings} />
+      </div>
+
+      {/* The path gets the wider column — its rows carry a title and a status */}
+      <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <MilestonePath milestones={data.milestones} credits={savings.credits} />
+
         <div className="flex flex-col gap-3">
+          <ProjectionCard projection={data.projection} />
           <AssuranceList items={data.assurance} credits={savings.credits} />
           <VestingList rows={data.vesting} />
         </div>

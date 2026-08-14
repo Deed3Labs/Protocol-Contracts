@@ -40,9 +40,12 @@ export default function YieldPoolCard({
       <div className="h-1.5 overflow-hidden rounded-[3px] bg-border">
         <div className="h-full bg-tier-boost" style={{ width: `${utilization * 100}%` }} />
       </div>
-      <p className="mb-3.5 mt-1.5 text-[11px] text-muted-foreground">
+      {/* The pool's absolute size is context, not a number you act on — it's the
+          first thing to go when the column narrows. */}
+      <p className="mb-3.5 mt-1.5 hidden text-[11px] text-muted-foreground lg:block">
         {compactMoney(pool.lent)} of {compactMoney(pool.capacity)} lent to members
       </p>
+      <div className="mb-3.5 lg:hidden" />
 
       <div className="mb-3 border-t-[0.5px] border-border pt-[11px] text-xs leading-[2]">
         <div className="flex items-baseline justify-between gap-3">

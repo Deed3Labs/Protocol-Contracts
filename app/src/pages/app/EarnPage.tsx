@@ -2,6 +2,7 @@ import { useState } from 'react';
 import PageHeader from '@/components/clear/PageHeader';
 import YieldPoolCard from '@/components/clear/YieldPoolCard';
 import BurnerBondsCard from '@/components/clear/BurnerBondsCard';
+import HeldBondsCard from '@/components/clear/HeldBondsCard';
 import BuyBondDialog from '@/components/clear/BuyBondDialog';
 import PoolDepositDialog from '@/components/clear/PoolDepositDialog';
 import { EARN_IN_USE } from '@/data/clearPlaceholder';
@@ -51,6 +52,7 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
         <YieldPoolCard pool={data.pool} onDeposit={() => setDepositOpen(true)} />
         <BurnerBondsCard terms={data.terms} bonds={data.bonds} onBuy={() => setBuyOpen(true)} />
+        <HeldBondsCard bonds={data.bonds} className="lg:hidden" />
       </div>
 
       <BuyBondDialog data={data} open={buyOpen} onOpenChange={setBuyOpen} />

@@ -1,5 +1,5 @@
 import { signedMoney } from '@/lib/money';
-import { capitalise, groupByDate, type ActivityRow } from '@/lib/clearModel';
+import { capitalise, groupByDate, shortDate, type ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /**
@@ -33,7 +33,10 @@ export default function ActivityList({
     <div className="flex flex-col gap-4">
       {groups.map((group) => (
         <div key={group.date}>
-          <p className="mb-1 text-[11px] text-muted-foreground">{group.date}</p>
+          <p className="mb-1 text-[11px] text-muted-foreground">
+            <span className="lg:hidden">{shortDate(group.date)}</span>
+            <span className="hidden lg:inline">{group.date}</span>
+          </p>
 
           <div className="text-[13px]">
             {group.rows.map((row, i) => (
