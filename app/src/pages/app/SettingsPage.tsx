@@ -1,8 +1,15 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
+import { ArrowLeft, Copy, CircleCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import Card, { CardRule } from '@/components/clear/Card';
 import SettingRows from '@/components/clear/SettingRows';
 import ThemePicker from '@/components/clear/ThemePicker';
+import InfoBlock from '@/components/clear/InfoBlock';
+import AccelerationDialog from '@/components/settings/AccelerationDialog';
+import ChangePhoneDialog from '@/components/settings/ChangePhoneDialog';
+import TrustedDevicesDialog from '@/components/settings/TrustedDevicesDialog';
+import CloseAccountDialog from '@/components/settings/CloseAccountDialog';
 import { SETTINGS } from '@/data/clearPlaceholder';
 import type { SettingsData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
@@ -10,27 +17,296 @@ import { cn } from '@/lib/utils';
 /**
  * Profile & settings — reached from the avatar, not the nav.
  *
- * Desktop spreads the sections out beside a section list; mobile collapses each
- * section to a single row that opens it, because a phone can't show eight
- * sections at once and pretending otherwise just makes everything tiny.
+ * One section is shown at a time on both layouts: the desktop rail swaps the
+ * pane beside it, mobile pushes the same content as a sub-page with a back
+ * arrow. Section contents are written once and rendered by both, so the two
+ * can't drift.
  *
- * Appearance is the exception on both: it's a control rather than a destination,
- * so it sits inline where you can flip it and see the result immediately.
+ * What's a pane and what's a modal is a real distinction, not a coin toss.
+ * Sections are places you go and browse; modals are single decisions with a
+ * consequence — changing the number you sign in with, paying for acceleration,
+ * closing the account. Those interrupt on purpose.
  */
 
-const SECTIONS = [
-  'Account',
-  'Membership',
-  'Security',
-  'Notifications',
-  'Linked accounts',
-  'Appearance',
-  'Advanced',
-] as const;
+type SectionId =
+  | 'account'
+  | 'membership'
+  | 'security'
+  | 'notifications'
+  | 'linked'
+  | 'appearance'
+  | 'advanced'
+  | 'help';
 
 export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData }) {
-  const [section, setSection] = useState<string>('Account');
   const { profile } = data;
+  const [section, setSection] = useState<SectionId>('account');
+  /** Mobile only: null means the section list, otherwise the pushed sub-page. */
+  const [mobileSection, setMobileSection] = useState<SectionId | null>(null);
+
+  const [accelerationOpen, setAccelerationOpen] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const [devicesOpen, setDevicesOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+
+  const [notifyOn, setNotifyOn] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(
+      data.notificationGroups.flatMap((g) => g.prefs.map((p) => [p.id, true] as const)),
+    ),
+  );
+
+  // ---- Section contents, rendered by both layouts ----------------------------
+
+  const SECTIONS: Record<SectionId, { label: string; title: string; content: ReactNode }> = {
+    account: {
+      label: 'Account',
+      title: 'Personal information',
+      content: (
+        <>
+          <SettingRows
+            rows={[
+              { label: 'Legal name', value: profile.legalName },
+              { label: 'Date of birth', value: profile.dateOfBirth },
+              { label: 'Home address', value: profile.address },
+              { label: 'Phone', value: profile.phone, onSelect: () => setPhoneOpen(true) },
+              { label: 'Email', value: profile.email },
+            ]}
+          />
+          <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
+            Name and date of birth are locked after identity verification. Contact support to
+            correct them.
+          </InfoBlock>
+        </>
+      ),
+    },
+
+    membership: {
+      label: 'Membership',
+      title: 'Membership',
+      content: (
+        <>
+          <Card className="mb-3.5">
+            <div className="text-xs leading-[2]">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-foreground-secondary">Member since</span>
+                <span>{profile.memberSince}</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-foreground-secondary">Your stake</span>
+                <span>Your savings balance</span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-foreground-secondary">Your vote</span>
+                <span>
+                  {profile.votes} of {profile.votes}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-foreground-secondary">Region</span>
+                <span>{profile.region}</span>
+              </div>
+            </div>
+          </Card>
+
+          <p className="mb-3.5 text-xs leading-relaxed text-muted-foreground">
+            However much you save, your vote counts the same as every other member&rsquo;s.
+          </p>
+
+          <SettingRows
+            rows={[
+              { label: 'Membership agreement' },
+              { label: 'Bylaws' },
+              { label: 'Patronage & distributions' },
+              { label: 'Voting history', value: `${data.votesCast} votes cast` },
+              {
+                label: 'Acceleration',
+                value: data.accelerationActive ? 'Active' : 'Not active',
+                onSelect: () => setAccelerationOpen(true),
+              },
+            ]}
+          />
+        </>
+      ),
+    },
+
+    security: {
+      label: 'Security',
+      title: 'Security',
+      content: (
+        <SettingRows
+          rows={[
+            { label: 'Face ID', value: data.faceIdOn ? 'On' : 'Off' },
+            {
+              label: 'Trusted devices',
+              value: String(data.devices.length),
+              onSelect: () => setDevicesOpen(true),
+            },
+            { label: 'Login history' },
+          ]}
+        />
+      ),
+    },
+
+    notifications: {
+      label: 'Notifications',
+      title: 'Notifications',
+      content: (
+        <>
+          {data.notificationGroups.map((group, gi) => (
+            <div key={group.title} className={cn(gi > 0 && 'mt-4')}>
+              <p className="mb-0.5 text-[11px] text-foreground-secondary">{group.title}</p>
+              <div className="text-[13px]">
+                {group.prefs.map((pref, i) => (
+                  <div
+                    key={pref.id}
+                    className={cn(
+                      'flex items-center justify-between gap-3.5 py-2.5',
+                      i < group.prefs.length - 1 && 'border-b-[0.5px] border-border',
+                    )}
+                  >
+                    <span className="min-w-0">
+                      <label htmlFor={`notify-${pref.id}`} className="block truncate">
+                        {pref.label}
+                      </label>
+                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        {pref.detail}
+                      </span>
+                    </span>
+                    <Switch
+                      id={`notify-${pref.id}`}
+                      checked={notifyOn[pref.id]}
+                      onCheckedChange={(v) => setNotifyOn((prev) => ({ ...prev, [pref.id]: v }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      ),
+    },
+
+    linked: {
+      label: 'Linked accounts',
+      title: 'Linked accounts',
+      content: (
+        <>
+          <Card className="mb-3">
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+              <span className="text-xs text-foreground-secondary">Direct deposit</span>
+              <span className="flex items-center gap-1.5 text-[11px] text-tier-savings-fg">
+                <CircleCheck className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
+                Active
+              </span>
+            </div>
+            <p className="mb-2.5 text-[11px] leading-relaxed text-muted-foreground">
+              Payroll from {data.employer} arrives here. This is what backs your income-based limit.
+            </p>
+            <Button variant="clear" size="xs" className="w-full">
+              Account details
+            </Button>
+          </Card>
+
+          <SettingRows
+            rows={[
+              { label: 'External bank', value: data.externalBank },
+              { label: 'Employer', value: data.employer },
+            ]}
+          />
+
+          <Button variant="clear" size="xs" className="mt-3.5 w-full">
+            Link another account
+          </Button>
+
+          <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
+            We use your linked bank to verify income and pull scheduled savings. We never move money
+            without you asking.
+          </InfoBlock>
+        </>
+      ),
+    },
+
+    appearance: { label: 'Appearance', title: 'Appearance', content: <ThemePicker /> },
+
+    advanced: {
+      label: 'Advanced',
+      title: 'Advanced',
+      content: (
+        <>
+          <Card className="mb-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-foreground-secondary">Wallet address</p>
+                <p className="mt-[3px] truncate font-mono text-xs">{profile.walletAddress}</p>
+              </div>
+              <Button
+                variant="clear"
+                size="xs"
+                aria-label="Copy wallet address"
+                onClick={() => navigator.clipboard?.writeText(profile.walletAddress).catch(() => {})}
+              >
+                <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />
+              </Button>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+              Your account is a smart wallet. You don&rsquo;t need this for anything in the app —
+              it&rsquo;s here if you want it.
+            </p>
+          </Card>
+
+          <div className="text-[13px]">
+            <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-border py-2.5">
+              <span>Export account data</span>
+              <Button variant="clear" size="xs">
+                Download
+              </Button>
+            </div>
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <span>Transaction history (CSV)</span>
+              <Button variant="clear" size="xs">
+                Download
+              </Button>
+            </div>
+          </div>
+
+          <CardRule>
+            <Button
+              variant="clear"
+              size="xs"
+              className="w-full text-foreground-secondary"
+              onClick={() => setCloseOpen(true)}
+            >
+              Close account &amp; withdraw
+            </Button>
+          </CardRule>
+        </>
+      ),
+    },
+
+    help: {
+      label: 'Help',
+      title: 'Help',
+      content: (
+        <SettingRows
+          rows={[
+            { label: 'Help centre' },
+            { label: 'Contact support' },
+            { label: 'Legal & agreements' },
+          ]}
+        />
+      ),
+    },
+  };
+
+  const RAIL: SectionId[] = [
+    'account',
+    'membership',
+    'security',
+    'notifications',
+    'linked',
+    'appearance',
+    'advanced',
+  ];
 
   const identity = (avatarSize: string, nameSize: string) => (
     <>
@@ -52,9 +328,43 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
     </>
   );
 
+  const modals = (
+    <>
+      <AccelerationDialog data={data} open={accelerationOpen} onOpenChange={setAccelerationOpen} />
+      <ChangePhoneDialog current={profile.phone} open={phoneOpen} onOpenChange={setPhoneOpen} />
+      <TrustedDevicesDialog devices={data.devices} open={devicesOpen} onOpenChange={setDevicesOpen} />
+      <CloseAccountDialog closure={data.closure} open={closeOpen} onOpenChange={setCloseOpen} />
+    </>
+  );
+
+  // ---- Mobile: pushed sub-page ------------------------------------------------
+
+  if (mobileSection) {
+    const current = SECTIONS[mobileSection];
+    return (
+      <>
+        <div className="lg:hidden">
+          <div className="mb-4 flex items-center gap-2.5">
+            <button
+              type="button"
+              aria-label="Back to settings"
+              onClick={() => setMobileSection(null)}
+              className="text-foreground-secondary transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-[17px] w-[17px]" strokeWidth={1.75} />
+            </button>
+            <span className="text-[15px] font-medium">{current.title}</span>
+          </div>
+          {current.content}
+        </div>
+        {modals}
+      </>
+    );
+  }
+
   return (
     <>
-      {/* Mobile: one row per section, with appearance inline */}
+      {/* Mobile: the section list */}
       <div className="lg:hidden">
         <div className="mb-3.5 flex items-center gap-3 border-b-[0.5px] border-border pb-3.5">
           {identity('h-11 w-11 text-sm', 'text-[15px]')}
@@ -65,164 +375,93 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
 
         <p className="mb-0.5 text-[11px] text-foreground-secondary">Account</p>
         <SettingRows
-          className="mb-4"
           rows={[
-            { label: 'Personal information' },
-            { label: 'Membership', value: `${profile.votes} vote` },
-            { label: 'Acceleration', value: data.accelerationActive ? 'Active' : 'Not active' },
-            { label: 'Security', value: data.faceIdOn ? 'Face ID on' : 'Off' },
-            { label: 'Notifications' },
-            { label: 'Linked accounts', value: String(data.linkedAccountCount) },
+            { label: 'Personal information', onSelect: () => setMobileSection('account') },
+            {
+              label: 'Membership',
+              value: `${profile.votes} vote`,
+              onSelect: () => setMobileSection('membership'),
+            },
+            {
+              label: 'Acceleration',
+              value: data.accelerationActive ? 'Active' : 'Not active',
+              onSelect: () => setAccelerationOpen(true),
+            },
+            {
+              label: 'Security',
+              value: data.faceIdOn ? 'Face ID on' : 'Off',
+              onSelect: () => setMobileSection('security'),
+            },
+            { label: 'Notifications', onSelect: () => setMobileSection('notifications') },
+            {
+              label: 'Linked accounts',
+              value: String(data.linkedAccountCount),
+              onSelect: () => setMobileSection('linked'),
+            },
           ]}
         />
 
-        <p className="mb-0.5 text-[11px] text-foreground-secondary">More</p>
+        <p className="mb-0.5 mt-4 text-[11px] text-foreground-secondary">More</p>
         <SettingRows
-          className="mb-4"
-          rows={[{ label: 'Advanced' }, { label: 'Help' }, { label: 'Legal & agreements' }]}
+          rows={[
+            { label: 'Advanced', onSelect: () => setMobileSection('advanced') },
+            { label: 'Help', onSelect: () => setMobileSection('help') },
+            { label: 'Legal & agreements', onSelect: () => setMobileSection('help') },
+          ]}
         />
 
-        <Button variant="clear" size="xs" className="w-full">
+        <Button variant="clear" size="xs" className="mt-4 w-full">
           Sign out
         </Button>
       </div>
 
-      {/* Desktop: section list beside the sections themselves */}
+      {/* Desktop: the rail swaps the pane beside it */}
       <div className="hidden lg:block">
-        <div className="mb-5 flex items-center gap-3.5">{identity('h-[52px] w-[52px] text-[17px]', 'text-xl')}</div>
+        <div className="mb-5 flex items-center gap-3.5">
+          {identity('h-[52px] w-[52px] text-[17px]', 'text-xl')}
+        </div>
 
-        <div className="grid grid-cols-[190px_minmax(0,1fr)] gap-6">
-          <nav className="text-[13px]">
-            {SECTIONS.map((item) => (
+        <div className="grid grid-cols-[190px_minmax(0,1fr)] items-start gap-6">
+          <nav className="sticky top-[72px] text-[13px]">
+            {RAIL.map((id) => (
               <button
-                key={item}
+                key={id}
                 type="button"
-                onClick={() => setSection(item)}
+                onClick={() => setSection(id)}
+                aria-current={id === section ? 'true' : undefined}
                 className={cn(
                   'block w-full rounded-lg px-2.5 py-2 text-left transition-colors',
-                  item === section ? 'bg-secondary text-foreground' : 'text-foreground-secondary hover:text-foreground',
+                  id === section
+                    ? 'bg-secondary text-foreground'
+                    : 'text-foreground-secondary hover:text-foreground',
                 )}
               >
-                {item}
+                {SECTIONS[id].label}
               </button>
             ))}
             <button
               type="button"
-              className="mt-1.5 block w-full border-t-[0.5px] border-border px-2.5 pb-2 pt-3 text-left text-foreground-secondary transition-colors hover:text-foreground"
+              onClick={() => setSection('help')}
+              aria-current={section === 'help' ? 'true' : undefined}
+              className={cn(
+                'mt-1.5 block w-full rounded-lg border-t-[0.5px] border-border px-2.5 pb-2 pt-3 text-left transition-colors',
+                section === 'help' ? 'text-foreground' : 'text-foreground-secondary hover:text-foreground',
+              )}
             >
               Help
             </button>
           </nav>
 
-          <div className="flex flex-col gap-3">
-            <Card>
-              <p className="mb-1 text-[13px] text-foreground-secondary">Personal information</p>
-              <SettingRows
-                rows={[
-                  { label: 'Legal name', value: profile.legalName },
-                  { label: 'Phone', value: profile.phone },
-                  { label: 'Email', value: profile.email },
-                  { label: 'Home address', value: profile.address },
-                ]}
-              />
-            </Card>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Card>
-                <p className="mb-2.5 text-[13px] text-foreground-secondary">Membership</p>
-                <div className="text-xs leading-[2]">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-foreground-secondary">Member since</span>
-                    <span>{profile.memberSince}</span>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-foreground-secondary">Your stake</span>
-                    <span>Your savings balance</span>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-foreground-secondary">Your vote</span>
-                    <span>
-                      {profile.votes} of {profile.votes} — same as everyone
-                    </span>
-                  </div>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-foreground-secondary">Region</span>
-                    <span>{profile.region}</span>
-                  </div>
-                </div>
-                <CardRule>
-                  <Button variant="clear" size="xs" className="w-full">
-                    Membership agreement &amp; bylaws
-                  </Button>
-                </CardRule>
-              </Card>
-
-              <Card className="flex flex-col">
-                <div className="mb-1.5 flex items-baseline justify-between gap-3">
-                  <span className="text-[13px] text-foreground-secondary">Acceleration</span>
-                  <span className="text-xs text-muted-foreground">
-                    {data.accelerationActive ? 'Active' : 'Not active'}
-                  </span>
-                </div>
-                <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                  Reach member benefits sooner instead of earning them over time through saving and
-                  clean cycles.
-                </p>
-                <Button variant="clear" size="xs" className="mt-auto w-full">
-                  See what it unlocks
-                </Button>
-              </Card>
-            </div>
-
-            <Card>
-              <p className="mb-2.5 text-[13px] text-foreground-secondary">Appearance</p>
-              <ThemePicker />
-            </Card>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Card>
-                <p className="mb-1 text-[13px] text-foreground-secondary">Security</p>
-                <SettingRows
-                  rows={[
-                    { label: 'Face ID', value: data.faceIdOn ? 'On' : 'Off' },
-                    { label: 'Trusted devices', value: String(data.trustedDevices) },
-                    { label: 'Login history' },
-                  ]}
-                />
-              </Card>
-
-              <Card>
-                <p className="mb-1 text-[13px] text-foreground-secondary">Linked accounts</p>
-                <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-border py-2.5 text-[13px]">
-                  <span>Direct deposit</span>
-                  <span className="text-[11px] text-tier-savings-fg">Active</span>
-                </div>
-                <SettingRows
-                  rows={[
-                    { label: 'External bank', value: data.externalBank },
-                    { label: 'Employer', value: data.employer },
-                  ]}
-                />
-              </Card>
-            </div>
-
-            <Card>
-              <p className="mb-1 text-[13px] text-foreground-secondary">Advanced</p>
-              <SettingRows
-                rows={[
-                  { label: 'Wallet address', value: profile.walletAddress },
-                  { label: 'Export account data' },
-                  { label: 'Close account & withdraw', quiet: true },
-                ]}
-              />
-            </Card>
-
-            <Button variant="clear" size="xs" className="w-full">
+          <div>
+            <Card>{SECTIONS[section].content}</Card>
+            <Button variant="clear" size="xs" className="mt-3 w-full">
               Sign out
             </Button>
           </div>
         </div>
       </div>
+
+      {modals}
     </>
   );
 }

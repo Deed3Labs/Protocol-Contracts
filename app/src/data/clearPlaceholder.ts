@@ -290,11 +290,58 @@ export const SETTINGS: SettingsData = {
     region: 'Inland Empire',
     votes: 1,
     walletAddress: '0x7a3f…91c4',
+    dateOfBirth: '••/••/1994',
   },
   accelerationActive: false,
+  accelerationBenefits: [
+    { label: 'Clear Boost', standard: '$500', accelerated: '$750' },
+    { label: 'Credits vest in', standard: '30 days', accelerated: '15 days' },
+    { label: 'Income-backed rate', standard: '1.5%', accelerated: '1.25%' },
+    { label: 'Priority on new communities', standard: '—', accelerated: '', acceleratedOnly: true },
+  ],
+  accelerationPlans: [
+    { id: 'monthly', label: '$25 / month' },
+    { id: 'annual', label: '$250 / year' },
+  ],
+  accelerationCyclesToBoost: 4,
   faceIdOn: true,
-  trustedDevices: 2,
+  devices: [
+    { id: 'd1', name: 'iPhone 16 Pro', detail: 'Redlands, CA · active now', current: true },
+    { id: 'd2', name: 'MacBook Pro', detail: 'Redlands, CA · 2 days ago' },
+  ],
+  notificationGroups: [
+    {
+      title: 'Money',
+      prefs: [
+        { id: 'card', label: 'Card transactions', detail: 'Every purchase' },
+        { id: 'deposits', label: 'Deposits', detail: 'Payroll and transfers in' },
+        { id: 'sent', label: 'Sent & received', detail: 'Member payments' },
+      ],
+    },
+    {
+      title: 'Credit',
+      prefs: [
+        { id: 'using', label: 'Using credit', detail: 'When you cross from cash into credit' },
+        { id: 'rebalance', label: 'Rebalance reminder', detail: '3 days before your cycle ends' },
+        { id: 'limit', label: 'Limit changes', detail: 'When your limit goes up or down' },
+      ],
+    },
+    {
+      title: 'Savings',
+      prefs: [
+        { id: 'vesting', label: 'Credits vesting', detail: 'When credits become yours' },
+        { id: 'milestones', label: 'Milestones', detail: 'When you unlock a new step' },
+      ],
+    },
+  ],
   linkedAccountCount: 2,
   externalBank: 'Chase ••4021',
   employer: 'Acme Logistics',
+  votesCast: 2,
+  closure: {
+    savingsReturned: 3000,
+    creditToSettle: 3200,
+    bondsNote: 'Held',
+    creditsForfeited: 3000,
+  },
 };

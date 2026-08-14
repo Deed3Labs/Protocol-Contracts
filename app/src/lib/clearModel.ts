@@ -324,16 +324,72 @@ export interface MemberProfile {
   /** One member, one vote — the co-op rule, not a computed figure. */
   votes: number;
   walletAddress: string;
+  /** Masked — only the year is shown, since it's locked after verification. */
+  dateOfBirth: string;
+}
+
+export interface TrustedDevice {
+  id: string;
+  name: string;
+  /** "Redlands, CA · active now" */
+  detail: string;
+  /** The one you're on — can't be removed from itself. */
+  current?: boolean;
+}
+
+export interface NotificationPref {
+  id: string;
+  label: string;
+  /** What actually triggers it, so the label doesn't have to guess. */
+  detail: string;
+}
+
+export interface NotificationGroup {
+  title: string;
+  prefs: NotificationPref[];
+}
+
+/** One row of the standard-vs-accelerated comparison. */
+export interface AccelerationBenefit {
+  label: string;
+  standard: string;
+  accelerated: string;
+  /** Accelerated-only, shown as a check rather than a value. */
+  acceleratedOnly?: boolean;
+}
+
+export interface AccelerationPlan {
+  id: string;
+  label: string;
+}
+
+/** What leaving would actually cost, spelled out before anyone commits. */
+export interface AccountClosure {
+  savingsReturned: number;
+  creditToSettle: number;
+  bondsNote: string;
+  creditsForfeited: number;
+}
+
+/** Positive means the member is owed; negative means they owe. */
+export function closureBalance(closure: AccountClosure): number {
+  return closure.savingsReturned - closure.creditToSettle;
 }
 
 export interface SettingsData {
   profile: MemberProfile;
   accelerationActive: boolean;
+  accelerationBenefits: AccelerationBenefit[];
+  accelerationPlans: AccelerationPlan[];
+  accelerationCyclesToBoost: number;
   faceIdOn: boolean;
-  trustedDevices: number;
+  devices: TrustedDevice[];
+  notificationGroups: NotificationGroup[];
   linkedAccountCount: number;
   externalBank: string;
   employer: string;
+  closure: AccountClosure;
+  votesCast: number;
 }
 
 export interface Contact {
