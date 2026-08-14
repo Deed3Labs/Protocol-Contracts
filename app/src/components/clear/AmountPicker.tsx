@@ -11,28 +11,41 @@ import { cn } from '@/lib/utils';
  */
 export default function AmountPicker({
   amount,
-  presets,
+  presets = [],
   onChange,
   label = 'Amount',
   /** Label for a preset that means "everything available" rather than a figure. */
   maxLabel,
   maxAmount,
+  /** Let the figure itself be typed into, for surfaces with no natural presets. */
+  editable,
 }: {
   amount: number;
-  presets: number[];
+  presets?: number[];
   onChange: (amount: number) => void;
   label?: string;
   maxLabel?: string;
   maxAmount?: number;
+  editable?: boolean;
 }) {
   return (
     <>
       <p className="mb-1 text-center text-xs text-foreground-secondary">{label}</p>
-      <p className="font-display mb-3.5 text-center text-[40px] font-medium leading-none tracking-[-1px]">
-        {money(amount)}
-      </p>
+      {editable ? (
+        <input
+          value={money(amount)}
+          onChange={(e) => onChange(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)}
+          inputMode="decimal"
+          aria-label={label}
+          className="font-display mb-3.5 w-full bg-transparent text-center text-[40px] font-medium leading-none tracking-[-1px] outline-none"
+        />
+      ) : (
+        <p className="font-display mb-3.5 text-center text-[40px] font-medium leading-none tracking-[-1px]">
+          {money(amount)}
+        </p>
+      )}
 
-      <div className="mb-4 flex gap-1.5">
+      <div className={cn('mb-4 flex gap-1.5', presets.length === 0 && !maxLabel && 'hidden')}>
         {presets.map((preset) => (
           <Button
             key={preset}

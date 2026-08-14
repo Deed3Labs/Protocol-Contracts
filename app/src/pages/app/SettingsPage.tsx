@@ -6,6 +6,8 @@ import Card, { CardRule } from '@/components/clear/Card';
 import SettingRows from '@/components/clear/SettingRows';
 import ToggleRows from '@/components/clear/ToggleRows';
 import ContactsPanel from '@/components/clear/ContactsPanel';
+import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
+import RecoveryContactsDialog from '@/components/clear/RecoveryContactsDialog';
 import { money } from '@/lib/money';
 import ThemePicker from '@/components/clear/ThemePicker';
 import InfoBlock from '@/components/clear/InfoBlock';
@@ -51,6 +53,8 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
   const [accelerationOpen, setAccelerationOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
 
   const [notifyOn, setNotifyOn] = useState<Record<string, boolean>>(() =>
@@ -181,6 +185,7 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
                   data.recoveryContacts.length === 0
                     ? 'None set'
                     : String(data.recoveryContacts.length),
+                onSelect: () => setRecoveryOpen(true),
               },
             ]}
           />
@@ -260,7 +265,12 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
             ]}
           />
 
-          <Button variant="clear" size="xs" className="mt-3.5 w-full">
+          <Button
+            variant="clear"
+            size="xs"
+            className="mt-3.5 w-full"
+            onClick={() => setLinkOpen(true)}
+          >
             Link another account
           </Button>
 
@@ -380,6 +390,12 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
       <AccelerationDialog data={data} open={accelerationOpen} onOpenChange={setAccelerationOpen} />
       <ChangePhoneDialog current={profile.phone} open={phoneOpen} onOpenChange={setPhoneOpen} />
       <TrustedDevicesDialog devices={data.devices} open={devicesOpen} onOpenChange={setDevicesOpen} />
+      <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
+      <RecoveryContactsDialog
+        contacts={CONTACTS}
+        open={recoveryOpen}
+        onOpenChange={setRecoveryOpen}
+      />
       <CloseAccountDialog closure={data.closure} open={closeOpen} onOpenChange={setCloseOpen} />
     </>
   );

@@ -9,6 +9,7 @@ import ContactRows from '@/components/clear/ContactRows';
 import PartnerRows from '@/components/clear/PartnerRows';
 import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
 import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
+import RequestMoneyDialog from '@/components/clear/RequestMoneyDialog';
 import { SEND_IN_USE, HOME_IN_USE } from '@/data/clearPlaceholder';
 import { money } from '@/lib/money';
 import { searchContacts, type Contact, type SendData } from '@/lib/clearModel';
@@ -29,6 +30,7 @@ import { searchContacts, type Contact, type SendData } from '@/lib/clearModel';
 export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
   const [query, setQuery] = useState('');
   const [recipient, setRecipient] = useState<Contact | null>(null);
+  const [requestOpen, setRequestOpen] = useState(false);
   const searching = query.trim().length > 0;
   const matches = searchContacts(data.contacts, query);
   // Unsearched, this is a shortlist — the whole address book is on /contacts.
@@ -102,7 +104,12 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
             <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
             Scan to pay
           </Button>
-          <Button variant="clear" size="xs" className="flex-1">
+          <Button
+            variant="clear"
+            size="xs"
+            className="flex-1"
+            onClick={() => setRequestOpen(true)}
+          >
             <HandCoins className="h-3.5 w-3.5" strokeWidth={1.75} />
             Request
           </Button>
@@ -125,7 +132,7 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
         <div>
           <div className="mb-4 flex items-center gap-2">
             <div className="min-w-0 flex-1">{searchField}</div>
-            <Button variant="clear" size="xs">
+            <Button variant="clear" size="xs" onClick={() => setRequestOpen(true)}>
               <HandCoins className="h-3.5 w-3.5" strokeWidth={1.75} />
               Request
             </Button>
@@ -151,6 +158,12 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
           {network}
         </div>
       </div>
+
+      <RequestMoneyDialog
+        contacts={data.contacts}
+        open={requestOpen}
+        onOpenChange={setRequestOpen}
+      />
 
       {recipient && (
         <SendMoneyDialog

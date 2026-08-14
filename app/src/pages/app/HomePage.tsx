@@ -13,6 +13,7 @@ import LimitBreakdown from '@/components/clear/LimitBreakdown';
 import AccountDetailsDialog from '@/components/clear/AccountDetailsDialog';
 import AddBoostDialog from '@/components/clear/AddBoostDialog';
 import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
+import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { HOME_IN_USE, SAVINGS_IN_USE } from '@/data/clearPlaceholder';
 import {
@@ -43,6 +44,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [boostOpen, setBoostOpen] = useState(false);
   const [addSavingsOpen, setAddSavingsOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
 
   // Nothing has ever landed in the account: no cycle running, no savings, no cash.
@@ -70,12 +72,11 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const taskStrip = <TaskStrip tasks={data.tasks} />;
   const cycleStrip = <CycleCard cycle={data.cycle} />;
   const cycleCard = <CycleCard cycle={data.cycle} variant="card" />;
-  // Add money has no flow yet — the link-an-account surface arrives with the
-  // other flow modals. The other three go where they already exist.
+  // Money comes in from a linked bank, so that's what Add money opens.
   const quickActions = (
     <QuickActions
       actions={[
-        { label: 'Add money' },
+        { label: 'Add money', onSelect: () => setLinkOpen(true) },
         { label: 'Send', onSelect: () => navigate('/send') },
         { label: 'Save', onSelect: () => setAddSavingsOpen(true) },
         { label: 'Pay', onSelect: () => navigate('/card') },
@@ -146,6 +147,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         />
       )}
       <AccountDetailsDialog account={data.cashAccount} open={accountOpen} onOpenChange={setAccountOpen} />
+      <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
       {/* Savings deposit is the same surface Savings uses; the credit limit it
           quotes comes from this page's own tiers so the two can't disagree. */}
       <AddToSavingsDialog

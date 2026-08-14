@@ -7,6 +7,7 @@ import ProjectionCard from '@/components/clear/ProjectionCard';
 import AssuranceList from '@/components/clear/AssuranceList';
 import VestingList from '@/components/clear/VestingList';
 import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
+import AutoSaveDialog from '@/components/clear/AutoSaveDialog';
 import { SAVINGS_IN_USE } from '@/data/clearPlaceholder';
 import { money } from '@/lib/money';
 import { savingsTotal, type SavingsData } from '@/lib/clearModel';
@@ -27,6 +28,7 @@ import { savingsTotal, type SavingsData } from '@/lib/clearModel';
  */
 export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsData }) {
   const [addOpen, setAddOpen] = useState(false);
+  const [autoSaveOpen, setAutoSaveOpen] = useState(false);
   const { savings } = data;
   const total = savingsTotal(savings);
 
@@ -35,7 +37,7 @@ export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsD
       <Button variant="clear" size="xs" className="flex-1" onClick={() => setAddOpen(true)}>
         Add money
       </Button>
-      <Button variant="clear" size="xs" className="flex-1">
+      <Button variant="clear" size="xs" className="flex-1" onClick={() => setAutoSaveOpen(true)}>
         Auto-save
       </Button>
     </div>
@@ -99,13 +101,18 @@ export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsD
         <MilestonePath milestones={data.milestones} credits={savings.credits} />
 
         <div className="flex flex-col gap-3">
-          <ProjectionCard savings={savings} projection={data.projection} />
+          <ProjectionCard
+            savings={savings}
+            projection={data.projection}
+            onAdjust={() => setAutoSaveOpen(true)}
+          />
           <AssuranceList items={data.assurance} credits={savings.credits} />
           <VestingList rows={data.vesting} />
         </div>
       </div>
 
       <AddToSavingsDialog data={data} open={addOpen} onOpenChange={setAddOpen} />
+      <AutoSaveDialog data={data} open={autoSaveOpen} onOpenChange={setAutoSaveOpen} />
     </>
   );
 }

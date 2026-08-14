@@ -8,7 +8,8 @@ import HeldBondsCard from '@/components/clear/HeldBondsCard';
 import BondLadder from '@/components/clear/BondLadder';
 import BuyBondDialog from '@/components/clear/BuyBondDialog';
 import PoolDepositDialog from '@/components/clear/PoolDepositDialog';
-import { EARN_IN_USE } from '@/data/clearPlaceholder';
+import PoolWithdrawDialog from '@/components/clear/PoolWithdrawDialog';
+import { EARN_IN_USE, HOME_IN_USE } from '@/data/clearPlaceholder';
 import { money, signedMoney } from '@/lib/money';
 import { assetBackedLimit, bondsTotal, earningTotal, type EarnData } from '@/lib/clearModel';
 
@@ -26,6 +27,7 @@ import { assetBackedLimit, bondsTotal, earningTotal, type EarnData } from '@/lib
 export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
   const [buyOpen, setBuyOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
   const total = earningTotal(data);
   const inBonds = bondsTotal(data.bonds);
   const longest = data.terms[data.terms.length - 1]?.months;
@@ -90,7 +92,11 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
 
       <p className="mb-2.5 text-[13px] text-foreground-secondary">Your positions</p>
       <div className="mb-5 grid items-start gap-3 lg:grid-cols-2">
-        <YieldPoolCard data={data} onDeposit={() => setDepositOpen(true)} />
+        <YieldPoolCard
+          data={data}
+          onDeposit={() => setDepositOpen(true)}
+          onWithdraw={() => setWithdrawOpen(true)}
+        />
         <HeldBondsCard data={data} />
       </div>
 
@@ -120,6 +126,14 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
 
       <BuyBondDialog data={data} open={buyOpen} onOpenChange={setBuyOpen} />
       <PoolDepositDialog data={data} open={depositOpen} onOpenChange={setDepositOpen} />
+      {/* The limit it quotes comes from Home's own tiers, so the drop it shows is
+          the drop that would actually happen. */}
+      <PoolWithdrawDialog
+        data={data}
+        credit={HOME_IN_USE.credit}
+        open={withdrawOpen}
+        onOpenChange={setWithdrawOpen}
+      />
     </>
   );
 }
