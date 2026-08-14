@@ -8,6 +8,7 @@ import {
   creditUsed,
   orderedTiers,
   TIER_FILL,
+  TIER_TINT,
   type Credit,
   type CreditTier,
 } from '@/lib/clearModel';
@@ -40,9 +41,11 @@ function TierRow({ tier }: { tier: CreditTier }) {
  * Clear credit — design spec §4.
  *
  * The bar is the load-bearing part: segments are sized from each tier's actual
- * usage against the cycle limit and drawn cheapest-first (rules 4 and 7), so it
- * sits empty while cash is being spent and the leftover stays as visible track.
- * The card takes an accent border once credit is engaged (rule 6).
+ * usage against the limit and drawn cheapest-first (rules 4 and 7), with each
+ * tier's remaining headroom tinted behind it, so the bar answers "how much is
+ * left, and in which tier" rather than just "how full". It sits entirely in
+ * tints while cash is being spent. The card takes an accent border once credit
+ * is engaged (rule 6).
  */
 export default function ClearCreditCard({
   credit,
@@ -60,11 +63,20 @@ export default function ClearCreditCard({
   const limit = creditLimit(credit);
   const addable = addableTier(credit);
 
-  const segments: Segment[] = tiers.map((t) => ({
-    value: t.used,
-    className: TIER_FILL[t.key],
-    label: t.label,
-  }));
+  // Each added tier draws twice: what's been used in its own colour, then what's
+  // left of it in a tint of the same colour. The added tiers total the limit, so
+  // the bar fills — the empty-looking part is headroom in a specific tier, not an
+  // anonymous remainder. Tiers that haven't been added contribute neither.
+  const segments: Segment[] = tiers
+    .filter((t) => t.added)
+    .flatMap((t) => [
+      { value: t.used, className: TIER_FILL[t.key], label: `${t.label} used` },
+      {
+        value: Math.max(0, t.limit - t.used),
+        className: TIER_TINT[t.key],
+        label: `${t.label} left`,
+      },
+    ]);
 
   return (
     <Card accent={engaged} className="flex flex-col">
@@ -76,7 +88,12 @@ export default function ClearCreditCard({
         </span>
       </div>
 
-      <SegmentedBar segments={segments} total={limit} label="Credit used by tier" className="mb-2.5" />
+      <SegmentedBar
+        segments={segments}
+        total={limit}
+        label={`${money(used)} of ${money(limit)} used`}
+        className="mb-2.5"
+      />
 
       <div className="text-xs text-muted-foreground">
         {tiers.map((t) => (

@@ -62,16 +62,28 @@ export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsD
             ]}
           />
 
-          {/* One legend line — the three figures read as a split, not three facts */}
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-vest-cash" /> Cash (CLRUSD)
-              <span aria-hidden className="ml-1.5 h-1.5 w-1.5 rounded-full bg-vest-vested" /> Vested
-              <span aria-hidden className="ml-1.5 h-1.5 w-1.5 rounded-full bg-vest-vesting" /> Vesting
-            </span>
-            <span className="tabular-nums">
-              {money(savings.cash)} · {money(savings.vested)} · {money(savings.vesting)}
-            </span>
+          {/* Cash on its own line, then the two vesting states together: cash is
+              spendable today and the other two aren't, which is the split that
+              matters more than the three-way one. */}
+          <div className="text-xs text-muted-foreground">
+            <div className="flex items-center justify-between gap-3 leading-[1.9]">
+              <span className="flex items-center gap-1.5">
+                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-vest-cash" />
+                Cash (CLRUSD)
+              </span>
+              <span className="tabular-nums">{money(savings.cash)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 leading-[1.9]">
+              <span className="flex items-center gap-1.5">
+                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-vest-vested" />
+                Vested
+                <span aria-hidden className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-vest-vesting" />
+                Vesting
+              </span>
+              <span className="tabular-nums">
+                {money(savings.vested)} · {money(savings.vesting)}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -87,7 +99,7 @@ export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsD
         <MilestonePath milestones={data.milestones} credits={savings.credits} />
 
         <div className="flex flex-col gap-3">
-          <ProjectionCard projection={data.projection} />
+          <ProjectionCard savings={savings} projection={data.projection} />
           <AssuranceList items={data.assurance} credits={savings.credits} />
           <VestingList rows={data.vesting} />
         </div>

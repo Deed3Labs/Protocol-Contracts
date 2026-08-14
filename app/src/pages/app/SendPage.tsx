@@ -1,50 +1,53 @@
 import { useState } from 'react';
-import { ScanLine, HandCoins, Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ScanLine, HandCoins } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import Card from '@/components/clear/Card';
 import ClearCode from '@/components/clear/ClearCode';
 import ContactRows from '@/components/clear/ContactRows';
+import PartnerRows from '@/components/clear/PartnerRows';
+import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
 import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
 import { SEND_IN_USE, HOME_IN_USE } from '@/data/clearPlaceholder';
+import { money } from '@/lib/money';
 import { searchContacts, type Contact, type SendData } from '@/lib/clearModel';
 
 /**
  * Send — design spec §7.
  *
+ * Not a payment form: a directory of who you can pay. The field at the top takes
+ * anyone — a member, a phone number, someone who hasn't joined — and the two
+ * lists under it are the answer most of the time, which is why they're on the
+ * page rather than behind a search.
+ *
  * The two layouts are different pages, not one reflowed. On mobile the Clear code
  * leads, because showing a QR is how most payments start there. On desktop the
- * search leads and the code moves into a column beside it — nobody holds a
- * monitor up to a camera — so the actions get their own card with room for the
- * fuller "Request money" label.
+ * field leads and the code moves into a column beside it — nobody holds a monitor
+ * up to a camera.
  */
 export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
   const [query, setQuery] = useState('');
   const [recipient, setRecipient] = useState<Contact | null>(null);
-  const matches = searchContacts(data.recent, query);
   const searching = query.trim().length > 0;
+  const matches = searchContacts(data.contacts, query);
+  // Unsearched, this is a shortlist — the whole address book is on /contacts.
+  const contacts = searching ? matches : data.contacts.slice(0, 4);
 
   const searchField = (
-    <div className="relative">
-      <Search
-        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-        strokeWidth={1.75}
-        aria-hidden
-      />
-      <Input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search name, phone or @handle"
-        aria-label="Search people to pay"
-        className="pl-9"
-      />
-    </div>
+    <Input
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+      placeholder="Name, phone, or @handle"
+      aria-label="Search people to pay"
+      className="h-9 text-xs"
+    />
   );
 
-  const contacts = (
+  const contactList = (
     <ContactRows
       onSelect={setRecipient}
-      contacts={matches}
+      contacts={contacts}
       emptyMessage={
         searching
           ? `No one matching "${query.trim()}". Try a phone number or @handle.`
@@ -53,58 +56,99 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
     />
   );
 
-  const recentLabel = (
-    <p className="mb-2 text-xs text-foreground-secondary">{searching ? 'Results' : 'Recent'}</p>
+  const claim = data.pendingClaim && (
+    <div className="mb-4">
+      <PendingClaimBanner claim={data.pendingClaim} />
+    </div>
+  );
+
+  /** Section heading with a way through to the full list. */
+  const heading = (label: string, to: string, action: string) => (
+    <div className="mb-1.5 flex items-baseline justify-between gap-3">
+      <span className="text-[13px] text-foreground-secondary">{label}</span>
+      <Link to={to} className="text-xs text-tier-boost-fg hover:underline">
+        {action}
+      </Link>
+    </div>
+  );
+
+  const partners = (
+    <PartnerRows
+      partners={data.partners.slice(0, 4)}
+      emptyMessage="No partners near you yet."
+    />
+  );
+
+  const network = (
+    <Card>
+      <p className="mb-1 text-xs text-foreground-secondary">Kept in the network</p>
+      <p className="font-display text-[26px] font-medium leading-none">
+        {money(data.keptInNetwork)}
+      </p>
+      <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+        sent to members and partners this cycle. No fees, instant.
+      </p>
+    </Card>
   );
 
   return (
     <>
-      {/* Mobile: the code leads, then actions, then search */}
+      {/* Mobile: the code leads, then the two ways to start, then the directory */}
       <div className="lg:hidden">
-        <div className="flex flex-col gap-3">
-          <ClearCode handle={data.handle} codeUrl={data.codeUrl} />
-          <div className="flex gap-2">
-            <Button variant="clear" size="xs" className="flex-1">
-              <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Scan to pay
-            </Button>
-            <Button variant="clear" size="xs" className="flex-1">
+        <ClearCode handle={data.handle} codeUrl={data.codeUrl} />
+
+        <div className="mb-4 mt-3 flex gap-2">
+          <Button variant="clear" size="xs" className="flex-1">
+            <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Scan to pay
+          </Button>
+          <Button variant="clear" size="xs" className="flex-1">
+            <HandCoins className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Request
+          </Button>
+        </div>
+
+        <div className="mb-4">{searchField}</div>
+        {claim}
+
+        {heading('Contacts', '/contacts', 'Manage')}
+        {contactList}
+
+        <div className="mt-5">
+          {heading('Clear Partners', '/partners', `See all ${data.partnerCount}`)}
+          {partners}
+        </div>
+      </div>
+
+      {/* Desktop: the directory on the left, getting paid on the right */}
+      <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-6">
+        <div>
+          <div className="mb-4 flex items-center gap-2">
+            <div className="min-w-0 flex-1">{searchField}</div>
+            <Button variant="clear" size="xs">
               <HandCoins className="h-3.5 w-3.5" strokeWidth={1.75} />
               Request
             </Button>
           </div>
-        </div>
-        <div className="mt-6">
-          <div className="mb-4">{searchField}</div>
-          {recentLabel}
-          {contacts}
-        </div>
-      </div>
 
-      {/* Desktop: even split — sending on the left, getting paid on the right */}
-      <div className="hidden gap-3 lg:grid lg:grid-cols-2 lg:items-start">
-        <Card>
-          <p className="mb-3 text-[13px] text-foreground-secondary">Send money</p>
-          <div className="mb-3.5">{searchField}</div>
-          {recentLabel}
-          {contacts}
-        </Card>
+          {claim}
+
+          {heading('Contacts', '/contacts', 'Manage')}
+          {contactList}
+
+          <div className="mt-5">
+            {heading('Clear Partners near you', '/partners', `See all ${data.partnerCount}`)}
+            {partners}
+          </div>
+        </div>
 
         <div className="flex flex-col gap-3">
           <ClearCode handle={data.handle} codeUrl={data.codeUrl} variant="titled" />
-          <Card>
-            <Button variant="clear" size="xs" className="mb-2.5 w-full">
-              <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Scan to pay
-            </Button>
-            <Button variant="clear" size="xs" className="w-full">
-              <HandCoins className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Request money
-            </Button>
-            <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-              Sending to members and Clear Partners is free and instant.
-            </p>
-          </Card>
+          <Button variant="clear" size="sm" className="w-full text-xs">
+            <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Scan to pay
+          </Button>
+          {network}
         </div>
       </div>
 

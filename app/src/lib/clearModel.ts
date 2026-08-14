@@ -38,6 +38,8 @@ export interface Cycle {
   daysLeft: number;
   /** e.g. "Nov 1 payday". */
   clearsOn: string;
+  /** What's expected to land on that date and settle the cycle. */
+  clearsEstimate?: number;
 }
 
 export interface Savings {
@@ -46,6 +48,8 @@ export interface Savings {
   vesting: number;
   credits: number;
   creditsGoal: number;
+  /** When the Clear Deed lands at the current rate, e.g. "Feb 2028". */
+  onTrackFor?: string;
 }
 
 export interface CashAccount {
@@ -125,10 +129,30 @@ export interface PendingClaim {
   expiresInDays: number;
 }
 
+/** The cycle's spending, split by where it was drawn from. */
+export interface CycleSpend {
+  spent: number;
+  daysLeft: number;
+  fromCash: number;
+  fromCredit: number;
+  carryCost: number;
+}
+
+export interface SpendCategory {
+  label: string;
+  amount: number;
+}
+
 export interface ActivityData {
   rows: ActivityRow[];
-  /** Net movement across the current cycle, shown beside the filters. */
-  cycleNet: number;
+  /**
+   * Desktop side rail. Absent on day one, when there's no cycle to summarise —
+   * the list stands alone rather than showing three cards of zeroes.
+   */
+  cycleSpend?: CycleSpend;
+  categories?: SpendCategory[];
+  /** What stayed with members and Clear Partners this cycle. */
+  insideCoop?: number;
   /** Set when money has been sent to someone who isn't a member yet. */
   pendingClaim?: PendingClaim;
 }
@@ -180,6 +204,20 @@ export function capitalise(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/**
+ * How a row is tagged in the source column. A credit draw names the tier that
+ * funded it — "Asset-backed", not the generic "Credit" — because which tier paid
+ * is what decides the rate, and it's the only place the member sees it.
+ */
+export function sourceTag(row: ActivityRow): { label: string; dot?: string } {
+  if (row.paidFromTier) {
+    return { label: TIER_SHORT_LABEL[row.paidFromTier], dot: TIER_FILL[row.paidFromTier] };
+  }
+  if (row.source === 'savings') return { label: 'Savings', dot: 'bg-vest-vested' };
+  if (row.source === 'cash') return { label: 'Cash', dot: 'bg-vest-cash' };
+  return { label: capitalise(row.source) };
+}
+
 export interface LimitBackingRow {
   label: string;
   /** What this position contributes to the limit. */
@@ -229,8 +267,6 @@ export interface VestingRow {
 
 /** When the Clear Deed lands at the current rate, and what would move it. */
 export interface SavingsProjection {
-  /** e.g. "Feb 2028". */
-  onTrackFor: string;
   perPayday: number;
   extraMonthly: number;
   /** The date the extra contribution would bring it to. */
@@ -306,6 +342,11 @@ export interface HeldBond {
   /** Display date, e.g. "Mar 14, 2028". */
   maturesOn: string;
   monthsLeft: number;
+  /**
+   * What it's worth today — the accrued value between what was paid and the face
+   * value. This, not the face, is what the credit line lends against.
+   */
+  worthToday: number;
 }
 
 export interface EarnData {
@@ -335,6 +376,43 @@ export function bondsTotal(bonds: HeldBond[]): number {
 /** Everything currently earning: the pool position plus what's tied up in bonds. */
 export function earningTotal(data: EarnData): number {
   return data.pool.position + bondsTotal(data.bonds);
+}
+
+/** Sum of what the held bonds are worth today. */
+export function bondsWorth(bonds: HeldBond[]): number {
+  return bonds.reduce((sum, b) => sum + b.worthToday, 0);
+}
+
+/** "Mar 14, 2028" → "Mar 2028": enough to plan around, short enough for a row. */
+export function monthYear(date: string): string {
+  const month = date.split(' ')[0];
+  const year = date.split(', ')[1];
+  return year ? `${month} ${year}` : date;
+}
+
+/** How far through its term a bond is, 0–1. */
+export function bondElapsed(bond: HeldBond): number {
+  return bond.months > 0 ? Math.max(0, Math.min(1, (bond.months - bond.monthsLeft) / bond.months)) : 0;
+}
+
+/**
+ * What each product backs on the credit line, and the total.
+ *
+ * This is the whole reason the two products aren't just savings accounts: money
+ * locked in them still raises the limit, at the loan-to-value the tier lends at.
+ * The asset-backed tier's limit on Home is this number — one derivation, so Earn
+ * and Home can't quote different figures.
+ */
+export function poolBacking(data: EarnData): number {
+  return Math.round(data.pool.position * data.poolLtv);
+}
+
+export function bondsBacking(data: EarnData): number {
+  return Math.round(bondsWorth(data.bonds) * data.bondLtv);
+}
+
+export function assetBackedLimit(data: EarnData): number {
+  return poolBacking(data) + bondsBacking(data);
 }
 
 /** Share of the pool lent out, 0–1. */
@@ -432,11 +510,33 @@ export interface SettingsData {
 export interface Contact {
   id: string;
   name: string;
-  /** e.g. "@diegor". */
+  /** e.g. "@diegor". Members get one; everyone else is reached by phone or email. */
   handle?: string;
+  /** Phone or email, for someone who hasn't joined yet. */
+  contactPoint?: string;
   /** Shown in the avatar circle. */
   initials: string;
   role: 'member' | 'partner';
+  /**
+   * Not a member yet: sending creates a claim link instead of a transfer, and
+   * they get an Invite action rather than a send one.
+   */
+  pending?: boolean;
+}
+
+/** How a contact is identified under their name — handle if they have one. */
+export function contactHandle(contact: Contact): string {
+  return contact.handle ?? contact.contactPoint ?? '';
+}
+
+/** A business that accepts Clear Pay — spec §7. */
+export interface Partner {
+  id: string;
+  name: string;
+  initials: string;
+  /** e.g. "Modular homes", "Trades". */
+  category: string;
+  city: string;
 }
 
 export const CONTACT_ROLE_LABEL: Record<Contact['role'], string> = {
@@ -451,7 +551,15 @@ export interface SendData {
   payFrom: PayFrom;
   /** What the QR encodes — the link that opens a payment to this member. */
   codeUrl: string;
-  recent: Contact[];
+  contacts: Contact[];
+  /** The few partners shown inline; the full list is its own page. */
+  partners: Partner[];
+  /** How many partners there are in total, for the "See all" link. */
+  partnerCount: number;
+  /** Sent to members and partners this cycle — money that stayed in the co-op. */
+  keptInNetwork: number;
+  /** Money sent to someone who hasn't joined yet, still waiting to be claimed. */
+  pendingClaim?: PendingClaim;
 }
 
 /** Match a contact on name or handle, for the Send search field. */
@@ -459,6 +567,13 @@ export function searchContacts(contacts: Contact[], query: string): Contact[] {
   const q = query.trim().toLowerCase();
   if (!q) return contacts;
   return contacts.filter((c) => c.name.toLowerCase().includes(q));
+}
+
+/** A card capability the member can switch off without freezing the whole card. */
+export interface CardControl {
+  id: string;
+  label: string;
+  on: boolean;
 }
 
 export interface CardData {
@@ -476,6 +591,13 @@ export interface CardData {
   cvc: string;
   /** Statement period the transactions below cover, e.g. "October". */
   period: string;
+  /** What the card spent over that period. */
+  periodTotal: number;
+  /** Which card is on screen — the same account, two ways to present it. */
+  variant: 'physical' | 'virtual';
+  controls: CardControl[];
+  perTransactionLimit: number;
+  perDayLimit: number;
   /** Card transactions only — Activity shows everything (spec §9). */
   transactions: ActivityRow[];
 }
@@ -567,6 +689,27 @@ export const TIER_FILL: Record<TierKey, string> = {
   asset: 'bg-tier-asset',
   income: 'bg-tier-income',
   boost: 'bg-tier-boost',
+};
+
+/**
+ * Headroom fill — the part of an added tier that hasn't been drawn on.
+ *
+ * A tint of the tier's own colour rather than plain track, so the credit bar
+ * reads as "this much of each tier is left" instead of one anonymous remainder.
+ */
+export const TIER_TINT: Record<TierKey, string> = {
+  savings: 'bg-tier-savings/25',
+  asset: 'bg-tier-asset/25',
+  income: 'bg-tier-income/25',
+  boost: 'bg-tier-boost/25',
+};
+
+/** Tier names short enough for a table column. */
+export const TIER_SHORT_LABEL: Record<TierKey, string> = {
+  savings: 'Savings',
+  asset: 'Asset-backed',
+  income: 'Income-backed',
+  boost: 'Boost',
 };
 
 export const TIER_TEXT: Record<TierKey, string> = {

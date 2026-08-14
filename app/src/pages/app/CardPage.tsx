@@ -2,11 +2,14 @@ import { useState } from 'react';
 import { Snowflake, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ClearCardFace from '@/components/clear/ClearCardFace';
+import CardControlsCard from '@/components/clear/CardControlsCard';
 import CardDetailsDialog from '@/components/clear/CardDetailsDialog';
 import TransactionRows from '@/components/clear/TransactionRows';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { CARD_IN_USE } from '@/data/clearPlaceholder';
+import { money } from '@/lib/money';
 import type { ActivityRow, CardData } from '@/lib/clearModel';
+import { cn } from '@/lib/utils';
 
 /**
  * Card — design spec §9.
@@ -20,9 +23,29 @@ import type { ActivityRow, CardData } from '@/lib/clearModel';
  */
 export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
   const [frozen, setFrozen] = useState(data.frozen);
+  const [variant, setVariant] = useState<CardData['variant']>(data.variant);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
-  const card = { ...data, frozen };
+  const card = { ...data, frozen, variant };
+
+  // One account, two ways to present it: the plastic in a wallet and the number
+  // you paste into a checkout. Same limits, same controls, same transactions.
+  const variantToggle = card.activated && (
+    <div className="grid grid-cols-2 gap-2">
+      {(['physical', 'virtual'] as const).map((v) => (
+        <Button
+          key={v}
+          variant="clear"
+          size="xs"
+          aria-pressed={variant === v}
+          onClick={() => setVariant(v)}
+          className={cn('capitalize', variant === v && 'border-tier-boost text-tier-boost-fg')}
+        >
+          {v}
+        </Button>
+      ))}
+    </div>
+  );
 
   const actions = card.activated ? (
     <div className="flex gap-2">
@@ -50,7 +73,12 @@ export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
     <>
       <div className="mb-1 flex items-baseline justify-between gap-3">
         <span className="text-[13px] text-foreground-secondary">Card transactions</span>
-        {card.period && <span className="text-xs text-muted-foreground">{card.period}</span>}
+        {card.period && (
+          <span className="text-xs text-muted-foreground">
+            {card.period}
+            {card.periodTotal > 0 && ` · ${money(card.periodTotal)}`}
+          </span>
+        )}
       </div>
       <TransactionRows
         onSelect={setSelected}
@@ -73,10 +101,19 @@ export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,2.2fr)] lg:items-start lg:gap-8">
         <div className="flex flex-col gap-3">
           <ClearCardFace card={card} />
+          {variantToggle}
           {actions}
-          {caption}
+          {card.activated && <CardControlsCard card={card} />}
+          {card.activated && (
+            <Button variant="clear" size="sm" className="w-full text-xs">
+              Add to Apple Wallet
+            </Button>
+          )}
         </div>
-        <div className="mt-6 lg:mt-0">{transactions}</div>
+        <div className="mt-6 lg:mt-0">
+          {transactions}
+          <div className="mt-3">{caption}</div>
+        </div>
       </div>
 
       <CardDetailsDialog card={card} open={detailsOpen} onOpenChange={setDetailsOpen} />

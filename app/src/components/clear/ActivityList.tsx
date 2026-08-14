@@ -1,5 +1,5 @@
 import { signedMoney } from '@/lib/money';
-import { capitalise, groupByDate, shortDate, type ActivityRow } from '@/lib/clearModel';
+import { groupByDate, shortDate, sourceTag, type ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /**
@@ -39,13 +39,16 @@ export default function ActivityList({
           </p>
 
           <div className="text-[13px]">
-            {group.rows.map((row, i) => (
+            {group.rows.map((row, i) => {
+              const tag = sourceTag(row);
+
+              return (
               <button
                 key={row.id}
                 type="button"
                 onClick={() => onSelect?.(row)}
                 className={cn(
-                  'grid w-full grid-cols-[1fr_auto] items-center gap-3 py-2.5 text-left transition-colors lg:grid-cols-[1fr_110px_90px]',
+                  'grid w-full grid-cols-[1fr_auto] items-center gap-3 py-2.5 text-left transition-colors lg:grid-cols-[1fr_130px_100px]',
                   onSelect && 'hover:bg-secondary/60',
                   i < group.rows.length - 1 && 'border-b-[0.5px] border-border',
                 )}
@@ -56,8 +59,13 @@ export default function ActivityList({
                   <p className="mt-0.5 text-[11px] text-muted-foreground lg:hidden">{row.source}</p>
                 </div>
 
-                <span className="hidden text-xs text-muted-foreground lg:block">
-                  {capitalise(row.source)}
+                {/* Desktop names the tier that funded it — which tier paid is
+                    what sets the rate, and the list is the only place it shows. */}
+                <span className="hidden items-center gap-1.5 text-xs text-muted-foreground lg:flex">
+                  {tag.dot && (
+                    <span aria-hidden className={cn('h-1.5 w-1.5 shrink-0 rounded-full', tag.dot)} />
+                  )}
+                  {tag.label}
                 </span>
 
                 <span
@@ -69,7 +77,8 @@ export default function ActivityList({
                   {signedMoney(row.amount)}
                 </span>
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
       ))}

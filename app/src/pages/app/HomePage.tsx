@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import BalanceBlock from '@/components/clear/BalanceBlock';
+import QuickActions from '@/components/clear/QuickActions';
 import CycleCard from '@/components/clear/CycleCard';
 import TaskStrip from '@/components/clear/TaskStrip';
 import SetupChecklist from '@/components/clear/SetupChecklist';
@@ -36,6 +38,7 @@ import {
  * can't drift apart.
  */
 export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
+  const navigate = useNavigate();
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [boostOpen, setBoostOpen] = useState(false);
@@ -48,13 +51,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const boost = addableTier(data.credit);
 
   const balance = <BalanceBlock cash={data.cash} credit={data.credit} emptyState={dayOne} />;
-  const savings = (
-    <SavingsSummaryCard
-      savings={data.savings}
-      emptyState={dayOne}
-      onAdd={() => setAddSavingsOpen(true)}
-    />
-  );
+  const savings = <SavingsSummaryCard savings={data.savings} emptyState={dayOne} />;
 
   if (dayOne) {
     return (
@@ -71,8 +68,20 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   }
 
   const taskStrip = <TaskStrip tasks={data.tasks} />;
-  const cycle = <CycleCard cycle={data.cycle} />;
+  const cycleStrip = <CycleCard cycle={data.cycle} />;
   const cycleCard = <CycleCard cycle={data.cycle} variant="card" />;
+  // Add money has no flow yet — the link-an-account surface arrives with the
+  // other flow modals. The other three go where they already exist.
+  const quickActions = (
+    <QuickActions
+      actions={[
+        { label: 'Add money' },
+        { label: 'Send', onSelect: () => navigate('/send') },
+        { label: 'Save', onSelect: () => setAddSavingsOpen(true) },
+        { label: 'Pay', onSelect: () => navigate('/card') },
+      ]}
+    />
+  );
   const credit = (
     <ClearCreditCard
       credit={data.credit}
@@ -97,14 +106,17 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         {activity}
       </div>
 
-      {/* Desktop: balance beside the cycle, then credit beside cash/savings */}
+      {/* Desktop: balance beside the four things you can start, then the cycle as
+          a status strip, then credit beside cash/savings. Credit takes the wider
+          column — it carries four legend rows the others don't. */}
       <div className="hidden lg:block">
-        <div className="mb-3.5 flex items-end justify-between gap-6">
+        <div className="mb-4 grid grid-cols-[minmax(0,1fr)_300px] items-end gap-6">
           {balance}
-          {cycle}
+          {quickActions}
         </div>
+        <div className="mb-3">{cycleStrip}</div>
         {taskStrip}
-        <div className="mt-3.5 grid grid-cols-2 gap-3">
+        <div className="mt-3.5 grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start gap-3">
           {credit}
           <div className="flex flex-col gap-3">
             {cash}

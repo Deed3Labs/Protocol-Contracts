@@ -9,7 +9,12 @@ import type {
   EarnData,
   BondTerm,
   SettingsData,
+  Contact,
+  Partner,
+  YieldPool,
+  HeldBond,
 } from '@/lib/clearModel';
+import { assetBackedLimit } from '@/lib/clearModel';
 
 /**
  * Where the flow surfaces draw from. Home's scenario is deliberately late-cycle —
@@ -18,6 +23,28 @@ import type {
  * showing "pay from $0".
  */
 const PAY_FROM = { label: 'Cash account', balance: 6200 };
+
+/** Loan-to-value each product is lent against — spec §6. */
+const BOND_LTV = 0.95;
+const POOL_LTV = 0.7;
+
+const POOL: YieldPool = { apy: 6.8, lent: 740000, capacity: 1000000, position: 2500, earned: 41.2 };
+
+const BONDS: HeldBond[] = [
+  { id: 'b1', face: 5000, months: 24, paid: 4325, maturesOn: 'Mar 14, 2028', monthsLeft: 19, worthToday: 4459 },
+  { id: 'b2', face: 2500, months: 12, paid: 2400, maturesOn: 'Jan 8, 2027', monthsLeft: 5, worthToday: 2436 },
+];
+
+/**
+ * Home's asset-backed tier is exactly what the Earn positions back, so the two
+ * pages are reading one number rather than agreeing by hand.
+ */
+const ASSET_BACKED_LIMIT = assetBackedLimit({
+  pool: POOL,
+  bonds: BONDS,
+  bondLtv: BOND_LTV,
+  poolLtv: POOL_LTV,
+} as EarnData);
 
 /**
  * Placeholder data for the rebuild — the design spec's own example values, so the
@@ -36,13 +63,20 @@ export const HOME_IN_USE: HomeData = {
     carryFreeUnder: 3000,
     tiers: [
       { key: 'savings', label: 'Savings (CLRUSD)', shortLabel: 'Savings', rate: 'free', used: 3000, limit: 3000, added: true },
-      { key: 'asset', label: 'Asset-backed', rate: '0.65–0.75%', used: 2400, limit: 8300, added: true },
+      { key: 'asset', label: 'Asset-backed', rate: '0.65–0.75%', used: 2400, limit: ASSET_BACKED_LIMIT, added: true },
       { key: 'income', label: 'Income-backed', shortLabel: 'Income', rate: '1.5% / cycle', used: 0, limit: 1000, added: true },
       { key: 'boost', label: 'Boost', rate: '3% / cycle', ratePerCycle: 0.03, used: 0, limit: 500, added: false },
     ],
   },
-  cycle: { lengthDays: 30, daysLeft: 6, clearsOn: 'Nov 1 payday' },
-  savings: { cash: 3000, vested: 1500, vesting: 1500, credits: 1500, creditsGoal: 15000 },
+  cycle: { lengthDays: 30, daysLeft: 6, clearsOn: 'Nov 1 payday', clearsEstimate: 2000 },
+  savings: {
+    cash: 3000,
+    vested: 1500,
+    vesting: 1500,
+    credits: 1500,
+    creditsGoal: 15000,
+    onTrackFor: 'Feb 2028',
+  },
   cashAccount: {
     balance: 0,
     nextDepositOn: 'Nov 1',
@@ -60,9 +94,11 @@ export const HOME_IN_USE: HomeData = {
     { id: 'card', label: 'Activate your card to start spending', cta: 'Activate', done: false },
   ],
   recent: [
-    { id: 'r1', name: 'Shell', date: 'Oct 26', source: 'credit', kind: 'spending', amount: -52.1 },
-    { id: 'r2', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44 },
+    { id: 'r1', name: 'Shell', date: 'Oct 26', source: 'credit', kind: 'spending', amount: -52.1, paidFromTier: 'asset' },
+    { id: 'r2', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44, paidFromTier: 'asset' },
     { id: 'r3', name: 'Payroll deposit', date: 'Oct 25', source: 'cash account', kind: 'deposit', amount: 2000 },
+    { id: 'r4', name: 'Equity credits vested', date: 'Oct 25', source: 'savings', kind: 'savings', amount: 500 },
+    { id: 'r5', name: 'Verizon', date: 'Oct 24', source: 'credit', kind: 'spending', amount: -85, paidFromTier: 'asset' },
   ],
   backing: {
     assetBacked: [
@@ -142,7 +178,7 @@ const ASSURANCE: AssuranceItem[] = [
 
 export const SAVINGS_IN_USE: SavingsData = {
   savings: HOME_IN_USE.savings,
-  projection: { onTrackFor: 'Feb 2028', perPayday: 500, extraMonthly: 250, withExtra: 'Apr 2027' },
+  projection: { perPayday: 500, extraMonthly: 250, withExtra: 'Apr 2027' },
   payFrom: PAY_FROM,
   creditLimitToday: 12300,
   milestones: MILESTONES,
@@ -156,7 +192,7 @@ export const SAVINGS_IN_USE: SavingsData = {
 
 export const SAVINGS_DAY_ONE: SavingsData = {
   savings: HOME_DAY_ONE.savings,
-  projection: { onTrackFor: 'Feb 2028', perPayday: 500, extraMonthly: 250, withExtra: 'Apr 2027' },
+  projection: { perPayday: 500, extraMonthly: 250, withExtra: 'Apr 2027' },
   payFrom: PAY_FROM,
   creditLimitToday: 0,
   milestones: MILESTONES,
@@ -165,7 +201,14 @@ export const SAVINGS_DAY_ONE: SavingsData = {
 };
 
 export const ACTIVITY_IN_USE: ActivityData = {
-  cycleNet: -1842,
+  cycleSpend: { spent: 1842, daysLeft: 6, fromCash: 1242, fromCredit: 600, carryCost: 10.4 },
+  categories: [
+    { label: 'Groceries', amount: 412 },
+    { label: 'Fuel', amount: 188 },
+    { label: 'Bills', amount: 285 },
+    { label: 'Everything else', amount: 957 },
+  ],
+  insideCoop: 35,
   pendingClaim: { amount: 40, recipient: 'Marcus T.', sentOn: 'Oct 26', expiresInDays: 12 },
   rows: [
     {
@@ -186,7 +229,18 @@ export const ACTIVITY_IN_USE: ActivityData = {
     { id: 't2', name: 'Sent to Marcus T.', date: 'Today · Oct 26', source: 'pending', kind: 'sent', amount: -40 },
     { id: 't3', name: 'Payroll deposit', date: 'Oct 25', source: 'cash account', kind: 'deposit', amount: 2000 },
     { id: 't4', name: 'Equity credits vested', date: 'Oct 25', source: 'savings', kind: 'savings', amount: 500 },
-    { id: 't5', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44 },
+    {
+      id: 't5',
+      name: 'Stater Bros',
+      date: 'Oct 25',
+      source: 'credit',
+      kind: 'spending',
+      amount: -118.44,
+      paidFromTier: 'asset',
+      paidFromLabel: 'Asset-backed credit',
+      rate: '0.65% per cycle',
+      cardLast4: '8836',
+    },
     {
       id: 't7',
       name: 'Diego R.',
@@ -196,11 +250,23 @@ export const ACTIVITY_IN_USE: ActivityData = {
       kind: 'deposit',
       amount: 35,
     },
+    {
+      id: 't8',
+      name: 'Verizon',
+      date: 'Oct 24',
+      source: 'credit',
+      kind: 'spending',
+      amount: -85,
+      paidFromTier: 'asset',
+      paidFromLabel: 'Asset-backed credit',
+      rate: '0.65% per cycle',
+      cardLast4: '8836',
+    },
     { id: 't6', name: 'Chipotle', date: 'Oct 23', source: 'cash', kind: 'spending', amount: -14.2 },
   ],
 };
 
-export const ACTIVITY_DAY_ONE: ActivityData = { cycleNet: 0, rows: [] };
+export const ACTIVITY_DAY_ONE: ActivityData = { rows: [] };
 
 export const CARD_IN_USE: CardData = {
   activated: true,
@@ -212,12 +278,23 @@ export const CARD_IN_USE: CardData = {
   pan: '4241 8890 1174 8836',
   cvc: '318',
   period: 'October',
+  periodTotal: 1842,
+  variant: 'physical',
+  controls: [
+    { id: 'contactless', label: 'Contactless', on: true },
+    { id: 'online', label: 'Online payments', on: true },
+    { id: 'atm', label: 'ATM withdrawals', on: true },
+    { id: 'international', label: 'International', on: false },
+  ],
+  perTransactionLimit: 2000,
+  perDayLimit: 3000,
   transactions: [
-    { id: 'c1', name: 'Shell', date: 'Oct 26', source: 'credit', kind: 'spending', amount: -52.1 },
-    { id: 'c2', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44 },
-    { id: 'c3', name: 'Verizon', date: 'Oct 24', source: 'credit', kind: 'spending', amount: -85 },
+    { id: 'c1', name: 'Shell', date: 'Oct 26', source: 'credit', kind: 'spending', amount: -52.1, paidFromTier: 'asset' },
+    { id: 'c2', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44, paidFromTier: 'asset' },
+    { id: 'c3', name: 'Verizon', date: 'Oct 24', source: 'credit', kind: 'spending', amount: -85, paidFromTier: 'asset' },
     { id: 'c4', name: 'Chipotle', date: 'Oct 23', source: 'cash', kind: 'spending', amount: -14.2 },
     { id: 'c5', name: 'Costco', date: 'Oct 22', source: 'cash', kind: 'spending', amount: -212.66 },
+    { id: 'c6', name: 'TinyBox Systems', date: 'Oct 22', source: 'cash', kind: 'spending', amount: -180 },
   ],
 };
 
@@ -232,26 +309,78 @@ export const CARD_DAY_ONE: CardData = {
   pan: '',
   cvc: '',
   period: '',
+  periodTotal: 0,
+  variant: 'physical',
+  controls: [
+    { id: 'contactless', label: 'Contactless', on: true },
+    { id: 'online', label: 'Online payments', on: true },
+    { id: 'atm', label: 'ATM withdrawals', on: true },
+    { id: 'international', label: 'International', on: false },
+  ],
+  perTransactionLimit: 2000,
+  perDayLimit: 3000,
   transactions: [],
 };
+
+/** Members and not-yet-members. Partners are a separate list — see PARTNERS. */
+export const CONTACTS: Contact[] = [
+  { id: 'p1', name: 'Diego R.', handle: '@diegor', initials: 'DR', role: 'member' },
+  { id: 'p2', name: 'Maria C.', handle: '@mariac', initials: 'MC', role: 'member' },
+  {
+    id: 'p3',
+    name: 'Marcus T.',
+    contactPoint: '(909) 555-0177',
+    initials: 'MT',
+    role: 'member',
+    pending: true,
+  },
+  { id: 'p4', name: 'Ana L.', handle: '@anal', initials: 'AL', role: 'member' },
+  {
+    id: 'p5',
+    name: 'Jenna W.',
+    contactPoint: 'jenna@example.com',
+    initials: 'JW',
+    role: 'member',
+    pending: true,
+  },
+];
+
+export const PARTNERS: Partner[] = [
+  { id: 'b1', name: 'TinyBox Systems', initials: 'TB', category: 'Modular homes', city: 'Redlands' },
+  { id: 'b2', name: 'Vega Electric', initials: 'VE', category: 'Trades', city: 'Redlands' },
+  { id: 'b3', name: 'Rincon Coffee', initials: 'RC', category: 'Food & drink', city: 'Riverside' },
+  { id: 'b4', name: 'Highland Supply', initials: 'HS', category: 'Materials', city: 'Highland' },
+  { id: 'b5', name: 'Orange St Market', initials: 'OM', category: 'Groceries', city: 'Redlands' },
+  {
+    id: 'b6',
+    name: 'Cortez Plumbing',
+    initials: 'CP',
+    category: 'Trades',
+    city: 'San Bernardino',
+  },
+];
 
 export const SEND_IN_USE: SendData = {
   handle: '@kaim',
   codeUrl: 'https://useclear.org/pay/kaim',
   payFrom: PAY_FROM,
-  recent: [
-    { id: 'p1', name: 'Diego R.', handle: '@diegor', initials: 'DR', role: 'member' },
-    { id: 'p2', name: 'TinyBox Systems', handle: '@tinybox', initials: 'TB', role: 'partner' },
-    { id: 'p3', name: 'Maria C.', handle: '@mariac', initials: 'MC', role: 'member' },
-  ],
+  contacts: CONTACTS,
+  partners: PARTNERS,
+  partnerCount: 14,
+  keptInNetwork: 215,
+  pendingClaim: { amount: 40, recipient: 'Marcus T.', sentOn: 'Oct 26', expiresInDays: 12 },
 };
 
 /** Day one — the code exists from the moment the account does; nobody paid yet. */
+/** Day one — no contacts saved yet, but the partners nearby exist regardless. */
 export const SEND_DAY_ONE: SendData = {
   handle: '@kaim',
   codeUrl: 'https://useclear.org/pay/kaim',
   payFrom: PAY_FROM,
-  recent: [],
+  contacts: [],
+  partners: PARTNERS,
+  partnerCount: 14,
+  keptInNetwork: 0,
 };
 
 /** The bond ladder is a property of the product — offered whether or not you hold any. */
@@ -265,25 +394,22 @@ const BOND_TERMS: BondTerm[] = [
 export const EARN_IN_USE: EarnData = {
   earnedToDate: 412.6,
   payFrom: PAY_FROM,
-  bondLtv: 0.95,
-  poolLtv: 0.7,
+  bondLtv: BOND_LTV,
+  poolLtv: POOL_LTV,
   reserveDate: 'Mar 2029',
-  pool: { apy: 6.8, lent: 740000, capacity: 1000000, position: 2500, earned: 41.2 },
+  pool: POOL,
   terms: BOND_TERMS,
-  bonds: [
-    { id: 'b1', face: 5000, months: 24, paid: 4325, maturesOn: 'Mar 14, 2028', monthsLeft: 19 },
-    { id: 'b2', face: 2500, months: 12, paid: 2400, maturesOn: 'Jan 8, 2027', monthsLeft: 5 },
-  ],
+  bonds: BONDS,
 };
 
 /** Day one — the pool and the ladder still exist, this member just isn't in them. */
 export const EARN_DAY_ONE: EarnData = {
   earnedToDate: 0,
   payFrom: PAY_FROM,
-  bondLtv: 0.95,
-  poolLtv: 0.7,
+  bondLtv: BOND_LTV,
+  poolLtv: POOL_LTV,
   reserveDate: 'Mar 2029',
-  pool: { apy: 6.8, lent: 740000, capacity: 1000000, position: 0, earned: 0 },
+  pool: { ...POOL, position: 0, earned: 0 },
   terms: BOND_TERMS,
   bonds: [],
 };

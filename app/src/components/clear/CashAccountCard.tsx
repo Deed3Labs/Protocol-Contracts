@@ -1,4 +1,3 @@
-import { CircleCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Card from './Card';
 import { money } from '@/lib/money';
@@ -27,12 +26,9 @@ export default function CashAccountCard({
 
       {account.directDepositActive && (
         <div className="flex items-center justify-between gap-3 border-t-[0.5px] border-border pt-2">
-          <span className="flex items-center gap-1.5 text-[11px] text-tier-savings-fg">
-            <CircleCheck className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
-            Direct deposit active
-          </span>
+          <span className="text-[11px] text-tier-savings-fg">Direct deposit active</span>
           <Button variant="clear" size="xs" onClick={onDetails}>
-            Account details
+            Details
           </Button>
         </div>
       )}

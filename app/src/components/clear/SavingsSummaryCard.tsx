@@ -1,5 +1,4 @@
 import { Lock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import Card, { CardRule } from './Card';
 import SegmentedBar from './SegmentedBar';
 import { money, count } from '@/lib/money';
@@ -13,12 +12,10 @@ import { savingsTotal, type Savings } from '@/lib/clearModel';
  */
 export default function SavingsSummaryCard({
   savings,
-  onAdd,
   /** Day one: empty bar plus the pitch line instead of a breakdown. */
   emptyState,
 }: {
   savings: Savings;
-  onAdd?: () => void;
   emptyState?: boolean;
 }) {
   const total = savingsTotal(savings);
@@ -71,13 +68,28 @@ export default function SavingsSummaryCard({
             </div>
           </div>
 
-          <CardRule className="mt-auto flex items-center justify-between gap-3">
-            <span className="text-xs">
-              {count(savings.credits)} of {count(savings.creditsGoal)} credits
-            </span>
-            <Button variant="clear" size="xs" onClick={onAdd}>
-              Add
-            </Button>
+          {/* Credits get the same treatment as the Savings page: the count and
+              the date it implies, over the progress that produced both. Adding
+              money is a Home action now, not a button buried in this card. */}
+          <CardRule className="mt-auto">
+            <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs">
+              <span>
+                {count(savings.credits)} of {count(savings.creditsGoal)} credits
+              </span>
+              {savings.onTrackFor && (
+                <span className="shrink-0 text-muted-foreground">
+                  On track for {savings.onTrackFor}
+                </span>
+              )}
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-[3px] bg-border">
+              <div
+                className="h-full bg-tier-savings"
+                style={{
+                  width: `${Math.min(100, (savings.credits / Math.max(1, savings.creditsGoal)) * 100)}%`,
+                }}
+              />
+            </div>
           </CardRule>
         </>
       )}

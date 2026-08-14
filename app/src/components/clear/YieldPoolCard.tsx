@@ -1,23 +1,29 @@
 import { Button } from '@/components/ui/button';
 import Card from './Card';
 import { money, compactMoney, signedMoney } from '@/lib/money';
-import { poolUtilization, type YieldPool } from '@/lib/clearModel';
+import { poolBacking, poolUtilization, type EarnData } from '@/lib/clearModel';
 
 /**
  * Yield pool — design spec §6.
  *
- * Deliberately a different visual language from BurnerBonds: one large variable
- * rate and a continuous utilization bar, because the return moves and the money
- * comes out whenever you want it. Bonds get a discrete ladder for the opposite
- * reason.
+ * Deliberately a different visual language from the bond ladder: one large
+ * variable rate and a continuous utilization bar, because the return moves and
+ * the money comes out whenever you want it. Bonds get discrete rows for the
+ * opposite reason.
+ *
+ * The backing row is the point of the whole page — the position is lent out, and
+ * it still raises the credit limit while it is.
  */
 export default function YieldPoolCard({
-  pool,
+  data,
   onDeposit,
+  onWithdraw,
 }: {
-  pool: YieldPool;
+  data: EarnData;
   onDeposit?: () => void;
+  onWithdraw?: () => void;
 }) {
+  const { pool } = data;
   const utilization = poolUtilization(pool);
 
   return (
@@ -27,27 +33,23 @@ export default function YieldPoolCard({
         <span className="text-[11px] text-muted-foreground">Withdraw anytime</span>
       </div>
 
-      <p className="font-display mb-0.5 text-[28px] font-medium leading-none">
-        {pool.apy}%
-        <span className="ml-1.5 text-sm font-normal text-foreground-secondary">APY</span>
-      </p>
-      <p className="mb-3.5 text-[11px] text-muted-foreground">Variable · rises with lending demand</p>
-
-      <div className="mb-1.5 flex items-baseline justify-between text-[11px] text-muted-foreground">
-        <span>Utilization</span>
-        <span className="tabular-nums">{Math.round(utilization * 100)}%</span>
+      <div className="mb-3 flex items-baseline gap-2">
+        <span className="font-display text-[26px] font-medium leading-none">{pool.apy}%</span>
+        <span className="text-xs text-foreground-secondary">APY · variable</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-[3px] bg-border">
+
+      <div className="mb-1.5 flex items-baseline justify-between gap-3 text-[11px] text-muted-foreground">
+        <span>Utilization</span>
+        <span className="tabular-nums">
+          {Math.round(utilization * 100)}% · {compactMoney(pool.lent)} of{' '}
+          {compactMoney(pool.capacity)} lent
+        </span>
+      </div>
+      <div className="mb-3 h-1.5 overflow-hidden rounded-[3px] bg-border">
         <div className="h-full bg-tier-boost" style={{ width: `${utilization * 100}%` }} />
       </div>
-      {/* The pool's absolute size is context, not a number you act on — it's the
-          first thing to go when the column narrows. */}
-      <p className="mb-3.5 mt-1.5 hidden text-[11px] text-muted-foreground lg:block">
-        {compactMoney(pool.lent)} of {compactMoney(pool.capacity)} lent to members
-      </p>
-      <div className="mb-3.5 lg:hidden" />
 
-      <div className="mb-3 border-t-[0.5px] border-border pt-[11px] text-xs leading-[2]">
+      <div className="mb-3 border-t-[0.5px] border-border pt-2.5 text-xs leading-[1.95]">
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-foreground-secondary">Your position</span>
           <span className="tabular-nums">{money(pool.position, { cents: true })}</span>
@@ -56,13 +58,25 @@ export default function YieldPoolCard({
           <span className="text-foreground-secondary">Earned</span>
           <span className="tabular-nums text-tier-savings-fg">{signedMoney(pool.earned)}</span>
         </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-foreground-secondary">
+            Backs limit at {Math.round(data.poolLtv * 100)}%
+          </span>
+          <span className="tabular-nums">{money(poolBacking(data))}</span>
+        </div>
       </div>
 
       <div className="mt-auto flex gap-2">
         <Button variant="clear" size="xs" className="flex-1" onClick={onDeposit}>
           Deposit
         </Button>
-        <Button variant="clear" size="xs" className="flex-1" disabled={pool.position <= 0}>
+        <Button
+          variant="clear"
+          size="xs"
+          className="flex-1"
+          disabled={pool.position <= 0}
+          onClick={onWithdraw}
+        >
           Withdraw
         </Button>
       </div>
