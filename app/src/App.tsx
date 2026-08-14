@@ -26,7 +26,7 @@ import ActivityPage from "@/pages/app/ActivityPage";
 import CardPage from "@/pages/app/CardPage";
 import SendPage from "@/pages/app/SendPage";
 import EarnPage from "@/pages/app/EarnPage";
-import RebuildPlaceholder from "@/pages/app/RebuildPlaceholder";
+import SettingsPage from "@/pages/app/SettingsPage";
 
 function App() {
   // Check if splash has been shown in this session
@@ -114,7 +114,7 @@ function App() {
                       <Route path="/activity" element={<ActivityPage />} />
                       <Route path="/card" element={<CardPage />} />
                       {/* Not a nav item — reached from the avatar menu (spec §1). */}
-                      <Route path="/settings" element={<RebuildPlaceholder page="Settings" />} />
+                      <Route path="/settings" element={<SettingsPage />} />
                     </Route>
 
                     {/* Archived pages (src/pages/_archive + src/pages/legacy) are kept on disk

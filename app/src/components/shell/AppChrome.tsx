@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import TopNav from './TopNav';
 import MobileTabBar from './MobileTabBar';
 import { navItems } from './navItems';
+import { capitalise } from '@/lib/clearModel';
 
 /**
  * The visual shell — design spec §1. Deliberately free of providers and data so
@@ -23,6 +24,10 @@ export default function AppChrome({
   const active = navItems.find((i) => (i.end ? pathname === i.to : pathname.startsWith(i.to)));
   const isHome = pathname === '/';
 
+  // Routes off the nav — Settings, reached from the avatar — still need a title.
+  const fallbackTitle = pathname.replace(/^\//, '').split('/')[0];
+  const title = active?.label ?? (fallbackTitle ? capitalise(fallbackTitle) : 'Clear');
+
   return (
     <div className="min-h-screen bg-background">
       <TopNav trailing={trailing} />
@@ -35,7 +40,7 @@ export default function AppChrome({
               Clear
             </NavLink>
           ) : (
-            <span className="text-[15px] font-medium text-foreground">{active?.label ?? 'Clear'}</span>
+            <span className="text-[15px] font-medium text-foreground">{title}</span>
           )}
           {trailing && <div className="flex items-center gap-1">{trailing}</div>}
         </div>

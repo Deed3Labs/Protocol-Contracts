@@ -311,6 +311,31 @@ export function poolUtilization(pool: YieldPool): number {
   return pool.capacity > 0 ? Math.min(1, pool.lent / pool.capacity) : 0;
 }
 
+export interface MemberProfile {
+  name: string;
+  initials: string;
+  handle: string;
+  memberSince: string;
+  legalName: string;
+  phone: string;
+  email: string;
+  address: string;
+  region: string;
+  /** One member, one vote — the co-op rule, not a computed figure. */
+  votes: number;
+  walletAddress: string;
+}
+
+export interface SettingsData {
+  profile: MemberProfile;
+  accelerationActive: boolean;
+  faceIdOn: boolean;
+  trustedDevices: number;
+  linkedAccountCount: number;
+  externalBank: string;
+  employer: string;
+}
+
 export interface Contact {
   id: string;
   name: string;

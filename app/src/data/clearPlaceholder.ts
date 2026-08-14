@@ -8,6 +8,7 @@ import type {
   SendData,
   EarnData,
   BondTerm,
+  SettingsData,
 } from '@/lib/clearModel';
 
 /**
@@ -274,4 +275,26 @@ export const EARN_DAY_ONE: EarnData = {
   pool: { apy: 6.8, lent: 740000, capacity: 1000000, position: 0, earned: 0 },
   terms: BOND_TERMS,
   bonds: [],
+};
+
+export const SETTINGS: SettingsData = {
+  profile: {
+    name: 'Kai Moore',
+    initials: 'KM',
+    handle: '@kaim',
+    memberSince: 'March 2026',
+    legalName: 'Kai Moore',
+    phone: '(909) 555-0148',
+    email: 'kai@example.com',
+    address: 'Redlands, CA',
+    region: 'Inland Empire',
+    votes: 1,
+    walletAddress: '0x7a3f…91c4',
+  },
+  accelerationActive: false,
+  faceIdOn: true,
+  trustedDevices: 2,
+  linkedAccountCount: 2,
+  externalBank: 'Chase ••4021',
+  employer: 'Acme Logistics',
 };

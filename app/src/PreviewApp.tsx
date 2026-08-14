@@ -9,6 +9,7 @@ import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
 import SendPage from '@/pages/app/SendPage';
 import EarnPage from '@/pages/app/EarnPage';
+import SettingsPage from '@/pages/app/SettingsPage';
 import OnboardingFlow, { type OnboardingStep } from '@/pages/auth/OnboardingFlow';
 import {
   HOME_IN_USE,
@@ -54,7 +55,7 @@ function OnboardingPreview() {
   const [step, setStep] = useState<OnboardingStep>('enter');
 
   return (
-    <div className="min-h-screen bg-background lg:flex lg:items-center lg:justify-center lg:py-10">
+    <div className="min-h-screen bg-background">
       <OnboardingFlow step={step} onStepChange={setStep} />
 
       <div className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
@@ -106,6 +107,7 @@ export default function PreviewApp() {
                     <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
                     <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
                     <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
+                    <Route path="/settings" element={<SettingsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </AppChrome>

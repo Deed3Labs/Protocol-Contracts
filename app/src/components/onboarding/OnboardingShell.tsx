@@ -27,23 +27,34 @@ export default function OnboardingShell({
   children: ReactNode;
 }) {
   return (
-    <div className="mx-auto grid min-h-screen w-full max-w-[840px] grid-cols-1 lg:min-h-0 lg:grid-cols-[minmax(0,1fr)_360px] lg:overflow-hidden lg:rounded-[14px] lg:border-[0.5px] lg:border-border">
-      <div className="hidden flex-col justify-center bg-secondary px-8 py-10 lg:flex">
-        <p className="mb-auto text-[15px] font-medium">Clear</p>
-        <p className="mb-2 mt-10 text-[26px] font-medium leading-tight tracking-[-0.4px]">
-          {headline}
-        </p>
-        <p className="max-w-[300px] text-[13px] leading-relaxed text-foreground-secondary">{body}</p>
+    // Full-bleed at every width — signing in owns the whole screen, rather than
+    // floating as a card on a page that isn't there yet.
+    <div className="grid min-h-screen w-full grid-cols-1 lg:grid-cols-[minmax(0,1fr)_480px]">
+      <div className="hidden flex-col bg-secondary px-12 py-12 lg:flex">
+        <p className="text-[15px] font-medium">Clear</p>
+        {/* Copy is centred against the pinned wordmark. The reference's panel is
+            only ~420px tall, where bottom-aligning reads as balanced; at full
+            screen height it just falls to the floor. */}
+        <div className="flex flex-1 flex-col justify-center">
+          <p className="mb-2 max-w-[440px] text-[26px] font-medium leading-tight tracking-[-0.4px]">
+            {headline}
+          </p>
+          <p className="max-w-[340px] text-[13px] leading-relaxed text-foreground-secondary">
+            {body}
+          </p>
+        </div>
       </div>
 
-      {/* Capped below lg so the form doesn't stretch across a tablet — a single
-          column of inputs at 900px reads as a broken layout, not a spacious one. */}
-      <div className="mx-auto flex min-h-screen w-full max-w-[420px] flex-col p-5 lg:mx-0 lg:min-h-[420px] lg:max-w-none">
+      {/* The form column is full-height, but its contents stay at a readable
+          measure and sit centred in it rather than stretching to 480px. */}
+      <div className="flex min-h-screen flex-col justify-center px-5 py-8 lg:px-12">
+        <div className="mx-auto flex w-full max-w-[360px] flex-1 flex-col lg:flex-none">
         <p className="mb-5 text-[10px] tracking-[0.3px] text-muted-foreground">
           {eyebrow}
           {eyebrowNote && <span className="text-tier-boost-fg"> {eyebrowNote}</span>}
         </p>
-        {children}
+          {children}
+        </div>
       </div>
     </div>
   );
