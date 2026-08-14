@@ -485,6 +485,75 @@ export function closureBalance(closure: AccountClosure): number {
   return closure.savingsReturned - closure.creditToSettle;
 }
 
+/** A document the member has agreed to, or can read. */
+export interface LegalDoc {
+  id: string;
+  label: string;
+  detail?: string;
+  /** Documents that get amended carry a version; static ones don't. */
+  version?: string;
+}
+
+export interface HelpTopic {
+  id: string;
+  question: string;
+}
+
+export interface BylawArticle {
+  id: string;
+  title: string;
+  clauses: { number: string; text: string }[];
+}
+
+export interface Bylaws {
+  version: string;
+  /** e.g. "Jun 2026". */
+  updated: string;
+  articles: BylawArticle[];
+}
+
+/**
+ * Patronage — the co-op's surplus returned in proportion to how much a member
+ * used it, not how much they saved. Those are different mechanisms and the copy
+ * has to keep saying so.
+ */
+export interface Patronage {
+  fiscalYear: string;
+  status: string;
+  /** What the member's share is calculated from. */
+  basis: number;
+  /** Declared so far this year; absent while the year is still running. */
+  declared?: number;
+  history: { id: string; year: string; amount: number }[];
+}
+
+export interface Ballot {
+  id: string;
+  question: string;
+  closesOn: string;
+  closesInDays: number;
+  /** Turnout so far — the number that decides whether a vote is legitimate. */
+  voted: number;
+  members: number;
+  options: { id: string; label: string }[];
+}
+
+export interface PastVote {
+  id: string;
+  title: string;
+  /** e.g. "Jun 2026 · Passed 84%". */
+  detail: string;
+  participated: boolean;
+}
+
+export interface LoginEvent {
+  id: string;
+  device: string;
+  /** Where from and how, e.g. "Redlands, CA · Face ID". */
+  detail: string;
+  when: string;
+}
+
 export interface SettingsData {
   profile: MemberProfile;
   accelerationActive: boolean;
@@ -505,6 +574,14 @@ export interface SettingsData {
   employer: string;
   closure: AccountClosure;
   votesCast: number;
+  legalDocs: LegalDoc[];
+  helpTopics: HelpTopic[];
+  bylaws: Bylaws;
+  patronage: Patronage;
+  /** The vote currently open, if there is one. */
+  ballot?: Ballot;
+  pastVotes: PastVote[];
+  logins: LoginEvent[];
 }
 
 export interface Contact {

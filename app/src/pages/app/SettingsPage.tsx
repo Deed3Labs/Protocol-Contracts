@@ -8,6 +8,13 @@ import ToggleRows from '@/components/clear/ToggleRows';
 import ContactsPanel from '@/components/clear/ContactsPanel';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
 import RecoveryContactsDialog from '@/components/clear/RecoveryContactsDialog';
+import LoginHistoryPanel from '@/components/settings/LoginHistoryPanel';
+import LegalPanel from '@/components/settings/LegalPanel';
+import HelpPanel from '@/components/settings/HelpPanel';
+import BylawsPanel from '@/components/settings/BylawsPanel';
+import PatronagePanel from '@/components/settings/PatronagePanel';
+import VotingPanel from '@/components/settings/VotingPanel';
+import BallotDialog from '@/components/settings/BallotDialog';
 import { money } from '@/lib/money';
 import ThemePicker from '@/components/clear/ThemePicker';
 import InfoBlock from '@/components/clear/InfoBlock';
@@ -44,6 +51,9 @@ type SectionId =
   | 'advanced'
   | 'help';
 
+/** Pages that sit one level below a section, on both layouts. */
+type SubId = 'bylaws' | 'patronage' | 'voting' | 'legal' | 'logins';
+
 export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData }) {
   const { profile } = data;
   const [section, setSection] = useState<SectionId>('account');
@@ -54,6 +64,9 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  /** A drill-in below the current section, on either layout. */
+  const [sub, setSub] = useState<SubId | null>(null);
+  const [ballotOpen, setBallotOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
 
@@ -107,6 +120,16 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
     </div>
   );
 
+  /**
+   * Open a drill-in and select the section it belongs to, so the desktop rail
+   * points at the right parent however the page was reached — including from the
+   * mobile list, which has no rail of its own.
+   */
+  const openSub = (id: SubId, parent: SectionId) => {
+    setSection(parent);
+    setSub(id);
+  };
+
   const SECTIONS: Record<SectionId, { label: string; title: string; content: ReactNode }> = {
     account: {
       label: 'Account',
@@ -127,10 +150,14 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
 
           <SettingRows
             rows={[
-              { label: 'Membership agreement' },
-              { label: 'Bylaws' },
-              { label: 'Patronage & distributions' },
-              { label: 'Voting history', value: `${data.votesCast} votes cast` },
+              { label: 'Membership agreement', onSelect: () => openSub('legal', 'membership') },
+              { label: 'Bylaws', value: data.bylaws.version, onSelect: () => openSub('bylaws', 'membership') },
+              { label: 'Patronage & distributions', onSelect: () => openSub('patronage', 'membership') },
+              {
+                label: 'Voting history',
+                value: `${data.votesCast} votes cast`,
+                onSelect: () => openSub('voting', 'membership'),
+              },
               {
                 label: 'Acceleration',
                 value: data.accelerationActive ? 'Active' : 'Not active',
@@ -178,7 +205,11 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
                 value: String(data.devices.length),
                 onSelect: () => setDevicesOpen(true),
               },
-              { label: 'Login history', value: `Last: ${data.lastLogin}` },
+              {
+                label: 'Login history',
+                value: `Last: ${data.lastLogin}`,
+                onSelect: () => openSub('logins', 'security'),
+              },
               {
                 label: 'Recovery contacts',
                 value:
@@ -342,16 +373,33 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
     help: {
       label: 'Help',
       title: 'Help',
+      content: <HelpPanel topics={data.helpTopics} />,
+    },
+  };
+
+  /**
+   * One level below a section. Same content in both layouts — pushed on mobile,
+   * swapped into the pane on desktop — because a document you're reading is a
+   * place you go, not a dialog over the page you came from.
+   */
+  const SUBPAGES: Record<SubId, { title: string; content: ReactNode }> = {
+    bylaws: { title: 'Bylaws', content: <BylawsPanel bylaws={data.bylaws} /> },
+    patronage: {
+      title: 'Patronage & distributions',
+      content: <PatronagePanel patronage={data.patronage} />,
+    },
+    voting: {
+      title: 'Voting',
       content: (
-        <SettingRows
-          rows={[
-            { label: 'Help centre' },
-            { label: 'Contact support' },
-            { label: 'Legal & agreements' },
-          ]}
+        <VotingPanel
+          ballot={data.ballot}
+          pastVotes={data.pastVotes}
+          onVote={() => setBallotOpen(true)}
         />
       ),
     },
+    legal: { title: 'Legal & agreements', content: <LegalPanel docs={data.legalDocs} /> },
+    logins: { title: 'Login history', content: <LoginHistoryPanel logins={data.logins} /> },
   };
 
   const RAIL: SectionId[] = [
@@ -397,29 +445,167 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
         onOpenChange={setRecoveryOpen}
       />
       <CloseAccountDialog closure={data.closure} open={closeOpen} onOpenChange={setCloseOpen} />
+      {data.ballot && (
+        <BallotDialog ballot={data.ballot} open={ballotOpen} onOpenChange={setBallotOpen} />
+      )}
     </>
+  );
+
+  /** Back arrow + title, shared by every pushed page. */
+  const pushedHeader = (title: string, onBack: () => void) => (
+    <div className="mb-4 flex items-center gap-2.5">
+      <button
+        type="button"
+        aria-label="Back to settings"
+        onClick={onBack}
+        className="text-foreground-secondary transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="h-[17px] w-[17px]" strokeWidth={1.75} />
+      </button>
+      <span className="text-[15px] font-medium">{title}</span>
+    </div>
+  );
+
+  /** Desktop: the rail swaps the pane beside it. */
+  const desktopSettings = (
+    <div className="hidden lg:block">
+      <div className="mb-5 flex items-center gap-3.5">
+        {identity('h-[52px] w-[52px] text-[17px]', 'text-xl')}
+      </div>
+
+      <div className="grid grid-cols-[190px_minmax(0,1fr)] items-start gap-6">
+        <nav className="sticky top-[72px] text-[13px]">
+          {RAIL.map((id) => (
+            <button
+              key={id}
+              type="button"
+              // Picking a rail item leaves any drill-in below it: the rail is the
+              // top level, so it always lands you at the top level.
+              onClick={() => {
+                setSection(id);
+                setSub(null);
+              }}
+              aria-current={id === section ? 'true' : undefined}
+              className={cn(
+                'block w-full rounded-lg px-2.5 py-2 text-left transition-colors',
+                id === section
+                  ? 'bg-secondary text-foreground'
+                  : 'text-foreground-secondary hover:text-foreground',
+              )}
+            >
+              {SECTIONS[id].label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setSection('help');
+              setSub(null);
+            }}
+            aria-current={section === 'help' ? 'true' : undefined}
+            className={cn(
+              'mt-1.5 block w-full rounded-lg border-t-[0.5px] border-border px-2.5 pb-2 pt-3 text-left transition-colors',
+              section === 'help' ? 'text-foreground' : 'text-foreground-secondary hover:text-foreground',
+            )}
+          >
+            Help
+          </button>
+        </nav>
+
+        <div>
+          {/* A drill-in takes the pane while the rail keeps its parent
+              selected — you're still inside that section, one level down. */}
+          {sub ? (
+            <>
+              {pushedHeader(SUBPAGES[sub].title, () => setSub(null))}
+              <Card>{SUBPAGES[sub].content}</Card>
+            </>
+          ) : section === 'account' ? (
+            <div className="flex flex-col gap-3">
+              <Card>
+                <p className="mb-1 text-[13px] text-foreground-secondary">Personal information</p>
+                {personalInformation}
+              </Card>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Card>
+                  <p className="mb-2.5 text-[13px] text-foreground-secondary">Membership</p>
+                  {membershipStats}
+                  <CardRule>
+                    <Button variant="clear" size="xs" className="w-full">
+                      Membership agreement &amp; bylaws
+                    </Button>
+                  </CardRule>
+                </Card>
+
+                <Card className="flex flex-col">
+                  <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                    <span className="text-[13px] text-foreground-secondary">Acceleration</span>
+                    <span className="text-xs text-muted-foreground">
+                      {data.accelerationActive ? 'Active' : 'Not active'}
+                    </span>
+                  </div>
+                  <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                    Reach member benefits sooner instead of earning them over time through saving
+                    and clean cycles.
+                  </p>
+                  <Button
+                    variant="clear"
+                    size="xs"
+                    className="mt-auto w-full"
+                    onClick={() => setAccelerationOpen(true)}
+                  >
+                    See what it unlocks
+                  </Button>
+                </Card>
+              </div>
+
+              <Card>
+                <p className="mb-2.5 text-[13px] text-foreground-secondary">Appearance</p>
+                <ThemePicker />
+              </Card>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Card>
+                  <p className="mb-1 text-[13px] text-foreground-secondary">Security</p>
+                  {SECTIONS.security.content}
+                </Card>
+                <Card>
+                  <p className="mb-1 text-[13px] text-foreground-secondary">Linked accounts</p>
+                  {SECTIONS.linked.content}
+                </Card>
+              </div>
+
+              <Card>
+                <p className="mb-1 text-[13px] text-foreground-secondary">Advanced</p>
+                {SECTIONS.advanced.content}
+              </Card>
+            </div>
+          ) : (
+            <Card>{SECTIONS[section].content}</Card>
+          )}
+
+          <Button variant="clear" size="xs" className="mt-3 w-full">
+            Sign out
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 
   // ---- Mobile: pushed sub-page ------------------------------------------------
 
-  if (mobileSection) {
-    const current = SECTIONS[mobileSection];
+  if (mobileSection || sub) {
+    // Mobile only: the desktop layout renders the same drill-in in its pane, so
+    // this branch is hidden there rather than replacing the page.
+    const current = sub ? SUBPAGES[sub] : SECTIONS[mobileSection as SectionId];
     return (
       <>
         <div className="lg:hidden">
-          <div className="mb-4 flex items-center gap-2.5">
-            <button
-              type="button"
-              aria-label="Back to settings"
-              onClick={() => setMobileSection(null)}
-              className="text-foreground-secondary transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="h-[17px] w-[17px]" strokeWidth={1.75} />
-            </button>
-            <span className="text-[15px] font-medium">{current.title}</span>
-          </div>
+          {pushedHeader(current.title, () => (sub ? setSub(null) : setMobileSection(null)))}
           {current.content}
         </div>
+        {desktopSettings}
         {modals}
       </>
     );
@@ -474,7 +660,7 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
           rows={[
             { label: 'Advanced', onSelect: () => setMobileSection('advanced') },
             { label: 'Help', onSelect: () => setMobileSection('help') },
-            { label: 'Legal & agreements', onSelect: () => setMobileSection('help') },
+            { label: 'Legal & agreements', onSelect: () => openSub('legal', 'membership') },
           ]}
         />
 
@@ -483,118 +669,7 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
         </Button>
       </div>
 
-      {/* Desktop: the rail swaps the pane beside it */}
-      <div className="hidden lg:block">
-        <div className="mb-5 flex items-center gap-3.5">
-          {identity('h-[52px] w-[52px] text-[17px]', 'text-xl')}
-        </div>
-
-        <div className="grid grid-cols-[190px_minmax(0,1fr)] items-start gap-6">
-          <nav className="sticky top-[72px] text-[13px]">
-            {RAIL.map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setSection(id)}
-                aria-current={id === section ? 'true' : undefined}
-                className={cn(
-                  'block w-full rounded-lg px-2.5 py-2 text-left transition-colors',
-                  id === section
-                    ? 'bg-secondary text-foreground'
-                    : 'text-foreground-secondary hover:text-foreground',
-                )}
-              >
-                {SECTIONS[id].label}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setSection('help')}
-              aria-current={section === 'help' ? 'true' : undefined}
-              className={cn(
-                'mt-1.5 block w-full rounded-lg border-t-[0.5px] border-border px-2.5 pb-2 pt-3 text-left transition-colors',
-                section === 'help' ? 'text-foreground' : 'text-foreground-secondary hover:text-foreground',
-              )}
-            >
-              Help
-            </button>
-          </nav>
-
-          <div>
-            {/* Account is the overview — every section on one page, as the
-                reference draws it with Account selected. Picking any other rail
-                item swaps that single pane in. */}
-            {section === 'account' ? (
-              <div className="flex flex-col gap-3">
-                <Card>
-                  <p className="mb-1 text-[13px] text-foreground-secondary">Personal information</p>
-                  {personalInformation}
-                </Card>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <Card>
-                    <p className="mb-2.5 text-[13px] text-foreground-secondary">Membership</p>
-                    {membershipStats}
-                    <CardRule>
-                      <Button variant="clear" size="xs" className="w-full">
-                        Membership agreement &amp; bylaws
-                      </Button>
-                    </CardRule>
-                  </Card>
-
-                  <Card className="flex flex-col">
-                    <div className="mb-1.5 flex items-baseline justify-between gap-3">
-                      <span className="text-[13px] text-foreground-secondary">Acceleration</span>
-                      <span className="text-xs text-muted-foreground">
-                        {data.accelerationActive ? 'Active' : 'Not active'}
-                      </span>
-                    </div>
-                    <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                      Reach member benefits sooner instead of earning them over time through saving
-                      and clean cycles.
-                    </p>
-                    <Button
-                      variant="clear"
-                      size="xs"
-                      className="mt-auto w-full"
-                      onClick={() => setAccelerationOpen(true)}
-                    >
-                      See what it unlocks
-                    </Button>
-                  </Card>
-                </div>
-
-                <Card>
-                  <p className="mb-2.5 text-[13px] text-foreground-secondary">Appearance</p>
-                  <ThemePicker />
-                </Card>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <Card>
-                    <p className="mb-1 text-[13px] text-foreground-secondary">Security</p>
-                    {SECTIONS.security.content}
-                  </Card>
-                  <Card>
-                    <p className="mb-1 text-[13px] text-foreground-secondary">Linked accounts</p>
-                    {SECTIONS.linked.content}
-                  </Card>
-                </div>
-
-                <Card>
-                  <p className="mb-1 text-[13px] text-foreground-secondary">Advanced</p>
-                  {SECTIONS.advanced.content}
-                </Card>
-              </div>
-            ) : (
-              <Card>{SECTIONS[section].content}</Card>
-            )}
-
-            <Button variant="clear" size="xs" className="mt-3 w-full">
-              Sign out
-            </Button>
-          </div>
-        </div>
-      </div>
+      {desktopSettings}
 
       {modals}
     </>

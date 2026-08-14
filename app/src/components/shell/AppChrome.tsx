@@ -51,8 +51,10 @@ export default function AppChrome({
           ) : (
             <span className="flex min-w-0 items-center gap-2.5">
               {/* A page reached from another page gets a way back; the tab bar is
-                  the way back from everything else, so it would be noise there. */}
-              {!active && (
+                  the way back from everything else, so it would be noise there.
+                  Settings is excluded because it has levels of its own and draws
+                  the back arrow for them itself — two would disagree. */}
+              {!active && pathname !== '/settings' && (
                 <button
                   type="button"
                   aria-label="Back"

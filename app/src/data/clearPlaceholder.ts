@@ -486,6 +486,104 @@ export const SETTINGS: SettingsData = {
   externalBank: 'Chase ••4021',
   employer: 'Acme Logistics',
   votesCast: 2,
+  legalDocs: [
+    { id: 'membership', label: 'Membership agreement', detail: 'Accepted Mar 4, 2026', version: 'v2.1' },
+    { id: 'bylaws', label: 'Bylaws', detail: 'Updated Jun 2026', version: 'v2.0' },
+    { id: 'deposit', label: 'Deposit account terms', detail: 'Issued by our partner bank' },
+    { id: 'credit', label: 'Clear Credit terms', detail: 'Rates, cycles, and how defaults work' },
+    { id: 'cardholder', label: 'Cardholder agreement' },
+    { id: 'privacy', label: 'Privacy policy' },
+    { id: 'earn', label: 'Earn product disclosures', detail: 'Yield pool and BurnerBonds' },
+  ],
+  helpTopics: [
+    { id: 'h1', question: 'How does my credit limit work?' },
+    { id: 'h2', question: 'What are equity credits?' },
+    { id: 'h3', question: 'When do I need to rebalance?' },
+    { id: 'h4', question: 'How do I reserve a home?' },
+  ],
+  bylaws: {
+    version: 'v2.0',
+    updated: 'Jun 2026',
+    articles: [
+      {
+        id: 'i',
+        title: 'Article I — Membership',
+        clauses: [
+          {
+            number: '1.1',
+            text: 'Any natural person who maintains an Equity Savings Account in good standing shall be a member of the cooperative. No separate share purchase is required; the member\u2019s account balance constitutes their equity interest.',
+          },
+          {
+            number: '1.2',
+            text: 'Each member shall have one vote on all matters submitted to the membership, without regard to the size of their account balance.',
+          },
+        ],
+      },
+      {
+        id: 'ii',
+        title: 'Article II — Meetings and Voting',
+        clauses: [
+          {
+            number: '2.1',
+            text: 'An annual meeting of the membership shall be held within 120 days of the close of the fiscal year, on notice of not less than thirty days to every member of record.',
+          },
+          {
+            number: '2.2',
+            text: 'Special meetings may be called by the board, or on the written request of ten percent of the membership.',
+          },
+        ],
+      },
+      {
+        id: 'iii',
+        title: 'Article III — Surplus and Patronage',
+        clauses: [
+          {
+            number: '3.1',
+            text: 'Surplus remaining after costs and reserves shall be allocated to members in proportion to patronage, as determined by the board and ratified by the membership.',
+          },
+        ],
+      },
+    ],
+  },
+  patronage: {
+    fiscalYear: '2026 fiscal year',
+    status: 'In progress',
+    basis: 412,
+    history: [],
+  },
+  ballot: {
+    id: 'v1',
+    question: 'Which region should we open next?',
+    closesOn: 'Aug 19',
+    closesInDays: 6,
+    voted: 41,
+    members: 118,
+    options: [
+      { id: 'o1', label: 'Phoenix / Tempe, AZ' },
+      { id: 'o2', label: 'Las Vegas / Henderson, NV' },
+      { id: 'o3', label: 'Expand within the Inland Empire' },
+      { id: 'o4', label: 'Abstain' },
+    ],
+  },
+  pastVotes: [
+    {
+      id: 'pv1',
+      title: 'Approve 2026 bylaw amendment',
+      detail: 'Jun 2026 · Passed 84%',
+      participated: true,
+    },
+    {
+      id: 'pv2',
+      title: 'Elect regional council — IE',
+      detail: 'Apr 2026 · Passed',
+      participated: false,
+    },
+  ],
+  logins: [
+    { id: 'l1', device: 'iPhone 16 Pro', detail: 'Redlands, CA · Face ID', when: '8:02 AM' },
+    { id: 'l2', device: 'MacBook Pro', detail: 'Redlands, CA · Code', when: 'Aug 12' },
+    { id: 'l3', device: 'iPhone 16 Pro', detail: 'Redlands, CA · Face ID', when: 'Aug 11' },
+  ],
   closure: {
     savingsReturned: 3000,
     creditToSettle: 3200,
