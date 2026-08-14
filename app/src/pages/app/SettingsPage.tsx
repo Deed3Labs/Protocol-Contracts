@@ -57,27 +57,53 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
 
   // ---- Section contents, rendered by both layouts ----------------------------
 
+  const personalInformation = (
+    <>
+      <SettingRows
+        rows={[
+          { label: 'Legal name', value: profile.legalName },
+          { label: 'Date of birth', value: profile.dateOfBirth },
+          { label: 'Home address', value: profile.address },
+          { label: 'Phone', value: profile.phone, onSelect: () => setPhoneOpen(true) },
+          { label: 'Email', value: profile.email },
+        ]}
+      />
+      <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
+        Name and date of birth are locked after identity verification. Contact support to correct
+        them.
+      </InfoBlock>
+    </>
+  );
+
+  /** The four membership facts, shown both in the overview card and its own pane. */
+  const membershipStats = (
+    <div className="text-xs leading-[2]">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-foreground-secondary">Member since</span>
+        <span>{profile.memberSince}</span>
+      </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-foreground-secondary">Your stake</span>
+        <span>Your savings balance</span>
+      </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-foreground-secondary">Your vote</span>
+        <span>
+          {profile.votes} of {profile.votes}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-foreground-secondary">Region</span>
+        <span>{profile.region}</span>
+      </div>
+    </div>
+  );
+
   const SECTIONS: Record<SectionId, { label: string; title: string; content: ReactNode }> = {
     account: {
       label: 'Account',
       title: 'Personal information',
-      content: (
-        <>
-          <SettingRows
-            rows={[
-              { label: 'Legal name', value: profile.legalName },
-              { label: 'Date of birth', value: profile.dateOfBirth },
-              { label: 'Home address', value: profile.address },
-              { label: 'Phone', value: profile.phone, onSelect: () => setPhoneOpen(true) },
-              { label: 'Email', value: profile.email },
-            ]}
-          />
-          <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
-            Name and date of birth are locked after identity verification. Contact support to
-            correct them.
-          </InfoBlock>
-        </>
-      ),
+      content: personalInformation,
     },
 
     membership: {
@@ -85,28 +111,7 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
       title: 'Membership',
       content: (
         <>
-          <Card className="mb-3.5">
-            <div className="text-xs leading-[2]">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-foreground-secondary">Member since</span>
-                <span>{profile.memberSince}</span>
-              </div>
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-foreground-secondary">Your stake</span>
-                <span>Your savings balance</span>
-              </div>
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-foreground-secondary">Your vote</span>
-                <span>
-                  {profile.votes} of {profile.votes}
-                </span>
-              </div>
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-foreground-secondary">Region</span>
-                <span>{profile.region}</span>
-              </div>
-            </div>
-          </Card>
+          <Card className="mb-3.5">{membershipStats}</Card>
 
           <p className="mb-3.5 text-xs leading-relaxed text-muted-foreground">
             However much you save, your vote counts the same as every other member&rsquo;s.
@@ -453,7 +458,74 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
           </nav>
 
           <div>
-            <Card>{SECTIONS[section].content}</Card>
+            {/* Account is the overview — every section on one page, as the
+                reference draws it with Account selected. Picking any other rail
+                item swaps that single pane in. */}
+            {section === 'account' ? (
+              <div className="flex flex-col gap-3">
+                <Card>
+                  <p className="mb-1 text-[13px] text-foreground-secondary">Personal information</p>
+                  {personalInformation}
+                </Card>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Card>
+                    <p className="mb-2.5 text-[13px] text-foreground-secondary">Membership</p>
+                    {membershipStats}
+                    <CardRule>
+                      <Button variant="clear" size="xs" className="w-full">
+                        Membership agreement &amp; bylaws
+                      </Button>
+                    </CardRule>
+                  </Card>
+
+                  <Card className="flex flex-col">
+                    <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                      <span className="text-[13px] text-foreground-secondary">Acceleration</span>
+                      <span className="text-xs text-muted-foreground">
+                        {data.accelerationActive ? 'Active' : 'Not active'}
+                      </span>
+                    </div>
+                    <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                      Reach member benefits sooner instead of earning them over time through saving
+                      and clean cycles.
+                    </p>
+                    <Button
+                      variant="clear"
+                      size="xs"
+                      className="mt-auto w-full"
+                      onClick={() => setAccelerationOpen(true)}
+                    >
+                      See what it unlocks
+                    </Button>
+                  </Card>
+                </div>
+
+                <Card>
+                  <p className="mb-2.5 text-[13px] text-foreground-secondary">Appearance</p>
+                  <ThemePicker />
+                </Card>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Card>
+                    <p className="mb-1 text-[13px] text-foreground-secondary">Security</p>
+                    {SECTIONS.security.content}
+                  </Card>
+                  <Card>
+                    <p className="mb-1 text-[13px] text-foreground-secondary">Linked accounts</p>
+                    {SECTIONS.linked.content}
+                  </Card>
+                </div>
+
+                <Card>
+                  <p className="mb-1 text-[13px] text-foreground-secondary">Advanced</p>
+                  {SECTIONS.advanced.content}
+                </Card>
+              </div>
+            ) : (
+              <Card>{SECTIONS[section].content}</Card>
+            )}
+
             <Button variant="clear" size="xs" className="mt-3 w-full">
               Sign out
             </Button>
