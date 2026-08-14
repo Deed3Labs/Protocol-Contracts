@@ -7,6 +7,8 @@ import HomePage from '@/pages/app/HomePage';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
+import ContactsPage from '@/pages/app/ContactsPage';
+import PartnersPage from '@/pages/app/PartnersPage';
 import SendPage from '@/pages/app/SendPage';
 import EarnPage from '@/pages/app/EarnPage';
 import SettingsPage from '@/pages/app/SettingsPage';
@@ -22,6 +24,7 @@ import {
   CARD_DAY_ONE,
   SEND_IN_USE,
   SEND_DAY_ONE,
+  CONTACTS,
   EARN_IN_USE,
   EARN_DAY_ONE,
 } from '@/data/clearPlaceholder';
@@ -107,6 +110,8 @@ export default function PreviewApp() {
                     <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
                     <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
                     <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
+                    <Route path="/contacts" element={<ContactsPage contacts={empty ? [] : CONTACTS} />} />
+                    <Route path="/partners" element={<PartnersPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>

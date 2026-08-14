@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import TopNav from './TopNav';
 import MobileTabBar from './MobileTabBar';
 import { navItems } from './navItems';
@@ -21,12 +22,20 @@ export default function AppChrome({
   trailing?: ReactNode;
 }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const active = navItems.find((i) => (i.end ? pathname === i.to : pathname.startsWith(i.to)));
   const isHome = pathname === '/';
 
-  // Routes off the nav — Settings, reached from the avatar — still need a title.
+  // Routes off the nav — Settings from the avatar, Contacts and Partners from
+  // Send — still need a title, and one that matches what the link promised.
+  const OFF_NAV: Record<string, string> = {
+    '/contacts': 'Contacts',
+    '/partners': 'Clear Partners',
+    '/settings': 'Settings',
+  };
   const fallbackTitle = pathname.replace(/^\//, '').split('/')[0];
-  const title = active?.label ?? (fallbackTitle ? capitalise(fallbackTitle) : 'Clear');
+  const title =
+    active?.label ?? OFF_NAV[pathname] ?? (fallbackTitle ? capitalise(fallbackTitle) : 'Clear');
 
   return (
     <div className="min-h-screen bg-background">
@@ -40,7 +49,21 @@ export default function AppChrome({
               Clear
             </NavLink>
           ) : (
-            <span className="text-[15px] font-medium text-foreground">{title}</span>
+            <span className="flex min-w-0 items-center gap-2.5">
+              {/* A page reached from another page gets a way back; the tab bar is
+                  the way back from everything else, so it would be noise there. */}
+              {!active && (
+                <button
+                  type="button"
+                  aria-label="Back"
+                  onClick={() => navigate(-1)}
+                  className="-ml-1 text-foreground-secondary"
+                >
+                  <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={1.75} />
+                </button>
+              )}
+              <span className="truncate text-[15px] font-medium text-foreground">{title}</span>
+            </span>
           )}
           {trailing && <div className="flex items-center gap-1">{trailing}</div>}
         </div>

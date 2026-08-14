@@ -24,6 +24,8 @@ import HomePage from "@/pages/app/HomePage";
 import SavingsPage from "@/pages/app/SavingsPage";
 import ActivityPage from "@/pages/app/ActivityPage";
 import CardPage from "@/pages/app/CardPage";
+import ContactsPage from "@/pages/app/ContactsPage";
+import PartnersPage from "@/pages/app/PartnersPage";
 import SendPage from "@/pages/app/SendPage";
 import EarnPage from "@/pages/app/EarnPage";
 import SettingsPage from "@/pages/app/SettingsPage";
@@ -113,6 +115,8 @@ function App() {
                       <Route path="/send" element={<SendPage />} />
                       <Route path="/activity" element={<ActivityPage />} />
                       <Route path="/card" element={<CardPage />} />
+                      <Route path="/contacts" element={<ContactsPage />} />
+                      <Route path="/partners" element={<PartnersPage />} />
                       {/* Not a nav item — reached from the avatar menu (spec §1). */}
                       <Route path="/settings" element={<SettingsPage />} />
                     </Route>

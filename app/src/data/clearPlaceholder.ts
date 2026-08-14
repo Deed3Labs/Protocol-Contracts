@@ -11,6 +11,7 @@ import type {
   SettingsData,
   Contact,
   Partner,
+  PartnersData,
   YieldPool,
   HeldBond,
 } from '@/lib/clearModel';
@@ -359,6 +360,13 @@ export const PARTNERS: Partner[] = [
     city: 'San Bernardino',
   },
 ];
+
+export const PARTNERS_DATA: PartnersData = {
+  partners: PARTNERS,
+  count: 14,
+  region: 'the Inland Empire',
+  radiusNote: 'Partners shown are within 20 miles of Redlands.',
+};
 
 export const SEND_IN_USE: SendData = {
   handle: '@kaim',

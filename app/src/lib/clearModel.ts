@@ -544,6 +544,30 @@ export const CONTACT_ROLE_LABEL: Record<Contact['role'], string> = {
   partner: 'Clear Partner',
 };
 
+export interface PartnersData {
+  partners: Partner[];
+  /** Total, which can exceed what's listed. */
+  count: number;
+  /** Where "near you" means, e.g. "the Inland Empire". */
+  region: string;
+  /** e.g. "Partners shown are within 20 miles of Redlands." */
+  radiusNote: string;
+}
+
+/**
+ * Category chips for the partner list, derived rather than curated so a new kind
+ * of business can't be filtered out by an out-of-date list. The first few are
+ * marked for mobile, where the strip only fits about three.
+ */
+export function partnerCategories(partners: Partner[]) {
+  const seen: string[] = [];
+  for (const p of partners) if (!seen.includes(p.category)) seen.push(p.category);
+  return [
+    { id: 'all', label: 'All', mobile: true },
+    ...seen.map((c, i) => ({ id: c, label: c, mobile: i < 2 })),
+  ];
+}
+
 export interface SendData {
   /** The member's own handle, e.g. "@kaim". */
   handle: string;

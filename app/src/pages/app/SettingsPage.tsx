@@ -5,6 +5,7 @@ import { Switch } from '@/components/ui/switch';
 import Card, { CardRule } from '@/components/clear/Card';
 import SettingRows from '@/components/clear/SettingRows';
 import ToggleRows from '@/components/clear/ToggleRows';
+import ContactsPanel from '@/components/clear/ContactsPanel';
 import { money } from '@/lib/money';
 import ThemePicker from '@/components/clear/ThemePicker';
 import InfoBlock from '@/components/clear/InfoBlock';
@@ -12,7 +13,7 @@ import AccelerationDialog from '@/components/settings/AccelerationDialog';
 import ChangePhoneDialog from '@/components/settings/ChangePhoneDialog';
 import TrustedDevicesDialog from '@/components/settings/TrustedDevicesDialog';
 import CloseAccountDialog from '@/components/settings/CloseAccountDialog';
-import { SETTINGS } from '@/data/clearPlaceholder';
+import { SETTINGS, CONTACTS } from '@/data/clearPlaceholder';
 import type { SettingsData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
@@ -33,6 +34,7 @@ import { cn } from '@/lib/utils';
 type SectionId =
   | 'account'
   | 'membership'
+  | 'contacts'
   | 'security'
   | 'notifications'
   | 'linked'
@@ -134,6 +136,12 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
           />
         </>
       ),
+    },
+
+    contacts: {
+      label: 'Contacts',
+      title: 'Contacts',
+      content: <ContactsPanel contacts={CONTACTS} />,
     },
 
     security: {
@@ -339,6 +347,7 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
   const RAIL: SectionId[] = [
     'account',
     'membership',
+    'contacts',
     'security',
     'notifications',
     'linked',
@@ -424,6 +433,11 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
               label: 'Acceleration',
               value: data.accelerationActive ? 'Active' : 'Not active',
               onSelect: () => setAccelerationOpen(true),
+            },
+            {
+              label: 'Contacts',
+              value: String(CONTACTS.length),
+              onSelect: () => setMobileSection('contacts'),
             },
             {
               label: 'Security',
