@@ -7,18 +7,22 @@ import { cn } from '@/lib/utils';
  * page. Distinct from ActivityList, which groups under date headers; these lists
  * are short enough that grouping would be noise.
  *
- * Desktop gives the source its own column, tagged with the tier that funded it —
- * which tier paid is what sets the rate, and this is the only place it shows on a
- * list. Mobile drops it to a sub-line beside the date, where there's no column.
+ * Both layouts name the tier that funded each row — which tier paid is what sets
+ * the rate, and a list is the only place it shows. Desktop gives it a column;
+ * mobile drops it to a sub-line under the name.
  */
 export default function TransactionRows({
   rows,
   emptyMessage,
   onSelect,
+  /** Prefix the mobile sub-line with the date. Off for short "recent" lists,
+      where every row is from the last few days anyway. */
+  showDate,
 }: {
   rows: ActivityRow[];
   emptyMessage: string;
   onSelect?: (row: ActivityRow) => void;
+  showDate?: boolean;
 }) {
   if (rows.length === 0) {
     return <p className="py-3 text-xs text-muted-foreground">{emptyMessage}</p>;
@@ -43,7 +47,8 @@ export default function TransactionRows({
             <div className="min-w-0">
               <p className="truncate">{row.name}</p>
               <p className="mt-0.5 text-[11px] text-muted-foreground lg:hidden">
-                {row.date} · {row.source}
+                {showDate && `${row.date} · `}
+                {tag.label}
               </p>
             </div>
 

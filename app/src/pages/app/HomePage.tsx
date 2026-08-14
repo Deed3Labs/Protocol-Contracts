@@ -99,6 +99,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       {/* Mobile: single stack, spec §4 order */}
       <div className="flex flex-col gap-2.5 lg:hidden">
         {balance}
+        {quickActions}
         {taskStrip}
         {cycleCard}
         {cash}

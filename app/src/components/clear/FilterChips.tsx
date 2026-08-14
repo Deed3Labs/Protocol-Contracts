@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -12,11 +13,15 @@ export default function FilterChips<T extends string>({
   options,
   value,
   onChange,
+  trailing,
   className,
 }: {
   options: readonly { id: T; label: string; mobile?: boolean }[];
   value: T;
   onChange: (id: T) => void;
+  /** An action that belongs on the same line — it scrolls with the chips rather
+      than sitting over them, which is what a sibling button would do. */
+  trailing?: ReactNode;
   className?: string;
 }) {
   return (
@@ -48,6 +53,7 @@ export default function FilterChips<T extends string>({
           {opt.label}
         </Button>
       ))}
+      {trailing}
     </div>
   );
 }

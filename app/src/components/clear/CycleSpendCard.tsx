@@ -12,11 +12,22 @@ import type { CycleSpend } from '@/lib/clearModel';
 export default function CycleSpendCard({ cycle }: { cycle: CycleSpend }) {
   return (
     <Card>
-      <p className="mb-1 text-xs text-foreground-secondary">This cycle</p>
-      <p className="font-display text-[26px] font-medium leading-none">{money(cycle.spent)}</p>
-      <p className="mb-2.5 mt-1 text-[11px] text-muted-foreground">
+      {/* Mobile puts the countdown on the label line and folds "spent" into the
+          figure; desktop has room to stack them. */}
+      <div className="mb-1 flex items-baseline justify-between gap-3">
+        <span className="text-xs text-foreground-secondary">This cycle</span>
+        <span className="text-[11px] text-muted-foreground lg:hidden">
+          {cycle.daysLeft} days left
+        </span>
+      </div>
+      <p className="font-display text-[26px] font-medium leading-none">
+        {money(cycle.spent)}
+        <span className="ml-1.5 text-xs font-normal text-muted-foreground lg:hidden">spent</span>
+      </p>
+      <p className="mb-2.5 mt-1 hidden text-[11px] text-muted-foreground lg:block">
         spent · {cycle.daysLeft} days left
       </p>
+      <div className="mb-2.5 lg:hidden" />
 
       <div className="text-xs text-muted-foreground">
         <div className="flex items-center justify-between gap-3 leading-[1.9]">
@@ -33,9 +44,16 @@ export default function CycleSpendCard({ cycle }: { cycle: CycleSpend }) {
           </span>
           <span className="tabular-nums">{money(cycle.fromCredit)}</span>
         </div>
+
+        {/* Mobile keeps carry cost in the same list — a rule for one row costs
+            more height than the separation is worth on a phone. */}
+        <div className="flex items-baseline justify-between gap-3 leading-[1.9] lg:hidden">
+          <span>Carry cost</span>
+          <span className="tabular-nums">{money(cycle.carryCost, { cents: true })}</span>
+        </div>
       </div>
 
-      <CardRule className="flex items-baseline justify-between gap-3">
+      <CardRule className="hidden items-baseline justify-between gap-3 lg:flex">
         <span className="text-xs text-foreground-secondary">Carry cost</span>
         <span className="text-[13px] tabular-nums">{money(cycle.carryCost, { cents: true })}</span>
       </CardRule>

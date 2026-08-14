@@ -81,6 +81,7 @@ export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
         )}
       </div>
       <TransactionRows
+        showDate
         onSelect={setSelected}
         rows={card.transactions}
         emptyMessage={
@@ -103,14 +104,18 @@ export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
           <ClearCardFace card={card} />
           {variantToggle}
           {actions}
+          {/* Mobile reads the card, then what it spent, then how it's governed —
+              so the controls come after the list rather than before it. */}
+          <div className="mt-3 lg:hidden">{transactions}</div>
           {card.activated && <CardControlsCard card={card} />}
           {card.activated && (
             <Button variant="clear" size="sm" className="w-full text-xs">
               Add to Apple Wallet
             </Button>
           )}
+          <div className="lg:hidden">{caption}</div>
         </div>
-        <div className="mt-6 lg:mt-0">
+        <div className="hidden lg:block">
           {transactions}
           <div className="mt-3">{caption}</div>
         </div>

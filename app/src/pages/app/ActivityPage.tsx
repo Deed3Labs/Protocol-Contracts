@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,15 +61,64 @@ export default function ActivityPage({ data = ACTIVITY_IN_USE }: { data?: Activi
     </>
   );
 
-  const chips = (
-    <FilterChips options={ACTIVITY_FILTERS} value={filter} onChange={setFilter} />
+  /**
+   * Where the cycle went. A side rail on desktop; on a phone the same three cards
+   * sit above the list, because the summary is what most visits are actually for
+   * and scrolling past every transaction to reach it is the wrong order.
+   */
+  const summary = (
+    <div className="flex flex-col gap-3">
+      {data.cycleSpend && <CycleSpendCard cycle={data.cycleSpend} />}
+
+      {data.categories && data.categories.length > 0 && (
+        <Card>
+          <p className="mb-1 text-xs text-foreground-secondary">Where it went</p>
+          <div className="text-xs text-muted-foreground">
+            {data.categories.map((c) => (
+              <div key={c.label} className="flex items-baseline justify-between gap-3 leading-[1.9]">
+                <span className="truncate">{c.label}</span>
+                <span className="tabular-nums">{money(c.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {data.insideCoop !== undefined && data.cycleSpend && (
+        <Card>
+          <p className="mb-1 text-xs text-foreground-secondary">Inside the co-op</p>
+          <p className="font-display text-[26px] font-medium leading-none text-tier-savings-fg">
+            {money(data.insideCoop)}
+          </p>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+            of {money(data.cycleSpend.spent)} stayed with members and Clear Partners this cycle.
+          </p>
+        </Card>
+      )}
+    </div>
+  );
+
+  const chips = (trailing?: ReactNode) => (
+    <FilterChips
+      options={ACTIVITY_FILTERS}
+      value={filter}
+      onChange={setFilter}
+      trailing={trailing}
+    />
+  );
+
+  const exportButton = (
+    <Button variant="clear" size="xs" className="shrink-0">
+      Export
+    </Button>
   );
 
   return (
     <>
-      {/* Mobile: chips over the list */}
+      {/* Mobile: filters, then the cycle summary, then the list */}
       <div className="lg:hidden">
-        <div className="mb-4">{chips}</div>
+        <div className="mb-4">{chips(exportButton)}</div>
+        <div className="mb-4">{summary}</div>
         {list}
       </div>
 
@@ -99,50 +148,17 @@ export default function ActivityPage({ data = ACTIVITY_IN_USE }: { data?: Activi
             >
               Filters
             </Button>
-            <Button variant="clear" size="xs">
-              Export
-            </Button>
+            {exportButton}
           </div>
 
           {/* Filters open as a strip rather than a menu: there are five of them and
               the selected one has to stay visible while you read the list. */}
-          {showFilters && <div className="mb-4">{chips}</div>}
+          {showFilters && <div className="mb-4">{chips()}</div>}
 
           {list}
         </div>
 
-        <div className="flex flex-col gap-3">
-          {data.cycleSpend && <CycleSpendCard cycle={data.cycleSpend} />}
-
-          {data.categories && data.categories.length > 0 && (
-            <Card>
-              <p className="mb-1 text-xs text-foreground-secondary">Where it went</p>
-              <div className="text-xs text-muted-foreground">
-                {data.categories.map((c) => (
-                  <div
-                    key={c.label}
-                    className="flex items-baseline justify-between gap-3 leading-[1.9]"
-                  >
-                    <span className="truncate">{c.label}</span>
-                    <span className="tabular-nums">{money(c.amount)}</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {data.insideCoop !== undefined && data.cycleSpend && (
-            <Card>
-              <p className="mb-1 text-xs text-foreground-secondary">Inside the co-op</p>
-              <p className="font-display text-[26px] font-medium leading-none text-tier-savings-fg">
-                {money(data.insideCoop)}
-              </p>
-              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                of {money(data.cycleSpend.spent)} stayed with members and Clear Partners this cycle.
-              </p>
-            </Card>
-          )}
-        </div>
+        {summary}
       </div>
 
       {selected && (

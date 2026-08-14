@@ -440,6 +440,7 @@ export const PARTNERS_DATA: PartnersData = {
   count: 14,
   region: 'the Inland Empire',
   radiusNote: 'Partners shown are within 20 miles of Redlands.',
+  radiusShort: 'Within 20 miles of Redlands.',
 };
 
 export const SEND_IN_USE: SendData = {

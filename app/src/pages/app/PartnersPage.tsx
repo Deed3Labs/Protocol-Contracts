@@ -42,6 +42,18 @@ export default function PartnersPage({ data = PARTNERS_DATA }: { data?: Partners
     />
   );
 
+  const map = (
+    <Card className="overflow-hidden p-0">
+      <div className="flex h-[130px] items-center justify-center bg-secondary text-xs text-muted-foreground lg:h-[150px]">
+        Map view
+      </div>
+      <p className="px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">
+        <span className="hidden lg:inline">{data.radiusNote}</span>
+        <span className="lg:hidden">{data.radiusShort}</span>
+      </p>
+    </Card>
+  );
+
   const refer = (
     <Card>
       <p className="mb-1.5 text-xs text-foreground-secondary">Know a business?</p>
@@ -93,21 +105,19 @@ export default function PartnersPage({ data = PARTNERS_DATA }: { data?: Partners
             />
           </div>
 
+          {/* Mobile shows the map above the list — "which of these is near me"
+              is the first question, and it can't be answered by the rows alone.
+              The map itself is a placeholder until there's a tile source; the
+              note under it is the part that answers it either way. */}
+          <div className="mb-4 lg:hidden">{map}</div>
+
           {list}
+
+          <div className="mt-4 lg:hidden">{refer}</div>
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 lg:mt-0">
-          {/* Map is a placeholder until there's a tile source — the note under it
-              is the part that answers "why these?", so it ships either way. */}
-          <Card className="hidden overflow-hidden p-0 lg:block">
-            <div className="flex h-[150px] items-center justify-center bg-secondary text-xs text-muted-foreground">
-              Map view
-            </div>
-            <p className="px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">
-              {data.radiusNote}
-            </p>
-          </Card>
-
+        <div className="hidden flex-col gap-3 lg:flex">
+          {map}
           {refer}
         </div>
       </div>

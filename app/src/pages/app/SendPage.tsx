@@ -12,6 +12,7 @@ import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
 import RequestMoneyDialog from '@/components/clear/RequestMoneyDialog';
 import { SEND_IN_USE, HOME_IN_USE } from '@/data/clearPlaceholder';
 import { money } from '@/lib/money';
+import { useIsDesktop } from '@/lib/useIsDesktop';
 import { searchContacts, type Contact, type SendData } from '@/lib/clearModel';
 
 /**
@@ -31,10 +32,13 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
   const [query, setQuery] = useState('');
   const [recipient, setRecipient] = useState<Contact | null>(null);
   const [requestOpen, setRequestOpen] = useState(false);
+  const isDesktop = useIsDesktop();
   const searching = query.trim().length > 0;
   const matches = searchContacts(data.contacts, query);
-  // Unsearched, this is a shortlist — the whole address book is on /contacts.
-  const contacts = searching ? matches : data.contacts.slice(0, 4);
+  // Unsearched, these are shortlists — the full lists are on /contacts and
+  // /partners. One fewer on a phone, where the rows are twice as tall.
+  const shortlist = isDesktop ? 4 : 3;
+  const contacts = searching ? matches : data.contacts.slice(0, shortlist);
 
   const searchField = (
     <Input
@@ -76,7 +80,7 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
 
   const partners = (
     <PartnerRows
-      partners={data.partners.slice(0, 4)}
+      partners={data.partners.slice(0, shortlist)}
       emptyMessage="No partners near you yet."
     />
   );
@@ -127,6 +131,8 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
           {heading('Clear Partners', '/partners', `See all ${data.partnerCount}`)}
           {partners}
         </div>
+
+        <div className="mt-5">{network}</div>
       </div>
 
       {/* Desktop: the directory on the left, getting paid on the right */}

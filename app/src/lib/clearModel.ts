@@ -160,14 +160,14 @@ export interface ActivityData {
 }
 
 /**
- * `mobile` marks the three that fit a phone without scrolling the strip. The rest
- * are desktop-only rather than dropped — the filter still exists, it just isn't
- * worth a chip at 375px.
+ * `mobile` marks the ones that earn a chip at 375px. The rest stay desktop-only
+ * rather than being dropped — the filter still exists, it just isn't worth the
+ * width on a phone.
  */
 export const ACTIVITY_FILTERS = [
   { id: 'all', label: 'All', mobile: true },
   { id: 'spending', label: 'Spending', mobile: true },
-  { id: 'deposit', label: 'Deposits' },
+  { id: 'deposit', label: 'Deposits', mobile: true },
   { id: 'savings', label: 'Savings', mobile: true },
   { id: 'sent', label: 'Sent' },
 ] as const;
@@ -687,19 +687,22 @@ export interface PartnersData {
   region: string;
   /** e.g. "Partners shown are within 20 miles of Redlands." */
   radiusNote: string;
+  /** The same fact at phone width. */
+  radiusShort: string;
 }
 
 /**
  * Category chips for the partner list, derived rather than curated so a new kind
- * of business can't be filtered out by an out-of-date list. The first few are
- * marked for mobile, where the strip only fits about three.
+ * of business can't be filtered out by an out-of-date list. Every category shows
+ * on both layouts — the strip scrolls, and a filter you can't reach is the same
+ * as a filter that doesn't exist.
  */
 export function partnerCategories(partners: Partner[]) {
   const seen: string[] = [];
   for (const p of partners) if (!seen.includes(p.category)) seen.push(p.category);
   return [
     { id: 'all', label: 'All', mobile: true },
-    ...seen.map((c, i) => ({ id: c, label: c, mobile: i < 2 })),
+    ...seen.map((c) => ({ id: c, label: c, mobile: true })),
   ];
 }
 

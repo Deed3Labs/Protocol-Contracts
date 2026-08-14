@@ -34,12 +34,10 @@ export default function CycleCard({
           <span className="text-foreground">{cycle.daysLeft} days left</span>
         </div>
         {track}
-        {/* Shown in both layouts. The reference's mobile cycle card omits it, but
-            when the cycle clears is the whole point of the countdown — dropping it
-            on mobile leaves "6 days left" with nothing to land on. */}
+        {/* When and how it clears — the whole point of the countdown */}
         {cycle.clearsOn && (
           <p className="mt-1.5 text-right text-[11px] text-muted-foreground">
-            Clears on {cycle.clearsOn}
+            Clears automatically · {cycle.clearsOn}
           </p>
         )}
       </Card>
