@@ -66,7 +66,7 @@ export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsD
         <div>
           <p className="mb-1 text-xs text-foreground-secondary">Savings balance</p>
           <p className="font-display mb-3 text-[32px] font-medium leading-none tracking-[-0.5px] lg:text-[38px] lg:tracking-[-0.8px]">
-            {money(total)}
+            {money(total, { cents: true })}
           </p>
 
           <SegmentedBar

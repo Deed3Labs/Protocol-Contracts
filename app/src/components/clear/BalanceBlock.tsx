@@ -41,7 +41,7 @@ export default function BalanceBlock({
     <div>
       <p className="mb-1 text-xs text-foreground-secondary">Available to spend</p>
       <p className="font-display mb-2.5 text-[32px] font-medium leading-none tracking-[-0.5px] lg:text-[40px] lg:tracking-[-0.8px]">
-        {money(emptyState ? 0 : availableToSpend(cash, credit))}
+        {money(emptyState ? 0 : availableToSpend(cash, credit), { cents: true })}
       </p>
       {emptyState ? (
         <p className="text-xs text-foreground-secondary">Add money to get started</p>

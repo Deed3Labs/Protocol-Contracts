@@ -105,10 +105,11 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
 
   return (
     <>
-      {/* Mobile: single stack, spec §4 order */}
+      {/* Mobile: single stack, spec §4 order. No quick actions here — the nav's
+          action button fans out the same four, and two sets of the same buttons
+          on one screen is one set too many. */}
       <div className="flex flex-col gap-2.5 lg:hidden">
         {balance}
-        {quickActions}
         {taskStrip}
         {cycleCard}
         {cash}

@@ -59,7 +59,7 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
         <div>
           <p className="mb-1 text-xs text-foreground-secondary">Earning</p>
           <p className="font-display mb-2.5 text-[32px] font-medium leading-none tracking-[-0.5px] lg:text-[38px] lg:tracking-[-0.8px]">
-            {money(total)}
+            {money(total, { cents: true })}
           </p>
 
           <SegmentedBar
