@@ -1,6 +1,8 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useSetMobileAction } from '@/components/shell/MobileAction';
 import SegmentedBar from '@/components/clear/SegmentedBar';
 import CreditsProgress from '@/components/clear/CreditsProgress';
 import MilestonePath from '@/components/clear/MilestonePath';
@@ -29,9 +31,21 @@ import { savingsTotal, type SavingsData } from '@/lib/clearModel';
  */
 export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsData }) {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const [addOpen, setAddOpen] = useState(false);
   const [autoSaveOpen, setAutoSaveOpen] = useState(false);
   const { savings } = data;
+
+  // Adding to savings is the page's whole point, so it's the mobile action —
+  // and reachable from anywhere as /savings?do=add.
+  useSetMobileAction({ label: 'Save', icon: Plus, onSelect: () => setAddOpen(true) });
+
+  useEffect(() => {
+    if (params.get('do') !== 'add') return;
+    setAddOpen(true);
+    params.delete('do');
+    setParams(params, { replace: true });
+  }, [params, setParams]);
   const total = savingsTotal(savings);
 
   const actions = (

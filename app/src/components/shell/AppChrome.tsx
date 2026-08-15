@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import TopNav from './TopNav';
 import MobileTabBar from './MobileTabBar';
+import { MobileActionProvider } from './MobileAction';
 import { navItems } from './navItems';
 import { capitalise } from '@/lib/clearModel';
 
@@ -44,7 +45,8 @@ export default function AppChrome({
     active?.label ?? OFF_NAV[pathname] ?? (fallbackTitle ? capitalise(fallbackTitle) : 'Clear');
 
   return (
-    <div className="min-h-screen bg-background">
+    <MobileActionProvider>
+      <div className="min-h-screen bg-background">
       <TopNav trailing={trailing} />
 
       {/* Mobile header — wordmark on Home, page name elsewhere */}
@@ -82,6 +84,7 @@ export default function AppChrome({
       </main>
 
       <MobileTabBar />
-    </div>
+      </div>
+    </MobileActionProvider>
   );
 }

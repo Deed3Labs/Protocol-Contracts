@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import BalanceBlock from '@/components/clear/BalanceBlock';
 import QuickActions from '@/components/clear/QuickActions';
 import CycleCard from '@/components/clear/CycleCard';
@@ -40,6 +40,7 @@ import {
  */
 export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [boostOpen, setBoostOpen] = useState(false);
@@ -51,6 +52,14 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const dayOne = creditLimit(data.credit) === 0 && savingsTotal(data.savings) === 0 && data.cash === 0;
   const engaged = isCreditEngaged(data.cash, data.credit);
   const boost = addableTier(data.credit);
+
+  // Deep link from the mobile nav's quick actions.
+  useEffect(() => {
+    if (params.get('do') !== 'add-money') return;
+    setLinkOpen(true);
+    params.delete('do');
+    setParams(params, { replace: true });
+  }, [params, setParams]);
 
   const balance = <BalanceBlock cash={data.cash} credit={data.credit} emptyState={dayOne} />;
   const savings = <SavingsSummaryCard savings={data.savings} emptyState={dayOne} />;

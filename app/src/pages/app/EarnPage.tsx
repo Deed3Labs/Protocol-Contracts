@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useSetMobileAction } from '@/components/shell/MobileAction';
 import Card from '@/components/clear/Card';
 import SegmentedBar from '@/components/clear/SegmentedBar';
 import InfoBlock from '@/components/clear/InfoBlock';
@@ -31,6 +33,8 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
   const total = earningTotal(data);
   const inBonds = bondsTotal(data.bonds);
   const longest = data.terms[data.terms.length - 1]?.months;
+
+  useSetMobileAction({ label: 'Buy', icon: Plus, onSelect: () => setBuyOpen(true) });
 
   const stats = (
     <div className="grid grid-cols-2 gap-3">

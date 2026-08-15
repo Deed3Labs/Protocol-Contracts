@@ -12,9 +12,10 @@ export interface NavItem {
 /**
  * Primary navigation — design spec §1.
  *
- * Six items on desktop. The mobile pill carries five: Activity is desktop-only,
- * reached on mobile through "See all" on Home's recent-activity card. Six tabs
- * crowd the pill on narrow phones.
+ * Six items on desktop. The mobile pill carries four places: Activity is reached
+ * through "See all" on Home, and Send moved to the nav's action button, where it
+ * belongs — sending is something you do, not somewhere you go, and as a tab it
+ * was competing with destinations.
  *
  * Settings is deliberately absent — it lives behind the avatar menu.
  */
@@ -22,7 +23,7 @@ export const navItems: NavItem[] = [
   { to: '/', label: 'Home', icon: House, end: true, mobile: true },
   { to: '/savings', label: 'Savings', icon: PiggyBank, mobile: true },
   { to: '/earn', label: 'Earn', icon: TrendingUp, mobile: true },
-  { to: '/send', label: 'Send', icon: ArrowLeftRight, mobile: true },
+  { to: '/send', label: 'Send', icon: ArrowLeftRight },
   { to: '/activity', label: 'Activity', icon: Receipt },
   { to: '/card', label: 'Card', icon: CreditCard, mobile: true },
 ];

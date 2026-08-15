@@ -545,11 +545,18 @@ body.onboarding-scroll-enabled {
    inset wins when it's larger, so the pill never sits under the home indicator.
    Lifts higher when installed (PWA standalone) for thumb reach. */
 .mobile-tabbar {
-  bottom: max(env(safe-area-inset-bottom), 1.5rem);
+  bottom: max(env(safe-area-inset-bottom), 1.25rem);
+}
+/* The quick-action fan sits directly above the 50px action button. */
+.mobile-quick-actions {
+  bottom: calc(max(env(safe-area-inset-bottom), 1.25rem) + 60px);
 }
 @media (display-mode: standalone) {
   .mobile-tabbar {
     bottom: calc(env(safe-area-inset-bottom) + 1.75rem);
+  }
+  .mobile-quick-actions {
+    bottom: calc(env(safe-area-inset-bottom) + 1.75rem + 60px);
   }
 }
 
