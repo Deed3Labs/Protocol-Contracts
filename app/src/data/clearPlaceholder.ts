@@ -11,6 +11,8 @@ import type {
   SettingsData,
   Alert,
   AssuranceReserve,
+  InboxData,
+  Thread,
   Contact,
   Partner,
   PartnersData,
@@ -225,13 +227,15 @@ export const ALERTS: Alert[] = [
     id: 'n1',
     group: 'Today',
     tone: 'boost',
+    time: '8:14 AM',
     title: "You're using Clear Credit",
-    detail: "Your cash ran out at Shell. You're now on savings-backed credit — free until $3,000.",
+    detail: 'Cash ran out at Shell. Savings-backed credit is free until $3,000.',
   },
   {
     id: 'n2',
     group: 'Today',
     tone: 'asset',
+    time: '6:02 AM',
     title: '500 credits vested',
     detail: '1,500 of 15,000 toward your Clear Deed.',
   },
@@ -239,17 +243,90 @@ export const ALERTS: Alert[] = [
     id: 'n3',
     group: 'This week',
     tone: 'muted',
+    time: 'Nov 6',
+    read: true,
     title: 'Rebalance by Nov 12',
-    detail: '6 days left in this cycle. Your payday on Nov 1 should clear it automatically.',
+    detail: 'Your payday on Nov 1 should clear it automatically.',
+    action: { label: 'View cycle', to: '/' },
   },
   {
     id: 'n4',
     group: 'This week',
-    tone: 'boost',
+    tone: 'muted',
+    time: 'Nov 5',
+    read: true,
     title: 'Vote open: which region next?',
     detail: 'Closes in 6 days.',
+    action: { label: 'Cast vote', to: '/settings' },
   },
 ];
+
+export const THREADS: Thread[] = [
+  {
+    id: 'support',
+    name: 'Clear Support',
+    initials: 'CS',
+    subtitle: 'Usually replies within 4 hours',
+    preview: "We've looked into the Shell charge — here's what…",
+    time: '9:41 AM',
+    unread: true,
+  },
+  {
+    id: 'diego',
+    name: 'Diego R.',
+    initials: 'DR',
+    preview: 'sent you $35 — thanks for covering lunch',
+    time: 'Yesterday',
+    unread: true,
+  },
+  {
+    id: 'tinybox',
+    name: 'TinyBox Systems',
+    initials: 'TB',
+    preview: 'Invoice for the site visit is attached',
+    time: 'Oct 22',
+  },
+  {
+    id: 'maria',
+    name: 'Maria C.',
+    initials: 'MC',
+    preview: 'You: sounds good, see you Thursday',
+    time: 'Oct 19',
+  },
+];
+
+export const INBOX: InboxData = {
+  alerts: ALERTS,
+  threads: THREADS,
+  messages: {
+    support: [
+      {
+        id: 'm1',
+        mine: true,
+        body: 'The Shell charge on Oct 26 came off my credit line, not cash. Is that right?',
+      },
+      {
+        id: 'm2',
+        body: 'Yes — your cash account hit $0 that morning, so it drew from your savings-backed tier. That tier is free, so the charge cost you nothing extra.',
+      },
+      { id: 'm3', body: "Here's the tier breakdown for that day." },
+      {
+        id: 'm4',
+        body: '',
+        attachment: { label: 'Oct 26 · $52.10', tier: 'savings', note: 'Savings-backed · free' },
+      },
+    ],
+    diego: [
+      { id: 'd1', body: 'sent you $35 — thanks for covering lunch' },
+      { id: 'd2', mine: true, body: 'Anytime' },
+    ],
+    tinybox: [{ id: 't1', body: 'Invoice for the site visit is attached' }],
+    maria: [
+      { id: 'r1', body: 'Thursday still work for the walkthrough?' },
+      { id: 'r2', mine: true, body: 'sounds good, see you Thursday' },
+    ],
+  },
+};
 
 export const SAVINGS_IN_USE: SavingsData = {
   savings: HOME_IN_USE.savings,

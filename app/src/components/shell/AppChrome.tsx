@@ -34,7 +34,7 @@ export default function AppChrome({
     '/partners': 'Clear Partners',
     '/settings': 'Settings',
     '/assurance': 'Assurance',
-    '/alerts': 'Alerts',
+    '/inbox': 'Inbox',
     '/scan': 'Scan to pay',
     '/learn/patronage': 'How patronage works',
     '/learn/assurance-reserve': 'The assurance reserve',

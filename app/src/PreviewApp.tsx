@@ -1,15 +1,16 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
-import { Bell } from 'lucide-react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@/context/ThemeContext';
 import AppChrome from '@/components/shell/AppChrome';
+import HeaderActions from '@/components/shell/HeaderActions';
+import { unreadAlerts, unreadThreads } from '@/lib/clearModel';
 import HomePage from '@/pages/app/HomePage';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
 import ContactsPage from '@/pages/app/ContactsPage';
 import AssurancePage from '@/pages/app/AssurancePage';
-import AlertsPage from '@/pages/app/AlertsPage';
+import InboxPage from '@/pages/app/InboxPage';
 import ScanPage from '@/pages/app/ScanPage';
 import ExplainerPage from '@/pages/app/ExplainerPage';
 import PartnersPage from '@/pages/app/PartnersPage';
@@ -29,6 +30,8 @@ import {
   SEND_IN_USE,
   SEND_DAY_ONE,
   CONTACTS,
+  INBOX,
+  SETTINGS,
   EARN_IN_USE,
   EARN_DAY_ONE,
 } from '@/data/clearPlaceholder';
@@ -98,13 +101,11 @@ export default function PreviewApp() {
               <>
                 <AppChrome
                   trailing={
-                    <Link
-                      to="/alerts"
-                      aria-label="Alerts"
-                      className="p-1 text-foreground-secondary"
-                    >
-                      <Bell className="h-[18px] w-[18px]" strokeWidth={1.75} />
-                    </Link>
+                    <HeaderActions
+                      profile={SETTINGS.profile}
+                      unread={empty ? 0 : unreadAlerts(INBOX.alerts) + unreadThreads(INBOX.threads)}
+                      accelerationActive={SETTINGS.accelerationActive}
+                    />
                   }
                 >
                   <Routes>
@@ -120,7 +121,15 @@ export default function PreviewApp() {
                       path="/assurance"
                       element={<AssurancePage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />}
                     />
-                    <Route path="/alerts" element={<AlertsPage alerts={empty ? [] : undefined} />} />
+                    <Route
+                      path="/inbox"
+                      element={
+                        <InboxPage
+                          data={empty ? { alerts: [], threads: [], messages: {} } : INBOX}
+                        />
+                      }
+                    />
+                    <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
                     <Route path="/scan" element={<ScanPage />} />
                     <Route path="/learn/:topic" element={<ExplainerPage />} />
                     <Route path="/settings" element={<SettingsPage />} />

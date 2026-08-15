@@ -26,7 +26,7 @@ import ActivityPage from "@/pages/app/ActivityPage";
 import CardPage from "@/pages/app/CardPage";
 import ContactsPage from "@/pages/app/ContactsPage";
 import AssurancePage from "@/pages/app/AssurancePage";
-import AlertsPage from "@/pages/app/AlertsPage";
+import InboxRoute from "@/pages/app/InboxRoute";
 import ScanPage from "@/pages/app/ScanPage";
 import ExplainerPage from "@/pages/app/ExplainerPage";
 import PartnersPage from "@/pages/app/PartnersPage";
@@ -122,7 +122,9 @@ function App() {
                       <Route path="/contacts" element={<ContactsPage />} />
                       <Route path="/partners" element={<PartnersPage />} />
                       <Route path="/assurance" element={<AssurancePage />} />
-                      <Route path="/alerts" element={<AlertsPage />} />
+                      <Route path="/inbox" element={<InboxRoute />} />
+                      {/* The standalone Alerts page became the Inbox's first tab */}
+                      <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
                       <Route path="/scan" element={<ScanPage />} />
                       <Route path="/learn/:topic" element={<ExplainerPage />} />
                       {/* Not a nav item — reached from the avatar menu (spec §1). */}

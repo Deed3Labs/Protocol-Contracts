@@ -293,6 +293,52 @@ export interface Alert {
   group: string;
   /** Matches the tier or state the alert is about. */
   tone: 'boost' | 'asset' | 'muted';
+  /** When it landed, already formatted — "8:14 AM", "Nov 6". */
+  time: string;
+  read?: boolean;
+  /** Alerts you can act on carry the action, rather than making you go find it. */
+  action?: { label: string; to: string };
+}
+
+/** A message conversation — spec §1. */
+export interface Thread {
+  id: string;
+  name: string;
+  initials: string;
+  /** Last message, truncated in the list. */
+  preview: string;
+  time: string;
+  unread?: boolean;
+  /** e.g. "Usually replies within 4 hours" — shown in the thread header. */
+  subtitle?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  body: string;
+  /** Sent by this member rather than received. */
+  mine?: boolean;
+  /**
+   * A transaction the message refers to, rendered as a small card under it —
+   * support answering "which tier paid for this" is the whole reason messages
+   * exist inside the app rather than over email.
+   */
+  attachment?: { label: string; tier: TierKey; note: string };
+}
+
+export interface InboxData {
+  alerts: Alert[];
+  threads: Thread[];
+  /** Keyed by thread id. */
+  messages: Record<string, ChatMessage[]>;
+}
+
+export function unreadAlerts(alerts: Alert[]): number {
+  return alerts.filter((a) => !a.read).length;
+}
+
+export function unreadThreads(threads: Thread[]): number {
+  return threads.filter((t) => t.unread).length;
 }
 
 /**
