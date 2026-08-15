@@ -28,15 +28,26 @@ export default function SettingsRoute() {
   return (
     <SettingsPage
       data={{ ...SETTINGS, profile, accelerationActive: member.accelerated }}
+      // The photo is applied locally first and the backend call is best-effort:
+      // avatar_url is capped at 2048 chars, so a real photo lives in local
+      // storage until there's image hosting (see lib/avatarStore). A failed or
+      // truncated round-trip must not undo what the member just did.
       onSavePhoto={async (dataUrl) => {
         member.setAvatar(dataUrl);
-        const res = await uploadMemberAvatar(dataUrl);
-        if (res?.avatarUrl) member.refresh();
+        try {
+          await uploadMemberAvatar(dataUrl);
+        } catch {
+          /* kept locally */
+        }
       }}
       onRemovePhoto={async () => {
         member.setAvatar(null);
-        await deleteMemberAvatar();
-        member.refresh();
+        try {
+          await deleteMemberAvatar();
+          member.refresh();
+        } catch {
+          /* cleared locally */
+        }
       }}
     />
   );

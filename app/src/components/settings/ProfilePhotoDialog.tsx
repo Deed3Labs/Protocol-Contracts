@@ -29,6 +29,7 @@ function Adjust({
   onSave: (dataUrl: string) => void;
 }) {
   const [zoom, setZoom] = useState(1);
+  const [saving, setSaving] = useState(false);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const drag = useRef<{ x: number; y: number } | null>(null);
 
@@ -95,9 +96,17 @@ function Adjust({
         <Button
           size="xs"
           className="flex-1"
-          onClick={() => onSave(cropToDataUrl(src, { stage: STAGE, mask: MASK, zoom, offset }))}
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              onSave(await cropToDataUrl(src, { stage: STAGE, mask: MASK, zoom, offset }));
+            } finally {
+              setSaving(false);
+            }
+          }}
         >
-          Save photo
+          {saving ? 'Saving…' : 'Save photo'}
         </Button>
       </div>
     </>
@@ -190,9 +199,11 @@ export default function ProfilePhotoDialog({
             setBusy(true);
             try {
               await onSave?.(dataUrl);
-              close();
+            } catch {
+              // Same again: the photo is already applied optimistically.
             } finally {
               setBusy(false);
+              close();
             }
           }}
         />
@@ -237,9 +248,12 @@ export default function ProfilePhotoDialog({
                   setBusy(true);
                   try {
                     await onRemove?.();
-                    close();
+                  } catch {
+                    // The local clear has already happened; a failed server call
+                    // shouldn't strand the member in a sheet they're done with.
                   } finally {
                     setBusy(false);
+                    close();
                   }
                 }}
                 className="flex w-full items-center gap-3 border-t-[0.5px] border-border py-3 text-left text-foreground-secondary transition-colors hover:text-foreground"

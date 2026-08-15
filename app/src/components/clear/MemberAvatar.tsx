@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { MemberProfile } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
@@ -7,6 +8,9 @@ import { cn } from '@/lib/utils';
  *
  * Initials are the fallback rather than a grey silhouette: a person's initials
  * are still them, and an empty avatar icon reads as "we don't know who you are".
+ * They're also the fallback when the photo *fails to load* — a stored URL can
+ * 404, or come back truncated from a field too small to hold it, and a broken
+ * image glyph in the header is the worst of the three outcomes.
  *
  * Distinct from `Avatar`, which colours *other* people deterministically by id.
  * This one is always the same person, so it always takes the accent tint. Shape
@@ -20,11 +24,18 @@ export default function MemberAvatar({
   profile: Pick<MemberProfile, 'initials' | 'name' | 'avatarUrl'>;
   className?: string;
 }) {
-  if (profile.avatarUrl) {
+  const [failed, setFailed] = useState(false);
+
+  // A new photo deserves a fresh attempt — otherwise one bad URL poisons every
+  // later one for the life of the component.
+  useEffect(() => setFailed(false), [profile.avatarUrl]);
+
+  if (profile.avatarUrl && !failed) {
     return (
       <img
         src={profile.avatarUrl}
         alt=""
+        onError={() => setFailed(true)}
         className={cn('shrink-0 object-cover', className)}
       />
     );

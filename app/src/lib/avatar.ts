@@ -1,3 +1,13 @@
+/** Decode a data URL into an image, so callers can measure or draw it. */
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('image failed'));
+    image.src = src;
+  });
+}
+
 /**
  * Turn a picked image file into a small square-ish data URL.
  *
@@ -20,12 +30,7 @@ export function readFileAsDataUrl(file: File): Promise<string> {
 export async function fileToAvatarDataUrl(file: File, max = 256): Promise<string> {
   const dataUrl = await readFileAsDataUrl(file);
 
-  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('image failed'));
-    image.src = dataUrl;
-  });
+  const img = await loadImage(dataUrl);
 
   const scale = Math.min(1, max / Math.max(img.width, img.height || 1));
   const width = Math.max(1, Math.round(img.width * scale));
@@ -41,14 +46,19 @@ export async function fileToAvatarDataUrl(file: File, max = 256): Promise<string
   return canvas.toDataURL('image/jpeg', 0.82);
 }
 
+
 /**
  * Render exactly what the crop mask was showing, at `out` pixels square.
  *
  * The Adjust step draws the image at `stage` height, scaled and translated; this
  * repeats that transform on a canvas and reads back only the masked circle's
  * bounding box. Same arithmetic, so what you positioned is what you get.
+ *
+ * Async because it has to be: an <img> is not decoded on the line after its src
+ * is set, and a synchronous version silently returns the original — a whole
+ * uncropped phone photo, megabytes wide, which is worse than doing nothing.
  */
-export function cropToDataUrl(
+export async function cropToDataUrl(
   src: string,
   {
     stage,
@@ -57,15 +67,14 @@ export function cropToDataUrl(
     offset,
     out = 256,
   }: { stage: number; mask: number; zoom: number; offset: { x: number; y: number }; out?: number },
-): string {
-  const img = new Image();
-  img.src = src;
+): Promise<string> {
+  const img = await loadImage(src);
 
   const canvas = document.createElement('canvas');
   canvas.width = out;
   canvas.height = out;
   const ctx = canvas.getContext('2d');
-  if (!ctx || !img.complete || !img.naturalWidth) return src;
+  if (!ctx || !img.naturalWidth) return src;
 
   // The stage renders the image at a fixed height, centred, then transformed.
   const drawnH = stage * zoom;
