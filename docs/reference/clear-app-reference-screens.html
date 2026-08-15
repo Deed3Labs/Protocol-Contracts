@@ -1203,7 +1203,18 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 
     <div class="stack">
       <div class="card" style="padding:13px 15px">
-        <p class="lbl" style="margin:0 0 4px">Personal information</p>
+        <p class="lbl" style="margin:0 0 10px">Personal information</p>
+        <div style="display:flex;align-items:center;gap:14px;padding:2px 0 14px;border-bottom:0.5px solid var(--border);margin-bottom:2px">
+      <div style="position:relative;flex-shrink:0">
+        <div style="width:60px;height:60px;border-radius:20px;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--text-accent)">KM</div>
+        <div style="position:absolute;bottom:-3px;right:-3px;width:24px;height:24px;border-radius:9px;background:var(--text-primary);color:var(--surface-2);display:flex;align-items:center;justify-content:center;border:2px solid var(--surface-2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></div>
+      </div>
+      <div style="min-width:0;flex:1">
+        <p style="margin:0;font-size:13px">Profile photo</p>
+        <p style="margin:3px 0 0;font-size:11px;color:var(--text-muted);line-height:1.5">Members see this when you send or request money.</p>
+      </div>
+      <button style="font-size:11px;padding:5px 11px;flex-shrink:0">Change</button>
+    </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:0.5px solid var(--border);font-size:13px"><span>Legal name</span><span style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--text-muted)">Kai Moore</span><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m9 18 6-6-6-6"/></svg></span></span></div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:0.5px solid var(--border);font-size:13px"><span>Phone</span><span style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--text-muted)">(909) 555-0148</span><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m9 18 6-6-6-6"/></svg></span></span></div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:0.5px solid var(--border);font-size:13px"><span>Email</span><span style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--text-muted)">kai@example.com</span><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m9 18 6-6-6-6"/></svg></span></span></div>
@@ -1309,12 +1320,51 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 
 
 
+<h2>Profile photo — modal &amp; crop</h2>
+<p class="note" style="margin-bottom:1rem">Reached from the avatar on the Personal information page, or the identity block in the profile menu. Bottom sheet on mobile, centered modal on desktop.</p>
+<div class="row"><div style="width:340px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:1.1rem;box-shadow:0 8px 32px rgba(0,0,0,.12)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Profile photo</span><span style="color:var(--text-secondary);cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+  <div style="display:flex;justify-content:center;margin-bottom:16px">
+    <div style="width:96px;height:96px;border-radius:30px;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:28px;color:var(--text-accent)">KM</div>
+  </div>
+  <p style="font-size:11px;color:var(--text-muted);text-align:center;margin:0 0 16px;line-height:1.6">Your initials show until you add a photo.</p>
+  <div>
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px;"><span style="color:var(--text-secondary);display:flex;flex-shrink:0"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M14.5 4h-5L8 6H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-4Z"/><circle cx="12" cy="13" r="3.5"/></svg></span><div style="min-width:0"><p class="m">Take a photo</p></div></div>
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px;"><span style="color:var(--text-secondary);display:flex;flex-shrink:0"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></span><div style="min-width:0"><p class="m">Choose from library</p></div></div>
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 0;font-size:13px;color:var(--text-secondary)"><span style="color:var(--text-secondary);display:flex;flex-shrink:0"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></span><div style="min-width:0"><p class="m">Remove photo</p><p class="s">Go back to initials</p></div></div>
+  </div>
+  <div style="background:var(--surface-0);border-radius:var(--radius);padding:11px 13px;margin-top:14px">
+    <p style="font-size:11px;color:var(--text-secondary);margin:0;line-height:1.6">Visible to members and Clear Partners you transact with. Not shown publicly.</p>
+  </div>
+</div><div style="width:340px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:1.1rem;box-shadow:0 8px 32px rgba(0,0,0,.12)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Adjust</span><span style="color:var(--text-secondary);cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+  <div style="position:relative;height:200px;background:var(--surface-0);border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;overflow:hidden">
+    <div style="width:150px;height:150px;border-radius:48px;border:2px solid var(--surface-2);box-shadow:0 0 0 999px rgba(0,0,0,.28)"></div>
+  </div>
+  <p style="font-size:11px;color:var(--text-muted);text-align:center;margin:0 0 14px">Pinch to zoom &middot; drag to reposition</p>
+  <div style="display:flex;gap:8px">
+    <button style="flex:1">Cancel</button>
+    <button style="flex:1;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)">Save photo</button>
+  </div>
+</div></div>
+
 <h2>Settings sub-pages — mobile drill-in</h2>
 <p class="note" style="margin-bottom:1rem">Pushed pages with a back affordance, not modals. On desktop these are the same content rendered in the right-hand pane when the matching rail item is selected.</p>
 <div class="row">
   <div class="phone">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:1.1rem"><span style="color:var(--text-secondary)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg></span><span style="font-size:15px;font-weight:500">Personal information</span></div>
     
+    <div style="display:flex;align-items:center;gap:14px;padding:2px 0 14px;border-bottom:0.5px solid var(--border);margin-bottom:2px">
+      <div style="position:relative;flex-shrink:0">
+        <div style="width:60px;height:60px;border-radius:20px;background:var(--bg-accent);display:flex;align-items:center;justify-content:center;font-size:18px;color:var(--text-accent)">KM</div>
+        <div style="position:absolute;bottom:-3px;right:-3px;width:24px;height:24px;border-radius:9px;background:var(--text-primary);color:var(--surface-2);display:flex;align-items:center;justify-content:center;border:2px solid var(--surface-2)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></div>
+      </div>
+      <div style="min-width:0;flex:1">
+        <p style="margin:0;font-size:13px">Profile photo</p>
+        <p style="margin:3px 0 0;font-size:11px;color:var(--text-muted);line-height:1.5">Members see this when you send or request money.</p>
+      </div>
+      <button style="font-size:11px;padding:5px 11px;flex-shrink:0">Change</button>
+    </div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:0.5px solid var(--border);font-size:13px"><span>Legal name</span><span style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--text-muted)">Kai Moore</span><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m9 18 6-6-6-6"/></svg></span></span></div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:0.5px solid var(--border);font-size:13px"><span>Date of birth</span><span style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--text-muted)">••/••/1994</span><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m9 18 6-6-6-6"/></svg></span></span></div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:0.5px solid var(--border);font-size:13px"><span>Home address</span><span style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--text-muted)">Redlands, CA</span><span style="color:var(--text-muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m9 18 6-6-6-6"/></svg></span></span></div>

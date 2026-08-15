@@ -39,6 +39,7 @@ function LiveHeaderActions() {
         name: member.name || SETTINGS.profile.name,
         initials: member.initials || SETTINGS.profile.initials,
         handle: member.handle || SETTINGS.profile.handle,
+        avatarUrl: member.avatarUrl,
       }}
       accelerationActive={member.accelerated}
     />

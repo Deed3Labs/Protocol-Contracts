@@ -21,7 +21,7 @@ const QUICK_ACTIONS = [
  * Floating mobile nav — design spec §1. Split in two: a pill of destinations on
  * the left, an action button on the right.
  *
- * The split is the point. Four tabs are places you go; the button is the thing
+ * The split is the point. The tabs are places you go; the button is the thing
  * you came to do, and it changes with the page — Save on Savings, Buy on Earn,
  * and everywhere else a plus that fans out the four things you can start from
  * anywhere. That's what makes room to drop Send from the pill without losing it:
@@ -93,7 +93,7 @@ export default function MobileTabBar() {
         <nav
           aria-label="Primary"
           className={cn(
-            'relative flex h-[50px] items-center gap-0.5 overflow-hidden rounded-[17px] px-[5px]',
+            'relative flex h-[50px] shrink items-center gap-0.5 overflow-hidden rounded-[17px] px-[5px]',
             'border-[0.5px] border-border bg-background/85 backdrop-blur-[20px]',
             'shadow-[0_6px_22px_rgb(0_0_0/0.11)] transition-opacity',
             open && 'opacity-50',
@@ -107,7 +107,7 @@ export default function MobileTabBar() {
               aria-label={label}
               className={({ isActive }) =>
                 cn(
-                  'relative flex h-full w-[46px] items-center justify-center transition-colors',
+                  'relative flex h-full w-11 items-center justify-center transition-colors',
                   isActive ? 'text-foreground' : 'text-muted-foreground',
                 )
               }

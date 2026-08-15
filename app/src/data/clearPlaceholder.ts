@@ -578,6 +578,9 @@ export const SETTINGS: SettingsData = {
   profile: {
     name: 'Kai Moore',
     initials: 'KM',
+    // No photo in the placeholder — initials are the real fallback, and a stock
+    // face here would make every screenshot look like it has a member it doesn't.
+    avatarUrl: null,
     handle: '@kaim',
     memberSince: 'March 2026',
     legalName: 'Kai Moore',

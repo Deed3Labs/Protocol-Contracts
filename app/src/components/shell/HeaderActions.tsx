@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Bell } from 'lucide-react';
 import ProfileMenu from './ProfileMenu';
+import MemberAvatar from '@/components/clear/MemberAvatar';
 import type { MemberProfile } from '@/lib/clearModel';
 
 /**
@@ -44,12 +45,8 @@ export default function HeaderActions({
         onAcceleration={onAcceleration}
         onSignOut={onSignOut}
       >
-        <button
-          type="button"
-          aria-label="Profile and settings"
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-tier-boost/10 text-[10px] font-medium text-tier-boost-fg"
-        >
-          {profile.initials}
+        <button type="button" aria-label="Profile and settings" className="flex">
+          <MemberAvatar profile={profile} className="h-7 w-7 rounded-full text-[10px] font-medium" />
         </button>
       </ProfileMenu>
     </div>

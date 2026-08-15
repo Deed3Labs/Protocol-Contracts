@@ -527,6 +527,8 @@ export function poolUtilization(pool: YieldPool): number {
 export interface MemberProfile {
   name: string;
   initials: string;
+  /** Uploaded photo, if there is one. Initials are the fallback, not a placeholder. */
+  avatarUrl?: string | null;
   handle: string;
   memberSince: string;
   legalName: string;

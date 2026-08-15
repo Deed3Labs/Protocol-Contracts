@@ -32,7 +32,7 @@ import ExplainerPage from "@/pages/app/ExplainerPage";
 import PartnersPage from "@/pages/app/PartnersPage";
 import SendPage from "@/pages/app/SendPage";
 import EarnPage from "@/pages/app/EarnPage";
-import SettingsPage from "@/pages/app/SettingsPage";
+import SettingsRoute from "@/pages/app/SettingsRoute";
 
 function App() {
   // Check if splash has been shown in this session
@@ -128,7 +128,7 @@ function App() {
                       <Route path="/scan" element={<ScanPage />} />
                       <Route path="/learn/:topic" element={<ExplainerPage />} />
                       {/* Not a nav item — reached from the avatar menu (spec §1). */}
-                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="/settings" element={<SettingsRoute />} />
                     </Route>
 
                     {/* Archived pages (src/pages/_archive + src/pages/legacy) are kept on disk

@@ -9,6 +9,9 @@ import ToggleRows from '@/components/clear/ToggleRows';
 import ContactsPanel from '@/components/clear/ContactsPanel';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
 import RecoveryContactsDialog from '@/components/clear/RecoveryContactsDialog';
+import ProfilePhotoRow from '@/components/settings/ProfilePhotoRow';
+import ProfilePhotoDialog from '@/components/settings/ProfilePhotoDialog';
+import MemberAvatar from '@/components/clear/MemberAvatar';
 import LoginHistoryPanel from '@/components/settings/LoginHistoryPanel';
 import LegalPanel from '@/components/settings/LegalPanel';
 import HelpPanel from '@/components/settings/HelpPanel';
@@ -55,7 +58,16 @@ type SectionId =
 /** Pages that sit one level below a section, on both layouts. */
 type SubId = 'bylaws' | 'patronage' | 'voting' | 'legal' | 'logins';
 
-export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData }) {
+export default function SettingsPage({
+  data = SETTINGS,
+  onSavePhoto,
+  onRemovePhoto,
+}: {
+  data?: SettingsData;
+  /** Live wiring — see SettingsRoute. Absent in the preview harness. */
+  onSavePhoto?: (dataUrl: string) => Promise<void> | void;
+  onRemovePhoto?: () => Promise<void> | void;
+}) {
   const navigate = useNavigate();
   const { profile } = data;
   const [section, setSection] = useState<SectionId>('account');
@@ -70,6 +82,7 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
   const [sub, setSub] = useState<SubId | null>(null);
   const [ballotOpen, setBallotOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
 
   const [notifyOn, setNotifyOn] = useState<Record<string, boolean>>(() =>
@@ -82,6 +95,8 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
 
   const personalInformation = (
     <>
+      <ProfilePhotoRow profile={profile} onOpen={() => setPhotoOpen(true)} />
+
       <SettingRows
         rows={[
           { label: 'Legal name', value: profile.legalName },
@@ -422,15 +437,7 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
 
   const identity = (avatarSize: string, nameSize: string) => (
     <>
-      <span
-        aria-hidden
-        className={cn(
-          'flex shrink-0 items-center justify-center rounded-full bg-tier-boost/10 text-tier-boost-fg',
-          avatarSize,
-        )}
-      >
-        {profile.initials}
-      </span>
+      <MemberAvatar profile={profile} className={cn('rounded-full', avatarSize)} />
       <span className="min-w-0">
         <span className={cn('block truncate font-medium', nameSize)}>{profile.name}</span>
         <span className="mt-[3px] block text-xs text-foreground-secondary">
@@ -446,6 +453,13 @@ export default function SettingsPage({ data = SETTINGS }: { data?: SettingsData 
       <ChangePhoneDialog current={profile.phone} open={phoneOpen} onOpenChange={setPhoneOpen} />
       <TrustedDevicesDialog devices={data.devices} open={devicesOpen} onOpenChange={setDevicesOpen} />
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
+      <ProfilePhotoDialog
+        profile={profile}
+        open={photoOpen}
+        onOpenChange={setPhotoOpen}
+        onSave={onSavePhoto}
+        onRemove={onRemovePhoto}
+      />
       <RecoveryContactsDialog
         contacts={CONTACTS}
         open={recoveryOpen}

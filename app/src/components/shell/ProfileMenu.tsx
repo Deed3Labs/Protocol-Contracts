@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import ThemePicker from '@/components/clear/ThemePicker';
+import MemberAvatar from '@/components/clear/MemberAvatar';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import type { MemberProfile } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
@@ -56,12 +57,7 @@ export default function ProfileMenu({
         onClick={() => go('/settings')}
         className="mb-3.5 flex w-full items-center gap-3 border-b-[0.5px] border-border px-0.5 pb-3.5 text-left"
       >
-        <span
-          aria-hidden
-          className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] bg-tier-boost/10 text-sm text-tier-boost-fg"
-        >
-          {profile.initials}
-        </span>
+        <MemberAvatar profile={profile} className="h-[42px] w-[42px] rounded-[14px] text-sm" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">{profile.name}</span>
           <span className="mt-[3px] block truncate text-xs text-muted-foreground">
