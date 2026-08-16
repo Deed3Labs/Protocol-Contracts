@@ -133,3 +133,39 @@ describe('applyDraws', () => {
     expect(second.result).toBe('INSUFFICIENT_FUNDS');
   });
 });
+
+describe('malformed availability', () => {
+  test('a non-finite balance declines instead of approving', () => {
+    // NaN reaches here through a NULL column or a failed parse. Every comparison against it is
+    // false, so without an explicit guard the amount check passes, the remainder check passes, and
+    // an unfunded charge is approved — fail-open in the one place that must fail closed.
+    const decision = decide({
+      amountCents: 5_000,
+      availability: {
+        cashCents: Number.NaN,
+        savingsCents: 0,
+        assetCents: 0,
+        incomeCents: 0,
+        boostCents: 0,
+      },
+      cardPaused: false,
+    });
+    expect(decision.result).toBe('INSUFFICIENT_FUNDS');
+    expect(decision.draws).toEqual([]);
+  });
+
+  test('a non-finite amount declines too', () => {
+    const decision = decide({
+      amountCents: Number.NaN,
+      availability: {
+        cashCents: 500_000,
+        savingsCents: 0,
+        assetCents: 0,
+        incomeCents: 0,
+        boostCents: 0,
+      },
+      cardPaused: false,
+    });
+    expect(decision.result).toBe('INSUFFICIENT_FUNDS');
+  });
+});

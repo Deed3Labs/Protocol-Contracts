@@ -94,6 +94,14 @@ export interface DecideInput {
 export function decide({ amountCents, availability, cardPaused }: DecideInput): AuthDecision {
   const available = totalAvailable(availability);
 
+  // Fail closed on a number we cannot reason about. Every comparison against NaN is false, so an
+  // availability with a NULL column behind it would slip past the insufficient-funds check and past
+  // the defensive remainder check below, and approve an unfunded charge. The one outcome this file
+  // exists to prevent.
+  if (!Number.isFinite(available) || !Number.isFinite(amountCents)) {
+    return { result: 'INSUFFICIENT_FUNDS', draws: [], creditCents: 0, availableCents: 0 };
+  }
+
   if (cardPaused) {
     return { result: 'CARD_PAUSED', draws: [], creditCents: 0, availableCents: available };
   }

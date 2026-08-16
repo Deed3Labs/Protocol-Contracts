@@ -37,6 +37,7 @@ import bridgeWebhookRouter from './routes/bridgeWebhook.js';
 import rampRouter from './routes/ramp.js';
 import lithicRouter from './routes/lithic.js';
 import sweepsRouter from './routes/sweeps.js';
+import lithicCardsRouter from './routes/lithicCards.js';
 import lithicAuthStreamRouter from './routes/lithicAuthStream.js';
 import lithicWebhookRouter from './routes/lithicWebhook.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
@@ -227,6 +228,7 @@ async function startServer() {
     app.use('/api/onramper', requireAuth, onramperRouter);
     app.use('/api/ramp', requireAuth, rampRouter);
     app.use('/api/lithic', requireAuth, lithicRouter);
+    app.use('/api/lithic/cards', requireAuth, lithicCardsRouter);
     app.use('/api/sweeps', requireAuth, sweepsRouter);
 
     console.log('✅ API routes registered:');

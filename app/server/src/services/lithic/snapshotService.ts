@@ -6,6 +6,7 @@ import { tierAvailability, tierLimits, type CollateralInputs } from './tierLimit
 import { outstandingFor } from '../deposits/depositReceiptService.js';
 import { pulledFundsStore } from './pulledFundsStore.js';
 import { readChainCollateral } from '../chain/collateralReader.js';
+import { cardStore } from './cardStore.js';
 
 /*
  * Keeping `available_by_tier` true — the writer behind spec step 3.
@@ -149,14 +150,27 @@ export async function refreshSnapshotsFor(
   const pool = getPayPool();
   if (!pool) return 0;
   try {
-    const { rows } = await pool.query<{ card_token: string }>(
-      `SELECT card_token FROM lithic_tier_snapshots WHERE wallet = $1`,
-      [wallet.trim().toLowerCase()],
-    );
-    for (const row of rows) {
-      await refreshSnapshot(wallet, row.card_token, collateral);
+    // Both sources on purpose. Reading only the snapshot table would skip a card that has never
+    // had a snapshot written — a card issued moments ago, which is precisely the one that most
+    // needs one, since the auth stream fails closed and would decline its first charge. The card
+    // list goes through the store so its table is guaranteed to exist before this runs.
+    const [snapshotRows, cards] = await Promise.all([
+      pool.query<{ card_token: string }>(
+        `SELECT card_token FROM lithic_tier_snapshots WHERE wallet = $1`,
+        [wallet.trim().toLowerCase()],
+      ),
+      cardStore.listFor(wallet),
+    ]);
+
+    const tokens = new Set<string>([
+      ...snapshotRows.rows.map((row) => row.card_token),
+      ...cards.map((card) => card.cardToken),
+    ]);
+
+    for (const token of tokens) {
+      await refreshSnapshot(wallet, token, collateral);
     }
-    return rows.length;
+    return tokens.size;
   } catch (error) {
     console.error('[snapshots] refresh failed for', wallet, error);
     return 0;
@@ -175,16 +189,20 @@ export async function refreshSnapshot(
   cardToken: string,
   collateral: Partial<CollateralInputs> = {},
 ): Promise<SnapshotResult> {
-  const [lithicCashCents, monthlyDepositCents, pendingCollateralCents, chain] = await Promise.all([
-    readLithicCashCents(wallet),
-    collateral.monthlyDepositCents !== undefined
-      ? Promise.resolve(collateral.monthlyDepositCents)
-      : estimateMonthlyDeposit(wallet),
-    // Money pulled from an outside bank that could still be returned. Held out of collateral —
-    // see achOriginationService for why sixty days is the number that matters.
-    pulledFundsStore.pendingCollateralCents(wallet),
-    readChainCollateral(wallet),
-  ]);
+  const [lithicCashCents, monthlyDepositCents, pendingCollateralCents, chain, card] =
+    await Promise.all([
+      readLithicCashCents(wallet),
+      collateral.monthlyDepositCents !== undefined
+        ? Promise.resolve(collateral.monthlyDepositCents)
+        : estimateMonthlyDeposit(wallet),
+      // Money pulled from an outside bank that could still be returned. Held out of collateral —
+      // see achOriginationService for why sixty days is the number that matters.
+      pulledFundsStore.pendingCollateralCents(wallet),
+      readChainCollateral(wallet),
+      // A frozen card must stay frozen across a refresh. Defaulting this to false would let any
+      // rebuild — a deposit, an hourly job — quietly reopen a card the member had shut off.
+      cardStore.get(cardToken),
+    ]);
 
   // An RPC failure is "we don't know", not "the member has nothing". Writing a snapshot built on a
   // failed read would cut their limit to zero over a network blip and decline them at a checkout,
@@ -211,5 +229,6 @@ export async function refreshSnapshot(
     bondsWorthCents: collateral.bondsWorthCents ?? chain.bondsWorthCents,
     poolPositionCents: collateral.poolPositionCents ?? chain.poolPositionCents ?? 0,
     boostLimitCents: collateral.boostLimitCents ?? 0,
+    cardPaused: card?.state === 'PAUSED',
   });
 }
