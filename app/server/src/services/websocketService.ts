@@ -37,7 +37,14 @@ class WebSocketService {
 
       // Subscribe to updates
       socket.on('subscribe', async (data: { address: string; chainIds?: number[]; subscriptions?: string[] }) => {
-        const { address, chainIds = [], subscriptions = ['balances', 'nfts', 'transactions'] } = data;
+        // 'nfts' is NOT a default. The Deed views that consumed it are archived and the client
+        // already stopped asking — but the default meant the server kept fetching anyway, on
+        // subscribe and again every five minutes per connected client. A default subscription is
+        // work nobody requested.
+        //
+        // The capability stays: a client that wants NFTs subscribes to them explicitly, which is
+        // how T-Deeds and bonds will ask once there is a surface for them.
+        const { address, chainIds = [], subscriptions = ['balances', 'transactions'] } = data;
         
         this.clients.set(socket.id, {
           address: address.toLowerCase(),
