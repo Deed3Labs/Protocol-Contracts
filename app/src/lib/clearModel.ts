@@ -81,6 +81,86 @@ export function cycleShortfall(credit: Credit, expectedDeposit = 0): number {
   return Math.max(0, unsecuredUsed(credit) - Math.max(0, expectedDeposit));
 }
 
+/**
+ * A savings sweep, as the app needs to see it — mirrors the server's sweep record.
+ *
+ * `ready_to_allocate` is the resting state, not a failure: the USDC has arrived on the member's own
+ * smart wallet and where it goes next is theirs to choose.
+ */
+export interface SweepView {
+  id: string;
+  amountCents: number;
+  state:
+    | 'initiated'
+    | 'fiat_debited'
+    | 'ready_to_allocate'
+    | 'clrusd_minted'
+    | 'complete'
+    | 'failed';
+  createdAt: string;
+}
+
+/** Sweeps whose money has left the member's cash but has not arrived on-chain yet. */
+export function sweepsInFlight(sweeps: SweepView[]): SweepView[] {
+  return sweeps.filter((s) => s.state === 'initiated' || s.state === 'fiat_debited');
+}
+
+/** Sweeps whose USDC has landed and is waiting on the member to place it. */
+export function sweepsAwaitingMember(sweeps: SweepView[]): SweepView[] {
+  return sweeps.filter((s) => s.state === 'ready_to_allocate');
+}
+
+/**
+ * What the member is holding on-chain from completed sweeps, in dollars.
+ *
+ * A floor, not the whole picture: it counts money this app put there and knows the state of. USDC
+ * the member acquired any other way is only visible from a chain read, so a caller with a real
+ * balance should prefer it and use this when there is nothing better.
+ */
+export function unallocatedFromSweeps(sweeps: SweepView[]): number {
+  return sweepsAwaitingMember(sweeps).reduce((sum, s) => sum + s.amountCents, 0) / 100;
+}
+
+/**
+ * In-flight sweeps as Activity rows.
+ *
+ * Shown as pending deposits because that is what they are from the member's side: money that left
+ * their cash account and has not turned up in savings yet. ACH takes days, and a transfer that
+ * vanishes from one place without appearing anywhere else reads as lost money.
+ */
+export function sweepActivityRows(sweeps: SweepView[]): ActivityRow[] {
+  return sweepsInFlight(sweeps).map((sweep) => ({
+    id: `sweep-${sweep.id}`,
+    name: 'To savings',
+    date: sweep.createdAt.slice(0, 10),
+    source: 'pending' as const,
+    kind: 'savings' as const,
+    // Negative: it has left the cash account. It is not income arriving.
+    amount: -(sweep.amountCents / 100),
+    status: 'Pending',
+  }));
+}
+
+/**
+ * Everything in the cash account, spendable or not.
+ *
+ * Derived rather than stored, so the total can never drift from its parts — the bug where a
+ * displayed balance and the numbers underneath it quietly disagree.
+ */
+export function cashTotal(account: Pick<CashAccount, 'spendable' | 'onChain'>): number {
+  return Math.max(0, account.spendable) + Math.max(0, account.onChain);
+}
+
+/**
+ * True when part of the balance cannot be spent on the card.
+ *
+ * Drives the marking in the UI. Showing a balance without saying which part is spendable is how a
+ * member gets declined at a checkout while looking at a number that says they had the money.
+ */
+export function hasUnspendableCash(account: Pick<CashAccount, 'onChain'>): boolean {
+  return account.onChain > 0;
+}
+
 export interface Savings {
   cash: number;
   vested: number;
@@ -92,7 +172,20 @@ export interface Savings {
 }
 
 export interface CashAccount {
-  balance: number;
+  /**
+   * Card-spendable fiat. The only part of the cash account that can settle an authorization, and
+   * the only figure that may ever feed `availableToSpend`.
+   */
+  spendable: number;
+  /**
+   * USDC on the member's own smart wallet, on its way to somewhere or simply left there.
+   *
+   * Genuinely theirs and genuinely in the cash account — but it cannot settle a card in the moment,
+   * because converting it is not something that happens inside an authorization window. It is shown
+   * as part of the balance and marked unspendable, with the choice of where it goes left to them:
+   * the ESA, an Earn product, or nowhere.
+   */
+  onChain: number;
   nextDepositOn: string;
   nextDepositEstimate: number;
   directDepositActive: boolean;
@@ -897,6 +990,10 @@ export function addableTier(credit: Credit): CreditTier | undefined {
 /**
  * available = cash + (limit − used) — rule 2. Cash spends first; credit engages
  * only once cash hits zero. The ESA is never part of this (rule 5).
+ *
+ * `cash` here is SPENDABLE cash only — never `cashTotal`. USDC sitting on the member's smart wallet
+ * is theirs, but it cannot settle a card authorization, and counting it would offer spend the card
+ * would then decline. Same split the server's tier snapshot makes for the same reason.
  */
 export function availableToSpend(cash: number, credit: Credit): number {
   return Math.max(0, cash) + creditLeft(credit);

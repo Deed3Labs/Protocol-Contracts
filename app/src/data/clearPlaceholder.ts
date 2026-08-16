@@ -83,7 +83,11 @@ export const HOME_IN_USE: HomeData = {
     onTrackFor: 'Feb 2028',
   },
   cashAccount: {
-    balance: 0,
+    spendable: 0,
+    // USDC delivered to the smart wallet and not yet placed — the unspendable half of the balance.
+    // Non-zero here so the "in use" fixture exercises it; credit stays engaged either way, since
+    // this money cannot settle a card.
+    onChain: 250,
     nextDepositOn: 'Nov 1',
     nextDepositEstimate: 2000,
     directDepositActive: true,
@@ -136,7 +140,8 @@ export const HOME_DAY_ONE: HomeData = {
   cycle: { lengthDays: 30, daysLeft: 0, clearsOn: '' },
   savings: { cash: 0, vested: 0, vesting: 0, credits: 0, creditsGoal: 15000 },
   cashAccount: {
-    balance: 0,
+    spendable: 0,
+    onChain: 0,
     nextDepositOn: '',
     nextDepositEstimate: 0,
     directDepositActive: false,

@@ -107,7 +107,14 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       onAddBoost={() => setBoostOpen(true)}
     />
   );
-  const cash = <CashAccountCard account={data.cashAccount} onDetails={() => setAccountOpen(true)} />;
+  // "Move" opens the same sheet as Save: the unspendable USDC is exactly what that sheet places.
+  const cash = (
+    <CashAccountCard
+      account={data.cashAccount}
+      onDetails={() => setAccountOpen(true)}
+      onAllocate={() => setAddSavingsOpen(true)}
+    />
+  );
   const activity = <RecentActivityCard rows={data.recent} onSelect={setSelected} />;
 
   return (
