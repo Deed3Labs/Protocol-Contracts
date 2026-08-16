@@ -3,6 +3,7 @@ import { ensureRailAccount, pushToBridge } from './bridgeRail.js';
 import { bridgeCustomerStore } from '../bridgeCustomerStore.js';
 import { readChainCollateral } from '../chain/collateralReader.js';
 import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
+import { relayEsaDeposit, type DepositAuthorization } from '../savings/esaDeposit.js';
 
 /*
  * The savings sweep — spec step 7, over the Bridge rail.
@@ -20,6 +21,9 @@ import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
  *
  * The middle state is a WAIT, not a step. Nothing here retries it, because ACH takes days and a
  * "retry" would push the money a second time. The Bridge webhook advances it when the USDC lands.
+ *
+ * The mint at the end waits on a signature, not on us. The USDC is the member's, on their own smart
+ * wallet, and the server can only relay an authorization they signed.
  *
  * And the state after it is a wait on a person. USDC in the member's wallet is spendable-adjacent
  * money in their own custody, showing in their cash account as unspendable; whether it becomes
@@ -120,14 +124,28 @@ export async function markUsdcArrived(
  * rather than at the fiat debit, and the gap between them is real: a member who left USDC in their
  * cash account for a week must not be credited a week of vesting they did not have.
  *
- * Refuses rather than pretends, pending the ESA deposit call. A sweep reporting a mint that never
- * happened would put CLRUSD in our records with nothing behind it.
+ * Requires the member's signed authorization, and there is no version of this that does not. The
+ * USDC is theirs, on their own smart wallet — the server relays and pays gas, and can do nothing
+ * without a signature. The mint is recorded only after the relay returns a transaction hash, so a
+ * failed submission leaves the sweep exactly where it was, with the money still the member's.
  */
-async function mintClrusd(sweep: Sweep): Promise<SweepStepResult> {
+async function mintClrusd(
+  sweep: Sweep,
+  authorization: DepositAuthorization,
+): Promise<SweepStepResult> {
   if (sweep.mintTxHash) {
     return { sweep: await sweepStore.advance(sweep.id, 'clrusd_minted'), advanced: true };
   }
-  return { sweep, advanced: false, error: 'ESA mint not implemented' };
+
+  const relayed = await relayEsaDeposit(authorization);
+
+  return {
+    sweep: await sweepStore.advance(sweep.id, 'clrusd_minted', {
+      mintTxHash: relayed.txHash,
+      mintedAt: new Date().toISOString(),
+    }),
+    advanced: true,
+  };
 }
 
 /** Close the sweep out and make the new collateral visible to the card. */
@@ -184,18 +202,31 @@ export async function advanceSweep(sweep: Sweep): Promise<SweepStepResult> {
  * the same USDC into an Earn product instead is a different destination on the same money and does
  * not run through here.
  */
-export async function allocateToSavings(id: string): Promise<SweepStepResult> {
+export async function allocateToSavings(
+  id: string,
+  authorization: DepositAuthorization,
+): Promise<SweepStepResult> {
   const sweep = await sweepStore.get(id);
   if (!sweep) return { sweep: null, advanced: false, error: 'unknown sweep' };
   if (sweep.state !== 'ready_to_allocate') {
     return { sweep, advanced: false, error: `sweep is ${sweep.state}, not ready to allocate` };
   }
 
-  const result = await mintClrusd(sweep);
-  if (!result.advanced && result.error) {
-    return { ...result, sweep: await sweepStore.fail(id, result.error) };
+  // The signature authorises moving the depositor's own USDC, so it has to be the member whose
+  // sweep this is. Otherwise a valid signature from anyone would close out someone else's sweep.
+  if (authorization.submit?.depositor?.toLowerCase() !== sweep.wallet.toLowerCase()) {
+    return { sweep, advanced: false, error: 'authorization is for a different wallet' };
   }
-  return result;
+
+  try {
+    const result = await mintClrusd(sweep, authorization);
+    // The mint landed; finalize reads the new collateral and republishes the snapshot so the card
+    // knows about the savings-backed room the member just funded.
+    return result.sweep ? await finalize(result.sweep) : result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { sweep: await sweepStore.fail(id, message), advanced: false, error: message };
+  }
 }
 
 export const sweepService = {

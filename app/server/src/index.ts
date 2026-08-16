@@ -48,6 +48,7 @@ import { startGreetingNotifier } from './jobs/greetingNotifier.js';
 import { startSendExpiryNotifier } from './jobs/sendExpiryNotifier.js';
 import { startPulledFundsReleaser } from './jobs/pulledFundsReleaser.js';
 import { startSweepRunner } from './jobs/sweepRunner.js';
+import { startReconciler } from './jobs/reconciler.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -296,6 +297,10 @@ async function startServer() {
 
     startSweepRunner().catch((error) => {
       console.error('Failed to start sweep runner:', error);
+    });
+
+    startReconciler().catch((error) => {
+      console.error('Failed to start reconciler:', error);
     });
 
     // Start HTTP server (Express + WebSocket)

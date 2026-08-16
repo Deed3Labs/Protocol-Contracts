@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import { getPayPool } from '../../config/postgres.js';
 import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
+import { autoSaveCentsFor, autoSaveStore } from './autoSaveStore.js';
 import {
   allocate,
   planSettlement,
@@ -40,7 +41,12 @@ export interface DepositReceipt {
   externalId: string;
   wallet: string;
   amountCents: number;
-  /** Fixed auto-save per deposit, in cents. Zero or absent means none configured. */
+  /**
+   * Fixed auto-save for this deposit, in cents.
+   *
+   * Absent is not zero: absent means "use the member's own rule", which is the normal case. Pass a
+   * number only to override that deliberately.
+   */
   autoSaveCents?: number;
   metadata?: Record<string, unknown>;
 }
@@ -191,9 +197,16 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
     }
 
     // 3. Auto-save on the remainder, never on the gross.
+    //
+    // An explicit figure from the caller wins; otherwise the member's own rule decides. This is
+    // what makes auto-save a payday habit rather than a parameter nothing ever passed: it fires
+    // when money actually arrives, which is the only moment the member reliably has it.
+    const autoSaveCents =
+      receipt.autoSaveCents ?? autoSaveCentsFor(await autoSaveStore.get(wallet), plan.remainingCents);
+
     const allocation = allocate({
       remainingCents: plan.remainingCents,
-      autoSaveCents: receipt.autoSaveCents,
+      autoSaveCents,
     });
 
     if (allocation.toSavingsCents > 0) {
