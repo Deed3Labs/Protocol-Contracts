@@ -32,3 +32,26 @@ export {
   type ProvisionStatus,
   type DepositInstructions,
 } from './provisioningService.js';
+
+export {
+  tierLimits,
+  tierAvailability,
+  BOND_LTV,
+  POOL_LTV,
+  INCOME_SHARE,
+  type CollateralInputs,
+  type TierLimits,
+} from './tierLimits.js';
+
+export {
+  writeSnapshot,
+  refreshSnapshot,
+  estimateMonthlyDeposit,
+  readLithicCashCents,
+  type SnapshotSources,
+  type SnapshotResult,
+} from './snapshotService.js';
+
+export { authStore, authorize } from './authStore.js';
+export { decide, applyDraws, totalAvailable, TIER_ORDER } from './authDecision.js';
+export type { AuthDecision, TierAvailability, Draw, AsaResult } from './authDecision.js';

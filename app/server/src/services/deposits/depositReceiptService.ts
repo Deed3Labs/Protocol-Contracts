@@ -51,6 +51,8 @@ export interface DepositOutcome {
   plan: SettlementPlan | null;
   toSavingsCents: number;
   toCashCents: number;
+  /** Cards whose availability was rewritten as a result. Empty when the member has none yet. */
+  snapshotsUpdated: number;
 }
 
 let ensured = false;
@@ -118,14 +120,14 @@ function cashAccountFor(rail: DepositRail): string {
 export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOutcome> {
   const pool = getPayPool();
   if (!pool) {
-    return { recorded: false, duplicate: false, plan: null, toSavingsCents: 0, toCashCents: 0 };
+    return { recorded: false, duplicate: false, plan: null, toSavingsCents: 0, toCashCents: 0, snapshotsUpdated: 0 };
   }
   await ensureTables();
 
   const wallet = receipt.wallet.trim().toLowerCase();
   const amount = Math.max(0, Math.round(receipt.amountCents));
   if (!wallet || amount <= 0) {
-    return { recorded: false, duplicate: false, plan: null, toSavingsCents: 0, toCashCents: 0 };
+    return { recorded: false, duplicate: false, plan: null, toSavingsCents: 0, toCashCents: 0, snapshotsUpdated: 0 };
   }
 
   const client = await pool.connect();
@@ -143,7 +145,7 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
 
     if (claim.rowCount === 0) {
       await client.query('COMMIT');
-      return { recorded: false, duplicate: true, plan: null, toSavingsCents: 0, toCashCents: 0 };
+      return { recorded: false, duplicate: true, plan: null, toSavingsCents: 0, toCashCents: 0, snapshotsUpdated: 0 };
     }
 
     const group = `deposit:${receipt.rail}:${receipt.externalId}`;
@@ -226,18 +228,52 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
 
     await client.query('COMMIT');
 
+    // The deposit changed both the cash balance and what's outstanding, so every card this member
+    // holds is now authorizing against a stale snapshot. Rewriting it is the point of step 3's
+    // "precomputed lookup" — a snapshot nothing maintains is just a slower wrong answer.
+    const snapshotsUpdated = await refreshSnapshotsFor(wallet);
+
     return {
       recorded: true,
       duplicate: false,
       plan,
       toSavingsCents: allocation.toSavingsCents,
       toCashCents: allocation.toCashCents,
+      snapshotsUpdated,
     };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Rewrite the availability snapshot for every card this member holds.
+ *
+ * Runs after the deposit transaction commits, not inside it: it reads Lithic and the chain, and
+ * holding a database transaction open across a network call is how a busy payday becomes a lock
+ * queue. A snapshot that lags by a second is fine; a stalled deposit pipeline is not.
+ */
+async function refreshSnapshotsFor(wallet: string): Promise<number> {
+  const pool = getPayPool();
+  if (!pool) return 0;
+  try {
+    const { rows } = await pool.query<{ card_token: string }>(
+      `SELECT card_token FROM lithic_tier_snapshots WHERE wallet = $1`,
+      [wallet],
+    );
+    const { refreshSnapshot } = await import('../lithic/snapshotService.js');
+    for (const row of rows) {
+      await refreshSnapshot(wallet, row.card_token);
+    }
+    return rows.length;
+  } catch (error) {
+    // Never fail a recorded deposit because the snapshot couldn't be rewritten — the money did
+    // arrive. The scheduled refresh is the backstop, and the card fails closed meanwhile.
+    console.error('[deposits] snapshot refresh failed', error);
+    return 0;
   }
 }
 
