@@ -3,21 +3,23 @@ import { getPayPool } from '../../config/postgres.js';
 /*
  * The savings sweep, as an explicit state machine — spec step 7.
  *
- * A sweep is two movements on two rails that present to the member as one action: fiat leaves their
- * Lithic account for the co-op's, and the co-op's treasury sends USDC to their smart account where
- * the ESA mints CLRUSD. There is no transaction that spans a bank and a blockchain, so pretending
- * one exists is the mistake this table is built to avoid.
+ * A sweep moves money the member already has from the fiat side to the on-chain side. It is two
+ * movements on two rails that present as one action, and no transaction spans a bank and a
+ * blockchain, so pretending one exists is the mistake this table is built to avoid.
  *
- *   initiated → fiat_debited → usdc_sent → clrusd_minted → complete
+ *   initiated         -> fiat_debited       ACH push, Lithic account to the member's Bridge account
+ *   fiat_debited      -> ready_to_allocate  Bridge converted it and delivered USDC to their wallet
+ *   ready_to_allocate -> clrusd_minted      the member chose to put it in the ESA
+ *   clrusd_minted     -> complete
+ *
+ * READY_TO_ALLOCATE IS THE NORMAL RESTING STATE, not an error. USDC in the member's smart wallet is
+ * theirs and shows in their cash account — marked unspendable, because it cannot settle a card
+ * authorization — and where it goes next is their decision: the ESA, an Earn product, or nowhere at
+ * all. A runner that quietly allocated it would be making that choice for them.
  *
  * Every state is durable and every transition is idempotent, because the process can die between
  * any two of them and has to resume knowing exactly what already happened. A saga that loses its
  * place either double-sends money or strands it.
- *
- * READY_TO_ALLOCATE is the state that matters most. If the sweep fails after `usdc_sent`, the
- * member has USDC on their smart account that never reached the ESA. That is not an error to
- * retry silently — it is money in the wrong place, in their custody, and they need to see it and
- * be able to act on it: retry the allocation, move it to Earn, or send it back to cash.
  */
 
 const TABLE = 'savings_sweeps';
@@ -31,8 +33,14 @@ export type SweepState =
   | 'ready_to_allocate'
   | 'failed';
 
-/** States a runner should pick up. `ready_to_allocate` is deliberately absent — that one is the member's. */
-export const RESUMABLE: SweepState[] = ['initiated', 'fiat_debited', 'usdc_sent', 'clrusd_minted'];
+/**
+ * States a runner should pick up.
+ *
+ * Two deliberate absences. `fiat_debited` is waiting on Bridge, and a runner that "retried" it
+ * would push the money a second time. `ready_to_allocate` is waiting on the member, and that is
+ * their decision to make about their own money.
+ */
+export const RESUMABLE: SweepState[] = ['initiated', 'clrusd_minted'];
 
 export interface Sweep {
   id: string;
@@ -227,12 +235,10 @@ export const sweepStore = {
 
     const attempts = current.attempts + 1;
     const exhausted = attempts >= maxAttempts;
-    const sentUsdc = current.usdcTxHash !== null;
-    const nextState: SweepState = exhausted
-      ? sentUsdc
-        ? 'ready_to_allocate'
-        : 'failed'
-      : current.state;
+    // Money that has already reached the member's wallet is never marked failed. It arrived; what
+    // is unfinished is only where it goes next, and that was always theirs to say.
+    const landed = current.usdcTxHash !== null || current.state === 'ready_to_allocate';
+    const nextState: SweepState = exhausted ? (landed ? 'ready_to_allocate' : 'failed') : current.state;
 
     const { rows } = await pool.query<Row>(
       `UPDATE ${TABLE}
@@ -274,31 +280,43 @@ export const sweepStore = {
   },
 
   /**
-   * Sweeps waiting on the chain leg, grouped so the treasury converts once.
+   * Sweeps whose ACH push has left Lithic but whose USDC has not arrived.
    *
-   * Fifty members sweeping on payday is one conversion, not fifty — the batching the spec asks for,
-   * and the difference between a treasury operation and a fee-burning loop.
+   * Advanced by the Bridge webhook, never by a runner. This exists so a sweep in flight far longer
+   * than ACH takes can be surfaced rather than silently waited on forever.
    */
-  async batchReadyForChain(limit = 100): Promise<Map<string, Sweep[]>> {
+  async awaitingBridge(olderThanHours = 0): Promise<Sweep[]> {
     const pool = getPayPool();
-    if (!pool) return new Map();
+    if (!pool) return [];
     await ensureTable();
     const { rows } = await pool.query<Row>(
       `SELECT * FROM ${TABLE}
-       WHERE state = 'fiat_debited' AND next_attempt_at <= now()
-       ORDER BY created_at ASC
-       LIMIT $1`,
-      [limit],
+       WHERE state = 'fiat_debited'
+         AND updated_at < now() - ($1 || ' hours')::interval
+       ORDER BY created_at ASC`,
+      [String(Math.max(0, olderThanHours))],
     );
+    return rows.map(toSweep);
+  },
 
-    const batches = new Map<string, Sweep[]>();
-    for (const row of rows) {
-      const sweep = toSweep(row);
-      const key = sweep.batchKey ?? 'unbatched';
-      const existing = batches.get(key);
-      if (existing) existing.push(sweep);
-      else batches.set(key, [sweep]);
-    }
-    return batches;
+  /**
+   * The sweep this arriving Bridge money belongs to, if any.
+   *
+   * Matched on wallet and exact amount, oldest first. Without it the webhook would treat a sweep
+   * landing as a fresh deposit and count the same money twice — once when it arrived in Lithic and
+   * again when it came back on-chain.
+   */
+  async matchArrival(wallet: string, amountCents: number): Promise<Sweep | null> {
+    const pool = getPayPool();
+    if (!pool) return null;
+    await ensureTable();
+    const { rows } = await pool.query<Row>(
+      `SELECT * FROM ${TABLE}
+       WHERE wallet = $1 AND state = 'fiat_debited' AND amount_cents = $2
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [wallet.toLowerCase(), Math.round(amountCents)],
+    );
+    return rows[0] ? toSweep(rows[0]) : null;
   },
 };

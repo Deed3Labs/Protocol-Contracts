@@ -10,9 +10,10 @@ import { advanceSweep } from '../services/sweeps/sweepService.js';
  * Every minute, because a member watching a sweep should see it move. The pulled-funds releaser can
  * run hourly since it waits on a date; this waits on a network call that usually takes seconds.
  *
- * Sweeps in `ready_to_allocate` are deliberately not picked up. That state is the member's decision
- * to make — retry, move to Earn, or take it back as cash — and a runner that quietly retried it
- * would be overriding a person about their own money.
+ * It picks up almost nothing, by design. `fiat_debited` is waiting on ACH and the Bridge webhook —
+ * a runner "retrying" it would push the money a second time. `ready_to_allocate` is waiting on the
+ * member, and choosing for them would be the whole point missed. What is left is starting the push
+ * and finishing after a mint.
  */
 
 const INTERVAL_MS = 60 * 1000;
@@ -37,14 +38,6 @@ async function tick(): Promise<void> {
       if (result.advanced) advanced += 1;
       else stalled += 1;
 
-      if (result.sweep?.state === 'ready_to_allocate') {
-        // Money on the member's smart account that never reached the ESA. Loud, because it needs a
-        // person to notice — theirs to resolve, but ours to have surfaced.
-        console.warn(
-          `[sweeps] ${sweep.id} is READY TO ALLOCATE —` +
-            ` ${sweep.amountCents}c of USDC with ${sweep.wallet}, not in the ESA`,
-        );
-      }
     }
 
     if (advanced || stalled) {

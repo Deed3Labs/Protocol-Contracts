@@ -1,37 +1,30 @@
-import { getLithic } from '../lithic/lithicClient.js';
-import { lithicStore } from '../lithic/lithicStore.js';
 import { sweepStore, type Sweep } from './sweepStore.js';
+import { ensureRailAccount, pushToBridge } from './bridgeRail.js';
+import { bridgeCustomerStore } from '../bridgeCustomerStore.js';
 import { readChainCollateral } from '../chain/collateralReader.js';
 import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
 
 /*
- * The savings sweep — spec step 7.
+ * The savings sweep — spec step 7, over the Bridge rail.
  *
  * One member action, two rails that cannot be made atomic:
  *
- *   fiat_debited    their Lithic cash → the co-op's operating account (a book transfer)
- *   usdc_sent       the co-op's treasury → their smart account (a chain transfer)
- *   clrusd_minted   the ESA takes the USDC and mints CLRUSD (a chain call)
+ *   fiat_debited       ACH push out of their Lithic cash account toward their Bridge account
+ *   ready_to_allocate  Bridge converted the fiat and delivered USDC to their smart wallet
+ *   clrusd_minted      the member moved it into the ESA and CLRUSD was minted
  *
- * Each step is attempted only when the one before it is recorded as done, and each records its
- * evidence — a transfer token, a transaction hash — before the next begins. That ordering is the
- * whole design: a process that dies mid-sweep resumes by reading its own state rather than by
- * guessing, and a step already done is never done twice.
+ * There is no treasury here, deliberately. Bridge already converts USD to USDC and delivers it to
+ * the member's own wallet, so holding a float to do it ourselves would buy speed at the price of
+ * holding member dollars while owing them tokens. The money never touches a co-op balance sheet:
+ * their Lithic account, their Bridge account, their smart wallet.
  *
- * The failure that matters is between `usdc_sent` and `clrusd_minted`. The member has their money,
- * on their own smart account, in a form the app didn't intend. That is not an incident to retry
- * into oblivion — it is READY TO ALLOCATE, a real state they can see and act on. Hiding it behind
- * an endless retry would mean money the member owns and cannot find.
+ * The middle state is a WAIT, not a step. Nothing here retries it, because ACH takes days and a
+ * "retry" would push the money a second time. The Bridge webhook advances it when the USDC lands.
+ *
+ * And the state after it is a wait on a person. USDC in the member's wallet is spendable-adjacent
+ * money in their own custody, showing in their cash account as unspendable; whether it becomes
+ * CLRUSD, goes into an Earn product, or stays put is theirs to decide.
  */
-
-/** Cent amounts convert to USDC's six decimals. */
-function centsToUsdcUnits(cents: number): bigint {
-  return BigInt(Math.round(cents)) * 10_000n;
-}
-
-function operatingAccountToken(): string {
-  return (process.env.LITHIC_OPERATING_FINANCIAL_ACCOUNT || '').trim();
-}
 
 export interface SweepStepResult {
   sweep: Sweep | null;
@@ -42,8 +35,8 @@ export interface SweepStepResult {
 /**
  * Start a sweep.
  *
- * Takes the member's own id for the intent so a double-tap, a retried request and a payday job that
- * fires twice all describe the same sweep rather than three debits.
+ * Takes the caller's own id for the intent, so a double-tap, a retried request and a scheduled rule
+ * that fires twice all describe the same sweep rather than three debits.
  */
 export async function beginSweep(input: {
   id: string;
@@ -56,77 +49,79 @@ export async function beginSweep(input: {
 }
 
 /**
- * Move fiat from the member's Lithic account to the co-op's operating account.
+ * Push the fiat out of Lithic toward the member's Bridge account.
  *
- * The transfer is created with the sweep's own id as the idempotency key, so a retry after a
- * timeout — the case where we genuinely do not know whether the debit landed — cannot produce a
- * second debit. This is the one step where a duplicate takes real money from a real member.
+ * The only step that moves money on our instruction, and the only one where a duplicate takes real
+ * money from a real member — hence the sweep id as the idempotency token, and the check for a
+ * payment token already recorded before anything is sent.
  */
 async function debitFiat(sweep: Sweep): Promise<SweepStepResult> {
   if (sweep.fiatTransferToken) {
-    // Already done on a previous attempt; the crash was after the debit, not before it.
+    // Already pushed on a previous attempt; the crash was after the debit, not before it.
     return { sweep: await sweepStore.advance(sweep.id, 'fiat_debited'), advanced: true };
   }
 
-  const lithic = getLithic();
-  const operating = operatingAccountToken();
-  const record = await lithicStore.get(sweep.wallet);
-
-  if (!lithic) return { sweep, advanced: false, error: 'lithic not configured' };
-  if (!operating) return { sweep, advanced: false, error: 'no operating financial account' };
-  if (!record?.cashFinancialAccountToken) {
-    return { sweep, advanced: false, error: 'member has no cash account' };
+  const customerId = await bridgeCustomerStore.customerFor(sweep.wallet);
+  if (!customerId) {
+    return { sweep, advanced: false, error: 'member has no Bridge customer' };
   }
 
-  // `token` is Lithic's idempotency key on this endpoint and becomes the transaction token, so a
-  // retry after a timeout resolves to the same transfer rather than a second debit.
-  const created = await lithic.bookTransfers.create({
-    amount: Math.round(sweep.amountCents),
-    category: 'TRANSFER',
-    from_financial_account_token: record.cashFinancialAccountToken,
-    to_financial_account_token: operating,
-    subtype: (process.env.LITHIC_SWEEP_SUBTYPE || 'ACCOUNT_TO_ACCOUNT').trim(),
-    type: 'TRANSFER',
-    token: sweep.id,
-    memo: 'Clear savings sweep',
+  const rail = await ensureRailAccount({
+    wallet: sweep.wallet,
+    customerId,
+    walletAddress: sweep.wallet,
+  });
+  if ('error' in rail) return { sweep, advanced: false, error: rail.error };
+
+  const payment = await pushToBridge({
+    wallet: sweep.wallet,
+    externalBankAccountToken: rail.token,
+    amountCents: sweep.amountCents,
+    idempotencyToken: sweep.id,
+    memo: 'Clear savings',
   });
 
   return {
     sweep: await sweepStore.advance(sweep.id, 'fiat_debited', {
-      fiatTransferToken: created.token ?? sweep.id,
+      fiatTransferToken: payment.paymentToken,
     }),
     advanced: true,
   };
 }
 
 /**
- * Send USDC from the co-op treasury to the member's smart account.
+ * Bridge delivered the USDC. Called by the webhook, never by a runner.
  *
- * Deliberately a stub that refuses rather than a stub that pretends: the treasury signer is not
- * configured on this server yet, and a sweep that reported success without moving anything would
- * mint CLRUSD against money that never arrived. Refusing leaves the sweep retryable and the fiat
- * recoverable; pretending would break the 1:1 backing the whole product rests on.
+ * This is where the sweep comes to rest. The member now holds the money on their smart wallet, it
+ * shows in their cash account as unspendable, and nothing further happens without them.
  */
-async function sendUsdc(sweep: Sweep): Promise<SweepStepResult> {
-  if (sweep.usdcTxHash) {
-    return { sweep: await sweepStore.advance(sweep.id, 'usdc_sent'), advanced: true };
-  }
+export async function markUsdcArrived(
+  sweepId: string,
+  usdcTxHash?: string,
+): Promise<Sweep | null> {
+  const sweep = await sweepStore.advance(sweepId, 'ready_to_allocate', { usdcTxHash });
 
-  const treasuryKey = (process.env.TREASURY_PRIVATE_KEY || '').trim();
-  if (!treasuryKey) {
-    return { sweep, advanced: false, error: 'treasury signer not configured' };
+  // Their fiat balance went down when the push left. The card's view of what they can spend has to
+  // agree with that, or the waterfall will keep offering money that is no longer there.
+  if (sweep) {
+    try {
+      await refreshSnapshotsFor(sweep.wallet);
+    } catch (error) {
+      console.error(`[sweep] snapshot refresh failed after arrival ${sweepId}:`, error);
+    }
   }
-
-  void centsToUsdcUnits(sweep.amountCents);
-  return { sweep, advanced: false, error: 'treasury transfer not implemented' };
+  return sweep;
 }
 
 /**
- * Mint CLRUSD in the ESA and start the vesting clock.
+ * Mint CLRUSD in the ESA and start the vesting clock — the member's choice, acted on.
  *
  * `mintedAt` is stamped here and nowhere else. The spec is explicit that vesting begins at the mint
- * rather than at the fiat debit, and the gap between them is real — a sweep that sat in
- * `ready_to_allocate` for two days must not credit the member two days of vesting they didn't have.
+ * rather than at the fiat debit, and the gap between them is real: a member who left USDC in their
+ * cash account for a week must not be credited a week of vesting they did not have.
+ *
+ * Refuses rather than pretends, pending the ESA deposit call. A sweep reporting a mint that never
+ * happened would put CLRUSD in our records with nothing behind it.
  */
 async function mintClrusd(sweep: Sweep): Promise<SweepStepResult> {
   if (sweep.mintTxHash) {
@@ -156,8 +151,6 @@ async function finalize(sweep: Sweep): Promise<SweepStepResult> {
 
 const STEPS: Record<string, (sweep: Sweep) => Promise<SweepStepResult>> = {
   initiated: debitFiat,
-  fiat_debited: sendUsdc,
-  usdc_sent: mintClrusd,
   clrusd_minted: finalize,
 };
 
@@ -185,20 +178,29 @@ export async function advanceSweep(sweep: Sweep): Promise<SweepStepResult> {
 }
 
 /**
- * Finish a sweep the member's own USDC is already funding — the recovery path out of
- * `ready_to_allocate`.
+ * The member has chosen to put their USDC into the ESA.
  *
- * Re-enters at the mint, never at the debit. The fiat leg is long done, and the money in question
- * is the USDC already sitting on their smart account.
+ * The only way out of `ready_to_allocate` toward CLRUSD, and it is always a member action. Moving
+ * the same USDC into an Earn product instead is a different destination on the same money and does
+ * not run through here.
  */
-export async function retryAllocation(id: string): Promise<SweepStepResult> {
+export async function allocateToSavings(id: string): Promise<SweepStepResult> {
   const sweep = await sweepStore.get(id);
   if (!sweep) return { sweep: null, advanced: false, error: 'unknown sweep' };
   if (sweep.state !== 'ready_to_allocate') {
-    return { sweep, advanced: false, error: `sweep is ${sweep.state}, not ready_to_allocate` };
+    return { sweep, advanced: false, error: `sweep is ${sweep.state}, not ready to allocate` };
   }
-  const resumed = await sweepStore.advance(id, 'usdc_sent');
-  return advanceSweep(resumed ?? sweep);
+
+  const result = await mintClrusd(sweep);
+  if (!result.advanced && result.error) {
+    return { ...result, sweep: await sweepStore.fail(id, result.error) };
+  }
+  return result;
 }
 
-export const sweepService = { beginSweep, advanceSweep, retryAllocation };
+export const sweepService = {
+  beginSweep,
+  advanceSweep,
+  markUsdcArrived,
+  allocateToSavings,
+};

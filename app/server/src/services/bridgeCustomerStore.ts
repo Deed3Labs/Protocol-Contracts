@@ -53,6 +53,25 @@ export const bridgeCustomerStore = {
     }
   },
 
+  /** The Bridge customer behind a member, or null if they have never been paired. */
+  async customerFor(wallet: string): Promise<string | null> {
+    const w = String(wallet || '').trim().toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(w)) return null;
+    try {
+      const pool = getPayPool();
+      if (!pool) return null;
+      await ensureTables();
+      const r = await pool.query(
+        'SELECT customer_id FROM bridge_customers WHERE wallet = $1 ORDER BY updated_at DESC LIMIT 1',
+        [w],
+      );
+      return (r.rows[0]?.customer_id as string | undefined) ?? null;
+    } catch (error) {
+      console.warn('[bridgeCustomerStore] reverse lookup failed', (error as Error)?.message);
+      return null;
+    }
+  },
+
   /** The member behind a Bridge customer, or null if we've never seen them. */
   async walletFor(customerId: string): Promise<string | null> {
     const id = String(customerId || '').trim();

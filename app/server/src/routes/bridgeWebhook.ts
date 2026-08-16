@@ -3,6 +3,8 @@ import { sendBridgeWebhookVerifier } from '../services/sendBridgeWebhookVerifier
 import { bridgeCustomerStore } from '../services/bridgeCustomerStore.js';
 import { emitRampStatus } from '../services/rampNotifications.js';
 import { recordDeposit } from '../services/deposits/depositReceiptService.js';
+import { sweepStore } from '../services/sweeps/sweepStore.js';
+import { markUsdcArrived } from '../services/sweeps/sweepService.js';
 
 /*
  * Bridge webhooks (PUBLIC, signature-verified) — the app-closed-safe source of truth for money that
@@ -78,6 +80,21 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
         // delivered the USDC on chain. `funds_received` is the fiat landing at Bridge, which is one
         // leg short: settling credit against money that hasn't arrived would be settling a promise.
         if (type === 'payment_processed') {
+          // A sweep landing is NOT a new deposit. The member's own money already counted when it
+          // arrived in their Lithic account; this is the same dollars coming back on-chain. Running
+          // it through the deposit pipeline would settle credit against it twice and auto-save it a
+          // second time, so the sweep claims the arrival first and the pipeline never sees it.
+          const sweep = await sweepStore.matchArrival(wallet, Math.round(amount * 100));
+          if (sweep) {
+            await markUsdcArrived(sweep.id);
+            console.log(
+              `[bridge/webhook] sweep ${sweep.id} arrived — ${sweep.amountCents}c of USDC with ${wallet},` +
+                ' now theirs to allocate',
+            );
+            res.json({ received: true });
+            return;
+          }
+
           try {
             const outcome = await recordDeposit({
               rail: 'bridge_va',

@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from 'express';
 import crypto from 'crypto';
 import { sweepStore } from '../services/sweeps/sweepStore.js';
-import { beginSweep, retryAllocation } from '../services/sweeps/sweepService.js';
+import { beginSweep, allocateToSavings } from '../services/sweeps/sweepService.js';
 
 const router = express.Router();
 
@@ -33,8 +33,11 @@ router.get('/', async (req: Request, res: Response) => {
     return res.json({
       configured: true,
       sweeps,
-      // Surfaced separately so the UI cannot fail to show it by forgetting to filter.
-      needsAttention: sweeps.filter((s) => s.state === 'ready_to_allocate'),
+      // Surfaced separately so the UI cannot fail to show it by forgetting to filter. This is
+      // money the member holds and has not placed yet — the unspendable half of their cash account.
+      readyToAllocate: sweeps.filter((s) => s.state === 'ready_to_allocate'),
+      // Still travelling: fiat has left Lithic, USDC has not arrived. Shows as a pending deposit.
+      inFlight: sweeps.filter((s) => s.state === 'initiated' || s.state === 'fiat_debited'),
     });
   } catch (error) {
     console.error('[sweeps] list failed', error);
@@ -74,10 +77,11 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/sweeps/:id/allocate — finish a sweep stuck in `ready_to_allocate`.
+ * POST /api/sweeps/:id/allocate — the member putting their delivered USDC into the ESA.
  *
- * Ownership is checked before anything moves: a sweep id is guessable, and this resumes a money
- * movement.
+ * Not a retry of a stalled process: `ready_to_allocate` is where a sweep is meant to come to rest,
+ * and this is the member deciding what happens next. Ownership is checked before anything moves,
+ * because a sweep id is guessable and this moves money.
  */
 router.post('/:id/allocate', async (req: Request, res: Response) => {
   const wallet = sessionWallet(req);
@@ -89,7 +93,7 @@ router.post('/:id/allocate', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Sweep not found' });
     }
 
-    const result = await retryAllocation(existing.id);
+    const result = await allocateToSavings(existing.id);
     if (result.error) return res.status(409).json({ error: result.error, sweep: result.sweep });
     return res.json({ sweep: result.sweep });
   } catch (error) {
