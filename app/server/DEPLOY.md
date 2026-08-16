@@ -44,11 +44,23 @@ Verified to boot in the container: 181 MB RSS, all routes registered, gates resp
 
 ### Still running `bun src/index.ts`, not a bundle
 
-Bundling was attempted and reverted. `@coinbase/cdp-sdk` imports `@x402/svm/exact/client`, which
-does not resolve in a clean install — so `bun build` succeeds locally against a hoisted
-`node_modules` and fails in the container. Worth returning to, since the bundle is 9.5 MB and boots
-at 114 MB against 181 MB for the source path, but a build that only works on one machine is worse
-than no bundle.
+Closer than it was. `@coinbase/cdp-sdk` ships x402 payment actions that import
+`@x402/svm/exact/client`, which does not resolve in a clean install — so `bun build` succeeded
+locally against a hoisted `node_modules` and failed in the container.
+
+`coinbaseOnrampService` now loads the SDK lazily rather than importing it at module top level, which
+is correct regardless: Coinbase is one of two onramp providers, off unless `RAMP_PROVIDER` selects
+it, and the app uses Onramper. `sendRelayerService` already loaded it that way.
+
+That alone is not enough — Bun follows dynamic imports when bundling — but this works:
+
+```
+bun build src/index.ts --outdir dist --target bun --external "@coinbase/cdp-sdk"
+```
+
+7.54 MB, and the source path boots at 181 MB against 114 MB for a bundle. The catch is that an
+external package must still exist at runtime, so the runtime stage needs `node_modules` for that one
+dependency rather than the bundle standing alone. Worth finishing; not finished.
 
 Same reason `--frozen-lockfile` is absent: `bun.lock` is stale against `package.json`, and
 regenerating it upgrades transitive versions. That drift is its own task.

@@ -1,4 +1,3 @@
-import { generateJwt } from '@coinbase/cdp-sdk/auth';
 
 /*
  * Coinbase CDP Onramp/Offramp (headless) — fiat↔USDC for the Add-money / Withdraw flows, replacing the
@@ -80,6 +79,16 @@ export const coinbaseOnrampService = {
     const apiKeyId = keyId();
     const apiKeySecret = keySecret();
     if (!apiKeyId || !apiKeySecret) throw new Error('Coinbase Onramp not configured (CDP_API_KEY_ID/SECRET)');
+    // Loaded here rather than imported at the top, because a static import pulls the whole CDP SDK
+    // into the module graph — including its x402 payment actions, which import "@x402/svm/exact/client"
+    // and fail to resolve in a clean install. That broke `bun build` in the container while working
+    // locally against a hoisted node_modules.
+    //
+    // Coinbase is one of two onramp providers and is off unless RAMP_PROVIDER selects it; the app
+    // uses Onramper. So the SDK is genuinely conditional, and loading it conditionally says so.
+    // sendRelayerService already loads the same package this way.
+    const { generateJwt } = await import('@coinbase/cdp-sdk/auth');
+
     // The JWT is bound to the host + path, so both must match the request exactly or Coinbase rejects it.
     const jwt = await generateJwt({
       apiKeyId,
