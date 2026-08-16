@@ -23,7 +23,7 @@ import AppShell from "@/components/shell/AppShell";
 import HomeRoute from "@/pages/app/HomeRoute";
 import SavingsPage from "@/pages/app/SavingsPage";
 import ActivityPage from "@/pages/app/ActivityPage";
-import CardPage from "@/pages/app/CardPage";
+import CardRoute from "@/pages/app/CardRoute";
 import ContactsPage from "@/pages/app/ContactsPage";
 import AssurancePage from "@/pages/app/AssurancePage";
 import InboxRoute from "@/pages/app/InboxRoute";
@@ -118,7 +118,7 @@ function App() {
                       <Route path="/earn" element={<EarnPage />} />
                       <Route path="/send" element={<SendPage />} />
                       <Route path="/activity" element={<ActivityPage />} />
-                      <Route path="/card" element={<CardPage />} />
+                      <Route path="/card" element={<CardRoute />} />
                       <Route path="/contacts" element={<ContactsPage />} />
                       <Route path="/partners" element={<PartnersPage />} />
                       <Route path="/assurance" element={<AssurancePage />} />

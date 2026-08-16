@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Snowflake, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ClearCardFace from '@/components/clear/ClearCardFace';
@@ -21,12 +21,30 @@ import { cn } from '@/lib/utils';
  * to make — when card issuing goes live this is the seam that needs wiring, and
  * the control should go into a pending state until the issuer confirms.
  */
-export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
+export default function CardPage({
+  data = CARD_IN_USE,
+  onActivate,
+  onToggleFreeze,
+  busy = false,
+}: {
+  data?: CardData;
+  /** Issues the card. Absent in the preview harness, where the page stands alone. */
+  onActivate?: () => void;
+  onToggleFreeze?: (frozen: boolean) => void;
+  busy?: boolean;
+}) {
   const [frozen, setFrozen] = useState(data.frozen);
   const [variant, setVariant] = useState<CardData['variant']>(data.variant);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
   const card = { ...data, frozen, variant };
+
+  // Follow the server once it answers. The toggle below moves immediately so the card reads as
+  // responsive, but the server is what decides — and if the freeze failed, the card must not go on
+  // claiming it is frozen when the network still says otherwise.
+  useEffect(() => {
+    setFrozen(data.frozen);
+  }, [data.frozen]);
 
   // One account, two ways to present it: the plastic in a wallet and the number
   // you paste into a checkout. Same limits, same controls, same transactions.
@@ -49,7 +67,17 @@ export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
 
   const actions = card.activated ? (
     <div className="flex gap-2">
-      <Button variant="clear" size="xs" className="flex-1" onClick={() => setFrozen((f) => !f)}>
+      <Button
+        variant="clear"
+        size="xs"
+        className="flex-1"
+        disabled={busy}
+        onClick={() => {
+          const next = !frozen;
+          setFrozen(next);
+          onToggleFreeze?.(next);
+        }}
+      >
         {frozen ? <Sun className="h-3.5 w-3.5" strokeWidth={1.75} /> : <Snowflake className="h-3.5 w-3.5" strokeWidth={1.75} />}
         {frozen ? 'Unfreeze' : 'Freeze'}
       </Button>
@@ -58,8 +86,8 @@ export default function CardPage({ data = CARD_IN_USE }: { data?: CardData }) {
       </Button>
     </div>
   ) : (
-    <Button variant="clear" size="xs" className="w-full">
-      Activate card
+    <Button variant="clear" size="xs" className="w-full" disabled={busy} onClick={onActivate}>
+      {busy ? 'Activating…' : 'Activate card'}
     </Button>
   );
 

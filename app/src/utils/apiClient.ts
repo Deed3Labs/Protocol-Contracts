@@ -1916,6 +1916,72 @@ export async function getLithicAccount(): Promise<LithicAccountResponse | null> 
   return r.error ? null : (r.data ?? null);
 }
 
+/**
+ * Lithic cards — spec step 8.
+ *
+ * These work in sandbox today without Financial Accounts: a card can be issued, frozen, limited and
+ * revealed. What it cannot do until Financial Accounts are enabled is SETTLE, because there is no
+ * balance behind it. So the controls on this page are real while the money behind them is not yet.
+ */
+export interface MemberCard {
+  token: string;
+  type: string;
+  state: string;
+  lastFour: string | null;
+  memo: string | null;
+  spendLimitCents: number;
+  spendLimitDuration: string | null;
+  frozen: boolean;
+  createdAt: string;
+}
+
+export async function getCards(): Promise<MemberCard[]> {
+  const r = await apiRequest<{ configured: boolean; cards: MemberCard[] }>('/api/lithic/cards');
+  return r.error ? [] : (r.data?.cards ?? []);
+}
+
+/** Issue a virtual card — what "Activate card" does. */
+export async function createCard(memo?: string): Promise<MemberCard | null> {
+  const r = await apiRequest<{ card: MemberCard }>('/api/lithic/cards', {
+    method: 'POST',
+    body: JSON.stringify(memo ? { memo } : {}),
+  });
+  return r.error ? null : (r.data?.card ?? null);
+}
+
+export async function setCardFrozen(token: string, frozen: boolean): Promise<MemberCard | null> {
+  const r = await apiRequest<{ card: MemberCard }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/freeze`,
+    { method: 'POST', body: JSON.stringify({ frozen }) },
+  );
+  return r.error ? null : (r.data?.card ?? null);
+}
+
+export async function setCardSpendLimit(
+  token: string,
+  spendLimitCents: number,
+  duration = 'MONTHLY',
+): Promise<MemberCard | null> {
+  const r = await apiRequest<{ card: MemberCard }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/spend-limit`,
+    { method: 'POST', body: JSON.stringify({ spendLimitCents, duration }) },
+  );
+  return r.error ? null : (r.data?.card ?? null);
+}
+
+/**
+ * A short-lived URL for Lithic's card-details iframe.
+ *
+ * Returns a URL, never card data. The browser loads it directly from Lithic, so the PAN and CVV
+ * never pass through our servers — which is why this is a URL and not a number.
+ */
+export async function getCardEmbedUrl(token: string): Promise<string | null> {
+  const r = await apiRequest<{ url: string }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/embed`,
+  );
+  return r.error ? null : (r.data?.url ?? null);
+}
+
 export async function uploadMemberAvatar(dataUrl: string): Promise<{ avatarUrl: string } | null> {
   const response = await apiRequest<{ avatarUrl: string }>('/api/members/me/avatar', {
     method: 'POST',
