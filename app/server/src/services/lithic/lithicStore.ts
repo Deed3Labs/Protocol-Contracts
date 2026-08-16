@@ -48,6 +48,7 @@ async function ensureTable(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE UNIQUE INDEX IF NOT EXISTS ${TABLE}_account_token_idx ON ${TABLE} (account_token);
+    CREATE INDEX IF NOT EXISTS ${TABLE}_cash_fa_idx ON ${TABLE} (cash_financial_account_token);
   `);
   ensured = true;
 }
@@ -150,6 +151,19 @@ export const lithicStore = {
       ],
     );
 
+    return rows[0] ? toRecord(rows[0]) : null;
+  },
+
+  /** Reverse lookup from the cash account — how an inbound ACH finds its member. */
+  async findByCashFinancialAccount(token: string): Promise<LithicAccountRecord | null> {
+    const pool = getPayPool();
+    const t = String(token || '').trim();
+    if (!pool || !t) return null;
+    await ensureTable();
+    const { rows } = await pool.query<Row>(
+      `SELECT * FROM ${TABLE} WHERE cash_financial_account_token = $1`,
+      [t],
+    );
     return rows[0] ? toRecord(rows[0]) : null;
   },
 

@@ -37,6 +37,7 @@ import bridgeWebhookRouter from './routes/bridgeWebhook.js';
 import rampRouter from './routes/ramp.js';
 import lithicRouter from './routes/lithic.js';
 import lithicAuthStreamRouter from './routes/lithicAuthStream.js';
+import lithicWebhookRouter from './routes/lithicWebhook.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { startAutopayRunner } from './jobs/autopayRunner.js';
@@ -200,6 +201,7 @@ async function startServer() {
     app.use('/api/webhooks/onramper', onramperWebhookRouter); // public; verified via signature
     app.use('/api/webhooks/coinbase-ramp', coinbaseRampWebhookRouter); // public; verified via X-Hook0-Signature
     app.use('/api/webhooks/bridge', bridgeWebhookRouter); // public; verified via X-Webhook-Signature (RSA)
+    app.use('/api/webhooks/lithic', lithicWebhookRouter); // public; verified via standard-webhooks HMAC
     app.use('/api/stripe', requireAuth, stripeRouter);
     app.use('/api/members', requireAuth, membersRouter);
     app.use('/api/plaid', requireAuth, requireMemberCapability('canUsePlaid'), plaidRouter);
