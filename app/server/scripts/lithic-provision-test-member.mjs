@@ -8,10 +8,14 @@
  * Needs LITHIC_API_KEY (sandbox). Refuses to run against production outright — this script creates
  * account holders, and there is no good reason to do that against live from a laptop.
  *
- * What it proves, which is the point of step 1: that the key works, that creating an account holder
- * also creates the financial accounts, and whether this program returns a ROUTABLE account. If the
- * routing/account numbers come back empty, the program is not configured for direct deposit yet and
- * that is a conversation with Lithic, not a bug in our code.
+ * What it proves, which is the point of step 1: that the key works, that the account holder is
+ * accepted, and whether this program has Financial Accounts at all. If it doesn't, the whole cash
+ * rail — direct deposit, ACH, book transfers — is blocked on Lithic enabling that product for the
+ * program. That is a conversation with them, not a bug in our code, so the script says which of the
+ * two it is rather than failing with a raw 400.
+ *
+ * Defaults to KYC_BASIC, the workflow we'd actually ship: Program Managed means Lithic runs KYC.
+ * `--workflow KYC_EXEMPT` uses the low-PII path instead, which needs no dob or government id.
  */
 import 'dotenv/config';
 import Lithic from 'lithic';
@@ -39,6 +43,7 @@ const [firstName, ...rest] = fullName.split(/\s+/);
 const lastName = rest.join(' ') || 'Member';
 const email = arg('email', `clear+${stamp}@example.com`);
 const externalId = arg('external-id', `local-test-${stamp}`);
+const workflow = arg('workflow', 'KYC_BASIC');
 
 const lithic = new Lithic({ apiKey, environment: 'sandbox' });
 
@@ -46,29 +51,48 @@ const money = (cents) =>
   typeof cents === 'number' ? `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—';
 
 async function main() {
-  console.log(`\nProvisioning ${fullName} <${email}> in Lithic sandbox…\n`);
+  console.log(`\nProvisioning ${fullName} <${email}> in Lithic sandbox via ${workflow}…\n`);
+
+  const address = {
+    address1: arg('address1', '1 Test Street'),
+    city: arg('city', 'Redlands'),
+    state: arg('state', 'CA'),
+    postal_code: arg('postal-code', '92373'),
+    country: 'USA',
+  };
 
   // KYC_EXEMPT is flat — no `individual` wrapper — and needs a kyc_exemption_type. The KYC
   // workflows nest under `individual` and additionally require dob + government_id.
-  const holder = await lithic.accountHolders.create(
-    {
-      workflow: 'KYC_EXEMPT',
-      kyc_exemption_type: 'PREPAID_CARD_USER',
-      first_name: firstName,
-      last_name: lastName,
-      email,
-      phone_number: arg('phone', '+15555555555'),
-      address: {
-        address1: arg('address1', '1 Test Street'),
-        city: arg('city', 'Redlands'),
-        state: arg('state', 'CA'),
-        postal_code: arg('postal-code', '92373'),
-        country: 'USA',
-      },
-      external_id: externalId,
-    },
-    { idempotencyKey: `member:${externalId}` },
-  );
+  const params =
+    workflow === 'KYC_EXEMPT'
+      ? {
+          workflow: 'KYC_EXEMPT',
+          kyc_exemption_type: 'PREPAID_CARD_USER',
+          first_name: firstName,
+          last_name: lastName,
+          email,
+          phone_number: arg('phone', '+15555555555'),
+          address,
+          external_id: externalId,
+        }
+      : {
+          workflow,
+          tos_timestamp: new Date().toISOString(),
+          individual: {
+            first_name: firstName,
+            last_name: lastName,
+            email,
+            phone_number: arg('phone', '+15555555555'),
+            dob: arg('dob', '1985-04-12'),
+            government_id: arg('government-id', '111-11-1111'),
+            address,
+          },
+          external_id: externalId,
+        };
+
+  const holder = await lithic.accountHolders.create(params, {
+    idempotencyKey: `member:${externalId}`,
+  });
 
   const accountHolderToken = holder.token;
   const accountToken = holder.account_token;
@@ -86,10 +110,28 @@ async function main() {
     process.exit(1);
   }
 
-  // Financial accounts are created with the holder; we read them rather than creating them.
+  // Financial accounts are created with the holder; we read them rather than creating them. A 400
+  // here means the program has no Financial Accounts product at all, which is worth saying plainly.
   const accounts = [];
-  for await (const account of lithic.financialAccounts.list({ account_token: accountToken })) {
-    accounts.push(account);
+  try {
+    for await (const account of lithic.financialAccounts.list({ account_token: accountToken })) {
+      accounts.push(account);
+    }
+  } catch (error) {
+    console.log(`Financial accounts: unavailable — ${error?.message || error}`);
+    let programAccounts = 0;
+    try {
+      for await (const _ of lithic.financialAccounts.list({})) programAccounts += 1;
+    } catch {
+      /* the unfiltered list can fail the same way */
+    }
+    console.log(
+      `\nThis program exposes ${programAccounts} financial account(s) in total.\n` +
+        'Cards work without them, but the cash rail does not: direct deposit, ACH receipt,\n' +
+        'ACH origination, book transfers and external bank accounts all key off a\n' +
+        'financial_account_token. Ask Lithic to enable Financial Accounts on this program.\n',
+    );
+    process.exit(0);
   }
 
   console.log(`Financial accounts (${accounts.length})`);

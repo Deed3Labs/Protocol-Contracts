@@ -17,14 +17,16 @@ import { requireLithic } from './lithicClient.js';
  * "Routable" is not a type. It is a property: `routing_number` and `account_number` come back
  * populated when the program is configured for it, and that is what makes direct deposit possible.
  *
- * Two workflows, and they are shaped differently — worth knowing before wiring signup:
- *  - KYC_EXEMPT is flat (address/email/name/phone at the top level) and needs a
- *    `kyc_exemption_type`. It is for authorized users and prepaid-card users, not for a member who
- *    holds their own funds.
- *  - KYC_BASIC / KYC_BYO nest everything under `individual` and require date of birth, government
- *    id and a US address. KYC_BYO also requires `kyc_passed_timestamp` — the assertion that we
- *    verified them ourselves, which is what our Bridge flow already does today.
- * Which one this program uses is a product decision; nothing here picks a default silently.
+ * Three workflows, shaped differently, and the choice is a compliance one:
+ *  - KYC_BASIC — Lithic runs KYC. This is the default here, because Program Managed means Lithic
+ *    and its partner bank own KYC/AML; asserting we did it ourselves would contradict the
+ *    arrangement we're actually in.
+ *  - KYC_BYO — we assert we verified them, via `kyc_passed_timestamp`. Our Bridge flow does verify
+ *    members, but claiming that satisfies Lithic's bank sponsor is their sponsor's call to make,
+ *    not an inference to encode. Available, never automatic.
+ *  - KYC_EXEMPT — flat shape (no `individual` wrapper), needs `kyc_exemption_type`, no dob or
+ *    government id. It is for authorized users and prepaid-card users, not for a member who holds
+ *    their own funds. Useful for smoke tests.
  */
 
 export type ProvisionWorkflow = 'KYC_EXEMPT' | 'KYC_BASIC' | 'KYC_BYO';
@@ -38,7 +40,8 @@ export interface ProvisionMemberInput {
   /** E.164, e.g. "+15555555555". */
   phoneNumber: string;
   address: Address;
-  workflow: ProvisionWorkflow;
+  /** Defaults to KYC_BASIC — Lithic runs KYC, which is what Program Managed means. */
+  workflow?: ProvisionWorkflow;
   /** YYYY-MM-DD. Required for the KYC workflows. */
   dob?: string;
   /** SSN or ITIN, `000-00-0000`. Required for the KYC workflows. */
@@ -79,9 +82,10 @@ export async function provisionAccountHolder(
 ): Promise<ProvisionedAccount> {
   const lithic = requireLithic();
   const options = { idempotencyKey: `member:${input.externalId}` };
+  const workflow = input.workflow ?? 'KYC_BASIC';
 
   const response =
-    input.workflow === 'KYC_EXEMPT'
+    workflow === 'KYC_EXEMPT'
       ? await lithic.accountHolders.create(
           {
             workflow: 'KYC_EXEMPT',
@@ -97,7 +101,7 @@ export async function provisionAccountHolder(
         )
       : await lithic.accountHolders.create(
           {
-            workflow: input.workflow,
+            workflow,
             tos_timestamp: new Date().toISOString(),
             individual: {
               first_name: input.firstName,
@@ -105,16 +109,16 @@ export async function provisionAccountHolder(
               email: input.email,
               phone_number: input.phoneNumber,
               address: input.address,
-              dob: requireField(input.dob, 'dob', input.workflow),
-              government_id: requireField(input.governmentId, 'governmentId', input.workflow),
+              dob: requireField(input.dob, 'dob', workflow),
+              government_id: requireField(input.governmentId, 'governmentId', workflow),
             },
             external_id: input.externalId,
-            ...(input.workflow === 'KYC_BYO'
+            ...(workflow === 'KYC_BYO'
               ? {
                   kyc_passed_timestamp: requireField(
                     input.kycPassedTimestamp,
                     'kycPassedTimestamp',
-                    input.workflow,
+                    workflow,
                   ),
                 }
               : {}),
