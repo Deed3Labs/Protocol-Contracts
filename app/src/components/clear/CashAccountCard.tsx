@@ -13,13 +13,12 @@ import { hasUnspendableCash, type CashAccount } from '@/lib/clearModel';
  *
  * Ready to allocate is money moved on-chain and not yet placed. It can go to Savings or Earn and
  * never to the card, and it should normally read $0.00 — so it renders dimmed and inert in the
- * normal state, and only becomes a panel with actions when there is something parked there. The
- * exception looks like an exception.
+ * normal state, and grows its destinations only when something is parked there. The exception
+ * looks like an exception.
  *
- * The reference fills that panel with `--surface-0`. This app's recessed tokens (`muted` and
- * `secondary`) are both `38 38 38` in dark — the same value as `border` — so a filled panel erases
- * the outline of the three buttons sitting on it. Grouped by border instead, which is what Card
- * already does and what the app's unfilled-surface rule asks for.
+ * Both halves share one layout — title and amount, then a caption row, divided by a hairline. The
+ * amount is smaller here than Spendable's because this is the half a member cannot spend, and the
+ * hierarchy should say which number answers "what can I do right now".
  */
 export default function CashAccountCard({
   account,
@@ -57,28 +56,28 @@ export default function CashAccountCard({
 
       {parked ? (
         <div className="mt-3 border-t-[0.5px] border-border pt-[11px]">
-          <div className="rounded-[10px] border-[0.5px] border-border px-3 py-[11px]">
-            <div className="flex items-baseline justify-between gap-3">
-              <div>
-                <p className="text-[13px]">Ready to allocate</p>
-                <p className="mt-[2px] text-[11px] text-muted-foreground">Savings and Earn only</p>
-              </div>
-              <span className="text-[15px] font-medium tabular-nums">
-                {money(account.readyToAllocate, { cents: true })}
-              </span>
-            </div>
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[13px] text-foreground-secondary">Ready to allocate</span>
+            <span className="text-[16px] font-medium tabular-nums">
+              {money(account.readyToAllocate, { cents: true })}
+            </span>
+          </div>
 
-            <div className="mt-2.5 flex gap-[7px]">
-              <Button variant="clear" size="xs" className="flex-1" onClick={onAllocateSavings}>
-                Savings
-              </Button>
-              <Button variant="clear" size="xs" className="flex-1" onClick={onAllocateEarn}>
-                Earn
-              </Button>
-              <Button variant="clear" size="xs" className="flex-1" onClick={onBackToCash}>
-                Back to cash
-              </Button>
-            </div>
+          <div className="mt-[3px] flex items-baseline justify-between gap-3">
+            <span className="text-[11px] text-muted-foreground">Savings and Earn only</span>
+            <span className="text-[11px] text-muted-foreground">Not spendable on your card</span>
+          </div>
+
+          <div className="mt-2.5 flex gap-[7px]">
+            <Button variant="clear" size="xs" className="flex-1" onClick={onAllocateSavings}>
+              Savings
+            </Button>
+            <Button variant="clear" size="xs" className="flex-1" onClick={onAllocateEarn}>
+              Earn
+            </Button>
+            <Button variant="clear" size="xs" className="flex-1" onClick={onBackToCash}>
+              Back to cash
+            </Button>
           </div>
         </div>
       ) : (
