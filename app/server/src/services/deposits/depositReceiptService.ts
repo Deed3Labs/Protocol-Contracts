@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { getPayPool } from '../../config/postgres.js';
+import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
 import {
   allocate,
   planSettlement,
@@ -246,34 +247,6 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
     throw error;
   } finally {
     client.release();
-  }
-}
-
-/**
- * Rewrite the availability snapshot for every card this member holds.
- *
- * Runs after the deposit transaction commits, not inside it: it reads Lithic and the chain, and
- * holding a database transaction open across a network call is how a busy payday becomes a lock
- * queue. A snapshot that lags by a second is fine; a stalled deposit pipeline is not.
- */
-async function refreshSnapshotsFor(wallet: string): Promise<number> {
-  const pool = getPayPool();
-  if (!pool) return 0;
-  try {
-    const { rows } = await pool.query<{ card_token: string }>(
-      `SELECT card_token FROM lithic_tier_snapshots WHERE wallet = $1`,
-      [wallet],
-    );
-    const { refreshSnapshot } = await import('../lithic/snapshotService.js');
-    for (const row of rows) {
-      await refreshSnapshot(wallet, row.card_token);
-    }
-    return rows.length;
-  } catch (error) {
-    // Never fail a recorded deposit because the snapshot couldn't be rewritten — the money did
-    // arrive. The scheduled refresh is the backstop, and the card fails closed meanwhile.
-    console.error('[deposits] snapshot refresh failed', error);
-    return 0;
   }
 }
 

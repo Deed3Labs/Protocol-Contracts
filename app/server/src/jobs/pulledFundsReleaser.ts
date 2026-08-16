@@ -1,6 +1,5 @@
 import { pulledFundsStore } from '../services/lithic/pulledFundsStore.js';
-import { refreshSnapshot } from '../services/lithic/snapshotService.js';
-import { getPayPool } from '../config/postgres.js';
+import { refreshSnapshotsFor } from '../services/lithic/snapshotService.js';
 
 /*
  * Releasing pulled funds once their return window closes — spec step 5.
@@ -28,23 +27,10 @@ async function tick(): Promise<void> {
 
   console.log(`[pulled-funds] released holds for ${wallets.length} member(s)`);
 
-  const pool = getPayPool();
-  if (!pool) return;
-
   // A limit that rises without the snapshot noticing is the member still being declined, so the
   // release is only half the job.
   for (const wallet of wallets) {
-    try {
-      const { rows } = await pool.query<{ card_token: string }>(
-        `SELECT card_token FROM lithic_tier_snapshots WHERE wallet = $1`,
-        [wallet],
-      );
-      for (const row of rows) {
-        await refreshSnapshot(wallet, row.card_token);
-      }
-    } catch (error) {
-      console.error(`[pulled-funds] snapshot refresh failed for ${wallet}:`, error);
-    }
+    await refreshSnapshotsFor(wallet);
   }
 }
 

@@ -36,6 +36,7 @@ import coinbaseRampWebhookRouter from './routes/coinbaseRampWebhook.js';
 import bridgeWebhookRouter from './routes/bridgeWebhook.js';
 import rampRouter from './routes/ramp.js';
 import lithicRouter from './routes/lithic.js';
+import sweepsRouter from './routes/sweeps.js';
 import lithicAuthStreamRouter from './routes/lithicAuthStream.js';
 import lithicWebhookRouter from './routes/lithicWebhook.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
@@ -45,6 +46,7 @@ import { startDueBillNotifier } from './jobs/dueBillNotifier.js';
 import { startGreetingNotifier } from './jobs/greetingNotifier.js';
 import { startSendExpiryNotifier } from './jobs/sendExpiryNotifier.js';
 import { startPulledFundsReleaser } from './jobs/pulledFundsReleaser.js';
+import { startSweepRunner } from './jobs/sweepRunner.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -225,6 +227,7 @@ async function startServer() {
     app.use('/api/onramper', requireAuth, onramperRouter);
     app.use('/api/ramp', requireAuth, rampRouter);
     app.use('/api/lithic', requireAuth, lithicRouter);
+    app.use('/api/sweeps', requireAuth, sweepsRouter);
 
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');
@@ -287,6 +290,10 @@ async function startServer() {
     });
     startPulledFundsReleaser().catch((error) => {
       console.error('⚠️ Pulled-funds releaser failed to start:', error);
+    });
+
+    startSweepRunner().catch((error) => {
+      console.error('Failed to start sweep runner:', error);
     });
 
     // Start HTTP server (Express + WebSocket)

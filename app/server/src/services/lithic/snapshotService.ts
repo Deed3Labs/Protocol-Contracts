@@ -5,6 +5,7 @@ import { getLithic } from './lithicClient.js';
 import { tierAvailability, tierLimits, type CollateralInputs } from './tierLimits.js';
 import { outstandingFor } from '../deposits/depositReceiptService.js';
 import { pulledFundsStore } from './pulledFundsStore.js';
+import { readChainCollateral } from '../chain/collateralReader.js';
 
 /*
  * Keeping `available_by_tier` true — the writer behind spec step 3.
@@ -131,6 +132,38 @@ export async function writeSnapshot(
 }
 
 /**
+ * Rewrite the availability snapshot for every card this member holds.
+ *
+ * Runs after a transaction commits, never inside one: it reads Lithic and the chain, and holding a
+ * database transaction open across network calls is how a busy payday becomes a lock queue. A
+ * snapshot that lags by a second is fine; a stalled deposit pipeline is not.
+ *
+ * Never throws. A snapshot that couldn't be rewritten must not fail the money movement that
+ * prompted it — the deposit did arrive, the sweep did mint. The scheduled refresh is the backstop,
+ * and the card fails closed in the meantime, which is the safe direction to be wrong in.
+ */
+export async function refreshSnapshotsFor(
+  wallet: string,
+  collateral: Partial<CollateralInputs> = {},
+): Promise<number> {
+  const pool = getPayPool();
+  if (!pool) return 0;
+  try {
+    const { rows } = await pool.query<{ card_token: string }>(
+      `SELECT card_token FROM lithic_tier_snapshots WHERE wallet = $1`,
+      [wallet.trim().toLowerCase()],
+    );
+    for (const row of rows) {
+      await refreshSnapshot(wallet, row.card_token, collateral);
+    }
+    return rows.length;
+  } catch (error) {
+    console.error('[snapshots] refresh failed for', wallet, error);
+    return 0;
+  }
+}
+
+/**
  * Rebuild a member's snapshot from scratch — reads every source itself.
  *
  * The backstop path: used by the scheduled reconcile and by anything that knows a balance changed
@@ -142,7 +175,7 @@ export async function refreshSnapshot(
   cardToken: string,
   collateral: Partial<CollateralInputs> = {},
 ): Promise<SnapshotResult> {
-  const [lithicCashCents, monthlyDepositCents, pendingCollateralCents] = await Promise.all([
+  const [lithicCashCents, monthlyDepositCents, pendingCollateralCents, chain] = await Promise.all([
     readLithicCashCents(wallet),
     collateral.monthlyDepositCents !== undefined
       ? Promise.resolve(collateral.monthlyDepositCents)
@@ -150,17 +183,33 @@ export async function refreshSnapshot(
     // Money pulled from an outside bank that could still be returned. Held out of collateral —
     // see achOriginationService for why sixty days is the number that matters.
     pulledFundsStore.pendingCollateralCents(wallet),
+    readChainCollateral(wallet),
   ]);
+
+  // An RPC failure is "we don't know", not "the member has nothing". Writing a snapshot built on a
+  // failed read would cut their limit to zero over a network blip and decline them at a checkout,
+  // so the previous snapshot — stale but true as of when it was written — stands instead.
+  if (!chain.complete && collateral.savingsCents === undefined) {
+    return {
+      written: false,
+      reason: 'chain collateral unreadable',
+      cashCents: Math.max(0, Math.round(lithicCashCents)),
+      savingsCents: 0,
+      assetCents: 0,
+      incomeCents: 0,
+      boostCents: 0,
+    };
+  }
 
   return writeSnapshot(wallet, cardToken, {
     lithicCashCents,
     monthlyDepositCents,
     pendingCollateralCents,
-    // The on-chain figures still come from the caller: reading CLRUSD and the Earn positions needs
-    // the chain layer, and wiring that is the next step's work rather than a guess here.
-    savingsCents: collateral.savingsCents ?? 0,
-    bondsWorthCents: collateral.bondsWorthCents ?? 0,
-    poolPositionCents: collateral.poolPositionCents ?? 0,
+    // Explicit arguments still win — a sweep that just minted knows the new balance before an RPC
+    // read would agree, and making it wait for consensus would show the member a stale limit.
+    savingsCents: collateral.savingsCents ?? chain.savingsCents ?? 0,
+    bondsWorthCents: collateral.bondsWorthCents ?? chain.bondsWorthCents,
+    poolPositionCents: collateral.poolPositionCents ?? chain.poolPositionCents ?? 0,
     boostLimitCents: collateral.boostLimitCents ?? 0,
   });
 }
