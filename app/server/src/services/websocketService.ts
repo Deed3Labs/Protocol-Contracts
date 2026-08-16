@@ -4,6 +4,7 @@ import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { getBalance } from './balanceService.js';
 import { getDeedNFTs } from './nftService.js';
 import { getTokenPrice } from './priceService.js';
+import { limitToDataChains } from '../config/dataChains.js';
 import { transfersService } from './transfersService.js';
 import { getClrUsdAddressesByChain } from '../config/contracts.js';
 
@@ -46,11 +47,10 @@ class WebSocketService {
 
         console.log(`[WebSocket] Client ${socket.id} subscribed to ${address} on chains ${chainIds.join(', ')}`);
         
-        // OPTIMIZATION: Only monitor chains the user actually uses, not all 7 chains
-        // This dramatically reduces Alchemy compute unit usage
-        // Start monitoring transfers for this address (using Alchemy Transfers API)
-        // Pass the actual chainIds the user is subscribed to, not all chains
-        const chainsToMonitor = chainIds.length > 0 ? chainIds : [1, 8453, 100, 11155111]; // Use subscribed chains or defaults
+        // The monitor starts one interval PER ADDRESS PER CHAIN, so this list is multiplied by
+        // every connected member. Narrowed to the chains Clear actually holds funds on — a wallet
+        // being connected to eight chains is not a reason to poll eight chains for balances.
+        const chainsToMonitor = limitToDataChains(chainIds);
         transfersService.startMonitoring(address, chainsToMonitor).catch(error => {
           console.error(`[WebSocket] Failed to start transfer monitoring for ${address}:`, error);
         });

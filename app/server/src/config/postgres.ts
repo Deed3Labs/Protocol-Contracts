@@ -37,7 +37,11 @@ function getPoolConfig(): PoolConfig | null {
 
   return {
     connectionString,
-    max: parseIntEnv('POSTGRES_POOL_MAX', 10),
+    // Five, not ten. Two pools at ten each held twenty connections open against Railway Postgres,
+    // and an idle connection is not free on either side — Node keeps a socket and Postgres forks a
+    // backend with its own work_mem. This app's concurrency is nowhere near ten per pool, and
+    // POSTGRES_POOL_MAX raises it the moment a slow-query backlog says otherwise.
+    max: parseIntEnv('POSTGRES_POOL_MAX', 5),
     idleTimeoutMillis: parseIntEnv('POSTGRES_IDLE_TIMEOUT_MS', 30_000),
     connectionTimeoutMillis: parseIntEnv('POSTGRES_CONNECTION_TIMEOUT_MS', 10_000),
     ssl: sslEnabled ? { rejectUnauthorized: false } : undefined,
@@ -65,8 +69,13 @@ export function getPostgresPool(): Pool | null {
 let payPool: Pool | null = null;
 
 /**
- * Dedicated pool for the Clear Pay equity-credit ledger. Uses PAY_DATABASE_URL (a separate Railway
- * Postgres) when set so the ledger lives in its own DB; falls back to the shared pool otherwise.
+ * Pool for the Clear Pay equity-credit ledger.
+ *
+ * Uses PAY_DATABASE_URL when set, so the ledger can live in its own database; falls back to the
+ * shared pool otherwise — and the fallback is the cheaper arrangement, not a degraded one. A second
+ * Railway Postgres is a second instance billed and a second set of connections held, for tables
+ * that no query ever joins across. Unset PAY_DATABASE_URL after moving the tables across and this
+ * collapses to one database with no code change.
  */
 export function getPayPool(): Pool | null {
   const connectionString = process.env.PAY_DATABASE_URL || '';
@@ -75,7 +84,7 @@ export function getPayPool(): Pool | null {
 
   payPool = new Pool({
     connectionString,
-    max: parseIntEnv('POSTGRES_POOL_MAX', 10),
+    max: parseIntEnv('POSTGRES_POOL_MAX', 5),
     idleTimeoutMillis: parseIntEnv('POSTGRES_IDLE_TIMEOUT_MS', 30_000),
     connectionTimeoutMillis: parseIntEnv('POSTGRES_CONNECTION_TIMEOUT_MS', 10_000),
     ssl: shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : undefined,

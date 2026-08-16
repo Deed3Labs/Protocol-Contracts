@@ -1,3 +1,4 @@
+import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 export interface NetworkConfig {
   id: number;
   name: string;
@@ -34,13 +35,20 @@ function readAddressEnv(key: string, fallback: string = ZERO_ADDRESS): string {
 }
 
 /**
- * Chains we actively fetch balances/transactions for. A subset of SUPPORTED_NETWORKS (which also
- * governs wallet connect/switch) — kept narrow to cut Alchemy compute-unit usage on chains the user
- * has no funds on. Dropped Optimism (10), Arbitrum (42161), Polygon (137). Keeps Ethereum (1), Base
- * (8453), Gnosis (100) + the CLRUSD testnets (Base Sepolia 84532, Ethereum Sepolia 11155111).
- * Add a chain back here when funds move onto it.
+ * Chains we actively fetch balances and transactions for.
+ *
+ * A subset of SUPPORTED_NETWORKS, which governs wallet connect and switching — a member connecting
+ * a wallet that also lives on Gnosis is not a reason to poll Gnosis for their balance every few
+ * seconds. Clear itself operates on exactly one chain, so that is what this is.
+ *
+ * It was five, which meant five times the balance calls, five times the price lookups, and five
+ * times the transfer polling — for four chains members hold nothing on. Mainnet is kept alongside
+ * the active chain only because external wallets commonly do hold something there and the Send
+ * flow shows it.
+ *
+ * Add a chain here when funds genuinely move onto it, not when a wallet can reach it.
  */
-export const DATA_CHAIN_IDS: number[] = [1, 8453, 100, 84532, 11155111];
+export const DATA_CHAIN_IDS: number[] = ACTIVE_CHAIN_ID === 8453 ? [8453, 1] : [84532];
 
 export const SUPPORTED_NETWORKS: NetworkConfig[] = [
   {

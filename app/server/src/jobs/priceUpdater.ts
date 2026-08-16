@@ -2,6 +2,7 @@ import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { getTokenPrice } from '../services/priceService.js';
 import { websocketService } from '../services/websocketService.js';
 import { getClrUsdAddressesByChain } from '../config/contracts.js';
+import { dataChainIds } from '../config/dataChains.js';
 
 /**
  * Background job to update token prices
@@ -61,7 +62,12 @@ export async function startPriceUpdater() {
     { chainId: 100, tokenAddress: '0x4ECaBa5870353805a9F068101A40E0f32ed605C6' }, // USDT
     { chainId: 100, tokenAddress: '0xe91D153E0b41518A2Ce8Dd3D7944F8638934d2C8' }, // WXDAI
     ...getClrUsdAddressesByChain(),
-  ];
+  ]
+    // Only the chains we actually fetch data for. This list covered eight chains and 26 tokens,
+    // refreshed every fifteen minutes — roughly 2,500 price lookups a day, almost all of them for
+    // tokens on chains no member holds anything on. Prices for a chain nobody is on are answers to
+    // a question nobody asked.
+    .filter(({ chainId }) => dataChainIds().includes(chainId));
 
   // Price update function
   async function updatePrices() {
