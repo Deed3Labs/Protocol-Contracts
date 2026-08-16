@@ -2,6 +2,7 @@ import express, { type Request, type Response } from 'express';
 import { Webhook } from 'standardwebhooks';
 import { lithicStore } from '../services/lithic/lithicStore.js';
 import { recordDeposit } from '../services/deposits/depositReceiptService.js';
+import { handleReturn } from '../services/lithic/achOriginationService.js';
 
 const router = express.Router();
 
@@ -18,6 +19,11 @@ const router = express.Router();
  *
  * Distinct from the auth stream, which is synchronous and answers a question. This is asynchronous
  * and reports a fact, so it can afford the database work the auth path cannot.
+ *
+ * ACH RETURNS arrive here too, and they are not a status change to log — the money left the
+ * member's bank, arrived, may already have settled against credit, and is now going back. Every
+ * return must reverse cleanly through both ledgers, so it is handled explicitly rather than falling
+ * through as an unrecognised status.
  */
 
 type RawBodyRequest = Request & { rawBody?: Buffer };
@@ -66,6 +72,20 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
       const token = String(payload.token ?? '');
       // Lithic amounts are in cents already.
       const amountCents = Number(payload.settled_amount ?? payload.amount ?? 0);
+
+      // A return closes the loop on a pull we originated. Handle it before anything else, because
+      // a returned payment is not a deposit no matter which direction it reports.
+      const returnCode = String(payload.return_reason_code ?? '');
+      if (returnCode || status === 'RETURNED') {
+        const reversed = await handleReturn(token, returnCode || 'UNKNOWN');
+        if (reversed) {
+          console.warn(
+            `[lithic/webhook] ACH return ${returnCode} on ${token} —` +
+              ` ${reversed.amountCents}c going back for ${reversed.wallet}`,
+          );
+        }
+        return res.json({ received: true });
+      }
 
       const inbound = direction === 'CREDIT' || direction === 'INBOUND';
       if (inbound && SETTLED.has(status) && amountCents > 0 && token) {

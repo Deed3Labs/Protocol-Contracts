@@ -4,6 +4,7 @@ import { lithicStore } from './lithicStore.js';
 import { getLithic } from './lithicClient.js';
 import { tierAvailability, tierLimits, type CollateralInputs } from './tierLimits.js';
 import { outstandingFor } from '../deposits/depositReceiptService.js';
+import { pulledFundsStore } from './pulledFundsStore.js';
 
 /*
  * Keeping `available_by_tier` true — the writer behind spec step 3.
@@ -141,16 +142,20 @@ export async function refreshSnapshot(
   cardToken: string,
   collateral: Partial<CollateralInputs> = {},
 ): Promise<SnapshotResult> {
-  const [lithicCashCents, monthlyDepositCents] = await Promise.all([
+  const [lithicCashCents, monthlyDepositCents, pendingCollateralCents] = await Promise.all([
     readLithicCashCents(wallet),
     collateral.monthlyDepositCents !== undefined
       ? Promise.resolve(collateral.monthlyDepositCents)
       : estimateMonthlyDeposit(wallet),
+    // Money pulled from an outside bank that could still be returned. Held out of collateral —
+    // see achOriginationService for why sixty days is the number that matters.
+    pulledFundsStore.pendingCollateralCents(wallet),
   ]);
 
   return writeSnapshot(wallet, cardToken, {
     lithicCashCents,
     monthlyDepositCents,
+    pendingCollateralCents,
     // The on-chain figures still come from the caller: reading CLRUSD and the Earn positions needs
     // the chain layer, and wiring that is the next step's work rather than a guess here.
     savingsCents: collateral.savingsCents ?? 0,

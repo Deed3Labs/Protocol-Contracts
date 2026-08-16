@@ -44,6 +44,7 @@ import { startAutopayRunner } from './jobs/autopayRunner.js';
 import { startDueBillNotifier } from './jobs/dueBillNotifier.js';
 import { startGreetingNotifier } from './jobs/greetingNotifier.js';
 import { startSendExpiryNotifier } from './jobs/sendExpiryNotifier.js';
+import { startPulledFundsReleaser } from './jobs/pulledFundsReleaser.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -283,6 +284,9 @@ async function startServer() {
     });
     startSendExpiryNotifier().catch((error) => {
       console.error('⚠️ Send-expiry notifier failed to start:', error);
+    });
+    startPulledFundsReleaser().catch((error) => {
+      console.error('⚠️ Pulled-funds releaser failed to start:', error);
     });
 
     // Start HTTP server (Express + WebSocket)

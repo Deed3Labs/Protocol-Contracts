@@ -55,3 +55,24 @@ export {
 export { authStore, authorize } from './authStore.js';
 export { decide, applyDraws, totalAvailable, TIER_ORDER } from './authDecision.js';
 export type { AuthDecision, TierAvailability, Draw, AsaResult } from './authDecision.js';
+
+export {
+  linkBankAccount,
+  listBankAccounts,
+  verifyMicroDeposits,
+  isUsable,
+  type LinkBankInput,
+  type LinkedBankAccount,
+  type LinkVerification,
+} from './bankAccountService.js';
+
+export {
+  pullFromBank,
+  handleReturn,
+  RETURN_WINDOW_DAYS,
+  type PullInput,
+  type PullResult,
+  type SecCode,
+} from './achOriginationService.js';
+
+export { pulledFundsStore, type PulledFunds, type PulledFundsStatus } from './pulledFundsStore.js';
