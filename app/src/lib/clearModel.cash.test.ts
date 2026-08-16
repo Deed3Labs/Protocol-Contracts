@@ -19,16 +19,16 @@ const noCredit = { limit: 0, used: 0, tiers: [] } as unknown as Parameters<typeo
 
 describe('the cash account has two parts', () => {
   test('the balance is both of them', () => {
-    expect(cashTotal({ spendable: 400, onChain: 250 })).toBe(650);
+    expect(cashTotal({ spendable: 400, readyToAllocate: 250 })).toBe(650);
   });
 
   test('only the on-chain part triggers the unspendable marking', () => {
-    expect(hasUnspendableCash({ onChain: 250 })).toBe(true);
-    expect(hasUnspendableCash({ onChain: 0 })).toBe(false);
+    expect(hasUnspendableCash({ readyToAllocate: 250 })).toBe(true);
+    expect(hasUnspendableCash({ readyToAllocate: 0 })).toBe(false);
   });
 
   test('a negative part never reduces the total below its other half', () => {
-    expect(cashTotal({ spendable: 400, onChain: -50 })).toBe(400);
+    expect(cashTotal({ spendable: 400, readyToAllocate: -50 })).toBe(400);
   });
 });
 
@@ -40,7 +40,7 @@ describe('unspendable cash never becomes spendable', () => {
   });
 
   test('the total would overstate what the card can do', () => {
-    const account = { spendable: 400, onChain: 250 };
+    const account = { spendable: 400, readyToAllocate: 250 };
     expect(cashTotal(account)).toBeGreaterThan(availableToSpend(account.spendable, noCredit));
   });
 });

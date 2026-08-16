@@ -147,8 +147,8 @@ export function sweepActivityRows(sweeps: SweepView[]): ActivityRow[] {
  * Derived rather than stored, so the total can never drift from its parts — the bug where a
  * displayed balance and the numbers underneath it quietly disagree.
  */
-export function cashTotal(account: Pick<CashAccount, 'spendable' | 'onChain'>): number {
-  return Math.max(0, account.spendable) + Math.max(0, account.onChain);
+export function cashTotal(account: Pick<CashAccount, 'spendable' | 'readyToAllocate'>): number {
+  return Math.max(0, account.spendable) + Math.max(0, account.readyToAllocate);
 }
 
 /**
@@ -157,8 +157,8 @@ export function cashTotal(account: Pick<CashAccount, 'spendable' | 'onChain'>): 
  * Drives the marking in the UI. Showing a balance without saying which part is spendable is how a
  * member gets declined at a checkout while looking at a number that says they had the money.
  */
-export function hasUnspendableCash(account: Pick<CashAccount, 'onChain'>): boolean {
-  return account.onChain > 0;
+export function hasUnspendableCash(account: Pick<CashAccount, 'readyToAllocate'>): boolean {
+  return account.readyToAllocate > 0;
 }
 
 export interface Savings {
@@ -178,14 +178,13 @@ export interface CashAccount {
    */
   spendable: number;
   /**
-   * USDC on the member's own smart wallet, on its way to somewhere or simply left there.
+   * Money moved on-chain and not yet placed — USDC on the member's own smart wallet.
    *
-   * Genuinely theirs and genuinely in the cash account — but it cannot settle a card in the moment,
-   * because converting it is not something that happens inside an authorization window. It is shown
-   * as part of the balance and marked unspendable, with the choice of where it goes left to them:
-   * the ESA, an Earn product, or nowhere.
+   * Theirs, and in the cash account, but it can go to Savings or Earn and never to the card. This
+   * should normally read zero: it is the exception, not where money lives. A balance sitting here
+   * is money the member has not finished moving, and the card says so rather than absorbing it.
    */
-  onChain: number;
+  readyToAllocate: number;
   nextDepositOn: string;
   nextDepositEstimate: number;
   directDepositActive: boolean;

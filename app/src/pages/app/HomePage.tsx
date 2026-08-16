@@ -107,12 +107,14 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       onAddBoost={() => setBoostOpen(true)}
     />
   );
-  // "Move" opens the same sheet as Save: the unspendable USDC is exactly what that sheet places.
+  // Savings opens the same sheet as Save, since that sheet is what places money in the ESA. Earn
+  // routes to the Earn page to choose a product. Back to cash has no backend yet — see below.
   const cash = (
     <CashAccountCard
       account={data.cashAccount}
       onDetails={() => setAccountOpen(true)}
-      onAllocate={() => setAddSavingsOpen(true)}
+      onAllocateSavings={() => setAddSavingsOpen(true)}
+      onAllocateEarn={() => navigate('/earn')}
     />
   );
   const activity = <RecentActivityCard rows={data.recent} onSelect={setSelected} />;
