@@ -7,6 +7,7 @@ import {
   type InvariantResult,
   type ReconciliationReport,
 } from './invariants.js';
+import { readEsaBacking } from './esaBacking.js';
 
 /*
  * Gathering the figures the four invariants compare — spec §3.
@@ -19,6 +20,11 @@ import {
  * Nothing in this file writes. Not to Lithic, not to the chain, not to the ledger. Alert-only is
  * spec text and it is also the only safe posture: a process that corrects money without a human
  * having looked is a second unsupervised source of truth.
+ *
+ * Five checks for four spec invariants: ESA backing is asked of the contracts (vault USDC against
+ * CLRUSD supply), and sweep completion is kept alongside it because the two catch different
+ * failures. The vault check nets out across members, so a single sweep that moved money and lost
+ * track of it is invisible to it.
  */
 
 async function scalar(sql: string, params: unknown[] = []): Promise<number | null> {
@@ -165,6 +171,7 @@ export async function reconcile(): Promise<ReconciliationReport> {
     chainCredit,
     savingsDrawn,
     float,
+    backing,
   ] = await Promise.all([
     ledgerCashCents(),
     lithicHeldCents(),
@@ -174,6 +181,7 @@ export async function reconcile(): Promise<ReconciliationReport> {
     chainCreditCents(),
     savingsBackedDrawnCents(),
     settlementFloatCents(),
+    readEsaBacking(),
   ]);
 
   const results: InvariantResult[] = [
@@ -187,10 +195,20 @@ export async function reconcile(): Promise<ReconciliationReport> {
     compare(
       'esa_backing',
       'ESA backing',
+      backing.clrusdSupplyCents,
+      backing.vaultUsdcCents,
+      'USDC held by the ESA vault should equal CLRUSD in circulation. Divergence means either' +
+        ' CLRUSD nothing backs, or USDC nobody can redeem — and savings-backed credit lends' +
+        ' against the first.',
+    ),
+    compare(
+      'sweep_completion',
+      'Sweep completion',
       sweptFiat,
       minted,
       'Fiat pushed out for completed sweeps should equal the CLRUSD those sweeps minted.' +
-        ' Restated from the spec for the Bridge rail — no co-op fiat is received at any point.',
+        ' Catches a sweep that moved money and lost track of it, which the vault-level check' +
+        ' cannot see because it nets out across members.',
     ),
     compare(
       'credit_issuance',

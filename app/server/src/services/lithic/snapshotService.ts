@@ -204,19 +204,38 @@ export async function refreshSnapshot(
       cardStore.get(cardToken),
     ]);
 
-  // An RPC failure is "we don't know", not "the member has nothing". Writing a snapshot built on a
-  // failed read would cut their limit to zero over a network blip and decline them at a checkout,
-  // so the previous snapshot — stale but true as of when it was written — stands instead.
+  // An RPC failure is "we don't know", not "the member has nothing" — but it must not stop the card
+  // from spending CASH either. Cash is read from Lithic and is independent of the chain, so a
+  // credit input we could not read is no reason to decline a member for money they demonstrably
+  // have. Write the fresh cash figure and carry the last known credit availability forward: stale
+  // credit is honest, zeroed credit is wrong, and refusing to write at all is worst of the three.
+  //
+  // This is also what lets cards run on cash alone while StableCredit, bonds and the pool are still
+  // being deployed. Each tier lights up as its contract goes live; nothing has to change here.
   if (!chain.complete && collateral.savingsCents === undefined) {
-    return {
-      written: false,
-      reason: 'chain collateral unreadable',
-      cashCents: Math.max(0, Math.round(lithicCashCents)),
-      savingsCents: 0,
-      assetCents: 0,
-      incomeCents: 0,
-      boostCents: 0,
+    const cashCents = Math.max(0, Math.round(lithicCashCents));
+    const previous = await authStore.getSnapshot(cardToken);
+
+    if (!authStore.isConfigured()) {
+      return { written: false, reason: 'no database', cashCents, savingsCents: 0, assetCents: 0, incomeCents: 0, boostCents: 0 };
+    }
+
+    const carried = {
+      savingsCents: previous?.savingsCents ?? 0,
+      assetCents: previous?.assetCents ?? 0,
+      incomeCents: previous?.incomeCents ?? 0,
+      boostCents: previous?.boostCents ?? 0,
     };
+
+    await authStore.putSnapshot({
+      cardToken,
+      wallet: wallet.toLowerCase(),
+      cashCents,
+      cardPaused: card?.state === 'PAUSED',
+      ...carried,
+    });
+
+    return { written: true, reason: 'chain unreadable — credit carried forward', cashCents, ...carried };
   }
 
   return writeSnapshot(wallet, cardToken, {

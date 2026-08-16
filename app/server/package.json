@@ -18,7 +18,8 @@
     "lithic:build-asa": "tsc --outDir dist --module esnext --moduleResolution bundler --target es2022 --skipLibCheck src/routes/lithicAuthStream.ts src/services/lithic/authStore.ts src/services/lithic/authDecision.ts src/config/postgres.ts",
     "lithic:verify-step3": "npm run lithic:build-asa && node scripts/lithic-verify-step3.mjs",
     "lithic:test": "bun test src/services",
-    "lithic:verify-step8": "node scripts/lithic-verify-step8.mjs"
+    "lithic:verify-step8": "node scripts/lithic-verify-step8.mjs",
+    "lithic:verify-asa": "node scripts/lithic-verify-asa.mjs"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.41.0",
