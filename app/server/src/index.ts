@@ -35,6 +35,7 @@ import onramperWebhookRouter from './routes/onramperWebhook.js';
 import coinbaseRampWebhookRouter from './routes/coinbaseRampWebhook.js';
 import bridgeWebhookRouter from './routes/bridgeWebhook.js';
 import rampRouter from './routes/ramp.js';
+import lithicRouter from './routes/lithic.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { startAutopayRunner } from './jobs/autopayRunner.js';
@@ -215,6 +216,7 @@ async function startServer() {
     app.use('/api/requests', requireAuth, requestsRouter);
     app.use('/api/onramper', requireAuth, onramperRouter);
     app.use('/api/ramp', requireAuth, rampRouter);
+    app.use('/api/lithic', requireAuth, lithicRouter);
 
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');

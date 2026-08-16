@@ -21,3 +21,14 @@ export {
   type ProvisionedAccount,
   type MemberFinancialAccount,
 } from './accountService.js';
+
+export { lithicStore, type LithicAccountRecord } from './lithicStore.js';
+
+export {
+  ensureProvisioned,
+  getDepositInstructions,
+  type ProvisionKycInput,
+  type ProvisionResult,
+  type ProvisionStatus,
+  type DepositInstructions,
+} from './provisioningService.js';

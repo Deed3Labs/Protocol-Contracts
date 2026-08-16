@@ -20,7 +20,7 @@ import UserOnboarding from "@/pages/auth/UserOnboarding";
 import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
-import HomePage from "@/pages/app/HomePage";
+import HomeRoute from "@/pages/app/HomeRoute";
 import SavingsPage from "@/pages/app/SavingsPage";
 import ActivityPage from "@/pages/app/ActivityPage";
 import CardPage from "@/pages/app/CardPage";
@@ -113,7 +113,7 @@ function App() {
                         useMemberProfile) before this branch goes anywhere near
                         dev. */}
                     <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
-                      <Route path="/" element={<HomePage />} />
+                      <Route path="/" element={<HomeRoute />} />
                       <Route path="/savings" element={<SavingsPage />} />
                       <Route path="/earn" element={<EarnPage />} />
                       <Route path="/send" element={<SendPage />} />

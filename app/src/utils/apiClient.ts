@@ -1896,6 +1896,26 @@ export async function updateMemberProfile(
 }
 
 /** Upload the member's avatar (compressed data URL). Returns the served avatar URL. */
+/**
+ * The member's Lithic banking identity and, when it exists, the numbers their employer needs.
+ *
+ * `hasCashAccount` is separate from `provisioned` on purpose: a member can be banked (cards work)
+ * while the program still has no routable Financial Account, and the two states read differently.
+ */
+export interface LithicAccountResponse {
+  configured: boolean;
+  provisioned: boolean;
+  status?: string;
+  statusReasons?: string[];
+  hasCashAccount?: boolean;
+  deposit: { routingNumber: string; accountNumber: string; accountType: string } | null;
+}
+
+export async function getLithicAccount(): Promise<LithicAccountResponse | null> {
+  const r = await apiRequest<LithicAccountResponse>('/api/lithic/account');
+  return r.error ? null : (r.data ?? null);
+}
+
 export async function uploadMemberAvatar(dataUrl: string): Promise<{ avatarUrl: string } | null> {
   const response = await apiRequest<{ avatarUrl: string }>('/api/members/me/avatar', {
     method: 'POST',

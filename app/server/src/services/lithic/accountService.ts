@@ -71,17 +71,40 @@ export interface MemberFinancialAccount {
 }
 
 /**
+ * Find an existing account holder by the external id we set — our member's wallet.
+ *
+ * This is the idempotency mechanism, and it is a lookup rather than a header because Lithic has no
+ * idempotency on this endpoint. Verified against sandbox: two creates with the same
+ * `idempotencyKey` produced two different account tokens, and the SDK turns out never to send an
+ * idempotency header at all. So a create is not safe to retry blind — check first.
+ */
+export async function findAccountHolderByExternalId(
+  externalId: string,
+): Promise<ProvisionedAccount | null> {
+  const lithic = requireLithic();
+  for await (const holder of lithic.accountHolders.list({ external_id: externalId })) {
+    const accountToken = (holder as { account_token?: string }).account_token;
+    if (!accountToken) continue;
+    return {
+      accountHolderToken: holder.token,
+      accountToken,
+      status: String((holder as { status?: string }).status ?? 'UNKNOWN'),
+      statusReasons: ((holder as { status_reasons?: string[] }).status_reasons ?? []) as string[],
+    };
+  }
+  return null;
+}
+
+/**
  * Create the member's account holder, which brings their Account and Financial Accounts with it.
  *
- * The idempotency key is our member id, so a retried signup can never mint a second banking
- * identity for one person. The SDK sends it as a header; left unset it would generate a random one
- * per call, which is the opposite of what we want here.
+ * Callers must check `findAccountHolderByExternalId` first — see above. This function creates,
+ * every time it is called.
  */
 export async function provisionAccountHolder(
   input: ProvisionMemberInput,
 ): Promise<ProvisionedAccount> {
   const lithic = requireLithic();
-  const options = { idempotencyKey: `member:${input.externalId}` };
   const workflow = input.workflow ?? 'KYC_BASIC';
 
   const response =
@@ -96,9 +119,7 @@ export async function provisionAccountHolder(
             phone_number: input.phoneNumber,
             address: input.address,
             external_id: input.externalId,
-          },
-          options,
-        )
+          })
       : await lithic.accountHolders.create(
           {
             workflow,
@@ -122,9 +143,7 @@ export async function provisionAccountHolder(
                   ),
                 }
               : {}),
-          },
-          options,
-        );
+          });
 
   return {
     accountHolderToken: response.token,
