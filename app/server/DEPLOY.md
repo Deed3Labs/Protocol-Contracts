@@ -13,45 +13,45 @@ server rebuilds that produce a byte-identical image.
 `"watchPatterns": ["app/server/**"]` is now in `railway.json`. Only server changes rebuild the
 server.
 
-## 2. Root Directory must be `app/server` — check this
+## 2. Root Directory — already correct
 
-The repository root is a Hardhat project: 45 dependencies including the Solidity toolchain, and
-`node_modules` there is **609 MB**. The server needs 21 dependencies.
-
-If Railway's root directory is the repository root, every deploy installs a compiler toolchain to
-run an Express app that never touches it. The service being named *Protocol-Contracts* is a hint
-worth checking. **On Railway, build time bills as CPU and memory on the same meter as the running
-service**, so a heavy install on every push appears on the invoice as though the app were doing it.
+Confirmed set to `app/server`. Builds install the server's 21 dependencies, not the repository
+root's 609 MB Hardhat toolchain. This was my leading theory and it was wrong.
 
 ## 3. Auto-deploy should watch `main`, not feature branches
 
 A branch under active development pushes many times a day, and each push is a build. Let feature
 branches merge before they cost anything.
 
-## 4. The Dockerfile is expensive — recommended, NOT applied
+## 4. The Dockerfile — fixed and measured
 
-The current build:
+It used to start `FROM ubuntu:22.04`, apt-get curl and unzip, then download and run the Bun
+installer over the network, all before touching a dependency — to reach a runtime the official image
+already provides.
 
-```dockerfile
-FROM ubuntu:22.04
-RUN apt-get update && apt-get install -y curl unzip ca-certificates
-RUN curl -fsSL https://bun.sh/install | bash    # downloads Bun, every build
-...
-CMD ["bun", "src/index.ts"]                      # transpiles TypeScript at boot
-```
+Measured cold-cache, same machine, same context:
 
-It starts from a bare OS, installs a package manager, then fetches Bun over the network — all before
-touching a dependency, and all to reach a runtime that `oven/bun:1` already provides. Then it
-transpiles TypeScript at boot, paying that cost again on every restart.
+| | build time | image |
+|---|---|---|
+| `ubuntu:22.04` + Bun download | **65s** | 705 MB |
+| `oven/bun:1-slim` | **31s** | 730 MB |
 
-The replacement is a two-stage build on `oven/bun:1`, bundling to `dist` and running
-`bun dist/index.js`. **The bundle step is verified** — 3,575 modules, 9.5 MB, under a second, and the
-built server boots cleanly at 114 MB RSS. The Docker build is **not** verified: `bun.lock` is stale
-relative to `package.json`, so `--frozen-lockfile` fails, and regenerating the lockfile upgraded
-`@coinbase/cdp-sdk` and broke the typecheck. That needs resolving on its own before the Dockerfile
-changes.
+Roughly half the build time for 25 MB more image. On a service where deploys are the cost, that is
+the right side of the trade — and layer caching means the image size is paid once while the build
+time is paid on every deploy.
 
-Order: fix the lockfile drift first, then switch the Dockerfile, then verify a real build.
+Verified to boot in the container: 181 MB RSS, all routes registered, gates respected.
+
+### Still running `bun src/index.ts`, not a bundle
+
+Bundling was attempted and reverted. `@coinbase/cdp-sdk` imports `@x402/svm/exact/client`, which
+does not resolve in a clean install — so `bun build` succeeds locally against a hoisted
+`node_modules` and fails in the container. Worth returning to, since the bundle is 9.5 MB and boots
+at 114 MB against 181 MB for the source path, but a build that only works on one machine is worse
+than no bundle.
+
+Same reason `--frozen-lockfile` is absent: `bun.lock` is stale against `package.json`, and
+regenerating it upgrades transitive versions. That drift is its own task.
 
 ## 5. Check the replica count
 
