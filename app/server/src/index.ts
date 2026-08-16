@@ -36,6 +36,7 @@ import coinbaseRampWebhookRouter from './routes/coinbaseRampWebhook.js';
 import bridgeWebhookRouter from './routes/bridgeWebhook.js';
 import rampRouter from './routes/ramp.js';
 import lithicRouter from './routes/lithic.js';
+import lithicAuthStreamRouter from './routes/lithicAuthStream.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { startAutopayRunner } from './jobs/autopayRunner.js';
@@ -181,6 +182,10 @@ async function startServer() {
     const rateLimiterMiddleware = await rateLimiter(windowMs, maxRequests);
     
     // Add rate limiter to all API routes
+    // Auth Stream Access is mounted before the rate limiter on purpose: throttling this endpoint
+    // would decline a member's card at a till, and it is already authenticated by HMAC signature.
+    app.use('/api/webhooks/lithic/auth-stream', lithicAuthStreamRouter);
+
     app.use('/api', rateLimiterMiddleware);
 
     // Public API routes (after rate limiter)

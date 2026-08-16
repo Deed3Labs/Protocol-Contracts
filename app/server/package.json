@@ -14,7 +14,10 @@
     "send:cdp:account": "node scripts/cdp-relayer-account.mjs",
     "send:recover-claim": "node scripts/send-recover-claim-link.mjs",
     "lithic:provision-test-member": "node scripts/lithic-provision-test-member.mjs",
-    "lithic:verify-step2": "node scripts/lithic-verify-step2.mjs"
+    "lithic:verify-step2": "node scripts/lithic-verify-step2.mjs",
+    "lithic:build-asa": "tsc --outDir dist --module esnext --moduleResolution bundler --target es2022 --skipLibCheck src/routes/lithicAuthStream.ts src/services/lithic/authStore.ts src/services/lithic/authDecision.ts src/config/postgres.ts",
+    "lithic:verify-step3": "npm run lithic:build-asa && node scripts/lithic-verify-step3.mjs",
+    "lithic:test": "bun test src/services/lithic"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.41.0",
