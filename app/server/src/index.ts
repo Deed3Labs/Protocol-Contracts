@@ -48,6 +48,7 @@ import { startGreetingNotifier } from './jobs/greetingNotifier.js';
 import { startSendExpiryNotifier } from './jobs/sendExpiryNotifier.js';
 import { startPulledFundsReleaser } from './jobs/pulledFundsReleaser.js';
 import { startSweepRunner } from './jobs/sweepRunner.js';
+import { startMemoryMonitor } from './jobs/memoryMonitor.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
@@ -298,6 +299,9 @@ async function startServer() {
     startSweepRunner().catch((error) => {
       console.error('Failed to start sweep runner:', error);
     });
+
+    // Cheap, and the only thing that will tell us the SHAPE of memory use rather than its peak.
+    startMemoryMonitor();
 
     startReconciler().catch((error) => {
       console.error('Failed to start reconciler:', error);
