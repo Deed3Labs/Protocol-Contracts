@@ -79,8 +79,15 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   }
 
   const taskStrip = <TaskStrip tasks={data.tasks} />;
-  const cycleStrip = <CycleCard cycle={data.cycle} />;
-  const cycleCard = <CycleCard cycle={data.cycle} variant="card" />;
+  // The cycle needs the credit position and the deposit that's coming to say whether it clears —
+  // and it's only the unsecured draw that has to.
+  const cycleProps = {
+    cycle: data.cycle,
+    credit: data.credit,
+    expectedDeposit: data.cashAccount.nextDepositEstimate,
+  };
+  const cycleStrip = <CycleCard {...cycleProps} />;
+  const cycleCard = <CycleCard {...cycleProps} variant="card" />;
   // Money comes in from a linked bank, so that's what Add money opens.
   const quickActions = (
     <QuickActions

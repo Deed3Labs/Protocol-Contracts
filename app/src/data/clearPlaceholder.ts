@@ -73,7 +73,7 @@ export const HOME_IN_USE: HomeData = {
       { key: 'boost', label: 'Boost', rate: '3% / cycle', ratePerCycle: 0.03, used: 0, limit: 500, added: false },
     ],
   },
-  cycle: { lengthDays: 30, daysLeft: 6, clearsOn: 'Nov 1 payday', clearsEstimate: 2000 },
+  cycle: { lengthDays: 30, daysLeft: 6, clearsOn: 'Nov 1 payday' },
   savings: {
     cash: 3000,
     vested: 1500,

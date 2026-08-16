@@ -40,8 +40,45 @@ export interface Cycle {
   daysLeft: number;
   /** e.g. "Nov 1 payday". */
   clearsOn: string;
-  /** What's expected to land on that date and settle the cycle. */
-  clearsEstimate?: number;
+}
+
+/**
+ * Tiers whose draw is already covered by something the co-op holds.
+ *
+ * Savings-backed draws against the member's own CLRUSD and asset-backed against their bonds and
+ * pool position — in a default those settle from the collateral itself. Income-backed and Boost are
+ * unsecured: nothing stands behind them but the member's next paycheck.
+ */
+export const SECURED_TIERS: TierKey[] = ['savings', 'asset'];
+
+/** What's drawn against collateral. Doesn't need clearing; it's already covered. */
+export function securedUsed(credit: Credit): number {
+  return credit.tiers
+    .filter((t) => SECURED_TIERS.includes(t.key))
+    .reduce((sum, t) => sum + t.used, 0);
+}
+
+/**
+ * What actually has to be repaid this cycle — the unsecured draw, and only that.
+ *
+ * The whole balance is not the target. Asking a member to clear credit that their own savings
+ * already stand behind would be asking them to pay off a loan secured by their own money, and the
+ * cycle would never look clear no matter how much they earned.
+ */
+export function unsecuredUsed(credit: Credit): number {
+  return credit.tiers
+    .filter((t) => !SECURED_TIERS.includes(t.key))
+    .reduce((sum, t) => sum + t.used, 0);
+}
+
+/**
+ * What the member still has to add, after the deposit they're expecting.
+ *
+ * Zero means the cycle clears on its own and the card can say so. Anything above zero is a number
+ * they need to see, because nothing else in the app will tell them before the cycle closes.
+ */
+export function cycleShortfall(credit: Credit, expectedDeposit = 0): number {
+  return Math.max(0, unsecuredUsed(credit) - Math.max(0, expectedDeposit));
 }
 
 export interface Savings {
