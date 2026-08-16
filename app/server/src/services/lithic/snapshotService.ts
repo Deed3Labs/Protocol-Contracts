@@ -35,7 +35,14 @@ export interface SnapshotSources extends CollateralInputs {
   lithicCashCents: number;
   /** Collateral that has arrived but is inside a return window. Excluded until it clears. */
   pendingCollateralCents?: number;
-  cardPaused?: boolean;
+  /**
+   * Whether the member has frozen this card. REQUIRED, deliberately.
+   *
+   * This was optional, and `Boolean(undefined)` is `false` — so a caller who simply forgot it wrote
+   * a frozen card back as spendable, in the exact row the auth stream consults. Making it required
+   * turns that omission into a compile error instead of an unfrozen card.
+   */
+  cardPaused: boolean;
 }
 
 export interface SnapshotResult {
@@ -125,7 +132,7 @@ export async function writeSnapshot(
     cardToken,
     wallet: wallet.toLowerCase(),
     cashCents,
-    cardPaused: Boolean(sources.cardPaused),
+    cardPaused: sources.cardPaused,
     ...availability,
   });
 
@@ -199,10 +206,13 @@ export async function refreshSnapshot(
       // see achOriginationService for why sixty days is the number that matters.
       pulledFundsStore.pendingCollateralCents(wallet),
       readChainCollateral(wallet),
-      // A frozen card must stay frozen across a refresh. Defaulting this to false would let any
-      // rebuild — a deposit, an hourly job — quietly reopen a card the member had shut off.
       cardStore.get(cardToken),
     ]);
+
+  // Resolved once and used by both write paths below. A frozen card must stay frozen across a
+  // refresh — defaulting it to false let any rebuild, a deposit landing or the hourly job, quietly
+  // reopen a card the member had shut off. Two copies of this expression is how that comes back.
+  const cardPaused = card?.state === 'PAUSED';
 
   // An RPC failure is "we don't know", not "the member has nothing" — but it must not stop the card
   // from spending CASH either. Cash is read from Lithic and is independent of the chain, so a
@@ -231,7 +241,7 @@ export async function refreshSnapshot(
       cardToken,
       wallet: wallet.toLowerCase(),
       cashCents,
-      cardPaused: card?.state === 'PAUSED',
+      cardPaused,
       ...carried,
     });
 
@@ -248,6 +258,6 @@ export async function refreshSnapshot(
     bondsWorthCents: collateral.bondsWorthCents ?? chain.bondsWorthCents,
     poolPositionCents: collateral.poolPositionCents ?? chain.poolPositionCents ?? 0,
     boostLimitCents: collateral.boostLimitCents ?? 0,
-    cardPaused: card?.state === 'PAUSED',
+    cardPaused,
   });
 }

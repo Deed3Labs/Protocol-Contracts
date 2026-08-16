@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { OPEN, PAUSED } from './cardService.js';
+import type { SnapshotSources } from './snapshotService.js';
 import { decide } from './authDecision.js';
 
 /*
@@ -37,6 +38,19 @@ describe('freeze', () => {
 });
 
 describe('card state survives a snapshot rebuild', () => {
+  test('a writer cannot omit cardPaused', () => {
+    // The structural half of the fix. cardPaused was optional on SnapshotSources, and
+    // Boolean(undefined) is false — so a caller who simply forgot it wrote a frozen card back as
+    // spendable. It is now required, which makes the omission a compile error. This test documents
+    // why the field is not optional; the compiler is what actually enforces it.
+    const sources: Pick<SnapshotSources, 'cardPaused'> = { cardPaused: true };
+    expect(sources.cardPaused).toBe(true);
+
+    // @ts-expect-error cardPaused is required — omitting it must not compile.
+    const missing: Pick<SnapshotSources, 'cardPaused'> = {};
+    expect(missing).toBeDefined();
+  });
+
   /** Mirrors refreshSnapshot: card_paused is read from the card record, never defaulted. */
   const pausedFor = (state: string | undefined) => state === PAUSED;
 
