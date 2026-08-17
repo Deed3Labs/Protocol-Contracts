@@ -1,11 +1,12 @@
 import { Button } from '@/components/ui/button';
 import Card from './Card';
-import { money } from '@/lib/money';
+import { money, signedMoney } from '@/lib/money';
 import type { BondTerm } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
-/** The four columns, in one place so the header and the rows can't drift out of alignment. */
-const COLS = 'grid grid-cols-[52px_1fr_1fr_46px] gap-2 lg:grid-cols-[78px_1fr_1fr_54px] lg:gap-3';
+/** The five columns, in one place so the header and the rows can't drift out of alignment. */
+const COLS =
+  'grid grid-cols-[46px_1fr_1fr_1fr_42px] gap-2 lg:grid-cols-[74px_1fr_1fr_1fr_52px] lg:gap-2.5';
 
 /**
  * The bond ladder — design spec §6.
@@ -44,6 +45,10 @@ export default function BondLadder({
           <span className="hidden lg:inline">You pay</span>
         </span>
         <span className="text-right">
+          <span className="lg:hidden">Disc</span>
+          <span className="hidden lg:inline">Discount</span>
+        </span>
+        <span className="text-right">
           <span className="lg:hidden">Get</span>
           <span className="hidden lg:inline">You get</span>
         </span>
@@ -55,7 +60,7 @@ export default function BondLadder({
           key={term.months}
           className={cn(
             COLS,
-            'items-center py-2.5 text-xs tabular-nums lg:text-[13px]',
+            'items-center py-2.5 text-[11px] tabular-nums lg:text-[13px]',
             i < terms.length - 1 && 'border-b-[0.5px] border-border',
           )}
         >
@@ -64,6 +69,11 @@ export default function BondLadder({
             <span className="hidden lg:inline">months</span>
           </span>
           <span className="text-right text-muted-foreground">{money(term.price, { cents: true })}</span>
+          {/* The discount stated outright. It's the same fact as the yield, but in dollars, and it's
+              what the member is actually being offered — the subtraction shouldn't be homework. */}
+          <span className="text-right text-tier-savings-fg">
+            {signedMoney(term.face - term.price)}
+          </span>
           <span className="text-right">{money(term.face, { cents: true })}</span>
           <span className="text-right font-medium">{term.rate.toFixed(1)}%</span>
         </div>

@@ -107,6 +107,10 @@ export default function RepayDialog({
   // this surface can't disagree with the strip on Home about whether the cycle clears.
   const shortAfter = cycleShortfall(credit, account.nextDepositEstimate + towardCycle);
   const stillCarrying = Math.max(0, outstanding - capped);
+  // Money only spills to Spendable once EVERYTHING carried is cleared — not once the cycle
+  // requirement is met. Paying past the cycle still buys down the cheap secured tiers, and handing
+  // the surplus back while a balance stood would be lending the member their own money at 0.65%.
+  const leftOver = Math.max(0, capped - outstanding);
 
   const select = (value: number) => {
     setCustom(false);
@@ -183,6 +187,20 @@ export default function RepayDialog({
         </>
       )}
 
+      {carrying && leftOver > 0 && (
+        <InfoBlock tone="success" className="mb-3.5">
+          <span className="flex items-baseline justify-between gap-3">
+            <span>Left over → Spendable</span>
+            <span className="text-[15px] font-medium tabular-nums">
+              {money(leftOver, { cents: true })}
+            </span>
+          </span>
+          <span className="mt-[5px] block text-[11px] opacity-85">
+            Clears everything you're carrying, and the rest lands in your cash account.
+          </span>
+        </InfoBlock>
+      )}
+
       <Card className="mb-3.5 px-3.5 py-[11px] text-xs leading-loose">
         <SummaryRow label="From" value="Ready to allocate" />
         {carrying ? (
@@ -190,11 +208,9 @@ export default function RepayDialog({
             <SummaryRow
               label="Still carrying"
               value={
-                stillCarrying === 0
-                  ? 'Nothing'
-                  : stillCarrying <= securedUsed(credit)
-                    ? `${money(stillCarrying, { cents: true })} secured`
-                    : money(stillCarrying, { cents: true })
+                stillCarrying > 0 && stillCarrying <= securedUsed(credit)
+                  ? `${money(stillCarrying, { cents: true })} secured`
+                  : money(stillCarrying, { cents: true })
               }
             />
             <SummaryRow

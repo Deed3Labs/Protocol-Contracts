@@ -118,21 +118,24 @@ Stack in order: balance → task strip → cycle → cash account → clear cred
 
 ### Cycle strip
 
-**No progress bar.** The app already leans on bars; the cycle uses **day marks** instead — thirty marks, one per day, elapsed ones short and muted at 45%, remaining ones tall in `--text-secondary`. Reads as a calendar, not a meter.
+**No progress bar, and no day marks either.** One component, **two rows, identical on desktop and mobile**. An earlier draft ran thirty day marks across a three-column desktop strip; it was decoration that had to be re-read every time.
 
-Desktop is three columns: label + figure · marks with `Started [date]` / `N days left` beneath · status right-aligned. Mobile stacks, and in the action state swaps the marks for a large numeral countdown.
+Top row, and it never changes shape: the label `To clear this cycle`, the amount beneath it, and the days remaining as a large numeral on the right. **The label never changes and the amount never becomes prose** — nothing to clear reads `$0.00`, not "Nothing to clear" — so the eye lands in the same place every cycle.
 
 **The figure is the UNSECURED drawn amount, never the full carried balance.** Savings- and asset-backed credit is covered by what the member holds and needs nothing to clear. Showing the total would make secured borrowing look like a debt problem.
 
-Three states, same shape:
+Only the second row varies. **Three border levels: accent = something is needed · default = neutral, nothing required · green (`--tier-asset`) = fully clear.**
 
-| State | Left | Right |
-|---|---|---|
-| Fully secured | `Nothing to clear` | ✓ `In good standing` |
-| Unsecured, deposit covers | `$700.00` | ✓ `Nov 1 deposit covers it` |
-| Unsecured, deposit short | `$700.00` | `Nov 1 deposit covers $500.00` / `$200.00 short` + `Repay` |
+| State | Amount | Second row | Border |
+|---|---|---|---|
+| Unsecured, deposit short | `$700.00` | `Nov 1 deposit covers $500.00` / `$200.00 short` + `Repay` | accent |
+| Unsecured, deposit covers | `$700.00` | ✓ `Nov 1 deposit covers it` + `Repay early` | default |
+| Own savings, nothing owed | `$0.00` | `Using $5,400.00 of your own savings` / `Nothing owed · carry cost $10.40 so far` + `Top off` | default |
+| All clear | `$0.00` | ✓ `All clear · nothing carried` | green |
 
-Only the third asks for anything, and it carries `--border-accent`. The direct-deposit line does real work here: most members are in state two and shouldn't be nudged.
+State three is deliberately **not** green. The member is spending their own savings — nothing is owed, but it isn't the same as clear: it pauses housing progress and accrues carry on the asset-backed part. `Top off` rather than "pay down", because they didn't borrow.
+
+Only the first state asks for anything. The direct-deposit line does real work here: most members are in state two and shouldn't be nudged.
 
 ### Repay / Move to cash — one modal
 
@@ -141,6 +144,7 @@ They are the same action; the only difference is whether a negative balance is i
 - **Carrying a balance** → title reads `Repay`, and a `THIS CLEARS` section shows the tier unwind — most expensive first (`Clear Boost · 3%` then `Income-backed · 1.5%`). Quick-picks: `Clear cycle` (the unsecured amount), `Clear all`, `Custom`.
 - **Not carrying** → title reads `Move to cash`, the clears section drops out, quick-picks reduce to `All` / `Custom`, and a line explains it's simply moving money.
 - **Partial** → shows what each tier gets (`$400.00 of $500.00`, next tier `untouched`) plus an accent warning naming the shortfall and the date the limit contracts.
+- **Overpayment** → a success block reads `Left over → Spendable` with the figure, and *"Clears everything you're carrying, and the rest lands in your cash account."* Money only spills to Spendable once **everything carried** is cleared — not once the cycle requirement is met.
 - Footer when carrying: *"Most expensive credit clears first."*
 
 Summary rows: `From` · `Still carrying` · `Cycle`. The cycle row is the one that matters — it tells the member whether this action actually resolves anything.
@@ -248,7 +252,7 @@ Worth today                            $4,459.00
 Face value at 16px is the promise. **Worth today is divided off** because it's the one figure that changes, and it carries the accretion story that makes the limit grow on its own. Term and countdown are tertiary. Do not print the face value twice.
 
 ### Ladder — state face value per row
-Four columns: `Term · You pay · You get · Yield`. Stating `$1,000.00` on every row removes the need for a "per $1,000" caption entirely, and makes the discount visible by subtraction.
+Five columns: `Term · You pay · Discount · You get · Yield`. Stating `$1,000.00` on every row removes the need for a "per $1,000" caption entirely, and the discount column states outright what used to be left as subtraction — it's the thing being offered, so the member shouldn't have to do the arithmetic. Mobile shortens the headers to `Pay · Disc · Get`.
 
 **No yield curve.** Four points is too few to read as a shape — it looks like a line with dots. The table carries it.
 

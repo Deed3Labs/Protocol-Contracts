@@ -64,53 +64,42 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 ];
 
 /**
- * The cycle's three states side by side — the harness equivalent of the reference's own
- * "Cycle — three states" screen.
+ * The cycle's four states — the harness equivalent of the reference's own screen.
  *
- * Home only ever shows whichever state that member is in, and the placeholder member is fully
- * secured, so the other two would otherwise be unreachable to look at.
+ * Home only ever shows whichever state that member is in, and the placeholder member is drawn and
+ * short, so the other three would otherwise be unreachable to look at.
  */
 function CyclePreview() {
   const { cycle, credit, cashAccount } = HOME_IN_USE;
-  // The placeholder member carries $700 unsecured, so the secured state is the one that has to be
-  // constructed here: same member with the income tier idle rather than drawn.
-  const secured = {
+  const setUsed = (key: string, used: number) => ({
     ...credit,
-    tiers: credit.tiers.map((t) => (t.key === 'income' ? { ...t, used: 0 } : t)),
-  };
+    tiers: credit.tiers.map((t) => (t.key === key ? { ...t, used } : t)),
+  });
   const states = [
-    { name: 'fully secured', credit: secured, deposit: cashAccount.nextDepositEstimate },
-    { name: 'unsecured, deposit covers', credit, deposit: 2000 },
     { name: 'unsecured, deposit short', credit, deposit: cashAccount.nextDepositEstimate },
+    { name: 'unsecured, deposit covers', credit, deposit: 2000 },
+    { name: 'own savings, nothing owed', credit: setUsed('income', 0), deposit: 2000 },
+    {
+      name: 'all clear',
+      credit: { ...credit, tiers: credit.tiers.map((t) => ({ ...t, used: 0 })) },
+      deposit: 2000,
+    },
   ];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       {states.map((s) => (
         <div key={s.name}>
           <p className="mb-2 text-[11px] uppercase tracking-[0.3px] text-muted-foreground">
             {s.name}
           </p>
-          {/* Same breakpoints Home uses, so neither variant is judged at a width it never sees. */}
-          <div className="hidden lg:block">
-            <CycleCard
-              cycle={cycle}
-              credit={s.credit}
-              expectedDeposit={s.deposit}
-              depositOn={cashAccount.nextDepositOn}
-              onRepay={() => {}}
-            />
-          </div>
-          <div className="max-w-[330px] lg:hidden">
-            <CycleCard
-              cycle={cycle}
-              credit={s.credit}
-              expectedDeposit={s.deposit}
-              depositOn={cashAccount.nextDepositOn}
-              onRepay={() => {}}
-              variant="card"
-            />
-          </div>
+          <CycleCard
+            cycle={cycle}
+            credit={s.credit}
+            expectedDeposit={s.deposit}
+            depositOn={cashAccount.nextDepositOn}
+            onRepay={() => {}}
+          />
         </div>
       ))}
     </div>
@@ -125,13 +114,16 @@ function CyclePreview() {
  */
 function RepayPreview() {
   const { credit, cashAccount, cycle } = HOME_IN_USE;
-  const [which, setWhich] = useState<'repay' | 'move' | null>(null);
+  const [which, setWhich] = useState<'repay' | 'move' | 'over' | null>(null);
   const settled = { ...credit, tiers: credit.tiers.map((t) => ({ ...t, used: 0 })) };
+  // Overpaying needs a source bigger than everything carried, which the placeholder member's $700
+  // parked on-chain can't be against $6,100 drawn.
+  const flush = { ...cashAccount, readyToAllocate: 7000 };
 
   return (
     <div className="flex flex-col items-start gap-2.5">
       <p className="text-[11px] uppercase tracking-[0.3px] text-muted-foreground">
-        One modal, two titles
+        One modal, three shapes
       </p>
       <Button variant="clear" size="xs" onClick={() => setWhich('repay')}>
         Carrying a balance → Repay
@@ -139,11 +131,14 @@ function RepayPreview() {
       <Button variant="clear" size="xs" onClick={() => setWhich('move')}>
         Nothing outstanding → Move to cash
       </Button>
+      <Button variant="clear" size="xs" onClick={() => setWhich('over')}>
+        Paying past the balance → spills to Spendable
+      </Button>
 
       <RepayDialog
         key={which ?? 'none'}
         credit={which === 'move' ? settled : credit}
-        account={cashAccount}
+        account={which === 'over' ? flush : cashAccount}
         cycle={cycle}
         open={which !== null}
         onOpenChange={(o) => !o && setWhich(null)}

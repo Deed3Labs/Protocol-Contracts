@@ -38,8 +38,6 @@ export interface Credit {
 export interface Cycle {
   lengthDays: number;
   daysLeft: number;
-  /** When this cycle began, e.g. "Oct 13". The day marks are dated from it. */
-  startedOn: string;
   /** e.g. "Nov 1 payday". */
   clearsOn: string;
   /** When the limit contracts if the cycle doesn't clear, e.g. "Nov 12". */
@@ -86,17 +84,20 @@ export function cycleShortfall(credit: Credit, expectedDeposit = 0): number {
 }
 
 /**
- * Which of the cycle's three states applies — spec §4b.
+ * Which of the cycle's four states applies — spec §4b.
  *
- * `secured` is not "nothing is drawn": it's "nothing is drawn that isn't already covered", which is
- * where most members live. `covered` still names a figure, because the member should know what the
- * deposit is doing. Only `short` asks for anything, and it's the only one that earns the accent
- * border.
+ * `secured` is deliberately not the same as `clear`. Nothing is owed either way, but a member
+ * spending against their own savings has paused their housing progress and is accruing carry on the
+ * asset-backed part — so it reads neutral, not green, and offers to top the savings back up rather
+ * than to pay anything down. They didn't borrow.
+ *
+ * Only `short` asks for anything, and it's the only state that earns the accent border.
  */
-export type CycleStatus = 'secured' | 'covered' | 'short';
+export type CycleStatus = 'short' | 'covered' | 'secured' | 'clear';
 
 export function cycleStatus(credit: Credit | undefined, expectedDeposit = 0): CycleStatus {
-  if (!credit || unsecuredUsed(credit) === 0) return 'secured';
+  if (!credit || creditUsed(credit) === 0) return 'clear';
+  if (unsecuredUsed(credit) === 0) return 'secured';
   return cycleShortfall(credit, expectedDeposit) > 0 ? 'short' : 'covered';
 }
 

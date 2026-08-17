@@ -92,7 +92,6 @@ export const HOME_IN_USE: HomeData = {
   cycle: {
     lengthDays: 30,
     daysLeft: 6,
-    startedOn: 'Oct 13',
     clearsOn: 'Nov 1 payday',
     rebalanceBy: 'Nov 12',
   },
@@ -161,7 +160,7 @@ export const HOME_DAY_ONE: HomeData = {
     carryFreeUnder: 0,
     tiers: HOME_IN_USE.credit.tiers.map((t) => ({ ...t, used: 0, limit: 0, added: false })),
   },
-  cycle: { lengthDays: 30, daysLeft: 0, startedOn: '', clearsOn: '', rebalanceBy: '' },
+  cycle: { lengthDays: 30, daysLeft: 0, clearsOn: '', rebalanceBy: '' },
   savings: { cash: 0, vested: 0, vesting: 0, credits: 0, creditsGoal: 15000 },
   cashAccount: {
     spendable: 0,

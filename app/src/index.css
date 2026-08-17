@@ -204,10 +204,6 @@
      This is the middle one: labels like "Clear credit used". */
   --foreground-secondary: 82 82 82;
 
-  /* A border one step heavier than --border. The hairline is tuned to divide
-     content and disappears when it has to carry a shape on its own — the cycle's
-     elapsed day marks are drawn from this, not from --border. */
-  --border-strong: 195 195 195;
 
   /* ---- Product tokens: credit tiers & savings vesting --------------------
      These encode product meaning, not taste (design spec §2) — a bar segment's
@@ -280,8 +276,6 @@
   /* Third text level — brighter than muted on dark */
   --foreground-secondary: 212 212 212;
 
-  --border-strong: 70 70 70;
-
   /* Tier text, lifted for legibility on near-black. Fills are inherited
      from :root unchanged — only the text weights move. */
   --tier-savings-fg: 79 191 156; /* #4FBF9C */
@@ -338,8 +332,6 @@
 
   /* Third text level — warm brown between ink and muted */
   --foreground-secondary: 92 77 58;
-
-  --border-strong: 184 168 148;
 
   /* Tier text, warmed slightly so it sits on cream without going cold.
      Fills are inherited from :root unchanged. */
@@ -455,7 +447,6 @@ body.onboarding-scroll-enabled {
   --color-cp-external: rgb(var(--cp-external));
   --color-cp-external-fg: rgb(var(--cp-external-fg));
   --color-foreground-secondary: rgb(var(--foreground-secondary));
-  --color-border-strong: rgb(var(--border-strong));
   --color-tier-savings: rgb(var(--tier-savings));
   --color-tier-savings-fg: rgb(var(--tier-savings-fg));
   --color-tier-asset: rgb(var(--tier-asset));

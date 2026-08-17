@@ -83,15 +83,17 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const taskStrip = <TaskStrip tasks={data.tasks} />;
   // The cycle needs the credit position and the deposit that's coming to say whether it clears —
   // and it's only the unsecured draw that has to.
-  const cycleProps = {
-    cycle: data.cycle,
-    credit: data.credit,
-    expectedDeposit: data.cashAccount.nextDepositEstimate,
-    depositOn: data.cashAccount.nextDepositOn,
-    onRepay: () => setRepayOpen(true),
-  };
-  const cycleStrip = <CycleCard {...cycleProps} />;
-  const cycleCard = <CycleCard {...cycleProps} variant="card" />;
+  // One shape on both layouts now — the cycle reads the same everywhere, so there's nothing left
+  // for a variant to differ about.
+  const cycle = (
+    <CycleCard
+      cycle={data.cycle}
+      credit={data.credit}
+      expectedDeposit={data.cashAccount.nextDepositEstimate}
+      depositOn={data.cashAccount.nextDepositOn}
+      onRepay={() => setRepayOpen(true)}
+    />
+  );
   // Money comes in from a linked bank, so that's what Add money opens.
   const quickActions = (
     <QuickActions
@@ -134,7 +136,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       <div className="flex flex-col gap-2.5 lg:hidden">
         {balance}
         {taskStrip}
-        {cycleCard}
+        {cycle}
         {cash}
         {credit}
         {savings}
@@ -149,7 +151,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
           {balance}
           {quickActions}
         </div>
-        <div className="mb-3">{cycleStrip}</div>
+        <div className="mb-3">{cycle}</div>
         {taskStrip}
         <div className="mt-3.5 grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start gap-3">
           {credit}
