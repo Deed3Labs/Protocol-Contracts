@@ -89,14 +89,19 @@ export default function CashAccountCard({
         </div>
       )}
 
-      {account.directDepositActive && (
-        <CardRule className="flex items-center justify-between gap-3">
+      {/* The footer is unconditional. Direct deposit status changes what the left side says, never
+          whether the right side is there — account details are how a member sets direct deposit up
+          in the first place, so gating the way in on already having it is backwards. */}
+      <CardRule className="flex items-center justify-between gap-3">
+        {account.directDepositActive ? (
           <span className="text-[11px] text-tier-savings-fg">Direct deposit active</span>
-          <Button variant="clear" size="xs" onClick={onDetails}>
-            Details
-          </Button>
-        </CardRule>
-      )}
+        ) : (
+          <span className="text-[11px] text-muted-foreground">Direct deposit not set up</span>
+        )}
+        <Button variant="clear" size="xs" onClick={onDetails}>
+          Details
+        </Button>
+      </CardRule>
     </Card>
   );
 }

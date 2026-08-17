@@ -32,22 +32,25 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const total = earningTotal(data);
   const inBonds = bondsTotal(data.bonds);
-  const longest = data.terms[data.terms.length - 1]?.months;
 
   useSetMobileAction({ label: 'Buy', icon: Plus, onSelect: () => setBuyOpen(true) });
 
   const stats = (
     <div className="grid grid-cols-2 gap-3">
       <Card className="px-3.5 py-3">
-        <p className="mb-1 text-xs text-foreground-secondary">Earned to date</p>
+        <p className="mb-1 text-xs text-foreground-secondary">
+          Earned<span className="hidden lg:inline"> to date</span>
+        </p>
         <p className="font-display text-xl font-medium leading-none text-tier-savings-fg">
           {signedMoney(data.earnedToDate)}
         </p>
       </Card>
       <Card className="px-3.5 py-3">
-        <p className="mb-1 text-xs text-foreground-secondary">Backs your credit limit</p>
+        <p className="mb-1 text-xs text-foreground-secondary">
+          Backs <span className="hidden lg:inline">your </span>limit
+        </p>
         <p className="font-display text-xl font-medium leading-none">
-          {money(assetBackedLimit(data))}
+          {money(assetBackedLimit(data), { cents: true })}
         </p>
       </Card>
     </div>
@@ -80,7 +83,7 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
               BurnerBonds
             </span>
             <span className="tabular-nums">
-              {money(data.pool.position)} · {money(inBonds)}
+              {money(data.pool.position, { cents: true })} · {money(inBonds, { cents: true })}
             </span>
           </div>
         </div>
@@ -88,10 +91,11 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
         {stats}
       </div>
 
+      {/* One line, and it's the page's whole argument: locking money up doesn't cost you access to
+          it. Everything below is read in its light. */}
       <InfoBlock className="mb-4">
-        <span className="hidden lg:inline">Locking money up doesn't cost you access to it. </span>
-        Both products back your Clear Credit line — borrow against them for under 1% a cycle instead
-        of cashing out.
+        Locked doesn't mean unavailable — both<span className="hidden lg:inline"> products</span>{' '}
+        back your credit line at under 1% a cycle.
       </InfoBlock>
 
       <p className="mb-2.5 text-[13px] text-foreground-secondary">Your positions</p>
@@ -119,8 +123,8 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
         <Card className="hidden lg:block">
           <p className="mb-2 text-xs text-foreground-secondary">Longer terms pay more</p>
           <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
-            A {longest}-month bond nearly doubles your money. It's locked — but it still backs{' '}
-            {Math.round(data.bondLtv * 100)}% of its value as credit, so you're not giving up access.
+            Locked until maturity, but backs {Math.round(data.bondLtv * 100)}% of its value as
+            credit.
           </p>
           <Button size="sm" className="w-full text-xs" onClick={() => setBuyOpen(true)}>
             Buy a bond

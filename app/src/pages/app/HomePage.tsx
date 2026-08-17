@@ -85,6 +85,11 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
     cycle: data.cycle,
     credit: data.credit,
     expectedDeposit: data.cashAccount.nextDepositEstimate,
+    depositOn: data.cashAccount.nextDepositOn,
+    // INTERIM: spec §4's Repay / Move to cash modal isn't built yet. Adding money is what actually
+    // resolves a shortfall, so Repay opens that rather than rendering a button that does nothing.
+    // Point this at the repay modal as soon as it exists.
+    onRepay: () => setLinkOpen(true),
   };
   const cycleStrip = <CycleCard {...cycleProps} />;
   const cycleCard = <CycleCard {...cycleProps} variant="card" />;

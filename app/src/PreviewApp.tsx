@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@/context/ThemeContext';
 import AppChrome from '@/components/shell/AppChrome';
+import CycleCard from '@/components/clear/CycleCard';
 import HeaderActions from '@/components/shell/HeaderActions';
 import { unreadAlerts, unreadThreads } from '@/lib/clearModel';
 import HomePage from '@/pages/app/HomePage';
@@ -59,6 +60,60 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
   'claim',
   'claimJoin',
 ];
+
+/**
+ * The cycle's three states side by side — the harness equivalent of the reference's own
+ * "Cycle — three states" screen.
+ *
+ * Home only ever shows whichever state that member is in, and the placeholder member is fully
+ * secured, so the other two would otherwise be unreachable to look at.
+ */
+function CyclePreview() {
+  const { cycle, credit, cashAccount } = HOME_IN_USE;
+  // The placeholder member carries $700 unsecured, so the secured state is the one that has to be
+  // constructed here: same member with the income tier idle rather than drawn.
+  const secured = {
+    ...credit,
+    tiers: credit.tiers.map((t) => (t.key === 'income' ? { ...t, used: 0 } : t)),
+  };
+  const states = [
+    { name: 'fully secured', credit: secured, deposit: cashAccount.nextDepositEstimate },
+    { name: 'unsecured, deposit covers', credit, deposit: 2000 },
+    { name: 'unsecured, deposit short', credit, deposit: cashAccount.nextDepositEstimate },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      {states.map((s) => (
+        <div key={s.name}>
+          <p className="mb-2 text-[11px] uppercase tracking-[0.3px] text-muted-foreground">
+            {s.name}
+          </p>
+          {/* Same breakpoints Home uses, so neither variant is judged at a width it never sees. */}
+          <div className="hidden lg:block">
+            <CycleCard
+              cycle={cycle}
+              credit={s.credit}
+              expectedDeposit={s.deposit}
+              depositOn={cashAccount.nextDepositOn}
+              onRepay={() => {}}
+            />
+          </div>
+          <div className="max-w-[330px] lg:hidden">
+            <CycleCard
+              cycle={cycle}
+              credit={s.credit}
+              expectedDeposit={s.deposit}
+              depositOn={cashAccount.nextDepositOn}
+              onRepay={() => {}}
+              variant="card"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** Onboarding sits outside the app chrome — there's no nav until you're a member. */
 function OnboardingPreview() {
@@ -131,6 +186,7 @@ export default function PreviewApp() {
                     />
                     <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
                     <Route path="/scan" element={<ScanPage />} />
+                    <Route path="/cycle" element={<CyclePreview />} />
                     <Route path="/learn/:topic" element={<ExplainerPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />

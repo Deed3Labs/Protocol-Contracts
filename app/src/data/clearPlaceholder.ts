@@ -60,20 +60,36 @@ const ASSET_BACKED_LIMIT = assetBackedLimit({
  * contexts (useClearBalances / useClearTransactions / CreditContext) when wiring.
  */
 
-/** "In use" — cash spent to zero, credit engaged (spec §4). */
+/**
+ * "In use" — cash spent to zero, credit engaged (spec §4), and the cycle in its **third state**:
+ * drawn unsecured, with the deposit that's coming covering only part of it.
+ *
+ * The scenario, because the figures only reconcile if you know it: this member's hours were cut.
+ * Their income-backed limit ($1,000) is still set from a trailing ~$2,000/mo — which is why the
+ * limit breakdown and the Oct 25 payroll row both still say $2,000 — but the check landing Nov 1 is
+ * only ~$500. They've drawn $700 against that tier, so $500 clears and $200 doesn't. A limit set
+ * from a trailing average lagging a recent dip is exactly how a member ends up short, and it's the
+ * one state in §4b that asks them for anything.
+ *
+ * Change `income.used` or `cashAccount.nextDepositEstimate` and the cycle moves between states on
+ * its own — the three states are derived by `cycleStatus`, never set by hand.
+ */
 export const HOME_IN_USE: HomeData = {
   cash: 0,
   credit: {
-    carryCost: 10.4,
+    // Accrued so far this cycle, same elapsed fraction across both drawn tiers:
+    // asset $2,400 × 0.65% × ⅔ = $10.40, income $700 × 1.5% × ⅔ = $7.00.
+    carryCost: 17.4,
     carryFreeUnder: 3000,
     tiers: [
       { key: 'savings', label: 'Savings (CLRUSD)', shortLabel: 'Savings', rate: 'free', used: 3000, limit: 3000, added: true },
       { key: 'asset', label: 'Asset-backed', rate: '0.65–0.75%', used: 2400, limit: ASSET_BACKED_LIMIT, added: true },
-      { key: 'income', label: 'Income-backed', shortLabel: 'Income', rate: '1.5% / cycle', used: 0, limit: 1000, added: true },
+      // The unsecured draw — the only figure the cycle strip reports, and what makes it state three.
+      { key: 'income', label: 'Income-backed', shortLabel: 'Income', rate: '1.5% / cycle', used: 700, limit: 1000, added: true },
       { key: 'boost', label: 'Boost', rate: '3% / cycle', ratePerCycle: 0.03, used: 0, limit: 500, added: false },
     ],
   },
-  cycle: { lengthDays: 30, daysLeft: 6, clearsOn: 'Nov 1 payday' },
+  cycle: { lengthDays: 30, daysLeft: 6, startedOn: 'Oct 13', clearsOn: 'Nov 1 payday' },
   savings: {
     cash: 3000,
     vested: 1500,
@@ -88,7 +104,9 @@ export const HOME_IN_USE: HomeData = {
     // where a balance lives. The reference is explicit that this normally reads $0.00.
     readyToAllocate: 0,
     nextDepositOn: 'Nov 1',
-    nextDepositEstimate: 2000,
+    // The reduced check. One field feeds both the cash card's sub-line and what the cycle says the
+    // deposit covers, so the two can't disagree.
+    nextDepositEstimate: 500,
     directDepositActive: true,
     accountNumber: '000123454192',
     routingNumber: '084106768',
@@ -136,7 +154,7 @@ export const HOME_DAY_ONE: HomeData = {
     carryFreeUnder: 0,
     tiers: HOME_IN_USE.credit.tiers.map((t) => ({ ...t, used: 0, limit: 0, added: false })),
   },
-  cycle: { lengthDays: 30, daysLeft: 0, clearsOn: '' },
+  cycle: { lengthDays: 30, daysLeft: 0, startedOn: '', clearsOn: '' },
   savings: { cash: 0, vested: 0, vesting: 0, credits: 0, creditsGoal: 15000 },
   cashAccount: {
     spendable: 0,
@@ -250,7 +268,7 @@ export const ALERTS: Alert[] = [
     time: 'Nov 6',
     read: true,
     title: 'Rebalance by Nov 12',
-    detail: 'Your payday on Nov 1 should clear it automatically.',
+    detail: 'Your payday on Nov 1 covers $500.00 of it — $200.00 short.',
     action: { label: 'View cycle', to: '/' },
   },
   {
@@ -357,7 +375,8 @@ export const SAVINGS_DAY_ONE: SavingsData = {
 };
 
 export const ACTIVITY_IN_USE: ActivityData = {
-  cycleSpend: { spent: 1842, daysLeft: 6, fromCash: 1242, fromCredit: 600, carryCost: 10.4 },
+  // Carry cost is the same quantity Home reports; it moves with HOME_IN_USE.credit.carryCost.
+  cycleSpend: { spent: 1842, daysLeft: 6, fromCash: 1242, fromCredit: 600, carryCost: 17.4 },
   categories: [
     { label: 'Groceries', amount: 412 },
     { label: 'Fuel', amount: 188 },

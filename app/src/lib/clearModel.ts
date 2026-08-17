@@ -38,6 +38,8 @@ export interface Credit {
 export interface Cycle {
   lengthDays: number;
   daysLeft: number;
+  /** When this cycle began, e.g. "Oct 13". The day marks are dated from it. */
+  startedOn: string;
   /** e.g. "Nov 1 payday". */
   clearsOn: string;
 }
@@ -79,6 +81,21 @@ export function unsecuredUsed(credit: Credit): number {
  */
 export function cycleShortfall(credit: Credit, expectedDeposit = 0): number {
   return Math.max(0, unsecuredUsed(credit) - Math.max(0, expectedDeposit));
+}
+
+/**
+ * Which of the cycle's three states applies — spec §4b.
+ *
+ * `secured` is not "nothing is drawn": it's "nothing is drawn that isn't already covered", which is
+ * where most members live. `covered` still names a figure, because the member should know what the
+ * deposit is doing. Only `short` asks for anything, and it's the only one that earns the accent
+ * border.
+ */
+export type CycleStatus = 'secured' | 'covered' | 'short';
+
+export function cycleStatus(credit: Credit | undefined, expectedDeposit = 0): CycleStatus {
+  if (!credit || unsecuredUsed(credit) === 0) return 'secured';
+  return cycleShortfall(credit, expectedDeposit) > 0 ? 'short' : 'covered';
 }
 
 /**

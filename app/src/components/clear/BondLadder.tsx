@@ -4,13 +4,19 @@ import { money } from '@/lib/money';
 import type { BondTerm } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
+/** The four columns, in one place so the header and the rows can't drift out of alignment. */
+const COLS = 'grid grid-cols-[52px_1fr_1fr_46px] gap-2 lg:grid-cols-[78px_1fr_1fr_54px] lg:gap-3';
+
 /**
  * The bond ladder — design spec §6.
  *
- * Four fixed terms, longest paying most. The bar on each row is the rate against
- * the best rate on offer, so the ladder reads as a slope rather than four numbers
- * you have to compare in your head; the price pair underneath is the same fact in
- * dollars.
+ * A table, not a chart. Four terms is too few to read as a curve — plotted, it looks like a line
+ * with dots on it, and the member still has to read the numbers off the axis. Here the discount is
+ * visible by subtraction, on the row.
+ *
+ * Every row states its own face value rather than leaning on a "per $1,000" caption above the
+ * table. It costs a column and removes a thing to remember: what you pay and what you get sit side
+ * by side, and the yield is the same fact expressed as a rate.
  */
 export default function BondLadder({
   terms,
@@ -24,31 +30,42 @@ export default function BondLadder({
   showBuy?: boolean;
   className?: string;
 }) {
-  const best = terms.reduce((max, t) => Math.max(max, t.rate), 0);
-
   return (
-    <Card className={className}>
+    <Card className={cn('px-[14px] pb-3 pt-1 lg:px-[17px] lg:pb-[15px]', className)}>
+      <div
+        className={cn(
+          COLS,
+          'border-b-[0.5px] border-border pb-2 pt-2.5 text-[10px] text-muted-foreground lg:text-[11px]',
+        )}
+      >
+        <span>Term</span>
+        <span className="text-right">
+          <span className="lg:hidden">Pay</span>
+          <span className="hidden lg:inline">You pay</span>
+        </span>
+        <span className="text-right">
+          <span className="lg:hidden">Get</span>
+          <span className="hidden lg:inline">You get</span>
+        </span>
+        <span className="text-right">Yield</span>
+      </div>
+
       {terms.map((term, i) => (
         <div
           key={term.months}
           className={cn(
-            'grid grid-cols-[52px_1fr_46px] items-center gap-2.5 py-2.5',
+            COLS,
+            'items-center py-2.5 text-xs tabular-nums lg:text-[13px]',
             i < terms.length - 1 && 'border-b-[0.5px] border-border',
           )}
         >
-          <span className="text-xs tabular-nums">{term.months} mo</span>
-          <div>
-            <div className="mb-1 h-1.5 overflow-hidden rounded-[3px] bg-border">
-              <div
-                className="h-full bg-tier-savings"
-                style={{ width: `${best > 0 ? (term.rate / best) * 100 : 0}%` }}
-              />
-            </div>
-            <span className="text-[11px] text-muted-foreground">
-              Pay {money(term.price)} → get {money(term.face)}
-            </span>
-          </div>
-          <span className="text-right text-[13px] tabular-nums">{term.rate.toFixed(1)}%</span>
+          <span>
+            {term.months} <span className="lg:hidden">mo</span>
+            <span className="hidden lg:inline">months</span>
+          </span>
+          <span className="text-right text-muted-foreground">{money(term.price, { cents: true })}</span>
+          <span className="text-right">{money(term.face, { cents: true })}</span>
+          <span className="text-right font-medium">{term.rate.toFixed(1)}%</span>
         </div>
       ))}
 
