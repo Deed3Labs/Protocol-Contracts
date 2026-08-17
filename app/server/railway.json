@@ -4,7 +4,12 @@
     "builder": "DOCKERFILE",
     "dockerfilePath": "Dockerfile",
     "watchPatterns": [
-      "app/server/**"
+      "app/server/**",
+      "src/**",
+      "package.json",
+      "bun.lock",
+      "Dockerfile",
+      "railway.json"
     ]
   },
   "deploy": {
