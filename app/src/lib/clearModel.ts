@@ -42,6 +42,8 @@ export interface Cycle {
   startedOn: string;
   /** e.g. "Nov 1 payday". */
   clearsOn: string;
+  /** When the limit contracts if the cycle doesn't clear, e.g. "Nov 12". */
+  rebalanceBy: string;
 }
 
 /**
@@ -96,6 +98,53 @@ export type CycleStatus = 'secured' | 'covered' | 'short';
 export function cycleStatus(credit: Credit | undefined, expectedDeposit = 0): CycleStatus {
   if (!credit || unsecuredUsed(credit) === 0) return 'secured';
   return cycleShortfall(credit, expectedDeposit) > 0 ? 'short' : 'covered';
+}
+
+export interface RepayLine {
+  tier: CreditTier;
+  /** What this repayment puts against the tier. Zero means the money never reaches it. */
+  applied: number;
+  /** What was drawn on the tier before the repayment. */
+  drawn: number;
+}
+
+/**
+ * How a repayment unwinds across the tiers — design spec §4, "Repay / Move to cash".
+ *
+ * Most expensive first, which is the draw order reversed: tiers fill cheapest-first (rule 7), so
+ * they must empty from the other end or a member would be left paying 3% while their free tier sat
+ * clear. That's also why the footer says so out loud — it's the one thing about this surface a
+ * member can't work out by looking.
+ *
+ * Unsecured tiers are always listed, even when the payment doesn't reach them: the cycle is about
+ * unsecured credit, and a tier left `untouched` is exactly what the member needs to see. Secured
+ * tiers only appear once money actually reaches them, because listing collateralised draw the
+ * payment will never touch would pad the surface with rows that never change.
+ */
+export function repayAllocation(credit: Credit, amount: number): RepayLine[] {
+  const drawn = orderedTiers(credit.tiers)
+    .filter((t) => t.used > 0)
+    .reverse();
+
+  let left = Math.max(0, amount);
+  const lines: RepayLine[] = [];
+
+  for (const tier of drawn) {
+    const applied = Math.min(left, tier.used);
+    left -= applied;
+    if (applied > 0 || !SECURED_TIERS.includes(tier.key)) {
+      lines.push({ tier, applied, drawn: tier.used });
+    }
+  }
+
+  return lines;
+}
+
+/** What a repayment of `amount` puts against the unsecured draw — the part that clears the cycle. */
+export function repaidUnsecured(credit: Credit, amount: number): number {
+  return repayAllocation(credit, amount)
+    .filter((l) => !SECURED_TIERS.includes(l.tier.key))
+    .reduce((sum, l) => sum + l.applied, 0);
 }
 
 /**

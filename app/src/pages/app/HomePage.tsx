@@ -11,6 +11,7 @@ import SavingsSummaryCard from '@/components/clear/SavingsSummaryCard';
 import RecentActivityCard from '@/components/clear/RecentActivityCard';
 import LimitBreakdown from '@/components/clear/LimitBreakdown';
 import AccountDetailsDialog from '@/components/clear/AccountDetailsDialog';
+import RepayDialog from '@/components/clear/RepayDialog';
 import AddBoostDialog from '@/components/clear/AddBoostDialog';
 import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
@@ -46,6 +47,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const [boostOpen, setBoostOpen] = useState(false);
   const [addSavingsOpen, setAddSavingsOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [repayOpen, setRepayOpen] = useState(false);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
 
   // Nothing has ever landed in the account: no cycle running, no savings, no cash.
@@ -86,10 +88,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
     credit: data.credit,
     expectedDeposit: data.cashAccount.nextDepositEstimate,
     depositOn: data.cashAccount.nextDepositOn,
-    // INTERIM: spec §4's Repay / Move to cash modal isn't built yet. Adding money is what actually
-    // resolves a shortfall, so Repay opens that rather than rendering a button that does nothing.
-    // Point this at the repay modal as soon as it exists.
-    onRepay: () => setLinkOpen(true),
+    onRepay: () => setRepayOpen(true),
   };
   const cycleStrip = <CycleCard {...cycleProps} />;
   const cycleCard = <CycleCard {...cycleProps} variant="card" />;
@@ -113,13 +112,16 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
     />
   );
   // Savings opens the same sheet as Save, since that sheet is what places money in the ESA. Earn
-  // routes to the Earn page to choose a product. Back to cash has no backend yet — see below.
+  // routes to the Earn page to choose a product. Back to cash opens the same surface the cycle's
+  // Repay does — spec §4: one modal, and which title it wears depends on the balance, not on which
+  // button was pressed.
   const cash = (
     <CashAccountCard
       account={data.cashAccount}
       onDetails={() => setAccountOpen(true)}
       onAllocateSavings={() => setAddSavingsOpen(true)}
       onAllocateEarn={() => navigate('/earn')}
+      onBackToCash={() => setRepayOpen(true)}
     />
   );
   const activity = <RecentActivityCard rows={data.recent} onSelect={setSelected} />;
@@ -179,6 +181,13 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         />
       )}
       <AccountDetailsDialog account={data.cashAccount} open={accountOpen} onOpenChange={setAccountOpen} />
+      <RepayDialog
+        credit={data.credit}
+        account={data.cashAccount}
+        cycle={data.cycle}
+        open={repayOpen}
+        onOpenChange={setRepayOpen}
+      />
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
       {/* Savings deposit is the same surface Savings uses; the credit limit it
           quotes comes from this page's own tiers so the two can't disagree. */}

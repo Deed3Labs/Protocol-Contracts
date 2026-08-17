@@ -89,7 +89,13 @@ export const HOME_IN_USE: HomeData = {
       { key: 'boost', label: 'Boost', rate: '3% / cycle', ratePerCycle: 0.03, used: 0, limit: 500, added: false },
     ],
   },
-  cycle: { lengthDays: 30, daysLeft: 6, startedOn: 'Oct 13', clearsOn: 'Nov 1 payday' },
+  cycle: {
+    lengthDays: 30,
+    daysLeft: 6,
+    startedOn: 'Oct 13',
+    clearsOn: 'Nov 1 payday',
+    rebalanceBy: 'Nov 12',
+  },
   savings: {
     cash: 3000,
     vested: 1500,
@@ -100,9 +106,10 @@ export const HOME_IN_USE: HomeData = {
   },
   cashAccount: {
     spendable: 0,
-    // Zero is the resting state: money moved on-chain and not yet placed is the exception, not
-    // where a balance lives. The reference is explicit that this normally reads $0.00.
-    readyToAllocate: 0,
+    // $0.00 is the resting state — this member is the exception the spec describes: they parked a
+    // sweep on-chain and never placed it. It's also the money that resolves the cycle, which is why
+    // Repay draws from here rather than from a bank pull that wouldn't land before Nov 12.
+    readyToAllocate: 700,
     nextDepositOn: 'Nov 1',
     // The reduced check. One field feeds both the cash card's sub-line and what the cycle says the
     // deposit covers, so the two can't disagree.
@@ -154,7 +161,7 @@ export const HOME_DAY_ONE: HomeData = {
     carryFreeUnder: 0,
     tiers: HOME_IN_USE.credit.tiers.map((t) => ({ ...t, used: 0, limit: 0, added: false })),
   },
-  cycle: { lengthDays: 30, daysLeft: 0, startedOn: '', clearsOn: '' },
+  cycle: { lengthDays: 30, daysLeft: 0, startedOn: '', clearsOn: '', rebalanceBy: '' },
   savings: { cash: 0, vested: 0, vesting: 0, credits: 0, creditsGoal: 15000 },
   cashAccount: {
     spendable: 0,

@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@/context/ThemeContext';
 import AppChrome from '@/components/shell/AppChrome';
 import CycleCard from '@/components/clear/CycleCard';
+import RepayDialog from '@/components/clear/RepayDialog';
+import { Button } from '@/components/ui/button';
 import HeaderActions from '@/components/shell/HeaderActions';
 import { unreadAlerts, unreadThreads } from '@/lib/clearModel';
 import HomePage from '@/pages/app/HomePage';
@@ -115,6 +117,41 @@ function CyclePreview() {
   );
 }
 
+/**
+ * Repay and Move to cash — the same modal, both ways round.
+ *
+ * Which title it wears depends on whether a balance is in the way, and the placeholder member is
+ * carrying one, so Home can only ever open it as Repay. This is the only place to see the other.
+ */
+function RepayPreview() {
+  const { credit, cashAccount, cycle } = HOME_IN_USE;
+  const [which, setWhich] = useState<'repay' | 'move' | null>(null);
+  const settled = { ...credit, tiers: credit.tiers.map((t) => ({ ...t, used: 0 })) };
+
+  return (
+    <div className="flex flex-col items-start gap-2.5">
+      <p className="text-[11px] uppercase tracking-[0.3px] text-muted-foreground">
+        One modal, two titles
+      </p>
+      <Button variant="clear" size="xs" onClick={() => setWhich('repay')}>
+        Carrying a balance → Repay
+      </Button>
+      <Button variant="clear" size="xs" onClick={() => setWhich('move')}>
+        Nothing outstanding → Move to cash
+      </Button>
+
+      <RepayDialog
+        key={which ?? 'none'}
+        credit={which === 'move' ? settled : credit}
+        account={cashAccount}
+        cycle={cycle}
+        open={which !== null}
+        onOpenChange={(o) => !o && setWhich(null)}
+      />
+    </div>
+  );
+}
+
 /** Onboarding sits outside the app chrome — there's no nav until you're a member. */
 function OnboardingPreview() {
   const [step, setStep] = useState<OnboardingStep>('enter');
@@ -187,6 +224,7 @@ export default function PreviewApp() {
                     <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
                     <Route path="/scan" element={<ScanPage />} />
                     <Route path="/cycle" element={<CyclePreview />} />
+                    <Route path="/repay" element={<RepayPreview />} />
                     <Route path="/learn/:topic" element={<ExplainerPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />

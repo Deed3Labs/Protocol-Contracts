@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { money } from '@/lib/money';
 import { cn } from '@/lib/utils';
@@ -28,20 +29,36 @@ export default function AmountPicker({
   maxAmount?: number;
   editable?: boolean;
 }) {
+  // While the field has focus it holds what was typed, not what that parses to. Reformatting on
+  // every keystroke fights the caret — a typed decimal point vanishes the moment it's entered.
+  // The draft is only honoured while focused, so a caller that changes the amount from outside
+  // (a quick-pick, or reopening the surface) always wins.
+  const [draft, setDraft] = useState('');
+  const [focused, setFocused] = useState(false);
+
   return (
     <>
       <p className="mb-1 text-center text-xs text-foreground-secondary">{label}</p>
       {editable ? (
         <input
-          value={money(amount)}
-          onChange={(e) => onChange(Number(e.target.value.replace(/[^0-9.]/g, '')) || 0)}
+          value={focused ? draft : money(amount, { cents: true })}
+          onFocus={() => {
+            setDraft(String(amount));
+            setFocused(true);
+          }}
+          onBlur={() => setFocused(false)}
+          onChange={(e) => {
+            const typed = e.target.value.replace(/[^0-9.]/g, '');
+            setDraft(typed);
+            onChange(Number(typed) || 0);
+          }}
           inputMode="decimal"
           aria-label={label}
           className="font-display mb-3.5 w-full bg-transparent text-center text-[40px] font-medium leading-none tracking-[-1px] outline-none"
         />
       ) : (
         <p className="font-display mb-3.5 text-center text-[40px] font-medium leading-none tracking-[-1px]">
-          {money(amount)}
+          {money(amount, { cents: true })}
         </p>
       )}
 
