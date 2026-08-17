@@ -130,10 +130,10 @@ Only the second row varies. **Three border levels: accent = something is needed 
 |---|---|---|---|
 | Unsecured, deposit short | `$700.00` | `Nov 1 deposit covers $500.00` / `$200.00 short` + `Repay` | accent |
 | Unsecured, deposit covers | `$700.00` | ✓ `Nov 1 deposit covers it` + `Repay early` | default |
-| Own savings, nothing owed | `$0.00` | `Using $5,400.00 of your own savings` / `Nothing owed · carry cost $10.40 so far` + `Top off` | default |
+| Own savings, nothing owed | `$0.00` | `Using $5,400.00 of your own savings` / `Nothing owed · credits paused while drawn · carry $10.40` + `Top off` | default |
 | All clear | `$0.00` | ✓ `All clear · nothing carried` | green |
 
-State three is deliberately **not** green. The member is spending their own savings — nothing is owed, but it isn't the same as clear: it pauses housing progress and accrues carry on the asset-backed part. `Top off` rather than "pay down", because they didn't borrow.
+State three is deliberately **not** green. The member is spending their own savings — nothing is owed, but it isn't the same as clear: it pauses housing progress and accrues carry on the asset-backed part. The sub-line says so outright (`credits paused while drawn`), because "nothing owed" on its own reads as good news and the paused credits are the actual cost. `Top off` rather than "pay down", because they didn't borrow.
 
 Only the first state asks for anything. The direct-deposit line does real work here: most members are in state two and shouldn't be nudged.
 

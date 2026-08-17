@@ -117,10 +117,11 @@ export default function CycleCard({
                 Using {money(securedUsed(credit), { cents: true })} of your
                 <span className="hidden lg:inline"> own</span> savings
               </p>
+              {/* Naming the paused credits is the whole reason this state isn't green: nothing is
+                  owed, but housing progress has stopped for as long as the savings are drawn. */}
               <p className="mt-[3px] text-[11px] text-muted-foreground">
-                Nothing owed · carry<span className="hidden lg:inline"> cost</span>{' '}
-                {money(credit.carryCost, { cents: true })}
-                <span className="hidden lg:inline"> so far</span>
+                Nothing owed · credits paused<span className="hidden lg:inline"> while drawn</span> ·
+                carry {money(credit.carryCost, { cents: true })}
               </p>
             </div>
             {action('Top off')}
