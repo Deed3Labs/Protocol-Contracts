@@ -1017,6 +1017,7 @@ export interface HomeData {
   tasks: SetupTask[];
   recent: ActivityRow[];
   backing: LimitBacking;
+  termPlans: TermPlans;
 }
 
 /** Tiers are drawn cheapest-first, automatically (rule 7). */
@@ -1128,3 +1129,124 @@ export const TIER_TEXT: Record<TierKey, string> = {
   income: 'text-tier-income-fg',
   boost: 'text-tier-boost-fg',
 };
+
+/* ---- Term plans — design spec §4c -------------------------------------------------------------
+ *
+ * Everything with a set amount and a schedule: a merchant split, a cash plan, a ground lease, an
+ * ELPA mortgage. What makes something a term plan is not its size but what backs it — an ACH
+ * authorisation on a linked external account. That's more direct than a card, and it's why the
+ * co-op can issue to a member who may never route their paycheck to Clear.
+ *
+ * Locked rows are part of the shelf from the first minute, on both signup paths. A member who
+ * joined at a tire counter should see the home on the same shelf as the repair.
+ */
+
+export interface TermPlan {
+  id: string;
+  /** e.g. "Mike's Tire" or "Cash plan". */
+  name: string;
+  /** Merchant plans carry the month they were opened, e.g. "Jun". */
+  openedOn?: string;
+  /**
+   * Outstanding balance. Absent on a locked row — there's nothing to state until it's taken up, and
+   * a `$0.00` would read as a plan with nothing left rather than one never started.
+   */
+  balance?: number;
+  /** How many cycles the amount is spread over. Absent for amortising plans like an ELPA. */
+  splitInto?: number;
+  perCycle?: number;
+  cyclesLeft?: number;
+  /** e.g. "2% / cycle". */
+  rate?: string;
+  /** Long-dated plans count payments instead of cycles left, e.g. "payment 7 of 360". */
+  progressNote?: string;
+  /** What it takes to unlock, e.g. "Unlocks after six clean cycles · 2.5% / cycle". */
+  lockedNote?: string;
+}
+
+export interface LinkedAccount {
+  id: string;
+  /** e.g. "Chase ····4471". */
+  name: string;
+  /** e.g. "Checking · paycheck arrives here". */
+  detail: string;
+}
+
+export interface TermPlans {
+  plans: TermPlan[];
+  /**
+   * Cap on total outstanding across cycle-scale plans, stated beside the headline as "of $X".
+   *
+   * Absent once the shelf carries something this cap was never meant to bound — an ELPA mortgage is
+   * amortising and sits outside it, and "$250,910.00 of $656.00" would be a category error rather
+   * than a limit. The headline simply stops comparing.
+   */
+  balanceLimit?: number;
+  /**
+   * What can be scheduled per cycle, and where it comes from. A different quantity from
+   * `balanceLimit` — this one paces the schedule, that one caps the debt — so they get separate
+   * fields and separate places on the card.
+   */
+  perCycleLimit?: number;
+  limitNote?: string;
+  /** Linked accounts the ACH fallback can draw on, and which one is active. */
+  accounts: LinkedAccount[];
+  clearsFromId?: string;
+  /** The splits offered at checkout, e.g. [1, 2, 4, 12]. */
+  splitOptions: number[];
+}
+
+/** A plan is live once it has a balance; everything else on the shelf is a locked row. */
+export function isPlanActive(plan: TermPlan): boolean {
+  return plan.balance !== undefined;
+}
+
+export function activePlans(data: TermPlans): TermPlan[] {
+  return data.plans.filter(isPlanActive);
+}
+
+/**
+ * What's outstanding across every live plan.
+ *
+ * Summed rather than stated, so the headline can't drift from the rows beneath it — which is
+ * exactly what the reference mockups did between their desktop and mobile drafts.
+ */
+export function termPlansTotal(data: TermPlans): number {
+  return activePlans(data).reduce((sum, p) => sum + (p.balance ?? 0), 0);
+}
+
+export function clearsFromAccount(data: TermPlans): LinkedAccount | undefined {
+  return data.accounts.find((a) => a.id === data.clearsFromId);
+}
+
+/** "Balance, then Chase ····4471" — the co-op's money comes first, always. */
+export function clearsFromLabel(data: TermPlans): string {
+  const account = clearsFromAccount(data);
+  return account ? `Balance, then ${account.name}` : 'Balance only';
+}
+
+export interface SplitQuote {
+  /** 1 means clearing it outright, with no carry at all. */
+  splitInto: number;
+  perCycle: number;
+  /** Total carry over the life of the plan. Zero when paid in full. */
+  carry: number;
+}
+
+/**
+ * What a given split costs — design spec §4c, "Choosing the split".
+ *
+ * Carry accrues by time held and there's no fixed due date, so spreading further always costs more
+ * and clearing early always costs less. Stating the total carry per option is what makes the choice
+ * honest: the number does the work a warning would otherwise have to.
+ *
+ * Charged on the balance still outstanding each cycle, which for an even split is the average of
+ * what's owed at the start and at the end — hence the (n + 1) / 2 term rather than n.
+ */
+export function splitQuote(amount: number, splitInto: number, ratePerCycle: number): SplitQuote {
+  const cycles = Math.max(1, splitInto);
+  const perCycle = amount / cycles;
+  // Paying in full clears before any cycle elapses, so nothing accrues.
+  const carry = cycles === 1 ? 0 : amount * ratePerCycle * ((cycles + 1) / 2);
+  return { splitInto: cycles, perCycle, carry };
+}

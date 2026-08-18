@@ -4,6 +4,7 @@ import { ThemeProvider } from '@/context/ThemeContext';
 import AppChrome from '@/components/shell/AppChrome';
 import CycleCard from '@/components/clear/CycleCard';
 import RepayDialog from '@/components/clear/RepayDialog';
+import TermPlansCard from '@/components/clear/TermPlansCard';
 import { Button } from '@/components/ui/button';
 import HeaderActions from '@/components/shell/HeaderActions';
 import { unreadAlerts, unreadThreads } from '@/lib/clearModel';
@@ -147,6 +148,53 @@ function RepayPreview() {
   );
 }
 
+/**
+ * The term-plan shelf across its three moments — the harness equivalent of the reference's own
+ * section. Home only ever shows one member's shelf, and none of them is the empty one.
+ */
+function TermPlansPreview() {
+  const joined = HOME_IN_USE.termPlans;
+  // Years in: a dental split nearly done, a cash plan mid-way, and the home actually bought. Ordered
+  // by how soon the member reaches them, not by size — which is why a $248k mortgage sits last.
+  const later = {
+    ...joined,
+    plans: [
+      { id: 'valley-dental', name: 'Valley Dental', openedOn: 'May', balance: 410, splitInto: 2, perCycle: 205, cyclesLeft: 1, rate: '2% / cycle' },
+      { id: 'cash-plan', name: 'Cash plan', balance: 2500, splitInto: 12, perCycle: 208.33, cyclesLeft: 9, rate: '2.5% / cycle' },
+      { id: 'elpa', name: 'ELPA · 1042 Julia St', balance: 248000, perCycle: 1410, progressNote: 'payment 7 of 360' },
+    ],
+    // No balance cap once the mortgage is on the shelf — it was never inside one.
+    balanceLimit: undefined,
+  };
+  const shelves = [
+    {
+      name: 'joined at a merchant',
+      data: {
+        ...joined,
+        plans: [joined.plans[0], ...HOME_DAY_ONE.termPlans.plans.slice(1)],
+        balanceLimit: 1500,
+      },
+    },
+    { name: 'signed up directly — everything locked', data: HOME_DAY_ONE.termPlans },
+    { name: 'later — three active plans', data: later },
+  ];
+
+  return (
+    <div className="flex flex-col gap-5">
+      {shelves.map((s) => (
+        <div key={s.name}>
+          <p className="mb-2 text-[11px] uppercase tracking-[0.3px] text-muted-foreground">
+            {s.name}
+          </p>
+          <div className="max-w-[400px]">
+            <TermPlansCard data={s.data} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Onboarding sits outside the app chrome — there's no nav until you're a member. */
 function OnboardingPreview() {
   const [step, setStep] = useState<OnboardingStep>('enter');
@@ -220,6 +268,7 @@ export default function PreviewApp() {
                     <Route path="/scan" element={<ScanPage />} />
                     <Route path="/cycle" element={<CyclePreview />} />
                     <Route path="/repay" element={<RepayPreview />} />
+                    <Route path="/term-plans" element={<TermPlansPreview />} />
                     <Route path="/learn/:topic" element={<ExplainerPage />} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />

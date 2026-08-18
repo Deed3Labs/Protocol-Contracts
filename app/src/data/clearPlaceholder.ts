@@ -18,6 +18,8 @@ import type {
   PartnersData,
   YieldPool,
   HeldBond,
+  TermPlan,
+  LinkedAccount,
 } from '@/lib/clearModel';
 import { assetBackedLimit } from '@/lib/clearModel';
 
@@ -59,6 +61,39 @@ const ASSET_BACKED_LIMIT = assetBackedLimit({
  * as props, and these are what the preview harness passes in. Swap for the real
  * contexts (useClearBalances / useClearTransactions / CreditContext) when wiring.
  */
+
+/**
+ * The linked accounts the ACH fallback can draw on — spec §4c. An external account is what backs a
+ * term plan, so this list is the product's collateral, not a convenience setting.
+ */
+const LINKED_ACCOUNTS: LinkedAccount[] = [
+  { id: 'chase', name: 'Chase ····4471', detail: 'Checking · paycheck arrives here' },
+  { id: 'golden1', name: 'Golden 1 ····8802', detail: 'Savings' },
+];
+
+const SPLIT_OPTIONS = [1, 2, 4, 12];
+
+/**
+ * The locked rows, which every member sees from the first minute regardless of how they signed up.
+ * Each states its own unlock condition — that's what makes the shelf teach rather than tease.
+ */
+const LOCKED_PLANS: TermPlan[] = [
+  {
+    id: 'cash-plan',
+    name: 'Cash plan',
+    lockedNote: 'Unlocks after six clean cycles · 2.5% / cycle',
+  },
+  {
+    id: 'ground-lease',
+    name: 'Ground lease — your backyard',
+    lockedNote: 'For members who own their home',
+  },
+  {
+    id: 'elpa',
+    name: 'ELPA — buy a home',
+    lockedNote: '1,500 of 15,000 credits · on track for Feb 2028',
+  },
+];
 
 /**
  * "In use" — cash spent to zero, credit engaged (spec §4), and the cycle in its **third state**:
@@ -150,6 +185,37 @@ export const HOME_IN_USE: HomeData = {
       },
     ],
   },
+  // Two live splits and the home still locked — the shelf a member sees a few months in.
+  termPlans: {
+    plans: [
+      {
+        id: 'mikes-tire',
+        name: "Mike's Tire",
+        openedOn: 'Jun',
+        balance: 940,
+        splitInto: 4,
+        perCycle: 235,
+        cyclesLeft: 2,
+        rate: '2% / cycle',
+      },
+      {
+        id: 'cash-plan',
+        name: 'Cash plan',
+        balance: 410,
+        splitInto: 2,
+        perCycle: 205,
+        cyclesLeft: 1,
+        rate: '2.5% / cycle',
+      },
+      LOCKED_PLANS[2],
+    ],
+    balanceLimit: 3000,
+    perCycleLimit: 656,
+    limitNote: 'from money in and out',
+    accounts: LINKED_ACCOUNTS,
+    clearsFromId: 'chase',
+    splitOptions: SPLIT_OPTIONS,
+  },
 };
 
 /** "Day one" — account created, nothing deposited yet (spec §4). */
@@ -181,6 +247,22 @@ export const HOME_DAY_ONE: HomeData = {
   ],
   recent: [],
   backing: { assetBacked: [], unsecured: [] },
+  // Signed up directly: the whole shelf is locked, and partner credit leads because it's the row
+  // this member is most likely to reach first.
+  termPlans: {
+    plans: [
+      {
+        id: 'partner-credit',
+        name: 'Partner credit',
+        lockedNote: 'Unlocks with a linked account · at partner shops · 2% / cycle',
+      },
+      LOCKED_PLANS[0],
+      LOCKED_PLANS[1],
+      { ...LOCKED_PLANS[2], lockedNote: '0 of 15,000 credits' },
+    ],
+    accounts: [],
+    splitOptions: SPLIT_OPTIONS,
+  },
 };
 
 /**

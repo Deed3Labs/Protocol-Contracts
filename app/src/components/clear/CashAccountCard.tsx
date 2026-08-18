@@ -40,7 +40,9 @@ export default function CashAccountCard({
     <Card>
       <div className="flex items-baseline justify-between gap-3">
         <span className="text-[13px] text-foreground-secondary">Spendable</span>
-        <span className="text-[20px] font-medium tabular-nums">
+        {/* Same size as Clear credit's and Term plans' headline values — three cards now stack in
+            this column, and a taller figure here would rank Spendable above them for no reason. */}
+        <span className="text-[17px] font-medium tabular-nums">
           {money(account.spendable, { cents: true })}
         </span>
       </div>

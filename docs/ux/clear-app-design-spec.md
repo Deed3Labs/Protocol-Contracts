@@ -110,11 +110,11 @@ These are product decisions, not styling. Do not deviate.
 - Balance block left (`40px` value), **quick actions** right in a 2×2 grid: Add money · Send · Save · Pay
 - **Cycle strip** full width — see §4b
 - Task strip (accent background) if any tasks pending
-- 2-col grid: **Clear credit** left | **Cash account** stacked over **Savings** right. The Savings card mirrors the Savings page: composition bar, two legend lines, credits progress, and the projected date.
+- 2-col grid: **Clear credit** stacked over **Term plans** left | **Cash account** stacked over **Savings** right. The Savings card mirrors the Savings page: composition bar, two legend lines, credits progress, and the projected date.
 - **Recent activity** full width, 5 rows, showing the **tier name** per row rather than a generic "credit"
 
 ### Mobile layout
-Stack in order: balance → task strip → cycle → cash account → clear credit → savings → recent activity → (floating nav)
+Stack in order: balance → task strip → cycle → cash account → clear credit → **term plans** → savings → recent activity → (floating nav)
 
 ### Cycle strip
 
@@ -185,6 +185,36 @@ Grouped into **ASSET-BACKED** and **UNSECURED** headers. Each row: name, contrib
 
 Boost sits in the UNSECURED group but is **excluded from both the group subtotal and the total limit** until added — its row shows an inline `Add $500` button instead of a contribution figure. Group subtotals and the total must always sum from the rows shown.
 
+## 4c. Term plans — the fixed-term shelf
+
+Everything with a **set amount and a schedule** lives here, beneath Clear credit: a merchant split, a cash plan, a ground lease, an ELPA mortgage. What makes an item a term plan is **what backs it** — an ACH authorisation on a linked external account. That's more direct than a card, and it's why the co-op is comfortable issuing to a member who may never route their paycheck to Clear.
+
+Clearing is the same system as everywhere else: **balance first, then the linked account**. There is no fixed due date and carry accrues by time held, so **clearing early always costs less**.
+
+**Locked rows are visible from the first minute, on both signup paths**, each stating its own unlock condition. A member who joined at a tire counter sees the home on the same shelf as the repair; a member who signed up directly learns what partner credit is before meeting a merchant. This is the point of the component, not a side effect of it.
+
+**No bars anywhere.** Every figure here is an amount or a count.
+
+**Card:** label + headline total, then the rows, then footer subrows.
+
+- Headline is the sum of live plan balances, with `of $X` against the **balance cap** when one applies. The cap drops off once the shelf carries something it was never meant to bound — an ELPA is amortising and sits outside it, and `$250,910.00 of $656.00` would be a category error.
+- Active row: name (+ month opened) and balance, over `Split in 4 · $235.00 a cycle · 2 left · 2% / cycle`. Amortising plans count payments instead: `$1,410.00 a cycle · payment 7 of 360`.
+- Locked row at 55% opacity: name and `Locked`, over the unlock condition.
+- Footer subrows are **full-width tap targets** with a chevron — a footnote-sized link is a poor one. `Limit` (`$656.00 a cycle · from money in and out`) and `Clears from` (`Balance, then Chase ····4471`). The per-cycle limit and the balance cap are different quantities and get different places on the card.
+- Empty state: `$0.00` muted, every row locked, footer reads `Nothing scheduled yet`.
+- Ordered by **how soon a member reaches them**, not by size — which is why a $248k mortgage sits last.
+- On Home the `Limit` subrow drops out; the credit limit is already stated directly above it.
+
+### Choosing the split (modal)
+Offered at checkout and changeable any time after. Amount headline, then `HOW TO CLEAR IT` with `In full` / `In 2` / `In 4` / `In 12`, then three rows: `Each cycle` · `Carry, total` · `Done by`. Footer: *"Clearing early always costs less. You can change this any time."*
+
+The three figures are what make the choice honest — spreading further costs more and the carry line says so in dollars, so no warning is needed. Carry is charged on what's still outstanding each cycle, which for an even split is `amount × rate × (n + 1) / 2`; paying in full clears before any cycle elapses, so it's zero.
+
+### Payment account (modal, from the `Clears from` subrow)
+Leads with *"Your Clear balance is always used first. This is where the rest comes from."* — otherwise picking an account reads as choosing who gets paid. Selectable linked accounts, the active one carrying `--border-accent` and a check. `Link another account`, then: *"Changing this applies to every term plan. Nothing scheduled is missed — the next clearing uses the new account."*
+
+Same list as Settings › Linked accounts, scoped to the ACH fallback.
+
 ### Cash account card — two parts
 
 The account holds money on two rails, and the card must make the difference legible without naming the rails. Members don't care about Lithic vs chain; they care what each can do.
@@ -194,7 +224,7 @@ The account holds money on two rails, and the card must make the difference legi
 | **Spendable** | Fiat in the bank account | `Spendable` — headline figure | Card, payments, bills |
 | **Ready to allocate** | USDC moved on-chain, not yet placed | `Ready to allocate` | Savings and Earn only — **never the card** |
 
-**Layout:** Spendable is the hero — label left, amount right at 20px. Directly beneath, a **split sub-line**: `Card and payments` left, `[next deposit date] · ~$X` right. Nothing runs the full width under the balance; a single long sub-line visually merges with the number above it and was the flaw in the first version of this card.
+**Layout:** Spendable is the hero — label left, amount right at 17px, the same size as Clear credit's and Term plans' headline values so the three cards in that column rank equally. Directly beneath, a **split sub-line**: `Card and payments` left, `[next deposit date] · ~$X` right. Nothing runs the full width under the balance; a single long sub-line visually merges with the number above it and was the flaw in the first version of this card.
 
 - **Spendable reads `$0.00` in the reference's Home state**, because that screen shows a member who has exhausted cash and is on credit. The cash figure must always agree with the credit bar and the available-to-spend line on the same screen.
 - Ready to allocate sits below a divider. **At $0.00 it renders as a single muted row** — label and amount only, no sub-line, no actions. Present so the model is learnable, quiet so it isn't clutter. Non-zero, it expands **in place** — same shape as Spendable, with its own split sub-line (`Savings and Earn only` left, `Not spendable on your card` right) and three actions beneath: `Savings`, `Earn`, `Back to cash`. **No nested card.** A card inside a card reads as a foreign element; the two parts of one account should share one surface.

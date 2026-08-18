@@ -12,6 +12,9 @@ import RecentActivityCard from '@/components/clear/RecentActivityCard';
 import LimitBreakdown from '@/components/clear/LimitBreakdown';
 import AccountDetailsDialog from '@/components/clear/AccountDetailsDialog';
 import RepayDialog from '@/components/clear/RepayDialog';
+import TermPlansCard from '@/components/clear/TermPlansCard';
+import SplitPlanDialog from '@/components/clear/SplitPlanDialog';
+import PaymentAccountDialog from '@/components/clear/PaymentAccountDialog';
 import AddBoostDialog from '@/components/clear/AddBoostDialog';
 import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
@@ -24,6 +27,7 @@ import {
   savingsTotal,
   type ActivityRow,
   type HomeData,
+  type TermPlan,
 } from '@/lib/clearModel';
 
 /**
@@ -48,6 +52,8 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const [addSavingsOpen, setAddSavingsOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [repayOpen, setRepayOpen] = useState(false);
+  const [payAccountOpen, setPayAccountOpen] = useState(false);
+  const [plan, setPlan] = useState<TermPlan | null>(null);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
 
   // Nothing has ever landed in the account: no cycle running, no savings, no cash.
@@ -126,6 +132,16 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       onBackToCash={() => setRepayOpen(true)}
     />
   );
+  // Sits under Clear credit in both layouts — spec §4c, one shelf for everything with a schedule.
+  // Home doesn't repeat the Limit subrow; the credit limit is already stated directly above it.
+  const termPlans = (
+    <TermPlansCard
+      data={data.termPlans}
+      showLimit={false}
+      onPlan={setPlan}
+      onClearsFrom={() => setPayAccountOpen(true)}
+    />
+  );
   const activity = <RecentActivityCard rows={data.recent} onSelect={setSelected} />;
 
   return (
@@ -139,6 +155,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         {cycle}
         {cash}
         {credit}
+        {termPlans}
         {savings}
         {activity}
       </div>
@@ -154,7 +171,10 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         <div className="mb-3">{cycle}</div>
         {taskStrip}
         <div className="mt-3.5 grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start gap-3">
-          {credit}
+          <div className="flex flex-col gap-3">
+            {credit}
+            {termPlans}
+          </div>
           <div className="flex flex-col gap-3">
             {cash}
             {savings}
@@ -191,6 +211,26 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         onOpenChange={setRepayOpen}
       />
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
+      <PaymentAccountDialog
+        accounts={data.termPlans.accounts}
+        selectedId={data.termPlans.clearsFromId}
+        open={payAccountOpen}
+        onOpenChange={setPayAccountOpen}
+        onLink={() => {
+          setPayAccountOpen(false);
+          setLinkOpen(true);
+        }}
+      />
+      {plan && (
+        <SplitPlanDialog
+          plan={plan}
+          options={data.termPlans.splitOptions}
+          ratePerCycle={0.02}
+          doneBy={(splitInto) => `${splitInto} cycle${splitInto === 1 ? '' : 's'} from now`}
+          open={plan !== null}
+          onOpenChange={(o) => !o && setPlan(null)}
+        />
+      )}
       {/* Savings deposit is the same surface Savings uses; the credit limit it
           quotes comes from this page's own tiers so the two can't disagree. */}
       <AddToSavingsDialog
