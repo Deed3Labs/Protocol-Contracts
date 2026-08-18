@@ -67,8 +67,14 @@ const ASSET_BACKED_LIMIT = assetBackedLimit({
  * term plan, so this list is the product's collateral, not a convenience setting.
  */
 const LINKED_ACCOUNTS: LinkedAccount[] = [
-  { id: 'chase', name: 'Chase ····4471', detail: 'Checking · paycheck arrives here' },
-  { id: 'golden1', name: 'Golden 1 ····8802', detail: 'Savings' },
+  {
+    id: 'chase',
+    name: 'Chase ····4471',
+    detail: 'Checking · paycheck arrives here',
+    kind: 'Checking',
+    readForLimit: true,
+  },
+  { id: 'golden1', name: 'Golden 1 ····8802', detail: 'Savings', kind: 'Savings' },
 ];
 
 const SPLIT_OPTIONS = [1, 2, 4, 12];

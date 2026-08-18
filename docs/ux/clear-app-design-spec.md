@@ -200,10 +200,9 @@ Clearing is the same system as everywhere else: **balance first, then the linked
 - Headline is the sum of live plan balances, with `of $X` against the **balance cap** when one applies. The cap drops off once the shelf carries something it was never meant to bound — an ELPA is amortising and sits outside it, and `$250,910.00 of $656.00` would be a category error.
 - Active row: name (+ month opened) and balance, over `Split in 4 · $235.00 a cycle · 2 left · 2% / cycle`. Amortising plans count payments instead: `$1,410.00 a cycle · payment 7 of 360`.
 - Locked row at 55% opacity: name and `Locked`, over the unlock condition.
-- Footer subrows are **full-width tap targets** with a chevron — a footnote-sized link is a poor one. `Limit` (`$656.00 a cycle · from money in and out`) and `Clears from` (`Balance, then Chase ····4471`). The per-cycle limit and the balance cap are different quantities and get different places on the card.
-- Empty state: `$0.00` muted, every row locked, footer reads `Nothing scheduled yet`.
+- Footer is **two cells side by side**, split by a hairline: `Limit $656.00/cycle` and `Clears from Chase ····4471`, each a tap target with its own chevron. The label sits inline ahead of its value rather than opposite it, which is what lets two fit on a phone without either becoming a footnote-sized target; values truncate with an ellipsis. Both cells are always present — either alone leaves the other a mystery.
+- Empty state: `$0.00` muted, every row locked, footer reads `Nothing scheduled yet` — no cells.
 - Ordered by **how soon a member reaches them**, not by size — which is why a $248k mortgage sits last.
-- On Home the `Limit` subrow drops out; the credit limit is already stated directly above it.
 
 ### Choosing the split (modal)
 Offered at checkout and changeable any time after. Amount headline, then `HOW TO CLEAR IT · 2% A CYCLE ON WHAT YOU STILL OWE` — the rate stated once, with what it's charged on, rather than repeated per row leaving the member to guess whether it applies to the original amount or the balance. Then `In full` / `In 2` / `In 4` / `In 12` and five rows:
@@ -224,7 +223,19 @@ The three figures are what make the choice honest — spreading further costs mo
 
 Picking an option only previews it. **A `Save changes` button commits**, disabled while the selection matches what the plan is already on — a schedule that rewrote itself under the member's finger would be the wrong kind of responsive.
 
-### Payment account (modal, from the `Clears from` subrow)
+### Your term limit (modal, from the `Limit` cell)
+Leads with *"Set by money moving in and out of your accounts — not a credit score."* — the assumption otherwise is a score, and the whole point is that it isn't one.
+
+**Two constraints, and the lower one applies. Both are shown**, because a member who sees only the binding figure can't tell what would move it — and the two move for different reasons:
+
+| Constraint | Note |
+|---|---|
+| `Payments a cycle` — `$459.44 of $656.00` | *"Across every open plan."* |
+| `Total open at once` — `$1,350.00 of $3,000.00` | *"A ceiling regardless of income."* |
+
+Whichever sits closer to its ceiling carries `--border-accent` and gains *"This is the one binding you now."* Then `READ FROM` listing the accounts the limit is read from plus the Clear balance, `Manage linked accounts`, and: *"It grows as steady money moves through your accounts and plans clear on time. Nothing to apply for."*
+
+### Payment account (modal, from the `Clears from` cell)
 Leads with *"Your Clear balance is always used first. This is where the rest comes from."* — otherwise picking an account reads as choosing who gets paid. Selectable linked accounts, the active one carrying `--border-accent` and a check. `Link another account`, then: *"Changing this applies to every term plan. Nothing scheduled is missed — the next clearing uses the new account."*
 
 Selecting a row previews it; **`Save changes` commits**, and it applies to every term plan at once — too broad to happen on a tap.

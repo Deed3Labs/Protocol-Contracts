@@ -33,23 +33,35 @@ function planDetail(plan: TermPlan): string {
     .join(' · ');
 }
 
-/** A footer subrow. Full width, because a footnote-sized link is a poor tap target. */
-function SubRow({ label, value, onSelect }: { label: string; value: string; onSelect?: () => void }) {
+/**
+ * One half of the footer. The label sits inline ahead of its value rather than opposite it, so two
+ * of these fit side by side on a phone without either becoming a footnote-sized tap target.
+ */
+function FooterCell({
+  label,
+  value,
+  onSelect,
+  className,
+}: {
+  label: string;
+  value: string;
+  onSelect?: () => void;
+  className?: string;
+}) {
   return (
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-center justify-between gap-3 text-left"
+      className={cn('flex min-w-0 items-center justify-between gap-1.5 text-left', className)}
     >
-      <span className="shrink-0 text-[11px] text-muted-foreground">{label}</span>
-      <span className="flex min-w-0 items-center gap-[5px] text-[11px]">
-        <span className="truncate">{value}</span>
-        <ChevronRight
-          className="h-[11px] w-[11px] shrink-0 text-muted-foreground"
-          strokeWidth={2.2}
-          aria-hidden
-        />
+      <span className="truncate text-[11.5px]">
+        <span className="text-muted-foreground">{label}</span> {value}
       </span>
+      <ChevronRight
+        className="h-2.5 w-2.5 shrink-0 text-muted-foreground"
+        strokeWidth={2.4}
+        aria-hidden
+      />
     </button>
   );
 }
@@ -74,15 +86,12 @@ export default function TermPlansCard({
   onPlan,
   onLimit,
   onClearsFrom,
-  /** Home already carries the credit limit above this card; the shelf's own page states it here. */
-  showLimit = true,
   className,
 }: {
   data: TermPlans;
   onPlan?: (plan: TermPlan) => void;
   onLimit?: () => void;
   onClearsFrom?: () => void;
-  showLimit?: boolean;
   className?: string;
 }) {
   const total = termPlansTotal(data);
@@ -153,15 +162,25 @@ export default function TermPlansCard({
       </div>
 
       {scheduled ? (
-        <div className="mt-2.5 space-y-2 border-t-[0.5px] border-border pt-2.5">
-          {showLimit && data.perCycleLimit !== undefined && (
-            <SubRow
-              label="Limit"
-              value={`${money(data.perCycleLimit, { cents: true })} a cycle${data.limitNote ? ` · ${data.limitNote}` : ''}`}
-              onSelect={onLimit}
-            />
-          )}
-          <SubRow label="Clears from" value={clearsFromLabel(data)} onSelect={onClearsFrom} />
+        // Two cells, split by a hairline. Both facts are always here — what the member can schedule
+        // and where it comes out of — because either alone leaves the other a mystery.
+        <div className="mt-3 grid grid-cols-2 border-t-[0.5px] border-border pt-[11px]">
+          <FooterCell
+            label="Limit"
+            value={
+              data.perCycleLimit !== undefined
+                ? `${money(data.perCycleLimit, { cents: true })}/cycle`
+                : 'Not set'
+            }
+            onSelect={onLimit}
+            className="pr-3.5"
+          />
+          <FooterCell
+            label="Clears from"
+            value={clearsFromLabel(data)}
+            onSelect={onClearsFrom}
+            className="border-l-[0.5px] border-border pl-3.5"
+          />
         </div>
       ) : (
         <div className="mt-2.5 border-t-[0.5px] border-border pt-2.5">

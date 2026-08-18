@@ -1172,6 +1172,10 @@ export interface LinkedAccount {
   name: string;
   /** e.g. "Checking · paycheck arrives here". */
   detail: string;
+  /** Short kind, e.g. "Checking". */
+  kind: string;
+  /** Whether the limit is read from this account's flow. Not every linked account is. */
+  readForLimit?: boolean;
 }
 
 export interface TermPlans {
@@ -1221,10 +1225,34 @@ export function clearsFromAccount(data: TermPlans): LinkedAccount | undefined {
   return data.accounts.find((a) => a.id === data.clearsFromId);
 }
 
-/** "Balance, then Chase ····4471" — the co-op's money comes first, always. */
+/**
+ * What the footer's "Clears from" cell names.
+ *
+ * Just the account. The Clear balance always goes first and the modal behind this says so, but the
+ * cell has room for one fact and the useful one is which bank the rest comes out of.
+ */
 export function clearsFromLabel(data: TermPlans): string {
-  const account = clearsFromAccount(data);
-  return account ? `Balance, then ${account.name}` : 'Balance only';
+  return clearsFromAccount(data)?.name ?? 'Balance only';
+}
+
+/** What every open plan bills in a cycle, together — the figure the per-cycle limit binds. */
+export function termPlansPerCycle(data: TermPlans): number {
+  return activePlans(data).reduce((sum, p) => sum + (planPerCycle(p) ?? 0), 0);
+}
+
+/**
+ * Which of the two limits is actually binding — spec §4c, "Your term limit".
+ *
+ * Two constraints, and the lower one applies: what can be scheduled per cycle, and how much can be
+ * open at once. Whichever is closer to its ceiling is the one holding the member back, and it's the
+ * one that carries the accent. Both are still shown, because a member who only sees the binding one
+ * can't tell what would move it.
+ */
+export function bindingTermLimit(data: TermPlans): 'perCycle' | 'balance' | undefined {
+  const perCycle = data.perCycleLimit ? termPlansPerCycle(data) / data.perCycleLimit : -1;
+  const balance = data.balanceLimit ? termPlansTotal(data) / data.balanceLimit : -1;
+  if (perCycle < 0 && balance < 0) return undefined;
+  return perCycle >= balance ? 'perCycle' : 'balance';
 }
 
 export interface SplitQuote {

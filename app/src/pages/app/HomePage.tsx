@@ -15,6 +15,7 @@ import RepayDialog from '@/components/clear/RepayDialog';
 import TermPlansCard from '@/components/clear/TermPlansCard';
 import SplitPlanDialog from '@/components/clear/SplitPlanDialog';
 import PaymentAccountDialog from '@/components/clear/PaymentAccountDialog';
+import TermLimitDialog from '@/components/clear/TermLimitDialog';
 import AddBoostDialog from '@/components/clear/AddBoostDialog';
 import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
@@ -52,6 +53,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [repayOpen, setRepayOpen] = useState(false);
   const [payAccountOpen, setPayAccountOpen] = useState(false);
+  const [termLimitOpen, setTermLimitOpen] = useState(false);
   // Edits made in the term-plan modals, held here so Save has something to change. The placeholder
   // data is static; these are what a backend would persist.
   const [planId, setPlanId] = useState<string | null>(null);
@@ -149,12 +151,11 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
     />
   );
   // Sits under Clear credit in both layouts — spec §4c, one shelf for everything with a schedule.
-  // Home doesn't repeat the Limit subrow; the credit limit is already stated directly above it.
   const termPlans = (
     <TermPlansCard
       data={termPlansData}
-      showLimit={false}
       onPlan={(p) => setPlanId(p.id)}
+      onLimit={() => setTermLimitOpen(true)}
       onClearsFrom={() => setPayAccountOpen(true)}
     />
   );
@@ -227,6 +228,15 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         onOpenChange={setRepayOpen}
       />
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
+      <TermLimitDialog
+        data={termPlansData}
+        open={termLimitOpen}
+        onOpenChange={setTermLimitOpen}
+        onManageAccounts={() => {
+          setTermLimitOpen(false);
+          setPayAccountOpen(true);
+        }}
+      />
       <PaymentAccountDialog
         accounts={termPlansData.accounts}
         selectedId={clearsFromId}
