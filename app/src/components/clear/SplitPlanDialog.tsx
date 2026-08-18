@@ -23,6 +23,7 @@ export default function SplitPlanDialog({
   options,
   ratePerCycle,
   doneBy,
+  onSave,
   open,
   onOpenChange,
 }: {
@@ -32,6 +33,8 @@ export default function SplitPlanDialog({
   ratePerCycle: number;
   /** When the currently chosen split finishes, e.g. "Mar 14". */
   doneBy: (splitInto: number) => string;
+  /** Commit the chosen split. Nothing changes until this runs — see the Save button below. */
+  onSave?: (splitInto: number) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -84,11 +87,28 @@ export default function SplitPlanDialog({
             {plan.rate && <span className="text-muted-foreground"> · {plan.rate}</span>}
           </span>
         </div>
+        {/* The carry above is the cost on its own; this is what the plan comes to altogether. Both
+            belong here — one answers what the credit costs, the other what actually gets paid. */}
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-foreground-secondary">Total</span>
+          <span className="tabular-nums">{money(quote.total, { cents: true })}</span>
+        </div>
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-foreground-secondary">Done by</span>
           <span>{doneBy(splitInto)}</span>
         </div>
       </div>
+
+      {/* Picking an option previews it; nothing moves until this is pressed. A schedule that
+          rewrote itself under the member's finger would be the wrong kind of responsive. */}
+      <Button
+        size="sm"
+        className="mt-3.5 w-full"
+        disabled={splitInto === plan.splitInto}
+        onClick={() => onSave?.(splitInto)}
+      >
+        {splitInto === plan.splitInto ? 'No changes' : 'Save changes'}
+      </Button>
 
       <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
         Clearing early always costs less. You can change this any time.

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { CircleCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Modal from './Modal';
@@ -14,18 +15,26 @@ import { cn } from '@/lib/utils';
 export default function PaymentAccountDialog({
   accounts,
   selectedId,
-  onSelect,
+  onSave,
   onLink,
   open,
   onOpenChange,
 }: {
   accounts: LinkedAccount[];
   selectedId?: string;
-  onSelect?: (id: string) => void;
+  /** Commit the choice. Picking a row only previews it — this is what applies it to every plan. */
+  onSave?: (id: string) => void;
   onLink?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [picked, setPicked] = useState(selectedId);
+
+  // Reopening should show the account that's actually in force, not the last one auditioned.
+  useEffect(() => {
+    if (open) setPicked(selectedId);
+  }, [open, selectedId]);
+
   return (
     <Modal
       open={open}
@@ -39,13 +48,13 @@ export default function PaymentAccountDialog({
 
       <div className="mb-3.5 space-y-2">
         {accounts.map((account) => {
-          const selected = account.id === selectedId;
+          const selected = account.id === picked;
           return (
             <button
               key={account.id}
               type="button"
               aria-pressed={selected}
-              onClick={() => onSelect?.(account.id)}
+              onClick={() => setPicked(account.id)}
               className={cn(
                 'flex w-full items-center justify-between gap-3 rounded-[10px] border-[0.5px] px-3.5 py-[11px] text-left',
                 selected ? 'border-tier-boost' : 'border-border',
@@ -67,6 +76,16 @@ export default function PaymentAccountDialog({
 
       <Button variant="clear" size="xs" className="mb-2.5 w-full" onClick={onLink}>
         Link another account
+      </Button>
+      {/* This applies to every plan at once, so it's an explicit commit rather than something that
+          happens the moment a row is tapped. */}
+      <Button
+        size="sm"
+        className="mb-2.5 w-full"
+        disabled={picked === selectedId || picked === undefined}
+        onClick={() => picked && onSave?.(picked)}
+      >
+        {picked === selectedId ? 'No changes' : 'Save changes'}
       </Button>
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         Changing this applies to every term plan. Nothing scheduled is missed — the next clearing

@@ -27,7 +27,6 @@ import {
   savingsTotal,
   type ActivityRow,
   type HomeData,
-  type TermPlan,
 } from '@/lib/clearModel';
 
 /**
@@ -53,7 +52,11 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const [linkOpen, setLinkOpen] = useState(false);
   const [repayOpen, setRepayOpen] = useState(false);
   const [payAccountOpen, setPayAccountOpen] = useState(false);
-  const [plan, setPlan] = useState<TermPlan | null>(null);
+  // Edits made in the term-plan modals, held here so Save has something to change. The placeholder
+  // data is static; these are what a backend would persist.
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [splits, setSplits] = useState<Record<string, number>>({});
+  const [clearsFromId, setClearsFromId] = useState(data.termPlans.clearsFromId);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
 
   // Nothing has ever landed in the account: no cycle running, no savings, no cash.
@@ -85,6 +88,19 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       </div>
     );
   }
+
+  // A saved split reschedules the plan: same balance, new per-cycle figure, fresh count of cycles.
+  const termPlansData = {
+    ...data.termPlans,
+    clearsFromId,
+    plans: data.termPlans.plans.map((p) => {
+      const split = splits[p.id];
+      return split && p.balance !== undefined
+        ? { ...p, splitInto: split, perCycle: p.balance / split, cyclesLeft: split }
+        : p;
+    }),
+  };
+  const plan = termPlansData.plans.find((p) => p.id === planId) ?? null;
 
   const taskStrip = <TaskStrip tasks={data.tasks} />;
   // The cycle needs the credit position and the deposit that's coming to say whether it clears —
@@ -136,9 +152,9 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   // Home doesn't repeat the Limit subrow; the credit limit is already stated directly above it.
   const termPlans = (
     <TermPlansCard
-      data={data.termPlans}
+      data={termPlansData}
       showLimit={false}
-      onPlan={setPlan}
+      onPlan={(p) => setPlanId(p.id)}
       onClearsFrom={() => setPayAccountOpen(true)}
     />
   );
@@ -212,10 +228,14 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       />
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
       <PaymentAccountDialog
-        accounts={data.termPlans.accounts}
-        selectedId={data.termPlans.clearsFromId}
+        accounts={termPlansData.accounts}
+        selectedId={clearsFromId}
         open={payAccountOpen}
         onOpenChange={setPayAccountOpen}
+        onSave={(id) => {
+          setClearsFromId(id);
+          setPayAccountOpen(false);
+        }}
         onLink={() => {
           setPayAccountOpen(false);
           setLinkOpen(true);
@@ -224,11 +244,15 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       {plan && (
         <SplitPlanDialog
           plan={plan}
-          options={data.termPlans.splitOptions}
-          ratePerCycle={0.02}
+          options={termPlansData.splitOptions}
+          ratePerCycle={plan.ratePerCycle ?? 0.02}
           doneBy={(splitInto) => `${splitInto} cycle${splitInto === 1 ? '' : 's'} from now`}
+          onSave={(splitInto) => {
+            setSplits((s) => ({ ...s, [plan.id]: splitInto }));
+            setPlanId(null);
+          }}
           open={plan !== null}
-          onOpenChange={(o) => !o && setPlan(null)}
+          onOpenChange={(o) => !o && setPlanId(null)}
         />
       )}
       {/* Savings deposit is the same surface Savings uses; the credit limit it

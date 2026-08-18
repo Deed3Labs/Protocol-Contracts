@@ -206,12 +206,18 @@ Clearing is the same system as everywhere else: **balance first, then the linked
 - On Home the `Limit` subrow drops out; the credit limit is already stated directly above it.
 
 ### Choosing the split (modal)
-Offered at checkout and changeable any time after. Amount headline, then `HOW TO CLEAR IT` with `In full` / `In 2` / `In 4` / `In 12`, then three rows: `Each cycle` · `Carry, total` · `Done by`. Footer: *"Clearing early always costs less. You can change this any time."*
+Offered at checkout and changeable any time after. Amount headline, then `HOW TO CLEAR IT` with `In full` / `In 2` / `In 4` / `In 12`, then four rows: `Each cycle` · `Carry, total` · `Total` · `Done by`. **Carry is the cost on its own; Total is the split plus the carry** — one answers what the credit costs, the other what actually gets paid. On $940 in 4: `$235.00` · `$47.00` · `$987.00`. Footer: *"Clearing early always costs less. You can change this any time."*
 
-The three figures are what make the choice honest — spreading further costs more and the carry line says so in dollars, so no warning is needed. Carry is charged on what's still outstanding each cycle, which for an even split is `amount × rate × (n + 1) / 2`; paying in full clears before any cycle elapses, so it's zero.
+The three figures are what make the choice honest — spreading further costs more and the carry line says so in dollars, so no warning is needed. Carry is charged on what's still outstanding each cycle, which for an even split is `amount × rate × (n + 1) / 2`. On $940 at 2%: `$18.80` in full, `$28.20` in 2, `$47.00` in 4, `$122.20` in 12.
+
+**`In full` is one cycle, not none.** The member still holds the balance for a cycle before clearing it, so it costs `$18.80` — the cheapest option, not a free one. "Clearing early always costs less" is a comparison between options, not a claim that one of them is free.
+
+Picking an option only previews it. **A `Save changes` button commits**, disabled while the selection matches what the plan is already on — a schedule that rewrote itself under the member's finger would be the wrong kind of responsive.
 
 ### Payment account (modal, from the `Clears from` subrow)
 Leads with *"Your Clear balance is always used first. This is where the rest comes from."* — otherwise picking an account reads as choosing who gets paid. Selectable linked accounts, the active one carrying `--border-accent` and a check. `Link another account`, then: *"Changing this applies to every term plan. Nothing scheduled is missed — the next clearing uses the new account."*
+
+Selecting a row previews it; **`Save changes` commits**, and it applies to every term plan at once — too broad to happen on a tap.
 
 Same list as Settings › Linked accounts, scoped to the ACH fallback.
 

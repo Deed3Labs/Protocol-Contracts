@@ -20,7 +20,8 @@ import { cn } from '@/lib/utils';
  */
 function planDetail(plan: TermPlan): string {
   return [
-    plan.splitInto ? `Split in ${plan.splitInto}` : null,
+    // A one-cycle plan isn't "split" into anything — it's just cleared.
+    plan.splitInto ? (plan.splitInto === 1 ? 'In full' : `Split in ${plan.splitInto}`) : null,
     plan.perCycle !== undefined ? `${money(plan.perCycle, { cents: true })} a cycle` : null,
     plan.cyclesLeft !== undefined ? `${plan.cyclesLeft} left` : null,
     plan.progressNote,

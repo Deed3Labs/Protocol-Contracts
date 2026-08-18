@@ -1158,6 +1158,8 @@ export interface TermPlan {
   cyclesLeft?: number;
   /** e.g. "2% / cycle". */
   rate?: string;
+  /** The same rate as a fraction, for quoting what a split costs. */
+  ratePerCycle?: number;
   /** Long-dated plans count payments instead of cycles left, e.g. "payment 7 of 360". */
   progressNote?: string;
   /** What it takes to unlock, e.g. "Unlocks after six clean cycles · 2.5% / cycle". */
@@ -1226,11 +1228,13 @@ export function clearsFromLabel(data: TermPlans): string {
 }
 
 export interface SplitQuote {
-  /** 1 means clearing it outright, with no carry at all. */
   splitInto: number;
+  /** The principal each cycle — the amount divided by the split. */
   perCycle: number;
-  /** Total carry over the life of the plan. Zero when paid in full. */
+  /** What the credit costs over the life of the plan, on its own. */
   carry: number;
+  /** What the plan comes to altogether: the amount plus the carry. */
+  total: number;
 }
 
 /**
@@ -1241,12 +1245,16 @@ export interface SplitQuote {
  * honest: the number does the work a warning would otherwise have to.
  *
  * Charged on the balance still outstanding each cycle, which for an even split is the average of
- * what's owed at the start and at the end — hence the (n + 1) / 2 term rather than n.
+ * what's owed at the start and at the end — hence the (n + 1) / 2 term rather than n. Over four
+ * cycles $940 at 2% accrues $18.80 + $14.10 + $9.40 + $4.70 = $47.00.
+ *
+ * `In full` is one cycle, not none: the member still holds the balance for a cycle before clearing
+ * it, so it costs a single cycle's carry — $18.80 on $940. It's the cheapest option, which is what
+ * "clearing early always costs less" means; it isn't a free one, and an earlier draft that showed
+ * $0.00 there made the plan look like it could be taken and unwound at no cost.
  */
 export function splitQuote(amount: number, splitInto: number, ratePerCycle: number): SplitQuote {
   const cycles = Math.max(1, splitInto);
-  const perCycle = amount / cycles;
-  // Paying in full clears before any cycle elapses, so nothing accrues.
-  const carry = cycles === 1 ? 0 : amount * ratePerCycle * ((cycles + 1) / 2);
-  return { splitInto: cycles, perCycle, carry };
+  const carry = amount * ratePerCycle * ((cycles + 1) / 2);
+  return { splitInto: cycles, perCycle: amount / cycles, carry, total: amount + carry };
 }

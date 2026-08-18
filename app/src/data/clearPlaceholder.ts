@@ -197,6 +197,7 @@ export const HOME_IN_USE: HomeData = {
         perCycle: 235,
         cyclesLeft: 2,
         rate: '2% / cycle',
+        ratePerCycle: 0.02,
       },
       {
         id: 'cash-plan',
@@ -206,6 +207,7 @@ export const HOME_IN_USE: HomeData = {
         perCycle: 205,
         cyclesLeft: 1,
         rate: '2.5% / cycle',
+        ratePerCycle: 0.025,
       },
       LOCKED_PLANS[2],
     ],
