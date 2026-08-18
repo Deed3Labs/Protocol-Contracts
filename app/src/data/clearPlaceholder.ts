@@ -444,6 +444,40 @@ export const INBOX: InboxData = {
   },
 };
 
+/**
+ * Day one, arriving from a merchant counter — spec §4d.
+ *
+ * The same empty account as HOME_DAY_ONE in every respect but one: a term plan taken at the counter
+ * minutes ago. That single plan is what makes it a different screen rather than a variant, and it's
+ * what `HomePage` keys the two arrivals off — there's no flag, just whether anything is scheduled.
+ *
+ * The limit is lower here too. Nothing has flowed through the account yet, so the term limit is what
+ * a single linked bank feed supports, not what a member with a history gets.
+ */
+export const HOME_DAY_ONE_COUNTER: HomeData = {
+  ...HOME_DAY_ONE,
+  termPlans: {
+    ...HOME_DAY_ONE.termPlans,
+    plans: [
+      {
+        id: 'mikes-tire',
+        name: "Mike's Tire",
+        openedOn: 'today',
+        balance: 940,
+        splitInto: 4,
+        rate: '2% / cycle',
+        ratePerCycle: 0.02,
+      },
+      ...HOME_DAY_ONE.termPlans.plans.slice(1),
+    ],
+    balanceLimit: 1500,
+    perCycleLimit: 312,
+    limitNote: 'from money in and out',
+    accounts: LINKED_ACCOUNTS,
+    clearsFromId: 'chase',
+  },
+};
+
 export const SAVINGS_IN_USE: SavingsData = {
   savings: HOME_IN_USE.savings,
   projection: { perPayday: 500, extraMonthly: 250, withExtra: 'Apr 2027' },

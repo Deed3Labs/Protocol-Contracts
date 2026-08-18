@@ -22,9 +22,11 @@ import SendPage from '@/pages/app/SendPage';
 import EarnPage from '@/pages/app/EarnPage';
 import SettingsPage from '@/pages/app/SettingsPage';
 import OnboardingFlow, { type OnboardingStep } from '@/pages/auth/OnboardingFlow';
+import CounterOnboarding, { COUNTER_STEPS, type CounterStep } from '@/pages/auth/CounterOnboarding';
 import {
   HOME_IN_USE,
   HOME_DAY_ONE,
+  HOME_DAY_ONE_COUNTER,
   SAVINGS_IN_USE,
   SAVINGS_DAY_ONE,
   ACTIVITY_IN_USE,
@@ -195,6 +197,32 @@ function TermPlansPreview() {
   );
 }
 
+/** The counter path — five steps, outside the app chrome like the direct one. */
+function CounterOnboardingPreview() {
+  const [step, setStep] = useState<CounterStep>('scan');
+
+  return (
+    <div className="min-h-screen bg-background">
+      <CounterOnboarding step={step} onStepChange={setStep} />
+
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        {COUNTER_STEPS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStep(s)}
+            className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+              s === step ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** Onboarding sits outside the app chrome — there's no nav until you're a member. */
 function OnboardingPreview() {
   const [step, setStep] = useState<OnboardingStep>('enter');
@@ -229,6 +257,7 @@ export default function PreviewApp() {
       <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
         <Routes>
           <Route path="/onboarding" element={<OnboardingPreview />} />
+          <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
 
           <Route
             path="*"
@@ -245,6 +274,8 @@ export default function PreviewApp() {
                 >
                   <Routes>
                     <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} />} />
+                    {/* Day one has two arrivals; the toggle only reaches the direct one. */}
+                    <Route path="/day-one-counter" element={<HomePage data={HOME_DAY_ONE_COUNTER} />} />
                     <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
                     <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
                     <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />

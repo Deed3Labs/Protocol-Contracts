@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Modal from './Modal';
+import SplitChooser from './SplitChooser';
 import { money } from '@/lib/money';
-import { splitQuote, type TermPlan } from '@/lib/clearModel';
-import { cn } from '@/lib/utils';
+import type { TermPlan } from '@/lib/clearModel';
 
 /**
  * Choosing the split — design spec §4c.
@@ -46,7 +46,6 @@ export default function SplitPlanDialog({
     if (open) setSplitInto(plan.splitInto ?? 1);
   }, [open, plan.splitInto]);
 
-  const quote = splitQuote(amount, splitInto, ratePerCycle);
 
   return (
     <Modal
@@ -59,51 +58,15 @@ export default function SplitPlanDialog({
         {money(amount, { cents: true })}
       </p>
 
-      {/* The rate is stated here, once, with what it's charged on. Repeating "2% / cycle" on every
-          row left the member to guess whether it applied to the original amount or the balance. */}
-      <p className="mb-2 text-[11px] uppercase tracking-[0.2px] text-muted-foreground">
-        How to clear it{plan.rate ? ` · ${plan.rate.replace(' / cycle', '')} a cycle on what you still owe` : ''}
-      </p>
-      <div className="mb-3 flex gap-1.5">
-        {options.map((option) => (
-          <Button
-            key={option}
-            variant="clear"
-            size="xs"
-            aria-pressed={splitInto === option}
-            onClick={() => setSplitInto(option)}
-            className={cn('flex-1', splitInto === option && 'border-tier-boost text-tier-boost-fg')}
-          >
-            {option === 1 ? 'In full' : `In ${option}`}
-          </Button>
-        ))}
-      </div>
-
-      <div className="border-t-[0.5px] border-border pt-2.5 text-xs leading-[2.1]">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-foreground-secondary">Each cycle</span>
-          <span className="tabular-nums">{money(quote.perCycle, { cents: true })}</span>
-        </div>
-        {/* Two carry figures, because they answer different questions: what holding it costs right
-            now, and what the whole plan costs. One without the other either hides the running cost
-            or makes a small monthly charge look like a large one. */}
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-foreground-secondary">Carry this cycle</span>
-          <span className="tabular-nums">{money(quote.carryThisCycle, { cents: true })}</span>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-foreground-secondary">Carry over the whole plan</span>
-          <span className="tabular-nums">{money(quote.carry, { cents: true })}</span>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-foreground-secondary">Total</span>
-          <span className="font-medium tabular-nums">{money(quote.total, { cents: true })}</span>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-foreground-secondary">Done by</span>
-          <span>{doneBy(splitInto)}</span>
-        </div>
-      </div>
+      <SplitChooser
+        amount={amount}
+        options={options}
+        ratePerCycle={ratePerCycle}
+        rate={plan.rate}
+        splitInto={splitInto}
+        onChange={setSplitInto}
+        doneBy={doneBy}
+      />
 
       {/* Picking an option previews it; nothing moves until this is pressed. A schedule that
           rewrote itself under the member's finger would be the wrong kind of responsive. */}

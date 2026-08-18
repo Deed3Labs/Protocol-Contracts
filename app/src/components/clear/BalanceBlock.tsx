@@ -40,11 +40,18 @@ export default function BalanceBlock({
   return (
     <div>
       <p className="mb-1 text-xs text-foreground-secondary">Available to spend</p>
-      <p className="font-display mb-2.5 text-[32px] font-medium leading-none tracking-[-0.5px] lg:text-[40px] lg:tracking-[-0.8px]">
+      {/* Muted on day one: there's no balance yet, and a full-strength $0.00 reads as a figure that
+          means something rather than a space waiting to be filled. */}
+      <p
+        className={cn(
+          'font-display mb-2.5 text-[32px] font-medium leading-none tracking-[-0.5px] lg:text-[40px] lg:tracking-[-0.8px]',
+          emptyState && 'text-muted-foreground',
+        )}
+      >
         {money(emptyState ? 0 : availableToSpend(cash, credit), { cents: true })}
       </p>
       {emptyState ? (
-        <p className="text-xs text-foreground-secondary">Add money to get started</p>
+        <p className="text-[11px] text-muted-foreground">Nothing saved yet</p>
       ) : (
         <>
           <SegmentedBar

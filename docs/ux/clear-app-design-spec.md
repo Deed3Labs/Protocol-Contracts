@@ -101,7 +101,7 @@ These are product decisions, not styling. Do not deviate.
 
 ### Two states
 
-**Day one** (no deposits): big number reads `$0`, subtitle "Add money to get started". Body is a setup checklist. Savings card shows an empty bar and the pitch line. No cycle card, no credit card.
+**Day one** — see §4d. Two arrivals, two screens. Big number reads `$0.00` **in muted**, subtitle `Nothing saved yet`. No cycle card, no credit card.
 
 **In use**: full layout below. Setup tasks that remain incomplete appear as a task strip under the balance and disappear when done.
 
@@ -265,6 +265,23 @@ The `Account details` button opens a **modal** (bottom sheet on mobile) — not 
 
 ### Savings card
 Total balance headline. 3-segment bar (cash / vested / vesting). Two legend lines: cash first, then vested + vesting together. Footer: `1,500 of 15,000 credits` + `[Add]` button.
+
+---
+
+## 4d. Day one — two arrivals, two screens
+
+Both are day one, and they are **not the same screen**. The difference isn't cosmetic: one member has an active obligation and a reason to be here, the other has an empty shelf and a decision to make.
+
+**Same components, reversed order** — whichever one they're here for leads:
+
+| | Leads | Then |
+|---|---|---|
+| **From a counter** | Term plans, carrying the plan taken minutes ago | Accent card: `MAKE THIS FREE` — *"Borrowing against your own savings costs nothing. You're paying 2% because there's nothing behind it yet."* + `Start saving` |
+| **Signed up directly** | Accent card: `Start with anything` — *"Saving is what makes everything else free. Most members start at $25 a paycheck."* + `Set up auto-save` | The locked shelf, showing what saving unlocks |
+
+The counter arrival puts the savings pitch directly beneath the plan, where the cost of not saving is visible. The direct arrival leads with saving because there is nothing else.
+
+**There is no flag for this.** The screen keys off whether anything is scheduled — a member with an active term plan arrived from a counter, by definition.
 
 ---
 
@@ -450,6 +467,38 @@ The paid-from row is Clear-specific and worth keeping — it's the only place a 
 **Sign in and sign up are one screen and one component.** Privy resolves whether the identifier already exists — the member never chooses. Passwordless throughout: phone/email OTP, or Google/Apple. Returning members get passkey or biometric with OTP fallback.
 
 **Desktop** is a split layout — static brand panel left (copy changes per step), flow panel right. **Mobile** is full-screen steps. The right panel and the mobile screen are the same components.
+
+### 12b. At a merchant counter — a different flow, not a variant
+
+Starts by scanning the shop's code rather than arriving at a site. **The pending total rides along on every step** — it's the strongest motivation in the product, and it's what makes a five-step flow tolerable while someone stands at a counter waiting.
+
+| Step | Asks | Ends with |
+|---|---|---|
+| `1 · SCAN` | Nothing — the shop code opens `clear.coop/mikes-tire` | `Add to Home Screen`. No app store, no download |
+| `2 · ENTER` | Phone number | `Continue` — *"No credit check. About three minutes."* |
+| `3 · JOIN` | ZIP, invite code **pre-filled from the shop** | `Agree & join` |
+| `4 · LINK — REQUIRED` | Bank connection | `Connect securely` — *"Read-only. We never see your login."* |
+| `5 · CHOOSE` | The split (§4c's chooser, same five figures) | `Confirm & show the shop` |
+
+**Linking is required here** where the direct path defers it: it's the underwriting, the repayment rail and the limit calculation at once, and it's the likeliest drop-off point — which is why step 4 spends its words on what the link is *for* rather than on the mechanics.
+
+**The split is chosen here rather than later**, because the member is already deciding. Asking again that evening would be a second decision about a settled thing.
+
+**Identity verification stays deferred** to the first deposit, exactly as on the direct path. A bank link is not a KYC substitute, but it's enough to extend a small term plan.
+
+### The branch — one onboarding, two entries
+
+The steps are the same; what differs is where they arrive from, whether a total is pending, and whether the bank link is required now or later.
+
+| | At a counter | Directly |
+|---|---|---|
+| Arrives from | Shop QR → A2HS | Site, referral, search |
+| Pending total | Shown on every step | None |
+| Invite code | Pre-filled | Optional |
+| Bank link | **Required** | Deferred to first plan |
+| Ends at | Split choice | Start saving |
+
+A direct signup who only wants to save doesn't need a linked account on day one. It becomes required the moment they want a term plan — which is also the moment they have a reason to give it.
 
 ### Three gates, deliberately separated
 

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import Card from '@/components/clear/Card';
 import BalanceBlock from '@/components/clear/BalanceBlock';
 import QuickActions from '@/components/clear/QuickActions';
 import CycleCard from '@/components/clear/CycleCard';
 import TaskStrip from '@/components/clear/TaskStrip';
-import SetupChecklist from '@/components/clear/SetupChecklist';
 import ClearCreditCard from '@/components/clear/ClearCreditCard';
 import CashAccountCard from '@/components/clear/CashAccountCard';
 import SavingsSummaryCard from '@/components/clear/SavingsSummaryCard';
@@ -18,12 +19,15 @@ import PaymentAccountDialog from '@/components/clear/PaymentAccountDialog';
 import TermLimitDialog from '@/components/clear/TermLimitDialog';
 import AddBoostDialog from '@/components/clear/AddBoostDialog';
 import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
+import AutoSaveDialog from '@/components/clear/AutoSaveDialog';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { HOME_IN_USE, SAVINGS_IN_USE } from '@/data/clearPlaceholder';
 import {
+  activePlans,
   addableTier,
   creditLimit,
+  isPlanActive,
   isCreditEngaged,
   savingsTotal,
   type ActivityRow,
@@ -54,6 +58,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
   const [repayOpen, setRepayOpen] = useState(false);
   const [payAccountOpen, setPayAccountOpen] = useState(false);
   const [termLimitOpen, setTermLimitOpen] = useState(false);
+  const [autoSaveOpen, setAutoSaveOpen] = useState(false);
   // Edits made in the term-plan modals, held here so Save has something to change. The placeholder
   // data is static; these are what a backend would persist.
   const [planId, setPlanId] = useState<string | null>(null);
@@ -74,23 +79,6 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
     setParams(params, { replace: true });
   }, [params, setParams]);
 
-  const balance = <BalanceBlock cash={data.cash} credit={data.credit} emptyState={dayOne} />;
-  const savings = <SavingsSummaryCard savings={data.savings} emptyState={dayOne} />;
-
-  if (dayOne) {
-    return (
-      <div className="flex flex-col gap-3">
-        {balance}
-        {/* items-start so the savings card sizes to its content rather than
-            stretching to match the checklist */}
-        <div className="mt-1 grid items-start gap-3 lg:grid-cols-2">
-          <SetupChecklist tasks={data.tasks} />
-          {savings}
-        </div>
-      </div>
-    );
-  }
-
   // A saved split reschedules the plan: same balance, new per-cycle figure, fresh count of cycles.
   const termPlansData = {
     ...data.termPlans,
@@ -103,6 +91,121 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
     }),
   };
   const plan = termPlansData.plans.find((p) => p.id === planId) ?? null;
+
+  // The shelf is on both screens, so the surfaces it opens have to be too.
+  const termPlanModals = (
+    <>
+      <TermLimitDialog
+        data={termPlansData}
+        open={termLimitOpen}
+        onOpenChange={setTermLimitOpen}
+        onManageAccounts={() => {
+          setTermLimitOpen(false);
+          setPayAccountOpen(true);
+        }}
+      />
+      <PaymentAccountDialog
+        accounts={termPlansData.accounts}
+        selectedId={clearsFromId}
+        open={payAccountOpen}
+        onOpenChange={setPayAccountOpen}
+        onSave={(id) => {
+          setClearsFromId(id);
+          setPayAccountOpen(false);
+        }}
+        onLink={() => {
+          setPayAccountOpen(false);
+          setLinkOpen(true);
+        }}
+      />
+      {plan && (
+        <SplitPlanDialog
+          plan={plan}
+          options={termPlansData.splitOptions}
+          ratePerCycle={plan.ratePerCycle ?? 0.02}
+          doneBy={(splitInto) => `${splitInto} cycle${splitInto === 1 ? '' : 's'} from now`}
+          onSave={(splitInto) => {
+            setSplits((s) => ({ ...s, [plan.id]: splitInto }));
+            setPlanId(null);
+          }}
+          open={plan !== null}
+          onOpenChange={(o) => !o && setPlanId(null)}
+        />
+      )}
+    </>
+  );
+
+  const balance = <BalanceBlock cash={data.cash} credit={data.credit} emptyState={dayOne} />;
+  const savings = <SavingsSummaryCard savings={data.savings} emptyState={dayOne} />;
+
+  if (dayOne) {
+    // Two arrivals, two screens — spec §4d. A member who joined at a counter has an obligation and a
+    // reason to be here; a member who signed up directly has an empty shelf and a decision to make.
+    // Same components, reversed order: whichever one they're here for leads.
+    const fromCounter = activePlans(data.termPlans).length > 0;
+
+    const shelf = (
+      <TermPlansCard
+        data={data.termPlans}
+        onPlan={(p) => setPlanId(p.id)}
+        onLimit={() => setTermLimitOpen(true)}
+        onClearsFrom={() => setPayAccountOpen(true)}
+      />
+    );
+
+    // The cost of not saving, stated where the plan that's costing it is visible.
+    const makeThisFree = (
+      <Card accent className="px-3.5 py-3">
+        <p className="mb-[5px] text-[11px] tracking-[0.2px] text-tier-boost-fg">MAKE THIS FREE</p>
+        <p className="mb-[11px] text-xs leading-relaxed">
+          Borrowing against your own savings costs nothing. You're paying{' '}
+          <strong className="font-medium">{data.termPlans.plans.find(isPlanActive)?.rate?.replace(' / cycle', '') ?? '2%'}</strong>{' '}
+          because there's nothing behind it yet.
+        </p>
+        <Button size="sm" className="w-full text-xs" onClick={() => setAddSavingsOpen(true)}>
+          Start saving
+        </Button>
+      </Card>
+    );
+
+    const startSaving = (
+      <Card accent className="px-3.5 py-3">
+        <p className="mb-1 text-xs font-medium">Start with anything</p>
+        <p className="mb-[11px] text-xs leading-relaxed text-foreground-secondary">
+          Saving is what makes everything else free. Most members start at $25 a paycheck.
+        </p>
+        <Button size="sm" className="w-full text-xs" onClick={() => setAutoSaveOpen(true)}>
+          Set up auto-save
+        </Button>
+      </Card>
+    );
+
+    return (
+      <>
+        <div className="flex flex-col gap-2.5">
+          {balance}
+          {fromCounter ? (
+            <>
+              {shelf}
+              {makeThisFree}
+            </>
+          ) : (
+            <>
+              {startSaving}
+              {shelf}
+            </>
+          )}
+        </div>
+        {termPlanModals}
+        <AddToSavingsDialog
+          data={{ ...SAVINGS_IN_USE, savings: data.savings, creditLimitToday: 0 }}
+          open={addSavingsOpen}
+          onOpenChange={setAddSavingsOpen}
+        />
+        <AutoSaveDialog data={SAVINGS_IN_USE} open={autoSaveOpen} onOpenChange={setAutoSaveOpen} />
+      </>
+    );
+  }
 
   const taskStrip = <TaskStrip tasks={data.tasks} />;
   // The cycle needs the credit position and the deposit that's coming to say whether it clears —
@@ -228,43 +331,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         onOpenChange={setRepayOpen}
       />
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
-      <TermLimitDialog
-        data={termPlansData}
-        open={termLimitOpen}
-        onOpenChange={setTermLimitOpen}
-        onManageAccounts={() => {
-          setTermLimitOpen(false);
-          setPayAccountOpen(true);
-        }}
-      />
-      <PaymentAccountDialog
-        accounts={termPlansData.accounts}
-        selectedId={clearsFromId}
-        open={payAccountOpen}
-        onOpenChange={setPayAccountOpen}
-        onSave={(id) => {
-          setClearsFromId(id);
-          setPayAccountOpen(false);
-        }}
-        onLink={() => {
-          setPayAccountOpen(false);
-          setLinkOpen(true);
-        }}
-      />
-      {plan && (
-        <SplitPlanDialog
-          plan={plan}
-          options={termPlansData.splitOptions}
-          ratePerCycle={plan.ratePerCycle ?? 0.02}
-          doneBy={(splitInto) => `${splitInto} cycle${splitInto === 1 ? '' : 's'} from now`}
-          onSave={(splitInto) => {
-            setSplits((s) => ({ ...s, [plan.id]: splitInto }));
-            setPlanId(null);
-          }}
-          open={plan !== null}
-          onOpenChange={(o) => !o && setPlanId(null)}
-        />
-      )}
+      {termPlanModals}
       {/* Savings deposit is the same surface Savings uses; the credit limit it
           quotes comes from this page's own tiers so the two can't disagree. */}
       <AddToSavingsDialog
