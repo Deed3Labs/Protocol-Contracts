@@ -1229,9 +1229,17 @@ export function clearsFromLabel(data: TermPlans): string {
 
 export interface SplitQuote {
   splitInto: number;
-  /** The principal each cycle — the amount divided by the split. */
+  /**
+   * What actually leaves the account each cycle — principal and carry together, levelled across the
+   * plan. This is the figure both the shelf row and the chooser show, because it's the only one a
+   * member can check against their bank.
+   */
   perCycle: number;
-  /** What the credit costs over the life of the plan, on its own. */
+  /** The principal alone, before carry. */
+  principalPerCycle: number;
+  /** Carry for the coming cycle, charged on the whole balance — the cost of holding it once. */
+  carryThisCycle: number;
+  /** Carry over the life of the plan. */
   carry: number;
   /** What the plan comes to altogether: the amount plus the carry. */
   total: number;
@@ -1256,5 +1264,29 @@ export interface SplitQuote {
 export function splitQuote(amount: number, splitInto: number, ratePerCycle: number): SplitQuote {
   const cycles = Math.max(1, splitInto);
   const carry = amount * ratePerCycle * ((cycles + 1) / 2);
-  return { splitInto: cycles, perCycle: amount / cycles, carry, total: amount + carry };
+  const total = amount + carry;
+  return {
+    splitInto: cycles,
+    // Levelled, the way an installment plan actually bills: carry declines as the balance does, but
+    // the member pays the same figure every cycle rather than a different one each time.
+    perCycle: total / cycles,
+    principalPerCycle: amount / cycles,
+    carryThisCycle: amount * ratePerCycle,
+    carry,
+    total,
+  };
+}
+
+/**
+ * What a plan bills each cycle.
+ *
+ * Derived wherever the parts are known, so the shelf row and the chooser can't quote different
+ * figures for the same plan. Amortising plans like an ELPA state their payment outright — there's no
+ * even split to compute one from.
+ */
+export function planPerCycle(plan: TermPlan): number | undefined {
+  if (plan.balance !== undefined && plan.splitInto && plan.ratePerCycle !== undefined) {
+    return splitQuote(plan.balance, plan.splitInto, plan.ratePerCycle).perCycle;
+  }
+  return plan.perCycle;
 }

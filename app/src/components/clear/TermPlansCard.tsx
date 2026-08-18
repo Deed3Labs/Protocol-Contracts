@@ -5,6 +5,7 @@ import {
   activePlans,
   clearsFromLabel,
   isPlanActive,
+  planPerCycle,
   termPlansTotal,
   type TermPlan,
   type TermPlans,
@@ -19,10 +20,11 @@ import { cn } from '@/lib/utils';
  * ELPA counts payments made against a schedule that outlives any cycle.
  */
 function planDetail(plan: TermPlan): string {
+  const perCycle = planPerCycle(plan);
   return [
     // A one-cycle plan isn't "split" into anything — it's just cleared.
     plan.splitInto ? (plan.splitInto === 1 ? 'In full' : `Split in ${plan.splitInto}`) : null,
-    plan.perCycle !== undefined ? `${money(plan.perCycle, { cents: true })} a cycle` : null,
+    perCycle !== undefined ? `${money(perCycle, { cents: true })} a cycle` : null,
     plan.cyclesLeft !== undefined ? `${plan.cyclesLeft} left` : null,
     plan.progressNote,
     plan.rate,

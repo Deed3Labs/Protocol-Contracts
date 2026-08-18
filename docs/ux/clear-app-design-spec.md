@@ -206,7 +206,17 @@ Clearing is the same system as everywhere else: **balance first, then the linked
 - On Home the `Limit` subrow drops out; the credit limit is already stated directly above it.
 
 ### Choosing the split (modal)
-Offered at checkout and changeable any time after. Amount headline, then `HOW TO CLEAR IT` with `In full` / `In 2` / `In 4` / `In 12`, then four rows: `Each cycle` · `Carry, total` · `Total` · `Done by`. **Carry is the cost on its own; Total is the split plus the carry** — one answers what the credit costs, the other what actually gets paid. On $940 in 4: `$235.00` · `$47.00` · `$987.00`. Footer: *"Clearing early always costs less. You can change this any time."*
+Offered at checkout and changeable any time after. Amount headline, then `HOW TO CLEAR IT · 2% A CYCLE ON WHAT YOU STILL OWE` — the rate stated once, with what it's charged on, rather than repeated per row leaving the member to guess whether it applies to the original amount or the balance. Then `In full` / `In 2` / `In 4` / `In 12` and five rows:
+
+| Row | On $940 in 4 |
+|---|---|
+| `Each cycle` | `$246.75` — principal and carry together, levelled |
+| `Carry this cycle` | `$18.80` — the cost of holding the balance once |
+| `Carry over the whole plan` | `$47.00` |
+| `Total` (medium weight) | `$987.00` |
+| `Done by` | `Mar 14` |
+
+**Each cycle is the payment, not the principal.** It's the only figure a member can check against their bank, so it's what the shelf row shows too — `$246.75 a cycle`, never `$235.00`. Two carry figures because they answer different questions: one without the other either hides the running cost or makes a small charge look large. Footer: *"Clearing early always costs less. You can change this any time."*
 
 The three figures are what make the choice honest — spreading further costs more and the carry line says so in dollars, so no warning is needed. Carry is charged on what's still outstanding each cycle, which for an even split is `amount × rate × (n + 1) / 2`. On $940 at 2%: `$18.80` in full, `$28.20` in 2, `$47.00` in 4, `$122.20` in 12.
 
