@@ -24,7 +24,7 @@ export default function Wordmark({ className }: { className?: string }) {
         src="/ClearPath-Logo.png"
         alt=""
         aria-hidden
-        className="h-6 w-6 shrink-0 rounded-[22.37%] border border-black/10 object-cover [corner-shape:squircle]"
+        className="h-7 w-7 shrink-0 rounded-[22.37%] border border-black/10 object-cover [corner-shape:squircle]"
       />
       Clear
     </NavLink>
