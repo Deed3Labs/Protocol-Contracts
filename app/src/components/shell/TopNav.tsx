@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
+import Wordmark from './Wordmark';
 import { cn } from '@/lib/utils';
 import { navItems } from './navItems';
 
@@ -17,9 +18,7 @@ export default function TopNav({ trailing }: { trailing?: ReactNode }) {
   return (
     <header className="sticky top-0 z-30 hidden bg-background/85 backdrop-blur-md lg:block">
       <div className="mx-auto flex h-14 w-full max-w-[1280px] items-center justify-between gap-6 border-b-[0.5px] border-border px-10">
-        <NavLink to="/" className="text-[15px] font-medium leading-none text-foreground">
-          Clear
-        </NavLink>
+        <Wordmark />
 
         <div className="flex items-center gap-6">
           <nav className="flex items-center gap-4">

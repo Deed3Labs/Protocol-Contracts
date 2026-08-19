@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
-import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import TopNav from './TopNav';
+import Wordmark from './Wordmark';
 import MobileTabBar from './MobileTabBar';
 import { MobileActionProvider } from './MobileAction';
 import { navItems } from './navItems';
@@ -53,9 +54,7 @@ export default function AppChrome({
       <header className="sticky top-0 z-30 bg-background/85 backdrop-blur-md lg:hidden">
         <div className="flex h-14 items-center justify-between px-5">
           {isHome ? (
-            <NavLink to="/" className="text-[15px] font-medium leading-none text-foreground">
-              Clear
-            </NavLink>
+            <Wordmark />
           ) : (
             <span className="flex min-w-0 items-center gap-2.5">
               {/* A page reached from another page gets a way back; the tab bar is

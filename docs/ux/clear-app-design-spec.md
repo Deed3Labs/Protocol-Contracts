@@ -9,7 +9,9 @@ Reference spec for rebuilding the member-facing app. Archive existing nav pages;
 **Pages:** Home · Savings · Earn · Send · Activity · Card
 (Assurance lives inside Savings. Settings behind avatar/menu. **No Borrow page** — borrowing is built into Home.)
 
-**Desktop:** horizontal nav in a top bar, left-aligned wordmark "Clear", nav items right-aligned. Active item uses primary text color, inactive uses secondary. Bottom border on the bar, 0.5px.
+**Desktop:** horizontal nav in a top bar, left-aligned lockup — the wordmark "Clear" with the mark beside it — nav items right-aligned. Active item uses primary text color, inactive uses secondary. Bottom border on the bar, 0.5px.
+
+**The mark** is a 22px square: corners rounded to **22.37%** of its side with **60% smoothing**, and a **1px black at 10%** hairline so it doesn't dissolve into a light page. `border-radius` alone gives four quarter-circles that break where they meet the straight edges — `corner-shape` smooths that junction. Browsers without `corner-shape` fall back to plain 22.37% rounding: same silhouette, slightly less refined. One component for both layouts, so the lockup can't drift.
 
 **Mobile:** **two floating elements**, not one bar — a nav pill hugging the left and an action button hugging the right, with `justify-content: space-between` so the page shows through the gap between them.
 
