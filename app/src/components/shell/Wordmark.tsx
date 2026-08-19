@@ -19,14 +19,14 @@ export default function Wordmark({ className }: { className?: string }) {
       to="/"
       className={`flex items-center gap-2 text-[15px] font-medium leading-none text-foreground ${className ?? ''}`}
     >
-      Clear
-      {/* Decorative: the link already says "Clear", so a second reading of the same word is noise. */}
+      {/* Mark first, wordmark second — the lockup reads left to right like any app bar. */}
       <img
         src="/ClearPath-Logo.png"
         alt=""
         aria-hidden
-        className="h-[22px] w-[22px] shrink-0 rounded-[22.37%] border border-black/10 object-cover [corner-shape:squircle]"
+        className="h-6 w-6 shrink-0 rounded-[22.37%] border border-black/10 object-cover [corner-shape:squircle]"
       />
+      Clear
     </NavLink>
   );
 }
