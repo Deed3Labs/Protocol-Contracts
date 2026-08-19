@@ -1207,14 +1207,34 @@ export interface TermPlans {
 /**
  * What's still to pay on a plan, in principal.
  *
- * Derived from the cycles left rather than stored, so a plan can't claim a remaining figure its own
- * schedule contradicts. Amortising plans state their balance directly — there's no even split to
- * count down.
+ * Derived from the cycles left rather than stored, so a plan can't claim a figure its own schedule
+ * contradicts. Amortising plans state their balance directly — there's no even split to count down.
  */
 export function planRemaining(plan: TermPlan): number {
   if (plan.balance === undefined) return 0;
   if (!plan.splitInto || plan.cyclesLeft === undefined) return plan.balance;
   return (plan.balance / plan.splitInto) * plan.cyclesLeft;
+}
+
+/**
+ * What's been paid down on a plan — the figure the shelf row leads with.
+ *
+ * Progress, not debt. The row answers "how far through am I", which is why it reads paid against the
+ * total rather than what's left: a plan taken minutes ago reads `$0.00 / $940.00`, and one nearly
+ * done reads close to its own total.
+ *
+ * Easy to get backwards, and the Home figures don't catch it — a plan exactly half elapsed has the
+ * same paid and remaining. The day-one case is the one that tells them apart.
+ */
+export function planPaid(plan: TermPlan): number {
+  if (plan.balance === undefined) return 0;
+  return plan.balance - planRemaining(plan);
+}
+
+/** How far through a plan is, 0–1 — the same fact as the cleared amount, as a share. */
+export function planClearedShare(plan: TermPlan): number {
+  if (!plan.balance) return 0;
+  return Math.max(0, Math.min(1, planPaid(plan) / plan.balance));
 }
 
 /** Amortising plans — an ELPA mortgage — run on their own schedule, outside the shelf's limits. */
@@ -1234,12 +1254,12 @@ export function activePlans(data: TermPlans): TermPlan[] {
 /**
  * What's outstanding across every live plan.
  *
- * What's left, not what was taken out — the same figure the rows lead with. Summed rather than
+ * What the plans were taken out for — the same figure the rows lead with. Summed rather than
  * stated, so the headline can't drift from the rows beneath it, which is exactly what the reference
  * mockups did between their desktop and mobile drafts.
  */
 export function termPlansTotal(data: TermPlans): number {
-  return activePlans(data).reduce((sum, p) => sum + planRemaining(p), 0);
+  return activePlans(data).reduce((sum, p) => sum + (p.balance ?? 0), 0);
 }
 
 export function clearsFromAccount(data: TermPlans): LinkedAccount | undefined {

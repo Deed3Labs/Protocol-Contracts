@@ -163,7 +163,7 @@ function TermPlansPreview() {
     plans: [
       { id: 'valley-dental', name: 'Valley Dental', openedOn: 'May', balance: 410, splitInto: 2, cyclesLeft: 1, rate: '2% / cycle', ratePerCycle: 0.02 },
       { id: 'cash-plan', name: 'Clear Cash', balance: 2500, splitInto: 12, cyclesLeft: 9, rate: '2.5% / cycle', ratePerCycle: 0.025 },
-      { id: 'elpa', name: 'ELPA · 1042 Julia St', balance: 248000, perCycle: 1410, progressNote: 'payment 7 of 360' },
+      { id: 'elpa', name: 'ELPA · 1042 Julia St', balance: 250000, perCycle: 1410, progressNote: 'payment 7 of 360' },
     ],
     // No balance cap once the mortgage is on the shelf — it was never inside one.
     balanceLimit: undefined,

@@ -7,7 +7,7 @@ import {
   hasAmortisingPlan,
   isPlanActive,
   planPerCycle,
-  planRemaining,
+  planClearedShare,
   termPlansTotal,
   type TermPlan,
   type TermPlans,
@@ -23,11 +23,14 @@ import { cn } from '@/lib/utils';
  */
 function planDetail(plan: TermPlan): string {
   const perCycle = planPerCycle(plan);
+  const cleared = planClearedShare(plan);
   return [
     // A one-cycle plan isn't "split" into anything — it's just cleared.
     plan.splitInto ? (plan.splitInto === 1 ? 'In full' : `Split in ${plan.splitInto}`) : null,
     perCycle !== undefined ? `${money(perCycle, { cents: true })} a cycle` : null,
-    plan.cyclesLeft !== undefined ? `${plan.cyclesLeft} left` : null,
+    // Progress as a share, not a countdown: "2 left" means nothing without knowing the split, and
+    // a plan nothing has been paid on says so by leaving the segment out entirely.
+    cleared > 0 ? `${Math.round(cleared * 100)}% cleared` : null,
     plan.progressNote,
     plan.rate,
   ]
@@ -135,17 +138,11 @@ export default function TermPlansCard({
                   {plan.openedOn && <span className="text-muted-foreground"> · {plan.openedOn}</span>}
                 </span>
                 {active ? (
-                  // What's left, then what it was for. The pair is the point: a member glancing at
-                  // the shelf wants to know how much further they have to go, and a lone figure
-                  // can't say that without them remembering the original.
+                  // What the plan was taken out for. How far through it is belongs on the sub-line
+                  // as a share — a second figure here competes with the row's own name for the
+                  // glance, and the amount a member recognises is the one they agreed to.
                   <span className="shrink-0 text-[13px] tabular-nums">
-                    {money(planRemaining(plan), { cents: true })}
-                    {plan.splitInto !== undefined && (
-                      <span className="text-muted-foreground">
-                        {' / '}
-                        {money(plan.balance ?? 0, { cents: true })}
-                      </span>
-                    )}
+                    {money(plan.balance ?? 0, { cents: true })}
                   </span>
                 ) : (
                   <span className="shrink-0 text-[11px] text-muted-foreground">Locked</span>

@@ -197,8 +197,10 @@ Clearing is the same system as everywhere else: **balance first, then the linked
 
 **Card:** label + headline total, then the rows, then footer subrows.
 
-- Headline is the sum of what's **still to pay**, with `of $X` against the **balance cap** when one applies. Once the shelf carries an amortising plan the cap is replaced by `incl. ELPA` — a mortgage was never inside it, and `$250,080.00 of $850.00` would be a category error.
-- Active row: name (+ month opened) and **`$470.00 / $940.00`** — what's left, then what the plan was for, the second figure muted. The pair is the point: a lone figure can't say how much further there is to go without the member remembering the original. Remaining is derived from the cycles still to run, so it can't contradict the schedule. Beneath: `Split in 4 · $246.75 a cycle · 2 left · 2% / cycle`. Amortising plans state one figure and count payments instead: `$1,410.00 a cycle · payment 7 of 360`.
+- Headline is the sum of what the plans were **taken out for**, with `of $X` against the **balance cap** when one applies. Once the shelf carries an amortising plan the cap is replaced by `incl. ELPA` — a mortgage was never inside it.
+- Active row: name (+ month opened) and **one figure — the amount the plan was taken out for**. How far through it is belongs on the sub-line as `50% cleared`, not beside the name: a second figure there competes with the row's own name for the glance, and the amount a member recognises is the one they agreed to. A plan nothing has been paid on omits the segment entirely rather than reading `0% cleared`. Beneath: `Split in 4 · $246.75 a cycle · 50% cleared · 2% / cycle`.
+
+  Easy to get backwards, and the Home figures won't catch it: a plan exactly half elapsed has the same paid and remaining. **Day one is the case that tells them apart** — a plan taken minutes ago reads `$0.00 / $940.00`, never `$940.00 / $940.00`. Amortising plans state one figure and count payments instead: `$1,410.00 a cycle · payment 7 of 360`.
 - Locked row at 55% opacity: name and `Locked`, over the unlock condition.
 - Footer is **two cells side by side**, split by a hairline: `Limit $850.00/cycle` and `Clears from Chase ····4471`, each a tap target with its own chevron. The label sits inline ahead of its value rather than opposite it, which is what lets two fit on a phone without either becoming a footnote-sized target; values truncate with an ellipsis. Both cells are always present — either alone leaves the other a mystery.
 - Empty state: `$0.00` muted, every row locked, footer reads `Nothing scheduled yet` — no cells.
@@ -231,7 +233,7 @@ Leads with *"Set by the income landing in your accounts and what already goes ou
 | Constraint | Note |
 |---|---|
 | `Payments a cycle` — `$459.44 of $850.00` | *"Across every open plan."* |
-| `Total open at once` — `$675.00 of $3,000.00` — the shelf headline, so the two can't disagree | *"A ceiling regardless of income."* |
+| `Total open at once` — `$1,350.00 of $3,000.00` — the shelf headline, so the two can't disagree | *"A ceiling regardless of income."* |
 
 Whichever sits closer to its ceiling carries `--border-accent` and gains *"This is the one binding you now."* Then `INCOME AND OUTGOINGS READ FROM` listing the accounts the limit is read from plus the Clear balance, `Manage linked accounts`, and: *"It grows as your income holds steady and plans clear on time. Nothing to apply for."*
 
