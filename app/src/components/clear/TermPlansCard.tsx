@@ -1,3 +1,4 @@
+import { Fragment, type ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 import Card from './Card';
 import { money } from '@/lib/money';
@@ -21,21 +22,32 @@ import { cn } from '@/lib/utils';
  * carries two different shapes: an even split counts cycles left, and an amortising plan like an
  * ELPA counts payments made against a schedule that outlives any cycle.
  */
-function planDetail(plan: TermPlan): string {
+function planDetail(plan: TermPlan): ReactNode {
   const perCycle = planPerCycle(plan);
   const cleared = planClearedShare(plan);
-  return [
+
+  const parts: ReactNode[] = [
     // A one-cycle plan isn't "split" into anything — it's just cleared.
     plan.splitInto ? (plan.splitInto === 1 ? 'In full' : `Split in ${plan.splitInto}`) : null,
     perCycle !== undefined ? `${money(perCycle, { cents: true })} a cycle` : null,
-    // Progress as a share, not a countdown: "2 left" means nothing without knowing the split, and
-    // a plan nothing has been paid on says so by leaving the segment out entirely.
-    cleared > 0 ? `${Math.round(cleared * 100)}% cleared` : null,
+    // Green, because it's the one part of the line that's good news. Progress as a share, not a
+    // countdown: "2 left" means nothing without knowing the split, and a plan nothing has been paid
+    // on says so by leaving the segment out rather than reading 0%.
+    cleared > 0 ? (
+      <span key="cleared" className="text-tier-asset-fg">
+        {Math.round(cleared * 100)}% cleared
+      </span>
+    ) : null,
     plan.progressNote,
     plan.rate,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  ].filter(Boolean);
+
+  return parts.map((part, i) => (
+    <Fragment key={i}>
+      {i > 0 && ' · '}
+      {part}
+    </Fragment>
+  ));
 }
 
 /**
