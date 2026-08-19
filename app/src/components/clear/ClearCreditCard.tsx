@@ -114,7 +114,10 @@ export default function ClearCreditCard({
       <div className="mt-2.5 flex gap-2">
         {addable && (
           <Button variant="clear" size="xs" className="flex-1" onClick={onAddBoost}>
-            Add {addable.label}
+            {/* Not the tier's full name: it's a button, and the surface it opens says the rest.
+                Deliberately not `shortLabel` either — that drives the mobile legend, which keeps the
+                full mark. */}
+            Add Boost
           </Button>
         )}
         <Button variant="clear" size="xs" className="flex-1" onClick={onViewBreakdown}>

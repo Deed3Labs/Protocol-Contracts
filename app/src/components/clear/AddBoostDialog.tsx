@@ -77,7 +77,7 @@ export default function AddBoostDialog({
       </div>
 
       <Button size="xs" className="mb-2 w-full" onClick={onAdd}>
-        Add {tier.label}
+        Add Boost
       </Button>
       <p className="text-center text-[11px] text-muted-foreground">
         You can remove it any time you&rsquo;re not carrying a balance on it.
