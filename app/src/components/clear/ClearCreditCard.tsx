@@ -114,7 +114,7 @@ export default function ClearCreditCard({
       <div className="mt-2.5 flex gap-2">
         {addable && (
           <Button variant="clear" size="xs" className="flex-1" onClick={onAddBoost}>
-            Add Clear {addable.label}
+            Add {addable.label}
           </Button>
         )}
         <Button variant="clear" size="xs" className="flex-1" onClick={onViewBreakdown}>

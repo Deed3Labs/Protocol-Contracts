@@ -72,7 +72,7 @@ Every list row in the app uses the same shape, so nothing needs a separate mobil
 | Savings-backed (free) | `#0F6E56` |
 | Asset-backed | `#1D9E75` |
 | Income-backed | `#BA7517` (fill) / `#854F0B` (text) |
-| Boost | `#7F77DD` (fill) / `#534AB7` (text) |
+| Clear Boost™ | `#7F77DD` (fill) / `#534AB7` (text) |
 | Savings: cash / vested / vesting | `#0F6E56` / `#5DCAA5` / `#9FE1CB` |
 
 Cards: `border-radius: 12px`, `padding: 13px 15px`.
@@ -197,10 +197,10 @@ Clearing is the same system as everywhere else: **balance first, then the linked
 
 **Card:** label + headline total, then the rows, then footer subrows.
 
-- Headline is the sum of live plan balances, with `of $X` against the **balance cap** when one applies. The cap drops off once the shelf carries something it was never meant to bound — an ELPA is amortising and sits outside it, and `$250,910.00 of $656.00` would be a category error.
-- Active row: name (+ month opened) and balance, over `Split in 4 · $235.00 a cycle · 2 left · 2% / cycle`. Amortising plans count payments instead: `$1,410.00 a cycle · payment 7 of 360`.
+- Headline is the sum of what's **still to pay**, with `of $X` against the **balance cap** when one applies. Once the shelf carries an amortising plan the cap is replaced by `incl. ELPA` — a mortgage was never inside it, and `$250,080.00 of $850.00` would be a category error.
+- Active row: name (+ month opened) and **`$470.00 / $940.00`** — what's left, then what the plan was for, the second figure muted. The pair is the point: a lone figure can't say how much further there is to go without the member remembering the original. Remaining is derived from the cycles still to run, so it can't contradict the schedule. Beneath: `Split in 4 · $246.75 a cycle · 2 left · 2% / cycle`. Amortising plans state one figure and count payments instead: `$1,410.00 a cycle · payment 7 of 360`.
 - Locked row at 55% opacity: name and `Locked`, over the unlock condition.
-- Footer is **two cells side by side**, split by a hairline: `Limit $656.00/cycle` and `Clears from Chase ····4471`, each a tap target with its own chevron. The label sits inline ahead of its value rather than opposite it, which is what lets two fit on a phone without either becoming a footnote-sized target; values truncate with an ellipsis. Both cells are always present — either alone leaves the other a mystery.
+- Footer is **two cells side by side**, split by a hairline: `Limit $850.00/cycle` and `Clears from Chase ····4471`, each a tap target with its own chevron. The label sits inline ahead of its value rather than opposite it, which is what lets two fit on a phone without either becoming a footnote-sized target; values truncate with an ellipsis. Both cells are always present — either alone leaves the other a mystery.
 - Empty state: `$0.00` muted, every row locked, footer reads `Nothing scheduled yet` — no cells.
 - Ordered by **how soon a member reaches them**, not by size — which is why a $248k mortgage sits last.
 
@@ -224,16 +224,16 @@ The three figures are what make the choice honest — spreading further costs mo
 Picking an option only previews it. **A `Save changes` button commits**, disabled while the selection matches what the plan is already on — a schedule that rewrote itself under the member's finger would be the wrong kind of responsive.
 
 ### Your term limit (modal, from the `Limit` cell)
-Leads with *"Set by money moving in and out of your accounts — not a credit score."* — the assumption otherwise is a score, and the whole point is that it isn't one.
+Leads with *"Set by the income landing in your accounts and what already goes out of them — not a credit score."* — the assumption otherwise is a score, and the whole point is that it isn't one.
 
 **Two constraints, and the lower one applies. Both are shown**, because a member who sees only the binding figure can't tell what would move it — and the two move for different reasons:
 
 | Constraint | Note |
 |---|---|
-| `Payments a cycle` — `$459.44 of $656.00` | *"Across every open plan."* |
-| `Total open at once` — `$1,350.00 of $3,000.00` | *"A ceiling regardless of income."* |
+| `Payments a cycle` — `$459.44 of $850.00` | *"Across every open plan."* |
+| `Total open at once` — `$675.00 of $3,000.00` — the shelf headline, so the two can't disagree | *"A ceiling regardless of income."* |
 
-Whichever sits closer to its ceiling carries `--border-accent` and gains *"This is the one binding you now."* Then `READ FROM` listing the accounts the limit is read from plus the Clear balance, `Manage linked accounts`, and: *"It grows as steady money moves through your accounts and plans clear on time. Nothing to apply for."*
+Whichever sits closer to its ceiling carries `--border-accent` and gains *"This is the one binding you now."* Then `INCOME AND OUTGOINGS READ FROM` listing the accounts the limit is read from plus the Clear balance, `Manage linked accounts`, and: *"It grows as your income holds steady and plans clear on time. Nothing to apply for."*
 
 ### Payment account (modal, from the `Clears from` cell)
 Leads with *"Your Clear balance is always used first. This is where the rest comes from."* — otherwise picking an account reads as choosing who gets paid. Selectable linked accounts, the active one carrying `--border-accent` and a check. `Link another account`, then: *"Changing this applies to every term plan. Nothing scheduled is missed — the next clearing uses the new account."*

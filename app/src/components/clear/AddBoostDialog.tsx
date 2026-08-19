@@ -35,7 +35,7 @@ export default function AddBoostDialog({
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title={`Add Clear ${tier.label}`}
+      title={`Add ${tier.label}`}
       description="Review what Clear Boost adds to your limit and what it costs before adding it."
     >
       <p className="mb-1 text-xs text-foreground-secondary">
@@ -77,7 +77,7 @@ export default function AddBoostDialog({
       </div>
 
       <Button size="xs" className="mb-2 w-full" onClick={onAdd}>
-        Add Clear {tier.label}
+        Add {tier.label}
       </Button>
       <p className="text-center text-[11px] text-muted-foreground">
         You can remove it any time you&rsquo;re not carrying a balance on it.

@@ -78,7 +78,8 @@ export default function TermLimitDialog({
       description="What you can schedule across term plans, and what sets it."
     >
       <p className="mb-3.5 text-xs leading-relaxed text-foreground-secondary">
-        Set by money moving in and out of your accounts — not a credit score.
+        Set by the income landing in your accounts and what already goes out of them — not a
+        credit score.
       </p>
 
       <div className="mb-3.5 space-y-2">
@@ -112,7 +113,7 @@ export default function TermLimitDialog({
 
       {readFrom.length > 0 && (
         <>
-          <p className="mb-1.5 text-[11px] tracking-[0.2px] text-muted-foreground">READ FROM</p>
+          <p className="mb-1.5 text-[11px] tracking-[0.2px] text-muted-foreground">INCOME AND OUTGOINGS READ FROM</p>
           <div className="mb-3.5 text-xs leading-loose">
             {readFrom.map((account) => (
               <div key={account.id} className="flex items-baseline justify-between gap-3">
@@ -132,8 +133,7 @@ export default function TermLimitDialog({
         Manage linked accounts
       </Button>
       <p className="text-[11px] leading-relaxed text-muted-foreground">
-        It grows as steady money moves through your accounts and plans clear on time. Nothing to
-        apply for.
+        It grows as your income holds steady and plans clear on time. Nothing to apply for.
       </p>
     </Modal>
   );

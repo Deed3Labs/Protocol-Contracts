@@ -4,8 +4,10 @@ import { money } from '@/lib/money';
 import {
   activePlans,
   clearsFromLabel,
+  hasAmortisingPlan,
   isPlanActive,
   planPerCycle,
+  planRemaining,
   termPlansTotal,
   type TermPlan,
   type TermPlans,
@@ -103,11 +105,18 @@ export default function TermPlansCard({
         <span className="text-[13px] text-foreground-secondary">Term plans</span>
         <span className={cn('text-[17px] font-medium tabular-nums', !scheduled && 'text-muted-foreground')}>
           {money(total, { cents: true })}
-          {scheduled && data.balanceLimit !== undefined && (
-            <span className="text-[13px] font-normal text-muted-foreground">
-              {' '}
-              of {money(data.balanceLimit, { cents: true })}
-            </span>
+          {/* A mortgage isn't inside the shelf's cap, so once one is here the headline names what
+              it's carrying instead of comparing against a ceiling that doesn't bound it. */}
+          {scheduled && hasAmortisingPlan(data) ? (
+            <span className="text-[13px] font-normal text-muted-foreground"> incl. ELPA</span>
+          ) : (
+            scheduled &&
+            data.balanceLimit !== undefined && (
+              <span className="text-[13px] font-normal text-muted-foreground">
+                {' '}
+                of {money(data.balanceLimit, { cents: true })}
+              </span>
+            )
           )}
         </span>
       </div>
@@ -126,8 +135,17 @@ export default function TermPlansCard({
                   {plan.openedOn && <span className="text-muted-foreground"> · {plan.openedOn}</span>}
                 </span>
                 {active ? (
+                  // What's left, then what it was for. The pair is the point: a member glancing at
+                  // the shelf wants to know how much further they have to go, and a lone figure
+                  // can't say that without them remembering the original.
                   <span className="shrink-0 text-[13px] tabular-nums">
-                    {money(plan.balance ?? 0, { cents: true })}
+                    {money(planRemaining(plan), { cents: true })}
+                    {plan.splitInto !== undefined && (
+                      <span className="text-muted-foreground">
+                        {' / '}
+                        {money(plan.balance ?? 0, { cents: true })}
+                      </span>
+                    )}
                   </span>
                 ) : (
                   <span className="shrink-0 text-[11px] text-muted-foreground">Locked</span>

@@ -1148,8 +1148,10 @@ export interface TermPlan {
   /** Merchant plans carry the month they were opened, e.g. "Jun". */
   openedOn?: string;
   /**
-   * Outstanding balance. Absent on a locked row — there's nothing to state until it's taken up, and
-   * a `$0.00` would read as a plan with nothing left rather than one never started.
+   * What the plan was taken out for. Absent on a locked row — there's nothing to state until it's
+   * taken up, and a `$0.00` would read as a plan with nothing left rather than one never started.
+   *
+   * Not what's left: that's derived from the cycles still to run, so the two can't disagree.
    */
   balance?: number;
   /** How many cycles the amount is spread over. Absent for amortising plans like an ELPA. */
@@ -1202,6 +1204,24 @@ export interface TermPlans {
   splitOptions: number[];
 }
 
+/**
+ * What's still to pay on a plan, in principal.
+ *
+ * Derived from the cycles left rather than stored, so a plan can't claim a remaining figure its own
+ * schedule contradicts. Amortising plans state their balance directly — there's no even split to
+ * count down.
+ */
+export function planRemaining(plan: TermPlan): number {
+  if (plan.balance === undefined) return 0;
+  if (!plan.splitInto || plan.cyclesLeft === undefined) return plan.balance;
+  return (plan.balance / plan.splitInto) * plan.cyclesLeft;
+}
+
+/** Amortising plans — an ELPA mortgage — run on their own schedule, outside the shelf's limits. */
+export function hasAmortisingPlan(data: TermPlans): boolean {
+  return activePlans(data).some((p) => p.splitInto === undefined);
+}
+
 /** A plan is live once it has a balance; everything else on the shelf is a locked row. */
 export function isPlanActive(plan: TermPlan): boolean {
   return plan.balance !== undefined;
@@ -1214,11 +1234,12 @@ export function activePlans(data: TermPlans): TermPlan[] {
 /**
  * What's outstanding across every live plan.
  *
- * Summed rather than stated, so the headline can't drift from the rows beneath it — which is
- * exactly what the reference mockups did between their desktop and mobile drafts.
+ * What's left, not what was taken out — the same figure the rows lead with. Summed rather than
+ * stated, so the headline can't drift from the rows beneath it, which is exactly what the reference
+ * mockups did between their desktop and mobile drafts.
  */
 export function termPlansTotal(data: TermPlans): number {
-  return activePlans(data).reduce((sum, p) => sum + (p.balance ?? 0), 0);
+  return activePlans(data).reduce((sum, p) => sum + planRemaining(p), 0);
 }
 
 export function clearsFromAccount(data: TermPlans): LinkedAccount | undefined {

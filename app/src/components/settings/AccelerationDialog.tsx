@@ -84,7 +84,7 @@ export default function AccelerationDialog({
       </div>
 
       <InfoBlock className="mb-3.5">
-        You&rsquo;re {data.accelerationCyclesToBoost} clean cycles from the Boost increase anyway.
+        You&rsquo;re {data.accelerationCyclesToBoost} clean cycles from the Clear Boost™ increase anyway.
         Acceleration is a shortcut, not the only route.
       </InfoBlock>
 

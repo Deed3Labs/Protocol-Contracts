@@ -89,7 +89,7 @@ export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsD
                 <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-vest-cash" />
                 Cash (CLRUSD)
               </span>
-              <span className="tabular-nums">{money(savings.cash)}</span>
+              <span className="tabular-nums">{money(savings.cash, { cents: true })}</span>
             </div>
             <div className="flex items-center justify-between gap-3 leading-[1.9]">
               <span className="flex items-center gap-1.5">

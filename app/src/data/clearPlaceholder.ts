@@ -86,7 +86,7 @@ const SPLIT_OPTIONS = [1, 2, 4, 12];
 const LOCKED_PLANS: TermPlan[] = [
   {
     id: 'cash-plan',
-    name: 'Cash plan',
+    name: 'Clear Cash',
     lockedNote: 'Unlocks after six clean cycles · 2.5% / cycle',
   },
   {
@@ -127,7 +127,7 @@ export const HOME_IN_USE: HomeData = {
       { key: 'asset', label: 'Asset-backed', rate: '0.65–0.75%', used: 2400, limit: ASSET_BACKED_LIMIT, added: true },
       // The unsecured draw — the only figure the cycle strip reports, and what makes it state three.
       { key: 'income', label: 'Income-backed', shortLabel: 'Income', rate: '1.5% / cycle', used: 700, limit: 1000, added: true },
-      { key: 'boost', label: 'Boost', rate: '3% / cycle', ratePerCycle: 0.03, used: 0, limit: 500, added: false },
+      { key: 'boost', label: 'Clear Boost™', rate: '3% / cycle', ratePerCycle: 0.03, used: 0, limit: 500, added: false },
     ],
   },
   cycle: {
@@ -182,7 +182,7 @@ export const HOME_IN_USE: HomeData = {
     unsecured: [
       { label: 'Income-backed', contribution: 1000, detail: '50% of ~$2,000/mo · 1.5%', tier: 'income' },
       {
-        label: 'Clear Boost',
+        label: 'Clear Boost™',
         contribution: 500,
         detail: 'Not added · opt-in · 3% per cycle',
         tier: 'boost',
@@ -206,7 +206,7 @@ export const HOME_IN_USE: HomeData = {
       },
       {
         id: 'cash-plan',
-        name: 'Cash plan',
+        name: 'Clear Cash',
         balance: 410,
         splitInto: 2,
         cyclesLeft: 1,
@@ -216,7 +216,7 @@ export const HOME_IN_USE: HomeData = {
       LOCKED_PLANS[2],
     ],
     balanceLimit: 3000,
-    perCycleLimit: 656,
+    perCycleLimit: 850,
     limitNote: 'from money in and out',
     accounts: LINKED_ACCOUNTS,
     clearsFromId: 'chase',
@@ -465,6 +465,7 @@ export const HOME_DAY_ONE_COUNTER: HomeData = {
         openedOn: 'today',
         balance: 940,
         splitInto: 4,
+        cyclesLeft: 4,
         rate: '2% / cycle',
         ratePerCycle: 0.02,
       },
@@ -745,7 +746,7 @@ export const SETTINGS: SettingsData = {
   },
   accelerationActive: false,
   accelerationBenefits: [
-    { label: 'Clear Boost', standard: '$500', accelerated: '$750' },
+    { label: 'Clear Boost™', standard: '$500', accelerated: '$750' },
     { label: 'Credits vest in', standard: '30 days', accelerated: '15 days' },
     { label: 'Income-backed rate', standard: '1.5%', accelerated: '1.25%' },
     { label: 'Priority on new communities', standard: '—', accelerated: '', acceleratedOnly: true },
