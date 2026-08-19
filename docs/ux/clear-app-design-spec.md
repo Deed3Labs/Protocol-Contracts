@@ -11,7 +11,11 @@ Reference spec for rebuilding the member-facing app. Archive existing nav pages;
 
 **Desktop:** horizontal nav in a top bar, left-aligned lockup — the mark, then the wordmark "Clear" — nav items right-aligned. Active item uses primary text color, inactive uses secondary. Bottom border on the bar, 0.5px.
 
-**The mark** leads the lockup, 8px ahead of the wordmark, as a **28px** square — half the 56px bar, which is the proportion a logo in a top bar normally takes. At 22px it read as a favicon: the artwork carries its own padding, so the C inside a 22px square is barely 13px. Its corners are rounded to **22.37%** of its side with **60% smoothing**, and a **1px black at 10%** hairline so it doesn't dissolve into a light page. `border-radius` alone gives four quarter-circles that break where they meet the straight edges — `corner-shape` smooths that junction. Browsers without `corner-shape` fall back to plain 22.37% rounding: same silhouette, slightly less refined. One component for both layouts, so the lockup can't drift.
+**The mark** leads the lockup, 8px ahead of the wordmark, as a **28px** square — half the 56px bar, which is the proportion a logo in a top bar normally takes. At 22px it read as a favicon: the artwork carries its own padding, so the C inside a 22px square is barely 13px.
+
+Its corners are a **real squircle** — `22.37%` radius at `60%` smoothing, generated with `figma-squircle` and applied as an SVG `clipPath`. **Neither `border-radius` nor CSS `corner-shape` gets there**: the first draws four quarter-circles that meet the straight edges at a curvature break, the second only reaches a superellipse. Apple's shape blends into the edge over a much longer run than its radius suggests — at 22.37% radius the curve starts **35.8%** of the way along the side, because the smoothing extends it by `(1 + 0.6)×`. That difference is the whole reason it reads as a squircle rather than a rounded square.
+
+The outline is a **1px black at 10%** stroke on that same path, not a CSS border — a border follows the element's box and ignores the mask. It's generated one stroke-width smaller and offset by half of it, so the line sits inside the shape. One component for both layouts, so the lockup can't drift.
 
 **Mobile:** **two floating elements**, not one bar — a nav pill hugging the left and an action button hugging the right, with `justify-content: space-between` so the page shows through the gap between them.
 
