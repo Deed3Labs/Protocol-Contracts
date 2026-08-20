@@ -179,6 +179,25 @@ Fix: **nobody withdraws from AssurancePool directly.** Every claim routes throug
 
 **The test still holds:** with only savings-backed credit live, reserves-needed must be **exactly zero**. Any formula that does not produce zero there is wrong.
 
+### Internal collateral is a distinct category
+
+**Asset-backed does not always mean an outside asset.** A bond or a pool share is a **claim on the co-op itself**, and it behaves differently from a tokenized deed:
+
+| | External asset | Internal claim |
+|---|---|---|
+| Example | Tokenized deed via Clear Properties Co. | BurnerBond, LendingPool share |
+| Where the capital sits | Outside the co-op | **Already inside the co-op, funding the book** |
+| Seizure on default | Sell it into a market | **Cancel the co-op's own obligation to the member** |
+| Haircut driver | Market price uncertainty | Redemption terms — largely known |
+
+**This is not circular in the harmful sense.** The bond is senior, the debt is the member's, RTD still counts the shortfall. But note what actually happens on default: the member is seized of a bond the co-op would otherwise have had to redeem, so **the seizure cancels a liability rather than realizing an asset.** That works cleanly — it is just worth stating rather than discovering.
+
+**Do not treat the two identically when setting haircuts.** An internal claim has known redemption terms; an external asset has a market price. Applying a market-risk haircut to a bond over-reserves; applying a bond-style haircut to a deed under-reserves.
+
+**The round-trip is already closed.** Withdrawable CLRUSD = ESA balance − savings-backed drawn, and the ERC-7579 module enforces the transfer restriction while encumbered. A member at −$3,000 against $3,000 saved cannot move that CLRUSD into a bond or the pool to be counted twice.
+
+**One property to keep in view, not to fix yet.** The LendingPool funding unsecured tiers is member money, so one member's yield is paid by another's carry cost — which is what a credit union is. But a member who is simultaneously a large depositor and a large unsecured borrower has **netted their own risk to near zero while the network still shows two gross positions.** Immaterial at ten merchants, real at scale, and better named now than discovered in year three.
+
 **The haircut is a real parameter, not a detail.** It should be per-collateral-type, governed, and conservative. Start high and lower it with evidence.
 
 **0.3 `AssuranceOracle` needs the right inputs.** Its job is the predicted default rate feeding target RTD, not ERC20 prices. It should read internally-generated credit-risk signals: ESA balances, deposit history, repayment behaviour, cycle-rebalance rates. If the Uniswap `slot0` path is retained for any purpose, replace it with `observe()` TWAP — `slot0` is flash-loan manipulable.
