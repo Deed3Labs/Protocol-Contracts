@@ -16,6 +16,13 @@ import "hardhat-preprocessor";
 
 // If not set, it uses ours Alchemy's default API key.
 // You can get your own at https://dashboard.alchemyapi.io
+// Stripping revert strings saves gas, but makes every `revertedWith("...")` assertion
+// unverifiable. Keep them whenever we are running tests.
+const keepRevertStrings =
+  process.env.KEEP_REVERT_STRINGS === "true" ||
+  process.argv.includes("test") ||
+  process.argv.includes("coverage");
+
 const providerApiKey = process.env.ALCHEMY_API_KEY || "oKxs-03sij-U_N0iOlrSsZFr29-IqbuF";
 const baseSepoliaRpcUrl =
   process.env.BASE_SEPOLIA_RPC_URL ||
@@ -82,9 +89,12 @@ const config: HardhatUserConfig = {
         }
       },
       viaIR: true,
-      // Disable error strings to save gas
+      // Revert strings are stripped in production builds to save gas and bytecode size.
+      // They are kept under `hardhat test`/`coverage` so assertions on require() reasons
+      // work; set KEEP_REVERT_STRINGS=true to keep them in any other task.
+      // New code should prefer custom errors, which survive stripping either way.
       debug: {
-        revertStrings: "strip"
+        revertStrings: keepRevertStrings ? "default" : "strip"
       },
       outputSelection: {
         "*": {
@@ -146,6 +156,12 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
+    hardhat: {
+      // Keeping revert strings inflates bytecode past EIP-170 for a few of the
+      // larger contracts (DeedNFT et al). Lift the limit only in that mode, so
+      // production builds are still held to the real deployable size.
+      allowUnlimitedContractSize: keepRevertStrings,
+    },
     // View the networks that are pre-configured.
     // If the network you are looking for is not here you can add new network settings
     localhost: {

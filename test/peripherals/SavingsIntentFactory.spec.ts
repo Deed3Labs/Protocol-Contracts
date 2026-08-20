@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 
 describe("SavingsIntentFactory", function () {
   let clearUsd: any;
@@ -22,10 +22,12 @@ describe("SavingsIntentFactory", function () {
 
     const MockERC20 = await ethers.getContractFactory("MockERC20");
     usdc = await MockERC20.deploy("USD Coin", "USDC", 6);
-    await usdc.waitForDeployment();
-
-    const ESADepositVault = await ethers.getContractFactory("ESADepositVault");
-    vault = await ESADepositVault.deploy(await clearUsd.getAddress(), admin.address);
+    await usdc.waitForDeployment();    const ESADepositVault = await ethers.getContractFactory("ESADepositVault");
+    vault = await upgrades.deployProxy(
+      ESADepositVault,
+      [await clearUsd.getAddress(), admin.address],
+      { kind: "uups" }
+    );
     await vault.waitForDeployment();
 
     const minterRole = await clearUsd.MINTER_ROLE();
@@ -162,4 +164,4 @@ describe("SavingsIntentFactory", function () {
       })
     ).to.be.revertedWithCustomError(await ethers.getContractAt("SavingsIntentEscrow", predicted), "SavingsIntentEscrowFundingIncomplete");
   });
-}
+});

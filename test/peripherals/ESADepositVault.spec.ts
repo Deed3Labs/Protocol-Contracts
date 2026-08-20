@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 
 describe("ClearUSD + ESADepositVault", function () {
   let clearUsd: any;
@@ -25,10 +25,12 @@ describe("ClearUSD + ESADepositVault", function () {
     usdc = await MockERC20.deploy("USD Coin", "USDC", 6);
     await usdc.waitForDeployment();
     dai = await MockERC20.deploy("Dai Stablecoin", "DAI", 18);
-    await dai.waitForDeployment();
-
-    const ESADepositVault = await ethers.getContractFactory("ESADepositVault");
-    vault = await ESADepositVault.deploy(await clearUsd.getAddress(), deployer.address);
+    await dai.waitForDeployment();    const ESADepositVault = await ethers.getContractFactory("ESADepositVault");
+    vault = await upgrades.deployProxy(
+      ESADepositVault,
+      [await clearUsd.getAddress(), deployer.address],
+      { kind: "uups" }
+    );
     await vault.waitForDeployment();
 
     const minterRole = await clearUsd.MINTER_ROLE();
