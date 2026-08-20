@@ -471,7 +471,7 @@ describe("MetadataRenderer", function() {
       // Add document
       await expect(
         metadataRenderer.manageTokenDocument(tokenId, docType, docUri, false)
-      ).to.emit(metadataRenderer, "TokenMetadataUpdated")
+      ).to.emit(metadataRenderer, "MetadataUpdate")
         .withArgs(tokenId);
 
       // Verify document was added
@@ -486,7 +486,7 @@ describe("MetadataRenderer", function() {
       // Remove document
       await expect(
         metadataRenderer.manageTokenDocument(tokenId, docType, "", true)
-      ).to.emit(metadataRenderer, "TokenMetadataUpdated")
+      ).to.emit(metadataRenderer, "MetadataUpdate")
         .withArgs(tokenId);
 
       // Verify document was removed
@@ -579,7 +579,7 @@ describe("MetadataRenderer", function() {
           tokenId,
           imageUrls
         )
-      ).to.emit(metadataRenderer, "TokenGalleryUpdated")
+      ).to.emit(metadataRenderer, "MetadataUpdate")
         .withArgs(tokenId);
 
       const retrievedGallery = await metadataRenderer.getTokenGallery(tokenId);
@@ -632,7 +632,7 @@ describe("MetadataRenderer", function() {
 
       await expect(
         metadataRenderer.setTokenAnimationURL(tokenId, animationURL)
-      ).to.emit(metadataRenderer, "TokenMetadataUpdated")
+      ).to.emit(metadataRenderer, "MetadataUpdate")
         .withArgs(tokenId);
 
       const retrievedURL = await metadataRenderer.getTokenAnimationURL(tokenId);
@@ -645,7 +645,7 @@ describe("MetadataRenderer", function() {
 
       await expect(
         metadataRenderer.setTokenExternalLink(tokenId, externalLink)
-      ).to.emit(metadataRenderer, "TokenMetadataUpdated")
+      ).to.emit(metadataRenderer, "MetadataUpdate")
         .withArgs(tokenId);
 
       const retrievedLink = await metadataRenderer.getTokenExternalLink(tokenId);
@@ -960,14 +960,16 @@ describe("MetadataRenderer", function() {
         additional_info: "Additional legal info"
       });
 
-      // Verify attributes (traits)
+      // Verify attributes (traits). DeedNFT.setTrait auto-names a trait from its
+      // string key, so the rendered trait_type is the raw key, not the display
+      // name registered at initialization.
       const attributes = metadata.attributes;
       expect(attributes).to.deep.include({
-        trait_type: "Asset Type",
+        trait_type: "assetType",
         value: "Land"
       });
       expect(attributes).to.deep.include({
-        trait_type: "Validation Status",
+        trait_type: "isValidated",
         value: "Valid"
       });
       expect(metadata.description).to.equal("Test definition");
