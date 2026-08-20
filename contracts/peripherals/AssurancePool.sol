@@ -10,12 +10,30 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "../core/interfaces/stable-credit/IStableCredit.sol";
 import "../core/interfaces/stable-credit/IAssurancePool.sol";
 import "../core/interfaces/stable-credit/IAssuranceOracle.sol";
+import "../core/interfaces/stable-credit/ICollateralSource.sol";
 
 /// @title AssurancePool
 /// @notice Stores and manages reserve tokens according to pool
 /// configurations set by operator access granted addresses.
 contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
+
+    /* ========== EVENTS ========== */
+
+    /// @notice emitted when an instrument's withdrawal permission changes.
+    event WithdrawalCallerUpdated(address indexed caller, bool allowed);
+
+    /// @notice emitted when the unsecured-exposure source changes.
+    event CollateralSourceUpdated(address indexed collateralSource);
+
+    /* ========== ERRORS ========== */
+
+    /// @notice thrown when an address that is not an approved instrument attempts a withdrawal.
+    error AssurancePoolUnauthorizedWithdrawal(address caller);
+    /// @notice thrown when a withdrawal would move value out of the loss-absorbing reserves.
+    error AssurancePoolLossAbsorptionTouched();
+    /// @notice thrown when a zero address is supplied where a contract is required.
+    error AssurancePoolInvalidAddress();
 
     /* ========== STATE VARIABLES ========== */
 
@@ -42,6 +60,20 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev reserve token address => excess reserve balance
     mapping(address => uint256) public excessReserve;
 
+    /// @notice Instruments permitted to draw on the excess reserve. Nobody withdraws from the
+    /// AssurancePool directly: every claim routes through an instrument that has its own rules
+    /// about what may be claimed and when (BurnerBond at maturity, StableCredit for lost debt,
+    /// LendingPool for loss absorption).
+    /// @dev Deliberately narrower than operator access. An operator can configure the pool; that
+    /// is not the same authority as being able to take reserve out of it.
+    /// @dev address => permitted to withdraw
+    mapping(address => bool) public withdrawalCallers;
+
+    /// @notice Reports the share of credit outstanding that no collateral stands behind.
+    /// @dev Optional. While unset the pool treats all credit as unsecured, preserving the
+    /// inherited behaviour. Phase 1's CollateralRegistry fills this in.
+    ICollateralSource public collateralSource;
+
     /* ========== INITIALIZER ========== */
 
     /// @notice initializes the reserve token and deposit token to be used for assurance, as well as
@@ -64,16 +96,33 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         return primaryBalance() + bufferBalance();
     }
 
-    /// @notice returns the ratio of primary reserve to total debt, where 1 ether == 100%.
-    /// @return ratio of primary reserve to total debt, where 1 ether == 100%.
+    /// @notice returns the credit outstanding that the pool actually has to reserve against.
+    /// @dev Collateralized credit cannot generate lost debt, so it does not belong in the RTD
+    /// denominator. With no collateral source configured this returns total supply, which is the
+    /// inherited behaviour: every credit treated as unsecured.
+    /// @return amount of unsecured credit outstanding, denominated in stable credit.
+    function unsecuredDebt() public view returns (uint256) {
+        uint256 totalDebt = stableCredit.totalSupply();
+        if (address(collateralSource) == address(0)) return totalDebt;
+        uint256 unsecured = collateralSource.unsecuredDebt();
+        // A source that over-reports must not be able to inflate the reserve requirement past
+        // the credit that actually exists.
+        return unsecured > totalDebt ? totalDebt : unsecured;
+    }
+
+    /// @notice returns the ratio of primary reserve to unsecured debt, where 1 ether == 100%.
+    /// @dev Zero when there is no unsecured exposure: the ratio is undefined with an empty
+    /// denominator. Read `hasValidRTD()` rather than this value to decide whether the pool is
+    /// adequately reserved, since no exposure means adequately reserved at any balance.
+    /// @return ratio of primary reserve to unsecured debt, where 1 ether == 100%.
     function RTD() public view returns (uint256) {
         // if primary balance is empty return 0% RTD ratio
         if (primaryBalance() == 0) return 0;
-        // if stable credit has no debt, return 0% RTD ratio
-        if (stableCredit.totalSupply() == 0) return 0;
-        // return primary balance amount divided by total debt amount
-        return (primaryBalance() * 1 ether)
-            / convertStableCreditToReserveToken(stableCredit.totalSupply());
+        // if there is no unsecured exposure the ratio is undefined
+        uint256 unsecured = unsecuredDebt();
+        if (unsecured == 0) return 0;
+        // return primary balance amount divided by unsecured debt amount
+        return (primaryBalance() * 1 ether) / convertStableCreditToReserveToken(unsecured);
     }
 
     /// @notice returns the target RTD for the AssurancePool.
@@ -87,6 +136,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev returns true if the primary reserve is greater than or equal to the target RTD.
     /// @return true if the primary reserve is greater than or equal to the target RTD.
     function hasValidRTD() public view returns (bool) {
+        // no unsecured exposure means nothing to reserve against, at any balance
+        if (unsecuredDebt() == 0) return true;
         // if current RTD is greater than target RTD, return false
         return RTD() >= targetRTD();
     }
@@ -96,11 +147,14 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev the returned amount is denominated in the reserve token
     /// @return amount of reserve tokens needed for the primary reserve to reach the target RTD.
     function neededReserves() public view returns (uint256) {
+        uint256 unsecured = unsecuredDebt();
+        // Asserted rather than derived. When every credit outstanding is collateralized the
+        // correct reserve requirement is exactly zero, and that must not depend on a division
+        // happening to round there.
+        if (unsecured == 0) return 0;
         if (hasValidRTD()) return 0;
-        // (target RTD - current RTD) * total debt amount
-        return (
-            (targetRTD() - RTD()) * convertStableCreditToReserveToken(stableCredit.totalSupply())
-        ) / 1 ether;
+        // (target RTD - current RTD) * unsecured debt amount
+        return ((targetRTD() - RTD()) * convertStableCreditToReserveToken(unsecured)) / 1 ether;
     }
 
     /// @notice converts the stable credit amount to the reserve token denomination.
@@ -152,6 +206,43 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice returns the amount of current reserve token's excess balance.
     function excessBalance() public view override returns (uint256) {
         return excessReserve[address(reserveToken)];
+    }
+
+    /// @notice returns the reserve-token-denominated value of every token the pool actually holds.
+    /// @dev The three reserve tiers are accounted in a single reserve-token-denominated slot each,
+    /// but any accepted token can fund them, so the tokens themselves are commingled. Comparing
+    /// this against the accounted total is the solvency check.
+    ///
+    /// Deliberately a view and not a revert condition. Held value is priced through the oracle, so
+    /// it moves with ordinary valuation drift, and it counts only the tokens the payout path knows
+    /// about; enforcing it on-chain would halt withdrawals on price movement rather than on any
+    /// actual shortfall. Drift belongs to continuous monitoring, which alerts rather than
+    /// corrects.
+    /// @return value total reserve token equivalent of all held balances.
+    function heldReserveValue() public view returns (uint256 value) {
+        address[] memory tokens = _getHeldTokens();
+        for (uint256 i = 0; i < tokens.length; i++) {
+            uint256 balance = IERC20Upgradeable(tokens[i]).balanceOf(address(this));
+            if (balance > 0) value += _convertToReserveToken(tokens[i], balance);
+        }
+    }
+
+    /// @notice reverts unless the loss-absorbing reserves came through a withdrawal untouched.
+    /// @dev The withdrawable tier is the excess reserve and only the excess reserve. Primary and
+    /// buffer exist to make losses survivable, and no withdrawal may reach them by any route,
+    /// including the multi-token payout path that pays out of raw balances rather than out of a
+    /// per-tier ledger. Asserted here rather than left to tests, because a payout path that draws
+    /// on loss absorption is not a failed withdrawal, it is a solvency bug that has already
+    /// happened by the time anyone reads a balance.
+    /// @param primaryBefore primary balance recorded before the payout.
+    /// @param bufferBefore buffer balance recorded before the payout.
+    function _assertLossAbsorptionUntouched(uint256 primaryBefore, uint256 bufferBefore)
+        internal
+        view
+    {
+        if (primaryBalance() != primaryBefore || bufferBalance() != bufferBefore) {
+            revert AssurancePoolLossAbsorptionTouched();
+        }
     }
 
     /* ========== MUTATIVE FUNCTIONS ========== */
@@ -255,23 +346,28 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
 
     /// @notice enables caller to withdraw reserve tokens from the excess reserve.
     /// @param amount amount of reserve tokens to withdraw from the excess reserve.
-    function withdraw(uint256 amount) public nonReentrant {
+    function withdraw(uint256 amount) public nonReentrant onlyWithdrawalCaller {
         require(amount > 0, "AssurancePool: Cannot withdraw 0");
         require(amount <= excessBalance(), "AssurancePool: Insufficient excess reserve");
+        uint256 primaryBefore = primaryBalance();
+        uint256 bufferBefore = bufferBalance();
         // reduce excess balance
         excessReserve[address(reserveToken)] -= amount;
         // transfer reserve token to caller
         reserveToken.safeTransfer(_msgSender(), amount);
+        _assertLossAbsorptionUntouched(primaryBefore, bufferBefore);
         emit ExcessReserveWithdrawn(amount);
     }
     
     /// @notice enables caller to withdraw any accepted token from the excess reserve.
     /// @param token address of the token to withdraw.
     /// @param amount amount of reserve token equivalent to withdraw.
-    function withdrawToken(address token, uint256 amount) public nonReentrant {
+    function withdrawToken(address token, uint256 amount) public nonReentrant onlyWithdrawalCaller {
         require(amount > 0, "AssurancePool: Cannot withdraw 0");
         require(_isTokenAccepted(token), "Token not accepted for withdrawals");
         require(amount <= excessBalance(), "AssurancePool: Insufficient excess reserve");
+        uint256 primaryBefore = primaryBalance();
+        uint256 bufferBefore = bufferBalance();
         
         // Calculate how much of the requested token we can provide
         uint256 tokenAmount = _convertFromReserveToken(token, amount);
@@ -287,7 +383,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
             // We don't have enough, provide equivalent value using available tokens
             _withdrawEquivalentValue(token, amount);
         }
-        
+
+        _assertLossAbsorptionUntouched(primaryBefore, bufferBefore);
         emit ExcessReserveWithdrawn(amount);
     }
 
@@ -352,6 +449,25 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     function setReserveToken(address _reserveToken) external onlyAdmin {
         reserveToken = IERC20Upgradeable(_reserveToken);
         emit ReserveTokenUpdated(_reserveToken);
+    }
+
+    /// @notice grants or revokes an instrument's right to draw on the excess reserve.
+    /// @dev Admin-managed and empty by default, so a fresh deployment has no withdrawal path at all
+    /// until an instrument is explicitly wired in.
+    /// @param caller address of the instrument.
+    /// @param allowed true to permit withdrawals, false to revoke.
+    function setWithdrawalCaller(address caller, bool allowed) external onlyAdmin {
+        if (caller == address(0)) revert AssurancePoolInvalidAddress();
+        withdrawalCallers[caller] = allowed;
+        emit WithdrawalCallerUpdated(caller, allowed);
+    }
+
+    /// @notice sets the contract reporting unsecured exposure for the RTD denominator.
+    /// @dev Pass address(0) to fall back to treating all credit as unsecured.
+    /// @param _collateralSource address of the collateral source, or address(0) to unset.
+    function setCollateralSource(address _collateralSource) external onlyAdmin {
+        collateralSource = ICollateralSource(_collateralSource);
+        emit CollateralSourceUpdated(_collateralSource);
     }
 
     function setAssuranceOracle(address _assuranceOracle) external onlyAdmin {
@@ -436,10 +552,10 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     
     /// @notice Internal function to rebalance reserves from primary when RTD is above target
     function _rebalanceFromPrimary() internal {
-        uint256 totalSupply = stableCredit.totalSupply();
-        if (totalSupply == 0) return;
+        uint256 unsecured = unsecuredDebt();
+        if (unsecured == 0) return;
 
-        uint256 debtInReserve = convertStableCreditToReserveToken(totalSupply);
+        uint256 debtInReserve = convertStableCreditToReserveToken(unsecured);
         uint256 currentPrimary = primaryBalance();
         uint256 targetPrimary = (targetRTD() * debtInReserve) / 1 ether;
 
@@ -604,7 +720,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice Calculate current RTD using live pricing data
     /// @return Current RTD percentage based on live prices
     function _calculateCurrentRTD() internal view returns (uint256) {
-        if (stableCredit.totalSupply() == 0) return 0;
+        uint256 unsecured = unsecuredDebt();
+        if (unsecured == 0) return 0;
         
         // Calculate total reserve value using current prices
         uint256 totalReserveValue = 0;
@@ -622,7 +739,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         }
         
         // Calculate RTD using current prices
-        return (totalReserveValue * 1 ether) / convertStableCreditToReserveToken(stableCredit.totalSupply());
+        return (totalReserveValue * 1 ether) / convertStableCreditToReserveToken(unsecured);
     }
 
     /* ========== MODIFIERS ========== */
@@ -632,6 +749,13 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
             _msgSender() == address(stableCredit),
             "AssurancePool: Caller is not the stable credit or owner"
         );
+        _;
+    }
+
+    modifier onlyWithdrawalCaller() {
+        if (!withdrawalCallers[_msgSender()]) {
+            revert AssurancePoolUnauthorizedWithdrawal(_msgSender());
+        }
         _;
     }
 
