@@ -2,7 +2,7 @@
 
 Build plan for the on-chain layer: StableCredit, the ESA, the Yield Pool, BurnerBonds, and the connection points to the app and Lithic.
 
-Repos: `Deed3Labs/Protocol-Contracts` (forked from `StableCredit`), `KyngKai909/Lending` (MagnifyCash V1 fork, not in scope here).
+Repo: `Deed3Labs/Protocol-Contracts`, forked from `StableCredit`. The `KyngKai909/Lending` fork is **dropped** — see below.
 
 ---
 
@@ -23,19 +23,49 @@ Every member has one signed balance. Negative means they owe the network; positi
 
 **Merging them breaks full reserve.** CLRUSD would end up backed partly by USDC and partly by somebody's promise, and nobody could tell which. This is the same circularity already rejected when CLRUSD was dropped as reserve currency.
 
-> **VERIFY FIRST:** in base ReSource the StableCredit ERC20 *is* the medium of exchange — one signed token where positive means you hold credits. Confirm whether CLRUSD in this fork is that token or a separate receipt token. If it is the same token, separating them is Phase 0 work and everything else waits.
+> **CONFIRMED:** CLRUSD is a **separate token** from StableCredit in this fork — not the ReSource pattern where the credit ERC20 is itself the medium of exchange. No token-separation work is needed. The savings side is genuinely fully reserved, and the two-door redemption model below holds as written.
 
 ### The two phases — and what must not be foreclosed
 
-**Phase 1 (now, consumer):** StableCredit is a debt register and is never spent. Only CLRUSD circulates. A member draws credit → the co-op lends its own CLRUSD → the member's StableCredit goes negative. Repayment burns it and returns CLRUSD to the co-op reserve. Capital-intensive: requires a co-op CLRUSD float, the on-chain sibling of the fiat settlement float.
+**Phase 1 (now, consumer at a partner merchant).** A purchase is a **three-party mint that nets to zero**. No CLRUSD moves at origination and nobody lends anything:
 
-**Phase 2 (B2B, later):** a member accepts a counterparty's claim instead of being paid in CLRUSD. *That* is the only thing that creates a positive StableCredit balance. The holder can then transfer that claim onward, at which point StableCredit itself circulates. Requires zero co-op capital — which is why it is the scalable endgame.
+| Party | StableCredit |
+|---|---|
+| Member | **−** purchase amount |
+| Merchant | **+** payout amount |
+| Co-op | **+** the discount (purchase − payout) |
+
+That is mutual credit doing what mutual credit does. **The earlier framing in this document — that the co-op lends its own CLRUSD at draw time and StableCredit is a debt register that never circulates — was wrong**, and it invented a float requirement that does not exist. Origination is capital-free.
+
+**The merchant's positive balance IS the payables ledger.** It is what the co-op owes that merchant, on-chain, without a parallel off-chain record. It is also what lets a merchant see what they are owed and redeem it.
+
+**Liquidity is needed only at redemption**, when a merchant converts a positive balance to USDC. That is the net-30 payout, and it is exactly the working capital already modelled in the business plan. The on-chain design and the business plan now describe the same thing.
+
+**Merchants who carry credit are paid by drawdown first.** A merchant with a negative balance of their own has it reduced before any surplus becomes redeemable. Only the surplus can be withdrawn. This is the B2B circulation of Phase 2 arriving early, as a consequence rather than a feature — and it is the cheapest possible payout, because it costs no reserve at all.
+
+**Phase 2 (B2B, later).** A member accepts a counterparty's claim and transfers it onward, so StableCredit circulates between members rather than only against the co-op. Phase 1 already creates positive balances, so Phase 2 is no longer a different mechanism — it is the same ledger with transfer switched on and a wider set of counterparties.
 
 **Therefore, in Phase 1 code:**
-- StableCredit must be **transferable**, not soulbound, even though nothing transfers it yet.
-- The settlement path must **not assume the co-op is the positive-side counterparty**.
-- Redemption logic must handle a positive holder who is not the co-op.
+- StableCredit must be **transferable**, not soulbound. Merchants hold real positive balances from day one.
+- The settlement path must **not assume the co-op is the positive-side counterparty** — in the common case the merchant is.
+- Redemption must handle a positive holder who is not the co-op. This is now the *primary* path, not a future one.
 - Never hard-code `balance <= 0`.
+- Redemption must **net against the holder's own negative balance first**, and only pay out the remainder.
+
+### Carry accrues into the balance, per position
+
+Carry is not a fee charged at intervals — it accrues continuously into the negative balance, so a position worsens with time held. Two consequences for the contracts:
+
+**It cannot be computed by iterating accounts.** That does not scale. Use **lazy accrual**: an index that advances with time, with each position storing the index value at its last touch. Accrued carry is derived on read.
+
+**Term plans accrue per position, revolving tiers accrue per tier.** These are genuinely different and need two mechanisms:
+
+| | Basis | Why |
+|---|---|---|
+| **Revolving tiers** | One index per tier | All drawn balance in a tier shares a rate and a clock. |
+| **Term plans** | One index per plan | Each plan has its own rate, its own opening date and its own split schedule. Two plans at different rates cannot share an index. |
+
+**The member's negative balance is therefore derived**, not stored: the sum of tier positions plus the sum of term positions, each with its own accrued carry. The UI already presents it this way — one balance composed of parts — so the contract shape matches what a member sees.
 
 ### Lost debt
 
@@ -62,12 +92,46 @@ Redemption is how lost debt is deleted: a positive holder burns credits, receive
 ### Build new
 | Contract | Purpose |
 |---|---|
-| `NetworkRegistry` | member → issuer; issuer → (stableCredit, assurancePool, oracle). ~50 lines. |
+| `NetworkRegistry` | member → **issuers** (plural); issuer → (stableCredit, assurancePool, oracle). The parent registry every issuer is registered against. |
+| `MerchantRegistry` | Per-merchant terms: base payout schedule, approval cap, discount rate, status. The redemption path reads it. Makes "merchant accounts" a config change rather than a rewrite. |
+| `PayoutPool` | Funds merchant redemptions. Separate from AssurancePool. Reports its own shortfall. |
+| `RevolvingIssuer` | The tiered line: savings, asset, income, Clear Boost™. Cheapest-first waterfall, cycle equilibrium, one index per tier. |
+| `TermIssuer` | Term plans: partner credit, Clear Cash™, ground lease, ELPA. Per-position rate and clock, split schedules, its own income-based limit. No cycle equilibrium. |
 | `CollateralRegistry` | What each member has pledged and where it lives. |
 | `LimitCalculator` | Values collateral, applies haircuts, emits the tiered ceiling. |
 | `LendingPool` | ERC-4626, utilization-priced. Funds unsecured tiers. |
 | `BondVault` | Per-bond accounting + code-enforced redemption reserve. |
 | `StandingBid` | Co-op buys positive StableCredit from members. Funded from LendingPool/operating capital, **never** AssurancePool. |
+
+### On the number of issuers — revised
+
+An earlier note in this plan said **one** CreditIssuer, on the grounds that tiers are not a reason to split and that a second issuer implies a second reserve. **The first half still holds; the second was wrong, and the design has since produced a genuine second rule set.**
+
+**Tiers are not a reason to split.** One member, one balance, one ceiling composed of parts. That has not changed.
+
+**Term plans are a different rule set, which is the stated criterion.** They accrue per position rather than per tier, carry their own rate and clock, run a split schedule, sit under a separate income-based limit, and are exempt from cycle equilibrium. Forcing both behaviours into one contract means one set of storage doing two jobs badly.
+
+**A second issuer does not mean a second reserve.** Both issuers write to **one StableCredit** and draw on **one AssurancePool**. The reserve-splitting objection applies to a second *network*, not to a second issuer inside one network. Nothing is fragmented.
+
+**The registry is the extension point.** Future issuers register there rather than being special-cased: a `PartnerIssuer` for merchant-issued lines, or issuers run by other institutions later. Those parties are **partner members and their customers are consumer members** — inside the network, not external to it — so the co-op underwrites within one reserve, and per-issuer risk segregation becomes a reserve *requirement* per issuer rather than a separate pool.
+
+**Leave room, do not build it yet.** `NetworkRegistry` should map member → a *set* of issuers from day one, and no code should assume a member has exactly one. Beyond that, per-issuer loss attribution and reserve requirements are a later design — the shape is not knowable until a non-co-op issuer actually exists.
+
+### Dropped — `KyngKai909/Lending` (MagnifyCash V1 fork)
+
+**Do not use it, do not adapt it, do not import from it.**
+
+**It cannot do term plans.** It is a bullet loan against an escrowed NFT. Term plans amortize on a split schedule against a signed ledger balance with no collateral. Keeping the file names and replacing the contents is not a fork, it is a rewrite with someone else's licence attached.
+
+**It contradicts the origination model.** MagnifyCash moves real assets: a lender funds a desk, a borrower escrows an NFT, ERC-20 transfers at origination. Phase 1 origination is a three-party mint that nets to zero and moves nothing. Bolting a fund-and-escrow model onto a mutual credit ledger would reintroduce a capital requirement at origination — the exact false premise removed from this document.
+
+**It also carries real defects**: permissionless `initializeNewLendingDesk`, `liquidateDefaultedLoan` sending collateral to whoever holds the desk key, no amortization, no delinquency states, and two OpenZeppelin generations of drift.
+
+**`TermIssuer` does this natively.** A term plan is a signed balance, a rate index, an opening date, a split schedule and a share of a member-level limit — StableCredit plus an issuer. No escrow, no desk, no pool at origination. `TermIssuer` is not a substitute for Magnify; it is what makes Magnify unnecessary.
+
+**Keep one idea, not one line of code.** Per-desk lending — a party defining its own terms and bearing its own losses — is the shape a future `PartnerIssuer` takes. That is a sentence, not a dependency.
+
+**The one case that could revive the pattern:** if asset-backed collateral ever means *NFT* collateral — tokenized deeds via Clear Properties Co. — there is a genuine escrow-and-liquidate problem. That belongs to the Clear Deed track and wants a contract designed against the DeedNFT, not a fork of a generic NFT lending protocol.
 
 ### Do not build yet
 Factory for networks — a factory encodes assumptions about what varies, and that is not yet known. Check whether the fork already ships one before writing anything. Build it when deploying the second network.
@@ -93,7 +157,12 @@ Fix: **nobody withdraws from AssurancePool directly.** Every claim routes throug
 
 **0.4 OpenZeppelin version.** `BurnerBond` uses v4 paths (`Counters`, `security/ReentrancyGuard`), both moved or deprecated in v5. Pin deliberately.
 
-### Phase 1 — Collateral and limits
+### Phase 1 — Collateral, limits, and the issuer split
+
+**Split `CreditIssuer` into `RevolvingIssuer` and `TermIssuer`** before building the term product, not after. Retrofitting per-position accrual into a per-tier contract is the kind of migration that goes wrong with live balances.
+
+**Carry indices land here too** — one per tier in `RevolvingIssuer`, one per plan in `TermIssuer`. Write the accrual test first: a position untouched for six cycles must read the same accrued carry as one touched every cycle. That single test catches most of what can go wrong with lazy accrual.
+
 
 This is the missing layer, and it is what makes savings-backed credit work. **Savings-backed requires no external capital**, so the entire first product ships here without the pools existing.
 
@@ -118,6 +187,35 @@ Valuation rules:
 - **Pool shares** — 70% LTV, ~75 bps/cycle. The haircut is for **correlation, not volatility**: pool NAV is backed by the same loan book, so it falls exactly when credit lines are impairing.
 - **Income** — 50% of estimated monthly deposit, 150 bps/cycle. Off-chain attested (§4).
 - **Boost** — opt-in, $500 / $750 accelerated, 300 bps/cycle. Off-chain underwritten.
+
+### Encumbrance and the redemption lock
+
+The member's smart account **holds CLRUSD directly** — self-custody, not co-op custody. Two rules follow.
+
+```
+withdrawable CLRUSD = ESA balance − savings-backed drawn
+```
+
+This is the vault invariant (`vault cash = total ESA − savings-backed drawn`) expressed from the member's side. When it reaches zero, **CLRUSD redemption locks** until the member does one of:
+- adds USDC to savings → more CLRUSD → more headroom
+- rebalances with fiat via Lithic (auto-routes to the co-op operating account) → burns the negative
+- allocates unallocated USDC → same effect
+
+There is no pay-back date and no pay button. The lock *is* the enforcement.
+
+**Limit timing — two different rules, not one:**
+- Changes the member does **not** control (income re-estimate, cycle-behaviour recalculation) are **fixed within the cycle** and announced at the boundary.
+- Changes the member **initiates** (moving collateral, adding savings) take effect **immediately**. They caused it; they expect the causation.
+
+**Enforcement lives in an ERC-7579 module on the member's smart account**, installed at onboarding, not in vault bookkeeping — because with self-custody a member could otherwise transfer CLRUSD out while carrying credit and drain their own collateral. The module:
+- blocks transfer of encumbered CLRUSD
+- grants a bounded, purpose-limited right to pull CLRUSD for **liquidation on default**
+
+**Scope note:** in Phase 1 the co-op lends its *own* CLRUSD at draw time, so nothing needs pulling from the member at swipe — liquidation is the only pull. Settlement-pull is a Colossus-era addition. And burning a member's negative balance requires no authorization at all, since crediting someone's debt is not taking their asset; the fiat-rebalance path needs no member signature.
+
+This is the same primitive Colossus uses for noncustodial settlement retrieval, so the stack stays consistent.
+
+**Onboarding approvals** are bundled into a **single signing transaction** presented through Privy as the final confirm — the way a traditional flow would look. It must be visible and auditable afterward: a Permissions row under Advanced in settings listing exactly what was granted, with revocation blocked while encumbered.
 
 **Invariant:** rates ascend across tiers, so cheapest-first draw order falls out of the ordering rather than being enforced separately.
 
@@ -187,7 +285,81 @@ Repayment runs backward: deposit lands → negative settles → StableCredit bur
 
 ---
 
+## 4b. Merchant payouts
+
+### The AssurancePool must never fund a payout
+
+Redemption there is capped by lost debt outstanding, so paying merchants from it would mean **a merchant can only be paid when a member has defaulted**, at a rate set by how badly the book is performing. It also spends the fund that makes losses survivable on ordinary operations.
+
+**A merchant's positive balance is a payable** — certain, owed, due on a schedule. **The AssurancePool covers a contingency** — a loss that may never happen. Funding the first from the second is the error. Assert it: no code path reaches AssurancePool from the redemption flow.
+
+### The pool is a timing buffer, not a subsidy
+
+When a member clears a term plan, their negative balance burns and value lands with the co-op. **That value is what pays the merchant holding the positive side.** The co-op funds only the gap between paying merchants at day 30 and collecting from members over 30–60 days — the same working capital already modelled in the business plan.
+
+### Funded beats queued
+
+| Pool state | Behaviour |
+|---|---|
+| Covers the claim | **Pay now** |
+| Short | Queue at the merchant's base terms from `MerchantRegistry` |
+
+**Net-30 is the floor, not the promise.** A well-funded pool simply beats it, and directing surplus capital there converts spare cash into merchant satisfaction — the scarcest thing at ten merchants. It is also a real advantage over BNPL, whose settlement speed is fixed regardless of how well the business is doing. Sell it as *net-30 guaranteed, usually faster*: keepable on day one, quietly over-delivered later.
+
+### FIFO. No priority tiers.
+
+Payout order is **claim age, always.**
+
+Priority is tempting and should not be built. The moment order is configurable, every merchant conversation includes *what tier am I on*, and every slow payout has a visible reason that is not "we ran short" but "someone else went first" — a worse conversation, with a merchant you also need.
+
+**It also does not solve what it would be reached for.** Founding partners deserve something, and the thing they deserve is **better terms** — the 2% rate, the fee-free first transactions — not a better place in a shared queue. Terms are a promise kept at the co-op's expense. Queue position is a promise kept at another merchant's expense.
+
+**The real escape hatch is per-merchant base terms**, held in `MerchantRegistry` — net-30 standard, net-14 where the ticket supports a 30-day member term. Configurable, defensible, and set in the agreement rather than in a queue.
+
+**If regional expansion ever needs segmentation, deploy a pool per region.** Each funds and drains its own, and nobody is behind anyone. That is the clean version of priority.
+
+### Funding sources — automated where value is already on-chain
+
+| Source | Mode |
+|---|---|
+| Savings forfeiture | **Automated** |
+| Incoming USDC deposits | **Automated** |
+| Move-to-Earn proceeds | **Automated** |
+| Merchant drawdown netting | **Automated** — costs no reserve at all |
+| Lithic / FBO top-up | **Manual, multisig** |
+
+**The rule:** the pool may pull from on-chain sources automatically; anything crossing the fiat boundary is a multisig action. A contract cannot wire dollars and cannot decide to on-ramp.
+
+**The pool must report its own shortfall** so the manual top-up is a number someone reads, not a judgement someone makes.
+
+### The co-op's own positive balance
+
+The co-op already holds one — it takes the discount on every purchase as a positive StableCredit position. It does not need to be created. **Three exits, all legitimate:**
+
+| | Effect |
+|---|---|
+| **Burn** | Removes credit supply. Tightens the network when it is loose. |
+| **Redeem** | Draws cash from `PayoutPool` when the co-op needs operating liquidity. |
+| **Hold** | Leaves the pool deeper for merchant payouts, and sits as loss absorption. |
+
+**Holding is a position, not indecision** — the co-op choosing to keep the network liquid rather than take its margin out. And the choice is visible on-chain, which makes it governable rather than discretionary.
+
+---
+
 ## 5. Invariants
+
+**A partner purchase nets to zero.** Member debit + merchant credit + co-op credit = 0. Assert it in the mint path, not just in tests — a purchase that does not net is a supply bug.
+
+**Redemption nets against the holder's own debit first.** A holder with a negative balance cannot withdraw while carrying it; only surplus is redeemable.
+
+**Accrued carry is derived, never stored per account.** The stored value is an index and a checkpoint. Any code path that writes an absolute accrued figure to a member record is wrong.
+
+**`PayoutPool` and `AssurancePool` never touch.** No redemption path reaches the AssurancePool; no payout draws on loss absorption.
+
+**Payout order is claim age.** No priority field exists to be set.
+
+**A member's balance is the sum of their positions.** Never a separately maintained total that could drift from its parts.
+
 
 Run continuously. Alert on drift. Never auto-correct.
 
@@ -218,7 +390,6 @@ Also run **maturity-bucket coverage**: a system can be solvent in aggregate and 
 
 ## 7. Open questions — flag, do not decide
 
-1. **Is CLRUSD the StableCredit ERC20 or a separate token?** Determines the whole shape. Answer before Phase 1.
-2. Does the member's smart account hold CLRUSD directly, or does the co-op custody it with position tracked in contract state?
-3. Does the fork already ship a network factory (`core/factories/` has `BurnerBondFactory`)?
-4. StandingBid pricing — par or discount, and who sets it.
+1. Does the member's smart account hold CLRUSD directly, or does the co-op custody it with position tracked in contract state?
+2. Does the fork already ship a network factory (`core/factories/` has `BurnerBondFactory`)?
+3. StandingBid pricing — par or discount, and who sets it.
