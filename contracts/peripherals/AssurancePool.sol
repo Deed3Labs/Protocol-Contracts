@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "../core/interfaces/stable-credit/IStableCredit.sol";
 import "../core/interfaces/stable-credit/IAssurancePool.sol";
 import "../core/interfaces/stable-credit/IAssuranceOracle.sol";
-import "../core/interfaces/stable-credit/ICollateralSource.sol";
+import "../core/interfaces/stable-credit/IExposureSource.sol";
 
 /// @title AssurancePool
 /// @notice Stores and manages reserve tokens according to pool
@@ -23,8 +23,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice emitted when an instrument's withdrawal permission changes.
     event WithdrawalCallerUpdated(address indexed caller, bool allowed);
 
-    /// @notice emitted when the unsecured-exposure source changes.
-    event CollateralSourceUpdated(address indexed collateralSource);
+    /// @notice emitted when the pool-exposure source changes.
+    event ExposureSourceUpdated(address indexed exposureSource);
 
     /* ========== ERRORS ========== */
 
@@ -69,10 +69,12 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev address => permitted to withdraw
     mapping(address => bool) public withdrawalCallers;
 
-    /// @notice Reports the share of credit outstanding that no collateral stands behind.
-    /// @dev Optional. While unset the pool treats all credit as unsecured, preserving the
-    /// inherited behaviour. Phase 1's CollateralRegistry fills this in.
-    ICollateralSource public collateralSource;
+    /// @notice Reports what this pool would pay if every member defaulted.
+    /// @dev Optional. While unset the pool treats every credit as unsecured at full value, which
+    /// preserves the inherited behaviour and over-reserves. Phase 1's CollateralRegistry fills
+    /// this in. This is a denominator input, not a reserve source: the numerator of RTD is this
+    /// contract's own primary balance and nothing else.
+    IExposureSource public exposureSource;
 
     /* ========== INITIALIZER ========== */
 
@@ -96,33 +98,39 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         return primaryBalance() + bufferBalance();
     }
 
-    /// @notice returns the credit outstanding that the pool actually has to reserve against.
-    /// @dev Collateralized credit cannot generate lost debt, so it does not belong in the RTD
-    /// denominator. With no collateral source configured this returns total supply, which is the
-    /// inherited behaviour: every credit treated as unsecured.
-    /// @return amount of unsecured credit outstanding, denominated in stable credit.
-    function unsecuredDebt() public view returns (uint256) {
+    /// @notice returns what this pool would pay if every member defaulted.
+    /// @dev The RTD denominator. Savings-backed debt is excluded, asset-backed debt contributes
+    /// only the shortfall left after its collateral is haircut, and unsecured debt contributes in
+    /// full. With no exposure source configured this returns total supply, which is the inherited
+    /// behaviour: every credit treated as unsecured at full value.
+    /// @return amount of pool exposure outstanding, denominated in stable credit.
+    function poolExposure() public view returns (uint256) {
         uint256 totalDebt = stableCredit.totalSupply();
-        if (address(collateralSource) == address(0)) return totalDebt;
-        uint256 unsecured = collateralSource.unsecuredDebt();
+        if (address(exposureSource) == address(0)) return totalDebt;
+        uint256 exposure = exposureSource.poolExposure();
         // A source that over-reports must not be able to inflate the reserve requirement past
         // the credit that actually exists.
-        return unsecured > totalDebt ? totalDebt : unsecured;
+        return exposure > totalDebt ? totalDebt : exposure;
     }
 
-    /// @notice returns the ratio of primary reserve to unsecured debt, where 1 ether == 100%.
-    /// @dev Zero when there is no unsecured exposure: the ratio is undefined with an empty
-    /// denominator. Read `hasValidRTD()` rather than this value to decide whether the pool is
-    /// adequately reserved, since no exposure means adequately reserved at any balance.
-    /// @return ratio of primary reserve to unsecured debt, where 1 ether == 100%.
+    /// @notice returns the ratio of primary reserve to pool exposure, where 1 ether == 100%.
+    /// @dev The numerator is this contract's own primary balance and nothing else. No other
+    /// reserve enters it: the LendingPool residual absorbs loss ahead of this pool rather than
+    /// alongside it, BondVault holds bondholder money behind a redemption reserve, PayoutPool
+    /// holds merchants' money, and member savings are encumbered to that member's own debt.
+    /// Blending any of them in would read as healthy on funds that cannot absorb a default.
+    /// @dev Zero when there is no exposure: the ratio is undefined with an empty denominator.
+    /// Read `hasValidRTD()` rather than this value to decide whether the pool is adequately
+    /// reserved, since no exposure means adequately reserved at any balance.
+    /// @return ratio of primary reserve to pool exposure, where 1 ether == 100%.
     function RTD() public view returns (uint256) {
         // if primary balance is empty return 0% RTD ratio
         if (primaryBalance() == 0) return 0;
-        // if there is no unsecured exposure the ratio is undefined
-        uint256 unsecured = unsecuredDebt();
-        if (unsecured == 0) return 0;
-        // return primary balance amount divided by unsecured debt amount
-        return (primaryBalance() * 1 ether) / convertStableCreditToReserveToken(unsecured);
+        // if there is no exposure the ratio is undefined
+        uint256 exposure = poolExposure();
+        if (exposure == 0) return 0;
+        // return primary balance amount divided by pool exposure amount
+        return (primaryBalance() * 1 ether) / convertStableCreditToReserveToken(exposure);
     }
 
     /// @notice returns the target RTD for the AssurancePool.
@@ -136,8 +144,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev returns true if the primary reserve is greater than or equal to the target RTD.
     /// @return true if the primary reserve is greater than or equal to the target RTD.
     function hasValidRTD() public view returns (bool) {
-        // no unsecured exposure means nothing to reserve against, at any balance
-        if (unsecuredDebt() == 0) return true;
+        // no exposure means nothing to reserve against, at any balance
+        if (poolExposure() == 0) return true;
         // if current RTD is greater than target RTD, return false
         return RTD() >= targetRTD();
     }
@@ -147,14 +155,14 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev the returned amount is denominated in the reserve token
     /// @return amount of reserve tokens needed for the primary reserve to reach the target RTD.
     function neededReserves() public view returns (uint256) {
-        uint256 unsecured = unsecuredDebt();
-        // Asserted rather than derived. When every credit outstanding is collateralized the
-        // correct reserve requirement is exactly zero, and that must not depend on a division
-        // happening to round there.
-        if (unsecured == 0) return 0;
+        uint256 exposure = poolExposure();
+        // Asserted rather than derived. With only savings-backed credit live the correct reserve
+        // requirement is exactly zero, and that must not depend on a division happening to round
+        // there.
+        if (exposure == 0) return 0;
         if (hasValidRTD()) return 0;
-        // (target RTD - current RTD) * unsecured debt amount
-        return ((targetRTD() - RTD()) * convertStableCreditToReserveToken(unsecured)) / 1 ether;
+        // (target RTD - current RTD) * pool exposure amount
+        return ((targetRTD() - RTD()) * convertStableCreditToReserveToken(exposure)) / 1 ether;
     }
 
     /// @notice converts the stable credit amount to the reserve token denomination.
@@ -462,12 +470,12 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         emit WithdrawalCallerUpdated(caller, allowed);
     }
 
-    /// @notice sets the contract reporting unsecured exposure for the RTD denominator.
-    /// @dev Pass address(0) to fall back to treating all credit as unsecured.
-    /// @param _collateralSource address of the collateral source, or address(0) to unset.
-    function setCollateralSource(address _collateralSource) external onlyAdmin {
-        collateralSource = ICollateralSource(_collateralSource);
-        emit CollateralSourceUpdated(_collateralSource);
+    /// @notice sets the contract reporting pool exposure for the RTD denominator.
+    /// @dev Pass address(0) to fall back to treating all credit as unsecured at full value.
+    /// @param _exposureSource address of the exposure source, or address(0) to unset.
+    function setExposureSource(address _exposureSource) external onlyAdmin {
+        exposureSource = IExposureSource(_exposureSource);
+        emit ExposureSourceUpdated(_exposureSource);
     }
 
     function setAssuranceOracle(address _assuranceOracle) external onlyAdmin {
@@ -552,10 +560,10 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     
     /// @notice Internal function to rebalance reserves from primary when RTD is above target
     function _rebalanceFromPrimary() internal {
-        uint256 unsecured = unsecuredDebt();
-        if (unsecured == 0) return;
+        uint256 exposure = poolExposure();
+        if (exposure == 0) return;
 
-        uint256 debtInReserve = convertStableCreditToReserveToken(unsecured);
+        uint256 debtInReserve = convertStableCreditToReserveToken(exposure);
         uint256 currentPrimary = primaryBalance();
         uint256 targetPrimary = (targetRTD() * debtInReserve) / 1 ether;
 
@@ -720,8 +728,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice Calculate current RTD using live pricing data
     /// @return Current RTD percentage based on live prices
     function _calculateCurrentRTD() internal view returns (uint256) {
-        uint256 unsecured = unsecuredDebt();
-        if (unsecured == 0) return 0;
+        uint256 exposure = poolExposure();
+        if (exposure == 0) return 0;
         
         // Calculate total reserve value using current prices
         uint256 totalReserveValue = 0;
@@ -739,7 +747,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         }
         
         // Calculate RTD using current prices
-        return (totalReserveValue * 1 ether) / convertStableCreditToReserveToken(unsecured);
+        return (totalReserveValue * 1 ether) / convertStableCreditToReserveToken(exposure);
     }
 
     /* ========== MODIFIERS ========== */

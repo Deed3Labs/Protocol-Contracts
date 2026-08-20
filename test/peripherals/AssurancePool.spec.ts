@@ -216,86 +216,150 @@ describe("AssurancePool", function () {
     });
   });
 
-  describe("RTD against unsecured exposure", function () {
-    // The inherited formula divided reserves by every credit in circulation. Collateralized
-    // credit cannot produce lost debt, so reserving against it over-reserves the book.
+  describe("RTD against pool exposure", function () {
+    // RTD answers one question: if every member defaulted tomorrow, what would this pool pay?
+    // The inherited formula divided by every credit in circulation, which over-reserves against
+    // collateral already inside the network. Reserving against unsecured credit alone is wrong in
+    // the other direction: asset-backed collateral has to be sold at an uncertain price.
 
-    it("needs no reserves when every credit outstanding is collateralized", async function () {
-      // The plan's test: with only savings-backed credit live, the correct figure is exactly zero.
-      const { assurancePool, admin, stableCredit } = ctx;
+    let SAVINGS: string, ASSET: string, INCOME: string;
+
+    async function attachExposureSource() {
+      const MockExposureSource = await ethers.getContractFactory("MockExposureSource");
+      const source = await MockExposureSource.deploy();
+      await ctx.assurancePool.connect(ctx.admin).setExposureSource(await source.getAddress());
+
+      const ExposureMathHarness = await ethers.getContractFactory("ExposureMathHarness");
+      const math = await ExposureMathHarness.deploy();
+      [SAVINGS, ASSET, INCOME] = await Promise.all([math.SAVINGS(), math.ASSET(), math.INCOME()]);
+      return source;
+    }
+
+    it("needs no reserves when all credit is savings-backed", async function () {
+      // The plan's test: with only savings-backed credit live the correct figure is exactly zero.
+      const { assurancePool, stableCredit } = ctx;
       await drawCredit(ctx, 1_000n * ONE_USDC);
 
-      const MockCollateralSource = await ethers.getContractFactory("MockCollateralSource");
-      const collateral = await MockCollateralSource.deploy();
-      await collateral.setUnsecuredDebt(0);
-      await assurancePool.connect(admin).setCollateralSource(await collateral.getAddress());
+      const source = await attachExposureSource();
+      await source.addPosition(SAVINGS, 1_000n * ONE_USDC, 1_000n * ONE_USDC, 10_000n);
 
       // Credit is outstanding and the primary reserve is empty.
       expect(await stableCredit.totalSupply()).to.equal(1_000n * ONE_USDC);
       expect(await assurancePool.primaryBalance()).to.equal(0n);
 
-      expect(await assurancePool.unsecuredDebt()).to.equal(0n);
+      expect(await assurancePool.poolExposure()).to.equal(0n);
       expect(await assurancePool.neededReserves()).to.equal(0n);
       expect(await assurancePool.hasValidRTD()).to.equal(true);
     });
 
-    it("reserves against the unsecured share only", async function () {
-      const { assurancePool, admin } = ctx;
-      await drawCredit(ctx, 1_000n * ONE_USDC);
+    it("counts an under-collateralized asset-backed position at exactly its shortfall", async function () {
+      // The plan's second test: collateral below debt / haircut contributes the gap and no more.
+      const { assurancePool } = ctx;
+      await drawCredit(ctx, 2_000n * ONE_USDC);
 
-      // Unreserved and uncollateralized: 20% of the full 1,000.
-      expect(await assurancePool.neededReserves()).to.equal(200n * ONE_USDC);
+      const source = await attachExposureSource();
+      await source.addPosition(ASSET, 2_000n * ONE_USDC, 2_600n * ONE_USDC, 7000n);
 
-      const MockCollateralSource = await ethers.getContractFactory("MockCollateralSource");
-      const collateral = await MockCollateralSource.deploy();
-      await collateral.setUnsecuredDebt(250n * ONE_USDC);
-      await assurancePool.connect(admin).setCollateralSource(await collateral.getAddress());
-
-      // Three quarters collateralized: 20% of the remaining 250.
-      expect(await assurancePool.neededReserves()).to.equal(50n * ONE_USDC);
+      // 2,600 x 0.70 = 1,820 realizable, so the pool covers 180.
+      expect(await assurancePool.poolExposure()).to.equal(180n * ONE_USDC);
+      expect(await assurancePool.neededReserves()).to.equal(36n * ONE_USDC); // 20% of 180
     });
 
-    it("treats all credit as unsecured while no collateral source is set", async function () {
-      // Regression guard on the fallback: the inherited behaviour is the conservative direction
-      // to be wrong in, and must survive until Phase 1 wires a real source.
+    it("stops counting an asset-backed position once its collateral clears the debt", async function () {
+      const { assurancePool } = ctx;
+      await drawCredit(ctx, 2_000n * ONE_USDC);
+
+      const source = await attachExposureSource();
+      await source.addPosition(ASSET, 2_000n * ONE_USDC, 3_000n * ONE_USDC, 7000n);
+
+      expect(await assurancePool.poolExposure()).to.equal(0n);
+      expect(await assurancePool.neededReserves()).to.equal(0n);
+    });
+
+    it("counts an unsecured position in full", async function () {
+      const { assurancePool } = ctx;
+      await drawCredit(ctx, 1_200n * ONE_USDC);
+
+      const source = await attachExposureSource();
+      await source.addPosition(INCOME, 1_200n * ONE_USDC, 0n, 0n);
+
+      expect(await assurancePool.poolExposure()).to.equal(1_200n * ONE_USDC);
+      expect(await assurancePool.neededReserves()).to.equal(240n * ONE_USDC); // 20% of 1,200
+    });
+
+    it("reserves against a mixed book at neither extreme", async function () {
+      // The worked example, scaled to the credit actually outstanding here. Reserving against
+      // total debt or against unsecured debt alone both give a different, wrong answer.
+      const { assurancePool } = ctx;
+      await drawCredit(ctx, 7_140n * ONE_USDC);
+
+      const source = await attachExposureSource();
+      await source.addPosition(SAVINGS, 3_000n * ONE_USDC, 3_000n * ONE_USDC, 10_000n);
+      await source.addPosition(INCOME, 1_200n * ONE_USDC, 0n, 0n);
+      await source.addPosition(ASSET, 2_000n * ONE_USDC, 2_600n * ONE_USDC, 7000n);
+      await source.addPosition(INCOME, 940n * ONE_USDC, 0n, 0n);
+
+      expect(await assurancePool.poolExposure()).to.equal(2_320n * ONE_USDC);
+      expect(await assurancePool.neededReserves()).to.equal(464n * ONE_USDC); // 20% of 2,320
+
+      // Not 20% of the full 7,140, and not 20% of the 2,140 that is unsecured.
+      expect(await assurancePool.neededReserves()).to.not.equal(1_428n * ONE_USDC);
+      expect(await assurancePool.neededReserves()).to.not.equal(428n * ONE_USDC);
+    });
+
+    it("treats all credit as unsecured while no exposure source is set", async function () {
+      // Regression guard on the fallback: over-reserving is the conservative direction to be
+      // wrong in, and must survive until Phase 1 wires a real source.
       const { assurancePool, stableCredit } = ctx;
       await drawCredit(ctx, 1_000n * ONE_USDC);
 
-      expect(await assurancePool.unsecuredDebt()).to.equal(await stableCredit.totalSupply());
+      expect(await assurancePool.poolExposure()).to.equal(await stableCredit.totalSupply());
       expect(await assurancePool.neededReserves()).to.equal(200n * ONE_USDC);
     });
 
-    it("clamps a collateral source that over-reports unsecured debt", async function () {
-      const { assurancePool, admin, stableCredit } = ctx;
+    it("clamps an exposure source that over-reports", async function () {
+      // The pool cannot pay out more than the credit that exists.
+      const { assurancePool, stableCredit } = ctx;
       await drawCredit(ctx, 1_000n * ONE_USDC);
 
-      const MockCollateralSource = await ethers.getContractFactory("MockCollateralSource");
-      const collateral = await MockCollateralSource.deploy();
-      await collateral.setUnsecuredDebt(10_000n * ONE_USDC);
-      await assurancePool.connect(admin).setCollateralSource(await collateral.getAddress());
+      const source = await attachExposureSource();
+      await source.addPosition(INCOME, 10_000n * ONE_USDC, 0n, 0n);
 
-      expect(await assurancePool.unsecuredDebt()).to.equal(await stableCredit.totalSupply());
+      expect(await assurancePool.poolExposure()).to.equal(await stableCredit.totalSupply());
     });
 
-    it("reports a valid RTD once the unsecured share is reserved against", async function () {
-      const { assurancePool, admin } = ctx;
+    it("reports a valid RTD once the exposure is reserved against", async function () {
+      const { assurancePool } = ctx;
       await drawCredit(ctx, 1_000n * ONE_USDC);
 
-      const MockCollateralSource = await ethers.getContractFactory("MockCollateralSource");
-      const collateral = await MockCollateralSource.deploy();
-      await collateral.setUnsecuredDebt(500n * ONE_USDC);
-      await assurancePool.connect(admin).setCollateralSource(await collateral.getAddress());
+      const source = await attachExposureSource();
+      await source.addPosition(INCOME, 500n * ONE_USDC, 0n, 0n);
 
       expect(await assurancePool.hasValidRTD()).to.equal(false);
-      await fundPrimary(100n * ONE_USDC); // 20% of the 500 unsecured
+      await fundPrimary(100n * ONE_USDC); // 20% of the 500 exposed
       expect(await assurancePool.hasValidRTD()).to.equal(true);
       expect(await assurancePool.neededReserves()).to.equal(0n);
     });
 
-    it("only lets an admin set the collateral source", async function () {
+    it("draws its numerator from this pool alone", async function () {
+      // RTD reads the AssurancePool and nothing else. Value sitting in the pool that the primary
+      // reserve does not account for -- another instrument's money, an unallocated transfer --
+      // must not raise the ratio.
+      const { assurancePool, usdc, admin } = ctx;
+      await drawCredit(ctx, 1_000n * ONE_USDC);
+      await fundPrimary(100n * ONE_USDC);
+
+      const before = await assurancePool.RTD();
+      await usdc.mint(await assurancePool.getAddress(), 5_000n * ONE_USDC);
+
+      expect(await assurancePool.RTD()).to.equal(before);
+      expect(await assurancePool.primaryBalance()).to.equal(100n * ONE_USDC);
+    });
+
+    it("only lets an admin set the exposure source", async function () {
       const { assurancePool, operator } = ctx;
       await expect(
-        assurancePool.connect(operator).setCollateralSource(ethers.ZeroAddress)
+        assurancePool.connect(operator).setExposureSource(ethers.ZeroAddress)
       ).to.be.revertedWith("AssurancePool: caller does not have admin access");
     });
   });
