@@ -222,7 +222,7 @@ describe("AssurancePool", function () {
     // collateral already inside the network. Reserving against unsecured credit alone is wrong in
     // the other direction: asset-backed collateral has to be sold at an uncertain price.
 
-    let SAVINGS: string, ASSET: string, INCOME: string;
+    let SAVINGS: string, ASSET_EXTERNAL: string, ASSET_INTERNAL: string, INCOME: string;
 
     async function attachExposureSource() {
       const MockExposureSource = await ethers.getContractFactory("MockExposureSource");
@@ -231,7 +231,9 @@ describe("AssurancePool", function () {
 
       const ExposureMathHarness = await ethers.getContractFactory("ExposureMathHarness");
       const math = await ExposureMathHarness.deploy();
-      [SAVINGS, ASSET, INCOME] = await Promise.all([math.SAVINGS(), math.ASSET(), math.INCOME()]);
+      [SAVINGS, ASSET_EXTERNAL, ASSET_INTERNAL, INCOME] = await Promise.all([
+        math.SAVINGS(), math.ASSET_EXTERNAL(), math.ASSET_INTERNAL(), math.INCOME(),
+      ]);
       return source;
     }
 
@@ -258,7 +260,7 @@ describe("AssurancePool", function () {
       await drawCredit(ctx, 2_000n * ONE_USDC);
 
       const source = await attachExposureSource();
-      await source.addPosition(ASSET, 2_000n * ONE_USDC, 2_600n * ONE_USDC, 7000n);
+      await source.addPosition(ASSET_EXTERNAL, 2_000n * ONE_USDC, 2_600n * ONE_USDC, 7000n);
 
       // 2,600 x 0.70 = 1,820 realizable, so the pool covers 180.
       expect(await assurancePool.poolExposure()).to.equal(180n * ONE_USDC);
@@ -270,7 +272,7 @@ describe("AssurancePool", function () {
       await drawCredit(ctx, 2_000n * ONE_USDC);
 
       const source = await attachExposureSource();
-      await source.addPosition(ASSET, 2_000n * ONE_USDC, 3_000n * ONE_USDC, 7000n);
+      await source.addPosition(ASSET_EXTERNAL, 2_000n * ONE_USDC, 3_000n * ONE_USDC, 7000n);
 
       expect(await assurancePool.poolExposure()).to.equal(0n);
       expect(await assurancePool.neededReserves()).to.equal(0n);
@@ -296,7 +298,7 @@ describe("AssurancePool", function () {
       const source = await attachExposureSource();
       await source.addPosition(SAVINGS, 3_000n * ONE_USDC, 3_000n * ONE_USDC, 10_000n);
       await source.addPosition(INCOME, 1_200n * ONE_USDC, 0n, 0n);
-      await source.addPosition(ASSET, 2_000n * ONE_USDC, 2_600n * ONE_USDC, 7000n);
+      await source.addPosition(ASSET_EXTERNAL, 2_000n * ONE_USDC, 2_600n * ONE_USDC, 7000n);
       await source.addPosition(INCOME, 940n * ONE_USDC, 0n, 0n);
 
       expect(await assurancePool.poolExposure()).to.equal(2_320n * ONE_USDC);
@@ -305,6 +307,20 @@ describe("AssurancePool", function () {
       // Not 20% of the full 7,140, and not 20% of the 2,140 that is unsecured.
       expect(await assurancePool.neededReserves()).to.not.equal(1_428n * ONE_USDC);
       expect(await assurancePool.neededReserves()).to.not.equal(428n * ONE_USDC);
+    });
+
+    it("haircuts an internal claim on its own terms, not a market's", async function () {
+      // A bond backing a member's debt is a claim on the co-op. Seizing it cancels an obligation
+      // rather than realizing an asset, so it is haircut near par -- and the pool must not
+      // reserve against a market swing that cannot happen to it.
+      const { assurancePool } = ctx;
+      await drawCredit(ctx, 8_000n * ONE_USDC);
+
+      const source = await attachExposureSource();
+      await source.addPosition(ASSET_INTERNAL, 8_000n * ONE_USDC, 10_000n * ONE_USDC, 9500n);
+
+      expect(await assurancePool.poolExposure()).to.equal(0n);
+      expect(await assurancePool.neededReserves()).to.equal(0n);
     });
 
     it("treats all credit as unsecured while no exposure source is set", async function () {

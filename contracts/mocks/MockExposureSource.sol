@@ -74,8 +74,13 @@ contract ExposureMathHarness {
         return uint8(ExposureMath.backingOf(kind));
     }
 
+    function isAssetBacked(uint8 backing) external pure returns (bool) {
+        return ExposureMath.isAssetBacked(ExposureMath.Backing(backing));
+    }
+
     function SAVINGS() external pure returns (bytes32) { return ExposureMath.SAVINGS; }
-    function ASSET() external pure returns (bytes32) { return ExposureMath.ASSET; }
+    function ASSET_EXTERNAL() external pure returns (bytes32) { return ExposureMath.ASSET_EXTERNAL; }
+    function ASSET_INTERNAL() external pure returns (bytes32) { return ExposureMath.ASSET_INTERNAL; }
     function INCOME() external pure returns (bytes32) { return ExposureMath.INCOME; }
     function BOOST() external pure returns (bytes32) { return ExposureMath.BOOST; }
 }

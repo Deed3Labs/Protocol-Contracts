@@ -6,13 +6,14 @@ const HAIRCUT_70 = 7000n;
 
 describe("ExposureMath", function () {
   let math: any;
-  let SAVINGS: string, ASSET: string, INCOME: string, BOOST: string;
+  let SAVINGS: string, ASSET_EXTERNAL: string, ASSET_INTERNAL: string;
+  let INCOME: string, BOOST: string;
 
   beforeEach(async function () {
     const ExposureMathHarness = await ethers.getContractFactory("ExposureMathHarness");
     math = await ExposureMathHarness.deploy();
-    [SAVINGS, ASSET, INCOME, BOOST] = await Promise.all([
-      math.SAVINGS(), math.ASSET(), math.INCOME(), math.BOOST(),
+    [SAVINGS, ASSET_EXTERNAL, ASSET_INTERNAL, INCOME, BOOST] = await Promise.all([
+      math.SAVINGS(), math.ASSET_EXTERNAL(), math.ASSET_INTERNAL(), math.INCOME(), math.BOOST(),
     ]);
   });
 
@@ -27,34 +28,95 @@ describe("ExposureMath", function () {
   });
 
   describe("asset-backed", function () {
+    // Both classes share the shortfall formula. They are separate so that a haircut table cannot
+    // key them together, not because the arithmetic differs.
+
     it("contributes only the shortfall left after the haircut", async function () {
       // Cruz from the worked example: $2,000 owed against $2,600 of collateral at a 70% advance
       // rate. $2,600 x 0.70 = $1,820 realizable, so the pool covers $180.
-      expect(await math.positionExposure(ASSET, 2_000n * DOLLARS, 2_600n * DOLLARS, HAIRCUT_70))
-        .to.equal(180n * DOLLARS);
+      for (const kind of [ASSET_EXTERNAL, ASSET_INTERNAL]) {
+        expect(await math.positionExposure(kind, 2_000n * DOLLARS, 2_600n * DOLLARS, HAIRCUT_70))
+          .to.equal(180n * DOLLARS);
+      }
     });
 
     it("contributes nothing once the haircut collateral covers the debt", async function () {
       // debt / haircut = 2000 / 0.7 = 2857.14..., so 2,858 of collateral clears it.
-      expect(await math.positionExposure(ASSET, 2_000n * DOLLARS, 2_858n * DOLLARS, HAIRCUT_70))
-        .to.equal(0n);
+      expect(
+        await math.positionExposure(ASSET_EXTERNAL, 2_000n * DOLLARS, 2_858n * DOLLARS, HAIRCUT_70)
+      ).to.equal(0n);
     });
 
     it("floors at zero rather than offsetting other positions", async function () {
       // An over-collateralized position must not subsidise someone else's shortfall.
-      expect(await math.positionExposure(ASSET, 1_000n * DOLLARS, 10_000n * DOLLARS, HAIRCUT_70))
-        .to.equal(0n);
+      expect(
+        await math.positionExposure(ASSET_INTERNAL, 1_000n * DOLLARS, 10_000n * DOLLARS, HAIRCUT_70)
+      ).to.equal(0n);
     });
 
     it("contributes the full debt at a zero advance rate", async function () {
-      expect(await math.positionExposure(ASSET, 2_000n * DOLLARS, 2_600n * DOLLARS, 0n))
+      expect(await math.positionExposure(ASSET_EXTERNAL, 2_000n * DOLLARS, 2_600n * DOLLARS, 0n))
         .to.equal(2_000n * DOLLARS);
     });
 
     it("rejects an advance rate above one hundred percent", async function () {
       await expect(
-        math.positionExposure(ASSET, 2_000n * DOLLARS, 2_600n * DOLLARS, 10_001n)
+        math.positionExposure(ASSET_EXTERNAL, 2_000n * DOLLARS, 2_600n * DOLLARS, 10_001n)
       ).to.be.revertedWithCustomError(math, "InvalidHaircut");
+    });
+  });
+
+  describe("internal claims versus external assets", function () {
+    // A bond or a pool share is a claim on the co-op itself. Seizing it cancels an obligation the
+    // co-op would otherwise have had to honour, rather than realizing an asset, so its haircut is
+    // priced off known redemption terms. A tokenized deed has a market price.
+
+    it("keeps the two classes distinct", async function () {
+      expect(ASSET_EXTERNAL).to.not.equal(ASSET_INTERNAL);
+      expect(await math.backingOf(ASSET_EXTERNAL)).to.equal(2); // Backing.AssetExternal
+      expect(await math.backingOf(ASSET_INTERNAL)).to.equal(3); // Backing.AssetInternal
+      expect(await math.isAssetBacked(2)).to.equal(true);
+      expect(await math.isAssetBacked(3)).to.equal(true);
+      expect(await math.isAssetBacked(0)).to.equal(false); // Unsecured
+      expect(await math.isAssetBacked(1)).to.equal(false); // Savings
+    });
+
+    it("over-reserves a bond given a market-risk haircut", async function () {
+      // The plan's warning, made concrete. A $10,000 bond backing $8,000 of debt: at its own
+      // near-par redemption terms the pool is exposed to nothing, and at a deed's market haircut
+      // it looks exposed to $1,000 that does not exist.
+      const atRedemptionTerms = await math.positionExposure(
+        ASSET_INTERNAL, 8_000n * DOLLARS, 10_000n * DOLLARS, 9500n
+      );
+      const atMarketRisk = await math.positionExposure(
+        ASSET_INTERNAL, 8_000n * DOLLARS, 10_000n * DOLLARS, HAIRCUT_70
+      );
+
+      expect(atRedemptionTerms).to.equal(0n);
+      expect(atMarketRisk).to.equal(1_000n * DOLLARS);
+    });
+
+    it("under-reserves a deed given a bond-style haircut", async function () {
+      // The same error in the other direction, which is the dangerous one.
+      const atMarketRisk = await math.positionExposure(
+        ASSET_EXTERNAL, 8_000n * DOLLARS, 10_000n * DOLLARS, HAIRCUT_70
+      );
+      const atBondTerms = await math.positionExposure(
+        ASSET_EXTERNAL, 8_000n * DOLLARS, 10_000n * DOLLARS, 9500n
+      );
+
+      expect(atBondTerms).to.be.lessThan(atMarketRisk);
+      expect(atBondTerms).to.equal(0n); // the shortfall vanishes from the books entirely
+    });
+
+    it("treats an undeclared asset pledge as unsecured", async function () {
+      // There is no bare ASSET kind. A pledge that has not said which class it is cannot borrow
+      // whichever haircut the caller had to hand; it over-reserves until someone decides.
+      const undeclared = ethers.encodeBytes32String("ASSET");
+      expect(await math.backingOf(undeclared)).to.equal(0); // Backing.Unsecured
+      expect(
+        await math.positionExposure(undeclared, 2_000n * DOLLARS, 2_600n * DOLLARS, HAIRCUT_70)
+      ).to.equal(2_000n * DOLLARS);
     });
   });
 
@@ -90,7 +152,7 @@ describe("ExposureMath", function () {
         // kind,  debt,   collateral, haircut,   expected exposure
         [SAVINGS, 3_000n, 3_000n, 10_000n, 0n],    // Ana
         [INCOME, 1_200n, 0n, 0n, 1_200n],          // Ben
-        [ASSET, 2_000n, 2_600n, HAIRCUT_70, 180n], // Cruz
+        [ASSET_EXTERNAL, 2_000n, 2_600n, HAIRCUT_70, 180n], // Cruz
         [INCOME, 940n, 0n, 0n, 940n],              // Dee, partner credit
       ];
 
