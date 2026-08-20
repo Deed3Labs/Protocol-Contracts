@@ -13,6 +13,11 @@ import "./MutualCredit.sol";
 /// @dev Restricted functions are only callable by network operators.
 
 contract StableCredit is MutualCredit, IStableCredit {
+    /// @notice thrown when the credit issuer rejects a transaction.
+    /// @dev Custom error rather than a require string: production builds strip revert strings,
+    /// and a caller needs to be able to tell a rejected transfer apart from a successful one.
+    error StableCreditTransactionInvalid(address from, address to, uint256 amount);
+
     /* ========== STATE VARIABLES ========== */
 
     IAccessManager public access;
@@ -150,7 +155,14 @@ contract StableCredit is MutualCredit, IStableCredit {
         override
         senderIsMember(_from)
     {
-        if (!creditIssuer.validateCreditTransaction(_from, _to, _amount)) return;
+        // Revert rather than return. A silent return leaves ERC20 `transfer` answering true for a
+        // transfer that moved nothing, so a frozen or defaulted member's rejected payment reads as
+        // settled to every integrator. It also breaks the netting invariant the mint path depends
+        // on: a three-party purchase must net to zero, and it cannot if one leg can quietly
+        // no-op while the others land.
+        if (!creditIssuer.validateCreditTransaction(_from, _to, _amount)) {
+            revert StableCreditTransactionInvalid(_from, _to, _amount);
+        }
         super._transfer(_from, _to, _amount);
         emit ComplianceUpdated(
             _from, _to, creditIssuer.inCompliance(_from), creditIssuer.inCompliance(_to)
