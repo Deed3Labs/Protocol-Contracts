@@ -68,7 +68,11 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
     }
     mapping(bytes32 => DepositMandateState) public depositMandates;
 
+    event ClrusdUpdated(address indexed clrusd);
+
     error ESADepositVaultInvalidAddress();
+    /// @notice thrown when re-pointing the vault while the old token is still held by somebody.
+    error ESADepositVaultTokenStillOutstanding(uint256 outstanding);
     error ESADepositVaultInvalidAmount();
     error ESADepositVaultTokenNotAccepted();
     error ESADepositVaultNonExactAmount();
@@ -256,6 +260,24 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
 
     function previewRedeem(address token, uint256 clrusdAmount) external view override returns (uint256 returnedAmount) {
         return _convertFromClrUsd(token, clrusdAmount);
+    }
+
+    /// @notice re-points the vault at a new CLRUSD.
+    /// @dev Needed because the deployed CLRUSD cannot be upgraded, so giving it the redemption
+    /// lock means replacing the token rather than changing it.
+    ///
+    /// Only while none of the old token is outstanding. The vault's whole claim is that every
+    /// CLRUSD is backed one-for-one by USDC it holds, and swapping the token underneath live
+    /// supply would strand those holders against a vault that no longer recognises what they are
+    /// holding. Redeem first, then re-point: the guard makes the order the only one available
+    /// rather than the one somebody remembered.
+    /// @param clrusd_ address of the replacement token.
+    function setClrusd(address clrusd_) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (clrusd_ == address(0)) revert ESADepositVaultInvalidAddress();
+        uint256 outstanding = IERC20MetadataUpgradeable(clrusd).totalSupply();
+        if (outstanding != 0) revert ESADepositVaultTokenStillOutstanding(outstanding);
+        clrusd = clrusd_;
+        emit ClrusdUpdated(clrusd_);
     }
 
     function setAcceptedToken(address token, bool accepted) external override onlyRole(OPERATOR_ROLE) {
