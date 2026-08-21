@@ -37,6 +37,11 @@ export async function deployPhase0Network() {
 
   const weth = await MockERC20.deploy("Wrapped Ether", "WETH", 18);
 
+  // A real token registry, so tests can exercise the acceptance path as configured in
+  // production: the pool accepts more than the reserve token and the three named stablecoins.
+  const TokenRegistry = await ethers.getContractFactory("TokenRegistry");
+  const tokenRegistry = await TokenRegistry.deploy();
+
   const AssuranceOracle = await ethers.getContractFactory("AssuranceOracle");
   const assuranceOracle = await AssuranceOracle.deploy(
     await assurancePool.getAddress(),
@@ -46,7 +51,7 @@ export async function deployPhase0Network() {
     await usdc.getAddress(),
     await usdt.getAddress(),
     await dai.getAddress(),
-    ethers.ZeroAddress // no token registry
+    await tokenRegistry.getAddress()
   );
 
   // StableCredit grants membership when a credit line is created, and CreditIssuer revokes it on
@@ -67,6 +72,7 @@ export async function deployPhase0Network() {
     admin, operator, member, counterparty, instrument, outsider,
     usdc, usdt, dai, weth,
     access, stableCredit, creditIssuer, assurancePool, assuranceOracle, uniswapFactory,
+    tokenRegistry,
   };
 }
 

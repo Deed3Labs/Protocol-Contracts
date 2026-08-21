@@ -216,6 +216,112 @@ describe("AssurancePool", function () {
     });
   });
 
+  describe("held tokens", function () {
+    // Acceptance is wider than the reserve token and the three configured stablecoins: anything
+    // the oracle whitelists is accepted. Accounting and payout used to enumerate only those four,
+    // so a whitelisted token that arrived was invisible to held value and to RTD, and could never
+    // be handed back.
+
+    async function whitelistedToken() {
+      // A token that is accepted but is neither the reserve token nor a configured stablecoin.
+      const { assuranceOracle, tokenRegistry, admin } = ctx;
+      const MockERC20 = await ethers.getContractFactory("MockERC20");
+      const token = await MockERC20.deploy("Pool Token", "POOL", 18);
+
+      await tokenRegistry.registerToken(
+        await token.getAddress(), 31337, await token.getAddress(), ethers.parseEther("1")
+      );
+      await tokenRegistry.setStablecoin(await token.getAddress(), false);
+      // Priced from the registry rather than a pool, since there is no market for it here.
+      await assuranceOracle.connect(admin).setForceRegistryFallback(await token.getAddress(), true);
+      return token;
+    }
+
+    it("accounts for the reserve token alone until something else arrives", async function () {
+      const { assurancePool, usdc, usdt, dai } = ctx;
+      expect(await assurancePool.heldTokens()).to.deep.equal([await usdc.getAddress()]);
+
+      await fundPrimary(100n * ONE_USDC);
+      expect(await assurancePool.heldTokens()).to.deep.equal([await usdc.getAddress()]);
+
+      // The payout order is a different set: the configured stablecoins are valid targets
+      // whether or not the pool has ever received them.
+      const priority = await assurancePool.withdrawalPriority();
+      expect(priority[0]).to.equal(await usdc.getAddress());
+      expect(priority).to.include(await usdt.getAddress());
+      expect(priority).to.include(await dai.getAddress());
+    });
+
+    it("records a stablecoin that arrives", async function () {
+      const { assurancePool, admin, usdc, dai } = ctx;
+      const amount = 50n * 10n ** 18n;
+      await dai.mint(admin.address, amount);
+      await dai.approve(await assurancePool.getAddress(), amount);
+      await assurancePool.depositTokenIntoExcess(await dai.getAddress(), amount);
+
+      const held = await assurancePool.heldTokens();
+      expect(held).to.include(await usdc.getAddress());
+      expect(held).to.include(await dai.getAddress());
+      expect(await assurancePool.heldReserveValue()).to.equal(50n * ONE_USDC);
+    });
+
+    it("counts a whitelisted non-stablecoin in held value", async function () {
+      const { assurancePool, admin } = ctx;
+      const token = await whitelistedToken();
+      const amount = 40n * 10n ** 18n;
+      await token.mint(admin.address, amount);
+      await token.approve(await assurancePool.getAddress(), amount);
+
+      await assurancePool.depositTokenIntoExcess(await token.getAddress(), amount);
+
+      expect(await assurancePool.heldTokens()).to.include(await token.getAddress());
+      expect(await assurancePool.heldReserveValue()).to.equal(40n * ONE_USDC);
+      expect(await assurancePool.excessBalance()).to.equal(40n * ONE_USDC);
+    });
+
+    it("can pay a whitelisted non-stablecoin back out again", async function () {
+      // The trap this closes: value that could enter but never leave.
+      const { assurancePool, admin, instrument } = ctx;
+      const token = await whitelistedToken();
+      const amount = 40n * 10n ** 18n;
+      await token.mint(admin.address, amount);
+      await token.approve(await assurancePool.getAddress(), amount);
+      await assurancePool.depositTokenIntoExcess(await token.getAddress(), amount);
+
+      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
+      await assurancePool
+        .connect(instrument)
+        .withdrawToken(await token.getAddress(), 40n * ONE_USDC);
+
+      expect(await token.balanceOf(instrument.address)).to.equal(amount);
+      expect(await assurancePool.excessBalance()).to.equal(0n);
+    });
+
+    it("keeps holding the old reserve token after the reserve token changes", async function () {
+      // Dropping it would make the balance invisible to accounting and unreachable by the payout
+      // path at the same moment.
+      const { assurancePool, admin, usdc, usdt } = ctx;
+      await fundPrimary(100n * ONE_USDC);
+
+      await assurancePool.connect(admin).setReserveToken(await usdt.getAddress());
+
+      const held = await assurancePool.heldTokens();
+      expect(held).to.include(await usdc.getAddress());
+      expect(held).to.include(await usdt.getAddress());
+      expect(await assurancePool.heldReserveValue()).to.equal(100n * ONE_USDC);
+    });
+
+    it("does not record the same token twice", async function () {
+      const { assurancePool, usdc } = ctx;
+      await fundPrimary(10n * ONE_USDC);
+      await fundBuffer(10n * ONE_USDC);
+      await fundExcess(10n * ONE_USDC);
+
+      expect(await assurancePool.heldTokens()).to.deep.equal([await usdc.getAddress()]);
+      expect(await assurancePool.withdrawalPriority()).to.have.lengthOf(3); // usdc, usdt, dai
+    });
+  });
+
   describe("RTD against pool exposure", function () {
     // RTD answers one question: if every member defaulted tomorrow, what would this pool pay?
     // The inherited formula divided by every credit in circulation, which over-reserves against
