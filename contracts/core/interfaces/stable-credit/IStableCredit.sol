@@ -31,6 +31,28 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     /// @return reimbursement amount from assurance pool
     function burnLostDebt(address member, uint256 amount) external returns (uint256);
 
+    /// @notice settles a member's obligation on an issuer's instruction.
+    /// @param payer address the reserve tokens are pulled from.
+    /// @param member address whose obligation is settled.
+    /// @param amount amount settled.
+    function repayCreditBalanceFor(address payer, address member, uint128 amount) external;
+
+    /// @notice originates a partner purchase as a three-party mint.
+    /// @param member address taking on the obligation.
+    /// @param purchase the amount the member is debited.
+    /// @param merchant address receiving the payout.
+    /// @param payout the amount the merchant is credited.
+    /// @param coop address receiving the discount.
+    /// @param discount the amount the co-op is credited.
+    function originatePurchase(
+        address member,
+        uint256 purchase,
+        address merchant,
+        uint256 payout,
+        address coop,
+        uint256 discount
+    ) external;
+
     /// @notice deepens a member's negative balance by accrued carry.
     /// @dev Called by the issuer that holds the position. The claim goes to whoever funded the
     /// draw -- the co-op, or the pool the money came from.
@@ -50,6 +72,13 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     event LostDebtBurned(address member, uint256 amount);
     event CreditLineWrittenOff(address member, uint256 amount);
     event CarryAccrued(address indexed member, address indexed recipient, uint256 amount);
+    event PurchaseOriginated(
+        address indexed member,
+        address indexed merchant,
+        uint256 purchase,
+        uint256 payout,
+        uint256 discount
+    );
     event ComplianceUpdated(
         address sender, address recipient, bool senderCompliance, bool recipientCompliance
     );

@@ -24,6 +24,10 @@ contract StableCredit is MutualCredit, IStableCredit {
     error StableCreditNoCreditLine(address issuer, address member);
     /// @notice thrown when carry would be minted to nobody.
     error StableCreditInvalidCarryRecipient();
+    /// @notice thrown when a purchase's three legs do not sum to zero.
+    error StableCreditPurchaseDoesNotNet(uint256 purchase, uint256 payout, uint256 discount);
+    /// @notice thrown when an origination would put a member past their ceiling.
+    error StableCreditCeilingExceeded(address member, uint256 owed, uint256 ceiling);
 
     /* ========== STATE VARIABLES ========== */
 
@@ -95,16 +99,83 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// @notice Repays referenced member's credit balance by amount.
     /// @dev Caller must approve this contract to spend reserve tokens in order to repay.
     function repayCreditBalance(address member, uint128 amount) external {
+        _repay(_msgSender(), member, amount, true);
+    }
+
+    /// @notice settles a member's obligation on an issuer's instruction.
+    /// @dev An undirected repayment says only "reduce what this member owes", and every issuer
+    /// the member holds is told so each can take its share -- which in practice means the
+    /// revolving line, the demand obligation. A term plan amortizes on a schedule, so a payment
+    /// against one has to name it, and the issuer that was named records it itself. Telling the
+    /// others as well would have them claim the same payment twice.
+    /// @param payer address the reserve tokens are pulled from.
+    /// @param member address whose obligation is settled.
+    /// @param amount amount settled.
+    function repayCreditBalanceFor(address payer, address member, uint128 amount)
+        external
+        override
+        onlyCreditIssuer
+    {
+        _repay(payer, member, amount, false);
+    }
+
+    /// @dev `notify` is false when an issuer directed the payment and has already accounted for
+    /// it.
+    function _repay(address payer, address member, uint128 amount, bool notify) private {
         uint256 creditBalance = creditBalanceOf(member);
         require(amount <= creditBalance, "StableCredit: invalid payment amount");
         uint256 reserveTokenAmount = assurancePool.convertStableCreditToReserveToken(amount);
-        assurancePool.reserveToken().transferFrom(_msgSender(), address(this), reserveTokenAmount);
+        assurancePool.reserveToken().transferFrom(payer, address(this), reserveTokenAmount);
         assurancePool.reserveToken().approve(address(assurancePool), reserveTokenAmount);
         assurancePool.depositIntoBufferReserve(reserveTokenAmount);
         // A repayment is a system move. A frozen member paying down what froze them must not be
         // refused by the freeze.
-        _systemTransfer(address(this), member, amount);
+        if (notify) _systemTransfer(address(this), member, amount);
+        else super._transfer(address(this), member, amount);
         emit CreditBalanceRepaid(member, amount);
+    }
+
+    /// @notice originates a partner purchase as a three-party mint that nets to zero.
+    /// @dev No credit moves and nobody lends anything. The member is debited what they spent, the
+    /// merchant is credited what they are owed, and the co-op is credited the difference -- and
+    /// the three sum to zero, which is what makes origination capital-free.
+    ///
+    /// The netting is asserted here rather than left to tests. A purchase that does not net is a
+    /// supply bug: it either mints claims nobody owes or leaves an obligation nobody holds, and
+    /// both are invisible afterwards because the ledger will happily carry either.
+    ///
+    /// The merchant's positive balance is the payables ledger. It is what the co-op owes that
+    /// merchant, on-chain, with no parallel record to reconcile against.
+    /// @param member address taking on the obligation.
+    /// @param purchase the amount the member is debited.
+    /// @param merchant address receiving the payout.
+    /// @param payout the amount the merchant is credited.
+    /// @param coop address receiving the discount.
+    /// @param discount the amount the co-op is credited.
+    function originatePurchase(
+        address member,
+        uint256 purchase,
+        address merchant,
+        uint256 payout,
+        address coop,
+        uint256 discount
+    ) external override onlyCreditIssuer {
+        if (purchase != payout + discount) {
+            revert StableCreditPurchaseDoesNotNet(purchase, payout, discount);
+        }
+        uint256 owed = creditBalanceOf(member) + purchase;
+        uint256 ceiling = creditLimitOf(member);
+        if (owed > ceiling) revert StableCreditCeilingExceeded(member, owed, ceiling);
+
+        if (payout > 0) {
+            if (merchant == address(0)) revert StableCreditInvalidCarryRecipient();
+            _accrueCredit(member, merchant, payout);
+        }
+        if (discount > 0) {
+            if (coop == address(0)) revert StableCreditInvalidCarryRecipient();
+            _accrueCredit(member, coop, discount);
+        }
+        emit PurchaseOriginated(member, merchant, purchase, payout, discount);
     }
 
     /// @notice deepens a member's negative balance by carry their issuer has accrued.
