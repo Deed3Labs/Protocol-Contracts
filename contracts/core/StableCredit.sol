@@ -5,6 +5,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "./interfaces/stable-credit/IStableCredit.sol";
 import "./interfaces/stable-credit/INetworkRegistry.sol";
+import "./interfaces/stable-credit/IPayoutSink.sol";
 import "./MutualCredit.sol";
 
 /// @title StableCredit contract
@@ -23,6 +24,9 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// @notice thrown when an issuer acts on a member it has no credit line with.
     error StableCreditNoCreditLine(address issuer, address member);
     /// @notice thrown when carry would be minted to nobody.
+    event RepaymentRouted(address indexed destination, uint256 amount);
+    event PayoutPoolUpdated(address indexed payoutPool);
+
     error StableCreditInvalidCarryRecipient();
     /// @notice thrown when a purchase's three legs do not sum to zero.
     error StableCreditPurchaseDoesNotNet(uint256 purchase, uint256 payout, uint256 discount);
@@ -63,6 +67,11 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// overstated figure let positive holders draw on the AssurancePool for supply that was never
     /// orphaned -- ordinary repayment activity quietly opening a drain.
     uint256 private lostDebtOutstanding;
+
+    /// @notice Where repayment value goes first, when there is somewhere for it to go.
+    /// @dev Optional. Unset, everything lands in loss absorption, which is the inherited
+    /// behaviour and was the only option before there was a payout pool at all.
+    IPayoutSink public payoutPool;
 
     /* ========== INITIALIZER ========== */
 
@@ -146,8 +155,7 @@ contract StableCredit is MutualCredit, IStableCredit {
         require(amount <= creditBalance, "StableCredit: invalid payment amount");
         uint256 reserveTokenAmount = assurancePool.convertStableCreditToReserveToken(amount);
         assurancePool.reserveToken().transferFrom(payer, address(this), reserveTokenAmount);
-        assurancePool.reserveToken().approve(address(assurancePool), reserveTokenAmount);
-        assurancePool.depositIntoBufferReserve(reserveTokenAmount);
+        _routeRepayment(reserveTokenAmount);
         // A repayment is a system move. A frozen member paying down what froze them must not be
         // refused by the freeze.
         if (notify) _systemTransfer(address(this), member, amount);
@@ -345,6 +353,46 @@ contract StableCredit is MutualCredit, IStableCredit {
         _notifyIssuersOf(_to, _from, _to, _amount);
         super._transfer(_from, _to, _amount);
         _settleRepayment(_to, burned);
+    }
+
+    /// @notice sends repayment value where it is owed before where it might be needed.
+    /// @dev A member clearing their balance is how the merchant holding the other side of that
+    /// purchase gets paid. Everything used to go straight into the AssurancePool's buffer
+    /// reserve, which is the one fund forbidden from funding a payout -- so the working capital
+    /// for net-30 accumulated exactly where it could not be spent, and the co-op had to find the
+    /// money somewhere else while its own repayments piled up next door.
+    ///
+    /// The payout pool is offered only what it is actually short. It is a timing buffer, not a
+    /// place to accumulate, so anything above the claims outstanding carries on to loss
+    /// absorption where it does some good.
+    function _routeRepayment(uint256 amount) private {
+        IERC20Upgradeable reserve = assurancePool.reserveToken();
+        uint256 toPayout;
+
+        if (address(payoutPool) != address(0)) {
+            uint256 owedToMerchants = payoutPool.shortfall();
+            toPayout = owedToMerchants < amount ? owedToMerchants : amount;
+            if (toPayout > 0) {
+                reserve.approve(address(payoutPool), toPayout);
+                payoutPool.donate(toPayout);
+                emit RepaymentRouted(address(payoutPool), toPayout);
+            }
+        }
+
+        uint256 remainder = amount - toPayout;
+        if (remainder > 0) {
+            reserve.approve(address(assurancePool), remainder);
+            assurancePool.depositIntoBufferReserve(remainder);
+            emit RepaymentRouted(address(assurancePool), remainder);
+        }
+    }
+
+    /// @notice sets the pool repayment value is offered to first.
+    /// @param _payoutPool address of the payout pool, or address(0) to send everything to the
+    /// reserve.
+    function setPayoutPool(address _payoutPool) external onlyAdmin {
+        payoutPool = IPayoutSink(_payoutPool);
+        emit PayoutPoolUpdated(_payoutPool);
     }
 
     /// @notice how much of an incoming amount will burn against the recipient's debt.
