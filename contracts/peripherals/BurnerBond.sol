@@ -1,22 +1,67 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
 import "../core/interfaces/burner-bond/IBurnerBond.sol";
 import "../core/interfaces/burner-bond/IBurnerBondDeposit.sol";
 import "../core/interfaces/burner-bond/IBurnerBondFactory.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "../core/interfaces/stable-credit/IAssurancePool.sol";
 
 /// @title BurnerBond
 /// @notice ERC-1155 based bond system that allows users to mint bonds at a discount
 /// @dev Bonds are backed by USDC deposited into the AssurancePool excess reserve
-contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
+interface IBondEncumbrance {
+    function isItemEncumbered(address holder, bytes32 kind, uint256 itemId)
+        external view returns (bool);
+}
+
+interface IBondTraitStore {
+    function setTrait(uint256 bondId, bytes32 key, bytes calldata value) external;
+    function setTraits(uint256 bondId, bytes32[] calldata keys, bytes[] calldata values) external;
+    function setCustomName(bytes32 key, string calldata name) external;
+    function removeTrait(uint256 bondId, bytes32 key) external;
+    function traitOf(address collection, uint256 bondId, bytes32 key)
+        external view returns (bytes memory);
+    function traitsOf(address collection, uint256 bondId, bytes32[] calldata keys)
+        external view returns (bytes[] memory);
+    function keysOf(address collection, uint256 bondId) external view returns (bytes32[] memory);
+    function nameOf(address collection, bytes32 key) external view returns (string memory);
+}
+
+interface IBondDiscountCurve {
+    function curveOf(address collection) external view returns (uint8, uint256);
+    function setCurve(uint8 curveType, uint256 parameter) external;
+    function discountFor(
+        address collection,
+        uint256 timeToMaturity,
+        uint256 minMaturity,
+        uint256 maxMaturity,
+        uint256 minDiscount,
+        uint256 maxDiscount
+    ) external view returns (uint256);
+}
+
+interface IBondVaultSettlement {
+    function settle(uint256 bondId, address to) external returns (uint256);
+    function settleEarly(uint256 bondId, address to, uint256 presentValue) external;
+    function roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity)
+        external;
+}
+
+contract BurnerBond is
+    Initializable,
+    ERC1155Upgradeable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    IBurnerBond
+{
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
 
@@ -33,6 +78,37 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     
     /// @notice AssurancePool contract for USDC deposits and withdrawals
     IAssurancePool public assurancePool;
+
+    /// @notice Where the money to redeem a bond comes from.
+    /// @dev The vault, never the AssurancePool. A bondholder is a creditor and must not be
+    /// exposed to how the credit book is performing.
+    IBondVaultSettlement public bondVault;
+
+    /// @notice May take a pledged bond, and redeem one before it matures.
+    /// @dev Both restricted to the co-op or a contract acting for it. Early redemption exists so
+    /// a defaulted position can be covered without waiting out the term, not so a holder can
+    /// change their mind -- a bond anyone could exit early is not a term instrument.
+    address public liquidator;
+
+    /// @notice Reports whether a given bond is standing behind drawn credit.
+    /// @dev Same reasoning as CLRUSD and pool shares: the member holds the bond, so a registry
+    /// entry saying it is pledged does not stop them handing it to somebody else. A pledge that
+    /// only exists in a ledger is a note about an asset nobody controls.
+    IBondEncumbrance public encumbranceSource;
+    /// @notice The collateral kind these bonds are pledged as.
+    bytes32 public collateralKind;
+
+    /// @notice Bonds their holder has asked to be paid out rather than rolled at maturity.
+    mapping(uint256 => bool) public autoRollOptedOut;
+
+    /// @notice How long a rolled bond runs for.
+    uint256 public rollTerm;
+
+    event AutoRollOptOutSet(uint256 indexed bondId, bool optedOut);
+    event BondRolled(uint256 indexed oldBondId, uint256 indexed newBondId, uint256 rolledValue);
+    event BondSeized(uint256 indexed bondId, address indexed from, address indexed to);
+    event RedeemedEarly(uint256 indexed bondId, address indexed holder, uint256 presentValue);
+    event LiquidatorUpdated(address indexed liquidator);
     
     /// @notice Underlying token contract (can be USDC, WETH, etc.)
     IERC20 public underlyingToken;
@@ -47,21 +123,22 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     string public collectionDescription;
     
     // ============ DISCOUNT CURVE SYSTEM ============
-    
-    /// @notice Discount curve types
-    enum CurveType {
-        LINEAR,      // 0: Linear scaling
-        BONDING,     // 1: Bonding curve (S-curve)
-        LOGARITHMIC, // 2: Logarithmic growth
-        CUSTOM       // 3: Custom curve (future implementation)
+
+    /// @notice Shared pricing policy. See BondDiscountCurve for why it is not held inline.
+    IBondDiscountCurve public discountCurveEngine;
+
+    /// @notice Current discount curve shape (0=linear, 1=bonding, 2=logarithmic, 3=custom).
+    function curveType() public view returns (uint8) {
+        (uint8 t,) = discountCurveEngine.curveOf(address(this));
+        return t;
     }
-    
-    /// @notice Current discount curve configuration
-    CurveType public curveType = CurveType.LINEAR;
-    
-    /// @notice Curve-specific parameter (exponent, base, etc.)
-    uint256 public curveParameter = 10000; // 1.0 for linear, exponent for exponential, etc.
-    
+
+    /// @notice Curve-specific parameter (steepness, base, etc.).
+    function curveParameter() public view returns (uint256) {
+        (, uint256 p) = discountCurveEngine.curveOf(address(this));
+        return p;
+    }
+
     /// @notice Mapping from bond ID to bond information
     mapping(uint256 => BondInfo) public bonds;
     
@@ -88,32 +165,43 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
      * @dev Mapping from bond ID to trait key to trait value
      * @notice Implements ERC-7496 trait storage for bonds
      */
-    mapping(uint256 => mapping(bytes32 => bytes)) private _bondTraits;
+    /// @notice Where a bond's metadata lives.
+    /// @dev Not here. All of it is display and none of it decides whether a bond can be issued or
+    /// redeemed, and this contract had reached the size a contract may be -- so it sheds what it
+    /// does not need to be correct before it sheds anything it does.
+    IBondTraitStore public traitStore;
     
     /**
      * @dev Mapping from trait key to trait name
      * @notice Used for ERC-7496 trait metadata
      */
-    mapping(bytes32 => string) private _traitNames;
     
     /**
      * @dev Array of all possible trait keys
      * @notice Used for ERC-7496 trait enumeration
      */
-    bytes32[] private _allTraitKeys;
 
     /* ========== CONSTRUCTOR ========== */
     
-    /// @notice Initialize the BurnerBond contract
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice sets a collection up.
     /// @param _burnerBondDeposit Address of the BurnerBondDeposit contract
-    /// @param _factory Address of the BurnerBondFactory contract (single source of truth for parameters)
+    /// @param _factory Address of the parameter source
     /// @param _assurancePool Address of the AssurancePool contract
-    /// @param _underlyingToken Address of the underlying token (USDC, WETH, etc.)
+    /// @param _underlyingToken Address of the underlying token
     /// @param _uri Base URI for ERC-1155 metadata
     /// @param _collectionName Name of the collection
     /// @param _collectionSymbol Symbol of the collection
     /// @param _collectionDescription Description of the collection
-    constructor(
+    /// @dev An initializer rather than a constructor, so a collection can be a cheap copy of one
+    /// implementation instead of a fresh deployment of the whole contract. The factory used to
+    /// carry a copy of everything here inside its own bytecode, which is what put it past the
+    /// deployable limit; a clone carries a pointer instead.
+    function initialize(
         address _burnerBondDeposit,
         address _factory,
         address _assurancePool,
@@ -121,8 +209,14 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         string memory _uri,
         string memory _collectionName,
         string memory _collectionSymbol,
-        string memory _collectionDescription
-    ) ERC1155(_uri) {
+        string memory _collectionDescription,
+        address _traitStore,
+        address _discountCurve
+    ) external initializer {
+        __ERC1155_init(_uri);
+        __Ownable_init();
+        __ReentrancyGuard_init();
+
         require(_burnerBondDeposit != address(0), "Invalid BurnerBondDeposit address");
         require(_factory != address(0), "Invalid factory address");
         require(_assurancePool != address(0), "Invalid AssurancePool address");
@@ -135,9 +229,10 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         collectionName = _collectionName;
         collectionSymbol = _collectionSymbol;
         collectionDescription = _collectionDescription;
+        traitStore = IBondTraitStore(_traitStore);
+        discountCurveEngine = IBondDiscountCurve(_discountCurve);
+        rollTerm = 365 days;
         
-        // Initialize trait keys and names
-        _initializeTraits();
         
         // Start bond ID counter at 1
         _bondIdCounter.increment();
@@ -187,52 +282,14 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     /// @param timeToMaturity Time to maturity in seconds
     /// @return Discount percentage in basis points
     function getDiscountForMaturity(uint256 timeToMaturity) public view override returns (uint256) {
-        uint256 minMaturity = factory.getMinMaturity();
-        uint256 maxMaturity = factory.getMaxMaturity();
-        
-        if (timeToMaturity < minMaturity) {
-            return 0;
-        }
-        
-        if (timeToMaturity > maxMaturity) {
-            timeToMaturity = maxMaturity;
-        }
-        
-        // Calculate normalized time (0 to 1)
-        uint256 normalizedTime = (timeToMaturity * 1e18) / maxMaturity;
-        uint256 maxDiscount = factory.getMaxDiscount();
-        uint256 minDiscount = factory.getMinDiscount();
-        
-        // Calculate the discount range (maxDiscount - minDiscount)
-        uint256 discountRange = maxDiscount - minDiscount;
-        
-        if (curveType == CurveType.LINEAR) {
-            // Linear: discount = minDiscount + (normalizedTime * discountRange)
-            return minDiscount + (normalizedTime * discountRange) / 1e18;
-            
-        } else if (curveType == CurveType.BONDING) {
-            // Bonding curve (S-curve): discount = minDiscount + discountRange * (1 - (1 - normalizedTime)^steepness)
-            // curveParameter is the steepness (e.g., 20000 = 2.0)
-            // This creates an S-curve that starts slow, accelerates in the middle, then slows down
-            uint256 steepness = curveParameter;
-            uint256 oneMinusTime = 1e18 - normalizedTime;
-            uint256 poweredOneMinusTime = _power(oneMinusTime, steepness);
-            uint256 curveValue = 1e18 - poweredOneMinusTime;
-            return minDiscount + (curveValue * discountRange) / 1e18;
-            
-        } else if (curveType == CurveType.LOGARITHMIC) {
-            // Logarithmic: discount = minDiscount + discountRange * log(1 + normalizedTime * (base - 1)) / log(base)
-            // curveParameter is the base (e.g., 20000 = 2.0)
-            // This creates diminishing returns - discourages longer-term bonds
-            uint256 base = curveParameter;
-            uint256 logResult = _logarithm(1e18 + (normalizedTime * (base - 1e18)) / 1e18, base);
-            uint256 logBase = _logarithm(base, base);
-            return minDiscount + (logResult * discountRange) / logBase;
-            
-        } else {
-            // CUSTOM curve - for future implementation
-            revert("Custom curve not implemented yet");
-        }
+        return discountCurveEngine.discountFor(
+            address(this),
+            timeToMaturity,
+            factory.getMinMaturity(),
+            factory.getMaxMaturity(),
+            factory.getMinDiscount(),
+            factory.getMaxDiscount()
+        );
     }
     
     /// @notice Calculate purchase price for a bond
@@ -280,7 +337,8 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     /// @return maxMaturity Maximum maturity period in seconds
     /// @return curveParameter Curve-specific parameter (exponent, base, etc.)
     function getDiscountCurve() external view override returns (uint8, uint256, uint256, uint256) {
-        return (uint8(curveType), factory.getMaxDiscount(), factory.getMaxMaturity(), curveParameter);
+        (uint8 t, uint256 p) = discountCurveEngine.curveOf(address(this));
+        return (t, factory.getMaxDiscount(), factory.getMaxMaturity(), p);
     }
     
     /// @notice Set discount curve configuration
@@ -289,24 +347,13 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     /// @param _maxMaturity Maximum maturity period in seconds
     /// @param _curveParameter Curve-specific parameter (exponent, base, etc.)
     function setDiscountCurve(uint8 _curveType, uint256 _maxDiscount, uint256 _maxMaturity, uint256 _curveParameter) external override onlyOwner {
-        require(_curveType <= 3, "Invalid curve type");
         require(_maxDiscount <= 5000, "Max discount cannot exceed 50%");
         require(_maxMaturity >= factory.getMinMaturity(), "Max maturity too low");
-        require(_maxMaturity <= 50 * 365 * 24 * 60 * 60, "Max maturity too high"); // 50 years max
-        
-        // Validate curve parameter based on curve type
-        if (_curveType == 1) { // BONDING
-            require(_curveParameter >= 10000 && _curveParameter <= 50000, "Steepness must be between 1.0 and 5.0");
-        } else if (_curveType == 2) { // LOGARITHMIC
-            require(_curveParameter >= 15000 && _curveParameter <= 100000, "Base must be between 1.5 and 10.0");
-        } else if (_curveType == 0) { // LINEAR
-            require(_curveParameter == 10000, "Linear curve parameter must be 1.0");
-        }
-        
-        curveType = CurveType(_curveType);
-        curveParameter = _curveParameter;
-        // Note: maxDiscount and maxMaturity are now managed by the factory
-        
+        require(_maxMaturity <= 50 * 365 days, "Max maturity too high");
+
+        // Curve-type and parameter validation lives with the curve.
+        discountCurveEngine.setCurve(_curveType, _curveParameter);
+
         emit DiscountCurveUpdated(_curveType, _maxDiscount, _maxMaturity, _curveParameter);
     }
     
@@ -320,141 +367,86 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
 
     /* ========== TRAIT FUNCTIONS (ERC-7496) ========== */
     
-    /// @notice Get a trait value for a bond
-    /// @param bondId ID of the bond
-    /// @param traitKey Key of the trait
-    /// @return Value of the trait
-    function getBondTraitValue(uint256 bondId, bytes32 traitKey) external view override returns (bytes memory) {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        return _bondTraits[bondId][traitKey];
+    /// @inheritdoc IBurnerBond
+    function getBondTraitValue(uint256 bondId, bytes32 traitKey)
+        external view override returns (bytes memory)
+    {
+        return traitStore.traitOf(address(this), bondId, traitKey);
     }
-    
-    /// @notice Get multiple trait values for a bond
-    /// @param bondId ID of the bond
-    /// @param traitKeys Array of trait keys
-    /// @return Array of trait values
-    function getBondTraitValues(uint256 bondId, bytes32[] calldata traitKeys) external view override returns (bytes[] memory) {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        bytes[] memory values = new bytes[](traitKeys.length);
-        for (uint256 i = 0; i < traitKeys.length; i++) {
-            values[i] = _bondTraits[bondId][traitKeys[i]];
-        }
-        return values;
+
+    /// @inheritdoc IBurnerBond
+    function getBondTraitValues(uint256 bondId, bytes32[] calldata traitKeys)
+        external view override returns (bytes[] memory)
+    {
+        return traitStore.traitsOf(address(this), bondId, traitKeys);
     }
-    
-    /// @notice Get all trait keys for a bond that have values
-    /// @param bondId ID of the bond
-    /// @return Array of trait keys that have values
+
+    /// @inheritdoc IBurnerBond
     function getBondTraitKeys(uint256 bondId) external view override returns (bytes32[] memory) {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        
-        bytes32[] memory traitKeys = new bytes32[](_allTraitKeys.length);
-        uint256 count;
-        
-        for (uint i = 0; i < _allTraitKeys.length; i++) {
-            if (_bondTraits[bondId][_allTraitKeys[i]].length > 0) {
-                traitKeys[count++] = _allTraitKeys[i];
-            }
-        }
-        
-        // Resize array to actual count
-        assembly {
-            mstore(traitKeys, count)
-        }
-        
-        return traitKeys;
+        return traitStore.keysOf(address(this), bondId);
     }
-    
-    /// @notice Get the name of a trait
-    /// @param traitKey Key of the trait
-    /// @return Name of the trait
+
+    /// @inheritdoc IBurnerBond
     function getBondTraitName(bytes32 traitKey) external view override returns (string memory) {
-        return _traitNames[traitKey];
+        return traitStore.nameOf(address(this), traitKey);
     }
-    
-    /// @notice Set a trait value for a bond (admin only)
-    /// @param bondId ID of the bond
-    /// @param traitKey Key of the trait
-    /// @param traitValue Value of the trait
-    function setBondTrait(uint256 bondId, bytes32 traitKey, bytes memory traitValue) external override onlyOwner {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        _setBondTraitValue(bondId, traitKey, traitValue);
+
+    /// @inheritdoc IBurnerBond
+    function setBondTrait(uint256 bondId, bytes32 traitKey, bytes memory traitValue)
+        external override onlyOwner
+    {
+        traitStore.setTrait(bondId, traitKey, traitValue);
         emit BondTraitUpdated(bondId, traitKey, traitValue);
     }
-    
-    /// @notice Set a trait value with flexible input types
-    /// @param bondId ID of the bond
-    /// @param traitKey Key of the trait (either bytes32 or string)
-    /// @param traitValue Value of the trait (supports various types)
-    /// @param valueType Type of the value (0=bytes, 1=string, 2=uint256, 3=bool)
-    function setBondTraitFlexible(uint256 bondId, bytes memory traitKey, bytes memory traitValue, uint8 valueType) external override onlyOwner {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        
-        // Convert string trait name to bytes32 key if provided as string
+
+    /// @inheritdoc IBurnerBond
+    /// @dev The key may arrive as a hash or as the string behind one. A string is hashed and its
+    /// name recorded, so a trait added later reads back with the name it was given.
+    function setBondTraitFlexible(
+        uint256 bondId,
+        bytes memory traitKey,
+        bytes memory traitValue,
+        uint8 valueType
+    ) external override onlyOwner {
         bytes32 key;
-        bool isStringKey = false;
         if (traitKey.length == 32) {
-            assembly {
-                key := mload(add(traitKey, 32))
-            }
+            key = abi.decode(traitKey, (bytes32));
         } else {
-            // Assume it's a string and hash it
             key = keccak256(traitKey);
-            isStringKey = true;
+            traitStore.setCustomName(key, string(traitKey));
         }
 
-        // Handle different value types
         bytes memory value;
-        if (valueType == 0) {
-            // Direct bytes value
-            value = traitValue;
-        } else if (valueType == 1) {
-            // String value
-            value = abi.encode(string(traitValue));
-        } else if (valueType == 2) {
-            // Numeric value
-            value = abi.encode(uint256(bytes32(traitValue)));
-        } else if (valueType == 3) {
-            // Boolean value
-            value = abi.encode(uint256(bytes32(traitValue)) > 0);
-        } else {
-            revert("Invalid value type");
-        }
-        
-        _setBondTraitValue(bondId, key, value);
-        
-        // If trait was provided as string, set the trait name automatically
-        if (isStringKey) {
-            _traitNames[key] = string(traitKey);
-        }
-        
+        if (valueType == 1) value = abi.encode(string(traitValue));
+        else if (valueType == 2) value = abi.encode(uint256(bytes32(traitValue)));
+        else if (valueType == 3) value = abi.encode(uint256(bytes32(traitValue)) > 0);
+        else value = traitValue;
+
+        traitStore.setTrait(bondId, key, value);
         emit BondTraitUpdated(bondId, key, value);
     }
-    
-    /// @notice Remove a trait from a bond
-    /// @param bondId ID of the bond
-    /// @param traitName Name of the trait to remove
+
+    /// @inheritdoc IBurnerBond
     function removeBondTrait(uint256 bondId, string memory traitName) external override onlyOwner {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        bytes32 traitKey = keccak256(bytes(traitName));
-        require(_bondTraits[bondId][traitKey].length > 0, "Trait does not exist");
-        
-        delete _bondTraits[bondId][traitKey];
-        emit BondTraitUpdated(bondId, traitKey, "");
+        traitStore.removeTrait(bondId, keccak256(bytes(traitName)));
     }
-    
-    /// @notice Get the metadata URI for traits
-    /// @return Base64-encoded JSON schema indicating dynamic trait support
+
+    /// @inheritdoc IBurnerBond
     function getBondTraitMetadataURI() external pure override returns (string memory) {
-        // Simple schema indicating dynamic trait support
         return "data:application/json;base64,eyJ0cmFpdHMiOiB7ImR5bmFtaWMiOiB0cnVlfX0=";
     }
-    
-    /// @notice Get bond type based on maturity date
+
+    /// @notice How long a bond runs for, in words.
+    /// @dev Kept as a view rather than a stored trait. It is derivable from the maturity date the
+    /// bond already carries, and storing a description of a number next to the number is how a
+    /// contract ends up too large to deploy.
     /// @param maturityDate Maturity date of the bond
     /// @return Bond type string (short-term, mid-term, or long-term)
     function getBondType(uint256 maturityDate) external view returns (string memory) {
-        return _calculateBondType(maturityDate);
+        uint256 term = maturityDate > block.timestamp ? maturityDate - block.timestamp : 0;
+        if (term <= 180 days) return "short-term";
+        if (term <= 540 days) return "mid-term";
+        return "long-term";
     }
     
     /// @notice Get collection name
@@ -554,121 +546,91 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         // Calculate purchase price
         uint256 purchasePrice = calculatePurchasePrice(faceValue, maturityDate);
         
-        // Generate unique bond ID
+        bondId = _issue(faceValue, maturityDate, discountPercentage, purchasePrice, creator);
+        totalUSDCDeposited += purchasePrice;
+        emit BondMinted(bondId, creator, faceValue, maturityDate, discountPercentage, purchasePrice);
+        return bondId;
+    }
+
+    /// @notice Creates a bond and hands it to somebody.
+    /// @dev One path for a purchase and for a roll. They were the same twenty lines twice over,
+    /// and duplicated logic stays duplicated only until somebody edits one of them.
+    function _issue(
+        uint256 faceValue,
+        uint256 maturityDate,
+        uint256 discountPercentage,
+        uint256 purchasePrice,
+        address holder
+    ) internal returns (uint256 bondId) {
         bondId = _bondIdCounter.current();
         _bondIdCounter.increment();
-        
-        // Store bond information
+
         bonds[bondId] = BondInfo({
             faceValue: faceValue,
             maturityDate: maturityDate,
             discountPercentage: discountPercentage,
             purchasePrice: purchasePrice,
             isRedeemed: false,
-            creator: creator
+            creator: holder,
+            issuedAt: uint64(block.timestamp)
         });
-        
-        // Update mappings
-        bondsCreatedBy[creator]++;
-        bondIdsByCreator[creator].push(bondId);
-        bondCreator[bondId] = creator;
-        
-        // Update statistics
+
+        bondsCreatedBy[holder]++;
+        bondIdsByCreator[holder].push(bondId);
+        bondCreator[bondId] = holder;
         totalBondsMinted++;
-        totalUSDCDeposited += purchasePrice;
-        
-        // Mint ERC-1155 token to creator
-        _mint(creator, bondId, 1, "");
-        
-        // Set initial traits for the bond
-        _setInitialBondTraits(bondId, faceValue, maturityDate, discountPercentage, creator);
-        
-        emit BondMinted(bondId, creator, faceValue, maturityDate, discountPercentage, purchasePrice);
-        
-        return bondId;
+
+        _mint(holder, bondId, 1, "");
+        _setInitialBondTraits(bondId, faceValue, maturityDate, discountPercentage, holder);
     }
     
     /// @notice Redeem a mature bond for its face value
     /// @param bondId Unique bond identifier
     function redeemBond(uint256 bondId) external override nonReentrant {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
-        require(!bonds[bondId].isRedeemed, "Bond already redeemed");
-        require(isBondMature(bondId), "Bond not yet mature");
-        
-        BondInfo storage bond = bonds[bondId];
-        
-        // Mark bond as redeemed
-        bond.isRedeemed = true;
-        
-        // Update traits
-        _setBondTraitValue(bondId, keccak256("isRedeemed"), abi.encode(true));
-        _setBondTraitValue(bondId, keccak256("redeemedAt"), abi.encode(block.timestamp));
-        emit BondTraitUpdated(bondId, keccak256("isRedeemed"), abi.encode(true));
-        emit BondTraitUpdated(bondId, keccak256("redeemedAt"), abi.encode(block.timestamp));
-        
-        // Update statistics
-        totalUSDCRedeemed += bond.faceValue;
-        
-        // Burn the ERC-1155 token
-        _burn(msg.sender, bondId, 1);
-        
-        // Withdraw face value from AssurancePool
-        assurancePool.withdrawToken(address(underlyingToken), bond.faceValue);
-        
-        // Transfer underlying token to bond holder
-        underlyingToken.safeTransfer(msg.sender, bond.faceValue);
-        
-        emit BondRedeemed(bondId, msg.sender, bond.faceValue);
+        _redeem(bondId);
     }
-    
+
     /// @notice Batch redeem multiple mature bonds
     /// @param bondIds Array of bond IDs to redeem
     function batchRedeemBonds(uint256[] calldata bondIds) external override nonReentrant {
         require(bondIds.length > 0, "No bonds to redeem");
         require(bondIds.length <= 50, "Too many bonds in batch"); // Gas limit protection
-        
-        uint256 totalFaceValue = 0;
-        
-        // Validate all bonds first
         for (uint256 i = 0; i < bondIds.length; i++) {
-            uint256 bondId = bondIds[i];
-            require(bonds[bondId].creator != address(0), "Bond does not exist");
-            require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
-            require(!bonds[bondId].isRedeemed, "Bond already redeemed");
-            require(isBondMature(bondId), "Bond not yet mature");
-            
-            totalFaceValue += bonds[bondId].faceValue;
+            _redeem(bondIds[i]);
         }
-        
-        // Process all redemptions
-        for (uint256 i = 0; i < bondIds.length; i++) {
-            uint256 bondId = bondIds[i];
-            BondInfo storage bond = bonds[bondId];
-            
-            // Mark bond as redeemed
-            bond.isRedeemed = true;
-            
-            // Update traits
-            _setBondTraitValue(bondId, keccak256("isRedeemed"), abi.encode(true));
-            _setBondTraitValue(bondId, keccak256("redeemedAt"), abi.encode(block.timestamp));
-            emit BondTraitUpdated(bondId, keccak256("isRedeemed"), abi.encode(true));
-            emit BondTraitUpdated(bondId, keccak256("redeemedAt"), abi.encode(block.timestamp));
-            
-            // Update statistics
-            totalUSDCRedeemed += bond.faceValue;
-            
-            // Burn the ERC-1155 token
-            _burn(msg.sender, bondId, 1);
-            
-            emit BondRedeemed(bondId, msg.sender, bond.faceValue);
-        }
-        
-        // Withdraw total face value from AssurancePool
-        assurancePool.withdrawToken(address(underlyingToken), totalFaceValue);
-        
-        // Transfer total underlying token to bond holder
-        underlyingToken.safeTransfer(msg.sender, totalFaceValue);
+    }
+
+    /// @notice Redeems one bond: checks it, retires it, and pays the holder.
+    /// @dev One path for both entry points. They used to be two copies of the same twenty lines,
+    /// which is how the batch version came to burn bonds and pay nobody -- the single version was
+    /// changed to settle from the vault and its twin was not. Duplicated logic does not stay
+    /// duplicated; it stays only until somebody edits one of them.
+    /// @param bondId Unique bond identifier
+    function _redeem(uint256 bondId) internal {
+        require(bonds[bondId].creator != address(0), "Bond does not exist");
+        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
+        require(!bonds[bondId].isRedeemed, "Bond already redeemed");
+        require(isBondMature(bondId), "Bond not yet mature");
+
+        BondInfo storage bond = bonds[bondId];
+        bond.isRedeemed = true;
+
+        bytes memory redeemedFlag = abi.encode(true);
+        bytes memory redeemedAt = abi.encode(block.timestamp);
+        _setBondTraitValue(bondId, keccak256("isRedeemed"), redeemedFlag);
+        _setBondTraitValue(bondId, keccak256("redeemedAt"), redeemedAt);
+        emit BondTraitUpdated(bondId, keccak256("isRedeemed"), redeemedFlag);
+        emit BondTraitUpdated(bondId, keccak256("redeemedAt"), redeemedAt);
+
+        totalUSDCRedeemed += bond.faceValue;
+        _burn(msg.sender, bondId, 1);
+
+        // Paid out of the bond vault, which holds the proceeds and nothing else's. Redemption
+        // does not compete with default coverage, and cannot fail because the credit book had a
+        // bad quarter.
+        bondVault.settle(bondId, msg.sender);
+
+        emit BondRedeemed(bondId, msg.sender, bond.faceValue);
     }
 
     /* ========== ADMIN FUNCTIONS ========== */
@@ -689,6 +651,147 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         factory.setMinDiscount(_minDiscount);
     }
     
+    /* ========== COLLATERAL ========== */
+
+    /// @notice what a bond is worth today, rather than at maturity.
+    /// @dev A zero-coupon bond accretes from what was paid for it toward what it will pay,
+    /// straight-line across its term. Half way through, half the discount has been earned.
+    ///
+    /// This is the number a bond is worth as collateral, and the number the co-op gets if it
+    /// takes one early. Paying face for a bond that has not matured would hand over interest
+    /// nobody has waited for.
+    /// @param bondId the bond
+    /// @return the bond's value now
+    function presentValueOf(uint256 bondId) public view returns (uint256) {
+        BondInfo storage bond = bonds[bondId];
+        if (bond.creator == address(0) || bond.isRedeemed) return 0;
+        if (block.timestamp >= bond.maturityDate) return bond.faceValue;
+
+        // Read, not reconstructed. Deriving the issue date by subtracting a standard term from
+        // the maturity date is right only for bonds that happened to have that term, and a
+        // six-month bond would be valued as though it had been accreting for a year.
+        uint256 issuedAt = bond.issuedAt;
+        if (block.timestamp <= issuedAt || bond.maturityDate <= issuedAt) {
+            return bond.purchasePrice;
+        }
+
+        uint256 elapsed = block.timestamp - issuedAt;
+        uint256 term = bond.maturityDate - issuedAt;
+        uint256 earned = ((bond.faceValue - bond.purchasePrice) * elapsed) / term;
+        return bond.purchasePrice + earned;
+    }
+
+    /// @notice takes a pledged bond and hands it to the co-op.
+    /// @dev A bond is one token with an id, not a balance, so seizing it is a transfer of that
+    /// id rather than an amount. The caller decides whether a default has happened; this only
+    /// enforces who may ask.
+    /// @param bondId the bond
+    /// @param from the member it is taken from
+    /// @param to where it goes, which should be the co-op treasury
+    function seizeBond(uint256 bondId, address from, address to) external {
+        require(msg.sender == liquidator, "Only liquidator can seize");
+        require(balanceOf(from, bondId) > 0, "Not bond holder");
+        _safeTransferFrom(from, to, bondId, 1, "");
+        emit BondSeized(bondId, from, to);
+    }
+
+    /// @notice pays out a bond before it matures, at what it is worth today.
+    /// @dev Only the co-op, and only through the liquidator. A bond taken from a defaulted member
+    /// is collateral somebody is waiting on, and waiting out the term would put the recovery
+    /// months away -- the whole reason asset-backed collateral is haircut is that realising it is
+    /// not free. Paying present value rather than face is what makes it not free: the vault keeps
+    /// the interest the term did not run for.
+    /// @param bondId the bond
+    /// @return presentValue what was paid
+    function redeemEarly(uint256 bondId) external nonReentrant returns (uint256 presentValue) {
+        require(msg.sender == liquidator, "Only liquidator can redeem early");
+        require(bonds[bondId].creator != address(0), "Bond does not exist");
+        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
+        require(!bonds[bondId].isRedeemed, "Bond already redeemed");
+
+        presentValue = presentValueOf(bondId);
+        bonds[bondId].isRedeemed = true;
+        totalUSDCRedeemed += presentValue;
+        _burn(msg.sender, bondId, 1);
+
+        bondVault.settleEarly(bondId, msg.sender, presentValue);
+        emit RedeemedEarly(bondId, msg.sender, presentValue);
+    }
+
+    /// @notice whether a bond will roll when it matures.
+    function willAutoRoll(uint256 bondId) public view returns (bool) {
+        return !autoRollOptedOut[bondId] && !bonds[bondId].isRedeemed;
+    }
+
+    /// @notice asks for the cash at maturity instead of a replacement bond.
+    /// @dev The holder's call, not the co-op's. Rolling is the default because letting a pledged
+    /// bond lapse quietly contracts somebody's credit line, but a holder who wants their money
+    /// should not have to argue for it.
+    function setAutoRollOptOut(uint256 bondId, bool optOut) external {
+        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
+        autoRollOptedOut[bondId] = optOut;
+        emit AutoRollOptOutSet(bondId, optOut);
+    }
+
+    /// @notice replaces a matured bond with a new one of the same value.
+    /// @dev The matured value buys the replacement, so the new face value is larger: the same
+    /// money bought at a discount again. No cash leaves the vault and the collateral behind the
+    /// position never lapses, which is the point.
+    ///
+    /// The co-op cannot roll a bond it has taken. A seized bond is collateral somebody is waiting
+    /// on, and rolling it would put that recovery another term away -- so a bond held by the
+    /// liquidator is redeemed early instead, which is what that path is for.
+    /// @param bondId the matured bond
+    /// @return newBondId the replacement
+    function rollBond(uint256 bondId) external nonReentrant returns (uint256 newBondId) {
+        require(msg.sender != liquidator, "Seized bonds are redeemed, not rolled");
+        require(bonds[bondId].creator != address(0), "Bond does not exist");
+        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
+        require(isBondMature(bondId), "Bond not yet mature");
+        require(willAutoRoll(bondId), "Bond opted out of rolling");
+
+        uint256 rolledValue = bonds[bondId].faceValue;
+        uint256 newMaturity = block.timestamp + rollTerm;
+        uint256 discount = calculateDiscount(newMaturity);
+        uint256 newFaceValue = (rolledValue * 10000) / (10000 - discount);
+
+        bonds[bondId].isRedeemed = true;
+        _burn(msg.sender, bondId, 1);
+
+        newBondId = _issue(newFaceValue, newMaturity, discount, rolledValue, msg.sender);
+        bondVault.roll(bondId, newBondId, newFaceValue, uint64(newMaturity));
+        emit BondRolled(bondId, newBondId, rolledValue);
+    }
+
+    /// @notice sets how long a rolled bond runs for.
+    function setRollTerm(uint256 _rollTerm) external onlyOwner {
+        require(_rollTerm >= factory.getMinMaturity(), "Roll term too short");
+        require(_rollTerm <= factory.getMaxMaturity(), "Roll term too long");
+        rollTerm = _rollTerm;
+    }
+
+    /// @notice sets the contract reporting which bonds are pledged, and the kind to ask about.
+    function setEncumbranceSource(address source, bytes32 kind) external onlyOwner {
+        encumbranceSource = IBondEncumbrance(source);
+        collateralKind = kind;
+    }
+
+    /// @notice names the contract that may seize and redeem early.
+    function setLiquidator(address _liquidator) external onlyOwner {
+        liquidator = _liquidator;
+        emit LiquidatorUpdated(_liquidator);
+    }
+
+    /// @notice sets the vault redemptions are paid from.
+    /// @dev Without this a collection can be created but never redeem, because the vault it pays
+    /// out of would be the zero address. Ownership of a new collection passes to the factory
+    /// owner, so this is theirs to call once the vault exists.
+    /// @param _bondVault Address of the BondVault contract
+    function setBondVault(address _bondVault) external onlyOwner {
+        require(_bondVault != address(0), "Invalid BondVault address");
+        bondVault = IBondVaultSettlement(_bondVault);
+    }
+
     /// @notice Set the AssurancePool contract address
     /// @param _assurancePool Address of the AssurancePool contract
     function setAssurancePool(address _assurancePool) external override onlyOwner {
@@ -742,7 +845,7 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     /// @notice Check if contract supports an interface
     /// @param interfaceId Interface identifier
     /// @return True if the interface is supported
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC1155, IERC165) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC1155Upgradeable, IERC165Upgradeable) returns (bool) {
         return 
             interfaceId == 0xaf332f3e || // ERC-7496 (Dynamic Traits)
             super.supportsInterface(interfaceId);
@@ -765,8 +868,24 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         for (uint256 i = 0; i < ids.length; i++) {
             uint256 bondId = ids[i];
             
-            // Prevent transfers of redeemed bonds
-            if (bonds[bondId].isRedeemed) {
+            // Prevent transfers of redeemed bonds -- but not their destruction. Redemption marks
+            // the bond redeemed and then burns it, and a burn is a transfer to the zero address,
+            // so a check that did not make this distinction refused the second half of the
+            // operation the first half had just committed to. The instrument could take money in
+            // and had no reachable way to pay it out.
+            // A pledged bond does not leave. Burns are exempt -- redemption and rolling both
+            // destroy the bond, and the liquidator is exempt because taking it is the one move
+            // the lock exists to permit.
+            // An unregistered kind reports nothing pledged, so it needs no check of its own.
+            if (
+                to != address(0) && operator != liquidator
+                    && address(encumbranceSource) != address(0)
+                    && encumbranceSource.isItemEncumbered(from, collateralKind, bondId)
+            ) {
+                revert("Bond is pledged as collateral");
+            }
+
+            if (bonds[bondId].isRedeemed && to != address(0)) {
                 revert("Cannot transfer redeemed bond");
             }
             
@@ -779,44 +898,8 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     }
     
     /// @notice Initialize trait keys and names
-    function _initializeTraits() private {
-        // Initialize trait keys and names in one go
-        _allTraitKeys = [
-            keccak256("faceValue"),
-            keccak256("maturityDate"),
-            keccak256("discountPercentage"),
-            keccak256("purchasePrice"),
-            keccak256("creator"),
-            keccak256("currentHolder"),
-            keccak256("isRedeemed"),
-            keccak256("terms"),
-            keccak256("bondType"),
-            keccak256("issuer"),
-            keccak256("createdAt"),
-            keccak256("redeemedAt")
-        ];
-        
-        // Map trait keys to names
-        _traitNames[keccak256("faceValue")] = "Face Value";
-        _traitNames[keccak256("maturityDate")] = "Maturity Date";
-        _traitNames[keccak256("discountPercentage")] = "Discount Percentage";
-        _traitNames[keccak256("purchasePrice")] = "Purchase Price";
-        _traitNames[keccak256("creator")] = "Creator";
-        _traitNames[keccak256("currentHolder")] = "Current Holder";
-        _traitNames[keccak256("isRedeemed")] = "Is Redeemed";
-        _traitNames[keccak256("terms")] = "Terms";
-        _traitNames[keccak256("bondType")] = "Bond Type";
-        _traitNames[keccak256("issuer")] = "Issuer";
-        _traitNames[keccak256("createdAt")] = "Created At";
-        _traitNames[keccak256("redeemedAt")] = "Redeemed At";
-    }
-    
-    /// @notice Set initial traits for a newly minted bond
-    /// @param bondId ID of the bond
-    /// @param faceValue Face value of the bond
-    /// @param maturityDate Maturity date of the bond
-    /// @param discountPercentage Discount percentage
-    /// @param creator Address that created the bond
+    /// @notice Records what a bond is, for anything that wants to show it to somebody.
+    /// @dev Written in one call rather than a dozen, and written somewhere else -- see traitStore.
     function _setInitialBondTraits(
         uint256 bondId,
         uint256 faceValue,
@@ -824,190 +907,35 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         uint256 discountPercentage,
         address creator
     ) internal {
-        // Set core bond traits
-        _setBondTraitValue(bondId, keccak256("faceValue"), abi.encode(faceValue));
-        _setBondTraitValue(bondId, keccak256("maturityDate"), abi.encode(maturityDate));
-        _setBondTraitValue(bondId, keccak256("discountPercentage"), abi.encode(discountPercentage));
-        _setBondTraitValue(bondId, keccak256("purchasePrice"), abi.encode(calculatePurchasePrice(faceValue, maturityDate)));
-        _setBondTraitValue(bondId, keccak256("creator"), abi.encode(creator));
-        _setBondTraitValue(bondId, keccak256("currentHolder"), abi.encode(creator));
-        _setBondTraitValue(bondId, keccak256("isRedeemed"), abi.encode(false));
-        // Calculate bond type based on maturity period
-        string memory bondType = _calculateBondType(maturityDate);
-        _setBondTraitValue(bondId, keccak256("bondType"), abi.encode(bondType));
-        _setBondTraitValue(bondId, keccak256("issuer"), abi.encode(address(this)));
-        _setBondTraitValue(bondId, keccak256("createdAt"), abi.encode(block.timestamp));
-        
-        // Set default terms (can be updated later)
-        _setBondTraitValue(bondId, keccak256("terms"), abi.encode("Standard BurnerBond Terms"));
+        bytes32[] memory keys = new bytes32[](8);
+        bytes[] memory vals = new bytes[](8);
+        keys[0] = keccak256("faceValue");
+        vals[0] = abi.encode(faceValue);
+        keys[1] = keccak256("maturityDate");
+        vals[1] = abi.encode(maturityDate);
+        keys[2] = keccak256("discountPercentage");
+        vals[2] = abi.encode(discountPercentage);
+        keys[3] = keccak256("purchasePrice");
+        vals[3] = abi.encode(calculatePurchasePrice(faceValue, maturityDate));
+        keys[4] = keccak256("creator");
+        vals[4] = abi.encode(creator);
+        keys[5] = keccak256("currentHolder");
+        vals[5] = abi.encode(creator);
+        keys[6] = keccak256("isRedeemed");
+        vals[6] = abi.encode(false);
+        keys[7] = keccak256("createdAt");
+        vals[7] = abi.encode(block.timestamp);
+        traitStore.setTraits(bondId, keys, vals);
     }
+
+    /// @notice Records one trait against a bond.
+    function _setBondTraitValue(uint256 bondId, bytes32 traitKey, bytes memory traitValue)
+        internal
+    {
+        traitStore.setTrait(bondId, traitKey, traitValue);
+    }
+
     
-    /// @notice Calculate bond type based on maturity period
-    /// @param maturityDate Maturity date of the bond
-    /// @return Bond type string (short-term, mid-term, or long-term)
-    function _calculateBondType(uint256 maturityDate) internal view returns (string memory) {
-        uint256 currentTime = block.timestamp;
-        uint256 timeToMaturity = maturityDate - currentTime;
-        
-        // Define time periods in seconds
-        uint256 oneYear = 365 * 24 * 60 * 60;        // 1 year
-        uint256 fifteenYears = 15 * 365 * 24 * 60 * 60; // 15 years
-        
-        if (timeToMaturity < oneYear) {
-            return "short-term";
-        } else if (timeToMaturity < fifteenYears) {
-            return "mid-term";
-        } else {
-            return "long-term";
-        }
-    }
-    
-    /// @notice Set a trait value for a bond
-    /// @param bondId ID of the bond
-    /// @param traitKey Key of the trait
-    /// @param traitValue Value of the trait
-    function _setBondTraitValue(uint256 bondId, bytes32 traitKey, bytes memory traitValue) internal {
-        // Add trait key if it doesn't exist (optimized check)
-        for (uint i = 0; i < _allTraitKeys.length; i++) {
-            if (_allTraitKeys[i] == traitKey) {
-                _bondTraits[bondId][traitKey] = traitValue;
-                return;
-            }
-        }
-        _allTraitKeys.push(traitKey);
-        _bondTraits[bondId][traitKey] = traitValue;
-    }
-    
-    /// @notice Calculate power function for exponential curves
-    /// @param base Base number (with 18 decimals)
-    /// @param exponent Exponent (with 18 decimals)
-    /// @return Result (with 18 decimals)
-    function _power(uint256 base, uint256 exponent) internal pure returns (uint256) {
-        if (exponent == 0) return 1e18;
-        if (exponent == 1e18) return base;
-        if (base == 0) return 0;
-        
-        // Handle common cases efficiently
-        if (exponent == 2e18) {
-            return (base * base) / 1e18;
-        }
-        if (exponent == 3e18) {
-            return (base * base * base) / (1e18 * 1e18);
-        }
-        if (exponent == 4e18) {
-            uint256 baseSquared = (base * base) / 1e18;
-            return (baseSquared * baseSquared) / 1e18;
-        }
-        
-        // For other cases, use binary exponentiation
-        // Convert exponent to integer for calculation
-        uint256 intExponent = exponent / 1e18;
-        require(intExponent <= 10, "Exponent too large for approximation");
-        
-        uint256 result = 1e18;
-        uint256 currentBase = base;
-        uint256 currentExponent = intExponent;
-        
-        while (currentExponent > 0) {
-            if (currentExponent % 2 == 1) {
-                result = (result * currentBase) / 1e18;
-            }
-            currentBase = (currentBase * currentBase) / 1e18;
-            currentExponent = currentExponent / 2;
-        }
-        
-        return result;
-    }
-    
-    /// @notice Calculate logarithm function for logarithmic curves
-    /// @param value Value to take logarithm of (with 18 decimals)
-    /// @param base Base of the logarithm (with 18 decimals)
-    /// @return Result (with 18 decimals)
-    function _logarithm(uint256 value, uint256 base) internal pure returns (uint256) {
-        require(value > 0, "Logarithm of zero or negative number");
-        require(base > 1e18, "Logarithm base must be greater than 1");
-        
-        if (value == 1e18) return 0;
-        if (value == base) return 1e18;
-        
-        // For base 2, use a more accurate approximation
-        if (base == 2e18) {
-            // log₂(x) approximation using natural logarithm
-            // log₂(x) = ln(x) / ln(2) ≈ (x - 1) * 1.4427 for x close to 1
-            if (value < 2e18) {
-                // For values between 1 and 2, use linear approximation
-                uint256 xMinusOne = value - 1e18;
-                return (xMinusOne * 14427) / 10000; // 1.4427 * (x - 1)
-            } else if (value < 4e18) {
-                // For values between 2 and 4, use interpolation
-                return 1e18 + (value - 2e18) / 2e18; // 1 + (x-2)/2
-            } else if (value < 8e18) {
-                // For values between 4 and 8, use interpolation
-                return 2e18 + (value - 4e18) / 4e18; // 2 + (x-4)/4
-            } else if (value < 16e18) {
-                // For values between 8 and 16, use interpolation
-                return 3e18 + (value - 8e18) / 8e18; // 3 + (x-8)/8
-            } else if (value < 32e18) {
-                // For values between 16 and 32, use interpolation
-                return 4e18 + (value - 16e18) / 16e18; // 4 + (x-16)/16
-            } else if (value < 64e18) {
-                // For values between 32 and 64, use interpolation
-                return 5e18 + (value - 32e18) / 32e18; // 5 + (x-32)/32
-            } else if (value < 128e18) {
-                // For values between 64 and 128, use interpolation
-                return 6e18 + (value - 64e18) / 64e18; // 6 + (x-64)/64
-            } else if (value < 256e18) {
-                // For values between 128 and 256, use interpolation
-                return 7e18 + (value - 128e18) / 128e18; // 7 + (x-128)/128
-            } else if (value < 512e18) {
-                // For values between 256 and 512, use interpolation
-                return 8e18 + (value - 256e18) / 256e18; // 8 + (x-256)/256
-            } else if (value < 1024e18) {
-                // For values between 512 and 1024, use interpolation
-                return 9e18 + (value - 512e18) / 512e18; // 9 + (x-512)/512
-            } else {
-                // For larger values, use binary search
-                uint256 lowSearch = 0;
-                uint256 highSearch = 1e18 * 10;
-                uint256 precisionSearch = 1e12;
-                
-                while (highSearch - lowSearch > precisionSearch) {
-                    uint256 mid = (lowSearch + highSearch) / 2;
-                    uint256 powerResult = _power(base, mid);
-                    
-                    if (powerResult == value) {
-                        return mid;
-                    } else if (powerResult < value) {
-                        lowSearch = mid;
-                    } else {
-                        highSearch = mid;
-                    }
-                }
-                
-                return (lowSearch + highSearch) / 2;
-            }
-        }
-        
-        // For other bases, use binary search
-        uint256 low = 0;
-        uint256 high = 1e18 * 10;
-        uint256 precision = 1e12;
-        
-        while (high - low > precision) {
-            uint256 mid = (low + high) / 2;
-            uint256 powerResult = _power(base, mid);
-            
-            if (powerResult == value) {
-                return mid;
-            } else if (powerResult < value) {
-                low = mid;
-            } else {
-                high = mid;
-            }
-        }
-        
-        return (low + high) / 2;
-    }
     
     /// @notice Convert address to string
     /// @param _addr Address to convert

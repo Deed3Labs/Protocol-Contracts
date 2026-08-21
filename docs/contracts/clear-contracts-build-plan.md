@@ -52,6 +52,21 @@ That is mutual credit doing what mutual credit does. **The earlier framing in th
 - Never hard-code `balance <= 0`.
 - Redemption must **net against the holder's own negative balance first**, and only pay out the remainder.
 
+### Two kinds of positive balance — do not conflate them
+
+This is the distinction the inherited code does not make, and getting it wrong leads to paying merchants out of a loss fund.
+
+| | **Payable** (yours) | **Peer claim** (inherited) |
+|---|---|---|
+| Arises from | A sale the co-op sits behind | Members trading with each other |
+| Who owes it | The co-op, on a schedule | Nobody in particular |
+| Exit | `PayoutPool`, at par | AssurancePool — **capped by lost debt** |
+| Exists in Phase 1? | **Yes, all of them** | **No** |
+
+**In Phase 1 nobody extends credit to anybody except the co-op.** A merchant sells on credit, but the co-op stands behind it — the merchant is not taking risk on that customer, they are holding a receivable from the co-op. Consumers appear only on the negative side. **So every positive balance in the system is owed by a known party on a known schedule**, which is exactly why a payables pool covers all of it.
+
+The inherited exit — redeem against lost debt — means a holder can only cash out to the extent someone else defaulted. That is the right mechanism for a peer claim and the wrong one for a payable.
+
 ### Carry accrues into the balance, per position
 
 Carry is not a fee charged at intervals — it accrues continuously into the negative balance, so a position worsens with time held. Two consequences for the contracts:
@@ -101,7 +116,6 @@ Redemption is how lost debt is deleted: a positive holder burns credits, receive
 | `LimitCalculator` | Values collateral, applies haircuts, emits the tiered ceiling. |
 | `LendingPool` | ERC-4626, utilization-priced. Funds unsecured tiers. |
 | `BondVault` | Per-bond accounting + code-enforced redemption reserve. |
-| `StandingBid` | Co-op buys positive StableCredit from members. Funded from LendingPool/operating capital, **never** AssurancePool. |
 
 ### On the number of issuers — revised
 
@@ -133,6 +147,19 @@ An earlier note in this plan said **one** CreditIssuer, on the grounds that tier
 
 **The one case that could revive the pattern:** if asset-backed collateral ever means *NFT* collateral — tokenized deeds via Clear Properties Co. — there is a genuine escrow-and-liquidate problem. That belongs to the Clear Deed track and wants a contract designed against the DeedNFT, not a fork of a generic NFT lending protocol.
 
+### Do not build yet — `StandingBid`
+
+**Trigger: the first time a member holds a positive balance the co-op did not create.** That is Phase 2 transfer between members, and it is the moment the AssurancePool becomes the only exit again.
+
+**It has no job in Phase 1.** Every positive balance is a payable — merchant, or the co-op's own discount — and both are already covered. Nothing in Phase 1 produces a positive balance that is not already owed by someone.
+
+**The pricing question dissolves once the two roles are separated.** Paying a payable is always par. Making a market is a different question, answerable when there is a market. Asking one instrument to do both is why "par or discount" had no answer.
+
+**Two properties to design for when it is built, both absent from a payables pool:**
+
+- **It is an open-ended obligation.** A payable is finite and known. A standing bid promises to buy whatever arrives, at a price, from capital that must stay available. It needs its own funding rule, and it must never draw on the AssurancePool.
+- **The bid price becomes the credit's price.** Once a floor exists, that number *is* what a credit is worth. Moving it is a monetary decision, not an operational one — it should be governed, not set by whoever holds the key.
+
 ### Do not build yet
 Factory for networks — a factory encodes assumptions about what varies, and that is not yet known. Check whether the fork already ships one before writing anything. Build it when deploying the second network.
 
@@ -151,7 +178,54 @@ Fix: **nobody withdraws from AssurancePool directly.** Every claim routes throug
 - `StableCredit` — lost-debt redemption
 - `LendingPool` — loss absorption draw
 
-**0.2 RTD must count only unsecured exposure.** The inherited formula divides reserves by *all* credits in circulation, which over-reserves ~3× against fully-collateralized credit. In Phase 1 with only savings-backed credit live, the correct reserves-needed figure is **exactly zero**. Any formula that does not produce zero there is wrong — use it as the test.
+**0.2 RTD must count POOL EXPOSURE, not total credit and not simply "unsecured".** The inherited formula divides reserves by *all* credits in circulation, which over-reserves ~3× against fully-collateralized credit. But "unsecured only" is also wrong — it under-reserves, because asset-backed collateral has to be sold at an uncertain price.
+
+**The question RTD answers is exactly one thing:** *if every member defaulted tomorrow, what would the AssurancePool actually pay?*
+
+| Tier | In the numerator | Why |
+|---|---|---|
+| Savings-backed | **Excluded** | Collateral is liquid, already in the network, seizable at par. Seizure burns the debt; the pool pays nothing. |
+| Asset-backed | **Shortfall only** — `debt − (collateral × haircut)`, floored at zero | Collateral must be sold. Realizable value is uncertain, so the pool covers the gap. |
+| Income-backed, Clear Boost™, partner credit, Clear Cash™ | **Full value** | No collateral. The pool covers all of it. |
+
+**Worked example.** Four members owing $7,140 in total, AssurancePool at $900:
+
+| Member | Debt | Tier | Collateral | Pool pays on default |
+|---|---|---|---|---|
+| Ana | $3,000 | savings-backed | $3,000 | **$0** |
+| Ben | $1,200 | income-backed | — | $1,200 |
+| Cruz | $2,000 | asset-backed | $2,600 | **$181** at a 70% haircut |
+| Dee | $940 | partner credit | — | $940 |
+| | **$7,140** | | | **$2,321** |
+
+- Naive (all debt ÷ pool): **793%** — counts Ana's fully-covered position as exposure.
+- Unsecured-only: **238%** — misses Cruz's $181 entirely.
+- **Correct: $2,321 ÷ $900 = 258%.**
+
+**Why savings-backed debt is excluded rather than offset.** The member's account *does* go negative on the ledger — StableCredit holds one signed number and knows nothing about backing. But putting that debt in the numerator and their savings in the denominator counts the same collateral twice: the savings are consumed by the very debt being counted. Both sides cancel. Excluding both is the same answer with fewer places to be wrong.
+
+**The test still holds:** with only savings-backed credit live, reserves-needed must be **exactly zero**. Any formula that does not produce zero there is wrong.
+
+### Internal collateral is a distinct category
+
+**Asset-backed does not always mean an outside asset.** A bond or a pool share is a **claim on the co-op itself**, and it behaves differently from a tokenized deed:
+
+| | External asset | Internal claim |
+|---|---|---|
+| Example | Tokenized deed via Clear Properties Co. | BurnerBond, LendingPool share |
+| Where the capital sits | Outside the co-op | **Already inside the co-op, funding the book** |
+| Seizure on default | Sell it into a market | **Cancel the co-op's own obligation to the member** |
+| Haircut driver | Market price uncertainty | Redemption terms — largely known |
+
+**This is not circular in the harmful sense.** The bond is senior, the debt is the member's, RTD still counts the shortfall. But note what actually happens on default: the member is seized of a bond the co-op would otherwise have had to redeem, so **the seizure cancels a liability rather than realizing an asset.** That works cleanly — it is just worth stating rather than discovering.
+
+**Do not treat the two identically when setting haircuts.** An internal claim has known redemption terms; an external asset has a market price. Applying a market-risk haircut to a bond over-reserves; applying a bond-style haircut to a deed under-reserves.
+
+**The round-trip is already closed.** Withdrawable CLRUSD = ESA balance − savings-backed drawn, and the ERC-7579 module enforces the transfer restriction while encumbered. A member at −$3,000 against $3,000 saved cannot move that CLRUSD into a bond or the pool to be counted twice.
+
+**One property to keep in view, not to fix yet.** The LendingPool funding unsecured tiers is member money, so one member's yield is paid by another's carry cost — which is what a credit union is. But a member who is simultaneously a large depositor and a large unsecured borrower has **netted their own risk to near zero while the network still shows two gross positions.** Immaterial at ten merchants, real at scale, and better named now than discovered in year three.
+
+**The haircut is a real parameter, not a detail.** It should be per-collateral-type, governed, and conservative. Start high and lower it with evidence.
 
 **0.3 `AssuranceOracle` needs the right inputs.** Its job is the predicted default rate feeding target RTD, not ERC20 prices. It should read internally-generated credit-risk signals: ESA balances, deposit history, repayment behaviour, cycle-rebalance rates. If the Uniswap `slot0` path is retained for any purpose, replace it with `observe()` TWAP — `slot0` is flash-loan manipulable.
 
@@ -258,7 +332,11 @@ Allocation target: ~70% deployable / ~30% reserve, with the reserve share rising
 
 - Bonds and pool shares register in `CollateralRegistry`.
 - `LimitCalculator` picks them up; the asset-backed tier lights up.
-- `StandingBid` deployed: the co-op buys positive StableCredit at par or a small discount, funded from LendingPool/operating capital. Merchant gets a real exit; the fractional reserve stays untouched.
+- Merchant exit runs through `PayoutPool` at par. `StandingBid` is **not** deployed here — see "Do not build yet".
+
+**Repayment routing must change when `PayoutPool` exists.** Inherited behaviour sends every repayment — and every liquidation proceed — into the AssurancePool's buffer reserve: `repayCreditBalance` ends in `depositIntoBufferReserve`. That contradicts §4b in both directions. Repayment value is what pays the merchant holding the positive side, and the AssurancePool is the one fund forbidden from funding a payout, so the working capital for net-30 accumulates precisely where it cannot be spent.
+
+It is the same shape as the bond seniority inversion: money in the wrong pot, where the rule against moving it back is what bites. **Done** — `StableCredit._routeRepayment` offers `PayoutPool` its reported shortfall first and sends only the remainder to the buffer reserve.
 
 ---
 
@@ -346,6 +424,31 @@ The co-op already holds one — it takes the discount on every purchase as a pos
 
 ---
 
+## 4c. Reserve sources — one pool, no registry
+
+**RTD reads the AssurancePool and nothing else.** No registry, no claim tags, no configuration.
+
+An earlier draft of this plan proposed a `ReserveRegistry` where every reserve source registered with a tag for what it could absorb. **It was over-engineering and has been dropped.** A registry whose correct configuration has exactly one entry is a lookup table plus a governance surface plus a way to get the tags wrong. Hard-coding is *safer* here, not merely simpler: nothing can accidentally enter RTD because nothing else is wired to it.
+
+**The other sources are not candidates in disguise:**
+
+| Source | Why it never enters RTD |
+|---|---|
+| `LendingPool` residual | Absorbs loss **before** the AssurancePool. That is an ordering fact in the waterfall, not a reserve to register. |
+| `BondVault` | Bondholder money behind a code-enforced redemption reserve. Cannot absorb losses by construction. |
+| `PayoutPool` | Merchants' money. |
+| Member savings | Encumbered to that member's own debt. Never pooled, never available for anyone else's loss. |
+
+### Two numbers, not one
+
+**RTD is the gate.** Pool exposure against the AssurancePool. It decides whether credit may be issued, and it stays narrow on purpose.
+
+**Network position is a reporting view** — total obligations against total assets, **with claim priority preserved rather than summed.** It gates nothing, so it needs no on-chain authority: assemble it off-chain from whatever contracts exist at the time.
+
+**Never blend them.** A single combined ratio would look healthy on the strength of bondholder funds and merchant payables that legally cannot absorb a default — false confidence rather than a blind spot removed, and it would only surface during a stress event.
+
+**Revisit the registry only if a second loss-absorbing source ever exists** — a co-insurance pool, a regional reserve. That is a real trigger. Until it fires, the registry is speculative infrastructure.
+
 ## 5. Invariants
 
 **A partner purchase nets to zero.** Member debit + merchant credit + co-op credit = 0. Assert it in the mint path, not just in tests — a purchase that does not net is a supply bug.
@@ -353,6 +456,8 @@ The co-op already holds one — it takes the discount on every purchase as a pos
 **Redemption nets against the holder's own debit first.** A holder with a negative balance cannot withdraw while carrying it; only surplus is redeemable.
 
 **Accrued carry is derived, never stored per account.** The stored value is an index and a checkpoint. Any code path that writes an absolute accrued figure to a member record is wrong.
+
+**RTD reads the AssurancePool and nothing else.** No other contract address appears in the RTD calculation.
 
 **`PayoutPool` and `AssurancePool` never touch.** No redemption path reaches the AssurancePool; no payout draws on loss absorption.
 
@@ -369,7 +474,7 @@ Run continuously. Alert on drift. Never auto-correct.
 | CLRUSD full reserve | CLRUSD supply = USDC held in reserve |
 | Credit issuance | on-chain StableCredit outstanding = Σ tier draws in the off-chain ledger |
 | Bond coverage | redemption reserve + scheduled inflows ≥ face due in window |
-| RTD | reserves ≥ target × **unsecured** exposure (not total credit) |
+| RTD | reserves ≥ target × **pool exposure** — unsecured at full value + asset-backed shortfall after haircut; savings-backed excluded |
 | Float adequacy | settlement float ≥ savings-backed drawn but not yet reconciled |
 | Seniority | AssurancePool balance contains **no** bond principal |
 
@@ -379,17 +484,18 @@ Also run **maturity-bucket coverage**: a system can be solvent in aggregate and 
 
 ## 6. Test requirements
 
-- Phase 0: prove `withdrawToken` reverts for a non-role caller; prove RTD returns zero when all credit is collateralized.
+- Phase 0: prove `withdrawToken` reverts for a non-role caller; prove RTD returns zero when all credit is savings-backed; prove an asset-backed position with collateral below `debt ÷ haircut` contributes exactly its shortfall.
 - Phase 1: limit recalculates correctly as a bond accretes toward maturity; pledged collateral cannot be transferred; ascending-rate invariant holds.
 - Phase 2: utilization curve; withdrawal queue under high utilization; first-loss ordering.
 - Phase 3: redemption reserve cannot be withdrawn by the Safe; bond redeems at maturity even when the pool is stressed.
-- Phase 4: a positive-balance holder who is not the co-op can redeem; StandingBid purchase does not touch AssurancePool.
+- Phase 4: a positive-balance holder who is not the co-op can redeem; no redemption path reaches the AssurancePool.
 - Adversarial: flash-loan the oracle; drain attempt on every pool; default a member with collateral and verify no lost debt is created.
 
 ---
 
 ## 7. Open questions — flag, do not decide
 
-1. Does the member's smart account hold CLRUSD directly, or does the co-op custody it with position tracked in contract state?
-2. Does the fork already ship a network factory (`core/factories/` has `BurnerBondFactory`)?
-3. StandingBid pricing — par or discount, and who sets it.
+1. ~~Does the member's smart account hold CLRUSD directly, or does the co-op custody it with position tracked in contract state?~~ **RESOLVED — self-custody.** The member's smart account holds the CLRUSD; the co-op holds the USDC backing it in the ESA vault. This is what the Phase 1 body already assumed, so the encumbrance model stands as written: enforcement lives in an ERC-7579 module on the member's account, not in vault bookkeeping.
+2. ~~Does the fork already ship a network factory (`core/factories/` has `BurnerBondFactory`)?~~ **RESOLVED — no.** `core/factories/` holds `BurnerBondFactory`, `FractionTokenFactory` and `ValidatorFactory`. Nothing deploys a StableCredit / AssurancePool / CreditIssuer set, so "do not build yet" stands unchallenged.
+3. Asset-backed haircut values — per collateral type, and the split between external assets (market price) and internal claims (redemption terms).
+4. Whether `TermIssuer` term plans use levelled payments or declining payments on-chain, given the UI shows one levelled figure.

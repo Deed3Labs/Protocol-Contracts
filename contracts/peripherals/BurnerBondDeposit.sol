@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
@@ -15,7 +16,17 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 /// @title BurnerBondDeposit
 /// @notice Handles all financial logic for BurnerBond creation
 /// @dev Separates financial operations from NFT minting logic
-contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
+interface IBondVault {
+    function recordPurchase(uint256 bondId, uint256 principal, uint256 faceValue, uint64 maturity)
+        external;
+}
+
+contract BurnerBondDeposit is
+    IBurnerBondDeposit,
+    Initializable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable
+{
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
 
@@ -29,6 +40,11 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
     
     /// @notice AssurancePool contract for token deposits
     IAssurancePool public assurancePool;
+
+    /// @notice Where bond proceeds are held.
+    /// @dev Not the AssurancePool. Bondholders are creditors and their principal must not be put
+    /// to work absorbing other people's defaults.
+    IBondVault public bondVault;
     
     /// @notice Mapping from token address to BurnerBond collection
     mapping(address => IBurnerBond) public tokenToCollection;
@@ -59,13 +75,18 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
 
     /* ========== CONSTRUCTOR ========== */
     
-    /// @notice Initialize the BurnerBondDeposit contract
-    /// @param _factory Address of the BurnerBondFactory contract (single source of truth for parameters)
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice sets the deposit contract up.
+    /// @param _factory Address of the parameter source
     /// @param _assurancePool Address of the AssurancePool contract
-    constructor(
-        address _factory,
-        address _assurancePool
-    ) {
+    function initialize(address _factory, address _assurancePool) external initializer {
+        __Ownable_init();
+        __ReentrancyGuard_init();
+
         require(_factory != address(0), "Invalid factory address");
         require(_assurancePool != address(0), "Invalid AssurancePool address");
         
@@ -225,21 +246,24 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
         // IMMEDIATELY PROCESS THE DEPOSIT (auto-processing)
         // This entire block is atomic - if any step fails, the whole transaction reverts
         
-        // Step 1: Approve AssurancePool to spend underlying token
-        underlyingToken.approve(address(assurancePool), requiredDeposit);
-        
-        // Step 2: Deposit underlying token into AssurancePool excess reserve
-        // If this fails, the entire transaction reverts and user keeps their token
-        assurancePool.depositTokenIntoExcess(address(underlyingToken), requiredDeposit);
-        
-        // Step 3: Only mint bond AFTER successful deposit to AssurancePool
-        // This ensures the bond is backed by actual underlying token in the pool
+        // Step 1: Move the proceeds into the bond vault.
+        // Not the AssurancePool. Principal that sits in the loss-absorbing fund is principal
+        // funding somebody else's default, and a redemption drawn from the same pool competes
+        // with the losses it was paying for.
+        require(address(bondVault) != address(0), "Bond vault not set");
+        underlyingToken.safeTransfer(address(bondVault), requiredDeposit);
+
+        // Step 2: Only mint the bond once the proceeds are actually held.
         bondId = burnerBond.mintBond(
             faceValue,
             maturityDate,
             discountPercentage,
             msg.sender
         );
+
+        // Book what the vault now owes at the same moment it takes the money in, rather than
+        // discovering it at maturity.
+        bondVault.recordPurchase(bondId, requiredDeposit, faceValue, uint64(maturityDate));
         
         // Safety check: Ensure bond was actually minted
         require(bondId > 0, "Bond minting failed");
@@ -350,6 +374,13 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
         factory = IBurnerBondFactory(_factory);
     }
     
+    /// @notice sets the vault bond proceeds are held in.
+    /// @param _bondVault Address of the BondVault contract
+    function setBondVault(address _bondVault) external onlyOwner {
+        require(_bondVault != address(0), "Invalid BondVault address");
+        bondVault = IBondVault(_bondVault);
+    }
+
     /// @notice Set the AssurancePool contract address
     /// @param _assurancePool Address of the AssurancePool contract
     function setAssurancePool(address _assurancePool) external override onlyOwner {
