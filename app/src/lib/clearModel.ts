@@ -856,6 +856,32 @@ export interface LoginEvent {
   when: string;
 }
 
+/**
+ * One standing permission the member has granted, as they should read it.
+ *
+ * Not an allowance in the ERC-20 sense, though that is what most of them are
+ * underneath. A member does not need to know what `approve` is; they need to
+ * know what Clear can do without asking again, and how to stop it.
+ *
+ * `lockedReason` is the whole point of listing these. A permission that keeps a
+ * credit line working cannot be revoked while the member is drawn against it,
+ * and saying so plainly at the moment they reach for Revoke is better than
+ * letting them press it and watch it fail.
+ */
+export interface Permission {
+  id: string;
+  /** What it lets Clear do, in the member's words -- not the contract's. */
+  label: string;
+  /** The plain reason it exists: what breaks without it. */
+  detail: string;
+  /** Where it was granted, already formatted -- "when you joined". */
+  granted: string;
+  /** Formatted cap, or "No limit". Shown because an uncapped grant should look uncapped. */
+  limit: string;
+  /** Set when the permission cannot be revoked right now, and why. */
+  lockedReason?: string;
+}
+
 export interface SettingsData {
   profile: MemberProfile;
   accelerationActive: boolean;
@@ -884,6 +910,7 @@ export interface SettingsData {
   ballot?: Ballot;
   pastVotes: PastVote[];
   logins: LoginEvent[];
+  permissions: Permission[];
 }
 
 export interface Contact {

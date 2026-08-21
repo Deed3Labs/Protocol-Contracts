@@ -22,6 +22,7 @@ import type {
   LinkedAccount,
 } from '@/lib/clearModel';
 import { assetBackedLimit } from '@/lib/clearModel';
+import { CLEAR_GRANTS } from '@/lib/clearGrants';
 
 /**
  * Where the flow surfaces draw from. Home's scenario is deliberately late-cycle —
@@ -894,6 +895,31 @@ export const SETTINGS: SettingsData = {
     { id: 'l1', device: 'iPhone 16 Pro', detail: 'Redlands, CA · Face ID', when: '8:02 AM' },
     { id: 'l2', device: 'MacBook Pro', detail: 'Redlands, CA · Code', when: 'Aug 12' },
     { id: 'l3', device: 'iPhone 16 Pro', detail: 'Redlands, CA · Face ID', when: 'Aug 11' },
+  ],
+  permissions: [
+    // Derived from the same list the onboarding grant is built from, rather than restated here,
+    // so the page cannot end up describing a permission the member was never asked for -- or
+    // quietly omitting one they were.
+    ...CLEAR_GRANTS.map((grant) => ({
+      id: grant.id,
+      label: grant.label,
+      detail: grant.detail,
+      granted: 'when you joined',
+      limit: 'No limit',
+    })),
+    {
+      // Not a grant, and so not in that list: nobody approved this and nobody can withdraw it.
+      // Savings behind a drawn credit line are held by CLRUSD itself. Listing it anyway is the
+      // point of the page -- a member looking for everything holding their money should find it
+      // here, with the reason, rather than discover it when a transfer fails.
+      id: 'collateral',
+      label: 'Hold your savings against your credit line',
+      detail:
+        'While you are carrying credit, the savings behind it stay put. This is what the credit is secured by, so it lifts when the balance is cleared rather than being switched off.',
+      granted: 'when you first spent on credit',
+      limit: '$3,000',
+      lockedReason: 'Your credit line is drawn against this. Clear the balance to release it.',
+    },
   ],
   closure: {
     savingsReturned: 3000,

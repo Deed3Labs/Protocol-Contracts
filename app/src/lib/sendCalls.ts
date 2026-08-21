@@ -79,6 +79,35 @@ export async function scApprove(args: { smartWalletClient?: unknown; owner: stri
   ]);
 }
 
+/**
+ * Several ERC-20 approvals in ONE sponsored batch.
+ *
+ * For the onboarding grant: the member confirms once and every standing allowance Clear needs is
+ * in place, instead of meeting an approval prompt the first time they try each thing -- and for an
+ * external wallet the first redeem is a real, user-paid transaction, so lazily granting is not
+ * merely a extra tap but an unexpected charge mid-flow.
+ *
+ * Callers pass only what is actually missing; an empty list is a no-op rather than an empty
+ * UserOp, because a batch of nothing still asks the member to confirm nothing.
+ */
+export async function scApproveMany(args: {
+  smartWalletClient?: unknown;
+  owner: string;
+  chainId: number;
+  approvals: { token: `0x${string}`; spender: `0x${string}`; amount: bigint }[];
+}): Promise<string | null> {
+  if (args.approvals.length === 0) return null;
+  return runBatch(
+    args.smartWalletClient,
+    args.owner,
+    args.chainId,
+    args.approvals.map((a) => ({
+      to: a.token,
+      data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [a.spender, a.amount] }),
+    })),
+  );
+}
+
 /** Cash (USDC) → Savings (CLRUSD): [approve, deposit] in ONE sponsored batch. */
 export async function scDeposit(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
   const c = clearContracts(args.chainId);

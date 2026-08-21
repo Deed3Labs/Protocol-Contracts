@@ -13,6 +13,7 @@ import ProfilePhotoRow from '@/components/settings/ProfilePhotoRow';
 import ProfilePhotoDialog from '@/components/settings/ProfilePhotoDialog';
 import MemberAvatar from '@/components/clear/MemberAvatar';
 import LoginHistoryPanel from '@/components/settings/LoginHistoryPanel';
+import PermissionsPanel from '@/components/settings/PermissionsPanel';
 import LegalPanel from '@/components/settings/LegalPanel';
 import HelpPanel from '@/components/settings/HelpPanel';
 import BylawsPanel from '@/components/settings/BylawsPanel';
@@ -56,7 +57,7 @@ type SectionId =
   | 'help';
 
 /** Pages that sit one level below a section, on both layouts. */
-type SubId = 'bylaws' | 'patronage' | 'voting' | 'legal' | 'logins';
+type SubId = 'bylaws' | 'patronage' | 'voting' | 'legal' | 'logins' | 'permissions';
 
 export default function SettingsPage({
   data = SETTINGS,
@@ -358,7 +359,17 @@ export default function SettingsPage({
             </p>
           </Card>
 
-          <div className="text-[13px]">
+          <SettingRows
+            rows={[
+              {
+                label: 'Permissions',
+                value: String(data.permissions.length),
+                onSelect: () => openSub('permissions', 'advanced'),
+              },
+            ]}
+          />
+
+          <div className="mt-3.5 border-t-[0.5px] border-border pt-1 text-[13px]">
             <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-border py-2.5">
               <span>Export account data</span>
               <Button variant="clear" size="xs">
@@ -401,6 +412,10 @@ export default function SettingsPage({
    */
   const SUBPAGES: Record<SubId, { title: string; content: ReactNode }> = {
     bylaws: { title: 'Bylaws', content: <BylawsPanel bylaws={data.bylaws} /> },
+    permissions: {
+      title: 'Permissions',
+      content: <PermissionsPanel permissions={data.permissions} />,
+    },
     patronage: {
       title: 'Patronage & distributions',
       content: (
