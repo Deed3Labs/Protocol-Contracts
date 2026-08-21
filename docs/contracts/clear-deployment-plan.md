@@ -67,20 +67,28 @@ Recommend the first. It is also the only one that does not touch contracts with 
 
 ### 2.2 CLRUSD is a migration, not an upgrade
 
-The deployed `ClearUSD` is **not behind a proxy** — the deployment records carry only
-`address`/`abi`/`blockNumber`. `ClearUSDUpgradeable` is therefore a new token, and standing it up
+The deployed `ClearUSD` is **not behind a proxy** — confirmed against `.openzeppelin/`, which
+tracks four proxies on base-sepolia (AccessManager and MembershipRegistry transparent,
+ESADepositVault and ClaimEscrow UUPS) and does not list the token. `ClearUSDUpgradeable` is therefore a new token, and standing it up
 means:
 
 1. Deploy `ClearUSDUpgradeable` (UUPS, 6 decimals, Chainlink `BurnMintERC20UUPS`).
-2. Re-point `ESADepositVault` at the new token.
+2. **Upgrade `ESADepositVault` in place** to the version carrying `setClrusd`, then call it. The
+   vault is UUPS behind a proxy that OpenZeppelin already tracks, and `scripts/upgrade_vault.ts` is
+   a working precedent for upgrading that exact proxy — so this is a same-address upgrade, not a
+   redeployment, and `clearContracts.esaVault` does not change.
+   `setClrusd` reverts while any of the old token is outstanding: redeem first, then re-point, so
+   holders cannot be stranded against a vault that no longer recognises what they hold.
 3. Redeploy or reconfigure `CLRUSDTokenPool` — `15_deploy_CLRUSDTokenPool.ts` binds the pool to the
    `ClearUSD` deployment address, so CCIP breaks silently otherwise.
 4. Move supply. Trivial on testnet; **5.88 on Base mainnet**, all the user's own.
 5. Update `app/src/lib/clearNetwork.ts`.
 
-**This is only needed for credit, not for savings.** The encumbrance check that makes savings-backed
-credit enforceable lives in `ClearUSDUpgradeable._update`. Savings and Send work fine against the
-current token.
+**None of this is needed for Phase A.** The encumbrance check that makes savings-backed credit
+enforceable lives in `ClearUSDUpgradeable._update`, so the migration buys *credit*, not savings.
+Savings and Send run today against the deployed token, the deployed vault and the existing
+`/savings` and `/send` routes — which already carry the equity-credit ledger the rebuilt Savings
+page reads. `setClrusd` exists only to make the swap possible; nothing calls it until Phase D.
 
 ---
 
