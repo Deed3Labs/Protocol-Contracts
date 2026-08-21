@@ -297,6 +297,52 @@ describe("AssurancePool", function () {
       expect(await assurancePool.excessBalance()).to.equal(0n);
     });
 
+    it("keeps accounting when a held token becomes unpriceable", async function () {
+      // Enumerating what actually arrived means the accounting now depends on pricing tokens the
+      // pool did not used to look at. A token that is de-whitelisted, or whose pool cannot serve
+      // a TWAP window, has no price -- and that must not take the reserve accounting down with it.
+      const { assurancePool, tokenRegistry, admin, instrument, usdc } = ctx;
+      const token = await whitelistedToken();
+      const amount = 40n * 10n ** 18n;
+      await token.mint(admin.address, amount);
+      await token.approve(await assurancePool.getAddress(), amount);
+      await assurancePool.depositTokenIntoExcess(await token.getAddress(), amount);
+      await fundPrimary(100n * ONE_USDC);
+
+      expect(await assurancePool.heldReserveValue()).to.equal(140n * ONE_USDC);
+
+      // The operator de-whitelists it. It is still sitting in the pool.
+      await tokenRegistry.removeToken(await token.getAddress());
+
+      // Accounting continues on what it can still value, and says what it could not.
+      expect(await assurancePool.heldReserveValue()).to.equal(100n * ONE_USDC);
+      expect(await assurancePool.unpricedTokenCount()).to.equal(1n);
+
+      // And the pool is not bricked: reserve-token withdrawals still work.
+      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
+      await fundExcess(10n * ONE_USDC);
+      await assurancePool.connect(instrument).withdraw(10n * ONE_USDC);
+      expect(await usdc.balanceOf(instrument.address)).to.equal(10n * ONE_USDC);
+    });
+
+    it("still refuses to pay out a token it cannot value", async function () {
+      // Tolerance belongs to the accounting, not the payout. Handing over an amount nobody can
+      // price is how a pool is drained by arithmetic rather than by access.
+      const { assurancePool, tokenRegistry, admin, instrument } = ctx;
+      const token = await whitelistedToken();
+      const amount = 40n * 10n ** 18n;
+      await token.mint(admin.address, amount);
+      await token.approve(await assurancePool.getAddress(), amount);
+      await assurancePool.depositTokenIntoExcess(await token.getAddress(), amount);
+
+      await tokenRegistry.removeToken(await token.getAddress());
+      await assurancePool.connect(admin).setWithdrawalCaller(instrument.address, true);
+
+      await expect(
+        assurancePool.connect(instrument).withdrawToken(await token.getAddress(), 40n * ONE_USDC)
+      ).to.be.reverted;
+    });
+
     it("keeps holding the old reserve token after the reserve token changes", async function () {
       // Dropping it would make the balance invisible to accounting and unreachable by the payout
       // path at the same moment.

@@ -266,11 +266,56 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// corrects.
     /// @return value total reserve token equivalent of all held balances.
     function heldReserveValue() public view returns (uint256 value) {
+        (value,) = _heldReserveValue();
+    }
+
+    /// @notice how many held tokens the pool currently cannot price.
+    /// @dev Non-zero means `heldReserveValue()` is understating what the pool holds. That is a
+    /// signal to act on rather than an error to swallow: the value has not gone anywhere, it has
+    /// stopped being reportable.
+    /// @return count number of held tokens with no available price.
+    function unpricedTokenCount() external view returns (uint256 count) {
+        (, count) = _heldReserveValue();
+    }
+
+    /// @notice the held tokens the pool currently cannot price.
+    /// @return tokens addresses with no available price.
+    function unpricedTokens() external view returns (address[] memory tokens) {
+        address[] memory held = _getHeldTokens();
+        address[] memory found = new address[](held.length);
+        uint256 index = 0;
+        for (uint256 i = 0; i < held.length; i++) {
+            uint256 balance = IERC20Upgradeable(held[i]).balanceOf(address(this));
+            if (balance == 0) continue;
+            (, bool priced) = _tryConvertToReserveValueOf(held[i], balance);
+            if (!priced) found[index++] = held[i];
+        }
+        tokens = new address[](index);
+        for (uint256 i = 0; i < index; i++) {
+            tokens[i] = found[i];
+        }
+    }
+
+    /// @dev Shared walk behind `heldReserveValue` and `unpricedTokenCount`.
+    function _heldReserveValue() internal view returns (uint256 value, uint256 unpriced) {
         address[] memory tokens = _getHeldTokens();
         for (uint256 i = 0; i < tokens.length; i++) {
             uint256 balance = IERC20Upgradeable(tokens[i]).balanceOf(address(this));
-            if (balance > 0) value += _convertToReserveToken(tokens[i], balance);
+            if (balance == 0) continue;
+            (uint256 converted, bool priced) = _tryConvertToReserveValueOf(tokens[i], balance);
+            if (priced) value += converted;
+            else unpriced++;
         }
+    }
+
+    /// @dev Indirection so the walk above can live beside the other views while the conversion
+    /// helper stays with the rest of the conversion code.
+    function _tryConvertToReserveValueOf(address token, uint256 amount)
+        private
+        view
+        returns (uint256, bool)
+    {
+        return _tryConvertToReserveToken(token, amount);
     }
 
     /// @notice reverts unless the loss-absorbing reserves came through a withdrawal untouched.
@@ -782,10 +827,13 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
             address token = heldTokens[i];
             if (token == address(0)) continue;
             uint256 tokenBalance = IERC20Upgradeable(token).balanceOf(address(this));
-            
+
             if (tokenBalance > 0) {
-                uint256 reserveTokenEquivalent = _convertToReserveToken(token, tokenBalance);
-                totalReserveValue += reserveTokenEquivalent;
+                // Skip what cannot be priced rather than reverting. Understating the reserve
+                // reads as needing more of it, which is the safe direction to be wrong in.
+                (uint256 reserveTokenEquivalent, bool priced) =
+                    _tryConvertToReserveToken(token, tokenBalance);
+                if (priced) totalReserveValue += reserveTokenEquivalent;
             }
         }
         
@@ -865,6 +913,34 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         return assuranceOracle.quote(token, address(reserveToken), amount);
     }
     
+    /// @notice Convert a token to its reserve token equivalent, reporting failure instead of
+    /// reverting.
+    /// @dev Accounting enumerates every token the pool holds, which means it depends on pricing
+    /// tokens the payout path may never touch. A token that is de-whitelisted while still sitting
+    /// in the pool, or whose pool cannot serve a TWAP window, has no price -- and a reserve that
+    /// cannot report its own balance because one holding went dark is worse than one that reports
+    /// what it can and says what it could not. Skipping understates held value, which reads as
+    /// needing more reserve rather than less.
+    ///
+    /// Only accounting is tolerant. The payout path still uses the reverting conversion, because
+    /// handing over an amount nobody can price is how a pool is drained by arithmetic.
+    /// @param token Token address to convert from
+    /// @param amount Amount of token to convert
+    /// @return value Reserve token equivalent, zero if unavailable
+    /// @return priced Whether a price was available
+    function _tryConvertToReserveToken(address token, uint256 amount)
+        internal
+        view
+        returns (uint256 value, bool priced)
+    {
+        if (token == address(reserveToken)) return (amount, true);
+        try assuranceOracle.quote(token, address(reserveToken), amount) returns (uint256 quoted) {
+            return (quoted, true);
+        } catch {
+            return (0, false);
+        }
+    }
+
     /// @notice Convert reserve token amount to any token equivalent using oracle
     /// @param token Token address to convert to
     /// @param amount Amount of reserve token to convert
