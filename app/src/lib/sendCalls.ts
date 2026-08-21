@@ -85,7 +85,7 @@ export async function scApprove(args: { smartWalletClient?: unknown; owner: stri
  * For the onboarding grant: the member confirms once and every standing allowance Clear needs is
  * in place, instead of meeting an approval prompt the first time they try each thing -- and for an
  * external wallet the first redeem is a real, user-paid transaction, so lazily granting is not
- * merely a extra tap but an unexpected charge mid-flow.
+ * merely an extra tap but an unexpected charge mid-flow.
  *
  * Callers pass only what is actually missing; an empty list is a no-op rather than an empty
  * UserOp, because a batch of nothing still asks the member to confirm nothing.
