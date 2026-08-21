@@ -40,7 +40,17 @@ TODO. AssurancePool, AssuranceOracle and BurnerBondFactory have scripts that hav
 
 ## 2. Two blockers, both before any deployment
 
-### 2.1 `StableCredit` and `CreditIssuer` cannot be deployed as they stand
+### 2.1 ~~`StableCredit` and `CreditIssuer` cannot be deployed as they stand~~ — **DONE**
+
+**Resolved.** `contracts/core/ClearCredit.sol` is the deployable ledger, and the fixture deploys it
+rather than a harness, so all 597 tests now run against the production artifact.
+`StableCreditHarness` is deleted.
+
+**`CreditIssuer` needed no child.** `RevolvingIssuer` and `TermIssuer` already extend it and already
+carry public initializers — they are its concrete forms, and a bare one is never deployed. Its
+harness stays, to exercise the base class in isolation.
+
+The original finding, for the record:
 
 Neither exposes a public initializer. Both have only `__StableCredit_init` / `__CreditIssuer_init`
 under `onlyInitializing`, and the only things that add a public `initialize` are test harnesses in
@@ -104,7 +114,7 @@ invented balances" merge blocker the rebuild branch is carrying.
 *Unlocks: Savings, Activity, Card, Send. No deployment.*
 
 ### Phase B — Make the core deployable
-The concrete `StableCredit`/`CreditIssuer` pair from §2.1, plus deploy scripts for the credit core:
+~~The concrete pair from §2.1~~ (done), plus deploy scripts for the credit core:
 StableCredit, CreditIssuer, NetworkRegistry, CollateralRegistry, LimitCalculator, RevolvingIssuer,
 TermIssuer. The test fixture `test/helpers/phase0-fixture.ts` is already the wiring recipe —
 ordering, roles and cross-registration — and should be the script's source rather than reinvented.
@@ -149,9 +159,12 @@ only part that must wait for a deployment is the grant *call site*, and that wai
 
 ## 5. Open decisions
 
-1. **Concrete subclass or initializer on the base contracts** (§2.1). Recommend the subclass.
-2. **Credit via server route or direct chain reads** (Phase D). Recommend the route, for consistency
-   with every other page and because the ASA snapshot needs it anyway.
+1. ~~Concrete subclass or initializer on the base contracts (§2.1).~~ **Decided: subclass, done.**
+2. ~~Credit via server route or direct chain reads (Phase D).~~ **Decided: server route.** Not merely
+   for consistency — two of the four tiers (income, Boost) exist *only* off-chain as attestations,
+   so a direct chain read returns a credit line missing half its tiers. One snapshot, two readers:
+   the app's `/credit` route and the Lithic ASA. This makes Phase D a service, not an endpoint, and
+   the largest single piece of remaining work.
 3. **Mainnet CLRUSD migration timing.** Cheap now at 5.88 supply, and it only gets dearer.
 4. **Whether Phase A waits.** It has no dependency on any of this and removes a merge blocker, so it
    can run in parallel with B/C.
