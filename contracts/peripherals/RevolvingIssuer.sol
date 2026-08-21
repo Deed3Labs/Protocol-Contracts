@@ -41,12 +41,18 @@ contract RevolvingIssuer is CreditIssuer {
     /// @dev member => tier => principal drawn, carry excluded
     mapping(address => mapping(uint256 => uint256)) private tierPrincipal;
 
-    /// @notice Who is owed carry accrued in a tier.
-    /// @dev The co-op by default: it funds the draw and holds the claim. A tier funded from
-    /// somewhere else names that instead -- the LendingPool funds the unsecured tiers, and the
-    /// carry on those belongs to the depositors whose money was lent.
-    address public defaultCarryRecipient;
-    /// @dev tier => recipient, falling back to the default when unset
+    /// @notice The co-op's treasury, and the terminal fallback for carry.
+    /// @dev Set at initialization and never allowed to be empty. Carry is accrued on every
+    /// interaction, so a recipient that cannot be resolved does not merely lose the carry -- it
+    /// reverts the transfer that triggered the accrual, and members stop being able to spend.
+    /// A backstop that is always set means the worst case is carry landing somewhere it can be
+    /// redistributed from by hand, rather than the line seizing up.
+    address public carryTreasury;
+    /// @dev tier => recipient, falling back to the treasury when unset.
+    /// @dev A tier funded from somewhere else names it here: the LendingPool funds the unsecured
+    /// tiers, and the carry on those is owed to the depositors whose money was lent rather than
+    /// to the co-op. Clearing it back to zero returns the tier to the treasury, which is how a
+    /// pool is retired without stranding the carry that accrues in the meantime.
     mapping(uint256 => address) private tierCarryRecipient;
 
     uint256[42] private __gap;
@@ -66,12 +72,18 @@ contract RevolvingIssuer is CreditIssuer {
     event TierDrawn(address indexed member, uint256 indexed tierId, uint256 amount);
     event TierRepaid(address indexed member, uint256 indexed tierId, uint256 amount);
     event CarryRecipientUpdated(uint256 indexed tierId, address recipient);
+    event CarryTreasuryUpdated(address treasury);
     event TierCarryMaterialised(address indexed member, uint256 indexed tierId, uint256 amount);
 
     /* ========== INITIALIZER ========== */
 
-    function initialize(address _stableCredit) external initializer {
+    /// @param _stableCredit the ledger this issuer writes to.
+    /// @param _carryTreasury the co-op treasury, and the fallback for carry with no other home.
+    function initialize(address _stableCredit, address _carryTreasury) external initializer {
+        if (_carryTreasury == address(0)) revert RevolvingIssuerNoCarryRecipient();
         __CreditIssuer_init(_stableCredit);
+        carryTreasury = _carryTreasury;
+        emit CarryTreasuryUpdated(_carryTreasury);
     }
 
     /* ========== VIEWS ========== */
@@ -137,9 +149,11 @@ contract RevolvingIssuer is CreditIssuer {
     }
 
     /// @notice who is owed carry accrued in a tier.
+    /// @dev Resolves to the tier's own recipient, or the treasury when it has none. Never zero,
+    /// because the treasury cannot be.
     function carryRecipientOf(uint256 tierId) public view returns (address) {
         address recipient = tierCarryRecipient[tierId];
-        return recipient == address(0) ? defaultCarryRecipient : recipient;
+        return recipient == address(0) ? carryTreasury : recipient;
     }
 
     /// @notice a member's total ceiling across every tier.
@@ -224,15 +238,19 @@ contract RevolvingIssuer is CreditIssuer {
         tiers[tierId].active = active;
     }
 
-    /// @notice sets who is owed carry, for every tier that has not named someone else.
-    function setDefaultCarryRecipient(address recipient) external onlyOperator {
-        if (recipient == address(0)) revert RevolvingIssuerNoCarryRecipient();
-        defaultCarryRecipient = recipient;
-        emit CarryRecipientUpdated(type(uint256).max, recipient);
+    /// @notice moves the co-op treasury, and with it the fallback for every tier that has not
+    /// named someone else.
+    /// @dev Cannot be cleared. There is no state in which carry has nowhere to go.
+    function setCarryTreasury(address treasury) external onlyOperator {
+        if (treasury == address(0)) revert RevolvingIssuerNoCarryRecipient();
+        carryTreasury = treasury;
+        emit CarryTreasuryUpdated(treasury);
     }
 
     /// @notice sets who is owed carry accrued in one tier.
-    /// @dev Pass address(0) to fall back to the default.
+    /// @dev Pass address(0) to return the tier to the treasury. That is how a funding source is
+    /// retired: carry keeps accruing and keeps landing somewhere, and where it landed in the
+    /// meantime can be settled by hand.
     function setTierCarryRecipient(uint256 tierId, address recipient) external onlyOperator {
         _requireTier(tierId);
         tierCarryRecipient[tierId] = recipient;

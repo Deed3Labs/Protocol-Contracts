@@ -26,7 +26,7 @@ describe("RevolvingIssuer", function () {
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     issuer = await RevolvingIssuer.deploy();
-    await issuer.initialize(await ctx.stableCredit.getAddress());
+    await issuer.initialize(await ctx.stableCredit.getAddress(), coop.address);
 
     await ctx.networkRegistry.registerIssuer(
       await issuer.getAddress(),
@@ -42,10 +42,9 @@ describe("RevolvingIssuer", function () {
         .addTier(ethers.encodeBytes32String(tier.name), tier.rate, CYCLE);
     }
     await ctx.access.connect(ctx.operator).grantMember(ctx.counterparty.address);
-    // Carry is owed to whoever funded the draw. The co-op here; the LendingPool once the
-    // unsecured tiers are funded from it.
+    // Carry is owed to whoever funded the draw. The co-op treasury by default; the LendingPool
+    // once the unsecured tiers are funded from it.
     await ctx.access.connect(ctx.operator).grantMember(coop.address);
-    await issuer.connect(ctx.operator).setDefaultCarryRecipient(coop.address);
   });
 
   async function openLine(capacities: bigint[]) {
@@ -315,6 +314,69 @@ describe("RevolvingIssuer", function () {
       const left = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
       expect(left).to.be.lessThan(1_000n);
       expect(await issuer.totalPrincipalOf(ctx.member.address)).to.equal(left);
+    });
+  });
+
+  describe("carry always has somewhere to go", function () {
+    // Carry accrues on every interaction, so a recipient that cannot be resolved does not lose
+    // the carry -- it reverts the transfer that triggered the accrual, and members stop being
+    // able to spend. The treasury is the backstop that makes that unreachable.
+
+    it("falls back to the treasury when a tier names nobody", async function () {
+      for (let i = 0; i < TIERS.length; i++) {
+        expect(await issuer.carryRecipientOf(i)).to.equal(coop.address);
+      }
+    });
+
+    it("pays a tier's own recipient when it has one", async function () {
+      const pool = (await ethers.getSigners())[9];
+      await ctx.access.connect(ctx.operator).grantMember(pool.address);
+      await issuer.connect(ctx.operator).setTierCarryRecipient(2, pool.address);
+
+      await openLine([0n, 0n, 500n, 0n].map((n) => n * ONE_USDC));
+      await spend(400n * ONE_USDC);
+      await advance(6 * CYCLE);
+      await issuer.materialiseCarry(ctx.member.address);
+
+      expect(await ctx.stableCredit.balanceOf(pool.address)).to.be.greaterThan(0n);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
+    });
+
+    it("returns a tier to the treasury when its funding source is retired", async function () {
+      // Carry keeps accruing and keeps landing somewhere. What landed with the retired pool in
+      // the meantime is still on the ledger and can be settled by hand.
+      const pool = (await ethers.getSigners())[9];
+      await ctx.access.connect(ctx.operator).grantMember(pool.address);
+      await issuer.connect(ctx.operator).setTierCarryRecipient(2, pool.address);
+
+      await openLine([0n, 0n, 500n, 0n].map((n) => n * ONE_USDC));
+      await spend(400n * ONE_USDC);
+      await advance(3 * CYCLE);
+      await issuer.materialiseCarry(ctx.member.address);
+      const toPool = await ctx.stableCredit.balanceOf(pool.address);
+      expect(toPool).to.be.greaterThan(0n);
+
+      await issuer.connect(ctx.operator).setTierCarryRecipient(2, ethers.ZeroAddress);
+      expect(await issuer.carryRecipientOf(2)).to.equal(coop.address);
+
+      await advance(3 * CYCLE);
+      await issuer.materialiseCarry(ctx.member.address);
+
+      // The pool keeps what it was owed; everything since goes to the treasury.
+      expect(await ctx.stableCredit.balanceOf(pool.address)).to.equal(toPool);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.be.greaterThan(0n);
+    });
+
+    it("refuses to deploy or leave itself without a treasury", async function () {
+      const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
+      const orphan = await RevolvingIssuer.deploy();
+      await expect(
+        orphan.initialize(await ctx.stableCredit.getAddress(), ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(orphan, "RevolvingIssuerNoCarryRecipient");
+
+      await expect(
+        issuer.connect(ctx.operator).setCarryTreasury(ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(issuer, "RevolvingIssuerNoCarryRecipient");
     });
   });
 
