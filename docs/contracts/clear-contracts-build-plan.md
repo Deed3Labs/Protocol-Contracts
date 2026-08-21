@@ -52,6 +52,21 @@ That is mutual credit doing what mutual credit does. **The earlier framing in th
 - Never hard-code `balance <= 0`.
 - Redemption must **net against the holder's own negative balance first**, and only pay out the remainder.
 
+### Two kinds of positive balance — do not conflate them
+
+This is the distinction the inherited code does not make, and getting it wrong leads to paying merchants out of a loss fund.
+
+| | **Payable** (yours) | **Peer claim** (inherited) |
+|---|---|---|
+| Arises from | A sale the co-op sits behind | Members trading with each other |
+| Who owes it | The co-op, on a schedule | Nobody in particular |
+| Exit | `PayoutPool`, at par | AssurancePool — **capped by lost debt** |
+| Exists in Phase 1? | **Yes, all of them** | **No** |
+
+**In Phase 1 nobody extends credit to anybody except the co-op.** A merchant sells on credit, but the co-op stands behind it — the merchant is not taking risk on that customer, they are holding a receivable from the co-op. Consumers appear only on the negative side. **So every positive balance in the system is owed by a known party on a known schedule**, which is exactly why a payables pool covers all of it.
+
+The inherited exit — redeem against lost debt — means a holder can only cash out to the extent someone else defaulted. That is the right mechanism for a peer claim and the wrong one for a payable.
+
 ### Carry accrues into the balance, per position
 
 Carry is not a fee charged at intervals — it accrues continuously into the negative balance, so a position worsens with time held. Two consequences for the contracts:
@@ -101,7 +116,6 @@ Redemption is how lost debt is deleted: a positive holder burns credits, receive
 | `LimitCalculator` | Values collateral, applies haircuts, emits the tiered ceiling. |
 | `LendingPool` | ERC-4626, utilization-priced. Funds unsecured tiers. |
 | `BondVault` | Per-bond accounting + code-enforced redemption reserve. |
-| `StandingBid` | Co-op buys positive StableCredit from members. Funded from LendingPool/operating capital, **never** AssurancePool. |
 
 ### On the number of issuers — revised
 
@@ -132,6 +146,19 @@ An earlier note in this plan said **one** CreditIssuer, on the grounds that tier
 **Keep one idea, not one line of code.** Per-desk lending — a party defining its own terms and bearing its own losses — is the shape a future `PartnerIssuer` takes. That is a sentence, not a dependency.
 
 **The one case that could revive the pattern:** if asset-backed collateral ever means *NFT* collateral — tokenized deeds via Clear Properties Co. — there is a genuine escrow-and-liquidate problem. That belongs to the Clear Deed track and wants a contract designed against the DeedNFT, not a fork of a generic NFT lending protocol.
+
+### Do not build yet — `StandingBid`
+
+**Trigger: the first time a member holds a positive balance the co-op did not create.** That is Phase 2 transfer between members, and it is the moment the AssurancePool becomes the only exit again.
+
+**It has no job in Phase 1.** Every positive balance is a payable — merchant, or the co-op's own discount — and both are already covered. Nothing in Phase 1 produces a positive balance that is not already owed by someone.
+
+**The pricing question dissolves once the two roles are separated.** Paying a payable is always par. Making a market is a different question, answerable when there is a market. Asking one instrument to do both is why "par or discount" had no answer.
+
+**Two properties to design for when it is built, both absent from a payables pool:**
+
+- **It is an open-ended obligation.** A payable is finite and known. A standing bid promises to buy whatever arrives, at a price, from capital that must stay available. It needs its own funding rule, and it must never draw on the AssurancePool.
+- **The bid price becomes the credit's price.** Once a floor exists, that number *is* what a credit is worth. Moving it is a monetary decision, not an operational one — it should be governed, not set by whoever holds the key.
 
 ### Do not build yet
 Factory for networks — a factory encodes assumptions about what varies, and that is not yet known. Check whether the fork already ships one before writing anything. Build it when deploying the second network.
@@ -305,11 +332,11 @@ Allocation target: ~70% deployable / ~30% reserve, with the reserve share rising
 
 - Bonds and pool shares register in `CollateralRegistry`.
 - `LimitCalculator` picks them up; the asset-backed tier lights up.
-- `StandingBid` deployed: the co-op buys positive StableCredit at par or a small discount, funded from LendingPool/operating capital. Merchant gets a real exit; the fractional reserve stays untouched.
+- Merchant exit runs through `PayoutPool` at par. `StandingBid` is **not** deployed here — see "Do not build yet".
 
 **Repayment routing must change when `PayoutPool` exists.** Inherited behaviour sends every repayment — and every liquidation proceed — into the AssurancePool's buffer reserve: `repayCreditBalance` ends in `depositIntoBufferReserve`. That contradicts §4b in both directions. Repayment value is what pays the merchant holding the positive side, and the AssurancePool is the one fund forbidden from funding a payout, so the working capital for net-30 accumulates precisely where it cannot be spent.
 
-It is the same shape as the bond seniority inversion: money in the wrong pot, where the rule against moving it back is what bites. Harmless today only because there is nowhere else for it to go. When `PayoutPool` is built, repayments route there and only the surplus above the payout obligation reaches loss absorption.
+It is the same shape as the bond seniority inversion: money in the wrong pot, where the rule against moving it back is what bites. **Done** — `StableCredit._routeRepayment` offers `PayoutPool` its reported shortfall first and sends only the remainder to the buffer reserve.
 
 ---
 
@@ -461,7 +488,7 @@ Also run **maturity-bucket coverage**: a system can be solvent in aggregate and 
 - Phase 1: limit recalculates correctly as a bond accretes toward maturity; pledged collateral cannot be transferred; ascending-rate invariant holds.
 - Phase 2: utilization curve; withdrawal queue under high utilization; first-loss ordering.
 - Phase 3: redemption reserve cannot be withdrawn by the Safe; bond redeems at maturity even when the pool is stressed.
-- Phase 4: a positive-balance holder who is not the co-op can redeem; StandingBid purchase does not touch AssurancePool.
+- Phase 4: a positive-balance holder who is not the co-op can redeem; no redemption path reaches the AssurancePool.
 - Adversarial: flash-loan the oracle; drain attempt on every pool; default a member with collateral and verify no lost debt is created.
 
 ---
@@ -470,4 +497,5 @@ Also run **maturity-bucket coverage**: a system can be solvent in aggregate and 
 
 1. ~~Does the member's smart account hold CLRUSD directly, or does the co-op custody it with position tracked in contract state?~~ **RESOLVED — self-custody.** The member's smart account holds the CLRUSD; the co-op holds the USDC backing it in the ESA vault. This is what the Phase 1 body already assumed, so the encumbrance model stands as written: enforcement lives in an ERC-7579 module on the member's account, not in vault bookkeeping.
 2. ~~Does the fork already ship a network factory (`core/factories/` has `BurnerBondFactory`)?~~ **RESOLVED — no.** `core/factories/` holds `BurnerBondFactory`, `FractionTokenFactory` and `ValidatorFactory`. Nothing deploys a StableCredit / AssurancePool / CreditIssuer set, so "do not build yet" stands unchallenged.
-3. StandingBid pricing — par or discount, and who sets it. **Still open.** Phase 4.
+3. Asset-backed haircut values — per collateral type, and the split between external assets (market price) and internal claims (redemption terms).
+4. Whether `TermIssuer` term plans use levelled payments or declining payments on-chain, given the UI shows one levelled figure.

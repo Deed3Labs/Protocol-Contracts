@@ -61,6 +61,7 @@ describe("bonds as collateral", function () {
     await ctx.access.connect(ctx.operator).grantMember(ctx.counterparty.address);
     await issuer.connect(ctx.operator).addTier(BOND, 75n, CYCLE);
 
+    const LimitCalculator = await ethers.getContractFactory("LimitCalculator");
     const CollateralRegistry = await ethers.getContractFactory("CollateralRegistry");
     registry = await upgrades.deployProxy(
       CollateralRegistry,
@@ -260,6 +261,65 @@ describe("bonds as collateral", function () {
       const expected =
         (await bond.presentValueOf(a)) + (await bond.presentValueOf(b));
       expect(await registry.collateralValueOf(ctx.member.address, BOND)).to.equal(expected);
+    });
+  });
+
+  // Phase 4's claim is that a pledged bond makes the asset-backed tier light up without anybody
+  // attesting to anything. The registry values it, the calculator haircuts it, and the issuer
+  // takes the figure -- so the member's line moves because their collateral did.
+  describe("the asset-backed tier lights up", function () {
+    let limits: any;
+
+    beforeEach(async function () {
+      const LimitCalculator = await ethers.getContractFactory("LimitCalculator");
+      limits = await upgrades.deployProxy(
+        LimitCalculator,
+        [
+          ctx.admin.address,
+          await registry.getAddress(),
+          await issuer.getAddress(),
+        ],
+        { kind: "uups" }
+      );
+      await issuer.connect(ctx.operator).setLimitCalculator(await limits.getAddress());
+      await ctx.access.grantOperator(await limits.getAddress());
+    });
+
+    it("gives a member with no collateral and no attestation nothing", async function () {
+      expect(await limits.capacityOf(ctx.member.address, BOND)).to.equal(0n);
+    });
+
+    it("opens a line the moment a bond is pledged, with nobody attesting", async function () {
+      const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
+      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+
+      // 90% of what the bond is worth today, not of its face.
+      const value = await bond.presentValueOf(bondId);
+      expect(await limits.capacityOf(ctx.member.address, BOND)).to.equal(
+        (value * 9_000n) / 10_000n
+      );
+    });
+
+    it("widens that line on its own as the bond accretes", async function () {
+      const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
+      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+
+      const atIssue = await limits.capacityOf(ctx.member.address, BOND);
+      await advance(YEAR / 2);
+      const halfway = await limits.capacityOf(ctx.member.address, BOND);
+
+      expect(halfway).to.be.greaterThan(atIssue);
+    });
+
+    it("pushes the figure onto the issuer for anyone who asks", async function () {
+      const bondId = await buyBond(1_000n * ONE_USDC, YEAR);
+      await registry.pledgeItem(ctx.member.address, BOND, bondId);
+      await limits.connect(other).pushCapacities(ctx.member.address);
+
+      const value = await bond.presentValueOf(bondId);
+      expect(await issuer.capacityOf(ctx.member.address, BOND)).to.equal(
+        (value * 9_000n) / 10_000n
+      );
     });
   });
 });
