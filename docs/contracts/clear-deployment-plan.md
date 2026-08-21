@@ -143,8 +143,23 @@ same ledger as rent and bill credits, so a second endpoint would be a second pla
 Card is honest about being half-live: its controls are real, but nothing can settle until the
 Lithic program has Financial Accounts enabled.
 
-### Phase B — Make the core deployable
-~~The concrete pair from §2.1~~ (done), plus deploy scripts for the credit core:
+### Phase B — Make the core deployable — **DONE**
+
+`deploy/20_deploy_CreditCore.ts`, idempotent, verified by `test/deploy/CreditCore.deploy.spec.ts`
+which runs it against a fresh chain every suite. Two errors it caught that reading would not have:
+`TermIssuer` has no exposure source (term plans pledge nothing — the AssurancePool is the other
+contract that needs one, since that is the RTD denominator), and `CreditIssuer` initialized its
+parents out of linearized order, latent until UUPS made it checked.
+
+**The core is now upgradeable.** Everything built for this system was UUPS; everything inherited
+from the fork was not — provenance, not a decision. `StableCredit`, `CreditIssuer` and
+`AssurancePool` now carry UUPS, covering `ClearCredit`, `RevolvingIssuer` and `TermIssuer` by
+inheritance. Authority sits with the admin each already answers to, which is not a new trust
+surface: that address can already appoint operators, and an operator can already move a member's
+credit limit. **CLRUSD stays immutable** — it is money with a one-for-one reserve claim, and there
+immutability is the guarantee.
+
+*Original scope, for the record:* the concrete pair from §2.1, plus deploy scripts for the credit core:
 StableCredit, CreditIssuer, NetworkRegistry, CollateralRegistry, LimitCalculator, RevolvingIssuer,
 TermIssuer. The test fixture `test/helpers/phase0-fixture.ts` is already the wiring recipe —
 ordering, roles and cross-registration — and should be the script's source rather than reinvented.
