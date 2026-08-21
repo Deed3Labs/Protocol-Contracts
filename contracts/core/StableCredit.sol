@@ -29,6 +29,11 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// @notice thrown when an origination would put a member past their ceiling.
     error StableCreditCeilingExceeded(address member, uint256 owed, uint256 ceiling);
 
+    /// @notice Most distinct rate bands a repayment will work down in one transfer.
+    /// @dev A member holds a handful of tiers and a handful of plans, so this bounds a loop that
+    /// is already short rather than capping anything real.
+    uint256 private constant MAX_WATERFALL_BANDS = 16;
+
     /* ========== STATE VARIABLES ========== */
 
     IAccessManager public access;
@@ -328,36 +333,55 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// it, so instead each is offered what is left and answers with what it took. The ledger is
     /// the only party that can do this, because it is the only one that knows the total.
     ///
+    /// The order is cost, not issuer. A payment clears the dearest position a member holds first,
+    /// wherever it sits -- a cash advance outranks the income tier, and Clear Boost outranks the
+    /// advance. Ordering by issuer instead would have the revolving line clear its cheap tiers
+    /// ahead of a term plan costing twice as much, which is the same money buying less relief.
+    /// So the ledger works down the rate bands: it asks what the dearest open rate is, offers
+    /// that band to every issuer, and repeats.
+    ///
+    /// Drawing runs the other way, cheapest first, which is why the two together are a waterfall
+    /// rather than a rule anyone has to enforce.
+    ///
     /// Anything left unattributed means the issuers collectively hold less than the ledger says
     /// is owed. That is a drift they cannot cause on their own and the ledger does not try to
     /// paper over: the payment still settled, and the discrepancy stays visible.
     function _settleRepayment(address member, uint256 burned) private {
         if (burned == 0 || address(networkRegistry) == address(0)) return;
-        address[] memory issuers = _issuersByRepaymentOrder(member);
+        address[] memory issuers = networkRegistry.issuersOf(member);
+        if (issuers.length == 0) return;
+
         uint256 remaining = burned;
-        for (uint256 i = 0; i < issuers.length && remaining > 0; i++) {
-            uint256 absorbed = ICreditIssuer(issuers[i]).absorbRepayment(member, remaining);
-            if (absorbed > remaining) absorbed = remaining;
-            remaining -= absorbed;
+        for (uint256 round = 0; round < MAX_WATERFALL_BANDS && remaining > 0; round++) {
+            (uint256 band, bool any) = _dearestOpenRate(member, issuers);
+            if (!any) break;
+
+            uint256 before = remaining;
+            for (uint256 i = 0; i < issuers.length && remaining > 0; i++) {
+                uint256 absorbed =
+                    ICreditIssuer(issuers[i]).absorbRepayment(member, remaining, band);
+                if (absorbed > remaining) absorbed = remaining;
+                remaining -= absorbed;
+            }
+            // A band that absorbs nothing will absorb nothing next time either.
+            if (remaining == before) break;
         }
     }
 
-    /// @dev Sorted ascending by the issuers' own declared priority, so the order a payment is
-    /// offered around is a property of the issuers rather than of the order somebody enrolled
-    /// them in. Insertion sort: a member holds a handful of issuers, not a list.
-    function _issuersByRepaymentOrder(address member) private view returns (address[] memory) {
-        address[] memory issuers = networkRegistry.issuersOf(member);
-        for (uint256 i = 1; i < issuers.length; i++) {
-            address current = issuers[i];
-            uint256 priority = ICreditIssuer(current).repaymentPriority();
-            uint256 j = i;
-            while (j > 0 && ICreditIssuer(issuers[j - 1]).repaymentPriority() > priority) {
-                issuers[j] = issuers[j - 1];
-                j--;
+    /// @dev The dearest per-cycle rate any of these issuers still holds a position at.
+    function _dearestOpenRate(address member, address[] memory issuers)
+        private
+        view
+        returns (uint256 band, bool any)
+    {
+        for (uint256 i = 0; i < issuers.length; i++) {
+            (uint256 rate, bool hasPosition) = ICreditIssuer(issuers[i]).nextRepaymentRate(member);
+            if (!hasPosition) continue;
+            if (!any || rate > band) {
+                band = rate;
+                any = true;
             }
-            issuers[j] = current;
         }
-        return issuers;
     }
 
     /// @dev Mirrors `_askIssuersOf`, minus the veto.

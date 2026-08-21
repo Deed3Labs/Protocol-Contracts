@@ -335,7 +335,7 @@ contract TermIssuer is CreditIssuer {
     ///
     /// Oldest plan first, which is also most-overdue first on any schedule that has been running
     /// longer.
-    function _absorbRepayment(address member, uint256 available)
+    function _absorbRepayment(address member, uint256 available, uint256 minRate)
         internal
         override
         returns (uint256 absorbed)
@@ -348,6 +348,7 @@ contract TermIssuer is CreditIssuer {
             uint256 planId = ids[i];
             Plan storage plan = plans[planId];
             if (plan.closed || plan.principalOutstanding == 0) continue;
+            if (plan.index.ratePerCycle < minRate) continue;
 
             _materialiseCarry(planId);
             uint256 owed = plan.principalOutstanding;
@@ -369,11 +370,23 @@ contract TermIssuer is CreditIssuer {
         }
     }
 
-    /// @notice term plans are offered repayments after the revolving line.
-    /// @dev They amortize on a schedule and are normally serviced by name, so an undirected
-    /// payment reaches them only once the demand obligation is clear.
-    function repaymentPriority() external pure override returns (uint256) {
-        return 50;
+    /// @inheritdoc ICreditIssuer
+    function nextRepaymentRate(address member)
+        external
+        view
+        override
+        returns (uint256 rate, bool hasPosition)
+    {
+        uint256[] storage ids = memberPlans[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            Plan storage plan = plans[ids[i]];
+            if (plan.closed || plan.principalOutstanding == 0) continue;
+            // Plans are not ordered by rate, so every open one has to be considered.
+            if (!hasPosition || plan.index.ratePerCycle > rate) {
+                rate = plan.index.ratePerCycle;
+                hasPosition = true;
+            }
+        }
     }
 
     /// @notice this issuer's share of a member's debt.

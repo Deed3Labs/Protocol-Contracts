@@ -128,25 +128,25 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
     }
 
     /// @inheritdoc ICreditIssuer
-    function absorbRepayment(address member, uint256 available)
+    function absorbRepayment(address member, uint256 available, uint256 minRate)
         external
         virtual
         override
         onlyStableCredit
         returns (uint256)
     {
-        return _absorbRepayment(member, available);
+        return _absorbRepayment(member, available, minRate);
     }
 
     /// @inheritdoc ICreditIssuer
-    function repaymentPriority() external view virtual override returns (uint256) {
-        return 100;
+    function nextRepaymentRate(address) external view virtual override returns (uint256, bool) {
+        return (0, false);
     }
 
     /// @notice takes what this issuer can of a repayment.
     /// @dev Nothing by default: the base issuer tracks a period, not a composition, so there is
     /// no position for a payment to land against.
-    function _absorbRepayment(address member, uint256 available)
+    function _absorbRepayment(address member, uint256 available, uint256 minRate)
         internal
         virtual
         returns (uint256)

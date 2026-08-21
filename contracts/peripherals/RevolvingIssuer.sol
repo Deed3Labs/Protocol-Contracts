@@ -331,28 +331,47 @@ contract RevolvingIssuer is CreditIssuer {
         }
     }
 
-    /// @notice takes what these tiers can of a repayment.
+    /// @notice takes what these tiers can of a repayment, at or above a rate band.
     /// @dev Offered a budget by the ledger rather than told an amount, because the member's
     /// balance may be shared with a term issuer and both would otherwise record the whole
-    /// payment. Bounded by what these tiers actually hold.
-    function _absorbRepayment(address member, uint256 available)
+    /// payment. The band is what makes the waterfall run across issuers: a cash advance costing
+    /// more than the income tier is cleared before it, even though it lives somewhere else.
+    function _absorbRepayment(address member, uint256 available, uint256 minRate)
         internal
         override
-        returns (uint256)
+        returns (uint256 absorbed)
     {
         if (available == 0) return 0;
         _materialiseCarry(member);
-        uint256 owed = totalPrincipalOf(member);
-        uint256 take = owed < available ? owed : available;
-        if (take > 0) _repay(member, take);
-        return take;
+
+        uint256 remaining = available;
+        for (uint256 i = tiers.length; i > 0 && remaining > 0; i--) {
+            uint256 tierId = i - 1;
+            if (tiers[tierId].index.ratePerCycle < minRate) continue;
+            uint256 principal = tierPrincipal[member][tierId];
+            if (principal == 0) continue;
+
+            uint256 pay = principal < remaining ? principal : remaining;
+            _repayTier(member, tierId, pay);
+            remaining -= pay;
+            absorbed += pay;
+        }
     }
 
-    /// @notice the revolving line is offered repayments first.
-    /// @dev It is the demand obligation: an undirected payment says only "reduce what this member
-    /// owes", and this is the debt with no schedule behind it.
-    function repaymentPriority() external pure override returns (uint256) {
-        return 10;
+    /// @inheritdoc ICreditIssuer
+    function nextRepaymentRate(address member)
+        external
+        view
+        override
+        returns (uint256 rate, bool hasPosition)
+    {
+        for (uint256 i = tiers.length; i > 0; i--) {
+            uint256 tierId = i - 1;
+            if (tierPrincipal[member][tierId] == 0) continue;
+            // Tiers ascend by rate, so the first one found walking back is the dearest.
+            return (tiers[tierId].index.ratePerCycle, true);
+        }
+        return (0, false);
     }
 
     /// @notice moves carry accrued in each tier onto the ledger.
@@ -399,35 +418,34 @@ contract RevolvingIssuer is CreditIssuer {
     }
 
     /// @notice clears tiers in reverse order, most expensive first.
-    /// @dev Allocated against principal rather than against what is owed, because a repayment
-    /// arriving through the ledger can only be repaying principal: the ledger's credit balance
-    /// moves when credit moves, and accrued carry has never moved anywhere. Settling carry ahead
-    /// of principal is the intended rule and becomes possible once carry is materialised onto the
-    /// ledger -- until then it would leave the tiers claiming a member owes principal the ledger
-    /// says they have already cleared.
-    ///
-    /// The carry share of a position is deliberately left in place. A member who repays every
-    /// penny of principal still owes what the position accrued, and `carryOf` keeps reading it.
+    /// @dev Used when this issuer is the only claim on the payment. The ledger's band walk calls
+    /// `_repayTier` directly, so a dearer position at another issuer is cleared first.
     function _repay(address member, uint256 amount) private {
         uint256 remaining = amount;
         for (uint256 i = tiers.length; i > 0 && remaining > 0; i--) {
             uint256 tierId = i - 1;
             uint256 principal = tierPrincipal[member][tierId];
             if (principal == 0) continue;
-
             uint256 pay = principal < remaining ? principal : remaining;
-            uint256 index = tiers[tierId].index.currentIndex(block.timestamp);
-            uint256 stored = tierNormalized[member][tierId];
-
-            // Rounded up, mirroring the draw. Rounding down leaves a few wei of position behind
-            // after a payment that settled it, and that residue goes on accruing.
-            uint256 reduction = CarryIndex.normalizeUp(pay, index);
-            tierNormalized[member][tierId] = reduction >= stored ? 0 : stored - reduction;
-            tierPrincipal[member][tierId] = principal - pay;
-
+            _repayTier(member, tierId, pay);
             remaining -= pay;
-            emit TierRepaid(member, tierId, pay);
         }
+    }
+
+    /// @notice reduces one tier's position by a payment against its principal.
+    /// @dev Allocated against principal rather than against what is owed. Carry is materialised
+    /// before any payment is placed, so by then it is principal in the tier that accrued it and
+    /// there is no separate carry left to settle.
+    function _repayTier(address member, uint256 tierId, uint256 pay) private {
+        uint256 index = tiers[tierId].index.currentIndex(block.timestamp);
+        uint256 stored = tierNormalized[member][tierId];
+
+        // Rounded up, mirroring the draw. Rounding down leaves a few wei of position behind
+        // after a payment that settled it, and that residue goes on accruing.
+        uint256 reduction = CarryIndex.normalizeUp(pay, index);
+        tierNormalized[member][tierId] = reduction >= stored ? 0 : stored - reduction;
+        tierPrincipal[member][tierId] -= pay;
+        emit TierRepaid(member, tierId, pay);
     }
 
     /// @notice this issuer's share of a member's debt.
