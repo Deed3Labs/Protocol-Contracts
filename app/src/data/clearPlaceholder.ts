@@ -904,21 +904,15 @@ export const SETTINGS: SettingsData = {
       id: grant.id,
       label: grant.label,
       detail: grant.detail,
-      granted: 'when you joined',
-      limit: 'No limit',
     })),
     {
       // Not a grant, and so not in that list: nobody approved this and nobody can withdraw it.
-      // Savings behind a drawn credit line are held by CLRUSD itself. Listing it anyway is the
-      // point of the page -- a member looking for everything holding their money should find it
-      // here, with the reason, rather than discover it when a transfer fails.
+      // Savings behind drawn credit are held by CLRUSD itself. It belongs on the page anyway --
+      // somebody hunting for everything holding their money should find it here, with the way out.
       id: 'collateral',
-      label: 'Hold your savings against your credit line',
-      detail:
-        'While you are carrying credit, the savings behind it stay put. This is what the credit is secured by, so it lifts when the balance is cleared rather than being switched off.',
-      granted: 'when you first spent on credit',
-      limit: '$3,000',
-      lockedReason: 'Your credit line is drawn against this. Clear the balance to release it.',
+      label: 'Savings held against credit',
+      detail: '$3,000 · lifts when your balance clears',
+      held: true,
     },
   ],
   closure: {

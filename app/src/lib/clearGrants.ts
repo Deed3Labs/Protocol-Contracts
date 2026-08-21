@@ -25,7 +25,7 @@ export interface ClearGrant {
   id: string;
   /** What it lets Clear do, in the member's words. */
   label: string;
-  /** What breaks without it. */
+  /** The second line. Kept to a phrase: the settings page gives each row two lines, never four. */
   detail: string;
   /** Which token's allowance this is. */
   token: keyof Pick<ClearContracts, 'usdc' | 'clrusd'>;
@@ -36,22 +36,22 @@ export interface ClearGrant {
 export const CLEAR_GRANTS: ClearGrant[] = [
   {
     id: 'savings-in',
-    label: 'Move money into savings',
-    detail: 'Deposits and automatic saving. Without it, every transfer asks you to approve it first.',
+    label: 'Save automatically',
+    detail: 'Deposits and auto-save',
     token: 'usdc',
     spender: 'esaVault',
   },
   {
     id: 'savings-out',
-    label: 'Move savings back to cash',
-    detail: 'Redeeming savings. Granted up front so the first one costs you nothing.',
+    label: 'Move savings to cash',
+    detail: 'Redeeming back to spendable',
     token: 'clrusd',
     spender: 'esaVault',
   },
   {
     id: 'send',
-    label: 'Hold money you send until it is claimed',
-    detail: 'Money you send sits in escrow until the recipient claims it, or comes back to you.',
+    label: 'Hold sent money in escrow',
+    detail: 'Until the recipient claims it',
     token: 'usdc',
     spender: 'claimEscrow',
   },

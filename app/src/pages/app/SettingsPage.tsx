@@ -410,11 +410,15 @@ export default function SettingsPage({
    * swapped into the pane on desktop — because a document you're reading is a
    * place you go, not a dialog over the page you came from.
    */
-  const SUBPAGES: Record<SubId, { title: string; content: ReactNode }> = {
+  // `bare` opts a drill-in out of the pane's Card wrapper, for content that supplies its own
+  // cards. Permissions needs it: its group labels belong above their cards, and nesting cards
+  // inside a card puts them inside one instead.
+  const SUBPAGES: Record<SubId, { title: string; content: ReactNode; bare?: boolean }> = {
     bylaws: { title: 'Bylaws', content: <BylawsPanel bylaws={data.bylaws} /> },
     permissions: {
       title: 'Permissions',
       content: <PermissionsPanel permissions={data.permissions} />,
+      bare: true,
     },
     patronage: {
       title: 'Patronage & distributions',
@@ -554,7 +558,11 @@ export default function SettingsPage({
           {sub ? (
             <>
               {pushedHeader(SUBPAGES[sub].title, () => setSub(null))}
-              <Card>{SUBPAGES[sub].content}</Card>
+              {SUBPAGES[sub].bare ? (
+                SUBPAGES[sub].content
+              ) : (
+                <Card>{SUBPAGES[sub].content}</Card>
+              )}
             </>
           ) : section === 'account' ? (
             <div className="flex flex-col gap-3">

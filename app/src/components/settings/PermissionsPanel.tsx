@@ -1,97 +1,128 @@
 import { useState } from 'react';
 import { Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import InfoBlock from '@/components/clear/InfoBlock';
+import Card from '@/components/clear/Card';
 import type { Permission } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /**
- * What Clear can do without asking again — and how to stop it.
+ * What Clear can do without asking each time.
  *
- * These are granted in one signature at onboarding rather than one at a time,
- * which is the right trade for the member (no approval prompt in the middle of
- * their first redemption) and the wrong one for their memory of what they
- * agreed to. This page is the other half of that bargain: if the grants are
- * bundled out of sight, the list of them has to be somewhere in plain sight.
+ * These are granted in one signature at onboarding rather than one at a time, which spares the
+ * member an approval prompt mid-task. What that costs is memory: permissions granted out of sight
+ * are permissions nobody recalls agreeing to. This page is the other half of that bargain.
  *
- * Revoke sits on the row rather than behind a menu, because a permission you
- * cannot find the off switch for is not really revocable. Where a permission
- * cannot be revoked, the row says why in place of the button instead of
- * offering one that fails — a disabled control with no explanation reads as a
- * bug, and the reason here is not a technicality but the deal: the savings are
- * what the credit is secured by.
+ * Two lines a row and no more. Underneath each is an allowance with a grant date and a cap, and
+ * showing those would be answering an auditor's question rather than the member's. The one figure
+ * kept is the held amount.
+ *
+ * "Turn off", not "revoke" — revoke is the protocol's word and sounds more permanent than the
+ * thing actually is. Nothing closes; Clear just asks next time.
  */
 export default function PermissionsPanel({ permissions }: { permissions: Permission[] }) {
-  const [revoked, setRevoked] = useState<Set<string>>(new Set());
+  const [off, setOff] = useState<Set<string>>(new Set());
 
-  const revoke = (id: string) =>
-    setRevoked((previous) => new Set(previous).add(id));
+  const granted = permissions.filter((p) => !p.held);
+  const held = permissions.filter((p) => p.held);
 
   return (
     <>
-      <div className="text-[13px]">
-        {permissions.map((permission, i) => {
-          const isRevoked = revoked.has(permission.id);
-          const isLocked = Boolean(permission.lockedReason);
+      <p className="mb-[18px] text-xs leading-relaxed text-foreground-secondary">
+        What Clear can do without asking each time.
+      </p>
 
-          return (
-            <div
-              key={permission.id}
-              className={cn(
-                'py-3',
-                i < permissions.length - 1 && 'border-b-[0.5px] border-border',
-              )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className={cn('truncate', isRevoked && 'text-muted-foreground line-through')}>
-                    {permission.label}
-                  </p>
-                  <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-                    {permission.detail}
-                  </p>
-                </div>
-
-                {isRevoked ? (
-                  <span className="shrink-0 text-[11px] text-muted-foreground">Revoked</span>
-                ) : isLocked ? (
-                  <Lock
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                    strokeWidth={1.75}
-                    aria-hidden
-                  />
+      {granted.length > 0 && (
+        <>
+          <GroupLabel>On</GroupLabel>
+          <Card className="px-[15px] py-0">
+            {granted.map((permission, i) => (
+              <Row key={permission.id} permission={permission} last={i === granted.length - 1}>
+                {off.has(permission.id) ? (
+                  <span className="shrink-0 text-[11px] text-muted-foreground">Off</span>
                 ) : (
                   <Button
                     variant="clear"
                     size="xs"
                     className="shrink-0"
-                    onClick={() => revoke(permission.id)}
+                    onClick={() => setOff((previous) => new Set(previous).add(permission.id))}
                   >
-                    Revoke
+                    Turn off
                   </Button>
                 )}
-              </div>
+              </Row>
+            ))}
+          </Card>
+        </>
+      )}
 
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
-                <span>Granted {permission.granted}</span>
-                <span aria-hidden>·</span>
-                <span>{permission.limit}</span>
-              </div>
+      {held.length > 0 && (
+        <>
+          {/* The label answers "why can't I turn this off" before it is asked, which is why it
+              carries the condition rather than just naming the group. */}
+          <GroupLabel className="mt-[18px]">Held while you carry credit</GroupLabel>
+          <Card className="px-[15px] py-0">
+            {held.map((permission, i) => (
+              <Row key={permission.id} permission={permission} last={i === held.length - 1}>
+                <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border-[0.5px] border-tier-boost/30 bg-tier-boost/10 px-[9px] py-0.5 text-[10.5px] text-tier-boost-fg">
+                  <Lock className="h-[11px] w-[11px]" strokeWidth={2} aria-hidden />
+                  Held
+                </span>
+              </Row>
+            ))}
+          </Card>
+        </>
+      )}
 
-              {isLocked && !isRevoked && (
-                <p className="mt-1.5 text-[11px] leading-relaxed text-foreground-secondary">
-                  {permission.lockedReason}
-                </p>
-              )}
-            </div>
-          );
-        })}
+      <div className="mt-[18px] border-t-[0.5px] border-border pt-[11px]">
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Turning one off closes nothing &mdash; Clear just asks next time.
+        </p>
       </div>
-
-      <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
-        Revoking one of these doesn&rsquo;t close anything — it just means Clear asks you again
-        the next time it needs to.
-      </InfoBlock>
     </>
+  );
+}
+
+/**
+ * Group labels sit above their cards, never inside them — crammed against a card's top edge one
+ * reads as a stray row rather than a heading.
+ */
+function GroupLabel({ children, className }: { children: string; className?: string }) {
+  return (
+    <p
+      className={cn(
+        'mb-[7px] text-[10px] uppercase tracking-[0.5px] text-muted-foreground',
+        className,
+      )}
+    >
+      {children}
+    </p>
+  );
+}
+
+/** Every row is built the same; only what sits on the right changes. */
+function Row({
+  permission,
+  last,
+  children,
+}: {
+  permission: Permission;
+  last: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-3 py-3',
+        !last && 'border-b-[0.5px] border-border',
+      )}
+    >
+      <div className="min-w-0">
+        <p className="truncate text-[13px]">{permission.label}</p>
+        <p className="mt-[3px] text-[11px] leading-[1.5] text-muted-foreground">
+          {permission.detail}
+        </p>
+      </div>
+      {children}
+    </div>
   );
 }

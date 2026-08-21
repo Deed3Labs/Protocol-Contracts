@@ -857,29 +857,26 @@ export interface LoginEvent {
 }
 
 /**
- * One standing permission the member has granted, as they should read it.
+ * One standing permission, as the member should read it.
  *
- * Not an allowance in the ERC-20 sense, though that is what most of them are
- * underneath. A member does not need to know what `approve` is; they need to
- * know what Clear can do without asking again, and how to stop it.
+ * Two lines and no more. Underneath these are ERC-20 allowances with grant dates and caps, and
+ * every one of those is audit detail rather than what somebody opening this screen came for. The
+ * single figure that survives is the held amount, because that is the one they would actually
+ * check.
  *
- * `lockedReason` is the whole point of listing these. A permission that keeps a
- * credit line working cannot be revoked while the member is drawn against it,
- * and saying so plainly at the moment they reach for Revoke is better than
- * letting them press it and watch it fail.
+ * `held` marks the permission that is not a grant at all: savings standing behind drawn credit,
+ * enforced by the token rather than approved by anyone. Its row swaps the button for a chip, and
+ * its `detail` carries the amount and the exit condition together -- the label answers "why can't
+ * I turn this off" before it is asked.
  */
 export interface Permission {
   id: string;
   /** What it lets Clear do, in the member's words -- not the contract's. */
   label: string;
-  /** The plain reason it exists: what breaks without it. */
+  /** The second line: what it covers, or for a held permission, the amount and how it lifts. */
   detail: string;
-  /** Where it was granted, already formatted -- "when you joined". */
-  granted: string;
-  /** Formatted cap, or "No limit". Shown because an uncapped grant should look uncapped. */
-  limit: string;
-  /** Set when the permission cannot be revoked right now, and why. */
-  lockedReason?: string;
+  /** Held while credit is carried: no button, a chip, and no way to switch it off. */
+  held?: boolean;
 }
 
 export interface SettingsData {
