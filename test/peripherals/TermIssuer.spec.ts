@@ -123,10 +123,12 @@ describe("TermIssuer", function () {
         .to.be.revertedWithCustomError(issuer, "TermIssuerExceedsTermLimit");
     });
 
-    it("refuses a schedule with no installments", async function () {
+    it("refuses a split that is not on the menu", async function () {
       await setLimit(2_000n * ONE_USDC);
-      await expect(openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC, 150n, 0))
-        .to.be.revertedWithCustomError(issuer, "TermIssuerInvalidSchedule");
+      for (const bad of [0, 3, 5, 13]) {
+        await expect(openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC, 150n, bad))
+          .to.be.revertedWithCustomError(issuer, "TermIssuerSplitNotOffered");
+      }
     });
   });
 
@@ -203,6 +205,107 @@ describe("TermIssuer", function () {
 
       await advance(12 * MONTH + ONE_DAY);
       expect(await issuer.scheduledPrincipalDue(0)).to.equal(1_000n * ONE_USDC + 7n);
+    });
+  });
+
+  describe("the member chooses the split", function () {
+    // Pay in one cycle, or spread over 2, 4, 6 or 12. Changing it moves only the remainder.
+
+    it("offers a fixed menu rather than any number of cycles", async function () {
+      for (const n of [1, 2, 4, 6, 12]) {
+        expect(await issuer.isOfferedSplit(n)).to.equal(true);
+      }
+      for (const n of [0, 3, 5, 7, 24]) {
+        expect(await issuer.isOfferedSplit(n)).to.equal(false);
+      }
+      await setLimit(2_000n * ONE_USDC);
+      await expect(openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC, 0n, 3))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerSplitNotOffered");
+    });
+
+    it("re-spreads only what is left, not what was already paid", async function () {
+      // Opened at two cycles, first half paid, then spread the rest over twelve.
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 0n, 2);
+      await issuer.connect(payer).payPlan(0, 600n * ONE_USDC);
+
+      await issuer.connect(ctx.member).setSplit(0, 12);
+      expect(await issuer.arrearsOf(0)).to.equal(0n);
+
+      // The 600 already paid stays paid; the remaining 600 spreads over twelve cycles.
+      await advance(MONTH + ONE_DAY);
+      expect(await issuer.scheduledPrincipalDue(0)).to.equal(650n * ONE_USDC);
+      expect(await issuer.arrearsOf(0)).to.equal(50n * ONE_USDC);
+
+      await advance(11 * MONTH);
+      expect(await issuer.scheduledPrincipalDue(0)).to.equal(1_200n * ONE_USDC);
+    });
+
+    it("carries what a member is behind by into the new schedule", async function () {
+      // Re-splitting changes how the remainder is paid. It does not forgive what was owed --
+      // which is also what would otherwise suppress the auto-pull and the delinquency after it.
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 0n, 12);
+
+      await advance(3 * MONTH + ONE_DAY);
+      expect(await issuer.arrearsOf(0)).to.equal(300n * ONE_USDC);
+
+      await issuer.connect(ctx.member).setSplit(0, 12);
+      expect(await issuer.arrearsOf(0)).to.equal(300n * ONE_USDC);
+      expect(await issuer.inCompliance(ctx.member.address)).to.equal(false);
+    });
+
+    it("spreads the rest over the new term once the arrears are cleared", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 0n, 12);
+      await advance(3 * MONTH + ONE_DAY);
+      await issuer.connect(ctx.member).setSplit(0, 6);
+
+      await issuer.connect(payer).payPlan(0, 300n * ONE_USDC);
+      expect(await issuer.arrearsOf(0)).to.equal(0n);
+
+      // 900 left over six cycles.
+      await advance(MONTH);
+      expect(await issuer.arrearsOf(0)).to.equal(150n * ONE_USDC);
+    });
+
+    it("still sums to the principal after a re-split", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_000n * ONE_USDC + 7n, 1_000n * ONE_USDC + 7n, 0n, 4);
+      await issuer.connect(payer).payPlan(0, 250n * ONE_USDC);
+      await issuer.connect(ctx.member).setSplit(0, 6);
+
+      await advance(6 * MONTH + ONE_DAY);
+      expect(await issuer.scheduledPrincipalDue(0)).to.equal(1_000n * ONE_USDC + 7n);
+    });
+
+    it("lets only the member or an operator change it", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC, 0n, 2);
+
+      await expect(issuer.connect(merchant).setSplit(0, 12))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerNotPlanHolder");
+      await issuer.connect(ctx.operator).setSplit(0, 12);
+      await issuer.connect(ctx.member).setSplit(0, 6);
+    });
+
+    it("leaves carry accruing on whatever is outstanding", async function () {
+      // Spreading further costs more, which is the point.
+      await setLimit(4_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 150n, 2);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 150n, 2);
+
+      await issuer.connect(ctx.member).setSplit(1, 12);
+      await advance(6 * CYCLE);
+
+      // Same rate, same balance, near enough the same time: the split changes when a balance is
+      // due, not what holding it costs. The two plans were opened a block apart and one of them
+      // had its carry materialised by the re-split, so they differ by those seconds and no more.
+      const a = await issuer.carryOn(0);
+      const b = await issuer.carryOn(1);
+      const gap = a > b ? a - b : b - a;
+      expect(gap).to.be.lessThan(10_000n);
+      expect(a).to.be.greaterThan(0n);
     });
   });
 

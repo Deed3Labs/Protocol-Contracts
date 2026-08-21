@@ -37,6 +37,15 @@ contract TermIssuer is CreditIssuer {
         uint64 installmentLength;
         uint32 installments;
         bool closed;
+        /// @dev When the current schedule started. A member may re-split what is left, and the
+        /// schedule they are on then is not the one they opened with.
+        uint64 scheduleStart;
+        /// @dev Principal the current schedule spreads.
+        uint256 scheduleBase;
+        /// @dev Principal already due before the current schedule begins: what had been repaid,
+        /// plus anything they were behind by when they changed the split. Re-splitting spreads
+        /// the remainder; it does not forgive what was already owed.
+        uint256 scheduleFloor;
         CarryIndex.Index index;
     }
 
@@ -62,6 +71,8 @@ contract TermIssuer is CreditIssuer {
     error TermIssuerInvalidSchedule();
     error TermIssuerExceedsTermLimit(address member, uint256 requested, uint256 limit);
     error TermIssuerNothingToPay(uint256 planId);
+    error TermIssuerSplitNotOffered(uint32 installments);
+    error TermIssuerNotPlanHolder(address caller);
 
     /* ========== EVENTS ========== */
 
@@ -77,6 +88,17 @@ contract TermIssuer is CreditIssuer {
     event PlanPaid(uint256 indexed planId, uint256 amount, uint256 principalPortion);
     event PlanClosed(uint256 indexed planId);
     event PlanCarryMaterialised(uint256 indexed planId, uint256 amount);
+    event PlanSplitChanged(
+        uint256 indexed planId, uint32 installments, uint256 spread, uint256 carriedArrears
+    );
+
+    /// @notice The splits a member may choose: pay in one cycle, or spread over 2, 4, 6 or 12.
+    /// @dev A fixed set rather than any number. The split is a product choice the member makes
+    /// from a menu, and an arbitrary one would let a plan be stretched a cycle at a time.
+    function isOfferedSplit(uint32 installments) public pure returns (bool) {
+        return installments == 1 || installments == 2 || installments == 4 || installments == 6
+            || installments == 12;
+    }
 
     /* ========== INITIALIZER ========== */
 
@@ -149,8 +171,8 @@ contract TermIssuer is CreditIssuer {
     function installmentsDue(uint256 planId) public view returns (uint256) {
         _requirePlan(planId);
         Plan storage plan = plans[planId];
-        if (block.timestamp <= plan.openedAt) return 0;
-        uint256 elapsed = block.timestamp - plan.openedAt;
+        if (block.timestamp <= plan.scheduleStart) return 0;
+        uint256 elapsed = block.timestamp - plan.scheduleStart;
         uint256 due = elapsed / plan.installmentLength;
         return due > plan.installments ? plan.installments : due;
     }
@@ -161,8 +183,8 @@ contract TermIssuer is CreditIssuer {
     function scheduledPrincipalDue(uint256 planId) public view returns (uint256) {
         Plan storage plan = plans[planId];
         uint256 due = installmentsDue(planId);
-        if (due >= plan.installments) return plan.principal;
-        return (plan.principal * due) / plan.installments;
+        if (due >= plan.installments) return plan.scheduleFloor + plan.scheduleBase;
+        return plan.scheduleFloor + (plan.scheduleBase * due) / plan.installments;
     }
 
     /// @notice how far behind the schedule a plan is, in principal.
@@ -170,7 +192,10 @@ contract TermIssuer is CreditIssuer {
         Plan storage plan = plans[planId];
         if (plan.closed) return 0;
         uint256 shouldHaveRepaid = scheduledPrincipalDue(planId);
-        uint256 hasRepaid = plan.principal - plan.principalOutstanding;
+        // Read rather than derived. `principal` is the figure at origination, and materialised
+        // carry raises what is outstanding above it, so `principal - outstanding` is not what was
+        // repaid -- it underflows the moment a plan has carried for long enough.
+        uint256 hasRepaid = plan.repaid;
         return shouldHaveRepaid > hasRepaid ? shouldHaveRepaid - hasRepaid : 0;
     }
 
@@ -254,9 +279,8 @@ contract TermIssuer is CreditIssuer {
         uint32 installments,
         uint64 installmentLength
     ) external onlyOperator notNull(member) returns (uint256 planId) {
-        if (installments == 0 || installmentLength == 0 || purchase == 0) {
-            revert TermIssuerInvalidSchedule();
-        }
+        if (installmentLength == 0 || purchase == 0) revert TermIssuerInvalidSchedule();
+        if (!isOfferedSplit(installments)) revert TermIssuerSplitNotOffered(installments);
         if (payout > purchase) revert TermIssuerInvalidSchedule();
 
         uint256 wouldOwe = totalPrincipalOf(member) + purchase;
@@ -273,6 +297,9 @@ contract TermIssuer is CreditIssuer {
         plan.openedAt = uint64(block.timestamp);
         plan.installments = installments;
         plan.installmentLength = installmentLength;
+        plan.scheduleStart = uint64(block.timestamp);
+        plan.scheduleBase = purchase;
+        plan.scheduleFloor = 0;
         plan.index.init(ratePerCycle, cycleLength, uint64(block.timestamp));
         plan.normalized = CarryIndex.normalizeUp(purchase, CarryIndex.RAY);
         memberPlans[member].push(planId);
@@ -281,6 +308,45 @@ contract TermIssuer is CreditIssuer {
             member, purchase, merchant, payout, carryTreasury, purchase - payout
         );
         emit PlanOpened(planId, member, purchase, ratePerCycle, installments);
+    }
+
+    /// @notice re-splits what is left of a plan over a newly chosen number of cycles.
+    /// @dev The member's choice: pay the rest in one cycle, or spread it over 2, 4, 6 or 12. Only
+    /// the remainder moves. Someone who opened at two cycles and paid the first half can spread
+    /// the second half over twelve, and what they already paid is not re-spread with it.
+    ///
+    /// Anything they were behind by is carried into the new schedule as due immediately, rather
+    /// than being folded into the spread. Re-splitting is meant to change how the remainder is
+    /// paid, not to forgive what was already owed -- and without that, changing the split would
+    /// clear arrears, which is also what suppresses the auto-pull and the delinquency that
+    /// follows from it.
+    ///
+    /// Carry is untouched and goes on accruing on whatever is outstanding, which is the point of
+    /// spreading it further costing more.
+    /// @param planId plan to re-split.
+    /// @param installments new number of cycles: 1, 2, 4, 6 or 12.
+    function setSplit(uint256 planId, uint32 installments) external {
+        _requirePlan(planId);
+        Plan storage plan = plans[planId];
+        if (plan.closed) revert TermIssuerPlanClosed(planId);
+        if (msg.sender != plan.member && !stableCredit.access().isOperator(msg.sender)) {
+            revert TermIssuerNotPlanHolder(msg.sender);
+        }
+        if (!isOfferedSplit(installments)) revert TermIssuerSplitNotOffered(installments);
+
+        // Bring the plan current first, so the remainder being re-split is what is really owed.
+        _materialiseCarry(planId);
+
+        uint256 repaid = plan.repaid;
+        uint256 behind = arrearsOf(planId);
+        uint256 spread = plan.principalOutstanding - behind;
+
+        plan.scheduleStart = uint64(block.timestamp);
+        plan.scheduleFloor = repaid + behind;
+        plan.scheduleBase = spread;
+        plan.installments = installments;
+
+        emit PlanSplitChanged(planId, installments, spread, behind);
     }
 
     /// @notice brings a plan's accrued carry onto the ledger.
@@ -424,6 +490,9 @@ contract TermIssuer is CreditIssuer {
 
         uint256 carry = owed - plan.principalOutstanding;
         plan.principalOutstanding = owed;
+        // Carry that has become principal is spread over the installments left, so the schedule
+        // still adds up to everything owed rather than to the figure at origination.
+        plan.scheduleBase += carry;
         stableCredit.accrueCarry(plan.member, carryTreasury, carry);
         emit PlanCarryMaterialised(planId, carry);
     }
