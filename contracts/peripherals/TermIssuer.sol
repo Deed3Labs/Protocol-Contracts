@@ -3,6 +3,7 @@ pragma solidity ^0.8.29;
 
 import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
+import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 
 /// @title TermIssuer
 /// @notice Term plans: partner credit, Clear Cash, ground lease, ELPA.
@@ -18,7 +19,7 @@ import "../libraries/CarryIndex.sol";
 /// A plan is originated as a three-party mint that nets to zero. Nothing is lent at origination
 /// and no capital is required: the member is debited, the merchant is credited what they are
 /// owed, and the co-op is credited the difference.
-contract TermIssuer is CreditIssuer {
+contract TermIssuer is CreditIssuer, ICreditPositionSource {
     using CarryIndex for CarryIndex.Index;
 
     /* ========== STATE VARIABLES ========== */
@@ -241,6 +242,28 @@ contract TermIssuer is CreditIssuer {
         for (uint256 i = 0; i < ids.length; i++) {
             total += plans[ids[i]].principalOutstanding;
         }
+    }
+
+    /// @notice The kind term debt is reported under.
+    /// @dev A single bucket, and an unsecured one. A term plan amortizes on a schedule against a
+    /// signed ledger balance with nothing pledged behind it, so the pool would cover all of it --
+    /// and ExposureMath treats a kind it does not recognise as unsecured, which is the same
+    /// answer arrived at from the other direction.
+    bytes32 public constant TERM_KIND = "TERM";
+
+    /// @inheritdoc ICreditPositionSource
+    function debtByKind(address member)
+        external
+        view
+        override
+        returns (bytes32[] memory kinds, uint256[] memory amounts)
+    {
+        uint256 principal = totalPrincipalOf(member);
+        if (principal == 0) return (new bytes32[](0), new uint256[](0));
+        kinds = new bytes32[](1);
+        amounts = new uint256[](1);
+        kinds[0] = TERM_KIND;
+        amounts[0] = principal;
     }
 
     /// @notice whether a member is current on every plan they hold.

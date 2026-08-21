@@ -4,6 +4,7 @@ pragma solidity ^0.8.29;
 import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
 import "../libraries/ExposureMath.sol";
+import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 
 /// @title RevolvingIssuer
 /// @notice The tiered revolving line: savings-backed, asset-backed, income and Clear Boost.
@@ -20,7 +21,7 @@ import "../libraries/ExposureMath.sol";
 /// cannot work this way -- each has its own rate and its own opening date, and two plans at
 /// different rates cannot share an index -- which is why they are a separate issuer rather than a
 /// fifth tier.
-contract RevolvingIssuer is CreditIssuer {
+contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     using CarryIndex for CarryIndex.Index;
 
     /* ========== STATE VARIABLES ========== */
@@ -168,6 +169,32 @@ contract RevolvingIssuer is CreditIssuer {
     function totalDrawnOf(address member) public view returns (uint256 total) {
         for (uint256 i = 0; i < tiers.length; i++) {
             total += drawnOf(member, i);
+        }
+    }
+
+    /// @inheritdoc ICreditPositionSource
+    /// @dev One entry per tier, in tier order, so a caller can pair a kind with its haircut
+    /// without knowing anything about how the tiers were configured.
+    function debtByKind(address member)
+        external
+        view
+        override
+        returns (bytes32[] memory kinds, uint256[] memory amounts)
+    {
+        uint256 count;
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tierPrincipal[member][i] > 0) count++;
+        }
+
+        kinds = new bytes32[](count);
+        amounts = new uint256[](count);
+        uint256 index;
+        for (uint256 i = 0; i < tiers.length; i++) {
+            uint256 principal = tierPrincipal[member][i];
+            if (principal == 0) continue;
+            kinds[index] = tiers[i].kind;
+            amounts[index] = principal;
+            index++;
         }
     }
 
