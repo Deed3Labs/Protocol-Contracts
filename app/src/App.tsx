@@ -21,7 +21,7 @@ import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
 import HomeRoute from "@/pages/app/HomeRoute";
-import SavingsPage from "@/pages/app/SavingsPage";
+import SavingsRoute from "@/pages/app/SavingsRoute";
 import ActivityPage from "@/pages/app/ActivityPage";
 import CardRoute from "@/pages/app/CardRoute";
 import ContactsPage from "@/pages/app/ContactsPage";
@@ -114,7 +114,7 @@ function App() {
                         dev. */}
                     <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                       <Route path="/" element={<HomeRoute />} />
-                      <Route path="/savings" element={<SavingsPage />} />
+                      <Route path="/savings" element={<SavingsRoute />} />
                       <Route path="/earn" element={<EarnPage />} />
                       <Route path="/send" element={<SendPage />} />
                       <Route path="/activity" element={<ActivityPage />} />
