@@ -18,6 +18,16 @@ interface ICreditIssuer {
         external
         returns (bool);
 
+    /// @notice Tells an issuer about a credit movement it was not asked to approve.
+    /// @dev Opening a line, recognising a write-off and settling a repayment all move credit
+    /// without asking permission, because none of them is a member spending. An issuer that
+    /// tracks what its member's balance is made of still has to see them, or its composition
+    /// drifts from the balance it is meant to describe.
+    /// @param sender address credit moved from.
+    /// @param recipient address credit moved to.
+    /// @param amount amount moved.
+    function syncCreditPositions(address sender, address recipient, uint256 amount) external;
+
     /// @notice called by network authorized to issue credit.
     /// @dev intended to be overwritten in parent implementation to include custom underwriting logic.
     /// @param member address of member.

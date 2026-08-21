@@ -210,6 +210,21 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// by exactly the delinquency that provoked them.
     function _systemTransfer(address _from, address _to, uint256 _amount) internal {
         super._transfer(_from, _to, _amount);
+        // Told afterwards rather than asked beforehand. An issuer describing what a member's
+        // balance is made of still has to see the movement, or its composition drifts from the
+        // balance it describes -- but it does not get to refuse it.
+        _notifyIssuersOf(_from, _from, _to, _amount);
+        _notifyIssuersOf(_to, _from, _to, _amount);
+    }
+
+    /// @dev Mirrors `_askIssuersOf`, minus the veto.
+    function _notifyIssuersOf(address party, address _from, address _to, uint256 _amount) private {
+        if (party == address(0) || address(networkRegistry) == address(0)) return;
+        address[] memory issuers = networkRegistry.issuersOf(party);
+        for (uint256 i = 0; i < issuers.length; i++) {
+            if (party == _to && networkRegistry.isEnrolled(_from, issuers[i])) continue;
+            ICreditIssuer(issuers[i]).syncCreditPositions(_from, _to, _amount);
+        }
     }
 
     /// @notice asks every issuer either party is enrolled with.

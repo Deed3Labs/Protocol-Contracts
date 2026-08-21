@@ -108,11 +108,33 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
     /// @return transaction validation result.
     function validateCreditTransaction(address sender, address recipient, uint256 amount)
         external
+        virtual
+        override
         onlyStableCredit
         returns (bool)
     {
-        return _validateCreditTransaction(sender, recipient, amount);
+        if (!_validateCreditTransaction(sender, recipient, amount)) return false;
+        _syncCreditPositions(sender, recipient, amount);
+        return true;
     }
+
+    /// @inheritdoc ICreditIssuer
+    function syncCreditPositions(address sender, address recipient, uint256 amount)
+        external
+        override
+        onlyStableCredit
+    {
+        _syncCreditPositions(sender, recipient, amount);
+    }
+
+    /// @notice records what a credit movement did to this issuer's positions.
+    /// @dev Nothing by default: the base issuer tracks a period, not a composition. An issuer
+    /// that describes what a member's balance is made of overrides this, and must stay consistent
+    /// with the ledger's one signed number rather than maintaining a second opinion of it.
+    function _syncCreditPositions(address sender, address recipient, uint256 amount)
+        internal
+        virtual
+    {}
 
     /// @notice syncs the credit period state and returns validation status.
     /// @dev this function is intended to be called after credit expiration to ensure that defaulted debt

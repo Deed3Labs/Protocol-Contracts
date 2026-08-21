@@ -110,11 +110,28 @@ library CarryIndex {
     }
 
     /// @notice converts an amount into its index-relative form for storage.
+    /// @dev Rounds down. Use for reducing a position, where removing slightly less than was paid
+    /// leaves the member owing the dust rather than the network.
+    /// @param amount amount to convert.
+    /// @param index index value at the time.
+    /// @return normalized amount.
+    function normalize(uint256 amount, uint256 index) internal pure returns (uint256) {
+        return (amount * RAY) / index;
+    }
+
+    /// @notice converts an amount into its index-relative form, rounding up.
+    /// @dev Use for adding to a position. Rounding down here loses a wei per draw to truncation,
+    /// so a member reading their balance back sees fractionally less than they just spent, and
+    /// the sliver belongs to no position -- it accrues no carry and no repayment ever finds it.
+    /// Rounding up means the position is never smaller than the draw that created it.
     /// @param amount amount drawn.
     /// @param index index value at the time of the draw.
     /// @return normalized amount to store.
-    function normalize(uint256 amount, uint256 index) internal pure returns (uint256) {
-        return (amount * RAY) / index;
+    function normalizeUp(uint256 amount, uint256 index) internal pure returns (uint256) {
+        uint256 scaled = amount * RAY;
+        uint256 result = scaled / index;
+        if (result * index < scaled) result += 1;
+        return result;
     }
 
     /// @notice converts a stored normalized amount back into what is owed now.
