@@ -464,6 +464,6 @@ Also run **maturity-bucket coverage**: a system can be solvent in aggregate and 
 
 ## 7. Open questions — flag, do not decide
 
-1. Does the member's smart account hold CLRUSD directly, or does the co-op custody it with position tracked in contract state?
-2. Does the fork already ship a network factory (`core/factories/` has `BurnerBondFactory`)?
-3. StandingBid pricing — par or discount, and who sets it.
+1. ~~Does the member's smart account hold CLRUSD directly, or does the co-op custody it with position tracked in contract state?~~ **RESOLVED — self-custody.** The member's smart account holds the CLRUSD; the co-op holds the USDC backing it in the ESA vault. This is what the Phase 1 body already assumed, so the encumbrance model stands as written: enforcement lives in an ERC-7579 module on the member's account, not in vault bookkeeping.
+2. ~~Does the fork already ship a network factory (`core/factories/` has `BurnerBondFactory`)?~~ **RESOLVED — no.** `core/factories/` holds `BurnerBondFactory`, `FractionTokenFactory` and `ValidatorFactory`. Nothing deploys a StableCredit / AssurancePool / CreditIssuer set, so "do not build yet" stands unchallenged.
+3. StandingBid pricing — par or discount, and who sets it. **Still open.** Phase 4.
