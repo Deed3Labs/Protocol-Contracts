@@ -56,6 +56,9 @@ tools/
 **/jwt.txt
 
 # Stray Finder/iCloud "<name> 2" copy artifacts
+# .sol matters most: contracts/ is hardhat's sources dir, so a duplicate compiles as a second
+# copy of the contract and getContractFactory then fails with HH701 (multiple artifacts).
+* 2.sol
 * 2.ts
 * 2.tsx
 *\ 2/

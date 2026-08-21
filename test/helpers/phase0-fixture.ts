@@ -1,12 +1,15 @@
 import { ethers, upgrades } from "hardhat";
 
 /// Wires the StableCredit network the Phase 0 contracts assume:
-///   AccessManager -> StableCredit -> CreditIssuer -> AssurancePool -> AssuranceOracle
+///   AccessManager -> ClearCredit -> CreditIssuer -> AssurancePool -> AssuranceOracle
 ///
 /// None of these declare a constructor, so none of them disable initializers, and the
-/// implementations can be initialized directly. Tests exercise the production logic; only
-/// StableCredit and CreditIssuer are wrapped, because both expose `__X_init` under
-/// `onlyInitializing` and are meant to be extended rather than deployed.
+/// implementations can be initialized directly.
+///
+/// `ClearCredit` is the production ledger -- the deployable child of `StableCredit`, which has no
+/// public initializer of its own. Only `CreditIssuer` is still wrapped in a harness, and rightly:
+/// production deploys `RevolvingIssuer` and `TermIssuer`, never a bare one, so its harness exists
+/// to exercise the base class in isolation rather than to stand in for something shipped.
 export async function deployPhase0Network() {
   const [admin, operator, member, counterparty, instrument, outsider] = await ethers.getSigners();
 
@@ -20,8 +23,10 @@ export async function deployPhase0Network() {
   await access.initialize(admin.address);
   await access.grantOperator(operator.address);
 
-  const StableCreditHarness = await ethers.getContractFactory("StableCreditHarness");
-  const stableCredit = await StableCreditHarness.deploy();
+  // The production ledger, not a harness: a test that proves a contract nobody deploys has
+  // proved the wrong contract.
+  const ClearCredit = await ethers.getContractFactory("ClearCredit");
+  const stableCredit = await ClearCredit.deploy();
   await stableCredit.initialize("Clear Credit", "CLRC", await access.getAddress());
 
   const CreditIssuerHarness = await ethers.getContractFactory("CreditIssuerHarness");
