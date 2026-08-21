@@ -4,6 +4,7 @@ pragma solidity ^0.8.29;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "./interfaces/stable-credit/IStableCredit.sol";
+import "./interfaces/stable-credit/INetworkRegistry.sol";
 import "./MutualCredit.sol";
 
 /// @title StableCredit contract
@@ -17,12 +18,27 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// @dev Custom error rather than a require string: production builds strip revert strings,
     /// and a caller needs to be able to tell a rejected transfer apart from a successful one.
     error StableCreditTransactionInvalid(address from, address to, uint256 amount);
+    /// @notice thrown when a caller is not an issuer registered against this ledger.
+    error StableCreditNotAnIssuer(address caller);
+    /// @notice thrown when an issuer acts on a member it has no credit line with.
+    error StableCreditNoCreditLine(address issuer, address member);
 
     /* ========== STATE VARIABLES ========== */
 
     IAccessManager public access;
     IAssurancePool public assurancePool;
-    ICreditIssuer public creditIssuer;
+
+    /// @notice Resolves which issuers write to this ledger and which a member is enrolled with.
+    /// @dev One ledger, several issuers. The revolving line and term plans are separate rule sets
+    /// -- per-tier accrual against per-position accrual, cycle equilibrium against none -- but
+    /// they are not separate networks: both write here and both draw on one AssurancePool.
+    INetworkRegistry public networkRegistry;
+
+    /// @notice Each issuer's share of a member's ceiling.
+    /// @dev The member sees one ceiling. It is composed of parts, and each issuer owns only its
+    /// own part, so one cannot silently overwrite another's allocation by setting the total.
+    /// @dev issuer => member => ceiling contribution
+    mapping(address => mapping(address => uint256)) public issuerCreditLimit;
 
     /* ========== INITIALIZER ========== */
 
@@ -83,7 +99,9 @@ contract StableCredit is MutualCredit, IStableCredit {
         assurancePool.reserveToken().transferFrom(_msgSender(), address(this), reserveTokenAmount);
         assurancePool.reserveToken().approve(address(assurancePool), reserveTokenAmount);
         assurancePool.depositIntoBufferReserve(reserveTokenAmount);
-        _transfer(address(this), member, amount);
+        // A repayment is a system move. A frozen member paying down what froze them must not be
+        // refused by the freeze.
+        _systemTransfer(address(this), member, amount);
         emit CreditBalanceRepaid(member, amount);
     }
 
@@ -102,27 +120,47 @@ contract StableCredit is MutualCredit, IStableCredit {
     {
         // if member is not a current member, then grant membership
         if (!access.isMember(member)) access.grantMember(member);
-        setCreditLimit(member, limit);
-        // if initial balance is greater than zero, then transfer to member
-        if (initialBalance > 0) _transfer(address(this), member, initialBalance);
+        // record the member against this issuer before summing, so the new allocation is counted
+        networkRegistry.enrolMember(member, _msgSender());
+        issuerCreditLimit[_msgSender()][member] = limit;
+        _syncCreditLimit(member);
+        // if initial balance is greater than zero, transfer to member. Opening a line is a system
+        // move, not a member transaction: there is nothing yet to validate against.
+        if (initialBalance > 0) _systemTransfer(address(this), member, initialBalance);
         emit CreditLineCreated(member, limit, initialBalance);
     }
 
     /// @notice update existing credit lines
     /// @param creditLimit must be greater than given member's outstanding debt
     function updateCreditLimit(address member, uint256 creditLimit) external onlyCreditIssuer {
-        require(creditLimitOf(member) > 0, "StableCredit: Credit line does not exist for member");
-        require(creditLimit >= creditBalanceOf(member), "StableCredit: invalid credit limit");
-        setCreditLimit(member, creditLimit);
+        if (!networkRegistry.isEnrolled(member, _msgSender())) {
+            revert StableCreditNoCreditLine(_msgSender(), member);
+        }
+        issuerCreditLimit[_msgSender()][member] = creditLimit;
+        // The total, not this allocation, has to cover what is drawn. A member's debt is one
+        // number and any issuer's ceiling may be reduced while another's still carries it.
+        require(_totalCreditLimit(member) >= creditBalanceOf(member),
+            "StableCredit: invalid credit limit");
+        _syncCreditLimit(member);
         emit CreditLimitUpdated(member, creditLimit);
     }
 
     /// @notice transfer a given member's debt to the lost debt account
+    /// @dev The issuer states how much of the balance is its own. A member's debt is one signed
+    /// number that several issuers may have contributed to, so defaulting at one must not write
+    /// off what another is still carrying. Bounded by what is actually outstanding.
     /// @param member address of member to write off
-    function writeOffCreditLine(address member) public virtual onlyCreditIssuer {
+    /// @param amount the issuer's share of the member's debt
+    function writeOffCreditLine(address member, uint256 amount) public virtual onlyCreditIssuer {
         uint256 creditBalance = creditBalanceOf(member);
-        _transfer(address(this), member, creditBalance);
-        emit CreditLineWrittenOff(member, creditBalance);
+        uint256 writeOff = amount > creditBalance ? creditBalance : amount;
+        // A write-off is the ledger recognising a loss, not a payment anyone is making. It cannot
+        // be blocked by the state that caused it.
+        if (writeOff > 0) _systemTransfer(address(this), member, writeOff);
+        // The issuer's ceiling goes with the debt it was carrying.
+        issuerCreditLimit[_msgSender()][member] = 0;
+        _syncCreditLimit(member);
+        emit CreditLineWrittenOff(member, writeOff);
     }
 
     /// @notice enables network admin to set the access manager address
@@ -139,11 +177,11 @@ contract StableCredit is MutualCredit, IStableCredit {
         emit AssurancePoolUpdated(_assurancePool);
     }
 
-    /// @notice enables network admin to set the credit issuer address
-    /// @param _creditIssuer address of credit issuer contract
-    function setCreditIssuer(address _creditIssuer) external onlyAdmin {
-        creditIssuer = ICreditIssuer(_creditIssuer);
-        emit CreditIssuerUpdated(_creditIssuer);
+    /// @notice enables network admin to set the network registry address
+    /// @param _networkRegistry address of the network registry
+    function setNetworkRegistry(address _networkRegistry) external onlyAdmin {
+        networkRegistry = INetworkRegistry(_networkRegistry);
+        emit NetworkRegistryUpdated(_networkRegistry);
     }
 
     /* ========== PRIVATE FUNCTIONS ========== */
@@ -160,13 +198,69 @@ contract StableCredit is MutualCredit, IStableCredit {
         // settled to every integrator. It also breaks the netting invariant the mint path depends
         // on: a three-party purchase must net to zero, and it cannot if one leg can quietly
         // no-op while the others land.
-        if (!creditIssuer.validateCreditTransaction(_from, _to, _amount)) {
+        if (!_validateAcrossIssuers(_from, _to, _amount)) {
             revert StableCreditTransactionInvalid(_from, _to, _amount);
         }
         super._transfer(_from, _to, _amount);
-        emit ComplianceUpdated(
-            _from, _to, creditIssuer.inCompliance(_from), creditIssuer.inCompliance(_to)
-            );
+    }
+
+    /// @notice moves credit without asking any issuer's permission.
+    /// @dev For the ledger's own bookkeeping: opening a line, recognising a write-off, settling a
+    /// repayment. None of those are a member spending, and all three would otherwise be blocked
+    /// by exactly the delinquency that provoked them.
+    function _systemTransfer(address _from, address _to, uint256 _amount) internal {
+        super._transfer(_from, _to, _amount);
+    }
+
+    /// @notice asks every issuer either party is enrolled with.
+    /// @dev Conjunctive on purpose. A member in default on a term plan should not keep spending on
+    /// their revolving line, so any issuer may refuse. Each call also lets that issuer sync its
+    /// own period state, which is why this is not a view.
+    function _validateAcrossIssuers(address _from, address _to, uint256 _amount)
+        private
+        returns (bool)
+    {
+        if (!_askIssuersOf(_from, _from, _to, _amount)) return false;
+        return _askIssuersOf(_to, _from, _to, _amount);
+    }
+
+    /// @dev Asks the issuers `party` is enrolled with. Skips any issuer the sender already
+    /// answered for, so a member enrolled with the same issuer on both sides is asked once.
+    function _askIssuersOf(address party, address _from, address _to, uint256 _amount)
+        private
+        returns (bool)
+    {
+        if (party == address(0) || address(networkRegistry) == address(0)) return true;
+        address[] memory issuers = networkRegistry.issuersOf(party);
+        for (uint256 i = 0; i < issuers.length; i++) {
+            if (party == _to && networkRegistry.isEnrolled(_from, issuers[i])) continue;
+            if (!ICreditIssuer(issuers[i]).validateCreditTransaction(_from, _to, _amount)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// @notice the sum of every issuer's contribution to a member's ceiling.
+    function _totalCreditLimit(address member) internal view returns (uint256 total) {
+        address[] memory issuers = networkRegistry.issuersOf(member);
+        for (uint256 i = 0; i < issuers.length; i++) {
+            total += issuerCreditLimit[issuers[i]][member];
+        }
+    }
+
+    /// @notice writes the member's ceiling as the sum of its parts.
+    /// @dev Never a separately maintained total: it is recomputed from the allocations every time
+    /// one of them moves, so it cannot drift from what the issuers actually granted.
+    function _syncCreditLimit(address member) internal {
+        setCreditLimit(member, _totalCreditLimit(member));
+    }
+
+    /// @notice the sum of every issuer's contribution to a member's ceiling.
+    /// @param member address of the member.
+    /// @return the member's total ceiling.
+    function totalCreditLimitOf(address member) external view returns (uint256) {
+        return _totalCreditLimit(member);
     }
 
     /* ========== MODIFIERS ========== */
@@ -185,7 +279,10 @@ contract StableCredit is MutualCredit, IStableCredit {
     }
 
     modifier onlyCreditIssuer() {
-        require(_msgSender() == address(creditIssuer), "StableCredit: Unauthorized caller");
+        if (
+            address(networkRegistry) == address(0)
+                || !networkRegistry.isIssuerOf(_msgSender(), address(this))
+        ) revert StableCreditNotAnIssuer(_msgSender());
         _;
     }
 }

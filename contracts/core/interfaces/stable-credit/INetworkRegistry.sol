@@ -35,6 +35,15 @@ interface INetworkRegistry {
     /// @notice whether a member is enrolled with a given issuer.
     function isEnrolled(address member, address issuer) external view returns (bool);
 
+    /// @notice records that a member holds a position with an issuer.
+    /// @dev Callable by the issuer, by the ledger that issuer writes to, or by an operator.
+    /// Enrolment is recorded by whoever observes the relationship starting, which is usually the
+    /// ledger opening the credit line rather than a separate operator transaction.
+    function enrolMember(address member, address issuer) external;
+
+    /// @notice removes a member from an issuer.
+    function withdrawMember(address member, address issuer) external;
+
     /* ========== EVENTS ========== */
 
     event IssuerRegistered(

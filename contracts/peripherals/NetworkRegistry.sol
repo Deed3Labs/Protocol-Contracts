@@ -102,6 +102,15 @@ contract NetworkRegistry is
         return enrolledCount[issuer];
     }
 
+    /// @dev Who may record a member against an issuer: the issuer itself, the ledger it writes to,
+    /// or an operator. The ledger is included because opening a credit line is exactly where the
+    /// relationship begins, and requiring a second transaction to say so invites the two to
+    /// disagree.
+    function _mayRecordFor(address issuer) private view returns (bool) {
+        return msg.sender == issuer || msg.sender == networks[issuer].stableCredit
+            || hasRole(OPERATOR_ROLE, msg.sender);
+    }
+
     /* ========== RESTRICTED FUNCTIONS ========== */
 
     /// @notice registers an issuer against a network.
@@ -145,12 +154,10 @@ contract NetworkRegistry is
     /// without a second operator transaction, or by an operator.
     /// @param member address of the member.
     /// @param issuer address of the issuer.
-    function enrolMember(address member, address issuer) external {
+    function enrolMember(address member, address issuer) external override {
         if (member == address(0)) revert NetworkRegistryInvalidAddress();
         if (!registered[issuer]) revert NetworkRegistryUnknownIssuer(issuer);
-        if (msg.sender != issuer && !hasRole(OPERATOR_ROLE, msg.sender)) {
-            revert NetworkRegistryUnauthorized(msg.sender);
-        }
+        if (!_mayRecordFor(issuer)) revert NetworkRegistryUnauthorized(msg.sender);
         if (enrolled[member][issuer]) return;
 
         enrolled[member][issuer] = true;
@@ -162,10 +169,8 @@ contract NetworkRegistry is
     /// @notice removes a member from an issuer.
     /// @param member address of the member.
     /// @param issuer address of the issuer.
-    function withdrawMember(address member, address issuer) external {
-        if (msg.sender != issuer && !hasRole(OPERATOR_ROLE, msg.sender)) {
-            revert NetworkRegistryUnauthorized(msg.sender);
-        }
+    function withdrawMember(address member, address issuer) external override {
+        if (!_mayRecordFor(issuer)) revert NetworkRegistryUnauthorized(msg.sender);
         if (!enrolled[member][issuer]) return;
 
         enrolled[member][issuer] = false;

@@ -4,6 +4,7 @@ pragma solidity ^0.8.29;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "./IAccessManager.sol";
 import "./ICreditIssuer.sol";
+import "./INetworkRegistry.sol";
 import "./IAssurancePool.sol";
 import "./IMutualCredit.sol";
 
@@ -13,9 +14,9 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     /// @dev the access manager contract which manages network role access control
     function access() external view returns (IAccessManager);
     /// @dev the credit issuer contract which manages credit line issuance
-    function creditIssuer() external view returns (ICreditIssuer);
+    function networkRegistry() external view returns (INetworkRegistry);
     /// @notice transfer a given member's debt to the network
-    function writeOffCreditLine(address member) external;
+    function writeOffCreditLine(address member, uint256 amount) external;
     /// @notice called by the underwriting layer to assign credit lines
     /// @dev If the member address is not a current member, then the address is granted membership
     /// @param member address of line holder
@@ -45,5 +46,5 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     );
     event AccessManagerUpdated(address accessManager);
     event AssurancePoolUpdated(address assurancePool);
-    event CreditIssuerUpdated(address creditIssuer);
+    event NetworkRegistryUpdated(address networkRegistry);
 }

@@ -220,17 +220,35 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
         delete creditPeriods[member];
         // if member in default, write off credit line and revoke membership
         if (memberInDefault) {
-            // write off debt
-            stableCredit.writeOffCreditLine(member);
-            // update credit limit to 0
-            stableCredit.updateCreditLimit(member, 0);
+            // write off this issuer's share of the debt
+            stableCredit.writeOffCreditLine(member, _writeOffAmount(member));
             // revoke membership
-            stableCredit.access().revokeMember(member);
+            _onDefault(member);
             emit CreditLineDefaulted(member);
             return false;
         }
         emit CreditPeriodExpired(member);
         return true;
+    }
+
+    /// @notice how much of a member's debt belongs to this issuer.
+    /// @dev The whole balance by default, which is right while an issuer is the only one a member
+    /// has and wrong as soon as it is not. An issuer that tracks its own positions must override
+    /// this: defaulting on a term plan should not write off a revolving balance somebody is still
+    /// servicing. `writeOffCreditLine` bounds whatever is returned by what is outstanding.
+    /// @param member address of member.
+    /// @return the issuer's share of the member's debt.
+    function _writeOffAmount(address member) internal view virtual returns (uint256) {
+        return stableCredit.creditBalanceOf(member);
+    }
+
+    /// @notice what happens to a member's standing when they default with this issuer.
+    /// @dev Revoking membership outright is right for a member whose only line is this one. An
+    /// issuer sharing a member with another should narrow this to its own relationship rather
+    /// than ejecting them from the network.
+    /// @param member address of member.
+    function _onDefault(address member) internal virtual {
+        stableCredit.access().revokeMember(member);
     }
 
     /// @notice called with each stable credit transaction to validate the transaction and update

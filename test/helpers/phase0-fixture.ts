@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 
 /// Wires the StableCredit network the Phase 0 contracts assume:
 ///   AccessManager -> StableCredit -> CreditIssuer -> AssurancePool -> AssuranceOracle
@@ -27,6 +27,11 @@ export async function deployPhase0Network() {
   const CreditIssuerHarness = await ethers.getContractFactory("CreditIssuerHarness");
   const creditIssuer = await CreditIssuerHarness.deploy();
   await creditIssuer.initialize(await stableCredit.getAddress());
+
+  const NetworkRegistry = await ethers.getContractFactory("NetworkRegistry");
+  const networkRegistry = await upgrades.deployProxy(NetworkRegistry, [admin.address], {
+    kind: "uups",
+  });
 
   const AssurancePool = await ethers.getContractFactory("AssurancePool");
   const assurancePool = await AssurancePool.deploy();
@@ -59,7 +64,14 @@ export async function deployPhase0Network() {
   await access.grantOperator(await stableCredit.getAddress());
   await access.grantOperator(await creditIssuer.getAddress());
 
-  await stableCredit.setCreditIssuer(await creditIssuer.getAddress());
+  // One ledger, a set of issuers. The registry is what makes the ledger accept more than one.
+  await stableCredit.setNetworkRegistry(await networkRegistry.getAddress());
+  await networkRegistry.registerIssuer(
+    await creditIssuer.getAddress(),
+    await stableCredit.getAddress(),
+    await assurancePool.getAddress(),
+    await assuranceOracle.getAddress()
+  );
   await stableCredit.setAssurancePool(await assurancePool.getAddress());
   await assurancePool.setAssuranceOracle(await assuranceOracle.getAddress());
   await assurancePool.setTokenAddresses(
@@ -72,7 +84,7 @@ export async function deployPhase0Network() {
     admin, operator, member, counterparty, instrument, outsider,
     usdc, usdt, dai, weth,
     access, stableCredit, creditIssuer, assurancePool, assuranceOracle, uniswapFactory,
-    tokenRegistry,
+    tokenRegistry, networkRegistry,
   };
 }
 
