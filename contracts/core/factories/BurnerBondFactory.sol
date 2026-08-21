@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/proxy/Clones.sol";
+import "../../peripherals/BondTraits.sol";
 import "../interfaces/burner-bond/IBurnerBondFactory.sol";
 import "../interfaces/burner-bond/IBurnerBondDeposit.sol";
 import "../interfaces/stable-credit/IAssurancePool.sol";
@@ -41,6 +42,11 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     address public immutable bondImplementation;
     /// @notice The deposit contract every network clones from.
     address public immutable depositImplementation;
+    /// @notice Where every collection's metadata lives.
+    /// @dev One deployment shared by all of them. The traits are display, they are keyed by the
+    /// collection that wrote them, and a copy per collection would be a copy of the same twelve
+    /// answers.
+    address public immutable bondTraits;
     
     /// @notice Mapping from token address to collection information
     mapping(address => CollectionInfo) public collections;
@@ -83,6 +89,7 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
         // The implementations. Deployed once here, cloned from for every collection after.
         bondImplementation = address(new BurnerBond());
         depositImplementation = address(new BurnerBondDeposit());
+        bondTraits = address(new BondTraits());
 
         // The single unified deposit contract, as a clone of the implementation above.
         BurnerBondDeposit deployedDeposit =
@@ -267,7 +274,8 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
             fullBaseURI,
             collectionName,
             collectionSymbol,
-            collectionDescription
+            collectionDescription,
+            bondTraits
         );
         
         // Register this collection with the unified deposit contract

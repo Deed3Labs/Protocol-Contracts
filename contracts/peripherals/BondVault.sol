@@ -79,6 +79,16 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
 
     event PurchaseRecorded(uint256 indexed bondId, uint256 principal, uint256 faceValue, uint64 maturity);
     event Settled(uint256 indexed bondId, address indexed to, uint256 faceValue);
+    event Rolled(
+        uint256 indexed oldBondId,
+        uint256 indexed newBondId,
+        uint256 rolledPrincipal,
+        uint256 newFaceValue,
+        uint64 newMaturity
+    );
+    event SettledEarly(
+        uint256 indexed bondId, address indexed to, uint256 presentValue, uint256 faceValue
+    );
     event DeployableWithdrawn(address indexed to, uint256 amount);
     event ReserveTermsUpdated(uint64 window, uint256 minReserveBps);
 
@@ -195,6 +205,72 @@ contract BondVault is AccessControlUpgradeable, UUPSUpgradeable {
         reserveToken.safeTransfer(to, faceValue);
         emit Settled(bondId, to, faceValue);
         return faceValue;
+    }
+
+    /// @notice pays a bond before its maturity, at what it is worth today.
+    /// @dev The obligation goes at face value -- the vault stops owing the whole of it -- while
+    /// only the present value is paid out. What is left is the interest the term did not run for,
+    /// and it stays here rather than being handed to somebody who did not wait for it.
+    ///
+    /// This is what makes taking a bond as collateral realisable on a default without waiting out
+    /// the term, and what the haircut on that collateral is paying for.
+    /// @param bondId the bond
+    /// @param to who is paid
+    /// @param presentValue what the bond is worth today
+    function settleEarly(uint256 bondId, address to, uint256 presentValue)
+        external
+        onlyRole(BOND_ROLE)
+    {
+        Obligation storage obligation = obligations[bondId];
+        if (obligation.faceValue == 0) revert BondVaultUnknownBond(bondId);
+        if (obligation.settled) revert BondVaultAlreadySettled(bondId);
+
+        uint256 balance = held();
+        if (balance < presentValue) revert BondVaultInsufficientFunds(balance, presentValue);
+
+        uint256 faceValue = obligation.faceValue;
+        obligation.settled = true;
+        totalFaceOutstanding -= faceValue;
+        totalFaceSettled += faceValue;
+        _removeOutstanding(bondId);
+
+        reserveToken.safeTransfer(to, presentValue);
+        emit SettledEarly(bondId, to, presentValue, faceValue);
+    }
+
+    /// @notice rolls a matured obligation into a new one without paying it out.
+    /// @dev A pledged bond that simply matures leaves the member's limit contracting hard on the
+    /// day it does, and if they have already spent the proceeds there is nothing to replace it
+    /// with. Rolling keeps the position instead.
+    ///
+    /// No cash moves. The vault already holds what the matured bond was worth, and that is what
+    /// buys the replacement -- which is why the new face value is larger: the same money, bought
+    /// at a discount again.
+    function roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity)
+        external
+        onlyRole(BOND_ROLE)
+    {
+        Obligation storage matured = obligations[oldBondId];
+        if (matured.faceValue == 0) revert BondVaultUnknownBond(oldBondId);
+        if (matured.settled) revert BondVaultAlreadySettled(oldBondId);
+        if (obligations[newBondId].faceValue != 0) revert BondVaultBondExists(newBondId);
+
+        uint256 rolled = matured.faceValue;
+        matured.settled = true;
+        totalFaceOutstanding -= rolled;
+        _removeOutstanding(oldBondId);
+
+        obligations[newBondId] = Obligation({
+            principal: rolled,
+            faceValue: newFaceValue,
+            maturity: newMaturity,
+            settled: false
+        });
+        outstanding.push(newBondId);
+        outstandingIndex[newBondId] = outstanding.length;
+        totalFaceOutstanding += newFaceValue;
+
+        emit Rolled(oldBondId, newBondId, rolled, newFaceValue, newMaturity);
     }
 
     /* ========== TREASURY ========== */

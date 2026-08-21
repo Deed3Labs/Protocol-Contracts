@@ -17,8 +17,24 @@ import "../core/interfaces/stable-credit/IAssurancePool.sol";
 /// @title BurnerBond
 /// @notice ERC-1155 based bond system that allows users to mint bonds at a discount
 /// @dev Bonds are backed by USDC deposited into the AssurancePool excess reserve
+interface IBondTraitStore {
+    function setTrait(uint256 bondId, bytes32 key, bytes calldata value) external;
+    function setTraits(uint256 bondId, bytes32[] calldata keys, bytes[] calldata values) external;
+    function setCustomName(bytes32 key, string calldata name) external;
+    function removeTrait(uint256 bondId, bytes32 key) external;
+    function traitOf(address collection, uint256 bondId, bytes32 key)
+        external view returns (bytes memory);
+    function traitsOf(address collection, uint256 bondId, bytes32[] calldata keys)
+        external view returns (bytes[] memory);
+    function keysOf(address collection, uint256 bondId) external view returns (bytes32[] memory);
+    function nameOf(address collection, bytes32 key) external view returns (string memory);
+}
+
 interface IBondVaultSettlement {
     function settle(uint256 bondId, address to) external returns (uint256);
+    function settleEarly(uint256 bondId, address to, uint256 presentValue) external;
+    function roll(uint256 oldBondId, uint256 newBondId, uint256 newFaceValue, uint64 newMaturity)
+        external;
 }
 
 contract BurnerBond is
@@ -49,6 +65,24 @@ contract BurnerBond is
     /// @dev The vault, never the AssurancePool. A bondholder is a creditor and must not be
     /// exposed to how the credit book is performing.
     IBondVaultSettlement public bondVault;
+
+    /// @notice May take a pledged bond, and redeem one before it matures.
+    /// @dev Both restricted to the co-op or a contract acting for it. Early redemption exists so
+    /// a defaulted position can be covered without waiting out the term, not so a holder can
+    /// change their mind -- a bond anyone could exit early is not a term instrument.
+    address public liquidator;
+
+    /// @notice Bonds their holder has asked to be paid out rather than rolled at maturity.
+    mapping(uint256 => bool) public autoRollOptedOut;
+
+    /// @notice How long a rolled bond runs for.
+    uint256 public rollTerm;
+
+    event AutoRollOptOutSet(uint256 indexed bondId, bool optedOut);
+    event BondRolled(uint256 indexed oldBondId, uint256 indexed newBondId, uint256 rolledValue);
+    event BondSeized(uint256 indexed bondId, address indexed from, address indexed to);
+    event RedeemedEarly(uint256 indexed bondId, address indexed holder, uint256 presentValue);
+    event LiquidatorUpdated(address indexed liquidator);
     
     /// @notice Underlying token contract (can be USDC, WETH, etc.)
     IERC20 public underlyingToken;
@@ -104,19 +138,21 @@ contract BurnerBond is
      * @dev Mapping from bond ID to trait key to trait value
      * @notice Implements ERC-7496 trait storage for bonds
      */
-    mapping(uint256 => mapping(bytes32 => bytes)) private _bondTraits;
+    /// @notice Where a bond's metadata lives.
+    /// @dev Not here. All of it is display and none of it decides whether a bond can be issued or
+    /// redeemed, and this contract had reached the size a contract may be -- so it sheds what it
+    /// does not need to be correct before it sheds anything it does.
+    IBondTraitStore public traitStore;
     
     /**
      * @dev Mapping from trait key to trait name
      * @notice Used for ERC-7496 trait metadata
      */
-    mapping(bytes32 => string) private _traitNames;
     
     /**
      * @dev Array of all possible trait keys
      * @notice Used for ERC-7496 trait enumeration
      */
-    bytes32[] private _allTraitKeys;
 
     /* ========== CONSTRUCTOR ========== */
     
@@ -146,7 +182,8 @@ contract BurnerBond is
         string memory _uri,
         string memory _collectionName,
         string memory _collectionSymbol,
-        string memory _collectionDescription
+        string memory _collectionDescription,
+        address _traitStore
     ) external initializer {
         __ERC1155_init(_uri);
         __Ownable_init();
@@ -164,9 +201,9 @@ contract BurnerBond is
         collectionName = _collectionName;
         collectionSymbol = _collectionSymbol;
         collectionDescription = _collectionDescription;
+        traitStore = IBondTraitStore(_traitStore);
+        rollTerm = 365 days;
         
-        // Initialize trait keys and names
-        _initializeTraits();
         
         // Start bond ID counter at 1
         _bondIdCounter.increment();
@@ -349,143 +386,86 @@ contract BurnerBond is
 
     /* ========== TRAIT FUNCTIONS (ERC-7496) ========== */
     
-    /// @notice Get a trait value for a bond
-    /// @param bondId ID of the bond
-    /// @param traitKey Key of the trait
-    /// @return Value of the trait
-    function getBondTraitValue(uint256 bondId, bytes32 traitKey) external view override returns (bytes memory) {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        return _bondTraits[bondId][traitKey];
+    /// @inheritdoc IBurnerBond
+    function getBondTraitValue(uint256 bondId, bytes32 traitKey)
+        external view override returns (bytes memory)
+    {
+        return traitStore.traitOf(address(this), bondId, traitKey);
     }
-    
-    /// @notice Get multiple trait values for a bond
-    /// @param bondId ID of the bond
-    /// @param traitKeys Array of trait keys
-    /// @return Array of trait values
-    function getBondTraitValues(uint256 bondId, bytes32[] calldata traitKeys) external view override returns (bytes[] memory) {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        bytes[] memory values = new bytes[](traitKeys.length);
-        for (uint256 i = 0; i < traitKeys.length; i++) {
-            values[i] = _bondTraits[bondId][traitKeys[i]];
-        }
-        return values;
+
+    /// @inheritdoc IBurnerBond
+    function getBondTraitValues(uint256 bondId, bytes32[] calldata traitKeys)
+        external view override returns (bytes[] memory)
+    {
+        return traitStore.traitsOf(address(this), bondId, traitKeys);
     }
-    
-    /// @notice Get all trait keys for a bond that have values
-    /// @param bondId ID of the bond
-    /// @return Array of trait keys that have values
+
+    /// @inheritdoc IBurnerBond
     function getBondTraitKeys(uint256 bondId) external view override returns (bytes32[] memory) {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        
-        bytes32[] memory traitKeys = new bytes32[](_allTraitKeys.length);
-        uint256 count;
-        
-        for (uint i = 0; i < _allTraitKeys.length; i++) {
-            if (_bondTraits[bondId][_allTraitKeys[i]].length > 0) {
-                traitKeys[count++] = _allTraitKeys[i];
-            }
-        }
-        
-        // Resize array to actual count
-        assembly {
-            mstore(traitKeys, count)
-        }
-        
-        return traitKeys;
+        return traitStore.keysOf(address(this), bondId);
     }
-    
-    /// @notice Get the name of a trait
-    /// @param traitKey Key of the trait
-    /// @return Name of the trait
+
+    /// @inheritdoc IBurnerBond
     function getBondTraitName(bytes32 traitKey) external view override returns (string memory) {
-        string memory standard = _standardTraitName(traitKey);
-        if (bytes(standard).length > 0) return standard;
-        return _traitNames[traitKey];
+        return traitStore.nameOf(address(this), traitKey);
     }
-    
-    /// @notice Set a trait value for a bond (admin only)
-    /// @param bondId ID of the bond
-    /// @param traitKey Key of the trait
-    /// @param traitValue Value of the trait
-    function setBondTrait(uint256 bondId, bytes32 traitKey, bytes memory traitValue) external override onlyOwner {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        _setBondTraitValue(bondId, traitKey, traitValue);
+
+    /// @inheritdoc IBurnerBond
+    function setBondTrait(uint256 bondId, bytes32 traitKey, bytes memory traitValue)
+        external override onlyOwner
+    {
+        traitStore.setTrait(bondId, traitKey, traitValue);
         emit BondTraitUpdated(bondId, traitKey, traitValue);
     }
-    
-    /// @notice Set a trait value with flexible input types
-    /// @param bondId ID of the bond
-    /// @param traitKey Key of the trait (either bytes32 or string)
-    /// @param traitValue Value of the trait (supports various types)
-    /// @param valueType Type of the value (0=bytes, 1=string, 2=uint256, 3=bool)
-    function setBondTraitFlexible(uint256 bondId, bytes memory traitKey, bytes memory traitValue, uint8 valueType) external override onlyOwner {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        
-        // Convert string trait name to bytes32 key if provided as string
+
+    /// @inheritdoc IBurnerBond
+    /// @dev The key may arrive as a hash or as the string behind one. A string is hashed and its
+    /// name recorded, so a trait added later reads back with the name it was given.
+    function setBondTraitFlexible(
+        uint256 bondId,
+        bytes memory traitKey,
+        bytes memory traitValue,
+        uint8 valueType
+    ) external override onlyOwner {
         bytes32 key;
-        bool isStringKey = false;
         if (traitKey.length == 32) {
-            assembly {
-                key := mload(add(traitKey, 32))
-            }
+            key = abi.decode(traitKey, (bytes32));
         } else {
-            // Assume it's a string and hash it
             key = keccak256(traitKey);
-            isStringKey = true;
+            traitStore.setCustomName(key, string(traitKey));
         }
 
-        // Handle different value types
         bytes memory value;
-        if (valueType == 0) {
-            // Direct bytes value
-            value = traitValue;
-        } else if (valueType == 1) {
-            // String value
-            value = abi.encode(string(traitValue));
-        } else if (valueType == 2) {
-            // Numeric value
-            value = abi.encode(uint256(bytes32(traitValue)));
-        } else if (valueType == 3) {
-            // Boolean value
-            value = abi.encode(uint256(bytes32(traitValue)) > 0);
-        } else {
-            revert("Invalid value type");
-        }
-        
-        _setBondTraitValue(bondId, key, value);
-        
-        // If trait was provided as string, set the trait name automatically
-        if (isStringKey) {
-            _traitNames[key] = string(traitKey);
-        }
-        
+        if (valueType == 1) value = abi.encode(string(traitValue));
+        else if (valueType == 2) value = abi.encode(uint256(bytes32(traitValue)));
+        else if (valueType == 3) value = abi.encode(uint256(bytes32(traitValue)) > 0);
+        else value = traitValue;
+
+        traitStore.setTrait(bondId, key, value);
         emit BondTraitUpdated(bondId, key, value);
     }
-    
-    /// @notice Remove a trait from a bond
-    /// @param bondId ID of the bond
-    /// @param traitName Name of the trait to remove
+
+    /// @inheritdoc IBurnerBond
     function removeBondTrait(uint256 bondId, string memory traitName) external override onlyOwner {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        bytes32 traitKey = keccak256(bytes(traitName));
-        require(_bondTraits[bondId][traitKey].length > 0, "Trait does not exist");
-        
-        delete _bondTraits[bondId][traitKey];
-        emit BondTraitUpdated(bondId, traitKey, "");
+        traitStore.removeTrait(bondId, keccak256(bytes(traitName)));
     }
-    
-    /// @notice Get the metadata URI for traits
-    /// @return Base64-encoded JSON schema indicating dynamic trait support
+
+    /// @inheritdoc IBurnerBond
     function getBondTraitMetadataURI() external pure override returns (string memory) {
-        // Simple schema indicating dynamic trait support
         return "data:application/json;base64,eyJ0cmFpdHMiOiB7ImR5bmFtaWMiOiB0cnVlfX0=";
     }
-    
-    /// @notice Get bond type based on maturity date
+
+    /// @notice How long a bond runs for, in words.
+    /// @dev Kept as a view rather than a stored trait. It is derivable from the maturity date the
+    /// bond already carries, and storing a description of a number next to the number is how a
+    /// contract ends up too large to deploy.
     /// @param maturityDate Maturity date of the bond
     /// @return Bond type string (short-term, mid-term, or long-term)
     function getBondType(uint256 maturityDate) external view returns (string memory) {
-        return _calculateBondType(maturityDate);
+        uint256 term = maturityDate > block.timestamp ? maturityDate - block.timestamp : 0;
+        if (term <= 180 days) return "short-term";
+        if (term <= 540 days) return "mid-term";
+        return "long-term";
     }
     
     /// @notice Get collection name
@@ -585,38 +565,41 @@ contract BurnerBond is
         // Calculate purchase price
         uint256 purchasePrice = calculatePurchasePrice(faceValue, maturityDate);
         
-        // Generate unique bond ID
+        bondId = _issue(faceValue, maturityDate, discountPercentage, purchasePrice, creator);
+        totalUSDCDeposited += purchasePrice;
+        emit BondMinted(bondId, creator, faceValue, maturityDate, discountPercentage, purchasePrice);
+        return bondId;
+    }
+
+    /// @notice Creates a bond and hands it to somebody.
+    /// @dev One path for a purchase and for a roll. They were the same twenty lines twice over,
+    /// and duplicated logic stays duplicated only until somebody edits one of them.
+    function _issue(
+        uint256 faceValue,
+        uint256 maturityDate,
+        uint256 discountPercentage,
+        uint256 purchasePrice,
+        address holder
+    ) internal returns (uint256 bondId) {
         bondId = _bondIdCounter.current();
         _bondIdCounter.increment();
-        
-        // Store bond information
+
         bonds[bondId] = BondInfo({
             faceValue: faceValue,
             maturityDate: maturityDate,
             discountPercentage: discountPercentage,
             purchasePrice: purchasePrice,
             isRedeemed: false,
-            creator: creator
+            creator: holder
         });
-        
-        // Update mappings
-        bondsCreatedBy[creator]++;
-        bondIdsByCreator[creator].push(bondId);
-        bondCreator[bondId] = creator;
-        
-        // Update statistics
+
+        bondsCreatedBy[holder]++;
+        bondIdsByCreator[holder].push(bondId);
+        bondCreator[bondId] = holder;
         totalBondsMinted++;
-        totalUSDCDeposited += purchasePrice;
-        
-        // Mint ERC-1155 token to creator
-        _mint(creator, bondId, 1, "");
-        
-        // Set initial traits for the bond
-        _setInitialBondTraits(bondId, faceValue, maturityDate, discountPercentage, creator);
-        
-        emit BondMinted(bondId, creator, faceValue, maturityDate, discountPercentage, purchasePrice);
-        
-        return bondId;
+
+        _mint(holder, bondId, 1, "");
+        _setInitialBondTraits(bondId, faceValue, maturityDate, discountPercentage, holder);
     }
     
     /// @notice Redeem a mature bond for its face value
@@ -686,6 +669,128 @@ contract BurnerBond is
         factory.setMinDiscount(_minDiscount);
     }
     
+    /* ========== COLLATERAL ========== */
+
+    /// @notice what a bond is worth today, rather than at maturity.
+    /// @dev A zero-coupon bond accretes from what was paid for it toward what it will pay,
+    /// straight-line across its term. Half way through, half the discount has been earned.
+    ///
+    /// This is the number a bond is worth as collateral, and the number the co-op gets if it
+    /// takes one early. Paying face for a bond that has not matured would hand over interest
+    /// nobody has waited for.
+    /// @param bondId the bond
+    /// @return the bond's value now
+    function presentValueOf(uint256 bondId) public view returns (uint256) {
+        BondInfo storage bond = bonds[bondId];
+        if (bond.creator == address(0) || bond.isRedeemed) return 0;
+        if (block.timestamp >= bond.maturityDate) return bond.faceValue;
+
+        uint256 issuedAt = bond.maturityDate > rollTerm ? bond.maturityDate - rollTerm : 0;
+        // Fall back to face if the term cannot be reconstructed, which over-values rather than
+        // under-values and so cannot cheat the holder.
+        if (block.timestamp <= issuedAt) return bond.purchasePrice;
+
+        uint256 elapsed = block.timestamp - issuedAt;
+        uint256 term = bond.maturityDate - issuedAt;
+        uint256 earned = ((bond.faceValue - bond.purchasePrice) * elapsed) / term;
+        return bond.purchasePrice + earned;
+    }
+
+    /// @notice takes a pledged bond and hands it to the co-op.
+    /// @dev A bond is one token with an id, not a balance, so seizing it is a transfer of that
+    /// id rather than an amount. The caller decides whether a default has happened; this only
+    /// enforces who may ask.
+    /// @param bondId the bond
+    /// @param from the member it is taken from
+    /// @param to where it goes, which should be the co-op treasury
+    function seizeBond(uint256 bondId, address from, address to) external {
+        require(msg.sender == liquidator, "Only liquidator can seize");
+        require(balanceOf(from, bondId) > 0, "Not bond holder");
+        _safeTransferFrom(from, to, bondId, 1, "");
+        emit BondSeized(bondId, from, to);
+    }
+
+    /// @notice pays out a bond before it matures, at what it is worth today.
+    /// @dev Only the co-op, and only through the liquidator. A bond taken from a defaulted member
+    /// is collateral somebody is waiting on, and waiting out the term would put the recovery
+    /// months away -- the whole reason asset-backed collateral is haircut is that realising it is
+    /// not free. Paying present value rather than face is what makes it not free: the vault keeps
+    /// the interest the term did not run for.
+    /// @param bondId the bond
+    /// @return presentValue what was paid
+    function redeemEarly(uint256 bondId) external nonReentrant returns (uint256 presentValue) {
+        require(msg.sender == liquidator, "Only liquidator can redeem early");
+        require(bonds[bondId].creator != address(0), "Bond does not exist");
+        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
+        require(!bonds[bondId].isRedeemed, "Bond already redeemed");
+
+        presentValue = presentValueOf(bondId);
+        bonds[bondId].isRedeemed = true;
+        totalUSDCRedeemed += presentValue;
+        _burn(msg.sender, bondId, 1);
+
+        bondVault.settleEarly(bondId, msg.sender, presentValue);
+        emit RedeemedEarly(bondId, msg.sender, presentValue);
+    }
+
+    /// @notice whether a bond will roll when it matures.
+    function willAutoRoll(uint256 bondId) public view returns (bool) {
+        return !autoRollOptedOut[bondId] && !bonds[bondId].isRedeemed;
+    }
+
+    /// @notice asks for the cash at maturity instead of a replacement bond.
+    /// @dev The holder's call, not the co-op's. Rolling is the default because letting a pledged
+    /// bond lapse quietly contracts somebody's credit line, but a holder who wants their money
+    /// should not have to argue for it.
+    function setAutoRollOptOut(uint256 bondId, bool optOut) external {
+        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
+        autoRollOptedOut[bondId] = optOut;
+        emit AutoRollOptOutSet(bondId, optOut);
+    }
+
+    /// @notice replaces a matured bond with a new one of the same value.
+    /// @dev The matured value buys the replacement, so the new face value is larger: the same
+    /// money bought at a discount again. No cash leaves the vault and the collateral behind the
+    /// position never lapses, which is the point.
+    ///
+    /// The co-op cannot roll a bond it has taken. A seized bond is collateral somebody is waiting
+    /// on, and rolling it would put that recovery another term away -- so a bond held by the
+    /// liquidator is redeemed early instead, which is what that path is for.
+    /// @param bondId the matured bond
+    /// @return newBondId the replacement
+    function rollBond(uint256 bondId) external nonReentrant returns (uint256 newBondId) {
+        require(msg.sender != liquidator, "Seized bonds are redeemed, not rolled");
+        require(bonds[bondId].creator != address(0), "Bond does not exist");
+        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
+        require(isBondMature(bondId), "Bond not yet mature");
+        require(willAutoRoll(bondId), "Bond opted out of rolling");
+
+        uint256 rolledValue = bonds[bondId].faceValue;
+        uint256 newMaturity = block.timestamp + rollTerm;
+        uint256 discount = calculateDiscount(newMaturity);
+        uint256 newFaceValue = (rolledValue * 10000) / (10000 - discount);
+
+        bonds[bondId].isRedeemed = true;
+        _burn(msg.sender, bondId, 1);
+
+        newBondId = _issue(newFaceValue, newMaturity, discount, rolledValue, msg.sender);
+        bondVault.roll(bondId, newBondId, newFaceValue, uint64(newMaturity));
+        emit BondRolled(bondId, newBondId, rolledValue);
+    }
+
+    /// @notice sets how long a rolled bond runs for.
+    function setRollTerm(uint256 _rollTerm) external onlyOwner {
+        require(_rollTerm >= factory.getMinMaturity(), "Roll term too short");
+        require(_rollTerm <= factory.getMaxMaturity(), "Roll term too long");
+        rollTerm = _rollTerm;
+    }
+
+    /// @notice names the contract that may seize and redeem early.
+    function setLiquidator(address _liquidator) external onlyOwner {
+        liquidator = _liquidator;
+        emit LiquidatorUpdated(_liquidator);
+    }
+
     /// @notice sets the vault redemptions are paid from.
     /// @dev Without this a collection can be created but never redeem, because the vault it pays
     /// out of would be the zero address. Ownership of a new collection passes to the factory
@@ -790,51 +895,8 @@ contract BurnerBond is
     }
     
     /// @notice Initialize trait keys and names
-    function _initializeTraits() private {
-        // Only the keys. The names that go with them are the same for every collection ever
-        // created, so they live in code rather than being written into each clone's storage --
-        // twelve string writes per collection, for twelve answers that were never going to differ.
-        _allTraitKeys = [
-            keccak256("faceValue"),
-            keccak256("maturityDate"),
-            keccak256("discountPercentage"),
-            keccak256("purchasePrice"),
-            keccak256("creator"),
-            keccak256("currentHolder"),
-            keccak256("isRedeemed"),
-            keccak256("terms"),
-            keccak256("bondType"),
-            keccak256("issuer"),
-            keccak256("createdAt"),
-            keccak256("redeemedAt")
-        ];
-    }
-
-    /// @notice the display name for one of the standard traits.
-    /// @dev Pure, because the answer does not depend on which collection is asked. Custom traits
-    /// registered later still carry their name in storage.
-    function _standardTraitName(bytes32 traitKey) private pure returns (string memory) {
-        if (traitKey == keccak256("faceValue")) return "Face Value";
-        if (traitKey == keccak256("maturityDate")) return "Maturity Date";
-        if (traitKey == keccak256("discountPercentage")) return "Discount Percentage";
-        if (traitKey == keccak256("purchasePrice")) return "Purchase Price";
-        if (traitKey == keccak256("creator")) return "Creator";
-        if (traitKey == keccak256("currentHolder")) return "Current Holder";
-        if (traitKey == keccak256("isRedeemed")) return "Is Redeemed";
-        if (traitKey == keccak256("terms")) return "Terms";
-        if (traitKey == keccak256("bondType")) return "Bond Type";
-        if (traitKey == keccak256("issuer")) return "Issuer";
-        if (traitKey == keccak256("createdAt")) return "Created At";
-        if (traitKey == keccak256("redeemedAt")) return "Redeemed At";
-        return "";
-    }
-
-    /// @notice Set initial traits for a newly minted bond
-    /// @param bondId ID of the bond
-    /// @param faceValue Face value of the bond
-    /// @param maturityDate Maturity date of the bond
-    /// @param discountPercentage Discount percentage
-    /// @param creator Address that created the bond
+    /// @notice Records what a bond is, for anything that wants to show it to somebody.
+    /// @dev Written in one call rather than a dozen, and written somewhere else -- see traitStore.
     function _setInitialBondTraits(
         uint256 bondId,
         uint256 faceValue,
@@ -842,61 +904,34 @@ contract BurnerBond is
         uint256 discountPercentage,
         address creator
     ) internal {
-        // Set core bond traits
-        _setBondTraitValue(bondId, keccak256("faceValue"), abi.encode(faceValue));
-        _setBondTraitValue(bondId, keccak256("maturityDate"), abi.encode(maturityDate));
-        _setBondTraitValue(bondId, keccak256("discountPercentage"), abi.encode(discountPercentage));
-        _setBondTraitValue(bondId, keccak256("purchasePrice"), abi.encode(calculatePurchasePrice(faceValue, maturityDate)));
-        _setBondTraitValue(bondId, keccak256("creator"), abi.encode(creator));
-        _setBondTraitValue(bondId, keccak256("currentHolder"), abi.encode(creator));
-        _setBondTraitValue(bondId, keccak256("isRedeemed"), abi.encode(false));
-        // Calculate bond type based on maturity period
-        string memory bondType = _calculateBondType(maturityDate);
-        _setBondTraitValue(bondId, keccak256("bondType"), abi.encode(bondType));
-        _setBondTraitValue(bondId, keccak256("issuer"), abi.encode(address(this)));
-        _setBondTraitValue(bondId, keccak256("createdAt"), abi.encode(block.timestamp));
-        
-        // No default terms trait. It stored the same sentence against every bond ever minted,
-        // which is a constant pretending to be data -- and the owner can set real terms per bond
-        // when there are any worth recording.
+        bytes32[] memory keys = new bytes32[](8);
+        bytes[] memory vals = new bytes[](8);
+        keys[0] = keccak256("faceValue");
+        vals[0] = abi.encode(faceValue);
+        keys[1] = keccak256("maturityDate");
+        vals[1] = abi.encode(maturityDate);
+        keys[2] = keccak256("discountPercentage");
+        vals[2] = abi.encode(discountPercentage);
+        keys[3] = keccak256("purchasePrice");
+        vals[3] = abi.encode(calculatePurchasePrice(faceValue, maturityDate));
+        keys[4] = keccak256("creator");
+        vals[4] = abi.encode(creator);
+        keys[5] = keccak256("currentHolder");
+        vals[5] = abi.encode(creator);
+        keys[6] = keccak256("isRedeemed");
+        vals[6] = abi.encode(false);
+        keys[7] = keccak256("createdAt");
+        vals[7] = abi.encode(block.timestamp);
+        traitStore.setTraits(bondId, keys, vals);
     }
-    
-    /// @notice Calculate bond type based on maturity period
-    /// @param maturityDate Maturity date of the bond
-    /// @return Bond type string (short-term, mid-term, or long-term)
-    function _calculateBondType(uint256 maturityDate) internal view returns (string memory) {
-        uint256 currentTime = block.timestamp;
-        uint256 timeToMaturity = maturityDate - currentTime;
-        
-        // Define time periods in seconds
-        uint256 oneYear = 365 * 24 * 60 * 60;        // 1 year
-        uint256 fifteenYears = 15 * 365 * 24 * 60 * 60; // 15 years
-        
-        if (timeToMaturity < oneYear) {
-            return "short-term";
-        } else if (timeToMaturity < fifteenYears) {
-            return "mid-term";
-        } else {
-            return "long-term";
-        }
+
+    /// @notice Records one trait against a bond.
+    function _setBondTraitValue(uint256 bondId, bytes32 traitKey, bytes memory traitValue)
+        internal
+    {
+        traitStore.setTrait(bondId, traitKey, traitValue);
     }
-    
-    /// @notice Set a trait value for a bond
-    /// @param bondId ID of the bond
-    /// @param traitKey Key of the trait
-    /// @param traitValue Value of the trait
-    function _setBondTraitValue(uint256 bondId, bytes32 traitKey, bytes memory traitValue) internal {
-        // Add trait key if it doesn't exist (optimized check)
-        for (uint i = 0; i < _allTraitKeys.length; i++) {
-            if (_allTraitKeys[i] == traitKey) {
-                _bondTraits[bondId][traitKey] = traitValue;
-                return;
-            }
-        }
-        _allTraitKeys.push(traitKey);
-        _bondTraits[bondId][traitKey] = traitValue;
-    }
-    
+
     /// @notice Calculate power function for exponential curves
     /// @param base Base number (with 18 decimals)
     /// @param exponent Exponent (with 18 decimals)

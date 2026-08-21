@@ -322,7 +322,8 @@ describe("BurnerBond", function () {
       );
       await expect(
         implementation.initialize(
-          buyer.address, buyer.address, buyer.address, buyer.address, "", "", "", ""
+          buyer.address, buyer.address, buyer.address, buyer.address, "", "", "", "",
+          buyer.address
         )
       ).to.be.revertedWith("Initializable: contract is already initialized");
     });
@@ -363,5 +364,232 @@ describe("BurnerBond", function () {
       await expect(bond.connect(buyer).batchRedeemBonds([]))
         .to.be.revertedWith("No bonds to redeem");
     });
+  });
+});
+
+describe("BurnerBond as collateral", function () {
+  // A bond pledged against a credit line has to be reachable when the member defaults. It is one
+  // token with an id rather than a balance, and it pays at maturity rather than on demand -- so
+  // the co-op takes the bond and is paid what it is worth today, not what it will be worth.
+  let ctx: any, factory: any, deposit: any, bond: any, vault: any;
+  let buyer: any, coop: any, liquidator: any, other: any;
+
+  const ONE = 10n ** 6n;
+  const M = 30 * 24 * 60 * 60;
+
+  beforeEach(async function () {
+    const { deployPhase0Network } = await import("../helpers/phase0-fixture");
+    ctx = await deployPhase0Network();
+    const signers = await ethers.getSigners();
+    [buyer, coop, liquidator, other] = [signers[8], signers[9], signers[10], signers[11]];
+
+    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
+    factory = await BurnerBondFactory.deploy(
+      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress(), "ipfs://b"
+    );
+    deposit = await ethers.getContractAt(
+      "BurnerBondDeposit", await factory.getUnifiedDepositContract()
+    );
+    await factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://b");
+    const info = await factory.getCollectionInfo(await ctx.usdc.getAddress());
+    bond = await ethers.getContractAt("BurnerBond", info.collectionAddress);
+
+    const BondVault = await ethers.getContractFactory("BondVault");
+    vault = await upgrades.deployProxy(
+      BondVault, [ctx.admin.address, await ctx.usdc.getAddress(), 3 * M], { kind: "uups" }
+    );
+    await vault.grantRole(await vault.BOND_ROLE(), await deposit.getAddress());
+    await vault.grantRole(await vault.BOND_ROLE(), await bond.getAddress());
+    await deposit.setBondVault(await vault.getAddress());
+    await bond.setBondVault(await vault.getAddress());
+    await bond.setLiquidator(liquidator.address);
+
+    await ctx.usdc.mint(buyer.address, 100_000n * ONE);
+    await ctx.usdc.connect(buyer).approve(await deposit.getAddress(), 100_000n * ONE);
+
+    const maturity = BigInt((await ethers.provider.getBlock("latest"))!.timestamp) + BigInt(12 * M);
+    const discount = await bond.calculateDiscount(maturity);
+    await deposit
+      .connect(buyer)
+      .makeDeposit(await ctx.usdc.getAddress(), 1_000n * ONE, maturity, discount);
+  });
+
+  it("is worth its purchase price at the start and its face at maturity", async function () {
+    const info = await bond.getBondInfo(1);
+    const pv = await bond.presentValueOf(1);
+    expect(pv).to.be.greaterThanOrEqual(info.purchasePrice);
+    expect(pv).to.be.lessThan(1_000n * ONE);
+
+    await ethers.provider.send("evm_increaseTime", [13 * M]);
+    await ethers.provider.send("evm_mine", []);
+    expect(await bond.presentValueOf(1)).to.equal(1_000n * ONE);
+  });
+
+  it("accretes toward face as the term runs", async function () {
+    const early = await bond.presentValueOf(1);
+    await ethers.provider.send("evm_increaseTime", [6 * M]);
+    await ethers.provider.send("evm_mine", []);
+    const later = await bond.presentValueOf(1);
+
+    expect(later).to.be.greaterThan(early);
+    expect(later).to.be.lessThan(1_000n * ONE);
+  });
+
+  it("lets the co-op take a bond, and nobody else", async function () {
+    await expect(bond.connect(other).seizeBond(1, buyer.address, coop.address))
+      .to.be.revertedWith("Only liquidator can seize");
+
+    await bond.connect(liquidator).seizeBond(1, buyer.address, coop.address);
+    expect(await bond.balanceOf(coop.address, 1)).to.equal(1n);
+    expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
+  });
+
+  it("pays the co-op what the bond is worth today, not what it will be", async function () {
+    // Paying face for a bond that has not matured hands over interest nobody waited for.
+    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
+    await ethers.provider.send("evm_increaseTime", [6 * M]);
+    await ethers.provider.send("evm_mine", []);
+
+    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
+    const pv = await bond.presentValueOf(1);
+    await bond.connect(liquidator).redeemEarly(1);
+
+    expect(await ctx.usdc.balanceOf(liquidator.address)).to.equal(pv);
+    expect(pv).to.be.lessThan(1_000n * ONE);
+  });
+
+  it("keeps the unearned interest in the vault", async function () {
+    const funded = await vault.held();
+    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
+    await ethers.provider.send("evm_increaseTime", [6 * M]);
+    await ethers.provider.send("evm_mine", []);
+
+    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
+    const pv = await bond.presentValueOf(1);
+    await bond.connect(liquidator).redeemEarly(1);
+
+    // The obligation is gone in full; only the present value left the vault.
+    expect(await vault.totalFaceOutstanding()).to.equal(0n);
+    expect(await vault.held()).to.equal(funded + 1_000n * ONE - pv);
+  });
+
+  it("refuses early redemption to a holder who is not the co-op", async function () {
+    await expect(bond.connect(buyer).redeemEarly(1))
+      .to.be.revertedWith("Only liquidator can redeem early");
+  });
+
+  it("refuses to pay the same bond twice", async function () {
+    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
+    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
+    await bond.connect(liquidator).redeemEarly(1);
+    // The bond was burned when it paid out, so there is nothing left to present.
+    await expect(bond.connect(liquidator).redeemEarly(1))
+      .to.be.revertedWith("Not bond holder");
+  });
+});
+
+describe("auto-roll", function () {
+  // A pledged bond that simply matures leaves the member's limit contracting hard the day it
+  // does, and if they have already spent the proceeds there is nothing to replace it with.
+  let ctx: any, factory: any, deposit: any, bond: any, vault: any;
+  let buyer: any, liquidator: any;
+
+  const ONE = 10n ** 6n;
+  const M = 30 * 24 * 60 * 60;
+
+  beforeEach(async function () {
+    const { deployPhase0Network } = await import("../helpers/phase0-fixture");
+    ctx = await deployPhase0Network();
+    const signers = await ethers.getSigners();
+    [buyer, liquidator] = [signers[8], signers[10]];
+
+    const BurnerBondFactory = await ethers.getContractFactory("BurnerBondFactory");
+    factory = await BurnerBondFactory.deploy(
+      await ctx.assurancePool.getAddress(), await ctx.assuranceOracle.getAddress(), "ipfs://b"
+    );
+    deposit = await ethers.getContractAt(
+      "BurnerBondDeposit", await factory.getUnifiedDepositContract()
+    );
+    await factory.createCollection(await ctx.usdc.getAddress(), "USDC", "USD Coin", "ipfs://b");
+    const info = await factory.getCollectionInfo(await ctx.usdc.getAddress());
+    bond = await ethers.getContractAt("BurnerBond", info.collectionAddress);
+
+    const BondVault = await ethers.getContractFactory("BondVault");
+    vault = await upgrades.deployProxy(
+      BondVault, [ctx.admin.address, await ctx.usdc.getAddress(), 3 * M], { kind: "uups" }
+    );
+    await vault.grantRole(await vault.BOND_ROLE(), await deposit.getAddress());
+    await vault.grantRole(await vault.BOND_ROLE(), await bond.getAddress());
+    await deposit.setBondVault(await vault.getAddress());
+    await bond.setBondVault(await vault.getAddress());
+    await bond.setLiquidator(liquidator.address);
+
+    await ctx.usdc.mint(buyer.address, 100_000n * ONE);
+    await ctx.usdc.connect(buyer).approve(await deposit.getAddress(), 100_000n * ONE);
+    const maturity = BigInt((await ethers.provider.getBlock("latest"))!.timestamp) + BigInt(6 * M);
+    await deposit.connect(buyer).makeDeposit(
+      await ctx.usdc.getAddress(), 1_000n * ONE, maturity, await bond.calculateDiscount(maturity)
+    );
+  });
+
+  async function mature() {
+    await ethers.provider.send("evm_increaseTime", [7 * M]);
+    await ethers.provider.send("evm_mine", []);
+  }
+
+  it("rolls by default, so a pledged position does not lapse", async function () {
+    expect(await bond.willAutoRoll(1)).to.equal(true);
+    await mature();
+
+    await bond.connect(buyer).rollBond(1);
+    expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
+    expect(await bond.balanceOf(buyer.address, 2)).to.equal(1n);
+  });
+
+  it("buys more face value with the matured value, without moving cash", async function () {
+    const held = await vault.held();
+    await mature();
+    await bond.connect(buyer).rollBond(1);
+
+    const replacement = await bond.getBondInfo(2);
+    expect(replacement.purchasePrice).to.equal(1_000n * ONE);
+    expect(replacement.faceValue).to.be.greaterThan(1_000n * ONE);
+    // The vault keeps what it had: rolling is not a payout.
+    expect(await vault.held()).to.equal(held);
+  });
+
+  it("moves the obligation rather than clearing it", async function () {
+    await mature();
+    await bond.connect(buyer).rollBond(1);
+
+    const replacement = await bond.getBondInfo(2);
+    expect(await vault.totalFaceOutstanding()).to.equal(replacement.faceValue);
+  });
+
+  it("lets a holder ask for the cash instead", async function () {
+    await bond.connect(buyer).setAutoRollOptOut(1, true);
+    expect(await bond.willAutoRoll(1)).to.equal(false);
+    await mature();
+
+    await expect(bond.connect(buyer).rollBond(1))
+      .to.be.revertedWith("Bond opted out of rolling");
+
+    await ctx.usdc.mint(await vault.getAddress(), 1_000n * ONE);
+    await bond.connect(buyer).redeemBond(1);
+    expect(await ctx.usdc.balanceOf(buyer.address)).to.be.greaterThan(0n);
+  });
+
+  it("refuses to roll before maturity", async function () {
+    await expect(bond.connect(buyer).rollBond(1)).to.be.revertedWith("Bond not yet mature");
+  });
+
+  it("will not roll a bond the co-op has seized", async function () {
+    // A seized bond is collateral somebody is waiting on. Rolling it would put the recovery
+    // another term away, so the co-op redeems it early instead.
+    await mature();
+    await bond.connect(liquidator).seizeBond(1, buyer.address, liquidator.address);
+
+    await expect(bond.connect(liquidator).rollBond(1))
+      .to.be.revertedWith("Seized bonds are redeemed, not rolled");
   });
 });
