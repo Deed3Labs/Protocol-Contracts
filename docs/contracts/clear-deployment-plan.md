@@ -114,12 +114,34 @@ needs already has one.
 
 Each ships and is verified before the next starts.
 
-### Phase A — Wire what needs no chain work
-Home, Send, Savings, Activity, Card off their `*_IN_USE` defaults and onto the real contexts and
-server routes, except the credit-shaped fields on Home. Removes the "production bundle renders
-invented balances" merge blocker the rebuild branch is carrying.
+### Phase A — Wire what needs no chain work — **DONE**
 
-*Unlocks: Savings, Activity, Card, Send. No deployment.*
+`SavingsRoute`, `ActivityRoute`, `SendRoute` added; `HomeRoute` extended; `CardRoute` was already
+live. The standing merge blocker is cleared: no page shows a figure it has not read.
+
+| Page | Real now | Still placeholder |
+|---|---|---|
+| Home | cash, savings, equity credits, recent activity, deposit numbers | credit tiers, cycle, backing, term plans |
+| Savings | balance, equity credits | projection, milestones, assurance, vesting schedule |
+| Activity | the rows | cycle spend, categories, inside-the-co-op |
+| Send | handle, QR link, contacts, money awaiting claim | partners, kept-in-network, pay-from |
+| Card | activation, freeze, last four, variant | transactions, period total, spend limits |
+
+Two conventions worth keeping as the rest lands:
+
+- **Fall back, never blank.** A figure only overrides the placeholder once it has actually been
+  read. A zero balance mid-fetch tells a member their money is gone, which is worse than the
+  placeholder it replaces.
+- **Except where empty is the truth.** Activity rows, contacts and card transactions show empty for
+  a new member, because there the placeholder is the lie. The two rules look contradictory and are
+  the same rule: never show something false.
+
+Equity credits come from `/api/pay/:wallet/summary`, not a savings endpoint — `savings.ts` is
+all POST, and the Pay summary is where the ledger is totalled. Savings-match credits sit in the
+same ledger as rent and bill credits, so a second endpoint would be a second place to disagree.
+
+Card is honest about being half-live: its controls are real, but nothing can settle until the
+Lithic program has Financial Accounts enabled.
 
 ### Phase B — Make the core deployable
 ~~The concrete pair from §2.1~~ (done), plus deploy scripts for the credit core:
