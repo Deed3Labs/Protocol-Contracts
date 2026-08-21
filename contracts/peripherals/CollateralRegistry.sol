@@ -4,6 +4,7 @@ pragma solidity ^0.8.29;
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "../core/interfaces/stable-credit/IExposureSource.sol";
+import "../core/interfaces/stable-credit/IEncumbranceSource.sol";
 import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 import "../core/interfaces/stable-credit/INetworkRegistry.sol";
 import "../libraries/ExposureMath.sol";
@@ -24,7 +25,12 @@ import "../libraries/ExposureMath.sol";
 /// a claim on the co-op itself, and seizing it cancels an obligation rather than realizing an
 /// asset, so it is haircut against known redemption terms. An external asset has a market price.
 /// Sharing a haircut between them over-reserves one and under-reserves the other.
-contract CollateralRegistry is IExposureSource, AccessControlUpgradeable, UUPSUpgradeable {
+contract CollateralRegistry is
+    IExposureSource,
+    IEncumbranceSource,
+    AccessControlUpgradeable,
+    UUPSUpgradeable
+{
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
 
     /// @notice A kind of pledge, and the terms it is valued on.
@@ -56,6 +62,11 @@ contract CollateralRegistry is IExposureSource, AccessControlUpgradeable, UUPSUp
     /// @notice What the AssurancePool would pay across every member, as last recorded.
     uint256 public totalExposure;
 
+    /// @notice The collateral kind that is held as CLRUSD in the member's own account.
+    /// @dev The one kind whose lock the token itself can enforce, because the member holds it
+    /// directly rather than having pledged something held elsewhere.
+    bytes32 public clrusdKind;
+
     uint256[42] private __gap;
 
     error CollateralRegistryInvalidAddress();
@@ -71,6 +82,7 @@ contract CollateralRegistry is IExposureSource, AccessControlUpgradeable, UUPSUp
     event Pledged(address indexed member, bytes32 indexed kind, uint256 amount);
     event Released(address indexed member, bytes32 indexed kind, uint256 amount);
     event ExposureRefreshed(address indexed member, uint256 previous, uint256 current);
+    event ClrusdKindUpdated(bytes32 indexed kind);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -176,6 +188,28 @@ contract CollateralRegistry is IExposureSource, AccessControlUpgradeable, UUPSUp
     /// @inheritdoc IExposureSource
     function poolExposure() external view override returns (uint256) {
         return totalExposure;
+    }
+
+    /// @inheritdoc IEncumbranceSource
+    /// @dev The credit line's own rule, read from the asset's side: withdrawable CLRUSD is the
+    /// balance less what has been drawn against it. Scales with the draw rather than the pledge,
+    /// so a member who has drawn nothing is not locked up and one who repays sees the lock
+    /// recede. There is no pay-back date and no pay button; this is the enforcement.
+    function encumberedOf(address holder) external view override returns (uint256) {
+        bytes32 kind = clrusdKind;
+        if (kind == bytes32(0)) return 0;
+        CollateralType storage collateral = collateralTypes[kind];
+        if (!collateral.registered) return 0;
+        return _requiredUnits(holder, kind, collateral);
+    }
+
+    /// @notice names the collateral kind held as CLRUSD in members' own accounts.
+    function setClrusdKind(bytes32 kind) external onlyRole(OPERATOR_ROLE) {
+        if (kind != bytes32(0) && !collateralTypes[kind].registered) {
+            revert CollateralRegistryUnknownType(kind);
+        }
+        clrusdKind = kind;
+        emit ClrusdKindUpdated(kind);
     }
 
     /* ========== MUTATIVE ========== */

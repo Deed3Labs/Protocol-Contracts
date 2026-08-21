@@ -84,3 +84,12 @@ contract ExposureMathHarness {
     function INCOME() external pure returns (bytes32) { return ExposureMath.INCOME; }
     function BOOST() external pure returns (bytes32) { return ExposureMath.BOOST; }
 }
+
+/// @notice Test-only encumbrance source that always reverts.
+contract RevertingEncumbranceSource {
+    error Broken();
+
+    function encumberedOf(address) external pure returns (uint256) {
+        revert Broken();
+    }
+}
