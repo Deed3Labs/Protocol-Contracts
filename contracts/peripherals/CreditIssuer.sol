@@ -17,6 +17,11 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
     IStableCredit public stableCredit;
     // member => credit period
     mapping(address => CreditPeriod) public creditPeriods;
+    /// @notice When a member defaulted, or zero if they have not.
+    /// @dev Expiring a credit period deletes it, which also erases the evidence that it ended in
+    /// default -- `inDefault` reads the period and there is no period left to read. Liquidation
+    /// happens after that point, so it needs the fact to outlive the terms.
+    mapping(address => uint64) public defaultedAt;
 
     /* ========== INITIALIZER ========== */
 
@@ -73,7 +78,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
     /// @dev returns true if period has expired, grace period has expired, and member is not compliant.
     /// @param member address of member.
     /// @return whether member is in default.
-    function inDefault(address member) public view returns (bool) {
+    function inDefault(address member) public view override returns (bool) {
         return inInitializedPeriod(member) && inExpiredPeriod(member) && !inCompliance(member);
     }
 
@@ -267,6 +272,7 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
         delete creditPeriods[member];
         // if member in default, write off credit line and revoke membership
         if (memberInDefault) {
+            defaultedAt[member] = uint64(block.timestamp);
             // write off this issuer's share of the debt
             stableCredit.writeOffCreditLine(member, _writeOffAmount(member));
             // revoke membership
@@ -276,6 +282,12 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
         }
         emit CreditPeriodExpired(member);
         return true;
+    }
+
+    /// @notice whether a member's credit line ended in default.
+    /// @dev Survives the period being deleted, unlike `inDefault`.
+    function hasDefaulted(address member) public view override returns (bool) {
+        return defaultedAt[member] != 0;
     }
 
     /// @notice how much of a member's debt belongs to this issuer.

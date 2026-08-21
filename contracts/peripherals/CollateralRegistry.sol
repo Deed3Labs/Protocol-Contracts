@@ -81,6 +81,7 @@ contract CollateralRegistry is
     event CollateralTypeUpdated(bytes32 indexed kind, uint256 haircutBps, uint256 unitPrice);
     event Pledged(address indexed member, bytes32 indexed kind, uint256 amount);
     event Released(address indexed member, bytes32 indexed kind, uint256 amount);
+    event Seized(address indexed member, bytes32 indexed kind, uint256 amount);
     event ExposureRefreshed(address indexed member, uint256 previous, uint256 current);
     event ClrusdKindUpdated(bytes32 indexed kind);
 
@@ -257,6 +258,25 @@ contract CollateralRegistry is
         if (amount > free) revert CollateralRegistryEncumbered(member, kind, free, amount);
         pledgedOf[member][kind] -= amount;
         emit Released(member, kind, amount);
+        refresh(member);
+    }
+
+    /// @notice records collateral taken from a member on default.
+    /// @dev Distinct from `release`, which refuses to free anything backing drawn credit. That is
+    /// exactly what a seizure takes, so it cannot go through the same door -- and if it did not go
+    /// through any door the registry would go on counting collateral that is no longer there,
+    /// reporting a position as covered by a pledge somebody else now holds.
+    /// @param member address the collateral was taken from.
+    /// @param kind collateral type.
+    /// @param amount units taken.
+    function recordSeizure(address member, bytes32 kind, uint256 amount)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
+        if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
+        uint256 pledged = pledgedOf[member][kind];
+        pledgedOf[member][kind] = amount > pledged ? 0 : pledged - amount;
+        emit Seized(member, kind, amount);
         refresh(member);
     }
 

@@ -31,6 +31,13 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     /// @return reimbursement amount from assurance pool
     function burnLostDebt(address member, uint256 amount) external returns (uint256);
 
+    /// @notice settles a member's obligation, pulling reserve tokens from the caller.
+    /// @dev Public: anyone may pay down anyone's debt, and the issuers are told so each takes its
+    /// share through the ordinary waterfall. A liquidation is not a special kind of money.
+    /// @param member address whose obligation is settled.
+    /// @param amount amount settled.
+    function repayCreditBalance(address member, uint128 amount) external;
+
     /// @notice settles a member's obligation on an issuer's instruction.
     /// @param payer address the reserve tokens are pulled from.
     /// @param member address whose obligation is settled.

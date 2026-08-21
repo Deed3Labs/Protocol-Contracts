@@ -51,6 +51,19 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// @dev issuer => member => ceiling contribution
     mapping(address => mapping(address => uint256)) public issuerCreditLimit;
 
+    /// @notice Claims in circulation with no promise behind them.
+    /// @dev Counted, not derived. It used to be read off this contract's own credit balance, but
+    /// that balance does two unrelated jobs: it absorbs written-off debt, and it is the
+    /// counterparty for every repayment funded with reserve tokens. Those are opposites. A
+    /// write-off leaves supply orphaned; a repayment leaves the same supply backed by USDC that
+    /// just arrived in the reserve. Reading one number for both reported a member who paid their
+    /// balance in full as having created lost debt.
+    ///
+    /// It mattered beyond the reporting: redemption capacity equals lost debt outstanding, so an
+    /// overstated figure let positive holders draw on the AssurancePool for supply that was never
+    /// orphaned -- ordinary repayment activity quietly opening a drain.
+    uint256 private lostDebtOutstanding;
+
     /* ========== INITIALIZER ========== */
 
     /// @notice initializes lost debt account with max limit and assigns access contract provided.
@@ -74,7 +87,7 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// @notice Shared account that manages the rectification of lost debt.
     /// @return amount of lost debt shared by network participants.
     function lostDebt() public view override returns (uint256) {
-        return creditBalanceOf(address(this));
+        return lostDebtOutstanding;
     }
 
     /* ========== PUBLIC FUNCTIONS ========== */
@@ -95,6 +108,8 @@ contract StableCredit is MutualCredit, IStableCredit {
         require(balanceOf(member) >= amount, "StableCredit: Insufficient balance");
         require(amount <= lostDebt(), "StableCredit: Insufficient lost debt");
         _transfer(member, address(this), amount);
+        // Redemption is how lost debt is deleted, so the figure falls by what was redeemed.
+        lostDebtOutstanding -= amount;
         uint256 reimbursement =
             assurancePool.reimburse(member, assurancePool.convertStableCreditToReserveToken(amount));
         emit LostDebtBurned(member, amount);
@@ -255,7 +270,12 @@ contract StableCredit is MutualCredit, IStableCredit {
         uint256 writeOff = amount > creditBalance ? creditBalance : amount;
         // A write-off is the ledger recognising a loss, not a payment anyone is making. It cannot
         // be blocked by the state that caused it.
-        if (writeOff > 0) _systemTransfer(address(this), member, writeOff);
+        if (writeOff > 0) {
+            _systemTransfer(address(this), member, writeOff);
+            // The only thing that creates lost debt: an obligation gone with its credits still
+            // out there.
+            lostDebtOutstanding += writeOff;
+        }
         // The issuer's ceiling goes with the debt it was carrying.
         issuerCreditLimit[_msgSender()][member] = 0;
         _syncCreditLimit(member);

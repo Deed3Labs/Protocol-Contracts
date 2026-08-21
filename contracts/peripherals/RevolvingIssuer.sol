@@ -3,8 +3,10 @@ pragma solidity ^0.8.29;
 
 import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "../libraries/ExposureMath.sol";
 import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
+import "../core/interfaces/stable-credit/IExposureSource.sol";
 
 /// @title RevolvingIssuer
 /// @notice The tiered revolving line: savings-backed, asset-backed, income and Clear Boost.
@@ -23,6 +25,7 @@ import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 /// fifth tier.
 contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     using CarryIndex for CarryIndex.Index;
+    using SafeERC20Upgradeable for IERC20Upgradeable;
 
     /* ========== STATE VARIABLES ========== */
 
@@ -56,7 +59,12 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// pool is retired without stranding the carry that accrues in the meantime.
     mapping(uint256 => address) private tierCarryRecipient;
 
-    uint256[42] private __gap;
+    /// @notice Reports how much of a member's debt no collateral stands behind.
+    /// @dev Optional. Unset, a default writes off the whole position, which is right only when
+    /// nothing was pledged.
+    IExposureSource public exposureSource;
+
+    uint256[41] private __gap;
 
     /* ========== ERRORS ========== */
 
@@ -475,21 +483,73 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         emit TierRepaid(member, tierId, pay);
     }
 
-    /// @notice this issuer's share of a member's debt.
-    /// @dev Only what sits in these tiers. A member who also holds term plans has debt this
-    /// issuer does not own and must not write off.
+    /// @notice this issuer's share of a member's debt that no collateral covers.
+    /// @dev Only what sits in these tiers, and within that, only the part collateral does not
+    /// reach. Writing off a collateralized position would orphan the supply it created -- the
+    /// credits are in someone else's hands, the obligation is gone, and the pledge that was meant
+    /// to cover it is still sitting in the member's account backing nothing. That is precisely
+    /// the lost debt this system is supposed to have far less of.
+    ///
+    /// The covered part stays owed, and liquidation settles it out of the pledge. Which means the
+    /// safe order is not a rule someone follows: writing off first cannot strand the collateral,
+    /// because the write-off never claims the collateralized share to begin with.
     function _writeOffAmount(address member) internal view override returns (uint256) {
-        return totalDrawnOf(member);
+        uint256 drawn = totalDrawnOf(member);
+        if (address(exposureSource) == address(0)) return drawn;
+        // This member's uncovered share, not the network total that `poolExposure` reports.
+        (bool ok, bytes memory data) = address(exposureSource).staticcall(
+            abi.encodeWithSignature("exposureOf(address)", member)
+        );
+        if (!ok || data.length < 32) return drawn;
+        uint256 uncovered = abi.decode(data, (uint256));
+        return uncovered > drawn ? drawn : uncovered;
     }
 
-    /// @notice clears the member's tier positions and ceiling on default.
+    /// @notice closes the member's line on default, without erasing what they still owe.
+    /// @dev The ceiling goes; the positions do not. A defaulted member with collateral still owes
+    /// the part it covers, and that debt is what liquidation settles against the pledge. Clearing
+    /// it here would hand them their collateral back.
     function _onDefault(address member) internal override {
         for (uint256 i = 0; i < tiers.length; i++) {
-            tierNormalized[member][i] = 0;
-            tierPrincipal[member][i] = 0;
             tierCapacity[member][i] = 0;
         }
         super._onDefault(member);
+    }
+
+    /// @notice sets the contract reporting what a member's collateral does not cover.
+    function setExposureSource(address _exposureSource) external onlyOperator {
+        exposureSource = IExposureSource(_exposureSource);
+    }
+
+    /// @notice settles a tier out of the collateral that was pledged against it.
+    /// @dev Directed at one tier on purpose. An ordinary payment works down the rate bands,
+    /// because a member paying something back should stop the most carry they can. Liquidated
+    /// collateral is not that: it was pledged against a particular tier, and letting it settle a
+    /// dearer one somewhere else would leave the tier it actually backed still drawn against a
+    /// pledge that no longer exists.
+    ///
+    /// The caller delivers the reserve token first. Settling on the ledger is silent, so the
+    /// waterfall is not told and cannot claim the payment a second time.
+    /// @param member address whose tier is settled.
+    /// @param tierId tier the collateral backed.
+    /// @param amount amount of reserve token delivered.
+    function settleFromCollateral(address member, uint256 tierId, uint256 amount)
+        external
+        onlyOperator
+    {
+        _requireTier(tierId);
+        _materialiseCarry(member);
+
+        uint256 principal = tierPrincipal[member][tierId];
+        uint256 pay = principal < amount ? principal : amount;
+        if (pay == 0) return;
+
+        IERC20Upgradeable reserve = stableCredit.assurancePool().reserveToken();
+        reserve.safeTransferFrom(_msgSender(), address(this), pay);
+        reserve.forceApprove(address(stableCredit), pay);
+        stableCredit.repayCreditBalanceFor(address(this), member, uint128(pay));
+
+        _repayTier(member, tierId, pay);
     }
 
     /// @notice writes this issuer's contribution to the member's ledger ceiling.

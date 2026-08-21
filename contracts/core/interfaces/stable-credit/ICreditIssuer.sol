@@ -35,6 +35,17 @@ interface ICreditIssuer {
         external
         returns (uint256 absorbed);
 
+    /// @notice whether a member has defaulted with this issuer.
+    /// @dev Read by the liquidation path, so a default is checked against the issuer holding the
+    /// position rather than taken on the caller's word.
+    /// @param member address of the member.
+    /// @return whether the member is in default.
+    function inDefault(address member) external view returns (bool);
+
+    /// @notice whether a member's credit line ended in default.
+    /// @dev Outlives the credit period, which expiry deletes.
+    function hasDefaulted(address member) external view returns (bool);
+
     /// @notice The dearest open position this issuer holds for a member.
     /// @dev How the ledger finds the top of the waterfall without knowing what any issuer holds.
     /// @param member address of the member.

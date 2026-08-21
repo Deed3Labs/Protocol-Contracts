@@ -34,7 +34,11 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
     bytes32 private constant CLEAR_USD_STORAGE =
         0xce096656e701951180d0c979da50968533c9b97034e1cc9d16705e2ff2168100;
 
+    /// @notice May take encumbered collateral, and only encumbered collateral.
+    bytes32 public constant LIQUIDATOR_ROLE = keccak256("LIQUIDATOR_ROLE");
+
     error ClearUSDEncumbered(address holder, uint256 free, uint256 amount);
+    error ClearUSDSeizureExceedsEncumbrance(address holder, uint256 encumbered, uint256 amount);
 
     event EncumbranceSourceUpdated(address indexed source);
 
@@ -77,6 +81,34 @@ contract ClearUSDUpgradeable is BurnMintERC20UUPS {
         } catch {
             return 0;
         }
+    }
+
+    /// @notice takes collateral that is backing drawn credit.
+    /// @dev The other half of the lock. Refusing to let collateral move is only useful if the
+    /// co-op can take it when the member defaults, and a token that could only say no would leave
+    /// the collateral stranded rather than covering the position it was pledged against.
+    ///
+    /// The authority is narrow by construction rather than by promise: it can take only what
+    /// `encumberedOf` says is standing behind drawn credit, so it cannot reach a holder's free
+    /// balance, cannot touch someone who has drawn nothing, and shrinks as a member repays. It
+    /// does not decide whether a default has happened -- the caller does, and the caller should be
+    /// a contract that checks.
+    ///
+    /// This is what the ERC-7579 module would otherwise grant. Doing it here works for a holder
+    /// who is not a smart account at all, which a module cannot.
+    /// @param holder address the collateral is taken from.
+    /// @param to address it is delivered to.
+    /// @param amount amount to take.
+    function seize(address holder, address to, uint256 amount)
+        external
+        onlyRole(LIQUIDATOR_ROLE)
+    {
+        uint256 encumbered = _encumberedOf(holder);
+        if (amount > encumbered) {
+            revert ClearUSDSeizureExceedsEncumbrance(holder, encumbered, amount);
+        }
+        // Past the lock deliberately: this is the one move it exists to permit.
+        super._update(holder, to, amount);
     }
 
     /// @dev One hook covers every way out. Transfers, redemptions and bridging all pass through
