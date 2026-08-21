@@ -29,4 +29,16 @@ interface IEncumbranceSource {
     /// @param kind collateral type.
     /// @return amount that must remain.
     function encumberedOfKind(address holder, bytes32 kind) external view returns (uint256);
+
+    /// @notice whether one specific pledged thing may leave.
+    /// @dev Amount-based collateral answers how much must stay. Something with an identity has to
+    /// answer whether this one may go, because half a bond is not a thing.
+    /// @param holder address holding it.
+    /// @param kind collateral type.
+    /// @param itemId the item.
+    /// @return whether it is spoken for.
+    function isItemEncumbered(address holder, bytes32 kind, uint256 itemId)
+        external
+        view
+        returns (bool);
 }

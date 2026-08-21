@@ -17,6 +17,11 @@ import "../core/interfaces/stable-credit/IAssurancePool.sol";
 /// @title BurnerBond
 /// @notice ERC-1155 based bond system that allows users to mint bonds at a discount
 /// @dev Bonds are backed by USDC deposited into the AssurancePool excess reserve
+interface IBondEncumbrance {
+    function isItemEncumbered(address holder, bytes32 kind, uint256 itemId)
+        external view returns (bool);
+}
+
 interface IBondTraitStore {
     function setTrait(uint256 bondId, bytes32 key, bytes calldata value) external;
     function setTraits(uint256 bondId, bytes32[] calldata keys, bytes[] calldata values) external;
@@ -28,6 +33,19 @@ interface IBondTraitStore {
         external view returns (bytes[] memory);
     function keysOf(address collection, uint256 bondId) external view returns (bytes32[] memory);
     function nameOf(address collection, bytes32 key) external view returns (string memory);
+}
+
+interface IBondDiscountCurve {
+    function curveOf(address collection) external view returns (uint8, uint256);
+    function setCurve(uint8 curveType, uint256 parameter) external;
+    function discountFor(
+        address collection,
+        uint256 timeToMaturity,
+        uint256 minMaturity,
+        uint256 maxMaturity,
+        uint256 minDiscount,
+        uint256 maxDiscount
+    ) external view returns (uint256);
 }
 
 interface IBondVaultSettlement {
@@ -72,6 +90,14 @@ contract BurnerBond is
     /// change their mind -- a bond anyone could exit early is not a term instrument.
     address public liquidator;
 
+    /// @notice Reports whether a given bond is standing behind drawn credit.
+    /// @dev Same reasoning as CLRUSD and pool shares: the member holds the bond, so a registry
+    /// entry saying it is pledged does not stop them handing it to somebody else. A pledge that
+    /// only exists in a ledger is a note about an asset nobody controls.
+    IBondEncumbrance public encumbranceSource;
+    /// @notice The collateral kind these bonds are pledged as.
+    bytes32 public collateralKind;
+
     /// @notice Bonds their holder has asked to be paid out rather than rolled at maturity.
     mapping(uint256 => bool) public autoRollOptedOut;
 
@@ -97,21 +123,22 @@ contract BurnerBond is
     string public collectionDescription;
     
     // ============ DISCOUNT CURVE SYSTEM ============
-    
-    /// @notice Discount curve types
-    enum CurveType {
-        LINEAR,      // 0: Linear scaling
-        BONDING,     // 1: Bonding curve (S-curve)
-        LOGARITHMIC, // 2: Logarithmic growth
-        CUSTOM       // 3: Custom curve (future implementation)
+
+    /// @notice Shared pricing policy. See BondDiscountCurve for why it is not held inline.
+    IBondDiscountCurve public discountCurveEngine;
+
+    /// @notice Current discount curve shape (0=linear, 1=bonding, 2=logarithmic, 3=custom).
+    function curveType() public view returns (uint8) {
+        (uint8 t,) = discountCurveEngine.curveOf(address(this));
+        return t;
     }
-    
-    /// @notice Current discount curve configuration
-    CurveType public curveType = CurveType.LINEAR;
-    
-    /// @notice Curve-specific parameter (exponent, base, etc.)
-    uint256 public curveParameter = 10000; // 1.0 for linear, exponent for exponential, etc.
-    
+
+    /// @notice Curve-specific parameter (steepness, base, etc.).
+    function curveParameter() public view returns (uint256) {
+        (, uint256 p) = discountCurveEngine.curveOf(address(this));
+        return p;
+    }
+
     /// @notice Mapping from bond ID to bond information
     mapping(uint256 => BondInfo) public bonds;
     
@@ -183,7 +210,8 @@ contract BurnerBond is
         string memory _collectionName,
         string memory _collectionSymbol,
         string memory _collectionDescription,
-        address _traitStore
+        address _traitStore,
+        address _discountCurve
     ) external initializer {
         __ERC1155_init(_uri);
         __Ownable_init();
@@ -202,6 +230,7 @@ contract BurnerBond is
         collectionSymbol = _collectionSymbol;
         collectionDescription = _collectionDescription;
         traitStore = IBondTraitStore(_traitStore);
+        discountCurveEngine = IBondDiscountCurve(_discountCurve);
         rollTerm = 365 days;
         
         
@@ -253,52 +282,14 @@ contract BurnerBond is
     /// @param timeToMaturity Time to maturity in seconds
     /// @return Discount percentage in basis points
     function getDiscountForMaturity(uint256 timeToMaturity) public view override returns (uint256) {
-        uint256 minMaturity = factory.getMinMaturity();
-        uint256 maxMaturity = factory.getMaxMaturity();
-        
-        if (timeToMaturity < minMaturity) {
-            return 0;
-        }
-        
-        if (timeToMaturity > maxMaturity) {
-            timeToMaturity = maxMaturity;
-        }
-        
-        // Calculate normalized time (0 to 1)
-        uint256 normalizedTime = (timeToMaturity * 1e18) / maxMaturity;
-        uint256 maxDiscount = factory.getMaxDiscount();
-        uint256 minDiscount = factory.getMinDiscount();
-        
-        // Calculate the discount range (maxDiscount - minDiscount)
-        uint256 discountRange = maxDiscount - minDiscount;
-        
-        if (curveType == CurveType.LINEAR) {
-            // Linear: discount = minDiscount + (normalizedTime * discountRange)
-            return minDiscount + (normalizedTime * discountRange) / 1e18;
-            
-        } else if (curveType == CurveType.BONDING) {
-            // Bonding curve (S-curve): discount = minDiscount + discountRange * (1 - (1 - normalizedTime)^steepness)
-            // curveParameter is the steepness (e.g., 20000 = 2.0)
-            // This creates an S-curve that starts slow, accelerates in the middle, then slows down
-            uint256 steepness = curveParameter;
-            uint256 oneMinusTime = 1e18 - normalizedTime;
-            uint256 poweredOneMinusTime = _power(oneMinusTime, steepness);
-            uint256 curveValue = 1e18 - poweredOneMinusTime;
-            return minDiscount + (curveValue * discountRange) / 1e18;
-            
-        } else if (curveType == CurveType.LOGARITHMIC) {
-            // Logarithmic: discount = minDiscount + discountRange * log(1 + normalizedTime * (base - 1)) / log(base)
-            // curveParameter is the base (e.g., 20000 = 2.0)
-            // This creates diminishing returns - discourages longer-term bonds
-            uint256 base = curveParameter;
-            uint256 logResult = _logarithm(1e18 + (normalizedTime * (base - 1e18)) / 1e18, base);
-            uint256 logBase = _logarithm(base, base);
-            return minDiscount + (logResult * discountRange) / logBase;
-            
-        } else {
-            // CUSTOM curve - for future implementation
-            revert("Custom curve not implemented yet");
-        }
+        return discountCurveEngine.discountFor(
+            address(this),
+            timeToMaturity,
+            factory.getMinMaturity(),
+            factory.getMaxMaturity(),
+            factory.getMinDiscount(),
+            factory.getMaxDiscount()
+        );
     }
     
     /// @notice Calculate purchase price for a bond
@@ -346,7 +337,8 @@ contract BurnerBond is
     /// @return maxMaturity Maximum maturity period in seconds
     /// @return curveParameter Curve-specific parameter (exponent, base, etc.)
     function getDiscountCurve() external view override returns (uint8, uint256, uint256, uint256) {
-        return (uint8(curveType), factory.getMaxDiscount(), factory.getMaxMaturity(), curveParameter);
+        (uint8 t, uint256 p) = discountCurveEngine.curveOf(address(this));
+        return (t, factory.getMaxDiscount(), factory.getMaxMaturity(), p);
     }
     
     /// @notice Set discount curve configuration
@@ -355,24 +347,13 @@ contract BurnerBond is
     /// @param _maxMaturity Maximum maturity period in seconds
     /// @param _curveParameter Curve-specific parameter (exponent, base, etc.)
     function setDiscountCurve(uint8 _curveType, uint256 _maxDiscount, uint256 _maxMaturity, uint256 _curveParameter) external override onlyOwner {
-        require(_curveType <= 3, "Invalid curve type");
         require(_maxDiscount <= 5000, "Max discount cannot exceed 50%");
         require(_maxMaturity >= factory.getMinMaturity(), "Max maturity too low");
-        require(_maxMaturity <= 50 * 365 * 24 * 60 * 60, "Max maturity too high"); // 50 years max
-        
-        // Validate curve parameter based on curve type
-        if (_curveType == 1) { // BONDING
-            require(_curveParameter >= 10000 && _curveParameter <= 50000, "Steepness must be between 1.0 and 5.0");
-        } else if (_curveType == 2) { // LOGARITHMIC
-            require(_curveParameter >= 15000 && _curveParameter <= 100000, "Base must be between 1.5 and 10.0");
-        } else if (_curveType == 0) { // LINEAR
-            require(_curveParameter == 10000, "Linear curve parameter must be 1.0");
-        }
-        
-        curveType = CurveType(_curveType);
-        curveParameter = _curveParameter;
-        // Note: maxDiscount and maxMaturity are now managed by the factory
-        
+        require(_maxMaturity <= 50 * 365 days, "Max maturity too high");
+
+        // Curve-type and parameter validation lives with the curve.
+        discountCurveEngine.setCurve(_curveType, _curveParameter);
+
         emit DiscountCurveUpdated(_curveType, _maxDiscount, _maxMaturity, _curveParameter);
     }
     
@@ -590,7 +571,8 @@ contract BurnerBond is
             discountPercentage: discountPercentage,
             purchasePrice: purchasePrice,
             isRedeemed: false,
-            creator: holder
+            creator: holder,
+            issuedAt: uint64(block.timestamp)
         });
 
         bondsCreatedBy[holder]++;
@@ -685,10 +667,13 @@ contract BurnerBond is
         if (bond.creator == address(0) || bond.isRedeemed) return 0;
         if (block.timestamp >= bond.maturityDate) return bond.faceValue;
 
-        uint256 issuedAt = bond.maturityDate > rollTerm ? bond.maturityDate - rollTerm : 0;
-        // Fall back to face if the term cannot be reconstructed, which over-values rather than
-        // under-values and so cannot cheat the holder.
-        if (block.timestamp <= issuedAt) return bond.purchasePrice;
+        // Read, not reconstructed. Deriving the issue date by subtracting a standard term from
+        // the maturity date is right only for bonds that happened to have that term, and a
+        // six-month bond would be valued as though it had been accreting for a year.
+        uint256 issuedAt = bond.issuedAt;
+        if (block.timestamp <= issuedAt || bond.maturityDate <= issuedAt) {
+            return bond.purchasePrice;
+        }
 
         uint256 elapsed = block.timestamp - issuedAt;
         uint256 term = bond.maturityDate - issuedAt;
@@ -783,6 +768,12 @@ contract BurnerBond is
         require(_rollTerm >= factory.getMinMaturity(), "Roll term too short");
         require(_rollTerm <= factory.getMaxMaturity(), "Roll term too long");
         rollTerm = _rollTerm;
+    }
+
+    /// @notice sets the contract reporting which bonds are pledged, and the kind to ask about.
+    function setEncumbranceSource(address source, bytes32 kind) external onlyOwner {
+        encumbranceSource = IBondEncumbrance(source);
+        collateralKind = kind;
     }
 
     /// @notice names the contract that may seize and redeem early.
@@ -882,6 +873,18 @@ contract BurnerBond is
             // so a check that did not make this distinction refused the second half of the
             // operation the first half had just committed to. The instrument could take money in
             // and had no reachable way to pay it out.
+            // A pledged bond does not leave. Burns are exempt -- redemption and rolling both
+            // destroy the bond, and the liquidator is exempt because taking it is the one move
+            // the lock exists to permit.
+            // An unregistered kind reports nothing pledged, so it needs no check of its own.
+            if (
+                to != address(0) && operator != liquidator
+                    && address(encumbranceSource) != address(0)
+                    && encumbranceSource.isItemEncumbered(from, collateralKind, bondId)
+            ) {
+                revert("Bond is pledged as collateral");
+            }
+
             if (bonds[bondId].isRedeemed && to != address(0)) {
                 revert("Cannot transfer redeemed bond");
             }
@@ -932,136 +935,7 @@ contract BurnerBond is
         traitStore.setTrait(bondId, traitKey, traitValue);
     }
 
-    /// @notice Calculate power function for exponential curves
-    /// @param base Base number (with 18 decimals)
-    /// @param exponent Exponent (with 18 decimals)
-    /// @return Result (with 18 decimals)
-    function _power(uint256 base, uint256 exponent) internal pure returns (uint256) {
-        if (exponent == 0) return 1e18;
-        if (exponent == 1e18) return base;
-        if (base == 0) return 0;
-        
-        // Handle common cases efficiently
-        if (exponent == 2e18) {
-            return (base * base) / 1e18;
-        }
-        if (exponent == 3e18) {
-            return (base * base * base) / (1e18 * 1e18);
-        }
-        if (exponent == 4e18) {
-            uint256 baseSquared = (base * base) / 1e18;
-            return (baseSquared * baseSquared) / 1e18;
-        }
-        
-        // For other cases, use binary exponentiation
-        // Convert exponent to integer for calculation
-        uint256 intExponent = exponent / 1e18;
-        require(intExponent <= 10, "Exponent too large for approximation");
-        
-        uint256 result = 1e18;
-        uint256 currentBase = base;
-        uint256 currentExponent = intExponent;
-        
-        while (currentExponent > 0) {
-            if (currentExponent % 2 == 1) {
-                result = (result * currentBase) / 1e18;
-            }
-            currentBase = (currentBase * currentBase) / 1e18;
-            currentExponent = currentExponent / 2;
-        }
-        
-        return result;
-    }
     
-    /// @notice Calculate logarithm function for logarithmic curves
-    /// @param value Value to take logarithm of (with 18 decimals)
-    /// @param base Base of the logarithm (with 18 decimals)
-    /// @return Result (with 18 decimals)
-    function _logarithm(uint256 value, uint256 base) internal pure returns (uint256) {
-        require(value > 0, "Logarithm of zero or negative number");
-        require(base > 1e18, "Logarithm base must be greater than 1");
-        
-        if (value == 1e18) return 0;
-        if (value == base) return 1e18;
-        
-        // For base 2, use a more accurate approximation
-        if (base == 2e18) {
-            // log₂(x) approximation using natural logarithm
-            // log₂(x) = ln(x) / ln(2) ≈ (x - 1) * 1.4427 for x close to 1
-            if (value < 2e18) {
-                // For values between 1 and 2, use linear approximation
-                uint256 xMinusOne = value - 1e18;
-                return (xMinusOne * 14427) / 10000; // 1.4427 * (x - 1)
-            } else if (value < 4e18) {
-                // For values between 2 and 4, use interpolation
-                return 1e18 + (value - 2e18) / 2e18; // 1 + (x-2)/2
-            } else if (value < 8e18) {
-                // For values between 4 and 8, use interpolation
-                return 2e18 + (value - 4e18) / 4e18; // 2 + (x-4)/4
-            } else if (value < 16e18) {
-                // For values between 8 and 16, use interpolation
-                return 3e18 + (value - 8e18) / 8e18; // 3 + (x-8)/8
-            } else if (value < 32e18) {
-                // For values between 16 and 32, use interpolation
-                return 4e18 + (value - 16e18) / 16e18; // 4 + (x-16)/16
-            } else if (value < 64e18) {
-                // For values between 32 and 64, use interpolation
-                return 5e18 + (value - 32e18) / 32e18; // 5 + (x-32)/32
-            } else if (value < 128e18) {
-                // For values between 64 and 128, use interpolation
-                return 6e18 + (value - 64e18) / 64e18; // 6 + (x-64)/64
-            } else if (value < 256e18) {
-                // For values between 128 and 256, use interpolation
-                return 7e18 + (value - 128e18) / 128e18; // 7 + (x-128)/128
-            } else if (value < 512e18) {
-                // For values between 256 and 512, use interpolation
-                return 8e18 + (value - 256e18) / 256e18; // 8 + (x-256)/256
-            } else if (value < 1024e18) {
-                // For values between 512 and 1024, use interpolation
-                return 9e18 + (value - 512e18) / 512e18; // 9 + (x-512)/512
-            } else {
-                // For larger values, use binary search
-                uint256 lowSearch = 0;
-                uint256 highSearch = 1e18 * 10;
-                uint256 precisionSearch = 1e12;
-                
-                while (highSearch - lowSearch > precisionSearch) {
-                    uint256 mid = (lowSearch + highSearch) / 2;
-                    uint256 powerResult = _power(base, mid);
-                    
-                    if (powerResult == value) {
-                        return mid;
-                    } else if (powerResult < value) {
-                        lowSearch = mid;
-                    } else {
-                        highSearch = mid;
-                    }
-                }
-                
-                return (lowSearch + highSearch) / 2;
-            }
-        }
-        
-        // For other bases, use binary search
-        uint256 low = 0;
-        uint256 high = 1e18 * 10;
-        uint256 precision = 1e12;
-        
-        while (high - low > precision) {
-            uint256 mid = (low + high) / 2;
-            uint256 powerResult = _power(base, mid);
-            
-            if (powerResult == value) {
-                return mid;
-            } else if (powerResult < value) {
-                low = mid;
-            } else {
-                high = mid;
-            }
-        }
-        
-        return (low + high) / 2;
-    }
     
     /// @notice Convert address to string
     /// @param _addr Address to convert

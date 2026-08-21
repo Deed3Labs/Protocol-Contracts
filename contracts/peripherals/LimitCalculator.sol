@@ -109,7 +109,7 @@ contract LimitCalculator is AccessControlUpgradeable, UUPSUpgradeable {
     function capacityOf(address member, bytes32 kind) public view returns (uint256) {
         uint256 collateralValue = collateralRegistry.collateralValueOf(member, kind);
         if (collateralValue > 0) {
-            (, uint256 haircutBps,,) = collateralRegistry.collateralTypes(kind);
+            (, uint256 haircutBps,,,) = collateralRegistry.collateralTypes(kind);
             return (collateralValue * haircutBps) / ExposureMath.BPS;
         }
         return effectiveAttestationOf(member, kind);

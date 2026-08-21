@@ -26,6 +26,10 @@ interface IBurnerBond is IERC1155Upgradeable {
         uint256 purchasePrice;
         bool isRedeemed;
         address creator;
+        /// @dev When the bond was issued. Needed to know how much of its term has run, which is
+        /// what decides what it is worth today -- and which cannot be reconstructed from the
+        /// maturity date alone, because bonds do not all have the same term.
+        uint64 issuedAt;
     }
     
     /* ========== EVENTS ========== */

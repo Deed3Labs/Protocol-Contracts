@@ -5,6 +5,7 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "../core/interfaces/stable-credit/IExposureSource.sol";
 import "../core/interfaces/stable-credit/IEncumbranceSource.sol";
+import "../core/interfaces/stable-credit/ICollateralValuer.sol";
 import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
 import "../core/interfaces/stable-credit/INetworkRegistry.sol";
 import "../libraries/ExposureMath.sol";
@@ -45,6 +46,9 @@ contract CollateralRegistry is
         /// ledger is 1e18; an eighteen-decimal token worth a dollar against the same ledger is
         /// 1e6, since one of its units is a millionth of a millionth of a ledger unit.
         uint256 unitPrice;
+        /// @dev Asked what the pledge is worth, when a flat price will not do. A bond is worth
+        /// something different every day; a dollar of savings is not.
+        address valuer;
         bool registered;
     }
 
@@ -56,6 +60,11 @@ contract CollateralRegistry is
 
     /// @dev member => kind => units pledged
     mapping(address => mapping(bytes32 => uint256)) public pledgedOf;
+    /// @dev member => kind => the individual items pledged, for collateral that comes in items
+    /// rather than amounts. A bond is one thing with an identity; a dollar is not.
+    mapping(address => mapping(bytes32 => uint256[])) private pledgedItems;
+    /// @dev member => kind => item => pledged
+    mapping(address => mapping(bytes32 => mapping(uint256 => bool))) private itemPledged;
     /// @dev member => exposure last folded into the running total
     mapping(address => uint256) public recordedExposureOf;
 
@@ -79,9 +88,13 @@ contract CollateralRegistry is
         bytes32 indexed kind, ExposureMath.Backing backing, uint256 haircutBps
     );
     event CollateralTypeUpdated(bytes32 indexed kind, uint256 haircutBps, uint256 unitPrice);
+    event CollateralValuerUpdated(bytes32 indexed kind, address valuer);
     event Pledged(address indexed member, bytes32 indexed kind, uint256 amount);
     event Released(address indexed member, bytes32 indexed kind, uint256 amount);
-    event Seized(address indexed member, bytes32 indexed kind, uint256 amount);
+ event Seized(address indexed member, bytes32 indexed kind, uint256 amount);
+    event ItemPledged(address indexed member, bytes32 indexed kind, uint256 itemId);
+    event ItemReleased(address indexed member, bytes32 indexed kind, uint256 itemId);
+    event ItemSeized(address indexed member, bytes32 indexed kind, uint256 itemId);
     event ExposureRefreshed(address indexed member, uint256 previous, uint256 current);
     event ClrusdKindUpdated(bytes32 indexed kind);
 
@@ -114,12 +127,50 @@ contract CollateralRegistry is
     uint256 public constant PRICE_SCALE = 1e18;
 
     /// @notice the value of what a member has pledged under one kind, before the haircut.
+    /// @dev A valuer is asked when there is one, because some collateral is worth something
+    /// different every day and a price somebody has to remember to update is a price that is
+    /// usually stale.
     function collateralValueOf(address member, bytes32 kind) public view returns (uint256) {
         CollateralType storage collateral = collateralTypes[kind];
         if (!collateral.registered) return 0;
+
+        if (collateral.valuer != address(0)) {
+            uint256[] storage items = pledgedItems[member][kind];
+            if (items.length == 0) return 0;
+            try ICollateralValuer(collateral.valuer).valueOfItems(member, items) returns (
+                uint256 valued
+            ) {
+                return valued;
+            } catch {
+                // A valuer that cannot answer values the pledge at nothing rather than at
+                // whatever it was last worth. Under-valuing shrinks a limit; over-valuing lends
+                // against something nobody can price.
+                return 0;
+            }
+        }
+
         uint256 units = pledgedOf[member][kind];
         if (units == 0) return 0;
         return (units * collateral.unitPrice) / PRICE_SCALE;
+    }
+
+    /// @notice the individual items a member has pledged under one kind.
+    function pledgedItemsOf(address member, bytes32 kind) external view returns (uint256[] memory) {
+        return pledgedItems[member][kind];
+    }
+
+    /// @inheritdoc IEncumbranceSource
+    /// @dev Whether one specific thing is spoken for. Amount-based collateral answers "how much
+    /// must stay"; a bond has to answer "may this one leave", because half a bond is not a thing.
+    function isItemEncumbered(address holder, bytes32 kind, uint256 itemId)
+        external
+        view
+        override
+        returns (bool)
+    {
+        if (!itemPledged[holder][kind][itemId]) return false;
+        // Pledged, and still needed: a pledge that nothing is drawn against is free to go.
+        return _drawnUnder(holder, kind) > 0;
     }
 
     /// @notice what the pool would pay if this member defaulted on everything.
@@ -257,6 +308,57 @@ contract CollateralRegistry is
         refresh(member);
     }
 
+    /// @notice records a pledge of one specific thing.
+    /// @dev For collateral with an identity. The registry records which one, because refusing to
+    /// let it move and valuing it both need to know that.
+    function pledgeItem(address member, bytes32 kind, uint256 itemId)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
+        if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
+        if (itemPledged[member][kind][itemId]) return;
+        itemPledged[member][kind][itemId] = true;
+        pledgedItems[member][kind].push(itemId);
+        emit ItemPledged(member, kind, itemId);
+        refresh(member);
+    }
+
+    /// @notice releases one specific pledged thing.
+    function releaseItem(address member, bytes32 kind, uint256 itemId)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
+        if (_drawnUnder(member, kind) > 0) {
+            revert CollateralRegistryEncumbered(member, kind, 0, 1);
+        }
+        _dropItem(member, kind, itemId);
+        emit ItemReleased(member, kind, itemId);
+        refresh(member);
+    }
+
+    /// @notice records that a pledged item was taken on default.
+    function recordItemSeizure(address member, bytes32 kind, uint256 itemId)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
+        _dropItem(member, kind, itemId);
+        emit ItemSeized(member, kind, itemId);
+        refresh(member);
+    }
+
+    function _dropItem(address member, bytes32 kind, uint256 itemId) private {
+        if (!itemPledged[member][kind][itemId]) return;
+        itemPledged[member][kind][itemId] = false;
+        uint256[] storage items = pledgedItems[member][kind];
+        for (uint256 i = 0; i < items.length; i++) {
+            if (items[i] == itemId) {
+                items[i] = items[items.length - 1];
+                items.pop();
+                break;
+            }
+        }
+    }
+
     /// @notice releases a pledge that is not backing anything.
     /// @param member address releasing.
     /// @param kind collateral type.
@@ -307,7 +409,8 @@ contract CollateralRegistry is
     ) external onlyRole(OPERATOR_ROLE) {
         if (collateralTypes[kind].registered) revert CollateralRegistryTypeExists(kind);
         if (haircutBps > ExposureMath.BPS) revert CollateralRegistryHaircutTooHigh(haircutBps);
-        collateralTypes[kind] = CollateralType(backing, haircutBps, unitPrice, true);
+        collateralTypes[kind] =
+            CollateralType(backing, haircutBps, unitPrice, address(0), true);
         kinds.push(kind);
         emit CollateralTypeRegistered(kind, backing, haircutBps);
     }
@@ -325,5 +428,14 @@ contract CollateralRegistry is
         collateralTypes[kind].haircutBps = haircutBps;
         collateralTypes[kind].unitPrice = unitPrice;
         emit CollateralTypeUpdated(kind, haircutBps, unitPrice);
+    }
+
+    /// @notice names the contract that values this kind of pledge.
+    /// @dev Pass address(0) to fall back to the flat price. A valuer is for collateral whose
+    /// worth moves without anybody touching it.
+    function setCollateralValuer(bytes32 kind, address valuer) external onlyRole(OPERATOR_ROLE) {
+        if (!collateralTypes[kind].registered) revert CollateralRegistryUnknownType(kind);
+        collateralTypes[kind].valuer = valuer;
+        emit CollateralValuerUpdated(kind, valuer);
     }
 }

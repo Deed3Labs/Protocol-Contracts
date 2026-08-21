@@ -323,7 +323,7 @@ describe("BurnerBond", function () {
       await expect(
         implementation.initialize(
           buyer.address, buyer.address, buyer.address, buyer.address, "", "", "", "",
-          buyer.address
+          buyer.address, buyer.address
         )
       ).to.be.revertedWith("Initializable: contract is already initialized");
     });
