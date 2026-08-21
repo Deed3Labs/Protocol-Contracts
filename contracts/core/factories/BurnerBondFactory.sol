@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import "@openzeppelin/contracts/proxy/Clones.sol";
 import "../interfaces/burner-bond/IBurnerBondFactory.sol";
 import "../interfaces/burner-bond/IBurnerBondDeposit.sol";
 import "../interfaces/stable-credit/IAssurancePool.sol";
@@ -30,6 +31,16 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
     
     /// @notice Base URI template for new collections
     string public baseURI;
+
+    /// @notice The collection every clone points at.
+    /// @dev Deployed once and never used directly. The factory used to build each collection with
+    /// `new BurnerBond(...)`, which meant carrying a copy of the whole contract inside its own
+    /// bytecode -- eight kilobytes past what a contract may weigh, so the factory could not be
+    /// deployed at all. A clone carries a pointer instead, which also makes opening a collection
+    /// cost a fraction of what deploying one did.
+    address public immutable bondImplementation;
+    /// @notice The deposit contract every network clones from.
+    address public immutable depositImplementation;
     
     /// @notice Mapping from token address to collection information
     mapping(address => CollectionInfo) public collections;
@@ -69,11 +80,14 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
         assuranceOracle = IAssuranceOracle(_assuranceOracle);
         baseURI = _baseURI;
         
-        // Deploy single unified deposit contract
-        BurnerBondDeposit deployedDeposit = new BurnerBondDeposit(
-            address(this),  // Factory address
-            address(assurancePool)
-        );
+        // The implementations. Deployed once here, cloned from for every collection after.
+        bondImplementation = address(new BurnerBond());
+        depositImplementation = address(new BurnerBondDeposit());
+
+        // The single unified deposit contract, as a clone of the implementation above.
+        BurnerBondDeposit deployedDeposit =
+            BurnerBondDeposit(Clones.clone(depositImplementation));
+        deployedDeposit.initialize(address(this), address(assurancePool));
         burnerBondDeposit = IBurnerBondDeposit(address(deployedDeposit));
 
         // Hand it to whoever deployed the factory, as the collections are handed over below.
@@ -242,8 +256,10 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
         string memory collectionSymbol = string(abi.encodePacked(tokenSymbol, "-BB"));
         string memory collectionDescription = string(abi.encodePacked("BurnerBond collection backed by ", tokenName, " tokens"));
         
-        // Deploy BurnerBond collection
-        BurnerBond newCollection = new BurnerBond(
+        // Clone the collection implementation and set it up. Token-agnostic as before: any
+        // whitelisted token gets its own collection, it just costs a fraction of a deployment.
+        BurnerBond newCollection = BurnerBond(Clones.clone(bondImplementation));
+        newCollection.initialize(
             address(burnerBondDeposit), // Use unified deposit contract
             address(this), // Factory address (single source of truth for parameters)
             address(assurancePool),

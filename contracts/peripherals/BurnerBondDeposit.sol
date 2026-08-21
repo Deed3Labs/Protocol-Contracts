@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
@@ -20,7 +21,12 @@ interface IBondVault {
         external;
 }
 
-contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
+contract BurnerBondDeposit is
+    IBurnerBondDeposit,
+    Initializable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable
+{
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
 
@@ -69,13 +75,18 @@ contract BurnerBondDeposit is IBurnerBondDeposit, Ownable, ReentrancyGuard {
 
     /* ========== CONSTRUCTOR ========== */
     
-    /// @notice Initialize the BurnerBondDeposit contract
-    /// @param _factory Address of the BurnerBondFactory contract (single source of truth for parameters)
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice sets the deposit contract up.
+    /// @param _factory Address of the parameter source
     /// @param _assurancePool Address of the AssurancePool contract
-    constructor(
-        address _factory,
-        address _assurancePool
-    ) {
+    function initialize(address _factory, address _assurancePool) external initializer {
+        __Ownable_init();
+        __ReentrancyGuard_init();
+
         require(_factory != address(0), "Invalid factory address");
         require(_assurancePool != address(0), "Invalid AssurancePool address");
         

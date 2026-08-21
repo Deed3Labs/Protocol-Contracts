@@ -283,4 +283,85 @@ describe("BurnerBond", function () {
         .to.be.revertedWith("Invalid BondVault address");
     });
   });
+
+  describe("collections are clones", function () {
+    it("keeps the factory deployable, which carrying a copy of this did not", async function () {
+      const code = await ethers.provider.getCode(await factory.getAddress());
+      expect((code.length - 2) / 2).to.be.lessThan(24_576);
+    });
+
+    it("gives each collection its own storage", async function () {
+      await factory.createCollection(
+        await ctx.usdt.getAddress(), "USDT", "Tether USD", "ipfs://bonds"
+      );
+      const info = await factory.getCollectionInfo(await ctx.usdt.getAddress());
+      const other = await ethers.getContractAt("BurnerBond", info.collectionAddress);
+
+      const maturity = (await now()) + BigInt(6 * MONTH);
+      await buyBond(1_000n * ONE_USDC, maturity);
+
+      expect(await bond.totalBondsMinted()).to.equal(1n);
+      expect(await other.totalBondsMinted()).to.equal(0n);
+      expect(await other.underlyingToken()).to.equal(await ctx.usdt.getAddress());
+    });
+
+    it("costs a fraction of a deployment to open one", async function () {
+      const tx = await factory.createCollection(
+        await ctx.usdt.getAddress(), "USDT", "Tether USD", "ipfs://bonds"
+      );
+      const receipt = await tx.wait();
+      // A full BurnerBond deployment is millions of gas; a clone plus its initializer is not.
+      expect(receipt!.gasUsed).to.be.lessThan(1_500_000n);
+    });
+
+    it("leaves the implementation itself uninitialisable", async function () {
+      // A clone's implementation is never meant to be used directly, and one left open is an
+      // implementation anybody can take ownership of.
+      const implementation = await ethers.getContractAt(
+        "BurnerBond", await factory.bondImplementation()
+      );
+      await expect(
+        implementation.initialize(
+          buyer.address, buyer.address, buyer.address, buyer.address, "", "", "", ""
+        )
+      ).to.be.revertedWith("Initializable: contract is already initialized");
+    });
+  });
+
+  describe("batch redemption", function () {
+    it("pays for every bond it burns", async function () {
+      // It burned them and paid nothing: the payout was replaced when redemption moved to the
+      // vault, and its twin twenty lines away was not.
+      const maturity = (await now()) + BigInt(6 * MONTH);
+      await buyBond(1_000n * ONE_USDC, maturity);
+      await buyBond(500n * ONE_USDC, maturity);
+      await ctx.usdc.mint(await vault.getAddress(), 1_500n * ONE_USDC);
+      await advance(7 * MONTH);
+
+      const before = await ctx.usdc.balanceOf(buyer.address);
+      await bond.connect(buyer).batchRedeemBonds([1, 2]);
+
+      expect((await ctx.usdc.balanceOf(buyer.address)) - before).to.equal(1_500n * ONE_USDC);
+      expect(await bond.balanceOf(buyer.address, 1)).to.equal(0n);
+      expect(await bond.balanceOf(buyer.address, 2)).to.equal(0n);
+    });
+
+    it("refuses the whole batch if one bond is not redeemable", async function () {
+      const maturity = (await now()) + BigInt(6 * MONTH);
+      const far = (await now()) + BigInt(18 * MONTH);
+      await buyBond(1_000n * ONE_USDC, maturity);
+      await buyBond(500n * ONE_USDC, far);
+      await ctx.usdc.mint(await vault.getAddress(), 1_500n * ONE_USDC);
+      await advance(7 * MONTH);
+
+      await expect(bond.connect(buyer).batchRedeemBonds([1, 2]))
+        .to.be.revertedWith("Bond not yet mature");
+      expect(await bond.balanceOf(buyer.address, 1)).to.equal(1n);
+    });
+
+    it("refuses an empty batch", async function () {
+      await expect(bond.connect(buyer).batchRedeemBonds([]))
+        .to.be.revertedWith("No bonds to redeem");
+    });
+  });
 });

@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
-import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import "@openzeppelin/contracts-upgradeable/utils/introspection/IERC165Upgradeable.sol";
 import "../core/interfaces/burner-bond/IBurnerBond.sol";
 import "../core/interfaces/burner-bond/IBurnerBondDeposit.sol";
 import "../core/interfaces/burner-bond/IBurnerBondFactory.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "../core/interfaces/stable-credit/IAssurancePool.sol";
 
 /// @title BurnerBond
@@ -20,7 +21,13 @@ interface IBondVaultSettlement {
     function settle(uint256 bondId, address to) external returns (uint256);
 }
 
-contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
+contract BurnerBond is
+    Initializable,
+    ERC1155Upgradeable,
+    OwnableUpgradeable,
+    ReentrancyGuardUpgradeable,
+    IBurnerBond
+{
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
 
@@ -113,16 +120,25 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
 
     /* ========== CONSTRUCTOR ========== */
     
-    /// @notice Initialize the BurnerBond contract
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice sets a collection up.
     /// @param _burnerBondDeposit Address of the BurnerBondDeposit contract
-    /// @param _factory Address of the BurnerBondFactory contract (single source of truth for parameters)
+    /// @param _factory Address of the parameter source
     /// @param _assurancePool Address of the AssurancePool contract
-    /// @param _underlyingToken Address of the underlying token (USDC, WETH, etc.)
+    /// @param _underlyingToken Address of the underlying token
     /// @param _uri Base URI for ERC-1155 metadata
     /// @param _collectionName Name of the collection
     /// @param _collectionSymbol Symbol of the collection
     /// @param _collectionDescription Description of the collection
-    constructor(
+    /// @dev An initializer rather than a constructor, so a collection can be a cheap copy of one
+    /// implementation instead of a fresh deployment of the whole contract. The factory used to
+    /// carry a copy of everything here inside its own bytecode, which is what put it past the
+    /// deployable limit; a clone carries a pointer instead.
+    function initialize(
         address _burnerBondDeposit,
         address _factory,
         address _assurancePool,
@@ -131,7 +147,11 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         string memory _collectionName,
         string memory _collectionSymbol,
         string memory _collectionDescription
-    ) ERC1155(_uri) {
+    ) external initializer {
+        __ERC1155_init(_uri);
+        __Ownable_init();
+        __ReentrancyGuard_init();
+
         require(_burnerBondDeposit != address(0), "Invalid BurnerBondDeposit address");
         require(_factory != address(0), "Invalid factory address");
         require(_assurancePool != address(0), "Invalid AssurancePool address");
@@ -378,6 +398,8 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     /// @param traitKey Key of the trait
     /// @return Name of the trait
     function getBondTraitName(bytes32 traitKey) external view override returns (string memory) {
+        string memory standard = _standardTraitName(traitKey);
+        if (bytes(standard).length > 0) return standard;
         return _traitNames[traitKey];
     }
     
@@ -600,79 +622,50 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     /// @notice Redeem a mature bond for its face value
     /// @param bondId Unique bond identifier
     function redeemBond(uint256 bondId) external override nonReentrant {
-        require(bonds[bondId].creator != address(0), "Bond does not exist");
-        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
-        require(!bonds[bondId].isRedeemed, "Bond already redeemed");
-        require(isBondMature(bondId), "Bond not yet mature");
-        
-        BondInfo storage bond = bonds[bondId];
-        
-        // Mark bond as redeemed
-        bond.isRedeemed = true;
-        
-        // Update traits
-        _setBondTraitValue(bondId, keccak256("isRedeemed"), abi.encode(true));
-        _setBondTraitValue(bondId, keccak256("redeemedAt"), abi.encode(block.timestamp));
-        emit BondTraitUpdated(bondId, keccak256("isRedeemed"), abi.encode(true));
-        emit BondTraitUpdated(bondId, keccak256("redeemedAt"), abi.encode(block.timestamp));
-        
-        // Update statistics
-        totalUSDCRedeemed += bond.faceValue;
-        
-        // Burn the ERC-1155 token
-        _burn(msg.sender, bondId, 1);
-        
-        // Paid out of the bond vault, which holds the proceeds and nothing else's. Redemption
-        // does not compete with default coverage, and cannot fail because the credit book had a
-        // bad quarter.
-        bondVault.settle(bondId, msg.sender);
-        
-        emit BondRedeemed(bondId, msg.sender, bond.faceValue);
+        _redeem(bondId);
     }
-    
+
     /// @notice Batch redeem multiple mature bonds
     /// @param bondIds Array of bond IDs to redeem
     function batchRedeemBonds(uint256[] calldata bondIds) external override nonReentrant {
         require(bondIds.length > 0, "No bonds to redeem");
         require(bondIds.length <= 50, "Too many bonds in batch"); // Gas limit protection
-        
-        uint256 totalFaceValue = 0;
-        
-        // Validate all bonds first
         for (uint256 i = 0; i < bondIds.length; i++) {
-            uint256 bondId = bondIds[i];
-            require(bonds[bondId].creator != address(0), "Bond does not exist");
-            require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
-            require(!bonds[bondId].isRedeemed, "Bond already redeemed");
-            require(isBondMature(bondId), "Bond not yet mature");
-            
-            totalFaceValue += bonds[bondId].faceValue;
+            _redeem(bondIds[i]);
         }
-        
-        // Process all redemptions
-        for (uint256 i = 0; i < bondIds.length; i++) {
-            uint256 bondId = bondIds[i];
-            BondInfo storage bond = bonds[bondId];
-            
-            // Mark bond as redeemed
-            bond.isRedeemed = true;
-            
-            // Update traits
-            _setBondTraitValue(bondId, keccak256("isRedeemed"), abi.encode(true));
-            _setBondTraitValue(bondId, keccak256("redeemedAt"), abi.encode(block.timestamp));
-            emit BondTraitUpdated(bondId, keccak256("isRedeemed"), abi.encode(true));
-            emit BondTraitUpdated(bondId, keccak256("redeemedAt"), abi.encode(block.timestamp));
-            
-            // Update statistics
-            totalUSDCRedeemed += bond.faceValue;
-            
-            // Burn the ERC-1155 token
-            _burn(msg.sender, bondId, 1);
-            
-            emit BondRedeemed(bondId, msg.sender, bond.faceValue);
-        }
-        
-        // Settled bond by bond out of the vault, for the same reason as above.
+    }
+
+    /// @notice Redeems one bond: checks it, retires it, and pays the holder.
+    /// @dev One path for both entry points. They used to be two copies of the same twenty lines,
+    /// which is how the batch version came to burn bonds and pay nobody -- the single version was
+    /// changed to settle from the vault and its twin was not. Duplicated logic does not stay
+    /// duplicated; it stays only until somebody edits one of them.
+    /// @param bondId Unique bond identifier
+    function _redeem(uint256 bondId) internal {
+        require(bonds[bondId].creator != address(0), "Bond does not exist");
+        require(balanceOf(msg.sender, bondId) > 0, "Not bond holder");
+        require(!bonds[bondId].isRedeemed, "Bond already redeemed");
+        require(isBondMature(bondId), "Bond not yet mature");
+
+        BondInfo storage bond = bonds[bondId];
+        bond.isRedeemed = true;
+
+        bytes memory redeemedFlag = abi.encode(true);
+        bytes memory redeemedAt = abi.encode(block.timestamp);
+        _setBondTraitValue(bondId, keccak256("isRedeemed"), redeemedFlag);
+        _setBondTraitValue(bondId, keccak256("redeemedAt"), redeemedAt);
+        emit BondTraitUpdated(bondId, keccak256("isRedeemed"), redeemedFlag);
+        emit BondTraitUpdated(bondId, keccak256("redeemedAt"), redeemedAt);
+
+        totalUSDCRedeemed += bond.faceValue;
+        _burn(msg.sender, bondId, 1);
+
+        // Paid out of the bond vault, which holds the proceeds and nothing else's. Redemption
+        // does not compete with default coverage, and cannot fail because the credit book had a
+        // bad quarter.
+        bondVault.settle(bondId, msg.sender);
+
+        emit BondRedeemed(bondId, msg.sender, bond.faceValue);
     }
 
     /* ========== ADMIN FUNCTIONS ========== */
@@ -756,7 +749,7 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     /// @notice Check if contract supports an interface
     /// @param interfaceId Interface identifier
     /// @return True if the interface is supported
-    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC1155, IERC165) returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC1155Upgradeable, IERC165Upgradeable) returns (bool) {
         return 
             interfaceId == 0xaf332f3e || // ERC-7496 (Dynamic Traits)
             super.supportsInterface(interfaceId);
@@ -798,7 +791,9 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     
     /// @notice Initialize trait keys and names
     function _initializeTraits() private {
-        // Initialize trait keys and names in one go
+        // Only the keys. The names that go with them are the same for every collection ever
+        // created, so they live in code rather than being written into each clone's storage --
+        // twelve string writes per collection, for twelve answers that were never going to differ.
         _allTraitKeys = [
             keccak256("faceValue"),
             keccak256("maturityDate"),
@@ -813,22 +808,27 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
             keccak256("createdAt"),
             keccak256("redeemedAt")
         ];
-        
-        // Map trait keys to names
-        _traitNames[keccak256("faceValue")] = "Face Value";
-        _traitNames[keccak256("maturityDate")] = "Maturity Date";
-        _traitNames[keccak256("discountPercentage")] = "Discount Percentage";
-        _traitNames[keccak256("purchasePrice")] = "Purchase Price";
-        _traitNames[keccak256("creator")] = "Creator";
-        _traitNames[keccak256("currentHolder")] = "Current Holder";
-        _traitNames[keccak256("isRedeemed")] = "Is Redeemed";
-        _traitNames[keccak256("terms")] = "Terms";
-        _traitNames[keccak256("bondType")] = "Bond Type";
-        _traitNames[keccak256("issuer")] = "Issuer";
-        _traitNames[keccak256("createdAt")] = "Created At";
-        _traitNames[keccak256("redeemedAt")] = "Redeemed At";
     }
-    
+
+    /// @notice the display name for one of the standard traits.
+    /// @dev Pure, because the answer does not depend on which collection is asked. Custom traits
+    /// registered later still carry their name in storage.
+    function _standardTraitName(bytes32 traitKey) private pure returns (string memory) {
+        if (traitKey == keccak256("faceValue")) return "Face Value";
+        if (traitKey == keccak256("maturityDate")) return "Maturity Date";
+        if (traitKey == keccak256("discountPercentage")) return "Discount Percentage";
+        if (traitKey == keccak256("purchasePrice")) return "Purchase Price";
+        if (traitKey == keccak256("creator")) return "Creator";
+        if (traitKey == keccak256("currentHolder")) return "Current Holder";
+        if (traitKey == keccak256("isRedeemed")) return "Is Redeemed";
+        if (traitKey == keccak256("terms")) return "Terms";
+        if (traitKey == keccak256("bondType")) return "Bond Type";
+        if (traitKey == keccak256("issuer")) return "Issuer";
+        if (traitKey == keccak256("createdAt")) return "Created At";
+        if (traitKey == keccak256("redeemedAt")) return "Redeemed At";
+        return "";
+    }
+
     /// @notice Set initial traits for a newly minted bond
     /// @param bondId ID of the bond
     /// @param faceValue Face value of the bond
@@ -856,8 +856,9 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         _setBondTraitValue(bondId, keccak256("issuer"), abi.encode(address(this)));
         _setBondTraitValue(bondId, keccak256("createdAt"), abi.encode(block.timestamp));
         
-        // Set default terms (can be updated later)
-        _setBondTraitValue(bondId, keccak256("terms"), abi.encode("Standard BurnerBond Terms"));
+        // No default terms trait. It stored the same sentence against every bond ever minted,
+        // which is a constant pretending to be data -- and the owner can set real terms per bond
+        // when there are any worth recording.
     }
     
     /// @notice Calculate bond type based on maturity period
