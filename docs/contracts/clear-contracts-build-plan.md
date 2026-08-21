@@ -307,6 +307,10 @@ Allocation target: ~70% deployable / ~30% reserve, with the reserve share rising
 - `LimitCalculator` picks them up; the asset-backed tier lights up.
 - `StandingBid` deployed: the co-op buys positive StableCredit at par or a small discount, funded from LendingPool/operating capital. Merchant gets a real exit; the fractional reserve stays untouched.
 
+**Repayment routing must change when `PayoutPool` exists.** Inherited behaviour sends every repayment — and every liquidation proceed — into the AssurancePool's buffer reserve: `repayCreditBalance` ends in `depositIntoBufferReserve`. That contradicts §4b in both directions. Repayment value is what pays the merchant holding the positive side, and the AssurancePool is the one fund forbidden from funding a payout, so the working capital for net-30 accumulates precisely where it cannot be spent.
+
+It is the same shape as the bond seniority inversion: money in the wrong pot, where the rule against moving it back is what bites. Harmless today only because there is nowhere else for it to go. When `PayoutPool` is built, repayments route there and only the surplus above the payout obligation reaches loss absorption.
+
 ---
 
 ## 4. The off-chain boundary
