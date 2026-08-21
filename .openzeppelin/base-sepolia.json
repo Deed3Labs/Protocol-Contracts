@@ -50,6 +50,16 @@
       "address": "0xbA9880F46128027D39F7694e3cfdf077D716c0a7",
       "txHash": "0xaf8086100d635101cab7a85b740a85d6ef1670c485ba8267c1e8284141bfe26c",
       "kind": "uups"
+    },
+    {
+      "address": "0xf5E40414410672636Ab1691ae19D2Aa1c1705840",
+      "txHash": "0x575e18c0f7f08a4cd56e118336d6ab295805aa53e1d6f2a854fb1e2c047a5978",
+      "kind": "uups"
+    },
+    {
+      "address": "0x2E5241bE8d35a0034aF5C6538ABd683655c2Fe38",
+      "txHash": "0xfdf8579f2f290d27454fdbd96e2c5aad2d06e4406f563f1ca51e4aebf24d5029",
+      "kind": "uups"
     }
   ],
   "impls": {
@@ -3290,6 +3300,657 @@
           "t_uint64": {
             "label": "uint64",
             "numberOfBytes": "8"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      }
+    },
+    "d6f24c4641b1560c15e6d90eb7db37f5aaf30d83230a2d02e5bd640f1a789274": {
+      "address": "0xD4A4382cb402FB9bc0d416286386448FC99B8671",
+      "txHash": "0xc9ebaa373f05b858cfc982c947e1d63b74199e1e27724b76f0390d0ca5d56484",
+      "layout": {
+        "solcVersion": "0.8.29",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:38"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "102",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol:88"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:169"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:111"
+          },
+          {
+            "label": "stableCredit",
+            "offset": 0,
+            "slot": "251",
+            "type": "t_contract(IStableCredit)33902",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:46"
+          },
+          {
+            "label": "reserveToken",
+            "offset": 0,
+            "slot": "252",
+            "type": "t_contract(IERC20Upgradeable)5424",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:47"
+          },
+          {
+            "label": "assuranceOracle",
+            "offset": 0,
+            "slot": "253",
+            "type": "t_contract(IAssuranceOracle)33056",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:48"
+          },
+          {
+            "label": "USDC_ADDRESS",
+            "offset": 0,
+            "slot": "254",
+            "type": "t_address",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:51"
+          },
+          {
+            "label": "USDT_ADDRESS",
+            "offset": 0,
+            "slot": "255",
+            "type": "t_address",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:52"
+          },
+          {
+            "label": "DAI_ADDRESS",
+            "offset": 0,
+            "slot": "256",
+            "type": "t_address",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:53"
+          },
+          {
+            "label": "primaryReserve",
+            "offset": 0,
+            "slot": "257",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:58"
+          },
+          {
+            "label": "bufferReserve",
+            "offset": 0,
+            "slot": "258",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:62"
+          },
+          {
+            "label": "excessReserve",
+            "offset": 0,
+            "slot": "259",
+            "type": "t_mapping(t_address,t_uint256)",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:67"
+          },
+          {
+            "label": "withdrawalCallers",
+            "offset": 0,
+            "slot": "260",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:82"
+          },
+          {
+            "label": "exposureSource",
+            "offset": 0,
+            "slot": "261",
+            "type": "t_contract(IExposureSource)33521",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:89"
+          },
+          {
+            "label": "heldTokenList",
+            "offset": 0,
+            "slot": "262",
+            "type": "t_array(t_address)dyn_storage",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:99"
+          },
+          {
+            "label": "heldTokenKnown",
+            "offset": 0,
+            "slot": "263",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "AssurancePool",
+            "src": "contracts/peripherals/AssurancePool.sol:101"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]",
+            "numberOfBytes": "32"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(IAssuranceOracle)33056": {
+            "label": "contract IAssuranceOracle",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IERC20Upgradeable)5424": {
+            "label": "contract IERC20Upgradeable",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IExposureSource)33521": {
+            "label": "contract IExposureSource",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IStableCredit)33902": {
+            "label": "contract IStableCredit",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      }
+    },
+    "d5fee484b6fb3084131818e930a632f02350bc15bf16066ffbdbee76d41859c4": {
+      "address": "0x65af5ca4a9f712A34ED0Cc8704544ADa339A316c",
+      "txHash": "0x67ff30194353a32eae0161fa1c004b678b1ee874a62add5648a665fb55cdba8d",
+      "layout": {
+        "solcVersion": "0.8.29",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:169"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:111"
+          },
+          {
+            "label": "staticTargetRTD",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_uint256",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:46"
+          },
+          {
+            "label": "targetRTDSource",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_contract(ITargetRTDSource)33912",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:48"
+          },
+          {
+            "label": "assurancePool",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_contract(IAssurancePool)33239",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:49"
+          },
+          {
+            "label": "uniswapFactory",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_contract(IUniswapV3Factory)44729",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:56"
+          },
+          {
+            "label": "WETH_ADDRESS",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_address",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:57"
+          },
+          {
+            "label": "USDC_ADDRESS",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_address",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:60"
+          },
+          {
+            "label": "USDT_ADDRESS",
+            "offset": 0,
+            "slot": "207",
+            "type": "t_address",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:61"
+          },
+          {
+            "label": "DAI_ADDRESS",
+            "offset": 0,
+            "slot": "208",
+            "type": "t_address",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:62"
+          },
+          {
+            "label": "tokenRegistry",
+            "offset": 0,
+            "slot": "209",
+            "type": "t_contract(ITokenRegistry)31726",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:65"
+          },
+          {
+            "label": "twapPeriod",
+            "offset": 20,
+            "slot": "209",
+            "type": "t_uint32",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:74"
+          },
+          {
+            "label": "forceRegistryFallback",
+            "offset": 0,
+            "slot": "210",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:342"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(IAssurancePool)33239": {
+            "label": "contract IAssurancePool",
+            "numberOfBytes": "20"
+          },
+          "t_contract(ITargetRTDSource)33912": {
+            "label": "contract ITargetRTDSource",
+            "numberOfBytes": "20"
+          },
+          "t_contract(ITokenRegistry)31726": {
+            "label": "contract ITokenRegistry",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IUniswapV3Factory)44729": {
+            "label": "contract IUniswapV3Factory",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint32": {
+            "label": "uint32",
+            "numberOfBytes": "4"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {}
+      }
+    },
+    "7b33af53c9df26ad84dd3b00cb7cd3b47159ae55841e3aa6fa1c060bede03d31": {
+      "address": "0xaD3801B3f0E04dB0868e70DE97bA51b2a828aEE6",
+      "txHash": "0x3fadec60b4f4b932f745f00d1071bc890c5bd43b6bb77c0857f18e59ae94580b",
+      "layout": {
+        "solcVersion": "0.8.29",
+        "storage": [
+          {
+            "label": "_initialized",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint8",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:63",
+            "retypedFrom": "bool"
+          },
+          {
+            "label": "_initializing",
+            "offset": 1,
+            "slot": "0",
+            "type": "t_bool",
+            "contract": "Initializable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol:68"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ContextUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol:36"
+          },
+          {
+            "label": "_owner",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:22"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "OwnableUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:94"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "101",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "ERC1967UpgradeUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/ERC1967/ERC1967UpgradeUpgradeable.sol:169"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "151",
+            "type": "t_array(t_uint256)50_storage",
+            "contract": "UUPSUpgradeable",
+            "src": "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol:111"
+          },
+          {
+            "label": "staticTargetRTD",
+            "offset": 0,
+            "slot": "201",
+            "type": "t_uint256",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:46"
+          },
+          {
+            "label": "targetRTDSource",
+            "offset": 0,
+            "slot": "202",
+            "type": "t_contract(ITargetRTDSource)33912",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:48"
+          },
+          {
+            "label": "assurancePool",
+            "offset": 0,
+            "slot": "203",
+            "type": "t_contract(IAssurancePool)33239",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:49"
+          },
+          {
+            "label": "uniswapFactory",
+            "offset": 0,
+            "slot": "204",
+            "type": "t_contract(IUniswapV3Factory)44729",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:56"
+          },
+          {
+            "label": "WETH_ADDRESS",
+            "offset": 0,
+            "slot": "205",
+            "type": "t_address",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:57"
+          },
+          {
+            "label": "USDC_ADDRESS",
+            "offset": 0,
+            "slot": "206",
+            "type": "t_address",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:60"
+          },
+          {
+            "label": "USDT_ADDRESS",
+            "offset": 0,
+            "slot": "207",
+            "type": "t_address",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:61"
+          },
+          {
+            "label": "DAI_ADDRESS",
+            "offset": 0,
+            "slot": "208",
+            "type": "t_address",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:62"
+          },
+          {
+            "label": "tokenRegistry",
+            "offset": 0,
+            "slot": "209",
+            "type": "t_contract(ITokenRegistry)31726",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:65"
+          },
+          {
+            "label": "twapPeriod",
+            "offset": 20,
+            "slot": "209",
+            "type": "t_uint32",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:74"
+          },
+          {
+            "label": "forceRegistryFallback",
+            "offset": 0,
+            "slot": "210",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "AssuranceOracle",
+            "src": "contracts/peripherals/AssuranceOracle.sol:350"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]",
+            "numberOfBytes": "1600"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(IAssurancePool)33239": {
+            "label": "contract IAssurancePool",
+            "numberOfBytes": "20"
+          },
+          "t_contract(ITargetRTDSource)33912": {
+            "label": "contract ITargetRTDSource",
+            "numberOfBytes": "20"
+          },
+          "t_contract(ITokenRegistry)31726": {
+            "label": "contract ITokenRegistry",
+            "numberOfBytes": "20"
+          },
+          "t_contract(IUniswapV3Factory)44729": {
+            "label": "contract IUniswapV3Factory",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint32": {
+            "label": "uint32",
+            "numberOfBytes": "4"
           },
           "t_uint8": {
             "label": "uint8",

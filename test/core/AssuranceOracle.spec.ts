@@ -52,6 +52,45 @@ describe("AssuranceOracle", function () {
     return pool;
   }
 
+  describe("a pair whose decimals do not match", function () {
+    // The rest of this spec prices a six-decimal token against six-decimal USDC, deliberately, so
+    // the raw ratio needs no correction and tick 0 reads as exactly $1. That is also why none of
+    // it caught this: the overflow only appears once the two sides differ.
+    //
+    // USDC has six decimals and WETH eighteen, so a real WETH/USDC pool carries a raw ratio near
+    // 3.3e8 and its squared sqrt price reaches about 2^220. Scaling that by 1e18 before shifting
+    // needs 2^280. The live Base Sepolia pool panicked on exactly this.
+
+    it("prices an eighteen-decimal token against six-decimal USDC without overflowing", async function () {
+      const MockERC20 = await ethers.getContractFactory("MockERC20");
+      const bigToken = await MockERC20.deploy("Big Decimals", "BIG", 18);
+
+      const MockUniswapV3Pool = await ethers.getContractFactory("MockUniswapV3Pool");
+      // USDC sorts first on Base, so it is token0 and the eighteen-decimal side is token1.
+      const pool = await MockUniswapV3Pool.deploy(
+        await usdc.getAddress(),
+        await bigToken.getAddress()
+      );
+      // ~196200 is the tick for a raw ratio of 3.3e8 — one unit of the big token being worth
+      // roughly three thousand USDC.
+      await pool.setAverageTick(196200, DEFAULT_TWAP_PERIOD);
+      await pool.setSpot(0n, 196200);
+      await factory.setPool(
+        await bigToken.getAddress(),
+        await usdc.getAddress(),
+        FEE_TIER,
+        await pool.getAddress()
+      );
+
+      const price = await oracle.getTokenPriceInUSD(await bigToken.getAddress());
+
+      // The assertion that matters is that the call returns at all; before the fix it panicked
+      // with an arithmetic overflow. The range check keeps the shift honest either way.
+      expect(price).to.be.greaterThan(ethers.parseEther("2000"));
+      expect(price).to.be.lessThan(ethers.parseEther("4000"));
+    });
+  });
+
   describe("deployment", function () {
     it("sets the constructor values", async function () {
       expect(await oracle.targetRTD()).to.equal(ethers.parseEther("0.2"));

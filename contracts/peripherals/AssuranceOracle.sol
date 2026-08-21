@@ -249,9 +249,17 @@ contract AssuranceOracle is IAssuranceOracle, OwnableUpgradeable, UUPSUpgradeabl
                 return 0;
             }
 
-            // priceRaw = token1_raw / token0_raw, scaled to 1e18
+            // priceRaw = token1_raw / token0_raw, scaled to 1e18.
+            //
+            // Shifted in two halves rather than scaled and then shifted once. The square of a
+            // Q64.96 sqrt price is a Q128.192 number, and for a pair whose raw ratio is large --
+            // USDC/WETH is ~3.3e8, six decimals against eighteen -- it reaches around 2^220.
+            // Multiplying that by 1e18 before shifting needs 2^280 and panics on overflow, which
+            // is what a live WETH/USDC pool actually did. Taking half the shift first leaves ~124
+            // bits of the ratio, far more than the 1e18 scale can express, so nothing is lost
+            // that the result could have represented.
             uint256 sqrtPriceSquared = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
-            uint256 priceToken1PerToken0 = (sqrtPriceSquared * 1e18) >> 192;
+            uint256 priceToken1PerToken0 = ((sqrtPriceSquared >> 96) * 1e18) >> 96;
             if (priceToken1PerToken0 == 0) {
                 return 0;
             }

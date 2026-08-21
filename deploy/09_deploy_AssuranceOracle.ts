@@ -44,7 +44,10 @@ async function main() {
 
   if (network.chainId === 84532n) {
     // Base Sepolia
-    uniswapFactoryAddress = "0x33128a8fC17869897dcE68Ed026d694621f6FDfD"; // Uniswap V3 Factory on Base Sepolia
+    // Base Sepolia's own factory. This used to be the Base MAINNET address, which has no
+    // code here -- so getPool returned address(0) for everything and Uniswap pricing
+    // silently never ran, falling through to registry prices without saying so.
+    uniswapFactoryAddress = "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24";
     wethAddress = "0x4200000000000000000000000000000000000006"; // WETH on Base Sepolia
     usdcAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // USDC on Base Sepolia
     usdtAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Using USDC as placeholder
@@ -61,7 +64,14 @@ async function main() {
   }
 
   // Deploy parameters
-  const targetRTD = hre.ethers.parseEther("1.0"); // 100% reserve to debt ratio
+  // 20%, matching the test fixture. The inherited default was 100%, which asks the pool to hold a
+  // dollar of reserve for every dollar of pool exposure -- not a fractional reserve at all, and
+  // not what any part of this design assumes.
+  //
+  // A placeholder either way. The oracle's real job is to serve a target derived from the
+  // predicted default rate (see ITargetRTDSource); until that model exists this is a number
+  // somebody chose, and it should be reviewed before mainnet rather than inherited.
+  const targetRTD = hre.ethers.parseEther("0.2");
 
   console.log("\nDeployment parameters:");
   console.log(`- AssurancePool: ${assurancePoolDeployment.address}`);
