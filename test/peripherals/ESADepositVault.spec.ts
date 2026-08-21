@@ -174,5 +174,12 @@ describe("ClearUSD + ESADepositVault", function () {
 
     await vault.setClrusd(await replacement.getAddress());
     expect(await vault.clrusd()).to.equal(await replacement.getAddress());
+
+    // The decimals cache moved with the address: deposits still price one-for-one.
+    await replacement.grantIssuerRoles(await vault.getAddress());
+    await usdc.mint(user.address, 50n * ONE_USDC);
+    await usdc.connect(user).approve(await vault.getAddress(), 50n * ONE_USDC);
+    await vault.connect(user).deposit(await usdc.getAddress(), 50n * ONE_USDC, user.address);
+    expect(await replacement.balanceOf(user.address)).to.equal(50n * ONE_USDC);
   });
 });

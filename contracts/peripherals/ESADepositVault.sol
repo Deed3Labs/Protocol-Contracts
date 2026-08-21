@@ -277,6 +277,10 @@ contract ESADepositVault is Initializable, AccessControlUpgradeable, PausableUpg
         uint256 outstanding = IERC20MetadataUpgradeable(clrusd).totalSupply();
         if (outstanding != 0) revert ESADepositVaultTokenStillOutstanding(outstanding);
         clrusd = clrusd_;
+        // The decimals are cached beside the address and every conversion reads the cache, so a
+        // swap that moved one without the other would silently misprice every deposit and every
+        // redemption from that moment on.
+        clrusdDecimals = IERC20MetadataUpgradeable(clrusd_).decimals();
         emit ClrusdUpdated(clrusd_);
     }
 
