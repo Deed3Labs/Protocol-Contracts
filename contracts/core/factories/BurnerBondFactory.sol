@@ -70,10 +70,17 @@ contract BurnerBondFactory is IBurnerBondFactory, Ownable, ReentrancyGuard {
         baseURI = _baseURI;
         
         // Deploy single unified deposit contract
-        burnerBondDeposit = new BurnerBondDeposit(
+        BurnerBondDeposit deployedDeposit = new BurnerBondDeposit(
             address(this),  // Factory address
             address(assurancePool)
         );
+        burnerBondDeposit = IBurnerBondDeposit(address(deployedDeposit));
+
+        // Hand it to whoever deployed the factory, as the collections are handed over below.
+        // Deploying it here makes the factory its owner, and the factory has no way to forward a
+        // call, so every admin function on it -- including emergency recovery -- was unreachable
+        // by anybody at all.
+        deployedDeposit.transferOwnership(owner());
     }
     
     /* ========== VIEW FUNCTIONS ========== */

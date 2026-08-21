@@ -693,6 +693,16 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         factory.setMinDiscount(_minDiscount);
     }
     
+    /// @notice sets the vault redemptions are paid from.
+    /// @dev Without this a collection can be created but never redeem, because the vault it pays
+    /// out of would be the zero address. Ownership of a new collection passes to the factory
+    /// owner, so this is theirs to call once the vault exists.
+    /// @param _bondVault Address of the BondVault contract
+    function setBondVault(address _bondVault) external onlyOwner {
+        require(_bondVault != address(0), "Invalid BondVault address");
+        bondVault = IBondVaultSettlement(_bondVault);
+    }
+
     /// @notice Set the AssurancePool contract address
     /// @param _assurancePool Address of the AssurancePool contract
     function setAssurancePool(address _assurancePool) external override onlyOwner {
@@ -769,8 +779,12 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         for (uint256 i = 0; i < ids.length; i++) {
             uint256 bondId = ids[i];
             
-            // Prevent transfers of redeemed bonds
-            if (bonds[bondId].isRedeemed) {
+            // Prevent transfers of redeemed bonds -- but not their destruction. Redemption marks
+            // the bond redeemed and then burns it, and a burn is a transfer to the zero address,
+            // so a check that did not make this distinction refused the second half of the
+            // operation the first half had just committed to. The instrument could take money in
+            // and had no reachable way to pay it out.
+            if (bonds[bondId].isRedeemed && to != address(0)) {
                 revert("Cannot transfer redeemed bond");
             }
             
