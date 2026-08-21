@@ -16,6 +16,10 @@ import "../core/interfaces/stable-credit/IAssurancePool.sol";
 /// @title BurnerBond
 /// @notice ERC-1155 based bond system that allows users to mint bonds at a discount
 /// @dev Bonds are backed by USDC deposited into the AssurancePool excess reserve
+interface IBondVaultSettlement {
+    function settle(uint256 bondId, address to) external returns (uint256);
+}
+
 contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
@@ -33,6 +37,11 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
     
     /// @notice AssurancePool contract for USDC deposits and withdrawals
     IAssurancePool public assurancePool;
+
+    /// @notice Where the money to redeem a bond comes from.
+    /// @dev The vault, never the AssurancePool. A bondholder is a creditor and must not be
+    /// exposed to how the credit book is performing.
+    IBondVaultSettlement public bondVault;
     
     /// @notice Underlying token contract (can be USDC, WETH, etc.)
     IERC20 public underlyingToken;
@@ -613,11 +622,10 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
         // Burn the ERC-1155 token
         _burn(msg.sender, bondId, 1);
         
-        // Withdraw face value from AssurancePool
-        assurancePool.withdrawToken(address(underlyingToken), bond.faceValue);
-        
-        // Transfer underlying token to bond holder
-        underlyingToken.safeTransfer(msg.sender, bond.faceValue);
+        // Paid out of the bond vault, which holds the proceeds and nothing else's. Redemption
+        // does not compete with default coverage, and cannot fail because the credit book had a
+        // bad quarter.
+        bondVault.settle(bondId, msg.sender);
         
         emit BondRedeemed(bondId, msg.sender, bond.faceValue);
     }
@@ -664,11 +672,7 @@ contract BurnerBond is IBurnerBond, ERC1155, Ownable, ReentrancyGuard {
             emit BondRedeemed(bondId, msg.sender, bond.faceValue);
         }
         
-        // Withdraw total face value from AssurancePool
-        assurancePool.withdrawToken(address(underlyingToken), totalFaceValue);
-        
-        // Transfer total underlying token to bond holder
-        underlyingToken.safeTransfer(msg.sender, totalFaceValue);
+        // Settled bond by bond out of the vault, for the same reason as above.
     }
 
     /* ========== ADMIN FUNCTIONS ========== */
