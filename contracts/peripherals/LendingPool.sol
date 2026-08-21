@@ -4,6 +4,7 @@ pragma solidity ^0.8.29;
 import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "../core/interfaces/stable-credit/IEncumbranceSource.sol";
 
 /// @title LendingPool
 /// @notice Member money funding the unsecured tiers, priced by how much of it is in use.
@@ -32,6 +33,8 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
     bytes32 public constant BORROWER_ROLE = keccak256("BORROWER_ROLE");
     /// @notice May report a loss on the credit book.
     bytes32 public constant LOSS_REPORTER_ROLE = keccak256("LOSS_REPORTER_ROLE");
+    /// @notice May take shares that are backing drawn credit, and only those.
+    bytes32 public constant LIQUIDATOR_ROLE = keccak256("LIQUIDATOR_ROLE");
 
     uint256 internal constant BPS = 10_000;
 
@@ -62,6 +65,15 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
     /// @notice Utilization the curve steepens at, in basis points.
     uint256 public kinkBps;
 
+    /// @notice Reports how many of a holder's shares are backing drawn credit.
+    /// @dev Pool shares are collateral like anything else, so they need the same two things
+    /// CLRUSD has: a refusal to move while pledged, and a way for the co-op to take them when the
+    /// member defaults. Recording a pledge in a registry does neither -- the member holds the
+    /// shares.
+    IEncumbranceSource public encumbranceSource;
+    /// @notice The collateral kind these shares are pledged as.
+    bytes32 public collateralKind;
+
     uint256[40] private __gap;
 
     error LendingPoolInvalidAddress();
@@ -69,6 +81,8 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
     error LendingPoolInsufficientCash(uint256 available, uint256 requested);
     error LendingPoolNothingQueued(uint256 requestId);
     error LendingPoolNotRequestOwner(uint256 requestId);
+    error LendingPoolEncumbered(address holder, uint256 free, uint256 amount);
+    error LendingPoolSeizureExceedsEncumbrance(address holder, uint256 encumbered, uint256 amount);
 
     event Borrowed(address indexed borrower, address indexed to, uint256 amount);
     event Repaid(address indexed from, uint256 amount);
@@ -76,6 +90,8 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
     event WithdrawalQueued(uint256 indexed requestId, address indexed owner, uint256 assets);
     event WithdrawalClaimed(uint256 indexed requestId, address indexed receiver, uint256 assets);
     event RateCurveUpdated(uint256 base, uint256 slope1, uint256 slope2, uint256 kinkBps);
+    event EncumbranceSourceUpdated(address indexed source);
+    event SharesSeized(address indexed holder, address indexed to, uint256 shares);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -192,6 +208,68 @@ contract LendingPool is ERC4626Upgradeable, AccessControlUpgradeable, UUPSUpgrad
         WithdrawalRequest storage request = requests[requestId];
         if (request.claimed) return false;
         return IERC20Upgradeable(asset()).balanceOf(address(this)) >= request.assets;
+    }
+
+    /* ========== COLLATERAL ========== */
+
+    /// @notice how many of a holder's shares are pledged against drawn credit.
+    function encumberedOf(address holder) public view returns (uint256) {
+        if (address(encumbranceSource) == address(0) || collateralKind == bytes32(0)) return 0;
+        try encumbranceSource.encumberedOfKind(holder, collateralKind) returns (uint256 locked) {
+            return locked;
+        } catch {
+            // An unreadable source locks nothing. A registry going quiet is a problem to fix; a
+            // pool that freezes every depositor until somebody fixes it is a worse one.
+            return 0;
+        }
+    }
+
+    /// @notice how many of a holder's shares may leave.
+    function freeSharesOf(address holder) public view returns (uint256) {
+        uint256 balance = balanceOf(holder);
+        uint256 locked = encumberedOf(holder);
+        return balance > locked ? balance - locked : 0;
+    }
+
+    /// @notice takes shares that are backing drawn credit.
+    /// @dev Bounded by what is actually pledged, so it cannot reach a depositor's free shares or
+    /// touch somebody who has drawn nothing. It does not decide whether a default has happened --
+    /// the caller does, and the caller should be a contract that checks.
+    ///
+    /// What it hands over is shares, not money. Turning them back into money is a redemption from
+    /// this pool like any other, which may have to wait behind the queue -- collateral can be
+    /// sufficient and still not be available today.
+    function seizeShares(address holder, address to, uint256 shares)
+        external
+        onlyRole(LIQUIDATOR_ROLE)
+    {
+        uint256 encumbered = encumberedOf(holder);
+        if (shares > encumbered) {
+            revert LendingPoolSeizureExceedsEncumbrance(holder, encumbered, shares);
+        }
+        _transfer(holder, to, shares);
+        emit SharesSeized(holder, to, shares);
+    }
+
+    /// @notice sets the contract reporting what is pledged, and the kind to ask about.
+    function setEncumbranceSource(address source, bytes32 kind) external onlyRole(OPERATOR_ROLE) {
+        encumbranceSource = IEncumbranceSource(source);
+        collateralKind = kind;
+        emit EncumbranceSourceUpdated(source);
+    }
+
+    /// @dev Pledged shares do not leave by an ordinary transfer either. Refusing to let them move
+    /// is what makes the pledge mean anything, since the member holds them.
+    function _beforeTokenTransfer(address from, address to, uint256 amount)
+        internal
+        virtual
+        override
+    {
+        super._beforeTokenTransfer(from, to, amount);
+        if (from == address(0) || to == address(0)) return;
+        if (hasRole(LIQUIDATOR_ROLE, _msgSender())) return;
+        uint256 free = freeSharesOf(from);
+        if (amount > free) revert LendingPoolEncumbered(from, free, amount);
     }
 
     /* ========== THE QUEUE ========== */

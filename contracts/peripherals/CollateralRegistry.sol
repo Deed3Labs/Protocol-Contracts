@@ -204,6 +204,18 @@ contract CollateralRegistry is
         return _requiredUnits(holder, kind, collateral);
     }
 
+    /// @inheritdoc IEncumbranceSource
+    function encumberedOfKind(address holder, bytes32 kind)
+        external
+        view
+        override
+        returns (uint256)
+    {
+        CollateralType storage collateral = collateralTypes[kind];
+        if (!collateral.registered) return 0;
+        return _requiredUnits(holder, kind, collateral);
+    }
+
     /// @notice names the collateral kind held as CLRUSD in members' own accounts.
     function setClrusdKind(bytes32 kind) external onlyRole(OPERATOR_ROLE) {
         if (kind != bytes32(0) && !collateralTypes[kind].registered) {

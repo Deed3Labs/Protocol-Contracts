@@ -19,4 +19,14 @@ interface IEncumbranceSource {
     /// @param holder address holding the asset.
     /// @return amount that must remain.
     function encumberedOf(address holder) external view returns (uint256);
+
+    /// @notice the amount of one kind of pledge that may not leave.
+    /// @dev Collateral is not all one asset. CLRUSD asks the question without qualifying it
+    /// because it is only ever itself; anything else has to say which pledge it is asking about,
+    /// or it would be told how much of somebody's savings are locked and lock its own shares by
+    /// that number.
+    /// @param holder address holding the asset.
+    /// @param kind collateral type.
+    /// @return amount that must remain.
+    function encumberedOfKind(address holder, bytes32 kind) external view returns (uint256);
 }

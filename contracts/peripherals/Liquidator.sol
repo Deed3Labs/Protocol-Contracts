@@ -19,6 +19,15 @@ interface ICollateralSeizureSink {
     function recordSeizure(address member, bytes32 kind, uint256 amount) external;
 }
 
+interface ISeizableShares {
+    function seizeShares(address holder, address to, uint256 shares) external;
+    function balanceOf(address account) external view returns (uint256);
+    function previewRedeem(uint256 shares) external view returns (uint256);
+    function maxRedeem(address owner) external view returns (uint256);
+    function redeem(uint256 shares, address receiver, address owner) external returns (uint256);
+    function requestWithdrawal(uint256 shares, address receiver) external returns (uint256);
+}
+
 interface ITierSettler {
     function settleFromCollateral(address member, uint256 tierId, uint256 amount) external;
     function principalOf(address member, uint256 tierId) external view returns (uint256);
@@ -57,6 +66,11 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     error LiquidatorInvalidAddress();
     error LiquidatorNotInDefault(address member, address issuer);
     error LiquidatorNothingToSeize(address member);
+    error LiquidatorNotRealizable(address collateral, uint256 seized);
+
+    event SharesSeized(
+        address indexed member, address indexed pool, uint256 shares, uint256 realized, bool queued
+    );
 
     event Liquidated(
         address indexed member,
@@ -142,5 +156,85 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         repaid = redeemed;
 
         emit Liquidated(member, issuer, seizing, redeemed, repaid);
+    }
+
+    /// @notice covers a defaulted member's debt out of pool shares they pledged.
+    /// @dev The other half of liquidation. Savings-backed collateral is CLRUSD, which redeems
+    /// one-for-one on demand, so seizing it and settling the debt happen in the same breath. Pool
+    /// shares do not work that way: they are a claim on a pool that may have lent the money out,
+    /// so turning them into cash can land in the withdrawal queue behind other depositors.
+    ///
+    /// That is the timing risk the haircut does not price. A haircut says what the collateral is
+    /// worth; it says nothing about when. So this settles what it can realize now and queues the
+    /// rest, rather than pretending a claim on a lent-out pool is money.
+    ///
+    /// The debt is not forgiven while that happens. The member still owes it, the co-op holds the
+    /// shares, and settlement follows the cash.
+    /// @param member address of the defaulted member.
+    /// @param issuer address of the issuer holding the position.
+    /// @param tierId tier the shares were pledged against.
+    /// @param kind collateral type, as the registry knows it.
+    /// @param pool the share pool.
+    /// @return realized amount settled against the member's debt now.
+    /// @return queued whether the remainder is waiting on the pool.
+    function liquidateShares(
+        address member,
+        address issuer,
+        uint256 tierId,
+        bytes32 kind,
+        address pool
+    ) external onlyRole(OPERATOR_ROLE) returns (uint256 realized, bool queued) {
+        ICreditIssuer creditIssuer = ICreditIssuer(issuer);
+        if (!creditIssuer.inDefault(member) && !creditIssuer.hasDefaulted(member)) {
+            revert LiquidatorNotInDefault(member, issuer);
+        }
+
+        ISeizableShares shares = ISeizableShares(pool);
+        uint256 held = shares.balanceOf(member);
+        if (held == 0) revert LiquidatorNothingToSeize(member);
+
+        // Never take more than the tier owes, valued at what the shares would fetch.
+        uint256 owed = ITierSettler(issuer).principalOf(member, tierId);
+        uint256 needed = shares.previewRedeem(held) > owed && shares.previewRedeem(held) > 0
+            ? (held * owed) / shares.previewRedeem(held)
+            : held;
+        if (needed == 0) revert LiquidatorNothingToSeize(member);
+
+        shares.seizeShares(member, address(this), needed);
+        collateralRegistry.recordSeizure(member, kind, needed);
+
+        // Redeem what the pool can pay today; queue whatever it cannot.
+        uint256 redeemableNow = shares.maxRedeem(address(this));
+        if (redeemableNow > needed) redeemableNow = needed;
+
+        if (redeemableNow > 0) {
+            realized = shares.redeem(redeemableNow, address(this), address(this));
+            reserveToken.forceApprove(issuer, realized);
+            ITierSettler(issuer).settleFromCollateral(member, tierId, realized);
+        }
+
+        uint256 leftover = needed - redeemableNow;
+        if (leftover > 0) {
+            // Waiting in line rather than failing. The claim is real; the cash is not here yet.
+            shares.requestWithdrawal(leftover, address(this));
+            queued = true;
+        }
+
+        emit SharesSeized(member, pool, needed, realized, queued);
+    }
+
+    /// @notice settles a member's debt with cash the co-op has since collected on their behalf.
+    /// @dev What a queued redemption pays out eventually still belongs against the debt it was
+    /// seized for. The co-op holds it in the meantime; this is how it gets there.
+    /// @param member address of the member.
+    /// @param issuer address of the issuer holding the position.
+    /// @param tierId tier to settle.
+    /// @param amount amount of reserve token to apply.
+    function settleRealized(address member, address issuer, uint256 tierId, uint256 amount)
+        external
+        onlyRole(OPERATOR_ROLE)
+    {
+        reserveToken.forceApprove(issuer, amount);
+        ITierSettler(issuer).settleFromCollateral(member, tierId, amount);
     }
 }
