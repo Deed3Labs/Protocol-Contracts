@@ -309,6 +309,46 @@ describe("TermIssuer", function () {
     });
   });
 
+  describe("arrears counts the carry too", function () {
+    // Arrears is what an automatic pull is sized from, so it has to include the carry cost. Carry
+    // joins the schedule when it is materialised, which happens on a payment rather than with the
+    // passing of time -- so the view has to count what has accrued since the last touch.
+
+    it("reports the same whether or not the plan has been touched", async function () {
+      await setLimit(4_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 300n, 12);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 300n, 12);
+      await advance(6 * MONTH);
+
+      const cold = await issuer.arrearsOf(0);
+      await issuer.materialiseCarry(1);
+      const warm = await issuer.arrearsOf(1);
+
+      const gap = cold > warm ? cold - warm : warm - cold;
+      expect(gap).to.be.lessThan(10_000n);
+      expect(cold).to.be.greaterThan(600n * ONE_USDC); // six of twelve, plus carry
+    });
+
+    it("is larger than the principal alone would make it", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 300n, 12);
+      await advance(6 * MONTH);
+
+      expect(await issuer.pendingCarryOn(0)).to.be.greaterThan(0n);
+      // Half the principal has come due, and half the carry with it.
+      expect(await issuer.arrearsOf(0)).to.be.greaterThan(600n * ONE_USDC);
+    });
+
+    it("charges no carry, and so no extra arrears, at a zero rate", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 0n, 12);
+      await advance(6 * MONTH);
+
+      expect(await issuer.pendingCarryOn(0)).to.equal(0n);
+      expect(await issuer.arrearsOf(0)).to.equal(600n * ONE_USDC);
+    });
+  });
+
   describe("compliance is the schedule, not equilibrium", function () {
     it("holds a member current while they are on schedule", async function () {
       // Carrying a term balance is the product. Only falling behind is a delinquency.

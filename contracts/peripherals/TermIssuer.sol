@@ -182,9 +182,29 @@ contract TermIssuer is CreditIssuer {
     /// schedule sums to the principal exactly.
     function scheduledPrincipalDue(uint256 planId) public view returns (uint256) {
         Plan storage plan = plans[planId];
+        // Carry joins the schedule when it is materialised, and materialising happens on a
+        // payment or a re-split rather than with the passing of time. A view that only counted
+        // what had already been written would report a plan as less behind than it is between
+        // touches -- and it is exactly that figure an automatic pull is sized from, so it would
+        // fetch too little and leave the member short. Counted here as though it had been
+        // materialised, which is what the next interaction will do anyway.
+        uint256 base = plan.scheduleBase + _pendingCarry(plan);
         uint256 due = installmentsDue(planId);
-        if (due >= plan.installments) return plan.scheduleFloor + plan.scheduleBase;
-        return plan.scheduleFloor + (plan.scheduleBase * due) / plan.installments;
+        if (due >= plan.installments) return plan.scheduleFloor + base;
+        return plan.scheduleFloor + (base * due) / plan.installments;
+    }
+
+    /// @notice carry a plan has accrued but not yet had written onto the ledger.
+    function pendingCarryOn(uint256 planId) external view returns (uint256) {
+        _requirePlan(planId);
+        return _pendingCarry(plans[planId]);
+    }
+
+    function _pendingCarry(Plan storage plan) private view returns (uint256) {
+        if (plan.closed || plan.normalized == 0) return 0;
+        uint256 owed =
+            CarryIndex.denormalize(plan.normalized, plan.index.currentIndex(block.timestamp));
+        return owed > plan.principalOutstanding ? owed - plan.principalOutstanding : 0;
     }
 
     /// @notice how far behind the schedule a plan is, in principal.
