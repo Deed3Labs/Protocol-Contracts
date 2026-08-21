@@ -23,6 +23,27 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
     /// happens after that point, so it needs the fact to outlive the terms.
     mapping(address => uint64) public defaultedAt;
 
+    /// @notice What a member has taken in, against what they have carried.
+    /// @dev The two halves of ITD, kept separate because they are the same quantity arriving by
+    /// different routes and which one dominates depends on who the member is. A consumer's income
+    /// arrives as external deposits; a merchant's arrives as credits handed to them by other
+    /// members. Summing them is what lets one formula describe both without a rule change when
+    /// B2B ships.
+    struct IncomeRecord {
+        /// @dev Credits received from other members.
+        uint256 creditsReceived;
+        /// @dev Value received from outside the ledger, settling debt with reserve tokens.
+        uint256 depositsReceived;
+        /// @dev The integral of the member's balance over time, in balance-seconds.
+        uint256 debtSeconds;
+        /// @dev When `debtSeconds` was last brought forward.
+        uint64 lastAccrued;
+        /// @dev When the current measurement window opened.
+        uint64 windowStart;
+    }
+
+    mapping(address => IncomeRecord) public incomeOf;
+
     /* ========== INITIALIZER ========== */
 
     /// @notice initializes the stable credit address to issue credit for.
@@ -69,6 +90,11 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
     /// @dev intended to be overwritten in parent implementation to include custom compliance logic.
     /// @param member address of member.
     /// @return whether member is in compliance with credit terms.
+    /// @dev Rebalanced to zero **or above**, not to zero. `creditBalance` is the magnitude of a
+    /// negative position, so zero already means at or above the line -- a member sitting on a
+    /// positive balance is compliant, not merely square. Reading the rule as "to zero" and
+    /// enforcing an exact balance would fail every member the network owes money to, which in
+    /// Phase 1 is every merchant.
     function inCompliance(address member) public view virtual override returns (bool) {
         uint256 creditBalance = stableCredit.creditBalanceOf(member);
         return creditBalance == 0;
@@ -164,7 +190,105 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
     function _syncCreditPositions(address sender, address recipient, uint256 amount)
         internal
         virtual
-    {}
+    {
+        _recordIncome(sender, recipient, amount);
+    }
+
+    /* ========== INCOME TO DEBT ========== */
+
+    /// @notice the average balance a member has carried over the current window.
+    /// @dev Averaged over time rather than sampled, because a member who clears their balance the
+    /// day before anyone looks has carried it all the same. The integral is kept as a running sum
+    /// so this costs nothing to read and does not need iterating over anything.
+    function averageBalanceCarriedOf(address member) public view returns (uint256) {
+        IncomeRecord storage record = incomeOf[member];
+        if (record.windowStart == 0 || block.timestamp <= record.windowStart) return 0;
+
+        uint256 accrued = record.debtSeconds
+            + stableCredit.creditBalanceOf(member) * (block.timestamp - record.lastAccrued);
+        return accrued / (block.timestamp - record.windowStart);
+    }
+
+    /// @notice a member's income to debt ratio, where 1 ether == 100%.
+    /// @dev
+    ///     ITD = (credits received from members + external deposits received)
+    ///           / average balance carried
+    ///
+    /// One formula for both phases and both member classes. Today the first term is zero for a
+    /// consumer and the second carries it; when B2B ships the first dominates for a merchant.
+    /// Neither case needs a rule change or a migration, because neither case is special.
+    ///
+    /// A member who has carried nothing has no ratio rather than an infinite one -- see
+    /// `hasBalanceToMeasure`, which is what tells the two apart.
+    /// @param member address of the member.
+    /// @return ratio income to debt, where 1 ether == 100%.
+    function itdOf(address member) public view returns (uint256) {
+        uint256 carried = averageBalanceCarriedOf(member);
+        if (carried == 0) return 0;
+        IncomeRecord storage record = incomeOf[member];
+        return ((record.creditsReceived + record.depositsReceived) * 1 ether) / carried;
+    }
+
+    /// @notice whether a member has carried enough of a balance for their ITD to mean anything.
+    /// @dev A ratio over an empty denominator is not a good score, it is no score. Read this
+    /// before reading `itdOf`, or a member who has never drawn will look like the worst one.
+    function hasBalanceToMeasure(address member) public view returns (bool) {
+        return averageBalanceCarriedOf(member) > 0;
+    }
+
+    /// @notice whether a member's ITD reaches a given threshold.
+    /// @dev Exposed rather than enforced. What ITD a line requires is an underwriting policy that
+    /// differs by tier and by member class, and burying one threshold in the ledger would make
+    /// every future policy a contract change.
+    /// @param member address of the member.
+    /// @param minimumItd threshold, where 1 ether == 100%.
+    function meetsITD(address member, uint256 minimumItd) external view returns (bool) {
+        if (!hasBalanceToMeasure(member)) return true;
+        return itdOf(member) >= minimumItd;
+    }
+
+    /// @notice brings the balance integral forward and records what arrived.
+    function _recordIncome(address sender, address recipient, uint256 amount) internal {
+        _accrueDebtSeconds(sender);
+        _accrueDebtSeconds(recipient);
+        if (amount == 0 || recipient == address(0)) return;
+
+        IncomeRecord storage record = incomeOf[recipient];
+        if (sender == address(stableCredit)) {
+            // Value that entered the ledger from outside it: a repayment funded with reserve
+            // tokens, or credit the network itself issued.
+            record.depositsReceived += amount;
+        } else {
+            record.creditsReceived += amount;
+        }
+    }
+
+    /// @dev Adds the time since the last touch at the balance that was standing through it.
+    function _accrueDebtSeconds(address member) private {
+        if (member == address(0) || member == address(stableCredit)) return;
+        IncomeRecord storage record = incomeOf[member];
+        if (record.windowStart == 0) {
+            record.windowStart = uint64(block.timestamp);
+            record.lastAccrued = uint64(block.timestamp);
+            return;
+        }
+        if (block.timestamp == record.lastAccrued) return;
+        record.debtSeconds +=
+            stableCredit.creditBalanceOf(member) * (block.timestamp - record.lastAccrued);
+        record.lastAccrued = uint64(block.timestamp);
+    }
+
+    /// @notice opens a fresh measurement window for a member.
+    /// @dev Called when credit terms are set, so a member is measured over the terms they are
+    /// actually on rather than over everything they have ever done.
+    function _resetIncomeWindow(address member) internal {
+        IncomeRecord storage record = incomeOf[member];
+        record.creditsReceived = 0;
+        record.depositsReceived = 0;
+        record.debtSeconds = 0;
+        record.lastAccrued = uint64(block.timestamp);
+        record.windowStart = uint64(block.timestamp);
+    }
 
     /// @notice syncs the credit period state and returns validation status.
     /// @dev this function is intended to be called after credit expiration to ensure that defaulted debt
@@ -366,6 +490,9 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
             graceLength: graceLength,
             paused: false
         });
+        // A member is measured over the terms they are on, not over everything they have ever
+        // done, so new terms open a new window.
+        _resetIncomeWindow(member);
         emit CreditPeriodCreated(member, periodExpiration, graceLength);
     }
 

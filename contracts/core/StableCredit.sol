@@ -331,11 +331,19 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// by exactly the delinquency that provoked them.
     function _systemTransfer(address _from, address _to, uint256 _amount) internal {
         uint256 burned = _repaymentOf(_to, _amount);
-        super._transfer(_from, _to, _amount);
-        // Told afterwards rather than asked beforehand. An issuer describing what a member's
+        // Told before the move, not after. An issuer measuring how long a balance was carried
+        // integrates it at the balance standing when it is told, and telling it afterwards would
+        // credit the whole stretch at the balance the move just produced -- so a member who
+        // carried a thousand for a month and then cleared it would read as having carried
+        // nothing. Told rather than asked: this is not a movement an issuer may refuse. An issuer describing what a member's
         // balance is made of still has to see the movement, or its composition drifts from the
         // balance it describes -- but it does not get to refuse it.
         _notifyIssuersOf(_from, _from, _to, _amount);
+        // The recipient's issuers are told as well as asked to absorb. Absorbing is about
+        // positions; being told is about everything else an issuer measures, and value arriving
+        // from outside the ledger is exactly the income half of a member's ITD.
+        _notifyIssuersOf(_to, _from, _to, _amount);
+        super._transfer(_from, _to, _amount);
         _settleRepayment(_to, burned);
     }
 

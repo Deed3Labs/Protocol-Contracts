@@ -351,6 +351,9 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         internal
         override
     {
+        // The base issuer measures income against balance carried, and that has to see every
+        // movement, not only the ones that land in a tier.
+        super._syncCreditPositions(sender, recipient, amount);
         if (amount == 0) return;
 
         // Bring both parties current before deciding anything. Carry that has accrued since the
