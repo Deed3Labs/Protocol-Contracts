@@ -18,6 +18,22 @@ interface ICreditIssuer {
         external
         returns (bool);
 
+    /// @notice Offers an issuer a share of a repayment, and asks how much it took.
+    /// @dev The ledger holds one signed number per member, and with more than one issuer that
+    /// number is jointly owned. A payment cannot simply be announced to each of them: they would
+    /// each record the whole of it. So the ledger hands out a budget and each issuer answers with
+    /// what it actually absorbed, bounded by its own positions and by what is left.
+    /// @param member address whose obligation was reduced.
+    /// @param available amount still unattributed.
+    /// @return absorbed amount this issuer took, never more than `available`.
+    function absorbRepayment(address member, uint256 available) external returns (uint256 absorbed);
+
+    /// @notice Where this issuer sits in the order repayments are offered around.
+    /// @dev Lower goes first. An undirected payment says only "reduce what this member owes", and
+    /// the revolving line is the demand obligation, so it is offered first; term plans amortize on
+    /// a schedule and are normally serviced by name.
+    function repaymentPriority() external view returns (uint256);
+
     /// @notice Tells an issuer about a credit movement it was not asked to approve.
     /// @dev Opening a line, recognising a write-off and settling a repayment all move credit
     /// without asking permission, because none of them is a member spending. An issuer that

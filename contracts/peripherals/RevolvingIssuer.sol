@@ -329,12 +329,30 @@ contract RevolvingIssuer is CreditIssuer {
         if (balance < amount && totalCapacityOf(sender) > 0) {
             _draw(sender, amount - balance);
         }
+    }
 
-        // Credit arriving at a member carrying debt burns against it.
-        if (recipient != address(0)) {
-            uint256 owed = stableCredit.creditBalanceOf(recipient);
-            if (owed > 0) _repay(recipient, owed < amount ? owed : amount);
-        }
+    /// @notice takes what these tiers can of a repayment.
+    /// @dev Offered a budget by the ledger rather than told an amount, because the member's
+    /// balance may be shared with a term issuer and both would otherwise record the whole
+    /// payment. Bounded by what these tiers actually hold.
+    function _absorbRepayment(address member, uint256 available)
+        internal
+        override
+        returns (uint256)
+    {
+        if (available == 0) return 0;
+        _materialiseCarry(member);
+        uint256 owed = totalPrincipalOf(member);
+        uint256 take = owed < available ? owed : available;
+        if (take > 0) _repay(member, take);
+        return take;
+    }
+
+    /// @notice the revolving line is offered repayments first.
+    /// @dev It is the demand obligation: an undirected payment says only "reduce what this member
+    /// owes", and this is the debt with no schedule behind it.
+    function repaymentPriority() external pure override returns (uint256) {
+        return 10;
     }
 
     /// @notice moves carry accrued in each tier onto the ledger.

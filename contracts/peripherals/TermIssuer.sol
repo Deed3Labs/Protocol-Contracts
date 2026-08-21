@@ -326,6 +326,56 @@ contract TermIssuer is CreditIssuer {
 
     /* ========== INTERNAL ========== */
 
+    /// @notice takes what these plans can of an undirected repayment.
+    /// @dev A payment directed at a plan never reaches here -- `payPlan` records it itself and
+    /// the ledger stays quiet, so nothing is counted twice. This is the other case: credit
+    /// arriving at a member with no plan named. The ledger burns their balance either way, so
+    /// the plans have to take their share or they go on claiming principal the ledger says is
+    /// settled.
+    ///
+    /// Oldest plan first, which is also most-overdue first on any schedule that has been running
+    /// longer.
+    function _absorbRepayment(address member, uint256 available)
+        internal
+        override
+        returns (uint256 absorbed)
+    {
+        if (available == 0) return 0;
+        uint256[] storage ids = memberPlans[member];
+        uint256 remaining = available;
+
+        for (uint256 i = 0; i < ids.length && remaining > 0; i++) {
+            uint256 planId = ids[i];
+            Plan storage plan = plans[planId];
+            if (plan.closed || plan.principalOutstanding == 0) continue;
+
+            _materialiseCarry(planId);
+            uint256 owed = plan.principalOutstanding;
+            uint256 pay = owed < remaining ? owed : remaining;
+
+            uint256 index = plan.index.currentIndex(block.timestamp);
+            uint256 reduction = CarryIndex.normalizeUp(pay, index);
+            plan.normalized = reduction >= plan.normalized ? 0 : plan.normalized - reduction;
+            plan.principalOutstanding = owed - pay;
+            plan.repaid += pay;
+
+            remaining -= pay;
+            absorbed += pay;
+            emit PlanPaid(planId, pay, pay);
+            if (plan.principalOutstanding == 0) {
+                plan.closed = true;
+                emit PlanClosed(planId);
+            }
+        }
+    }
+
+    /// @notice term plans are offered repayments after the revolving line.
+    /// @dev They amortize on a schedule and are normally serviced by name, so an undirected
+    /// payment reaches them only once the demand obligation is clear.
+    function repaymentPriority() external pure override returns (uint256) {
+        return 50;
+    }
+
     /// @notice this issuer's share of a member's debt.
     /// @dev Only what sits in its plans. A member who also holds a revolving balance has debt this
     /// issuer does not own and must not write off.

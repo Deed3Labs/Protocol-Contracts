@@ -295,7 +295,9 @@ contract StableCredit is MutualCredit, IStableCredit {
         if (!_validateAcrossIssuers(_from, _to, _amount)) {
             revert StableCreditTransactionInvalid(_from, _to, _amount);
         }
+        uint256 burned = _repaymentOf(_to, _amount);
         super._transfer(_from, _to, _amount);
+        _settleRepayment(_to, burned);
     }
 
     /// @notice moves credit without asking any issuer's permission.
@@ -303,12 +305,59 @@ contract StableCredit is MutualCredit, IStableCredit {
     /// repayment. None of those are a member spending, and all three would otherwise be blocked
     /// by exactly the delinquency that provoked them.
     function _systemTransfer(address _from, address _to, uint256 _amount) internal {
+        uint256 burned = _repaymentOf(_to, _amount);
         super._transfer(_from, _to, _amount);
         // Told afterwards rather than asked beforehand. An issuer describing what a member's
         // balance is made of still has to see the movement, or its composition drifts from the
         // balance it describes -- but it does not get to refuse it.
         _notifyIssuersOf(_from, _from, _to, _amount);
-        _notifyIssuersOf(_to, _from, _to, _amount);
+        _settleRepayment(_to, burned);
+    }
+
+    /// @notice how much of an incoming amount will burn against the recipient's debt.
+    /// @dev Read before the transfer, because afterwards the balance it burned against is gone.
+    function _repaymentOf(address _to, uint256 _amount) private view returns (uint256) {
+        if (_to == address(0)) return 0;
+        uint256 owed = creditBalanceOf(_to);
+        return owed < _amount ? owed : _amount;
+    }
+
+    /// @notice attributes a repayment across the issuers that share the member's balance.
+    /// @dev The ledger holds one signed number and, with more than one issuer, that number is
+    /// jointly owned. Announcing a payment to each of them would have each record the whole of
+    /// it, so instead each is offered what is left and answers with what it took. The ledger is
+    /// the only party that can do this, because it is the only one that knows the total.
+    ///
+    /// Anything left unattributed means the issuers collectively hold less than the ledger says
+    /// is owed. That is a drift they cannot cause on their own and the ledger does not try to
+    /// paper over: the payment still settled, and the discrepancy stays visible.
+    function _settleRepayment(address member, uint256 burned) private {
+        if (burned == 0 || address(networkRegistry) == address(0)) return;
+        address[] memory issuers = _issuersByRepaymentOrder(member);
+        uint256 remaining = burned;
+        for (uint256 i = 0; i < issuers.length && remaining > 0; i++) {
+            uint256 absorbed = ICreditIssuer(issuers[i]).absorbRepayment(member, remaining);
+            if (absorbed > remaining) absorbed = remaining;
+            remaining -= absorbed;
+        }
+    }
+
+    /// @dev Sorted ascending by the issuers' own declared priority, so the order a payment is
+    /// offered around is a property of the issuers rather than of the order somebody enrolled
+    /// them in. Insertion sort: a member holds a handful of issuers, not a list.
+    function _issuersByRepaymentOrder(address member) private view returns (address[] memory) {
+        address[] memory issuers = networkRegistry.issuersOf(member);
+        for (uint256 i = 1; i < issuers.length; i++) {
+            address current = issuers[i];
+            uint256 priority = ICreditIssuer(current).repaymentPriority();
+            uint256 j = i;
+            while (j > 0 && ICreditIssuer(issuers[j - 1]).repaymentPriority() > priority) {
+                issuers[j] = issuers[j - 1];
+                j--;
+            }
+            issuers[j] = current;
+        }
+        return issuers;
     }
 
     /// @dev Mirrors `_askIssuersOf`, minus the veto.

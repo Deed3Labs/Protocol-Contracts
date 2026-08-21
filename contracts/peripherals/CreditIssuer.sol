@@ -127,6 +127,31 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
         _syncCreditPositions(sender, recipient, amount);
     }
 
+    /// @inheritdoc ICreditIssuer
+    function absorbRepayment(address member, uint256 available)
+        external
+        virtual
+        override
+        onlyStableCredit
+        returns (uint256)
+    {
+        return _absorbRepayment(member, available);
+    }
+
+    /// @inheritdoc ICreditIssuer
+    function repaymentPriority() external view virtual override returns (uint256) {
+        return 100;
+    }
+
+    /// @notice takes what this issuer can of a repayment.
+    /// @dev Nothing by default: the base issuer tracks a period, not a composition, so there is
+    /// no position for a payment to land against.
+    function _absorbRepayment(address member, uint256 available)
+        internal
+        virtual
+        returns (uint256)
+    {}
+
     /// @notice records what a credit movement did to this issuer's positions.
     /// @dev Nothing by default: the base issuer tracks a period, not a composition. An issuer
     /// that describes what a member's balance is made of overrides this, and must stay consistent
