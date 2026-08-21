@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "./interfaces/stable-credit/IStableCredit.sol";
 import "./interfaces/stable-credit/INetworkRegistry.sol";
 import "./interfaces/stable-credit/IPayoutSink.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./MutualCredit.sol";
 
 /// @title StableCredit contract
@@ -14,7 +15,7 @@ import "./MutualCredit.sol";
 /// in the transfer of the outstanding credit balance to the lost debt balance.
 /// @dev Restricted functions are only callable by network operators.
 
-contract StableCredit is MutualCredit, IStableCredit {
+contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// @notice thrown when the credit issuer rejects a transaction.
     /// @dev Custom error rather than a require string: production builds strip revert strings,
     /// and a caller needs to be able to tell a rejected transfer apart from a successful one.
@@ -86,6 +87,7 @@ contract StableCredit is MutualCredit, IStableCredit {
         onlyInitializing
     {
         __MutualCredit_init(name_, symbol_);
+        __UUPSUpgradeable_init();
         // assign "lost debt account" credit line
         setCreditLimit(address(this), type(uint128).max - 1);
         access = IAccessManager(access_);
@@ -522,6 +524,16 @@ contract StableCredit is MutualCredit, IStableCredit {
     }
 
     /* ========== MODIFIERS ========== */
+
+    /// @dev The ledger holds one signed balance per member and nothing recreates those. A bug
+    /// here cannot be fixed by deploying a replacement -- every account would have to be moved to
+    /// it, one at a time, which is the migration this whole design tries to avoid elsewhere.
+    ///
+    /// Gated on the same admin that already governs the ledger. It is worth being plain that this
+    /// is not a new trust surface: an admin can already appoint operators, and an operator can
+    /// already move a member's credit limit. Upgrade authority is the power they hold anyway,
+    /// written down.
+    function _authorizeUpgrade(address) internal override onlyAdmin {}
 
     modifier onlyAdmin() {
         require(access.isAdmin(_msgSender()), "StableCredit: Unauthorized caller");

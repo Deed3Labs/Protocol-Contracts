@@ -4,6 +4,7 @@ pragma solidity ^0.8.29;
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -15,7 +16,7 @@ import "../core/interfaces/stable-credit/IExposureSource.sol";
 /// @title AssurancePool
 /// @notice Stores and manages reserve tokens according to pool
 /// configurations set by operator access granted addresses.
-contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     /* ========== EVENTS ========== */
@@ -109,9 +110,14 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     function initialize(address _stableCredit, address _reserveToken) public initializer {
         __ReentrancyGuard_init();
         __Ownable_init();
+        __UUPSUpgradeable_init();
         stableCredit = IStableCredit(_stableCredit);
         reserveToken = IERC20Upgradeable(_reserveToken);
     }
+
+    /// @dev The pool holds the reserve itself. Everything else in the system can be replaced by
+    /// deploying another one and pointing at it; a pot of money cannot.
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 
     /* ========== VIEW FUNCTIONS ========== */
 

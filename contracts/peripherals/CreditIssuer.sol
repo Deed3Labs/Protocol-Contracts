@@ -2,6 +2,7 @@
 pragma solidity ^0.8.29;
 
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "../core/interfaces/stable-credit/IStableCredit.sol";
 import "../core/interfaces/stable-credit/IMutualCredit.sol";
@@ -11,7 +12,7 @@ import "../core/interfaces/stable-credit/ICreditIssuer.sol";
 /// @notice Issue Credit to network members and store/manage credit periods.
 /// @dev This contract is intended to be extended by a parent contract that implements
 /// custom credit terms and underwriting logic.
-contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable {
+contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable, UUPSUpgradeable {
     /* ========== STATE VARIABLES ========== */
 
     IStableCredit public stableCredit;
@@ -50,8 +51,9 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
     /// @dev should be called directly after deployment (see OpenZeppelin upgradeable standards).
     /// @param _stableCredit address of stable credit contract to issue credit for.
     function __CreditIssuer_init(address _stableCredit) public virtual onlyInitializing {
-        __Ownable_init();
         __Pausable_init();
+        __Ownable_init();
+        __UUPSUpgradeable_init();
         stableCredit = IStableCredit(_stableCredit);
     }
 
@@ -497,6 +499,11 @@ contract CreditIssuer is ICreditIssuer, PausableUpgradeable, OwnableUpgradeable 
     }
 
     /* ========== MODIFIERS ========== */
+
+    /// @dev Inherited by RevolvingIssuer and TermIssuer, which is the point: an issuer holds
+    /// credit lines, tier positions and carry checkpoints, and none of that survives a
+    /// redeployment either.
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 
     modifier onlyOperator() {
         require(stableCredit.access().isOperator(_msgSender()), "CreditIssuer: Unauthorized caller");
