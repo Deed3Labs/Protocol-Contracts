@@ -22,7 +22,7 @@ import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
 import HomeRoute from "@/pages/app/HomeRoute";
 import SavingsRoute from "@/pages/app/SavingsRoute";
-import ActivityPage from "@/pages/app/ActivityPage";
+import ActivityRoute from "@/pages/app/ActivityRoute";
 import CardRoute from "@/pages/app/CardRoute";
 import ContactsPage from "@/pages/app/ContactsPage";
 import AssurancePage from "@/pages/app/AssurancePage";
@@ -117,7 +117,7 @@ function App() {
                       <Route path="/savings" element={<SavingsRoute />} />
                       <Route path="/earn" element={<EarnPage />} />
                       <Route path="/send" element={<SendPage />} />
-                      <Route path="/activity" element={<ActivityPage />} />
+                      <Route path="/activity" element={<ActivityRoute />} />
                       <Route path="/card" element={<CardRoute />} />
                       <Route path="/contacts" element={<ContactsPage />} />
                       <Route path="/partners" element={<PartnersPage />} />
