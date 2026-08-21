@@ -41,13 +41,22 @@ contract RevolvingIssuer is CreditIssuer {
     /// @dev member => tier => principal drawn, carry excluded
     mapping(address => mapping(uint256 => uint256)) private tierPrincipal;
 
-    uint256[44] private __gap;
+    /// @notice Who is owed carry accrued in a tier.
+    /// @dev The co-op by default: it funds the draw and holds the claim. A tier funded from
+    /// somewhere else names that instead -- the LendingPool funds the unsecured tiers, and the
+    /// carry on those belongs to the depositors whose money was lent.
+    address public defaultCarryRecipient;
+    /// @dev tier => recipient, falling back to the default when unset
+    mapping(uint256 => address) private tierCarryRecipient;
+
+    uint256[42] private __gap;
 
     /* ========== ERRORS ========== */
 
     error RevolvingIssuerRatesMustAscend(uint256 previous, uint256 proposed);
     error RevolvingIssuerUnknownTier(uint256 tierId);
     error RevolvingIssuerCapacityBelowDrawn(uint256 tierId, uint256 capacity, uint256 drawn);
+    error RevolvingIssuerNoCarryRecipient();
 
     /* ========== EVENTS ========== */
 
@@ -56,6 +65,8 @@ contract RevolvingIssuer is CreditIssuer {
     event TierCapacityUpdated(address indexed member, uint256 indexed tierId, uint256 capacity);
     event TierDrawn(address indexed member, uint256 indexed tierId, uint256 amount);
     event TierRepaid(address indexed member, uint256 indexed tierId, uint256 amount);
+    event CarryRecipientUpdated(uint256 indexed tierId, address recipient);
+    event TierCarryMaterialised(address indexed member, uint256 indexed tierId, uint256 amount);
 
     /* ========== INITIALIZER ========== */
 
@@ -123,6 +134,12 @@ contract RevolvingIssuer is CreditIssuer {
         uint256 capacity = tierCapacity[member][tierId];
         uint256 drawn = drawnOf(member, tierId);
         return capacity > drawn ? capacity - drawn : 0;
+    }
+
+    /// @notice who is owed carry accrued in a tier.
+    function carryRecipientOf(uint256 tierId) public view returns (address) {
+        address recipient = tierCarryRecipient[tierId];
+        return recipient == address(0) ? defaultCarryRecipient : recipient;
     }
 
     /// @notice a member's total ceiling across every tier.
@@ -207,6 +224,29 @@ contract RevolvingIssuer is CreditIssuer {
         tiers[tierId].active = active;
     }
 
+    /// @notice sets who is owed carry, for every tier that has not named someone else.
+    function setDefaultCarryRecipient(address recipient) external onlyOperator {
+        if (recipient == address(0)) revert RevolvingIssuerNoCarryRecipient();
+        defaultCarryRecipient = recipient;
+        emit CarryRecipientUpdated(type(uint256).max, recipient);
+    }
+
+    /// @notice sets who is owed carry accrued in one tier.
+    /// @dev Pass address(0) to fall back to the default.
+    function setTierCarryRecipient(uint256 tierId, address recipient) external onlyOperator {
+        _requireTier(tierId);
+        tierCarryRecipient[tierId] = recipient;
+        emit CarryRecipientUpdated(tierId, recipient);
+    }
+
+    /// @notice brings a member's accrued carry onto the ledger.
+    /// @dev Runs on every interaction, and is callable directly so a position that nobody has
+    /// touched can still be brought current.
+    /// @param member address of the member.
+    function materialiseCarry(address member) public {
+        _materialiseCarry(member);
+    }
+
     /// @notice sets a member's ceiling contribution in a tier.
     /// @dev The operator sets this today. In the finished shape LimitCalculator does, by valuing
     /// what the member has pledged and applying the haircut for that collateral type.
@@ -260,6 +300,12 @@ contract RevolvingIssuer is CreditIssuer {
     {
         if (amount == 0) return;
 
+        // Bring both parties current before deciding anything. Carry that has accrued since the
+        // last touch is part of what is owed, so it belongs on the ledger before a draw measures
+        // headroom against it or a repayment is allocated over it.
+        _materialiseCarry(sender);
+        if (recipient != address(0)) _materialiseCarry(recipient);
+
         // The sender covers what their balance cannot, and that shortfall is what gets minted.
         uint256 balance = stableCredit.balanceOf(sender);
         if (balance < amount && totalCapacityOf(sender) > 0) {
@@ -270,6 +316,29 @@ contract RevolvingIssuer is CreditIssuer {
         if (recipient != address(0)) {
             uint256 owed = stableCredit.creditBalanceOf(recipient);
             if (owed > 0) _repay(recipient, owed < amount ? owed : amount);
+        }
+    }
+
+    /// @notice moves carry accrued in each tier onto the ledger.
+    /// @dev Carry deepens the member's negative balance and mints the matching claim to whoever
+    /// funded the draw. Once it is on the ledger it stops being a figure this contract derives
+    /// and becomes debt like any other: repayable, and counted by everything that reads a
+    /// balance. The tier's principal is raised to match, so the same carry is never accrued twice.
+    function _materialiseCarry(address member) private {
+        for (uint256 i = 0; i < tiers.length; i++) {
+            uint256 normalized = tierNormalized[member][i];
+            if (normalized == 0) continue;
+
+            uint256 drawn = CarryIndex.denormalize(
+                normalized, tiers[i].index.currentIndex(block.timestamp)
+            );
+            uint256 principal = tierPrincipal[member][i];
+            if (drawn <= principal) continue;
+
+            uint256 carry = drawn - principal;
+            tierPrincipal[member][i] = drawn;
+            stableCredit.accrueCarry(member, carryRecipientOf(i), carry);
+            emit TierCarryMaterialised(member, i, carry);
         }
     }
 

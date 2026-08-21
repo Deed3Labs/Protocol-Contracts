@@ -18,9 +18,11 @@ const TIERS = [
 describe("RevolvingIssuer", function () {
   let ctx: Awaited<ReturnType<typeof deployPhase0Network>>;
   let issuer: any;
+  let coop: any;
 
   beforeEach(async function () {
     ctx = await deployPhase0Network();
+    coop = (await ethers.getSigners())[8];
 
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
     issuer = await RevolvingIssuer.deploy();
@@ -40,6 +42,10 @@ describe("RevolvingIssuer", function () {
         .addTier(ethers.encodeBytes32String(tier.name), tier.rate, CYCLE);
     }
     await ctx.access.connect(ctx.operator).grantMember(ctx.counterparty.address);
+    // Carry is owed to whoever funded the draw. The co-op here; the LendingPool once the
+    // unsecured tiers are funded from it.
+    await ctx.access.connect(ctx.operator).grantMember(coop.address);
+    await issuer.connect(ctx.operator).setDefaultCarryRecipient(coop.address);
   });
 
   async function openLine(capacities: bigint[]) {
@@ -166,7 +172,6 @@ describe("RevolvingIssuer", function () {
 
     it("charges more on a more expensive tier for the same money and time", async function () {
       await openLine([0n, 500n, 500n, 500n].map((n) => n * ONE_USDC));
-      // Fill tier 1 exactly, then tier 2 exactly.
       await spend(1_000n * ONE_USDC);
       await advance(6 * CYCLE);
 
@@ -192,8 +197,124 @@ describe("RevolvingIssuer", function () {
       await advance(6 * CYCLE);
       const carry = await issuer.carryOf(ctx.member.address, 2);
       expect(carry).to.be.greaterThan(0n);
-      // Reading it repeatedly cannot change it, because nothing was written.
       expect(await issuer.carryOf(ctx.member.address, 2)).to.equal(carry);
+    });
+  });
+
+  describe("carry lands on the ledger", function () {
+    // Carry deepens the member's negative balance. Until it is on the ledger it is a figure this
+    // contract derives and nothing can repay, because the balance a payment burns against does
+    // not include it.
+
+    it("deepens the negative balance and mints the claim to whoever funded the draw", async function () {
+      await openLine([0n, 0n, 500n, 0n].map((n) => n * ONE_USDC));
+      await spend(400n * ONE_USDC);
+      await advance(6 * CYCLE);
+
+      const owedBefore = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      const supplyBefore = await ctx.stableCredit.totalSupply();
+
+      await issuer.materialiseCarry(ctx.member.address);
+
+      // Carry accrues every second, including the one between reading a figure and writing it,
+      // so the amounts are compared against each other rather than against an earlier read.
+      const minted = await ctx.stableCredit.balanceOf(coop.address);
+      expect(minted).to.be.greaterThan(0n);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address))
+        .to.equal(owedBefore + minted);
+      expect(await ctx.stableCredit.totalSupply()).to.equal(supplyBefore + minted);
+    });
+
+    it("nets to zero, like every other movement on the ledger", async function () {
+      await openLine([0n, 0n, 500n, 0n].map((n) => n * ONE_USDC));
+      await spend(400n * ONE_USDC);
+      await advance(6 * CYCLE);
+      await issuer.materialiseCarry(ctx.member.address);
+
+      // What the member owes equals what everyone else holds.
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      const held =
+        (await ctx.stableCredit.balanceOf(ctx.counterparty.address)) +
+        (await ctx.stableCredit.balanceOf(coop.address));
+      expect(owed).to.equal(held);
+    });
+
+    it("does not accrue the same carry twice", async function () {
+      await openLine([0n, 0n, 500n, 0n].map((n) => n * ONE_USDC));
+      await spend(400n * ONE_USDC);
+      await advance(6 * CYCLE);
+
+      await issuer.materialiseCarry(ctx.member.address);
+      const afterFirst = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      expect(afterFirst - 400n * ONE_USDC).to.be.greaterThan(ONE_USDC); // six cycles' worth
+
+      await issuer.materialiseCarry(ctx.member.address);
+      const afterSecond = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+
+      // The second call takes only the seconds since the first, not the six cycles again.
+      expect(afterSecond - afterFirst).to.be.lessThan(1_000n);
+    });
+
+    it("keeps the tiers summing to the ledger balance once carry is on it", async function () {
+      await openLine([300n, 500n, 200n, 100n].map((n) => n * ONE_USDC));
+      await spend(900n * ONE_USDC);
+      await advance(6 * CYCLE);
+      await issuer.materialiseCarry(ctx.member.address);
+
+      expect(await issuer.totalPrincipalOf(ctx.member.address))
+        .to.equal(await ctx.stableCredit.creditBalanceOf(ctx.member.address));
+      expect(await issuer.totalDrawnOf(ctx.member.address))
+        .to.equal(await issuer.totalPrincipalOf(ctx.member.address));
+    });
+
+    it("materialises on the next interaction without being asked", async function () {
+      await openLine([0n, 0n, 500n, 0n].map((n) => n * ONE_USDC));
+      await spend(300n * ONE_USDC);
+      await advance(6 * CYCLE);
+      expect(await issuer.carryOf(ctx.member.address, 2)).to.be.greaterThan(0n);
+
+      await spend(10n * ONE_USDC);
+      // Cleared but for the seconds since the spend settled.
+      expect(await issuer.carryOf(ctx.member.address, 2)).to.be.lessThan(1_000n);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.be.greaterThan(ONE_USDC);
+    });
+
+    it("can carry a member past their ceiling, and then they cannot draw", async function () {
+      // Carry is what makes headroom shrink. A ceiling that stopped it accruing once reached
+      // would make standing still free.
+      await openLine([0n, 0n, 100n, 0n].map((n) => n * ONE_USDC));
+      await spend(100n * ONE_USDC);
+      await advance(11 * CYCLE); // inside the credit period, so this is the ceiling and not default
+
+      await issuer.materialiseCarry(ctx.member.address);
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      expect(owed).to.be.greaterThan(100n * ONE_USDC);
+      expect(await ctx.stableCredit.creditLimitLeftOf(ctx.member.address)).to.equal(0n);
+
+      await expect(spend(1n * ONE_USDC)).to.be.revertedWith("MutualCredit: Insufficient credit");
+    });
+
+    it("lets a member repay carry once it is on the ledger", async function () {
+      await openLine([0n, 0n, 500n, 0n].map((n) => n * ONE_USDC));
+      await spend(400n * ONE_USDC);
+      await advance(6 * CYCLE);
+      await issuer.materialiseCarry(ctx.member.address);
+
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      // The counterparty holds the principal and the co-op holds the carry; together they are
+      // exactly what is owed.
+      await ctx.stableCredit
+        .connect(ctx.counterparty)
+        .transfer(ctx.member.address, 400n * ONE_USDC);
+      await ctx.stableCredit
+        .connect(coop)
+        .transfer(ctx.member.address, owed - 400n * ONE_USDC);
+
+      // A few wei accrued between the two payments, which is the mechanism working rather than
+      // failing. What matters is that the tiers and the ledger still agree.
+      const left = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      expect(left).to.be.lessThan(1_000n);
+      expect(await issuer.totalPrincipalOf(ctx.member.address)).to.equal(left);
     });
   });
 
@@ -202,14 +323,17 @@ describe("RevolvingIssuer", function () {
       await openLine([300n, 500n, 200n, 100n].map((n) => n * ONE_USDC));
       await spend(1_100n * ONE_USDC);
 
-      // The counterparty sends 300 back, which burns against the member's debt.
+      // Bring carry onto the ledger, then hand back exactly the two dearest tiers.
+      await issuer.materialiseCarry(ctx.member.address);
+      const boost = await issuer.principalOf(ctx.member.address, 3);
+      const income = await issuer.principalOf(ctx.member.address, 2);
       await ctx.stableCredit
         .connect(ctx.counterparty)
-        .transfer(ctx.member.address, 300n * ONE_USDC);
+        .transfer(ctx.member.address, boost + income);
 
-      expect(await issuer.principalOf(ctx.member.address, 3)).to.equal(0n); // 100, cleared
-      expect(await issuer.principalOf(ctx.member.address, 2)).to.equal(0n); // 200, cleared
-      expect(await issuer.principalOf(ctx.member.address, 1)).to.equal(500n * ONE_USDC);
+      expect(await issuer.principalOf(ctx.member.address, 3)).to.equal(0n);
+      expect(await issuer.principalOf(ctx.member.address, 2)).to.be.lessThan(1_000n);
+      expect(await issuer.principalOf(ctx.member.address, 1)).to.be.greaterThan(499n * ONE_USDC);
       expect(await issuer.principalOf(ctx.member.address, 0)).to.equal(300n * ONE_USDC);
     });
 
@@ -223,34 +347,31 @@ describe("RevolvingIssuer", function () {
       const held = await ctx.stableCredit.balanceOf(ctx.counterparty.address);
       await ctx.stableCredit.connect(ctx.counterparty).transfer(ctx.member.address, held);
 
-      // Principal is settled; only the carry that accrued above it remains.
-      expect(await issuer.totalPrincipalOf(ctx.member.address)).to.equal(0n);
-      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+      // The principal is settled; what remains on the ledger is the carry, now owed to the co-op.
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address))
+        .to.equal(await ctx.stableCredit.balanceOf(coop.address));
+      expect(await issuer.totalPrincipalOf(ctx.member.address))
+        .to.equal(await ctx.stableCredit.creditBalanceOf(ctx.member.address));
     });
 
-    it("reduces principal, and leaves the carry above it outstanding", async function () {
-      // A repayment arriving through the ledger can only be repaying principal: the ledger's
-      // credit balance moves when credit moves, and accrued carry has never moved anywhere.
-      // Settling carry first is the intended rule and needs carry materialised onto the ledger.
-      await openLine([0n, 0n, 500n, 0n].map((n) => n * ONE_USDC));
-      await spend(400n * ONE_USDC);
+    it("settles the dearest tier first, carry included", async function () {
+      // Carry is materialised before the repayment is allocated, so by the time the payment is
+      // placed there is no separate carry to settle -- it is debt in the tier that accrued it,
+      // and the most expensive tier clears first.
+      await openLine([0n, 0n, 300n, 300n].map((n) => n * ONE_USDC));
+      await spend(600n * ONE_USDC);
       await advance(6 * CYCLE);
 
-      const carry = await issuer.carryOf(ctx.member.address, 2);
-      expect(carry).to.be.greaterThan(0n);
+      await issuer.materialiseCarry(ctx.member.address);
+      const boost = await issuer.principalOf(ctx.member.address, 3);
+      // Boost accrued at 300 bps and income at 150, so the dearest slice is the larger one.
+      expect(boost).to.be.greaterThan(await issuer.principalOf(ctx.member.address, 2));
 
-      await ctx.stableCredit
-        .connect(ctx.counterparty)
-        .transfer(ctx.member.address, 400n * ONE_USDC);
+      await ctx.stableCredit.connect(ctx.counterparty).transfer(ctx.member.address, boost);
 
-      // Principal is gone from both the tier and the ledger.
-      expect(await issuer.principalOf(ctx.member.address, 2)).to.equal(0n);
-      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
-
-      // What accrued is still owed, and still reads as carry.
-      const remaining = await issuer.carryOf(ctx.member.address, 2);
-      expect(remaining).to.be.greaterThan(0n);
-      expect(await issuer.drawnOf(ctx.member.address, 2)).to.equal(remaining);
+      // Boost, the dearest, is gone but for the seconds since; income still carries its balance.
+      expect(await issuer.principalOf(ctx.member.address, 3)).to.be.lessThan(1_000n);
+      expect(await issuer.principalOf(ctx.member.address, 2)).to.be.greaterThan(299n * ONE_USDC);
     });
 
     it("keeps the tiers summing to the ledger balance after repayment", async function () {
@@ -260,12 +381,8 @@ describe("RevolvingIssuer", function () {
         .connect(ctx.counterparty)
         .transfer(ctx.member.address, 400n * ONE_USDC);
 
-      // Principal reconciles exactly with the ledger. What sits above it is carry, which the
-      // ledger does not yet know about -- see totalPrincipalOf.
       expect(await issuer.totalPrincipalOf(ctx.member.address))
         .to.equal(await ctx.stableCredit.creditBalanceOf(ctx.member.address));
-      expect(await issuer.totalDrawnOf(ctx.member.address))
-        .to.be.greaterThanOrEqual(await issuer.totalPrincipalOf(ctx.member.address));
     });
   });
 

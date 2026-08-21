@@ -30,6 +30,14 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     /// @dev Must have sufficient lost debt to service.
     /// @return reimbursement amount from assurance pool
     function burnLostDebt(address member, uint256 amount) external returns (uint256);
+
+    /// @notice deepens a member's negative balance by accrued carry.
+    /// @dev Called by the issuer that holds the position. The claim goes to whoever funded the
+    /// draw -- the co-op, or the pool the money came from.
+    /// @param member address whose obligation grows.
+    /// @param recipient address owed the carry.
+    /// @param amount amount accrued.
+    function accrueCarry(address member, address recipient, uint256 amount) external;
     /// @notice Shared account that manages the rectification of lost debt.
     /// @return amount of lost debt shared by network participants.
     function lostDebt() external view returns (uint256);
@@ -41,6 +49,7 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     event CreditBalanceRepaid(address member, uint128 amount);
     event LostDebtBurned(address member, uint256 amount);
     event CreditLineWrittenOff(address member, uint256 amount);
+    event CarryAccrued(address indexed member, address indexed recipient, uint256 amount);
     event ComplianceUpdated(
         address sender, address recipient, bool senderCompliance, bool recipientCompliance
     );

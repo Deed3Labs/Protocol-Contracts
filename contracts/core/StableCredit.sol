@@ -22,6 +22,8 @@ contract StableCredit is MutualCredit, IStableCredit {
     error StableCreditNotAnIssuer(address caller);
     /// @notice thrown when an issuer acts on a member it has no credit line with.
     error StableCreditNoCreditLine(address issuer, address member);
+    /// @notice thrown when carry would be minted to nobody.
+    error StableCreditInvalidCarryRecipient();
 
     /* ========== STATE VARIABLES ========== */
 
@@ -103,6 +105,27 @@ contract StableCredit is MutualCredit, IStableCredit {
         // refused by the freeze.
         _systemTransfer(address(this), member, amount);
         emit CreditBalanceRepaid(member, amount);
+    }
+
+    /// @notice deepens a member's negative balance by carry their issuer has accrued.
+    /// @dev The member did not spend anything, so nothing leaves their balance: the obligation
+    /// grows and the matching claim is minted to whoever is owed it. Net zero, like every other
+    /// movement on this ledger.
+    ///
+    /// Materialising carry is what lets it be repaid at all. While it exists only as a figure the
+    /// issuer derives, a payment arriving here can only settle principal, because the balance a
+    /// payment burns against does not include it.
+    /// @param member address whose obligation grows.
+    /// @param recipient address owed the carry.
+    /// @param amount amount accrued.
+    function accrueCarry(address member, address recipient, uint256 amount)
+        external
+        override
+        onlyCreditIssuer
+    {
+        if (recipient == address(0)) revert StableCreditInvalidCarryRecipient();
+        _accrueCredit(member, recipient, amount);
+        emit CarryAccrued(member, recipient, amount);
     }
 
     /* ========== RESTRICTED FUNCTIONS ========== */
