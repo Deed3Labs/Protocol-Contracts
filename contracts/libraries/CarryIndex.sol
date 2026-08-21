@@ -156,6 +156,66 @@ library CarryIndex {
         return owed > principalDrawn ? owed - principalDrawn : 0;
     }
 
+    /// @notice what a level schedule collects in total to clear `principal`.
+    /// @dev The figure a term plan is quoted from, fixed when the schedule opens rather than
+    /// recomputed as carry accrues. Deriving the schedule from carry-so-far makes the quoted
+    /// payment creep upward across the term -- correct arithmetic, but a member told one number
+    /// and later asked for a larger one has been told the wrong number, and predictability is the
+    /// whole of what a term plan sells over a revolving line.
+    ///
+    /// Standard annuity: with a balance growing by `growthPerPeriod` each period and a constant
+    /// payment P, the balance after n periods is `B*g^n - P*(g^n - 1)/(g - 1)`. Setting that to
+    /// zero at n = installments gives `P = B * g^N * (g - 1) / (g^N - 1)`, and the schedule
+    /// collects `P * N`. It is projected against the same index that does the accruing, so a
+    /// member who pays on schedule clears the plan on schedule rather than on a figure that only
+    /// resembles it.
+    ///
+    /// The total is returned rather than the payment because the total is the honest primary:
+    /// rounding a payment up and multiplying by N overcharges by the rounding, every period,
+    /// which at zero carry means a schedule that collects more than the principal it spreads.
+    /// Multiplying before the single rounding keeps the term exact and leaves the remainder to
+    /// the last period, which is where a remainder belongs.
+    /// @param principal amount the schedule has to clear.
+    /// @param growthPerPeriod RAY-scaled growth factor over one installment period.
+    /// @param installments number of periods.
+    /// @return what the schedule collects across its whole term, carry included.
+    function scheduleCost(uint256 principal, uint256 growthPerPeriod, uint32 installments)
+        internal
+        pure
+        returns (uint256)
+    {
+        if (principal == 0 || installments == 0) return 0;
+        // A plan at zero carry collects the principal and nothing else.
+        if (growthPerPeriod <= RAY) return principal;
+
+        uint256 gN = rpow(growthPerPeriod, installments);
+        // Guard the degenerate case where the growth rounds away entirely over the term.
+        if (gN <= RAY) return principal;
+
+        uint256 total = _ceilDiv(
+            mulRay(principal, gN) * (growthPerPeriod - RAY) * installments, gN - RAY
+        );
+        // Carry cannot be negative, whatever the rounding did.
+        return total < principal ? principal : total;
+    }
+
+    /// @notice the RAY-scaled factor a position grows by between two times.
+    /// @dev A ratio rather than a reading, because a schedule can start after the rate did -- a
+    /// re-split opens a new schedule on an index that has already been running.
+    function growthBetween(Index storage idx, uint256 from, uint256 to)
+        internal
+        view
+        returns (uint256)
+    {
+        uint256 start = currentIndex(idx, from);
+        if (start == 0) return RAY;
+        return (currentIndex(idx, to) * RAY) / start;
+    }
+
+    function _ceilDiv(uint256 a, uint256 b) private pure returns (uint256) {
+        return a == 0 ? 0 : (a - 1) / b + 1;
+    }
+
     /// @notice multiplies two RAY-scaled numbers.
     function mulRay(uint256 a, uint256 b) internal pure returns (uint256) {
         return (a * b) / RAY;

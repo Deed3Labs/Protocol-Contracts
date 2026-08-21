@@ -47,6 +47,12 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         /// plus anything they were behind by when they changed the split. Re-splitting spreads
         /// the remainder; it does not forgive what was already owed.
         uint256 scheduleFloor;
+        /// @dev The payment the schedule asks for each period, fixed when the schedule opens.
+        uint256 installmentAmount;
+        /// @dev What the whole schedule collects: `scheduleBase` plus the carry it will accrue if
+        /// it is paid on time. Held so the last period settles the schedule exactly rather than
+        /// inheriting the rounding of every period before it.
+        uint256 scheduleTotal;
         CarryIndex.Index index;
     }
 
@@ -152,6 +158,31 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         );
     }
 
+    /// @notice the schedule a plan is on: the figure quoted, and what the term costs in total.
+    /// @dev The number the app shows a member. Held rather than derived precisely so that it is
+    /// the same number every time they look at it.
+    /// @param planId plan to read.
+    /// @return installmentAmount what each period asks for.
+    /// @return scheduleTotal what the whole schedule collects, carry included.
+    /// @return installments periods in the current schedule.
+    /// @return scheduleStart when the current schedule began.
+    function scheduleOf(uint256 planId)
+        external
+        view
+        returns (
+            uint256 installmentAmount,
+            uint256 scheduleTotal,
+            uint32 installments,
+            uint64 scheduleStart
+        )
+    {
+        _requirePlan(planId);
+        Plan storage plan = plans[planId];
+        return (
+            plan.installmentAmount, plan.scheduleTotal, plan.installments, plan.scheduleStart
+        );
+    }
+
     /// @notice what a plan owes now, carry included.
     function owedOn(uint256 planId) public view returns (uint256) {
         _requirePlan(planId);
@@ -178,21 +209,20 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         return due > plan.installments ? plan.installments : due;
     }
 
-    /// @notice the principal the schedule says should have been repaid by now.
-    /// @dev Amortized in equal parts, with the remainder falling in the last installment so the
-    /// schedule sums to the principal exactly.
+    /// @notice what the schedule says should have been repaid by now, carry included.
+    /// @dev Fixed at origination rather than derived from carry so far. The earlier version added
+    /// `_pendingCarry` on every read, which was right about what was owed and wrong about what
+    /// the member had been told: the quoted payment climbed across the term as carry accrued.
+    /// Projecting the whole schedule up front prices the same carry into a figure that holds
+    /// still, and prices it from the start rather than lagging the last touch -- so this never
+    /// under-reports how far behind a plan is, which is what an automatic pull is sized from.
     function scheduledPrincipalDue(uint256 planId) public view returns (uint256) {
         Plan storage plan = plans[planId];
-        // Carry joins the schedule when it is materialised, and materialising happens on a
-        // payment or a re-split rather than with the passing of time. A view that only counted
-        // what had already been written would report a plan as less behind than it is between
-        // touches -- and it is exactly that figure an automatic pull is sized from, so it would
-        // fetch too little and leave the member short. Counted here as though it had been
-        // materialised, which is what the next interaction will do anyway.
-        uint256 base = plan.scheduleBase + _pendingCarry(plan);
         uint256 due = installmentsDue(planId);
-        if (due >= plan.installments) return plan.scheduleFloor + base;
-        return plan.scheduleFloor + (base * due) / plan.installments;
+        // The last period settles the schedule rather than paying another equal share, so the
+        // rounding-up in each installment does not accumulate into a final overcharge.
+        if (due >= plan.installments) return plan.scheduleFloor + plan.scheduleTotal;
+        return plan.scheduleFloor + plan.installmentAmount * due;
     }
 
     /// @notice carry a plan has accrued but not yet had written onto the ledger.
@@ -345,6 +375,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         plan.scheduleFloor = 0;
         plan.index.init(ratePerCycle, cycleLength, uint64(block.timestamp));
         plan.normalized = CarryIndex.normalizeUp(purchase, CarryIndex.RAY);
+        _fixSchedule(plan);
         memberPlans[member].push(planId);
 
         stableCredit.originatePurchase(
@@ -388,6 +419,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         plan.scheduleFloor = repaid + behind;
         plan.scheduleBase = spread;
         plan.installments = installments;
+        _fixSchedule(plan);
 
         emit PlanSplitChanged(planId, installments, spread, behind);
     }
@@ -434,6 +466,23 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     }
 
     /* ========== INTERNAL ========== */
+
+    /// @notice fixes the payment schedule for whatever the plan is spreading.
+    /// @dev Called when a schedule opens and again when one is re-split, because a re-split is a
+    /// new schedule over a new remainder -- and quoting the old payment against it would be the
+    /// drift this exists to remove, arriving by another route.
+    function _fixSchedule(Plan storage plan) private {
+        uint256 growth = plan.index.growthBetween(
+            plan.scheduleStart, uint256(plan.scheduleStart) + plan.installmentLength
+        );
+        uint256 total = CarryIndex.scheduleCost(plan.scheduleBase, growth, plan.installments);
+        plan.scheduleTotal = total;
+        // Rounded up, so a member who pays what is asked is never a wei short of the schedule.
+        // The last period settles against the total instead of paying another equal share, so
+        // the rounding does not accumulate across the term.
+        plan.installmentAmount = total == 0 ? 0 : (total - 1) / plan.installments + 1;
+    }
+
 
     /// @notice takes what these plans can of an undirected repayment.
     /// @dev A payment directed at a plan never reaches here -- `payPlan` records it itself and

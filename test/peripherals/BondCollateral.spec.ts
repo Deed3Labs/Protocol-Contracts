@@ -281,8 +281,13 @@ describe("bonds as collateral", function () {
         ],
         { kind: "uups" }
       );
-      await issuer.connect(ctx.operator).setLimitCalculator(await limits.getAddress());
+      // The calculator points at the issuer, not the other way round: it reads collateral and
+      // pushes the ceiling in. So what it needs is the right to act, not a registration.
       await ctx.access.grantOperator(await limits.getAddress());
+      await registry.grantRole(await registry.OPERATOR_ROLE(), await limits.getAddress());
+      // A ceiling has to have somewhere to land: the calculator sets a line's capacity, it does
+      // not open the line.
+      await issuer.connect(ctx.operator).openLine(ctx.member.address, [0n], CYCLE, CYCLE);
     });
 
     it("gives a member with no collateral and no attestation nothing", async function () {
@@ -317,7 +322,8 @@ describe("bonds as collateral", function () {
       await limits.connect(other).pushCapacities(ctx.member.address);
 
       const value = await bond.presentValueOf(bondId);
-      expect(await issuer.capacityOf(ctx.member.address, BOND)).to.equal(
+      // The issuer indexes capacity by tier, not by kind: BOND is tier 0 here.
+      expect(await issuer.capacityOf(ctx.member.address, 0)).to.equal(
         (value * 9_000n) / 10_000n
       );
     });

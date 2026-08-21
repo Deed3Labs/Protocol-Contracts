@@ -208,6 +208,113 @@ describe("TermIssuer", function () {
     });
   });
 
+  describe("the quoted payment holds still", function () {
+    // What a term plan sells over the revolving line is knowing the number. A schedule derived
+    // from carry-so-far is right about what is owed and wrong about what the member was told:
+    // the figure climbs all term, and every rise is a support call the co-op loses.
+
+    it("asks the same amount every period", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 65n, 12);
+
+      const steps: bigint[] = [];
+      let previous = 0n;
+      for (let i = 1; i <= 12; i++) {
+        await advance(MONTH);
+        const cumulative = await issuer.scheduledPrincipalDue(0);
+        steps.push(cumulative - previous);
+        previous = cumulative;
+      }
+
+      // Every period but the last asks for the quoted figure exactly.
+      const [quoted] = await issuer.scheduleOf(0);
+      for (let i = 0; i < 11; i++) {
+        expect(steps[i]).to.equal(quoted);
+      }
+      // The last settles the remainder, so it is never larger than the rest.
+      expect(steps[11]).to.be.lessThanOrEqual(quoted);
+    });
+
+    it("prices the carry in from the first period rather than letting it creep", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 65n, 12);
+
+      // The old schedule read `scheduleBase + carrySoFar`, so the first period asked for exactly
+      // principal/12 and later ones asked for more. The fixed schedule charges above that from
+      // the start, because it already knows what the term costs.
+      const [quoted, total] = await issuer.scheduleOf(0);
+      expect(quoted).to.be.greaterThan(100n * ONE_USDC);
+      expect(total).to.be.greaterThan(1_200n * ONE_USDC);
+    });
+
+    it("collects only the principal when there is no carry", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC, 0n, 12);
+
+      const [, total] = await issuer.scheduleOf(0);
+      expect(total).to.equal(1_000n * ONE_USDC);
+      await advance(12 * MONTH + ONE_DAY);
+      expect(await issuer.scheduledPrincipalDue(0)).to.equal(1_000n * ONE_USDC);
+    });
+
+    it("closes the plan when the member pays what the schedule asked", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 65n, 12);
+      const [quoted, total, , scheduleStart] = await issuer.scheduleOf(0);
+
+      // Paid on the day, every time. A member who does everything asked of them must not be left
+      // owing a residue -- which is the failure mode of a projected schedule that does not invert
+      // the accrual it is projecting.
+      for (let i = 1n; i <= 12n; i++) {
+        const due = i === 12n ? total - quoted * 11n : quoted;
+        await ethers.provider.send("evm_setNextBlockTimestamp", [
+          Number(scheduleStart + i * BigInt(MONTH)),
+        ]);
+        await issuer.connect(payer).payPlan(0, due);
+      }
+
+      const [, , outstanding, , , , , , closed] = await issuer.planAt(0);
+      expect(outstanding).to.equal(0n);
+      expect(closed).to.equal(true);
+      expect(await issuer.arrearsOf(0)).to.equal(0n);
+    });
+
+    it("still charges a member who pays the schedule late", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 65n, 12);
+      const [quoted, total, , scheduleStart] = await issuer.scheduleOf(0);
+
+      // The quoted figure is the on-time schedule. Carry goes on accruing on what is actually
+      // outstanding, so a member who pays every installment a week late has paid the whole
+      // schedule and still owes the carry their lateness earned. Fixing the quote does not mean
+      // fixing the cost of using the money for longer.
+      for (let i = 1n; i <= 12n; i++) {
+        const due = i === 12n ? total - quoted * 11n : quoted;
+        await ethers.provider.send("evm_setNextBlockTimestamp", [
+          Number(scheduleStart + i * BigInt(MONTH) + BigInt(7 * ONE_DAY)),
+        ]);
+        await issuer.connect(payer).payPlan(0, due);
+      }
+
+      const [, , outstanding, , , , , , closed] = await issuer.planAt(0);
+      expect(outstanding).to.be.greaterThan(0n);
+      expect(closed).to.equal(false);
+    });
+
+    it("re-quotes rather than carrying the old figure into a new split", async function () {
+      await setLimit(2_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 65n, 12);
+      const [twelve] = await issuer.scheduleOf(0);
+
+      await issuer.connect(ctx.member).setSplit(0, 4);
+      const [four] = await issuer.scheduleOf(0);
+
+      // The same money over a third of the term is a much larger payment, and quoting the old
+      // one would be the drift this exists to remove, arriving by another route.
+      expect(four).to.be.greaterThan(twelve * 2n);
+    });
+  });
+
   describe("the member chooses the split", function () {
     // Pay in one cycle, or spread over 2, 4, 6 or 12. Changing it moves only the remainder.
 
