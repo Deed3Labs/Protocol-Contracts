@@ -76,15 +76,22 @@ async function main() {
   // Deploy the contract
   console.log("\nDeploying AssuranceOracle...");
   const AssuranceOracle = await hre.ethers.getContractFactory("AssuranceOracle");
-  const assuranceOracle = await AssuranceOracle.deploy(
-    assurancePoolDeployment.address,
-    targetRTD,
-    uniswapFactoryAddress,
-    wethAddress,
-    usdcAddress,
-    usdtAddress,
-    daiAddress,
-    tokenRegistryDeployment.address
+  // Behind a UUPS proxy: the pricing addresses used to be immutable, so a wrong WETH or factory
+  // on a chain nobody had deployed to meant a redeployment that also dropped every
+  // registry-fallback override set since.
+  const assuranceOracle = await hre.upgrades.deployProxy(
+    AssuranceOracle,
+    [
+      assurancePoolDeployment.address,
+      targetRTD,
+      uniswapFactoryAddress,
+      wethAddress,
+      usdcAddress,
+      usdtAddress,
+      daiAddress,
+      tokenRegistryDeployment.address,
+    ],
+    { initializer: "initialize", kind: "uups" }
   );
 
   await assuranceOracle.waitForDeployment();

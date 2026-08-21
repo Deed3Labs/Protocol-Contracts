@@ -138,15 +138,19 @@ async function main() {
     
     const targetRTD = hre.ethers.parseEther("1.0");
     const AssuranceOracle = await hre.ethers.getContractFactory("AssuranceOracle");
-    const assuranceOracle = await AssuranceOracle.deploy(
-      assurancePoolAddress,
-      targetRTD,
-      uniswapFactoryAddress,
-      wethAddress,
-      usdcAddress,
-      usdtAddress,
-      daiAddress,
-      tokenRegistryAddress
+    const assuranceOracle = await hre.upgrades.deployProxy(
+      AssuranceOracle,
+      [
+        assurancePoolAddress,
+        targetRTD,
+        uniswapFactoryAddress,
+        wethAddress,
+        usdcAddress,
+        usdtAddress,
+        daiAddress,
+        tokenRegistryAddress,
+      ],
+      { initializer: "initialize", kind: "uups" }
     );
     await assuranceOracle.waitForDeployment();
     const assuranceOracleAddress = await assuranceOracle.getAddress();

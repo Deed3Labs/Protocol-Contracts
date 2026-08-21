@@ -53,7 +53,7 @@ export async function deployPhase0Network() {
   const tokenRegistry = await TokenRegistry.deploy();
 
   const AssuranceOracle = await ethers.getContractFactory("AssuranceOracle");
-  const assuranceOracle = await AssuranceOracle.deploy(
+  const assuranceOracle = await upgrades.deployProxy(AssuranceOracle, [
     await assurancePool.getAddress(),
     ethers.parseEther("0.2"), // 20% target RTD
     await uniswapFactory.getAddress(),
@@ -61,8 +61,8 @@ export async function deployPhase0Network() {
     await usdc.getAddress(),
     await usdt.getAddress(),
     await dai.getAddress(),
-    await tokenRegistry.getAddress()
-  );
+    await tokenRegistry.getAddress(),
+  ], { kind: "uups" });
 
   // StableCredit grants membership when a credit line is created, and CreditIssuer revokes it on
   // default. Both act on AccessManager in their own name, so both need operator access.

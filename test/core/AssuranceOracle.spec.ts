@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 
 const FEE_TIER = 3000;
 const DEFAULT_TWAP_PERIOD = 1800;
@@ -26,15 +26,19 @@ describe("AssuranceOracle", function () {
     factory = await MockUniswapV3Factory.deploy();
 
     const AssuranceOracle = await ethers.getContractFactory("AssuranceOracle");
-    oracle = await AssuranceOracle.deploy(
-      ethers.ZeroAddress,
-      ethers.parseEther("0.2"),
-      await factory.getAddress(),
-      await weth.getAddress(),
-      await usdc.getAddress(),
-      await usdt.getAddress(),
-      await dai.getAddress(),
-      ethers.ZeroAddress
+    oracle = await upgrades.deployProxy(
+      AssuranceOracle,
+      [
+        ethers.ZeroAddress,
+        ethers.parseEther("0.2"),
+        await factory.getAddress(),
+        await weth.getAddress(),
+        await usdc.getAddress(),
+        await usdt.getAddress(),
+        await dai.getAddress(),
+        ethers.ZeroAddress,
+      ],
+      { kind: "uups" }
     );
   });
 

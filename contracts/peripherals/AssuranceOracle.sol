@@ -7,7 +7,8 @@ import "../core/interfaces/ITokenRegistry.sol";
 import "../core/interfaces/stable-credit/ITargetRTDSource.sol";
 import "../libraries/TickMath.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 
 // Uniswap V3 interfaces for real-time pricing
@@ -40,21 +41,25 @@ interface IUniswapV3Pool {
 /// to the AssurancePool and CreditIssuer contracts to manage network credit risk.
 /// @notice Exposes the target reserve to debt ratio (targetRTD) for the AssurancePool
 /// and a quote function intended to be overridden to convert deposit tokens to reserve tokens.
-contract AssuranceOracle is IAssuranceOracle, Ownable {
+contract AssuranceOracle is IAssuranceOracle, OwnableUpgradeable, UUPSUpgradeable {
     /// @notice Operator-set target RTD, used when no ITargetRTDSource is registered.
     uint256 public staticTargetRTD;
     /// @notice Optional risk model supplying the target RTD from predicted default rate.
     ITargetRTDSource public targetRTDSource;
     IAssurancePool public assurancePool;
     
-    // Uniswap V3 integration
-    IUniswapV3Factory public immutable uniswapFactory;
-    address public immutable WETH_ADDRESS;
+    // Uniswap V3 integration.
+    // Storage rather than immutable, deliberately. These are the addresses most likely to be
+    // wrong on a chain nobody has deployed to before -- a testnet WETH, a factory at a different
+    // address -- and immutable makes every one of those mistakes a redeployment that also loses
+    // the registry-fallback flags set since.
+    IUniswapV3Factory public uniswapFactory;
+    address public WETH_ADDRESS;
     
     // Default stablecoins (always accepted, always $1 USD)
-    address public immutable USDC_ADDRESS;
-    address public immutable USDT_ADDRESS;
-    address public immutable DAI_ADDRESS;
+    address public USDC_ADDRESS;
+    address public USDT_ADDRESS;
+    address public DAI_ADDRESS;
 
     // Centralized token registry
     ITokenRegistry public tokenRegistry;
@@ -79,8 +84,14 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
     event ForceRegistryFallbackSet(address indexed token, bool force);
     event TwapPeriodUpdated(uint32 newPeriod);
     event TargetRTDSourceUpdated(address indexed source);
+    event PricingAddressesUpdated(address indexed uniswapFactory, address indexed weth);
     
-    constructor(
+    /// @notice initializes the oracle.
+    /// @dev Upgradeable for the same reason the rest of the system is, and for one of its own: the
+    /// pool can already be re-pointed at a new oracle with `setAssuranceOracle`, but replacing it
+    /// silently drops every `forceRegistryFallback` override set since deployment. An upgrade
+    /// keeps them.
+    function initialize(
         address _assurancePool, 
         uint256 _targetRTD,
         address _uniswapFactory,
@@ -89,7 +100,9 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
         address _usdtAddress,
         address _daiAddress,
         address _tokenRegistry
-    ) {
+    ) external initializer {
+        __Ownable_init();
+        __UUPSUpgradeable_init();
         assurancePool = IAssurancePool(_assurancePool);
         staticTargetRTD = _targetRTD;
         twapPeriod = 1800; // 30 minutes
@@ -437,6 +450,29 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
     function setTargetRTDSource(address _source) external onlyOwner {
         targetRTDSource = ITargetRTDSource(_source);
         emit TargetRTDSourceUpdated(_source);
+    }
+
+    /// @dev The oracle decides what a deposit is worth and what the reserve target is. Neither is
+    /// a new power for the owner -- they can already set a fallback price and force it to be
+    /// preferred over Uniswap -- but both are worth being able to correct without losing the
+    /// settings around them.
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    /// @notice Re-points the oracle at a different Uniswap deployment or token set.
+    /// @dev The reason these are no longer immutable. Getting one wrong used to mean a redeploy.
+    function setPricingAddresses(
+        address _uniswapFactory,
+        address _wethAddress,
+        address _usdcAddress,
+        address _usdtAddress,
+        address _daiAddress
+    ) external onlyOwner {
+        uniswapFactory = IUniswapV3Factory(_uniswapFactory);
+        WETH_ADDRESS = _wethAddress;
+        USDC_ADDRESS = _usdcAddress;
+        USDT_ADDRESS = _usdtAddress;
+        DAI_ADDRESS = _daiAddress;
+        emit PricingAddressesUpdated(_uniswapFactory, _wethAddress);
     }
 
     /// @notice Sets the averaging window used for pool prices.
