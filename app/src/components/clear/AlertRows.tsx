@@ -6,6 +6,25 @@ import { ALERT_DOT, type Alert } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /**
+ * One swipe action: square enough to read as a button, wide enough to hit on a phone.
+ *
+ * 60x52 rather than content-sized. Left to their labels the two came out different widths, each
+ * narrower than it was tall, sitting almost touching -- which reads as one crowded control instead
+ * of two, and on a phone is a thumb target barely wider than the word inside it.
+ */
+const ACTION =
+  'flex h-[52px] w-[60px] flex-col items-center justify-center gap-1 rounded-lg text-[11px] text-foreground-secondary transition-colors hover:bg-background/40';
+
+/**
+ * How far the row travels to reveal both actions.
+ *
+ * Tied to the classes above deliberately: two 60px boxes, the 6px gap-1.5 between them, and the
+ * 8px pr-2 at the end. Widening a button without widening this leaves the far one sitting under
+ * the row, and the previous 96 was already close to that.
+ */
+const ACTIONS_WIDTH = 60 * 2 + 6 + 8;
+
+/**
  * One alert, with the row actions behind it.
  *
  * Swipe reveals Read and Clear rather than putting a menu on every row: these are
@@ -65,20 +84,12 @@ function AlertRow({
 
   return (
     <div className="relative -mx-1 overflow-hidden rounded-xl">
-      <div className="absolute inset-0 flex items-center justify-end gap-[18px] bg-secondary pr-4">
-        <button
-          type="button"
-          onClick={() => onRead?.(alert.id)}
-          className="flex flex-col items-center gap-1 text-[11px] text-foreground-secondary"
-        >
+      <div className="absolute inset-0 flex items-center justify-end gap-1.5 bg-secondary pr-2">
+        <button type="button" onClick={() => onRead?.(alert.id)} className={ACTION}>
           <MailOpen className="h-[18px] w-[18px]" strokeWidth={1.75} />
           Read
         </button>
-        <button
-          type="button"
-          onClick={() => onClear?.(alert.id)}
-          className="flex flex-col items-center gap-1 text-[11px] text-foreground-secondary"
-        >
+        <button type="button" onClick={() => onClear?.(alert.id)} className={ACTION}>
           <Trash2 className="h-[18px] w-[18px]" strokeWidth={1.75} />
           Clear
         </button>
@@ -86,7 +97,7 @@ function AlertRow({
 
       <motion.div
         drag="x"
-        dragConstraints={{ left: -96, right: 0 }}
+        dragConstraints={{ left: -ACTIONS_WIDTH, right: 0 }}
         dragElastic={0.04}
         onDragEnd={onDragEnd}
         className="relative touch-pan-y"
