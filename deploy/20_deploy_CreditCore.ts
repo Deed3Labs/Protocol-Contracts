@@ -155,6 +155,53 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
     log("  RevolvingIssuer -> CollateralRegistry");
   }
 
+  // ---- the tiers, and the collateral kinds they draw against ----
+  //
+  // A deployed issuer with no tiers is a credit line with no ceiling anywhere in it: capacityOf
+  // has nothing to return and no member can draw a cent. The rates are the build plan's (§Phase 1
+  // valuation rules) and they ascend, which is not decoration -- cheapest-first draw order falls
+  // out of the ordering rather than being enforced separately, so getting it wrong here would put
+  // a member on Boost before their own savings.
+  const TIERS: [string, bigint][] = [
+    ["SAVINGS", 0n],          // their own money, backing itself
+    ["ASSET_INTERNAL", 65n],  // bonds and pool shares: locked money that still lends
+    ["INCOME", 150n],         // nothing behind it but the next deposit
+    ["BOOST", 300n],          // opt-in, and priced like it
+  ];
+  const CYCLE = 30 * 24 * 60 * 60;
+
+  const existingTiers = Number(await revolving.tierCount());
+  if (existingTiers === 0) {
+    for (const [kind, rate] of TIERS) {
+      await (await revolving.addTier(ethers.encodeBytes32String(kind), rate, CYCLE)).wait();
+      log(`  tier ${kind} at ${rate} bps/cycle`);
+    }
+  } else {
+    log(`= ${existingTiers} tier(s) already configured`);
+  }
+
+  // Haircuts are the plan's, and deliberately conservative: start high, lower with evidence.
+  // Savings at 100% because seizure is at par and burns the debt outright; the internal-asset
+  // kind at 95% because a bond is a claim on the co-op with known redemption terms rather than
+  // something that must be sold. Income and Boost register with no collateral at all -- they are
+  // unsecured, and their capacity comes from an attestation rather than a pledge.
+  const SAVINGS_BACKED = 1, ASSET_INTERNAL = 3, UNSECURED = 0;
+  const PRICE = 10n ** 18n;
+  const COLLATERAL: [string, number, bigint, bigint][] = [
+    ["SAVINGS", SAVINGS_BACKED, 10_000n, PRICE],
+    ["ASSET_INTERNAL", ASSET_INTERNAL, 9_500n, PRICE],
+    ["INCOME", UNSECURED, 0n, 0n],
+    ["BOOST", UNSECURED, 0n, 0n],
+  ];
+  for (const [kind, backing, haircut, price] of COLLATERAL) {
+    const key = ethers.encodeBytes32String(kind);
+    const registered = (await collateral.collateralTypes(key)).registered;
+    if (!registered) {
+      await (await collateral.registerCollateralType(key, backing, haircut, price)).wait();
+      log(`  collateral ${kind} at ${Number(haircut) / 100}%`);
+    }
+  }
+
   // ---- Phase C's half, done here only if it already exists ----
   const pool = getDeployment(network, "AssurancePool");
   const oracle = getDeployment(network, "AssuranceOracle");

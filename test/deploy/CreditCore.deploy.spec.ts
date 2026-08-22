@@ -100,6 +100,39 @@ describe("credit core deployment", function () {
     expect(await core.networkRegistry.isIssuer(await core.revolving.getAddress())).to.equal(false);
   });
 
+  it("configures the tiers, ascending, so nobody draws Boost before their own savings", async function () {
+      // A deployed issuer with no tiers is a credit line with no ceiling in it -- capacityOf has
+      // nothing to return and no member can draw a cent. The first deployment to Base Sepolia
+      // came up exactly that way, which is why this is asserted rather than assumed.
+      const count = Number(await core.revolving.tierCount());
+      expect(count).to.equal(4);
+
+      const rates: bigint[] = [];
+      for (let id = 0; id < count; id++) {
+        const [kind, rate, active] = await core.revolving.tierAt(id);
+        expect(active).to.equal(true);
+        expect(ethers.decodeBytes32String(kind).length).to.be.greaterThan(0);
+        rates.push(rate);
+      }
+
+      // The ascending-rate invariant. Cheapest-first draw order falls out of the ordering rather
+      // than being enforced anywhere, so a tier out of place silently reprices every draw.
+      for (let i = 1; i < rates.length; i++) {
+        expect(rates[i]).to.be.greaterThan(rates[i - 1]);
+      }
+      expect(rates[0]).to.equal(0n);
+    });
+
+    it("registers the collateral kinds those tiers draw against", async function () {
+      for (const kind of ["SAVINGS", "ASSET_INTERNAL", "INCOME", "BOOST"]) {
+        const type = await core.collateral.collateralTypes(ethers.encodeBytes32String(kind));
+        expect(type.registered, `${kind} should be registered`).to.equal(true);
+      }
+      // Savings seize at par and burn the debt, so they take no haircut at all.
+      const savings = await core.collateral.collateralTypes(ethers.encodeBytes32String("SAVINGS"));
+      expect(savings.haircutBps).to.equal(10_000n);
+    });
+
   it("runs again over its own output without deploying anything twice", async function () {
     const before = await core.ledger.getAddress();
     const second = await deployCreditCore({ quiet: true });
