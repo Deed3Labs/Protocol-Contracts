@@ -1,5 +1,5 @@
 {
-  "address": "0x836401Ed3e2bF7CAb5e2721188E74B834511413b",
+  "address": "0x7bA87Eb0DC8ADF4a6CbE9f90d05A782De0F740cD",
   "abi": [
     {
       "type": "constructor",
@@ -24,11 +24,6 @@
     },
     {
       "type": "error",
-      "name": "ESADepositVaultMandateInvalid",
-      "inputs": []
-    },
-    {
-      "type": "error",
       "name": "ESADepositVaultNonExactAmount",
       "inputs": []
     },
@@ -36,16 +31,6 @@
       "type": "error",
       "name": "ESADepositVaultTokenNotAccepted",
       "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "ESADepositVaultTokenStillOutstanding",
-      "inputs": [
-        {
-          "type": "uint256",
-          "name": "outstanding"
-        }
-      ]
     },
     {
       "type": "event",
@@ -96,18 +81,6 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "ClrusdUpdated",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "clrusd",
-          "indexed": true
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
       "name": "Deposited",
       "inputs": [
         {
@@ -151,50 +124,6 @@
         {
           "type": "uint8",
           "name": "version",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "MandateCancelled",
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": "mandate",
-          "indexed": true
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "MandateDeposit",
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": "mandate",
-          "indexed": true
-        },
-        {
-          "type": "address",
-          "name": "depositor",
-          "indexed": true
-        },
-        {
-          "type": "uint32",
-          "name": "runIndex",
-          "indexed": false
-        },
-        {
-          "type": "uint256",
-          "name": "amount",
-          "indexed": false
-        },
-        {
-          "type": "uint256",
-          "name": "minted",
           "indexed": false
         }
       ]
@@ -377,19 +306,6 @@
     },
     {
       "type": "function",
-      "name": "cancelMandate",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": "digest"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
       "name": "clrusd",
       "constant": true,
       "stateMutability": "view",
@@ -425,33 +341,6 @@
         {
           "type": "uint256",
           "name": "minted"
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "depositMandates",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": ""
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint32",
-          "name": "runsDone"
-        },
-        {
-          "type": "uint64",
-          "name": "lastRunAt"
-        },
-        {
-          "type": "bool",
-          "name": "cancelled"
         }
       ]
     },
@@ -549,56 +438,6 @@
     },
     {
       "type": "function",
-      "name": "executeMandateDeposit",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "depositor"
-        },
-        {
-          "type": "address",
-          "name": "token"
-        },
-        {
-          "type": "uint256",
-          "name": "amountPerRun"
-        },
-        {
-          "type": "uint64",
-          "name": "interval"
-        },
-        {
-          "type": "uint32",
-          "name": "maxRuns"
-        },
-        {
-          "type": "uint256",
-          "name": "startAt"
-        },
-        {
-          "type": "uint256",
-          "name": "expiry"
-        },
-        {
-          "type": "uint256",
-          "name": "nonce"
-        },
-        {
-          "type": "bytes",
-          "name": "signature"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": "minted"
-        }
-      ]
-    },
-    {
-      "type": "function",
       "name": "getRoleAdmin",
       "constant": true,
       "stateMutability": "view",
@@ -652,53 +491,6 @@
       "outputs": [
         {
           "type": "bool",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "hashDepositMandate",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "depositor"
-        },
-        {
-          "type": "address",
-          "name": "token"
-        },
-        {
-          "type": "uint256",
-          "name": "amountPerRun"
-        },
-        {
-          "type": "uint64",
-          "name": "interval"
-        },
-        {
-          "type": "uint32",
-          "name": "maxRuns"
-        },
-        {
-          "type": "uint256",
-          "name": "startAt"
-        },
-        {
-          "type": "uint256",
-          "name": "expiry"
-        },
-        {
-          "type": "uint256",
-          "name": "nonce"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "bytes32",
           "name": ""
         }
       ]
@@ -959,19 +751,6 @@
         {
           "type": "bool",
           "name": "accepted"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "setClrusd",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "clrusd_"
         }
       ],
       "outputs": []

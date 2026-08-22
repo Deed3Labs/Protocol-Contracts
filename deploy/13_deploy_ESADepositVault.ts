@@ -13,7 +13,13 @@ async function main() {
   const network = await hre.ethers.provider.getNetwork();
 
   const admin = process.env.CLRUSD_ADMIN?.trim() || deployer.address;
-  const deployedClearUsd = getDeployment(network.name, "ClearUSD")?.address;
+  // The replacement token first. `ClearUSD` is the original, immutable one; a vault deployed
+  // fresh should back the token that carries the redemption lock, not the one being retired.
+  // Set VAULT_CLRUSD to override, and CLRUSD_ADDRESS still works when nothing is recorded.
+  const deployedClearUsd =
+    process.env.VAULT_CLRUSD?.trim() ||
+    getDeployment(network.name, "ClearUSDUpgradeable")?.address ||
+    getDeployment(network.name, "ClearUSD")?.address;
   const clearUsdAddress = deployedClearUsd || process.env.CLRUSD_ADDRESS?.trim();
 
   if (!clearUsdAddress) {
@@ -72,14 +78,18 @@ async function main() {
     console.warn("No default deposit token known for this chain. Skipping allowlist.");
   }
 
+  // Overridable so a replacement vault can be recorded without erasing the one still backing the
+  // token it replaces. A retired vault is not dead -- it holds the USDC behind whatever CLRUSD is
+  // still outstanding, and its holders need to be able to find it.
+  const recordName = process.env.VAULT_DEPLOYMENT_NAME?.trim() || "ESADepositVault";
   saveDeployment(
     network.name,
-    "ESADepositVault",
+    recordName,
     vaultAddress,
     JSON.parse(vault.interface.formatJson())
   );
   console.log(
-    "Saved deployment: deployments/" + network.name + "/ESADepositVault.json"
+    "Saved deployment: deployments/" + network.name + "/" + recordName + ".json"
   );
 }
 

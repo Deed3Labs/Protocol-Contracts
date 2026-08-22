@@ -33,8 +33,11 @@ const CONTRACTS: Record<number, ClearContracts> = {
     claimEscrow: '0xb30E97FEd437bf89B122693D26338C8D64515096',
   },
   84532: {
-    esaVault: '0x7bA87Eb0DC8ADF4a6CbE9f90d05A782De0F740cD',
-    clrusd: '0x56195066D4ada8D371254061047f76FA2BBd0Ae3',
+    // Replacement pair. The vault and token these succeed are still deployed and still
+    // mutually redeemable -- ESADepositVaultLegacy holds the USDC behind the CLRUSD that was
+    // outstanding when the swap happened, so nobody who held the old token is stranded.
+    esaVault: '0x836401Ed3e2bF7CAb5e2721188E74B834511413b',
+    clrusd: '0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1',
     usdc: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
     claimEscrow: '0x24DAE7b66dC31657265260B5d9092280B57Bc37D',
   },

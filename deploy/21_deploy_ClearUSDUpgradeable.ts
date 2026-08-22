@@ -82,6 +82,26 @@ async function main() {
     console.log(`  vault is burner: ${await token.hasRole(burner, vault.address)}`);
   }
 
+  // Arm the two-step admin handover.
+  //
+  // Chainlink's base inherits AccessControlDefaultAdminRules but grants DEFAULT_ADMIN_ROLE
+  // directly rather than running that contract's initializer, so the delay is left at zero and a
+  // handover takes effect the moment it is accepted. That is the difference between transferring
+  // control of the token with a timelock somebody could react inside, and transferring it
+  // instantly to whatever address was typed -- which matters most at exactly the moment it is
+  // most likely to happen, handing the token to the co-op multisig.
+  //
+  // OpenZeppelin makes an *increase* effective after min(newDelay, defaultAdminDelayIncreaseWait),
+  // so this schedules rather than applies. Doing it at deployment means it is armed long before
+  // anyone needs it.
+  const delaySeconds = Number(process.env.CLRUSD_ADMIN_DELAY ?? 2 * 24 * 60 * 60);
+  const current = await token.defaultAdminDelay();
+  if (Number(current) !== delaySeconds) {
+    await (await token.changeDefaultAdminDelay(delaySeconds)).wait();
+    const [, schedule] = await token.pendingDefaultAdminDelay();
+    console.log(`  admin delay -> ${delaySeconds}s (effective at ${schedule})`);
+  }
+
   console.log("\nNext: the old token must reach zero supply before ESADepositVault.setClrusd will");
   console.log("accept this one. Redeem first — the guard makes that the only available order.");
 }
