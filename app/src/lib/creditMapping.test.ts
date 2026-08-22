@@ -139,33 +139,34 @@ describe('limit backing', () => {
 });
 
 describe('a member who has never opened a line', () => {
-  const fallback = { lengthDays: 30, daysLeft: 30, clearsOn: '', rebalanceBy: '' };
+  const fallback = { lengthDays: 30, daysLeft: 0, clearsOn: '', rebalanceBy: '' };
 
-  test('shows a full cycle rather than an expired one', () => {
-    // Zero on a countdown reads as "your cycle ran out". For somebody who just joined, the truth
-    // is that it has not started — the opposite thing.
+  test('falls through rather than inventing a cycle', () => {
+    // Substituting a full cycle here made a member with a real line and one with none look
+    // identical on screen. The state should not occur -- every member gets a line at signup -- so
+    // when it does, it should be visible rather than smoothed over.
     const cycle = toCycle(
       { issuedAt: 0, expiration: 0, graceLength: 0, paused: false, networkCycleSeconds: 30 * 86_400 },
-      fallback,
-    );
-    expect(cycle.daysLeft).toBe(30);
-    expect(cycle.lengthDays).toBe(30);
-  });
-
-  test('schedules no dates it has no basis for', () => {
-    const cycle = toCycle(
-      { issuedAt: 0, expiration: 0, graceLength: 0, paused: false, networkCycleSeconds: 30 * 86_400 },
-      fallback,
-    );
-    expect(cycle.clearsOn).toBe('');
-    expect(cycle.rebalanceBy).toBe('');
-  });
-
-  test('keeps the fallback when even the network cycle is unreadable', () => {
-    const cycle = toCycle(
-      { issuedAt: 0, expiration: 0, graceLength: 0, paused: false, networkCycleSeconds: 0 },
       fallback,
     );
     expect(cycle).toBe(fallback);
+    expect(cycle.clearsOn).toBe('');
+  });
+
+  test('a real period reads differently from the fallback, which is the point', () => {
+    const now = Math.floor(Date.now() / 1000);
+    const cycle = toCycle(
+      {
+        issuedAt: now,
+        expiration: now + 30 * 86_400,
+        graceLength: 30 * 86_400,
+        paused: false,
+        networkCycleSeconds: 30 * 86_400,
+      },
+      fallback,
+    );
+    // A date where there was none is the signal that a line was actually opened.
+    expect(cycle.clearsOn).not.toBe('');
+    expect(cycle.daysLeft).toBe(30);
   });
 });
