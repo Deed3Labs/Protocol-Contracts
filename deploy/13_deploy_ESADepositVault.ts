@@ -45,7 +45,13 @@ async function main() {
   console.log("ESADepositVault (proxy) deployed at:", vaultAddress);
 
   // Grant OPERATOR_ROLE to the savings relayer (submits gasless deposits/redeems).
-  const savingsRelayer = process.env.SAVINGS_RELAYER_ADDRESS?.trim();
+  // Chain-scoped first, which is how .env actually names these (SAVINGS_RELAYER_ADDRESS_84532).
+  // Looking only at the unscoped name is why a vault deployed here once came up without a relayer
+  // and silently could not serve a gasless deposit.
+  const savingsRelayer = (
+    process.env[`SAVINGS_RELAYER_ADDRESS_${network.chainId}`] ??
+    process.env.SAVINGS_RELAYER_ADDRESS
+  )?.trim();
   if (savingsRelayer && hre.ethers.isAddress(savingsRelayer)) {
     const operatorRole = await vault.OPERATOR_ROLE();
     await (await vault.grantRole(operatorRole, savingsRelayer)).wait();
