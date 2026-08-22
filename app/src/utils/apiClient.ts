@@ -2282,6 +2282,8 @@ export interface CreditCycleRow {
   expiration: number;
   graceLength: number;
   paused: boolean;
+  /** The network's cycle, carried whether or not this member has a period running. */
+  networkCycleSeconds: number;
 }
 
 export interface CreditTermPlanRow {

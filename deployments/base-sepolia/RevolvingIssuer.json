@@ -41,6 +41,20 @@
     },
     {
       "type": "error",
+      "name": "RevolvingIssuerCycleMismatch",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "expected"
+        },
+        {
+          "type": "uint64",
+          "name": "given"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "RevolvingIssuerNoCarryRecipient",
       "inputs": []
     },
@@ -460,7 +474,7 @@
         },
         {
           "type": "uint64",
-          "name": "cycleLength"
+          "name": "cycleLength_"
         }
       ],
       "outputs": [
@@ -596,6 +610,20 @@
         {
           "type": "bool",
           "name": "paused"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cycleLength",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
         }
       ]
     },

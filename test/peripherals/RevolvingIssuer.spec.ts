@@ -200,6 +200,45 @@ describe("RevolvingIssuer", function () {
     });
   });
 
+  describe("the network's cycle", function () {
+    // What sets a member's cycle used to be "whatever the caller passed". Nothing supplied a
+    // default and nothing said what it should be, so two members could sit on different clocks
+    // with the contracts looking identical.
+
+    it("takes its cycle from the tiers, since that is where the clock lives", async function () {
+      expect(await issuer.cycleLength()).to.equal(CYCLE);
+    });
+
+    it("refuses a tier that would run on a different clock", async function () {
+      // Two tiers accruing on different periods make "cheapest first" meaningless -- the rates
+      // stop being comparable, and draw order is priced off exactly that comparison.
+      await expect(
+        issuer.connect(ctx.operator).addTier(ethers.encodeBytes32String("ODD"), 400n, 7 * 24 * 60 * 60),
+      ).to.be.revertedWithCustomError(issuer, "RevolvingIssuerCycleMismatch");
+    });
+
+    it("opens a line on the network's cycle when asked for no particular one", async function () {
+      await issuer
+        .connect(ctx.operator)
+        .openLine(ctx.member.address, [100n * ONE_USDC], 0, CYCLE);
+
+      const [issuedAt, expiration] = await issuer.creditPeriods(ctx.member.address);
+      expect(expiration - issuedAt).to.equal(BigInt(CYCLE));
+    });
+
+    it("still allows a longer period, because that is a policy choice", async function () {
+      // The rebalance period and the carry cycle answer different questions: how long a member has
+      // to return to zero, and how often carry compounds. They coincide at thirty days by policy,
+      // not by arithmetic.
+      await issuer
+        .connect(ctx.operator)
+        .openLine(ctx.member.address, [100n * ONE_USDC], ONE_YEAR, CYCLE);
+
+      const [issuedAt, expiration] = await issuer.creditPeriods(ctx.member.address);
+      expect(expiration - issuedAt).to.equal(BigInt(ONE_YEAR));
+    });
+  });
+
   describe("carry lands on the ledger", function () {
     // Carry deepens the member's negative balance. Until it is on the ledger it is a figure this
     // contract derives and nothing can repay, because the balance a payment burns against does
