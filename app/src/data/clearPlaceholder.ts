@@ -233,7 +233,8 @@ export const HOME_DAY_ONE: HomeData = {
     carryFreeUnder: 0,
     tiers: HOME_IN_USE.credit.tiers.map((t) => ({ ...t, used: 0, limit: 0, added: false })),
   },
-  cycle: { lengthDays: 30, daysLeft: 0, clearsOn: '', rebalanceBy: '' },
+  // A full cycle, not a spent one: day one is before the countdown starts, not after it ends.
+  cycle: { lengthDays: 30, daysLeft: 30, clearsOn: '', rebalanceBy: '' },
   savings: { cash: 0, vested: 0, vesting: 0, credits: 0, creditsGoal: 15000 },
   cashAccount: {
     spendable: 0,

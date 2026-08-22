@@ -137,3 +137,35 @@ describe('limit backing', () => {
     expect(unsecured[0].notAdded).toBe(true);
   });
 });
+
+describe('a member who has never opened a line', () => {
+  const fallback = { lengthDays: 30, daysLeft: 30, clearsOn: '', rebalanceBy: '' };
+
+  test('shows a full cycle rather than an expired one', () => {
+    // Zero on a countdown reads as "your cycle ran out". For somebody who just joined, the truth
+    // is that it has not started — the opposite thing.
+    const cycle = toCycle(
+      { issuedAt: 0, expiration: 0, graceLength: 0, paused: false, networkCycleSeconds: 30 * 86_400 },
+      fallback,
+    );
+    expect(cycle.daysLeft).toBe(30);
+    expect(cycle.lengthDays).toBe(30);
+  });
+
+  test('schedules no dates it has no basis for', () => {
+    const cycle = toCycle(
+      { issuedAt: 0, expiration: 0, graceLength: 0, paused: false, networkCycleSeconds: 30 * 86_400 },
+      fallback,
+    );
+    expect(cycle.clearsOn).toBe('');
+    expect(cycle.rebalanceBy).toBe('');
+  });
+
+  test('keeps the fallback when even the network cycle is unreadable', () => {
+    const cycle = toCycle(
+      { issuedAt: 0, expiration: 0, graceLength: 0, paused: false, networkCycleSeconds: 0 },
+      fallback,
+    );
+    expect(cycle).toBe(fallback);
+  });
+});

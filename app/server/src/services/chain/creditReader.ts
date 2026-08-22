@@ -28,6 +28,7 @@ const ISSUER_ABI = [
   'function principalOf(address member, uint256 tierId) external view returns (uint256)',
   'function carryOf(address member, uint256 tierId) external view returns (uint256)',
   'function creditPeriods(address member) external view returns (uint256 issuedAt, uint256 expiration, uint256 graceLength, bool paused)',
+  'function cycleLength() external view returns (uint64)',
 ];
 
 const REGISTRY_ABI = [
@@ -76,6 +77,14 @@ export interface ChainCycle {
   /** Seconds of grace after expiry before the limit contracts. */
   graceLength: number;
   paused: boolean;
+  /**
+   * Seconds in the network's cycle, whether or not this member has a period running.
+   *
+   * Carried so a member who has never opened a line can still be told what cycle they would be
+   * on. Without it the only honest answer is zero, and zero on a countdown reads as expired
+   * rather than as not yet started -- the opposite of the truth for somebody who just joined.
+   */
+  networkCycleSeconds: number;
 }
 
 export interface ChainTermPlan {
@@ -265,12 +274,17 @@ async function readCycle(
 ): Promise<ChainCycle | null> {
   try {
     const issuer = new ethers.Contract(address, ISSUER_ABI, provider);
-    const [issuedAt, expiration, graceLength, paused] = await issuer.creditPeriods(wallet);
+    const [period, networkCycle] = await Promise.all([
+      issuer.creditPeriods(wallet),
+      issuer.cycleLength(),
+    ]);
+    const [issuedAt, expiration, graceLength, paused] = period;
     return {
       issuedAt: Number(issuedAt),
       expiration: Number(expiration),
       graceLength: Number(graceLength),
       paused,
+      networkCycleSeconds: Number(networkCycle),
     };
   } catch (error) {
     console.error('[credit] cycle read failed', address, error);

@@ -122,7 +122,17 @@ const DAY_SECONDS = 86_400;
  * survives before it contracts.
  */
 export function toCycle(row: CreditCycleRow | null, fallback: Cycle): Cycle {
-  if (!row || row.issuedAt === 0 || row.expiration === 0) return fallback;
+  // No period yet: a member who has not opened a line has not started a cycle, which is not the
+  // same as having reached the end of one. Report a full cycle from the network's own length --
+  // zero on a countdown reads as expired, and telling somebody who just joined that their cycle
+  // has run out is the opposite of the truth.
+  if (!row || row.issuedAt === 0 || row.expiration === 0) {
+    const days = Math.round((row?.networkCycleSeconds ?? 0) / DAY_SECONDS);
+    if (days <= 0) return fallback;
+    // No dates: nothing has been scheduled, and inventing one would be worse than leaving the
+    // rows to render their empty state.
+    return { lengthDays: days, daysLeft: days, clearsOn: '', rebalanceBy: '' };
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const lengthDays = Math.max(1, Math.round((row.expiration - row.issuedAt) / DAY_SECONDS));
