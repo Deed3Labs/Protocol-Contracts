@@ -5,7 +5,7 @@ import { useClearBalances } from '@/hooks/useClearBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { toActivityRow } from '@/lib/activityMapping';
-import { toCredit, toCycle, toLimitBacking } from '@/lib/creditMapping';
+import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
 import {
   getCredit,
   getLithicAccount,
@@ -40,7 +40,10 @@ import {
  * contract changes and none did -- `carryOf`, `creditPeriods` and `collateralValueOf` were already
  * there, which is worth remembering before proposing an upgrade next time.
  *
- * What remains placeholder is term plans, and that waits on nothing but a member having one.
+ * Term plans are real too now, which is what makes day one's two arrivals reachable: the page
+ * reverses its order for a member who has an active plan, and a counter member who approved a
+ * charge now has one. The locked rows beneath are kept — partner credit and an ELPA are products
+ * nobody has unlocked yet, not fields that failed to load.
  *
  * The account numbers are fetched and never cached to disk: they are bank details, and the server
  * reads them from Lithic on demand for the same reason.
@@ -128,6 +131,10 @@ export default function HomeRoute() {
           credit: toCredit(credit.tiers, HOME_DAY_ONE.credit),
           cycle: toCycle(credit.cycle, HOME_DAY_ONE.cycle),
           backing: toLimitBacking(credit.tiers, HOME_DAY_ONE.backing),
+          // The last placeholder on this page, and the one that made day one's two arrivals
+          // unreachable: HomePage already reverses its order for a member who has a plan, and
+          // until now no member could have one it could see.
+          termPlans: toTermPlans(credit.plans, HOME_DAY_ONE.termPlans),
         }
       : {}),
   };

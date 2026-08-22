@@ -2294,6 +2294,16 @@ export interface CreditTermPlanRow {
   installments: number;
   installmentCents: number;
   scheduleTotalCents: number;
+  /** Unix seconds — the shelf shows the month beside the name. */
+  openedAt: number;
+  /** Carry in basis points per cycle, as the plan was written. */
+  rateBps: number;
+  /**
+   * The name a member would recognise, from the charge that opened this plan. Null when the plan
+   * did not come from a charge, or its row has since gone — the shelf shows the plan either way.
+   * The only field on this route that is not read from chain.
+   */
+  merchantName: string | null;
   closed: boolean;
 }
 

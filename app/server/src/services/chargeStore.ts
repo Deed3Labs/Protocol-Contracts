@@ -295,6 +295,27 @@ export const chargeStore = {
     return r.rows.map(toRow);
   },
 
+  /**
+   * The merchant behind each plan.
+   *
+   * A plan on chain knows the merchant's address and not its name, and an address is not what a
+   * member recognises on their own shelf — "Mike's Tire" is. The name lives here because this is
+   * where a human typed it, so the shelf reads it back out of the charge that opened the plan.
+   */
+  async merchantNamesByPlanId(planIds: number[]): Promise<Record<number, string>> {
+    const pool = getPostgresPool();
+    if (!pool || planIds.length === 0) return {};
+    await ensureTables();
+    const r = await pool.query<{ plan_id: string; merchant_name: string; created_at: string }>(
+      `SELECT plan_id, merchant_name, created_at FROM ${TABLE}
+        WHERE plan_id = ANY($1::bigint[]) AND status = 'approved'`,
+      [planIds],
+    );
+    const out: Record<number, string> = {};
+    for (const row of r.rows) out[Number(row.plan_id)] = row.merchant_name;
+    return out;
+  },
+
   /** Put a claimed row back when the chain call failed — it never became anything. */
   async release(code: string): Promise<void> {
     const pool = getPostgresPool();

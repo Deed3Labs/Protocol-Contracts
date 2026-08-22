@@ -1,4 +1,6 @@
 import type {
+  TermPlan,
+  TermPlans,
   CreditTier,
   TierKey,
   Credit,
@@ -7,7 +9,7 @@ import type {
   LimitBackingRow,
 } from '@/lib/clearModel';
 import { money } from '@/lib/money';
-import type { CreditTierRow, CreditCycleRow } from '@/utils/apiClient';
+import type { CreditTierRow, CreditCycleRow, CreditTermPlanRow } from '@/utils/apiClient';
 
 /**
  * Turning the contracts' tiers into the ones a member reads.
@@ -189,4 +191,54 @@ export function toLimitBacking(rows: CreditTierRow[], fallback: LimitBacking): L
 
   if (assetBacked.length === 0 && unsecured.length === 0) return fallback;
   return { assetBacked, unsecured };
+}
+
+
+/**
+ * The term-plan shelf, from the plans the contracts hold.
+ *
+ * The last placeholder on Home, and the one that made day one's two arrivals unreachable: the page
+ * already reverses its order for a member who has a plan, and until now no member could have one
+ * the page could see. A counter arrival now leads with their repair because they actually have a
+ * repair.
+ *
+ * Only open plans arrive here — the route filters closed ones out — so everything below describes
+ * something still being paid.
+ *
+ * The locked rows in `fallback` are kept. They are not placeholder data standing in for something
+ * unread: partner credit and an ELPA are real products a member has not unlocked yet, and the
+ * spec is explicit that they are visible from the first minute with their own unlock conditions.
+ * Dropping them because the chain returned one plan would delete the point of the component.
+ */
+export function toTermPlans(rows: CreditTermPlanRow[], fallback: TermPlans): TermPlans {
+  const locked = fallback.plans.filter((plan) => plan.lockedNote);
+
+  const live: TermPlan[] = rows.map((row) => {
+    const cyclesLeft =
+      row.installmentCents > 0
+        ? Math.max(0, Math.ceil(row.outstandingCents / row.installmentCents))
+        : undefined;
+
+    return {
+      id: String(row.planId),
+      // An address is not what somebody recognises on their own shelf. Without a name the plan is
+      // still shown — a row labelled generically beats a row that silently disappears.
+      name: row.merchantName ?? 'Term plan',
+      openedOn: row.openedAt
+        ? new Date(row.openedAt * 1000).toLocaleDateString('en-US', { month: 'short' })
+        : undefined,
+      balance: fromCents(row.principalCents),
+      splitInto: row.installments,
+      perCycle: fromCents(row.installmentCents),
+      cyclesLeft,
+      rate: rateLabel(row.rateBps),
+      ratePerCycle: row.rateBps / 10_000,
+    };
+  });
+
+  // Nothing read is not the same as nothing owed. An empty array from a route that answered is a
+  // member with no plans, and that is exactly what day one looks like — so it is kept, not
+  // treated as a failed read. The route reports an unreadable chain as 503 and the caller never
+  // gets here.
+  return { ...fallback, plans: [...live, ...locked] };
 }
