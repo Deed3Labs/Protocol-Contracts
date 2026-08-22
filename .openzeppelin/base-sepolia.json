@@ -60,6 +60,11 @@
       "address": "0x2E5241bE8d35a0034aF5C6538ABd683655c2Fe38",
       "txHash": "0xfdf8579f2f290d27454fdbd96e2c5aad2d06e4406f563f1ca51e4aebf24d5029",
       "kind": "uups"
+    },
+    {
+      "address": "0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1",
+      "txHash": "0xe84a698189edc457e07442b4374bf922ca7f7e6b81cbf7efefcf19c356ebff5f",
+      "kind": "uups"
     }
   ],
   "impls": {
@@ -4247,6 +4252,388 @@
           }
         },
         "namespaces": {}
+      }
+    },
+    "4afd60534ca0c0563420cc5c37847fbe79a0a1564964bf9ea7548e433918dddb": {
+      "address": "0xB1beB71b017b70FCf02C41e1Fc1Ea49dDf14db6F",
+      "txHash": "0x14ac33fc7db56427a32a1407e07941fd0df20b93aa7021276095fe1792ae4645",
+      "layout": {
+        "solcVersion": "0.8.29",
+        "storage": [],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_bytes32": {
+            "label": "bytes32",
+            "numberOfBytes": "32"
+          },
+          "t_contract(IEncumbranceSource)12577": {
+            "label": "contract IEncumbranceSource",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
+            "label": "mapping(address => mapping(address => uint256))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint256)": {
+            "label": "mapping(address => uint256)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_bytes32,t_struct(RoleData)22178_storage)": {
+            "label": "mapping(bytes32 => struct AccessControlUpgradeable.RoleData)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_struct(AccessControlDefaultAdminRulesStorage)22342_storage": {
+            "label": "struct AccessControlDefaultAdminRulesUpgradeable.AccessControlDefaultAdminRulesStorage",
+            "members": [
+              {
+                "label": "_pendingDefaultAdmin",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_pendingDefaultAdminSchedule",
+                "type": "t_uint48",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "_currentDelay",
+                "type": "t_uint48",
+                "offset": 26,
+                "slot": "0"
+              },
+              {
+                "label": "_currentDefaultAdmin",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "_pendingDelay",
+                "type": "t_uint48",
+                "offset": 20,
+                "slot": "1"
+              },
+              {
+                "label": "_pendingDelaySchedule",
+                "type": "t_uint48",
+                "offset": 26,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(AccessControlStorage)22188_storage": {
+            "label": "struct AccessControlUpgradeable.AccessControlStorage",
+            "members": [
+              {
+                "label": "_roles",
+                "type": "t_mapping(t_bytes32,t_struct(RoleData)22178_storage)",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(BurnMintERC20UUPSStorage)21971_storage": {
+            "label": "struct BurnMintERC20UUPS.BurnMintERC20UUPSStorage",
+            "members": [
+              {
+                "label": "ccipAdmin",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "decimals",
+                "type": "t_uint8",
+                "offset": 20,
+                "slot": "0"
+              },
+              {
+                "label": "maxSupply",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(ClearUSDStorage)17905_storage": {
+            "label": "struct ClearUSDUpgradeable.ClearUSDStorage",
+            "members": [
+              {
+                "label": "encumbranceSource",
+                "type": "t_contract(IEncumbranceSource)12577",
+                "offset": 0,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(ERC20Storage)22755_storage": {
+            "label": "struct ERC20Upgradeable.ERC20Storage",
+            "members": [
+              {
+                "label": "_balances",
+                "type": "t_mapping(t_address,t_uint256)",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_allowances",
+                "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "_totalSupply",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "_name",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "_symbol",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "4"
+              }
+            ],
+            "numberOfBytes": "160"
+          },
+          "t_struct(InitializableStorage)22586_storage": {
+            "label": "struct Initializable.InitializableStorage",
+            "members": [
+              {
+                "label": "_initialized",
+                "type": "t_uint64",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "_initializing",
+                "type": "t_bool",
+                "offset": 8,
+                "slot": "0"
+              }
+            ],
+            "numberOfBytes": "32"
+          },
+          "t_struct(RoleData)22178_storage": {
+            "label": "struct AccessControlUpgradeable.RoleData",
+            "members": [
+              {
+                "label": "hasRole",
+                "type": "t_mapping(t_address,t_bool)",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "adminRole",
+                "type": "t_bytes32",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint48": {
+            "label": "uint48",
+            "numberOfBytes": "6"
+          },
+          "t_uint64": {
+            "label": "uint64",
+            "numberOfBytes": "8"
+          },
+          "t_uint8": {
+            "label": "uint8",
+            "numberOfBytes": "1"
+          }
+        },
+        "namespaces": {
+          "erc7201:clear.storage.ClearUSD": [
+            {
+              "contract": "ClearUSDUpgradeable",
+              "label": "encumbranceSource",
+              "type": "t_contract(IEncumbranceSource)12577",
+              "src": "contracts/peripherals/ClearUSDUpgradeable.sol:30",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:chainlink.storage.BurnMintERC20UUPS": [
+            {
+              "contract": "BurnMintERC20UUPS",
+              "label": "ccipAdmin",
+              "type": "t_address",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/shared/token/ERC20/upgradeable/BurnMintERC20UUPS.sol:46",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "BurnMintERC20UUPS",
+              "label": "decimals",
+              "type": "t_uint8",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/shared/token/ERC20/upgradeable/BurnMintERC20UUPS.sol:48",
+              "offset": 20,
+              "slot": "0"
+            },
+            {
+              "contract": "BurnMintERC20UUPS",
+              "label": "maxSupply",
+              "type": "t_uint256",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/shared/token/ERC20/upgradeable/BurnMintERC20UUPS.sol:50",
+              "offset": 0,
+              "slot": "1"
+            }
+          ],
+          "erc7201:openzeppelin.storage.AccessControlDefaultAdminRules": [
+            {
+              "contract": "AccessControlDefaultAdminRulesUpgradeable",
+              "label": "_pendingDefaultAdmin",
+              "type": "t_address",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol:52",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "AccessControlDefaultAdminRulesUpgradeable",
+              "label": "_pendingDefaultAdminSchedule",
+              "type": "t_uint48",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol:53",
+              "offset": 20,
+              "slot": "0"
+            },
+            {
+              "contract": "AccessControlDefaultAdminRulesUpgradeable",
+              "label": "_currentDelay",
+              "type": "t_uint48",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol:54",
+              "offset": 26,
+              "slot": "0"
+            },
+            {
+              "contract": "AccessControlDefaultAdminRulesUpgradeable",
+              "label": "_currentDefaultAdmin",
+              "type": "t_address",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol:55",
+              "offset": 0,
+              "slot": "1"
+            },
+            {
+              "contract": "AccessControlDefaultAdminRulesUpgradeable",
+              "label": "_pendingDelay",
+              "type": "t_uint48",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol:57",
+              "offset": 20,
+              "slot": "1"
+            },
+            {
+              "contract": "AccessControlDefaultAdminRulesUpgradeable",
+              "label": "_pendingDelaySchedule",
+              "type": "t_uint48",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/access/extensions/AccessControlDefaultAdminRulesUpgradeable.sol:58",
+              "offset": 26,
+              "slot": "1"
+            }
+          ],
+          "erc7201:openzeppelin.storage.AccessControl": [
+            {
+              "contract": "AccessControlUpgradeable",
+              "label": "_roles",
+              "type": "t_mapping(t_bytes32,t_struct(RoleData)22178_storage)",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/access/AccessControlUpgradeable.sol:60",
+              "offset": 0,
+              "slot": "0"
+            }
+          ],
+          "erc7201:openzeppelin.storage.ERC20": [
+            {
+              "contract": "ERC20Upgradeable",
+              "label": "_balances",
+              "type": "t_mapping(t_address,t_uint256)",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/token/ERC20/ERC20Upgradeable.sol:38",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "ERC20Upgradeable",
+              "label": "_allowances",
+              "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/token/ERC20/ERC20Upgradeable.sol:39",
+              "offset": 0,
+              "slot": "1"
+            },
+            {
+              "contract": "ERC20Upgradeable",
+              "label": "_totalSupply",
+              "type": "t_uint256",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/token/ERC20/ERC20Upgradeable.sol:40",
+              "offset": 0,
+              "slot": "2"
+            },
+            {
+              "contract": "ERC20Upgradeable",
+              "label": "_name",
+              "type": "t_string_storage",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/token/ERC20/ERC20Upgradeable.sol:41",
+              "offset": 0,
+              "slot": "3"
+            },
+            {
+              "contract": "ERC20Upgradeable",
+              "label": "_symbol",
+              "type": "t_string_storage",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/token/ERC20/ERC20Upgradeable.sol:42",
+              "offset": 0,
+              "slot": "4"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/proxy/utils/Initializable.sol:69",
+              "offset": 0,
+              "slot": "0"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "node_modules/@chainlink/contracts/src/v0.8/vendor/openzeppelin-solidity-upgradeable/v5.0.2/contracts/proxy/utils/Initializable.sol:73",
+              "offset": 8,
+              "slot": "0"
+            }
+          ]
+        }
       }
     }
   }
