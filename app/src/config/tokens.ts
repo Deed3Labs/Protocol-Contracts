@@ -25,16 +25,28 @@ const CLRUSD_FALLBACK: Record<number, string> = {
   11155111: '0x54Dd3449Eb54adC02C33cD880178BfA718991753', // Ethereum Sepolia
 };
 
+/**
+ * The CLRUSD contract for a chain.
+ *
+ * `clearNetwork` wins wherever it has an answer, and env only speaks for chains it does not cover.
+ * That is the opposite of the usual precedence and it is deliberate: clearNetwork holds the pair
+ * the app actually transacts against, so a different address here would be showing a member a
+ * balance in a token their deposits do not mint. There is no version of that which is right.
+ *
+ * It also gives up nothing. `import.meta.env` is inlined by Vite at build time, so changing
+ * VITE_CLRUSD_84532 has always required a rebuild -- exactly like editing clearNetwork. The
+ * override bought no flexibility and cost a second source of truth, which is how a retired token
+ * went on showing as somebody's savings for as long as it did.
+ */
 function readClrUsdAddress(chainId: number): string {
+  const fromNetwork = clearContracts(chainId)?.clrusd;
+  if (fromNetwork) return fromNetwork;
+
   const key = `VITE_CLRUSD_${chainId}`;
   const raw = (import.meta.env as Record<string, string | undefined>)[key];
   if (raw && /^0x[a-fA-F0-9]{40}$/.test(raw) && raw !== ZERO_ADDRESS) {
     return raw;
   }
-  // The chain the app transacts on answers for itself, so the token shown as savings and the token
-  // a deposit mints can never be two different contracts.
-  const fromNetwork = clearContracts(chainId)?.clrusd;
-  if (fromNetwork) return fromNetwork;
   return CLRUSD_FALLBACK[chainId] ?? ZERO_ADDRESS;
 }
 
