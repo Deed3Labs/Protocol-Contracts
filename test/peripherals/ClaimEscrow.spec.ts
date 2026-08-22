@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { MockERC20 } from "../../typechain-types/contracts/mocks/MockERC20";
 import { ClaimEscrow } from "../../typechain-types/contracts/peripherals/ClaimEscrow";
 
@@ -26,10 +26,10 @@ describe("ClaimEscrow", function () {
     await usdc.waitForDeployment();
 
     const ClaimEscrowFactory = await ethers.getContractFactory("ClaimEscrow");
-    claimEscrow = await ClaimEscrowFactory.deploy(
-      await usdc.getAddress(),
-      treasury.address,
-      deployer.address
+    claimEscrow = await upgrades.deployProxy(
+      ClaimEscrowFactory,
+      [await usdc.getAddress(), treasury.address, deployer.address],
+      { kind: "uups" }
     );
     await claimEscrow.waitForDeployment();
 
@@ -112,9 +112,10 @@ describe("ClaimEscrow", function () {
 
   it("refunds expired transfer to sender", async function () {
     const transferId = ethers.keccak256(ethers.toUtf8Bytes("t5"));
-    await createTransfer(transferId, 1);
+    // TTL must outlast the approve tx that the helper mines before createTransfer.
+    await createTransfer(transferId, 60);
 
-    await ethers.provider.send("evm_increaseTime", [2]);
+    await ethers.provider.send("evm_increaseTime", [61]);
     await ethers.provider.send("evm_mine", []);
 
     const senderBefore = await usdc.balanceOf(sender.address);

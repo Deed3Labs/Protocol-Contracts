@@ -28,16 +28,24 @@ async function main() {
   if (network.chainId === 84532n) {
     // Base Sepolia
     reserveTokenAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // USDC on Base Sepolia
-    // For testing, we'll use a placeholder for StableCredit
-    // In production, this should be the actual StableCredit address
-    stableCreditAddress = "0x0000000000000000000000000000000000000000"; // TODO: Replace with actual StableCredit
   } else if (network.chainId === 8453n) {
     // Base Mainnet
     reserveTokenAddress = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base
-    stableCreditAddress = "0x0000000000000000000000000000000000000000"; // TODO: Replace with actual StableCredit
   } else {
     throw new Error(`Unsupported network: ${network.name} (${network.chainId})`);
   }
+
+  // The ledger this pool assures, read from what is actually deployed. This used to be a zero
+  // address with a TODO beside it, which deploys perfectly and then reverts on the first
+  // reimbursement -- a pool assuring nothing, discovered at the worst moment.
+  const ledger = getDeployment(network.name, "ClearCredit");
+  if (!ledger) {
+    throw new Error(
+      "No ClearCredit on this network. Run deploy/20_deploy_CreditCore.ts first — the pool " +
+        "reserves against a ledger and cannot be pointed at one that does not exist."
+    );
+  }
+  stableCreditAddress = ledger.address;
 
   console.log("\nDeployment parameters:");
   console.log(`- Reserve Token: ${reserveTokenAddress}`);

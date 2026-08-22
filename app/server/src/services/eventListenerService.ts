@@ -4,6 +4,7 @@ import { websocketService } from './websocketService.js';
 import { getRpcUrl, getAlchemyWebSocketUrl, isAlchemyWebSocketSupported } from '../utils/rpc.js';
 import { createRetryProvider } from '../utils/rpcRetry.js';
 import { getContractAddress } from '../config/contracts.js';
+import { dataChainIds } from '../config/dataChains.js';
 
 /** Polling interval for HTTP getLogs fallback (no eth_getFilterChanges). 2 min = ~1 eth_getLogs per chain per 2 min. */
 const HTTP_GETLOGS_POLL_INTERVAL_MS = 2 * 60 * 1000;
@@ -25,11 +26,26 @@ class EventListenerService {
   private isRunning = false;
   private restartTimeouts: Map<number, number> = new Map();
 
-  private readonly SUPPORTED_CHAINS = [1, 10, 8453, 100, 11155111, 84532, 42161, 137];
+  // Chains we hold contracts on. Seven of these have no DeedNFT deployed and are skipped at init,
+  // so the list is mostly aspirational — narrowed to the data chains so it stays that way when
+  // contracts do land, rather than quietly becoming eight live subscriptions.
+  private readonly SUPPORTED_CHAINS = dataChainIds();
 
   async initialize() {
     if (this.isRunning) {
       console.log('[EventListener] Already running');
+      return;
+    }
+
+    // OFF BY DEFAULT. This listener watches exactly one contract — DeedNFT — and does two things
+    // with what it sees: invalidate a cache and broadcast a balance_update. Both serve the Deed
+    // views, which are archived and unrendered, so it holds an RPC subscription and a restart loop
+    // around the clock to keep a surface fresh that nobody can open.
+    //
+    // T-Deeds and bonds will want exactly this again. PROTOCOL_EVENT_LISTENER=on brings it back,
+    // and by then getProtocolContracts should list those contracts too rather than DeedNFT alone.
+    if ((process.env.PROTOCOL_EVENT_LISTENER || '').trim().toLowerCase() !== 'on') {
+      console.log('[EventListener] Off (set PROTOCOL_EVENT_LISTENER=on to enable)');
       return;
     }
 

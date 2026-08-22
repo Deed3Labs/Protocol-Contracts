@@ -44,7 +44,10 @@ async function main() {
 
   if (network.chainId === 84532n) {
     // Base Sepolia
-    uniswapFactoryAddress = "0x33128a8fC17869897dcE68Ed026d694621f6FDfD"; // Uniswap V3 Factory on Base Sepolia
+    // Base Sepolia's own factory. This used to be the Base MAINNET address, which has no
+    // code here -- so getPool returned address(0) for everything and Uniswap pricing
+    // silently never ran, falling through to registry prices without saying so.
+    uniswapFactoryAddress = "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24";
     wethAddress = "0x4200000000000000000000000000000000000006"; // WETH on Base Sepolia
     usdcAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // USDC on Base Sepolia
     usdtAddress = "0x036CbD53842c5426634e7929541eC2318f3dCF7e"; // Using USDC as placeholder
@@ -61,7 +64,21 @@ async function main() {
   }
 
   // Deploy parameters
-  const targetRTD = hre.ethers.parseEther("1.0"); // 100% reserve to debt ratio
+  // 80% at launch, walked down by governance as the book produces real default data.
+  //
+  // Read against the right denominator: this is reserve over *pool exposure*, which already
+  // excludes savings-backed credit entirely and counts asset-backed only for its shortfall after
+  // haircut. It is a ratio against the expected-loss tail, not against deposits, so it does not
+  // compare to a bank's 10-15%. On the plan's own worked example -- $7,140 of debt producing
+  // $2,321 of exposure -- 80% here is about 26% of total credit, and 50% would be about 16%,
+  // which is roughly where a traditional reserve sits.
+  //
+  // The inherited default was 100%: a dollar of reserve per dollar of exposure, which is not a
+  // fractional reserve at all and would leave nothing ever routed to excess.
+  //
+  // Still a number somebody chose. The oracle's real job is to serve a target derived from the
+  // predicted default rate (see ITargetRTDSource); governance setting it is the honest interim.
+  const targetRTD = hre.ethers.parseEther("0.8");
 
   console.log("\nDeployment parameters:");
   console.log(`- AssurancePool: ${assurancePoolDeployment.address}`);
@@ -76,15 +93,22 @@ async function main() {
   // Deploy the contract
   console.log("\nDeploying AssuranceOracle...");
   const AssuranceOracle = await hre.ethers.getContractFactory("AssuranceOracle");
-  const assuranceOracle = await AssuranceOracle.deploy(
-    assurancePoolDeployment.address,
-    targetRTD,
-    uniswapFactoryAddress,
-    wethAddress,
-    usdcAddress,
-    usdtAddress,
-    daiAddress,
-    tokenRegistryDeployment.address
+  // Behind a UUPS proxy: the pricing addresses used to be immutable, so a wrong WETH or factory
+  // on a chain nobody had deployed to meant a redeployment that also dropped every
+  // registry-fallback override set since.
+  const assuranceOracle = await hre.upgrades.deployProxy(
+    AssuranceOracle,
+    [
+      assurancePoolDeployment.address,
+      targetRTD,
+      uniswapFactoryAddress,
+      wethAddress,
+      usdcAddress,
+      usdtAddress,
+      daiAddress,
+      tokenRegistryDeployment.address,
+    ],
+    { initializer: "initialize", kind: "uups" }
   );
 
   await assuranceOracle.waitForDeployment();

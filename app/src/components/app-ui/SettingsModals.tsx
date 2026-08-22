@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { fileToAvatarDataUrl } from '@/lib/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   CreditCard, Eye, EyeOff, Fingerprint, KeyRound, LifeBuoy, MessageCircle, Loader2, Camera,
@@ -65,35 +66,6 @@ function ToggleList({ rows }: { rows: { id: string; icon: LucideIcon; title: str
   );
 }
 
-/**
- * Read an image file + downscale to a small square-ish JPEG data URL (≤256px, ~20–40KB) so it fits
- * in the avatarUrl string without needing image storage. Swap for a real upload→URL once storage
- * exists. (Backend must accept data: URLs in avatarUrl for this to persist.)
- */
-async function fileToAvatarDataUrl(file: File, max = 256): Promise<string> {
-  const dataUrl = await new Promise<string>((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result as string);
-    r.onerror = () => rej(new Error('read failed'));
-    r.readAsDataURL(file);
-  });
-  const img = await new Promise<HTMLImageElement>((res, rej) => {
-    const i = new Image();
-    i.onload = () => res(i);
-    i.onerror = () => rej(new Error('image failed'));
-    i.src = dataUrl;
-  });
-  const scale = Math.min(1, max / Math.max(img.width, img.height || 1));
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return dataUrl;
-  ctx.drawImage(img, 0, 0, w, h);
-  return canvas.toDataURL('image/jpeg', 0.82);
-}
 
 /* ----------------------------------- Account ----------------------------------- */
 export function AccountModal({ open, onOpenChange }: ModalProps) {

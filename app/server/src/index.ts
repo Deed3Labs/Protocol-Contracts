@@ -25,6 +25,7 @@ import memberWalletLinksPublicRouter from './routes/memberWalletLinksPublic.js';
 import avatarRouter from './routes/avatar.js';
 import portfolioRouter from './routes/portfolio.js';
 import payRouter from './routes/pay.js';
+import creditRouter from './routes/credit.js';
 import withdrawRouter from './routes/withdraw.js';
 import autopayRouter from './routes/autopay.js';
 import contactsRouter from './routes/contacts.js';
@@ -35,12 +36,21 @@ import onramperWebhookRouter from './routes/onramperWebhook.js';
 import coinbaseRampWebhookRouter from './routes/coinbaseRampWebhook.js';
 import bridgeWebhookRouter from './routes/bridgeWebhook.js';
 import rampRouter from './routes/ramp.js';
+import lithicRouter from './routes/lithic.js';
+import sweepsRouter from './routes/sweeps.js';
+import lithicCardsRouter from './routes/lithicCards.js';
+import lithicAuthStreamRouter from './routes/lithicAuthStream.js';
+import lithicWebhookRouter from './routes/lithicWebhook.js';
 import { startPriceUpdater } from './jobs/priceUpdater.js';
 import { startPortfolioSnapshotter } from './jobs/portfolioSnapshotter.js';
 import { startAutopayRunner } from './jobs/autopayRunner.js';
 import { startDueBillNotifier } from './jobs/dueBillNotifier.js';
 import { startGreetingNotifier } from './jobs/greetingNotifier.js';
 import { startSendExpiryNotifier } from './jobs/sendExpiryNotifier.js';
+import { startPulledFundsReleaser } from './jobs/pulledFundsReleaser.js';
+import { startSweepRunner } from './jobs/sweepRunner.js';
+import { startMemoryMonitor } from './jobs/memoryMonitor.js';
+import { startReconciler } from './jobs/reconciler.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -180,6 +190,10 @@ async function startServer() {
     const rateLimiterMiddleware = await rateLimiter(windowMs, maxRequests);
     
     // Add rate limiter to all API routes
+    // Auth Stream Access is mounted before the rate limiter on purpose: throttling this endpoint
+    // would decline a member's card at a till, and it is already authenticated by HMAC signature.
+    app.use('/api/webhooks/lithic/auth-stream', lithicAuthStreamRouter);
+
     app.use('/api', rateLimiterMiddleware);
 
     // Public API routes (after rate limiter)
@@ -194,6 +208,7 @@ async function startServer() {
     app.use('/api/webhooks/onramper', onramperWebhookRouter); // public; verified via signature
     app.use('/api/webhooks/coinbase-ramp', coinbaseRampWebhookRouter); // public; verified via X-Hook0-Signature
     app.use('/api/webhooks/bridge', bridgeWebhookRouter); // public; verified via X-Webhook-Signature (RSA)
+    app.use('/api/webhooks/lithic', lithicWebhookRouter); // public; verified via standard-webhooks HMAC
     app.use('/api/stripe', requireAuth, stripeRouter);
     app.use('/api/members', requireAuth, membersRouter);
     app.use('/api/plaid', requireAuth, requireMemberCapability('canUsePlaid'), plaidRouter);
@@ -208,6 +223,7 @@ async function startServer() {
     app.use('/api/savings', requireAuth, savingsRouter);
     app.use('/api/portfolio', requireAuth, portfolioRouter);
     app.use('/api/pay', requireAuth, payRouter);
+    app.use('/api/credit', requireAuth, creditRouter);
     app.use('/api/withdraw', requireAuth, withdrawRouter);
     app.use('/api/autopay', requireAuth, autopayRouter);
     app.use('/api/contacts', requireAuth, contactsRouter);
@@ -215,6 +231,9 @@ async function startServer() {
     app.use('/api/requests', requireAuth, requestsRouter);
     app.use('/api/onramper', requireAuth, onramperRouter);
     app.use('/api/ramp', requireAuth, rampRouter);
+    app.use('/api/lithic', requireAuth, lithicRouter);
+    app.use('/api/lithic/cards', requireAuth, lithicCardsRouter);
+    app.use('/api/sweeps', requireAuth, sweepsRouter);
 
     console.log('✅ API routes registered:');
     console.log('  - /api/prices');
@@ -274,6 +293,20 @@ async function startServer() {
     });
     startSendExpiryNotifier().catch((error) => {
       console.error('⚠️ Send-expiry notifier failed to start:', error);
+    });
+    startPulledFundsReleaser().catch((error) => {
+      console.error('⚠️ Pulled-funds releaser failed to start:', error);
+    });
+
+    startSweepRunner().catch((error) => {
+      console.error('Failed to start sweep runner:', error);
+    });
+
+    // Cheap, and the only thing that will tell us the SHAPE of memory use rather than its peak.
+    startMemoryMonitor();
+
+    startReconciler().catch((error) => {
+      console.error('Failed to start reconciler:', error);
     });
 
     // Start HTTP server (Express + WebSocket)

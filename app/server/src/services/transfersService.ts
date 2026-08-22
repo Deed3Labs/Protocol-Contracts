@@ -4,6 +4,7 @@ import { notificationStore } from './notificationStore.js';
 import { getRedisClient, CacheService, CacheKeys } from '../config/redis.js';
 import { computeUnitTracker } from '../utils/computeUnitTracker.js';
 import { getAlchemyPricesBatch } from './priceService.js';
+import { limitToDataChains } from '../config/dataChains.js';
 
 /**
  * Transfer types supported by Alchemy Transfers API
@@ -159,7 +160,9 @@ class TransfersService {
     this.isRunning = true;
 
     // Supported chains for Alchemy Transfers API
-    const supportedChains = initialChains || [1, 8453, 137, 42161, 100, 11155111, 84532];
+    // Narrowed rather than defaulted to seven. Each entry here becomes its own interval for this
+    // address, so the list is multiplied by every connected member.
+    const supportedChains = limitToDataChains(initialChains);
 
     // Initialize active chains tracking
     this.activeChains.set(normalizedAddress, new Set(supportedChains));

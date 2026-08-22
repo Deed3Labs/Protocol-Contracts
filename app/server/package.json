@@ -12,7 +12,14 @@
     "test": "bun test-api.ts",
     "plaid:backfill-member-ownership": "node scripts/backfill-plaid-member-ownership.mjs",
     "send:cdp:account": "node scripts/cdp-relayer-account.mjs",
-    "send:recover-claim": "node scripts/send-recover-claim-link.mjs"
+    "send:recover-claim": "node scripts/send-recover-claim-link.mjs",
+    "lithic:provision-test-member": "node scripts/lithic-provision-test-member.mjs",
+    "lithic:verify-step2": "node scripts/lithic-verify-step2.mjs",
+    "lithic:build-asa": "tsc --outDir dist --module esnext --moduleResolution bundler --target es2022 --skipLibCheck src/routes/lithicAuthStream.ts src/services/lithic/authStore.ts src/services/lithic/authDecision.ts src/config/postgres.ts",
+    "lithic:verify-step3": "npm run lithic:build-asa && node scripts/lithic-verify-step3.mjs",
+    "lithic:test": "bun test src/services",
+    "lithic:verify-step8": "node scripts/lithic-verify-step8.mjs",
+    "lithic:verify-asa": "node scripts/lithic-verify-asa.mjs"
   },
   "dependencies": {
     "@coinbase/cdp-sdk": "^1.41.0",
@@ -28,6 +35,7 @@
     "ethers": "^6.15.0",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
+    "lithic": "^0.145.0",
     "pg": "^8.18.0",
     "plaid": "^41.1.0",
     "redis": "^4.6.12",

@@ -15,9 +15,25 @@ export const DEPLOYED_CONTRACTS: Record<number, Record<string, string>> = {
     Subdivide: '0x3c947D71cb1698dFd4D7551b87E17306865C923F',
     Fractionalize: '0xeC464847C664Cc208478adbe377f7Db19e199823',
     FractionTokenFactory: '0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc',
-    CLRUSD: process.env.CLRUSD_84532 || '0x0000000000000000000000000000000000000000',
-    ESADepositVault: process.env.ESA_VAULT_84532 || '0x0000000000000000000000000000000000000000',
+    CLRUSD: process.env.CLRUSD_84532 || '0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1',
+    ESADepositVault: process.env.ESA_VAULT_84532 || '0x836401Ed3e2bF7CAb5e2721188E74B834511413b',
     CLRUSDTokenPool: process.env.CLRUSD_POOL_84532 || '0x0000000000000000000000000000000000000000',
+    // The credit core. Defaults are the deployed Base Sepolia addresses so the server works
+    // without extra configuration; env still wins, which is what mainnet will use.
+    ClearCredit: process.env.CLEAR_CREDIT_84532 || '0x1d9f1ECDc70b31256aFA75A73F991cfAa8bC928C',
+    RevolvingIssuer: process.env.REVOLVING_ISSUER_84532 || '0x7f15E45aB5eAF0307200274211a90FcbD6716070',
+    TermIssuer: process.env.TERM_ISSUER_84532 || '0xe467d87756FDF9645D751485CDB72A1E14683721',
+    CollateralRegistry: process.env.COLLATERAL_REGISTRY_84532 || '0x62fBdf62Ad0C3f52d898b28b2d1FB31e9EB152Cf',
+    LimitCalculator: process.env.LIMIT_CALCULATOR_84532 || '0xbA9880F46128027D39F7694e3cfdf077D716c0a7',
+    AssurancePool: process.env.ASSURANCE_POOL_84532 || '0xf5E40414410672636Ab1691ae19D2Aa1c1705840',
+    // Phase E: bonds, capital and merchant payouts.
+    BondVault: process.env.BOND_VAULT_84532 || '0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855',
+    BurnerBond: process.env.BURNER_BOND_84532 || '0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148',
+    BurnerBondDeposit: process.env.BURNER_BOND_DEPOSIT_84532 || '0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3',
+    LendingPool: process.env.LENDING_POOL_84532 || '0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23',
+    PayoutPool: process.env.PAYOUT_POOL_84532 || '0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66',
+    MerchantRegistry: process.env.MERCHANT_REGISTRY_84532 || '0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5',
+    Liquidator: process.env.LIQUIDATOR_84532 || '0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593',
   },
   // Sepolia
   11155111: {

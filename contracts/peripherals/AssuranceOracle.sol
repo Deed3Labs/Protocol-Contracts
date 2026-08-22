@@ -4,8 +4,11 @@ pragma solidity ^0.8.29;
 import "../core/interfaces/stable-credit/IAssuranceOracle.sol";
 import "../core/interfaces/stable-credit/IAssurancePool.sol";
 import "../core/interfaces/ITokenRegistry.sol";
+import "../core/interfaces/stable-credit/ITargetRTDSource.sol";
+import "../libraries/TickMath.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 
 // Uniswap V3 interfaces for real-time pricing
@@ -26,6 +29,11 @@ interface IUniswapV3Pool {
         uint8 feeProtocol,
         bool unlocked
     );
+
+    function observe(uint32[] calldata secondsAgos)
+        external
+        view
+        returns (int56[] memory tickCumulatives, uint160[] memory secondsPerLiquidityCumulativeX128s);
 }
 
 /// @title AssuranceOracle
@@ -33,30 +41,57 @@ interface IUniswapV3Pool {
 /// to the AssurancePool and CreditIssuer contracts to manage network credit risk.
 /// @notice Exposes the target reserve to debt ratio (targetRTD) for the AssurancePool
 /// and a quote function intended to be overridden to convert deposit tokens to reserve tokens.
-contract AssuranceOracle is IAssuranceOracle, Ownable {
-    uint256 public targetRTD;
+contract AssuranceOracle is IAssuranceOracle, OwnableUpgradeable, UUPSUpgradeable {
+    /// @notice Operator-set target RTD, used when no ITargetRTDSource is registered.
+    uint256 public staticTargetRTD;
+    /// @notice Optional risk model supplying the target RTD from predicted default rate.
+    ITargetRTDSource public targetRTDSource;
     IAssurancePool public assurancePool;
     
-    // Uniswap V3 integration
-    IUniswapV3Factory public immutable uniswapFactory;
-    address public immutable WETH_ADDRESS;
+    // Uniswap V3 integration.
+    // Storage rather than immutable, deliberately. These are the addresses most likely to be
+    // wrong on a chain nobody has deployed to before -- a testnet WETH, a factory at a different
+    // address -- and immutable makes every one of those mistakes a redeployment that also loses
+    // the registry-fallback flags set since.
+    IUniswapV3Factory public uniswapFactory;
+    address public WETH_ADDRESS;
     
     // Default stablecoins (always accepted, always $1 USD)
-    address public immutable USDC_ADDRESS;
-    address public immutable USDT_ADDRESS;
-    address public immutable DAI_ADDRESS;
+    address public USDC_ADDRESS;
+    address public USDT_ADDRESS;
+    address public DAI_ADDRESS;
 
     // Centralized token registry
     ITokenRegistry public tokenRegistry;
     
     // Uniswap V3 configuration
     uint24 public constant FEE_TIER = 3000; // 0.3% fee tier for stablecoin pairs
+
+    /// @notice Averaging window for pool prices, in seconds.
+    /// @dev Prices read here gate how much token leaves the AssurancePool, so a spot read is a
+    /// drain vector: a flash loan can move `slot0` within a single transaction and move it back.
+    /// A time-weighted average cannot be moved that way without holding the price across blocks.
+    uint32 public twapPeriod;
+
+    /// @dev Bounds on `twapPeriod`. Too short is manipulable; too long is stale.
+    uint32 public constant MIN_TWAP_PERIOD = 300; // 5 minutes
+    uint32 public constant MAX_TWAP_PERIOD = 86400; // 1 day
+
+    error TwapPeriodOutOfBounds(uint32 period);
     
     // Events
     // Fallback pricing related events are emitted by TokenRegistry
     event ForceRegistryFallbackSet(address indexed token, bool force);
+    event TwapPeriodUpdated(uint32 newPeriod);
+    event TargetRTDSourceUpdated(address indexed source);
+    event PricingAddressesUpdated(address indexed uniswapFactory, address indexed weth);
     
-    constructor(
+    /// @notice initializes the oracle.
+    /// @dev Upgradeable for the same reason the rest of the system is, and for one of its own: the
+    /// pool can already be re-pointed at a new oracle with `setAssuranceOracle`, but replacing it
+    /// silently drops every `forceRegistryFallback` override set since deployment. An upgrade
+    /// keeps them.
+    function initialize(
         address _assurancePool, 
         uint256 _targetRTD,
         address _uniswapFactory,
@@ -65,9 +100,12 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
         address _usdtAddress,
         address _daiAddress,
         address _tokenRegistry
-    ) {
+    ) external initializer {
+        __Ownable_init();
+        __UUPSUpgradeable_init();
         assurancePool = IAssurancePool(_assurancePool);
-        targetRTD = _targetRTD;
+        staticTargetRTD = _targetRTD;
+        twapPeriod = 1800; // 30 minutes
         uniswapFactory = IUniswapV3Factory(_uniswapFactory);
         WETH_ADDRESS = _wethAddress;
         USDC_ADDRESS = _usdcAddress;
@@ -192,15 +230,8 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
         view 
         returns (uint256) 
     {
-        try IUniswapV3Pool(poolAddress).slot0() returns (
-            uint160 sqrtPriceX96,
-            int24,
-            uint16,
-            uint16,
-            uint16,
-            uint8,
-            bool
-        ) {
+        uint160 sqrtPriceX96 = _twapSqrtPriceX96(poolAddress);
+        {
             if (sqrtPriceX96 == 0 || uint256(sqrtPriceX96) > type(uint128).max) {
                 return 0;
             }
@@ -218,9 +249,17 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
                 return 0;
             }
 
-            // priceRaw = token1_raw / token0_raw, scaled to 1e18
+            // priceRaw = token1_raw / token0_raw, scaled to 1e18.
+            //
+            // Shifted in two halves rather than scaled and then shifted once. The square of a
+            // Q64.96 sqrt price is a Q128.192 number, and for a pair whose raw ratio is large --
+            // USDC/WETH is ~3.3e8, six decimals against eighteen -- it reaches around 2^220.
+            // Multiplying that by 1e18 before shifting needs 2^280 and panics on overflow, which
+            // is what a live WETH/USDC pool actually did. Taking half the shift first leaves ~124
+            // bits of the ratio, far more than the 1e18 scale can express, so nothing is lost
+            // that the result could have represented.
             uint256 sqrtPriceSquared = uint256(sqrtPriceX96) * uint256(sqrtPriceX96);
-            uint256 priceToken1PerToken0 = (sqrtPriceSquared * 1e18) >> 192;
+            uint256 priceToken1PerToken0 = ((sqrtPriceSquared >> 96) * 1e18) >> 96;
             if (priceToken1PerToken0 == 0) {
                 return 0;
             }
@@ -242,8 +281,40 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
                 return (1e36) / adjustedPrice;
             }
             return 0;
+        }
+    }
+
+    /// @notice Reads a pool's time-weighted average price over `twapPeriod` as a sqrt price.
+    /// @dev Returns 0 rather than falling back to `slot0` when the pool cannot serve the window.
+    /// A pool whose observation cardinality has never been increased holds a single observation
+    /// and cannot produce an average; falling back to spot there would reintroduce exactly the
+    /// manipulation this replaces, on precisely the pools most likely to be thin. Callers treat 0
+    /// as "no price", which routes to the token registry fallback and ultimately fails closed.
+    /// @param poolAddress Address of the Uniswap V3 pool.
+    /// @return sqrtPriceX96 Time-weighted sqrt price, or 0 if unavailable.
+    function _twapSqrtPriceX96(address poolAddress) internal view returns (uint160) {
+        uint32 period = twapPeriod;
+        uint32[] memory secondsAgos = new uint32[](2);
+        secondsAgos[0] = period;
+        secondsAgos[1] = 0;
+
+        try IUniswapV3Pool(poolAddress).observe(secondsAgos) returns (
+            int56[] memory tickCumulatives,
+            uint160[] memory
+        ) {
+            if (tickCumulatives.length < 2) return 0;
+
+            int56 tickDelta = tickCumulatives[1] - tickCumulatives[0];
+            int24 averageTick = int24(tickDelta / int56(uint56(period)));
+            // Integer division truncates toward zero; the average tick must round down so the
+            // derived price is never rounded in the pool's favour.
+            if (tickDelta < 0 && (tickDelta % int56(uint56(period)) != 0)) averageTick--;
+
+            if (averageTick < TickMath.MIN_TICK || averageTick > TickMath.MAX_TICK) return 0;
+            return TickMath.getSqrtRatioAtTick(averageTick);
         } catch {
-            return 0; // Pool doesn't exist or call failed
+            // Pool does not exist, or holds too few observations to cover the window.
+            return 0;
         }
     }
     
@@ -362,13 +433,63 @@ contract AssuranceOracle is IAssuranceOracle, Ownable {
     /// to the primary reserve to attempt to reach the new target RTD.
     /// @param _targetRTD new target RTD.
     function setTargetRTD(uint256 _targetRTD) external onlyOwner {
-        uint256 currentTarget = targetRTD;
+        uint256 currentTarget = targetRTD();
         // update target RTD
-        targetRTD = _targetRTD;
+        staticTargetRTD = _targetRTD;
         // if increasing target RTD and there is excess reserves, reallocate excess reserve to primary
         if (_targetRTD > currentTarget && assurancePool.excessBalance() > 0) {
             assurancePool.reallocateExcessBalance();
         }
         emit TargetRTDUpdated(_targetRTD);
+    }
+
+    /// @notice The target reserve to debt ratio the AssurancePool reserves toward.
+    /// @dev Served by the registered risk model when there is one, and by the operator-set
+    /// constant otherwise. See ITargetRTDSource: the target is meant to be produced by the
+    /// predicted default rate rather than chosen.
+    /// @return target RTD, where 1 ether == 100%.
+    function targetRTD() public view override returns (uint256) {
+        if (address(targetRTDSource) != address(0)) return targetRTDSource.targetRTD();
+        return staticTargetRTD;
+    }
+
+    /// @notice Registers the risk model supplying the target RTD.
+    /// @param _source address of the source, or address(0) to fall back to the set constant.
+    function setTargetRTDSource(address _source) external onlyOwner {
+        targetRTDSource = ITargetRTDSource(_source);
+        emit TargetRTDSourceUpdated(_source);
+    }
+
+    /// @dev The oracle decides what a deposit is worth and what the reserve target is. Neither is
+    /// a new power for the owner -- they can already set a fallback price and force it to be
+    /// preferred over Uniswap -- but both are worth being able to correct without losing the
+    /// settings around them.
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+
+    /// @notice Re-points the oracle at a different Uniswap deployment or token set.
+    /// @dev The reason these are no longer immutable. Getting one wrong used to mean a redeploy.
+    function setPricingAddresses(
+        address _uniswapFactory,
+        address _wethAddress,
+        address _usdcAddress,
+        address _usdtAddress,
+        address _daiAddress
+    ) external onlyOwner {
+        uniswapFactory = IUniswapV3Factory(_uniswapFactory);
+        WETH_ADDRESS = _wethAddress;
+        USDC_ADDRESS = _usdcAddress;
+        USDT_ADDRESS = _usdtAddress;
+        DAI_ADDRESS = _daiAddress;
+        emit PricingAddressesUpdated(_uniswapFactory, _wethAddress);
+    }
+
+    /// @notice Sets the averaging window used for pool prices.
+    /// @param _period new window in seconds, within [MIN_TWAP_PERIOD, MAX_TWAP_PERIOD].
+    function setTwapPeriod(uint32 _period) external onlyOwner {
+        if (_period < MIN_TWAP_PERIOD || _period > MAX_TWAP_PERIOD) {
+            revert TwapPeriodOutOfBounds(_period);
+        }
+        twapPeriod = _period;
+        emit TwapPeriodUpdated(_period);
     }
 }

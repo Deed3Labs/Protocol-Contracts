@@ -27,5 +27,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests run under bun, which types `bun:test` itself; the app build has no reason to see them.
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

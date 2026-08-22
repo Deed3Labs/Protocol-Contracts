@@ -33,6 +33,8 @@ class ComputeUnitTracker {
   private userUsage: Map<string, number> = new Map(); // address -> total compute units
   private endpointUsage: Map<string, number> = new Map(); // endpoint -> total compute units
   private readonly MAX_LOGS = 10000; // Keep last 10k logs
+  /** Addresses tracked for per-user attribution. Eviction is insertion-order, oldest first. */
+  private readonly MAX_TRACKED_ADDRESSES = 5000;
 
   /**
    * Log an Alchemy API call with estimated compute units.
@@ -71,10 +73,12 @@ class ComputeUnitTracker {
       method,
     };
 
-    // Add to logs
+    // Trimmed in batches rather than one shift() per call. shift() on a 10,000-element array
+    // reindexes all 10,000, and this runs on every tracked RPC call — an O(n) operation on a hot
+    // path, to maintain a debugging aid. Dropping a tenth at a time makes it amortized O(1).
     this.logs.push(log);
     if (this.logs.length > this.MAX_LOGS) {
-      this.logs.shift(); // Remove oldest log
+      this.logs.splice(0, Math.floor(this.MAX_LOGS / 10));
     }
 
     // Track per-user usage
@@ -82,9 +86,16 @@ class ComputeUnitTracker {
       const normalizedAddress = address.toLowerCase();
       const current = this.userUsage.get(normalizedAddress) || 0;
       this.userUsage.set(normalizedAddress, current + units);
+
+      // Keyed by address with no eviction, this grew with every wallet ever seen — slow, but it
+      // only ever goes one way, and a map that only grows is a leak wearing a metrics costume.
+      if (this.userUsage.size > this.MAX_TRACKED_ADDRESSES) {
+        const oldest = this.userUsage.keys().next().value;
+        if (oldest !== undefined) this.userUsage.delete(oldest);
+      }
     }
 
-    // Track per-endpoint usage
+    // Track per-endpoint usage. Bounded by the number of distinct endpoints, which is a constant.
     const currentEndpoint = this.endpointUsage.get(endpoint) || 0;
     this.endpointUsage.set(endpoint, currentEndpoint + units);
 

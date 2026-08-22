@@ -1,5 +1,5 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 
 describe("ClearUSD + ESADepositVault", function () {
   let clearUsd: any;
@@ -25,10 +25,12 @@ describe("ClearUSD + ESADepositVault", function () {
     usdc = await MockERC20.deploy("USD Coin", "USDC", 6);
     await usdc.waitForDeployment();
     dai = await MockERC20.deploy("Dai Stablecoin", "DAI", 18);
-    await dai.waitForDeployment();
-
-    const ESADepositVault = await ethers.getContractFactory("ESADepositVault");
-    vault = await ESADepositVault.deploy(await clearUsd.getAddress(), deployer.address);
+    await dai.waitForDeployment();    const ESADepositVault = await ethers.getContractFactory("ESADepositVault");
+    vault = await upgrades.deployProxy(
+      ESADepositVault,
+      [await clearUsd.getAddress(), deployer.address],
+      { kind: "uups" }
+    );
     await vault.waitForDeployment();
 
     const minterRole = await clearUsd.MINTER_ROLE();
@@ -143,5 +145,41 @@ describe("ClearUSD + ESADepositVault", function () {
     const clrusdSupply = await clearUsd.totalSupply();
 
     expect(vaultLiquidity).to.equal(clrusdSupply);
+  });
+
+  it("re-points at a replacement CLRUSD, but only once the old one is redeemed", async function () {
+    // The deployed CLRUSD cannot be upgraded, so giving it the redemption lock means replacing
+    // the token. Swapping it underneath live supply would strand those holders against a vault
+    // that no longer recognises what they hold.
+    const ClearUSD = await ethers.getContractFactory("ClearUSD");
+    const replacement = await ClearUSD.deploy(deployer.address, 0, 0);
+    await replacement.waitForDeployment();
+
+    await usdc.mint(user.address, 100n * ONE_USDC);
+    await usdc.connect(user).approve(await vault.getAddress(), 100n * ONE_USDC);
+    await vault.connect(user).deposit(await usdc.getAddress(), 100n * ONE_USDC, user.address);
+    expect(await clearUsd.totalSupply()).to.be.greaterThan(0n);
+
+    await expect(vault.setClrusd(await replacement.getAddress()))
+      .to.be.revertedWithCustomError(vault, "ESADepositVaultTokenStillOutstanding");
+
+    // Redeem it all, and the swap becomes available.
+    await clearUsd
+      .connect(user)
+      .approve(await vault.getAddress(), await clearUsd.balanceOf(user.address));
+    await vault
+      .connect(user)
+      .redeem(await usdc.getAddress(), await clearUsd.balanceOf(user.address), user.address);
+    expect(await clearUsd.totalSupply()).to.equal(0n);
+
+    await vault.setClrusd(await replacement.getAddress());
+    expect(await vault.clrusd()).to.equal(await replacement.getAddress());
+
+    // The decimals cache moved with the address: deposits still price one-for-one.
+    await replacement.grantIssuerRoles(await vault.getAddress());
+    await usdc.mint(user.address, 50n * ONE_USDC);
+    await usdc.connect(user).approve(await vault.getAddress(), 50n * ONE_USDC);
+    await vault.connect(user).deposit(await usdc.getAddress(), 50n * ONE_USDC, user.address);
+    expect(await replacement.balanceOf(user.address)).to.equal(50n * ONE_USDC);
   });
 });

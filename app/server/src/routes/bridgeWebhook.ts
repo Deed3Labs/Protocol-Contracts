@@ -2,6 +2,9 @@ import { Router, type Request, type Response } from 'express';
 import { sendBridgeWebhookVerifier } from '../services/sendBridgeWebhookVerifier.js';
 import { bridgeCustomerStore } from '../services/bridgeCustomerStore.js';
 import { emitRampStatus } from '../services/rampNotifications.js';
+import { recordDeposit } from '../services/deposits/depositReceiptService.js';
+import { sweepStore } from '../services/sweeps/sweepStore.js';
+import { markUsdcArrived } from '../services/sweeps/sweepService.js';
 
 /*
  * Bridge webhooks (PUBLIC, signature-verified) — the app-closed-safe source of truth for money that
@@ -72,6 +75,46 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
       const type = String(obj.type || objectStatus || '');
       if (type === 'funds_received' || type === 'payment_processed') {
         await emitRampStatus({ wallet, type: 'buy', status: 'completed', amount, ref: `bva:${ref}` });
+
+        // The deposit pipeline runs on `payment_processed` only — that is Bridge having actually
+        // delivered the USDC on chain. `funds_received` is the fiat landing at Bridge, which is one
+        // leg short: settling credit against money that hasn't arrived would be settling a promise.
+        if (type === 'payment_processed') {
+          // A sweep landing is NOT a new deposit. The member's own money already counted when it
+          // arrived in their Lithic account; this is the same dollars coming back on-chain. Running
+          // it through the deposit pipeline would settle credit against it twice and auto-save it a
+          // second time, so the sweep claims the arrival first and the pipeline never sees it.
+          const sweep = await sweepStore.matchArrival(wallet, Math.round(amount * 100));
+          if (sweep) {
+            await markUsdcArrived(sweep.id);
+            console.log(
+              `[bridge/webhook] sweep ${sweep.id} arrived — ${sweep.amountCents}c of USDC with ${wallet},` +
+                ' now theirs to allocate',
+            );
+            res.json({ received: true });
+            return;
+          }
+
+          try {
+            const outcome = await recordDeposit({
+              rail: 'bridge_va',
+              externalId: ref,
+              wallet,
+              amountCents: Math.round(amount * 100),
+              metadata: { category, type },
+            });
+            if (outcome.recorded) {
+              console.log(
+                `[bridge/webhook] deposit applied ${amount} → settled ${outcome.plan?.settledCents ?? 0}c,` +
+                  ` savings ${outcome.toSavingsCents}c, cash ${outcome.toCashCents}c`,
+              );
+            }
+          } catch (error) {
+            // Never fail the webhook on this: Bridge would retry the whole event, and the receipt
+            // is idempotent so a manual replay is safe.
+            console.error('[bridge/webhook] deposit pipeline failed', error);
+          }
+        }
       } else if (type === 'refund' || type === 'refund_failed') {
         await emitRampStatus({ wallet, type: 'buy', status: 'failed', amount, ref: `bva:${ref}` });
       }

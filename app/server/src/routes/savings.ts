@@ -4,6 +4,7 @@ import { requireWalletMatch, requireVerifiedWallet } from '../middleware/auth.js
 import { savingsIntentService } from '../services/savingsIntentService.js';
 import { savingsRelayerService } from '../services/savingsRelayerService.js';
 import { savingsGaslessService } from '../services/savingsGaslessService.js';
+import { relayEsaDeposit } from '../services/savings/esaDeposit.js';
 import { payLedgerStore, networkFromChainId } from '../services/payLedgerStore.js';
 
 const savingsRouter = Router();
@@ -268,20 +269,22 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
 
     let txHash: string;
     if (action === 'deposit') {
-      const amount = BigInt(String(submit.amount));
-      if (amount <= 0n) throw new Error('amount must be greater than zero');
-      txHash = await savingsRelayerService.depositWithAuthorization(config.chainId, config.vaultAddress, {
-        depositor: ethers.getAddress(owner),
-        token: config.usdcAddress,
-        amount,
-        receiver: ethers.getAddress(String(submit.receiver ?? owner)),
-        validAfter: BigInt(String(submit.validAfter ?? '0')),
-        validBefore: BigInt(String(submit.validBefore)),
-        authNonce: String(submit.authNonce),
-        v: sig.v,
-        r: sig.r,
-        s: sig.s,
+      // Shared with the sweep's allocate endpoint, which performs the same mint. One implementation,
+      // so the vault and token pinning cannot drift between two copies of a money-moving call.
+      const relayed = await relayEsaDeposit({
+        signature: body.signature.trim(),
+        chainId: parseChainId(body.chainId),
+        submit: {
+          depositor: owner,
+          token: String(submit.token),
+          amount: String(submit.amount),
+          receiver: submit.receiver === undefined ? undefined : String(submit.receiver),
+          validAfter: submit.validAfter === undefined ? undefined : String(submit.validAfter),
+          validBefore: String(submit.validBefore),
+          authNonce: String(submit.authNonce),
+        },
       });
+      txHash = relayed.txHash;
     } else {
       const clrusdAmount = BigInt(String(submit.clrusdAmount));
       if (clrusdAmount <= 0n) throw new Error('clrusdAmount must be greater than zero');

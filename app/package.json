@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "bun test src",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -45,6 +46,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "ethers": "^6.15.0",
+    "figma-squircle": "^1.1.0",
     "framer-motion": "^12.24.0",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.525.0",

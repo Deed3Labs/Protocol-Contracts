@@ -4,18 +4,42 @@ pragma solidity ^0.8.29;
 import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "../core/interfaces/stable-credit/IStableCredit.sol";
 import "../core/interfaces/stable-credit/IAssurancePool.sol";
 import "../core/interfaces/stable-credit/IAssuranceOracle.sol";
+import "../core/interfaces/stable-credit/IExposureSource.sol";
 
 /// @title AssurancePool
 /// @notice Stores and manages reserve tokens according to pool
 /// configurations set by operator access granted addresses.
-contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpgradeable {
+contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
+
+    /* ========== EVENTS ========== */
+
+    /// @notice emitted when an instrument's withdrawal permission changes.
+    event WithdrawalCallerUpdated(address indexed caller, bool allowed);
+
+    /// @notice emitted when the pool-exposure source changes.
+    event ExposureSourceUpdated(address indexed exposureSource);
+
+    /// @notice emitted the first time the pool takes in a given token.
+    event HeldTokenRegistered(address indexed token);
+
+    /* ========== ERRORS ========== */
+
+    /// @notice thrown when an address that is not an approved instrument attempts a withdrawal.
+    error AssurancePoolUnauthorizedWithdrawal(address caller);
+    /// @notice thrown when a withdrawal would move value out of the loss-absorbing reserves.
+    error AssurancePoolLossAbsorptionTouched();
+    /// @notice thrown when a zero address is supplied where a contract is required.
+    error AssurancePoolInvalidAddress();
+    /// @notice thrown when accepting another token would make the accounting loops unbounded.
+    error AssurancePoolTooManyTokens();
 
     /* ========== STATE VARIABLES ========== */
 
@@ -42,6 +66,40 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev reserve token address => excess reserve balance
     mapping(address => uint256) public excessReserve;
 
+    /// @notice Ceiling on distinct tokens the pool will hold.
+    /// @dev Held value and the RTD calculation both iterate this set and price each entry through
+    /// the oracle, and `rebalanceRTD` does so in a transaction rather than a view. The bound keeps
+    /// that cost knowable instead of growing with whatever the whitelist accumulates.
+    uint256 public constant MAX_HELD_TOKENS = 16;
+
+    /// @notice Instruments permitted to draw on the excess reserve. Nobody withdraws from the
+    /// AssurancePool directly: every claim routes through an instrument that has its own rules
+    /// about what may be claimed and when (BurnerBond at maturity, StableCredit for lost debt,
+    /// LendingPool for loss absorption).
+    /// @dev Deliberately narrower than operator access. An operator can configure the pool; that
+    /// is not the same authority as being able to take reserve out of it.
+    /// @dev address => permitted to withdraw
+    mapping(address => bool) public withdrawalCallers;
+
+    /// @notice Reports what this pool would pay if every member defaulted.
+    /// @dev Optional. While unset the pool treats every credit as unsecured at full value, which
+    /// preserves the inherited behaviour and over-reserves. Phase 1's CollateralRegistry fills
+    /// this in. This is a denominator input, not a reserve source: the numerator of RTD is this
+    /// contract's own primary balance and nothing else.
+    IExposureSource public exposureSource;
+
+    /// @notice Every token the pool has ever taken in.
+    /// @dev The pool accepts more tokens than the reserve token and the three configured
+    /// stablecoins: anything the oracle whitelists is accepted. Accounting and payout used to
+    /// enumerate only those four, so a whitelisted token that arrived was invisible to
+    /// `heldReserveValue()` and to RTD, and the payout path could never hand it back -- it entered
+    /// the pool and stayed there. Recording what actually arrives keeps both complete, and keeps
+    /// them complete across a change of reserve token or stablecoin addresses, which would
+    /// otherwise strand whatever was held under the old configuration.
+    address[] private heldTokenList;
+    /// @dev token => already recorded
+    mapping(address => bool) private heldTokenKnown;
+
     /* ========== INITIALIZER ========== */
 
     /// @notice initializes the reserve token and deposit token to be used for assurance, as well as
@@ -52,9 +110,14 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     function initialize(address _stableCredit, address _reserveToken) public initializer {
         __ReentrancyGuard_init();
         __Ownable_init();
+        __UUPSUpgradeable_init();
         stableCredit = IStableCredit(_stableCredit);
         reserveToken = IERC20Upgradeable(_reserveToken);
     }
+
+    /// @dev The pool holds the reserve itself. Everything else in the system can be replaced by
+    /// deploying another one and pointing at it; a pot of money cannot.
+    function _authorizeUpgrade(address) internal override onlyOwner {}
 
     /* ========== VIEW FUNCTIONS ========== */
 
@@ -64,16 +127,39 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         return primaryBalance() + bufferBalance();
     }
 
-    /// @notice returns the ratio of primary reserve to total debt, where 1 ether == 100%.
-    /// @return ratio of primary reserve to total debt, where 1 ether == 100%.
+    /// @notice returns what this pool would pay if every member defaulted.
+    /// @dev The RTD denominator. Savings-backed debt is excluded, asset-backed debt contributes
+    /// only the shortfall left after its collateral is haircut, and unsecured debt contributes in
+    /// full. With no exposure source configured this returns total supply, which is the inherited
+    /// behaviour: every credit treated as unsecured at full value.
+    /// @return amount of pool exposure outstanding, denominated in stable credit.
+    function poolExposure() public view returns (uint256) {
+        uint256 totalDebt = stableCredit.totalSupply();
+        if (address(exposureSource) == address(0)) return totalDebt;
+        uint256 exposure = exposureSource.poolExposure();
+        // A source that over-reports must not be able to inflate the reserve requirement past
+        // the credit that actually exists.
+        return exposure > totalDebt ? totalDebt : exposure;
+    }
+
+    /// @notice returns the ratio of primary reserve to pool exposure, where 1 ether == 100%.
+    /// @dev The numerator is this contract's own primary balance and nothing else. No other
+    /// reserve enters it: the LendingPool residual absorbs loss ahead of this pool rather than
+    /// alongside it, BondVault holds bondholder money behind a redemption reserve, PayoutPool
+    /// holds merchants' money, and member savings are encumbered to that member's own debt.
+    /// Blending any of them in would read as healthy on funds that cannot absorb a default.
+    /// @dev Zero when there is no exposure: the ratio is undefined with an empty denominator.
+    /// Read `hasValidRTD()` rather than this value to decide whether the pool is adequately
+    /// reserved, since no exposure means adequately reserved at any balance.
+    /// @return ratio of primary reserve to pool exposure, where 1 ether == 100%.
     function RTD() public view returns (uint256) {
         // if primary balance is empty return 0% RTD ratio
         if (primaryBalance() == 0) return 0;
-        // if stable credit has no debt, return 0% RTD ratio
-        if (stableCredit.totalSupply() == 0) return 0;
-        // return primary balance amount divided by total debt amount
-        return (primaryBalance() * 1 ether)
-            / convertStableCreditToReserveToken(stableCredit.totalSupply());
+        // if there is no exposure the ratio is undefined
+        uint256 exposure = poolExposure();
+        if (exposure == 0) return 0;
+        // return primary balance amount divided by pool exposure amount
+        return (primaryBalance() * 1 ether) / convertStableCreditToReserveToken(exposure);
     }
 
     /// @notice returns the target RTD for the AssurancePool.
@@ -87,6 +173,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev returns true if the primary reserve is greater than or equal to the target RTD.
     /// @return true if the primary reserve is greater than or equal to the target RTD.
     function hasValidRTD() public view returns (bool) {
+        // no exposure means nothing to reserve against, at any balance
+        if (poolExposure() == 0) return true;
         // if current RTD is greater than target RTD, return false
         return RTD() >= targetRTD();
     }
@@ -96,11 +184,14 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @dev the returned amount is denominated in the reserve token
     /// @return amount of reserve tokens needed for the primary reserve to reach the target RTD.
     function neededReserves() public view returns (uint256) {
+        uint256 exposure = poolExposure();
+        // Asserted rather than derived. With only savings-backed credit live the correct reserve
+        // requirement is exactly zero, and that must not depend on a division happening to round
+        // there.
+        if (exposure == 0) return 0;
         if (hasValidRTD()) return 0;
-        // (target RTD - current RTD) * total debt amount
-        return (
-            (targetRTD() - RTD()) * convertStableCreditToReserveToken(stableCredit.totalSupply())
-        ) / 1 ether;
+        // (target RTD - current RTD) * pool exposure amount
+        return ((targetRTD() - RTD()) * convertStableCreditToReserveToken(exposure)) / 1 ether;
     }
 
     /// @notice converts the stable credit amount to the reserve token denomination.
@@ -154,12 +245,110 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         return excessReserve[address(reserveToken)];
     }
 
+    /// @notice the tokens accounting enumerates: the reserve token, plus everything that has
+    /// actually arrived.
+    /// @dev Distinct from `withdrawalPriority()`, which additionally lists the configured
+    /// stablecoins as valid payout targets whether or not the pool has ever received them.
+    /// @return held token addresses.
+    function heldTokens() external view returns (address[] memory) {
+        return _getHeldTokens();
+    }
+
+    /// @notice the order the payout path spends tokens in.
+    /// @return token addresses, most liquid first.
+    function withdrawalPriority() external view returns (address[] memory) {
+        return _getWithdrawalPriority();
+    }
+
+    /// @notice returns the reserve-token-denominated value of every token the pool actually holds.
+    /// @dev The three reserve tiers are accounted in a single reserve-token-denominated slot each,
+    /// but any accepted token can fund them, so the tokens themselves are commingled. Comparing
+    /// this against the accounted total is the solvency check.
+    ///
+    /// Deliberately a view and not a revert condition. Held value is priced through the oracle, so
+    /// it moves with ordinary valuation drift, and it counts only the tokens the payout path knows
+    /// about; enforcing it on-chain would halt withdrawals on price movement rather than on any
+    /// actual shortfall. Drift belongs to continuous monitoring, which alerts rather than
+    /// corrects.
+    /// @return value total reserve token equivalent of all held balances.
+    function heldReserveValue() public view returns (uint256 value) {
+        (value,) = _heldReserveValue();
+    }
+
+    /// @notice how many held tokens the pool currently cannot price.
+    /// @dev Non-zero means `heldReserveValue()` is understating what the pool holds. That is a
+    /// signal to act on rather than an error to swallow: the value has not gone anywhere, it has
+    /// stopped being reportable.
+    /// @return count number of held tokens with no available price.
+    function unpricedTokenCount() external view returns (uint256 count) {
+        (, count) = _heldReserveValue();
+    }
+
+    /// @notice the held tokens the pool currently cannot price.
+    /// @return tokens addresses with no available price.
+    function unpricedTokens() external view returns (address[] memory tokens) {
+        address[] memory held = _getHeldTokens();
+        address[] memory found = new address[](held.length);
+        uint256 index = 0;
+        for (uint256 i = 0; i < held.length; i++) {
+            uint256 balance = IERC20Upgradeable(held[i]).balanceOf(address(this));
+            if (balance == 0) continue;
+            (, bool priced) = _tryConvertToReserveValueOf(held[i], balance);
+            if (!priced) found[index++] = held[i];
+        }
+        tokens = new address[](index);
+        for (uint256 i = 0; i < index; i++) {
+            tokens[i] = found[i];
+        }
+    }
+
+    /// @dev Shared walk behind `heldReserveValue` and `unpricedTokenCount`.
+    function _heldReserveValue() internal view returns (uint256 value, uint256 unpriced) {
+        address[] memory tokens = _getHeldTokens();
+        for (uint256 i = 0; i < tokens.length; i++) {
+            uint256 balance = IERC20Upgradeable(tokens[i]).balanceOf(address(this));
+            if (balance == 0) continue;
+            (uint256 converted, bool priced) = _tryConvertToReserveValueOf(tokens[i], balance);
+            if (priced) value += converted;
+            else unpriced++;
+        }
+    }
+
+    /// @dev Indirection so the walk above can live beside the other views while the conversion
+    /// helper stays with the rest of the conversion code.
+    function _tryConvertToReserveValueOf(address token, uint256 amount)
+        private
+        view
+        returns (uint256, bool)
+    {
+        return _tryConvertToReserveToken(token, amount);
+    }
+
+    /// @notice reverts unless the loss-absorbing reserves came through a withdrawal untouched.
+    /// @dev The withdrawable tier is the excess reserve and only the excess reserve. Primary and
+    /// buffer exist to make losses survivable, and no withdrawal may reach them by any route,
+    /// including the multi-token payout path that pays out of raw balances rather than out of a
+    /// per-tier ledger. Asserted here rather than left to tests, because a payout path that draws
+    /// on loss absorption is not a failed withdrawal, it is a solvency bug that has already
+    /// happened by the time anyone reads a balance.
+    /// @param primaryBefore primary balance recorded before the payout.
+    /// @param bufferBefore buffer balance recorded before the payout.
+    function _assertLossAbsorptionUntouched(uint256 primaryBefore, uint256 bufferBefore)
+        internal
+        view
+    {
+        if (primaryBalance() != primaryBefore || bufferBalance() != bufferBefore) {
+            revert AssurancePoolLossAbsorptionTouched();
+        }
+    }
+
     /* ========== MUTATIVE FUNCTIONS ========== */
 
     /// @notice enables caller to deposit reserve tokens into the primary reserve.
     /// @param amount amount of reserve token to deposit.
     function depositIntoPrimaryReserve(uint256 amount) public {
         require(amount > 0, "AssurancePool: Cannot deposit 0");
+        _registerHeldToken(address(reserveToken));
         // add deposit to primary balance
         primaryReserve[address(reserveToken)] += amount;
         // collect reserve token deposit from caller
@@ -171,6 +360,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @param amount amount of reserve token to deposit.
     function depositIntoBufferReserve(uint256 amount) public override nonReentrant {
         require(amount > 0, "AssurancePool: Cannot deposit 0");
+        _registerHeldToken(address(reserveToken));
         // add deposit to buffer reserve
         bufferReserve[address(reserveToken)] += amount;
         // collect reserve token deposit from caller
@@ -227,6 +417,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @param amount amount of token to deposit.
     function _depositToken(address token, uint256 amount) internal {
         require(amount > 0, "Cannot deposit 0");
+        _registerHeldToken(token);
         
         // Transfer token from caller
         IERC20Upgradeable(token).safeTransferFrom(_msgSender(), address(this), amount);
@@ -255,23 +446,28 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
 
     /// @notice enables caller to withdraw reserve tokens from the excess reserve.
     /// @param amount amount of reserve tokens to withdraw from the excess reserve.
-    function withdraw(uint256 amount) public nonReentrant {
+    function withdraw(uint256 amount) public nonReentrant onlyWithdrawalCaller {
         require(amount > 0, "AssurancePool: Cannot withdraw 0");
         require(amount <= excessBalance(), "AssurancePool: Insufficient excess reserve");
+        uint256 primaryBefore = primaryBalance();
+        uint256 bufferBefore = bufferBalance();
         // reduce excess balance
         excessReserve[address(reserveToken)] -= amount;
         // transfer reserve token to caller
         reserveToken.safeTransfer(_msgSender(), amount);
+        _assertLossAbsorptionUntouched(primaryBefore, bufferBefore);
         emit ExcessReserveWithdrawn(amount);
     }
     
     /// @notice enables caller to withdraw any accepted token from the excess reserve.
     /// @param token address of the token to withdraw.
     /// @param amount amount of reserve token equivalent to withdraw.
-    function withdrawToken(address token, uint256 amount) public nonReentrant {
+    function withdrawToken(address token, uint256 amount) public nonReentrant onlyWithdrawalCaller {
         require(amount > 0, "AssurancePool: Cannot withdraw 0");
         require(_isTokenAccepted(token), "Token not accepted for withdrawals");
         require(amount <= excessBalance(), "AssurancePool: Insufficient excess reserve");
+        uint256 primaryBefore = primaryBalance();
+        uint256 bufferBefore = bufferBalance();
         
         // Calculate how much of the requested token we can provide
         uint256 tokenAmount = _convertFromReserveToken(token, amount);
@@ -287,7 +483,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
             // We don't have enough, provide equivalent value using available tokens
             _withdrawEquivalentValue(token, amount);
         }
-        
+
+        _assertLossAbsorptionUntouched(primaryBefore, bufferBefore);
         emit ExcessReserveWithdrawn(amount);
     }
 
@@ -349,9 +546,32 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice This function allows the risk manager to set the reserve token.
     /// @dev Updating the reserve token will not affect the stored reserves of the previous reserve token.
     /// @param _reserveToken address of the new reserve token.
+    /// @dev The outgoing reserve token stays in the held set. The pool may still be holding it,
+    /// and dropping it here would make that balance invisible to accounting and unreachable by
+    /// the payout path at the same moment.
     function setReserveToken(address _reserveToken) external onlyAdmin {
+        _registerHeldToken(_reserveToken);
         reserveToken = IERC20Upgradeable(_reserveToken);
         emit ReserveTokenUpdated(_reserveToken);
+    }
+
+    /// @notice grants or revokes an instrument's right to draw on the excess reserve.
+    /// @dev Admin-managed and empty by default, so a fresh deployment has no withdrawal path at all
+    /// until an instrument is explicitly wired in.
+    /// @param caller address of the instrument.
+    /// @param allowed true to permit withdrawals, false to revoke.
+    function setWithdrawalCaller(address caller, bool allowed) external onlyAdmin {
+        if (caller == address(0)) revert AssurancePoolInvalidAddress();
+        withdrawalCallers[caller] = allowed;
+        emit WithdrawalCallerUpdated(caller, allowed);
+    }
+
+    /// @notice sets the contract reporting pool exposure for the RTD denominator.
+    /// @dev Pass address(0) to fall back to treating all credit as unsecured at full value.
+    /// @param _exposureSource address of the exposure source, or address(0) to unset.
+    function setExposureSource(address _exposureSource) external onlyAdmin {
+        exposureSource = IExposureSource(_exposureSource);
+        emit ExposureSourceUpdated(_exposureSource);
     }
 
     function setAssuranceOracle(address _assuranceOracle) external onlyAdmin {
@@ -436,10 +656,10 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     
     /// @notice Internal function to rebalance reserves from primary when RTD is above target
     function _rebalanceFromPrimary() internal {
-        uint256 totalSupply = stableCredit.totalSupply();
-        if (totalSupply == 0) return;
+        uint256 exposure = poolExposure();
+        if (exposure == 0) return;
 
-        uint256 debtInReserve = convertStableCreditToReserveToken(totalSupply);
+        uint256 debtInReserve = convertStableCreditToReserveToken(exposure);
         uint256 currentPrimary = primaryBalance();
         uint256 targetPrimary = (targetRTD() * debtInReserve) / 1 ether;
 
@@ -493,26 +713,24 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice Get all tokens currently held in the pool
     /// @return Array of token addresses held in the pool
     function _getHeldTokens() internal view returns (address[] memory) {
-        // This is a simplified implementation
-        // In practice, you might want to maintain a list of held tokens
-        address[] memory tokens = new address[](4); // Reserve token + 3 stablecoins
+        // The reserve token first, then everything the pool has actually taken in. The configured
+        // stablecoins are included by virtue of having arrived, rather than by being named here,
+        // so changing those addresses cannot hide value the pool is still holding.
+        address[] memory tokens = new address[](heldTokenList.length + 1);
         uint256 index = 0;
-        
-        // Add reserve token
+
         index = _appendUniqueToken(tokens, index, address(reserveToken));
-        
-        // Add stablecoins
-        index = _appendUniqueToken(tokens, index, USDC_ADDRESS);
-        index = _appendUniqueToken(tokens, index, USDT_ADDRESS);
-        index = _appendUniqueToken(tokens, index, DAI_ADDRESS);
-        
+        for (uint256 i = 0; i < heldTokenList.length; i++) {
+            index = _appendUniqueToken(tokens, index, heldTokenList[i]);
+        }
+
         address[] memory trimmed = new address[](index);
         for (uint256 i = 0; i < index; i++) {
             trimmed[i] = tokens[i];
         }
         return trimmed;
     }
-    
+
     /// @notice Allocate reserve token equivalent to appropriate reserves
     /// @param amount Amount of reserve token equivalent to allocate
     function _allocateToReserves(uint256 amount) internal {
@@ -604,7 +822,8 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice Calculate current RTD using live pricing data
     /// @return Current RTD percentage based on live prices
     function _calculateCurrentRTD() internal view returns (uint256) {
-        if (stableCredit.totalSupply() == 0) return 0;
+        uint256 exposure = poolExposure();
+        if (exposure == 0) return 0;
         
         // Calculate total reserve value using current prices
         uint256 totalReserveValue = 0;
@@ -614,15 +833,18 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
             address token = heldTokens[i];
             if (token == address(0)) continue;
             uint256 tokenBalance = IERC20Upgradeable(token).balanceOf(address(this));
-            
+
             if (tokenBalance > 0) {
-                uint256 reserveTokenEquivalent = _convertToReserveToken(token, tokenBalance);
-                totalReserveValue += reserveTokenEquivalent;
+                // Skip what cannot be priced rather than reverting. Understating the reserve
+                // reads as needing more of it, which is the safe direction to be wrong in.
+                (uint256 reserveTokenEquivalent, bool priced) =
+                    _tryConvertToReserveToken(token, tokenBalance);
+                if (priced) totalReserveValue += reserveTokenEquivalent;
             }
         }
         
         // Calculate RTD using current prices
-        return (totalReserveValue * 1 ether) / convertStableCreditToReserveToken(stableCredit.totalSupply());
+        return (totalReserveValue * 1 ether) / convertStableCreditToReserveToken(exposure);
     }
 
     /* ========== MODIFIERS ========== */
@@ -632,6 +854,13 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
             _msgSender() == address(stableCredit),
             "AssurancePool: Caller is not the stable credit or owner"
         );
+        _;
+    }
+
+    modifier onlyWithdrawalCaller() {
+        if (!withdrawalCallers[_msgSender()]) {
+            revert AssurancePoolUnauthorizedWithdrawal(_msgSender());
+        }
         _;
     }
 
@@ -690,6 +919,34 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         return assuranceOracle.quote(token, address(reserveToken), amount);
     }
     
+    /// @notice Convert a token to its reserve token equivalent, reporting failure instead of
+    /// reverting.
+    /// @dev Accounting enumerates every token the pool holds, which means it depends on pricing
+    /// tokens the payout path may never touch. A token that is de-whitelisted while still sitting
+    /// in the pool, or whose pool cannot serve a TWAP window, has no price -- and a reserve that
+    /// cannot report its own balance because one holding went dark is worse than one that reports
+    /// what it can and says what it could not. Skipping understates held value, which reads as
+    /// needing more reserve rather than less.
+    ///
+    /// Only accounting is tolerant. The payout path still uses the reverting conversion, because
+    /// handing over an amount nobody can price is how a pool is drained by arithmetic.
+    /// @param token Token address to convert from
+    /// @param amount Amount of token to convert
+    /// @return value Reserve token equivalent, zero if unavailable
+    /// @return priced Whether a price was available
+    function _tryConvertToReserveToken(address token, uint256 amount)
+        internal
+        view
+        returns (uint256 value, bool priced)
+    {
+        if (token == address(reserveToken)) return (amount, true);
+        try assuranceOracle.quote(token, address(reserveToken), amount) returns (uint256 quoted) {
+            return (quoted, true);
+        } catch {
+            return (0, false);
+        }
+    }
+
     /// @notice Convert reserve token amount to any token equivalent using oracle
     /// @param token Token address to convert to
     /// @param amount Amount of reserve token to convert
@@ -709,6 +966,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @param amount Amount of token to deposit
     function _depositTokenIntoExcess(address token, uint256 amount) internal {
         require(amount > 0, "Cannot deposit 0");
+        _registerHeldToken(token);
         
         // Transfer token from caller
         IERC20Upgradeable(token).safeTransferFrom(_msgSender(), address(this), amount);
@@ -726,6 +984,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @param amount Amount of token to deposit
     function _depositTokenIntoPrimary(address token, uint256 amount) internal {
         require(amount > 0, "Cannot deposit 0");
+        _registerHeldToken(token);
         
         // Transfer token from caller
         IERC20Upgradeable(token).safeTransferFrom(_msgSender(), address(this), amount);
@@ -743,6 +1002,7 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @param amount Amount of token to deposit
     function _depositTokenIntoBuffer(address token, uint256 amount) internal {
         require(amount > 0, "Cannot deposit 0");
+        _registerHeldToken(token);
         
         // Transfer token from caller
         IERC20Upgradeable(token).safeTransferFrom(_msgSender(), address(this), amount);
@@ -755,6 +1015,16 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         emit BufferReserveDeposited(reserveTokenAmount);
     }
     
+    /// @notice records a token the pool now holds, so accounting and payout can both see it.
+    /// @param token token that has just arrived.
+    function _registerHeldToken(address token) internal {
+        if (token == address(0) || heldTokenKnown[token]) return;
+        if (heldTokenList.length >= MAX_HELD_TOKENS) revert AssurancePoolTooManyTokens();
+        heldTokenKnown[token] = true;
+        heldTokenList.push(token);
+        emit HeldTokenRegistered(token);
+    }
+
     /// @notice Internal function to withdraw equivalent value using available tokens
     /// @param requestedToken Token the user originally requested (prioritized if available)
     /// @param amount Amount of reserve token equivalent to withdraw
@@ -819,13 +1089,16 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     /// @notice Get withdrawal priority order (most cost-effective first)
     /// @return Array of token addresses in priority order
     function _getWithdrawalPriority() internal view returns (address[] memory) {
-        // Priority order: Reserve token first, then stablecoins, then whitelisted tokens
-        address[] memory priorityTokens = new address[](4);
+        // Priority order: reserve token first, then stablecoins, then everything else held.
+        // The tail matters: a token the pool accepted but cannot enumerate here is a token that
+        // can never be paid out again, and acceptance is wider than the three configured
+        // stablecoins.
+        address[] memory priorityTokens = new address[](heldTokenList.length + 4);
         uint256 index = 0;
-        
+
         // 1. Reserve token (most liquid, no conversion needed)
         index = _appendUniqueToken(priorityTokens, index, address(reserveToken));
-        
+
         // 2. Stablecoins (highly liquid, stable value)
         if (USDC_ADDRESS != address(0) && assuranceOracle.checkIsStablecoin(USDC_ADDRESS)) {
             index = _appendUniqueToken(priorityTokens, index, USDC_ADDRESS);
@@ -836,11 +1109,12 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         if (DAI_ADDRESS != address(0) && assuranceOracle.checkIsStablecoin(DAI_ADDRESS)) {
             index = _appendUniqueToken(priorityTokens, index, DAI_ADDRESS);
         }
-        
-        // 3. Other whitelisted tokens (in order of preference)
-        // Note: This is a simplified implementation
-        // In practice, you might want to order by liquidity, volatility, etc.
-        
+
+        // 3. Everything else the pool holds, least liquid last.
+        for (uint256 i = 0; i < heldTokenList.length; i++) {
+            index = _appendUniqueToken(priorityTokens, index, heldTokenList[i]);
+        }
+
         address[] memory trimmed = new address[](index);
         for (uint256 i = 0; i < index; i++) {
             trimmed[i] = priorityTokens[i];

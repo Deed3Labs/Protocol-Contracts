@@ -108,6 +108,25 @@ contract MutualCredit is IMutualCredit, ERC20BurnableUpgradeable {
         _burn(_to, _repay);
     }
 
+    /// @notice deepens a member's credit balance and mints the matching claim to a recipient.
+    /// @dev Carry accrual, not a transfer. The member did not spend anything -- their obligation
+    /// grew with time held -- so nothing moves out of their balance, and the claim that now exists
+    /// against the network lands with whoever is owed it.
+    ///
+    /// Deliberately not limit-checked. Carry is what makes a member's headroom shrink while they
+    /// hold a position, and a ceiling that stopped carry accruing once it was reached would make
+    /// standing still free. A member may end up owing more than their ceiling; `creditLimitLeftOf`
+    /// already reports no headroom in that case, so they simply cannot draw again.
+    /// @param member address whose obligation grows.
+    /// @param recipient address the matching claim is minted to.
+    /// @param amount amount accrued.
+    function _accrueCredit(address member, address recipient, uint256 amount) internal virtual {
+        if (amount == 0) return;
+        CreditLine memory _creditLine = creditLines[member];
+        creditLines[member].creditBalance = (_creditLine.creditBalance + amount).toUInt128();
+        _mint(recipient, amount);
+    }
+
     /// @notice sets the credit limit of a given member
     /// @param member address of member to update
     /// @param limit new credit limit

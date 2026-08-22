@@ -20,12 +20,19 @@ import UserOnboarding from "@/pages/auth/UserOnboarding";
 import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
-import AccountsPage from "@/pages/app/AccountsPage";
-import PayPage from "@/pages/app/PayPage";
-import TransactionsPage from "@/pages/app/TransactionsPage";
-import SettingsPage from "@/pages/app/SettingsPage";
-import BorrowPage from "@/pages/app/BorrowPage";
+import HomeRoute from "@/pages/app/HomeRoute";
+import SavingsRoute from "@/pages/app/SavingsRoute";
+import ActivityRoute from "@/pages/app/ActivityRoute";
+import CardRoute from "@/pages/app/CardRoute";
+import ContactsPage from "@/pages/app/ContactsPage";
 import AssurancePage from "@/pages/app/AssurancePage";
+import InboxRoute from "@/pages/app/InboxRoute";
+import ScanPage from "@/pages/app/ScanPage";
+import ExplainerPage from "@/pages/app/ExplainerPage";
+import PartnersPage from "@/pages/app/PartnersPage";
+import SendRoute from "@/pages/app/SendRoute";
+import EarnRoute from "@/pages/app/EarnRoute";
+import SettingsRoute from "@/pages/app/SettingsRoute";
 
 function App() {
   // Check if splash has been shown in this session
@@ -95,19 +102,38 @@ function App() {
                     <Route path="/share" element={<ShareTarget />} />
                     <Route path="/claim/:token" element={<ClaimFunds />} />
                     
-                    {/* Redesigned app — protected, bottom tab navigation */}
+                    {/* Member app — protected. Routes follow the nav in
+                        docs/ux/clear-app-design-spec.md §1.
+
+                        Home, Savings, Send, Activity and Card read real data
+                        through their *Route containers. What is still
+                        placeholder is term plans, which wait on a member
+                        having one, and the projections neither the chain nor
+                        the server holds. Each field
+                        falls back rather than blanking, so a page never shows a
+                        zero it has not actually read. */}
                     <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
-                      <Route path="/" element={<AccountsPage />} />
-                      <Route path="/pay" element={<PayPage />} />
-                      <Route path="/borrow" element={<BorrowPage />} />
+                      <Route path="/" element={<HomeRoute />} />
+                      <Route path="/savings" element={<SavingsRoute />} />
+                      <Route path="/earn" element={<EarnRoute />} />
+                      <Route path="/send" element={<SendRoute />} />
+                      <Route path="/activity" element={<ActivityRoute />} />
+                      <Route path="/card" element={<CardRoute />} />
+                      <Route path="/contacts" element={<ContactsPage />} />
+                      <Route path="/partners" element={<PartnersPage />} />
                       <Route path="/assurance" element={<AssurancePage />} />
-                      <Route path="/transactions" element={<TransactionsPage />} />
-                      <Route path="/settings" element={<SettingsPage />} />
+                      <Route path="/inbox" element={<InboxRoute />} />
+                      {/* The standalone Alerts page became the Inbox's first tab */}
+                      <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
+                      <Route path="/scan" element={<ScanPage />} />
+                      <Route path="/learn/:topic" element={<ExplainerPage />} />
+                      {/* Not a nav item — reached from the avatar menu (spec §1). */}
+                      <Route path="/settings" element={<SettingsRoute />} />
                     </Route>
 
-                    {/* Legacy pages (src/pages/legacy + parked src/pages/app homes) are kept in the repo
-                        for reference but are intentionally NOT routed — no /legacy/* path is reachable;
-                        they fall through to the catch-all below. */}
+                    {/* Archived pages (src/pages/_archive + src/pages/legacy) are kept on disk
+                        for reference but are intentionally NOT routed — they fall through to
+                        the catch-all below. */}
 
                     {/* Redirect unknown routes to login */}
                     <Route path="*" element={<Navigate to="/login" replace />} />

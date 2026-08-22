@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.29;
 
-import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC1155/IERC1155Upgradeable.sol";
 
 /// @title IBurnerBond
 /// @notice Interface for BurnerBond ERC-1155 token system
-interface IBurnerBond is IERC1155 {
+/// @dev Extends the upgradeable ERC-1155 interface because a collection is a clone of one
+/// implementation rather than its own deployment. Declaring the standard twice, once from each
+/// generation, is the same events defined twice.
+interface IBurnerBond is IERC1155Upgradeable {
     
     /* ========== STRUCTS ========== */
     
@@ -23,6 +26,10 @@ interface IBurnerBond is IERC1155 {
         uint256 purchasePrice;
         bool isRedeemed;
         address creator;
+        /// @dev When the bond was issued. Needed to know how much of its term has run, which is
+        /// what decides what it is worth today -- and which cannot be reconstructed from the
+        /// maturity date alone, because bonds do not all have the same term.
+        uint64 issuedAt;
     }
     
     /* ========== EVENTS ========== */

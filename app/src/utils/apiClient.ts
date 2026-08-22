@@ -1896,6 +1896,92 @@ export async function updateMemberProfile(
 }
 
 /** Upload the member's avatar (compressed data URL). Returns the served avatar URL. */
+/**
+ * The member's Lithic banking identity and, when it exists, the numbers their employer needs.
+ *
+ * `hasCashAccount` is separate from `provisioned` on purpose: a member can be banked (cards work)
+ * while the program still has no routable Financial Account, and the two states read differently.
+ */
+export interface LithicAccountResponse {
+  configured: boolean;
+  provisioned: boolean;
+  status?: string;
+  statusReasons?: string[];
+  hasCashAccount?: boolean;
+  deposit: { routingNumber: string; accountNumber: string; accountType: string } | null;
+}
+
+export async function getLithicAccount(): Promise<LithicAccountResponse | null> {
+  const r = await apiRequest<LithicAccountResponse>('/api/lithic/account');
+  return r.error ? null : (r.data ?? null);
+}
+
+/**
+ * Lithic cards — spec step 8.
+ *
+ * These work in sandbox today without Financial Accounts: a card can be issued, frozen, limited and
+ * revealed. What it cannot do until Financial Accounts are enabled is SETTLE, because there is no
+ * balance behind it. So the controls on this page are real while the money behind them is not yet.
+ */
+export interface MemberCard {
+  token: string;
+  type: string;
+  state: string;
+  lastFour: string | null;
+  memo: string | null;
+  spendLimitCents: number;
+  spendLimitDuration: string | null;
+  frozen: boolean;
+  createdAt: string;
+}
+
+export async function getCards(): Promise<MemberCard[]> {
+  const r = await apiRequest<{ configured: boolean; cards: MemberCard[] }>('/api/lithic/cards');
+  return r.error ? [] : (r.data?.cards ?? []);
+}
+
+/** Issue a virtual card — what "Activate card" does. */
+export async function createCard(memo?: string): Promise<MemberCard | null> {
+  const r = await apiRequest<{ card: MemberCard }>('/api/lithic/cards', {
+    method: 'POST',
+    body: JSON.stringify(memo ? { memo } : {}),
+  });
+  return r.error ? null : (r.data?.card ?? null);
+}
+
+export async function setCardFrozen(token: string, frozen: boolean): Promise<MemberCard | null> {
+  const r = await apiRequest<{ card: MemberCard }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/freeze`,
+    { method: 'POST', body: JSON.stringify({ frozen }) },
+  );
+  return r.error ? null : (r.data?.card ?? null);
+}
+
+export async function setCardSpendLimit(
+  token: string,
+  spendLimitCents: number,
+  duration = 'MONTHLY',
+): Promise<MemberCard | null> {
+  const r = await apiRequest<{ card: MemberCard }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/spend-limit`,
+    { method: 'POST', body: JSON.stringify({ spendLimitCents, duration }) },
+  );
+  return r.error ? null : (r.data?.card ?? null);
+}
+
+/**
+ * A short-lived URL for Lithic's card-details iframe.
+ *
+ * Returns a URL, never card data. The browser loads it directly from Lithic, so the PAN and CVV
+ * never pass through our servers — which is why this is a URL and not a number.
+ */
+export async function getCardEmbedUrl(token: string): Promise<string | null> {
+  const r = await apiRequest<{ url: string }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/embed`,
+  );
+  return r.error ? null : (r.data?.url ?? null);
+}
+
 export async function uploadMemberAvatar(dataUrl: string): Promise<{ avatarUrl: string } | null> {
   const response = await apiRequest<{ avatarUrl: string }>('/api/members/me/avatar', {
     method: 'POST',
@@ -2170,6 +2256,110 @@ export interface PaySummary {
   streak: number;
   sources: { match: number; rent: number; bills: number };
   series: { label: string; rent: number; equity: number }[];
+}
+
+export interface CreditTierRow {
+  /** Tier kind as the contract names it, e.g. "SAVINGS", "ASSET_INTERNAL". */
+  kind: string;
+  limitCents: number;
+  usedCents: number;
+  /** Carry rate in basis points per cycle. */
+  rateBps: number;
+  /** Principal drawn, before carry. */
+  principalCents: number;
+  /** Carry accrued so far this cycle. Already inside `usedCents`. */
+  carryCents: number;
+  /** Pledged under this kind, before haircut. */
+  collateralValueCents: number;
+  /** The haircut applied to it, in basis points. */
+  haircutBps: number;
+  active: boolean;
+}
+
+export interface CreditCycleRow {
+  /** Unix seconds. Zero when no line has ever been opened. */
+  issuedAt: number;
+  expiration: number;
+  graceLength: number;
+  paused: boolean;
+}
+
+export interface CreditTermPlanRow {
+  planId: number;
+  principalCents: number;
+  outstandingCents: number;
+  repaidCents: number;
+  installments: number;
+  installmentCents: number;
+  scheduleTotalCents: number;
+  closed: boolean;
+}
+
+export interface CreditState {
+  wallet: string;
+  tiers: CreditTierRow[];
+  plans: CreditTermPlanRow[];
+  cycle: CreditCycleRow | null;
+  source: string;
+  complete: boolean;
+}
+
+/**
+ * A member's credit line, read from the contracts that hold it.
+ *
+ * Returns null on failure rather than an empty line, and the distinction is the point: the route
+ * answers 503 when it could not read the chain, because a member whose RPC blipped has not had
+ * their credit withdrawn. A caller that cannot tell those apart will tell them they have.
+ */
+export async function getCredit(wallet: string): Promise<CreditState | null> {
+  const r = await apiRequest<CreditState>(`/api/credit/${wallet.toLowerCase()}`);
+  return r.error || !r.data ? null : r.data;
+}
+
+export interface EarnPoolRow {
+  apyPercent: number;
+  lentCents: number;
+  capacityCents: number;
+  positionCents: number;
+  /** Position above cost basis, summed from the pool's own deposit and withdrawal events. */
+  earnedCents: number;
+}
+
+export interface EarnBondRow {
+  bondId: string;
+  faceCents: number;
+  paidCents: number;
+  /** What it is worth today — what the credit line lends against, not the face. */
+  worthTodayCents: number;
+  maturityUnix: number;
+  /** When it was issued. The term is this to maturity; months left is now to maturity. */
+  issuedAtUnix: number;
+  redeemed: boolean;
+}
+
+export interface EarnTermRow {
+  months: number;
+  priceCents: number;
+  faceCents: number;
+  ratePercent: number;
+}
+
+export interface EarnState {
+  wallet: string;
+  /** Null when the pool is not deployed — a different thing from a pool holding nothing. */
+  pool: EarnPoolRow | null;
+  bonds: EarnBondRow[];
+  terms: EarnTermRow[];
+  /** Bonds accrued, bonds already redeemed, and the pool — everything Earn has made. */
+  earnedToDateCents: number;
+  source: string;
+  complete: boolean;
+}
+
+/** The lending pool and the member's bonds, priced by the contracts rather than by a copy. */
+export async function getEarn(wallet: string): Promise<EarnState | null> {
+  const r = await apiRequest<EarnState>(`/api/credit/${wallet.toLowerCase()}/earn`);
+  return r.error || !r.data ? null : r.data;
 }
 
 export async function getPaySummary(wallet: string): Promise<PaySummary | null> {
