@@ -122,17 +122,17 @@ const DAY_SECONDS = 86_400;
  * survives before it contracts.
  */
 export function toCycle(row: CreditCycleRow | null, fallback: Cycle): Cycle {
-  // No period yet: a member who has not opened a line has not started a cycle, which is not the
-  // same as having reached the end of one. Report a full cycle from the network's own length --
-  // zero on a countdown reads as expired, and telling somebody who just joined that their cycle
-  // has run out is the opposite of the truth.
-  if (!row || row.issuedAt === 0 || row.expiration === 0) {
-    const days = Math.round((row?.networkCycleSeconds ?? 0) / DAY_SECONDS);
-    if (days <= 0) return fallback;
-    // No dates: nothing has been scheduled, and inventing one would be worse than leaving the
-    // rows to render their empty state.
-    return { lengthDays: days, daysLeft: days, clearsOn: '', rebalanceBy: '' };
-  }
+  // No period: fall straight through to whatever the caller supplies.
+  //
+  // This used to substitute a full cycle from the network's length, on the grounds that zero on a
+  // countdown reads as expired when the truth is "not started". That reasoning still holds, but it
+  // made the two states indistinguishable on screen -- a member with a real line and one with none
+  // both showed thirty days -- and the state it was papering over should not exist at all: a
+  // member has a line from signup, and the backfill gives one to everybody who predates that.
+  //
+  // So it is left visibly empty on purpose. If a member is seeing this, something did not open
+  // their line, and that is worth being able to tell at a glance.
+  if (!row || row.issuedAt === 0 || row.expiration === 0) return fallback;
 
   const now = Math.floor(Date.now() / 1000);
   const lengthDays = Math.max(1, Math.round((row.expiration - row.issuedAt) / DAY_SECONDS));

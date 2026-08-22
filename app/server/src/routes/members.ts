@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { openCreditLine } from '../services/chain/creditLineService.js';
 import { Router, type Request, type Response } from 'express';
 import {
   type CreateMemberWalletLinkChallengeInput,
@@ -510,6 +511,26 @@ router.post('/me/onboarding/submit', async (req: Request, res: Response) => {
   try {
     const authSubject = await resolveMemberAuthSubject(req);
     const account = await memberStore.submitOnboardingByAuthSubject(authSubject);
+
+    // A member exists, therefore a cycle is running — which was the product's claim and not yet
+    // true of anybody. Opening the line here is what makes it so.
+    //
+    // Deliberately not awaited into the response and deliberately not able to fail it: somebody
+    // who has just finished signing up is a member whether or not a chain write landed, and the
+    // backfill catches anyone this misses. Refusing to complete a signup over an RPC blip would
+    // be the wrong trade by a distance.
+    const wallet = (account as { primaryWallet?: string } | null)?.primaryWallet;
+    if (wallet) {
+      void openCreditLine(wallet)
+        .then((result) => {
+          if (result.opened) console.log('[credit] line opened for', wallet, result.txHash);
+          else if (result.reason !== 'already has a line') {
+            console.warn('[credit] no line for', wallet, '—', result.reason);
+          }
+        })
+        .catch((error) => console.error('[credit] openLine threw for', wallet, error));
+    }
+
     res.json(account);
   } catch (error) {
     handleMemberRouteError(res, error);
