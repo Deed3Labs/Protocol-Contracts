@@ -3,18 +3,25 @@ import { motion } from 'framer-motion';
 import { Share, Plus, X, Download, Sparkles } from 'lucide-react';
 import ClearPathLogo from '@/assets/ClearPath-Logo.png';
 import { cn } from '@/lib/utils';
+import {
+  canPromptInstall,
+  installUiClaimed,
+  promptInstall,
+  subscribeInstallPrompt,
+} from '@/lib/installPrompt';
 
 /*
  * First-visit PWA install takeover — a full-screen blur overlay that blocks content until the user
  * installs or dismisses. Apple (iOS/iPadOS/macOS Safari) can't do a one-click install, so we show an
  * animated "Add to Home Screen / Dock" guide; Chromium fires beforeinstallprompt so we offer one click.
- * Shown once (persisted dismissal), never when already installed.
+ * Shown once (persisted dismissal), never when already installed, and never while something else
+ * is already asking -- the counter onboarding's first step is Add to Home Screen, and a takeover
+ * landing on top of it would be two install prompts stacked on somebody standing at a counter.
+ *
+ * The `beforeinstallprompt` event itself is captured by `lib/installPrompt`, not here. It fires
+ * once, early, and is single-use: two components each holding their own reference means whichever
+ * calls `prompt()` second throws on a stale event. One capture, two readers.
  */
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
 
 const DISMISS_KEY = 'pwa-install-dismissed';
 
@@ -70,8 +77,20 @@ function GuideStep({ active, n, icon, children }: { active: boolean; n: number; 
 export default function PwaInstallTakeover() {
   const { platform, standalone } = useMemo(detect, []);
   const [show, setShow] = useState(false);
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
+  const [canPrompt, setCanPrompt] = useState(canPromptInstall);
+  const [claimed, setClaimed] = useState(installUiClaimed);
   const [phase, setPhase] = useState(0);
+
+  // Both read from the one capture in lib/installPrompt, so a claim by the counter flow and the
+  // arrival of the event itself come through the same subscription.
+  useEffect(
+    () =>
+      subscribeInstallPrompt(() => {
+        setCanPrompt(canPromptInstall());
+        setClaimed(installUiClaimed());
+      }),
+    [],
+  );
 
   useEffect(() => {
     if (standalone) return;
@@ -79,14 +98,11 @@ export default function PwaInstallTakeover() {
       if (localStorage.getItem(DISMISS_KEY)) return;
     } catch { /* ignore */ }
 
-    const onBip = (e: Event) => {
-      e.preventDefault();
-      setDeferred(e as BeforeInstallPromptEvent);
-      setShow(true);
-    };
     const onInstalled = () => setShow(false);
-    window.addEventListener('beforeinstallprompt', onBip);
     window.addEventListener('appinstalled', onInstalled);
+
+    // Chromium gives us a real prompt; show as soon as the event has landed.
+    if (canPrompt) setShow(true);
 
     // Apple never fires beforeinstallprompt → show the manual guide after a short beat.
     let t: ReturnType<typeof setTimeout> | undefined;
@@ -94,30 +110,27 @@ export default function PwaInstallTakeover() {
       t = setTimeout(() => setShow(true), 1000);
     }
     return () => {
-      window.removeEventListener('beforeinstallprompt', onBip);
       window.removeEventListener('appinstalled', onInstalled);
       if (t) clearTimeout(t);
     };
-  }, [standalone, platform]);
+  }, [standalone, platform, canPrompt]);
 
   // Drive the 2-step guide animation (~3s loop).
   useEffect(() => {
-    if (!show || deferred) return;
+    if (!show || canPrompt) return;
     const id = setInterval(() => setPhase((p) => (p + 1) % 2), 3200);
     return () => clearInterval(id);
-  }, [show, deferred]);
+  }, [show, canPrompt]);
 
-  if (!show) return null;
+  // Standing down rather than dismissing: the member has not said no, something else is asking.
+  if (!show || claimed) return null;
 
   const dismiss = () => {
     setShow(false);
     try { localStorage.setItem(DISMISS_KEY, String(Date.now())); } catch { /* ignore */ }
   };
   const install = async () => {
-    if (!deferred) return dismiss();
-    deferred.prompt();
-    await deferred.userChoice.catch(() => {});
-    setDeferred(null);
+    await promptInstall().catch(() => false);
     dismiss();
   };
 
@@ -161,7 +174,7 @@ export default function PwaInstallTakeover() {
           <Sparkles className="h-3 w-3 text-positive" /> Works offline · gets notifications
         </div>
 
-        {deferred ? (
+        {canPrompt ? (
           <button
             type="button"
             onClick={install}
@@ -195,7 +208,7 @@ export default function PwaInstallTakeover() {
           onClick={dismiss}
           className="mt-4 w-full rounded-xl border border-border py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
         >
-          {deferred ? 'Maybe later' : 'Dismiss'}
+          {canPrompt ? 'Maybe later' : 'Dismiss'}
         </button>
       </motion.div>
     </motion.div>

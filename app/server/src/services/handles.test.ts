@@ -1,0 +1,153 @@
+import { describe, expect, test } from 'bun:test';
+import {
+  generateHandle,
+  isValidHandle,
+  normalizeHandle,
+  rejectHandle,
+  rejectHandleChange,
+  suggestHandle,
+} from './handles.js';
+
+describe('normalising', () => {
+  test('case is not part of a handle', () => {
+    // TEXT UNIQUE alone makes @Kai and @kai two members. In a payments app that is not an
+    // inconsistency, it is a phishing surface: somebody types what they were told.
+    expect(normalizeHandle('@Kai')).toBe(normalizeHandle('kai'));
+    expect(normalizeHandle('  @KAI  ')).toBe('kai');
+  });
+
+  test('strips the @ people will type', () => {
+    expect(normalizeHandle('@@kai')).toBe('kai');
+  });
+});
+
+describe('what may be claimed', () => {
+  test('accepts an ordinary handle', () => {
+    expect(isValidHandle('quietriver42')).toBe(true);
+  });
+
+  test('refuses handles too short to be distinct or too long to read', () => {
+    expect(rejectHandle('ab')).toBe('too_short');
+    expect(rejectHandle('a'.repeat(21))).toBe('too_long');
+  });
+
+  test('requires a letter first, so a handle never reads as a number', () => {
+    expect(rejectHandle('1kai')).toBe('bad_shape');
+  });
+
+  test('refuses characters that could impersonate another handle', () => {
+    // Dots and dashes let @cle-ar and @cle.ar sit beside @clear.
+    expect(rejectHandle('cle-ar')).toBe('bad_shape');
+    expect(rejectHandle('cle.ar')).toBe('bad_shape');
+  });
+
+  test('reserves the operational names', () => {
+    // Brand names are the other rule's job; these are the ones a member could be told to trust
+    // without the word Clear in them at all.
+    for (const name of ['support', 'security', 'admin', 'billing', 'noreply']) {
+      expect(rejectHandle(name), name).toBe('reserved');
+    }
+  });
+
+  test('reserves the prefixes too, which is the case that actually bites', () => {
+    // Somebody told to message @clearsupport who finds @clear_support has been handed to whoever
+    // registered it first. Reserving only the exact name would not stop that.
+    expect(rejectHandle('support_team')).toBe('reserved');
+    expect(rejectHandle('admin_help')).toBe('reserved');
+  });
+
+  test('reserves anything beginning with the brand, not just exact matches', () => {
+    // A list of exact names only blocks the impersonations somebody thought of in advance.
+    // @clearsupport, @clearteam and @clearbank all read as official to anybody scanning.
+    for (const name of ['clearsupport', 'clearteam', 'clearbank', 'clearpayments', 'clearpath', 'useclearhelp']) {
+      expect(rejectHandle(name), `${name} should be blocked`).toBe('brand');
+    }
+  });
+
+  test('blocks honest names too, which is the trade being made', () => {
+    // @clearwater is somebody's real handle somewhere and they cannot have it here. A member told
+    // to message @clearsupport who finds a person there has been handed to whoever registered it,
+    // and no amount of later moderation undoes a payment.
+    expect(rejectHandle('clearwater')).toBe('brand');
+  });
+
+  test('reserves regardless of case, since case is not part of a handle', () => {
+    expect(rejectHandle('@Support')).toBe('reserved');
+    expect(rejectHandle('@ClearSupport')).toBe('brand');
+  });
+});
+
+describe('generating one nobody asked for', () => {
+  test('produces something claimable', () => {
+    for (let i = 0; i < 200; i++) {
+      const handle = suggestHandle(Math.random());
+      expect(isValidHandle(handle), `${handle} should be valid`).toBe(true);
+    }
+  });
+
+  test('never derives from anything the member did not choose to publish', () => {
+    // Deriving from an email or a legal name publishes it on a field whose whole purpose is to be
+    // seen. Two words and digits carry nothing.
+    const handle = suggestHandle(0.5);
+    expect(handle).not.toContain('@');
+    expect(/^[a-z]+[0-9]{2}$/.test(handle)).toBe(true);
+  });
+
+  test('keeps trying when the first choices are taken', async () => {
+    const taken = new Set<string>();
+    let asked = 0;
+    const handle = await generateHandle(async (h) => {
+      asked++;
+      if (asked <= 3) { taken.add(h); return false; }
+      return true;
+    });
+    expect(taken.has(handle)).toBe(false);
+    expect(isValidHandle(handle)).toBe(true);
+  });
+
+  test('falls back to a longer suffix rather than failing a signup', async () => {
+    // A member whose signup stops because two people drew the same random pair would have no idea
+    // what happened. A slightly uglier handle is the better failure.
+    let asked = 0;
+    const handle = await generateHandle(async () => {
+      asked++;
+      return asked > 8;
+    });
+    expect(handle.length).toBeLessThanOrEqual(20);
+    expect(asked).toBeGreaterThan(8);
+  });
+});
+
+describe('changing a handle', () => {
+  const base = { handle: 'quietriver42', changesMade: 0, everUsed: false };
+
+  test('allows the first two changes', () => {
+    expect(rejectHandleChange({ ...base, changesMade: 0 })).toBeNull();
+    expect(rejectHandleChange({ ...base, changesMade: 1 })).toBeNull();
+  });
+
+  test('sends the third to approval rather than refusing outright', () => {
+    // Two covers a regretted signup name and one considered choice. Past that, the people who have
+    // it written down are wrong more often than right.
+    expect(rejectHandleChange({ ...base, changesMade: 2 })).toBe('needs_approval');
+  });
+
+  test('never reissues a handle somebody has given up', () => {
+    // Money sent to @kai from an old note must not reach whoever claimed it next. A handle here is
+    // closer to an account number than a display name, and account numbers are not recycled.
+    expect(rejectHandleChange({ ...base, everUsed: true })).toBe('retired');
+  });
+
+  test('lets a member keep the handle they already hold', () => {
+    // Saving a profile without touching the handle is not a change and must not spend one.
+    expect(
+      rejectHandleChange({ ...base, changesMade: 5, everUsed: true, isOwnCurrent: true }),
+    ).toBeNull();
+  });
+
+  test('still applies the shape and reserved rules', () => {
+    expect(rejectHandleChange({ ...base, handle: 'support' })).toBe('reserved');
+    expect(rejectHandleChange({ ...base, handle: 'clearteam' })).toBe('brand');
+    expect(rejectHandleChange({ ...base, handle: 'ab' })).toBe('too_short');
+  });
+});

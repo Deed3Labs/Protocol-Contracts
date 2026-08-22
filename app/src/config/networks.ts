@@ -1,4 +1,4 @@
-import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
+import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 export interface NetworkConfig {
   id: number;
   name: string;
@@ -202,8 +202,10 @@ export const networks = {
       Subdivide: '0x3c947D71cb1698dFd4D7551b87E17306865C923F',
       Fractionalize: '0xeC464847C664Cc208478adbe377f7Db19e199823',
       FractionTokenFactory: '0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc',
-      CLRUSD: readAddressEnv('VITE_CLRUSD_84532'),
-      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_84532'),
+      // From clearNetwork, not env. It holds the pair the app transacts against, and a second
+      // copy that can disagree is how a retired token kept showing as somebody's savings.
+      CLRUSD: clearContracts(84532)?.clrusd ?? readAddressEnv('VITE_CLRUSD_84532'),
+      ESADepositVault: clearContracts(84532)?.esaVault ?? readAddressEnv('VITE_ESA_VAULT_84532'),
       CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_84532'),
     },
   },
@@ -248,8 +250,8 @@ export const networks = {
       ValidatorRegistry: '0x0000000000000000000000000000000000000000', // Not deployed yet
       FundManager: '0x0000000000000000000000000000000000000000', // Not deployed yet
       MetadataRenderer: '0x0000000000000000000000000000000000000000', // Not deployed yet
-      CLRUSD: readAddressEnv('VITE_CLRUSD_8453'),
-      ESADepositVault: readAddressEnv('VITE_ESA_VAULT_8453'),
+      CLRUSD: clearContracts(8453)?.clrusd ?? readAddressEnv('VITE_CLRUSD_8453'),
+      ESADepositVault: clearContracts(8453)?.esaVault ?? readAddressEnv('VITE_ESA_VAULT_8453'),
       CLRUSDTokenPool: readAddressEnv('VITE_CLRUSD_POOL_8453'),
     },
   },

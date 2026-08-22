@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { rejectHandle } from '../services/handles.js';
 import { requireWalletMatch } from '../middleware/auth.js';
 import { contactsStore } from '../services/contactsStore.js';
 
@@ -114,8 +115,13 @@ router.get('/:wallet/lookup', async (req: Request, res: Response) => {
   }
   const email = typeof req.query.email === 'string' ? req.query.email : undefined;
   const phone = typeof req.query.phone === 'string' ? req.query.phone : undefined;
+  const handle = typeof req.query.handle === 'string' ? req.query.handle : undefined;
   try {
-    const match = await contactsStore.lookupWallet(email, phone);
+    // A handle is checked first when one is given: it is the pointer somebody typed on purpose,
+    // where an email or phone is usually one the app filled in from a contact.
+    const match = handle
+      ? await contactsStore.lookupWalletByHandle(handle)
+      : await contactsStore.lookupWallet(email, phone);
     res.json(match ?? { wallet: null });
   } catch (error) {
     console.error('[contacts/lookup]', error);
@@ -140,6 +146,38 @@ router.get('/:wallet/names', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[contacts/names]', error);
     res.json({ names: {} });
+  }
+});
+
+/**
+ * Whether a handle can be claimed, and why not when it cannot.
+ *
+ * Rate limited with the same bucket as lookups, deliberately: an unauthenticated-feeling
+ * availability check is otherwise a way to enumerate who exists, one guess at a time.
+ */
+router.get('/:wallet/handle-available', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  if (rateLimited(w)) {
+    res.status(429).json({ error: 'Too many lookups' });
+    return;
+  }
+
+  const handle = typeof req.query.handle === 'string' ? req.query.handle : '';
+  const rejection = rejectHandle(handle);
+  if (rejection) {
+    res.json({ available: false, reason: rejection });
+    return;
+  }
+  try {
+    const free = await contactsStore.isHandleFree(handle);
+    res.json({ available: free, reason: free ? null : 'taken' });
+  } catch (error) {
+    console.error('[contacts/handle-available]', error);
+    // Unknown is not available. Reporting a handle free that might not be sends somebody into a
+    // save that fails on a constraint they cannot see.
+    res.json({ available: false, reason: 'unknown' });
   }
 });
 

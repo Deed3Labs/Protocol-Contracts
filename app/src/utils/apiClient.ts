@@ -2364,6 +2364,18 @@ export async function getEarn(wallet: string): Promise<EarnState | null> {
   return r.error || !r.data ? null : r.data;
 }
 
+/**
+ * ZIP prefixes the co-op serves.
+ *
+ * Read rather than compiled in: regions open when enough people are waiting, so this changes
+ * without the product changing. Returns null when it cannot be read, which the caller must not
+ * treat as "nowhere is served" -- see the note at the call site.
+ */
+export async function getServedZipPrefixes(): Promise<string[] | null> {
+  const r = await apiRequest<{ zipPrefixes: string[] }>(`/api/members/served-regions`);
+  return r.error || !r.data ? null : r.data.zipPrefixes;
+}
+
 export async function getPaySummary(wallet: string): Promise<PaySummary | null> {
   const r = await apiRequest<PaySummary>(`/api/pay/${wallet.toLowerCase()}/summary`);
   return r.error || !r.data ? null : r.data;

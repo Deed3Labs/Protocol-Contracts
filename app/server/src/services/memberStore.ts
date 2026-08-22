@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { normalizeHandle, rejectHandle, rejectHandleChange } from './handles.js';
 import { verifyMessage } from 'ethers';
 import type { Pool } from 'pg';
 import { getPostgresPool } from '../config/postgres.js';
@@ -312,6 +313,7 @@ export interface AcceptTermsInput {
 }
 
 const TABLE_MEMBERS = 'members';
+const TABLE_HANDLE_HISTORY = 'member_handle_history';
 const TABLE_PROFILE_PUBLIC = 'member_profile_public';
 const TABLE_PROFILE_PRIVATE = 'member_profile_private';
 const TABLE_ONBOARDING = 'member_onboarding';
@@ -486,10 +488,23 @@ function normalizeOptionalString(value: string | null | undefined, maxLength: nu
   return trimmed.slice(0, maxLength);
 }
 
+/**
+ * Normalises a handle, and refuses one that must not be claimed.
+ *
+ * The rules live in `handles.ts` and are enforced here rather than at a route, because a route is
+ * one way in and this is the only one they all pass through. Lowercasing alone let anybody claim
+ * @clear, @support or a two-character handle through an ordinary profile update.
+ *
+ * Throws rather than returning null: somebody who typed @clear should be told why they cannot have
+ * it, not have it silently discarded and their handle cleared.
+ */
 function normalizeUsername(value: string | null | undefined): string | null | undefined {
   const normalized = normalizeOptionalString(value, 32);
   if (normalized == null) return normalized;
-  return normalized.toLowerCase();
+
+  const rejection = rejectHandle(normalized);
+  if (rejection) throw new Error(`Handle is not available: ${rejection}`);
+  return normalizeHandle(normalized);
 }
 
 function resolvePatchedString(
@@ -978,6 +993,74 @@ export class MemberStore {
     return this.schemaReadyPromise;
   }
 
+  /**
+   * Writes a handle for a member who has none.
+   *
+   * Only when the field is empty: a member who chose their own keeps it, and a bootstrap that runs
+   * again must not reroll a handle somebody has already shared. The WHERE clause does that rather
+   * than a read-then-write, so two concurrent bootstraps cannot both decide the field was free.
+   */
+  /** How many handle changes a member has made. The one generated at signup does not count. */
+  async handleChangeCount(memberId: number | string): Promise<number> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const r = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM ${TABLE_HANDLE_HISTORY}
+        WHERE member_id = $1 AND assigned = FALSE`,
+      [memberId],
+    );
+    return r.rows[0]?.n ?? 0;
+  }
+
+  /**
+   * Records a handle against a member, retiring whatever they held before.
+   *
+   * The old handle is marked released rather than deleted, and stays in the table, so nobody else
+   * can take it. A handle in a payments app is closer to an account number than a display name:
+   * somebody working from an old note who sends to @kai must not reach whoever claimed it next.
+   */
+  async recordHandle(memberId: number | string, handle: string, assigned: boolean): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    await pool.query(
+      `UPDATE ${TABLE_HANDLE_HISTORY} SET released_at = NOW()
+        WHERE member_id = $1 AND released_at IS NULL`,
+      [memberId],
+    );
+    await pool.query(
+      `INSERT INTO ${TABLE_HANDLE_HISTORY} (member_id, handle, assigned)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (lower(handle)) DO NOTHING`,
+      [memberId, normalizeHandle(handle), assigned],
+    );
+  }
+
+  /** Whether a handle has ever been held by anybody. Retired handles are never free again. */
+  async handleEverUsed(handle: string): Promise<boolean> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const r = await pool.query(
+      `SELECT 1 FROM ${TABLE_HANDLE_HISTORY} WHERE lower(handle) = $1 LIMIT 1`,
+      [normalizeHandle(handle)],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async setUsernameById(memberId: number | string, handle: string): Promise<boolean> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const result = await pool.query(
+      `UPDATE ${TABLE_PROFILE_PUBLIC}
+          SET username = $2, updated_at = NOW()
+        WHERE member_id = $1 AND (username IS NULL OR username = '')`,
+      [memberId, normalizeHandle(handle)],
+    );
+    const wrote = (result.rowCount ?? 0) > 0;
+    // Assigned, not chosen: the signup handle must not spend one of the member's changes.
+    if (wrote) await this.recordHandle(memberId, handle, true);
+    return wrote;
+  }
+
   async bootstrapMember(input: BootstrapMemberInput): Promise<MemberAccountCenter> {
     await this.ensureReady();
     const pool = this.mustPool();
@@ -1238,8 +1321,21 @@ export class MemberStore {
     const currentPrivateResult = await this.loadPrivateProfile(member.id, true);
     const currentPrivate = currentPrivateResult.privateProfile;
 
+    // The handle is the one field on this profile that other members type at, so changing it is
+    // not the same kind of edit as changing a bio. Checked here rather than at the route because
+    // this is the path every profile write takes.
+    const nextUsername = resolvePatchedUsername(patch.username, currentPublic.username);
+    if (nextUsername && nextUsername !== currentPublic.username) {
+      const rejection = rejectHandleChange({
+        handle: nextUsername,
+        changesMade: await this.handleChangeCount(member.id),
+        everUsed: await this.handleEverUsed(nextUsername),
+      });
+      if (rejection) throw new Error(`Handle is not available: ${rejection}`);
+    }
+
     const nextPublic = {
-      username: resolvePatchedUsername(patch.username, currentPublic.username),
+      username: nextUsername,
       displayName: resolvePatchedString(patch.displayName, currentPublic.displayName, 120),
       bio: resolvePatchedString(patch.bio, currentPublic.bio, 512),
       timezone: resolvePatchedString(patch.timezone, currentPublic.timezone, 64),
@@ -1285,6 +1381,12 @@ export class MemberStore {
         ]
       );
     });
+
+    // Recorded as chosen, which is what makes it count against the free allowance -- and what
+    // retires the handle they were holding, so nobody else can pick it up.
+    if (nextUsername && nextUsername !== currentPublic.username) {
+      await this.recordHandle(member.id, nextUsername, false);
+    }
 
     const hasPrivatePatch =
       patch.legalName !== undefined
@@ -3018,6 +3120,43 @@ export class MemberStore {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `);
+
+      // Handles are case-insensitively unique, and that has to hold in the database rather than in
+      // whichever code path happens to write one. TEXT UNIQUE alone lets @Kai and @kai both exist,
+      // which in a payments app is a phishing surface: somebody types what they were told.
+      await pool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS ${TABLE_PROFILE_PUBLIC}_username_lower_idx
+           ON ${TABLE_PROFILE_PUBLIC} (lower(username)) WHERE username IS NOT NULL;`
+      );
+
+      // Every handle a member has ever held.
+      //
+      // Two jobs, and the second is the one that matters. It counts a member's changes, so the
+      // free allowance can be enforced. And it keeps released handles OUT OF CIRCULATION: if @kai
+      // could be re-claimed after being given up, money sent to @kai by somebody working from an
+      // old note reaches a different person entirely. In a payments app a handle is closer to an
+      // account number than to a display name, and account numbers are not recycled.
+      //
+      // `assigned` marks the one generated at signup, which is not a change the member made and so
+      // does not count against them.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_HANDLE_HISTORY} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          handle TEXT NOT NULL,
+          assigned BOOLEAN NOT NULL DEFAULT FALSE,
+          claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          released_at TIMESTAMPTZ
+        )
+      `);
+      await pool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS ${TABLE_HANDLE_HISTORY}_handle_lower_idx
+           ON ${TABLE_HANDLE_HISTORY} (lower(handle));`
+      );
+      await pool.query(
+        `CREATE INDEX IF NOT EXISTS ${TABLE_HANDLE_HISTORY}_member_idx
+           ON ${TABLE_HANDLE_HISTORY} (member_id);`
+      );
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS ${TABLE_PROFILE_PRIVATE} (

@@ -352,8 +352,8 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 </div>
 
 <div style="background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem;width:264px;min-height:400px;display:flex;flex-direction:column"><p style="font-size:10px;color:var(--text-muted);margin:0 0 20px;letter-spacing:.3px">5 &middot; CHOOSE</p>
-    <p style="font-size:19px;font-weight:500;margin:0 0 6px;letter-spacing:-.3px">$940.00 approved</p>
-    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 20px;line-height:1.6">Pick how to clear it. You can change this any time.</p>
+    <p style="font-size:19px;font-weight:500;margin:0 0 6px;letter-spacing:-.3px">Mike's Tire &mdash; $940.00</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 20px;line-height:1.6">Pick how to clear it, then approve. You can change this any time.</p>
     <div style="display:flex;gap:6px;margin-bottom:12px">
       <button style="flex:1;padding:6px 0;font-size:11px">In full</button>
       <button style="flex:1;padding:6px 0;font-size:11px">In 2</button>
@@ -367,7 +367,7 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
       <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Total</span><span style="font-weight:500">$987.00</span></div>
       <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Done by</span><span>Mar 14</span></div>
     </div>
-    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary);margin-top:auto">Confirm &amp; show the shop</button>
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary);margin-top:auto">Approve</button>
 </div>
 
 </div>
@@ -462,6 +462,72 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 
 </div>
 <p class="note" style="margin:.75rem 0 1.25rem"><strong>Counter arrival:</strong> the plan leads, because it is why they are here, and the savings card sits directly beneath it where the cost of not saving is visible. <strong>Direct arrival:</strong> saving leads, because there is nothing else, and the locked shelf sits below showing what saving unlocks. Same components, reversed order.</p>
+
+<h2>A charge arrives &mdash; the member side</h2>
+<p class="note" style="margin-bottom:1rem">What an <strong>existing</strong> member sees when a merchant raises a charge. The onboarding flow above covers a first-timer at a counter; this is every transaction after that, and it is also how someone who signed up in a waiting room receives their charge. <strong>It must match the merchant reference exactly</strong> &mdash; the merchant's &ldquo;waiting&rdquo; state is this screen, unopened.</p>
+
+<div class="row">
+  <div class="phone">
+    <p class="lbl" style="font-size:11px;margin:0 0 10px">TEXT &middot; ALSO SENT BY EMAIL AND PUSH</p>
+    <div style="background:var(--surface-1);border-radius:10px;padding:13px">
+      <p style="font-size:13px;margin:0;line-height:1.65">Mike's Tire is charging <strong>$940.00</strong> to your Clear account.<br><br>Approve or decline: clear.coop/c/8QK2<br><br>You have not been charged yet.</p>
+    </div>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:12px 0 0;line-height:1.6"><strong style="color:var(--text-primary)">&ldquo;You have not been charged yet&rdquo;</strong> is the whole message. All three channels go out together; the merchant sees which were delivered and whether the app was opened.</p>
+  </div>
+
+  <div class="phone">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><span style="color:var(--text-secondary);cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;"><path d="m15 18-6-6 6-6"/></svg></span><span style="font-size:15px;font-weight:500">Approve a charge</span></div>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 3px">Mike's Tire wants to charge</p>
+    <p class="big-m" style="margin:0 0 16px">$940.00</p>
+
+    <div class="card" style="padding:12px 14px;margin-bottom:12px">
+      <p class="lbl" style="font-size:10px;letter-spacing:.4px;text-transform:uppercase;margin:0 0 8px">How to clear it &middot; 2% a cycle on what you still owe</p>
+      <div style="display:flex;gap:5px;margin-bottom:11px">
+        <button style="flex:1;padding:5px 0;font-size:11px">In full</button>
+        <button style="flex:1;padding:5px 0;font-size:11px">In 2</button>
+        <button style="flex:1;padding:5px 0;font-size:11px;border-color:var(--border-accent);color:var(--text-accent)">In 4</button>
+        <button style="flex:1;padding:5px 0;font-size:11px">In 12</button>
+      </div>
+      <div style="font-size:12px;line-height:2.1;border-top:0.5px solid var(--border);padding-top:9px">
+        <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Each cycle</span><span>$246.75</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Carry this cycle</span><span>$18.80</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Carry over the whole plan</span><span>$47.00</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Total</span><span style="font-weight:500">$987.00</span></div>
+        <div style="display:flex;justify-content:space-between"><span class="lbl" style="font-size:12px">Done by</span><span>Mar 14</span></div>
+      </div>
+    </div>
+
+    <div style="border-top:0.5px solid var(--border);padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:13px">
+      <div style="padding-right:14px"><p class="lbl" style="font-size:10px;letter-spacing:.4px;text-transform:uppercase;margin:0 0 3px">Limit</p><p style="font-size:11.5px;margin:0">$850.00/cycle &nbsp;&rsaquo;</p></div>
+      <div style="padding-left:14px;border-left:0.5px solid var(--border)"><p class="lbl" style="font-size:10px;letter-spacing:.4px;text-transform:uppercase;margin:0 0 3px">Clears from</p><p style="font-size:11.5px;margin:0">Chase &#183;&#183;&#183;&#183;4471 &nbsp;&rsaquo;</p></div>
+    </div>
+
+    <button style="width:100%;background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary);margin-bottom:7px">Approve</button>
+    <button style="width:100%">Not now</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0;line-height:1.55;text-align:center">Expires in 24 hours. Nothing is charged until you approve.</p>
+  </div>
+
+  <div class="phone">
+    <p class="lbl" style="font-size:11px;margin:0 0 10px">APPROVED</p>
+    <div style="text-align:center;padding:14px 0 4px">
+      <div style="width:44px;height:44px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;margin:0 auto 12px">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </div>
+      <p style="font-size:24px;font-weight:500;margin:0">$940.00</p>
+      <p style="font-size:12px;color:var(--text-muted);margin:4px 0 0">Mike's Tire &middot; split in 4</p>
+    </div>
+    <div class="card" style="padding:12px 14px;margin:16px 0 12px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px"><span class="lbl" style="font-size:12.5px">First payment</span><span>$246.75 on Dec 14</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span class="lbl" style="font-size:12.5px">Clears from</span><span>Chase &#183;&#183;&#183;&#183;4471</span></div>
+    </div>
+    <div class="card accent" style="padding:12px 14px">
+      <p style="font-size:11px;color:var(--text-accent);margin:0 0 5px;letter-spacing:.2px">MAKE THE NEXT ONE FREE</p>
+      <p style="font-size:12px;margin:0;line-height:1.6">Save anything at all and you borrow against your own money instead &mdash; at no cost.</p>
+    </div>
+  </div>
+</div>
+
+<p class="note" style="margin:.75rem 0 1.25rem"><strong>The split is chosen here, on the member's phone, never on the merchant device.</strong> A service writer must not be picking someone's repayment terms. <strong>Limit and Clears-from appear on the approval screen</strong> because this is the moment a member most wants to check them &mdash; the same split footer as the Term plans component, so it is one pattern rather than two.</p>
 
 <h2>Home — desktop — in use</h2>
 <div class="desktop">
@@ -1377,10 +1443,15 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
     </div>
     <div class="stack">
       <div class="card" style="padding:16px;text-align:center">
-        <div style="width:120px;height:120px;margin:0 auto 12px;background:var(--surface-0);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary)"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM21 14v3M14 21h7"/></svg></div>
-        <p style="font-size:13px;margin:0 0 3px">Your Clear code</p><p style="font-size:12px;color:var(--text-muted);margin:0">@kaim</p>
+        <div style="width:140px;margin:0 auto 12px"><svg viewBox="0 0 33 33" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" style="width:100%;height:auto;display:block;border-radius:10px;background:#FAF9F5" role="img" aria-label="Your Clear member code"><path d="M2 2h7v1h-7zM10 2h1v1h-1zM12 2h1v1h-1zM15 2h3v1h-3zM19 2h3v1h-3zM24 2h7v1h-7zM2 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM12 3h6v1h-6zM20 3h1v1h-1zM22 3h1v1h-1zM24 3h1v1h-1zM30 3h1v1h-1zM2 4h1v1h-1zM4 4h3v1h-3zM8 4h1v1h-1zM10 4h7v1h-7zM22 4h1v1h-1zM24 4h1v1h-1zM26 4h3v1h-3zM30 4h1v1h-1zM2 5h1v1h-1zM4 5h3v1h-3zM8 5h1v1h-1zM16 5h2v1h-2zM20 5h2v1h-2zM24 5h1v1h-1zM26 5h3v1h-3zM30 5h1v1h-1zM2 6h1v1h-1zM4 6h3v1h-3zM8 6h1v1h-1zM10 6h2v1h-2zM13 6h1v1h-1zM15 6h1v1h-1zM17 6h1v1h-1zM22 6h1v1h-1zM24 6h1v1h-1zM26 6h3v1h-3zM30 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM11 7h1v1h-1zM13 7h4v1h-4zM22 7h1v1h-1zM24 7h1v1h-1zM30 7h1v1h-1zM2 8h7v1h-7zM10 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM22 8h1v1h-1zM24 8h7v1h-7zM12 9h2v1h-2zM16 9h1v1h-1zM19 9h4v1h-4zM2 10h1v1h-1zM5 10h7v1h-7zM15 10h4v1h-4zM21 10h1v1h-1zM23 10h1v1h-1zM26 10h1v1h-1zM28 10h3v1h-3zM2 11h6v1h-6zM9 11h1v1h-1zM16 11h1v1h-1zM20 11h1v1h-1zM23 11h1v1h-1zM26 11h1v1h-1zM28 11h1v1h-1zM6 12h3v1h-3zM10 12h1v1h-1zM12 12h3v1h-3zM16 12h1v1h-1zM19 12h4v1h-4zM25 12h4v1h-4zM2 13h2v1h-2zM5 13h1v1h-1zM7 13h1v1h-1zM9 13h1v1h-1zM14 13h1v1h-1zM16 13h2v1h-2zM19 13h1v1h-1zM21 13h3v1h-3zM26 13h2v1h-2zM29 13h2v1h-2zM3 14h6v1h-6zM11 14h1v1h-1zM13 14h4v1h-4zM19 14h2v1h-2zM23 14h2v1h-2zM30 14h1v1h-1zM3 15h2v1h-2zM9 15h3v1h-3zM14 15h1v1h-1zM19 15h1v1h-1zM21 15h4v1h-4zM26 15h3v1h-3zM30 15h1v1h-1zM2 16h2v1h-2zM8 16h1v1h-1zM10 16h1v1h-1zM13 16h1v1h-1zM16 16h2v1h-2zM19 16h1v1h-1zM21 16h4v1h-4zM26 16h3v1h-3zM30 16h1v1h-1zM2 17h2v1h-2zM5 17h1v1h-1zM9 17h1v1h-1zM11 17h2v1h-2zM15 17h2v1h-2zM18 17h3v1h-3zM22 17h5v1h-5zM28 17h1v1h-1zM30 17h1v1h-1zM2 18h2v1h-2zM5 18h1v1h-1zM8 18h1v1h-1zM10 18h3v1h-3zM17 18h1v1h-1zM19 18h1v1h-1zM22 18h1v1h-1zM27 18h1v1h-1zM30 18h1v1h-1zM2 19h3v1h-3zM6 19h2v1h-2zM13 19h2v1h-2zM19 19h2v1h-2zM22 19h5v1h-5zM28 19h1v1h-1zM2 20h8v1h-8zM11 20h1v1h-1zM14 20h3v1h-3zM18 20h3v1h-3zM22 20h2v1h-2zM26 20h2v1h-2zM30 20h1v1h-1zM2 21h3v1h-3zM10 21h1v1h-1zM15 21h1v1h-1zM17 21h2v1h-2zM25 21h1v1h-1zM28 21h3v1h-3zM2 22h4v1h-4zM7 22h4v1h-4zM12 22h1v1h-1zM14 22h2v1h-2zM20 22h1v1h-1zM22 22h9v1h-9zM10 23h1v1h-1zM13 23h1v1h-1zM15 23h1v1h-1zM18 23h2v1h-2zM21 23h2v1h-2zM26 23h2v1h-2zM2 24h7v1h-7zM10 24h1v1h-1zM12 24h1v1h-1zM15 24h1v1h-1zM17 24h2v1h-2zM22 24h1v1h-1zM24 24h1v1h-1zM26 24h3v1h-3zM2 25h1v1h-1zM8 25h1v1h-1zM10 25h1v1h-1zM13 25h1v1h-1zM15 25h1v1h-1zM18 25h1v1h-1zM20 25h1v1h-1zM22 25h1v1h-1zM26 25h1v1h-1zM29 25h1v1h-1zM2 26h1v1h-1zM4 26h3v1h-3zM8 26h1v1h-1zM10 26h1v1h-1zM12 26h1v1h-1zM14 26h2v1h-2zM17 26h3v1h-3zM21 26h7v1h-7zM2 27h1v1h-1zM4 27h3v1h-3zM8 27h1v1h-1zM10 27h2v1h-2zM13 27h1v1h-1zM15 27h2v1h-2zM18 27h1v1h-1zM20 27h1v1h-1zM22 27h1v1h-1zM26 27h1v1h-1zM2 28h1v1h-1zM4 28h3v1h-3zM8 28h1v1h-1zM13 28h2v1h-2zM16 28h1v1h-1zM18 28h1v1h-1zM20 28h2v1h-2zM23 28h4v1h-4zM28 28h3v1h-3zM2 29h1v1h-1zM8 29h1v1h-1zM11 29h3v1h-3zM15 29h3v1h-3zM22 29h2v1h-2zM25 29h1v1h-1zM27 29h2v1h-2zM30 29h1v1h-1zM2 30h7v1h-7zM10 30h3v1h-3zM15 30h2v1h-2zM18 30h4v1h-4zM23 30h3v1h-3zM28 30h1v1h-1z" fill="#2C2C2A"/></svg></div>
+        <p style="font-size:13px;margin:0 0 3px">Your Clear code</p><p style="font-size:12px;color:var(--text-muted);margin:0 0 12px">@kaim</p>
+        <p style="font-size:11px;color:var(--text-muted);margin:0 0 12px;line-height:1.55">Says who you are, not an amount. The shop enters the figure and <strong style="color:var(--text-primary)">you approve it here</strong>.</p>
+        <div style="border-top:0.5px solid var(--border);padding-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:0;text-align:left">
+          <div style="padding-right:12px"><p class="lbl" style="font-size:10px;letter-spacing:.4px;text-transform:uppercase;margin:0 0 3px">Available</p><p style="font-size:11.5px;margin:0">$2,109.00</p></div>
+          <div style="padding-left:12px;border-left:0.5px solid var(--border)"><p class="lbl" style="font-size:10px;letter-spacing:.4px;text-transform:uppercase;margin:0 0 3px">At partners</p><p style="font-size:11.5px;margin:0">$1,000.00</p></div>
+        </div>
       </div>
-      <button style="width:100%;font-size:12px">Scan to pay</button>
+      <button style="width:100%;font-size:12px">Show full screen</button>
       <div class="card" style="padding:14px 16px">
         <p class="lbl" style="margin:0 0 6px">Kept in the network</p>
         <p style="font-size:22px;font-weight:500;margin:0 0 2px">$215.00</p>
@@ -1691,8 +1762,12 @@ input{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var
 <div class="row"><div class="phone">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.1rem"><span style="font-size:15px;font-weight:500">Send</span></div>
   <div style="text-align:center;margin-bottom:14px">
-    <div style="width:120px;height:120px;margin:0 auto 10px;background:var(--surface-0);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary)"><svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM21 14v3M14 21h7"/></svg></div>
-    <p style="font-size:12px;color:var(--text-muted);margin:0">Show to get paid &middot; @kaim</p>
+    <div style="width:132px;margin:0 auto 10px"><svg viewBox="0 0 33 33" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" style="width:100%;height:auto;display:block;border-radius:10px;background:#FAF9F5" role="img" aria-label="Your Clear member code"><path d="M2 2h7v1h-7zM10 2h1v1h-1zM12 2h1v1h-1zM15 2h3v1h-3zM19 2h3v1h-3zM24 2h7v1h-7zM2 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM12 3h6v1h-6zM20 3h1v1h-1zM22 3h1v1h-1zM24 3h1v1h-1zM30 3h1v1h-1zM2 4h1v1h-1zM4 4h3v1h-3zM8 4h1v1h-1zM10 4h7v1h-7zM22 4h1v1h-1zM24 4h1v1h-1zM26 4h3v1h-3zM30 4h1v1h-1zM2 5h1v1h-1zM4 5h3v1h-3zM8 5h1v1h-1zM16 5h2v1h-2zM20 5h2v1h-2zM24 5h1v1h-1zM26 5h3v1h-3zM30 5h1v1h-1zM2 6h1v1h-1zM4 6h3v1h-3zM8 6h1v1h-1zM10 6h2v1h-2zM13 6h1v1h-1zM15 6h1v1h-1zM17 6h1v1h-1zM22 6h1v1h-1zM24 6h1v1h-1zM26 6h3v1h-3zM30 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM11 7h1v1h-1zM13 7h4v1h-4zM22 7h1v1h-1zM24 7h1v1h-1zM30 7h1v1h-1zM2 8h7v1h-7zM10 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM22 8h1v1h-1zM24 8h7v1h-7zM12 9h2v1h-2zM16 9h1v1h-1zM19 9h4v1h-4zM2 10h1v1h-1zM5 10h7v1h-7zM15 10h4v1h-4zM21 10h1v1h-1zM23 10h1v1h-1zM26 10h1v1h-1zM28 10h3v1h-3zM2 11h6v1h-6zM9 11h1v1h-1zM16 11h1v1h-1zM20 11h1v1h-1zM23 11h1v1h-1zM26 11h1v1h-1zM28 11h1v1h-1zM6 12h3v1h-3zM10 12h1v1h-1zM12 12h3v1h-3zM16 12h1v1h-1zM19 12h4v1h-4zM25 12h4v1h-4zM2 13h2v1h-2zM5 13h1v1h-1zM7 13h1v1h-1zM9 13h1v1h-1zM14 13h1v1h-1zM16 13h2v1h-2zM19 13h1v1h-1zM21 13h3v1h-3zM26 13h2v1h-2zM29 13h2v1h-2zM3 14h6v1h-6zM11 14h1v1h-1zM13 14h4v1h-4zM19 14h2v1h-2zM23 14h2v1h-2zM30 14h1v1h-1zM3 15h2v1h-2zM9 15h3v1h-3zM14 15h1v1h-1zM19 15h1v1h-1zM21 15h4v1h-4zM26 15h3v1h-3zM30 15h1v1h-1zM2 16h2v1h-2zM8 16h1v1h-1zM10 16h1v1h-1zM13 16h1v1h-1zM16 16h2v1h-2zM19 16h1v1h-1zM21 16h4v1h-4zM26 16h3v1h-3zM30 16h1v1h-1zM2 17h2v1h-2zM5 17h1v1h-1zM9 17h1v1h-1zM11 17h2v1h-2zM15 17h2v1h-2zM18 17h3v1h-3zM22 17h5v1h-5zM28 17h1v1h-1zM30 17h1v1h-1zM2 18h2v1h-2zM5 18h1v1h-1zM8 18h1v1h-1zM10 18h3v1h-3zM17 18h1v1h-1zM19 18h1v1h-1zM22 18h1v1h-1zM27 18h1v1h-1zM30 18h1v1h-1zM2 19h3v1h-3zM6 19h2v1h-2zM13 19h2v1h-2zM19 19h2v1h-2zM22 19h5v1h-5zM28 19h1v1h-1zM2 20h8v1h-8zM11 20h1v1h-1zM14 20h3v1h-3zM18 20h3v1h-3zM22 20h2v1h-2zM26 20h2v1h-2zM30 20h1v1h-1zM2 21h3v1h-3zM10 21h1v1h-1zM15 21h1v1h-1zM17 21h2v1h-2zM25 21h1v1h-1zM28 21h3v1h-3zM2 22h4v1h-4zM7 22h4v1h-4zM12 22h1v1h-1zM14 22h2v1h-2zM20 22h1v1h-1zM22 22h9v1h-9zM10 23h1v1h-1zM13 23h1v1h-1zM15 23h1v1h-1zM18 23h2v1h-2zM21 23h2v1h-2zM26 23h2v1h-2zM2 24h7v1h-7zM10 24h1v1h-1zM12 24h1v1h-1zM15 24h1v1h-1zM17 24h2v1h-2zM22 24h1v1h-1zM24 24h1v1h-1zM26 24h3v1h-3zM2 25h1v1h-1zM8 25h1v1h-1zM10 25h1v1h-1zM13 25h1v1h-1zM15 25h1v1h-1zM18 25h1v1h-1zM20 25h1v1h-1zM22 25h1v1h-1zM26 25h1v1h-1zM29 25h1v1h-1zM2 26h1v1h-1zM4 26h3v1h-3zM8 26h1v1h-1zM10 26h1v1h-1zM12 26h1v1h-1zM14 26h2v1h-2zM17 26h3v1h-3zM21 26h7v1h-7zM2 27h1v1h-1zM4 27h3v1h-3zM8 27h1v1h-1zM10 27h2v1h-2zM13 27h1v1h-1zM15 27h2v1h-2zM18 27h1v1h-1zM20 27h1v1h-1zM22 27h1v1h-1zM26 27h1v1h-1zM2 28h1v1h-1zM4 28h3v1h-3zM8 28h1v1h-1zM13 28h2v1h-2zM16 28h1v1h-1zM18 28h1v1h-1zM20 28h2v1h-2zM23 28h4v1h-4zM28 28h3v1h-3zM2 29h1v1h-1zM8 29h1v1h-1zM11 29h3v1h-3zM15 29h3v1h-3zM22 29h2v1h-2zM25 29h1v1h-1zM27 29h2v1h-2zM30 29h1v1h-1zM2 30h7v1h-7zM10 30h3v1h-3zM15 30h2v1h-2zM18 30h4v1h-4zM23 30h3v1h-3zM28 30h1v1h-1z" fill="#2C2C2A"/></svg></div>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">Show to get paid or to pay a partner &middot; @kaim</p>
+    <div style="border-top:0.5px solid var(--border);padding-top:9px;display:grid;grid-template-columns:1fr 1fr;gap:0;text-align:left">
+      <div style="padding-right:12px"><p class="lbl" style="font-size:10px;letter-spacing:.4px;text-transform:uppercase;margin:0 0 3px">Available</p><p style="font-size:11.5px;margin:0">$2,109.00</p></div>
+      <div style="padding-left:12px;border-left:0.5px solid var(--border)"><p class="lbl" style="font-size:10px;letter-spacing:.4px;text-transform:uppercase;margin:0 0 3px">At partners</p><p style="font-size:11.5px;margin:0">$1,000.00</p></div>
+    </div>
   </div>
   <div style="display:flex;gap:8px;margin-bottom:12px"><button style="flex:1;font-size:12px;padding:6px 0">Scan to pay</button><button style="flex:1;font-size:12px;padding:6px 0">Request</button></div>
   <input style="width:100%;margin-bottom:12px;font-size:13px;color:var(--text-muted)" value="Name, phone, or @handle">

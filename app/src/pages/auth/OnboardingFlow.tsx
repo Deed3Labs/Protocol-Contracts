@@ -20,9 +20,15 @@ import { money } from '@/lib/money';
  * handing over an SSN; and there is no password at any point, only a mailed code
  * and then the device itself.
  *
- * Presentational only — no auth calls. The live pages (LoginPage, UserOnboarding,
- * ClaimFunds) are still the Privy-wired ones; this replaces their views when the
- * flow is hooked up.
+ * Presentational only — no auth calls, on purpose. `OnboardingRoute` drives it live and
+ * `PreviewApp` drives it to be looked at, and neither has to know which the other is doing.
+ *
+ * That is also why steps and fields are both controllable: the flow says where somebody wants to
+ * go and what they typed, and the container decides what any of it means. An unserved ZIP going
+ * to the waitlist instead of through is a decision, and it is made there rather than here.
+ *
+ * LoginPage still owns `enter` and `verify` — a member reaching /onboarding has already signed in.
+ * ClaimFunds still owns the claim steps.
  */
 export type OnboardingStep =
   | 'enter'
@@ -108,9 +114,22 @@ function Footnote({ children, align = 'center' }: { children: React.ReactNode; a
   );
 }
 
+/** Everything the flow collects. The container owns these; the flow only reports edits. */
+export interface OnboardingValues {
+  contact: string;
+  code: string;
+  zip: string;
+  invite: string;
+  email: string;
+}
+
+const EMPTY_VALUES: OnboardingValues = { contact: '', code: '', zip: '', invite: '', email: '' };
+
 export default function OnboardingFlow({
   step = 'enter',
   onStepChange,
+  values,
+  onValuesChange,
   /** Who sent the money, on the claim steps. */
   sender = 'Diego R.',
   claimAmount = 40,
@@ -123,6 +142,12 @@ export default function OnboardingFlow({
 }: {
   step?: OnboardingStep;
   onStepChange?: (step: OnboardingStep) => void;
+  /**
+   * Controlled fields. Omit them and the flow keeps its own, which is what the preview harness
+   * wants -- it drives steps to look at them, not to collect anything.
+   */
+  values?: OnboardingValues;
+  onValuesChange?: (patch: Partial<OnboardingValues>) => void;
   sender?: string;
   claimAmount?: number;
   claimExpiresInDays?: number;
@@ -131,11 +156,24 @@ export default function OnboardingFlow({
   waitlistPosition?: number;
   sentTo?: string;
 }) {
-  const [contact, setContact] = useState('');
-  const [code, setCode] = useState('492');
-  const [zip, setZip] = useState('92373');
-  const [invite, setInvite] = useState('');
-  const [email, setEmail] = useState('');
+  // Uncontrolled unless a container supplies values, so PreviewApp keeps working untouched: it
+  // passes a step and nothing else, because looking at a screen is not collecting anything.
+  const [internal, setInternal] = useState<OnboardingValues>({
+    ...EMPTY_VALUES,
+    code: '492',
+    zip: '92373',
+  });
+  const current = values ?? internal;
+  const patch = (next: Partial<OnboardingValues>) => {
+    setInternal((previous) => ({ ...previous, ...next }));
+    onValuesChange?.(next);
+  };
+  const { contact, code, zip, invite, email } = current;
+  const setContact = (v: string) => patch({ contact: v });
+  const setCode = (v: string) => patch({ code: v });
+  const setZip = (v: string) => patch({ zip: v });
+  const setInvite = (v: string) => patch({ invite: v });
+  const setEmail = (v: string) => patch({ email: v });
 
   const go = (next: OnboardingStep) => () => onStepChange?.(next);
   const brand = BRAND[step];

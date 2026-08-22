@@ -95,7 +95,14 @@ export default function HomeRoute() {
 
   const data = {
     ...HOME_DAY_ONE,
-    ...(haveBalances ? { cash } : {}),
+    // NOT the USDC balance. `cash` is what can settle a card authorization and nothing else --
+    // availableToSpend adds it straight to the credit line -- and USDC on the member's own smart
+    // wallet cannot do that until it has been moved to the card float. Counting it here would
+    // offer somebody spend the float cannot fund, which is the same mistake the snapshot service
+    // is careful to avoid on the authorization side.
+    //
+    // Left at zero until a card balance is actually readable. The USDC is not hidden: it appears
+    // as readyToAllocate below, which is the row that exists to say "yours, not spendable here".
     savings: {
       ...HOME_DAY_ONE.savings,
       ...(haveBalances ? { cash: savings } : {}),
@@ -103,15 +110,16 @@ export default function HomeRoute() {
         ? { credits: pay.totalEquity, vested: pay.vestedEquity, vesting: pay.pendingEquity }
         : {}),
     },
-    ...(deposit
-      ? {
-          cashAccount: {
-            ...HOME_DAY_ONE.cashAccount,
-            accountNumber: deposit.accountNumber,
-            routingNumber: deposit.routingNumber,
-          },
-        }
-      : {}),
+    cashAccount: {
+      ...HOME_DAY_ONE.cashAccount,
+      // USDC on the member's own smart wallet: theirs, in the cash account, and able to go to
+      // Savings or Earn but never to the card. This is where that balance belongs -- leaving it at
+      // zero told a member holding 35 USDC that they had nothing to place.
+      ...(haveBalances ? { readyToAllocate: cash } : {}),
+      ...(deposit
+        ? { accountNumber: deposit.accountNumber, routingNumber: deposit.routingNumber }
+        : {}),
+    },
     // Home shows a preview; Activity shows the list. Empty is the honest answer for a new member,
     // and the page has a state for it.
     ...(txLoading ? {} : { recent: items.slice(0, 4).map(toActivityRow) }),
