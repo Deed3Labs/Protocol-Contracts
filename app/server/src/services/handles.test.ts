@@ -4,6 +4,7 @@ import {
   isValidHandle,
   normalizeHandle,
   rejectHandle,
+  rejectHandleChange,
   suggestHandle,
 } from './handles.js';
 
@@ -96,5 +97,38 @@ describe('generating one nobody asked for', () => {
     });
     expect(handle.length).toBeLessThanOrEqual(20);
     expect(asked).toBeGreaterThan(8);
+  });
+});
+
+describe('changing a handle', () => {
+  const base = { handle: 'quietriver42', changesMade: 0, everUsed: false };
+
+  test('allows the first two changes', () => {
+    expect(rejectHandleChange({ ...base, changesMade: 0 })).toBeNull();
+    expect(rejectHandleChange({ ...base, changesMade: 1 })).toBeNull();
+  });
+
+  test('sends the third to approval rather than refusing outright', () => {
+    // Two covers a regretted signup name and one considered choice. Past that, the people who have
+    // it written down are wrong more often than right.
+    expect(rejectHandleChange({ ...base, changesMade: 2 })).toBe('needs_approval');
+  });
+
+  test('never reissues a handle somebody has given up', () => {
+    // Money sent to @kai from an old note must not reach whoever claimed it next. A handle here is
+    // closer to an account number than a display name, and account numbers are not recycled.
+    expect(rejectHandleChange({ ...base, everUsed: true })).toBe('retired');
+  });
+
+  test('lets a member keep the handle they already hold', () => {
+    // Saving a profile without touching the handle is not a change and must not spend one.
+    expect(
+      rejectHandleChange({ ...base, changesMade: 5, everUsed: true, isOwnCurrent: true }),
+    ).toBeNull();
+  });
+
+  test('still applies the shape and reserved rules', () => {
+    expect(rejectHandleChange({ ...base, handle: 'clear' })).toBe('reserved');
+    expect(rejectHandleChange({ ...base, handle: 'ab' })).toBe('too_short');
   });
 });

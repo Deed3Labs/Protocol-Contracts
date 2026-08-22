@@ -313,6 +313,7 @@ export interface AcceptTermsInput {
 }
 
 const TABLE_MEMBERS = 'members';
+const TABLE_HANDLE_HISTORY = 'member_handle_history';
 const TABLE_PROFILE_PUBLIC = 'member_profile_public';
 const TABLE_PROFILE_PRIVATE = 'member_profile_private';
 const TABLE_ONBOARDING = 'member_onboarding';
@@ -999,6 +1000,52 @@ export class MemberStore {
    * again must not reroll a handle somebody has already shared. The WHERE clause does that rather
    * than a read-then-write, so two concurrent bootstraps cannot both decide the field was free.
    */
+  /** How many handle changes a member has made. The one generated at signup does not count. */
+  async handleChangeCount(memberId: number | string): Promise<number> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const r = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM ${TABLE_HANDLE_HISTORY}
+        WHERE member_id = $1 AND assigned = FALSE`,
+      [memberId],
+    );
+    return r.rows[0]?.n ?? 0;
+  }
+
+  /**
+   * Records a handle against a member, retiring whatever they held before.
+   *
+   * The old handle is marked released rather than deleted, and stays in the table, so nobody else
+   * can take it. A handle in a payments app is closer to an account number than a display name:
+   * somebody working from an old note who sends to @kai must not reach whoever claimed it next.
+   */
+  async recordHandle(memberId: number | string, handle: string, assigned: boolean): Promise<void> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    await pool.query(
+      `UPDATE ${TABLE_HANDLE_HISTORY} SET released_at = NOW()
+        WHERE member_id = $1 AND released_at IS NULL`,
+      [memberId],
+    );
+    await pool.query(
+      `INSERT INTO ${TABLE_HANDLE_HISTORY} (member_id, handle, assigned)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (lower(handle)) DO NOTHING`,
+      [memberId, normalizeHandle(handle), assigned],
+    );
+  }
+
+  /** Whether a handle has ever been held by anybody. Retired handles are never free again. */
+  async handleEverUsed(handle: string): Promise<boolean> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const r = await pool.query(
+      `SELECT 1 FROM ${TABLE_HANDLE_HISTORY} WHERE lower(handle) = $1 LIMIT 1`,
+      [normalizeHandle(handle)],
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
   async setUsernameById(memberId: number | string, handle: string): Promise<boolean> {
     await this.ensureReady();
     const pool = this.mustPool();
@@ -1008,7 +1055,10 @@ export class MemberStore {
         WHERE member_id = $1 AND (username IS NULL OR username = '')`,
       [memberId, normalizeHandle(handle)],
     );
-    return (result.rowCount ?? 0) > 0;
+    const wrote = (result.rowCount ?? 0) > 0;
+    // Assigned, not chosen: the signup handle must not spend one of the member's changes.
+    if (wrote) await this.recordHandle(memberId, handle, true);
+    return wrote;
   }
 
   async bootstrapMember(input: BootstrapMemberInput): Promise<MemberAccountCenter> {
@@ -3058,6 +3108,35 @@ export class MemberStore {
       await pool.query(
         `CREATE UNIQUE INDEX IF NOT EXISTS ${TABLE_PROFILE_PUBLIC}_username_lower_idx
            ON ${TABLE_PROFILE_PUBLIC} (lower(username)) WHERE username IS NOT NULL;`
+      );
+
+      // Every handle a member has ever held.
+      //
+      // Two jobs, and the second is the one that matters. It counts a member's changes, so the
+      // free allowance can be enforced. And it keeps released handles OUT OF CIRCULATION: if @kai
+      // could be re-claimed after being given up, money sent to @kai by somebody working from an
+      // old note reaches a different person entirely. In a payments app a handle is closer to an
+      // account number than to a display name, and account numbers are not recycled.
+      //
+      // `assigned` marks the one generated at signup, which is not a change the member made and so
+      // does not count against them.
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS ${TABLE_HANDLE_HISTORY} (
+          id BIGSERIAL PRIMARY KEY,
+          member_id BIGINT NOT NULL REFERENCES ${TABLE_MEMBERS}(id) ON DELETE CASCADE,
+          handle TEXT NOT NULL,
+          assigned BOOLEAN NOT NULL DEFAULT FALSE,
+          claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          released_at TIMESTAMPTZ
+        )
+      `);
+      await pool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS ${TABLE_HANDLE_HISTORY}_handle_lower_idx
+           ON ${TABLE_HANDLE_HISTORY} (lower(handle));`
+      );
+      await pool.query(
+        `CREATE INDEX IF NOT EXISTS ${TABLE_HANDLE_HISTORY}_member_idx
+           ON ${TABLE_HANDLE_HISTORY} (member_id);`
       );
 
       await pool.query(`

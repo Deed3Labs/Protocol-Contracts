@@ -113,3 +113,35 @@ export async function generateHandle(
   }
   throw new Error('Could not generate a free handle.');
 }
+
+/**
+ * How many times a member may change their own handle before somebody has to approve it.
+ *
+ * Two is enough for a regretted signup name and one considered choice. Beyond that a handle is
+ * changing often enough that the people who have it written down are wrong more often than right,
+ * and in a payments app that is the cost being managed -- not the support load.
+ */
+export const FREE_HANDLE_CHANGES = 2;
+
+export type HandleChangeRejection = HandleRejection | 'taken' | 'retired' | 'needs_approval';
+
+/**
+ * Whether a member may take a handle, given what they have used before.
+ *
+ * `everUsed` covers handles nobody holds any more. They do not come back: money sent to @kai by
+ * somebody working from an old note must not reach whoever claimed it next, so a released handle
+ * is retired rather than freed.
+ */
+export function rejectHandleChange(input: {
+  handle: string;
+  changesMade: number;
+  everUsed: boolean;
+  isOwnCurrent?: boolean;
+}): HandleChangeRejection | null {
+  if (input.isOwnCurrent) return null;
+  const shape = rejectHandle(input.handle);
+  if (shape) return shape;
+  if (input.everUsed) return 'retired';
+  if (input.changesMade >= FREE_HANDLE_CHANGES) return 'needs_approval';
+  return null;
+}
