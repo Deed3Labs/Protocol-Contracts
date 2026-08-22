@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { isServedZip, servedZipPrefixes } from '../config/servedRegions.js';
 import { contactsStore } from '../services/contactsStore.js';
 import { generateHandle } from '../services/handles.js';
 import { openCreditLine } from '../services/chain/creditLineService.js';
@@ -290,6 +291,24 @@ async function ensureHandle(member: { id?: number | string; username?: string | 
   const handle = await generateHandle((candidate) => contactsStore.isHandleFree(candidate));
   await memberStore.setUsernameById(member.id!, handle);
 }
+
+/**
+ * Whether the co-op is open where somebody lives.
+ *
+ * Behind the same auth as everything on this router, which is fine for its one caller: a member
+ * reaching onboarding has already signed in. It would need moving if the ZIP were ever asked
+ * before sign-in.
+ *
+ * Returns the prefixes as well as the verdict, so a client can answer as somebody types rather
+ * than making a round trip per attempt.
+ */
+router.get('/served-regions', (_req: Request, res: Response) => {
+  res.json({ zipPrefixes: servedZipPrefixes() });
+});
+
+router.get('/served-regions/:zip', (req: Request, res: Response) => {
+  res.json({ zip: req.params.zip, served: isServedZip(req.params.zip) });
+});
 
 router.put('/me/bootstrap', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;

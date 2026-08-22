@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { track } from '@/lib/analytics';
 import {
@@ -7,6 +7,7 @@ import {
   submitMemberOnboarding,
   updateMemberOnboarding,
   updateMemberProfile,
+  getServedZipPrefixes,
 } from '@/utils/apiClient';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import OnboardingFlow, {
@@ -26,12 +27,22 @@ import OnboardingFlow, {
  * harness and the live app without knowing which it is in.
  */
 
-/** ZIPs the co-op serves. Anything else goes to the waitlist rather than through. */
-const SERVED_PREFIXES = ['923', '924', '925'];
-
-function isServed(zip: string): boolean {
-  const trimmed = zip.trim();
-  return SERVED_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+/**
+ * Whether the co-op is open where somebody lives.
+ *
+ * The list comes from the server, because regions open when enough people are waiting -- opening
+ * one should be a configuration change, not a deploy of the app. Held here only for the length of
+ * a signup.
+ *
+ * A ZIP is checked against it only once the list has actually loaded. Not knowing where the co-op
+ * serves is not the same as it serving nowhere, and defaulting to "unserved" would put somebody
+ * who lives in the region on a waiting list for it.
+ */
+function isServed(zip: string, prefixes: string[] | null): boolean | null {
+  if (!prefixes) return null;
+  const digits = zip.trim().replace(/\D/g, '');
+  if (digits.length < 5) return false;
+  return prefixes.some((prefix) => digits.startsWith(prefix));
 }
 
 export default function OnboardingRoute() {
@@ -48,6 +59,17 @@ export default function OnboardingRoute() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [servedPrefixes, setServedPrefixes] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getServedZipPrefixes().then((prefixes) => {
+      if (!cancelled) setServedPrefixes(prefixes);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const onValuesChange = useCallback((patch: Partial<OnboardingValues>) => {
     setValues((previous) => ({ ...previous, ...patch }));
@@ -142,9 +164,14 @@ export default function OnboardingRoute() {
     (next: OnboardingStep) => {
       if (submitting) return;
 
-      if (step === 'join' && next === 'identity' && values.zip && !isServed(values.zip)) {
-        setStep('waitlist');
-        return;
+      // Only diverts on a definite no. An unreadable list means we do not know where the co-op
+      // serves, and sending somebody who lives in the region to a waiting list for it is the worse
+      // of the two mistakes -- they can always be told later that they are covered.
+      if (step === 'join' && next === 'identity' && values.zip) {
+        if (isServed(values.zip, servedPrefixes) === false) {
+          setStep('waitlist');
+          return;
+        }
       }
 
       // Identity is the last step and it is skippable by design: verification waits for the first
@@ -157,7 +184,7 @@ export default function OnboardingRoute() {
 
       setStep(next);
     },
-    [step, submitting, values.zip, submit],
+    [step, submitting, values.zip, servedPrefixes, submit],
   );
 
   const flow = useMemo(
