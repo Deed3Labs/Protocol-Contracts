@@ -5,16 +5,28 @@ import { useClearBalances } from '@/hooks/useClearBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { toActivityRow } from '@/lib/activityMapping';
-import { getLithicAccount, getPaySummary, type LithicAccountResponse, type PaySummary } from '@/utils/apiClient';
+import { toCredit } from '@/lib/creditMapping';
+import {
+  getCredit,
+  getLithicAccount,
+  getPaySummary,
+  type CreditState,
+  type LithicAccountResponse,
+  type PaySummary,
+} from '@/utils/apiClient';
 
 /**
- * Live Home — everything except credit.
+ * Live Home.
  *
- * Balances, savings, equity credits, recent activity and the deposit numbers behind "Account
- * details" are all real. What stays on placeholder is the credit half: the tiered line, the cycle,
- * the limit backing and term plans. None of those can be read from anywhere yet -- two of the four
- * tiers exist only as off-chain attestations, so they arrive with the credit route rather than
- * from chain (see docs/contracts/clear-deployment-plan.md, Phase D).
+ * Balances, savings, equity credits, recent activity, the deposit numbers behind "Account details"
+ * and now the credit tiers are all real. The tiers come from /api/credit, which reads the
+ * contracts rather than recomputing what they already decide.
+ *
+ * Three things stay on placeholder, each for its own reason rather than for want of wiring. Carry
+ * cost accrues per position against a per-tier index, so what a member owes right now is derivable
+ * but not a single call. The cycle needs the issuer's clock, which the route does not yet expose.
+ * Limit backing needs the registry's per-kind valuations, which is the same read at a different
+ * granularity. All three are the next increment, not a different project.
  *
  * The account numbers are fetched and never cached to disk: they are bank details, and the server
  * reads them from Lithic on demand for the same reason.
@@ -25,6 +37,7 @@ export default function HomeRoute() {
   const { items, loading: txLoading } = useClearTransactions();
   const [lithic, setLithic] = useState<LithicAccountResponse | null>(null);
   const [pay, setPay] = useState<PaySummary | null>(null);
+  const [credit, setCredit] = useState<CreditState | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +54,20 @@ export default function HomeRoute() {
     let cancelled = false;
     void getPaySummary(address).then((result) => {
       if (!cancelled) setPay(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    // Null covers both "no credit line" and "could not read the chain", and the route distinguishes
+    // them with a 503 for the second. Either way the placeholder stands rather than a zeroed line:
+    // telling a member their credit is gone because an RPC timed out is the worse mistake.
+    void getCredit(address).then((result) => {
+      if (!cancelled) setCredit(result);
     });
     return () => {
       cancelled = true;
@@ -74,6 +101,7 @@ export default function HomeRoute() {
     // Home shows a preview; Activity shows the list. Empty is the honest answer for a new member,
     // and the page has a state for it.
     ...(txLoading ? {} : { recent: items.slice(0, 4).map(toActivityRow) }),
+    ...(credit?.complete ? { credit: toCredit(credit.tiers, HOME_IN_USE.credit) } : {}),
   };
 
   return <HomePage data={data} />;

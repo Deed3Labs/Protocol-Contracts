@@ -6,6 +6,7 @@ import { tierAvailability, tierLimits, type CollateralInputs } from './tierLimit
 import { outstandingFor } from '../deposits/depositReceiptService.js';
 import { pulledFundsStore } from './pulledFundsStore.js';
 import { readChainCollateral } from '../chain/collateralReader.js';
+import { readChainCapacities } from '../chain/creditReader.js';
 import { cardStore } from './cardStore.js';
 
 /*
@@ -196,7 +197,7 @@ export async function refreshSnapshot(
   cardToken: string,
   collateral: Partial<CollateralInputs> = {},
 ): Promise<SnapshotResult> {
-  const [lithicCashCents, monthlyDepositCents, pendingCollateralCents, chain, card] =
+  const [lithicCashCents, monthlyDepositCents, pendingCollateralCents, chain, capacities, card] =
     await Promise.all([
       readLithicCashCents(wallet),
       collateral.monthlyDepositCents !== undefined
@@ -206,6 +207,9 @@ export async function refreshSnapshot(
       // see achOriginationService for why sixty days is the number that matters.
       pulledFundsStore.pendingCollateralCents(wallet),
       readChainCollateral(wallet),
+      // What the calculator says the member may borrow, when it is deployed. Unavailable is not a
+      // failure here -- it means the tiers below are computed the way they always were.
+      readChainCapacities(wallet),
       cardStore.get(cardToken),
     ]);
 
@@ -258,6 +262,20 @@ export async function refreshSnapshot(
     bondsWorthCents: collateral.bondsWorthCents ?? chain.bondsWorthCents,
     poolPositionCents: collateral.poolPositionCents ?? chain.poolPositionCents ?? 0,
     boostLimitCents: collateral.boostLimitCents ?? 0,
+    // The chain's own ceilings, where it has them. An explicit argument still wins for the same
+    // reason it does above: a caller that just moved money knows before an RPC read would agree.
+    //
+    // Savings is deliberately NOT overridden when funds are inside a return window. The chain
+    // values the CLRUSD it can see and knows nothing about an ACH debit that could still come
+    // back, so taking its figure whole would let pulled funds lend against themselves -- exactly
+    // what the deduction in writeSnapshot exists to prevent. Fall back to the off-chain path in
+    // that case, which does subtract it.
+    ...(capacities.available && collateral.savingsCents === undefined && !pendingCollateralCents
+      ? { chainSavingsCents: capacities.savingsCents ?? undefined }
+      : {}),
+    ...(capacities.available && collateral.bondsWorthCents === undefined
+      ? { chainAssetCents: capacities.assetCents ?? undefined }
+      : {}),
     cardPaused,
   });
 }

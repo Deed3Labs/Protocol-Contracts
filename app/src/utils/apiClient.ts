@@ -2258,6 +2258,47 @@ export interface PaySummary {
   series: { label: string; rent: number; equity: number }[];
 }
 
+export interface CreditTierRow {
+  /** Tier kind as the contract names it, e.g. "SAVINGS", "ASSET_INTERNAL". */
+  kind: string;
+  limitCents: number;
+  usedCents: number;
+  /** Carry rate in basis points per cycle. */
+  rateBps: number;
+  active: boolean;
+}
+
+export interface CreditTermPlanRow {
+  planId: number;
+  principalCents: number;
+  outstandingCents: number;
+  repaidCents: number;
+  installments: number;
+  installmentCents: number;
+  scheduleTotalCents: number;
+  closed: boolean;
+}
+
+export interface CreditState {
+  wallet: string;
+  tiers: CreditTierRow[];
+  plans: CreditTermPlanRow[];
+  source: string;
+  complete: boolean;
+}
+
+/**
+ * A member's credit line, read from the contracts that hold it.
+ *
+ * Returns null on failure rather than an empty line, and the distinction is the point: the route
+ * answers 503 when it could not read the chain, because a member whose RPC blipped has not had
+ * their credit withdrawn. A caller that cannot tell those apart will tell them they have.
+ */
+export async function getCredit(wallet: string): Promise<CreditState | null> {
+  const r = await apiRequest<CreditState>(`/api/credit/${wallet.toLowerCase()}`);
+  return r.error || !r.data ? null : r.data;
+}
+
 export async function getPaySummary(wallet: string): Promise<PaySummary | null> {
   const r = await apiRequest<PaySummary>(`/api/pay/${wallet.toLowerCase()}/summary`);
   return r.error || !r.data ? null : r.data;

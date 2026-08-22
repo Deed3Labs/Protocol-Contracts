@@ -27,6 +27,10 @@ const ISSUER_ABI = [
   'function drawnOf(address member, uint256 tierId) external view returns (uint256)',
 ];
 
+const LIMITS_ABI = [
+  'function capacityOf(address member, bytes32 kind) external view returns (uint256)',
+];
+
 const TERM_ABI = [
   'function plansOf(address member) external view returns (uint256[])',
   'function planAt(uint256 planId) external view returns (address member, uint256 principal, uint256 principalOutstanding, uint256 repaid, uint64 openedAt, uint32 installments, uint64 installmentLength, uint256 ratePerCycle, bool closed)',
@@ -145,6 +149,49 @@ async function readPlans(
   } catch (error) {
     console.error('[credit] plan read failed', address, error);
     return null;
+  }
+}
+
+export interface ChainCapacities {
+  /** Ceiling the chain grants against savings, in cents. Null when the read failed. */
+  savingsCents: number | null;
+  /** Ceiling against internal assets -- bonds and pool shares -- in cents. */
+  assetCents: number | null;
+  /** True when the calculator is deployed and both reads succeeded. */
+  available: boolean;
+}
+
+/**
+ * What the chain says a member may borrow against their collateral.
+ *
+ * This is the figure `tierLimits` computes off-chain from raw balances at fixed loan-to-values.
+ * They agreed while nothing on-chain did the same arithmetic. They do not agree any more:
+ * `LimitCalculator` applies the registry's governed haircut to the registry's own valuation, and
+ * for bonds that valuation accretes every day toward face. A fixed 95% of a stale balance and 95%
+ * of today's present value are different numbers, and the second is the one the contracts will
+ * actually enforce on a default.
+ *
+ * Returns `available: false` rather than zeroes when the calculator is not deployed, so a caller
+ * can keep using the off-chain computation instead of reading a zero as "no collateral".
+ */
+export async function readChainCapacities(
+  wallet: string,
+  chainId = resolveChainId(),
+): Promise<ChainCapacities> {
+  const calculator = getContractAddress(chainId, 'LimitCalculator');
+  if (!calculator) return { savingsCents: null, assetCents: null, available: false };
+
+  try {
+    const provider = getProvider(chainId);
+    const limits = new ethers.Contract(calculator, LIMITS_ABI, provider);
+    const [savings, asset] = await Promise.all([
+      limits.capacityOf(wallet, ethers.encodeBytes32String('SAVINGS')),
+      limits.capacityOf(wallet, ethers.encodeBytes32String('ASSET_INTERNAL')),
+    ]);
+    return { savingsCents: toCents(savings), assetCents: toCents(asset), available: true };
+  } catch (error) {
+    console.error('[credit] capacity read failed', calculator, error);
+    return { savingsCents: null, assetCents: null, available: false };
   }
 }
 

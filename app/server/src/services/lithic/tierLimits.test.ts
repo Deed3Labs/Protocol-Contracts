@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { tierAvailability, tierLimits, type CollateralInputs } from './tierLimits.js';
+import { BOND_LTV, POOL_LTV, tierAvailability, tierLimits, type CollateralInputs } from './tierLimits.js';
 
 /*
  * The collateral model decides how much unsecured credit a member is offered, so the loan-to-values
@@ -83,5 +83,48 @@ describe('availability', () => {
     const total =
       available.savingsCents + available.assetCents + available.incomeCents + available.boostCents;
     expect(total).toBe(500_000);
+  });
+});
+
+describe("the chain overriding the off-chain arithmetic", () => {
+  const base = {
+    savingsCents: 100_00,
+    bondsWorthCents: 200_00,
+    poolPositionCents: 100_00,
+    monthlyDepositCents: 400_00,
+    boostLimitCents: 0,
+  };
+
+  test("prefers the chain's ceiling over the local loan-to-values", () => {
+    // LimitCalculator applies the registry's governed haircut to a valuation that moves -- a bond
+    // accretes daily toward face -- so 95% of a stale balance and 95% of today's present value are
+    // different numbers. The contracts enforce the second one.
+    const limits = tierLimits({ ...base, chainSavingsCents: 90_00, chainAssetCents: 250_00 });
+    expect(limits.savingsCents).toBe(90_00);
+    expect(limits.assetCents).toBe(250_00);
+  });
+
+  test("falls back to the local arithmetic where the chain says nothing", () => {
+    // An undeployed calculator, or a read that failed, must not read as "no collateral".
+    const limits = tierLimits(base);
+    expect(limits.savingsCents).toBe(100_00);
+    expect(limits.assetCents).toBe(200_00 * BOND_LTV + 100_00 * POOL_LTV);
+  });
+
+  test("still leaves income and boost to the off-chain rules", () => {
+    // Neither exists on-chain: both are underwritten off-chain and arrive as attestations, so the
+    // chain has no ceiling to offer and none should be invented from one.
+    const limits = tierLimits({ ...base, chainSavingsCents: 1, chainAssetCents: 1, boostLimitCents: 500_00 });
+    expect(limits.incomeCents).toBe(200_00);
+    expect(limits.boostCents).toBe(500_00);
+  });
+
+  test("takes zero from the chain as a real answer, not a missing one", () => {
+    // A member who has pledged nothing has a ceiling of zero, and `?? ` has to let that through --
+    // `||` would silently fall back to the local figure and lend against collateral the registry
+    // does not have.
+    const limits = tierLimits({ ...base, chainSavingsCents: 0, chainAssetCents: 0 });
+    expect(limits.savingsCents).toBe(0);
+    expect(limits.assetCents).toBe(0);
   });
 });

@@ -23,6 +23,21 @@ export interface CollateralInputs {
   monthlyDepositCents: number;
   /** Zero unless the member has taken Boost up. */
   boostLimitCents: number;
+  /**
+   * Ceilings the chain has already decided, when it can.
+   *
+   * Set these and the loan-to-values below are not used for those tiers. `LimitCalculator` applies
+   * the registry's governed haircuts to valuations that move -- a bond accretes daily toward face
+   * -- so recomputing the same tiers here from raw balances at fixed rates produces a second
+   * answer that drifts from the one the contracts enforce. Build plan §4: the on-chain version is
+   * canonical and the off-chain path mirrors it.
+   *
+   * Left undefined when the calculator is not deployed or could not be read, which is why this is
+   * an override rather than a replacement -- the arithmetic below is still the answer everywhere
+   * the chain has nothing to say.
+   */
+  chainSavingsCents?: number;
+  chainAssetCents?: number;
 }
 
 export const BOND_LTV = 0.95;
@@ -40,9 +55,10 @@ export function tierLimits(inputs: CollateralInputs): TierLimits {
   const nonNegative = (n: number) => Math.max(0, Math.round(n));
 
   return {
-    savingsCents: nonNegative(inputs.savingsCents),
+    savingsCents: nonNegative(inputs.chainSavingsCents ?? inputs.savingsCents),
     assetCents: nonNegative(
-      inputs.bondsWorthCents * BOND_LTV + inputs.poolPositionCents * POOL_LTV,
+      inputs.chainAssetCents ??
+        inputs.bondsWorthCents * BOND_LTV + inputs.poolPositionCents * POOL_LTV,
     ),
     incomeCents: nonNegative(inputs.monthlyDepositCents * INCOME_SHARE),
     boostCents: nonNegative(inputs.boostLimitCents),
