@@ -175,6 +175,45 @@ is savings-backed; a purchase nets to zero; no redemption path reaches the Assur
 
 *Unlocks nothing in the app on its own — Phase D is what the user sees.*
 
+### The RTD gate — decided, and deferred to here
+
+**Today RTD gates nothing.** Nothing outside `AssurancePool` reads `hasValidRTD()`, `RTD()` or
+`neededReserves()`; `canIssueCreditTo` only checks caller authorization. Inside the pool the target
+decides *where money goes* — below it deposits fill the primary reserve, at or above it they land
+entirely in excess, which is the only withdrawable pot. It is a routing dial, not a brake.
+
+**The plan disagrees with itself about this and should be resolved.** §4c calls RTD "the gate —
+it decides whether credit may be issued." §5 lists RTD under the monitoring table headed *"Run
+continuously. Alert on drift. Never auto-correct."* Those are different instruments.
+
+**Decided: build it here, in the snapshot, marginal and tiered rather than global and binary.**
+When the pool is short, refuse *new unsecured* draws while savings-backed keeps working.
+
+Four reasons it does not belong in the contracts as a network-wide boolean:
+
+- **It inverts the risk.** Savings-backed credit contributes *zero* pool exposure — the collateral
+  is liquid, in-network, seizable at par. But `hasValidRTD()` is one boolean for the whole network,
+  so one unsecured member's draw pushing RTD under target would decline a fully collateralised
+  member at the till for somebody else's risk.
+- **The chain is not in the authorization path.** §4: card auth has ~200ms and is decided by the
+  off-chain snapshot; the chain lags the swipe by seconds. An on-chain gate does not stop a swipe,
+  it fails at *settlement*, after the merchant has been paid.
+- **An empty pool would brick it.** First unsecured draw makes exposure non-zero while primary is
+  still zero, so RTD is 0, below any positive target, and everything is refused until somebody
+  funds the pool.
+- **It costs nothing to wait.** `hasValidRTD()`, `RTD()` and `neededReserves()` are public views,
+  so the snapshot can gate on them with no contract change at all.
+
+A contract-level check, if one is ever wanted, is a *backstop against the snapshot being wrong* and
+must be scoped the same way — unsecured only. The seam is `validateCreditTransaction`, which
+StableCredit already calls per issuer on every transfer.
+
+**Target RTD is 80% on Base Sepolia**, to be walked down by governance as the book produces default
+data. Read against the right denominator: this is reserve over *pool exposure*, not over deposits,
+so it does not compare to a bank's 10–15%. On §0.2's worked example — $7,140 of debt producing
+$2,321 of exposure — 80% is about 26% of total credit and 50% would be about 16%, which is roughly
+where a traditional reserve sits.
+
 ### Phase D — CLRUSD migration + credit in the app
 The §2.2 migration, then the credit half of Home. Needs a decision first: **does the app read credit
 from chain directly, or through a new server route?** Every other page goes through the server, and

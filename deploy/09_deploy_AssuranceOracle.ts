@@ -64,14 +64,21 @@ async function main() {
   }
 
   // Deploy parameters
-  // 20%, matching the test fixture. The inherited default was 100%, which asks the pool to hold a
-  // dollar of reserve for every dollar of pool exposure -- not a fractional reserve at all, and
-  // not what any part of this design assumes.
+  // 80% at launch, walked down by governance as the book produces real default data.
   //
-  // A placeholder either way. The oracle's real job is to serve a target derived from the
-  // predicted default rate (see ITargetRTDSource); until that model exists this is a number
-  // somebody chose, and it should be reviewed before mainnet rather than inherited.
-  const targetRTD = hre.ethers.parseEther("0.2");
+  // Read against the right denominator: this is reserve over *pool exposure*, which already
+  // excludes savings-backed credit entirely and counts asset-backed only for its shortfall after
+  // haircut. It is a ratio against the expected-loss tail, not against deposits, so it does not
+  // compare to a bank's 10-15%. On the plan's own worked example -- $7,140 of debt producing
+  // $2,321 of exposure -- 80% here is about 26% of total credit, and 50% would be about 16%,
+  // which is roughly where a traditional reserve sits.
+  //
+  // The inherited default was 100%: a dollar of reserve per dollar of exposure, which is not a
+  // fractional reserve at all and would leave nothing ever routed to excess.
+  //
+  // Still a number somebody chose. The oracle's real job is to serve a target derived from the
+  // predicted default rate (see ITargetRTDSource); governance setting it is the honest interim.
+  const targetRTD = hre.ethers.parseEther("0.8");
 
   console.log("\nDeployment parameters:");
   console.log(`- AssurancePool: ${assurancePoolDeployment.address}`);
