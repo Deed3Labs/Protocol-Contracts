@@ -12,12 +12,12 @@ import { cn } from '@/lib/utils';
  * out different widths, each narrower than it was tall; boxed and spaced they read as two objects
  * sitting on a panel. Filling it is what makes the reveal look like it was made for them.
  *
- * No hover state. These appear because somebody dragged the row open -- they have already
- * committed to touching one, and a colour change under the cursor is answering a question nobody
- * asked. It also means nothing on a phone, where the whole interaction lives.
+ * The hover fills the same shape, which is the point of it. As a small rounded box inside the
+ * panel it highlighted a region that did not match what the cursor would actually hit; over the
+ * whole action it shows exactly what is about to be pressed.
  */
 const ACTION =
-  'flex h-full w-[60px] flex-col items-center justify-center gap-1 text-[11px] text-foreground-secondary';
+  'flex h-full w-[60px] flex-col items-center justify-center gap-1 text-[11px] text-foreground-secondary transition-colors hover:bg-background/40';
 
 /**
  * How far the row travels to reveal both actions.
