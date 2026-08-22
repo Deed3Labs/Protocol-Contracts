@@ -111,6 +111,36 @@ async function main() {
     }
   }
 
+  // Price the curve so a bond actually pays what the product says it does.
+  //
+  // The factory ships 50% over 30 years, which on a linear curve makes a one-year bond yield about
+  // 1.7% -- the shape is right and the bounds are for a different instrument. 32% over five years
+  // puts the curve between roughly 6.7% and 7.4% a year across the offered terms, which is the
+  // ~7.5% the build plan describes.
+  //
+  // The ceiling is not arbitrary. Borrowing against a bond costs 65 bps a cycle, about 7.9% a
+  // year, and yield-bearing collateral must cost more than it yields or a member draws free money
+  // against their own asset. The curve is tuned to stay under that, not merely near it.
+  const maxDiscount = BigInt(process.env.BOND_MAX_DISCOUNT ?? 3_200);
+  const maxMaturity = BigInt(process.env.BOND_MAX_MATURITY ?? 5 * 365 * 24 * 60 * 60);
+  if ((await factory.getMaxDiscount()) !== maxDiscount || (await factory.getMaxMaturity()) !== maxMaturity) {
+    await (await factory.updateGlobalParameters(maxDiscount, 0n, maxMaturity)).wait();
+    log(`  discount curve -> ${Number(maxDiscount) / 100}% over ${Number(maxMaturity) / (365 * 86400)} years`);
+  }
+
+  // Arm the invariant rather than trusting the tuning above to stay true. The calculator refuses
+  // to grant capacity on a kind whose yield meets or exceeds the tier's carry, so a later retune
+  // that crosses the line fails loudly instead of quietly minting free money.
+  const limitsRecord = getDeployment(network, "LimitCalculator");
+  if (limitsRecord) {
+    const limits = await ethers.getContractAt("LimitCalculator", limitsRecord.address);
+    const bondYieldPerCycle = BigInt(process.env.BOND_YIELD_BPS ?? 60);
+    if ((await limits.collateralYieldOf(BOND)) !== bondYieldPerCycle) {
+      await (await limits.setCollateralYield(BOND, bondYieldPerCycle)).wait();
+      log(`  BOND yield -> ${bondYieldPerCycle} bps/cycle (tier charges 65)`);
+    }
+  }
+
   log("\nBond collection ready. The asset-backed tier now has something behind it.");
 }
 

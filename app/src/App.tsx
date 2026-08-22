@@ -31,7 +31,7 @@ import ScanPage from "@/pages/app/ScanPage";
 import ExplainerPage from "@/pages/app/ExplainerPage";
 import PartnersPage from "@/pages/app/PartnersPage";
 import SendRoute from "@/pages/app/SendRoute";
-import EarnPage from "@/pages/app/EarnPage";
+import EarnRoute from "@/pages/app/EarnRoute";
 import SettingsRoute from "@/pages/app/SettingsRoute";
 
 function App() {
@@ -107,16 +107,15 @@ function App() {
 
                         Home, Savings, Send, Activity and Card read real data
                         through their *Route containers. What is still
-                        placeholder is the credit half — the tiered line, the
-                        cycle, limit backing, term plans — and Earn, which needs
-                        bonds and the lending pool. Both arrive with Phases D and
-                        E of docs/contracts/clear-deployment-plan.md. Each field
+                        placeholder is term plans, which wait on a member
+                        having one, and the projections neither the chain nor
+                        the server holds. Each field
                         falls back rather than blanking, so a page never shows a
                         zero it has not actually read. */}
                     <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                       <Route path="/" element={<HomeRoute />} />
                       <Route path="/savings" element={<SavingsRoute />} />
-                      <Route path="/earn" element={<EarnPage />} />
+                      <Route path="/earn" element={<EarnRoute />} />
                       <Route path="/send" element={<SendRoute />} />
                       <Route path="/activity" element={<ActivityRoute />} />
                       <Route path="/card" element={<CardRoute />} />

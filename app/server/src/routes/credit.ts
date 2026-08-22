@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { requireWalletMatch } from '../middleware/auth.js';
 import { readChainCredit } from '../services/chain/creditReader.js';
+import { readChainEarn } from '../services/chain/earnReader.js';
 
 /*
  * A member's credit line, assembled from the contracts that hold it.
@@ -52,6 +53,48 @@ creditRouter.get('/:wallet', async (req: Request, res: Response) => {
     console.error('[credit] read failed', error);
     res.status(500).json({
       error: 'Failed to read credit',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * The Earn page: the lending pool and the member's bonds.
+ *
+ * On the credit router rather than its own because it is the same question from the other side --
+ * what a member holds that backs their limit. Bonds and pool shares are collateral before they are
+ * products, and reading them through two routes would be two chances for the figures to disagree.
+ */
+creditRouter.get('/:wallet/earn', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+
+  try {
+    const earn = await readChainEarn(wallet);
+
+    if (!earn.complete) {
+      res.status(503).json({
+        error: 'Earn state unavailable',
+        message: 'Could not read the bond or pool contracts. This is not an empty portfolio.',
+        complete: false,
+      });
+      return;
+    }
+
+    res.json({
+      wallet: wallet.toLowerCase(),
+      // Null when the pool is not deployed on this chain, which is a different thing from a pool
+      // holding nothing -- the caller keeps its placeholder rather than showing an empty product.
+      pool: earn.pool,
+      bonds: (earn.bonds ?? []).filter((bond) => !bond.redeemed),
+      terms: earn.terms ?? [],
+      source: 'chain',
+      complete: true,
+    });
+  } catch (error) {
+    console.error('[earn] read failed', error);
+    res.status(500).json({
+      error: 'Failed to read earn state',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }

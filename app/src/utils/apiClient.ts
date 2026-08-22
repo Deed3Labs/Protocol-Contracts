@@ -2316,6 +2316,48 @@ export async function getCredit(wallet: string): Promise<CreditState | null> {
   return r.error || !r.data ? null : r.data;
 }
 
+export interface EarnPoolRow {
+  apyPercent: number;
+  lentCents: number;
+  capacityCents: number;
+  positionCents: number;
+}
+
+export interface EarnBondRow {
+  bondId: string;
+  faceCents: number;
+  paidCents: number;
+  /** What it is worth today — what the credit line lends against, not the face. */
+  worthTodayCents: number;
+  maturityUnix: number;
+  /** When it was issued. The term is this to maturity; months left is now to maturity. */
+  issuedAtUnix: number;
+  redeemed: boolean;
+}
+
+export interface EarnTermRow {
+  months: number;
+  priceCents: number;
+  faceCents: number;
+  ratePercent: number;
+}
+
+export interface EarnState {
+  wallet: string;
+  /** Null when the pool is not deployed — a different thing from a pool holding nothing. */
+  pool: EarnPoolRow | null;
+  bonds: EarnBondRow[];
+  terms: EarnTermRow[];
+  source: string;
+  complete: boolean;
+}
+
+/** The lending pool and the member's bonds, priced by the contracts rather than by a copy. */
+export async function getEarn(wallet: string): Promise<EarnState | null> {
+  const r = await apiRequest<EarnState>(`/api/credit/${wallet.toLowerCase()}/earn`);
+  return r.error || !r.data ? null : r.data;
+}
+
 export async function getPaySummary(wallet: string): Promise<PaySummary | null> {
   const r = await apiRequest<PaySummary>(`/api/pay/${wallet.toLowerCase()}/summary`);
   return r.error || !r.data ? null : r.data;
