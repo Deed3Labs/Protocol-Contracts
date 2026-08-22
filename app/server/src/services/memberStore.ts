@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { normalizeHandle, rejectHandle } from './handles.js';
+import { normalizeHandle, rejectHandle, rejectHandleChange } from './handles.js';
 import { verifyMessage } from 'ethers';
 import type { Pool } from 'pg';
 import { getPostgresPool } from '../config/postgres.js';
@@ -1321,8 +1321,21 @@ export class MemberStore {
     const currentPrivateResult = await this.loadPrivateProfile(member.id, true);
     const currentPrivate = currentPrivateResult.privateProfile;
 
+    // The handle is the one field on this profile that other members type at, so changing it is
+    // not the same kind of edit as changing a bio. Checked here rather than at the route because
+    // this is the path every profile write takes.
+    const nextUsername = resolvePatchedUsername(patch.username, currentPublic.username);
+    if (nextUsername && nextUsername !== currentPublic.username) {
+      const rejection = rejectHandleChange({
+        handle: nextUsername,
+        changesMade: await this.handleChangeCount(member.id),
+        everUsed: await this.handleEverUsed(nextUsername),
+      });
+      if (rejection) throw new Error(`Handle is not available: ${rejection}`);
+    }
+
     const nextPublic = {
-      username: resolvePatchedUsername(patch.username, currentPublic.username),
+      username: nextUsername,
       displayName: resolvePatchedString(patch.displayName, currentPublic.displayName, 120),
       bio: resolvePatchedString(patch.bio, currentPublic.bio, 512),
       timezone: resolvePatchedString(patch.timezone, currentPublic.timezone, 64),
@@ -1368,6 +1381,12 @@ export class MemberStore {
         ]
       );
     });
+
+    // Recorded as chosen, which is what makes it count against the free allowance -- and what
+    // retires the handle they were holding, so nobody else can pick it up.
+    if (nextUsername && nextUsername !== currentPublic.username) {
+      await this.recordHandle(member.id, nextUsername, false);
+    }
 
     const hasPrivatePatch =
       patch.legalName !== undefined

@@ -41,21 +41,39 @@ describe('what may be claimed', () => {
     expect(rejectHandle('cle.ar')).toBe('bad_shape');
   });
 
-  test('reserves the co-op and its support names', () => {
-    for (const name of ['clear', 'support', 'security', 'admin']) {
-      expect(rejectHandle(name)).toBe('reserved');
+  test('reserves the operational names', () => {
+    // Brand names are the other rule's job; these are the ones a member could be told to trust
+    // without the word Clear in them at all.
+    for (const name of ['support', 'security', 'admin', 'billing', 'noreply']) {
+      expect(rejectHandle(name), name).toBe('reserved');
     }
   });
 
   test('reserves the prefixes too, which is the case that actually bites', () => {
     // Somebody told to message @clearsupport who finds @clear_support has been handed to whoever
     // registered it first. Reserving only the exact name would not stop that.
-    expect(rejectHandle('clear_support')).toBe('reserved');
     expect(rejectHandle('support_team')).toBe('reserved');
+    expect(rejectHandle('admin_help')).toBe('reserved');
+  });
+
+  test('reserves anything beginning with the brand, not just exact matches', () => {
+    // A list of exact names only blocks the impersonations somebody thought of in advance.
+    // @clearsupport, @clearteam and @clearbank all read as official to anybody scanning.
+    for (const name of ['clearsupport', 'clearteam', 'clearbank', 'clearpayments', 'clearpath', 'useclearhelp']) {
+      expect(rejectHandle(name), `${name} should be blocked`).toBe('brand');
+    }
+  });
+
+  test('blocks honest names too, which is the trade being made', () => {
+    // @clearwater is somebody's real handle somewhere and they cannot have it here. A member told
+    // to message @clearsupport who finds a person there has been handed to whoever registered it,
+    // and no amount of later moderation undoes a payment.
+    expect(rejectHandle('clearwater')).toBe('brand');
   });
 
   test('reserves regardless of case, since case is not part of a handle', () => {
-    expect(rejectHandle('@Clear')).toBe('reserved');
+    expect(rejectHandle('@Support')).toBe('reserved');
+    expect(rejectHandle('@ClearSupport')).toBe('brand');
   });
 });
 
@@ -128,7 +146,8 @@ describe('changing a handle', () => {
   });
 
   test('still applies the shape and reserved rules', () => {
-    expect(rejectHandleChange({ ...base, handle: 'clear' })).toBe('reserved');
+    expect(rejectHandleChange({ ...base, handle: 'support' })).toBe('reserved');
+    expect(rejectHandleChange({ ...base, handle: 'clearteam' })).toBe('brand');
     expect(rejectHandleChange({ ...base, handle: 'ab' })).toBe('too_short');
   });
 });

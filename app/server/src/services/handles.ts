@@ -33,14 +33,33 @@ const SHAPE = /^[a-z][a-z0-9_]{2,19}$/;
  * whoever registered it first. Cheaper to reserve than to reclaim.
  */
 const RESERVED = new Set([
-  'clear', 'clearapp', 'clearco', 'clearcoop', 'useclear', 'clearpath', 'clearpay',
+  // No brand names here: BRAND_PREFIXES covers every handle beginning with one, so listing them
+  // again would only mean two rules answering the same question with different reasons.
   'admin', 'administrator', 'root', 'system', 'official', 'staff', 'team',
   'support', 'help', 'helpdesk', 'security', 'billing', 'payments', 'noreply',
   'about', 'settings', 'login', 'signup', 'onboarding', 'api', 'www', 'app',
   'me', 'you', 'null', 'undefined', 'anonymous', 'deleted',
 ]);
 
-export type HandleRejection = 'too_short' | 'too_long' | 'bad_shape' | 'reserved';
+/**
+ * Nothing may begin with these.
+ *
+ * Separate from RESERVED because the test is different: those are names nobody may take, these are
+ * beginnings nobody may take. @clearsupport, @clearteam, @clearpayments and @clearbank are all
+ * unclaimable without needing to be guessed at in advance, which is the point -- a list of exact
+ * names only blocks the impersonations somebody already thought of.
+ *
+ * `clearpath` and `clearpay` are covered by `clear` and are not listed twice.
+ *
+ * This does catch honest names. @clearwater is somebody's actual handle somewhere, and they cannot
+ * have it here. That is the trade being made deliberately: in a payments app, a member who is told
+ * to message @clearsupport and finds a person there has been handed to whoever registered it, and
+ * no amount of later moderation undoes a payment. Exceptions are a support decision, which is the
+ * right way round -- granting one is a conversation, reclaiming a handle is not.
+ */
+const BRAND_PREFIXES = ['clear', 'useclear'];
+
+export type HandleRejection = 'too_short' | 'too_long' | 'bad_shape' | 'reserved' | 'brand';
 
 /** Why a handle cannot be used, or null if it can. */
 export function rejectHandle(raw: string): HandleRejection | null {
@@ -53,6 +72,11 @@ export function rejectHandle(raw: string): HandleRejection | null {
   if (RESERVED.has(handle)) return 'reserved';
   for (const name of RESERVED) {
     if (handle.startsWith(`${name}_`)) return 'reserved';
+  }
+  // Any beginning, not just an exact name: @clearsupport reads as official to anybody scanning,
+  // and a list of exact names only blocks the impersonations somebody thought of in advance.
+  for (const prefix of BRAND_PREFIXES) {
+    if (handle.startsWith(prefix)) return 'brand';
   }
   return null;
 }

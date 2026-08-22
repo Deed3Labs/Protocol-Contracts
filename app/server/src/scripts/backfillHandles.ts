@@ -1,5 +1,6 @@
 import { getPostgresPool } from '../config/postgres.js';
 import { generateHandle, isValidHandle, normalizeHandle } from '../services/handles.js';
+import { memberStore } from '../services/memberStore.js';
 
 /*
  * Gives every member a handle.
@@ -25,25 +26,9 @@ async function main() {
   const pool = getPostgresPool();
   if (!pool) throw new Error('No database configured.');
 
-  // The history table is created by the server's schema pass, which may not have run on this
-  // database yet. Same statements, so a server start afterwards is a no-op rather than a conflict.
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS member_handle_history (
-      id BIGSERIAL PRIMARY KEY,
-      member_id BIGINT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
-      handle TEXT NOT NULL,
-      assigned BOOLEAN NOT NULL DEFAULT FALSE,
-      claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      released_at TIMESTAMPTZ
-    )`);
-  await pool.query(
-    `CREATE UNIQUE INDEX IF NOT EXISTS member_handle_history_handle_lower_idx
-       ON member_handle_history (lower(handle));`
-  );
-  await pool.query(
-    `CREATE UNIQUE INDEX IF NOT EXISTS member_profile_public_username_lower_idx
-       ON member_profile_public (lower(username)) WHERE username IS NOT NULL;`
-  );
+  // The schema comes from the store rather than a second copy here. Two definitions of one table
+  // drift, and the one in a backfill script is the copy nobody remembers to update.
+  await memberStore.ensureReady();
 
   const { rows } = await pool.query<{ id: string; primary_wallet: string; username: string | null }>(
     `SELECT m.id, m.primary_wallet, p.username
