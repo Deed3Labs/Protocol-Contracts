@@ -199,3 +199,59 @@ describe('the first payment matches what was quoted', () => {
     expect(quoted).not.toBeCloseTo(940 / 4, 2);
   });
 });
+
+/*
+ * Reconciliation — the thing that ends a stuck charge's wait.
+ *
+ * These tests are about what it must NOT do. Every wrong answer here opens a second term plan for
+ * one purchase, which is a member owing twice for one repair.
+ */
+const RECONCILER = readFileSync(join(SERVER, 'services/chargeReconciler.ts'), 'utf8');
+
+describe('a stuck charge reconciles against the chain', () => {
+  test('the tx hash is written before the wait, not after', () => {
+    // Without it there is no specific transaction to look up, and reconciliation degrades to
+    // hunting for an event that looks about right — which is not good enough to decide whether
+    // somebody owes money.
+    const approve = SERVICE.slice(SERVICE.indexOf('export async function approveCharge'));
+    expect(approve.indexOf('markSubmitted(code, tx.hash)')).toBeLessThan(approve.indexOf('await tx.wait()'));
+  });
+
+  test('a transaction still in the mempool is left alone', () => {
+    // The case a time-based rule gets wrong: an underpriced transaction can sit and then land.
+    expect(SERVICE).toContain('const tx = await rpc.getTransaction(charge.txHash);');
+    expect(SERVICE).toContain('stillPending');
+  });
+
+  test('only a reverted or dropped transaction releases the charge', () => {
+    expect(SERVICE).toContain('if (receipt.status === 0)');
+    const reconcile = SERVICE.slice(SERVICE.indexOf('export async function reconcileCharges'));
+    // A successful receipt must never reach a release.
+    const successBranch = reconcile.slice(reconcile.indexOf('if (planId === undefined)'));
+    expect(successBranch.slice(0, 400)).not.toContain('release');
+  });
+
+  test('a mined transaction with no PlanOpened is left for review, not released', () => {
+    expect(SERVICE).toContain('mined without PlanOpened');
+  });
+
+  test('an unreadable chain changes nothing', () => {
+    expect(SERVICE).toContain('[charge] reconcile failed for');
+  });
+
+  test('it only ever touches resolving rows', () => {
+    // The approve path claims `pending`. Non-overlapping sets is why there is no race here.
+    expect(STORE).toContain("WHERE status = 'resolving'");
+  });
+
+  test('and running it twice is harmless', () => {
+    // finish() guards on status = 'resolving', so a second runner behind the first does nothing.
+    expect(STORE).toContain("WHERE code = $1 AND status = 'resolving'");
+    expect(RECONCILER).toContain('if (running) return;');
+  });
+
+  test('it runs on its own rather than waiting to be remembered', () => {
+    expect(RECONCILER).toContain('setInterval');
+    expect(RECONCILER).toContain('void runChargeReconcileOnce();');
+  });
+});

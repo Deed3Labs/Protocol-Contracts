@@ -329,6 +329,9 @@ export async function approveCharge(
       cycle,
     );
     submitted = true;
+    // Persisted before the wait, not after. If this process dies in the next few seconds, the hash
+    // is the difference between a charge that reconciles itself and one that needs a person.
+    await chargeStore.markSubmitted(code, tx.hash);
     const receipt = await tx.wait();
 
     let planId: number | undefined;
@@ -366,4 +369,127 @@ export async function approveCharge(
     console.error('[charge] submitted but unconfirmed — left resolving for reconciliation:', code);
     return { ok: false, reason: 'We could not confirm this went through. Give us a moment before trying again.' };
   }
+}
+
+/**
+ * Charges left mid-flight, resolved against the chain.
+ *
+ * A charge goes `resolving` the moment it is claimed and stays there until the receipt comes back.
+ * If the process dies in that window — or the RPC connection drops, which from here looks exactly
+ * like a revert — nobody can say whether the plan was opened. Approving again could open a second
+ * plan for one repair; releasing it could do the same. So it waits, and this is what ends the wait.
+ *
+ * It asks one exact question rather than guessing: the transaction hash was written before the
+ * wait began, so there is a specific transaction to look up. Three answers and each is definite:
+ *
+ * - **mined and succeeded** → the plan exists; record it and mark the charge approved
+ * - **mined and reverted** → nothing was opened; hand the charge back so it can be answered again
+ * - **gone from the node entirely** → dropped without mining; hand it back
+ *
+ * A transaction still sitting in the mempool is left alone. That is the case a time-based rule
+ * would get wrong: an underpriced transaction can sit for a long while and then land, and a sweep
+ * that released the charge because "ten minutes is surely enough" would be the thing that opened
+ * the second plan.
+ *
+ * Safe to run concurrently and safe to run twice. `finish` only closes a row that is still
+ * `resolving`, so a second runner arriving behind the first does nothing.
+ */
+export interface ReconcileSummary {
+  checked: number;
+  approved: number;
+  released: number;
+  stillPending: number;
+  unknown: number;
+}
+
+export async function reconcileCharges(olderThanSeconds = 120): Promise<ReconcileSummary> {
+  const summary: ReconcileSummary = { checked: 0, approved: 0, released: 0, stillPending: 0, unknown: 0 };
+
+  const stuck = await chargeStore.listStuck(olderThanSeconds);
+  if (stuck.length === 0) return summary;
+
+  const termIssuerAddress = getContractAddress(chainId(), 'TermIssuer');
+  const rpc = provider();
+  const iface = new ethers.Interface(TERM_ISSUER_ABI);
+
+  for (const charge of stuck) {
+    summary.checked += 1;
+
+    // Claimed but never submitted — the process died between the two. Nothing can have happened
+    // on chain, so this one is simply answerable again.
+    if (!charge.txHash) {
+      await chargeStore.release(charge.code);
+      summary.released += 1;
+      continue;
+    }
+
+    try {
+      const receipt = await rpc.getTransactionReceipt(charge.txHash);
+
+      if (!receipt) {
+        // No receipt yet. Still in the mempool is a different thing from dropped, and only the
+        // second is safe to act on.
+        const tx = await rpc.getTransaction(charge.txHash);
+        if (tx) {
+          summary.stillPending += 1;
+        } else {
+          await chargeStore.release(charge.code);
+          summary.released += 1;
+        }
+        continue;
+      }
+
+      if (receipt.status === 0) {
+        await chargeStore.release(charge.code);
+        summary.released += 1;
+        continue;
+      }
+
+      let planId: number | undefined;
+      for (const log of receipt.logs) {
+        if (termIssuerAddress && log.address.toLowerCase() !== termIssuerAddress.toLowerCase()) continue;
+        try {
+          const parsed = iface.parseLog({ topics: [...log.topics], data: log.data });
+          if (parsed?.name === 'PlanOpened') planId = Number(parsed.args.planId);
+        } catch {
+          /* not our event */
+        }
+      }
+
+      // A successful receipt with no PlanOpened in it should not happen, and is not something to
+      // paper over with a release: the transaction succeeded, so releasing could open a second
+      // plan. Left alone and counted, so it shows up rather than being decided wrongly.
+      if (planId === undefined) {
+        console.error('[charge] mined without PlanOpened — leaving for review:', charge.code, charge.txHash);
+        summary.unknown += 1;
+        continue;
+      }
+
+      await chargeStore.finish(charge.code, {
+        status: 'approved',
+        splitInto: charge.splitInto ?? undefined,
+        planId,
+        txHash: charge.txHash,
+      });
+      summary.approved += 1;
+
+      // The member pressed Approve and never saw it land. Tell them it did.
+      await notificationStore
+        .emit({
+          wallet: charge.memberWallet,
+          kind: 'credit',
+          title: 'Your plan is open',
+          body: `${charge.merchantName} · ${(charge.amountCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`,
+          data: { chargeCode: charge.code, planId },
+          dedupeKey: `charge-approved:${charge.code}`,
+        })
+        .catch(() => {});
+    } catch (error) {
+      // An unreadable chain is not an answer. Left as it is for the next run.
+      console.error('[charge] reconcile failed for', charge.code, error instanceof Error ? error.message : error);
+      summary.unknown += 1;
+    }
+  }
+
+  return summary;
 }

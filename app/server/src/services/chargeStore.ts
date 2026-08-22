@@ -254,6 +254,47 @@ export const chargeStore = {
     return r.rows[0] ? toRow(r.rows[0]) : null;
   },
 
+  /**
+   * Record the transaction the moment it is submitted, before waiting for it.
+   *
+   * This is what makes a crash recoverable rather than a puzzle. Without the hash, a charge stuck
+   * in `resolving` can only be reconciled by hunting for an event that looks about right — same
+   * member, same amount, roughly the same time — and "looks about right" is not good enough to
+   * decide whether somebody owes money. With it, reconciliation asks the chain one exact question.
+   */
+  async markSubmitted(code: string, txHash: string): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTables();
+    await pool.query(
+      `UPDATE ${TABLE} SET tx_hash = $2 WHERE code = $1 AND status = 'resolving'`,
+      [code.trim().toUpperCase(), txHash],
+    );
+  },
+
+  /**
+   * Charges that have been resolving longer than they should be.
+   *
+   * Only ever `resolving`, which is why this cannot race the approve path: that path claims rows
+   * that are `pending`, and the two sets do not overlap. The separation is deliberate — a sweep
+   * that touched pending rows would be a second writer arriving exactly when a member is
+   * answering a charge about to lapse.
+   */
+  async listStuck(olderThanSeconds: number, limit = 50): Promise<ChargeRow[]> {
+    const pool = getPostgresPool();
+    if (!pool) return [];
+    await ensureTables();
+    const r = await pool.query<DbRow>(
+      `SELECT ${COLUMNS} FROM ${TABLE}
+        WHERE status = 'resolving'
+          AND created_at < now() - ($1 || ' seconds')::interval
+        ORDER BY created_at ASC
+        LIMIT $2`,
+      [String(olderThanSeconds), limit],
+    );
+    return r.rows.map(toRow);
+  },
+
   /** Put a claimed row back when the chain call failed — it never became anything. */
   async release(code: string): Promise<void> {
     const pool = getPostgresPool();

@@ -27,6 +27,7 @@ import portfolioRouter from './routes/portfolio.js';
 import payRouter from './routes/pay.js';
 import creditRouter from './routes/credit.js';
 import chargesRouter from './routes/charges.js';
+import { startChargeReconciler } from './services/chargeReconciler.js';
 import withdrawRouter from './routes/withdraw.js';
 import autopayRouter from './routes/autopay.js';
 import contactsRouter from './routes/contacts.js';
@@ -288,6 +289,10 @@ async function startServer() {
     startPortfolioSnapshotter().catch((error) => {
       console.error('⚠️ Portfolio snapshotter failed to start:', error);
     });
+    // Charges left mid-flight by a crash or a dropped RPC connection. Self-healing rather than
+    // something an operator has to remember, because the failure it repairs is invisible until a
+    // member complains that Approve did nothing.
+    startChargeReconciler();
     startAutopayRunner().catch((error) => {
       console.error('⚠️ Autopay runner failed to start:', error);
     });
