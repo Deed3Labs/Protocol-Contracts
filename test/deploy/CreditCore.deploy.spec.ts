@@ -133,6 +133,17 @@ describe("credit core deployment", function () {
       expect(savings.haircutBps).to.equal(10_000n);
     });
 
+  it("closes the encumbrance round-trip rather than leaving it open and looking shut", async function () {
+      // CLRUSD asks the registry what a holder has locked; `encumberedOf` reads `clrusdKind`; an
+      // unset kind answers zero for everybody. Every contract can be deployed, wired and
+      // registered with that field blank, and a member would then be free to move the CLRUSD
+      // backing their savings-backed credit into a bond and have it counted twice. The deployment
+      // to Base Sepolia came up exactly that way.
+      expect(await core.collateral.clrusdKind()).to.equal(
+        ethers.encodeBytes32String("SAVINGS"),
+      );
+    });
+
   it("runs again over its own output without deploying anything twice", async function () {
     const before = await core.ledger.getAddress();
     const second = await deployCreditCore({ quiet: true });

@@ -202,6 +202,19 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
     }
   }
 
+  // Name the kind held as CLRUSD in members' own accounts.
+  //
+  // Without this the whole encumbrance round-trip is open and looks closed. CLRUSD asks the
+  // registry what a holder has locked, `encumberedOf` reads `clrusdKind`, and an unset kind
+  // returns zero -- so a member carrying savings-backed credit could move the very CLRUSD backing
+  // it into a bond or the pool and have it counted twice. Every piece was deployed and wired; the
+  // one field that makes them mean anything was not set.
+  const savingsKey = ethers.encodeBytes32String("SAVINGS");
+  if ((await collateral.clrusdKind()) !== savingsKey) {
+    await (await collateral.setClrusdKind(savingsKey)).wait();
+    log("  clrusdKind -> SAVINGS");
+  }
+
   // ---- Phase C's half, done here only if it already exists ----
   const pool = getDeployment(network, "AssurancePool");
   const oracle = getDeployment(network, "AssuranceOracle");
