@@ -10,6 +10,7 @@ import {
   getServedZipPrefixes,
 } from '@/utils/apiClient';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import { isServed } from '@/lib/servedRegion';
 import OnboardingFlow, {
   type OnboardingStep,
   type OnboardingValues,
@@ -26,24 +27,6 @@ import OnboardingFlow, {
  * what a step *means* is made here, which is what lets the same component serve the preview
  * harness and the live app without knowing which it is in.
  */
-
-/**
- * Whether the co-op is open where somebody lives.
- *
- * The list comes from the server, because regions open when enough people are waiting -- opening
- * one should be a configuration change, not a deploy of the app. Held here only for the length of
- * a signup.
- *
- * A ZIP is checked against it only once the list has actually loaded. Not knowing where the co-op
- * serves is not the same as it serving nowhere, and defaulting to "unserved" would put somebody
- * who lives in the region on a waiting list for it.
- */
-function isServed(zip: string, prefixes: string[] | null): boolean | null {
-  if (!prefixes) return null;
-  const digits = zip.trim().replace(/\D/g, '');
-  if (digits.length < 5) return false;
-  return prefixes.some((prefix) => digits.startsWith(prefix));
-}
 
 export default function OnboardingRoute() {
   const { isAuthenticated } = useAppKitAuth();

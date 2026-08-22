@@ -17,6 +17,7 @@ import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ShareTarget } from "@/pages/auth/ShareTarget";
 import ClaimFunds from "@/pages/auth/ClaimFunds";
 import OnboardingRoute from "@/pages/auth/OnboardingRoute";
+import CounterOnboardingRoute from "@/pages/auth/CounterOnboardingRoute";
 import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
@@ -96,6 +97,12 @@ function App() {
                     {/* Login Page - Public */}
                     <Route path="/login" element={<LoginPage />} />
                     <Route path="/onboarding" element={<OnboardingRoute />} />
+                    {/* The counter entry. `/s/<shop>` is what a shop's code opens, and it is a
+                        separate route rather than a mode of /onboarding because the two flows
+                        differ in their first step, their last step, and whether an account
+                        exists when they begin. `?total=` carries the sale for display only --
+                        see CounterOnboardingRoute on why it can never authorize one. */}
+                    <Route path="/s/:shop" element={<CounterOnboardingRoute />} />
                     <Route path="/wallet-link" element={<WalletLinkPage />} />
                     
                     {/* Share Target - Public */}

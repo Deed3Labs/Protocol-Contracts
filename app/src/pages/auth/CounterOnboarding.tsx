@@ -2,6 +2,10 @@ import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SplitChooser from '@/components/clear/SplitChooser';
+import PendingTotalHeader from '@/components/onboarding/PendingTotalHeader';
+import AddToHomeScreen from '@/components/onboarding/AddToHomeScreen';
+import BankLinkStep, { BankLinkSkip } from '@/components/onboarding/BankLinkStep';
+import { installActionLabel, type InstallMode } from '@/lib/installPrompt';
 import { money } from '@/lib/money';
 
 /**
@@ -19,10 +23,20 @@ import { money } from '@/lib/money';
  *
  * Identity verification still waits for the first deposit, exactly as on the direct path. A bank
  * link isn't a KYC substitute, but it's enough to extend a small term plan.
+ *
+ * Presentational, like `OnboardingFlow`. Every prop below is optional and falls back to the
+ * reference's own figures, which is what lets the preview harness render all five steps with no
+ * backend while `CounterOnboardingRoute` drives the same component live.
  */
 export type CounterStep = 'scan' | 'enter' | 'join' | 'link' | 'choose';
 
 export const COUNTER_STEPS: CounterStep[] = ['scan', 'enter', 'join', 'link', 'choose'];
+
+export interface CounterValues {
+  phone: string;
+  zip: string;
+  splitInto: number;
+}
 
 const EYEBROW: Record<CounterStep, string> = {
   scan: '1 · SCAN',
@@ -31,18 +45,6 @@ const EYEBROW: Record<CounterStep, string> = {
   link: '4 · LINK',
   choose: '5 · CHOOSE',
 };
-
-/** The shop and the amount, carried on every step between the scan and the choice. */
-function PendingTotal({ merchant, amount }: { merchant: string; amount: number }) {
-  return (
-    <div className="mb-[18px] flex items-baseline justify-between gap-3 rounded-lg bg-tier-boost/10 px-3 py-2.5">
-      <span className="min-w-0 truncate text-xs text-tier-boost-fg">{merchant}</span>
-      <span className="shrink-0 text-sm font-medium tabular-nums text-tier-boost-fg">
-        {money(amount, { cents: true })}
-      </span>
-    </div>
-  );
-}
 
 function Step({
   step,
@@ -53,6 +55,9 @@ function Step({
   action,
   onAction,
   pending,
+  afterFootnote,
+  busy = false,
+  actionDisabled = false,
 }: {
   step: CounterStep;
   headline: string;
@@ -62,6 +67,10 @@ function Step({
   action: string;
   onAction?: () => void;
   pending?: ReactNode;
+  /** Sits below the step's footnote — for anything that must not interrupt it. */
+  afterFootnote?: ReactNode;
+  busy?: boolean;
+  actionDisabled?: boolean;
 }) {
   return (
     // Full-bleed and full-height: this is someone's whole screen while they stand at a counter.
@@ -81,9 +90,16 @@ function Step({
 
         <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">{footnote}</p>
 
+        {afterFootnote}
+
         {/* Pinned to the bottom so the button lands under the thumb regardless of step length. */}
-        <Button size="sm" className="mt-auto w-full" onClick={onAction}>
-          {action}
+        <Button
+          size="sm"
+          className="mt-auto w-full"
+          onClick={onAction}
+          disabled={busy || actionDisabled}
+        >
+          {busy ? 'One moment…' : action}
         </Button>
       </div>
     </div>
@@ -100,25 +116,49 @@ export default function CounterOnboarding({
   splitOptions = [1, 2, 4, 12],
   ratePerCycle = 0.02,
   rate = '2% / cycle',
+  values,
+  onValuesChange,
+  install,
+  bank,
+  approvedCents = null,
+  busy = false,
 }: {
   step?: CounterStep;
   onStepChange?: (step: CounterStep) => void;
   merchant?: string;
-  amount?: number;
+  /** Null when the code carried no charge — a printed shop sticker rather than a sale in progress. */
+  amount?: number | null;
   shopUrl?: string;
   inviteCode?: string;
   splitOptions?: number[];
   ratePerCycle?: number;
   rate?: string;
+  values?: CounterValues;
+  onValuesChange?: (patch: Partial<CounterValues>) => void;
+  install?: { mode: InstallMode; onInstall: () => void };
+  bank?: {
+    linked: boolean;
+    busy: boolean;
+    error?: string | null;
+    onConnect: () => void;
+    onSkip?: () => void;
+  };
+  /** What the member's line actually covers, read from the credit contracts. Null when unchecked. */
+  approvedCents?: number | null;
+  busy?: boolean;
 }) {
-  const [phone, setPhone] = useState('');
-  const [zip, setZip] = useState('');
-  const [splitInto, setSplitInto] = useState(4);
+  // Uncontrolled fallback so the preview harness renders every step without a container.
+  const [ownValues, setOwnValues] = useState<CounterValues>({ phone: '', zip: '', splitInto: 4 });
+  const v = values ?? ownValues;
+  const setValues = (patch: Partial<CounterValues>) =>
+    onValuesChange ? onValuesChange(patch) : setOwnValues((prev) => ({ ...prev, ...patch }));
 
   const go = (next: CounterStep) => () => onStepChange?.(next);
-  const pending = <PendingTotal merchant={merchant} amount={amount} />;
+  const pending =
+    amount == null ? undefined : <PendingTotalHeader merchant={merchant} amount={amount} className="mb-[18px]" />;
 
   if (step === 'scan') {
+    const mode = install?.mode ?? 'prompt';
     return (
       <Step
         step="scan"
@@ -130,16 +170,11 @@ export default function CounterOnboarding({
             download.
           </>
         }
-        action="Add to Home Screen"
-        onAction={go('enter')}
+        action={install ? installActionLabel(mode) : 'Add to Home Screen'}
+        onAction={install ? install.onInstall : go('enter')}
+        busy={busy}
       >
-        <div className="rounded-xl border-[0.5px] border-dashed border-border px-5 py-5 text-center">
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            Shop code opens
-            <br />
-            {shopUrl}
-          </p>
-        </div>
+        <AddToHomeScreen shopUrl={shopUrl} mode={mode} />
       </Step>
     );
   }
@@ -154,10 +189,11 @@ export default function CounterOnboarding({
         footnote="No credit check. About three minutes."
         action="Continue"
         onAction={go('join')}
+        busy={busy}
       >
         <Input
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          value={v.phone}
+          onChange={(e) => setValues({ phone: e.target.value })}
           placeholder="Phone number"
           aria-label="Phone number"
           inputMode="tel"
@@ -176,10 +212,11 @@ export default function CounterOnboarding({
         footnote="Invite code filled in from the shop."
         action="Agree & join"
         onAction={go('link')}
+        busy={busy}
       >
         <Input
-          value={zip}
-          onChange={(e) => setZip(e.target.value)}
+          value={v.zip}
+          onChange={(e) => setValues({ zip: e.target.value })}
           placeholder="ZIP code"
           aria-label="ZIP code"
           inputMode="numeric"
@@ -199,35 +236,58 @@ export default function CounterOnboarding({
         headline="Connect your bank"
         body="This is how we say yes without a credit check, and how repayment comes out. Use the account your pay lands in."
         footnote="Read-only. We never see your login, and nothing moves without your say-so."
-        action="Connect securely"
-        onAction={go('choose')}
+        action={bank?.linked ? 'Continue' : 'Connect securely'}
+        onAction={bank && !bank.linked ? bank.onConnect : go('choose')}
+        busy={busy}
+        actionDisabled={bank?.busy ?? false}
+        afterFootnote={
+          bank?.onSkip && !bank.linked ? (
+            <BankLinkSkip busy={bank.busy} onSkip={bank.onSkip} />
+          ) : undefined
+        }
       >
-        <button
-          type="button"
-          className="w-full rounded-[10px] border-[0.5px] border-border px-3.5 py-[11px] text-left text-[13px]"
-        >
-          Search your bank
-        </button>
+        {bank ? (
+          <BankLinkStep
+            linked={bank.linked}
+            busy={bank.busy}
+            error={bank.error}
+            onConnect={bank.onConnect}
+          />
+        ) : (
+          <BankLinkStep linked={false} busy={false} onConnect={go('choose')} />
+        )}
       </Step>
     );
   }
 
+  const due = amount ?? 0;
+  // "Approved" is a claim about the member's line, so it is made from the line rather than from
+  // the amount on the screen. Short of it, the screen says what is actually there — a number
+  // somebody can act on beats a word that turns out not to have been true at the register.
+  const covered = approvedCents == null || approvedCents >= Math.round(due * 100);
+  const available = (approvedCents ?? 0) / 100;
+
   return (
     <Step
       step="choose"
-      headline={`${money(amount, { cents: true })} approved`}
-      body="Pick how to clear it. You can change this any time."
+      headline={covered ? `${money(due, { cents: true })} approved` : `${money(available, { cents: true })} available`}
+      body={
+        covered
+          ? 'Pick how to clear it. You can change this any time.'
+          : 'Your line covers part of this today. Pick how to clear that part, and put the rest on another method.'
+      }
       footnote="Clearing early always costs less."
       action="Confirm & show the shop"
       onAction={go('scan')}
+      busy={busy}
     >
       <SplitChooser
-        amount={amount}
+        amount={covered ? due : available}
         options={splitOptions}
         ratePerCycle={ratePerCycle}
         rate={rate}
-        splitInto={splitInto}
-        onChange={setSplitInto}
+        splitInto={v.splitInto}
+        onChange={(n) => setValues({ splitInto: n })}
         doneBy={(n) => `${n} cycle${n === 1 ? '' : 's'} from now`}
       />
     </Step>

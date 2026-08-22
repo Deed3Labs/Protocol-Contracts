@@ -23,6 +23,7 @@ import EarnPage from '@/pages/app/EarnPage';
 import SettingsPage from '@/pages/app/SettingsPage';
 import OnboardingFlow, { type OnboardingStep } from '@/pages/auth/OnboardingFlow';
 import CounterOnboarding, { COUNTER_STEPS, type CounterStep } from '@/pages/auth/CounterOnboarding';
+import { useInstallMode } from '@/hooks/useInstallMode';
 import {
   HOME_IN_USE,
   HOME_DAY_ONE,
@@ -197,15 +198,48 @@ function TermPlansPreview() {
   );
 }
 
-/** The counter path — five steps, outside the app chrome like the direct one. */
+/**
+ * The counter path — five steps, outside the app chrome like the direct one.
+ *
+ * Driven the way `CounterOnboardingRoute` drives it rather than on the component's own defaults,
+ * so the harness shows what a member actually sees: the install mode this browser is really in,
+ * and the link step's skip. A harness that renders a screen the live container never produces is
+ * worse than no harness — the skip in particular is the resolution of an open question, and it
+ * should be lookable-at.
+ */
 function CounterOnboardingPreview() {
   const [step, setStep] = useState<CounterStep>('scan');
+  const [linked, setLinked] = useState(false);
+  const [partial, setPartial] = useState(false);
+  const installMode = useInstallMode();
 
   return (
     <div className="min-h-screen bg-background">
-      <CounterOnboarding step={step} onStepChange={setStep} />
+      <CounterOnboarding
+        step={step}
+        onStepChange={setStep}
+        install={{ mode: installMode, onInstall: () => setStep('enter') }}
+        bank={{
+          linked,
+          busy: false,
+          onConnect: () => setLinked(true),
+          onSkip: () => setStep('choose'),
+        }}
+        // Null is the real default: unchecked until the contracts have been read. The toggle below
+        // shows the other branch, where the line covers less than the counter is asking for.
+        approvedCents={partial ? 42_000 : null}
+      />
 
       <div className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        <button
+          type="button"
+          onClick={() => setPartial((p) => !p)}
+          className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+            partial ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+          }`}
+        >
+          partial
+        </button>
         {COUNTER_STEPS.map((s) => (
           <button
             key={s}
