@@ -11,7 +11,7 @@ import BondLadder from '@/components/clear/BondLadder';
 import BuyBondDialog from '@/components/clear/BuyBondDialog';
 import PoolDepositDialog from '@/components/clear/PoolDepositDialog';
 import PoolWithdrawDialog from '@/components/clear/PoolWithdrawDialog';
-import { EARN_IN_USE, HOME_IN_USE } from '@/data/clearPlaceholder';
+import { EARN_DAY_ONE, HOME_DAY_ONE } from '@/data/clearPlaceholder';
 import { money, signedMoney } from '@/lib/money';
 import { assetBackedLimit, bondsTotal, earningTotal, type EarnData } from '@/lib/clearModel';
 
@@ -26,7 +26,7 @@ import { assetBackedLimit, bondsTotal, earningTotal, type EarnData } from '@/lib
  * repeats its own backing figure. Buying comes last — you decide whether to lock
  * more money up only after seeing what locking it up actually costs you.
  */
-export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
+export default function EarnPage({ data = EARN_DAY_ONE }: { data?: EarnData }) {
   const [buyOpen, setBuyOpen] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -138,7 +138,7 @@ export default function EarnPage({ data = EARN_IN_USE }: { data?: EarnData }) {
           the drop that would actually happen. */}
       <PoolWithdrawDialog
         data={data}
-        credit={HOME_IN_USE.credit}
+        credit={HOME_DAY_ONE.credit}
         open={withdrawOpen}
         onOpenChange={setWithdrawOpen}
       />

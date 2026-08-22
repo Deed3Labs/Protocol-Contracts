@@ -1,9 +1,23 @@
 import { useEffect, useState } from 'react';
 import SavingsPage from './SavingsPage';
-import { SAVINGS_IN_USE } from '@/data/clearPlaceholder';
+import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { getPaySummary, type PaySummary } from '@/utils/apiClient';
+
+/*
+ * Day-one, not in-use.
+ *
+ * The `*_IN_USE` datasets are the DESIGN PREVIEW's populated fixtures -- a fully furnished account
+ * used to show what the page looks like with money in it. Falling back to them in the real app
+ * meant a member with nothing, or one whose fetch had not landed, was shown somebody else's
+ * balances rendered as their own. That is not a placeholder, it is a fabrication.
+ *
+ * `*_DAY_ONE` is the honest base: zeros, empty lists, and products in their locked or
+ * not-yet-activated state. Real figures are spread over it as they arrive, so a member who does
+ * have money still never watches it flash to zero -- each field only overrides once it has been
+ * read.
+ */
 
 /**
  * Live Savings — the balance and the equity credits behind it.
@@ -43,9 +57,9 @@ export default function SavingsRoute() {
   const haveBalance = Boolean(address) && !loading;
 
   const data = {
-    ...SAVINGS_IN_USE,
+    ...SAVINGS_DAY_ONE,
     savings: {
-      ...SAVINGS_IN_USE.savings,
+      ...SAVINGS_DAY_ONE.savings,
       ...(haveBalance ? { cash: savingsBalance } : {}),
       ...(pay
         ? {

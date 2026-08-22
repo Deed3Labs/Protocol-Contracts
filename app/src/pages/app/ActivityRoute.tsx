@@ -1,7 +1,21 @@
 import ActivityPage from './ActivityPage';
-import { ACTIVITY_IN_USE } from '@/data/clearPlaceholder';
+import { ACTIVITY_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { toActivityRow } from '@/lib/activityMapping';
+
+/*
+ * Day-one, not in-use.
+ *
+ * The `*_IN_USE` datasets are the DESIGN PREVIEW's populated fixtures -- a fully furnished account
+ * used to show what the page looks like with money in it. Falling back to them in the real app
+ * meant a member with nothing, or one whose fetch had not landed, was shown somebody else's
+ * balances rendered as their own. That is not a placeholder, it is a fabrication.
+ *
+ * `*_DAY_ONE` is the honest base: zeros, empty lists, and products in their locked or
+ * not-yet-activated state. Real figures are spread over it as they arrive, so a member who does
+ * have money still never watches it flash to zero -- each field only overrides once it has been
+ * read.
+ */
 
 /**
  * Live Activity — the member's real transactions.
@@ -20,8 +34,8 @@ export default function ActivityRoute() {
   const { items, loading } = useClearTransactions();
 
   const data = loading
-    ? ACTIVITY_IN_USE
-    : { ...ACTIVITY_IN_USE, rows: items.map(toActivityRow) };
+    ? ACTIVITY_DAY_ONE
+    : { ...ACTIVITY_DAY_ONE, rows: items.map(toActivityRow) };
 
   return <ActivityPage data={data} />;
 }

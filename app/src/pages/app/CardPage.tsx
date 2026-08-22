@@ -6,7 +6,7 @@ import CardControlsCard from '@/components/clear/CardControlsCard';
 import CardDetailsDialog from '@/components/clear/CardDetailsDialog';
 import TransactionRows from '@/components/clear/TransactionRows';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
-import { CARD_IN_USE } from '@/data/clearPlaceholder';
+import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
 import { money } from '@/lib/money';
 import type { ActivityRow, CardData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
  * the control should go into a pending state until the issuer confirms.
  */
 export default function CardPage({
-  data = CARD_IN_USE,
+  data = CARD_DAY_ONE,
   onActivate,
   onToggleFreeze,
   busy = false,

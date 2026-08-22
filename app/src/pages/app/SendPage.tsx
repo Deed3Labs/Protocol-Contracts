@@ -10,7 +10,7 @@ import PartnerRows from '@/components/clear/PartnerRows';
 import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
 import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
 import RequestMoneyDialog from '@/components/clear/RequestMoneyDialog';
-import { SEND_IN_USE, HOME_IN_USE } from '@/data/clearPlaceholder';
+import { SEND_DAY_ONE, HOME_DAY_ONE } from '@/data/clearPlaceholder';
 import { money } from '@/lib/money';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import { searchContacts, type Contact, type SendData } from '@/lib/clearModel';
@@ -28,7 +28,7 @@ import { searchContacts, type Contact, type SendData } from '@/lib/clearModel';
  * field leads and the code moves into a column beside it — nobody holds a monitor
  * up to a camera.
  */
-export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
+export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
   const [query, setQuery] = useState('');
   const [recipient, setRecipient] = useState<Contact | null>(null);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -178,8 +178,8 @@ export default function SendPage({ data = SEND_IN_USE }: { data?: SendData }) {
       {recipient && (
         <SendMoneyDialog
           contact={recipient}
-          credit={HOME_IN_USE.credit}
-          cash={HOME_IN_USE.cash}
+          credit={HOME_DAY_ONE.credit}
+          cash={HOME_DAY_ONE.cash}
           open={recipient !== null}
           onOpenChange={(o) => !o && setRecipient(null)}
         />

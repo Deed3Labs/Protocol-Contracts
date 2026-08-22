@@ -1,7 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import CardPage from './CardPage';
-import { CARD_IN_USE } from '@/data/clearPlaceholder';
+import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
 import { createCard, getCards, setCardFrozen, type MemberCard } from '@/utils/apiClient';
+
+/*
+ * Day-one, not in-use.
+ *
+ * The `*_IN_USE` datasets are the DESIGN PREVIEW's populated fixtures -- a fully furnished account
+ * used to show what the page looks like with money in it. Falling back to them in the real app
+ * meant a member with nothing, or one whose fetch had not landed, was shown somebody else's
+ * balances rendered as their own. That is not a placeholder, it is a fabrication.
+ *
+ * `*_DAY_ONE` is the honest base: zeros, empty lists, and products in their locked or
+ * not-yet-activated state. Real figures are spread over it as they arrive, so a member who does
+ * have money still never watches it flash to zero -- each field only overrides once it has been
+ * read.
+ */
 
 /**
  * Live Card — the first page whose controls are real.
@@ -64,17 +78,17 @@ export default function CardRoute() {
   // Until the first load returns, show the placeholder rather than an un-activated card: flashing
   // "Activate card" at someone who already has one reads as their card having vanished.
   const data = !loaded
-    ? CARD_IN_USE
+    ? CARD_DAY_ONE
     : {
-        ...CARD_IN_USE,
+        ...CARD_DAY_ONE,
         activated: Boolean(card),
         frozen: card?.frozen ?? false,
         last4: card?.lastFour ?? '',
         variant: (card?.type === 'PHYSICAL' ? 'physical' : 'virtual') as 'physical' | 'virtual',
         // Real once the card can settle. Showing placeholder spending against a real card would be
         // inventing transactions that never happened.
-        transactions: card ? [] : CARD_IN_USE.transactions,
-        periodTotal: card ? 0 : CARD_IN_USE.periodTotal,
+        transactions: card ? [] : CARD_DAY_ONE.transactions,
+        periodTotal: card ? 0 : CARD_DAY_ONE.periodTotal,
       };
 
   return <CardPage data={data} onActivate={activate} onToggleFreeze={toggleFreeze} busy={busy} />;

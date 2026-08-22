@@ -8,7 +8,7 @@ import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
 import ActivityList from '@/components/clear/ActivityList';
 import CycleSpendCard from '@/components/clear/CycleSpendCard';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
-import { ACTIVITY_IN_USE } from '@/data/clearPlaceholder';
+import { ACTIVITY_DAY_ONE } from '@/data/clearPlaceholder';
 import { money } from '@/lib/money';
 import {
   ACTIVITY_FILTERS,
@@ -31,7 +31,7 @@ import {
  * Reached from the tab bar on desktop and from "See all" on Home on mobile,
  * where six tabs wouldn't fit the pill.
  */
-export default function ActivityPage({ data = ACTIVITY_IN_USE }: { data?: ActivityData }) {
+export default function ActivityPage({ data = ACTIVITY_DAY_ONE }: { data?: ActivityData }) {
   const [filter, setFilter] = useState<ActivityFilter>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [query, setQuery] = useState('');

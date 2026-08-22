@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import HomePage from './HomePage';
-import { HOME_IN_USE } from '@/data/clearPlaceholder';
+import { HOME_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useAppKitAccount } from '@/lib/walletCompat';
@@ -14,6 +14,20 @@ import {
   type LithicAccountResponse,
   type PaySummary,
 } from '@/utils/apiClient';
+
+/*
+ * Day-one, not in-use.
+ *
+ * The `*_IN_USE` datasets are the DESIGN PREVIEW's populated fixtures -- a fully furnished account
+ * used to show what the page looks like with money in it. Falling back to them in the real app
+ * meant a member with nothing, or one whose fetch had not landed, was shown somebody else's
+ * balances rendered as their own. That is not a placeholder, it is a fabrication.
+ *
+ * `*_DAY_ONE` is the honest base: zeros, empty lists, and products in their locked or
+ * not-yet-activated state. Real figures are spread over it as they arrive, so a member who does
+ * have money still never watches it flash to zero -- each field only overrides once it has been
+ * read.
+ */
 
 /**
  * Live Home.
@@ -80,10 +94,10 @@ export default function HomeRoute() {
   const haveBalances = Boolean(address) && !balancesLoading;
 
   const data = {
-    ...HOME_IN_USE,
+    ...HOME_DAY_ONE,
     ...(haveBalances ? { cash } : {}),
     savings: {
-      ...HOME_IN_USE.savings,
+      ...HOME_DAY_ONE.savings,
       ...(haveBalances ? { cash: savings } : {}),
       ...(pay
         ? { credits: pay.totalEquity, vested: pay.vestedEquity, vesting: pay.pendingEquity }
@@ -92,7 +106,7 @@ export default function HomeRoute() {
     ...(deposit
       ? {
           cashAccount: {
-            ...HOME_IN_USE.cashAccount,
+            ...HOME_DAY_ONE.cashAccount,
             accountNumber: deposit.accountNumber,
             routingNumber: deposit.routingNumber,
           },
@@ -103,9 +117,9 @@ export default function HomeRoute() {
     ...(txLoading ? {} : { recent: items.slice(0, 4).map(toActivityRow) }),
     ...(credit?.complete
       ? {
-          credit: toCredit(credit.tiers, HOME_IN_USE.credit),
-          cycle: toCycle(credit.cycle, HOME_IN_USE.cycle),
-          backing: toLimitBacking(credit.tiers, HOME_IN_USE.backing),
+          credit: toCredit(credit.tiers, HOME_DAY_ONE.credit),
+          cycle: toCycle(credit.cycle, HOME_DAY_ONE.cycle),
+          backing: toLimitBacking(credit.tiers, HOME_DAY_ONE.backing),
         }
       : {}),
   };

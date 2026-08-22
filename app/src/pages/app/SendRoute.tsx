@@ -1,11 +1,25 @@
 import { useEffect, useState } from 'react';
 import SendPage from './SendPage';
-import { SEND_IN_USE } from '@/data/clearPlaceholder';
+import { SEND_DAY_ONE } from '@/data/clearPlaceholder';
 import { useContacts, type Contact as SavedContact } from '@/context/ContactsContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { listSendTransfers } from '@/utils/apiClient';
 import type { Contact, PendingClaim } from '@/lib/clearModel';
 import type { SendTransferSummary } from '@/types/send';
+
+/*
+ * Day-one, not in-use.
+ *
+ * The `*_IN_USE` datasets are the DESIGN PREVIEW's populated fixtures -- a fully furnished account
+ * used to show what the page looks like with money in it. Falling back to them in the real app
+ * meant a member with nothing, or one whose fetch had not landed, was shown somebody else's
+ * balances rendered as their own. That is not a placeholder, it is a fabrication.
+ *
+ * `*_DAY_ONE` is the honest base: zeros, empty lists, and products in their locked or
+ * not-yet-activated state. Real figures are spread over it as they arrive, so a member who does
+ * have money still never watches it flash to zero -- each field only overrides once it has been
+ * read.
+ */
 
 /**
  * Live Send — the member's own handle, their real contacts, and money still waiting to be claimed.
@@ -32,7 +46,7 @@ export default function SendRoute() {
   const handle = profile.username ? `@${profile.username}` : profile.handle;
 
   const data = {
-    ...SEND_IN_USE,
+    ...SEND_DAY_ONE,
     ...(handle ? { handle } : {}),
     ...(profile.address
       ? { codeUrl: `${window.location.origin}/send?to=${profile.address}` }

@@ -22,7 +22,7 @@ import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
 import AutoSaveDialog from '@/components/clear/AutoSaveDialog';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
-import { HOME_IN_USE, SAVINGS_IN_USE } from '@/data/clearPlaceholder';
+import { HOME_DAY_ONE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import {
   activePlans,
   addableTier,
@@ -47,7 +47,7 @@ import {
  * credit, savings). The same elements are placed into both layouts so the two
  * can't drift apart.
  */
-export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
+export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [breakdownOpen, setBreakdownOpen] = useState(false);
@@ -198,11 +198,11 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
         </div>
         {termPlanModals}
         <AddToSavingsDialog
-          data={{ ...SAVINGS_IN_USE, savings: data.savings, creditLimitToday: 0 }}
+          data={{ ...SAVINGS_DAY_ONE, savings: data.savings, creditLimitToday: 0 }}
           open={addSavingsOpen}
           onOpenChange={setAddSavingsOpen}
         />
-        <AutoSaveDialog data={SAVINGS_IN_USE} open={autoSaveOpen} onOpenChange={setAutoSaveOpen} />
+        <AutoSaveDialog data={SAVINGS_DAY_ONE} open={autoSaveOpen} onOpenChange={setAutoSaveOpen} />
       </>
     );
   }
@@ -335,7 +335,7 @@ export default function HomePage({ data = HOME_IN_USE }: { data?: HomeData }) {
       {/* Savings deposit is the same surface Savings uses; the credit limit it
           quotes comes from this page's own tiers so the two can't disagree. */}
       <AddToSavingsDialog
-        data={{ ...SAVINGS_IN_USE, savings: data.savings, creditLimitToday: creditLimit(data.credit) }}
+        data={{ ...SAVINGS_DAY_ONE, savings: data.savings, creditLimitToday: creditLimit(data.credit) }}
         open={addSavingsOpen}
         onOpenChange={setAddSavingsOpen}
       />

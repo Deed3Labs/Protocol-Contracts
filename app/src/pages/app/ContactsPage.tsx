@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Users } from 'lucide-react';
 import ContactsPanel from '@/components/clear/ContactsPanel';
 import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
-import { CONTACTS, HOME_IN_USE } from '@/data/clearPlaceholder';
+import { CONTACTS, HOME_DAY_ONE } from '@/data/clearPlaceholder';
 import type { Contact } from '@/lib/clearModel';
 
 /**
@@ -35,8 +35,8 @@ export default function ContactsPage({ contacts = CONTACTS }: { contacts?: Conta
       {recipient && (
         <SendMoneyDialog
           contact={recipient}
-          credit={HOME_IN_USE.credit}
-          cash={HOME_IN_USE.cash}
+          credit={HOME_DAY_ONE.credit}
+          cash={HOME_DAY_ONE.cash}
           open={recipient !== null}
           onOpenChange={(o) => !o && setRecipient(null)}
         />

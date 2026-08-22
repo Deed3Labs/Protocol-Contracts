@@ -1,10 +1,24 @@
 import { useEffect, useState } from 'react';
 import EarnPage from './EarnPage';
-import { EARN_IN_USE, SAVINGS_IN_USE } from '@/data/clearPlaceholder';
+import { EARN_DAY_ONE, MILESTONES } from '@/data/clearPlaceholder';
 import { toEarnData } from '@/lib/earnMapping';
 import { projectReserveDate } from '@/lib/reserveProjection';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { getEarn, getPaySummary, type EarnState, type PaySummary } from '@/utils/apiClient';
+
+/*
+ * Day-one, not in-use.
+ *
+ * The `*_IN_USE` datasets are the DESIGN PREVIEW's populated fixtures -- a fully furnished account
+ * used to show what the page looks like with money in it. Falling back to them in the real app
+ * meant a member with nothing, or one whose fetch had not landed, was shown somebody else's
+ * balances rendered as their own. That is not a placeholder, it is a fabrication.
+ *
+ * `*_DAY_ONE` is the honest base: zeros, empty lists, and products in their locked or
+ * not-yet-activated state. Real figures are spread over it as they arrive, so a member who does
+ * have money still never watches it flash to zero -- each field only overrides once it has been
+ * read.
+ */
 
 /**
  * Live Earn — the lending pool, the member's bonds, and what both have made.
@@ -41,12 +55,12 @@ export default function EarnRoute() {
   }, [address]);
 
   const reserveDate = pay
-    ? projectReserveDate(pay.totalEquity, pay.equityThisMonth, SAVINGS_IN_USE.milestones)
+    ? projectReserveDate(pay.totalEquity, pay.equityThisMonth, MILESTONES)
     : null;
 
   const data = earn?.complete
-    ? toEarnData(earn.pool, earn.bonds, earn.terms, earn.earnedToDateCents, reserveDate, EARN_IN_USE)
-    : EARN_IN_USE;
+    ? toEarnData(earn.pool, earn.bonds, earn.terms, earn.earnedToDateCents, reserveDate, EARN_DAY_ONE)
+    : EARN_DAY_ONE;
 
   return <EarnPage data={data} />;
 }

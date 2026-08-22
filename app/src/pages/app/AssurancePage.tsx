@@ -3,7 +3,7 @@ import { ShieldCheck } from 'lucide-react';
 import Card from '@/components/clear/Card';
 import AssurancePanel from '@/components/clear/AssurancePanel';
 import ReservePanel from '@/components/clear/ReservePanel';
-import { SAVINGS_IN_USE, ASSURANCE_RESERVE } from '@/data/clearPlaceholder';
+import { SAVINGS_DAY_ONE, ASSURANCE_RESERVE } from '@/data/clearPlaceholder';
 import type { AssuranceReserve, SavingsData } from '@/lib/clearModel';
 
 /**
@@ -14,7 +14,7 @@ import type { AssuranceReserve, SavingsData } from '@/lib/clearModel';
  * make someone navigate for it. Mobile keeps it as a row through to the explainer.
  */
 export default function AssurancePage({
-  data = SAVINGS_IN_USE,
+  data = SAVINGS_DAY_ONE,
   reserve = ASSURANCE_RESERVE,
 }: {
   data?: SavingsData;

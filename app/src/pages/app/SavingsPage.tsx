@@ -11,7 +11,7 @@ import AssuranceList from '@/components/clear/AssuranceList';
 import VestingList from '@/components/clear/VestingList';
 import AddToSavingsDialog from '@/components/clear/AddToSavingsDialog';
 import AutoSaveDialog from '@/components/clear/AutoSaveDialog';
-import { SAVINGS_IN_USE } from '@/data/clearPlaceholder';
+import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { money } from '@/lib/money';
 import { savingsTotal, type SavingsData } from '@/lib/clearModel';
 
@@ -29,7 +29,7 @@ import { savingsTotal, type SavingsData } from '@/lib/clearModel';
  * counters all derive from the credit balance, so at zero it's the same page with
  * nothing unlocked. Only the vesting list has its own empty copy.
  */
-export default function SavingsPage({ data = SAVINGS_IN_USE }: { data?: SavingsData }) {
+export default function SavingsPage({ data = SAVINGS_DAY_ONE }: { data?: SavingsData }) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const [addOpen, setAddOpen] = useState(false);

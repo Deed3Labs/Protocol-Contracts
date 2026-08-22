@@ -277,7 +277,12 @@ export const HOME_DAY_ONE: HomeData = {
  * balance, so both states share them — only the credit balance moves, and the
  * done/current/locked states fall out of that.
  */
-const MILESTONES: Milestone[] = [
+/**
+ * The equity-credit ladder. Product configuration rather than sample data -- these thresholds are
+ * the same for every member, so reading them off a furnished fixture was reaching into the wrong
+ * place for the right numbers.
+ */
+export const MILESTONES: Milestone[] = [
   { id: 'start', title: 'Start saving', credits: 1000 },
   { id: 'assurance', title: 'Unlock full assurance', credits: 4000 },
   { id: 'community', title: 'Choose your community', credits: 8000 },
