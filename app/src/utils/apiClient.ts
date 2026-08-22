@@ -2944,3 +2944,57 @@ export async function createRampBuySession(p: {
   const r = await apiRequest<{ url: string | null }>(`/api/ramp/buy/session`, { method: 'POST', body: JSON.stringify(p) });
   return r.error || !r.data ? { url: null } : r.data;
 }
+
+
+/**
+ * A charge a merchant has raised, as the member is allowed to see it.
+ *
+ * Payout and the merchant's address are absent because they are not the member's business — the
+ * co-op's cut of a repair is between the co-op and the shop.
+ */
+export interface ChargeView {
+  code: string;
+  merchantName: string;
+  amountCents: number;
+  status: 'pending' | 'resolving' | 'approved' | 'declined' | 'expired';
+  splitInto: number | null;
+  planId: number | null;
+  txHash: string | null;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/** Null when there is no such charge, or it is not this member's to see. */
+export async function getCharge(code: string): Promise<ChargeView | null> {
+  const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}`);
+  return r.error || !r.data ? null : r.data;
+}
+
+export interface ChargeActionResult {
+  charge?: ChargeView;
+  error?: string;
+}
+
+/**
+ * Approve, with the split chosen here and only here.
+ *
+ * The error is surfaced rather than swallowed: approving opens a real term plan, and the failures
+ * a member can do something about — a lapsed charge, a split the contracts do not offer, a limit
+ * that will not stretch — are all things they need told rather than a spinner that stops.
+ */
+export async function approveCharge(code: string, installments: number): Promise<ChargeActionResult> {
+  const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ installments }),
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not approve this charge.' };
+  return { charge: r.data };
+}
+
+export async function declineCharge(code: string): Promise<ChargeActionResult> {
+  const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}/decline`, {
+    method: 'POST',
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not decline this charge.' };
+  return { charge: r.data };
+}
