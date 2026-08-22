@@ -82,10 +82,22 @@ I said earlier this was ten product decisions. Having read the reference properl
 | `cardWaitlist` | `false` | no card-waitlist step in the reference |
 | `notificationsOptIn` | `true` | the counter path sends text, email and push; consent is the flow |
 
-**Two genuinely open, and they need your call:**
+**`username` — resolved: generate at signup, editable in settings.**
 
-1. **`username`** — the reference collects no handle. Options: derive one from the contact, generate one and let them change it in settings, or add a step. Send shows `@handle`, so something has to fill it.
-2. **`reasons`** — the old flow asked why someone was joining and the new one does not. Either drop it from the submit contract or accept it empty. It is worth knowing which, because dropping it is a schema change and accepting it empty quietly ends a data series.
+More of this exists than it appears. `member_profile_public.username` is already `TEXT UNIQUE` and already writable through `updateMemberProfile`. What is missing is that it is not a *lookup key*: `lookupWallet` takes email and phone only, which is why Send can display a handle and not resolve one.
+
+The identity model the handle joins is already the right one. The smart account is the identity; email and phone are pointers to it, matched by hash, opt-out aware, against either the saved profile contact or the login identity. A handle is a third pointer to the same wallet.
+
+One difference decides its shape. **Email and phone are hashed; a handle must not be.** They are hashed because they are contact details somebody may not want discoverable — hence the opt-out. A handle exists *to* be public and typed at by someone who does not have your number. Stored plain and looked up directly is correct rather than lax. It does mean the directory opt-out stops being one switch: "my handle resolves, my phone does not" is a coherent preference and the current single toggle cannot express it.
+
+Generated rather than asked, because a unique constraint means a *chosen* handle needs a collision-and-retry step the reference has no screen for — and the reference removed the question deliberately. Generated-then-editable gives Send something to show on day one without reintroducing it.
+
+Two things that follow, and both are cheaper before anyone holds a handle:
+
+- **Uniqueness is case-sensitive as written.** `TEXT UNIQUE` makes `@Kai` and `@kai` different handles, which is a phishing surface in a payments app. Needs a normalised column or a lowercase index.
+- **Reserved handles.** `@clear`, `@support`, `@admin` and similar should never be claimable.
+
+**Still open: `reasons`** — the old flow asked why somebody was joining and the new one does not. Either drop it from the submit contract or accept it empty. Worth knowing which: dropping it is a schema change, and accepting it empty quietly ends a data series.
 
 ---
 
@@ -103,6 +115,8 @@ Against the reference, the app does not have:
 ---
 
 ## 5. Phases
+
+**A0 — Handles.** Normalisation, a reserved list, generation, and `@handle → wallet` in the directory. Ahead of the container because the container assigns one, and because every rule here is cheaper to set before anybody holds a handle than after.
 
 **A — The container.** A real `OnboardingRoute` owning the step machine, the auth calls and the submit chain that `UserOnboarding` owns today. Direct path only, reusing the existing steps. Route `/onboarding` to it; archive `UserOnboarding` and `OnboardingView`. *Nothing new is collected; the field table above fills the gap.*
 
