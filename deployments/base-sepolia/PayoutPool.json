@@ -1,5 +1,5 @@
 {
-  "address": "0xbA9880F46128027D39F7694e3cfdf077D716c0a7",
+  "address": "0xe9d1bb0cbDFf7e1Ef8Ff30104C21318c3Bca7D66",
   "abi": [
     {
       "type": "constructor",
@@ -9,24 +9,64 @@
     },
     {
       "type": "error",
-      "name": "LimitCalculatorInvalidAddress",
+      "name": "PayoutPoolClaimAlreadyPaid",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "claimId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "PayoutPoolInsufficientFunds",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "held"
+        },
+        {
+          "type": "uint256",
+          "name": "required"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "PayoutPoolInvalidAddress",
       "inputs": []
     },
     {
       "type": "error",
-      "name": "LimitCalculatorYieldExceedsCarry",
+      "name": "PayoutPoolMerchantInactive",
       "inputs": [
         {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "address",
+          "name": "merchant"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "PayoutPoolNothingToRedeem",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "PayoutPoolOutOfOrder",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "claimId"
         },
         {
           "type": "uint256",
-          "name": "yieldBps"
-        },
-        {
-          "type": "uint256",
-          "name": "rateBps"
+          "name": "expected"
         }
       ]
     },
@@ -50,33 +90,6 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "Attested",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member",
-          "indexed": true
-        },
-        {
-          "type": "bytes32",
-          "name": "kind",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "value",
-          "indexed": false
-        },
-        {
-          "type": "uint64",
-          "name": "effectiveFrom",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
       "name": "BeaconUpgraded",
       "inputs": [
         {
@@ -89,16 +102,21 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "CapacitiesPushed",
+      "name": "ClaimPaid",
       "inputs": [
         {
+          "type": "uint256",
+          "name": "claimId",
+          "indexed": true
+        },
+        {
           "type": "address",
-          "name": "member",
+          "name": "merchant",
           "indexed": true
         },
         {
           "type": "uint256",
-          "name": "total",
+          "name": "amount",
           "indexed": false
         }
       ]
@@ -106,16 +124,16 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "CollateralYieldUpdated",
+      "name": "Funded",
       "inputs": [
         {
-          "type": "bytes32",
-          "name": "kind",
+          "type": "address",
+          "name": "from",
           "indexed": true
         },
         {
           "type": "uint256",
-          "name": "yieldPerCycleBps",
+          "name": "amount",
           "indexed": false
         }
       ]
@@ -135,12 +153,27 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "IssuerUpdated",
+      "name": "Redeemed",
       "inputs": [
         {
           "type": "address",
-          "name": "issuer",
+          "name": "merchant",
           "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "paidNow",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "claimId",
+          "indexed": false
         }
       ]
     },
@@ -213,6 +246,18 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "ShortfallReported",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "shortfall",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Upgraded",
       "inputs": [
         {
@@ -224,7 +269,7 @@
     },
     {
       "type": "function",
-      "name": "ATTESTOR_ROLE",
+      "name": "DEFAULT_ADMIN_ROLE",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -238,7 +283,7 @@
     },
     {
       "type": "function",
-      "name": "DEFAULT_ADMIN_ROLE",
+      "name": "FUNDER_ROLE",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -266,45 +311,60 @@
     },
     {
       "type": "function",
-      "name": "attest",
-      "constant": false,
+      "name": "canPayNext",
+      "constant": true,
+      "stateMutability": "view",
       "payable": false,
-      "inputs": [
+      "inputs": [],
+      "outputs": [
         {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
-        },
-        {
-          "type": "uint256",
-          "name": "value"
-        },
-        {
-          "type": "uint64",
-          "name": "effectiveFrom"
+          "type": "bool",
+          "name": ""
         }
-      ],
-      "outputs": []
+      ]
     },
     {
       "type": "function",
-      "name": "capacityOf",
+      "name": "claimAt",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "uint256",
+          "name": "claimId"
         }
       ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint64",
+          "name": "claimedAt"
+        },
+        {
+          "type": "uint64",
+          "name": "dueBy"
+        },
+        {
+          "type": "bool",
+          "name": "paid"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "claimCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
       "outputs": [
         {
           "type": "uint256",
@@ -314,7 +374,26 @@
     },
     {
       "type": "function",
-      "name": "collateralRegistry",
+      "name": "claimsOwnedBy",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "coopTreasury",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -328,45 +407,29 @@
     },
     {
       "type": "function",
-      "name": "collateralYieldOf",
-      "constant": true,
-      "stateMutability": "view",
+      "name": "donate",
+      "constant": false,
       "payable": false,
       "inputs": [
         {
-          "type": "bytes32",
-          "name": ""
+          "type": "uint256",
+          "name": "amount"
         }
       ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
+      "outputs": []
     },
     {
       "type": "function",
-      "name": "effectiveAttestationOf",
-      "constant": true,
-      "stateMutability": "view",
+      "name": "fund",
+      "constant": false,
       "payable": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "uint256",
+          "name": "amount"
         }
       ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
+      "outputs": []
     },
     {
       "type": "function",
@@ -429,6 +492,20 @@
     },
     {
       "type": "function",
+      "name": "held",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "initialize",
       "constant": false,
       "payable": false,
@@ -439,18 +516,26 @@
         },
         {
           "type": "address",
-          "name": "_collateralRegistry"
+          "name": "_stableCredit"
         },
         {
           "type": "address",
-          "name": "_issuer"
+          "name": "_reserveToken"
+        },
+        {
+          "type": "address",
+          "name": "_merchantRegistry"
+        },
+        {
+          "type": "address",
+          "name": "_coopTreasury"
         }
       ],
       "outputs": []
     },
     {
       "type": "function",
-      "name": "issuer",
+      "name": "merchantRegistry",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -464,28 +549,46 @@
     },
     {
       "type": "function",
-      "name": "pendingAttestationOf",
+      "name": "nextUnpaid",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "payNext",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "claimId"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "payQueue",
+      "constant": false,
+      "payable": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "uint256",
+          "name": "maxClaims"
         }
       ],
       "outputs": [
         {
           "type": "uint256",
-          "name": "value"
-        },
-        {
-          "type": "uint64",
-          "name": "effectiveFrom"
+          "name": "paidCount"
         }
       ]
     },
@@ -505,19 +608,56 @@
     },
     {
       "type": "function",
-      "name": "pushCapacities",
+      "name": "queuedTotal",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "redeem",
       "constant": false,
       "payable": false,
       "inputs": [
         {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": "paidNow"
+        },
+        {
+          "type": "uint256",
+          "name": "claimId"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "redeemableOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
           "type": "address",
-          "name": "member"
+          "name": "merchant"
         }
       ],
       "outputs": [
         {
           "type": "uint256",
-          "name": "total"
+          "name": ""
         }
       ]
     },
@@ -540,6 +680,20 @@
     },
     {
       "type": "function",
+      "name": "reserveToken",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "revokeRole",
       "constant": false,
       "payable": false,
@@ -557,33 +711,44 @@
     },
     {
       "type": "function",
-      "name": "setCollateralYield",
+      "name": "setCoopTreasury",
       "constant": false,
       "payable": false,
       "inputs": [
         {
-          "type": "bytes32",
-          "name": "kind"
-        },
-        {
-          "type": "uint256",
-          "name": "yieldPerCycleBps"
+          "type": "address",
+          "name": "treasury"
         }
       ],
       "outputs": []
     },
     {
       "type": "function",
-      "name": "setIssuer",
-      "constant": false,
+      "name": "shortfall",
+      "constant": true,
+      "stateMutability": "view",
       "payable": false,
-      "inputs": [
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "stableCredit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
         {
           "type": "address",
-          "name": "_issuer"
+          "name": ""
         }
-      ],
-      "outputs": []
+      ]
     },
     {
       "type": "function",
@@ -601,62 +766,6 @@
         {
           "type": "bool",
           "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "tiersOf",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "tuple[]",
-          "name": "tiers",
-          "components": [
-            {
-              "type": "bytes32",
-              "name": "kind"
-            },
-            {
-              "type": "uint256",
-              "name": "capacity"
-            },
-            {
-              "type": "uint256",
-              "name": "drawn"
-            },
-            {
-              "type": "uint256",
-              "name": "ratePerCycle"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "totalCapacityOf",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": "total"
         }
       ]
     },

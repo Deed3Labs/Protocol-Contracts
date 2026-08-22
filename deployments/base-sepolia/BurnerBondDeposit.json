@@ -1,0 +1,787 @@
+{
+  "address": "0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3",
+  "abi": [
+    {
+      "type": "constructor",
+      "stateMutability": "undefined",
+      "payable": false,
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DepositMade",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "depositId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "depositor",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "maturityDate",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "discountPercentage",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DepositParametersUpdated",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "maxDiscount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "maxMaturity",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DepositProcessed",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "depositId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "depositor",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Initialized",
+      "inputs": [
+        {
+          "type": "uint8",
+          "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "OwnershipTransferred",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "previousOwner",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "newOwner",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "assurancePool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "batchProcessDeposits",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256[]",
+          "name": "depositIds"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": "bondIds"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "bondVault",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "calculateRequiredDeposit",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "tokenAddress"
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue"
+        },
+        {
+          "type": "uint256",
+          "name": "maturityDate"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "depositIdsBy",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "deposits",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "tokenAddress"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue"
+        },
+        {
+          "type": "uint256",
+          "name": "maturityDate"
+        },
+        {
+          "type": "uint256",
+          "name": "discountPercentage"
+        },
+        {
+          "type": "address",
+          "name": "depositor"
+        },
+        {
+          "type": "uint256",
+          "name": "bondId"
+        },
+        {
+          "type": "bool",
+          "name": "isProcessed"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "depositsBy",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "emergencyRecover",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "token"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "factory",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getDepositIdsBy",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "depositor"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getDepositInfo",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "depositId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "tuple",
+          "name": "",
+          "components": [
+            {
+              "type": "address",
+              "name": "tokenAddress"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint256",
+              "name": "faceValue"
+            },
+            {
+              "type": "uint256",
+              "name": "maturityDate"
+            },
+            {
+              "type": "uint256",
+              "name": "discountPercentage"
+            },
+            {
+              "type": "address",
+              "name": "depositor"
+            },
+            {
+              "type": "uint256",
+              "name": "bondId"
+            },
+            {
+              "type": "bool",
+              "name": "isProcessed"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getDepositParameters",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        },
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getDepositStatistics",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "totalMade"
+        },
+        {
+          "type": "uint256",
+          "name": "totalDeposited"
+        },
+        {
+          "type": "uint256",
+          "name": "totalProcessed"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getDepositsBy",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "depositor"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "getPendingDeposits",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "initialize",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_factory"
+        },
+        {
+          "type": "address",
+          "name": "_assurancePool"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "makeDeposit",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "tokenAddress"
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue"
+        },
+        {
+          "type": "uint256",
+          "name": "maturityDate"
+        },
+        {
+          "type": "uint256",
+          "name": "discountPercentage"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "owner",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pendingDepositIndex",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "pendingDeposits",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "processDeposit",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "depositId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "refundDeposit",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "depositId"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "registerCollection",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "tokenAddress"
+        },
+        {
+          "type": "address",
+          "name": "collectionAddress"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "renounceOwnership",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setAssurancePool",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_assurancePool"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setBondVault",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_bondVault"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setFactory",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "_factory"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setMinDiscount",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "_minDiscount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "tokenToCollection",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalDepositsMade",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalDepositsProcessed",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalTokenDeposited",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "transferOwnership",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "newOwner"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "updateDepositParameters",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "_maxDiscount"
+        },
+        {
+          "type": "uint256",
+          "name": "_minDiscount"
+        },
+        {
+          "type": "uint256",
+          "name": "_maxMaturity"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "updateFaceValueLimits",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "_minFaceValue"
+        },
+        {
+          "type": "uint256",
+          "name": "_maxFaceValue"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "updateMinMaturity",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "_minMaturity"
+        }
+      ],
+      "outputs": []
+    }
+  ],
+  "blockNumber": 0
+}

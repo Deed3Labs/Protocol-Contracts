@@ -1,5 +1,5 @@
 {
-  "address": "0xbA9880F46128027D39F7694e3cfdf077D716c0a7",
+  "address": "0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5",
   "abi": [
     {
       "type": "constructor",
@@ -9,24 +9,36 @@
     },
     {
       "type": "error",
-      "name": "LimitCalculatorInvalidAddress",
+      "name": "MerchantRegistryAlreadyRegistered",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "MerchantRegistryDiscountTooHigh",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "discountBps"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "MerchantRegistryInvalidAddress",
       "inputs": []
     },
     {
       "type": "error",
-      "name": "LimitCalculatorYieldExceedsCarry",
+      "name": "MerchantRegistryUnknown",
       "inputs": [
         {
-          "type": "bytes32",
-          "name": "kind"
-        },
-        {
-          "type": "uint256",
-          "name": "yieldBps"
-        },
-        {
-          "type": "uint256",
-          "name": "rateBps"
+          "type": "address",
+          "name": "merchant"
         }
       ]
     },
@@ -50,33 +62,6 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "Attested",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member",
-          "indexed": true
-        },
-        {
-          "type": "bytes32",
-          "name": "kind",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "value",
-          "indexed": false
-        },
-        {
-          "type": "uint64",
-          "name": "effectiveFrom",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
       "name": "BeaconUpgraded",
       "inputs": [
         {
@@ -89,33 +74,11 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "CapacitiesPushed",
+      "name": "DefaultPayoutWindowUpdated",
       "inputs": [
         {
-          "type": "address",
-          "name": "member",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "total",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "CollateralYieldUpdated",
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": "kind",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "yieldPerCycleBps",
+          "type": "uint32",
+          "name": "payoutWindow",
           "indexed": false
         }
       ]
@@ -135,12 +98,39 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "IssuerUpdated",
+      "name": "MerchantActiveSet",
       "inputs": [
         {
           "type": "address",
-          "name": "issuer",
+          "name": "merchant",
           "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "active",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "MerchantRegistered",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "payoutWindow",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "discountBps",
+          "indexed": false
         }
       ]
     },
@@ -213,26 +203,39 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "TermsUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant",
+          "indexed": true
+        },
+        {
+          "type": "uint32",
+          "name": "payoutWindow",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "approvalCap",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "discountBps",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Upgraded",
       "inputs": [
         {
           "type": "address",
           "name": "implementation",
           "indexed": true
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "ATTESTOR_ROLE",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "bytes32",
-          "name": ""
         }
       ]
     },
@@ -266,43 +269,14 @@
     },
     {
       "type": "function",
-      "name": "attest",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
-        },
-        {
-          "type": "uint256",
-          "name": "value"
-        },
-        {
-          "type": "uint64",
-          "name": "effectiveFrom"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "capacityOf",
+      "name": "approvalCapOf",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
+          "name": "merchant"
         }
       ],
       "outputs": [
@@ -314,51 +288,28 @@
     },
     {
       "type": "function",
-      "name": "collateralRegistry",
+      "name": "defaultPayoutWindow",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [],
       "outputs": [
         {
-          "type": "address",
+          "type": "uint32",
           "name": ""
         }
       ]
     },
     {
       "type": "function",
-      "name": "collateralYieldOf",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": ""
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "effectiveAttestationOf",
+      "name": "discountBpsOf",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
+          "name": "merchant"
         }
       ],
       "outputs": [
@@ -438,23 +389,62 @@
           "name": "admin"
         },
         {
-          "type": "address",
-          "name": "_collateralRegistry"
-        },
-        {
-          "type": "address",
-          "name": "_issuer"
+          "type": "uint32",
+          "name": "_defaultPayoutWindow"
         }
       ],
       "outputs": []
     },
     {
       "type": "function",
-      "name": "issuer",
+      "name": "isActive",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
-      "inputs": [],
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "isRegistered",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "merchantAt",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "index"
+        }
+      ],
       "outputs": [
         {
           "type": "address",
@@ -464,28 +454,34 @@
     },
     {
       "type": "function",
-      "name": "pendingAttestationOf",
+      "name": "merchantCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "payoutWindowOf",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
+          "name": "merchant"
         }
       ],
       "outputs": [
         {
-          "type": "uint256",
-          "name": "value"
-        },
-        {
-          "type": "uint64",
-          "name": "effectiveFrom"
+          "type": "uint32",
+          "name": ""
         }
       ]
     },
@@ -505,21 +501,28 @@
     },
     {
       "type": "function",
-      "name": "pushCapacities",
+      "name": "registerMerchant",
       "constant": false,
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "member"
-        }
-      ],
-      "outputs": [
+          "name": "merchant"
+        },
+        {
+          "type": "uint32",
+          "name": "payoutWindow"
+        },
         {
           "type": "uint256",
-          "name": "total"
+          "name": "approvalCap"
+        },
+        {
+          "type": "uint256",
+          "name": "discountBps"
         }
-      ]
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -557,30 +560,30 @@
     },
     {
       "type": "function",
-      "name": "setCollateralYield",
+      "name": "setActive",
       "constant": false,
       "payable": false,
       "inputs": [
         {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "address",
+          "name": "merchant"
         },
         {
-          "type": "uint256",
-          "name": "yieldPerCycleBps"
+          "type": "bool",
+          "name": "active"
         }
       ],
       "outputs": []
     },
     {
       "type": "function",
-      "name": "setIssuer",
+      "name": "setDefaultPayoutWindow",
       "constant": false,
       "payable": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "_issuer"
+          "type": "uint32",
+          "name": "payoutWindow"
         }
       ],
       "outputs": []
@@ -606,36 +609,40 @@
     },
     {
       "type": "function",
-      "name": "tiersOf",
+      "name": "termsOf",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "member"
+          "name": "merchant"
         }
       ],
       "outputs": [
         {
-          "type": "tuple[]",
-          "name": "tiers",
+          "type": "tuple",
+          "name": "",
           "components": [
             {
-              "type": "bytes32",
-              "name": "kind"
+              "type": "uint32",
+              "name": "payoutWindow"
             },
             {
               "type": "uint256",
-              "name": "capacity"
+              "name": "approvalCap"
             },
             {
               "type": "uint256",
-              "name": "drawn"
+              "name": "discountBps"
             },
             {
-              "type": "uint256",
-              "name": "ratePerCycle"
+              "type": "bool",
+              "name": "registered"
+            },
+            {
+              "type": "bool",
+              "name": "active"
             }
           ]
         }
@@ -643,22 +650,28 @@
     },
     {
       "type": "function",
-      "name": "totalCapacityOf",
-      "constant": true,
-      "stateMutability": "view",
+      "name": "updateTerms",
+      "constant": false,
       "payable": false,
       "inputs": [
         {
           "type": "address",
-          "name": "member"
-        }
-      ],
-      "outputs": [
+          "name": "merchant"
+        },
+        {
+          "type": "uint32",
+          "name": "payoutWindow"
+        },
         {
           "type": "uint256",
-          "name": "total"
+          "name": "approvalCap"
+        },
+        {
+          "type": "uint256",
+          "name": "discountBps"
         }
-      ]
+      ],
+      "outputs": []
     },
     {
       "type": "function",

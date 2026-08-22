@@ -1,5 +1,5 @@
 {
-  "address": "0xbA9880F46128027D39F7694e3cfdf077D716c0a7",
+  "address": "0x9f311Fd8F05Ed517130dC044cDdBb159d02bA855",
   "abi": [
     {
       "type": "constructor",
@@ -9,24 +9,74 @@
     },
     {
       "type": "error",
-      "name": "LimitCalculatorInvalidAddress",
+      "name": "BondVaultAlreadySettled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultBondExists",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultInsufficientFunds",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "held"
+        },
+        {
+          "type": "uint256",
+          "name": "required"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultInvalidAddress",
       "inputs": []
     },
     {
       "type": "error",
-      "name": "LimitCalculatorYieldExceedsCarry",
+      "name": "BondVaultReserveFloorOutOfBounds",
       "inputs": [
         {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "uint256",
+          "name": "bps"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultUnknownBond",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "BondVaultWouldBreachReserve",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "deployable"
         },
         {
           "type": "uint256",
-          "name": "yieldBps"
-        },
-        {
-          "type": "uint256",
-          "name": "rateBps"
+          "name": "requested"
         }
       ]
     },
@@ -50,33 +100,6 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "Attested",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member",
-          "indexed": true
-        },
-        {
-          "type": "bytes32",
-          "name": "kind",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "value",
-          "indexed": false
-        },
-        {
-          "type": "uint64",
-          "name": "effectiveFrom",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
       "name": "BeaconUpgraded",
       "inputs": [
         {
@@ -89,33 +112,16 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "CapacitiesPushed",
+      "name": "DeployableWithdrawn",
       "inputs": [
         {
           "type": "address",
-          "name": "member",
+          "name": "to",
           "indexed": true
         },
         {
           "type": "uint256",
-          "name": "total",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "CollateralYieldUpdated",
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": "kind",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "yieldPerCycleBps",
+          "name": "amount",
           "indexed": false
         }
       ]
@@ -135,12 +141,44 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "IssuerUpdated",
+      "name": "PurchaseRecorded",
       "inputs": [
         {
-          "type": "address",
-          "name": "issuer",
+          "type": "uint256",
+          "name": "bondId",
           "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "principal",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "maturity",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ReserveTermsUpdated",
+      "inputs": [
+        {
+          "type": "uint64",
+          "name": "window",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "minReserveBps",
+          "indexed": false
         }
       ]
     },
@@ -213,6 +251,87 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "Rolled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "oldBondId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "newBondId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "rolledPrincipal",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "newFaceValue",
+          "indexed": false
+        },
+        {
+          "type": "uint64",
+          "name": "newMaturity",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "Settled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "SettledEarly",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "presentValue",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Upgraded",
       "inputs": [
         {
@@ -224,7 +343,7 @@
     },
     {
       "type": "function",
-      "name": "ATTESTOR_ROLE",
+      "name": "BOND_ROLE",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -252,6 +371,34 @@
     },
     {
       "type": "function",
+      "name": "MAX_RESERVE_FLOOR_BPS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "MIN_RESERVE_FLOOR_BPS",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "OPERATOR_ROLE",
       "constant": true,
       "stateMutability": "view",
@@ -266,78 +413,39 @@
     },
     {
       "type": "function",
-      "name": "attest",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
-        },
-        {
-          "type": "uint256",
-          "name": "value"
-        },
-        {
-          "type": "uint64",
-          "name": "effectiveFrom"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "capacityOf",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "collateralRegistry",
+      "name": "TREASURY_ROLE",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [],
       "outputs": [
         {
-          "type": "address",
+          "type": "bytes32",
           "name": ""
         }
       ]
     },
     {
       "type": "function",
-      "name": "collateralYieldOf",
+      "name": "coversNearTermMaturities",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
-      "inputs": [
+      "inputs": [],
+      "outputs": [
         {
-          "type": "bytes32",
+          "type": "bool",
           "name": ""
         }
-      ],
+      ]
+    },
+    {
+      "type": "function",
+      "name": "deployableExcess",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
       "outputs": [
         {
           "type": "uint256",
@@ -347,24 +455,20 @@
     },
     {
       "type": "function",
-      "name": "effectiveAttestationOf",
+      "name": "faceDueWithin",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "uint64",
+          "name": "window"
         }
       ],
       "outputs": [
         {
           "type": "uint256",
-          "name": ""
+          "name": "due"
         }
       ]
     },
@@ -429,6 +533,20 @@
     },
     {
       "type": "function",
+      "name": "held",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "initialize",
       "constant": false,
       "payable": false,
@@ -439,53 +557,85 @@
         },
         {
           "type": "address",
-          "name": "_collateralRegistry"
+          "name": "_reserveToken"
         },
         {
-          "type": "address",
-          "name": "_issuer"
+          "type": "uint64",
+          "name": "_reserveWindow"
         }
       ],
       "outputs": []
     },
     {
       "type": "function",
-      "name": "issuer",
+      "name": "minReserveBps",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [],
       "outputs": [
         {
-          "type": "address",
+          "type": "uint256",
           "name": ""
         }
       ]
     },
     {
       "type": "function",
-      "name": "pendingAttestationOf",
+      "name": "obligations",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "uint256",
+          "name": ""
         }
       ],
       "outputs": [
         {
           "type": "uint256",
-          "name": "value"
+          "name": "principal"
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue"
         },
         {
           "type": "uint64",
-          "name": "effectiveFrom"
+          "name": "maturity"
+        },
+        {
+          "type": "bool",
+          "name": "settled"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "outstandingBonds",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256[]",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "outstandingCount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
         }
       ]
     },
@@ -505,21 +655,28 @@
     },
     {
       "type": "function",
-      "name": "pushCapacities",
+      "name": "recordPurchase",
       "constant": false,
       "payable": false,
       "inputs": [
         {
-          "type": "address",
-          "name": "member"
-        }
-      ],
-      "outputs": [
+          "type": "uint256",
+          "name": "bondId"
+        },
         {
           "type": "uint256",
-          "name": "total"
+          "name": "principal"
+        },
+        {
+          "type": "uint256",
+          "name": "faceValue"
+        },
+        {
+          "type": "uint64",
+          "name": "maturity"
         }
-      ]
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -540,6 +697,48 @@
     },
     {
       "type": "function",
+      "name": "requiredReserve",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "reserveToken",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "reserveWindow",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint64",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "revokeRole",
       "constant": false,
       "payable": false,
@@ -557,30 +756,85 @@
     },
     {
       "type": "function",
-      "name": "setCollateralYield",
+      "name": "roll",
       "constant": false,
       "payable": false,
       "inputs": [
         {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "uint256",
+          "name": "oldBondId"
         },
         {
           "type": "uint256",
-          "name": "yieldPerCycleBps"
+          "name": "newBondId"
+        },
+        {
+          "type": "uint256",
+          "name": "newFaceValue"
+        },
+        {
+          "type": "uint64",
+          "name": "newMaturity"
         }
       ],
       "outputs": []
     },
     {
       "type": "function",
-      "name": "setIssuer",
+      "name": "setReserveTerms",
       "constant": false,
       "payable": false,
       "inputs": [
         {
+          "type": "uint64",
+          "name": "window"
+        },
+        {
+          "type": "uint256",
+          "name": "floorBps"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "settle",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        },
+        {
           "type": "address",
-          "name": "_issuer"
+          "name": "to"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "settleEarly",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "bondId"
+        },
+        {
+          "type": "address",
+          "name": "to"
+        },
+        {
+          "type": "uint256",
+          "name": "presentValue"
         }
       ],
       "outputs": []
@@ -606,57 +860,43 @@
     },
     {
       "type": "function",
-      "name": "tiersOf",
+      "name": "totalFaceOutstanding",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        }
-      ],
+      "inputs": [],
       "outputs": [
         {
-          "type": "tuple[]",
-          "name": "tiers",
-          "components": [
-            {
-              "type": "bytes32",
-              "name": "kind"
-            },
-            {
-              "type": "uint256",
-              "name": "capacity"
-            },
-            {
-              "type": "uint256",
-              "name": "drawn"
-            },
-            {
-              "type": "uint256",
-              "name": "ratePerCycle"
-            }
-          ]
+          "type": "uint256",
+          "name": ""
         }
       ]
     },
     {
       "type": "function",
-      "name": "totalCapacityOf",
+      "name": "totalFaceSettled",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        }
-      ],
+      "inputs": [],
       "outputs": [
         {
           "type": "uint256",
-          "name": "total"
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "totalPrincipal",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
         }
       ]
     },
@@ -687,6 +927,23 @@
         {
           "type": "bytes",
           "name": "data"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "withdrawDeployable",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "address",
+          "name": "to"
         }
       ],
       "outputs": []

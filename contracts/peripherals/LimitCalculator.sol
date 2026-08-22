@@ -177,7 +177,21 @@ contract LimitCalculator is AccessControlUpgradeable, UUPSUpgradeable {
         emit CapacitiesPushed(member, total);
     }
 
+    event IssuerUpdated(address indexed issuer);
+
     /* ========== RESTRICTED ========== */
+
+    /// @notice points the calculator at a different issuer.
+    /// @dev An issuer can be replaced -- a tier set keyed to the wrong collateral kinds cannot be
+    /// reordered in place, because rates must ascend and position in the array is draw order. The
+    /// calculator has to be able to follow it, or a replacement issuer silently receives no
+    /// capacities and every member's limit reads as zero.
+    /// @param _issuer address of the issuer whose tier capacities this calculator writes.
+    function setIssuer(address _issuer) external onlyRole(OPERATOR_ROLE) {
+        if (_issuer == address(0)) revert LimitCalculatorInvalidAddress();
+        issuer = RevolvingIssuer(_issuer);
+        emit IssuerUpdated(_issuer);
+    }
 
     /// @notice records an underwritten figure for a member.
     /// @dev Income and Boost are underwritten off-chain and arrive as an attestation rather than

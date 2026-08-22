@@ -1,5 +1,5 @@
 {
-  "address": "0xbA9880F46128027D39F7694e3cfdf077D716c0a7",
+  "address": "0x8E2E075F6d985cfd21F5732D4D080b01Bbb89593",
   "abi": [
     {
       "type": "constructor",
@@ -9,24 +9,44 @@
     },
     {
       "type": "error",
-      "name": "LimitCalculatorInvalidAddress",
+      "name": "LiquidatorInvalidAddress",
       "inputs": []
     },
     {
       "type": "error",
-      "name": "LimitCalculatorYieldExceedsCarry",
+      "name": "LiquidatorNotInDefault",
       "inputs": [
         {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "address",
+          "name": "issuer"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorNotRealizable",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "collateral"
         },
         {
           "type": "uint256",
-          "name": "yieldBps"
-        },
+          "name": "seized"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorNothingToSeize",
+      "inputs": [
         {
-          "type": "uint256",
-          "name": "rateBps"
+          "type": "address",
+          "name": "member"
         }
       ]
     },
@@ -50,73 +70,12 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "Attested",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member",
-          "indexed": true
-        },
-        {
-          "type": "bytes32",
-          "name": "kind",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "value",
-          "indexed": false
-        },
-        {
-          "type": "uint64",
-          "name": "effectiveFrom",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
       "name": "BeaconUpgraded",
       "inputs": [
         {
           "type": "address",
           "name": "beacon",
           "indexed": true
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "CapacitiesPushed",
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "total",
-          "indexed": false
-        }
-      ]
-    },
-    {
-      "type": "event",
-      "anonymous": false,
-      "name": "CollateralYieldUpdated",
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": "kind",
-          "indexed": true
-        },
-        {
-          "type": "uint256",
-          "name": "yieldPerCycleBps",
-          "indexed": false
         }
       ]
     },
@@ -135,12 +94,32 @@
     {
       "type": "event",
       "anonymous": false,
-      "name": "IssuerUpdated",
+      "name": "Liquidated",
       "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
         {
           "type": "address",
           "name": "issuer",
           "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "seized",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "redeemed",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "repaid",
+          "indexed": false
         }
       ]
     },
@@ -213,26 +192,44 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "SharesSeized",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "pool",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "shares",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "realized",
+          "indexed": false
+        },
+        {
+          "type": "bool",
+          "name": "queued",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Upgraded",
       "inputs": [
         {
           "type": "address",
           "name": "implementation",
           "indexed": true
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "ATTESTOR_ROLE",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "bytes32",
-          "name": ""
         }
       ]
     },
@@ -266,48 +263,14 @@
     },
     {
       "type": "function",
-      "name": "attest",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
-        },
-        {
-          "type": "uint256",
-          "name": "value"
-        },
-        {
-          "type": "uint64",
-          "name": "effectiveFrom"
-        }
-      ],
-      "outputs": []
-    },
-    {
-      "type": "function",
-      "name": "capacityOf",
+      "name": "clrusd",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
-        }
-      ],
+      "inputs": [],
       "outputs": [
         {
-          "type": "uint256",
+          "type": "address",
           "name": ""
         }
       ]
@@ -322,48 +285,6 @@
       "outputs": [
         {
           "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "collateralYieldOf",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "bytes32",
-          "name": ""
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "effectiveAttestationOf",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        },
-        {
-          "type": "bytes32",
-          "name": "kind"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
           "name": ""
         }
       ]
@@ -439,39 +360,44 @@
         },
         {
           "type": "address",
-          "name": "_collateralRegistry"
+          "name": "_stableCredit"
         },
         {
           "type": "address",
-          "name": "_issuer"
+          "name": "_clrusd"
+        },
+        {
+          "type": "address",
+          "name": "_vault"
+        },
+        {
+          "type": "address",
+          "name": "_reserveToken"
+        },
+        {
+          "type": "address",
+          "name": "_collateralRegistry"
         }
       ],
       "outputs": []
     },
     {
       "type": "function",
-      "name": "issuer",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [],
-      "outputs": [
-        {
-          "type": "address",
-          "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "pendingAttestationOf",
-      "constant": true,
-      "stateMutability": "view",
+      "name": "liquidate",
+      "constant": false,
       "payable": false,
       "inputs": [
         {
           "type": "address",
           "name": "member"
+        },
+        {
+          "type": "address",
+          "name": "issuer"
+        },
+        {
+          "type": "uint256",
+          "name": "tierId"
         },
         {
           "type": "bytes32",
@@ -481,11 +407,45 @@
       "outputs": [
         {
           "type": "uint256",
-          "name": "value"
+          "name": "repaid"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "liquidateShares",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
         },
         {
-          "type": "uint64",
-          "name": "effectiveFrom"
+          "type": "address",
+          "name": "issuer"
+        },
+        {
+          "type": "uint256",
+          "name": "tierId"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        },
+        {
+          "type": "address",
+          "name": "pool"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "realized"
+        },
+        {
+          "type": "bool",
+          "name": "queued"
         }
       ]
     },
@@ -500,24 +460,6 @@
         {
           "type": "bytes32",
           "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "pushCapacities",
-      "constant": false,
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": "total"
         }
       ]
     },
@@ -540,6 +482,20 @@
     },
     {
       "type": "function",
+      "name": "reserveToken",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "revokeRole",
       "constant": false,
       "payable": false,
@@ -557,33 +513,42 @@
     },
     {
       "type": "function",
-      "name": "setCollateralYield",
+      "name": "settleRealized",
       "constant": false,
       "payable": false,
       "inputs": [
         {
-          "type": "bytes32",
-          "name": "kind"
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "address",
+          "name": "issuer"
         },
         {
           "type": "uint256",
-          "name": "yieldPerCycleBps"
+          "name": "tierId"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
         }
       ],
       "outputs": []
     },
     {
       "type": "function",
-      "name": "setIssuer",
-      "constant": false,
+      "name": "stableCredit",
+      "constant": true,
+      "stateMutability": "view",
       "payable": false,
-      "inputs": [
+      "inputs": [],
+      "outputs": [
         {
           "type": "address",
-          "name": "_issuer"
+          "name": ""
         }
-      ],
-      "outputs": []
+      ]
     },
     {
       "type": "function",
@@ -601,62 +566,6 @@
         {
           "type": "bool",
           "name": ""
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "tiersOf",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "tuple[]",
-          "name": "tiers",
-          "components": [
-            {
-              "type": "bytes32",
-              "name": "kind"
-            },
-            {
-              "type": "uint256",
-              "name": "capacity"
-            },
-            {
-              "type": "uint256",
-              "name": "drawn"
-            },
-            {
-              "type": "uint256",
-              "name": "ratePerCycle"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "type": "function",
-      "name": "totalCapacityOf",
-      "constant": true,
-      "stateMutability": "view",
-      "payable": false,
-      "inputs": [
-        {
-          "type": "address",
-          "name": "member"
-        }
-      ],
-      "outputs": [
-        {
-          "type": "uint256",
-          "name": "total"
         }
       ]
     },
@@ -690,6 +599,20 @@
         }
       ],
       "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "vault",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
     }
   ],
   "blockNumber": 0

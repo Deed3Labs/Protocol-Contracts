@@ -105,7 +105,7 @@ describe("credit core deployment", function () {
       // nothing to return and no member can draw a cent. The first deployment to Base Sepolia
       // came up exactly that way, which is why this is asserted rather than assumed.
       const count = Number(await core.revolving.tierCount());
-      expect(count).to.equal(4);
+      expect(count).to.equal(5);
 
       const rates: bigint[] = [];
       for (let id = 0; id < count; id++) {
@@ -123,8 +123,21 @@ describe("credit core deployment", function () {
       expect(rates[0]).to.equal(0n);
     });
 
+    it("keys every tier to a collateral kind that is actually registered", async function () {
+      // capacityOf(member, kind) reads the registry for that exact kind, so a tier keyed to a kind
+      // nothing pledges under is a tier no member can ever fill. The first Base Sepolia deployment
+      // had an ASSET_INTERNAL tier while bonds pledged as BOND, and the two never met.
+      const count = Number(await core.revolving.tierCount());
+      for (let id = 0; id < count; id++) {
+        const [kind] = await core.revolving.tierAt(id);
+        const type = await core.collateral.collateralTypes(kind);
+        expect(type.registered, `${ethers.decodeBytes32String(kind)} tier has no collateral kind`)
+          .to.equal(true);
+      }
+    });
+
     it("registers the collateral kinds those tiers draw against", async function () {
-      for (const kind of ["SAVINGS", "ASSET_INTERNAL", "INCOME", "BOOST"]) {
+      for (const kind of ["SAVINGS", "BOND", "POOL_SHARE", "INCOME", "BOOST"]) {
         const type = await core.collateral.collateralTypes(ethers.encodeBytes32String(kind));
         expect(type.registered, `${kind} should be registered`).to.equal(true);
       }
@@ -133,7 +146,14 @@ describe("credit core deployment", function () {
       expect(savings.haircutBps).to.equal(10_000n);
     });
 
-  it("closes the encumbrance round-trip rather than leaving it open and looking shut", async function () {
+  it("points the calculator at the issuer actually in use", async function () {
+      // The calculator writes tier capacities onto the issuer it holds. Replacing an issuer
+      // without repointing it leaves every member's limit at zero, with nothing on either
+      // contract looking wrong.
+      expect(await core.limits.issuer()).to.equal(await core.revolving.getAddress());
+    });
+
+    it("closes the encumbrance round-trip rather than leaving it open and looking shut", async function () {
       // CLRUSD asks the registry what a holder has locked; `encumberedOf` reads `clrusdKind`; an
       // unset kind answers zero for everybody. Every contract can be deployed, wired and
       // registered with that field blank, and a member would then be free to move the CLRUSD

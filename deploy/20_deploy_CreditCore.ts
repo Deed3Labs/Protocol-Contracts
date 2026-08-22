@@ -162,11 +162,21 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
   // valuation rules) and they ascend, which is not decoration -- cheapest-first draw order falls
   // out of the ordering rather than being enforced separately, so getting it wrong here would put
   // a member on Boost before their own savings.
+  // A tier per COLLATERAL KIND, not per product tier. `capacityOf(member, kind)` reads the
+  // registry for that exact kind, so a tier keyed "ASSET_INTERNAL" sees nothing pledged as "BOND"
+  // -- which is how the first deployment ended up with an asset tier no bond could ever fill.
+  //
+  // Bonds and pool shares are separate because their haircuts are separate, and for unrelated
+  // reasons: a bond is 95% because its redemption terms are known, a pool share is 70% because its
+  // value is backed by the same loan book the credit is drawn against and falls exactly when it is
+  // most needed. One tier cannot hold two haircuts. The app collapses both back into one "Assets"
+  // row, which is where they belong for a member and not before.
   const TIERS: [string, bigint][] = [
-    ["SAVINGS", 0n],          // their own money, backing itself
-    ["ASSET_INTERNAL", 65n],  // bonds and pool shares: locked money that still lends
-    ["INCOME", 150n],         // nothing behind it but the next deposit
-    ["BOOST", 300n],          // opt-in, and priced like it
+    ["SAVINGS", 0n],      // their own money, backing itself
+    ["BOND", 65n],        // a claim on the co-op, accreting toward face
+    ["POOL_SHARE", 75n],  // also internal, but correlated with the book
+    ["INCOME", 150n],     // nothing behind it but the next deposit
+    ["BOOST", 300n],      // opt-in, and priced like it
   ];
   const CYCLE = 30 * 24 * 60 * 60;
 
@@ -189,7 +199,11 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
   const PRICE = 10n ** 18n;
   const COLLATERAL: [string, number, bigint, bigint][] = [
     ["SAVINGS", SAVINGS_BACKED, 10_000n, PRICE],
-    ["ASSET_INTERNAL", ASSET_INTERNAL, 9_500n, PRICE],
+    // BOND registers with a unit price of zero: the valuer answers instead, and leaving a flat
+    // price behind it means a misconfiguration reads as nothing pledged rather than as a plausible
+    // wrong number. deploy/23 attaches the valuer.
+    ["BOND", ASSET_INTERNAL, 9_500n, 0n],
+    ["POOL_SHARE", ASSET_INTERNAL, 7_000n, PRICE],
     ["INCOME", UNSECURED, 0n, 0n],
     ["BOOST", UNSECURED, 0n, 0n],
   ];
@@ -200,6 +214,14 @@ export async function deployCreditCore(options: { quiet?: boolean } = {}): Promi
       await (await collateral.registerCollateralType(key, backing, haircut, price)).wait();
       log(`  collateral ${kind} at ${Number(haircut) / 100}%`);
     }
+  }
+
+  // The calculator writes capacities onto the issuer, so it has to be pointed at the one actually
+  // in use. A replaced issuer that the calculator still ignores means every member's limit reads
+  // as zero, silently, with nothing on either contract looking wrong.
+  if ((await limits.issuer()) !== revolvingAddress) {
+    await (await limits.setIssuer(revolvingAddress)).wait();
+    log("  LimitCalculator -> RevolvingIssuer");
   }
 
   // Name the kind held as CLRUSD in members' own accounts.
