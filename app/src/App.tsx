@@ -16,7 +16,7 @@ import PwaInstallTakeover from "@/components/PwaInstallTakeover";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { ShareTarget } from "@/pages/auth/ShareTarget";
 import ClaimFunds from "@/pages/auth/ClaimFunds";
-import UserOnboarding from "@/pages/auth/UserOnboarding";
+import OnboardingRoute from "@/pages/auth/OnboardingRoute";
 import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
@@ -95,7 +95,7 @@ function App() {
                   <Routes>
                     {/* Login Page - Public */}
                     <Route path="/login" element={<LoginPage />} />
-                    <Route path="/onboarding" element={<UserOnboarding />} />
+                    <Route path="/onboarding" element={<OnboardingRoute />} />
                     <Route path="/wallet-link" element={<WalletLinkPage />} />
                     
                     {/* Share Target - Public */}
