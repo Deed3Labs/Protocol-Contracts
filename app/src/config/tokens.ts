@@ -1,3 +1,4 @@
+import { clearContracts } from '@/lib/clearNetwork';
 /**
  * Common token configurations across all chains
  * Centralized token definitions to avoid duplication
@@ -15,9 +16,12 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 // Committed fallbacks so the deployed CLRUSD is recognized even if the VITE_CLRUSD_<chainId> env
 // isn't set on the host (these are public token addresses, not secrets). Env still overrides.
+// Base Sepolia is deliberately absent: it comes from `clearNetwork`, which is where the app
+// already keeps the pair it transacts against. Keeping a second copy here is exactly what left a
+// retired token still showing up as somebody's savings -- a token is identified by its address,
+// and the symbol is a label two of our own contracts happened to share.
 const CLRUSD_FALLBACK: Record<number, string> = {
   8453: '0xa7a257f411e4Fe98e1D1FaA36C84B864c3336583', // Base mainnet
-  84532: '0x56195066D4ada8D371254061047f76FA2BBd0Ae3', // Base Sepolia
   11155111: '0x54Dd3449Eb54adC02C33cD880178BfA718991753', // Ethereum Sepolia
 };
 
@@ -27,6 +31,10 @@ function readClrUsdAddress(chainId: number): string {
   if (raw && /^0x[a-fA-F0-9]{40}$/.test(raw) && raw !== ZERO_ADDRESS) {
     return raw;
   }
+  // The chain the app transacts on answers for itself, so the token shown as savings and the token
+  // a deposit mints can never be two different contracts.
+  const fromNetwork = clearContracts(chainId)?.clrusd;
+  if (fromNetwork) return fromNetwork;
   return CLRUSD_FALLBACK[chainId] ?? ZERO_ADDRESS;
 }
 

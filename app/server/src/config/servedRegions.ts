@@ -11,17 +11,42 @@
  */
 
 /**
- * The Inland Empire, which is where the reference says Clear is starting.
+ * The Inland Empire: Riverside and San Bernardino counties.
  *
- * Riverside County runs 922xx and 925xx, San Bernardino County 923xx and 924xx, and the western
- * end of San Bernardino County -- Chino, Ontario, Upland -- is 917xx and 918xx.
+ * Ranges rather than three-digit prefixes, because three digits are not accurate here. 917xx also
+ * covers Pomona, Claremont and La Verne, which are Los Angeles County; 928xx also covers Anaheim
+ * and Fullerton, which are Orange County. A prefix list would have told somebody in Anaheim the
+ * co-op was open where they live.
  *
- * NOT CONFIRMED AGAINST A SERVICE MAP. These are the counties the copy names, translated to
- * prefixes; whether the co-op actually serves all of both counties on day one is a business fact
- * this file does not know. Set CLEAR_SERVED_ZIP_PREFIXES to the real list and this stops being a
- * guess.
+ * Each entry is a single ZIP or an inclusive range.
+ *
+ * SAN BERNARDINO COUNTY
+ *   91701, 91708-91710   Alta Loma, Chino, Chino Hills
+ *   91729-91739          Rancho Cucamonga, Fontana
+ *   91743                Guasti
+ *   91758-91764          Ontario
+ *   91784-91786          Upland
+ *   92242-92286          Needles, Twentynine Palms, Yucca Valley, Joshua Tree
+ *   92301-92399          Adelanto, Apple Valley, Barstow, Hesperia, Victorville, Yucaipa
+ *   92401-92415          San Bernardino
+ *
+ * RIVERSIDE COUNTY
+ *   92201-92241          Indio, Coachella, Palm Desert, Palm Springs, La Quinta
+ *   92501-92599          Riverside, Moreno Valley, Hemet, Perris, Temecula, Murrieta, Corona
+ *   92860, 92877-92883   Norco, Corona
+ *
+ * These are the two counties the reference's copy names, at ZIP-level accuracy. Whether the co-op
+ * serves all of both on day one is a business fact this file still does not know -- a launch that
+ * starts with, say, Redlands and Riverside only should set CLEAR_SERVED_ZIP_PREFIXES rather than
+ * let a member in Needles through.
  */
-const INLAND_EMPIRE = ['917', '918', '922', '923', '924', '925'];
+const INLAND_EMPIRE = [
+  '91701', '91708-91710', '91729-91739', '91743', '91758-91764', '91784-91786',
+  '92201-92241', '92242-92286',
+  '92301-92399', '92401-92415',
+  '92501-92599',
+  '92860', '92877-92883',
+];
 
 export function servedZipPrefixes(): string[] {
   const configured = (process.env.CLEAR_SERVED_ZIP_PREFIXES || '')
@@ -29,6 +54,17 @@ export function servedZipPrefixes(): string[] {
     .map((p) => p.trim())
     .filter(Boolean);
   return configured.length > 0 ? configured : INLAND_EMPIRE;
+}
+
+/** Whether a five-digit ZIP falls inside one entry, which is either a ZIP or an inclusive range. */
+function matches(zip: string, entry: string): boolean {
+  const [from, to] = entry.split('-');
+  if (!to) {
+    // A shorter entry is still treated as a prefix, so an operator who sets "923" gets what they
+    // plainly meant rather than a list that silently matches nothing.
+    return from.length === 5 ? zip === from : zip.startsWith(from);
+  }
+  return zip >= from && zip <= to;
 }
 
 /**
@@ -39,7 +75,7 @@ export function servedZipPrefixes(): string[] {
  * than an account in a region the co-op cannot serve.
  */
 export function isServedZip(zip: string): boolean {
-  const digits = (zip || '').trim().replace(/\D/g, '');
+  const digits = (zip || '').trim().replace(/\D/g, '').slice(0, 5);
   if (digits.length < 5) return false;
-  return servedZipPrefixes().some((prefix) => digits.startsWith(prefix));
+  return servedZipPrefixes().some((entry) => matches(digits, entry));
 }
