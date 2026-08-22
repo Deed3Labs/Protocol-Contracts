@@ -117,6 +117,52 @@ export const contactsStore = {
     await pool.query(`DELETE FROM ${TABLE} WHERE owner_wallet = $1 AND id = $2`, [owner, id]);
   },
 
+  /**
+   * Directory lookup: handle → a member's primary wallet.
+   *
+   * Matched plain and case-insensitively, unlike email and phone, which are hashed. That is the
+   * difference between the two kinds of pointer rather than an inconsistency: a contact detail is
+   * something a member may not want discoverable, and a handle exists precisely to be typed at by
+   * somebody who does not have their number.
+   *
+   * Which is also why the directory opt-out does not gate this. Opting out means "do not find me
+   * by my phone number"; it cannot sensibly mean "the handle I chose to publish does not resolve",
+   * or Send would show a handle it refuses to reach.
+   */
+  async lookupWalletByHandle(handle: string): Promise<{ wallet: string; matchedOn: 'handle' } | null> {
+    const pool = getPostgresPool();
+    if (!pool) return null;
+    await ensureTables();
+    const normalized = handle.trim().replace(/^@+/, '').toLowerCase();
+    if (!normalized) return null;
+
+    const r = await pool.query(
+      `SELECT m.primary_wallet AS wallet
+         FROM members m
+         JOIN member_profile_public p ON p.member_id = m.id
+        WHERE lower(p.username) = $1
+          AND m.primary_wallet IS NOT NULL
+        LIMIT 1`,
+      [normalized],
+    );
+    const wallet = r.rows[0]?.wallet;
+    return wallet ? { wallet: String(wallet), matchedOn: 'handle' } : null;
+  },
+
+  /** Whether a handle is unclaimed. Case-insensitive, matching the index that enforces it. */
+  async isHandleFree(handle: string): Promise<boolean> {
+    const pool = getPostgresPool();
+    if (!pool) return false;
+    await ensureTables();
+    const normalized = handle.trim().replace(/^@+/, '').toLowerCase();
+    if (!normalized) return false;
+    const r = await pool.query(
+      `SELECT 1 FROM member_profile_public WHERE lower(username) = $1 LIMIT 1`,
+      [normalized],
+    );
+    return r.rowCount === 0;
+  },
+
   /** Directory lookup: email/phone → a member's primary wallet (exact hash match, opt-out aware). */
   async lookupWallet(email?: string, phone?: string): Promise<{ wallet: string; matchedOn: 'email' | 'phone' } | null> {
     const pool = getPostgresPool();

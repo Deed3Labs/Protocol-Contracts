@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { contactsStore } from '../services/contactsStore.js';
+import { generateHandle } from '../services/handles.js';
 import { openCreditLine } from '../services/chain/creditLineService.js';
 import { Router, type Request, type Response } from 'express';
 import {
@@ -159,6 +161,17 @@ function handleMemberRouteError(res: Response, error: unknown): void {
     return;
   }
 
+  if (error instanceof Error && error.message.startsWith('Handle is not available')) {
+    // A rejected handle is the member's to fix, not a server fault. 409 rather than 400 so it
+    // reads the same as the collision case, which is the other reason a handle is unavailable.
+    res.status(409).json({
+      error: 'Handle unavailable',
+      message: error.message,
+      reason: error.message.split(': ').pop(),
+    });
+    return;
+  }
+
   if (error instanceof Error) {
     if (
       error.message.includes('Stripe membership billing is not configured')
@@ -266,6 +279,18 @@ function parseIdParam(value: string | undefined, fieldName: string, res: Respons
   return parsed;
 }
 
+/**
+ * Gives a member a handle if they do not have one.
+ *
+ * Idempotent: a member who already chose one keeps it, and a rerun of bootstrap does not reroll a
+ * handle somebody may already have shared.
+ */
+async function ensureHandle(member: { id?: number | string; username?: string | null } | null) {
+  if (!member || member.username) return;
+  const handle = await generateHandle((candidate) => contactsStore.isHandleFree(candidate));
+  await memberStore.setUsernameById(member.id!, handle);
+}
+
 router.put('/me/bootstrap', async (req: Request, res: Response) => {
   if (!(await ensureMemberStoreReady(res))) return;
 
@@ -279,6 +304,18 @@ router.put('/me/bootstrap', async (req: Request, res: Response) => {
       email: req.auth?.email ?? null,
       phone: req.auth?.phone ?? null,
       walletAddresses: req.auth?.addresses ?? null,
+    });
+
+    // A handle nobody was asked for.
+    //
+    // Send shows @handle, so a member without one has a blank where their name goes. The reference
+    // deliberately does not ask -- a chosen handle needs a collision-and-retry screen it has no
+    // room for -- so one is generated here and changed in settings by anybody who cares.
+    //
+    // Never fails a bootstrap. A member without a handle is a member with a blank field; a member
+    // whose account creation failed over a name they did not choose has nothing at all.
+    await ensureHandle(account.member).catch((error) => {
+      console.warn('[members] could not assign a handle:', error);
     });
 
     res.json({

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { normalizeHandle, rejectHandle } from './handles.js';
 import { verifyMessage } from 'ethers';
 import type { Pool } from 'pg';
 import { getPostgresPool } from '../config/postgres.js';
@@ -486,10 +487,23 @@ function normalizeOptionalString(value: string | null | undefined, maxLength: nu
   return trimmed.slice(0, maxLength);
 }
 
+/**
+ * Normalises a handle, and refuses one that must not be claimed.
+ *
+ * The rules live in `handles.ts` and are enforced here rather than at a route, because a route is
+ * one way in and this is the only one they all pass through. Lowercasing alone let anybody claim
+ * @clear, @support or a two-character handle through an ordinary profile update.
+ *
+ * Throws rather than returning null: somebody who typed @clear should be told why they cannot have
+ * it, not have it silently discarded and their handle cleared.
+ */
 function normalizeUsername(value: string | null | undefined): string | null | undefined {
   const normalized = normalizeOptionalString(value, 32);
   if (normalized == null) return normalized;
-  return normalized.toLowerCase();
+
+  const rejection = rejectHandle(normalized);
+  if (rejection) throw new Error(`Handle is not available: ${rejection}`);
+  return normalizeHandle(normalized);
 }
 
 function resolvePatchedString(
@@ -976,6 +990,25 @@ export class MemberStore {
     }
 
     return this.schemaReadyPromise;
+  }
+
+  /**
+   * Writes a handle for a member who has none.
+   *
+   * Only when the field is empty: a member who chose their own keeps it, and a bootstrap that runs
+   * again must not reroll a handle somebody has already shared. The WHERE clause does that rather
+   * than a read-then-write, so two concurrent bootstraps cannot both decide the field was free.
+   */
+  async setUsernameById(memberId: number | string, handle: string): Promise<boolean> {
+    await this.ensureReady();
+    const pool = this.mustPool();
+    const result = await pool.query(
+      `UPDATE ${TABLE_PROFILE_PUBLIC}
+          SET username = $2, updated_at = NOW()
+        WHERE member_id = $1 AND (username IS NULL OR username = '')`,
+      [memberId, normalizeHandle(handle)],
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
   async bootstrapMember(input: BootstrapMemberInput): Promise<MemberAccountCenter> {
@@ -3018,6 +3051,14 @@ export class MemberStore {
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `);
+
+      // Handles are case-insensitively unique, and that has to hold in the database rather than in
+      // whichever code path happens to write one. TEXT UNIQUE alone lets @Kai and @kai both exist,
+      // which in a payments app is a phishing surface: somebody types what they were told.
+      await pool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS ${TABLE_PROFILE_PUBLIC}_username_lower_idx
+           ON ${TABLE_PROFILE_PUBLIC} (lower(username)) WHERE username IS NOT NULL;`
+      );
 
       await pool.query(`
         CREATE TABLE IF NOT EXISTS ${TABLE_PROFILE_PRIVATE} (
