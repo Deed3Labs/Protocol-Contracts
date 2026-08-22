@@ -69,6 +69,8 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /* ========== ERRORS ========== */
 
     error RevolvingIssuerRatesMustAscend(uint256 previous, uint256 proposed);
+    /// @notice thrown when a tier or a credit line would run on a different clock from the rest.
+    error RevolvingIssuerCycleMismatch(uint64 expected, uint64 given);
     error RevolvingIssuerUnknownTier(uint256 tierId);
     error RevolvingIssuerCapacityBelowDrawn(uint256 tierId, uint256 capacity, uint256 drawn);
     error RevolvingIssuerNoCarryRecipient();
@@ -115,6 +117,19 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         _requireTier(tierId);
         TierConfig storage tier = tiers[tierId];
         return (tier.kind, tier.index.ratePerCycle, tier.active);
+    }
+
+    /// @notice seconds in this network's credit cycle.
+    /// @dev Derived, not stored. The clock already exists on the tiers -- every rate here is
+    /// quoted per cycle and carry accrues against it -- so a second copy in storage would be a
+    /// second answer that could disagree, and an issuer upgraded after its tiers were added would
+    /// have carried a zero.
+    ///
+    /// Zero before any tier exists, which is the honest answer: a network with no tiers has no
+    /// cycle rather than a cycle of nothing.
+    function cycleLength() public view returns (uint64) {
+        if (tiers.length == 0) return 0;
+        return tiers[0].index.cycleLength;
     }
 
     /// @notice the ceiling contribution a member has in a tier.
@@ -225,8 +240,8 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// the waterfall would have to be enforced separately instead of falling out of the order.
     /// @param kind tier kind, from ExposureMath.
     /// @param ratePerCycle carry rate per cycle in basis points.
-    /// @param cycleLength seconds in a cycle.
-    function addTier(bytes32 kind, uint256 ratePerCycle, uint64 cycleLength)
+    /// @param cycleLength_ seconds in a cycle. Must match the network's, and sets it when first.
+    function addTier(bytes32 kind, uint256 ratePerCycle, uint64 cycleLength_)
         external
         onlyOperator
         returns (uint256 tierId)
@@ -237,12 +252,19 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
                 revert RevolvingIssuerRatesMustAscend(previous, ratePerCycle);
             }
         }
+        // Every tier shares one clock. Two tiers accruing on different periods would make
+        // "cheapest first" meaningless, because the rates would stop being comparable and draw
+        // order is priced off exactly that comparison.
+        if (tiers.length > 0 && cycleLength_ != tiers[0].index.cycleLength) {
+            revert RevolvingIssuerCycleMismatch(tiers[0].index.cycleLength, cycleLength_);
+        }
+
         tierId = tiers.length;
         tiers.push();
         TierConfig storage tier = tiers[tierId];
         tier.kind = kind;
         tier.active = true;
-        tier.index.init(ratePerCycle, cycleLength, uint64(block.timestamp));
+        tier.index.init(ratePerCycle, cycleLength_, uint64(block.timestamp));
         emit TierAdded(tierId, kind, ratePerCycle);
     }
 
@@ -338,7 +360,18 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
             emit TierCapacityUpdated(member, i, capacities[i]);
         }
         stableCredit.createCreditLine(member, total, 0);
-        _updateCreditPeriod(member, block.timestamp + periodLength, graceLength);
+        // Zero means "this network's cycle", which is what every caller should want and what
+        // nothing previously supplied -- the period was whatever the caller happened to pass, so
+        // two members could be on different clocks with nothing saying so.
+        //
+        // Not forced to equal it. The rebalance period and the carry cycle are different
+        // questions: one is how long a member has to return to zero, the other is how often carry
+        // compounds. The plan makes them coincide at thirty days, and that is now the default
+        // rather than a coincidence -- but a longer period is a policy choice, not a bug, and
+        // refusing it would mean a member carrying a balance across cycles could never be modelled
+        // at all.
+        uint256 period = periodLength == 0 ? cycleLength() : periodLength;
+        _updateCreditPeriod(member, block.timestamp + period, graceLength);
     }
 
     /* ========== INTERNAL ========== */
