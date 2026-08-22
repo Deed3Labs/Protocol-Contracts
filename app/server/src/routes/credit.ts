@@ -42,6 +42,7 @@ creditRouter.get('/:wallet', async (req: Request, res: Response) => {
       wallet: wallet.toLowerCase(),
       tiers: credit.tiers ?? [],
       plans: (credit.plans ?? []).filter((plan) => !plan.closed),
+      cycle: credit.cycle,
       // Named rather than implied: everything here came from chain, and the tiers the chain does
       // not know about are absent rather than zero. The caller decides what to do about that.
       source: 'chain',

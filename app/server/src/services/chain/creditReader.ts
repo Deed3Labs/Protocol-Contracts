@@ -25,6 +25,14 @@ const ISSUER_ABI = [
   'function tierAt(uint256 tierId) external view returns (bytes32 kind, uint256 ratePerCycle, bool active)',
   'function capacityOf(address member, uint256 tierId) external view returns (uint256)',
   'function drawnOf(address member, uint256 tierId) external view returns (uint256)',
+  'function principalOf(address member, uint256 tierId) external view returns (uint256)',
+  'function carryOf(address member, uint256 tierId) external view returns (uint256)',
+  'function creditPeriods(address member) external view returns (uint256 issuedAt, uint256 expiration, uint256 graceLength, bool paused)',
+];
+
+const REGISTRY_ABI = [
+  'function collateralValueOf(address member, bytes32 kind) external view returns (uint256)',
+  'function collateralTypes(bytes32 kind) external view returns (uint8 backing, uint256 haircutBps, uint256 unitPrice, address valuer, bool registered)',
 ];
 
 const LIMITS_ABI = [
@@ -49,7 +57,25 @@ export interface ChainTier {
   usedCents: number;
   /** Carry rate in basis points per cycle, as the tier charges it. */
   rateBps: number;
+  /** Principal drawn, before carry, in cents. */
+  principalCents: number;
+  /** Carry accrued on it so far this cycle, in cents. `used` already includes this. */
+  carryCents: number;
+  /** What the member has pledged under this kind, before haircut, in cents. */
+  collateralValueCents: number;
+  /** The haircut applied to that value, in basis points. */
+  haircutBps: number;
   active: boolean;
+}
+
+export interface ChainCycle {
+  /** Unix seconds the current period opened, or 0 when no line has been opened. */
+  issuedAt: number;
+  /** Unix seconds it expires. */
+  expiration: number;
+  /** Seconds of grace after expiry before the limit contracts. */
+  graceLength: number;
+  paused: boolean;
 }
 
 export interface ChainTermPlan {
@@ -69,6 +95,8 @@ export interface ChainCredit {
   /** Null when the read failed — which is not the same as a member with no credit line. */
   tiers: ChainTier[] | null;
   plans: ChainTermPlan[] | null;
+  /** Null when the read failed; zeroed when the member has never opened a line. */
+  cycle: ChainCycle | null;
   complete: boolean;
 }
 
@@ -95,21 +123,49 @@ async function readTiers(
   provider: ethers.JsonRpcProvider,
   address: string,
   wallet: string,
+  registryAddress: string | null,
 ): Promise<ChainTier[] | null> {
   try {
     const issuer = new ethers.Contract(address, ISSUER_ABI, provider);
+    const registry = registryAddress
+      ? new ethers.Contract(registryAddress, REGISTRY_ABI, provider)
+      : null;
     const count = Number(await issuer.tierCount());
     const tiers: ChainTier[] = [];
     for (let id = 0; id < count; id++) {
       const [kind, ratePerCycle, active] = await issuer.tierAt(id);
-      const [limit, used] = await Promise.all([
+      // Carry is read rather than derived from `used - principal`. The issuer computes it against
+      // the tier's index, and subtracting two rounded figures produces a third with both errors in
+      // it -- on a number the member is charged.
+      const [limit, used, principal, carry] = await Promise.all([
         issuer.capacityOf(wallet, id),
         issuer.drawnOf(wallet, id),
+        issuer.principalOf(wallet, id),
+        issuer.carryOf(wallet, id),
       ]);
+
+      // What backs the tier, before the haircut the calculator then applies. Shown so a member can
+      // see the two figures that produce their limit rather than only the product of them.
+      let collateralValue = 0n;
+      let haircutBps = 0;
+      if (registry) {
+        try {
+          const [, bps] = await registry.collateralTypes(kind);
+          haircutBps = Number(bps);
+          collateralValue = await registry.collateralValueOf(wallet, kind);
+        } catch {
+          // An unregistered kind backs nothing, which is the correct answer rather than an error.
+        }
+      }
+
       tiers.push({
         kind: ethers.decodeBytes32String(kind),
         limitCents: toCents(limit),
         usedCents: toCents(used),
+        principalCents: toCents(principal),
+        carryCents: toCents(carry),
+        collateralValueCents: toCents(collateralValue),
+        haircutBps,
         rateBps: Number(ratePerCycle),
         active,
       });
@@ -195,6 +251,33 @@ export async function readChainCapacities(
   }
 }
 
+/**
+ * The member's credit period: when it opened, when it expires, and how long after that the limit
+ * survives before contracting.
+ *
+ * Zeroes are the honest answer for a member who has never had a line opened -- the mapping returns
+ * an empty struct, and that is a real state rather than a failed read.
+ */
+async function readCycle(
+  provider: ethers.JsonRpcProvider,
+  address: string,
+  wallet: string,
+): Promise<ChainCycle | null> {
+  try {
+    const issuer = new ethers.Contract(address, ISSUER_ABI, provider);
+    const [issuedAt, expiration, graceLength, paused] = await issuer.creditPeriods(wallet);
+    return {
+      issuedAt: Number(issuedAt),
+      expiration: Number(expiration),
+      graceLength: Number(graceLength),
+      paused,
+    };
+  } catch (error) {
+    console.error('[credit] cycle read failed', address, error);
+    return null;
+  }
+}
+
 /** A member's credit line, as the contracts hold it. */
 export async function readChainCredit(
   wallet: string,
@@ -202,21 +285,28 @@ export async function readChainCredit(
 ): Promise<ChainCredit> {
   const issuer = getContractAddress(chainId, 'RevolvingIssuer');
   const term = getContractAddress(chainId, 'TermIssuer');
+  const registry = getContractAddress(chainId, 'CollateralRegistry');
 
   let provider: ethers.JsonRpcProvider;
   try {
     provider = getProvider(chainId);
   } catch (error) {
     console.error('[credit] no RPC for chain', chainId, error);
-    return { tiers: null, plans: null, complete: false };
+    return { tiers: null, plans: null, cycle: null, complete: false };
   }
 
   // An unset issuer is no credit line, not a failed read: a member cannot have drawn against a
   // contract that does not exist.
-  const [tiers, plans] = await Promise.all([
-    issuer ? readTiers(provider, issuer, wallet) : Promise.resolve([]),
+  const [tiers, plans, cycle] = await Promise.all([
+    issuer ? readTiers(provider, issuer, wallet, registry) : Promise.resolve([]),
     term ? readPlans(provider, term, wallet) : Promise.resolve([]),
+    issuer ? readCycle(provider, issuer, wallet) : Promise.resolve(null),
   ]);
 
-  return { tiers, plans, complete: tiers !== null && plans !== null };
+  return {
+    tiers,
+    plans,
+    cycle,
+    complete: tiers !== null && plans !== null,
+  };
 }

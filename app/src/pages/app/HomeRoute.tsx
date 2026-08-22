@@ -5,7 +5,7 @@ import { useClearBalances } from '@/hooks/useClearBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { toActivityRow } from '@/lib/activityMapping';
-import { toCredit } from '@/lib/creditMapping';
+import { toCredit, toCycle, toLimitBacking } from '@/lib/creditMapping';
 import {
   getCredit,
   getLithicAccount,
@@ -22,11 +22,11 @@ import {
  * and now the credit tiers are all real. The tiers come from /api/credit, which reads the
  * contracts rather than recomputing what they already decide.
  *
- * Three things stay on placeholder, each for its own reason rather than for want of wiring. Carry
- * cost accrues per position against a per-tier index, so what a member owes right now is derivable
- * but not a single call. The cycle needs the issuer's clock, which the route does not yet expose.
- * Limit backing needs the registry's per-kind valuations, which is the same read at a different
- * granularity. All three are the next increment, not a different project.
+ * Carry cost, the cycle and the limit backing are read too. All three were assumed to need
+ * contract changes and none did -- `carryOf`, `creditPeriods` and `collateralValueOf` were already
+ * there, which is worth remembering before proposing an upgrade next time.
+ *
+ * What remains placeholder is term plans, and that waits on nothing but a member having one.
  *
  * The account numbers are fetched and never cached to disk: they are bank details, and the server
  * reads them from Lithic on demand for the same reason.
@@ -101,7 +101,13 @@ export default function HomeRoute() {
     // Home shows a preview; Activity shows the list. Empty is the honest answer for a new member,
     // and the page has a state for it.
     ...(txLoading ? {} : { recent: items.slice(0, 4).map(toActivityRow) }),
-    ...(credit?.complete ? { credit: toCredit(credit.tiers, HOME_IN_USE.credit) } : {}),
+    ...(credit?.complete
+      ? {
+          credit: toCredit(credit.tiers, HOME_IN_USE.credit),
+          cycle: toCycle(credit.cycle, HOME_IN_USE.cycle),
+          backing: toLimitBacking(credit.tiers, HOME_IN_USE.backing),
+        }
+      : {}),
   };
 
   return <HomePage data={data} />;

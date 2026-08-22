@@ -2265,7 +2265,23 @@ export interface CreditTierRow {
   usedCents: number;
   /** Carry rate in basis points per cycle. */
   rateBps: number;
+  /** Principal drawn, before carry. */
+  principalCents: number;
+  /** Carry accrued so far this cycle. Already inside `usedCents`. */
+  carryCents: number;
+  /** Pledged under this kind, before haircut. */
+  collateralValueCents: number;
+  /** The haircut applied to it, in basis points. */
+  haircutBps: number;
   active: boolean;
+}
+
+export interface CreditCycleRow {
+  /** Unix seconds. Zero when no line has ever been opened. */
+  issuedAt: number;
+  expiration: number;
+  graceLength: number;
+  paused: boolean;
 }
 
 export interface CreditTermPlanRow {
@@ -2283,6 +2299,7 @@ export interface CreditState {
   wallet: string;
   tiers: CreditTierRow[];
   plans: CreditTermPlanRow[];
+  cycle: CreditCycleRow | null;
   source: string;
   complete: boolean;
 }
