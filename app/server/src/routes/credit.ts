@@ -88,6 +88,7 @@ creditRouter.get('/:wallet/earn', async (req: Request, res: Response) => {
       pool: earn.pool,
       bonds: (earn.bonds ?? []).filter((bond) => !bond.redeemed),
       terms: earn.terms ?? [],
+      earnedToDateCents: earn.earnedToDateCents,
       source: 'chain',
       complete: true,
     });

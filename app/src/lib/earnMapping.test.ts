@@ -50,15 +50,23 @@ describe('the pool', () => {
     expect(toYieldPool(null, fallback)).toBe(fallback);
   });
 
-  test('keeps earned on its fallback, since the chain does not hold cost basis', () => {
-    // The pool knows what shares are worth, not what they cost.
+  test('reads earned from the chain rather than the fallback', () => {
+    // The pool knows what shares are worth and not what they cost, but it emitted both at the
+    // time -- so cost basis comes from its own Deposit and Withdraw events.
     const pool = toYieldPool(
-      { apyPercent: 7.1234, lentCents: 50_000, capacityCents: 100_000, positionCents: 25_000 },
+      {
+        apyPercent: 7.1234,
+        lentCents: 50_000,
+        capacityCents: 100_000,
+        positionCents: 25_000,
+        earnedCents: 3_000,
+      },
       fallback,
     );
     expect(pool.apy).toBe(7.12);
     expect(pool.position).toBe(250);
-    expect(pool.earned).toBe(42);
+    expect(pool.earned).toBe(30);
+    expect(pool.earned).not.toBe(fallback.earned);
   });
 });
 
@@ -69,5 +77,17 @@ describe('terms', () => {
     ]);
     expect(term.price).toBe(936.9);
     expect(term.rate).toBe(6.73);
+  });
+});
+
+describe('pool earnings', () => {
+  const fallback = { apy: 6.8, lent: 1, capacity: 2, position: 3, earned: 42 };
+
+  test('reports the position above its cost basis', () => {
+    const pool = toYieldPool(
+      { apyPercent: 7, lentCents: 0, capacityCents: 0, positionCents: 26_000, earnedCents: 1_000 },
+      fallback,
+    );
+    expect(pool.earned).toBe(10);
   });
 });

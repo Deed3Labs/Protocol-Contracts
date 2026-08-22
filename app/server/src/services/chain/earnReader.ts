@@ -17,6 +17,8 @@ import { savingsIntentService } from '../savingsIntentService.js';
  */
 
 const POOL_ABI = [
+  'event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)',
+  'event Withdraw(address indexed sender, address indexed receiver, address indexed owner, uint256 assets, uint256 shares)',
   'function totalAssets() external view returns (uint256)',
   'function utilizationBps() external view returns (uint256)',
   'function supplyRatePerCycle() external view returns (uint256)',
@@ -25,6 +27,7 @@ const POOL_ABI = [
 ];
 
 const BOND_ABI = [
+  'event BondRedeemed(uint256 indexed bondId, address indexed redeemer, uint256 faceValue)',
   'function getBondIdsByCreator(address creator) external view returns (uint256[])',
   'function getBondInfo(uint256 bondId) external view returns (tuple(uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, uint256 purchasePrice, bool isRedeemed, address creator, uint64 issuedAt))',
   'function presentValueOf(uint256 bondId) external view returns (uint256)',
@@ -44,6 +47,14 @@ export interface ChainPool {
   capacityCents: number;
   /** This member's position at present value, in cents. */
   positionCents: number;
+  /**
+   * What the position has made: what it is worth now, less what was put in.
+   *
+   * Cost basis is summed from the pool's own Deposit and Withdraw events rather than stored. The
+   * pool knows what shares are worth, not what they cost -- but it emitted both at the time, so
+   * the answer is on-chain, just not in a getter.
+   */
+  earnedCents: number;
 }
 
 export interface ChainHeldBond {
@@ -71,6 +82,16 @@ export interface ChainEarn {
   pool: ChainPool | null;
   bonds: ChainHeldBond[] | null;
   terms: ChainBondTerm[] | null;
+  /**
+   * Everything the member's Earn products have made, in cents.
+   *
+   * Three parts, and the third is the one usually left out. Bonds still held have accrued the
+   * difference between what was paid and what they are worth today. Bonds already redeemed made
+   * the difference between what was paid and face, and that is *earned* whether or not the member
+   * still holds anything -- dropping it would reset a member's lifetime earnings to zero the day
+   * their last bond matured. And the pool's position above its cost basis.
+   */
+  earnedToDateCents: number;
   complete: boolean;
 }
 
@@ -107,14 +128,49 @@ async function readPool(
     // has earned anything.
     const position = shares > 0n ? await pool.convertToAssets(shares) : 0n;
 
+    const costBasis = await readPoolCostBasis(pool, wallet);
+    const positionCents = toCents(position);
+    // Never negative. A position below its cost basis has lost money, and the page has no row for
+    // that -- reporting it as negative earnings would put a minus sign where it means something
+    // else entirely.
+    const earnedCents = costBasis === null ? 0 : Math.max(0, positionCents - costBasis);
+
     return {
       apyPercent: (Number(supplyRate) / BPS) * CYCLES_PER_YEAR * 100,
       capacityCents: toCents(totalAssets),
       lentCents: Math.round((toCents(totalAssets) * Number(utilization)) / BPS),
-      positionCents: toCents(position),
+      positionCents,
+      earnedCents,
     };
   } catch (error) {
     console.error('[earn] pool read failed', address, error);
+    return null;
+  }
+}
+
+/**
+ * What the member has put into the pool, net of what they have taken out.
+ *
+ * From events, because no getter holds it: ERC-4626 tracks shares, and what those shares cost is
+ * only recorded in the Deposit and Withdraw the pool emitted at the time. Filtered on `owner`
+ * rather than `sender`, so a deposit somebody else submitted on the member's behalf -- a relayer,
+ * a sweep -- still counts as theirs.
+ *
+ * Returns null on failure rather than zero: a cost basis of zero makes the whole position read as
+ * profit, which is the most flattering possible wrong answer.
+ */
+async function readPoolCostBasis(pool: ethers.Contract, wallet: string): Promise<number | null> {
+  try {
+    const [deposits, withdrawals] = await Promise.all([
+      pool.queryFilter(pool.filters.Deposit(null, wallet), 0, 'latest'),
+      pool.queryFilter(pool.filters.Withdraw(null, null, wallet), 0, 'latest'),
+    ]);
+    let basis = 0;
+    for (const event of deposits) basis += toCents((event as ethers.EventLog).args.assets);
+    for (const event of withdrawals) basis -= toCents((event as ethers.EventLog).args.assets);
+    return Math.max(0, basis);
+  } catch (error) {
+    console.error('[earn] pool cost basis failed', error);
     return null;
   }
 }
@@ -202,6 +258,41 @@ async function readTerms(
   }
 }
 
+/**
+ * What already-redeemed bonds made: face less what was paid, summed.
+ *
+ * Read from redemption events rather than from held bonds, because a redeemed bond is burnt --
+ * the member holds nothing, and the gain would vanish with it. A member whose last bond matured
+ * last week has still earned what it paid them.
+ *
+ * The purchase price comes from the bond record, which survives the burn: `_redeem` marks
+ * `isRedeemed` and burns the token, but `bonds[bondId]` stays.
+ */
+async function readRedeemedGains(
+  provider: ethers.JsonRpcProvider,
+  address: string,
+  wallet: string,
+): Promise<number> {
+  try {
+    const collection = new ethers.Contract(address, BOND_ABI, provider);
+    const events = await collection.queryFilter(
+      collection.filters.BondRedeemed(null, wallet),
+      0,
+      'latest',
+    );
+    let gains = 0;
+    for (const event of events) {
+      const { bondId, faceValue } = (event as ethers.EventLog).args;
+      const info = await collection.getBondInfo(bondId);
+      gains += Math.max(0, toCents(faceValue) - toCents(info.purchasePrice));
+    }
+    return gains;
+  } catch (error) {
+    console.error('[earn] redeemed gains failed', address, error);
+    return 0;
+  }
+}
+
 /** The Earn page's state, as the contracts hold it. */
 export async function readChainEarn(
   wallet: string,
@@ -215,14 +306,25 @@ export async function readChainEarn(
     provider = getProvider(chainId);
   } catch (error) {
     console.error('[earn] no RPC for chain', chainId, error);
-    return { pool: null, bonds: null, terms: null, complete: false };
+    return { pool: null, bonds: null, terms: null, earnedToDateCents: 0, complete: false };
   }
 
-  const [pool, bonds, terms] = await Promise.all([
+  const [pool, bonds, terms, redeemedGains] = await Promise.all([
     poolAddress ? readPool(provider, poolAddress, wallet) : Promise.resolve(null),
     bondAddress ? readBonds(provider, bondAddress, wallet) : Promise.resolve([]),
     bondAddress ? readTerms(provider, bondAddress) : Promise.resolve([]),
+    bondAddress ? readRedeemedGains(provider, bondAddress, wallet) : Promise.resolve(0),
   ]);
 
-  return { pool, bonds, terms, complete: bonds !== null && terms !== null };
+  const accrued = (bonds ?? [])
+    .filter((bond) => !bond.redeemed)
+    .reduce((sum, bond) => sum + Math.max(0, bond.worthTodayCents - bond.paidCents), 0);
+
+  return {
+    pool,
+    bonds,
+    terms,
+    earnedToDateCents: accrued + redeemedGains + (pool?.earnedCents ?? 0),
+    complete: bonds !== null && terms !== null,
+  };
 }

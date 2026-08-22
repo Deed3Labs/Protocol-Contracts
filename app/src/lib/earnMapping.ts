@@ -19,9 +19,10 @@ export function toYieldPool(row: EarnPoolRow | null, fallback: YieldPool): Yield
     lent: fromCents(row.lentCents),
     capacity: fromCents(row.capacityCents),
     position: fromCents(row.positionCents),
-    // Earned is the position above what was put in, which needs deposit history the chain does
-    // not hold — the pool knows what the shares are worth, not what they cost.
-    earned: fallback.earned,
+    // What the position has made, from the pool's own Deposit and Withdraw events. The pool knows
+    // what shares are worth and not what they cost, but it emitted both at the time -- so the
+    // answer is on-chain, just not in a getter.
+    earned: fromCents(row.earnedCents),
   };
 }
 
@@ -57,24 +58,29 @@ export function toBondTerms(rows: EarnTermRow[]): BondTerm[] {
 }
 
 /**
- * Earn, with anything the chain cannot answer left as it was.
+ * Earn, assembled from what the contracts and the equity ledger actually hold.
  *
- * `earnedToDate` and `reserveDate` stay on their fallbacks: the first needs deposit history and
- * the second is a projection, and neither is something the contracts hold.
+ * `reserveDate` is passed in rather than computed here because it is not an Earn figure at all --
+ * it comes from equity credits and their accrual, which live in the Pay ledger. Null when the
+ * projection says nothing useful, and then the fallback stands.
  */
 export function toEarnData(
   pool: EarnPoolRow | null,
   bonds: EarnBondRow[],
   terms: EarnTermRow[],
+  earnedToDateCents: number,
+  reserveDate: string | null,
   fallback: EarnData,
 ): EarnData {
   return {
     ...fallback,
     pool: toYieldPool(pool, fallback.pool),
     // An empty portfolio is the truth for a member who holds no bonds, and the page has a state
-    // for it. Terms are different — no terms means the collection quoted nothing, so the
+    // for it. Terms are different -- no terms means the collection quoted nothing, so the
     // placeholder stands rather than offering a member an empty menu.
     bonds: toHeldBonds(bonds),
     terms: terms.length > 0 ? toBondTerms(terms) : fallback.terms,
+    earnedToDate: fromCents(earnedToDateCents),
+    ...(reserveDate ? { reserveDate } : {}),
   };
 }

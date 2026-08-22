@@ -2321,6 +2321,8 @@ export interface EarnPoolRow {
   lentCents: number;
   capacityCents: number;
   positionCents: number;
+  /** Position above cost basis, summed from the pool's own deposit and withdrawal events. */
+  earnedCents: number;
 }
 
 export interface EarnBondRow {
@@ -2348,6 +2350,8 @@ export interface EarnState {
   pool: EarnPoolRow | null;
   bonds: EarnBondRow[];
   terms: EarnTermRow[];
+  /** Bonds accrued, bonds already redeemed, and the pool — everything Earn has made. */
+  earnedToDateCents: number;
   source: string;
   complete: boolean;
 }
