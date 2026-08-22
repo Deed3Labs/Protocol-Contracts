@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
-import LoginPage from "@/pages/auth/LoginPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import SplashScreen from "@/components/SplashScreen";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -19,6 +18,7 @@ import ClaimFunds from "@/pages/auth/ClaimFunds";
 import OnboardingRoute from "@/pages/auth/OnboardingRoute";
 import CounterOnboardingRoute from "@/pages/auth/CounterOnboardingRoute";
 import ChargeApprovalRoute from "@/pages/app/ChargeApprovalRoute";
+import LoginRoute from "@/pages/auth/LoginRoute";
 import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
@@ -96,7 +96,7 @@ function App() {
                   
                   <Routes>
                     {/* Login Page - Public */}
-                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/login" element={<LoginRoute />} />
                     <Route path="/onboarding" element={<OnboardingRoute />} />
                     {/* The counter entry. `/s/<shop>` is what a shop's code opens, and it is a
                         separate route rather than a mode of /onboarding because the two flows

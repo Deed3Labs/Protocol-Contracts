@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
-import LoginView from './LoginView';
+import LoginView from '../auth/LoginView';
 
 export default function LoginPage() {
   // Navigate as soon as the user is AUTHENTICATED — don't also wait for `isConnected` (an address).

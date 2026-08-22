@@ -20,7 +20,8 @@ import OnboardingFlow, {
  * The real onboarding: the rebuilt flow, with the submit chain behind it.
  *
  * Starts at `join`, not `enter`. A member reaching /onboarding has already signed in — the gate
- * sent them here — so the contact and code steps belong to LoginPage until that is rebuilt too.
+ * sent them here — so the contact and code steps belong to `LoginRoute`, which drives the same
+ * two screens of this same component.
  * Beginning at `enter` would put a second sign-in in front of somebody already signed in.
  *
  * The flow stays presentational. It reports step changes and field edits; every decision about
