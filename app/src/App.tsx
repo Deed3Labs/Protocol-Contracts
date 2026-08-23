@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
-import LoginPage from "@/pages/auth/LoginPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import SplashScreen from "@/components/SplashScreen";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -18,6 +17,8 @@ import { ShareTarget } from "@/pages/auth/ShareTarget";
 import ClaimFunds from "@/pages/auth/ClaimFunds";
 import OnboardingRoute from "@/pages/auth/OnboardingRoute";
 import CounterOnboardingRoute from "@/pages/auth/CounterOnboardingRoute";
+import ChargeApprovalRoute from "@/pages/app/ChargeApprovalRoute";
+import LoginRoute from "@/pages/auth/LoginRoute";
 import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
 import AppShell from "@/components/shell/AppShell";
@@ -95,7 +96,7 @@ function App() {
                   
                   <Routes>
                     {/* Login Page - Public */}
-                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/login" element={<LoginRoute />} />
                     <Route path="/onboarding" element={<OnboardingRoute />} />
                     {/* The counter entry. `/s/<shop>` is what a shop's code opens, and it is a
                         separate route rather than a mode of /onboarding because the two flows
@@ -103,6 +104,10 @@ function App() {
                         exists when they begin. `?total=` carries the sale for display only --
                         see CounterOnboardingRoute on why it can never authorize one. */}
                     <Route path="/s/:shop" element={<CounterOnboardingRoute />} />
+                    {/* `/c/<code>` — the link in the charge alert. Outside the protected shell
+                        because the route sends an unauthenticated member to sign in and come
+                        back, which reads better than the shell bouncing them somewhere else. */}
+                    <Route path="/c/:code" element={<ChargeApprovalRoute />} />
                     <Route path="/wallet-link" element={<WalletLinkPage />} />
                     
                     {/* Share Target - Public */}

@@ -24,6 +24,7 @@ import SettingsPage from '@/pages/app/SettingsPage';
 import OnboardingFlow, { type OnboardingStep } from '@/pages/auth/OnboardingFlow';
 import CounterOnboarding, { COUNTER_STEPS, type CounterStep } from '@/pages/auth/CounterOnboarding';
 import { useInstallMode } from '@/hooks/useInstallMode';
+import ChargeApproval from '@/pages/app/ChargeApproval';
 import {
   HOME_IN_USE,
   HOME_DAY_ONE,
@@ -198,6 +199,48 @@ function TermPlansPreview() {
   );
 }
 
+/** A charge arriving — the approval screen and the state after it. */
+function ChargeApprovalPreview() {
+  const [splitInto, setSplitInto] = useState(4);
+  const [approved, setApproved] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <ChargeApproval
+        merchantName="Mike's Tire"
+        amount={940}
+        splitInto={splitInto}
+        onSplitChange={setSplitInto}
+        perCycleLimit={850}
+        clearsFromLabel="Chase ····4471"
+        firstPaymentOn="Dec 14"
+        doneBy={() => 'Mar 14'}
+        onApprove={() => setApproved(true)}
+        onDecline={() => setApproved(false)}
+        onBack={() => setApproved(false)}
+        approved={approved}
+      />
+
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        {(['approve', 'approved'] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setApproved(s === 'approved')}
+            className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+              approved === (s === 'approved')
+                ? 'border-tier-boost text-tier-boost-fg'
+                : 'border-border text-muted-foreground'
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * The counter path — five steps, outside the app chrome like the direct one.
  *
@@ -292,6 +335,7 @@ export default function PreviewApp() {
         <Routes>
           <Route path="/onboarding" element={<OnboardingPreview />} />
           <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
+          <Route path="/charge" element={<ChargeApprovalPreview />} />
 
           <Route
             path="*"

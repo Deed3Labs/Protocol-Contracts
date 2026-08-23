@@ -2435,6 +2435,40 @@ export class MemberStore {
     return result.rows[0]?.membership_plan ?? null;
   }
 
+  /**
+   * A member's contact details, found by any wallet they hold.
+   *
+   * The reverse of the directory lookup, and needed for the same reason a charge alert exists:
+   * something has to reach a member who is not looking at the app. Matched across every active
+   * wallet rather than the primary alone, because the wallet a charge is raised against is
+   * whichever one the merchant was given.
+   *
+   * Returns null when they have opted out of notifications. Not an empty contact — the caller
+   * should be able to tell "we have no way to reach them" apart from "they asked us not to".
+   */
+  async getContactByWallet(
+    walletAddress: string,
+  ): Promise<{ email: string | null; phone: string | null } | null> {
+    await this.ensureReady();
+    const addr = normalizeWalletAddress(walletAddress);
+    const pool = this.mustPool();
+    const result = await withRetry(async () => {
+      return pool.query<{ email: string | null; phone: string | null; notifications_opt_in: boolean }>(
+        `SELECT p.email, p.phone, p.notifications_opt_in
+           FROM ${TABLE_PROFILE_PRIVATE} p
+           JOIN ${TABLE_MEMBERS} m ON m.id = p.member_id
+          WHERE m.primary_wallet = $1
+             OR m.id = (SELECT member_id FROM ${TABLE_WALLETS}
+                         WHERE wallet_address = $1 AND status = 'ACTIVE' LIMIT 1)
+          LIMIT 1`,
+        [addr],
+      );
+    });
+    const row = result.rows[0];
+    if (!row || !row.notifications_opt_in) return null;
+    return { email: row.email ?? null, phone: row.phone ?? null };
+  }
+
   private async resolveMemberByAuthInput(input: ResolveMemberAuthInput): Promise<MemberRecord | null> {
     const authSubject = normalizeOptionalString(input.authSubject ?? null, 255) ?? null;
     if (authSubject) {

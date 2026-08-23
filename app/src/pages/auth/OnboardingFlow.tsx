@@ -27,7 +27,8 @@ import { money } from '@/lib/money';
  * go and what they typed, and the container decides what any of it means. An unserved ZIP going
  * to the waitlist instead of through is a decision, and it is made there rather than here.
  *
- * LoginPage still owns `enter` and `verify` — a member reaching /onboarding has already signed in.
+ * `LoginRoute` drives `enter` and `verify`; `OnboardingRoute` starts at `join`, because a member
+ * reaching /onboarding has already signed in.
  * ClaimFunds still owns the claim steps.
  */
 export type OnboardingStep =
@@ -139,6 +140,7 @@ export default function OnboardingFlow({
   waitlistRegion = 'Columbus, OH',
   waitlistPosition = 184,
   sentTo = '(909) 555-0148',
+  auth,
 }: {
   step?: OnboardingStep;
   onStepChange?: (step: OnboardingStep) => void;
@@ -155,6 +157,21 @@ export default function OnboardingFlow({
   waitlistRegion?: string;
   waitlistPosition?: number;
   sentTo?: string;
+  /**
+   * Real sign-in, when a container is driving. Omitted in the preview harness, where the buttons
+   * simply advance the step — the screens are the same either way, which is the point of keeping
+   * this optional rather than forking the component.
+   */
+  auth?: {
+    busy: boolean;
+    error?: string | null;
+    /** Seconds until a code can be resent; 0 means it can be. */
+    resendIn: number;
+    onContinue: () => void;
+    onOAuth: (provider: 'google' | 'apple') => void;
+    onSubmitCode: (code: string) => void;
+    onResend: () => void;
+  };
 }) {
   // Uncontrolled unless a container supplies values, so PreviewApp keeps working untouched: it
   // passes a step and nothing else, because looking at a screen is not collecting anything.
@@ -197,9 +214,19 @@ export default function OnboardingFlow({
             placeholder="Phone or email"
             aria-label="Phone or email"
             className="mb-2"
+            inputMode="email"
+            autoComplete="username"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && auth && !auth.busy) auth.onContinue();
+            }}
           />
-          <Button size="xs" className="mb-3.5 w-full" onClick={go('verify')}>
-            Continue
+          <Button
+            size="xs"
+            className="mb-3.5 w-full"
+            onClick={auth ? auth.onContinue : go('verify')}
+            disabled={auth?.busy}
+          >
+            {auth?.busy ? 'Sending…' : 'Continue'}
           </Button>
 
           <div className="mb-3.5 flex items-center gap-2">
@@ -208,12 +235,28 @@ export default function OnboardingFlow({
             <span className="h-px flex-1 bg-border" />
           </div>
 
-          <Button variant="clear" size="xs" className="mb-2 w-full" onClick={go('verify')}>
+          <Button
+            variant="clear"
+            size="xs"
+            className="mb-2 w-full"
+            onClick={auth ? () => auth.onOAuth('google') : go('verify')}
+            disabled={auth?.busy}
+          >
             Continue with Google
           </Button>
-          <Button variant="clear" size="xs" className="w-full" onClick={go('verify')}>
+          <Button
+            variant="clear"
+            size="xs"
+            className="w-full"
+            onClick={auth ? () => auth.onOAuth('apple') : go('verify')}
+            disabled={auth?.busy}
+          >
             Continue with Apple
           </Button>
+
+          {auth?.error && (
+            <p className="mt-2.5 text-[11px] leading-relaxed text-negative">{auth.error}</p>
+          )}
 
           <Footnote>Signing in and signing up are the same. We&rsquo;ll figure out which.</Footnote>
         </>
@@ -225,8 +268,40 @@ export default function OnboardingFlow({
           <p className="mb-5 text-[13px] leading-relaxed text-foreground-secondary">
             Sent to {sentTo}
           </p>
-          <CodeInput value={code} onChange={setCode} />
-          <p className="text-xs text-muted-foreground">Resend in 0:24</p>
+          <CodeInput
+            value={code}
+            onChange={(next) => {
+              setCode(next);
+              // Submitted on the sixth digit rather than behind a button. There is nothing else to
+              // decide on this screen, and a code that sits there waiting for a press is a step
+              // somebody has to be told to take.
+              if (auth && next.length === 6 && !auth.busy) auth.onSubmitCode(next);
+            }}
+          />
+
+          {auth?.error && (
+            <p className="mb-1.5 text-[11px] leading-relaxed text-negative">{auth.error}</p>
+          )}
+
+          {auth ? (
+            auth.resendIn > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Resend in 0:{String(auth.resendIn).padStart(2, '0')}
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={auth.onResend}
+                disabled={auth.busy}
+                className="text-xs text-muted-foreground underline underline-offset-2 disabled:opacity-60"
+              >
+                Send a new code
+              </button>
+            )
+          ) : (
+            <p className="text-xs text-muted-foreground">Resend in 0:24</p>
+          )}
+
           <Footnote align="left">Next time, use Face ID instead.</Footnote>
         </>
       )}

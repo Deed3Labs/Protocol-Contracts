@@ -26,6 +26,8 @@ import avatarRouter from './routes/avatar.js';
 import portfolioRouter from './routes/portfolio.js';
 import payRouter from './routes/pay.js';
 import creditRouter from './routes/credit.js';
+import chargesRouter from './routes/charges.js';
+import { startChargeReconciler } from './services/chargeReconciler.js';
 import withdrawRouter from './routes/withdraw.js';
 import autopayRouter from './routes/autopay.js';
 import contactsRouter from './routes/contacts.js';
@@ -224,6 +226,11 @@ async function startServer() {
     app.use('/api/portfolio', requireAuth, portfolioRouter);
     app.use('/api/pay', requireAuth, payRouter);
     app.use('/api/credit', requireAuth, creditRouter);
+    // Deliberately not `requireAuth` at the mount: `POST /api/charges` is a merchant device
+    // authenticating by signature, with no member session to check. The member-facing routes
+    // inside attach `requireAuth` themselves — see the note in routes/charges.ts for why that
+    // must not be left to the mount.
+    app.use('/api/charges', chargesRouter);
     app.use('/api/withdraw', requireAuth, withdrawRouter);
     app.use('/api/autopay', requireAuth, autopayRouter);
     app.use('/api/contacts', requireAuth, contactsRouter);
@@ -282,6 +289,10 @@ async function startServer() {
     startPortfolioSnapshotter().catch((error) => {
       console.error('⚠️ Portfolio snapshotter failed to start:', error);
     });
+    // Charges left mid-flight by a crash or a dropped RPC connection. Self-healing rather than
+    // something an operator has to remember, because the failure it repairs is invisible until a
+    // member complains that Approve did nothing.
+    startChargeReconciler();
     startAutopayRunner().catch((error) => {
       console.error('⚠️ Autopay runner failed to start:', error);
     });

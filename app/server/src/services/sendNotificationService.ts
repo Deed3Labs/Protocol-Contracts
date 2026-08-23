@@ -9,7 +9,7 @@ export interface SendNotificationResult {
 }
 
 type NotificationChannel = 'email' | 'sms';
-type NotificationKind = 'claim_link' | 'otp';
+type NotificationKind = 'claim_link' | 'otp' | 'charge_alert';
 
 type GenericWebhookResponse = {
   provider?: string;
@@ -108,6 +108,48 @@ class SendNotificationService {
     };
   }
 
+  /**
+   * The text a member gets when a merchant raises a charge.
+   *
+   * On this service rather than a second one because the transport is the transport -- provider
+   * mode, Twilio wiring, webhook fallback and the mock are all here, and a charge alert that went
+   * out through its own copy would be a second thing to configure and a second thing to forget.
+   * The class name is now narrower than what it does; that is worth less than one dispatcher.
+   *
+   * Best-effort by design: the in-app notification and Web Push have already been emitted by the
+   * time this runs, so a Twilio outage must not fail the charge. It is reported, not thrown.
+   */
+  async sendChargeAlert(params: {
+    recipientType: RecipientType;
+    recipientContact: string;
+    merchantName: string;
+    amount: string;
+    approveUrl: string;
+  }): Promise<SendNotificationResult | null> {
+    const channel: NotificationChannel = params.recipientType === 'email' ? 'email' : 'sms';
+    try {
+      const dispatchResult = await this.dispatchNotification({
+        channel,
+        kind: 'charge_alert',
+        destination: params.recipientContact,
+        payload: {
+          merchantName: params.merchantName,
+          amount: params.amount,
+          approveUrl: params.approveUrl,
+        },
+      });
+      return {
+        provider: dispatchResult.provider,
+        providerMessageId: dispatchResult.providerMessageId,
+        destinationHash: hashDestination(params.recipientContact.trim().toLowerCase()),
+        status: dispatchResult.status,
+      };
+    } catch (error) {
+      console.error('[charge] alert dispatch failed', error instanceof Error ? error.message : error);
+      return null;
+    }
+  }
+
   private async dispatchNotification(params: {
     channel: NotificationChannel;
     kind: NotificationKind;
@@ -132,6 +174,14 @@ class SendNotificationService {
     if (params.kind === 'otp') {
       const otp = params.payload.otp || '';
       return `Your claim verification code is ${otp}.`;
+    }
+
+    if (params.kind === 'charge_alert') {
+      // The reference's own wording. "You have not been charged yet" is the whole message — it is
+      // what makes the rest safe to read on a lock screen — so it is not shortened to fit a
+      // segment count.
+      const { merchantName = '', amount = '', approveUrl = '' } = params.payload;
+      return `${merchantName} is charging ${amount} to your Clear account.\n\nApprove or decline: ${approveUrl}\n\nYou have not been charged yet.`;
     }
 
     const claimUrl = params.payload.claimUrl || '';

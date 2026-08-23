@@ -8,7 +8,7 @@ import { useLoginWithEmail, useLoginWithOAuth, useLoginWithSms } from '@privy-io
  * LINKED in-app (Privy linked accounts), and the Privy smart wallet is the user's primary wallet.
  * Email & phone are the guaranteed methods (2-step OTP: send code → verify), shown up front. Socials
  * (OAuth redirect) live behind a "More ways to sign in" slide-up sheet. On success Privy flips
- * `authenticated` → LoginPage routes onward. See [[clearpath-privy-migration]].
+ * `authenticated` → LoginRoute routes onward. See [[clearpath-privy-migration]].
  */
 
 type OAuthProvider = 'google' | 'apple' | 'twitter' | 'discord' | 'github';
@@ -72,7 +72,7 @@ export default function PrivyLoginControls() {
     try {
       if (method === 'email') await loginWithEmailCode({ code });
       else await loginWithSmsCode({ code });
-      // On success Privy authenticates; LoginPage's effect routes onward.
+      // On success Privy authenticates; LoginRoute's effect routes onward.
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Invalid or expired code.');
     } finally {

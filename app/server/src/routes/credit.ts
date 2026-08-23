@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { requireWalletMatch } from '../middleware/auth.js';
 import { readChainCredit } from '../services/chain/creditReader.js';
 import { readChainEarn } from '../services/chain/earnReader.js';
+import { chargeStore } from '../services/chargeStore.js';
 
 /*
  * A member's credit line, assembled from the contracts that hold it.
@@ -39,10 +40,20 @@ creditRouter.get('/:wallet', async (req: Request, res: Response) => {
       return;
     }
 
+    const open = (credit.plans ?? []).filter((plan) => !plan.closed);
+
+    // The one thing on this route that is not from chain, and it is labelled as such below. A plan
+    // knows its merchant's address; only the charge that opened it knows the name a member would
+    // recognise. Best-effort: a shelf row with no name is a plan without a label, which is worse
+    // than the alternative but far better than failing the whole credit read over it.
+    const merchantNames = await chargeStore
+      .merchantNamesByPlanId(open.map((plan) => plan.planId))
+      .catch(() => ({} as Record<number, string>));
+
     res.json({
       wallet: wallet.toLowerCase(),
       tiers: credit.tiers ?? [],
-      plans: (credit.plans ?? []).filter((plan) => !plan.closed),
+      plans: open.map((plan) => ({ ...plan, merchantName: merchantNames[plan.planId] ?? null })),
       cycle: credit.cycle,
       // Named rather than implied: everything here came from chain, and the tiers the chain does
       // not know about are absent rather than zero. The caller decides what to do about that.

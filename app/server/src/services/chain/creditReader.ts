@@ -97,6 +97,10 @@ export interface ChainTermPlan {
   installmentCents: number;
   /** What the schedule collects across its whole term, carry included. */
   scheduleTotalCents: number;
+  /** Unix seconds. The shelf shows the month a plan was opened beside its name. */
+  openedAt: number;
+  /** Carry in basis points per cycle — the rate the plan was written at, not today's. */
+  rateBps: number;
   closed: boolean;
 }
 
@@ -197,7 +201,7 @@ async function readPlans(
     const plans: ChainTermPlan[] = [];
     for (const id of ids) {
       const [plan, schedule] = await Promise.all([term.planAt(id), term.scheduleOf(id)]);
-      const [, principal, outstanding, repaid, , installments, , , closed] = plan;
+      const [, principal, outstanding, repaid, openedAt, installments, , ratePerCycle, closed] = plan;
       const [installmentAmount, scheduleTotal] = schedule;
       plans.push({
         planId: Number(id),
@@ -207,6 +211,8 @@ async function readPlans(
         installments: Number(installments),
         installmentCents: toCents(installmentAmount),
         scheduleTotalCents: toCents(scheduleTotal),
+        openedAt: Number(openedAt),
+        rateBps: Number(ratePerCycle),
         closed,
       });
     }
