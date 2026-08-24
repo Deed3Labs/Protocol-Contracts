@@ -33,6 +33,11 @@ const ISSUER_ABI = [
 
 const REGISTRY_ABI = [
   'function collateralValueOf(address member, bytes32 kind) external view returns (uint256)',
+  // What may actually leave. Not the pledge minus anything the caller works out — the registry
+  // computes it from what is *drawn*, and the token enforces the same figure on transfer.
+  // What must stay put. The registry computes it from what is *drawn*, and CLRUSD consults the
+  // same function in `_update` to decide whether a transfer may proceed.
+  'function encumberedOf(address holder) external view returns (uint256)',
   'function collateralTypes(bytes32 kind) external view returns (uint8 backing, uint256 haircutBps, uint256 unitPrice, address valuer, bool registered)',
 ];
 
@@ -108,6 +113,14 @@ export interface ChainCredit {
   /** Null when the read failed — which is not the same as a member with no credit line. */
   tiers: ChainTier[] | null;
   plans: ChainTermPlan[] | null;
+  /**
+   * Savings that must stay put because credit is drawn against them, in cents. Null when unread.
+   *
+   * The figure CLRUSD enforces on transfer, so what is withdrawable is `balance − this`. Not
+   * `balance − pledged`: encumbrance follows what is drawn, so a fully pledged line nobody has
+   * touched encumbers nothing.
+   */
+  savingsEncumberedCents: number | null;
   /** Null when the read failed; zeroed when the member has never opened a line. */
   cycle: ChainCycle | null;
   complete: boolean;
@@ -299,6 +312,27 @@ async function readCycle(
 }
 
 /** A member's credit line, as the contracts hold it. */
+/**
+ * Savings that cannot move because credit is drawn against them.
+ *
+ * Null on a failed read, never zero — reporting nothing encumbered when we could not ask would
+ * offer a member an amount the token then refuses. Zero is only returned when the registry
+ * actually answered zero.
+ */
+async function readEncumbered(
+  provider: ethers.JsonRpcProvider,
+  registryAddress: string,
+  wallet: string,
+): Promise<number | null> {
+  try {
+    const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, provider);
+    return toCents(await registry.encumberedOf(wallet));
+  } catch (error) {
+    console.error('[credit] encumbrance read failed', wallet, error);
+    return null;
+  }
+}
+
 export async function readChainCredit(
   wallet: string,
   chainId = resolveChainId(),
@@ -312,21 +346,23 @@ export async function readChainCredit(
     provider = getProvider(chainId);
   } catch (error) {
     console.error('[credit] no RPC for chain', chainId, error);
-    return { tiers: null, plans: null, cycle: null, complete: false };
+    return { tiers: null, plans: null, cycle: null, savingsEncumberedCents: null, complete: false };
   }
 
   // An unset issuer is no credit line, not a failed read: a member cannot have drawn against a
   // contract that does not exist.
-  const [tiers, plans, cycle] = await Promise.all([
+  const [tiers, plans, cycle, savingsEncumberedCents] = await Promise.all([
     issuer ? readTiers(provider, issuer, wallet, registry) : Promise.resolve([]),
     term ? readPlans(provider, term, wallet) : Promise.resolve([]),
     issuer ? readCycle(provider, issuer, wallet) : Promise.resolve(null),
+    registry ? readEncumbered(provider, registry, wallet) : Promise.resolve(0),
   ]);
 
   return {
     tiers,
     plans,
     cycle,
+    savingsEncumberedCents,
     complete: tiers !== null && plans !== null,
   };
 }

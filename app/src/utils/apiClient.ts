@@ -2312,6 +2312,13 @@ export interface CreditState {
   tiers: CreditTierRow[];
   plans: CreditTermPlanRow[];
   cycle: CreditCycleRow | null;
+  /**
+   * Savings that must stay put because credit is drawn against them, in cents. Null when unread.
+   *
+   * What CLRUSD enforces on transfer, so what a member may withdraw is `balance − this`. Not
+   * `balance − pledged`: a fully pledged line nobody has drawn on encumbers nothing.
+   */
+  savingsEncumberedCents: number | null;
   source: string;
   complete: boolean;
 }

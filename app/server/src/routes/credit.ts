@@ -55,6 +55,9 @@ creditRouter.get('/:wallet', async (req: Request, res: Response) => {
       tiers: credit.tiers ?? [],
       plans: open.map((plan) => ({ ...plan, merchantName: merchantNames[plan.planId] ?? null })),
       cycle: credit.cycle,
+      // What of a member's savings cannot leave. Carried because it is not derivable from the
+      // tiers: encumbrance follows what is drawn, not what is pledged.
+      savingsEncumberedCents: credit.savingsEncumberedCents,
       // Named rather than implied: everything here came from chain, and the tiers the chain does
       // not know about are absent rather than zero. The caller decides what to do about that.
       source: 'chain',
