@@ -147,7 +147,18 @@ export default function MoveMoneyDialog({
   onAddMoney,
   onAutoSave,
 }: MoveMoneyProps) {
-  const [typed, setTyped] = useState('250');
+  /*
+   * Starts empty, showing $0.00.
+   *
+   * A prefilled figure has to be cleared before it can be replaced, and on a keypad that means
+   * pressing backspace three times before typing the first digit of what you actually wanted. The
+   * chips are there for anyone who does want a round number; the pad is for everyone else, and it
+   * should be ready to type into.
+   *
+   * Empty rather than the string "0", so the first keypress replaces nothing — `applyKey` already
+   * treats a leading zero as a value to overwrite, but starting empty means it never has to.
+   */
+  const [typed, setTyped] = useState('');
 
   const isDeposit = direction === 'deposit';
   const isPool = destination === 'pool';
