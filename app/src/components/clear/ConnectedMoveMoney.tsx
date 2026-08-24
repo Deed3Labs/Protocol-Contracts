@@ -4,9 +4,9 @@ import { useSavingsMove } from '@/hooks/useSavingsMove';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useOptionalAddress } from '@/hooks/useOptionalWallet';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
-import { getCredit } from '@/utils/apiClient';
+import { getCredit, getPaySummary } from '@/utils/apiClient';
 import { track } from '@/lib/analytics';
-import { savingsTotal as savingsBalance, type SavingsData } from '@/lib/clearModel';
+import type { SavingsData } from '@/lib/clearModel';
 import { freeSavings } from '@/lib/freeSavings';
 
 /**
@@ -35,6 +35,7 @@ export default function ConnectedMoveMoney({
   const address = useOptionalAddress();
   const [direction, setDirection] = useState<MoveDirection>('deposit');
   const [pledgedCents, setPledgedCents] = useState<number | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
 
   useEffect(() => {
     if (!address || !open) return;
@@ -43,6 +44,11 @@ export default function ConnectedMoveMoney({
       if (cancelled || !credit) return;
       const savingsTier = credit.tiers.find((tier) => tier.kind === 'SAVINGS');
       setPledgedCents(savingsTier?.collateralValueCents ?? 0);
+    });
+    // Equity credits come from the ledger that mints them, not from the page. It is the same read
+    // Home and Savings already use, so a member sees one figure wherever they look at it.
+    void getPaySummary(address).then((summary) => {
+      if (!cancelled && summary) setCredits(summary.totalEquity);
     });
     return () => {
       cancelled = true;
@@ -63,14 +69,23 @@ export default function ConnectedMoveMoney({
 
   const { busy, error, txHash, move, reset } = useSavingsMove(onMoved);
 
-  const live = !balances.loading && balances.total > 0;
-  // The whole savings balance, not its cash slice. `savings.cash` is one of three parts — cash,
-  // vested and vesting — and using it made the dialog quote $3,000.00 on a page whose own header
-  // read $6,000.00, one component apart.
-  const savingsTotal = live ? balances.savings : savingsBalance(data.savings);
-  // The cash leg is what the reference calls "ready to allocate" — USDC held in the smart account
-  // that is not card-spendable. That is what a deposit draws from, so it is what the leg shows.
-  const cashReady = live ? balances.cash : data.payFrom.balance;
+  /*
+   * Every figure with a real source is read from that source, and the page's `data` is used only
+   * for what has none.
+   *
+   * The earlier version fell back to `data` whenever the balance read came back at zero, which is
+   * the furnished-fixture mistake in a new place: a member with nothing would have been shown the
+   * reference's money as their own. The reference's numbers are mock — it is a picture of the
+   * screens, not a source of balances — and the contracts are deployed, so there is no reason for
+   * a figure that exists on chain to come from anywhere else.
+   *
+   * What legitimately still comes from `data`: the credits goal, which is a product constant, and
+   * the projected date, which is a projection nothing on chain holds.
+   */
+  const savingsTotal = balances.savings;
+  // Ready to allocate — USDC in the smart account that is not card-spendable. That is what a
+  // deposit draws from, so it is what the leg shows.
+  const cashReady = balances.cash;
 
   return (
     <MoveMoneyDialog
@@ -87,9 +102,8 @@ export default function ConnectedMoveMoney({
       cashReady={cashReady}
       savingsTotal={savingsTotal}
       savingsFree={freeSavings(savingsTotal, pledgedCents)}
-      credits={data.savings.credits}
+      credits={credits ?? 0}
       creditsGoal={data.savings.creditsGoal}
-      creditLimitToday={data.creditLimitToday}
       reachesGoalBy={data.savings.onTrackFor}
       busy={busy}
       error={error}

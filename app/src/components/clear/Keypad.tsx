@@ -30,7 +30,7 @@ export default function Keypad({
           disabled={disabled}
           onClick={() => onKey(key)}
           aria-label={key === 'del' ? 'Delete' : key}
-          className="flex h-11 items-center justify-center rounded-[10px] text-[17px] tabular-nums transition-colors hover:bg-secondary/60 active:bg-secondary disabled:opacity-40"
+          className="flex h-12 items-center justify-center rounded-[10px] bg-secondary/50 text-[17px] tabular-nums transition-colors hover:bg-secondary active:bg-secondary/80 disabled:opacity-40"
         >
           {key === 'del' ? <Delete className="h-[18px] w-[18px]" /> : key}
         </button>
