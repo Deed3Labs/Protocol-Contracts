@@ -696,19 +696,42 @@ export function bondElapsed(bond: HeldBond): number {
 }
 
 /**
- * What each product backs on the credit line, and the total.
+ * What each product backs on the credit line.
  *
- * This is the whole reason the two products aren't just savings accounts: money
- * locked in them still raises the limit, at the loan-to-value the tier lends at.
- * The asset-backed tier's limit on Home is this number — one derivation, so Earn
- * and Home can't quote different figures.
+ * This is the whole reason the two products aren't just savings accounts: money locked in them
+ * still raises the limit, at the loan-to-value the tier lends at.
+ *
+ * **Rounded to cents, not to dollars.** Rounding to whole dollars turned $5 of pool position into
+ * "$4.00 backs your limit" — 5 × 0.7 is 3.50, and `Math.round` took it up. Home reads the figure
+ * from the credit contracts and said $3.50, so the two disagreed by fifty cents on the same
+ * quantity, and the one that was wrong was rounding *up*: overstating what backs a member's limit
+ * is the worse direction to be wrong in.
+ *
+ * These still derive from the model rather than from chain, so they agree with the contracts only
+ * while `poolLtv` and `bondLtv` match the registry's haircuts. That is pinned by a test rather
+ * than left to hold by luck.
  */
+const toCents = (value: number) => Math.round(value * 100) / 100;
+
+/*
+ * The haircuts, as `CollateralRegistry` registers them.
+ *
+ * One place, because there were three: the placeholder's POOL_LTV, the server's tierLimits, and a
+ * constant I added inside the pool dialog. Three copies of a number that decides how much credit a
+ * member gets, and the only thing keeping them equal was that nobody had changed one.
+ *
+ * They are co-op parameters set by governance, not by the minute — so stating them is reasonable.
+ * What is not reasonable is stating them repeatedly. A test pins these against the deployment.
+ */
+export const POOL_SHARE_HAIRCUT_BPS = 7_000;
+export const BOND_HAIRCUT_BPS = 9_500;
+
 export function poolBacking(data: EarnData): number {
-  return Math.round(data.pool.position * data.poolLtv);
+  return toCents(data.pool.position * data.poolLtv);
 }
 
 export function bondsBacking(data: EarnData): number {
-  return Math.round(bondsWorth(data.bonds) * data.bondLtv);
+  return toCents(bondsWorth(data.bonds) * data.bondLtv);
 }
 
 export function assetBackedLimit(data: EarnData): number {

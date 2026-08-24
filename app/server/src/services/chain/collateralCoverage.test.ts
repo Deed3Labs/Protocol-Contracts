@@ -108,3 +108,31 @@ describe('collateral tiers have something that pledges them', () => {
     expect(SYNC).toContain('pledgedItemsOf');
   });
 });
+
+
+/*
+ * The haircuts exist in three places that cannot import from each other: the contracts, the app,
+ * and this server. Two of them are copies, and a copy that drifts quotes a member a limit the
+ * contracts will not give them.
+ *
+ * Pinned here against the registry as deployed on Base Sepolia — POOL_SHARE 7000 bps, BOND 9500 —
+ * and against the app's own constants, which have their own matching test. If governance moves a
+ * haircut, three tests fail and each names the file to change.
+ */
+describe('the server’s haircuts match the contracts and the app', () => {
+  test('a pool share is 70%', async () => {
+    const { POOL_LTV } = await import('../lithic/tierLimits.js');
+    expect(POOL_LTV).toBeCloseTo(7_000 / 10_000, 6);
+  });
+
+  test('a bond is 95%', async () => {
+    const { BOND_LTV } = await import('../lithic/tierLimits.js');
+    expect(BOND_LTV).toBeCloseTo(9_500 / 10_000, 6);
+  });
+
+  test('and the app agrees', () => {
+    const model = readFileSync(join(import.meta.dir, '../../../../src/lib/clearModel.ts'), 'utf8');
+    expect(model).toContain('POOL_SHARE_HAIRCUT_BPS = 7_000');
+    expect(model).toContain('BOND_HAIRCUT_BPS = 9_500');
+  });
+});

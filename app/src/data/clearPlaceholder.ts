@@ -21,6 +21,7 @@ import type {
   TermPlan,
   LinkedAccount,
 } from '@/lib/clearModel';
+import { POOL_SHARE_HAIRCUT_BPS } from '@/lib/clearModel';
 import { assetBackedLimit } from '@/lib/clearModel';
 import { CLEAR_GRANTS } from '@/lib/clearGrants';
 
@@ -34,7 +35,9 @@ const PAY_FROM = { label: 'Cash account', balance: 6200 };
 
 /** Loan-to-value each product is lent against — spec §6. */
 const BOND_LTV = 0.95;
-const POOL_LTV = 0.7;
+// Derived, not restated. This is the registry's haircut expressed as a fraction, and it decides
+// how much credit a member gets — a second copy is a second thing to forget.
+const POOL_LTV = POOL_SHARE_HAIRCUT_BPS / 10_000;
 
 const POOL: YieldPool = { apy: 6.8, lent: 740000, capacity: 1000000, position: 2500, earned: 41.2 };
 

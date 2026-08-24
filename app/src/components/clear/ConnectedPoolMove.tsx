@@ -6,15 +6,9 @@ import { useOptionalAddress } from '@/hooks/useOptionalWallet';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
 import { getCredit, getEarn, type EarnPoolRow } from '@/utils/apiClient';
 import { track } from '@/lib/analytics';
+import { POOL_SHARE_HAIRCUT_BPS } from '@/lib/clearModel';
 
-/**
- * The haircut `CollateralRegistry` applies to a pool share, read from the deployment.
- *
- * Stated here rather than fetched because it is a co-op parameter that changes by governance, not
- * by the minute — but it is a real on-chain value, so if it moves this constant is the one place
- * that is wrong, and the limit it quotes is the thing a member would notice.
- */
-const POOL_SHARE_HAIRCUT_BPS = 7_000;
+
 
 /**
  * Add to / take from the yield pool, wired.
