@@ -462,3 +462,30 @@ describe('the pool pledges what it holds', () => {
     expect(POOL).toContain('getCredit(address)');
   });
 });
+
+/*
+ * The pad should be ready to type into.
+ *
+ * A prefilled amount has to be cleared before it can be replaced, which on a keypad means pressing
+ * backspace three times before the first digit of what you actually wanted.
+ */
+describe('the amount starts empty', () => {
+  test('nothing is prefilled', () => {
+    expect(DIALOG).toContain("const [typed, setTyped] = useState('');");
+    expect(DIALOG).not.toContain("useState('250')");
+  });
+
+  test('an empty amount reads as $0.00, not as blank', () => {
+    // The figure is the anchor of the screen; an empty space where it belongs reads as broken.
+    expect(DIALOG).toContain("Number(typed.split('.')[0] || 0)");
+    expect(DIALOG).toContain("(typed.split('.')[1] ?? '').padEnd(2, '0')");
+  });
+
+  test('and the action is inert until something is typed', () => {
+    expect(DIALOG).toContain('disabled={busy || amount <= 0}');
+  });
+
+  test('typing builds from empty without a leading zero to clear', () => {
+    expect(['5', '0'].reduce(applyKey, '')).toBe('50');
+  });
+});
