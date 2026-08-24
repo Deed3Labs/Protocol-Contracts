@@ -68,20 +68,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// what a member earns rather than against what they have pledged.
     mapping(address => uint256) public termLimitOf;
 
-    /// @dev Plans the member's term limit does not bound, because something else does.
-    ///
-    /// An ELPA is a mortgage: decades-scale, amortizing, and secured by the home it buys. Bounding
-    /// it by the same figure that bounds a tyre repair would mean a member needed a quarter-million
-    /// dollar term limit to buy a house, and that limit would then sit there permitting a
-    /// quarter-million dollars of unsecured merchant splits. The two are not the same product and
-    /// cannot share a ceiling.
-    ///
-    /// What bounds one instead is the collateral behind it and the underwriting that accepted it,
-    /// neither of which this contract can see. That is why the exemption is set by the operator at
-    /// origination rather than derived here: this contract is not the thing that decided.
-    mapping(uint256 => bool) public assetBacked;
-
-    uint256[41] private __gap;
+    uint256[42] private __gap;
 
     /* ========== ERRORS ========== */
 
@@ -279,28 +266,6 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         }
     }
 
-    /// @notice a member's outstanding principal on plans secured by something specific.
-    function assetBackedPrincipalOf(address member) public view returns (uint256 total) {
-        uint256[] storage ids = memberPlans[member];
-        for (uint256 i = 0; i < ids.length; i++) {
-            uint256 id = ids[i];
-            if (assetBacked[id]) total += plans[id].principalOutstanding;
-        }
-    }
-
-    /// @notice a member's outstanding principal on the plans the term limit bounds.
-    /// @dev Everything except asset-backed plans. Used only for the ceiling check -- what a member
-    /// owes in total is `totalPrincipalOf`, and that is what is reported, exposed and written off.
-    /// A mortgage is debt; it is just not debt this limit is about.
-    function limitedPrincipalOf(address member) public view returns (uint256 total) {
-        uint256[] storage ids = memberPlans[member];
-        for (uint256 i = 0; i < ids.length; i++) {
-            uint256 id = ids[i];
-            if (assetBacked[id]) continue;
-            total += plans[id].principalOutstanding;
-        }
-    }
-
     /// @notice a member's outstanding principal across every open plan.
     function totalPrincipalOf(address member) public view returns (uint256 total) {
         uint256[] storage ids = memberPlans[member];
@@ -347,37 +312,13 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     function setTermLimit(address member, uint256 limit) external onlyOperator notNull(member) {
         termLimitOf[member] = limit;
         emit TermLimitUpdated(member, limit);
-        _syncCeiling(member);
-    }
-
-    /// @notice this issuer's contribution to a member's ledger ceiling.
-    /// @dev The term limit, plus whatever is outstanding on plans that limit does not bound.
-    ///
-    /// The ledger refuses an origination past a member's ceiling, and that ceiling is one figure
-    /// per issuer -- so exempting an asset-backed plan from `termLimitOf` alone achieves nothing:
-    /// the mint still fails one layer down. A plan the term limit does not bound has to bring its
-    /// own headroom, and this is where it comes from.
-    ///
-    /// It does not become a way to spend more. `openPlan` still measures ordinary plans against
-    /// `termLimitOf`, so the headroom a mortgage adds is not headroom for merchant splits, and the
-    /// revolving tiers are bounded by their own capacities rather than by this figure. The ceiling
-    /// is a backstop; each issuer still bounds its own product.
-    ///
-    /// Read live, so it falls as the mortgage amortizes rather than leaving a member permanently
-    /// carrying the ceiling of a debt they have paid down.
-    function ceilingContributionOf(address member) public view returns (uint256) {
-        return termLimitOf[member] + assetBackedPrincipalOf(member);
-    }
-
-    function _syncCeiling(address member) private {
-        uint256 ceiling = ceilingContributionOf(member);
         // The first allocation is what enrols the member with this issuer; after that the
         // allocation is adjusted in place. A member may hold a revolving line as well, and this
         // sets only this issuer's contribution to their ceiling.
         if (stableCredit.networkRegistry().isEnrolled(member, address(this))) {
-            stableCredit.updateCreditLimit(member, ceiling);
+            stableCredit.updateCreditLimit(member, limit);
         } else {
-            stableCredit.createCreditLine(member, ceiling, 0);
+            stableCredit.createCreditLine(member, limit, 0);
         }
     }
 
@@ -411,52 +352,14 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         uint32 installments,
         uint64 installmentLength
     ) external onlyOperator notNull(member) returns (uint256 planId) {
-        uint256 wouldOwe = limitedPrincipalOf(member) + purchase;
-        if (wouldOwe > termLimitOf[member]) {
-            revert TermIssuerExceedsTermLimit(member, wouldOwe, termLimitOf[member]);
-        }
-        return _open(member, merchant, purchase, payout, ratePerCycle, cycleLength, installments, installmentLength, false);
-    }
-
-    /// @notice opens a plan the term limit does not bound.
-    /// @dev For a plan secured by something specific -- an ELPA against the home it buys. It is
-    /// bounded by that collateral and by the underwriting that accepted it, not by the figure that
-    /// paces somebody's merchant splits.
-    ///
-    /// Deliberately a separate entry point rather than a flag on `openPlan`. Skipping a member's
-    /// credit limit is not a parameter; it is a different decision, and it should be legible as one
-    /// at the call site and in a trace. The operator trust model is unchanged -- an operator that
-    /// can set a member's term limit to any figure could already open a plan of any size.
-    ///
-    /// It does not exempt the plan from anything else. The principal is still reported in
-    /// `debtByKind`, still written off on default, and still amortizes on its schedule.
-    function openAssetBackedPlan(
-        address member,
-        address merchant,
-        uint256 purchase,
-        uint256 payout,
-        uint256 ratePerCycle,
-        uint64 cycleLength,
-        uint32 installments,
-        uint64 installmentLength
-    ) external onlyOperator notNull(member) returns (uint256 planId) {
-        return _open(member, merchant, purchase, payout, ratePerCycle, cycleLength, installments, installmentLength, true);
-    }
-
-    function _open(
-        address member,
-        address merchant,
-        uint256 purchase,
-        uint256 payout,
-        uint256 ratePerCycle,
-        uint64 cycleLength,
-        uint32 installments,
-        uint64 installmentLength,
-        bool secured
-    ) private returns (uint256 planId) {
         if (installmentLength == 0 || purchase == 0) revert TermIssuerInvalidSchedule();
         if (!isOfferedSplit(installments)) revert TermIssuerSplitNotOffered(installments);
         if (payout > purchase) revert TermIssuerInvalidSchedule();
+
+        uint256 wouldOwe = totalPrincipalOf(member) + purchase;
+        if (wouldOwe > termLimitOf[member]) {
+            revert TermIssuerExceedsTermLimit(member, wouldOwe, termLimitOf[member]);
+        }
 
         planId = plans.length;
         plans.push();
@@ -474,12 +377,6 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         plan.normalized = CarryIndex.normalizeUp(purchase, CarryIndex.RAY);
         _fixSchedule(plan);
         memberPlans[member].push(planId);
-        if (secured) {
-            assetBacked[planId] = true;
-            // Before the mint, not after: the ledger checks the ceiling during origination, so
-            // headroom that arrives afterwards arrives too late.
-            _syncCeiling(member);
-        }
 
         stableCredit.originatePurchase(
             member, purchase, merchant, payout, carryTreasury, purchase - payout

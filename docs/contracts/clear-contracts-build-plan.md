@@ -111,7 +111,7 @@ Redemption is how lost debt is deleted: a positive holder burns credits, receive
 | `MerchantRegistry` | Per-merchant terms: base payout schedule, approval cap, discount rate, status. The redemption path reads it. Makes "merchant accounts" a config change rather than a rewrite. |
 | `PayoutPool` | Funds merchant redemptions. Separate from AssurancePool. Reports its own shortfall. |
 | `RevolvingIssuer` | The tiered line: savings, asset, income, Clear Boost™. Cheapest-first waterfall, cycle equilibrium, one index per tier. |
-| `TermIssuer` | Term plans: partner credit, Clear Cash™, ground lease, ELPA. Per-position rate and clock, split schedules, its own income-based limit. No cycle equilibrium. |
+| `TermIssuer` | Term plans: partner credit, Clear Cash™, ELPA. Per-position rate and clock, split schedules, its own income-based limit. No cycle equilibrium. |
 | `CollateralRegistry` | What each member has pledged and where it lives. |
 | `LimitCalculator` | Values collateral, applies haircuts, emits the tiered ceiling. |
 | `LendingPool` | ERC-4626, utilization-priced. Funds unsecured tiers. |
@@ -499,3 +499,27 @@ Also run **maturity-bucket coverage**: a system can be solvent in aggregate and 
 2. ~~Does the fork already ship a network factory (`core/factories/` has `BurnerBondFactory`)?~~ **RESOLVED — no.** `core/factories/` holds `BurnerBondFactory`, `FractionTokenFactory` and `ValidatorFactory`. Nothing deploys a StableCredit / AssurancePool / CreditIssuer set, so "do not build yet" stands unchallenged.
 3. Asset-backed haircut values — per collateral type, and the split between external assets (market price) and internal claims (redemption terms).
 4. Whether `TermIssuer` term plans use levelled payments or declining payments on-chain, given the UI shows one levelled figure.
+5. **Where the ELPA lives, and what bounds it.** Not `TermIssuer` as it stands: a plan opened there is
+   measured against the member's `termLimitOf`, so an ELPA would need a term limit the size of the
+   loan — and that limit would then sit there permitting the same amount of ordinary merchant
+   splits. The two are not the same product and cannot share a ceiling.
+
+   **The constraint any answer has to clear, which is not obvious from reading either contract
+   alone:** there are *two* ceilings and they are coupled. `TermIssuer.setTermLimit` writes
+   `termLimitOf` **and** calls `stableCredit.updateCreditLimit` with the same figure, and
+   `StableCredit.originatePurchase` refuses anything past that. So exempting a plan from the term
+   limit changes nothing on its own — the mint fails one layer down with a
+   `StableCreditCeilingExceeded` that has nothing to do with term plans. Whatever originates an
+   ELPA has to bring its own ceiling contribution.
+
+   The likely shape is **its own issuer**, for the reason `TermIssuer` is already separate from
+   `RevolvingIssuer`: a different rule set warrants a different issuer rather than a flag. An ELPA
+   is a secured term loan backed by a T-Deed, not a mortgage — default means acting on the deed
+   rather than writing off a balance, and exposure should not treat it as unsecured term debt the
+   way `debtByKind`'s single `TERM_KIND` bucket currently would. A separate issuer also gets the
+   ceiling for free: contributions are already per-issuer and summed, which is what
+   `setTermLimit`'s own comment means by "only this issuer's contribution".
+
+   A flag on `TermIssuer` was built and reverted rather than kept — it worked and was tested, but
+   it re-implemented inside one issuer the machinery the system already has at the issuer level,
+   and a live `assetBacked` mapping would have been something to migrate away from later.
