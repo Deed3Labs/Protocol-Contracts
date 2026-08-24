@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { syncSavingsCollateralFromBalance, syncPoolCollateral } from '../services/chain/savingsCollateralService.js';
+import { syncSavingsCollateralFromBalance, syncPoolCollateral, syncBondCollateral } from '../services/chain/savingsCollateralService.js';
 import { ethers } from 'ethers';
 import { requireWalletMatch, requireVerifiedWallet } from '../middleware/auth.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
@@ -488,6 +488,33 @@ savingsRouter.post('/pool/record', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[pool/record] failed:', error);
     res.status(500).json({ error: 'Failed to record pool movement' });
+  }
+});
+
+/**
+ * A bond was bought; pledge it.
+ *
+ * Takes no amount, which is the point: bonds pledge by identity, so the server reads which ones
+ * the member holds and reconciles the pledged set against it. There is nothing in the body worth
+ * lying about.
+ */
+savingsRouter.post('/bond/record', async (req: Request, res: Response) => {
+  try {
+    const wallet = req.auth?.walletAddress;
+    if (!wallet || !ethers.isAddress(wallet)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const result = await syncBondCollateral(ethers.getAddress(wallet));
+    if (!result.ok) console.error('[bond/record] collateral sync failed:', result.reason);
+
+    // Accepted either way: the purchase is already on chain, and reporting failure here would tell
+    // a member their bond did not mint when it did.
+    res.json({ success: true, pledged: result.ok });
+  } catch (error) {
+    console.error('[bond/record] failed:', error);
+    res.status(500).json({ error: 'Failed to record bond purchase' });
   }
 });
 

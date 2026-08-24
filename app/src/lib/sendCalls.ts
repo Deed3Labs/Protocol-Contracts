@@ -2,7 +2,7 @@ import { encodeFunctionData, parseUnits } from 'viem';
 import { sendCalls, waitForCallsStatus } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
-import { recordGaslessSavings, recordGaslessPool } from '@/utils/apiClient';
+import { recordGaslessSavings, recordGaslessPool, recordGaslessBond } from '@/utils/apiClient';
 
 /*
  * 3-TIER gasless money router (see [[clearpath-privy-migration]]).
@@ -202,6 +202,55 @@ export async function scPoolWithdraw(args: {
 
   const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, calls);
   await recordGaslessPool({ action: 'withdraw', amount: (args.sharesNow + args.sharesQueued).toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
+  return hash;
+}
+
+const BOND_DEPOSIT_ABI = [
+  { type: 'function', name: 'makeDeposit', stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'tokenAddress', type: 'address' },
+      { name: 'faceValue', type: 'uint256' },
+      { name: 'maturityDate', type: 'uint256' },
+      { name: 'discountPercentage', type: 'uint256' },
+    ],
+    outputs: [{ name: 'bondId', type: 'uint256' }] },
+] as const;
+
+/**
+ * Ready to allocate (USDC) → a bond: [approve, makeDeposit] in ONE sponsored batch.
+ *
+ * A bond is bought at a discount and matures at face, so what a member pays is derived from the
+ * face value and the term rather than typed. `approve` is for the price, not the face — approving
+ * the face would let the deposit contract take more than the bond costs.
+ *
+ * The price is quoted by the chain (`calculateRequiredDeposit`) and passed in, so the approval and
+ * the purchase agree on one figure that neither this file nor the screen invented.
+ */
+export async function scBuyBond(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  /** Face value in whole units — what the bond pays at maturity. */
+  faceValue: string;
+  /** Unix seconds. */
+  maturityDate: number;
+  /** Basis points, as the collection prices it. */
+  discountBps: number;
+  /** What it costs today, quoted by the chain. */
+  priceUnits: bigint;
+  chainId: number;
+}): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.burnerBondDeposit) throw new Error('Bonds are not available on this network.');
+  const face = parseUnits(args.faceValue, 6);
+
+  const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.burnerBondDeposit, args.priceUnits] }) },
+    { to: c.burnerBondDeposit, data: encodeFunctionData({
+        abi: BOND_DEPOSIT_ABI, functionName: 'makeDeposit',
+        args: [c.usdc, face, BigInt(args.maturityDate), BigInt(args.discountBps)],
+      }) },
+  ]);
+  await recordGaslessBond({ txHash: hash, chainId: args.chainId }).catch(() => {});
   return hash;
 }
 
