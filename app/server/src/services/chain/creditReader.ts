@@ -268,11 +268,26 @@ export async function readChainCapacities(
   try {
     const provider = getProvider(chainId);
     const limits = new ethers.Contract(calculator, LIMITS_ABI, provider);
-    const [savings, asset] = await Promise.all([
+    /*
+     * The asset tiers are BOND and POOL_SHARE, and there are two of them.
+     *
+     * This read asked for ASSET_INTERNAL, which is a registered collateral type and *not* an
+     * issuer tier — so nothing is ever pledged under it and the answer was always zero. The card's
+     * asset limit would have stayed at zero however many bonds a member held, and silently: zero
+     * is a number, so the caller's fallback to computing from holdings never fires either.
+     *
+     * Same keying mistake as the one already fixed on the issuer side; the reader kept the old key.
+     */
+    const [savings, bond, poolShare] = await Promise.all([
       limits.capacityOf(wallet, ethers.encodeBytes32String('SAVINGS')),
-      limits.capacityOf(wallet, ethers.encodeBytes32String('ASSET_INTERNAL')),
+      limits.capacityOf(wallet, ethers.encodeBytes32String('BOND')),
+      limits.capacityOf(wallet, ethers.encodeBytes32String('POOL_SHARE')),
     ]);
-    return { savingsCents: toCents(savings), assetCents: toCents(asset), available: true };
+    return {
+      savingsCents: toCents(savings),
+      assetCents: toCents(bond) + toCents(poolShare),
+      available: true,
+    };
   } catch (error) {
     console.error('[credit] capacity read failed', calculator, error);
     return { savingsCents: null, assetCents: null, available: false };
