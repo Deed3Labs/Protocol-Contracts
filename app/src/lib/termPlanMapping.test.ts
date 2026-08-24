@@ -80,3 +80,56 @@ describe('day one leads with whichever one they are here for', () => {
     expect(plans.some((p) => !p.lockedNote && (p.balance ?? 0) > 0)).toBe(false);
   });
 });
+
+/*
+ * The ELPA row is the one place a member watches a balance climb toward the thing they are saving
+ * for, and it read a hardcoded "0 of 15,000" — the same for a member with nothing and a member
+ * with fourteen thousand.
+ */
+describe('the ELPA row shows real progress', () => {
+  const elpaIn = (data: ReturnType<typeof toTermPlans>) => data.plans.find((p) => p.id === 'elpa');
+
+  test('reads the member’s actual credits', () => {
+    const row = elpaIn(toTermPlans([], HOME_DAY_ONE.termPlans, { credits: 130, goal: 15_000 }));
+    expect(row?.lockedNote).toBe('130 of 15,000 credits');
+  });
+
+  test('and not the hardcoded zero it used to show', () => {
+    // Exact, not a substring: "130 of 15,000" contains "0 of 15,000".
+    const row = elpaIn(toTermPlans([], HOME_DAY_ONE.termPlans, { credits: 130, goal: 15_000 }));
+    expect(row?.lockedNote).not.toBe('0 of 15,000 credits');
+  });
+
+  test('unlocks when the goal is met', () => {
+    // Leaving it greyed out would tell a member they cannot have the thing they just spent two
+    // years qualifying for. The shelf treats a row as locked precisely when it carries a reason.
+    const row = elpaIn(toTermPlans([], HOME_DAY_ONE.termPlans, { credits: 15_000, goal: 15_000 }));
+    expect(row?.lockedNote).toBeUndefined();
+  });
+
+  test('stays locked one credit short', () => {
+    const row = elpaIn(toTermPlans([], HOME_DAY_ONE.termPlans, { credits: 14_999, goal: 15_000 }));
+    expect(row?.lockedNote).toBe('14,999 of 15,000 credits');
+  });
+
+  test('is left alone before credits have been read', () => {
+    // Unread is not zero. Rewriting the row with a figure we do not have would be inventing one.
+    const row = elpaIn(toTermPlans([], HOME_DAY_ONE.termPlans));
+    expect(row?.lockedNote).toBeDefined();
+  });
+});
+
+describe('the ground lease is not a term plan', () => {
+  test('it is gone from the shelf entirely', () => {
+    for (const data of [HOME_DAY_ONE.termPlans, toTermPlans([], HOME_DAY_ONE.termPlans)]) {
+      expect(data.plans.some((p) => p.id === 'ground-lease')).toBe(false);
+    }
+  });
+
+  test('and the rows around it did not shift', () => {
+    // Removing it moved every index after it, and `LOCKED_PLANS[2]` silently became undefined in
+    // a list that renders. The fixtures pick rows by id now.
+    expect(HOME_DAY_ONE.termPlans.plans.every(Boolean)).toBe(true);
+    expect(HOME_DAY_ONE.termPlans.plans.some((p) => p.id === 'elpa')).toBe(true);
+  });
+});
