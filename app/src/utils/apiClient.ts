@@ -3032,3 +3032,14 @@ export async function recordGaslessPool(p: {
 }): Promise<void> {
   await apiRequest('/api/savings/pool/record', { method: 'POST', body: JSON.stringify(p) });
 }
+
+
+/**
+ * Tell the server a bond was bought, so it pledges it as collateral.
+ *
+ * No amount is sent. Bonds pledge by identity, and the server reads which ones a member holds
+ * rather than believing a number — so there is nothing here worth lying about.
+ */
+export async function recordGaslessBond(p: { txHash: string; chainId: number }): Promise<void> {
+  await apiRequest('/api/savings/bond/record', { method: 'POST', body: JSON.stringify(p) });
+}

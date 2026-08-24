@@ -30,6 +30,10 @@ export interface ClearContracts {
    * calling a zero address.
    */
   lendingPool?: `0x${string}`;
+  /** Where a bond is bought. Optional for the same reason as the pool — testnet only so far. */
+  burnerBondDeposit?: `0x${string}`;
+  /** The collection a bought bond is minted into, and what the app reads holdings from. */
+  burnerBond?: `0x${string}`;
 }
 const CONTRACTS: Record<number, ClearContracts> = {
   8453: {
@@ -40,6 +44,8 @@ const CONTRACTS: Record<number, ClearContracts> = {
   },
   84532: {
     lendingPool: '0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23',
+    burnerBondDeposit: '0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3',
+    burnerBond: '0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148',
     // Replacement pair. The vault and token these succeed are still deployed and still
     // mutually redeemable -- ESADepositVaultLegacy holds the USDC behind the CLRUSD that was
     // outstanding when the swap happened, so nobody who held the old token is stranded.

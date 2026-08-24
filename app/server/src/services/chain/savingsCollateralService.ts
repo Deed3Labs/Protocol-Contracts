@@ -50,6 +50,7 @@ const CALCULATOR_ABI = ['function pushCapacities(address member) returns (uint25
 /** Kinds as the deploy script writes them — `encodeBytes32String`, not a hash. */
 export const SAVINGS_KIND = ethers.encodeBytes32String('SAVINGS');
 export const POOL_SHARE_KIND = ethers.encodeBytes32String('POOL_SHARE');
+export const BOND_KIND = ethers.encodeBytes32String('BOND');
 
 function chainId(): number {
   const raw = (process.env.SAVINGS_DEFAULT_CHAIN_ID || process.env.SEND_DEFAULT_CHAIN_ID || '').trim();
@@ -238,6 +239,100 @@ export async function syncPoolCollateral(wallet: string): Promise<CollateralSync
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';
     console.error('[pool] position read failed for', wallet, message);
+    return { ok: false, reason: message };
+  }
+}
+
+
+const BOND_COLLECTION_ABI = [
+  'function getBondIdsByCreator(address creator) view returns (uint256[])',
+  'function balanceOf(address account, uint256 id) view returns (uint256)',
+];
+
+const REGISTRY_ITEM_ABI = [
+  'function pledgeItem(address member, bytes32 kind, uint256 itemId)',
+  'function releaseItem(address member, bytes32 kind, uint256 itemId)',
+  'function pledgedItemsOf(address member, bytes32 kind) view returns (uint256[])',
+];
+
+/**
+ * Pledge a member's bonds so they back the BOND tier.
+ *
+ * Bonds pledge differently from savings and pool shares, and the difference is not cosmetic. They
+ * have identity — the registry records *which* bond, because refusing to let it move and valuing
+ * it both need to know that — so this is `pledgeItem` per bond rather than one amount. Half a bond
+ * is not a thing.
+ *
+ * It follows that there is no figure to sync toward. The reconciliation is set-shaped: pledge what
+ * is held and not yet pledged, release what is pledged and no longer held. Both directions matter,
+ * because a bond can leave by transfer, redemption or seizure, and a pledge left behind would
+ * value a member's line against something they no longer own.
+ *
+ * The value comes from `BondValuer`, which the registry calls itself — a bond is worth something
+ * different every day, so nothing here computes a price. Registering the valuer is what makes that
+ * work, and it is already registered against BOND at a 95% haircut.
+ */
+export async function syncBondCollateral(wallet: string): Promise<CollateralSyncResult> {
+  const registryAddress = getContractAddress(chainId(), 'CollateralRegistry');
+  const collectionAddress = getContractAddress(chainId(), 'BurnerBond');
+  const calculatorAddress = getContractAddress(chainId(), 'LimitCalculator');
+  if (!registryAddress) return { ok: false, reason: 'no collateral registry on this chain' };
+  if (!collectionAddress) return { ok: false, reason: 'no bond collection on this chain' };
+
+  const key = operatorKey();
+  if (!key) return { ok: false, reason: 'no CREDIT_OPERATOR_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY' };
+
+  try {
+    const rpc = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
+    const signer = new ethers.Wallet(key, rpc);
+    const member = ethers.getAddress(wallet);
+
+    const collection = new ethers.Contract(collectionAddress, BOND_COLLECTION_ABI, rpc);
+    const registry = new ethers.Contract(registryAddress, REGISTRY_ITEM_ABI, signer);
+
+    // Created is not held: a bond can be transferred, redeemed or seized, and one the member no
+    // longer holds backs nothing of theirs.
+    const created: bigint[] = await collection.getBondIdsByCreator(member);
+    const held = new Set<string>();
+    for (const id of created) {
+      const balance: bigint = await collection.balanceOf(member, id);
+      if (balance > 0n) held.add(id.toString());
+    }
+
+    const pledgedIds: bigint[] = await registry.pledgedItemsOf(member, BOND_KIND);
+    const pledged = new Set(pledgedIds.map((id) => id.toString()));
+
+    let changed = 0;
+    for (const id of held) {
+      if (pledged.has(id)) continue;
+      const tx = await registry.pledgeItem(member, BOND_KIND, id);
+      await tx.wait();
+      changed += 1;
+    }
+    for (const id of pledged) {
+      if (held.has(id)) continue;
+      // `releaseItem` refuses while the bond is holding up drawn credit, which is correct — the
+      // member cannot have moved it either.
+      try {
+        const tx = await registry.releaseItem(member, BOND_KIND, id);
+        await tx.wait();
+        changed += 1;
+      } catch {
+        // Encumbered, or already gone. Left as it is rather than treated as a failure of the sync.
+      }
+    }
+
+    if (calculatorAddress) {
+      const calculator = new ethers.Contract(calculatorAddress, CALCULATOR_ABI, signer);
+      const estimate = await calculator.pushCapacities.estimateGas(member);
+      const push = await calculator.pushCapacities(member, { gasLimit: (estimate * 15n) / 10n });
+      await push.wait();
+    }
+
+    return { ok: true, pledgedUnits: String(held.size) };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown error';
+    console.error('[bond] collateral sync failed for', wallet, message);
     return { ok: false, reason: message };
   }
 }

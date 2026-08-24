@@ -4,6 +4,15 @@ import { join } from 'node:path';
 
 const READER = readFileSync(join(import.meta.dir, 'creditReader.ts'), 'utf8');
 const SYNC = readFileSync(join(import.meta.dir, 'savingsCollateralService.ts'), 'utf8');
+/*
+ * The routes, because a sync that exists and is never called pledges nothing.
+ *
+ * An earlier version of this file asserted the function's *name* appeared in the service. Renaming
+ * it to `syncBondCollateralDISABLED` still satisfied that — a substring match cannot tell a
+ * definition from a corpse. What matters is that a request path invokes it, so that is what is
+ * checked.
+ */
+const ROUTES = readFileSync(join(import.meta.dir, '../../routes/savings.ts'), 'utf8');
 
 /*
  * Every tier the issuer offers has to be reachable, and this is the test that says so.
@@ -60,31 +69,42 @@ describe('the limits read asks for tiers that exist', () => {
 describe('collateral tiers have something that pledges them', () => {
   test('savings syncs from the balance that backs it', () => {
     expect(SYNC).toContain('SAVINGS');
-    expect(SYNC).toContain('syncSavingsCollateralFromBalance');
+    expect(ROUTES).toMatch(/syncSavingsCollateralFromBalance\(/);
   });
 
   /*
-   * Deliberately not asserting that bonds and pool shares sync yet — they cannot, because there is
-   * no way to buy either. `BuyBondDialog` and `PoolDepositDialog` render with no handler, nothing
-   * calls the bond or pool contracts, and so no member can hold one to pledge.
+   * Each collateral tier is checked against its *own* sync, not against any sync.
    *
-   * This test documents that and will fail the moment it stops being true, which is exactly when
-   * the pledge becomes necessary. Whoever wires the purchase will land here and be told what else
-   * the tier needs, instead of shipping a bond that mints fine and backs nothing.
+   * An earlier version asserted /BOND|POOL_SHARE/ — which passes if either exists, so a bond
+   * purchase shipped alongside a pool sync would have satisfied it while pledging nothing. A guard
+   * that can be satisfied by the wrong tier is not a guard.
    */
-  test('bonds and pool shares still have no purchase path — wire the pledge when they do', () => {
-    const app = join(import.meta.dir, '../../../../src');
-    const sendCalls = readFileSync(join(app, 'lib/sendCalls.ts'), 'utf8');
-    const bondPathExists = /scBuyBond|BondVault|burnerBond/i.test(sendCalls);
-    const poolPathExists = /scPoolDeposit|LendingPool/i.test(sendCalls);
+  const APP = join(import.meta.dir, '../../../../src');
+  const SEND_CALLS = readFileSync(join(APP, 'lib/sendCalls.ts'), 'utf8');
 
-    if (bondPathExists || poolPathExists) {
-      // A purchase path now exists. The tier it feeds needs a pledge, or it reads zero with the
-      // asset sitting behind it — the savings bug, again, in a tier nobody is watching yet.
-      expect(SYNC).toMatch(/BOND|POOL_SHARE/);
-    } else {
-      expect(bondPathExists).toBe(false);
-      expect(poolPathExists).toBe(false);
-    }
+  test('a pool path exists, so the pool pledge must too', () => {
+    expect(/scPoolDeposit|LendingPool|lendingPool/i.test(SEND_CALLS)).toBe(true);
+    expect(ROUTES).toMatch(/await syncPoolCollateral\(/);
+    expect(SYNC).toContain('POOL_SHARE_KIND');
+  });
+
+  test('a bond path exists, so the bond pledge must too', () => {
+    expect(/scBuyBond|burnerBondDeposit/i.test(SEND_CALLS)).toBe(true);
+    expect(ROUTES).toMatch(/await syncBondCollateral\(/);
+    expect(SYNC).toContain('BOND_KIND');
+  });
+
+  test('bonds pledge by identity, not by amount', () => {
+    // A bond has identity — the registry records which one, because refusing to let it move and
+    // valuing it both need to know that. Half a bond is not a thing, so `pledge` would be wrong.
+    expect(SYNC).toContain('pledgeItem');
+    expect(SYNC).toContain('releaseItem');
+  });
+
+  test('and the bond set is reconciled both ways', () => {
+    // A bond can leave by transfer, redemption or seizure. A pledge left behind would value a
+    // member's line against something they no longer own.
+    expect(SYNC).toContain('getBondIdsByCreator');
+    expect(SYNC).toContain('pledgedItemsOf');
   });
 });

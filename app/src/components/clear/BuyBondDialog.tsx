@@ -33,11 +33,20 @@ export default function BuyBondDialog({
   open,
   onOpenChange,
   onBuy,
+  busy = false,
+  error = null,
 }: {
   data: EarnData;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onBuy?: (term: BondTerm) => void;
+  /**
+   * A purchase needs more than the term. The face value is chosen on this screen and the price is
+   * derived from both, so passing the term alone would make the caller re-derive figures the
+   * screen already has — and re-derived money is money that can disagree.
+   */
+  onBuy?: (purchase: { term: BondTerm; face: number; price: number; maturity: { label: string; date: Date } }) => void;
+  busy?: boolean;
+  error?: string | null;
 }) {
   const [months, setMonths] = useState(24);
   const [face, setFace] = useState(5000);
@@ -126,8 +135,15 @@ export default function BuyBondDialog({
         </InfoBlock>
       )}
 
-      <Button size="xs" className="w-full" onClick={() => onBuy?.(term)}>
-        Buy this bond
+      {error && <p className="mb-2 text-[11px] leading-relaxed text-negative">{error}</p>}
+
+      <Button
+        size="xs"
+        className="w-full"
+        disabled={busy}
+        onClick={() => onBuy?.({ term, face, price, maturity })}
+      >
+        {busy ? 'One moment…' : 'Buy this bond'}
       </Button>
     </Modal>
   );
