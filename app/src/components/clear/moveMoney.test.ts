@@ -328,3 +328,29 @@ describe('what is free to withdraw', () => {
     expect(CONNECTED).not.toContain('collateralValueCents');
   });
 });
+
+/*
+ * The limit is not ours to predict.
+ *
+ * Balances are safe to show optimistically — the transfer confirmed, so they are already true. The
+ * limit is not: it moves only after the server pledges the collateral and pushes the capacities,
+ * two writes later. Faking it would have hidden a real bug where the pledge landed and the push
+ * did not, leaving collateral recorded and the line unaware of it.
+ */
+describe('what may be shown before the chain agrees', () => {
+  test('balances are optimistic, the limit is not', () => {
+    expect(CONNECTED).toContain('balances.applyOptimistic');
+    // No arithmetic on a limit anywhere in the connected component.
+    expect(CONNECTED).not.toContain('creditLimit');
+  });
+
+  test('a move asks for a re-read instead', () => {
+    expect(CONNECTED).toContain("new Event('clear:credit-stale')");
+  });
+
+  test('and the reader refetches on it, with backoff for the two writes', () => {
+    const home = readFileSync(join(import.meta.dir, '../../pages/app/HomeRoute.tsx'), 'utf8');
+    expect(home).toContain("addEventListener('clear:credit-stale'");
+    expect(home).toContain('[3000, 8000, 15000]');
+  });
+});

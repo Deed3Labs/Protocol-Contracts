@@ -22,6 +22,20 @@ import { savingsIntentService } from '../savingsIntentService.js';
  * failing the member's deposit because a follow-up write did not go through would be the wrong
  * trade. A pledge that fails leaves the savings real and the line unmoved, which is exactly the
  * state we are already in, and the next deposit or a manual sync repairs it.
+ *
+ * ## One sync per wallet at a time
+ *
+ * Both `/gasless/submit` and `/gasless/record` call this, because a deposit takes one route or the
+ * other depending on the member's wallet. When one deposit reached both, two syncs ran
+ * concurrently on the same operator key: they read the same state, built identical transactions,
+ * and collided on the same nonce -- so the two became one transaction, which then ran out of gas
+ * because the pledge landed between its gas estimate and its execution. The pledge stuck and the
+ * capacity push did not, which is the worst of the three possible outcomes: a member whose
+ * collateral is recorded and whose limit does not know about it.
+ *
+ * Coalesced rather than queued. A second caller for the same wallet joins the first call's promise
+ * instead of starting another, which is correct rather than merely safe: both were asking the same
+ * question -- "make the pledge match the balance" -- and one answer serves both.
  */
 
 const REGISTRY_ABI = [
@@ -48,6 +62,12 @@ function operatorKey(): string | null {
   return raw.startsWith('0x') ? raw : `0x${raw}`;
 }
 
+/**
+ * Syncs in flight, by wallet. Module-level because two concurrent HTTP handlers in this process are
+ * exactly the case being guarded, and a per-request value cannot see the other request.
+ */
+const inFlight = new Map<string, Promise<CollateralSyncResult>>();
+
 export interface CollateralSyncResult {
   ok: boolean;
   reason?: string;
@@ -71,6 +91,16 @@ export async function syncSavingsCollateral(
   wallet: string,
   targetUnits: bigint,
 ): Promise<CollateralSyncResult> {
+  const key = wallet.trim().toLowerCase();
+  const running = inFlight.get(key);
+  if (running) return running;
+
+  const attempt = runSync(wallet, targetUnits).finally(() => inFlight.delete(key));
+  inFlight.set(key, attempt);
+  return attempt;
+}
+
+async function runSync(wallet: string, targetUnits: bigint): Promise<CollateralSyncResult> {
   const registryAddress = getContractAddress(chainId(), 'CollateralRegistry');
   const calculatorAddress = getContractAddress(chainId(), 'LimitCalculator');
   if (!registryAddress) return { ok: false, reason: 'no collateral registry on this chain' };
@@ -108,8 +138,21 @@ export async function syncSavingsCollateral(
     // operator to notice.
     if (calculatorAddress) {
       const calculator = new ethers.Contract(calculatorAddress, CALCULATOR_ABI, signer);
-      const push = await calculator.pushCapacities(member);
-      await push.wait();
+      /*
+       * Estimated with headroom, not taken at face value.
+       *
+       * The pledge immediately above changes the very state this call reads, so an estimate is a
+       * measurement of the world before the write it follows. Executed after it, the same call
+       * writes a *changed* capacity rather than an identical one and costs more -- and a limit set
+       * exactly to the estimate runs out of gas and reverts with no reason data, which is what
+       * happened. The buffer is on the gas limit only; unused gas is not charged.
+       */
+      const estimate = await calculator.pushCapacities.estimateGas(member);
+      const push = await calculator.pushCapacities(member, { gasLimit: (estimate * 15n) / 10n });
+      const receipt = await push.wait();
+      if (receipt?.status === 0) {
+        return { ok: false, reason: 'pushCapacities reverted', pledgedUnits: targetUnits.toString() };
+      }
     }
 
     return { ok: true, pledgedUnits: targetUnits.toString(), txHash };
