@@ -24,6 +24,12 @@ export interface ClearContracts {
   clrusd: `0x${string}`;
   usdc: `0x${string}`;
   claimEscrow: `0x${string}`;
+  /**
+   * The yield pool. Optional because it is only deployed on testnet so far — a chain without one
+   * has no pool to move money into, and the UI reads that as "not available here" rather than
+   * calling a zero address.
+   */
+  lendingPool?: `0x${string}`;
 }
 const CONTRACTS: Record<number, ClearContracts> = {
   8453: {
@@ -33,6 +39,7 @@ const CONTRACTS: Record<number, ClearContracts> = {
     claimEscrow: '0xb30E97FEd437bf89B122693D26338C8D64515096',
   },
   84532: {
+    lendingPool: '0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23',
     // Replacement pair. The vault and token these succeed are still deployed and still
     // mutually redeemable -- ESADepositVaultLegacy holds the USDC behind the CLRUSD that was
     // outstanding when the swap happened, so nobody who held the old token is stranded.

@@ -3015,3 +3015,20 @@ export async function declineCharge(code: string): Promise<ChargeActionResult> {
   if (r.error || !r.data) return { error: r.error || 'We could not decline this charge.' };
   return { charge: r.data };
 }
+
+
+/**
+ * Tell the server a pool movement landed, so it can pledge the position as collateral.
+ *
+ * The same shape as `recordGaslessSavings` and for the same reason: depositing mints a position
+ * and pledging it is a separate step. Skipping this is what left savings backing nothing for
+ * weeks, so the pool gets the call from the start rather than as a later fix.
+ */
+export async function recordGaslessPool(p: {
+  action: 'deposit' | 'withdraw';
+  amount: string;
+  txHash: string;
+  chainId: number;
+}): Promise<void> {
+  await apiRequest('/api/savings/pool/record', { method: 'POST', body: JSON.stringify(p) });
+}

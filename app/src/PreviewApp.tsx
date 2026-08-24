@@ -248,6 +248,62 @@ function MoveMoneyPreview() {
   );
 }
 
+/**
+ * The yield pool — the same component, pointed elsewhere.
+ *
+ * Figures passed in explicitly, as with the savings preview: the live component reads them and
+ * shows a member with nothing exactly that, so fixtures belong in the harness rather than behind
+ * it. The states are the three the reference draws, including the pool being fully lent.
+ */
+function PoolMovePreview() {
+  const [direction, setDirection] = useState<MoveDirection>('deposit');
+  const [lent, setLent] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <MoveMoneyDialog
+        open
+        onOpenChange={() => {}}
+        destination="pool"
+        direction={direction}
+        onDirectionChange={setDirection}
+        cashReady={2109}
+        savingsTotal={2500}
+        savingsFree={2541}
+        credits={0}
+        creditsGoal={0}
+        pool={{
+          apyPercent: 6.8,
+          haircutBps: 7_000,
+          freeNow: lent ? 600 : 2541,
+          utilizationBps: lent ? 7_600 : 7_400,
+          limitAfter: 7600,
+          owed: 2400,
+        }}
+        onMove={() => {}}
+      />
+
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        {([['add', 'deposit', false], ['take', 'withdraw', false], ['fully lent', 'withdraw', true]] as const).map(
+          ([label, dir, isLent]) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => {
+                setDirection(dir as MoveDirection);
+                setLent(isLent);
+              }}
+              className="rounded-md border-[0.5px] border-border px-2 py-1 text-[11px] text-muted-foreground"
+            >
+              {label}
+            </button>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** A charge arriving — the approval screen and the state after it. */
 function ChargeApprovalPreview() {
   const [splitInto, setSplitInto] = useState(4);
@@ -386,6 +442,7 @@ export default function PreviewApp() {
           <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
           <Route path="/charge" element={<ChargeApprovalPreview />} />
           <Route path="/move-money" element={<MoveMoneyPreview />} />
+          <Route path="/pool" element={<PoolMovePreview />} />
 
           <Route
             path="*"
