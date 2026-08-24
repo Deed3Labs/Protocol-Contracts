@@ -58,10 +58,131 @@ describe("TermIssuer", function () {
       );
   }
 
+  /// An ELPA-shaped plan: bounded by its collateral, not by the member's term limit.
+  async function openAssetBackedPlan(purchase: bigint, payout: bigint, rate = 150n, installments = 12) {
+    return issuer
+      .connect(ctx.operator)
+      .openAssetBackedPlan(
+        ctx.member.address, merchant.address, purchase, payout, rate, CYCLE, installments, MONTH
+      );
+  }
+
   async function advance(seconds: number) {
     await ethers.provider.send("evm_increaseTime", [seconds]);
     await ethers.provider.send("evm_mine", []);
   }
+
+  /*
+   * An ELPA is a mortgage: decades-scale, amortizing, secured by the home it buys. Bounding it by
+   * the figure that bounds a tyre repair would mean needing a quarter-million dollar term limit to
+   * buy a house -- and that limit would then sit there permitting a quarter-million dollars of
+   * unsecured merchant splits.
+   */
+  describe("a term limit does not bound an asset-backed plan", function () {
+    it("opens one far above the member's limit", async function () {
+      await setLimit(1_000n * ONE_USDC);
+      await expect(openAssetBackedPlan(250_000n * ONE_USDC, 250_000n * ONE_USDC)).to.not.be.reverted;
+    });
+
+    it("and marks it, so the exemption is legible rather than inferred", async function () {
+      await setLimit(1_000n * ONE_USDC);
+      await openAssetBackedPlan(250_000n * ONE_USDC, 250_000n * ONE_USDC);
+      expect(await issuer.assetBacked(0)).to.equal(true);
+    });
+
+    it("an ordinary plan is still bounded", async function () {
+      await setLimit(1_000n * ONE_USDC);
+      await expect(openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerExceedsTermLimit");
+      expect(await issuer.assetBacked(0)).to.equal(false);
+    });
+
+    it("and holding a mortgage does not consume the ordinary limit", async function () {
+      // The point of the whole change: a member buying a home can still split a repair.
+      await setLimit(1_000n * ONE_USDC);
+      await openAssetBackedPlan(250_000n * ONE_USDC, 250_000n * ONE_USDC);
+      await expect(openPlan(900n * ONE_USDC, 900n * ONE_USDC)).to.not.be.reverted;
+    });
+
+    it("but it does not become a way past the limit either", async function () {
+      // Exempt from the ceiling, not exempt from being counted. An ordinary plan opened after one
+      // still sees every ordinary plan before it.
+      await setLimit(1_000n * ONE_USDC);
+      await openAssetBackedPlan(250_000n * ONE_USDC, 250_000n * ONE_USDC);
+      await openPlan(900n * ONE_USDC, 900n * ONE_USDC);
+      await expect(openPlan(200n * ONE_USDC, 200n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerExceedsTermLimit");
+    });
+  });
+
+  /*
+   * Exempting a plan from `termLimitOf` alone achieves nothing: the ledger refuses an origination
+   * past the member's ceiling, and `setTermLimit` sets that ceiling to the same figure. The mint
+   * simply failed one layer down, with a StableCreditCeilingExceeded that had nothing to do with
+   * term plans. A plan the term limit does not bound has to bring its own headroom.
+   */
+  describe("an asset-backed plan brings its own ceiling", function () {
+    it("raises this issuer's contribution by what it is worth", async function () {
+      await setLimit(1_000n * ONE_USDC);
+      expect(await issuer.ceilingContributionOf(ctx.member.address)).to.equal(1_000n * ONE_USDC);
+
+      await openAssetBackedPlan(250_000n * ONE_USDC, 250_000n * ONE_USDC);
+      expect(await issuer.ceilingContributionOf(ctx.member.address)).to.equal(251_000n * ONE_USDC);
+    });
+
+    it("and the ledger agrees, which is what lets the mint through", async function () {
+      await setLimit(1_000n * ONE_USDC);
+      await openAssetBackedPlan(250_000n * ONE_USDC, 250_000n * ONE_USDC);
+      expect(await ctx.stableCredit.creditLimitOf(ctx.member.address)).to.equal(251_000n * ONE_USDC);
+    });
+
+    it("the headroom is not spendable on ordinary plans", async function () {
+      // The whole risk of raising a ceiling. `openPlan` still measures against `termLimitOf`, so a
+      // mortgage does not quietly become a quarter-million of merchant splits.
+      await setLimit(1_000n * ONE_USDC);
+      await openAssetBackedPlan(250_000n * ONE_USDC, 250_000n * ONE_USDC);
+      await expect(openPlan(1_500n * ONE_USDC, 1_500n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerExceedsTermLimit");
+    });
+
+    it("and it is read live, so it falls as the plan amortizes", async function () {
+      // A member who has paid a mortgage down should not carry its ceiling forever.
+      await setLimit(1_000n * ONE_USDC);
+      await openAssetBackedPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC);
+      expect(await issuer.ceilingContributionOf(ctx.member.address)).to.equal(2_000n * ONE_USDC);
+
+      await issuer.connect(payer).payPlan(0, 400n * ONE_USDC);
+      // Not exactly 1,600: a payment covers carry before principal, so principal falls by slightly
+      // less than what was paid. What matters is that the ceiling followed it down.
+      const after = await issuer.ceilingContributionOf(ctx.member.address);
+      expect(after).to.be.lessThan(2_000n * ONE_USDC);
+      expect(after).to.be.greaterThanOrEqual(1_600n * ONE_USDC);
+      expect(after - 1_600n * ONE_USDC).to.be.lessThan(ONE_USDC);
+    });
+  });
+
+  describe("an asset-backed plan is still debt", function () {
+    it("is reported in the member's total principal", async function () {
+      await setLimit(1_000n * ONE_USDC);
+      await openAssetBackedPlan(250_000n * ONE_USDC, 250_000n * ONE_USDC);
+      expect(await issuer.totalPrincipalOf(ctx.member.address)).to.equal(250_000n * ONE_USDC);
+    });
+
+    it("but is excluded from what the limit bounds", async function () {
+      await setLimit(1_000n * ONE_USDC);
+      await openAssetBackedPlan(250_000n * ONE_USDC, 250_000n * ONE_USDC);
+      expect(await issuer.limitedPrincipalOf(ctx.member.address)).to.equal(0n);
+    });
+
+    it("and is reported as debt to the exposure source", async function () {
+      // A mortgage is debt. It is just not debt this ceiling is about — so `debtByKind` must not
+      // quietly lose it, or the co-op's exposure would understate by the size of a house.
+      await setLimit(1_000n * ONE_USDC);
+      await openAssetBackedPlan(250_000n * ONE_USDC, 250_000n * ONE_USDC);
+      const [, amounts] = await issuer.debtByKind(ctx.member.address);
+      expect(amounts[0]).to.equal(250_000n * ONE_USDC);
+    });
+  });
 
   describe("origination is a three-party mint", function () {
     it("debits the member, credits the merchant, credits the co-op the difference", async function () {

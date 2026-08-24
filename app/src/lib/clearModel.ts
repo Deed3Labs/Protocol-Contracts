@@ -1235,6 +1235,11 @@ export interface TermPlans {
    * Absent once the shelf carries something this cap was never meant to bound — an ELPA mortgage is
    * amortising and sits outside it, and "$250,910.00 of $656.00" would be a category error rather
    * than a limit. The headline simply stops comparing.
+   *
+   * The contracts now say the same thing rather than only this comment: `TermIssuer` opens an
+   * asset-backed plan through its own entry point, exempt from `termLimitOf` and carrying its own
+   * ceiling. Until that change the two disagreed, and the contract was the one that would have
+   * won — a mortgage would have needed a quarter-million dollar term limit to originate.
    */
   balanceLimit?: number;
   /**
