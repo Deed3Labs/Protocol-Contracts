@@ -263,3 +263,29 @@ describe('the classes are this app’s tokens, not the reference’s variable na
     }
   });
 });
+
+/*
+ * The two-column layout and the dialog's width are one decision, not two.
+ *
+ * Gated on a breakpoint but rendered inside a fixed-width dialog, the grid forced a 216px keypad
+ * and a full consequence column into 360px — every row wrapped to one word per line and the legs
+ * truncated to a single character. A breakpoint says how wide the *window* is, which is not the
+ * same question as how wide the container is.
+ */
+describe('the desktop layout gets the width it needs', () => {
+  test('the dialog widens exactly where the two-column layout applies', () => {
+    expect(DIALOG).toContain('sm:max-w-[640px]');
+    expect(DIALOG).toContain('sm:grid-cols-[minmax(0,1fr)_216px]');
+  });
+
+  test('and both use the breakpoint Modal itself switches at', () => {
+    // Modal renders a bottom sheet below 640px and a dialog above it. A grid on a different
+    // breakpoint would put two columns inside a sheet, or one inside a wide dialog.
+    const modal = readFileSync(join(import.meta.dir, 'Modal.tsx'), 'utf8');
+    expect(modal).toContain('(max-width: 639px)');
+  });
+
+  test('the empty state stays narrow — it has no second column', () => {
+    expect(DIALOG).toContain('className={nothingReady ? undefined :');
+  });
+});
