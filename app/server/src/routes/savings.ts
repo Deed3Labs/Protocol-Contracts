@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { syncSavingsCollateralFromBalance } from '../services/chain/savingsCollateralService.js';
 import { ethers } from 'ethers';
 import { requireWalletMatch, requireVerifiedWallet } from '../middleware/auth.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
@@ -325,6 +326,25 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
     } catch (ledgerError) {
       console.error('[savings/gasless] equity ledger update failed:', ledgerError);
     }
+
+    /*
+     * Make the savings back the credit line.
+     *
+     * Minting CLRUSD is not what moves a member's limit — the registry reads what is *pledged*,
+     * not what is held, so without this a deposit lands and the savings tier stays at zero. That
+     * is what it did.
+     *
+     * Synced to the balance rather than adjusted by this transfer's amount, so a pledge that
+     * drifted for any reason (a sweep, a failed earlier sync, a redeem that raced this) is
+     * corrected rather than compounded.
+     *
+     * Best-effort, like the ledger above and for the same reason: the transfer is already on
+     * chain. A member whose follow-up write failed has their money and an unmoved limit, which is
+     * recoverable; a member whose confirmed deposit was reported as failed is not.
+     */
+    void syncSavingsCollateralFromBalance(ethers.getAddress(owner)).then((result) => {
+      if (!result.ok) console.error('[savings/gasless] collateral sync failed:', result.reason);
+    });
 
     res.json({ success: true, action, chainId: config.chainId, vaultAddress: config.vaultAddress, txHash, status: 'SUBMITTED' });
   } catch (error) {

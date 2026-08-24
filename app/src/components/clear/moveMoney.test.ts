@@ -150,10 +150,10 @@ describe('every figure comes from its real source', () => {
     expect(CONNECTED).toContain('credits={credits ?? 0}');
   });
 
-  test('the pledged collateral comes from the credit contracts', () => {
-    // What is free to withdraw. There is no "limit today" line — that was mine, not the
-    // reference's; the box states the change, which needs no starting figure.
-    expect(CONNECTED).toContain('setPledgedCents');
+  test('what cannot be withdrawn comes from the credit contracts', () => {
+    // Encumbrance, not the pledge — see the withdrawal tests below for why those differ. There is
+    // no "limit today" line either; that was mine, not the reference's.
+    expect(CONNECTED).toContain('setEncumberedCents');
     expect(CONNECTED).not.toContain('data.creditLimitToday');
   });
 
@@ -287,5 +287,44 @@ describe('the desktop layout gets the width it needs', () => {
 
   test('the empty state stays narrow — it has no second column', () => {
     expect(DIALOG).toContain('className={nothingReady ? undefined :');
+  });
+});
+
+/*
+ * What a member may withdraw, from the contract's own rule rather than from arithmetic that looks
+ * right. `_requiredUnits` returns zero when nothing is drawn, so a fully pledged line nobody has
+ * touched encumbers nothing — the pledge-subtraction returned zero and would have locked a member
+ * out of their own savings. Verified against a real wallet: 5 CLRUSD held, 5 pledged, 0 drawn,
+ * `encumberedOf` = 0.
+ */
+describe('what is free to withdraw', () => {
+  test('nothing drawn means all of it, however much is pledged', () => {
+    expect(freeSavings(5, 0)).toBe(5);
+  });
+
+  test('drawing encumbers pound for pound at a 100% haircut', () => {
+    // required = drawn × 10000 / haircutBps. SAVINGS is 10000 bps, so spending $5 against it
+    // holds exactly $5 of savings still.
+    expect(freeSavings(5, 500)).toBe(0);
+  });
+
+  test('and it is marginal, not all-or-nothing', () => {
+    // Spending $2 of a $5 line holds $2 and leaves $3 to move.
+    expect(freeSavings(5, 200)).toBe(3);
+  });
+
+  test('never negative', () => {
+    expect(freeSavings(5, 900)).toBe(0);
+  });
+
+  test('an unreadable registry does not lock somebody out of their own savings', () => {
+    // The transfer still enforces the real rule, so the worst case is a rejected transaction
+    // rather than a member wrongly told their money is spoken for.
+    expect(freeSavings(5, null)).toBe(5);
+  });
+
+  test('the component reads encumbrance, not the pledge', () => {
+    expect(CONNECTED).toContain('credit.savingsEncumberedCents');
+    expect(CONNECTED).not.toContain('collateralValueCents');
   });
 });

@@ -34,7 +34,7 @@ export default function ConnectedMoveMoney({
   const { openAddMoney, openAutoSave } = useMoneyActions();
   const address = useOptionalAddress();
   const [direction, setDirection] = useState<MoveDirection>('deposit');
-  const [pledgedCents, setPledgedCents] = useState<number | null>(null);
+  const [encumberedCents, setEncumberedCents] = useState<number | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
 
   useEffect(() => {
@@ -42,8 +42,9 @@ export default function ConnectedMoveMoney({
     let cancelled = false;
     void getCredit(address).then((credit) => {
       if (cancelled || !credit) return;
-      const savingsTier = credit.tiers.find((tier) => tier.kind === 'SAVINGS');
-      setPledgedCents(savingsTier?.collateralValueCents ?? 0);
+      // What cannot leave, from the registry — not the pledge. Encumbrance follows what is
+      // *drawn*, so savings backing a line nobody has touched are entirely withdrawable.
+      setEncumberedCents(credit.savingsEncumberedCents);
     });
     // Equity credits come from the ledger that mints them, not from the page. It is the same read
     // Home and Savings already use, so a member sees one figure wherever they look at it.
@@ -101,7 +102,7 @@ export default function ConnectedMoveMoney({
       onDirectionChange={setDirection}
       cashReady={cashReady}
       savingsTotal={savingsTotal}
-      savingsFree={freeSavings(savingsTotal, pledgedCents)}
+      savingsFree={freeSavings(savingsTotal, encumberedCents)}
       credits={credits ?? 0}
       creditsGoal={data.savings.creditsGoal}
       reachesGoalBy={data.savings.onTrackFor}
