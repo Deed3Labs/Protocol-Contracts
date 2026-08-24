@@ -87,16 +87,24 @@ const SPLIT_OPTIONS = [1, 2, 4, 12];
  * The locked rows, which every member sees from the first minute regardless of how they signed up.
  * Each states its own unlock condition — that's what makes the shelf teach rather than tease.
  */
+/**
+ * Looked up by id, never by index.
+ *
+ * Removing the ground-lease row shifted every index after it, and `LOCKED_PLANS[2]` silently
+ * became `undefined` in a list that renders. Positions in a list nobody promised to keep stable
+ * are not identifiers.
+ */
+const lockedPlan = (id: string): TermPlan => {
+  const found = LOCKED_PLANS.find((plan) => plan.id === id);
+  if (!found) throw new Error(`No locked plan "${id}"`);
+  return found;
+};
+
 const LOCKED_PLANS: TermPlan[] = [
   {
     id: 'cash-plan',
     name: 'Clear Cash',
     lockedNote: 'Unlocks after six clean cycles · 2.5% / cycle',
-  },
-  {
-    id: 'ground-lease',
-    name: 'Ground lease — your backyard',
-    lockedNote: 'For members who own their home',
   },
   {
     id: 'elpa',
@@ -217,7 +225,7 @@ export const HOME_IN_USE: HomeData = {
         rate: '2.5% / cycle',
         ratePerCycle: 0.025,
       },
-      LOCKED_PLANS[2],
+      lockedPlan('elpa'),
     ],
     balanceLimit: 3000,
     perCycleLimit: 850,
@@ -268,9 +276,10 @@ export const HOME_DAY_ONE: HomeData = {
         name: 'Partner credit',
         lockedNote: 'Unlocks with a linked account · at partner shops · 2% / cycle',
       },
-      LOCKED_PLANS[0],
-      LOCKED_PLANS[1],
-      { ...LOCKED_PLANS[2], lockedNote: '0 of 15,000 credits' },
+      lockedPlan('cash-plan'),
+      // The credits figure is rewritten from the member's real balance by `toTermPlans`; this is
+      // only what shows before anything has been read.
+      lockedPlan('elpa'),
     ],
     accounts: [],
     splitOptions: SPLIT_OPTIONS,

@@ -158,7 +158,13 @@ export default function HomeRoute() {
           // The last placeholder on this page, and the one that made day one's two arrivals
           // unreachable: HomePage already reverses its order for a member who has a plan, and
           // until now no member could have one it could see.
-          termPlans: toTermPlans(credit.plans, HOME_DAY_ONE.termPlans),
+          // Credits come from the equity ledger, so the ELPA row shows the member's real progress
+          // toward it rather than a hardcoded zero.
+          termPlans: toTermPlans(
+            credit.plans,
+            HOME_DAY_ONE.termPlans,
+            pay ? { credits: pay.totalEquity, goal: HOME_DAY_ONE.savings.creditsGoal } : undefined,
+          ),
         }
       : {}),
   };

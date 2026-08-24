@@ -8,7 +8,7 @@ import type {
   LimitBacking,
   LimitBackingRow,
 } from '@/lib/clearModel';
-import { money } from '@/lib/money';
+import { money, count } from '@/lib/money';
 import type { CreditTierRow, CreditCycleRow, CreditTermPlanRow } from '@/utils/apiClient';
 
 /**
@@ -195,6 +195,28 @@ export function toLimitBacking(rows: CreditTierRow[], fallback: LimitBacking): L
 
 
 /**
+ * The ELPA row, against the member's actual credits.
+ *
+ * Its unlock condition is a balance, not a date or a behaviour, so the row is the one place a
+ * member watches that balance climb toward the thing they are saving for. It read a hardcoded "0
+ * of 15,000" — the same for a member with nothing and a member with fourteen thousand.
+ *
+ * Returns the row with no `lockedNote` once the goal is met, which is what unlocks it: the shelf
+ * treats a row as locked precisely when it carries a reason it is locked.
+ */
+function withElpaProgress(plan: TermPlan, equity?: { credits: number; goal: number }): TermPlan {
+  if (!equity) return plan;
+  if (equity.credits >= equity.goal) {
+    const { lockedNote: _locked, ...unlocked } = plan;
+    return unlocked;
+  }
+  return {
+    ...plan,
+    lockedNote: `${count(equity.credits)} of ${count(equity.goal)} credits`,
+  };
+}
+
+/**
  * The term-plan shelf, from the plans the contracts hold.
  *
  * The last placeholder on Home, and the one that made day one's two arrivals unreachable: the page
@@ -210,8 +232,19 @@ export function toLimitBacking(rows: CreditTierRow[], fallback: LimitBacking): L
  * spec is explicit that they are visible from the first minute with their own unlock conditions.
  * Dropping them because the chain returned one plan would delete the point of the component.
  */
-export function toTermPlans(rows: CreditTermPlanRow[], fallback: TermPlans): TermPlans {
-  const locked = fallback.plans.filter((plan) => plan.lockedNote);
+export function toTermPlans(
+  rows: CreditTermPlanRow[],
+  fallback: TermPlans,
+  /** The member's equity credits, and what an ELPA needs. Omitted before they have been read. */
+  equity?: { credits: number; goal: number },
+): TermPlans {
+  const locked = fallback.plans
+    .filter((plan) => plan.lockedNote)
+    .map((plan) => (plan.id === 'elpa' ? withElpaProgress(plan, equity) : plan))
+    // An ELPA whose condition is met is no longer a locked row; it is a product the member can
+    // take up, and leaving it greyed out would be telling them they cannot have the thing they
+    // just spent two years qualifying for.
+    .filter((plan) => plan.lockedNote !== undefined);
 
   const live: TermPlan[] = rows.map((row) => {
     const cyclesLeft =
