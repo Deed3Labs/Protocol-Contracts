@@ -53,6 +53,41 @@ async function main() {
     console.log("No OLD_OPERATOR given — nothing revoked. Pass it to complete the rotation.");
   }
 
+  /*
+   * Three role systems, not one.
+   *
+   * The issuer checks operators through AccessManager; CollateralRegistry and LimitCalculator are
+   * plain AccessControl and check their own OPERATOR_ROLE. Granting only the first is what left an
+   * operator that could open a credit line and not pledge collateral against it -- so deposits
+   * landed and the savings tier stayed at zero, silently, because AccessControl's revert carries
+   * no string and surfaces as "missing revert data" during gas estimation.
+   *
+   * Rotating the key has to move all three or it reintroduces exactly that.
+   */
+  for (const name of ["CollateralRegistry", "LimitCalculator"] as const) {
+    const record = getDeployment(network, name);
+    if (!record) {
+      console.log(`${name}: not deployed on ${network}, skipping`);
+      continue;
+    }
+    const contract = await ethers.getContractAt(name, record.address);
+    const role = await contract.OPERATOR_ROLE();
+
+    if (!(await contract.hasRole(role, next))) {
+      await (await contract.grantRole(role, next)).wait();
+      console.log(`${name}: granted OPERATOR_ROLE to`, next);
+    } else {
+      console.log(`${name}: already an operator`);
+    }
+
+    if (previous && ethers.isAddress(previous) && previous.toLowerCase() !== next.toLowerCase()) {
+      if (await contract.hasRole(role, previous)) {
+        await (await contract.revokeRole(role, previous)).wait();
+        console.log(`${name}: revoked OPERATOR_ROLE from`, previous);
+      }
+    }
+  }
+
   console.log("new is operator  :", await access.isOperator(next));
   console.log("new is admin     :", await access.isAdmin(next), "(should be false)");
 }
