@@ -311,6 +311,12 @@ export default function MoveMoneyDialog({
       onOpenChange={onOpenChange}
       title="Move money"
       description="Move money between your cash account and savings."
+      // The desktop dialog is 360px by default, and the two-column layout below needs the width
+      // the reference gives it — a 216px keypad beside a column that still has to fit "Credits
+      // earned" on one line. Forced into 360px it wraps to one word per line, which is what it
+      // did. Only widened where the two-column layout applies: Modal switches to a bottom sheet
+      // below 640px, the same breakpoint the grid uses, so the two never disagree.
+      className={nothingReady ? undefined : 'sm:max-w-[640px] sm:p-[21px]'}
     >
       {txHash ? (
         <div className="py-2 text-center">
