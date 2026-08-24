@@ -46,11 +46,26 @@ async function main() {
     console.log(`${name}: granted OPERATOR_ROLE to ${member}`);
   }
 
-  console.log("\nCheck the operator has gas — a role without ETH is still an operator that cannot act.");
+  /*
+   * Gas, measured rather than guessed at.
+   *
+   * An earlier version of this warned below a flat 0.002 ETH, which is a mainnet-shaped number and
+   * badly wrong on an L2 -- it reported a healthy operator as nearly empty and sent a real
+   * investigation chasing a non-problem. A pledge is ~85k gas, and two writes per deposit, so the
+   * only honest way to state a runway is to price it at the chain's current fee.
+   */
   const balance = await ethers.provider.getBalance(member);
-  console.log("operator balance:", ethers.formatEther(balance), "ETH");
-  if (balance < ethers.parseEther("0.002")) {
-    console.log("  ^ low. Two writes per deposit (pledge + pushCapacities) will exhaust this.");
+  const fee = await ethers.provider.getFeeData();
+  const gasPrice = fee.gasPrice ?? fee.maxFeePerGas ?? 0n;
+  const perDeposit = gasPrice * 85_000n * 2n;
+
+  console.log("\noperator balance:", ethers.formatEther(balance), "ETH");
+  if (perDeposit > 0n) {
+    console.log("cost per deposit:", ethers.formatEther(perDeposit), "ETH  (pledge + pushCapacities)");
+    console.log("runway          :", (balance / perDeposit).toString(), "deposits");
+    if (balance / perDeposit < 50n) {
+      console.log("  ^ low — top up. A role without gas is still an operator that cannot act.");
+    }
   }
 }
 
