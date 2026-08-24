@@ -25,6 +25,7 @@ import OnboardingFlow, { type OnboardingStep } from '@/pages/auth/OnboardingFlow
 import CounterOnboarding, { COUNTER_STEPS, type CounterStep } from '@/pages/auth/CounterOnboarding';
 import { useInstallMode } from '@/hooks/useInstallMode';
 import ChargeApproval from '@/pages/app/ChargeApproval';
+import MoveMoneyDialog, { type MoveDirection } from '@/components/clear/MoveMoneyDialog';
 import {
   HOME_IN_USE,
   HOME_DAY_ONE,
@@ -199,6 +200,54 @@ function TermPlansPreview() {
   );
 }
 
+/**
+ * Move money, with figures supplied.
+ *
+ * The presentational dialog, not the connected one, and that is the point: the live component
+ * reads balances from chain and shows a member with nothing exactly that. Fixtures belong here,
+ * passed in explicitly by a design harness, rather than sitting behind the real component as a
+ * fallback where they would eventually be shown to somebody as their own money.
+ */
+function MoveMoneyPreview() {
+  const [direction, setDirection] = useState<MoveDirection>('deposit');
+  const [empty, setEmpty] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-background">
+      <MoveMoneyDialog
+        open
+        onOpenChange={() => {}}
+        direction={direction}
+        onDirectionChange={setDirection}
+        cashReady={empty ? 0 : 2109}
+        savingsTotal={6000}
+        savingsFree={3000}
+        credits={1500}
+        creditsGoal={15000}
+        reachesGoalBy="Jan 2028"
+        goalShift="2 months later"
+        onMove={() => {}}
+      />
+
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        {([['deposit', false], ['withdraw', false], ['empty', true]] as const).map(([label, isEmpty]) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => {
+              setEmpty(isEmpty);
+              if (!isEmpty) setDirection(label as MoveDirection);
+            }}
+            className="rounded-md border-[0.5px] border-border px-2 py-1 text-[11px] text-muted-foreground"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** A charge arriving — the approval screen and the state after it. */
 function ChargeApprovalPreview() {
   const [splitInto, setSplitInto] = useState(4);
@@ -336,6 +385,7 @@ export default function PreviewApp() {
           <Route path="/onboarding" element={<OnboardingPreview />} />
           <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
           <Route path="/charge" element={<ChargeApprovalPreview />} />
+          <Route path="/move-money" element={<MoveMoneyPreview />} />
 
           <Route
             path="*"

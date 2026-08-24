@@ -9,7 +9,7 @@ import MilestonePath from '@/components/clear/MilestonePath';
 import ProjectionCard from '@/components/clear/ProjectionCard';
 import AssuranceList from '@/components/clear/AssuranceList';
 import VestingList from '@/components/clear/VestingList';
-import ConnectedAddToSavings from '@/components/clear/ConnectedAddToSavings';
+import ConnectedMoveMoney from '@/components/clear/ConnectedMoveMoney';
 import AutoSaveDialog from '@/components/clear/AutoSaveDialog';
 import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { money } from '@/lib/money';
@@ -131,7 +131,7 @@ export default function SavingsPage({ data = SAVINGS_DAY_ONE }: { data?: Savings
         </div>
       </div>
 
-      <ConnectedAddToSavings data={data} open={addOpen} onOpenChange={setAddOpen} />
+      <ConnectedMoveMoney data={data} open={addOpen} onOpenChange={setAddOpen} />
       <AutoSaveDialog data={data} open={autoSaveOpen} onOpenChange={setAutoSaveOpen} />
     </>
   );

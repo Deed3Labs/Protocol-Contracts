@@ -18,7 +18,7 @@ import SplitPlanDialog from '@/components/clear/SplitPlanDialog';
 import PaymentAccountDialog from '@/components/clear/PaymentAccountDialog';
 import TermLimitDialog from '@/components/clear/TermLimitDialog';
 import AddBoostDialog from '@/components/clear/AddBoostDialog';
-import ConnectedAddToSavings from '@/components/clear/ConnectedAddToSavings';
+import ConnectedMoveMoney from '@/components/clear/ConnectedMoveMoney';
 import AutoSaveDialog from '@/components/clear/AutoSaveDialog';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
@@ -197,7 +197,7 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
           )}
         </div>
         {termPlanModals}
-        <ConnectedAddToSavings
+        <ConnectedMoveMoney
           data={{ ...SAVINGS_DAY_ONE, savings: data.savings, creditLimitToday: 0 }}
           open={addSavingsOpen}
           onOpenChange={setAddSavingsOpen}
@@ -334,7 +334,7 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
       {termPlanModals}
       {/* Savings deposit is the same surface Savings uses; the credit limit it
           quotes comes from this page's own tiers so the two can't disagree. */}
-      <ConnectedAddToSavings
+      <ConnectedMoveMoney
         data={{ ...SAVINGS_DAY_ONE, savings: data.savings, creditLimitToday: creditLimit(data.credit) }}
         open={addSavingsOpen}
         onOpenChange={setAddSavingsOpen}
