@@ -501,6 +501,16 @@ savingsRouter.post('/gasless/record', async (req: Request, res: Response) => {
     } else {
       await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros, network });
     }
+
+    // Make the savings back the credit line. This is the path a smart-account deposit takes -- the
+    // sponsored UserOp goes straight to the vault and reports here, never through /gasless/submit,
+    // so the sync living only there fired for the relayer fallback and not for the common case.
+    // That is why a first deposit needed a manual backfill and a second did not move the line.
+    // Synced to the balance, so it does not matter that this and /submit both run it.
+    void syncSavingsCollateralFromBalance(ethers.getAddress(wallet)).then((result) => {
+      if (!result.ok) console.error('[savings/record] collateral sync failed:', result.reason);
+    });
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to record credits', message: error instanceof Error ? error.message : 'Unknown error' });
