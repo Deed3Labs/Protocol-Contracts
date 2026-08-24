@@ -83,11 +83,35 @@ export default function HomeRoute() {
     // Null covers both "no credit line" and "could not read the chain", and the route distinguishes
     // them with a 503 for the second. Either way the placeholder stands rather than a zeroed line:
     // telling a member their credit is gone because an RPC timed out is the worse mistake.
-    void getCredit(address).then((result) => {
-      if (!cancelled) setCredit(result);
-    });
+    const read = () => {
+      void getCredit(address).then((result) => {
+        if (!cancelled) setCredit(result);
+      });
+    };
+    read();
+
+    /*
+     * Re-read after something that changes the line, rather than showing a guess.
+     *
+     * A savings deposit moves the limit, but not instantly: the server pledges the collateral and
+     * pushes the capacities, which is two on-chain writes after the deposit itself confirms. Until
+     * they land the old limit is the true one, so this refetches on a signal instead of predicting
+     * the new figure -- an optimistic limit would be inventing a number that only the contracts get
+     * to decide, and it would have hidden the bug where the pledge landed and the push did not.
+     *
+     * Backs off across a short window because the writes take a few seconds and the app has no way
+     * to be told when they finish.
+     */
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const onStale = () => {
+      for (const delay of [3000, 8000, 15000]) timers.push(setTimeout(read, delay));
+    };
+    window.addEventListener('clear:credit-stale', onStale);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('clear:credit-stale', onStale);
+      for (const timer of timers) clearTimeout(timer);
     };
   }, [address]);
 

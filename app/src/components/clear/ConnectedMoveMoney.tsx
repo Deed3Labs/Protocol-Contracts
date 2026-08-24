@@ -63,6 +63,13 @@ export default function ConnectedMoveMoney({
       // that could have settled a card authorization.
       const delta = moved === 'deposit' ? amount : -amount;
       balances.applyOptimistic(-delta, delta);
+
+      // The balances above are safe to show optimistically -- the transfer confirmed, so they are
+      // already true. The credit limit is not: it moves only once the server has pledged the
+      // collateral and pushed the capacities, two writes later. So this asks for a re-read rather
+      // than predicting a figure the contracts have not agreed to yet.
+      window.dispatchEvent(new Event('clear:credit-stale'));
+
       track('savings_move', { direction: moved }); // direction only, never the amount
     },
     [balances],
