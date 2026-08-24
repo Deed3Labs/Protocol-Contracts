@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { syncSavingsCollateralFromBalance } from '../services/chain/savingsCollateralService.js';
+import { syncSavingsCollateralFromBalance, syncPoolCollateral } from '../services/chain/savingsCollateralService.js';
 import { ethers } from 'ethers';
 import { requireWalletMatch, requireVerifiedWallet } from '../middleware/auth.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
@@ -460,6 +460,37 @@ savingsRouter.post('/gasless/wallet-transfer/submit', async (req: Request, res: 
  * accrues credits. Idempotent per txHash. NOTE: trusts the authenticated wallet + amount for now;
  * mainnet should verify the tx receipt's Deposited/Redeemed event before crediting.
  */
+/**
+ * A yield-pool movement landed on chain; pledge the position behind it.
+ *
+ * Its own route rather than a third action on `/gasless/record`, because that route's body is
+ * about a vault deposit -- it verifies the ESA's own event and writes the equity-credit match, and
+ * neither applies to the pool. A pool deposit earns yield, not credits.
+ *
+ * Nothing is trusted from the body but the fact that something happened: the position is read back
+ * from the pool and the pledge is synced to it, so a wrong or replayed amount changes nothing.
+ */
+savingsRouter.post('/pool/record', async (req: Request, res: Response) => {
+  try {
+    const wallet = req.auth?.walletAddress;
+    if (!wallet || !ethers.isAddress(wallet)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const result = await syncPoolCollateral(ethers.getAddress(wallet));
+    if (!result.ok) console.error('[pool/record] collateral sync failed:', result.reason);
+
+    // Answered as accepted either way. The movement is already on chain; a failed pledge leaves a
+    // position that backs nothing yet, which the next movement or a manual sync repairs -- and
+    // reporting failure here would tell a member their deposit did not work when it did.
+    res.json({ success: true, pledged: result.ok });
+  } catch (error) {
+    console.error('[pool/record] failed:', error);
+    res.status(500).json({ error: 'Failed to record pool movement' });
+  }
+});
+
 savingsRouter.post('/gasless/record', async (req: Request, res: Response) => {
   try {
     const wallet = req.auth?.walletAddress;

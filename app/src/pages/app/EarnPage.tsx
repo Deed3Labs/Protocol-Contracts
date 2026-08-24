@@ -9,7 +9,7 @@ import YieldPoolCard from '@/components/clear/YieldPoolCard';
 import HeldBondsCard from '@/components/clear/HeldBondsCard';
 import BondLadder from '@/components/clear/BondLadder';
 import BuyBondDialog from '@/components/clear/BuyBondDialog';
-import PoolDepositDialog from '@/components/clear/PoolDepositDialog';
+import ConnectedPoolMove from '@/components/clear/ConnectedPoolMove';
 import PoolWithdrawDialog from '@/components/clear/PoolWithdrawDialog';
 import { EARN_DAY_ONE, HOME_DAY_ONE } from '@/data/clearPlaceholder';
 import { money, signedMoney } from '@/lib/money';
@@ -133,7 +133,7 @@ export default function EarnPage({ data = EARN_DAY_ONE }: { data?: EarnData }) {
       </div>
 
       <BuyBondDialog data={data} open={buyOpen} onOpenChange={setBuyOpen} />
-      <PoolDepositDialog data={data} open={depositOpen} onOpenChange={setDepositOpen} />
+      <ConnectedPoolMove open={depositOpen} onOpenChange={setDepositOpen} />
       {/* The limit it quotes comes from Home's own tiers, so the drop it shows is
           the drop that would actually happen. */}
       <PoolWithdrawDialog

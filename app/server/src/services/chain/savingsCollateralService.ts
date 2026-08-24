@@ -47,8 +47,9 @@ const REGISTRY_ABI = [
 
 const CALCULATOR_ABI = ['function pushCapacities(address member) returns (uint256)'];
 
-/** `SAVINGS`, as the deploy script writes it — `encodeBytes32String`, not a hash. */
+/** Kinds as the deploy script writes them — `encodeBytes32String`, not a hash. */
 export const SAVINGS_KIND = ethers.encodeBytes32String('SAVINGS');
+export const POOL_SHARE_KIND = ethers.encodeBytes32String('POOL_SHARE');
 
 function chainId(): number {
   const raw = (process.env.SAVINGS_DEFAULT_CHAIN_ID || process.env.SEND_DEFAULT_CHAIN_ID || '').trim();
@@ -91,16 +92,35 @@ export async function syncSavingsCollateral(
   wallet: string,
   targetUnits: bigint,
 ): Promise<CollateralSyncResult> {
-  const key = wallet.trim().toLowerCase();
+  return syncCollateralKind(wallet, SAVINGS_KIND, targetUnits);
+}
+
+/**
+ * The same sync, for any pledged kind.
+ *
+ * Savings and pool shares differ in where the target comes from and in nothing else — both are an
+ * amount the registry values at a flat price, both are pledged by the operator, and both need the
+ * capacities pushed afterwards. One implementation so the second tier cannot drift from the first,
+ * which is the failure this whole area keeps producing.
+ *
+ * The in-flight guard is per wallet *and* kind: two kinds syncing at once are different rows and
+ * must not deduplicate each other, while two syncs of the same kind are the same work twice.
+ */
+export async function syncCollateralKind(
+  wallet: string,
+  kind: string,
+  targetUnits: bigint,
+): Promise<CollateralSyncResult> {
+  const key = `${wallet.trim().toLowerCase()}:${kind}`;
   const running = inFlight.get(key);
   if (running) return running;
 
-  const attempt = runSync(wallet, targetUnits).finally(() => inFlight.delete(key));
+  const attempt = runSync(wallet, kind, targetUnits).finally(() => inFlight.delete(key));
   inFlight.set(key, attempt);
   return attempt;
 }
 
-async function runSync(wallet: string, targetUnits: bigint): Promise<CollateralSyncResult> {
+async function runSync(wallet: string, kind: string, targetUnits: bigint): Promise<CollateralSyncResult> {
   const registryAddress = getContractAddress(chainId(), 'CollateralRegistry');
   const calculatorAddress = getContractAddress(chainId(), 'LimitCalculator');
   if (!registryAddress) return { ok: false, reason: 'no collateral registry on this chain' };
@@ -114,20 +134,20 @@ async function runSync(wallet: string, targetUnits: bigint): Promise<CollateralS
     const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, signer);
     const member = ethers.getAddress(wallet);
 
-    const current: bigint = await registry.pledgedOf(member, SAVINGS_KIND);
+    const current: bigint = await registry.pledgedOf(member, kind);
     let txHash: string | undefined;
 
     if (targetUnits > current) {
-      const tx = await registry.pledge(member, SAVINGS_KIND, targetUnits - current);
+      const tx = await registry.pledge(member, kind, targetUnits - current);
       txHash = (await tx.wait())?.hash ?? tx.hash;
     } else if (targetUnits < current) {
       // Only what is actually free. The rest is holding up drawn credit and the registry will
       // refuse to let it go -- correctly.
-      const free: bigint = await registry.freeCollateralOf(member, SAVINGS_KIND);
+      const free: bigint = await registry.freeCollateralOf(member, kind);
       const wanted = current - targetUnits;
       const amount = wanted < free ? wanted : free;
       if (amount > 0n) {
-        const tx = await registry.release(member, SAVINGS_KIND, amount);
+        const tx = await registry.release(member, kind, amount);
         txHash = (await tx.wait())?.hash ?? tx.hash;
       }
     }
@@ -182,4 +202,42 @@ export async function syncSavingsCollateralFromBalance(wallet: string): Promise<
   const units = await readSavingsUnits(wallet);
   if (units === null) return { ok: false, reason: 'could not read the savings balance' };
   return syncSavingsCollateral(wallet, units);
+}
+
+
+const POOL_ABI = [
+  'function balanceOf(address) view returns (uint256)',
+  'function convertToAssets(uint256 shares) view returns (uint256)',
+];
+
+/**
+ * Pledge a member's yield-pool position so it backs their credit line.
+ *
+ * The pool tier had exactly the hole savings had: a member could hold a position worth real money
+ * and the POOL_SHARE tier would read zero, because holding is not pledging. Wired from the start
+ * here rather than discovered later.
+ *
+ * Pledged in **assets, not shares**. The registry values an amount-based pledge at a flat unit
+ * price, and a pool share is not worth a dollar — it drifts up as the pool earns. Pledging shares
+ * would value the position at its share count, which is a different number that happens to start
+ * out close and diverges. `convertToAssets` is what makes them comparable.
+ *
+ * Synced to the current position, so a withdrawal shrinks the pledge on the same path a deposit
+ * grows it, and a retry after a failure is safe.
+ */
+export async function syncPoolCollateral(wallet: string): Promise<CollateralSyncResult> {
+  const pool = getContractAddress(chainId(), 'LendingPool');
+  if (!pool) return { ok: false, reason: 'no lending pool on this chain' };
+
+  try {
+    const rpc = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
+    const contract = new ethers.Contract(pool, POOL_ABI, rpc);
+    const shares: bigint = await contract.balanceOf(ethers.getAddress(wallet));
+    const assets: bigint = shares === 0n ? 0n : await contract.convertToAssets(shares);
+    return syncCollateralKind(wallet, POOL_SHARE_KIND, assets);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'unknown error';
+    console.error('[pool] position read failed for', wallet, message);
+    return { ok: false, reason: message };
+  }
 }

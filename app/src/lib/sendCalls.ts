@@ -2,7 +2,7 @@ import { encodeFunctionData, parseUnits } from 'viem';
 import { sendCalls, waitForCallsStatus } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
-import { recordGaslessSavings } from '@/utils/apiClient';
+import { recordGaslessSavings, recordGaslessPool } from '@/utils/apiClient';
 
 /*
  * 3-TIER gasless money router (see [[clearpath-privy-migration]]).
@@ -133,6 +133,75 @@ export async function scRedeem(args: { smartWalletClient?: unknown; ownerWallet:
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'redeem', args: [c.usdc, amt, receiver] }) },
   ]);
   await recordGaslessSavings({ action: 'redeem', amount: amt.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
+  return hash;
+}
+
+const POOL_ABI = [
+  { type: 'function', name: 'deposit', stateMutability: 'nonpayable',
+    inputs: [{ name: 'assets', type: 'uint256' }, { name: 'receiver', type: 'address' }],
+    outputs: [{ name: 'shares', type: 'uint256' }] },
+  { type: 'function', name: 'redeem', stateMutability: 'nonpayable',
+    inputs: [{ name: 'shares', type: 'uint256' }, { name: 'receiver', type: 'address' }, { name: 'owner', type: 'address' }],
+    outputs: [{ name: 'assets', type: 'uint256' }] },
+  { type: 'function', name: 'requestWithdrawal', stateMutability: 'nonpayable',
+    inputs: [{ name: 'shares', type: 'uint256' }, { name: 'receiver', type: 'address' }],
+    outputs: [{ name: 'requestId', type: 'uint256' }] },
+] as const;
+
+/**
+ * Ready to allocate (USDC) → the yield pool: [approve, deposit] in ONE sponsored batch.
+ *
+ * The same shape as a savings deposit, pointed at a different destination — which is also how the
+ * reference describes the screen in front of it.
+ */
+export async function scPoolDeposit(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.lendingPool) throw new Error('The yield pool is not available on this network.');
+  const amt = parseUnits(args.amount, 6);
+  const receiver = args.ownerWallet as `0x${string}`;
+  const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.lendingPool, amt] }) },
+    { to: c.lendingPool, data: encodeFunctionData({ abi: POOL_ABI, functionName: 'deposit', args: [amt, receiver] }) },
+  ]);
+  await recordGaslessPool({ action: 'deposit', amount: amt.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
+  return hash;
+}
+
+/**
+ * The yield pool → Ready to allocate.
+ *
+ * Two paths, because the pool has a state savings does not: it can be fully lent. `redeem` pays
+ * immediately and is capped at `maxRedeem`, which the contract caps at available cash;
+ * `requestWithdrawal` burns the shares now and queues the claim, paid as members repay.
+ *
+ * A member asking for more than is free gets both in one batch — paid what is there, queued for
+ * the rest — because refusing the whole amount would be the pool telling somebody their own money
+ * is unavailable when most of it is not.
+ */
+export async function scPoolWithdraw(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  /** Shares to redeem now, already capped at what the pool can pay. */
+  sharesNow: bigint;
+  /** Shares to queue. Zero when the pool can cover the whole request. */
+  sharesQueued: bigint;
+  chainId: number;
+}): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.lendingPool) throw new Error('The yield pool is not available on this network.');
+  if (args.sharesNow === 0n && args.sharesQueued === 0n) throw new Error('Nothing to withdraw.');
+  const owner = args.ownerWallet as `0x${string}`;
+
+  const calls: { to: `0x${string}`; data: `0x${string}` }[] = [];
+  if (args.sharesNow > 0n) {
+    calls.push({ to: c.lendingPool, data: encodeFunctionData({ abi: POOL_ABI, functionName: 'redeem', args: [args.sharesNow, owner, owner] }) });
+  }
+  if (args.sharesQueued > 0n) {
+    calls.push({ to: c.lendingPool, data: encodeFunctionData({ abi: POOL_ABI, functionName: 'requestWithdrawal', args: [args.sharesQueued, owner] }) });
+  }
+
+  const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, calls);
+  await recordGaslessPool({ action: 'withdraw', amount: (args.sharesNow + args.sharesQueued).toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
   return hash;
 }
 

@@ -32,6 +32,31 @@ import { cn } from '@/lib/utils';
 
 export type MoveDirection = 'deposit' | 'withdraw';
 
+/**
+ * Where the money is going. The reference is explicit that the pool is "the same component as
+ * savings, pointed at a different destination" — so it is a prop rather than a second modal.
+ */
+export type MoveDestination = 'savings' | 'pool';
+
+/** What the pool needs that savings does not. Absent for a savings move. */
+export interface PoolTerms {
+  /** e.g. 6.8 — variable, which is why the yield figure it produces is stated as approximate. */
+  apyPercent: number;
+  /**
+   * The haircut the registry applies to a pool share, in basis points — 7000 on chain today.
+   *
+   * Carried rather than a precomputed delta, because the figure it produces moves as the member
+   * types. A dollar lent backs seventy cents of limit, and the screen says so live.
+   */
+  haircutBps: number;
+  /** Cash the pool can pay right now. Below the request, the rest queues. */
+  freeNow: number;
+  utilizationBps: number;
+  /** The limit this withdrawal lands on, and what is owed against it. */
+  limitAfter?: number;
+  owed?: number;
+}
+
 function Leg({
   label,
   name,
@@ -87,6 +112,8 @@ export interface MoveMoneyProps {
   savingsFree: number;
   credits: number;
   creditsGoal: number;
+  destination?: MoveDestination;
+  pool?: PoolTerms;
   /** e.g. "Jan 2028" — the only number on the screen about the thing they actually want. */
   reachesGoalBy?: string;
   /** e.g. "2 months later" — what a withdrawal costs in time. */
@@ -109,6 +136,8 @@ export default function MoveMoneyDialog({
   savingsFree,
   credits,
   creditsGoal,
+  destination = 'savings',
+  pool,
   reachesGoalBy,
   goalShift,
   busy = false,
@@ -121,11 +150,17 @@ export default function MoveMoneyDialog({
   const [typed, setTyped] = useState('250');
 
   const isDeposit = direction === 'deposit';
+  const isPool = destination === 'pool';
+  // The pool can be fully lent — a state savings does not have. What is free to take is capped by
+  // the pool's cash, not by the member's position.
+  const poolFree = isPool && pool ? Math.min(savingsFree, pool.freeNow) : savingsFree;
   const amount = Number(typed) || 0;
   // Each leg carries its balance, so the constraint is visible before anything is typed and the
   // "All" chip has a stated meaning.
-  const available = isDeposit ? cashReady : savingsFree;
-  const presets = isDeposit ? [100, 250, 500] : [100, 500, 1000];
+  const available = isDeposit ? cashReady : isPool ? poolFree : savingsFree;
+  // "An amount and a keypad, not three preset buttons" — someone lending $3,400 because that is
+  // what is spare should not have to pick $1,000. The chips are shortcuts; the pad is the input.
+  const presets = isPool ? [500, 1000, 2500] : isDeposit ? [100, 250, 500] : [100, 500, 1000];
   const over = amount > available;
   const shortBy = amount - available;
 
@@ -147,6 +182,13 @@ export default function MoveMoneyDialog({
 
   const amountBlock = (dim = false) => (
     <>
+      {/* The pool can be fully lent; savings cannot. Named at the top so the constrained figures
+          below have a reason before they are read. */}
+      {isPool && !isDeposit && over && (
+        <p className="mb-2 text-[10px] uppercase tracking-[0.5px] text-muted-foreground">
+          Pool is fully lent
+        </p>
+      )}
       <p className="mb-0.5 text-[11px] text-muted-foreground">Amount</p>
       <p
         className={cn(
@@ -165,7 +207,8 @@ export default function MoveMoneyDialog({
       {over && (
         // Stated as the difference, because that is the number they can act on — not as a refusal.
         <p className="mb-3 text-[11.5px] text-tier-boost-fg">
-          {money(shortBy, { cents: true })} more than is {isDeposit ? 'ready to allocate' : 'free to move'}
+          {money(shortBy, { cents: true })} more than is{' '}
+          {isDeposit ? 'ready to allocate' : isPool ? 'free right now' : 'free to move'}
         </p>
       )}
     </>
@@ -176,14 +219,14 @@ export default function MoveMoneyDialog({
       <Leg
         side="left"
         label="From"
-        name={isDeposit ? 'Cash account' : 'Savings'}
-        balance={isDeposit ? cashReady : savingsFree}
-        note={isDeposit ? 'ready' : 'free'}
+        name={isDeposit ? 'Cash account' : isPool ? 'Yield pool' : 'Savings'}
+        balance={isDeposit ? cashReady : isPool ? poolFree : savingsFree}
+        note={isDeposit ? 'ready' : isPool && pool && pool.freeNow < savingsFree ? 'free now' : 'free'}
       />
       <Leg
         side="right"
         label="To"
-        name={isDeposit ? 'Savings' : 'Cash account'}
+        name={isDeposit ? (isPool ? 'Yield pool' : 'Savings') : 'Cash account'}
         balance={isDeposit ? savingsTotal : cashReady}
       />
       <button
@@ -229,6 +272,51 @@ export default function MoveMoneyDialog({
 
   const pad = <Keypad onKey={(key) => setTyped((current) => applyKey(current, key))} disabled={busy} />;
 
+  const poolConsequences = pool && (
+    <>
+      {isDeposit ? (
+        <div className="mb-3 rounded-[10px] border-[0.5px] border-tier-boost/40 bg-tier-boost/[0.08] px-3.5 py-3">
+          <Row label="Earning" value={`${pool.apyPercent}% APY`} accent />
+          <Row
+            label="Backs your limit"
+            value={`+${money((amount * pool.haircutBps) / 10_000, { cents: true })}`}
+            accent
+          />
+        </div>
+      ) : (
+        <div className="mb-3 rounded-[10px] border-[0.5px] border-border bg-secondary/50 px-3.5 py-3">
+          <Row label="Limit" value={`−${money((amount * pool.haircutBps) / 10_000, { cents: true })}`} />
+          {/* Approximate on purpose: the rate moves with utilisation, so a precise figure would be
+              a promise the pool cannot keep. */}
+          <Row label="Yield lost" value={`~${money((amount * pool.apyPercent) / 100, { cents: true })} a year`} />
+          {pool.limitAfter !== undefined && (
+            <p className="mt-[7px] text-[11px] leading-[1.55] text-muted-foreground">
+              Limit falls to {money(pool.limitAfter, { cents: true })}
+              {pool.owed !== undefined
+                ? `, still above the ${money(pool.owed, { cents: true })} you owe.`
+                : '.'}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="mb-3.5 border-t-[0.5px] border-border pt-2.5">
+        <Row label="Position after" value={money(after.savings, { cents: true })} />
+        {isDeposit ? (
+          <>
+            <Row label="Yield a year" value={`~${money((after.savings * pool.apyPercent) / 100, { cents: true })}`} />
+            <Row label="Withdraw" value="Any time" />
+          </>
+        ) : (
+          <>
+            <Row label="Arrives" value={over ? 'Some queued' : 'Within 24 hours'} />
+            <Row label="Pool utilization" value={`${Math.round(pool.utilizationBps / 100)}%`} />
+          </>
+        )}
+      </div>
+    </>
+  );
+
   const consequences = (
     <>
       {isDeposit ? (
@@ -269,7 +357,30 @@ export default function MoveMoneyDialog({
     </>
   );
 
-  const action = over ? (
+  // The pool has a state savings does not: it can be fully lent. Asking for more than is free is
+  // not a mistake to refuse — pay what is there and queue the rest, which is what the contract's
+  // requestWithdrawal exists for.
+  const canQueue = isPool && !isDeposit && over;
+
+  const action = canQueue ? (
+    <>
+      <div className="mb-3 rounded-[10px] border-[0.5px] border-border bg-secondary/50 px-3.5 py-[11px]">
+        <p className="text-[12px] leading-[1.6] text-foreground-secondary">
+          The rest is lent out. <strong className="font-medium text-foreground">Queue it</strong> and
+          it is sent as members repay.
+        </p>
+      </div>
+      <Button size="xs" className="mb-2 w-full py-[11px]" disabled={busy} onClick={() => onMove(available)}>
+        Take {money(available, { cents: true })} now
+      </Button>
+      <Button size="xs" variant="clear" className="w-full text-xs" disabled={busy} onClick={() => onMove(amount)}>
+        Queue the remaining {money(amount - available, { cents: true })}
+      </Button>
+      <p className="mt-2.5 text-center text-[11px] leading-[1.55] text-muted-foreground">
+        Sent automatically. Nothing to come back and do.
+      </p>
+    </>
+  ) : over ? (
     <>
       <div className="mb-3 rounded-[10px] bg-secondary/50 px-3.5 py-[11px]">
         <p className="text-[12px] leading-[1.6] text-foreground-secondary">
@@ -295,12 +406,20 @@ export default function MoveMoneyDialog({
             <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
             Moving…
           </>
+        ) : isPool ? (
+          `${isDeposit ? 'Add' : 'Take'} ${money(amount, { cents: true })}`
         ) : (
           `Move ${money(amount, { cents: true })} to ${isDeposit ? 'savings' : 'cash'}`
         )}
       </Button>
-      <p className="mt-2.5 text-center text-[11px] text-muted-foreground">
-        {isDeposit ? 'Instant. You can move it back any time.' : 'Instant. Move it back whenever you like.'}
+      <p className="mt-2.5 text-center text-[11px] leading-[1.55] text-muted-foreground">
+        {isPool
+          ? isDeposit
+            ? 'Rate moves with how much of the pool is lent.'
+            : 'Sent to your cash account.'
+          : isDeposit
+            ? 'Instant. You can move it back any time.'
+            : 'Instant. Move it back whenever you like.'}
       </p>
     </>
   );
@@ -309,8 +428,12 @@ export default function MoveMoneyDialog({
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Move money"
-      description="Move money between your cash account and savings."
+      title={isPool ? (isDeposit ? 'Add to the pool' : 'Take from the pool') : 'Move money'}
+      description={
+        isPool
+          ? 'Move money between your cash account and the yield pool.'
+          : 'Move money between your cash account and savings.'
+      }
       // The desktop dialog is 360px by default, and the two-column layout below needs the width
       // the reference gives it — a 216px keypad beside a column that still has to fit "Credits
       // earned" on one line. Forced into 360px it wraps to one word per line, which is what it
@@ -360,7 +483,7 @@ export default function MoveMoneyDialog({
             {chips}
             {route}
             <div className="mb-3 sm:hidden">{pad}</div>
-            {consequences}
+            {isPool ? poolConsequences : consequences}
           </div>
           <div className="hidden sm:block">{pad}</div>
           <div className="sm:col-span-2">{action}</div>

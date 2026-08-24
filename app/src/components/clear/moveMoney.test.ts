@@ -68,7 +68,10 @@ describe('what is free to withdraw', () => {
 describe('one component, two directions', () => {
   test('each leg carries its own balance, which is what gives the presets stated meanings', () => {
     expect(DIALOG).toContain("isDeposit ? 'All' : 'All free'");
-    expect(DIALOG).toContain('const available = isDeposit ? cashReady : savingsFree;');
+    // Each direction takes its cap from its own leg, and the pool's leg is capped again by what
+    // the pool can actually pay.
+    expect(DIALOG).toContain('const available = isDeposit ? cashReady : isPool ? poolFree : savingsFree;');
+    expect(DIALOG).toContain('Math.min(savingsFree, pool.freeNow)');
   });
 
   test('the consequence flips with the direction', () => {
@@ -206,7 +209,8 @@ describe('never block the keypad', () => {
   test('the overage is stated as a difference', () => {
     // The number they can act on, not a refusal.
     expect(DIALOG).toContain('const shortBy = amount - available;');
-    expect(DIALOG).toContain('more than is {isDeposit ?');
+    expect(DIALOG).toContain('more than is');
+    expect(DIALOG).toContain("'ready to allocate'");
   });
 
   test('and the affordable amount is offered', () => {
@@ -352,5 +356,109 @@ describe('what may be shown before the chain agrees', () => {
     const home = readFileSync(join(import.meta.dir, '../../pages/app/HomeRoute.tsx'), 'utf8');
     expect(home).toContain("addEventListener('clear:credit-stale'");
     expect(home).toContain('[3000, 8000, 15000]');
+  });
+});
+
+/*
+ * The yield pool — "the same component as savings, pointed at a different destination", which is
+ * why it is a prop rather than a second modal.
+ */
+const POOL = readFileSync(join(import.meta.dir, 'ConnectedPoolMove.tsx'), 'utf8');
+const POOL_HOOK = readFileSync(join(import.meta.dir, '../../hooks/usePoolMove.ts'), 'utf8');
+
+describe('the pool is the same component, redirected', () => {
+  test('destination is a prop, not a fork', () => {
+    expect(DIALOG).toContain("export type MoveDestination = 'savings' | 'pool'");
+    expect(DIALOG).toContain("const isPool = destination === 'pool';");
+  });
+
+  test('it names itself for what it does', () => {
+    expect(DIALOG).toContain("'Add to the pool'");
+    expect(DIALOG).toContain("'Take from the pool'");
+  });
+
+  test('the limit it quotes moves with the amount', () => {
+    // A fixed delta would be right once and wrong on every keystroke after. 70% haircut, applied
+    // to whatever is typed.
+    expect(DIALOG).toContain('(amount * pool.haircutBps) / 10_000');
+    expect(DIALOG).not.toContain('limitDeltaCents');
+  });
+
+  test('the yield figure is approximate on purpose', () => {
+    // The rate moves with utilisation, so a precise number would be a promise the pool cannot keep.
+    expect(DIALOG).toContain('~${money((after.savings * pool.apyPercent) / 100');
+    expect(DIALOG).toContain('Rate moves with how much of the pool is lent.');
+  });
+
+  test('the withdraw panel names the limit it lands on, not only the drop', () => {
+    // The question a member is actually asking is whether they stay above what they owe.
+    expect(DIALOG).toContain('Limit falls to');
+    expect(DIALOG).toContain('you owe');
+  });
+});
+
+/*
+ * The pool has a state savings does not: it can be fully lent. A member whose money is out on loan
+ * has not made a mistake, so the honest handling is to pay what is free and queue the rest.
+ */
+describe('fully lent is queued, not refused', () => {
+  test('what can be taken now is capped by the pool’s cash, not the position', () => {
+    expect(DIALOG).toContain('Math.min(savingsFree, pool.freeNow)');
+  });
+
+  test('the state is named before the constrained figures are read', () => {
+    expect(DIALOG).toContain('Pool is fully lent');
+  });
+
+  test('both actions are offered — take what is free, queue the rest', () => {
+    expect(DIALOG).toContain('Take {money(available, { cents: true })} now');
+    expect(DIALOG).toContain('Queue the remaining');
+    expect(DIALOG).toContain('Sent automatically. Nothing to come back and do.');
+  });
+
+  test('the split is computed in shares from the contract’s own cap', () => {
+    // maxRedeem already accounts for available cash, so what it will not pay is exactly what must
+    // queue. Deriving it from dollars would be the app guessing at a number the pool decides.
+    expect(POOL_HOOK).toContain("functionName: 'maxRedeem'");
+    expect(POOL_HOOK).toContain('const sharesQueued = wanted - sharesNow;');
+  });
+
+  test('both legs of the split go in one batch', () => {
+    const send = readFileSync(join(import.meta.dir, '../../lib/sendCalls.ts'), 'utf8');
+    expect(send).toContain("functionName: 'requestWithdrawal'");
+    expect(send).toContain('scPoolWithdraw');
+  });
+});
+
+describe('the pool pledges what it holds', () => {
+  test('a movement tells the server, which pledges the position', () => {
+    const send = readFileSync(join(import.meta.dir, '../../lib/sendCalls.ts'), 'utf8');
+    expect(send).toContain('recordGaslessPool');
+  });
+
+  test('the position is read back rather than taken from the request', () => {
+    // Nothing in the body is trusted but the fact that something happened, so a wrong or replayed
+    // amount changes nothing.
+    const service = readFileSync(
+      join(import.meta.dir, '../../../server/src/services/chain/savingsCollateralService.ts'),
+      'utf8',
+    );
+    expect(service).toContain('syncPoolCollateral');
+    expect(service).toContain('convertToAssets');
+  });
+
+  test('it pledges assets, not shares', () => {
+    // The registry values an amount pledge at a flat unit price, and a share is not worth a dollar
+    // — it drifts up as the pool earns.
+    const service = readFileSync(
+      join(import.meta.dir, '../../../server/src/services/chain/savingsCollateralService.ts'),
+      'utf8',
+    );
+    expect(service).toContain('POOL_SHARE_KIND, assets');
+  });
+
+  test('every figure is read, none passed in', () => {
+    expect(POOL).toContain('getEarn(address)');
+    expect(POOL).toContain('getCredit(address)');
   });
 });
