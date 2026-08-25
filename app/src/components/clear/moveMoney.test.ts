@@ -77,8 +77,8 @@ describe('one component, two directions', () => {
   test('the consequence flips with the direction', () => {
     expect(DIALOG).toContain('Credits earned');
     expect(DIALOG).toContain('Credits given up');
-    expect(DIALOG).toContain('Your limit rises by');
-    expect(DIALOG).toContain('Your limit drops by');
+    expect(DIALOG).toContain('Adds to your credit limit');
+    expect(DIALOG).toContain('Your credit limit drops by');
   });
 
   test('the cost of withdrawing is stated, not moralised', () => {
@@ -86,7 +86,7 @@ describe('one component, two directions', () => {
     // that makes this an equity account rather than a lock-up.
     expect(DIALOG).toContain('Vested credits stay. Only the credits this money was still earning are given up.');
     expect(DIALOG).toContain('Credits given up');
-    expect(DIALOG).toContain('Your limit drops by');
+    expect(DIALOG).toContain('Your credit limit drops by');
     // No confirmation gate in front of it — asserted on the rendered strings, not the file, so a
     // docblock explaining the rule cannot satisfy or break it.
     const rendered = DIALOG.match(/>[^<>{}]*[a-z][^<>{}]*</gi)?.join(' ') ?? '';
@@ -96,7 +96,7 @@ describe('one component, two directions', () => {
   test('swapping clears the amount', () => {
     // The caps differ between directions; carrying an amount that was valid one way into the
     // other would arrive already over the limit.
-    expect(DIALOG).toContain("onDirectionChange(isDeposit ? 'withdraw' : 'deposit');\n    setTyped('');");
+    expect(DIALOG).toContain("onDirectionChange(isDeposit ? 'withdraw' : 'deposit');\n    changeTyped('');");
   });
 
   test('both rails exist and pick by direction', () => {
@@ -215,7 +215,7 @@ describe('never block the keypad', () => {
 
   test('and the affordable amount is offered', () => {
     expect(DIALOG).toContain('instead');
-    expect(DIALOG).toContain('onClick={() => setTyped(String(available))}');
+    expect(DIALOG).toContain('onClick={() => changeTyped(String(available))}');
   });
 
   test('it is not styled as an error', () => {
@@ -225,15 +225,19 @@ describe('never block the keypad', () => {
 });
 
 describe('withdrawing is stated, not warned about', () => {
-  test('its box is neutral while the deposit box is accented', () => {
-    // Colouring the withdrawal figures would be the warning tone the reference rules out.
-    expect(DIALOG).toContain('border-border bg-secondary/50');
-    expect(DIALOG).toContain('border-tier-boost/40');
+  test('one summary box, not a tinted one and a bare list', () => {
+    // Colour does what a second container was doing: the earn row is tinted, the credit-limit
+    // footer is green and divided, and everything sits in one bordered box.
+    expect(DIALOG).toContain('const summary = (');
+    expect(DIALOG).toContain("gain && 'mt-2 border-t-[0.5px] border-border pt-2'");
+    expect(DIALOG).toContain("accent && 'text-tier-boost-fg'");
   });
 
-  test('the vesting note sits inside that box', () => {
-    const box = DIALOG.slice(DIALOG.indexOf('Credits given up'), DIALOG.indexOf('Savings after'));
-    expect(box).toContain('Vested credits stay.');
+  test('the vesting note survives the restructure', () => {
+    // The update that introduced the single summary draws only deposits. That is not evidence a
+    // withdrawal should say less.
+    expect(DIALOG).toContain('const vestingNote =');
+    expect(DIALOG).toContain('Vested credits stay.');
   });
 
   test('each direction keeps its own closing line', () => {
@@ -392,8 +396,16 @@ describe('the pool is the same component, redirected', () => {
 
   test('the withdraw panel names the limit it lands on, not only the drop', () => {
     // The question a member is actually asking is whether they stay above what they owe.
+    expect(DIALOG).toContain('const landingNote =');
     expect(DIALOG).toContain('Limit falls to');
     expect(DIALOG).toContain('you owe');
+  });
+
+  test('and taking from the pool is not described as earning', () => {
+    // The pool branch ignored direction at first, so a withdrawal read "Earning 6.8% APY" and
+    // "Backs your credit limit" — both the wrong sign and the wrong claim.
+    expect(DIALOG).toContain('isPool && pool && isDeposit ?');
+    expect(DIALOG).toContain('Yield lost');
   });
 });
 
@@ -487,5 +499,83 @@ describe('the amount starts empty', () => {
 
   test('typing builds from empty without a leading zero to clear', () => {
     expect(['5', '0'].reduce(applyKey, '')).toBe('50');
+  });
+});
+
+/*
+ * Bonds join the pattern, which takes one extra control and one honest exception.
+ */
+describe('the bond is the third destination, not a third modal', () => {
+  test('it is a destination on the same component', () => {
+    expect(DIALOG).toContain("export type MoveDestination = 'savings' | 'pool' | 'bond'");
+    expect(DIALOG).toContain("const isBond = destination === 'bond';");
+  });
+
+  test('the hero carries face value and the price beneath it', () => {
+    // The one rule bonds break: everywhere else the number you type is the number that moves.
+    // With a bond you choose what you get back, and a smaller, discounted amount leaves.
+    expect(DIALOG).toContain('Face value — what you get back');
+    expect(DIALOG).toContain('You pay {money(bond.priceToday, { cents: true })} today');
+  });
+
+  test('the price is never buried in the summary alone', () => {
+    const heroEnd = DIALOG.indexOf('const chips');
+    expect(DIALOG.slice(0, heroEnd)).toContain('You pay {money(bond.priceToday');
+  });
+
+  test('term is the only chip row', () => {
+    // Face value is typed, so quick amounts would be guesses at a number already in mind — and
+    // unlike savings there is no habitual round figure for a bond.
+    expect(DIALOG).toContain('const chips = isBond && bond ? (');
+    expect(DIALOG).toContain('{months} mo');
+  });
+
+  test('the route shows a direction, not a control', () => {
+    // A two-headed swap would promise a reversal the product cannot do before maturity.
+    expect(DIALOG).toContain('<ArrowRight');
+    expect(DIALOG).toContain('{isBond ? (');
+    const bondArrow = DIALOG.slice(DIALOG.indexOf('{isBond ? (\n        /*'), DIALOG.indexOf('<button\n          type="button"\n          onClick={swap}'));
+    expect(bondArrow).not.toContain('onClick');
+  });
+
+  test('the To leg carries a date, because a bond has no balance yet', () => {
+    expect(DIALOG).toContain('note={`Matures ${bond.maturesShort}`}');
+    expect(DIALOG).toContain('balance === undefined ? note');
+  });
+
+  test('yield is one line, rate and dollars together', () => {
+    // Splitting them made the reader do the multiplication.
+    expect(DIALOG).toContain("% fixed · +${money(Math.max(0, amount - bond.priceToday)");
+  });
+
+  test('and the summary is the same five lines as everywhere else', () => {
+    expect(DIALOG).toContain('You pay today');
+    expect(DIALOG).toContain('You get at maturity');
+    expect(DIALOG).toContain('Adds to your credit limit');
+  });
+
+  test('the lock note is context, so desktop moves it off the read', () => {
+    expect(DIALOG).toContain('const lockNote =');
+    expect(DIALOG).toContain('<div className="sm:hidden">{lockNote}</div>');
+  });
+});
+
+describe('a fetched price needs the amount as it is typed', () => {
+  test('the dialog reports every change, not just the submit', () => {
+    // A price that only appeared after pressing Buy would be a price nobody agreed to before
+    // agreeing to it.
+    expect(DIALOG).toContain('onAmountChange?.(Number(value) || 0)');
+  });
+
+  test('through one setter, so nothing can move it unheard', () => {
+    expect(DIALOG).toContain('const changeTyped =');
+    // Exactly one call to the raw setter, and it is the one inside changeTyped.
+    expect(DIALOG.split('setTyped(').length - 1).toBe(1);
+  });
+
+  test('and the bond quotes its price from the chain for what is on screen', () => {
+    const bond = readFileSync(join(import.meta.dir, 'ConnectedBuyBond.tsx'), 'utf8');
+    expect(bond).toContain("functionName: 'calculateRequiredDeposit'");
+    expect(bond).toContain('onAmountChange={setFace}');
   });
 });

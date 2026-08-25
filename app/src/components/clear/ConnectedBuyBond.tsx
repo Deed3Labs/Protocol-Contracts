@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { readContract } from '@wagmi/core';
 import { parseUnits } from 'viem';
-import BuyBondDialog from './BuyBondDialog';
+import MoveMoneyDialog from './MoveMoneyDialog';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useOptionalAddress, useOptionalSmartWalletClient } from '@/hooks/useOptionalWallet';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
@@ -9,6 +9,7 @@ import { wagmiAdapter } from '@/AppKitProvider';
 import { scBuyBond } from '@/lib/sendCalls';
 import { getEarn } from '@/utils/apiClient';
 import { toEarnData } from '@/lib/earnMapping';
+import { BOND_HAIRCUT_BPS } from '@/lib/clearModel';
 import { EARN_DAY_ONE } from '@/data/clearPlaceholder';
 import { track } from '@/lib/analytics';
 import type { EarnData } from '@/lib/clearModel';
@@ -53,6 +54,11 @@ export default function ConnectedBuyBond({
   const [data, setData] = useState<EarnData>(EARN_DAY_ONE);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [months, setMonths] = useState(24);
+  const [face, setFace] = useState(0);
+  // Quoted by the chain for the chosen face and term. Null until both are known and the quote has
+  // come back — the screen shows nothing rather than a price the contract has not agreed to.
+  const [priceToday, setPriceToday] = useState<number | null>(null);
 
   // Read, not passed. A page holding a mapped model would hand fixtures to a screen that spends
   // money, which is the mistake the savings dialog was fixed for.
@@ -67,6 +73,44 @@ export default function ConnectedBuyBond({
       cancelled = true;
     };
   }, [address, open]);
+
+  const maturityDate = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + months);
+    return d;
+  }, [months]);
+
+  /*
+   * The price, quoted by the chain for exactly what is on screen.
+   *
+   * `calculateRequiredDeposit` is what the deposit contract will charge and what the approval is
+   * for. Deriving it in the app from a modelled curve would be two figures that agree until the
+   * curve moves — and the approval would be the one that fails.
+   */
+  useEffect(() => {
+    const c = clearContracts(ACTIVE_CHAIN_ID);
+    if (!open || !c?.burnerBondDeposit || face <= 0) {
+      setPriceToday(null);
+      return;
+    }
+    let cancelled = false;
+    void readContract(wagmiAdapter.wagmiConfig, {
+      address: c.burnerBondDeposit,
+      abi: DEPOSIT_ABI,
+      functionName: 'calculateRequiredDeposit',
+      args: [c.usdc, parseUnits(face.toFixed(2), 6), BigInt(Math.floor(maturityDate.getTime() / 1000))],
+      chainId: ACTIVE_CHAIN_ID,
+    })
+      .then((units) => {
+        if (!cancelled) setPriceToday(Number(units as bigint) / 1e6);
+      })
+      .catch(() => {
+        if (!cancelled) setPriceToday(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, face, maturityDate]);
 
   const onBuy = useCallback(
     async (purchase: { face: number; maturity: { date: Date } }) => {
@@ -130,16 +174,40 @@ export default function ConnectedBuyBond({
   );
 
   return (
-    <BuyBondDialog
-      data={data}
+    <MoveMoneyDialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) setError(null);
+        if (!next) {
+          setError(null);
+          setFace(0);
+        }
         onOpenChange(next);
       }}
-      onBuy={(p) => void onBuy(p)}
+      destination="bond"
+      direction="deposit"
+      onDirectionChange={() => {
+        /* A bond is one-way before maturity; the route shows an arrow, not a swap. */
+      }}
+      cashReady={balances.cash}
+      savingsTotal={0}
+      savingsFree={0}
+      credits={0}
+      creditsGoal={0}
+      bond={{
+        termOptions: data.terms.map((t) => t.months),
+        months,
+        onMonthsChange: setMonths,
+        // Zero until the chain has quoted it, so the screen never shows a price nothing agreed to.
+        priceToday: priceToday ?? 0,
+        maturesShort: maturityDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        maturesLong: maturityDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        ratePercent: data.terms.find((t) => t.months === months)?.rate ?? 0,
+        haircutBps: BOND_HAIRCUT_BPS,
+      }}
       busy={busy}
       error={error}
+      onAmountChange={setFace}
+      onMove={(amount) => void onBuy({ face: amount, maturity: { date: maturityDate } })}
     />
   );
 }

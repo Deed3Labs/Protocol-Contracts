@@ -304,6 +304,41 @@ function PoolMovePreview() {
   );
 }
 
+/** A bond — the same modal, one destination further, with the one exception it has to carry. */
+function BondPreview() {
+  const [months, setMonths] = useState(24);
+  // The reference's own figures: $5,000 face at 24 months costs $4,367.19.
+  const price = 4367.19;
+
+  return (
+    <div className="min-h-screen bg-background">
+      <MoveMoneyDialog
+        open
+        onOpenChange={() => {}}
+        destination="bond"
+        direction="deposit"
+        onDirectionChange={() => {}}
+        cashReady={6200}
+        savingsTotal={0}
+        savingsFree={0}
+        credits={0}
+        creditsGoal={0}
+        bond={{
+          termOptions: [6, 12, 24, 36],
+          months,
+          onMonthsChange: setMonths,
+          priceToday: price,
+          maturesShort: 'Aug 2028',
+          maturesLong: 'Aug 25, 2028',
+          ratePercent: 7,
+          haircutBps: 9_500,
+        }}
+        onMove={() => {}}
+      />
+    </div>
+  );
+}
+
 /** A charge arriving — the approval screen and the state after it. */
 function ChargeApprovalPreview() {
   const [splitInto, setSplitInto] = useState(4);
@@ -443,6 +478,7 @@ export default function PreviewApp() {
           <Route path="/charge" element={<ChargeApprovalPreview />} />
           <Route path="/move-money" element={<MoveMoneyPreview />} />
           <Route path="/pool" element={<PoolMovePreview />} />
+          <Route path="/bond" element={<BondPreview />} />
 
           <Route
             path="*"

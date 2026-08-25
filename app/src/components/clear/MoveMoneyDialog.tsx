@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeftRight, Check, Loader2 } from 'lucide-react';
+import { ArrowLeftRight, ArrowRight, Check, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Modal from './Modal';
 import Keypad from './Keypad';
@@ -36,7 +36,31 @@ export type MoveDirection = 'deposit' | 'withdraw';
  * Where the money is going. The reference is explicit that the pool is "the same component as
  * savings, pointed at a different destination" — so it is a prop rather than a second modal.
  */
-export type MoveDestination = 'savings' | 'pool';
+export type MoveDestination = 'savings' | 'pool' | 'bond';
+
+/**
+ * What a bond needs that neither of the others does.
+ *
+ * Bonds break the one rule the other two keep: everywhere else the number you type is the number
+ * that moves. With a bond you choose **face value** — what you get back — and a smaller,
+ * discounted amount leaves the account. So the hero carries both, with the price stated directly
+ * beneath the face rather than buried in the summary.
+ */
+export interface BondTerms {
+  /** Months offered, e.g. [6, 12, 24, 36]. Chips pick a term; the keypad types the face value. */
+  termOptions: number[];
+  months: number;
+  onMonthsChange: (months: number) => void;
+  /** What leaves the account today, quoted for the chosen face and term. */
+  priceToday: number;
+  /** e.g. "Aug 2028" on the leg, and "Aug 25, 2028" in the summary. */
+  maturesShort: string;
+  maturesLong: string;
+  /** Annual rate, fixed for the life of the bond. */
+  ratePercent: number;
+  /** The haircut a bond is registered at — 9500 bps. */
+  haircutBps: number;
+}
 
 /** What the pool needs that savings does not. Absent for a savings move. */
 export interface PoolTerms {
@@ -66,7 +90,8 @@ function Leg({
 }: {
   label: string;
   name: string;
-  balance: number;
+  /** Omitted when the leg has no running balance to show — a bond, before it exists. */
+  balance?: number;
   note?: string;
   side: 'left' | 'right';
 }) {
@@ -84,18 +109,39 @@ function Leg({
       </p>
       <p className="truncate text-[13px] leading-[1.3]">{name}</p>
       <p className="mt-0.5 truncate text-[11.5px] leading-[1.35] text-muted-foreground">
-        {money(balance, { cents: true })}
-        {note ? ` ${note}` : ''}
+        {balance === undefined ? note : `${money(balance, { cents: true })}${note ? ` ${note}` : ''}`}
       </p>
     </div>
   );
 }
 
-function Row({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+/**
+ * One line of the summary.
+ *
+ * `accent` is what the choice earns — tinted, and always the first row. `gain` is what it does to
+ * the credit limit — green, divided off, and always the last. Between them sit plain facts.
+ */
+function Row({
+  label,
+  value,
+  accent,
+  gain,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+  gain?: boolean;
+}) {
   return (
-    <div className={cn('flex justify-between text-[12.5px] leading-[2]', accent && 'text-tier-boost-fg')}>
+    <div
+      className={cn(
+        'flex justify-between text-[12.5px] leading-[2]',
+        accent && 'text-tier-boost-fg',
+        gain && 'mt-2 border-t-[0.5px] border-border pt-2',
+      )}
+    >
       <span className={accent ? undefined : 'text-foreground-secondary'}>{label}</span>
-      <span className="tabular-nums">{value}</span>
+      <span className={cn('tabular-nums', gain && 'font-medium text-positive')}>{value}</span>
     </div>
   );
 }
@@ -114,6 +160,7 @@ export interface MoveMoneyProps {
   creditsGoal: number;
   destination?: MoveDestination;
   pool?: PoolTerms;
+  bond?: BondTerms;
   /** e.g. "Jan 2028" — the only number on the screen about the thing they actually want. */
   reachesGoalBy?: string;
   /** e.g. "2 months later" — what a withdrawal costs in time. */
@@ -122,6 +169,14 @@ export interface MoveMoneyProps {
   error?: string | null;
   txHash?: string | null;
   onMove: (amount: number) => void;
+  /**
+   * Reports the amount as it is typed.
+   *
+   * Needed by any destination whose consequences have to be fetched rather than computed — a bond
+   * quotes its price from the chain for the face value on screen, and a price that only appeared
+   * after pressing Buy would be a price nobody agreed to before agreeing to it.
+   */
+  onAmountChange?: (amount: number) => void;
   onAddMoney?: () => void;
   onAutoSave?: () => void;
 }
@@ -138,12 +193,14 @@ export default function MoveMoneyDialog({
   creditsGoal,
   destination = 'savings',
   pool,
+  bond,
   reachesGoalBy,
   goalShift,
   busy = false,
   error = null,
   txHash = null,
   onMove,
+  onAmountChange,
   onAddMoney,
   onAutoSave,
 }: MoveMoneyProps) {
@@ -160,8 +217,18 @@ export default function MoveMoneyDialog({
    */
   const [typed, setTyped] = useState('');
 
+  /** One place that changes the amount, so nothing can move it without the caller hearing. */
+  const changeTyped = (next: string | ((current: string) => string)) => {
+    setTyped((current) => {
+      const value = typeof next === 'function' ? next(current) : next;
+      onAmountChange?.(Number(value) || 0);
+      return value;
+    });
+  };
+
   const isDeposit = direction === 'deposit';
   const isPool = destination === 'pool';
+  const isBond = destination === 'bond';
   // The pool can be fully lent — a state savings does not have. What is free to take is capped by
   // the pool's cash, not by the member's position.
   const poolFree = isPool && pool ? Math.min(savingsFree, pool.freeNow) : savingsFree;
@@ -188,7 +255,7 @@ export default function MoveMoneyDialog({
 
   const swap = () => {
     onDirectionChange(isDeposit ? 'withdraw' : 'deposit');
-    setTyped('');
+    changeTyped('');
   };
 
   const amountBlock = (dim = false) => (
@@ -200,7 +267,9 @@ export default function MoveMoneyDialog({
           Pool is fully lent
         </p>
       )}
-      <p className="mb-0.5 text-[11px] text-muted-foreground">Amount</p>
+      <p className="mb-0.5 text-[11px] text-muted-foreground">
+        {isBond ? 'Face value — what you get back' : 'Amount'}
+      </p>
       <p
         className={cn(
           'font-display text-[38px] font-medium leading-[1.05] tracking-[-1.2px]',
@@ -215,6 +284,14 @@ export default function MoveMoneyDialog({
           .{(typed.split('.')[1] ?? '').padEnd(2, '0').slice(0, 2)}
         </span>
       </p>
+      {/* The one place a bond differs from everything else on screen: what leaves the account is
+          not what was typed. Stated directly under the hero rather than left to the summary. */}
+      {isBond && bond && !over && (
+        <p className="mb-3 text-[13px] text-tier-boost-fg">
+          You pay {money(bond.priceToday, { cents: true })} today
+        </p>
+      )}
+
       {over && (
         // Stated as the difference, because that is the number they can act on — not as a refusal.
         <p className="mb-3 text-[11.5px] text-tier-boost-fg">
@@ -232,27 +309,70 @@ export default function MoveMoneyDialog({
         label="From"
         name={isDeposit ? 'Cash account' : isPool ? 'Yield pool' : 'Savings'}
         balance={isDeposit ? cashReady : isPool ? poolFree : savingsFree}
-        note={isDeposit ? 'ready' : isPool && pool && pool.freeNow < savingsFree ? 'free now' : 'free'}
+        // "free" on every leg, per the reference. It means the same thing in both places — money
+        // that can move — even though what constrains it differs: unallocated on the cash side,
+        // unencumbered on the savings side, and not lent out on the pool's.
+        note={isDeposit ? 'free' : isPool && pool && pool.freeNow < savingsFree ? 'free now' : 'free'}
       />
-      <Leg
-        side="right"
-        label="To"
-        name={isDeposit ? (isPool ? 'Yield pool' : 'Savings') : 'Cash account'}
-        balance={isDeposit ? savingsTotal : cashReady}
-      />
-      <button
-        type="button"
-        onClick={swap}
-        disabled={busy}
-        aria-label="Swap direction"
-        className="absolute left-1/2 top-1/2 z-[2] flex h-[26px] w-[26px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[0.5px] border-border bg-background ring-4 ring-background disabled:opacity-50"
-      >
-        <ArrowLeftRight className="h-[13px] w-[13px] text-foreground-secondary" />
-      </button>
+      {isBond && bond ? (
+        // A bond has no running balance to show until it exists, so the leg carries the date it
+        // matures instead.
+        <Leg side="right" label="To" name="BurnerBond" note={`Matures ${bond.maturesShort}`} />
+      ) : (
+        <Leg
+          side="right"
+          label="To"
+          name={isDeposit ? (isPool ? 'Yield pool' : 'Savings') : 'Cash account'}
+          balance={isDeposit ? savingsTotal : cashReady}
+        />
+      )}
+
+      {isBond ? (
+        /*
+         * One arrow, not two.
+         *
+         * It sits where the swap sits on the other two, but points one way and its circle is
+         * filled rather than white — so it reads as a direction, not a control. A two-headed swap
+         * would promise a reversal the product cannot do before maturity.
+         */
+        <span
+          aria-hidden
+          className="absolute left-1/2 top-1/2 z-[2] flex h-[26px] w-[26px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[0.5px] border-border bg-secondary/50 ring-4 ring-background"
+        >
+          <ArrowRight className="h-[14px] w-[14px] text-muted-foreground" />
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={swap}
+          disabled={busy}
+          aria-label="Swap direction"
+          className="absolute left-1/2 top-1/2 z-[2] flex h-[26px] w-[26px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[0.5px] border-border bg-background ring-4 ring-background disabled:opacity-50"
+        >
+          <ArrowLeftRight className="h-[13px] w-[13px] text-foreground-secondary" />
+        </button>
+      )}
     </div>
   );
 
-  const chips = (
+  const chips = isBond && bond ? (
+    <>
+      <p className="mb-[7px] mt-0.5 text-[10px] uppercase tracking-[0.5px] text-muted-foreground">Term</p>
+      <div className="mb-3 flex gap-1.5">
+        {bond.termOptions.map((months) => (
+          <Button
+            key={months}
+            variant="clear"
+            size="xs"
+            className={cn('flex-1', months === bond.months && 'border-tier-boost bg-tier-boost/10 text-tier-boost-fg')}
+            onClick={() => bond.onMonthsChange(months)}
+          >
+            {months} mo
+          </Button>
+        ))}
+      </div>
+    </>
+  ) : (
     <div className="mb-3 flex gap-1.5">
       {presets.map((preset) => (
         <Button
@@ -260,7 +380,7 @@ export default function MoveMoneyDialog({
           variant="clear"
           size="xs"
           className={cn('flex-1', amount === preset && 'border-tier-boost bg-tier-boost/10 text-tier-boost-fg')}
-          onClick={() => setTyped(String(preset))}
+          onClick={() => changeTyped(String(preset))}
         >
           {money(preset)}
         </Button>
@@ -272,7 +392,7 @@ export default function MoveMoneyDialog({
           'flex-1',
           amount === available && available > 0 && 'border-tier-boost bg-tier-boost/10 text-tier-boost-fg',
         )}
-        onClick={() => setTyped(String(available))}
+        onClick={() => changeTyped(String(available))}
       >
         {/* "All free" rather than "All" — it moves everything that can move, and the word does the
             explaining. */}
@@ -281,91 +401,124 @@ export default function MoveMoneyDialog({
     </div>
   );
 
-  const pad = <Keypad onKey={(key) => setTyped((current) => applyKey(current, key))} disabled={busy} />;
+  const pad = <Keypad onKey={(key) => changeTyped((current) => applyKey(current, key))} disabled={busy} />;
 
-  const poolConsequences = pool && (
-    <>
-      {isDeposit ? (
-        <div className="mb-3 rounded-[10px] border-[0.5px] border-tier-boost/40 bg-tier-boost/[0.08] px-3.5 py-3">
-          <Row label="Earning" value={`${pool.apyPercent}% APY`} accent />
+  /**
+   * The summary: one bordered box, five lines, the same shape at every destination.
+   *
+   * It was two containers — a tinted box for what the choice earns, then bare rows under a
+   * hairline. One box does it, with colour carrying the distinction a second container was
+   * carrying: **what this earns** is tinted on its own row at the top, **what it adds to the
+   * credit limit** is green and always last.
+   *
+   * Last and green because it is the one consequence common to all three products, and the one
+   * easiest to forget you are getting — a member reading three different modals should find it in
+   * the same place each time.
+   */
+  const summary = (
+    <div className="mb-3 rounded-[10px] border-[0.5px] border-border px-3.5 py-3">
+      {isBond && bond ? (
+        <>
+          <Row label="You pay today" value={money(bond.priceToday, { cents: true })} />
+          <Row label="You get at maturity" value={money(amount, { cents: true })} />
+          <Row label="Matures" value={bond.maturesLong} />
+          {/* One line, not two. The rate and what it is worth in dollars are the same fact, and a
+              buyer needs both to compare terms — splitting them made the reader multiply. */}
           <Row
-            label="Backs your limit"
-            value={`+${money((amount * pool.haircutBps) / 10_000, { cents: true })}`}
+            label="Yield"
+            value={`${bond.ratePercent.toFixed(1)}% fixed · +${money(Math.max(0, amount - bond.priceToday), { cents: true })}`}
             accent
           />
-        </div>
-      ) : (
-        <div className="mb-3 rounded-[10px] border-[0.5px] border-border bg-secondary/50 px-3.5 py-3">
-          <Row label="Limit" value={`−${money((amount * pool.haircutBps) / 10_000, { cents: true })}`} />
-          {/* Approximate on purpose: the rate moves with utilisation, so a precise figure would be
-              a promise the pool cannot keep. */}
-          <Row label="Yield lost" value={`~${money((amount * pool.apyPercent) / 100, { cents: true })} a year`} />
-          {pool.limitAfter !== undefined && (
-            <p className="mt-[7px] text-[11px] leading-[1.55] text-muted-foreground">
-              Limit falls to {money(pool.limitAfter, { cents: true })}
-              {pool.owed !== undefined
-                ? `, still above the ${money(pool.owed, { cents: true })} you owe.`
-                : '.'}
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="mb-3.5 border-t-[0.5px] border-border pt-2.5">
-        <Row label="Position after" value={money(after.savings, { cents: true })} />
-        {isDeposit ? (
-          <>
-            <Row label="Yield a year" value={`~${money((after.savings * pool.apyPercent) / 100, { cents: true })}`} />
-            <Row label="Withdraw" value="Any time" />
-          </>
-        ) : (
-          <>
-            <Row label="Arrives" value={over ? 'Some queued' : 'Within 24 hours'} />
-            <Row label="Pool utilization" value={`${Math.round(pool.utilizationBps / 100)}%`} />
-          </>
-        )}
-      </div>
-    </>
-  );
-
-  const consequences = (
-    <>
-      {isDeposit ? (
-        <div className="mb-3 rounded-[10px] border-[0.5px] border-tier-boost/40 bg-tier-boost/[0.08] px-3.5 py-3">
+          <Row
+            label="Adds to your credit limit"
+            value={`+${money((bond.priceToday * bond.haircutBps) / 10_000, { cents: true })}`}
+            gain
+          />
+        </>
+      ) : isPool && pool && isDeposit ? (
+        <>
+          <Row label="Earning" value={`${pool.apyPercent}% APY`} accent />
+          <Row label="Position after" value={money(after.savings, { cents: true })} />
+          <Row
+            label="Yield a year"
+            value={`~${money((after.savings * pool.apyPercent) / 100, { cents: true })}`}
+          />
+          <Row label="Withdraw" value="Any time" />
+          <Row
+            label="Backs your credit limit"
+            value={`+${money((amount * pool.haircutBps) / 10_000, { cents: true })}`}
+            gain
+          />
+        </>
+      ) : isPool && pool ? (
+        <>
+          {/* Taking money out is the same five lines with the signs turned round. The earn row
+              still leads, because what a withdrawal costs in yield is the thing being weighed. */}
+          <Row
+            label="Yield lost"
+            value={`~${money((amount * pool.apyPercent) / 100, { cents: true })} a year`}
+            accent
+          />
+          <Row label="Position after" value={money(after.savings, { cents: true })} />
+          <Row label="Arrives" value={over ? 'Some queued' : 'Within 24 hours'} />
+          <Row label="Pool utilization" value={`${Math.round(pool.utilizationBps / 100)}%`} />
+          <Row
+            label="Your credit limit drops by"
+            value={`−${money((amount * pool.haircutBps) / 10_000, { cents: true })}`}
+            gain
+          />
+        </>
+      ) : isDeposit ? (
+        <>
           <Row label="Credits earned" value={`+${count(amount)}`} accent />
-          <Row label="Your limit rises by" value={`+${money(amount, { cents: true })}`} accent />
-        </div>
-      ) : (
-        // Neutral, not accented. The figures are the point; colouring them would be the warning
-        // tone the reference is explicit about not using.
-        <div className="mb-3 rounded-[10px] border-[0.5px] border-border bg-secondary/50 px-3.5 py-3">
-          <Row label="Credits given up" value={`−${count(amount)}`} />
-          <Row label="Your limit drops by" value={`−${money(amount, { cents: true })}`} />
-          <p className="mt-[7px] text-[11px] leading-[1.55] text-muted-foreground">
-            Vested credits stay. Only the credits this money was still earning are given up.
-          </p>
-        </div>
-      )}
-
-      <div className="mb-3.5 border-t-[0.5px] border-border pt-2.5">
-        <Row label="Savings after" value={money(after.savings, { cents: true })} />
-        {isDeposit ? (
+          <Row label="Savings after" value={money(after.savings, { cents: true })} />
           <Row label="Credits after" value={`${count(after.credits)} of ${count(creditsGoal)}`} />
-        ) : (
+          <Row label={`Reaches ${count(creditsGoal)} by`} value={reachesGoalBy ?? '—'} />
+          {/* Savings backs the line at 100%, so a dollar saved is a dollar of limit. */}
+          <Row
+            label="Adds to your credit limit"
+            value={`+${money(amount, { cents: true })}`}
+            gain
+          />
+        </>
+      ) : (
+        <>
+          <Row label="Credits given up" value={`−${count(amount)}`} accent />
+          <Row label="Savings after" value={money(after.savings, { cents: true })} />
           <Row
             label={`Reaches ${count(creditsGoal)} by`}
             value={`${reachesGoalBy ?? '—'}${goalShift ? ` · ${goalShift}` : ''}`}
           />
-        )}
-        {/* The extra line desktop earns: the only number on the screen about the thing they
-            actually want. Hidden on a narrow modal, which is already tall enough. */}
-        {isDeposit && reachesGoalBy && (
-          <div className="hidden sm:block">
-            <Row label={`Reaches ${count(creditsGoal)} by`} value={reachesGoalBy} />
-          </div>
-        )}
-      </div>
-    </>
+          <Row label="Your credit limit drops by" value={`−${money(amount, { cents: true })}`} gain />
+        </>
+      )}
+    </div>
+  );
+
+  // Kept from the earlier reference. The update that introduced the single summary draws only
+  // deposits, which is not evidence a withdrawal should say less — and this is the sentence that
+  // stops "credits given up" reading as though vested credits were at risk.
+  // The question a member withdrawing is actually asking is whether they stay above what they owe,
+  // so the panel names the limit it lands on rather than only the drop.
+  const landingNote = isPool && !isDeposit && pool?.limitAfter !== undefined && (
+    <p className="mb-3 text-[11px] leading-[1.55] text-muted-foreground">
+      Limit falls to {money(pool.limitAfter, { cents: true })}
+      {pool.owed !== undefined ? `, still above the ${money(pool.owed, { cents: true })} you owe.` : '.'}
+    </p>
+  );
+
+  // Context rather than consequence, which is why desktop moves it under the keypad.
+  const lockNote = isBond && bond && (
+    <p className="mb-3 rounded-[10px] bg-secondary/50 px-3.5 py-[11px] text-[12px] leading-[1.6] text-foreground-secondary">
+      Locked until maturity — but it backs your credit line at {Math.round(bond.haircutBps / 100)}%,
+      so you can borrow against it any time for 0.65% a cycle.
+    </p>
+  );
+
+  const vestingNote = !isPool && !isDeposit && (
+    <p className="mb-3 text-[11px] leading-[1.55] text-muted-foreground">
+      Vested credits stay. Only the credits this money was still earning are given up.
+    </p>
   );
 
   // The pool has a state savings does not: it can be fully lent. Asking for more than is free is
@@ -403,7 +556,7 @@ export default function MoveMoneyDialog({
         size="xs"
         variant="clear"
         className="w-full py-3 text-muted-foreground"
-        onClick={() => setTyped(String(available))}
+        onClick={() => changeTyped(String(available))}
       >
         Move to {isDeposit ? 'savings' : 'cash'}
       </Button>
@@ -417,12 +570,15 @@ export default function MoveMoneyDialog({
             <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
             Moving…
           </>
+        ) : isBond ? (
+          'Buy this bond'
         ) : isPool ? (
           `${isDeposit ? 'Add' : 'Take'} ${money(amount, { cents: true })}`
         ) : (
           `Move ${money(amount, { cents: true })} to ${isDeposit ? 'savings' : 'cash'}`
         )}
       </Button>
+      {isBond ? null : (
       <p className="mt-2.5 text-center text-[11px] leading-[1.55] text-muted-foreground">
         {isPool
           ? isDeposit
@@ -432,6 +588,7 @@ export default function MoveMoneyDialog({
             ? 'Instant. You can move it back any time.'
             : 'Instant. Move it back whenever you like.'}
       </p>
+      )}
     </>
   );
 
@@ -439,11 +596,21 @@ export default function MoveMoneyDialog({
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title={isPool ? (isDeposit ? 'Add to the pool' : 'Take from the pool') : 'Move money'}
+      title={
+        isBond
+          ? 'Buy a bond'
+          : isPool
+            ? isDeposit
+              ? 'Add to the pool'
+              : 'Take from the pool'
+            : 'Move money'
+      }
       description={
-        isPool
-          ? 'Move money between your cash account and the yield pool.'
-          : 'Move money between your cash account and savings.'
+        isBond
+          ? 'Choose a face value and a term, and review what the bond costs today.'
+          : isPool
+            ? 'Move money between your cash account and the yield pool.'
+            : 'Move money between your cash account and savings.'
       }
       // The desktop dialog is 360px by default, and the two-column layout below needs the width
       // the reference gives it — a 216px keypad beside a column that still has to fit "Credits
@@ -494,9 +661,17 @@ export default function MoveMoneyDialog({
             {chips}
             {route}
             <div className="mb-3 sm:hidden">{pad}</div>
-            {isPool ? poolConsequences : consequences}
+            {summary}
+            {vestingNote}
+            {landingNote}
+            <div className="sm:hidden">{lockNote}</div>
           </div>
-          <div className="hidden sm:block">{pad}</div>
+          <div className="hidden sm:block">
+            {pad}
+            {/* Context, not consequence, so on desktop it sits on the input side where there is
+                room rather than interrupting the read down the left. */}
+            <div className="mt-3">{lockNote}</div>
+          </div>
           <div className="sm:col-span-2">{action}</div>
         </div>
       )}
