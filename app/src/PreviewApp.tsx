@@ -211,6 +211,7 @@ function TermPlansPreview() {
 function MoveMoneyPreview() {
   const [direction, setDirection] = useState<MoveDirection>('deposit');
   const [empty, setEmpty] = useState(false);
+  const [progress, setProgress] = useState<{ status: 'processing' | 'done' | 'failed'; step: number; failureNote?: string } | null>(null);
 
   return (
     <div className="min-h-screen bg-background">
@@ -226,10 +227,26 @@ function MoveMoneyPreview() {
         creditsGoal={15000}
         reachesGoalBy="Jan 2028"
         goalShift="2 months later"
+        progress={progress}
         onMove={() => {}}
       />
 
-      <div className="fixed inset-x-0 bottom-0 z-[60] flex justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        {([
+          ['moving', { status: 'processing' as const, step: 1 }],
+          ['done', { status: 'done' as const, step: 3 }],
+          ['failed', { status: 'failed' as const, step: 1, failureNote: 'the network was busy' }],
+          ['form', null],
+        ] as const).map(([label, next]) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => setProgress(next)}
+            className="rounded-md border-[0.5px] border-border px-2 py-1 text-[11px] text-muted-foreground"
+          >
+            {label}
+          </button>
+        ))}
         {([['deposit', false], ['withdraw', false], ['empty', true]] as const).map(([label, isEmpty]) => (
           <button
             key={label}

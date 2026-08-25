@@ -66,7 +66,7 @@ export default function ConnectedPoolMove({
     [balances],
   );
 
-  const { busy, error, txHash, move, reset } = usePoolMove(onMoved);
+  const { busy, error, progress, move, reset } = usePoolMove(onMoved);
 
   const position = (pool?.positionCents ?? 0) / 100;
   // What the pool can pay right now. Capacity less what is lent out is the cash on hand, and it is
@@ -107,8 +107,10 @@ export default function ConnectedPoolMove({
       }}
       busy={busy}
       error={error}
-      txHash={txHash}
+      progress={progress}
       onMove={(amount) => void move(direction, amount, freeNow)}
+      onAgain={reset}
+      onRetry={reset}
       onAddMoney={() => {
         onOpenChange(false);
         openAddMoney();

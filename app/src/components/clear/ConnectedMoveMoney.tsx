@@ -75,7 +75,7 @@ export default function ConnectedMoveMoney({
     [balances],
   );
 
-  const { busy, error, txHash, move, reset } = useSavingsMove(onMoved);
+  const { busy, error, progress, move, reset } = useSavingsMove(onMoved);
 
   /*
    * Every figure with a real source is read from that source, and the page's `data` is used only
@@ -115,8 +115,12 @@ export default function ConnectedMoveMoney({
       reachesGoalBy={data.savings.onTrackFor}
       busy={busy}
       error={error}
-      txHash={txHash}
+      progress={progress}
       onMove={(amount) => void move(direction, amount)}
+      // The moment right after a deposit is the only moment somebody is inclined to make another,
+      // so "Save more" returns to the form rather than closing.
+      onAgain={reset}
+      onRetry={reset}
       onAddMoney={() => {
         onOpenChange(false);
         openAddMoney();

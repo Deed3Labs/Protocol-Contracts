@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyKey } from '@/lib/amountEntry';
+import { stepsFor } from '@/lib/moveSteps';
 import { freeSavings } from '@/lib/freeSavings';
 
 const DIALOG = readFileSync(join(import.meta.dir, 'MoveMoneyDialog.tsx'), 'utf8');
@@ -228,7 +229,7 @@ describe('withdrawing is stated, not warned about', () => {
   test('one summary box, not a tinted one and a bare list', () => {
     // Colour does what a second container was doing: the earn row is tinted, the credit-limit
     // footer is green and divided, and everything sits in one bordered box.
-    expect(DIALOG).toContain('const summary = (');
+    expect(DIALOG).toContain('const summaryRows = (past = false) => (');
     expect(DIALOG).toContain("gain && 'mt-2 border-t-[0.5px] border-border pt-2'");
     expect(DIALOG).toContain("accent && 'text-tier-boost-fg'");
   });
@@ -577,5 +578,113 @@ describe('a fetched price needs the amount as it is typed', () => {
     const bond = readFileSync(join(import.meta.dir, 'ConnectedBuyBond.tsx'), 'utf8');
     expect(bond).toContain("functionName: 'calculateRequiredDeposit'");
     expect(bond).toContain('onAmountChange={setFace}');
+  });
+});
+
+/*
+ * A spinner inside the button is too quiet for money moving, so the modal replaces its own
+ * content — and a failure gets more than a red line under the amount.
+ */
+const PROGRESS = readFileSync(join(import.meta.dir, 'MoveProgress.tsx'), 'utf8');
+const SAVINGS_HOOK = readFileSync(join(import.meta.dir, '../../hooks/useSavingsMove.ts'), 'utf8');
+
+describe('a move shows itself happening', () => {
+  test('three named steps, not a bare spinner', () => {
+    // If one stalls the screen already shows which; a spinner that stalls says only that
+    // something is wrong somewhere.
+    expect(DIALOG).toContain('const stepLabels =');
+    expect(DIALOG).toContain('Taken from your cash account');
+    expect(DIALOG).toContain('Adding to your savings');
+    expect(DIALOG).toContain('Crediting ${count(amount)} equity credits');
+  });
+
+  test('the steps are named per destination', () => {
+    expect(DIALOG).toContain('Issuing the bond');
+    expect(DIALOG).toContain('Adding it to your credit line');
+  });
+
+  test('and they advance on events, not on a timer', () => {
+    // A progress bar that moves on its own lies when something stalls, which is exactly when a
+    // member is watching it.
+    expect(SAVINGS_HOOK).toContain("setProgress({ status: 'processing', step: 0 })");
+    expect(SAVINGS_HOOK).toContain("setProgress({ status: 'done'");
+    expect(SAVINGS_HOOK).not.toContain('setTimeout');
+    expect(SAVINGS_HOOK).not.toContain('setInterval');
+  });
+
+  test('the member is told they can walk away', () => {
+    // The instinct with money in flight is to sit and stare. It is also true — the transaction is
+    // already submitted.
+    expect(DIALOG).toContain('You can close this');
+    expect(DIALOG).toContain('finishes on its own');
+  });
+});
+
+describe('done repeats what was promised, past tense', () => {
+  test('the same five lines, relabelled', () => {
+    // Same numbers the member saw before confirming, so nothing arrives as a surprise.
+    expect(DIALOG).toContain("past ? 'Your credit limit rose by' : 'Adds to your credit limit'");
+    expect(DIALOG).toContain("past ? 'Savings' : 'Savings after'");
+    expect(DIALOG).toContain('summaryRows(true)');
+  });
+
+  test('and the bond leads with the gain, not the payment', () => {
+    // The member already knows what left their account — they confirmed it. What they bought is
+    // the difference and a date.
+    expect(DIALOG).toContain("past ? 'You gain' : 'You get at maturity'");
+    expect(DIALOG).toContain('past ? Math.max(0, amount - bond.priceToday) : amount');
+  });
+
+  test('the next move is offered where somebody is inclined to make one', () => {
+    expect(DIALOG).toContain("isBond ? 'See your bonds' : isPool ? 'Add more' : 'Save more'");
+  });
+});
+
+describe('a failure answers the only question that matters', () => {
+  test('"Nothing moved" is the headline, not the error', () => {
+    expect(DIALOG).toContain("'Nothing moved'");
+    expect(DIALOG).toContain('is still in your');
+  });
+
+  test('the steps stay and show the reversal', () => {
+    // Somebody who watched money leave needs to watch it come back, not be told it never left.
+    expect(DIALOG).toContain("state: 'done' as const }");
+    expect(DIALOG).toContain('Returned — ${progress.failureNote');
+  });
+
+  test('the reason is short enough for one line', () => {
+    // Chain errors are paragraphs. The full message stays in `error` for a console.
+    const pool = readFileSync(join(import.meta.dir, '../../hooks/usePoolMove.ts'), 'utf8');
+    expect(pool).toContain('export function shortMoveReason');
+    expect(pool).toContain("return 'the network was busy'");
+  });
+
+  test('and there is one implementation of it, not one per destination', () => {
+    expect(SAVINGS_HOOK).toContain("import { shortMoveReason }");
+    expect(SAVINGS_HOOK).not.toContain('function shortReason');
+  });
+
+  test('the mark is not a red cross', () => {
+    // Nothing went wrong with the member's money — it is still theirs, in the account it started
+    // in. A red X would say otherwise before the headline gets a chance to.
+    expect(PROGRESS).toContain('export function AlertMark');
+    expect(PROGRESS).not.toContain('negative');
+  });
+});
+
+describe('which step is where', () => {
+  test('processing marks everything before the current one done', () => {
+    const steps = stepsFor(['a', 'b', 'c'], 1, 'processing');
+    expect(steps.map((s) => s.state)).toEqual(['done', 'active', 'waiting']);
+  });
+
+  test('done marks all of them done, whatever the step says', () => {
+    // A confirmed move is finished even if the step counter never caught up.
+    expect(stepsFor(['a', 'b', 'c'], 0, 'done').every((s) => s.state === 'done')).toBe(true);
+  });
+
+  test('a failure leaves nothing active', () => {
+    // Nothing is in flight once it has come back.
+    expect(stepsFor(['a', 'b', 'c'], 1, 'failed').some((s) => s.state === 'active')).toBe(false);
   });
 });

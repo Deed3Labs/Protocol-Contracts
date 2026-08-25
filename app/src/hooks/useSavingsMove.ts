@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useOptionalAddress, useOptionalSmartWalletClient } from './useOptionalWallet';
+import { shortMoveReason } from './usePoolMove';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import { scDeposit, scRedeem } from '@/lib/sendCalls';
 import { gaslessDeposit, gaslessRedeem } from '@/lib/gaslessMoney';
@@ -30,11 +31,22 @@ export type MoveDirection = 'deposit' | 'withdraw';
 export interface SavingsMoveState {
   busy: boolean;
   error: string | null;
-  /** Set once it has landed — the dialog becomes a receipt rather than closing. */
+  /** Set once it has landed. */
   txHash: string | null;
+  /**
+   * Where the move has got to, for the screen that replaces the form while it happens.
+   *
+   * Steps advance on real events, not on a timer: taken once the transaction is submitted, and
+   * done once it is confirmed. A progress bar that moves on its own is a progress bar that lies
+   * when something stalls, which is exactly the moment a member is watching it.
+   */
+  progress: { status: 'processing' | 'done' | 'failed'; step: number; failureNote?: string } | null;
   move: (direction: MoveDirection, amount: number) => Promise<void>;
   reset: () => void;
 }
+
+/** How many steps the screen names. Done means all of them are behind you. */
+const stepLabelsLength = 3;
 
 export function useSavingsMove(
   onMoved?: (direction: MoveDirection, amount: number) => void,
@@ -44,6 +56,7 @@ export function useSavingsMove(
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [progress, setProgress] = useState<SavingsMoveState['progress']>(null);
 
   const move = useCallback(
     async (direction: MoveDirection, amount: number) => {
@@ -58,6 +71,7 @@ export function useSavingsMove(
 
       setBusy(true);
       setError(null);
+      setProgress({ status: 'processing', step: 0 });
       try {
         const chainId = ACTIVE_CHAIN_ID;
         // Six decimals, and a string rather than a float: the amount becomes token micros, and
@@ -80,9 +94,13 @@ export function useSavingsMove(
         }
 
         setTxHash(hash);
+        setProgress({ status: 'done', step: stepLabelsLength });
         onMoved?.(direction, amount);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "That didn't go through.");
+        const message = e instanceof Error ? e.message : "That didn't go through.";
+        setError(message);
+        // The money did not move, and that is the headline. The reason is a subline.
+        setProgress({ status: 'failed', step: 1, failureNote: shortMoveReason(message) });
       } finally {
         setBusy(false);
       }
@@ -93,7 +111,8 @@ export function useSavingsMove(
   const reset = useCallback(() => {
     setError(null);
     setTxHash(null);
+    setProgress(null);
   }, []);
 
-  return { busy, error, txHash, move, reset };
+  return { busy, error, txHash, progress, move, reset };
 }
