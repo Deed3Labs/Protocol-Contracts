@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
-import { ArrowLeftRight, ArrowRight, Check, Loader2 } from 'lucide-react';
+import { ArrowLeftRight, ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Modal from './Modal';
 import Keypad from './Keypad';
 import { applyKey } from '@/lib/amountEntry';
+import { AlertMark, Spinner, Steps, Tick } from './MoveProgress';
+import { stepsFor, type MoveStatus } from '@/lib/moveSteps';
 import { money, count } from '@/lib/money';
 import { cn } from '@/lib/utils';
 
@@ -167,7 +169,13 @@ export interface MoveMoneyProps {
   goalShift?: string;
   busy?: boolean;
   error?: string | null;
-  txHash?: string | null;
+  /**
+   * Where the move has got to. Absent while the member is still deciding.
+   *
+   * Replaces a `txHash` that only ever said "done". Money moving deserves more than a spinner in
+   * a button, and a failure deserves more than a red line under the amount.
+   */
+  progress?: { status: MoveStatus; step: number; failureNote?: string } | null;
   onMove: (amount: number) => void;
   /**
    * Reports the amount as it is typed.
@@ -177,6 +185,10 @@ export interface MoveMoneyProps {
    * after pressing Buy would be a price nobody agreed to before agreeing to it.
    */
   onAmountChange?: (amount: number) => void;
+  /** The offer made right after a move lands — "Save more", "See your bonds". */
+  onAgain?: () => void;
+  /** Retry after a failure, with the amount still on screen. */
+  onRetry?: () => void;
   onAddMoney?: () => void;
   onAutoSave?: () => void;
 }
@@ -198,9 +210,11 @@ export default function MoveMoneyDialog({
   goalShift,
   busy = false,
   error = null,
-  txHash = null,
+  progress = null,
   onMove,
   onAmountChange,
+  onAgain,
+  onRetry,
   onAddMoney,
   onAutoSave,
 }: MoveMoneyProps) {
@@ -415,12 +429,18 @@ export default function MoveMoneyDialog({
    * easiest to forget you are getting — a member reading three different modals should find it in
    * the same place each time.
    */
-  const summary = (
+  const summaryRows = (past = false) => (
     <div className="mb-3 rounded-[10px] border-[0.5px] border-border px-3.5 py-3">
       {isBond && bond ? (
         <>
-          <Row label="You pay today" value={money(bond.priceToday, { cents: true })} />
-          <Row label="You get at maturity" value={money(amount, { cents: true })} />
+          {/* Done leads with the gain, not the payment: the member already knows what left their
+              account — they confirmed it. What they bought is the difference and a date. */}
+          <Row label={past ? 'You paid' : 'You pay today'} value={money(bond.priceToday, { cents: true })} />
+          <Row
+            label={past ? 'You gain' : 'You get at maturity'}
+            value={money(past ? Math.max(0, amount - bond.priceToday) : amount, { cents: true })}
+            accent={past}
+          />
           <Row label="Matures" value={bond.maturesLong} />
           {/* One line, not two. The rate and what it is worth in dollars are the same fact, and a
               buyer needs both to compare terms — splitting them made the reader multiply. */}
@@ -430,7 +450,7 @@ export default function MoveMoneyDialog({
             accent
           />
           <Row
-            label="Adds to your credit limit"
+            label={past ? 'Your limit rose by' : 'Adds to your credit limit'}
             value={`+${money((bond.priceToday * bond.haircutBps) / 10_000, { cents: true })}`}
             gain
           />
@@ -445,7 +465,7 @@ export default function MoveMoneyDialog({
           />
           <Row label="Withdraw" value="Any time" />
           <Row
-            label="Backs your credit limit"
+            label={past ? 'Your credit limit rose by' : 'Backs your credit limit'}
             value={`+${money((amount * pool.haircutBps) / 10_000, { cents: true })}`}
             gain
           />
@@ -471,12 +491,12 @@ export default function MoveMoneyDialog({
       ) : isDeposit ? (
         <>
           <Row label="Credits earned" value={`+${count(amount)}`} accent />
-          <Row label="Savings after" value={money(after.savings, { cents: true })} />
-          <Row label="Credits after" value={`${count(after.credits)} of ${count(creditsGoal)}`} />
+          <Row label={past ? 'Savings' : 'Savings after'} value={money(after.savings, { cents: true })} />
+          <Row label={past ? 'Credits' : 'Credits after'} value={`${count(after.credits)} of ${count(creditsGoal)}`} />
           <Row label={`Reaches ${count(creditsGoal)} by`} value={reachesGoalBy ?? '—'} />
           {/* Savings backs the line at 100%, so a dollar saved is a dollar of limit. */}
           <Row
-            label="Adds to your credit limit"
+            label={past ? 'Your credit limit rose by' : 'Adds to your credit limit'}
             value={`+${money(amount, { cents: true })}`}
             gain
           />
@@ -525,6 +545,114 @@ export default function MoveMoneyDialog({
   // not a mistake to refuse — pay what is there and queue the rest, which is what the contract's
   // requestWithdrawal exists for.
   const canQueue = isPool && !isDeposit && over;
+
+  /*
+   * The three things that actually happen, named.
+   *
+   * The reference draws savings and bonds; the others follow the same shape — money leaves, the
+   * thing it is going into takes it, and the consequence a member cares about lands. That last
+   * step is the least obvious and the one most worth watching, because it is why a locked
+   * position is not a locked-away position.
+   */
+  const stepLabels = isBond
+    ? ['Paid from your cash account', 'Issuing the bond', 'Adding it to your credit line']
+    : isPool
+      ? isDeposit
+        ? ['Taken from your cash account', 'Adding to the pool', 'Adding it to your credit line']
+        : ['Redeeming from the pool', 'Returning to your cash account', 'Updating your credit line']
+      : isDeposit
+        ? ['Taken from your cash account', 'Adding to your savings', `Crediting ${count(amount)} equity credits`]
+        : ['Taken from your savings', 'Returning to your cash account', 'Updating your credit line'];
+
+  const movingTitle = isBond
+    ? 'Buying your bond'
+    : `${isDeposit ? 'Moving' : 'Taking'} ${money(amount, { cents: true })}`;
+
+  const movingSub = isBond && bond
+    ? `${money(bond.priceToday, { cents: true })} → ${money(amount, { cents: true })} at maturity`
+    : isDeposit
+      ? `Cash account → ${isPool ? 'Yield pool' : 'Savings'}`
+      : `${isPool ? 'Yield pool' : 'Savings'} → Cash account`;
+
+  const doneTitle = isBond
+    ? 'Bond bought'
+    : isPool
+      ? `${money(amount, { cents: true })} ${isDeposit ? 'added' : 'taken'}`
+      : isDeposit
+        ? `${money(amount, { cents: true })} saved`
+        : `${money(amount, { cents: true })} moved`;
+
+  const progressView = progress && (
+    <>
+      <div className="py-2 text-center">
+        {progress.status === 'processing' ? <Spinner /> : progress.status === 'done' ? <Tick /> : <AlertMark />}
+        <p className="mb-1 mt-4 text-[19px] font-medium">
+          {/* "Nothing moved" is the headline, not the error. The only question a member has when
+              something fails with their money is whether they still have it. */}
+          {progress.status === 'processing' ? movingTitle : progress.status === 'done' ? doneTitle : 'Nothing moved'}
+        </p>
+        <p className="text-[12.5px] text-foreground-secondary">
+          {progress.status === 'processing'
+            ? movingSub
+            : progress.status === 'done'
+              ? isBond && bond
+                ? `${money(amount, { cents: true })} face · matures ${bond.maturesLong}`
+                : 'Just now'
+              : `Your ${money(amount, { cents: true })} is still in your ${isDeposit ? 'cash account' : isPool ? 'pool position' : 'savings'}`}
+        </p>
+      </div>
+
+      <div className="mb-3 mt-4">
+        {progress.status === 'done' ? (
+          summaryRows(true)
+        ) : (
+          <Steps
+            steps={
+              progress.status === 'failed'
+                ? // Taken, then returned. A member who watched money leave needs to watch it come
+                  // back, not be told it never left.
+                  [
+                    { label: stepLabels[0], state: 'done' as const },
+                    { label: `Returned — ${progress.failureNote ?? 'it did not go through'}`, state: 'done' as const },
+                  ]
+                : stepsFor(stepLabels, progress.step, progress.status)
+            }
+          />
+        )}
+      </div>
+
+      {progress.status === 'processing' && (
+        <p className="rounded-[10px] bg-secondary/50 px-3.5 py-[11px] text-[12px] leading-[1.6] text-foreground-secondary">
+          Usually a few seconds. <strong className="font-medium text-foreground">You can close this</strong> — it
+          finishes on its own{isBond ? '.' : ' and lands in your activity either way.'}
+        </p>
+      )}
+
+      {progress.status === 'done' && (
+        <>
+          <Button size="xs" className="mb-2 w-full py-3" onClick={() => onOpenChange(false)}>
+            Done
+          </Button>
+          {/* The moment right after a deposit is the only moment somebody is inclined to make
+              another. */}
+          <Button size="xs" variant="clear" className="w-full text-xs" onClick={onAgain}>
+            {isBond ? 'See your bonds' : isPool ? 'Add more' : 'Save more'}
+          </Button>
+        </>
+      )}
+
+      {progress.status === 'failed' && (
+        <>
+          <Button size="xs" className="mb-2 w-full py-3" onClick={onRetry}>
+            Try again
+          </Button>
+          <Button size="xs" variant="clear" className="w-full text-xs" onClick={() => onOpenChange(false)}>
+            Not now
+          </Button>
+        </>
+      )}
+    </>
+  );
 
   const action = canQueue ? (
     <>
@@ -619,20 +747,8 @@ export default function MoveMoneyDialog({
       // below 640px, the same breakpoint the grid uses, so the two never disagree.
       className={nothingReady ? undefined : 'sm:max-w-[640px] sm:p-[21px]'}
     >
-      {txHash ? (
-        <div className="py-2 text-center">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-positive/15">
-            <Check className="h-[22px] w-[22px] text-positive" strokeWidth={2.4} />
-          </div>
-          <p className="text-2xl font-medium">{money(amount, { cents: true })}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Moved to {isDeposit ? 'savings' : 'cash'}
-            {isDeposit ? ` · ${count(amount)} in equity credits` : ''}
-          </p>
-          <Button size="xs" variant="clear" className="mt-4 w-full" onClick={() => onOpenChange(false)}>
-            Done
-          </Button>
-        </div>
+      {progress ? (
+        progressView
       ) : nothingReady ? (
         <>
           <p className="mb-2 text-[10px] uppercase tracking-[0.5px] text-muted-foreground">Nothing to move</p>
@@ -661,7 +777,7 @@ export default function MoveMoneyDialog({
             {chips}
             {route}
             <div className="mb-3 sm:hidden">{pad}</div>
-            {summary}
+            {summaryRows()}
             {vestingNote}
             {landingNote}
             <div className="sm:hidden">{lockNote}</div>

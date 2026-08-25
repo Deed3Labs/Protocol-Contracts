@@ -10,6 +10,7 @@ import { scBuyBond } from '@/lib/sendCalls';
 import { getEarn } from '@/utils/apiClient';
 import { toEarnData } from '@/lib/earnMapping';
 import { BOND_HAIRCUT_BPS } from '@/lib/clearModel';
+import { shortMoveReason } from '@/hooks/usePoolMove';
 import { EARN_DAY_ONE } from '@/data/clearPlaceholder';
 import { track } from '@/lib/analytics';
 import type { EarnData } from '@/lib/clearModel';
@@ -59,6 +60,7 @@ export default function ConnectedBuyBond({
   // Quoted by the chain for the chosen face and term. Null until both are known and the quote has
   // come back — the screen shows nothing rather than a price the contract has not agreed to.
   const [priceToday, setPriceToday] = useState<number | null>(null);
+  const [progress, setProgress] = useState<{ status: 'processing' | 'done' | 'failed'; step: number; failureNote?: string } | null>(null);
 
   // Read, not passed. A page holding a mapped model would hand fixtures to a screen that spends
   // money, which is the mistake the savings dialog was fixed for.
@@ -127,6 +129,7 @@ export default function ConnectedBuyBond({
 
       setBusy(true);
       setError(null);
+      setProgress({ status: 'processing', step: 0 });
       try {
         const faceValue = purchase.face.toFixed(2);
         const maturityDate = Math.floor(purchase.maturity.date.getTime() / 1000);
@@ -162,10 +165,12 @@ export default function ConnectedBuyBond({
 
         // Ready to allocate falls by what the bond actually cost, not by its face.
         balances.applyOptimistic(-Number(priceUnits) / 1e6, 0);
+        setProgress({ status: 'done', step: 3 });
         track('bond_bought', {}); // that it happened, never the amount or the term
-        onOpenChange(false);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "That didn't go through.");
+        const message = e instanceof Error ? e.message : "That didn't go through.";
+        setError(message);
+        setProgress({ status: 'failed', step: 1, failureNote: shortMoveReason(message) });
       } finally {
         setBusy(false);
       }
@@ -180,6 +185,7 @@ export default function ConnectedBuyBond({
         if (!next) {
           setError(null);
           setFace(0);
+          setProgress(null);
         }
         onOpenChange(next);
       }}
@@ -206,6 +212,11 @@ export default function ConnectedBuyBond({
       }}
       busy={busy}
       error={error}
+      progress={progress}
+      // "See your bonds" belongs on Earn, which is where this was opened from — so closing is the
+      // honest action rather than a route this modal does not own.
+      onAgain={() => onOpenChange(false)}
+      onRetry={() => setProgress(null)}
       onAmountChange={setFace}
       onMove={(amount) => void onBuy({ face: amount, maturity: { date: maturityDate } })}
     />

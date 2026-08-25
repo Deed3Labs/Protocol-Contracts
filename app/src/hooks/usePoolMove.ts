@@ -25,10 +25,21 @@ const POOL_READ_ABI = [
 
 export type MoveDirection = 'deposit' | 'withdraw';
 
+/** Shared with the savings move: a reason short enough to sit under "Returned". */
+export function shortMoveReason(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes('user rejected') || lower.includes('denied')) return 'you cancelled it';
+  if (lower.includes('insufficient')) return 'there was not enough to cover it';
+  if (lower.includes('timeout') || lower.includes('network')) return 'the network was busy';
+  return 'it did not go through';
+}
+
 export interface PoolMoveState {
   busy: boolean;
   error: string | null;
   txHash: string | null;
+  /** Where the move has got to — see `useSavingsMove` for why steps follow events, not a timer. */
+  progress: { status: 'processing' | 'done' | 'failed'; step: number; failureNote?: string } | null;
   /** `freeNow` is what the pool can pay; anything above it is queued rather than refused. */
   move: (direction: MoveDirection, amount: number, freeNow: number) => Promise<void>;
   reset: () => void;
@@ -40,6 +51,7 @@ export function usePoolMove(onMoved?: (direction: MoveDirection, amount: number)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [progress, setProgress] = useState<PoolMoveState['progress']>(null);
 
   const move = useCallback(
     async (direction: MoveDirection, amount: number, freeNow: number) => {
@@ -61,6 +73,7 @@ export function usePoolMove(onMoved?: (direction: MoveDirection, amount: number)
 
       setBusy(true);
       setError(null);
+      setProgress({ status: 'processing', step: 0 });
       try {
         const chainClient = getClientForChain
           ? await getClientForChain({ id: chainId }).catch(() => undefined)
@@ -90,9 +103,12 @@ export function usePoolMove(onMoved?: (direction: MoveDirection, amount: number)
         }
 
         setTxHash(hash);
+        setProgress({ status: 'done', step: 3 });
         onMoved?.(direction, Math.min(amount, direction === 'withdraw' ? freeNow || amount : amount));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "That didn't go through.");
+        const message = e instanceof Error ? e.message : "That didn't go through.";
+        setError(message);
+        setProgress({ status: 'failed', step: 1, failureNote: shortMoveReason(message) });
       } finally {
         setBusy(false);
       }
@@ -103,7 +119,8 @@ export function usePoolMove(onMoved?: (direction: MoveDirection, amount: number)
   const reset = useCallback(() => {
     setError(null);
     setTxHash(null);
+    setProgress(null);
   }, []);
 
-  return { busy, error, txHash, move, reset };
+  return { busy, error, txHash, progress, move, reset };
 }
