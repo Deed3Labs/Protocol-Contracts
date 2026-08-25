@@ -62,6 +62,15 @@ export interface BondTerms {
   ratePercent: number;
   /** The haircut a bond is registered at — 9500 bps. */
   haircutBps: number;
+  /**
+   * The smallest face value the collection will mint, in whole units.
+   *
+   * Enforced on screen because it is enforced on chain and nowhere in between: the price quote
+   * answers happily for a face below it, so a member could see "$4.84 today" for a bond the mint
+   * then refuses — and the deployed build strips revert strings, so what came back was `0x`.
+   */
+  minFace: number;
+  maxFace: number;
 }
 
 /** What the pool needs that savings does not. Absent for a savings move. */
@@ -255,6 +264,9 @@ export default function MoveMoneyDialog({
   const presets = isPool ? [500, 1000, 2500] : isDeposit ? [100, 250, 500] : [100, 500, 1000];
   const over = amount > available;
   const shortBy = amount - available;
+  // A bond is measured against the collection's limits rather than against a balance.
+  const belowMin = isBond && bond ? amount > 0 && amount < bond.minFace : false;
+  const aboveMax = isBond && bond ? amount > bond.maxFace : false;
 
   const after = useMemo(
     () => ({
@@ -300,9 +312,23 @@ export default function MoveMoneyDialog({
       </p>
       {/* The one place a bond differs from everything else on screen: what leaves the account is
           not what was typed. Stated directly under the hero rather than left to the summary. */}
-      {isBond && bond && !over && (
+      {isBond && bond && !over && !belowMin && !aboveMax && (
         <p className="mb-3 text-[13px] text-tier-boost-fg">
           You pay {money(bond.priceToday, { cents: true })} today
+        </p>
+      )}
+
+      {/* Stated as the gap, like every other constraint on this screen, and the pad stays live. */}
+      {isBond && bond && belowMin && (
+        <p className="mb-3 text-[13px] text-tier-boost-fg">
+          {money(bond.minFace - amount, { cents: true })} below the{' '}
+          {money(bond.minFace, { cents: true })} smallest bond
+        </p>
+      )}
+      {isBond && bond && aboveMax && (
+        <p className="mb-3 text-[13px] text-tier-boost-fg">
+          {money(amount - bond.maxFace, { cents: true })} above the{' '}
+          {money(bond.maxFace, { cents: true })} largest bond
         </p>
       )}
 
@@ -351,7 +377,10 @@ export default function MoveMoneyDialog({
          */
         <span
           aria-hidden
-          className="absolute left-1/2 top-1/2 z-[2] flex h-[26px] w-[26px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[0.5px] border-border bg-secondary/50 ring-4 ring-background"
+          // Same circle, same position, same background as the swap on the other two — only the
+          // glyph differs. Two heads means you can flip it; one head means you cannot, and that
+          // reads instantly without changing anything else about the control.
+          className="absolute left-1/2 top-1/2 z-[2] flex h-[26px] w-[26px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[0.5px] border-border bg-background ring-4 ring-background"
         >
           <ArrowRight className="h-[14px] w-[14px] text-muted-foreground" />
         </span>
@@ -654,7 +683,28 @@ export default function MoveMoneyDialog({
     </>
   );
 
-  const action = canQueue ? (
+  const bondLimit = isBond && bond && (belowMin || aboveMax);
+
+  const action = bondLimit && bond ? (
+    <>
+      <div className="mb-3 rounded-[10px] bg-secondary/50 px-3.5 py-[11px]">
+        <p className="text-[12px] leading-[1.6] text-foreground-secondary">
+          Bonds run from{' '}
+          <strong className="font-medium text-foreground">{money(bond.minFace, { cents: true })}</strong> to{' '}
+          <strong className="font-medium text-foreground">{money(bond.maxFace, { cents: true })}</strong> of face
+          value.
+        </p>
+      </div>
+      <Button
+        size="xs"
+        variant="clear"
+        className="w-full py-3 text-muted-foreground"
+        onClick={() => changeTyped(String(belowMin ? bond.minFace : bond.maxFace))}
+      >
+        Use {money(belowMin ? bond.minFace : bond.maxFace, { cents: true })} instead
+      </Button>
+    </>
+  ) : canQueue ? (
     <>
       <div className="mb-3 rounded-[10px] border-[0.5px] border-border bg-secondary/50 px-3.5 py-[11px]">
         <p className="text-[12px] leading-[1.6] text-foreground-secondary">

@@ -36,6 +36,11 @@ const DEPOSIT_ABI = [
     outputs: [{ name: '', type: 'uint256' }] },
 ] as const;
 
+const FACTORY_ABI = [
+  { type: 'function', name: 'getMinFaceValue', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { type: 'function', name: 'getMaxFaceValue', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+] as const;
+
 const BOND_ABI = [
   { type: 'function', name: 'getDiscountForMaturity', stateMutability: 'view',
     inputs: [{ name: 'timeToMaturity', type: 'uint256' }],
@@ -60,6 +65,16 @@ export default function ConnectedBuyBond({
   // Quoted by the chain for the chosen face and term. Null until both are known and the quote has
   // come back — the screen shows nothing rather than a price the contract has not agreed to.
   const [priceToday, setPriceToday] = useState<number | null>(null);
+  /*
+   * The face values the collection will actually mint, read from the factory.
+   *
+   * Not hardcoded, because they are governance parameters that can move — and not omitted, because
+   * the mint enforces them and nothing between here and there does. `calculateRequiredDeposit`
+   * quotes a price for a face below the minimum perfectly happily, so a member saw "$4.84 today"
+   * for a bond that then reverted with no reason at all: the deployed build strips revert strings,
+   * so a failed `require` arrives as `0x`.
+   */
+  const [faceLimits, setFaceLimits] = useState<{ min: number; max: number } | null>(null);
   const [progress, setProgress] = useState<{ status: 'processing' | 'done' | 'failed'; step: number; failureNote?: string } | null>(null);
 
   // Read, not passed. A page holding a mapped model would hand fixtures to a screen that spends
@@ -75,6 +90,29 @@ export default function ConnectedBuyBond({
       cancelled = true;
     };
   }, [address, open]);
+
+  useEffect(() => {
+    const c = clearContracts(ACTIVE_CHAIN_ID);
+    if (!open || !c?.burnerBondFactory) return;
+    let cancelled = false;
+    void Promise.all([
+      readContract(wagmiAdapter.wagmiConfig, {
+        address: c.burnerBondFactory, abi: FACTORY_ABI, functionName: 'getMinFaceValue', chainId: ACTIVE_CHAIN_ID,
+      }),
+      readContract(wagmiAdapter.wagmiConfig, {
+        address: c.burnerBondFactory, abi: FACTORY_ABI, functionName: 'getMaxFaceValue', chainId: ACTIVE_CHAIN_ID,
+      }),
+    ])
+      .then(([min, max]) => {
+        if (!cancelled) setFaceLimits({ min: Number(min as bigint) / 1e6, max: Number(max as bigint) / 1e6 });
+      })
+      .catch(() => {
+        /* Left null; the mint still enforces them, so the worst case is the error we already had. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const maturityDate = useMemo(() => {
     const d = new Date();
@@ -209,6 +247,10 @@ export default function ConnectedBuyBond({
         maturesLong: maturityDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
         ratePercent: data.terms.find((t) => t.months === months)?.rate ?? 0,
         haircutBps: BOND_HAIRCUT_BPS,
+        // Until the factory has answered, nothing is out of range — the screen does not invent a
+        // limit it has not read.
+        minFace: faceLimits?.min ?? 0,
+        maxFace: faceLimits?.max ?? Number.MAX_SAFE_INTEGER,
       }}
       busy={busy}
       error={error}

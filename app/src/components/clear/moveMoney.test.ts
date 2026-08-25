@@ -688,3 +688,61 @@ describe('which step is where', () => {
     expect(stepsFor(['a', 'b', 'c'], 1, 'failed').some((s) => s.state === 'active')).toBe(false);
   });
 });
+
+/*
+ * Reported from the demo: a $5 bond reverted with `UserOperation reverted during simulation with
+ * reason: 0x`. The collection's minimum face is $100, and the deployed build strips revert
+ * strings — so a failing `require` arrives with nothing in it.
+ *
+ * The price quote is no help either: `calculateRequiredDeposit` answered $4.84 for a face the mint
+ * would refuse, so the screen had every reason to think it was fine.
+ */
+describe('a bond the collection would refuse', () => {
+  test('the limits are read, not assumed', () => {
+    const bond = readFileSync(join(import.meta.dir, 'ConnectedBuyBond.tsx'), 'utf8');
+    expect(bond).toContain("functionName: 'getMinFaceValue'");
+    expect(bond).toContain("functionName: 'getMaxFaceValue'");
+  });
+
+  test('and nothing is out of range until they have been', () => {
+    // Inventing a limit we have not read would refuse a bond the collection would have taken.
+    const bond = readFileSync(join(import.meta.dir, 'ConnectedBuyBond.tsx'), 'utf8');
+    expect(bond).toContain('minFace: faceLimits?.min ?? 0');
+    expect(bond).toContain('maxFace: faceLimits?.max ?? Number.MAX_SAFE_INTEGER');
+  });
+
+  test('the gap is stated, as everywhere else on this screen', () => {
+    expect(DIALOG).toContain('below the');
+    expect(DIALOG).toContain('smallest bond');
+    expect(DIALOG).toContain('largest bond');
+  });
+
+  test('the keypad stays live', () => {
+    // Same rule as an over-amount: let somebody type it and say what is wrong underneath.
+    expect(DIALOG).toContain('const belowMin =');
+    expect(DIALOG).not.toContain('disabled={belowMin');
+  });
+
+  test('and the nearest face the collection takes is offered', () => {
+    expect(DIALOG).toContain('Use {money(belowMin ? bond.minFace : bond.maxFace');
+  });
+
+  test('but it cannot be submitted while out of range', () => {
+    // Stronger than disabling: the action is replaced, so there is no Buy button to press at all
+    // rather than a greyed one. The mint refuses this face, and sending a transaction that reverts
+    // with nothing in it is what produced the original report.
+    expect(DIALOG).toContain('const action = bondLimit && bond ? (');
+    const guarded = DIALOG.slice(DIALOG.indexOf('const action = bondLimit'), DIALOG.indexOf(') : canQueue ? ('));
+    expect(guarded).not.toContain('onMove');
+  });
+});
+
+describe('the bond route icon', () => {
+  test('matches the swap it sits in place of', () => {
+    // Same circle, same position, same background — only the glyph differs. Two heads means you
+    // can flip it; one head means you cannot.
+    const arrow = DIALOG.slice(DIALOG.indexOf('{isBond ? ('), DIALOG.indexOf('<ArrowRight'));
+    expect(arrow).toContain('bg-background ring-4 ring-background');
+    expect(arrow).not.toContain('bg-secondary');
+  });
+});
