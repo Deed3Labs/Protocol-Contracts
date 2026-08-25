@@ -349,6 +349,9 @@ function BondPreview() {
           maturesLong: 'Aug 25, 2028',
           ratePercent: 7,
           haircutBps: 9_500,
+          // The deployment's own limits: $100 to $1,000,000 of face value.
+          minFace: 100,
+          maxFace: 1_000_000,
         }}
         onMove={() => {}}
       />

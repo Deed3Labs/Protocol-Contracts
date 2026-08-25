@@ -34,6 +34,8 @@ export interface ClearContracts {
   burnerBondDeposit?: `0x${string}`;
   /** The collection a bought bond is minted into, and what the app reads holdings from. */
   burnerBond?: `0x${string}`;
+  /** Holds the face-value and maturity limits every mint is checked against. */
+  burnerBondFactory?: `0x${string}`;
 }
 const CONTRACTS: Record<number, ClearContracts> = {
   8453: {
@@ -46,6 +48,7 @@ const CONTRACTS: Record<number, ClearContracts> = {
     lendingPool: '0x58405326b66888d8a9f2Dc4646cAc2F5EaC7ce23',
     burnerBondDeposit: '0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3',
     burnerBond: '0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148',
+    burnerBondFactory: '0x77e261F967491100906a607b8E46eD670684edDb',
     // Replacement pair. The vault and token these succeed are still deployed and still
     // mutually redeemable -- ESADepositVaultLegacy holds the USDC behind the CLRUSD that was
     // outstanding when the swap happened, so nobody who held the old token is stranded.
