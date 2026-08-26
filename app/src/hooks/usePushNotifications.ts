@@ -144,9 +144,17 @@ export function usePushNotifications() {
     };
 
     const handlePriceUpdate = (data: any) => {
-      // Price alerts are now handled by NotificationContext
-      // This handler is kept for backward compatibility but won't show notifications
-      // as NotificationContext handles price change detection and notifications
+      /*
+       * Deliberately silent.
+       *
+       * This used to defer to NotificationContext, which watched holdings and raised a browser
+       * notification when a position moved. That context is gone -- it was the T-Deed-era
+       * localStorage system whose whole surface was unrouted -- and price alerts went with it. No
+       * Clear page shows one, and nobody asked to be told their balance wiggled.
+       *
+       * The handler stays because the server still emits the event and a bare `console.log` is a
+       * cheaper thing to keep than a socket subscription to remove and re-add later.
+       */
       console.log('[PushNotifications] Price update received:', data);
     };
 

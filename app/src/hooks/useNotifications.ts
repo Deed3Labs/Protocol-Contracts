@@ -10,6 +10,7 @@ import {
   type ApiNotification,
 } from '@/utils/apiClient';
 import { usePushRegistration } from '@/hooks/usePushRegistration';
+import { markChainSettled } from '@/lib/chainStale';
 
 /**
  * Persistent in-app notifications from the backend (wallet-scoped). Fetches on mount + focus, receives
@@ -105,6 +106,26 @@ export function useNotificationsState() {
     if (unreadCount > 0) void navigator.setAppBadge?.(unreadCount).catch(() => {});
     else void navigator.clearAppBadge?.().catch(() => {});
   }, [unreadCount]);
+
+  /*
+   * The server finished the writes behind a move, so every figure derived from them is readable.
+   *
+   * Turned straight into the local stale signal, so the pages listening for that get it without
+   * knowing a socket exists. It lived in the old NotificationContext because that was the only
+   * app-wide socket at the time; that context is gone, and this provider is app-wide and already
+   * holds one.
+   *
+   * It is not a notification, and it deliberately does not become one — nobody needs a bell for
+   * "your credit limit finished recalculating".
+   */
+  useEffect(() => {
+    if (!socket) return;
+    const onChainChanged = () => markChainSettled();
+    socket.on('chain:changed', onChainChanged);
+    return () => {
+      socket.off('chain:changed', onChainChanged);
+    };
+  }, [socket]);
 
   // Live: prepend notifications pushed by producers.
   useEffect(() => {

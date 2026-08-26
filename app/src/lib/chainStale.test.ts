@@ -149,9 +149,19 @@ describe('hearing it from the server beats guessing', () => {
   });
 
   test('the client turns it into the same local signal every page already hears', () => {
-    const notifications = read('context/NotificationContext.tsx');
-    expect(notifications).toContain("socket.on('chain:changed', handleChainChanged)");
-    expect(notifications).toContain('markChainSettled()');
-    expect(notifications).toContain("socket.off('chain:changed', handleChainChanged)");
+    // Moved out of the old T-Deed NotificationContext when that was deleted. It sat there only
+    // because it was the one app-wide socket at the time; the Clear notifications provider is
+    // app-wide and already holds one, so the bridge lives with it now.
+    const hook = read('hooks/useNotifications.ts');
+    expect(hook).toContain("socket.on('chain:changed', onChainChanged)");
+    expect(hook).toContain('markChainSettled()');
+    expect(hook).toContain("socket.off('chain:changed', onChainChanged)");
+  });
+
+  test('and that hook is the single shared instance, so one listener serves every page', () => {
+    // As a per-caller hook this would attach the bridge once per surface, and a settled signal
+    // would fan out into several identical refetches.
+    const ctx = read('context/ClearNotificationsContext.tsx');
+    expect(ctx).toContain('useNotificationsState()');
   });
 });
