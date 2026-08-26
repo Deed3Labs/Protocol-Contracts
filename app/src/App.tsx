@@ -6,7 +6,6 @@ import SplashScreen from "@/components/SplashScreen";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { DeedNFTProvider } from "@/context/DeedNFTContext";
 import { XMTPProvider } from "@/context/XMTPContext";
-import { NotificationProvider } from "@/context/NotificationContext";
 import { ClearNotificationsProvider } from "@/context/ClearNotificationsContext";
 import { ModalProvider } from "@/context/ModalContext";
 import { PortfolioProvider } from "@/context/PortfolioContext";
@@ -81,8 +80,7 @@ function App() {
     <BrowserRouter>
       <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
         <PortfolioProvider>
-          <NotificationProvider>
-            <ClearNotificationsProvider>
+          <ClearNotificationsProvider>
             <DeedNFTProvider>
               <XMTPProvider>
                 <ModalProvider>
@@ -156,8 +154,7 @@ function App() {
                 </ModalProvider>
               </XMTPProvider>
             </DeedNFTProvider>
-            </ClearNotificationsProvider>
-          </NotificationProvider>
+          </ClearNotificationsProvider>
         </PortfolioProvider>
       </ThemeProvider>
     </BrowserRouter>

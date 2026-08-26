@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 import { useXMTP } from '@/context/XMTPContext';
-import { useNotifications } from '@/context/NotificationContext';
+import { useNotifications } from '@/context/ClearNotificationsContext';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { formatDistanceToNow } from 'date-fns';
 import type { ProfileMenuUser } from '@/context/GlobalModalsContext';
@@ -32,7 +32,9 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
   const { disconnect } = useAppKitAuth();
   const navigate = useNavigate();
   const { conversations, messages, isConnected, isLoading } = useXMTP();
-  const { notifications, unreadCount, markAsRead, removeNotification } = useNotifications();
+  // Legacy chrome: only the unrouted pages under src/pages/legacy render this. Kept compiling
+  // against the live notifications rather than the deleted T-Deed context.
+  const { notifications, unreadCount, markRead, dismiss } = useNotifications();
   const [draggingNotificationId, setDraggingNotificationId] = useState<string | null>(null);
 
   // Close when clicking outside
@@ -176,7 +178,7 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
                             // Dismiss on swipe (either direction) past threshold
                             const shouldDismiss = Math.abs(info.offset.x) > 90 || Math.abs(info.velocity.x) > 600;
                             setDraggingNotificationId(null);
-                            if (shouldDismiss) removeNotification(item.id);
+                            if (shouldDismiss) dismiss(item.id);
                           }}
                           className={`relative p-3 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors flex gap-3 cursor-pointer select-none touch-pan-y ${
                             !item.read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
@@ -184,9 +186,13 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
                           onClick={() => {
                             // Prevent accidental click while dragging
                             if (draggingNotificationId === item.id) return;
-                            if (!item.read) markAsRead(item.id);
-                            if (item.action?.onClick) {
-                              item.action.onClick();
+                            if (!item.read) markRead(item.id);
+                            // Server rows carry a destination, not a stored callback — the old
+                            // context kept an onClick closure in memory, which is why its
+                            // notifications could not survive a reload.
+                            const href = item.data?.href;
+                            if (typeof href === 'string' && href) {
+                              window.location.href = href;
                               onClose();
                             }
                           }}
@@ -196,7 +202,7 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
                             <div className="flex items-start gap-2">
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm text-zinc-800 dark:text-zinc-200">{item.title}</p>
-                                <p className="text-xs text-zinc-500 mt-1">{formatDistanceToNow(item.timestamp, { addSuffix: true })}</p>
+                                <p className="text-xs text-zinc-500 mt-1">{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</p>
                               </div>
                               <button
                                 type="button"
@@ -205,7 +211,7 @@ const ProfileMenu = ({ isOpen, onClose, user, onOpenXMTP }: ProfileMenuProps) =>
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  removeNotification(item.id);
+                                  dismiss(item.id);
                                 }}
                               >
                                 <X className="w-4 h-4" />
