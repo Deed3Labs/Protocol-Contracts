@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { getRpcUrl } from '../utils/rpc.js';
 import type { MemberMembershipPlan, MemberRecord } from './memberStore.js';
 
 const MEMBERSHIP_REGISTRY_ABI = [
@@ -42,13 +43,19 @@ function normalizePrivateKey(rawValue: string | undefined): string | null {
   return null;
 }
 
+/*
+ * Server RPC comes from the shared resolver, not from a VITE_ var.
+ *
+ * This used to fall back to `process.env.VITE_ALCHEMY_BASE_SEPOLIA` — a keyed Alchemy URL, read on
+ * the server, under a name that means "compile this into the browser bundle". It worked, which is
+ * why nobody noticed it was reading the same variable that was publishing our key.
+ *
+ * getRpcUrl already does custom → Alchemy (built from ALCHEMY_API_KEY) → public node, and it reads
+ * BASE_SEPOLIA_RPC_URL as the custom, so both explicit overrides below survive. One key, one
+ * resolver, no VITE_ anything.
+ */
 function membershipRpcUrl(): string {
-  return (
-    process.env.MEMBERSHIP_RPC_URL?.trim()
-    || process.env.BASE_SEPOLIA_RPC_URL?.trim()
-    || process.env.VITE_ALCHEMY_BASE_SEPOLIA?.trim()
-    || 'https://sepolia.base.org'
-  );
+  return process.env.MEMBERSHIP_RPC_URL?.trim() || getRpcUrl(membershipChainId());
 }
 
 function membershipChainId(): number {
