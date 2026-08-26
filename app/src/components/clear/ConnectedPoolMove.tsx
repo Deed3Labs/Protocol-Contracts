@@ -6,6 +6,7 @@ import { useOptionalAddress } from '@/hooks/useOptionalWallet';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
 import { getCredit, getEarn, type EarnPoolRow } from '@/utils/apiClient';
 import { track } from '@/lib/analytics';
+import { markChainStale } from '@/lib/chainStale';
 import { POOL_SHARE_HAIRCUT_BPS } from '@/lib/clearModel';
 
 
@@ -62,6 +63,9 @@ export default function ConnectedPoolMove({
       // so only the cash leg moves optimistically. The position reconciles on the next Earn read.
       balances.applyOptimistic(moved === 'deposit' ? -amount : amount, 0);
       track('pool_move', { direction: moved }); // direction only, never the amount
+      // The position backs the credit line, so the limit is stale too — and the pool's own
+      // utilisation and free cash have moved for everyone, not just this member.
+      markChainStale();
     },
     [balances],
   );

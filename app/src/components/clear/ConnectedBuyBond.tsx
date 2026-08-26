@@ -13,6 +13,7 @@ import { BOND_HAIRCUT_BPS } from '@/lib/clearModel';
 import { shortMoveReason } from '@/hooks/usePoolMove';
 import { EARN_DAY_ONE } from '@/data/clearPlaceholder';
 import { track } from '@/lib/analytics';
+import { markChainStale } from '@/lib/chainStale';
 import type { EarnData } from '@/lib/clearModel';
 
 /**
@@ -205,6 +206,9 @@ export default function ConnectedBuyBond({
         balances.applyOptimistic(-Number(priceUnits) / 1e6, 0);
         setProgress({ status: 'done', step: 3 });
         track('bond_bought', {}); // that it happened, never the amount or the term
+        // A new bond is a new pledged item, so the shelf, the limit and the bond list are all out
+        // of date until the server has pledged it.
+        markChainStale();
       } catch (e) {
         const message = e instanceof Error ? e.message : "That didn't go through.";
         setError(message);
