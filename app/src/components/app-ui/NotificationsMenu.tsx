@@ -4,7 +4,7 @@ import {
   Bell, ArrowDownLeft, ArrowUpRight, Receipt, Sparkles, CreditCard, Clock, HandCoins, Trash2, ShieldCheck, type LucideIcon,
 } from 'lucide-react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { useNotifications } from '@/hooks/useNotifications';
+import { useNotifications } from '@/context/ClearNotificationsContext';
 import { useXMTP } from '@/context/XMTPContext';
 import { IS_LIVE_APP } from '@/lib/clearNetwork';
 import { cn } from '@/lib/utils';

@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { DeedNFTProvider } from "@/context/DeedNFTContext";
 import { XMTPProvider } from "@/context/XMTPContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { ClearNotificationsProvider } from "@/context/ClearNotificationsContext";
 import { ModalProvider } from "@/context/ModalContext";
 import { PortfolioProvider } from "@/context/PortfolioContext";
 import { GlobalModalsProvider } from "@/context/GlobalModalsContext";
@@ -81,6 +82,7 @@ function App() {
       <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
         <PortfolioProvider>
           <NotificationProvider>
+            <ClearNotificationsProvider>
             <DeedNFTProvider>
               <XMTPProvider>
                 <ModalProvider>
@@ -154,6 +156,7 @@ function App() {
                 </ModalProvider>
               </XMTPProvider>
             </DeedNFTProvider>
+            </ClearNotificationsProvider>
           </NotificationProvider>
         </PortfolioProvider>
       </ThemeProvider>

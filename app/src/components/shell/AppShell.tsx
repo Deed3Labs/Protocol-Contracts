@@ -15,7 +15,7 @@ import { PayProvider } from '@/context/PayContext';
 import { CreditProvider } from '@/context/CreditContext';
 import { MoneyActionsProvider } from '@/context/MoneyActionsContext';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
-import { useNotifications } from '@/hooks/useNotifications';
+import { useNotifications } from '@/context/ClearNotificationsContext';
 import { SETTINGS } from '@/data/clearPlaceholder';
 import XMTPMessaging from '@/components/XMTPMessaging';
 
