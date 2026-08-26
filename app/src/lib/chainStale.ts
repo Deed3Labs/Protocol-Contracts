@@ -1,33 +1,44 @@
 /**
- * Telling the app that on-chain state it is showing has just been made out of date.
+ * Telling the app that on-chain state it is showing has changed.
  *
- * A move does not change a member's figures at the moment it confirms. The server still has to
- * pledge the collateral and push the capacities, which are two more writes after the transfer
- * itself lands — so for a few seconds the old limit is genuinely the true one, and the app has no
- * way to be told when the new one arrives.
+ * Two signals, because there are two things worth saying and they deserve different behaviour.
  *
- * So this refetches on a signal, backing off across a short window, rather than predicting the
- * figure. An optimistic limit would be inventing a number only the contracts get to decide — and
- * it would have hidden the bug where the pledge landed and the push did not.
+ * **`markChainStale`** — a move just landed, and the server still has to pledge the collateral and
+ * push the capacities. Those are two more writes after the transfer itself, so for a few seconds
+ * the old figures are genuinely the true ones. Nothing knows when they finish, so this refetches
+ * across a short backoff. It is a guess, and it is wrong in both directions: it reads when nothing
+ * has changed, and it gives up before a slow chain is done.
  *
- * A module rather than three dispatches and four listeners. It already drifted once: the savings
- * move signalled and the pool and bond moves did not, and only Home was listening, so a pool
- * deposit updated a balance and left every figure derived from it stale until the member changed
- * page.
+ * **`markChainSettled`** — the server has finished those writes and said so over the socket. No
+ * guessing: read once, now. This is the signal that should do the work; the backoff above is what
+ * covers a member whose socket is not connected.
+ *
+ * Neither predicts a figure. An optimistic limit would be inventing a number only the contracts
+ * get to decide — and it would have hidden the bug where the pledge landed and the push did not.
+ *
+ * A module rather than a bare event name, because as a bare name it drifted: one dispatcher, one
+ * listener, and nothing to show that four other places needed it.
  */
-const EVENT = 'clear:chain-stale';
+const STALE = 'clear:chain-stale';
+const SETTLED = 'clear:chain-settled';
 
-/** How long the server's follow-up writes realistically take, sampled rather than guessed at once. */
+/** How long the server's follow-up writes realistically take, when nothing can tell us. */
 const BACKOFF_MS = [3_000, 8_000, 15_000];
 
-/** Say that a move just landed, so anything reading chain state should read it again. */
+/** A move landed. The figures behind it may not have caught up yet. */
 export function markChainStale(): void {
   if (typeof window === 'undefined') return;
-  window.dispatchEvent(new Event(EVENT));
+  window.dispatchEvent(new Event(STALE));
+}
+
+/** The server finished the writes behind a move. Read now. */
+export function markChainSettled(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new Event(SETTLED));
 }
 
 /**
- * Re-run `read` after a move, across the window the follow-up writes need.
+ * Re-run `read` when chain state changes, however we come to hear about it.
  *
  * Returns the teardown so a caller can hand it straight back from an effect. Every timer is
  * cleared on unmount: a refetch that fires into a component nobody is looking at is at best waste
@@ -37,13 +48,19 @@ export function onChainStale(read: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
   const timers: ReturnType<typeof setTimeout>[] = [];
 
-  const handle = () => {
+  const onGuess = () => {
     for (const delay of BACKOFF_MS) timers.push(setTimeout(read, delay));
   };
-  window.addEventListener(EVENT, handle);
+  // Settled means the writes are already done, so there is nothing to wait for and nothing to
+  // schedule — a backoff here would only add three redundant reads after a correct one.
+  const onConfirmed = () => read();
+
+  window.addEventListener(STALE, onGuess);
+  window.addEventListener(SETTLED, onConfirmed);
 
   return () => {
-    window.removeEventListener(EVENT, handle);
+    window.removeEventListener(STALE, onGuess);
+    window.removeEventListener(SETTLED, onConfirmed);
     for (const timer of timers) clearTimeout(timer);
   };
 }
