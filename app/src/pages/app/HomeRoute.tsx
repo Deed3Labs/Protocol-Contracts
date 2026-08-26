@@ -6,6 +6,7 @@ import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { toActivityRow } from '@/lib/activityMapping';
 import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
+import { onChainStale } from '@/lib/chainStale';
 import {
   getCredit,
   getLithicAccount,
@@ -90,28 +91,14 @@ export default function HomeRoute() {
     };
     read();
 
-    /*
-     * Re-read after something that changes the line, rather than showing a guess.
-     *
-     * A savings deposit moves the limit, but not instantly: the server pledges the collateral and
-     * pushes the capacities, which is two on-chain writes after the deposit itself confirms. Until
-     * they land the old limit is the true one, so this refetches on a signal instead of predicting
-     * the new figure -- an optimistic limit would be inventing a number that only the contracts get
-     * to decide, and it would have hidden the bug where the pledge landed and the push did not.
-     *
-     * Backs off across a short window because the writes take a few seconds and the app has no way
-     * to be told when they finish.
-     */
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const onStale = () => {
-      for (const delay of [3000, 8000, 15000]) timers.push(setTimeout(read, delay));
-    };
-    window.addEventListener('clear:credit-stale', onStale);
+    // Re-read after a move. The backoff and the reasoning live in `chainStale`, because this was
+    // not the only reader and the copies drifted — the savings move signalled, the pool and bond
+    // moves did not, and nothing outside this file was listening at all.
+    const stopListening = onChainStale(read);
 
     return () => {
       cancelled = true;
-      window.removeEventListener('clear:credit-stale', onStale);
-      for (const timer of timers) clearTimeout(timer);
+      stopListening();
     };
   }, [address]);
 

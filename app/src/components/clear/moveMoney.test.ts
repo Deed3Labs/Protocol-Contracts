@@ -354,13 +354,18 @@ describe('what may be shown before the chain agrees', () => {
   });
 
   test('a move asks for a re-read instead', () => {
-    expect(CONNECTED).toContain("new Event('clear:credit-stale')");
+    // Through the shared module now — see chainStale.test.ts for why the bare event name was the
+    // problem: it was wired to one mover and one reader, and nothing showed the other four.
+    expect(CONNECTED).toContain('markChainStale()');
   });
 
   test('and the reader refetches on it, with backoff for the two writes', () => {
     const home = readFileSync(join(import.meta.dir, '../../pages/app/HomeRoute.tsx'), 'utf8');
-    expect(home).toContain("addEventListener('clear:credit-stale'");
-    expect(home).toContain('[3000, 8000, 15000]');
+    expect(home).toContain('onChainStale(read)');
+    // The backoff moved into the shared module — it was copied per reader, which is how three of
+    // them ended up with none. chainStale.test.ts covers the timings themselves.
+    const stale = readFileSync(join(import.meta.dir, '../../lib/chainStale.ts'), 'utf8');
+    expect(stale).toContain('[3_000, 8_000, 15_000]');
   });
 });
 

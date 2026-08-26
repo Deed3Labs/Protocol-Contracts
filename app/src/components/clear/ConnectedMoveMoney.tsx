@@ -6,6 +6,7 @@ import { useOptionalAddress } from '@/hooks/useOptionalWallet';
 import { useMoneyActions } from '@/context/MoneyActionsContext';
 import { getCredit, getPaySummary } from '@/utils/apiClient';
 import { track } from '@/lib/analytics';
+import { markChainStale } from '@/lib/chainStale';
 import type { SavingsData } from '@/lib/clearModel';
 import { freeSavings } from '@/lib/freeSavings';
 
@@ -68,7 +69,7 @@ export default function ConnectedMoveMoney({
       // already true. The credit limit is not: it moves only once the server has pledged the
       // collateral and pushed the capacities, two writes later. So this asks for a re-read rather
       // than predicting a figure the contracts have not agreed to yet.
-      window.dispatchEvent(new Event('clear:credit-stale'));
+      markChainStale();
 
       track('savings_move', { direction: moved }); // direction only, never the amount
     },

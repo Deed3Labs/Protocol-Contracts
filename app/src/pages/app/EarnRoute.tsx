@@ -5,6 +5,7 @@ import { toEarnData } from '@/lib/earnMapping';
 import { projectReserveDate } from '@/lib/reserveProjection';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { getEarn, getPaySummary, type EarnState, type PaySummary } from '@/utils/apiClient';
+import { onChainStale } from '@/lib/chainStale';
 
 /*
  * Day-one, not in-use.
@@ -44,13 +45,27 @@ export default function EarnRoute() {
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
-    void Promise.all([getEarn(address), getPaySummary(address)]).then(([e, p]) => {
-      if (cancelled) return;
-      setEarn(e);
-      setPay(p);
-    });
+    const read = () => {
+      void Promise.all([getEarn(address), getPaySummary(address)]).then(([e, p]) => {
+        if (cancelled) return;
+        setEarn(e);
+        setPay(p);
+      });
+    };
+    read();
+
+    /*
+     * Re-read after a move, which this page previously did not do at all.
+     *
+     * Everything on Earn is downstream of a move: the pool position and its utilisation, the bond
+     * list, and what both back on the credit line. A member who bought a bond here watched their
+     * cash fall and the bond not appear until they changed page and came back.
+     */
+    const stopListening = onChainStale(read);
+
     return () => {
       cancelled = true;
+      stopListening();
     };
   }, [address]);
 

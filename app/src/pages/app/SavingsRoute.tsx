@@ -4,6 +4,7 @@ import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { getPaySummary, type PaySummary } from '@/utils/apiClient';
+import { onChainStale } from '@/lib/chainStale';
 
 /*
  * Day-one, not in-use.
@@ -44,11 +45,20 @@ export default function SavingsRoute() {
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
-    void getPaySummary(address).then((result) => {
-      if (!cancelled) setPay(result);
-    });
+    const read = () => {
+      void getPaySummary(address).then((result) => {
+        if (!cancelled) setPay(result);
+      });
+    };
+    read();
+
+    // Equity credits are minted by the same deposit that moves the balance, and they were the one
+    // figure on this page that stayed put until a navigation.
+    const stopListening = onChainStale(read);
+
     return () => {
       cancelled = true;
+      stopListening();
     };
   }, [address]);
 
