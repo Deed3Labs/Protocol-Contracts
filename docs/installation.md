@@ -149,11 +149,8 @@ export const SUPPORTED_NETWORKS = [
 Create `app/.env`:
 
 ```env
-# API Keys (optional - for production)
-VITE_ALCHEMY_ETH_MAINNET=https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-VITE_ALCHEMY_ETH_SEPOLIA=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
-VITE_ALCHEMY_BASE_MAINNET=https://base-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-VITE_ALCHEMY_BASE_SEPOLIA=https://base-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+# No VITE_ALCHEMY_* — VITE_* is compiled into the public bundle and an Alchemy URL contains the
+# API key. Put the key in the server env as ALCHEMY_API_KEY; the browser uses public RPC.
 
 # Infura API Keys (optional - for production)
 VITE_INFURA_ETH_MAINNET=https://mainnet.infura.io/v3/YOUR_PROJECT_ID
@@ -360,7 +357,8 @@ export const NETWORK_CONFIG = {
   ethereum: {
     chainId: 1,
     name: "Ethereum",
-    rpcUrl: process.env.VITE_ALCHEMY_ETH_MAINNET,
+    // Public RPC only — never a keyed provider URL. See the note in networks.ts.
+    rpcUrl: import.meta.env.VITE_INFURA_ETH_MAINNET,
     contracts: {
       DeedNFT: "0x...",
       Validator: "0x...",

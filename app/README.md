@@ -362,11 +362,11 @@ The application uses a comprehensive set of reusable UI components built with sh
    
    Edit `.env` and add your API keys:
    ```env
-   # Alchemy API Keys (optional - for production)
-   VITE_ALCHEMY_ETH_MAINNET=https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-   VITE_ALCHEMY_ETH_SEPOLIA=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
-   VITE_ALCHEMY_BASE_MAINNET=https://base-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-   VITE_ALCHEMY_BASE_SEPOLIA=https://base-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+   # NOTE: there is no VITE_ALCHEMY_* here, and there must not be. Vite compiles VITE_* into
+   # the bundle it serves, and an Alchemy URL carries the API key in its path — setting one
+   # publishes the key to every visitor. Ours was taken that way and spent on chains we do not
+   # even support. The Alchemy key goes in the SERVER env as ALCHEMY_API_KEY; the browser uses
+   # public RPC, and anything needing the key goes through the API.
 
    # Infura API Keys (optional - for production)
    VITE_INFURA_ETH_MAINNET=https://mainnet.infura.io/v3/YOUR_PROJECT_ID
@@ -412,9 +412,14 @@ The project uses several tools to maintain code quality:
 ### Required
 None for development (uses public RPC endpoints)
 
-### Optional (for production)
-- `VITE_ALCHEMY_*` - Alchemy API endpoints for better performance
-- `VITE_INFURA_*` - Infura API endpoints as fallback
+### Optional
+- `VITE_INFURA_PROJECT_ID` / `VITE_INFURA_*` - Infura endpoints. A project ID is public by design,
+  but restrict it by domain in the Infura dashboard.
+
+### Never in the client
+- `VITE_ALCHEMY_*` - removed. A VITE_ var is compiled into the public bundle, and an Alchemy URL
+  has the key in it. Set `ALCHEMY_API_KEY` on the server instead. `npm run build` runs
+  `scripts/scanBundleSecrets.mjs`, which fails the build if a provider key reaches `dist/`.
 
 ## Networks
 
