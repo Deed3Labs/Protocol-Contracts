@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
+import { websocketService } from '../websocketService.js';
 
 /*
  * Making savings back a credit line.
@@ -69,6 +70,32 @@ function operatorKey(): string | null {
  * exactly the case being guarded, and a per-request value cannot see the other request.
  */
 const inFlight = new Map<string, Promise<CollateralSyncResult>>();
+
+/**
+ * Tell every device this member has open that their figures have changed.
+ *
+ * The app was guessing: a move triggered three refetches at 3, 8 and 15 seconds, on the hope that
+ * the pledge and the capacity push would have landed by then. That is a guess in both directions —
+ * it refetches when nothing has changed, and it stops before a slow chain finishes.
+ *
+ * It is also per-tab. A deposit made on a desktop left a phone showing the old figures until it
+ * was reopened, because a `window` event does not leave the window it was dispatched in.
+ *
+ * This is sent after the writes actually complete, over the socket the app already holds open per
+ * wallet — so it is exact, and it reaches every device rather than the one that did the moving.
+ */
+async function announceChainChanged(wallet: string): Promise<void> {
+  try {
+    await websocketService.broadcastToAddress(wallet.toLowerCase(), 'chain:changed', {
+      wallet: wallet.toLowerCase(),
+      at: new Date().toISOString(),
+    });
+  } catch (error) {
+    // Best-effort. The app still has its backoff, so a member on a dead socket gets the old
+    // behaviour rather than none.
+    console.error('[collateral] broadcast failed', error instanceof Error ? error.message : error);
+  }
+}
 
 export interface CollateralSyncResult {
   ok: boolean;
@@ -176,6 +203,9 @@ async function runSync(wallet: string, kind: string, targetUnits: bigint): Promi
       }
     }
 
+    // After the writes, not before: the point is that the figures are already new when a device
+    // is told to read them again.
+    await announceChainChanged(member);
     return { ok: true, pledgedUnits: targetUnits.toString(), txHash };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';
@@ -329,6 +359,7 @@ export async function syncBondCollateral(wallet: string): Promise<CollateralSync
       await push.wait();
     }
 
+    await announceChainChanged(member);
     return { ok: true, pledgedUnits: String(held.size) };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';

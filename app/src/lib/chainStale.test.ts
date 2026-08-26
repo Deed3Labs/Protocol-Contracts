@@ -77,9 +77,11 @@ describe('the signal itself', () => {
     // It drifted as a bare event name: one dispatcher, one listener, and no way to notice the
     // other four places that needed it.
     const stale = read('lib/chainStale.ts');
-    expect(stale).toContain("const EVENT = 'clear:chain-stale'");
+    expect(stale).toContain("const STALE = 'clear:chain-stale'");
+    expect(stale).toContain("const SETTLED = 'clear:chain-settled'");
     for (const f of [...MOVERS, ...READERS]) {
       expect(read(f)).not.toContain("'clear:chain-stale'");
+      expect(read(f)).not.toContain("'clear:chain-settled'");
       expect(read(f)).not.toContain("'clear:credit-stale'");
     }
   });
@@ -97,6 +99,59 @@ describe('the signal itself', () => {
 
   test('and survives having no window', () => {
     const stale = read('lib/chainStale.ts');
-    expect(stale.split("typeof window === 'undefined'").length - 1).toBe(2);
+    // Three entry points, three guards: two dispatchers and the subscriber.
+    expect(stale.split("typeof window === 'undefined'").length - 1).toBe(3);
+  });
+});
+
+/*
+ * The two signals, and why the split matters.
+ *
+ * A backoff is a guess about when the server's writes finish. The server knows exactly, and the
+ * app already holds a socket per wallet — so the guess became the fallback for a member whose
+ * socket is not connected, and the exact answer does the work.
+ *
+ * It also fixes something the local event could never do: a `window` event does not leave the
+ * window it was dispatched in, so a deposit made on a desktop left a phone showing old figures
+ * until it was reopened. The server broadcasts to the wallet, not to the tab that asked.
+ */
+describe('hearing it from the server beats guessing', () => {
+  test('a settled signal reads at once, with nothing scheduled', () => {
+    const stale = read('lib/chainStale.ts');
+    expect(stale).toContain('const onConfirmed = () => read();');
+    // A backoff after a correct read would be three redundant reads.
+    const confirmed = stale.slice(stale.indexOf('const onConfirmed'), stale.indexOf('window.addEventListener(STALE'));
+    expect(confirmed).not.toContain('setTimeout');
+  });
+
+  test('the guess is still there for a member with no socket', () => {
+    const stale = read('lib/chainStale.ts');
+    expect(stale).toContain('const onGuess = ()');
+    expect(stale).toContain('BACKOFF_MS');
+  });
+
+  test('the server announces after the writes, not before', () => {
+    // The point is that the figures are already new when a device is told to read them.
+    const service = readFileSync(
+      join(SRC, '../server/src/services/chain/savingsCollateralService.ts'), 'utf8',
+    );
+    expect(service).toContain('await announceChainChanged(member);');
+    const sync = service.slice(service.indexOf('async function runSync'));
+    expect(sync.indexOf('pushCapacities')).toBeLessThan(sync.indexOf('announceChainChanged'));
+  });
+
+  test('and it broadcasts to the wallet, not to one connection', () => {
+    // This is what reaches a phone from a desktop.
+    const service = readFileSync(
+      join(SRC, '../server/src/services/chain/savingsCollateralService.ts'), 'utf8',
+    );
+    expect(service).toContain("broadcastToAddress(wallet.toLowerCase(), 'chain:changed'");
+  });
+
+  test('the client turns it into the same local signal every page already hears', () => {
+    const notifications = read('context/NotificationContext.tsx');
+    expect(notifications).toContain("socket.on('chain:changed', handleChainChanged)");
+    expect(notifications).toContain('markChainSettled()');
+    expect(notifications).toContain("socket.off('chain:changed', handleChainChanged)");
   });
 });

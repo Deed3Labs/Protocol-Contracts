@@ -4,6 +4,7 @@ import { useDeedNFTData } from '@/hooks/useDeedNFTData';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { useAppBadge } from '@/hooks/useAppBadge';
 import { useWebSocket } from '@/hooks/useWebSocket';
+import { markChainSettled } from '@/lib/chainStale';
 import { usePortfolio } from '@/context/PortfolioContext';
 
 export interface Notification {
@@ -531,16 +532,32 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       }
     };
 
+    /*
+     * The server has finished the writes behind a move, so every figure derived from them is now
+     * readable. Turned straight into the local stale signal, so every page already listening for
+     * that gets it without knowing a socket exists.
+     *
+     * It lives here because this is where an app-wide socket already is — `useWebSocket` opens a
+     * connection per caller, and a third one to carry two lines would be a real cost for a
+     * cosmetic separation. It is not a notification, and the name says so.
+     *
+     * This is also what makes a deposit on a desktop reach a phone: the server broadcasts to the
+     * wallet, not to the tab that asked, so every device holding that wallet open refreshes.
+     */
+    const handleChainChanged = () => markChainSettled();
+
     socket.on('transfer_received', handleTransferReceived);
     socket.on('transfer_sent', handleTransferSent);
     socket.on('balance_update', handleBalanceUpdate);
     socket.on('price_update', handlePriceUpdate);
+    socket.on('chain:changed', handleChainChanged);
 
     return () => {
       socket.off('transfer_received', handleTransferReceived);
       socket.off('transfer_sent', handleTransferSent);
       socket.off('balance_update', handleBalanceUpdate);
       socket.off('price_update', handlePriceUpdate);
+      socket.off('chain:changed', handleChainChanged);
     };
   }, [socket, wsConnected, address, addNotification, holdings]);
 
