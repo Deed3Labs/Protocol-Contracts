@@ -33,10 +33,35 @@ describe('everything that moves money says so', () => {
   }
 });
 
+/**
+ * Which chain-derived reads each route makes, and therefore which have to refresh.
+ *
+ * Named per file rather than checked in the abstract, because "the file mentions onChainStale"
+ * was the assertion that let this through the first time: HomeRoute listened for its credit read
+ * and not for its equity read, the test saw the listener and passed, and the credits feeding the
+ * savings card and the ELPA row stayed stale until a page change.
+ */
+const CHAIN_READS: Record<string, string[]> = {
+  'pages/app/HomeRoute.tsx': ['getCredit(address)', 'getPaySummary(address)'],
+  'pages/app/EarnRoute.tsx': ['getEarn(address)', 'getPaySummary(address)'],
+  'pages/app/SavingsRoute.tsx': ['getPaySummary(address)'],
+};
+
 describe('everything that reads chain state listens', () => {
   for (const reader of READERS) {
     test(`${reader.split('/').pop()} re-reads`, () => {
       expect(read(reader)).toContain('onChainStale(');
+    });
+  }
+
+  for (const [file, calls] of Object.entries(CHAIN_READS)) {
+    test(`${file.split('/').pop()} refreshes every read it makes, not just one`, () => {
+      const source = read(file);
+      // Each call has to sit inside the `read` the listener re-runs. Anything outside it is a
+      // figure that goes stale the moment somebody moves money.
+      const readFn = source.slice(source.indexOf('const read = () => {'), source.indexOf('onChainStale('));
+      expect(readFn.length).toBeGreaterThan(0);
+      for (const call of calls) expect(readFn).toContain(call);
     });
   }
 

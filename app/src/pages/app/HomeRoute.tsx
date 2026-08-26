@@ -67,26 +67,27 @@ export default function HomeRoute() {
     };
   }, []);
 
+  /*
+   * Everything on this page a move can change, read together.
+   *
+   * One effect and one listener on purpose. As two, the credit read refreshed after a deposit and
+   * the equity ledger did not — so the limit moved while the credits feeding the savings card and
+   * the ELPA row sat at their old figures until the member changed page. They are downstream of
+   * the same deposit; splitting them was splitting one fact into two that could disagree.
+   */
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
-    void getPaySummary(address).then((result) => {
-      if (!cancelled) setPay(result);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [address]);
 
-  useEffect(() => {
-    if (!address) return;
-    let cancelled = false;
     // Null covers both "no credit line" and "could not read the chain", and the route distinguishes
     // them with a 503 for the second. Either way the placeholder stands rather than a zeroed line:
     // telling a member their credit is gone because an RPC timed out is the worse mistake.
     const read = () => {
       void getCredit(address).then((result) => {
         if (!cancelled) setCredit(result);
+      });
+      void getPaySummary(address).then((result) => {
+        if (!cancelled) setPay(result);
       });
     };
     read();
