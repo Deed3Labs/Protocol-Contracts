@@ -62,6 +62,15 @@ export function useWebSocket(
       console.log('[WebSocket] Connected');
       setIsConnected(true);
       isConnectedRef.current = true;
+      /*
+       * Say who we are on every connect, hidden or not.
+       *
+       * `identify` costs nothing — it registers this connection's wallet so the server can PUSH to
+       * it. `subscribe` is the expensive half (balance/transaction polling) and stays gated below.
+       * Conflating the two is what made a backgrounded phone miss the very updates the push was
+       * built to deliver: it unsubscribed to save Alchemy calls and stopped being reachable.
+       */
+      socket.emit('identify', { address });
       // Don't start polling for a tab that's already in the background; visibilitychange resumes it.
       if (!document.hidden) socket.emit('subscribe', subPayload);
     });

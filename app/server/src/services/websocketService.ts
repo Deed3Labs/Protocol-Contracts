@@ -17,6 +17,20 @@ interface ClientSubscription {
 class WebSocketService {
   private io: SocketIOServer | null = null;
   private clients: Map<string, ClientSubscription> = new Map();
+  /*
+   * Who is on the other end of each live connection, for pushes.
+   *
+   * Deliberately NOT `clients`. That map is the POLLING registry: a tab that goes to the
+   * background emits `unsubscribe` so the server stops burning Alchemy calls on it, and that
+   * deletes its entry. Broadcasts used to read the same map, so the cost optimisation silently
+   * made every backgrounded tab unreachable — which is exactly the phone the push existed to
+   * reach. A member would deposit on a desktop and the phone in their pocket, having correctly
+   * stopped polling, would also have stopped listening.
+   *
+   * This one is keyed to the CONNECTION, not the subscription: set when a socket says who it is,
+   * cleared only when the socket actually goes away. Polling stays gated; delivery does not.
+   */
+  private connectionAddress: Map<string, string> = new Map();
   private priceUpdateInterval: number | null = null;
 
   /**
@@ -35,6 +49,20 @@ class WebSocketService {
     this.io.on('connection', (socket: Socket) => {
       console.log(`[WebSocket] Client connected: ${socket.id}`);
 
+      /*
+       * "This connection belongs to this wallet" — and nothing more.
+       *
+       * A hidden tab must not be polled, but it must still be reachable, so this is separate from
+       * `subscribe` on purpose. The client emits it on every connect regardless of visibility;
+       * `subscribe` remains the thing that costs money.
+       */
+      socket.on('identify', (data: { address?: string }) => {
+        const address = data?.address;
+        if (typeof address === 'string' && address) {
+          this.connectionAddress.set(socket.id, address.toLowerCase());
+        }
+      });
+
       // Subscribe to updates
       socket.on('subscribe', async (data: { address: string; chainIds?: number[]; subscriptions?: string[] }) => {
         // 'nfts' is NOT a default. The Deed views that consumed it are archived and the client
@@ -46,6 +74,8 @@ class WebSocketService {
         // how T-Deeds and bonds will ask once there is a surface for them.
         const { address, chainIds = [], subscriptions = ['balances', 'transactions'] } = data;
         
+        // Also identify, so a client from before `identify` existed is still reachable while visible.
+        this.connectionAddress.set(socket.id, address.toLowerCase());
         this.clients.set(socket.id, {
           address: address.toLowerCase(),
           chainIds: chainIds.length > 0 ? chainIds : [1, 8453, 100, 11155111], // Default chains
@@ -86,6 +116,8 @@ class WebSocketService {
 
       // Handle disconnection
       socket.on('disconnect', () => {
+        // Only here — an `unsubscribe` means "stop polling me", not "stop talking to me".
+        this.connectionAddress.delete(socket.id);
         const subscription = this.clients.get(socket.id);
         if (subscription) {
           // Check if any other clients are monitoring this address
@@ -473,12 +505,14 @@ class WebSocketService {
   async broadcastToAddress(address: string, event: string, data: any) {
     if (!this.io) return;
 
-    for (const [socketId, subscription] of this.clients.entries()) {
-      if (subscription.address.toLowerCase() === address.toLowerCase()) {
-        const socket = this.io.sockets.sockets.get(socketId);
-        if (socket && socket.connected) {
-          socket.emit(event, data);
-        }
+    // connectionAddress, not clients: see the field comment. Reading the polling registry here is
+    // what made a backgrounded phone unreachable.
+    const wanted = address.toLowerCase();
+    for (const [socketId, connectionWallet] of this.connectionAddress.entries()) {
+      if (connectionWallet !== wanted) continue;
+      const socket = this.io.sockets.sockets.get(socketId);
+      if (socket && socket.connected) {
+        socket.emit(event, data);
       }
     }
   }
