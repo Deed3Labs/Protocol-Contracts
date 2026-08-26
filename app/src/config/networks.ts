@@ -1,10 +1,10 @@
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
+import { readEnv } from '@/config/clientEnv';
 export interface NetworkConfig {
   id: number;
   name: string;
   chainId: number;
   rpcUrl: string;
-  alchemyUrl?: string; // Optional Alchemy endpoint
   infuraUrl?: string;  // Optional Infura endpoint
   blockExplorer: string;
   contractAddress: string;
@@ -15,19 +15,32 @@ export interface NetworkConfig {
   };
 }
 
-// Get Infura project ID from environment variable
-// ⚠️ SECURITY NOTE: VITE_ prefixed variables are exposed to the browser
-// Infura Project IDs are safe to expose, but you MUST:
-// 1. Enable domain/origin restrictions in Infura dashboard
-// 2. Enable rate limiting
-// 3. Enable method allowlists
-// 4. Never expose the Project Secret (only use Project ID)
-// See docs/security-rpc-providers.md for details
+/*
+ * ⚠️ Anything read from `import.meta.env.VITE_*` here is PUBLIC.
+ *
+ * Vite inlines those at build time, so they end up as string literals in the shipped bundle --
+ * readable with a `curl` of the site and a `grep`, by anyone, with no credentials.
+ *
+ * This file used to read Alchemy endpoints that way, and an Alchemy endpoint is a URL with the
+ * API key in its path. The key was taken out of the deployed bundle and spent against chains this
+ * codebase has never supported: in one day, 27K requests on Scroll and 17K on ZKsync, against
+ * 1.9K of our own on Base Sepolia.
+ *
+ * So: no keyed provider endpoints in this file. The browser gets a public node. Anything needing
+ * a keyed provider goes through our server, which is the only place a key stays a secret -- see
+ * server/src/utils/rpc.ts.
+ *
+ * An Infura project ID is a different kind of thing and is meant to be public, but it is only
+ * safe with the dashboard restrictions on: domain/origin allowlist, rate limiting, method
+ * allowlist. Never the project SECRET.
+ */
 const INFURA_PROJECT_ID = import.meta.env.VITE_INFURA_PROJECT_ID || '';
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 function readAddressEnv(key: string, fallback: string = ZERO_ADDRESS): string {
-  const raw = (import.meta.env as Record<string, string | undefined>)[key];
+  // readEnv, not import.meta.env[key] — the dynamic form makes Vite inline the entire env into the
+  // bundle. See src/config/clientEnv.ts.
+  const raw = readEnv(key);
   if (raw && /^0x[a-fA-F0-9]{40}$/.test(raw)) {
     return raw;
   }
@@ -58,7 +71,6 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     rpcUrl: INFURA_PROJECT_ID 
       ? `https://mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
       : 'https://eth.llamarpc.com', // Fallback to public RPC
-    alchemyUrl: import.meta.env.VITE_ALCHEMY_ETH_MAINNET,
     infuraUrl: import.meta.env.VITE_INFURA_ETH_MAINNET || (INFURA_PROJECT_ID ? `https://mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
     blockExplorer: 'https://etherscan.io',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
@@ -75,7 +87,6 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     rpcUrl: INFURA_PROJECT_ID
       ? `https://optimism-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
       : 'https://mainnet.optimism.io',
-    alchemyUrl: import.meta.env.VITE_ALCHEMY_OPTIMISM_MAINNET,
     infuraUrl: import.meta.env.VITE_INFURA_OPTIMISM_MAINNET || (INFURA_PROJECT_ID ? `https://optimism-mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
     blockExplorer: 'https://optimistic.etherscan.io',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
@@ -90,7 +101,6 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     name: 'Base',
     chainId: 8453,
     rpcUrl: 'https://mainnet.base.org',
-    alchemyUrl: import.meta.env.VITE_ALCHEMY_BASE_MAINNET,
     blockExplorer: 'https://basescan.org',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
     nativeCurrency: {
@@ -106,7 +116,6 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     rpcUrl: INFURA_PROJECT_ID 
       ? `https://sepolia.infura.io/v3/${INFURA_PROJECT_ID}`
       : 'https://sepolia.infura.io/v3/your-project-id', // Fallback placeholder
-    alchemyUrl: import.meta.env.VITE_ALCHEMY_ETH_SEPOLIA,
     infuraUrl: import.meta.env.VITE_INFURA_ETH_SEPOLIA || (INFURA_PROJECT_ID ? `https://sepolia.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
     blockExplorer: 'https://sepolia.etherscan.io',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
@@ -121,7 +130,6 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     name: 'Base Sepolia',
     chainId: 84532,
     rpcUrl: 'https://sepolia.base.org',
-    alchemyUrl: import.meta.env.VITE_ALCHEMY_BASE_SEPOLIA,
     blockExplorer: 'https://sepolia.basescan.org',
     contractAddress: '0x1a4e89225015200f70e5a06f766399a3de6e21E6',
     nativeCurrency: {
@@ -137,7 +145,6 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     rpcUrl: INFURA_PROJECT_ID 
       ? `https://arbitrum-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
       : 'https://arb1.arbitrum.io/rpc',
-    alchemyUrl: import.meta.env.VITE_ALCHEMY_ARBITRUM_MAINNET,
     infuraUrl: import.meta.env.VITE_INFURA_ARBITRUM_MAINNET || (INFURA_PROJECT_ID ? `https://arbitrum-mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
     blockExplorer: 'https://arbiscan.io',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
@@ -154,7 +161,6 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     rpcUrl: INFURA_PROJECT_ID 
       ? `https://polygon-mainnet.infura.io/v3/${INFURA_PROJECT_ID}`
       : 'https://polygon-rpc.com',
-    alchemyUrl: import.meta.env.VITE_ALCHEMY_POLYGON_MAINNET,
     infuraUrl: import.meta.env.VITE_INFURA_POLYGON_MAINNET || (INFURA_PROJECT_ID ? `https://polygon-mainnet.infura.io/v3/${INFURA_PROJECT_ID}` : undefined),
     blockExplorer: 'https://polygonscan.com',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
@@ -169,7 +175,6 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     name: 'Gnosis',
     chainId: 100,
     rpcUrl: 'https://rpc.gnosischain.com',
-    alchemyUrl: import.meta.env.VITE_ALCHEMY_GNOSIS_MAINNET,
     blockExplorer: 'https://gnosisscan.io',
     contractAddress: '0x0000000000000000000000000000000000000000', // Replace with actual address
     nativeCurrency: {
@@ -402,22 +407,25 @@ export const getNetworkInfo = (chainId: number) => {
 };
 
 // Get the best available RPC URL for a network
-// Priority: Alchemy > Infura > Public RPC
-// Alchemy is preferred by default because it has better free tier limits (300M compute units/month vs Infura's ~100k requests/day)
-// Environment variables needed:
-// - VITE_INFURA_PROJECT_ID: Your Infura project ID (used for Infura RPC URLs)
-// - VITE_ALCHEMY_ETH_MAINNET, VITE_ALCHEMY_ETH_SEPOLIA, etc.: Alchemy API keys (optional)
-// - VITE_INFURA_ETH_MAINNET, VITE_INFURA_ETH_SEPOLIA, etc.: Full Infura URLs (optional, overrides project ID)
+/**
+ * The RPC endpoint the BROWSER may use for a chain: Infura (public project ID) or a public node.
+ *
+ * Alchemy used to sit at the top of this order, on the reasoning that it has the better free
+ * tier. It does -- but reaching it from the browser meant shipping the key to the browser, and
+ * the tier was then spent by whoever lifted the key out of the bundle rather than by us. A
+ * generous quota is worth nothing when it is not yours.
+ *
+ * Keyed providers are server-side only now. The calls that genuinely need one -- balances, token
+ * metadata, transfers -- already go through our own API, so the callers left here are the legacy
+ * DeedNFT/portfolio contexts reading public contract state, which a public node serves fine.
+ *
+ * Env: VITE_INFURA_PROJECT_ID, or VITE_INFURA_<CHAIN> for a full URL. Both are public by
+ * construction -- read the note at the top of this file before adding a third.
+ */
 export const getRpcUrlForNetwork = (chainId: number): string | null => {
   const network = getNetworkByChainId(chainId);
   if (!network) return null;
 
-  // Priority: Alchemy > Infura > Public RPC
-  // Alchemy is preferred (better free tier limits: 300M compute units/month vs Infura's ~100k requests/day)
-  if (network.alchemyUrl) {
-    return network.alchemyUrl;
-  }
-  // Only use Infura if Alchemy is not available
   if (network.infuraUrl) {
     return network.infuraUrl;
   }

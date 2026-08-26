@@ -1,4 +1,5 @@
 import { getCommonTokens } from '@/config/tokens';
+import { readEnv } from '@/config/clientEnv';
 
 const DEFAULT_SUPPORTED_CHAIN_IDS = [8453];
 
@@ -17,7 +18,7 @@ export function getSendSupportedChainIds(): number[] {
 
 export function getSendUsdcAddress(chainId: number): string | null {
   const overrideKey = `VITE_SEND_USDC_${chainId}`;
-  const overrideAddress = (import.meta.env[overrideKey] as string | undefined)?.trim();
+  const overrideAddress = readEnv(overrideKey)?.trim(); // see src/config/clientEnv.ts
   if (overrideAddress) {
     return overrideAddress;
   }
@@ -28,7 +29,7 @@ export function getSendUsdcAddress(chainId: number): string | null {
 
 export function getSendClaimEscrowAddress(chainId: number): string | null {
   const chainSpecificKey = `VITE_SEND_CLAIM_ESCROW_${chainId}`;
-  const chainSpecific = (import.meta.env[chainSpecificKey] as string | undefined)?.trim();
+  const chainSpecific = readEnv(chainSpecificKey)?.trim(); // see src/config/clientEnv.ts
   if (chainSpecific) {
     return chainSpecific;
   }
