@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "vite",
     "test": "bun test src",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/scanBundleSecrets.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "scan:secrets": "node scripts/scanBundleSecrets.mjs"
   },
   "dependencies": {
     "@abstract-foundation/agw-client": "^1.12.3",

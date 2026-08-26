@@ -8,15 +8,19 @@ import { Eye, MapPin } from "lucide-react";
 import type { DeedNFT } from '@/hooks/useDeedNFTData';
 import { useDeedNFTContext } from '@/context/DeedNFTContext';
 
-// Set Mapbox access token based on environment
-// Use public token for development, private token for production
-const getMapboxToken = () => {
-  if (import.meta.env.PROD) {
-    return import.meta.env.VITE_MAPBOX_PRIVATE_TOKEN || '';
-  } else {
-    return import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN || '';
-  }
-};
+/*
+ * Always the PUBLIC token — production included.
+ *
+ * This used to swap in the private token when `import.meta.env.PROD`, which has the relationship
+ * backwards: a production build is the one everybody can read. VITE_* is inlined into the bundle,
+ * so "private token for production" means publishing the private token to the world.
+ *
+ * It happens not to have burned us — both tokens in the env are `pk.` scoped, so nothing secret
+ * ever shipped. But the line was an instruction to put an `sk.` token there, and someone would
+ * eventually have followed it. Mapbox `pk.` tokens are designed to sit in web pages; restrict them
+ * by URL in the Mapbox dashboard. An `sk.` token cannot safely be used from a browser at all.
+ */
+const getMapboxToken = () => import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN || '';
 
 interface DeedNFTMapProps {
   deedNFTs: DeedNFT[];
@@ -84,7 +88,7 @@ const DeedNFTMap: React.FC<DeedNFTMapProps> = ({
 
     const mapboxToken = getMapboxToken();
     if (!mapboxToken) {
-      console.error('Mapbox access token not found. Please set VITE_MAPBOX_PUBLIC_TOKEN for development or VITE_MAPBOX_PRIVATE_TOKEN for production in your environment variables.');
+      console.error('Mapbox access token not found. Set VITE_MAPBOX_PUBLIC_TOKEN — a `pk.` token, URL-restricted in the Mapbox dashboard. Never an `sk.` token: it would ship in the bundle.');
       return;
     }
 
@@ -390,7 +394,7 @@ const DeedNFTMap: React.FC<DeedNFTMapProps> = ({
             Mapbox access token not configured
           </p>
           <p className="text-yellow-700 dark:text-yellow-300 text-sm mt-2">
-            Please set VITE_MAPBOX_PUBLIC_TOKEN for development or VITE_MAPBOX_PRIVATE_TOKEN for production
+            Please set VITE_MAPBOX_PUBLIC_TOKEN
           </p>
           <p className="text-yellow-600 dark:text-yellow-400 text-xs mt-2">
             Get your free access token from{' '}

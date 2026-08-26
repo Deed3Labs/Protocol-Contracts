@@ -1,4 +1,5 @@
 import { clearContracts } from '@/lib/clearNetwork';
+import { readEnv } from '@/config/clientEnv';
 /**
  * Common token configurations across all chains
  * Centralized token definitions to avoid duplication
@@ -43,7 +44,7 @@ function readClrUsdAddress(chainId: number): string {
   if (fromNetwork) return fromNetwork;
 
   const key = `VITE_CLRUSD_${chainId}`;
-  const raw = (import.meta.env as Record<string, string | undefined>)[key];
+  const raw = readEnv(key); // not import.meta.env[key] — see src/config/clientEnv.ts
   if (raw && /^0x[a-fA-F0-9]{40}$/.test(raw) && raw !== ZERO_ADDRESS) {
     return raw;
   }
