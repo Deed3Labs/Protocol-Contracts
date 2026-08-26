@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import InboxPage from './InboxPage';
-import { useNotifications } from '@/hooks/useNotifications';
+import { useNotifications } from '@/context/ClearNotificationsContext';
 import { INBOX } from '@/data/clearPlaceholder';
 import { toAlerts } from '@/lib/notificationsAdapter';
 

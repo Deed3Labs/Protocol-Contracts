@@ -14,13 +14,30 @@ import { usePushRegistration } from '@/hooks/usePushRegistration';
 /**
  * Persistent in-app notifications from the backend (wallet-scoped). Fetches on mount + focus, receives
  * new ones live over the WebSocket (`notification:new`), and applies read/dismiss optimistically.
+ *
+ * **Call this once, from the provider.** Everything else uses `useNotifications` from
+ * `@/context/ClearNotificationsContext`, which shares this one instance.
+ *
+ * It used to be called directly by the bell, the inbox page and the shell's badge — three
+ * independent copies of the state, each with its own `readIds` ref and its own socket. Marking a
+ * row read in the bell updated the bell; the badge went on showing the old count until its own
+ * 20-second poll came round, which is why it took two goes to make a notification look read. The
+ * three sockets were also most of the "seven connections from one tab" in the server logs.
  */
-export function useNotifications() {
+export function useNotificationsState() {
   const { address, isConnected } = useAppKitAccount();
   const { socket } = useWebSocket(address, isConnected);
   const { enablePush } = usePushRegistration();
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  /*
+   * Derived, never stored.
+   *
+   * As its own state it had to be adjusted by hand at four sites, and each was a chance to drift
+   * from the list: `notification:new` incremented even when the row was already present, so a
+   * repeat event bumped a badge that described nothing on screen. A count of unread rows is a fact
+   * about the rows — computing it cannot disagree with them.
+   */
+  const unreadCount = notifications.reduce((count, n) => count + (n.read ? 0 : 1), 0);
   // Ids the user just dismissed/read locally. A poll or focus refetch can start BEFORE the archive/read
   // commits server-side and then clobber the optimistic update (the row reappears / un-reads). These sets
   // guard every refresh + live socket event so that never happens. Cleared on wallet change.
@@ -30,7 +47,6 @@ export function useNotifications() {
   const refresh = useCallback(async () => {
     if (!address || !isConnected) {
       setNotifications([]);
-      setUnreadCount(0);
       return;
     }
     const res = await getNotifications(address);
@@ -38,7 +54,6 @@ export function useNotifications() {
       .filter((n) => !dismissedIds.current.has(n.id))
       .map((n) => (readIds.current.has(n.id) ? { ...n, read: true } : n));
     setNotifications(list);
-    setUnreadCount(list.reduce((c, n) => c + (n.read ? 0 : 1), 0));
   }, [address, isConnected]);
 
   // Drop the optimistic-action guards when the connected wallet changes.
@@ -96,8 +111,11 @@ export function useNotifications() {
     if (!socket) return;
     const onNew = (n: ApiNotification) => {
       if (dismissedIds.current.has(n.id)) return; // don't resurrect a just-dismissed row
+      if (readIds.current.has(n.id)) return; // nor un-read one the user just read
+      // Count only what was actually added. This used to increment unconditionally, so a repeated
+      // `notification:new` for a row already in the list left the list alone and still bumped the
+      // badge — a count that no longer described anything on screen.
       setNotifications((prev) => (prev.some((x) => x.id === n.id) ? prev : [n, ...prev].slice(0, 40)));
-      setUnreadCount((c) => c + 1);
       // Money moved (deposit landed / cash-out sent) → refresh balances + activity right away.
       if (n.kind === 'received' || n.kind === 'sent') window.dispatchEvent(new Event('clear:activity'));
     };
@@ -110,11 +128,7 @@ export function useNotifications() {
   const markRead = useCallback(
     (id: string) => {
       readIds.current.add(id);
-      setNotifications((prev) => {
-        const was = prev.find((n) => n.id === id && !n.read);
-        if (was) setUnreadCount((c) => Math.max(0, c - 1));
-        return prev.map((n) => (n.id === id ? { ...n, read: true } : n));
-      });
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
       if (address) void markNotificationRead(address, id).catch(() => {});
     },
     [address],
@@ -125,18 +139,13 @@ export function useNotifications() {
       prev.forEach((n) => readIds.current.add(n.id));
       return prev.map((n) => ({ ...n, read: true }));
     });
-    setUnreadCount(0);
     if (address) void markAllNotificationsRead(address).catch(() => {});
   }, [address]);
 
   const dismiss = useCallback(
     (id: string) => {
       dismissedIds.current.add(id);
-      setNotifications((prev) => {
-        const was = prev.find((n) => n.id === id && !n.read);
-        if (was) setUnreadCount((c) => Math.max(0, c - 1));
-        return prev.filter((n) => n.id !== id);
-      });
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
       if (address) void archiveNotificationApi(address, id).catch(() => {});
     },
     [address],
