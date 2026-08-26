@@ -119,3 +119,37 @@ describe('client env is reachable only through the allowlist', () => {
     }
   });
 });
+
+/*
+ * A var whose name says it is secret has no business in client code.
+ *
+ * Nothing here leaked -- both Mapbox tokens in the env turned out to be `pk.` scoped. But the map
+ * component read VITE_MAPBOX_PRIVATE_TOKEN specifically when `import.meta.env.PROD`, which has it
+ * backwards: the production build is the one everybody can read. The comment above it said
+ * "private token for production", which is an instruction to put a secret there, and it would
+ * have been followed eventually.
+ */
+describe('no client code reads a variable that announces itself as secret', () => {
+  test('nothing reads a VITE_ var named PRIVATE / SECRET / _KEY', () => {
+    // `_KEY` alone is not enough of a signal (VITE_..._KEY names plenty of harmless things), so
+    // this looks for the words that only ever describe a credential.
+    const secretish = /import\.meta\.env\.VITE_[A-Z0-9_]*(PRIVATE|SECRET)[A-Z0-9_]*/;
+    const offenders = FILES.filter((f) => secretish.test(code(f.text)));
+    expect(offenders.map((f) => f.path)).toEqual([]);
+  });
+
+  test('the map uses the public token in every environment', () => {
+    const map = FILES.find((f) => f.path === 'components/DeedNFTMap.tsx')!;
+    const body = code(map.text);
+    expect(body).toContain('VITE_MAPBOX_PUBLIC_TOKEN');
+    // The PROD branch was the whole bug: it swapped the safe token out exactly when it mattered.
+    expect(body).not.toMatch(/import\.meta\.env\.PROD/);
+  });
+
+  test('the dist scan knows the secret token shapes too', () => {
+    const scanner = readFileSync(join(SRC, '..', 'scripts', 'scanBundleSecrets.mjs'), 'utf8');
+    for (const name of ['Mapbox secret token', 'Stripe secret key', 'AWS access key id']) {
+      expect(scanner).toContain(name);
+    }
+  });
+});

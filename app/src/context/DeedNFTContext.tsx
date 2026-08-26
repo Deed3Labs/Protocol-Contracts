@@ -571,7 +571,8 @@ export const DeedNFTProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (address && !latitude && !longitude) {
         console.log(`🌍 Geocoding address for token ${deedNFT.tokenId}: ${address}`);
         try {
-          const mapboxToken = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN || import.meta.env.VITE_MAPBOX_PRIVATE_TOKEN;
+          // Public token only — anything read here lands in the bundle. See DeedNFTMap.tsx.
+          const mapboxToken = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN;
           if (!mapboxToken) {
             console.warn('Mapbox token not available for geocoding');
             return { address };

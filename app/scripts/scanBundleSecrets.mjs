@@ -27,6 +27,13 @@ const PATTERNS = [
   { name: 'Infura project secret', re: /\binfura\.io\/v3\/[A-Za-z0-9]{16,}:[A-Za-z0-9]+/g },
   { name: 'QuickNode endpoint', re: /\b[a-z0-9-]+\.quiknode\.pro\/[A-Za-z0-9]{16,}/g },
   { name: 'Ankr premium key', re: /\brpc\.ankr\.com\/[a-z_]+\/[A-Za-z0-9]{24,}/g },
+  // Mapbox scopes its tokens by prefix: `pk.` belongs in a web page, `sk.` never does. The map
+  // code used to reach for the secret one specifically when building for production.
+  { name: 'Mapbox secret token', re: /\bsk\.ey[A-Za-z0-9._-]{20,}/g },
+  // Generic shapes worth catching before they are ours to explain.
+  { name: 'Stripe secret key', re: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}/g },
+  { name: 'AWS access key id', re: /\bAKIA[A-Z0-9]{16}\b/g },
+  { name: 'Private key material', re: /-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/g },
 ];
 
 function* files(dir) {
