@@ -291,6 +291,23 @@ router.post('/link-token', async (req: Request, res: Response) => {
     const optionalProducts: Products[] = [];
     if (process.env.PLAID_ENABLE_INVESTMENTS === 'true') optionalProducts.push(Products.Investments);
     if (process.env.PLAID_ENABLE_LIABILITIES === 'true') optionalProducts.push(Products.Liabilities);
+    /*
+     * Identity: the account holder's legal name and address, from the bank.
+     *
+     * Optional rather than required, deliberately. As a required product, Link refuses any
+     * institution that does not support Identity — trading the KYC screen's convenience for members
+     * who cannot connect their bank at all, which is the wrong way round. As optional it is
+     * initialised where available and simply absent elsewhere, and the verification screen already
+     * has the path for that: name and address are shown with "Not right? Change it", so a member at
+     * an institution without Identity types what a member at one confirms.
+     *
+     * It is what makes that screen two fields instead of six, and it fixes a second thing:
+     * withdrawals were sending Plaid's account NICKNAME to Bridge as the account owner's name.
+     *
+     * Billed per item. PLAID_DISABLE_IDENTITY=true turns it off, which costs the prefill and
+     * restores the old owner-name fallback.
+     */
+    if (process.env.PLAID_DISABLE_IDENTITY !== 'true') optionalProducts.push(Products.Identity);
     const baseRequest: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
       language: 'en',
