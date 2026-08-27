@@ -84,12 +84,20 @@ const inFlight = new Map<string, Promise<CollateralSyncResult>>();
  * This is sent after the writes actually complete, over the socket the app already holds open per
  * wallet — so it is exact, and it reaches every device rather than the one that did the moving.
  */
-async function announceChainChanged(wallet: string): Promise<void> {
+async function announceChainChanged(wallet: string, kind: string): Promise<void> {
   try {
-    await websocketService.broadcastToAddress(wallet.toLowerCase(), 'chain:changed', {
+    const delivered = await websocketService.broadcastToAddress(wallet.toLowerCase(), 'chain:changed', {
       wallet: wallet.toLowerCase(),
       at: new Date().toISOString(),
     });
+    /*
+     * Logged with the delivery count, because "we broadcast it" and "someone heard it" are
+     * different claims and only the second one refreshes anybody's screen. A zero here means the
+     * member has no connection registered — the app falls back to its 3/8/15s guesses, which is
+     * exactly the "I had to change pages" symptom, and this line is how we tell the two apart
+     * instead of reading the code again.
+     */
+    console.log(`[collateral] chain:changed ${kind} → ${delivered} connection(s) for ${wallet.toLowerCase()}`);
   } catch (error) {
     // Best-effort. The app still has its backoff, so a member on a dead socket gets the old
     // behaviour rather than none.
@@ -205,7 +213,7 @@ async function runSync(wallet: string, kind: string, targetUnits: bigint): Promi
 
     // After the writes, not before: the point is that the figures are already new when a device
     // is told to read them again.
-    await announceChainChanged(member);
+    await announceChainChanged(member, kind);
     return { ok: true, pledgedUnits: targetUnits.toString(), txHash };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';
@@ -359,7 +367,7 @@ export async function syncBondCollateral(wallet: string): Promise<CollateralSync
       await push.wait();
     }
 
-    await announceChainChanged(member);
+    await announceChainChanged(member, 'BOND');
     return { ok: true, pledgedUnits: String(held.size) };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown error';

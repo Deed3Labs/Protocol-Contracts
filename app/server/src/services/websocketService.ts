@@ -502,19 +502,23 @@ class WebSocketService {
   /**
    * Broadcast update to specific address (for event-driven updates)
    */
-  async broadcastToAddress(address: string, event: string, data: any) {
-    if (!this.io) return;
+  /** @returns how many live connections the event actually reached. */
+  async broadcastToAddress(address: string, event: string, data: any): Promise<number> {
+    if (!this.io) return 0;
 
     // connectionAddress, not clients: see the field comment. Reading the polling registry here is
     // what made a backgrounded phone unreachable.
     const wanted = address.toLowerCase();
+    let delivered = 0;
     for (const [socketId, connectionWallet] of this.connectionAddress.entries()) {
       if (connectionWallet !== wanted) continue;
       const socket = this.io.sockets.sockets.get(socketId);
       if (socket && socket.connected) {
         socket.emit(event, data);
+        delivered += 1;
       }
     }
+    return delivered;
   }
 
   /**

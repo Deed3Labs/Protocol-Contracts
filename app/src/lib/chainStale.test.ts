@@ -94,7 +94,8 @@ describe('the signal itself', () => {
     expect(stale).toContain('BACKOFF_MS');
     // It re-runs a caller's read and computes nothing: no figure to be wrong about.
     expect(stale).toContain('onChainStale(read: () => void)');
-    expect(stale).toContain('setTimeout(read, delay)');
+    expect(stale).toMatch(/for \(const delay of BACKOFF_MS\) timers\.push\(setTimeout\(/);
+    expect(stale).toMatch(/read\(\);/);
   });
 
   test('and survives having no window', () => {
@@ -118,7 +119,7 @@ describe('the signal itself', () => {
 describe('hearing it from the server beats guessing', () => {
   test('a settled signal reads at once, with nothing scheduled', () => {
     const stale = read('lib/chainStale.ts');
-    expect(stale).toContain('const onConfirmed = () => read();');
+    expect(stale).toMatch(/const onConfirmed = \(\) => \{[^}]*read\(\);/);
     // A backoff after a correct read would be three redundant reads.
     const confirmed = stale.slice(stale.indexOf('const onConfirmed'), stale.indexOf('window.addEventListener(STALE'));
     expect(confirmed).not.toContain('setTimeout');
@@ -135,7 +136,7 @@ describe('hearing it from the server beats guessing', () => {
     const service = readFileSync(
       join(SRC, '../server/src/services/chain/savingsCollateralService.ts'), 'utf8',
     );
-    expect(service).toContain('await announceChainChanged(member);');
+    expect(service).toMatch(/await announceChainChanged\(member, /);
     const sync = service.slice(service.indexOf('async function runSync'));
     expect(sync.indexOf('pushCapacities')).toBeLessThan(sync.indexOf('announceChainChanged'));
   });

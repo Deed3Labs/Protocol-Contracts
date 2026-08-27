@@ -25,15 +25,33 @@ const SETTLED = 'clear:chain-settled';
 /** How long the server's follow-up writes realistically take, when nothing can tell us. */
 const BACKOFF_MS = [3_000, 8_000, 15_000];
 
+/*
+ * A trace, on in dev and off in production.
+ *
+ * Whether a figure refreshed on its own is not something you can read off the source -- the whole
+ * chain is a socket, an event, a listener and a fetch, and every one of them looks correct while
+ * being unreachable. Two rounds of this were spent inferring. `?trace=chain` turns it on in a
+ * deployed build too, so the answer is one deposit away rather than one deploy away.
+ */
+const TRACE =
+  (typeof import.meta !== 'undefined' && import.meta.env?.DEV) ||
+  (typeof window !== 'undefined' && window.location.search.includes('trace=chain'));
+
+function trace(what: string): void {
+  if (TRACE) console.debug(`[chain] ${what} @${new Date().toISOString().slice(11, 23)}`);
+}
+
 /** A move landed. The figures behind it may not have caught up yet. */
 export function markChainStale(): void {
   if (typeof window === 'undefined') return;
+  trace('stale — guessing on a backoff');
   window.dispatchEvent(new Event(STALE));
 }
 
 /** The server finished the writes behind a move. Read now. */
 export function markChainSettled(): void {
   if (typeof window === 'undefined') return;
+  trace('settled — server says the writes are done');
   window.dispatchEvent(new Event(SETTLED));
 }
 
@@ -49,11 +67,11 @@ export function onChainStale(read: () => void): () => void {
   const timers: ReturnType<typeof setTimeout>[] = [];
 
   const onGuess = () => {
-    for (const delay of BACKOFF_MS) timers.push(setTimeout(read, delay));
+    for (const delay of BACKOFF_MS) timers.push(setTimeout(() => { trace(`re-read (+${delay}ms guess)`); read(); }, delay));
   };
   // Settled means the writes are already done, so there is nothing to wait for and nothing to
   // schedule — a backoff here would only add three redundant reads after a correct one.
-  const onConfirmed = () => read();
+  const onConfirmed = () => { trace('re-read (confirmed)'); read(); };
 
   window.addEventListener(STALE, onGuess);
   window.addEventListener(SETTLED, onConfirmed);
