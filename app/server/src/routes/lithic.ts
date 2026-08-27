@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from 'express';
+import { redactError } from '../utils/redact.js';
 import { isConfigured } from '../services/lithic/lithicClient.js';
 import {
   ensureProvisioned,
@@ -55,7 +56,7 @@ router.get('/account', async (req: Request, res: Response) => {
       deposit,
     });
   } catch (error) {
-    console.error('[lithic] account read failed:', error);
+    console.error('[lithic] account read failed:', redactError(error));
     res.status(500).json({ error: 'Failed to read Lithic account' });
   }
 });
@@ -126,7 +127,15 @@ router.post('/account', async (req: Request, res: Response) => {
       awaitingFinancialAccounts: result.awaitingFinancialAccounts,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Provisioning failed';
+    /*
+     * Redacted on both exits.
+     *
+     * This is the only request in the app carrying an SSN and a date of birth, and a provider that
+     * rejects it commonly says which field was wrong by quoting it back. That message was going
+     * straight into Railway's logs and straight to the browser in a 502 — neither of which is
+     * "storing" it, and both of which outlive the request.
+     */
+    const message = redactError(error);
     console.error('[lithic] provisioning failed:', message);
     res.status(502).json({ error: message });
   }
