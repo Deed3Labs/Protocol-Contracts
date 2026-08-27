@@ -213,6 +213,11 @@
      per theme, because the fill colors are too dark to read as text on dark.
      Tints come from opacity modifiers (bg-tier-boost/10), matching how
      --positive/--negative are already used in this app. */
+  /* Cash is not a credit tier, but it is the first thing the card spends, so it needs a place in
+     the same scale — and the deepest one, because the waterfall runs cheapest to dearest and a
+     member's own money is the cheapest thing there is. Reading the bar left to right is reading the
+     order it spends in, without a word of explanation. */
+  --tier-cash: 10 79 62; /* #0A4F3E — the member's own money */
   --tier-savings: 15 110 86; /* #0F6E56 — savings-backed, free */
   --tier-asset: 29 158 117; /* #1D9E75 — asset-backed */
   --tier-income: 186 117 23; /* #BA7517 — income-backed */

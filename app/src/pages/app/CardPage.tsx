@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Snowflake, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ClearCardFace from '@/components/clear/ClearCardFace';
+import { CompositionBar, LegendRow } from '@/components/clear/CompositionBar';
 import CardControlsCard from '@/components/clear/CardControlsCard';
 import CardDetailsDialog from '@/components/clear/CardDetailsDialog';
 import TransactionRows from '@/components/clear/TransactionRows';
@@ -102,6 +103,60 @@ export default function CardPage({
     </div>
   );
 
+
+  /*
+   * Spending from — what a tap will draw on.
+   *
+   * This was rows of text; it is one figure, one bar and a short legend. The bar runs cheapest to
+   * dearest left to right and cash owns the deepest colour, so the order the waterfall spends in is
+   * the order it reads in.
+   *
+   * Each line carries its price rather than its mechanics — "free", "0.65%", "1.5%" — which is four
+   * words where there were two sentences. A tier the member has not added shows hollow and says
+   * Off: it stays on the list because it is something they can turn on, not because it is
+   * spendable.
+   */
+  const cardCash = data.cardCash;
+  const spendingFrom = data.tiers && data.tiers.length > 0 && (
+    <div className="rounded-xl border border-border p-4">
+      <div className="mb-3 flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-[.5px] text-muted-foreground">Spending from</span>
+
+      </div>
+      <p className="mb-0.5 text-[11px] text-muted-foreground">{cardCash != null ? 'Spendable' : 'Credit available'}</p>
+      <p className="m-0 text-[30px] font-medium tracking-[-.9px]">
+        {money(cardCash != null ? cardCash : (data.creditAfterCash ?? 0))}
+      </p>
+      {cardCash != null && (data.creditAfterCash ?? 0) > 0 && (
+        <p className="mb-3 mt-1.5 text-xs text-muted-foreground">then {money(data.creditAfterCash ?? 0)} of credit</p>
+      )}
+      <CompositionBar
+        className="mb-1"
+        segments={[
+          // No cash segment when there is no readable card balance: an absent bar beats a wrong one.
+          ...(cardCash != null ? [{ value: cardCash, color: 'rgb(var(--tier-cash))', label: 'Cash' }] : []),
+          ...data.tiers.filter((t) => t.added).map((t) => ({
+            value: Math.max(0, t.limit - t.used),
+            color: `rgb(var(--tier-${t.key}))`,
+            label: t.shortLabel ?? t.label,
+          })),
+        ]}
+      />
+      <div>
+        {cardCash != null && <LegendRow color="rgb(var(--tier-cash))" label="Cash" value={money(cardCash)} />}
+        {data.tiers.map((tier) => (
+          <LegendRow
+            key={tier.key}
+            color={`rgb(var(--tier-${tier.key}))`}
+            label={`${tier.shortLabel ?? tier.label} · ${tier.rate}`}
+            value={tier.added ? money(Math.max(0, tier.limit - tier.used)) : 'Off'}
+            off={!tier.added}
+          />
+        ))}
+      </div>
+    </div>
+  );
+
   const caption = (
     <p className="text-[11px] leading-relaxed text-muted-foreground">
       Spends your cash first, then your credit line. No transfers needed.
@@ -110,13 +165,19 @@ export default function CardPage({
 
   const transactions = (
     <>
-      <div className="mb-1 flex items-baseline justify-between gap-3">
-        <span className="text-[13px] text-foreground-secondary">Card transactions</span>
-        {card.period && (
-          <span className="text-xs text-muted-foreground">
-            {card.period}
-            {card.periodTotal > 0 && ` · ${money(card.periodTotal)}`}
-          </span>
+      <div className="mb-2.5 flex items-baseline justify-between gap-3">
+        <div>
+          <p className="mb-0.5 text-[11px] text-muted-foreground">{card.period || 'This month'}</p>
+          <p className="m-0 text-[25px] font-medium tracking-[-.6px]">{money(card.periodTotal)}</p>
+        </div>
+        {/*
+          * The count is the context that makes the figure mean something, and there is no room for
+          * it on a phone — so it appears at width rather than being abbreviated onto one.
+          */}
+        {card.transactions.length > 0 && (
+          <p className="hidden text-xs text-muted-foreground lg:block">
+            {card.transactions.length} {card.transactions.length === 1 ? 'purchase' : 'purchases'}
+          </p>
         )}
       </div>
       <TransactionRows
@@ -145,6 +206,7 @@ export default function CardPage({
           {actions}
           {/* Mobile reads the card, then what it spent, then how it's governed —
               so the controls come after the list rather than before it. */}
+          <div className="mt-3 lg:hidden">{spendingFrom}</div>
           <div className="mt-3 lg:hidden">{transactions}</div>
           {card.activated && <CardControlsCard card={card} />}
           {card.activated && (
@@ -154,7 +216,8 @@ export default function CardPage({
           )}
           <div className="lg:hidden">{caption}</div>
         </div>
-        <div className="hidden lg:block">
+        <div className="hidden lg:flex lg:flex-col lg:gap-4">
+          {spendingFrom}
           {transactions}
           <div className="mt-3">{caption}</div>
         </div>

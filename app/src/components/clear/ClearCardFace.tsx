@@ -1,86 +1,229 @@
-import { Wifi, Snowflake } from 'lucide-react';
+import { useId } from 'react';
 import type { CardData } from '@/lib/clearModel';
-import { cn } from '@/lib/utils';
+
+/*
+ * The card face.
+ *
+ * Six layers, in order: material gradient, light sweep, film grain, bevel, contents, shadow. The
+ * grain is what stops it reading as a CSS gradient, and the chip, contactless mark and network
+ * wordmark are what stop it reading as a coloured rectangle.
+ *
+ * Obsidian rather than black. A warm indigo bloom top-left and a sage one bottom-right — the app's
+ * two accent families, pulled onto the one surface that leaves the app. Pure black would belong to
+ * any fintech.
+ *
+ * Deliberately plain CSS values rather than theme tokens: this is a physical object, not a surface
+ * of the page, and it must look identical in light and dark. A card that changes colour with the
+ * app's theme is not a card.
+ */
 
 /**
- * The physical card — design spec §9.
+ * The Visa Brand Mark.
  *
- * The colors here are literal hexes rather than tokens, and that's deliberate:
- * this is a picture of a real object, so it must look the same in light, dusk and
- * dark. The 0.5px #5F5E5A border is load-bearing — without it the dark face
- * disappears into a dark page.
+ * The path is simple-icons' (CC0); the mark itself is Visa's trademark. Fine for a UI
+ * representation of a member's card, and NOT sufficient for production card art — the plastic that
+ * gets manufactured has to carry Visa's official asset at their specified clear space and minimum
+ * size, supplied through the issuer program. That is a file from Lithic, not a path from npm.
  */
-export default function ClearCardFace({
-  card,
-  className,
-  revealNumber,
-}: {
+function VisaMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} role="img" aria-label="Visa" focusable="false">
+      <path fill="currentColor" d="M9.112 8.262L5.97 15.758H3.92L2.374 9.775c-.094-.368-.175-.503-.461-.658C1.447 8.864.677 8.627 0 8.479l.046-.217h3.3a.904.904 0 01.894.764l.817 4.338 2.018-5.102zm8.033 5.049c.008-1.979-2.736-2.088-2.717-2.972.006-.269.262-.555.822-.628a3.66 3.66 0 011.913.336l.34-1.59a5.207 5.207 0 00-1.814-.333c-1.917 0-3.266 1.02-3.278 2.479-.012 1.079.963 1.68 1.698 2.04.756.367 1.01.603 1.006.931-.005.504-.602.725-1.16.734-.975.015-1.54-.263-1.992-.473l-.351 1.642c.453.208 1.289.39 2.156.398 2.037 0 3.37-1.006 3.377-2.564m5.061 2.447H24l-1.565-7.496h-1.656a.883.883 0 00-.826.55l-2.909 6.946h2.036l.405-1.12h2.488zm-2.163-2.656l1.02-2.815.588 2.815zm-8.16-4.84l-1.603 7.496H8.34l1.605-7.496z" />
+    </svg>
+  );
+}
+
+/** An EMV contact plate: eight pads, the centre island, traces breaking at the edges. */
+function Chip({ className }: { className?: string }) {
+  const id = useId();
+  return (
+    <svg viewBox="0 0 42 32" className={className} aria-hidden focusable="false">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#F3E3B4" />
+          <stop offset="28%" stopColor="#D9BE7E" />
+          <stop offset="52%" stopColor="#EFDDAA" />
+          <stop offset="74%" stopColor="#C4A768" />
+          <stop offset="100%" stopColor="#E4CE94" />
+        </linearGradient>
+      </defs>
+      <rect x=".5" y=".5" width="41" height="31" rx="5" fill={`url(#${id})`} stroke="rgba(112,88,38,.7)" />
+      <g stroke="rgba(96,74,30,.78)" strokeWidth="1.25" fill="none" strokeLinecap="round">
+        <path d="M1 11.2h12.2M1 20.8h12.2M41 11.2H28.8M41 20.8H28.8" />
+        <path d="M13.2 1v5.4a5.2 5.2 0 0 0 5.2 5.2h5.2a5.2 5.2 0 0 0 5.2-5.2V1" />
+        <path d="M13.2 31v-5.4a5.2 5.2 0 0 1 5.2-5.2h5.2a5.2 5.2 0 0 1 5.2 5.2V31" />
+        <path d="M13.2 11.6v8.8M28.8 11.6v8.8" />
+      </g>
+      <rect x="13.2" y="11.6" width="15.6" height="8.8" fill="rgba(255,255,255,.16)" />
+      <rect x="1.4" y="1.4" width="39.2" height="29.2" rx="4" fill="none" stroke="rgba(255,255,255,.34)" strokeWidth=".8" />
+    </svg>
+  );
+}
+
+function Contactless({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 20 24" className={className} aria-hidden focusable="false">
+      <g fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" opacity=".78">
+        <path d="M3.5 8.2a7.5 7.5 0 0 1 0 7.6" />
+        <path d="M8 5.4a12.4 12.4 0 0 1 0 13.2" />
+        <path d="M12.5 2.6a17.2 17.2 0 0 1 0 18.8" />
+      </g>
+    </svg>
+  );
+}
+
+const MATERIAL = {
+  // Physical: obsidian, with the indigo and sage blooms.
+  physical:
+    'radial-gradient(88% 120% at 14% -8%, #4A4568 0%, rgba(74,69,104,0) 58%),' +
+    'radial-gradient(78% 105% at 104% 108%, #2A6B5B 0%, rgba(42,107,91,0) 54%),' +
+    'radial-gradient(140% 120% at 50% 50%, #2E2C3C 0%, #1A1922 78%)',
+  // Virtual: the same family inverted — accent leads, charcoal recedes — so the two are
+  // unmistakable in a stack without reading the label.
+  virtual:
+    'radial-gradient(85% 115% at 96% -6%, #B6AEF6 0%, rgba(182,174,246,0) 55%),' +
+    'radial-gradient(80% 110% at -6% 106%, #F0EDFB 0%, rgba(240,237,251,0) 48%),' +
+    'radial-gradient(150% 130% at 45% 45%, #6F66CC 0%, #443C93 82%)',
+  // Frozen: the colour drains and the sheen dulls. No badge and no overlay — a card that has gone
+  // flat reads as stopped without being told.
+  frozen:
+    'radial-gradient(90% 120% at 20% 0%, #9B9992 0%, rgba(155,153,146,0) 58%),' +
+    'linear-gradient(158deg, #7C7A74 0%, #585650 100%)',
+} as const;
+
+const GRAIN =
+  "url(\"data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22180%22%20height%3D%22180%22%3E%3Cfilter%20id%3D%22n%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.9%22%20numOctaves%3D%224%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22180%22%20height%3D%22180%22%20filter%3D%22url%28%23n%29%22%20opacity%3D%220.55%22%2F%3E%3C%2Fsvg%3E\")";
+
+export interface ClearCardFaceProps {
   card: CardData;
   className?: string;
   /** Show the full number — only ever inside the timed reveal on Card details. */
   revealNumber?: boolean;
-}) {
+  /** Seconds until the reveal ends. Replaces the type tag rather than adding an element. */
+  hidesInSeconds?: number;
+  /** The card behind in a stack: no number, no chip — a wallet, not a gallery. */
+  behind?: boolean;
+}
+
+export default function ClearCardFace({
+  card,
+  className,
+  revealNumber = false,
+  hidesInSeconds,
+  behind = false,
+}: ClearCardFaceProps) {
+  const { variant, frozen, last4, cardholder, expiry, pan, cvc } = card;
+  const revealed = revealNumber;
+
+  const material = frozen ? MATERIAL.frozen : MATERIAL[variant];
+  const groups = revealed && pan ? pan.replace(/\s+/g, '').match(/.{1,4}/g) ?? [] : ['••••', '••••', '••••', last4 || '••••'];
+
   return (
     <div
-      className={cn(
-        // Contents step up with the card on desktop — the spec's sizes are against
-        // a 250px card, and left fixed they leave a large face looking half-empty.
-        'relative flex aspect-[1.586/1] flex-col justify-between rounded-xl border-[0.5px] p-4 lg:p-5',
-        className,
-      )}
-      style={{ backgroundColor: '#2C2C2A', borderColor: '#5F5E5A' }}
-      aria-label={card.activated ? `Clear card ending ${card.last4}` : 'Clear card — not activated'}
+      className={`relative isolate overflow-hidden rounded-2xl ${className ?? ''}`}
+      style={{
+        aspectRatio: '1.5857',
+        color: '#EDEAE3',
+        boxShadow:
+          '0 1px 1px rgba(0,0,0,.10), 0 8px 20px -6px rgba(30,28,40,.40), 0 20px 44px -20px rgba(30,28,40,.32)',
+      }}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-[13px] font-medium lg:text-[15px]" style={{ color: '#F1EFE8' }}>
-          Clear
-        </span>
-        {/* Contactless: the arcs rotated a quarter turn, as on a real card */}
-        <Wifi
-          className="h-4 w-4 rotate-90 lg:h-[18px] lg:w-[18px]"
-          strokeWidth={1.75}
-          style={{ color: '#888780' }}
-          aria-hidden
-        />
-      </div>
-
-      {/* Chip — 34×25 with a 4px radius */}
+      <div className="absolute inset-0 z-0" style={{ background: material }} />
       <div
-        className="h-[25px] w-[34px] rounded lg:h-[29px] lg:w-[40px]"
-        style={{ backgroundColor: '#888780' }}
-        aria-hidden
+        className="pointer-events-none absolute inset-0 z-[1]"
+        style={{
+          opacity: frozen ? 0.5 : 1,
+          background:
+            'radial-gradient(62% 150% at 26% -18%, rgba(255,255,255,.20) 0%, rgba(255,255,255,0) 62%),' +
+            'radial-gradient(48% 120% at 88% 116%, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 60%),' +
+            'linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,0) 24%, rgba(0,0,0,.10) 100%)',
+        }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 z-[2]"
+        style={{ opacity: 0.34, mixBlendMode: 'overlay', backgroundImage: GRAIN, backgroundSize: '180px 180px' }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 z-[3] rounded-2xl"
+        style={{
+          boxShadow:
+            'inset 0 1px 0 rgba(255,255,255,.20), inset 0 -1px 0 rgba(0,0,0,.28), inset 0 0 0 .5px rgba(255,255,255,.07)',
+        }}
       />
 
-      <div>
-        <p
-          className="mb-1.5 font-mono text-[15px] tracking-[1px] lg:text-[17px]"
-          style={{ color: '#F1EFE8' }}
-        >
-          {!card.activated
-            ? '•••• •••• •••• ••••'
-            : revealNumber && card.pan
-              ? card.pan
-              : `•••• •••• •••• ${card.last4}`}
-        </p>
-        <div className="flex items-end justify-between text-[11px] lg:text-xs" style={{ color: '#B4B2A9' }}>
-          <span>
-            {card.cardholder}
-            {card.expiry && ` · ${card.expiry}`}
+      <div
+        className="relative z-[4] flex h-full flex-col justify-between p-[18px] sm:p-5"
+        style={{ opacity: frozen ? 0.82 : 1 }}
+      >
+        <div className="flex items-start justify-between">
+          <span className="flex items-center gap-2">
+            {/* The real logo, not a drawn stand-in. */}
+            <img src="/ClearPath-Logo.png" alt="" aria-hidden className="h-[19px] w-[19px] rounded-[5px] object-cover" />
+            <span className="text-[15px] font-semibold tracking-[-.3px]">Clear</span>
           </span>
-          <span>{card.network}</span>
+          {/*
+            * Revealing replaces the type tag with a countdown rather than adding a new element, so
+            * the card never jumps. The slot already reads as status.
+            */}
+          <span
+            className="rounded-full px-2 py-[3px] text-[8.5px] uppercase tracking-[.9px]"
+            style={{
+              border: `.5px solid rgba(255,255,255,${revealed ? '.5' : '.3'})`,
+              background: 'rgba(255,255,255,.06)',
+            }}
+          >
+            {frozen ? 'Frozen' : revealed && hidesInSeconds != null ? `Hides in ${hidesInSeconds}s` : variant}
+          </span>
         </div>
-      </div>
 
-      {/* Frozen is a state of the object, so it reads on the object itself */}
-      {card.frozen && (
-        <div
-          className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-xl text-[11px] font-medium"
-          style={{ backgroundColor: 'rgba(44,44,42,0.72)', color: '#F1EFE8' }}
-        >
-          <Snowflake className="h-[15px] w-[15px]" strokeWidth={1.75} aria-hidden />
-          Frozen
-        </div>
-      )}
+        {!behind && (
+          <div>
+            <div className="mb-3.5 flex items-center gap-3">
+              {/*
+                * No chip on the virtual card. It has no plastic and never meets a terminal, so a
+                * contact plate would be decoration pretending to be function. The contactless mark
+                * stays, because that one is true: it lives in Apple Pay.
+                */}
+              {variant === 'physical' && <Chip className="h-8 w-[42px]" />}
+              <Contactless className="h-[19px] w-[15px]" />
+            </div>
+            <p
+              className="mb-2.5 font-mono text-[14.5px] tracking-[2.2px]"
+              style={{ textShadow: '0 1px 1px rgba(0,0,0,.30)' }}
+            >
+              {groups.map((group, i) => (
+                <span key={i} className={i < groups.length - 1 ? 'mr-2' : undefined}>
+                  {group}
+                </span>
+              ))}
+            </p>
+            <div className="flex items-end justify-between">
+              {/*
+                * Expiry and CVV surface only when revealed, in the space the cardholder name
+                * occupies otherwise. A real card carries them on the back; this one has no back.
+                */}
+              {revealed && cvc ? (
+                <div className="flex gap-[18px]">
+                  <div>
+                    <p className="m-0 mb-[3px] text-[8px] uppercase tracking-[.7px] opacity-60">Expires</p>
+                    <p className="m-0 text-[10px] uppercase tracking-[.8px] opacity-95">{expiry}</p>
+                  </div>
+                  <div>
+                    <p className="m-0 mb-[3px] text-[8px] uppercase tracking-[.7px] opacity-60">CVV</p>
+                    <p className="m-0 text-[10px] uppercase tracking-[.8px] opacity-95">{cvc}</p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <p className="m-0 mb-[3px] text-[8px] uppercase tracking-[.7px] opacity-60">Valid thru {expiry}</p>
+                  <p className="m-0 text-[10px] uppercase tracking-[.8px] opacity-95">{cardholder}</p>
+                </div>
+              )}
+              <VisaMark className="h-[18px] w-[27px] opacity-95" />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

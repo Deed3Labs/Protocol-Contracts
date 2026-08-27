@@ -1051,6 +1051,19 @@ export interface CardData {
   controls: CardControl[];
   perTransactionLimit: number;
   perDayLimit: number;
+  /*
+   * What a tap draws on, cheapest first.
+   *
+   * `cardCash` is deliberately optional and deliberately NOT the wallet's USDC balance: USDC on a
+   * member's smart wallet cannot settle a card authorization, only the card float can. Undefined
+   * means "no readable card balance", and the panel then shows the credit tiers alone — which is
+   * true — rather than printing a spendable figure the card could not actually honour.
+   */
+  cardCash?: number;
+  /** The credit behind the cash, i.e. the sum of what added tiers can still lend. */
+  creditAfterCash?: number;
+  /** The tiers themselves, so the bar can show what the limit is made of. */
+  tiers?: CreditTier[];
   /** Card transactions only — Activity shows everything (spec §9). */
   transactions: ActivityRow[];
 }
