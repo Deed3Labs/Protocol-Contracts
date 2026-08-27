@@ -1952,6 +1952,57 @@ export async function submitIdentity(input: {
   return { ok: true, status: r.data?.status, kycStatus: r.data?.kycStatus ?? undefined };
 }
 
+
+export interface RequiredDocumentInfo {
+  entityToken: string;
+  validDocuments: string[];
+  statusReasons: string[];
+}
+export interface UploadTarget {
+  imageType: 'FRONT' | 'BACK';
+  uploadUrl: string;
+  uploadToken: string;
+}
+
+/** What the card issuer still wants a photo of. Empty when nothing is outstanding. */
+export async function getRequiredDocuments(): Promise<RequiredDocumentInfo[]> {
+  const r = await apiRequest<{ required: RequiredDocumentInfo[] }>('/api/lithic/documents');
+  return r.error || !r.data ? [] : r.data.required;
+}
+
+/** Ask the issuer where to put the images. Returns their URLs — we are not a destination. */
+export async function startDocumentUpload(
+  documentType: string,
+  entityToken: string,
+): Promise<{ documentToken: string; targets: UploadTarget[] } | { error: string }> {
+  const r = await apiRequest<{ documentToken: string; targets: UploadTarget[] }>('/api/lithic/documents', {
+    method: 'POST',
+    body: JSON.stringify({ documentType, entityToken }),
+  });
+  if (r.error || !r.data) return { error: r.error ?? 'Could not start the upload' };
+  return r.data;
+}
+
+/**
+ * PUT one image straight to the issuer.
+ *
+ * Deliberately a bare `fetch`, not `apiRequest`: this does not go to our API, and it must not carry
+ * our session headers to somebody else's storage. The photo never reaches a server of ours — that
+ * is the entire point of doing it this way rather than accepting an upload and forwarding it.
+ */
+export async function putDocumentImage(uploadUrl: string, file: File): Promise<boolean> {
+  try {
+    const response = await fetch(uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function getLithicAccount(): Promise<LithicAccountResponse | null> {
   const r = await apiRequest<LithicAccountResponse>('/api/lithic/account');
   return r.error ? null : (r.data ?? null);

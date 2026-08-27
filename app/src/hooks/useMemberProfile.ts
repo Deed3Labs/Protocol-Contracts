@@ -21,6 +21,8 @@ function initialsOf(name: string, address: string): string {
 
 export interface MemberProfile {
   name: string; // display name, or short address
+  /** The name on legal documents. Empty until identity verification supplies one. */
+  legalName: string;
   firstName: string; // for greetings ("there" when no name)
   handle: string; // email, @username, or short address
   email: string;
@@ -41,7 +43,7 @@ export interface MemberProfile {
 }
 
 const EMPTY: MemberProfile = {
-  name: '', firstName: 'there', handle: '', email: '', phone: '', avatarUrl: null,
+  name: '', legalName: '', firstName: 'there', handle: '', email: '', phone: '', avatarUrl: null,
   username: '', address: '', initials: 'CL', loading: false, memberStatus: null, accelerated: false, refresh: () => {}, setAvatar: () => {}, raw: null,
 };
 
@@ -108,6 +110,18 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
   const email = priv?.email || '';
   const value: MemberProfile = {
     name,
+    /*
+     * The name on legal documents, which is not the name on the profile.
+     *
+     * `name` is the public display name — "Kai M" — chosen to be shown to other members next to a
+     * payment. Settings was rendering a hardcoded 'Kai Moore' in the Legal name row instead, which
+     * happened to look plausible and was somebody else's fixture.
+     *
+     * Empty until identity verification supplies it: a legal name is what a member's bank and the
+     * card issuer agree on, and inventing one from a display handle would put a guess in the row
+     * that exists to hold the real thing.
+     */
+    legalName: priv?.legalName || '',
     firstName: name.startsWith('0x') ? 'there' : name.split(/\s+/)[0] || 'there',
     handle: email || (pub?.username ? `@${pub.username}` : '') || short(addr),
     email,

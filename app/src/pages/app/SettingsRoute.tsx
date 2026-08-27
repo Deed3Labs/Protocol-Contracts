@@ -18,6 +18,16 @@ export default function SettingsRoute() {
   const profile = {
     ...SETTINGS.profile,
     name: member.name || SETTINGS.profile.name,
+    /*
+     * The verified name, then the display name, then nothing.
+     *
+     * This row used to fall through to the fixture's 'Kai Moore' — a name that looked plausible
+     * and belonged to nobody. The display name is a reasonable stand-in because a member chose it,
+     * but it is "Kai M" by design (it is what other members see beside a payment), so it is second
+     * rather than first. An em dash is the honest end of the chain: this row is empty until
+     * verification fills it.
+     */
+    legalName: member.legalName || member.name || '—',
     initials: member.initials || SETTINGS.profile.initials,
     handle: member.handle || SETTINGS.profile.handle,
     email: member.email || SETTINGS.profile.email,

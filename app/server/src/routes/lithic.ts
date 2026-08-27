@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from 'express';
+import { requiredDocuments, startUpload, documentStatus } from '../services/lithic/documentService.js';
 import { redactError } from '../utils/redact.js';
 import { isConfigured } from '../services/lithic/lithicClient.js';
 import {
@@ -138,6 +139,68 @@ router.post('/account', async (req: Request, res: Response) => {
     const message = redactError(error);
     console.error('[lithic] provisioning failed:', message);
     res.status(502).json({ error: message });
+  }
+});
+
+/*
+ * Document upload — URLs out, never bytes in.
+ *
+ * There is deliberately no endpoint here that accepts a file. A member's driver's licence goes from
+ * their browser straight to Lithic's presigned URL; this only asks for the URL and reports on what
+ * happened. Adding a multipart route later would quietly undo that, so: if you find yourself
+ * writing one, the thing to change is this comment first.
+ */
+
+/** The individual documents a member can be asked for. Business types are not reachable here. */
+const MEMBER_DOCUMENT_TYPES = new Set(['DRIVERS_LICENSE', 'PASSPORT', 'PASSPORT_CARD']);
+
+/** GET /api/lithic/documents — what Lithic still wants from this member. */
+router.get('/documents', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+  if (!isConfigured() || !lithicStore.isConfigured()) return res.json({ required: [] });
+
+  try {
+    res.json({ required: await requiredDocuments(wallet) });
+  } catch (error) {
+    console.error('[lithic] required documents read failed:', redactError(error));
+    res.status(502).json({ error: 'Could not read what is needed' });
+  }
+});
+
+/** POST /api/lithic/documents — get the upload URLs for one document. */
+router.post('/documents', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+
+  const documentType = String(req.body?.documentType || '');
+  const entityToken = String(req.body?.entityToken || '');
+  if (!MEMBER_DOCUMENT_TYPES.has(documentType)) {
+    return res.status(400).json({ error: 'Unsupported document type' });
+  }
+  if (!entityToken) return res.status(400).json({ error: 'entityToken is required' });
+
+  try {
+    res.json(await startUpload(wallet, documentType, entityToken));
+  } catch (error) {
+    const message = redactError(error);
+    console.error('[lithic] document upload start failed:', message);
+    res.status(502).json({ error: message });
+  }
+});
+
+/** GET /api/lithic/documents/:token — did the images land, and what did review say. */
+router.get('/documents/:token', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+
+  try {
+    const status = await documentStatus(wallet, String(req.params.token));
+    if (!status) return res.status(404).json({ error: 'No such document' });
+    res.json(status);
+  } catch (error) {
+    console.error('[lithic] document status read failed:', redactError(error));
+    res.status(502).json({ error: 'Could not read the document status' });
   }
 });
 
