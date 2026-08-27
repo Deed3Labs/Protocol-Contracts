@@ -50,29 +50,26 @@ export interface ClearBalances {
 
 const Ctx = createContext<ClearBalances | null>(null);
 
-/*
- * The fallback stays, but it stops being silent.
+/**
+ * The member's Clear balances.
  *
- * A consumer rendered outside ClearBalancesProvider gets zeros, a no-op `refresh` and a no-op
- * `applyOptimistic` — and no indication anything is wrong. That is a balance of zero shown as
- * fact, and a move that quietly fails to update anything. It is the same shape as the bug that
- * made marking a notification read appear not to work: a second, silent, wrong copy.
+ * Throws outside ClearBalancesProvider rather than handing back a silent stub.
  *
- * Throwing would be better, except some legacy modals still mount outside the shell and a throw
- * there is a blank screen for a real member. So: keep working, say so loudly in dev, and name the
- * component so the next person does not spend an afternoon on it.
+ * It used to fall back to `{ cash: 0, savings: 0, refresh: noop, applyOptimistic: noop }`, which is
+ * a balance of zero presented as fact and a move that quietly updates nothing. I kept that
+ * fallback once on the assumption that legacy modals mounted outside the shell — then checked, and
+ * none of the live ones do. Every consumer that can actually render sits inside AppShell's
+ * provider; the two that render this outside it (components/TransferModal, portfolio/EarnHome) are
+ * unreachable code that never mounts.
+ *
+ * So the fallback was protecting nothing and hiding the one failure mode that matters.
  */
 export function useClearBalances(): ClearBalances {
   const value = useContext(Ctx);
-  if (!value && import.meta.env?.DEV) {
-    console.error(
-      '[useClearBalances] rendered outside ClearBalancesProvider — showing 0 and ignoring ' +
-        'applyOptimistic/refresh. Mount this inside AppShell.',
-    );
+  if (!value) {
+    throw new Error('useClearBalances must be used within a ClearBalancesProvider (mounted in AppShell)');
   }
-  return (
-    value ?? { cash: 0, savings: 0, total: 0, loading: false, refresh: () => {}, applyOptimistic: () => {} }
-  );
+  return value;
 }
 
 const POLL_MS = 30_000; // steady auto-refresh
