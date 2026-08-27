@@ -125,3 +125,35 @@ describe('no card path fails silently', () => {
     expect(portal).toContain('role="status"');
   });
 });
+
+/*
+ * "Member is not provisioned" is a third thing, and worth its own case.
+ *
+ * It is not an outage and not a retry: the key is set, Lithic is answering, and the member simply
+ * has no account holder. They cannot have one — `ensureProvisioned` is reached from exactly one
+ * route, POST /api/lithic/account, and nothing in the client calls it. No member is provisioned,
+ * old account or new.
+ *
+ * So the member-facing wording deliberately collapses it with `unavailable`: the distinction
+ * between an unset API key and an unbuilt setup step matters to us and not at all to them. What
+ * matters to them is that pressing the button again will not help.
+ */
+describe('an unprovisioned member is told something true', () => {
+  const client = read('utils/apiClient.ts');
+  const route = read('pages/app/CardRoute.tsx');
+
+  test('the server’s wording is matched, not shown', () => {
+    // "Member is not provisioned" is a sentence about our database, not about the person reading.
+    const shape = client.slice(client.indexOf('function cardFailure'), client.indexOf('export async function getCards'));
+    expect(shape).toMatch(/needsSetup: \/not provisioned\/i\.test\(error\)/);
+    expect(route).not.toContain('not provisioned');
+  });
+
+  test('and it does not invite a retry that cannot work', () => {
+    const activate = route.slice(route.indexOf('const activate'), route.indexOf('const toggleFreeze'));
+    expect(activate).toContain('unavailable || needsSetup');
+    const retry = activate.slice(activate.indexOf('unavailable || needsSetup'));
+    // The "try again" branch must be the other one.
+    expect(retry.indexOf("we'll let you know")).toBeLessThan(retry.indexOf('Please try again'));
+  });
+});

@@ -1945,11 +1945,28 @@ export interface MemberCard {
 export interface CardResult<T> {
   value: T | null;
   error?: string;
+  /** The integration is switched off (no LITHIC_API_KEY). Nothing the member can do. */
   unavailable?: boolean;
+  /**
+   * The member has no Lithic account holder yet, so there is nothing to issue a card against.
+   *
+   * Distinct from `unavailable` because the cause is different and so is the fix: the key is set
+   * and Lithic is answering, but provisioning needs KYC fields (date of birth, government id,
+   * street address) that no screen collects and no code path submits. Not a retry, and not an
+   * outage — a step that does not exist yet.
+   */
+  needsSetup?: boolean;
 }
 
 function cardFailure<T>(error: string): CardResult<T> {
-  return { value: null, error, unavailable: /unavailable/i.test(error) };
+  return {
+    value: null,
+    error,
+    unavailable: /unavailable/i.test(error),
+    // The server's exact words. Matched here rather than shown, because "Member is not
+    // provisioned" is a sentence about our database, not about the person reading it.
+    needsSetup: /not provisioned/i.test(error),
+  };
 }
 
 /**
