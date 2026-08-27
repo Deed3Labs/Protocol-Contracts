@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
-import { createCard, getCards, setCardFrozen, type MemberCard } from '@/utils/apiClient';
+import { createCard, getCards, setCardFrozen, getCredit, type CreditState, type MemberCard } from '@/utils/apiClient';
+import { onChainStale } from '@/lib/chainStale';
+import { toCreditTiers } from '@/lib/creditMapping';
+import { useAppKitAccount } from '@/lib/walletCompat';
 
 /*
  * Day-one, not in-use.
@@ -36,6 +39,28 @@ export default function CardRoute() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const identity = useIdentity();
+  const { address } = useAppKitAccount();
+  const [credit, setCredit] = useState<CreditState | null>(null);
+
+  /*
+   * The tiers behind "Spending from", read the same way Home reads them and re-read on the same
+   * signal — a card's spending power moves the moment a deposit is pledged.
+   */
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    const read = () => {
+      void getCredit(address).then((result) => {
+        if (!cancelled) setCredit(result);
+      });
+    };
+    read();
+    const stopListening = onChainStale(read);
+    return () => {
+      cancelled = true;
+      stopListening();
+    };
+  }, [address]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,6 +184,22 @@ export default function CardRoute() {
         // inventing transactions that never happened.
         transactions: card ? [] : CARD_DAY_ONE.transactions,
         periodTotal: card ? 0 : CARD_DAY_ONE.periodTotal,
+        /*
+         * The credit half of "Spending from", from the contracts.
+         *
+         * `cardCash` is left undefined on purpose: the card spends its float, and USDC on the
+         * member's smart wallet cannot settle an authorization. Until a card balance is readable
+         * the panel shows the credit tiers alone, which is true, rather than a spendable figure the
+         * card could not honour.
+         */
+        ...(credit?.complete
+          ? {
+              tiers: toCreditTiers(credit.tiers),
+              creditAfterCash: credit.tiers
+                .filter((tier) => tier.active)
+                .reduce((sum, tier) => sum + Math.max(0, tier.limitCents - tier.usedCents), 0) / 100,
+            }
+          : {}),
       };
 
   return <CardPage data={data} onActivate={activate} onToggleFreeze={toggleFreeze} busy={busy} notice={notice} />;
