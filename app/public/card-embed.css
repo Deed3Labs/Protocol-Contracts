@@ -35,11 +35,32 @@ body * {
   border: 0 !important;
 }
 
-/* The number itself, which should read as the largest thing on the back. */
+/*
+ * Two rows, not three.
+ *
+ * Lithic stacks number, expiry and code as three blocks. On a card back that reads as a list rather
+ * than a card, and it is a row taller than the space wants. A two-column grid with the number
+ * spanning both puts expiry and the security code side by side, which is where they are on a real
+ * card.
+ *
+ * Grid on `body` because the embed's internal markup is theirs and could be anything; a grid parent
+ * lays out whatever children it is given without needing to know what they are called.
+ */
 body {
-  font-size: 15px;
-  letter-spacing: 1.6px;
-  line-height: 1.9;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 18px;
+  row-gap: 2px;
+  align-content: start;
+  font-size: 14px;
+  letter-spacing: 1.4px;
+  line-height: 1.5;
+}
+
+/* The number is the first thing and the widest — it takes the whole row. */
+body > *:first-child {
+  grid-column: 1 / -1;
+  font-size: 15.5px;
 }
 
 /* Labels — "Card Number", "Expiry", "CVV" — sit quieter than the values they name, the way they do
