@@ -1,4 +1,5 @@
 import express from 'express';
+import { redactError } from './utils/redact.js';
 import { createServer } from 'http';
 import cors from 'cors';
 import compression from 'compression';
@@ -267,10 +268,18 @@ async function startServer() {
 
     // Error handler (must be after all routes and 404 handler)
     app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      console.error('Unhandled error:', err);
+      /*
+       * Redacted, because this handler sees requests it knows nothing about.
+       *
+       * Logging the Error whole is the natural thing to write and the reason it is worth changing:
+       * a provider SDK hangs the failed request off the error, so `console.error('...', err)` on
+       * the one route that carries an SSN would have written it to the log wholesale. The dev-only
+       * message goes through the same scrub — a laptop's console is still a place data ends up.
+       */
+      console.error('Unhandled error:', redactError(err));
       res.status(500).json({
         error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? err.message : 'An error occurred',
+        message: process.env.NODE_ENV === 'development' ? redactError(err) : 'An error occurred',
       });
     });
 
