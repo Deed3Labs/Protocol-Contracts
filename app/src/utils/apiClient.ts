@@ -2086,6 +2086,32 @@ export async function getCards(): Promise<CardResult<MemberCard[]>> {
  * `unavailable` separates "this isn't switched on yet" from "that didn't work", because a member
  * should be told to wait in the first case and to try again in the second.
  */
+
+export interface CardTransaction {
+  id: string;
+  name: string;
+  at: string;
+  amountCents: number;
+  mcc: string | null;
+  city: string | null;
+  state: string | null;
+  draws: Array<{ source: string; amountCents: number }>;
+  cardToken: string;
+}
+
+/**
+ * What the member's cards have spent.
+ *
+ * These are approved AUTHORIZATIONS. The amount can move before settlement — a tip added, a fuel
+ * pump authorizing a round number — so this is what was approved, which is also what a member sees
+ * on the day.
+ */
+export async function getCardTransactions(limit = 50): Promise<CardResult<CardTransaction[]>> {
+  const r = await apiRequest<{ transactions: CardTransaction[] }>(`/api/lithic/cards/transactions?limit=${limit}`);
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.transactions ?? [] };
+}
+
 export async function createCard(memo?: string): Promise<CardResult<MemberCard>> {
   const r = await apiRequest<{ card: MemberCard }>('/api/lithic/cards', {
     method: 'POST',

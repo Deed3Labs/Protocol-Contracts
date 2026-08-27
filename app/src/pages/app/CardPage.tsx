@@ -3,6 +3,7 @@ import { Snowflake, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ClearCardFace from '@/components/clear/ClearCardFace';
 import { CompositionBar, LegendRow } from '@/components/clear/CompositionBar';
+import { totalsByCategory, CATEGORY_LABEL, type MerchantCategory } from '@/lib/mccCategory';
 import CardControlsCard from '@/components/clear/CardControlsCard';
 import CardDetailsDialog from '@/components/clear/CardDetailsDialog';
 import TransactionRows from '@/components/clear/TransactionRows';
@@ -163,6 +164,45 @@ export default function CardPage({
     </p>
   );
 
+
+  /*
+   * The same bar as Spending from, doing a different job.
+   *
+   * Above it splits what a member CAN spend; here what they DID. One visual idea reused rather than
+   * two invented, and the second reads instantly because they learned it on the first.
+   *
+   * Only rendered when the rows carry a category. A card transaction gets one from the merchant
+   * category code the network sent; nothing else does, and a bar assembled from rows without one
+   * would be a picture of our ignorance.
+   */
+  const categorised = card.transactions.filter((row): row is typeof row & { category: MerchantCategory } =>
+    row.category != null,
+  );
+  const categoryTotals = totalsByCategory(categorised);
+  const categoryBar = categoryTotals.length > 1 && (
+    <>
+      <CompositionBar
+        className="mb-2"
+        segments={categoryTotals.map(({ category, total }) => ({
+          value: total,
+          color: `rgb(var(--cat-${category}))`,
+          label: CATEGORY_LABEL[category],
+        }))}
+      />
+      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1.5 text-[11.5px] text-foreground-secondary">
+        {categoryTotals.map(({ category, total }) => (
+          <span key={category} className="flex items-center gap-1.5">
+            <i
+              className="inline-block h-[7px] w-[7px] rounded-full"
+              style={{ background: `rgb(var(--cat-${category}))` }}
+            />
+            {CATEGORY_LABEL[category]} {money(total)}
+          </span>
+        ))}
+      </div>
+    </>
+  );
+
   const transactions = (
     <>
       <div className="mb-2.5 flex items-baseline justify-between gap-3">
@@ -180,6 +220,7 @@ export default function CardPage({
           </p>
         )}
       </div>
+      {categoryBar}
       <TransactionRows
         showDate
         onSelect={setSelected}
