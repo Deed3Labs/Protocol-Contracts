@@ -1935,9 +1935,35 @@ export interface MemberCard {
   createdAt: string;
 }
 
-export async function getCards(): Promise<MemberCard[]> {
+/**
+ * How a card call reports failure.
+ *
+ * `unavailable` is the integration being switched off (LITHIC_API_KEY unset — the server says
+ * 'Cards unavailable'), which is not something a member can retry. Everything else is a failure
+ * they can. Collapsing both to `null` is what made pressing Activate look like pressing nothing.
+ */
+export interface CardResult<T> {
+  value: T | null;
+  error?: string;
+  unavailable?: boolean;
+}
+
+function cardFailure<T>(error: string): CardResult<T> {
+  return { value: null, error, unavailable: /unavailable/i.test(error) };
+}
+
+/**
+ * The member's cards.
+ *
+ * An empty list and a failed read used to be the same `[]`, and the card page renders "no cards"
+ * as **Activate card** — so a member who has a card was shown a button to create one whenever the
+ * read hiccuped. That is worse than the silent Activate failure: it does not merely fail to
+ * inform, it asserts something false about their account.
+ */
+export async function getCards(): Promise<CardResult<MemberCard[]>> {
   const r = await apiRequest<{ configured: boolean; cards: MemberCard[] }>('/api/lithic/cards');
-  return r.error ? [] : (r.data?.cards ?? []);
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.cards ?? [] };
 }
 
 /** Issue a virtual card — what "Activate card" does. */
@@ -1951,27 +1977,23 @@ export async function getCards(): Promise<MemberCard[]> {
  * `unavailable` separates "this isn't switched on yet" from "that didn't work", because a member
  * should be told to wait in the first case and to try again in the second.
  */
-export async function createCard(
-  memo?: string,
-): Promise<{ card: MemberCard | null; error?: string; unavailable?: boolean }> {
+export async function createCard(memo?: string): Promise<CardResult<MemberCard>> {
   const r = await apiRequest<{ card: MemberCard }>('/api/lithic/cards', {
     method: 'POST',
     body: JSON.stringify(memo ? { memo } : {}),
   });
-  if (r.error) {
-    // 'Cards unavailable' is the server's word for LITHIC_API_KEY being unset — the integration is
-    // off, not broken, and the member has nothing to retry.
-    return { card: null, error: r.error, unavailable: /unavailable/i.test(r.error) };
-  }
-  return { card: r.data?.card ?? null };
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.card ?? null };
 }
 
-export async function setCardFrozen(token: string, frozen: boolean): Promise<MemberCard | null> {
+/** Freeze or unfreeze. Reports why it failed — a toggle that springs back explains nothing. */
+export async function setCardFrozen(token: string, frozen: boolean): Promise<CardResult<MemberCard>> {
   const r = await apiRequest<{ card: MemberCard }>(
     `/api/lithic/cards/${encodeURIComponent(token)}/freeze`,
     { method: 'POST', body: JSON.stringify({ frozen }) },
   );
-  return r.error ? null : (r.data?.card ?? null);
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.card ?? null };
 }
 
 export async function setCardSpendLimit(
@@ -2705,17 +2727,22 @@ export async function getClearCard(): Promise<{ configured: boolean; card: Clear
   const r = await apiRequest<{ configured: boolean; card: ClearCard | null }>('/api/cards');
   return r.error || !r.data ? { configured: false, card: null } : r.data;
 }
-export async function activateClearCard(input: { walletAddress: string; chainId: number }): Promise<{ status: string; card: ClearCard | null } | null> {
+/** The Bridge/Stripe card's own activation. Same contract as the Lithic one, for the same reason. */
+export async function activateClearCard(
+  input: { walletAddress: string; chainId: number },
+): Promise<CardResult<{ status: string; card: ClearCard | null }>> {
   const r = await apiRequest<{ status: string; card: ClearCard | null }>('/api/cards/activate', { method: 'POST', body: JSON.stringify(input) });
-  return r.error || !r.data ? null : r.data;
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data ?? null };
 }
 export async function createCardEphemeralKey(input: { nonce: string; apiVersion: string }): Promise<{ secret: string; cardId: string } | null> {
   const r = await apiRequest<{ secret: string; cardId: string }>('/api/cards/ephemeral-key', { method: 'POST', body: JSON.stringify(input) });
   return r.error || !r.data ? null : r.data;
 }
-export async function freezeClearCard(active: boolean): Promise<ClearCard | null> {
+export async function freezeClearCard(active: boolean): Promise<CardResult<ClearCard>> {
   const r = await apiRequest<{ card: ClearCard }>('/api/cards/freeze', { method: 'POST', body: JSON.stringify({ active }) });
-  return r.error || !r.data ? null : r.data.card;
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.card ?? null };
 }
 
 export async function getNotifications(wallet: string): Promise<{ notifications: ApiNotification[]; unreadCount: number }> {

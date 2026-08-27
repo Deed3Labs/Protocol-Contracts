@@ -37,10 +37,28 @@ export default function CardRoute() {
 
   useEffect(() => {
     let cancelled = false;
-    void getCards().then((cards) => {
+    void getCards().then(({ value, error, unavailable }) => {
       if (cancelled) return;
+      /*
+       * A failed read is not an empty account.
+       *
+       * This page renders "no cards" as an **Activate card** button, and getCards used to answer
+       * `[]` for both — so a member who has a card was invited to create one whenever the read
+       * hiccuped. That is not a missing message, it is the page asserting something false about
+       * their account, and it is the worse half of this bug.
+       *
+       * `loaded` therefore stays false on failure: the placeholder holds, and the notice explains.
+       */
+      if (error) {
+        setNotice(
+          unavailable
+            ? "Cards aren't switched on yet. Nothing to do — we'll enable this for your account."
+            : "Couldn't load your card just now. It hasn't changed — pull to refresh in a moment.",
+        );
+        return;
+      }
       // The newest card is the one on screen. Multiple cards are a later surface.
-      setCard(cards[0] ?? null);
+      setCard(value?.[0] ?? null);
       setLoaded(true);
     });
     return () => {
@@ -63,7 +81,7 @@ export default function CardRoute() {
     setBusy(true);
     setNotice(null);
     try {
-      const { card: created, error, unavailable } = await createCard('Clear card');
+      const { value: created, error, unavailable } = await createCard('Clear card');
       if (created) {
         setCard(created);
         return;
@@ -83,12 +101,27 @@ export default function CardRoute() {
       if (!card) return;
       setBusy(true);
       try {
-        const updated = await setCardFrozen(card.token, frozen);
-        // Only trust the server's answer. A freeze that failed must not leave the card looking
-        // frozen — a member who thinks their card is dead and it is not is worse off than one who
-        // can see it failed and tries again.
-        if (updated) setCard(updated);
-        else setCard({ ...card });
+        const { value: updated, error, unavailable } = await setCardFrozen(card.token, frozen);
+        /*
+         * Only trust the server's answer. A freeze that failed must not leave the card looking
+         * frozen — a member who believes their card is dead when it is not is worse off than one
+         * who can see it failed and tries again.
+         *
+         * Which is exactly why the revert now comes with words. `setCard({ ...card })` sprang the
+         * toggle back and said nothing, so the two possible readings — "it failed" and "I misclicked"
+         * — looked identical, and the safer state was communicated as an accident.
+         */
+        if (updated) {
+          setCard(updated);
+          setNotice(null);
+          return;
+        }
+        setCard({ ...card });
+        setNotice(
+          unavailable
+            ? "Cards aren't switched on yet, so there's nothing to freeze."
+            : `Couldn't ${frozen ? 'freeze' : 'unfreeze'} your card. ${error ?? 'Please try again.'}`,
+        );
       } finally {
         setBusy(false);
       }
