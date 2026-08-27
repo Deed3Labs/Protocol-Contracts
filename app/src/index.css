@@ -218,6 +218,17 @@
      member's own money is the cheapest thing there is. Reading the bar left to right is reading the
      order it spends in, without a word of explanation. */
   --tier-cash: 10 79 62; /* #0A4F3E — the member's own money */
+
+  /* Merchant categories, for the Card page's month bar and its transaction avatars. A different
+     scale from the tiers on purpose: a tier is what PAID, a category is what it was FOR, and
+     sharing a palette between them would suggest a relationship that does not exist. */
+  --cat-grocery: 63 125 107; /* #3F7D6B */
+  --cat-fuel: 168 118 44; /* #A8762C */
+  --cat-dining: 127 119 221; /* #7F77DD */
+  --cat-bills: 138 135 128; /* #8A8780 */
+  --cat-shopping: 90 110 150; /* #5A6E96 */
+  --cat-transport: 120 90 140; /* #785A8C */
+  --cat-other: 180 178 169; /* #B4B2A9 */
   --tier-savings: 15 110 86; /* #0F6E56 — savings-backed, free */
   --tier-asset: 29 158 117; /* #1D9E75 — asset-backed */
   --tier-income: 186 117 23; /* #BA7517 — income-backed */

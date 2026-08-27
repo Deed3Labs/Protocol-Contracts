@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from 'express';
+import { listCardTransactions } from '../services/lithic/cardTransactionsService.js';
 import { isConfigured } from '../services/lithic/lithicClient.js';
 import { cardStore } from '../services/lithic/cardStore.js';
 import { cardService } from '../services/lithic/cardService.js';
@@ -46,6 +47,32 @@ router.get('/', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[cards] list failed', error);
     return res.status(500).json({ error: 'Failed to load cards' });
+  }
+});
+
+
+/**
+ * GET /api/lithic/cards/transactions — what this member's cards have spent.
+ *
+ * Read from our own approved authorizations rather than fetched from Lithic: every approval already
+ * passes through the Auth Stream handler, which records the amount, the merchant object and which
+ * tiers paid. Asking Lithic again for something we decided ourselves would be slower, rate-limited,
+ * and no more true.
+ *
+ * Registered before `/:token` so a card token named "transactions" cannot shadow it — the tokens
+ * are UUIDs and could not, but route order that depends on that is a trap for the next person.
+ */
+router.get('/transactions', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+  if (!isConfigured()) return res.json({ transactions: [] });
+
+  try {
+    const limit = Number.parseInt(String(req.query.limit ?? '50'), 10);
+    res.json({ transactions: await listCardTransactions(wallet, Number.isFinite(limit) ? limit : 50) });
+  } catch (error) {
+    console.error('[lithic] card transactions read failed:', error instanceof Error ? error.message : error);
+    res.status(502).json({ error: 'Could not read card transactions' });
   }
 });
 

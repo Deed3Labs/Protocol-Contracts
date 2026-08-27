@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
-import { createCard, getCards, setCardFrozen, getCredit, type CreditState, type MemberCard } from '@/utils/apiClient';
+import { createCard, getCards, setCardFrozen, getCredit, getCardTransactions, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
+import { categoryForMcc } from '@/lib/mccCategory';
+import type { ActivityRow } from '@/lib/clearModel';
 import { onChainStale } from '@/lib/chainStale';
 import { toCreditTiers } from '@/lib/creditMapping';
 import { useAppKitAccount } from '@/lib/walletCompat';
@@ -41,6 +43,24 @@ export default function CardRoute() {
   const identity = useIdentity();
   const { address } = useAppKitAccount();
   const [credit, setCredit] = useState<CreditState | null>(null);
+  const [spend, setSpend] = useState<CardTransaction[] | null>(null);
+
+  /*
+   * What the card spent, from our own approved authorizations.
+   *
+   * The list was hardcoded to `[]` for every real card, so a member with a card saw "no card
+   * spending yet" forever. Nothing needed fetching from Lithic: every approval already passes
+   * through our Auth Stream handler, which writes the amount, the merchant and which tiers paid.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    void getCardTransactions().then(({ value }) => {
+      if (!cancelled) setSpend(value ?? []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /*
    * The tiers behind "Spending from", read the same way Home reads them and re-read on the same
@@ -170,6 +190,35 @@ export default function CardRoute() {
     [card],
   );
 
+
+  /*
+   * An authorization becomes a row.
+   *
+   * `paidFromLabel` comes from the draws the waterfall actually made, so the source shown beside a
+   * purchase is the tier that paid it rather than a guess: one draw means one tier, several means
+   * it crossed from cash into credit and the credit half is what a member needs to see.
+   */
+  const cardRows: ActivityRow[] = (spend ?? []).map((tx) => {
+    const credited = tx.draws.filter((draw) => draw.source !== 'cash');
+    return {
+      id: tx.id,
+      name: tx.name,
+      date: new Date(tx.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      datetime: new Date(tx.at).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+      }),
+      // The source IS the funding, which is what the row's chip reads — cash or the credit it
+      // crossed into. Not 'card': every row on this page came from a card, so it would say nothing.
+      source: credited.length === 0 ? 'cash' : 'credit',
+      kind: 'spending',
+      amount: -tx.amountCents / 100,
+      category: categoryForMcc(tx.mcc),
+      location: [tx.city, tx.state].filter(Boolean).join(', ') || undefined,
+      paidFromLabel: credited.length === 0 ? 'Cash' : 'Credit',
+      cardLast4: card?.lastFour ?? undefined,
+    };
+  });
+
   // Until the first load returns, show the placeholder rather than an un-activated card: flashing
   // "Activate card" at someone who already has one reads as their card having vanished.
   const data = !loaded
@@ -182,8 +231,13 @@ export default function CardRoute() {
         variant: (card?.type === 'PHYSICAL' ? 'physical' : 'virtual') as 'physical' | 'virtual',
         // Real once the card can settle. Showing placeholder spending against a real card would be
         // inventing transactions that never happened.
-        transactions: card ? [] : CARD_DAY_ONE.transactions,
-        periodTotal: card ? 0 : CARD_DAY_ONE.periodTotal,
+        ...(card
+          ? {
+              transactions: cardRows,
+              // The total is the rows, not a separate figure that could disagree with them.
+              periodTotal: cardRows.reduce((sum, row) => sum + (row.amount < 0 ? -row.amount : 0), 0),
+            }
+          : { transactions: CARD_DAY_ONE.transactions, periodTotal: CARD_DAY_ONE.periodTotal }),
         /*
          * The credit half of "Spending from", from the contracts.
          *

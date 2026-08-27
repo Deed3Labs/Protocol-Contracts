@@ -1,3 +1,4 @@
+import type { MerchantCategory } from './mccCategory';
 /**
  * The member app's money model — design spec §3, "Core display rules".
  *
@@ -303,6 +304,14 @@ export interface ActivityRow {
   rate?: string;
   cardLast4?: string;
   status?: string;
+  /*
+   * What kind of purchase this was, from the merchant category code the network sent.
+   *
+   * Optional because most rows do not have one and never will: a transfer, a savings deposit and a
+   * bond purchase have no merchant. Only card spending carries an MCC, which is why the category
+   * bar lives on the Card page and not on Activity.
+   */
+  category?: MerchantCategory;
 }
 
 /** Where a flow draws the money from, and what's in it. */
