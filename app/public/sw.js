@@ -90,15 +90,61 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Strategy 4: HTML - Network First with cache fallback
-  if (isHTML(url)) {
-    event.respondWith(networkFirst(request, STATIC_CACHE));
+  /*
+   * Strategy 4: page loads — network first, app shell as the fallback.
+   *
+   * Keyed on `request.mode === 'navigate'`, not on the path. `isHTML` only ever matched `/` and
+   * `*.html`, so every route this app actually has — /card, /savings, /earn, /send, /inbox — missed
+   * it and fell through to the bare `fetch(request)` below: no cache fallback, and no catch, so a
+   * failed navigation surfaced as
+   *
+   *   The FetchEvent for "/card" resulted in a network error response: the promise was rejected.
+   *
+   * An installed PWA that can only open its home page offline is not offline-capable, and a
+   * rejected navigation is a blank tab rather than a stale page.
+   *
+   * The shell is what gets served, because this is a single-page app: index.html boots the router
+   * and the router knows what /card is.
+   */
+  if (request.mode === 'navigate' || isHTML(url)) {
+    event.respondWith(navigation(request));
     return;
   }
 
-  // Default: Network only
-  event.respondWith(fetch(request));
+  // Default: network only — but never an unhandled rejection. A rejected respondWith is a network
+  // error page; an error Response at least says what happened.
+  event.respondWith(
+    fetch(request).catch(
+      () => new Response('Offline', { status: 503, statusText: 'Offline', headers: { 'Content-Type': 'text/plain' } }),
+    ),
+  );
 });
+
+/**
+ * A page load: the network's answer if there is one, otherwise the cached shell.
+ *
+ * Deliberately not `networkFirst`, whose offline fallback is a JSON 503 — correct for an API call
+ * and useless for a navigation, where the browser would render the JSON as the page.
+ */
+async function navigation(request) {
+  const cache = await caches.open(STATIC_CACHE);
+  try {
+    const response = await fetch(request);
+    // Only the shell is worth keeping. Caching every route under its own URL would fill the cache
+    // with copies of one document.
+    if (response.ok && new URL(request.url).pathname === '/') {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    const shell = (await cache.match('/index.html')) || (await cache.match('/'));
+    if (shell) return shell;
+    return new Response(
+      '<!doctype html><meta charset="utf-8"><title>Offline</title><p>You are offline.',
+      { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+    );
+  }
+}
 
 // Cache First Strategy
 async function cacheFirst(request, cacheName) {
@@ -220,6 +266,11 @@ function isPlaidAPI(url) {
   return url.pathname.startsWith('/api/plaid/');
 }
 
+/*
+ * Only for requests that are not navigations — a navigation is caught by `request.mode` above,
+ * which is what a single-page app's routes actually look like. This stays for the handful of
+ * direct .html fetches.
+ */
 function isHTML(url) {
   return url.pathname.endsWith('.html') || url.pathname === '/';
 }

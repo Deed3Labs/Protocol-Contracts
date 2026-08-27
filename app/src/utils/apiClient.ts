@@ -1941,12 +1941,29 @@ export async function getCards(): Promise<MemberCard[]> {
 }
 
 /** Issue a virtual card — what "Activate card" does. */
-export async function createCard(memo?: string): Promise<MemberCard | null> {
+/**
+ * Issue a virtual card.
+ *
+ * Returns the reason on failure rather than collapsing to null. Null told the caller "no card" and
+ * nothing else, so a 503 from an unconfigured Lithic and a successful no-op were the same value —
+ * and pressing Activate produced no card, no error and no clue.
+ *
+ * `unavailable` separates "this isn't switched on yet" from "that didn't work", because a member
+ * should be told to wait in the first case and to try again in the second.
+ */
+export async function createCard(
+  memo?: string,
+): Promise<{ card: MemberCard | null; error?: string; unavailable?: boolean }> {
   const r = await apiRequest<{ card: MemberCard }>('/api/lithic/cards', {
     method: 'POST',
     body: JSON.stringify(memo ? { memo } : {}),
   });
-  return r.error ? null : (r.data?.card ?? null);
+  if (r.error) {
+    // 'Cards unavailable' is the server's word for LITHIC_API_KEY being unset — the integration is
+    // off, not broken, and the member has nothing to retry.
+    return { card: null, error: r.error, unavailable: /unavailable/i.test(r.error) };
+  }
+  return { card: r.data?.card ?? null };
 }
 
 export async function setCardFrozen(token: string, frozen: boolean): Promise<MemberCard | null> {
