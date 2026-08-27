@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Snowflake, Sun } from 'lucide-react';
+import { Snowflake, Sun, Eye, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ClearCardFace from '@/components/clear/ClearCardFace';
 import { CompositionBar, LegendRow } from '@/components/clear/CompositionBar';
@@ -29,6 +29,8 @@ export default function CardPage({
   onToggleFreeze,
   busy = false,
   notice = null,
+  onAddToWallet,
+  onAddCard,
 }: {
   data?: CardData;
   /** Issues the card. Absent in the preview harness, where the page stands alone. */
@@ -37,12 +39,15 @@ export default function CardPage({
   busy?: boolean;
   /** Why the last action did not do what it looked like it would. Absent when nothing went wrong. */
   notice?: string | null;
+  onAddToWallet?: () => void;
+  onAddCard?: () => void;
 }) {
   const [frozen, setFrozen] = useState(data.frozen);
-  const [variant, setVariant] = useState<CardData['variant']>(data.variant);
+
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
-  const card = { ...data, frozen, variant };
+  const card = { ...data, frozen };
 
   // Follow the server once it answers. The toggle below moves immediately so the card reads as
   // responsive, but the server is what decides — and if the freeze failed, the card must not go on
@@ -51,46 +56,145 @@ export default function CardPage({
     setFrozen(data.frozen);
   }, [data.frozen]);
 
-  // One account, two ways to present it: the plastic in a wallet and the number
-  // you paste into a checkout. Same limits, same controls, same transactions.
-  const variantToggle = card.activated && (
-    <div className="grid grid-cols-2 gap-2">
-      {(['physical', 'virtual'] as const).map((v) => (
-        <Button
-          key={v}
-          variant="clear"
-          size="xs"
-          aria-pressed={variant === v}
-          onClick={() => setVariant(v)}
-          className={cn('capitalize', variant === v && 'border-tier-boost text-tier-boost-fg')}
+  /*
+   * Two cards stack rather than sitting in a row.
+   *
+   * The one behind is scaled and darkened — a wallet, not a gallery — and it makes the swipe
+   * affordance obvious without a hint. It also hides its number: only the front card exposes a PAN,
+   * which is both the honest reading of a wallet and one less thing on screen in a coffee shop.
+   */
+  const wallet = card.cards?.length ? card.cards : [];
+  const active = wallet[activeIndex] ?? wallet[0];
+  const faceCard = active
+    ? { ...card, variant: active.variant, last4: active.last4, frozen: active.frozen }
+    : card;
+
+  const stack = (
+    <div className="relative pt-2.5">
+      {wallet.length > 1 && (
+        <div
+          className="absolute left-1/2 top-0 z-0 w-[93%] -translate-x-1/2"
+          style={{ filter: 'brightness(.88) saturate(.9)' }}
+          aria-hidden
         >
-          {v}
-        </Button>
+          <ClearCardFace
+            behind
+            card={{ ...card, variant: wallet[(activeIndex + 1) % wallet.length].variant }}
+          />
+        </div>
+      )}
+      <div className="relative z-[1]">
+        <ClearCardFace card={faceCard} />
+      </div>
+    </div>
+  );
+
+  /*
+   * The pager: a line for where you are, dots for where you are not.
+   *
+   * Only drawn when there is more than one card. A pager under a single card is an affordance for
+   * something that cannot happen, and a member would try it.
+   */
+  const pager = wallet.length > 1 && (
+    <div className="my-3 flex justify-center gap-[5px]">
+      {wallet.map((c, i) => (
+        <button
+          key={c.id}
+          type="button"
+          aria-label={`Show ${c.variant} card ending ${c.last4}`}
+          aria-current={i === activeIndex}
+          onClick={() => setActiveIndex(i)}
+          className={cn(
+            'h-[5px] rounded-full transition-all',
+            i === activeIndex ? 'w-[17px] bg-foreground' : 'w-[5px] bg-border-strong',
+          )}
+        />
       ))}
     </div>
   );
 
-  const actions = card.activated ? (
-    <div className="flex gap-2">
-      <Button
-        variant="clear"
-        size="xs"
-        className="flex-1"
-        disabled={busy}
-        onClick={() => {
-          const next = !frozen;
-          setFrozen(next);
-          onToggleFreeze?.(next);
-        }}
-      >
-        {frozen ? <Sun className="h-3.5 w-3.5" strokeWidth={1.75} /> : <Snowflake className="h-3.5 w-3.5" strokeWidth={1.75} />}
-        {frozen ? 'Unfreeze' : 'Freeze'}
-      </Button>
-      <Button variant="clear" size="xs" className="flex-1" onClick={() => setDetailsOpen(true)}>
-        Details
-      </Button>
+  /*
+   * Three tiles, which are the only controls on the page — so they should not look like the
+   * readouts around them. Freeze stays neutral, because it is the one that undoes something and
+   * should not read as a suggestion.
+   */
+  const tiles = card.activated && (
+    <div className="mb-4 grid grid-cols-3 gap-[7px]">
+      {[
+        { key: 'details', label: 'Show details', icon: Eye, tinted: true, onClick: () => setDetailsOpen(true), soon: false },
+        {
+          key: 'freeze',
+          label: frozen ? 'Unfreeze' : 'Freeze',
+          icon: frozen ? Sun : Snowflake,
+          tinted: false,
+          onClick: () => {
+            const next = !frozen;
+            setFrozen(next);
+            onToggleFreeze?.(next);
+          },
+        },
+        /*
+         * Apple Wallet provisioning is not built — it needs a push-provisioning payload from the
+         * issuer, which is its own piece of work. Shown disabled rather than hidden: the member
+         * should know the card can go in their wallet, and a button that looks live and does
+         * nothing is the failure this page had twice already.
+         */
+        { key: 'wallet', label: 'Wallet', icon: CreditCard, tinted: true, onClick: onAddToWallet, soon: !onAddToWallet },
+      ].map((tile) => (
+        <button
+          key={tile.key}
+          type="button"
+          disabled={busy || tile.soon}
+          title={tile.soon ? 'Coming soon' : undefined}
+          onClick={tile.onClick}
+          className={cn(
+            'rounded-xl border border-border px-2 py-3.5 text-center transition-colors disabled:opacity-60',
+            tile.tinted ? 'bg-tier-boost/10 text-tier-boost-fg' : 'bg-card text-foreground',
+          )}
+        >
+          <tile.icon className="mx-auto h-[17px] w-[17px]" strokeWidth={1.7} />
+          <p className="mt-1.5 text-[11.5px]">{tile.label}</p>
+        </button>
+      ))}
     </div>
-  ) : (
+  );
+
+  /** The list, where the masked numbers are told apart by where each card lives. */
+  const cardList = wallet.length > 0 && (
+    <>
+      <p className="mb-2 text-[10px] uppercase tracking-[.5px] text-muted-foreground">Your cards</p>
+      <div className="rounded-xl border border-border px-4">
+        {wallet.map((c, i) => (
+          <div
+            key={c.id}
+            className={cn(
+              'flex items-center justify-between py-3',
+              i < wallet.length - 1 && 'border-b-[0.5px] border-border',
+            )}
+          >
+            <div className="min-w-0">
+              <p className="truncate text-[13.5px] capitalize">
+                {c.variant} · ••••{c.last4}
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">{c.where}</p>
+            </div>
+            <span
+              className={cn(
+                'shrink-0 rounded-full border px-2 py-0.5 text-[10.5px]',
+                c.frozen
+                  ? 'border-border text-muted-foreground'
+                  : 'border-tier-savings/40 bg-tier-savings/10 text-tier-savings-fg',
+              )}
+            >
+              {c.frozen ? 'Frozen' : 'Active'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+
+  const activate = !card.activated && (
     <div className="space-y-2">
       <Button variant="clear" size="xs" className="w-full" disabled={busy} onClick={onActivate}>
         {busy ? 'Activating…' : 'Activate card'}
@@ -158,12 +262,6 @@ export default function CardPage({
     </div>
   );
 
-  const caption = (
-    <p className="text-[11px] leading-relaxed text-muted-foreground">
-      Spends your cash first, then your credit line. No transfers needed.
-    </p>
-  );
-
 
   /*
    * The same bar as Spending from, doing a different job.
@@ -204,63 +302,83 @@ export default function CardPage({
   );
 
   const transactions = (
-    <>
-      <div className="mb-2.5 flex items-baseline justify-between gap-3">
-        <div>
-          <p className="mb-0.5 text-[11px] text-muted-foreground">{card.period || 'This month'}</p>
-          <p className="m-0 text-[25px] font-medium tracking-[-.6px]">{money(card.periodTotal)}</p>
-        </div>
-        {/*
-          * The count is the context that makes the figure mean something, and there is no room for
-          * it on a phone — so it appears at width rather than being abbreviated onto one.
-          */}
+    <div className="rounded-xl border border-border p-4">
+      <div className="mb-3 flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-[.5px] text-muted-foreground">On this card</span>
         {card.transactions.length > 0 && (
-          <p className="hidden text-xs text-muted-foreground lg:block">
+          <span className="text-[11.5px] text-muted-foreground">
             {card.transactions.length} {card.transactions.length === 1 ? 'purchase' : 'purchases'}
-          </p>
+          </span>
         )}
       </div>
-      {categoryBar}
-      <TransactionRows
-        showDate
-        onSelect={setSelected}
-        rows={card.transactions}
-        emptyMessage={
-          card.activated
-            ? 'No card spending yet.'
-            : 'Activate your card and your spending will show up here.'
-        }
-      />
-    </>
+
+      {card.transactions.length === 0 ? (
+        /*
+         * An empty state that says what to expect, not that there is nothing.
+         *
+         * "No card spending yet." is the truth and it is useless: it reads as a dead panel and
+         * leaves a member wondering whether the page is broken, whether the card works, or whether
+         * they are meant to do something. Each of the three states below answers exactly one
+         * question, which is the one the member actually has at that moment.
+         */
+        <div className="py-2">
+          <p className="text-[13px] text-foreground">
+            {!card.activated
+              ? 'Nothing here yet'
+              : frozen
+                ? 'Frozen, so nothing new will land'
+                : 'Ready when you are'}
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
+            {!card.activated
+              ? 'Activate your card and everything you buy with it shows up here — what you spent, where, and which part came from your own money.'
+              : frozen
+                ? 'Unfreeze the card and purchases start appearing here again. Anything already spent stays where it was.'
+                : 'Tap or paste your card anywhere and the purchase lands here within seconds, split by what paid for it.'}
+          </p>
+        </div>
+      ) : (
+        <>
+          <p className="mb-0.5 text-[11px] text-muted-foreground">{card.period || 'This month'}</p>
+          <p className="m-0 mb-3 text-[25px] font-medium tracking-[-.6px]">{money(card.periodTotal)}</p>
+          {categoryBar}
+          <TransactionRows showDate onSelect={setSelected} rows={card.transactions} emptyMessage="" />
+        </>
+      )}
+    </div>
   );
 
   return (
     <>
-      {/* Desktop: the card column takes ~31% of the content width — the spec's
-          250px was against an 840px reference frame, so it has to scale with the
-          container rather than stay fixed, or the card shrinks to a stamp on a
-          wide screen. */}
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,2.2fr)] lg:items-start lg:gap-8">
-        <div className="flex flex-col gap-3">
-          <ClearCardFace card={card} />
-          {variantToggle}
-          {actions}
-          {/* Mobile reads the card, then what it spent, then how it's governed —
-              so the controls come after the list rather than before it. */}
-          <div className="mt-3 lg:hidden">{spendingFrom}</div>
-          <div className="mt-3 lg:hidden">{transactions}</div>
-          {card.activated && <CardControlsCard card={card} />}
-          {card.activated && (
-            <Button variant="clear" size="sm" className="w-full text-xs">
-              Add to Apple Wallet
+      <div className="lg:grid lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-start lg:gap-6">
+        <div>
+          {stack}
+          {pager}
+          {/* One card: the pager is absent, so the tiles need the space back. */}
+          <div className={wallet.length > 1 ? '' : 'mt-3.5'}>{tiles}</div>
+          {activate}
+          {cardList}
+          {card.activated && onAddCard && (
+            <Button variant="clear" size="xs" className="mt-2.5 w-full text-xs" onClick={onAddCard}>
+              Add a virtual card
             </Button>
           )}
-          <div className="lg:hidden">{caption}</div>
+          {card.activated && <div className="mt-4"><CardControlsCard card={card} /></div>}
+          {/* Mobile reads the card, its controls, then the two readouts. */}
+          <div className="mt-4 flex flex-col gap-4 lg:hidden">
+            {spendingFrom}
+            {transactions}
+          </div>
+          <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground lg:hidden">
+            Spends your cash first, then your credit line. No transfers needed.
+          </p>
         </div>
         <div className="hidden lg:flex lg:flex-col lg:gap-4">
           {spendingFrom}
           {transactions}
-          <div className="mt-3">{caption}</div>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            Spends your cash first, then your credit line. No transfers needed.
+          </p>
         </div>
       </div>
 

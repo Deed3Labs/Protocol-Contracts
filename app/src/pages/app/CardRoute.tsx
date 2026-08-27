@@ -36,7 +36,8 @@ import { useAppKitAccount } from '@/lib/walletCompat';
  * works rather than what looks finished. The controls are real; the money is not there yet.
  */
 export default function CardRoute() {
-  const [card, setCard] = useState<MemberCard | null>(null);
+  const [cards, setCards] = useState<MemberCard[]>([]);
+  const card = cards[0] ?? null;
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -104,8 +105,8 @@ export default function CardRoute() {
         );
         return;
       }
-      // The newest card is the one on screen. Multiple cards are a later surface.
-      setCard(value?.[0] ?? null);
+      // The newest card is the one on the face; the rest sit behind it and in the list.
+      setCards(value ?? []);
       setLoaded(true);
     });
     return () => {
@@ -130,7 +131,7 @@ export default function CardRoute() {
     try {
       const { value: created, error, unavailable, needsSetup } = await createCard('Clear card');
       if (created) {
-        setCard(created);
+        setCards((prev) => [created, ...prev]);
         return;
       }
       /*
@@ -173,11 +174,11 @@ export default function CardRoute() {
          * — looked identical, and the safer state was communicated as an accident.
          */
         if (updated) {
-          setCard(updated);
+          setCards((prev) => prev.map((c) => (c.token === updated.token ? updated : c)));
           setNotice(null);
           return;
         }
-        setCard({ ...card });
+        setCards((prev) => [...prev]);
         setNotice(
           unavailable
             ? "Cards aren't switched on yet, so there's nothing to freeze."
@@ -226,6 +227,20 @@ export default function CardRoute() {
     : {
         ...CARD_DAY_ONE,
         activated: Boolean(card),
+        /*
+         * Every card, for the stack and the list.
+         *
+         * "Where" is what distinguishes them in a list where the number is masked: a plastic card
+         * is in a wallet, a virtual one lives in Apple Pay and online. That is the useful
+         * difference, and it is more use than repeating the type twice.
+         */
+        cards: cards.map((c) => ({
+          id: c.token,
+          variant: (c.type === 'PHYSICAL' ? 'physical' : 'virtual') as 'physical' | 'virtual',
+          last4: c.lastFour ?? '',
+          frozen: c.frozen,
+          where: c.type === 'PHYSICAL' ? 'In your wallet' : 'Apple Pay, online',
+        })),
         frozen: card?.frozen ?? false,
         last4: card?.lastFour ?? '',
         variant: (card?.type === 'PHYSICAL' ? 'physical' : 'virtual') as 'physical' | 'virtual',
@@ -256,5 +271,16 @@ export default function CardRoute() {
           : {}),
       };
 
-  return <CardPage data={data} onActivate={activate} onToggleFreeze={toggleFreeze} busy={busy} notice={notice} />;
+  return (
+    <CardPage
+      data={data}
+      onActivate={activate}
+      onToggleFreeze={toggleFreeze}
+      busy={busy}
+      notice={notice}
+      // Same call as activation — issuing a second virtual card is issuing a card. Passing the
+      // handler is what makes the button appear at all, so it cannot render as a dead control.
+      onAddCard={activate}
+    />
+  );
 }

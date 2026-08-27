@@ -1038,7 +1038,30 @@ export interface CardControl {
   on: boolean;
 }
 
+/**
+ * One card in the wallet, as the list and the stack need it.
+ *
+ * Deliberately not the whole CardData: the cards behind the front one show no number and no chip,
+ * so carrying their PAN into the component that draws them would be carrying something it must not
+ * render — the honest reading of a wallet, and one less thing on screen in a coffee shop.
+ */
+export interface CardSummary {
+  id: string;
+  variant: 'physical' | 'virtual';
+  last4: string;
+  frozen: boolean;
+  /** Where this card lives, e.g. "In your wallet", "Apple Pay, online". */
+  where: string;
+}
+
 export interface CardData {
+  /**
+   * Every card the member holds, newest first. The first is the one on the face.
+   *
+   * Empty or one-length is the ordinary case and the stack collapses to a single card — a pager
+   * under one card would be an affordance for something that cannot happen.
+   */
+  cards?: CardSummary[];
   /** Before activation there's no PAN to show and nothing to freeze. */
   activated: boolean;
   last4: string;
