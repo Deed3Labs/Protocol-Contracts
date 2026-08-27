@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
 import { createCard, getCards, setCardFrozen, type MemberCard } from '@/utils/apiClient';
@@ -34,6 +35,7 @@ export default function CardRoute() {
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const identity = useIdentity();
 
   useEffect(() => {
     let cancelled = false;
@@ -86,18 +88,29 @@ export default function CardRoute() {
         setCard(created);
         return;
       }
+      /*
+       * "Not provisioned" is now something the member can act on.
+       *
+       * It used to be a dead end, because there was no way to become provisioned. There is one now,
+       * and this is the third entry point the design names — card activation, for a member who
+       * saved first and never borrowed. Same modal as Settings; the closing screen differs because
+       * the status differs, not because the caller does.
+       */
+      if (needsSetup && identity.status.actionable) {
+        identity.openVerification();
+        return;
+      }
       setNotice(
         unavailable || needsSetup
-          ? // Both are "not yet", from the member's side. The difference between an unset API key
-            // and an unbuilt KYC step matters to us and not at all to them; what matters to them is
-            // that pressing this again will not help.
+          ? // An unset API key is not something a member can do anything about, and the difference
+            // between that and an unbuilt step matters to us and not at all to them.
             "Card setup isn't finished for your account yet. Nothing to do here — we'll let you know when it's ready."
           : `That didn't go through. ${error ?? 'Please try again.'}`,
       );
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [identity]);
 
   const toggleFreeze = useCallback(
     async (frozen: boolean) => {

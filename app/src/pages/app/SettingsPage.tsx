@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { useIdentity } from '@/context/IdentityContext';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Copy, CircleCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -77,6 +78,7 @@ export default function SettingsPage({
 
   const [accelerationOpen, setAccelerationOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const verification = useIdentity();
   const [devicesOpen, setDevicesOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   /** A drill-in below the current section, on either layout. */
@@ -101,15 +103,34 @@ export default function SettingsPage({
       <SettingRows
         rows={[
           { label: 'Legal name', value: profile.legalName },
-          { label: 'Date of birth', value: profile.dateOfBirth },
-          { label: 'Home address', value: profile.address },
+          /*
+           * One identity row, in the order the reference puts it.
+           *
+           * There used to be two answers to "am I verified" — Bridge's KycModal and Lithic's
+           * provisioning — and Settings was where they would have appeared side by side meaning
+           * different things. This reads the single status; see lib/identityStatus.ts.
+           */
+          {
+            label: 'Identity',
+            value: verification.status.label,
+            ...(verification.status.actionable ? { onSelect: verification.openVerification } : {}),
+          },
           { label: 'Phone', value: profile.phone, onSelect: () => setPhoneOpen(true) },
           { label: 'Email', value: profile.email },
+          { label: 'Home address', value: profile.address },
         ]}
       />
+      {/*
+        * Date of birth is gone from this list on purpose.
+        *
+        * It rendered a hardcoded `••/••/1994` for everybody — a fabricated birth year presented as
+        * the member's own — and it could not be replaced with a real one: a date of birth is passed
+        * straight through to the card issuer and never kept, so there is nothing here to show.
+        */}
       <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
-        Name and date of birth are locked after identity verification. Contact support to correct
-        them.
+        Your legal name is locked after identity verification — contact support to correct it. Your
+        date of birth and social security number are sent to our card issuer and never kept by
+        Clear, so they are not shown here.
       </InfoBlock>
     </>
   );

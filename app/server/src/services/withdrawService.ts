@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { getAccountHolder } from './plaidIdentityService.js';
 import { createHash } from 'crypto';
 import { bridge } from './billerPayoutService.js';
 import { resolveCustomerForEmails } from './bridgeCustomerService.js';
@@ -48,6 +49,7 @@ export interface WithdrawResult {
   depositAmount?: string;
 }
 
+
 /** Plaid Auth: account_number + routing_number + checking/savings for a linked account the user owns. */
 export async function resolveBankNumbers(
   wallet: string,
@@ -71,7 +73,21 @@ export async function resolveBankNumbers(
     const ach = resp.data.numbers?.ach?.find((n) => n.account_id === plaidAccountId);
     if (!ach) continue;
     const acct = resp.data.accounts?.find((a) => a.account_id === plaidAccountId);
-    const ownerName = resp.data.accounts?.length ? (acct?.name || 'Account holder') : 'Account holder';
+    /*
+     * The holder's name, not the account's.
+     *
+     * This read `acct.name`, which is Plaid's ACCOUNT NICKNAME — "TOTAL CHECKING", "Plaid Saving" —
+     * and sent it to Bridge as `account_owner_name`. Every ACH credit carried a product label where
+     * the recipient's legal name belongs. Banks match those, and Bridge has no way to know the
+     * difference.
+     *
+     * Identity is optional per institution, so the fallback is real rather than defensive. It is
+     * the old placeholder rather than the member's typed name: the private profile is encrypted and
+     * keyed by member, and reaching into it from a money path to guess at a name buys less than it
+     * costs. A generic placeholder is at least not a wrong name.
+     */
+    const holder = await getAccountHolder(wallet, plaidAccountId);
+    const ownerName = holder.legalName || 'Account holder';
     if (!ach.account || !ach.routing) return { error: 'This bank did not return account/routing numbers.' };
     // Bridge wants the real account type; Plaid's subtype tells us. Anything that isn't explicitly
     // savings (checking, money market, …) is treated as checking for ACH purposes.

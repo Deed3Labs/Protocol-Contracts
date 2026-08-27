@@ -13,6 +13,7 @@ import { ExternalAccountsProvider } from '@/context/ExternalAccountsContext';
 import { ContactsProvider } from '@/context/ContactsContext';
 import { PayProvider } from '@/context/PayContext';
 import { CreditProvider } from '@/context/CreditContext';
+import { IdentityProvider } from '@/context/IdentityContext';
 import { MoneyActionsProvider } from '@/context/MoneyActionsContext';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { useNotifications } from '@/context/ClearNotificationsContext';
@@ -87,6 +88,7 @@ export default function AppShell() {
       <ExternalAccountsProvider>
       <ContactsProvider>
       <PayProvider>
+      <IdentityProvider>
       <CreditProvider>
       <MoneyActionsProvider>
         <AppChrome trailing={<LiveHeaderActions />}>
@@ -97,6 +99,7 @@ export default function AppShell() {
         <XmtpModalHost />
       </MoneyActionsProvider>
       </CreditProvider>
+      </IdentityProvider>
       </PayProvider>
       </ContactsProvider>
       </ExternalAccountsProvider>

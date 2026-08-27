@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { redactError } from '../utils/redact.js';
+import { getAccountHolder } from '../services/plaidIdentityService.js';
 import {
   Configuration,
   PlaidApi,
@@ -291,6 +293,23 @@ router.post('/link-token', async (req: Request, res: Response) => {
     const optionalProducts: Products[] = [];
     if (process.env.PLAID_ENABLE_INVESTMENTS === 'true') optionalProducts.push(Products.Investments);
     if (process.env.PLAID_ENABLE_LIABILITIES === 'true') optionalProducts.push(Products.Liabilities);
+    /*
+     * Identity: the account holder's legal name and address, from the bank.
+     *
+     * Optional rather than required, deliberately. As a required product, Link refuses any
+     * institution that does not support Identity — trading the KYC screen's convenience for members
+     * who cannot connect their bank at all, which is the wrong way round. As optional it is
+     * initialised where available and simply absent elsewhere, and the verification screen already
+     * has the path for that: name and address are shown with "Not right? Change it", so a member at
+     * an institution without Identity types what a member at one confirms.
+     *
+     * It is what makes that screen two fields instead of six, and it fixes a second thing:
+     * withdrawals were sending Plaid's account NICKNAME to Bridge as the account owner's name.
+     *
+     * Billed per item. PLAID_DISABLE_IDENTITY=true turns it off, which costs the prefill and
+     * restores the old owner-name fallback.
+     */
+    if (process.env.PLAID_DISABLE_IDENTITY !== 'true') optionalProducts.push(Products.Identity);
     const baseRequest: LinkTokenCreateRequest = {
       client_name: 'Protocol Contracts',
       language: 'en',
@@ -2542,6 +2561,31 @@ router.post('/disconnect', async (req: Request, res: Response) => {
       error: 'Failed to disconnect',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+  }
+});
+
+/**
+ * GET /api/plaid/identity — the account holder, as the bank knows them.
+ *
+ * For the verification screen, which shows a name and address rather than asking for them. Nulls
+ * are the ordinary answer, not an error: Identity is an optional Plaid product, so an institution
+ * without it links fine and the screen falls back to asking.
+ *
+ * Deliberately not part of the KYC submission. The member confirms what is shown and the client
+ * sends it back, so a wrong record is corrected by a person rather than silently submitted.
+ */
+router.get('/identity', async (req: Request, res: Response) => {
+  const walletAddress = String((req.query.walletAddress as string) || '').toLowerCase();
+  if (!walletAddress) return res.status(400).json({ error: 'walletAddress is required' });
+  if (!requireWalletMatch(req, res, walletAddress, 'walletAddress')) return;
+
+  try {
+    const holder = await getAccountHolder(walletAddress);
+    res.json({ legalName: holder.legalName, address: holder.address });
+  } catch (error) {
+    console.error('[plaid] identity read failed:', redactError(error));
+    // A failure here costs a prefill, not the flow. The screen asks instead.
+    res.json({ legalName: null, address: null });
   }
 });
 
