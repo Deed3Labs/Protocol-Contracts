@@ -1911,6 +1911,47 @@ export interface LithicAccountResponse {
   deposit: { routingNumber: string; accountNumber: string; accountType: string } | null;
 }
 
+
+export interface BankIdentity {
+  legalName: string | null;
+  address: {
+    address1: string | null;
+    city: string | null;
+    state: string | null;
+    postalCode: string | null;
+    country: string | null;
+  } | null;
+}
+
+/**
+ * The account holder as the linked bank knows them, for the verification screen to show.
+ *
+ * Nulls are ordinary: Plaid Identity is optional per institution, so a member at a bank without it
+ * types what a member at one confirms.
+ */
+export async function getBankIdentity(wallet: string): Promise<BankIdentity> {
+  const r = await apiRequest<BankIdentity>(`/api/plaid/identity?walletAddress=${encodeURIComponent(wallet.toLowerCase())}`);
+  return r.error || !r.data ? { legalName: null, address: null } : r.data;
+}
+
+/** Submit identity details for verification. They pass through to the card issuer; we keep none. */
+export async function submitIdentity(input: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phoneNumber: string;
+  dob: string;
+  governmentId: string;
+  address: { address1: string; address2?: string; city: string; state: string; postal_code: string; country?: string };
+}): Promise<{ ok: boolean; status?: string; kycStatus?: string; error?: string }> {
+  const r = await apiRequest<{ status: string; kycStatus: string | null }>('/api/lithic/account', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (r.error) return { ok: false, error: r.error };
+  return { ok: true, status: r.data?.status, kycStatus: r.data?.kycStatus ?? undefined };
+}
+
 export async function getLithicAccount(): Promise<LithicAccountResponse | null> {
   const r = await apiRequest<LithicAccountResponse>('/api/lithic/account');
   return r.error ? null : (r.data ?? null);
