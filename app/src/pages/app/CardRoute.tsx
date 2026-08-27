@@ -81,14 +81,17 @@ export default function CardRoute() {
     setBusy(true);
     setNotice(null);
     try {
-      const { value: created, error, unavailable } = await createCard('Clear card');
+      const { value: created, error, unavailable, needsSetup } = await createCard('Clear card');
       if (created) {
         setCard(created);
         return;
       }
       setNotice(
-        unavailable
-          ? "Cards aren't switched on yet. Nothing to do — we'll enable this for your account."
+        unavailable || needsSetup
+          ? // Both are "not yet", from the member's side. The difference between an unset API key
+            // and an unbuilt KYC step matters to us and not at all to them; what matters to them is
+            // that pressing this again will not help.
+            "Card setup isn't finished for your account yet. Nothing to do here — we'll let you know when it's ready."
           : `That didn't go through. ${error ?? 'Please try again.'}`,
       );
     } finally {
