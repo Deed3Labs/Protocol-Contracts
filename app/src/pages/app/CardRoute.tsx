@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
-import { createCard, getCards, setCardFrozen, getCredit, getCardTransactions, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
+import { createCard, getCards, setCardFrozen, getCredit, getCardTransactions, getCardEmbedUrl, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
 import { categoryForMcc } from '@/lib/mccCategory';
 import type { ActivityRow } from '@/lib/clearModel';
 import { onChainStale } from '@/lib/chainStale';
@@ -281,6 +281,18 @@ export default function CardRoute() {
       // Same call as activation — issuing a second virtual card is issuing a card. Passing the
       // handler is what makes the button appear at all, so it cannot render as a dead control.
       onAddCard={activate}
+      /*
+       * The issuer's short-lived details URL.
+       *
+       * Fetched on demand and handed straight to the card face, never held here: it is a live link
+       * to a card number and a minute old is a minute too long. The PAN itself never enters this
+       * app at all — Lithic renders it inside its own frame.
+       */
+      onRevealDetails={async (cardId) => {
+        const token = cardId ?? cards[0]?.token;
+        if (!token) return undefined;
+        return (await getCardEmbedUrl(token)) ?? undefined;
+      }}
     />
   );
 }
