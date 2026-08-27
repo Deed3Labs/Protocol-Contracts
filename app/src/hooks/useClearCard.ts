@@ -12,6 +12,7 @@ export function useClearCard() {
   const [configured, setConfigured] = useState(false);
   const [card, setCard] = useState<ClearCard | null>(null);
   const [activating, setActivating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!isConnected) {
@@ -28,11 +29,30 @@ export function useClearCard() {
     void refresh();
   }, [refresh]);
 
+  /*
+   * Activate, and keep the reason if it did not.
+   *
+   * The result was discarded entirely: activation failed, `refresh()` found no card, the spinner
+   * stopped and the button sat there saying "Activate your Clear card" again. Identical to not
+   * having pressed it.
+   */
   const activate = useCallback(async () => {
     if (!address) return;
     setActivating(true);
+    setError(null);
     try {
-      await activateClearCard({ walletAddress: address, chainId: ACTIVE_CHAIN_ID });
+      const { value, error: reason, unavailable } = await activateClearCard({
+        walletAddress: address,
+        chainId: ACTIVE_CHAIN_ID,
+      });
+      if (!value) {
+        setError(
+          unavailable
+            ? "Cards aren't switched on yet. Nothing to do — we'll enable this for your account."
+            : `That didn't go through. ${reason ?? 'Please try again.'}`,
+        );
+        return;
+      }
       await refresh();
     } finally {
       setActivating(false);
@@ -43,6 +63,8 @@ export function useClearCard() {
     configured,
     card,
     activating,
+    /** Why the last activation did not happen. Null when nothing has gone wrong. */
+    error,
     activate,
     refresh,
     active: card?.status === 'active',

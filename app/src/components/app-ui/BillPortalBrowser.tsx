@@ -95,7 +95,7 @@ function LaunchScreen({ portal, onOpen }: { portal: BillPortal; onOpen: () => vo
  */
 function CardOverlay() {
   const [open, setOpen] = useState(false);
-  const { configured, card, active, hasCard, activate, activating } = useClearCard();
+  const { configured, card, active, hasCard, activate, activating, error } = useClearCard();
 
   return (
     <div className="border-t border-border bg-card px-3 py-2">
@@ -134,6 +134,12 @@ function CardOverlay() {
               <ShieldCheck className="h-4 w-4 shrink-0 text-amber-500" />
               Your Clear card is activating — card details to copy will appear here once it’s live.
             </div>
+          )}
+          {/* After whichever of the three states is showing, under the button that failed. */}
+          {error && (
+            <p role="status" className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              {error}
+            </p>
           )}
         </div>
       )}

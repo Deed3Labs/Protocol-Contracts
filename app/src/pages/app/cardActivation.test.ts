@@ -18,15 +18,18 @@ describe('a failed activation says so', () => {
 
   test('createCard returns the reason instead of collapsing to null', () => {
     const fn = client.slice(client.indexOf('export async function createCard'), client.indexOf('export async function setCardFrozen'));
-    expect(fn).toContain('error?: string');
+    expect(fn).toContain('CardResult<MemberCard>');
     expect(fn).not.toMatch(/return r\.error \? null/);
   });
 
   test('and separates "not switched on" from "that failed"', () => {
     // A member cannot retry their way out of an unconfigured integration, so telling them to try
-    // again would send them round a loop with no exit.
-    const fn = client.slice(client.indexOf('export async function createCard'), client.indexOf('export async function setCardFrozen'));
-    expect(fn).toContain('unavailable');
+    // again would send them round a loop with no exit. Now carried by the shared shape, so every
+    // card call gets the distinction rather than only the one that was reported.
+    const shape = client.slice(client.indexOf('export interface CardResult'), client.indexOf('export async function getCards'));
+    expect(shape).toContain('error?: string');
+    expect(shape).toContain('unavailable?: boolean');
+    expect(shape).toMatch(/unavailable: \/unavailable\/i\.test\(error\)/);
   });
 
   test('the route shows the outcome rather than discarding it', () => {
@@ -67,5 +70,58 @@ describe('the service worker can open a route offline', () => {
   test('the default branch cannot reject unhandled any more', () => {
     const fetchHandler = sw.slice(sw.indexOf("self.addEventListener('fetch'"), sw.indexOf('async function navigation'));
     expect(fetchHandler).toMatch(/fetch\(request\)\.catch\(/);
+  });
+});
+
+/*
+ * The sweep: every card call a member can trigger, held to the same contract.
+ *
+ * Activation was the one that got noticed, because it is the one with a button that visibly does
+ * nothing. The others fail the same way and are quieter about it.
+ */
+describe('no card path fails silently', () => {
+  const client = read('utils/apiClient.ts');
+  const route = read('pages/app/CardRoute.tsx');
+
+  function fn(name: string): string {
+    const start = client.indexOf(`export async function ${name}(`);
+    expect(start).toBeGreaterThan(-1);
+    return client.slice(start, client.indexOf('\nexport ', start + 10));
+  }
+
+  test('they all report through one shape, not four', () => {
+    for (const name of ['getCards', 'createCard', 'setCardFrozen', 'activateClearCard', 'freezeClearCard']) {
+      expect(fn(name)).toContain('CardResult<');
+    }
+  });
+
+  test('none of them collapse a failure into an empty success', () => {
+    for (const name of ['getCards', 'createCard', 'setCardFrozen', 'activateClearCard', 'freezeClearCard']) {
+      // `r.error ? [] :` and `r.error ? null :` are the two shapes that lost the reason.
+      expect(fn(name)).not.toMatch(/r\.error \?\s*(\[\]|null)/);
+    }
+  });
+
+  test('a failed read is not rendered as an empty account', () => {
+    // The page renders "no cards" as an Activate button, so `[]` on failure invited a member who
+    // has a card to create another one. `loaded` must stay false when the read failed.
+    const load = route.slice(route.indexOf('void getCards()'), route.indexOf('const activate'));
+    expect(load).toContain('if (error)');
+    expect(load.indexOf('if (error)')).toBeLessThan(load.indexOf('setLoaded(true)'));
+  });
+
+  test('a freeze that springs back explains itself', () => {
+    const toggle = route.slice(route.indexOf('const toggleFreeze'));
+    expect(toggle).toContain('setCard({ ...card })');
+    expect(toggle).toContain('setNotice(');
+  });
+
+  test('and the Bridge card activation keeps its reason too', () => {
+    const hook = readFileSync(join(import.meta.dirname, '..', '..', 'hooks', 'useClearCard.ts'), 'utf8');
+    expect(hook).toContain('setError(');
+    const portal = readFileSync(
+      join(import.meta.dirname, '..', '..', 'components', 'app-ui', 'BillPortalBrowser.tsx'), 'utf8',
+    );
+    expect(portal).toContain('role="status"');
   });
 });
