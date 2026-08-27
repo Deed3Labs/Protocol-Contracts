@@ -1096,6 +1096,8 @@ export interface CardData {
   creditAfterCash?: number;
   /** The tiers themselves, so the bar can show what the limit is made of. */
   tiers?: CreditTier[];
+  /** What backs the limit, for the breakdown this page links to. Absent until the tiers are read. */
+  backing?: LimitBacking;
   /** Card transactions only — Activity shows everything (spec §9). */
   transactions: ActivityRow[];
 }

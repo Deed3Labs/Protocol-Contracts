@@ -304,8 +304,16 @@ export async function getCardEmbedUrl(cardToken: string, expirationSeconds = 60)
   const targetOrigin = (process.env.APP_ORIGIN || process.env.FRONTEND_URL || '').trim();
   if (!targetOrigin) throw new Error('APP_ORIGIN must be set to embed card details');
 
+  /*
+   * `css` is a publicly reachable stylesheet URI, applied inside Lithic's frame.
+   *
+   * It is the only way to make the embed match the card it sits on: the markup is theirs and served
+   * from their origin, so nothing in our app can style it. Without this it renders as black serif
+   * text on a white sheet, which looked exactly like a bug pasted over the card face.
+   */
   return lithic.cards.getEmbedURL({
     token: cardToken,
+    css: `${targetOrigin.replace(/\/$/, '')}/card-embed.css`,
     expiration: new Date(Date.now() + expirationSeconds * 1000).toISOString(),
     target_origin: targetOrigin,
   });
