@@ -111,10 +111,18 @@ export default function CardPage({
    * is more than one and the pager says how many. Alternating angles rather than fanning one way,
    * so a wallet of three does not lean over.
    */
+  /*
+   * The cards behind peek ABOVE the front one, not below it.
+   *
+   * Offset downward they showed their bottom edge — which on this design carries nothing, so a
+   * second card read as a blank purple sliver and looked like a rendering fault. Their top edge is
+   * where the mark and the type tag are, and those are what make it obvious a second card is there
+   * at all.
+   */
   const DEPTH = [
     { rotate: 0, y: 0, scale: 1, brightness: 1 },
-    { rotate: -3.2, y: 12, scale: 0.955, brightness: 0.88 },
-    { rotate: 2.4, y: 22, scale: 0.915, brightness: 0.78 },
+    { rotate: -3.4, y: -14, scale: 0.955, brightness: 0.9 },
+    { rotate: 2.6, y: -25, scale: 0.915, brightness: 0.82 },
   ];
 
   const behindCards = wallet
@@ -124,14 +132,15 @@ export default function CardPage({
     .sort((a, b) => b.depth - a.depth);
 
   const stack = (
-    <div className="relative">
+    // Padded for the cards leaning out above; without it they clip against whatever is over them.
+    <div className="relative pt-7">
       {behindCards.map(({ c, depth }) => {
         const d = DEPTH[depth];
         return (
           <div
             key={c.id}
             aria-hidden
-            className="absolute inset-x-0 top-0"
+            className="absolute inset-x-0 top-7"
             style={{
               transform: `translateY(${d.y}px) scale(${d.scale}) rotate(${d.rotate}deg)`,
               filter: `brightness(${d.brightness}) saturate(.92)`,
@@ -188,8 +197,7 @@ export default function CardPage({
           embedUrl={embedUrl}
         />
       </div>
-      {/* The stack leans below the front card, so the column needs the room. */}
-      {behindCards.length > 0 && <div style={{ height: DEPTH[behindCards[0].depth].y }} />}
+
     </div>
   );
 
@@ -486,6 +494,21 @@ export default function CardPage({
     <>
       <div className="lg:grid lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:items-start lg:gap-6">
         <div>
+          {/*
+             * Mobile puts "Add a card" in the page header and drops the list below.
+             *
+             * The reference's reasoning, which holds: on a phone the swipe already tells you there
+             * is more than one, so a second list of the same cards is a screen's worth of
+             * repetition. The action is the part worth keeping, and the header is where it goes.
+             */}
+          {card.activated && onAddCard && (
+            <div className="mb-2 flex items-baseline justify-between lg:hidden">
+              <span className="text-[10px] uppercase tracking-[.5px] text-muted-foreground">Your cards</span>
+              <button type="button" className="text-[11.5px] text-tier-boost-fg underline" onClick={onAddCard}>
+                Add a card
+              </button>
+            </div>
+          )}
           {stack}
           {pager}
           {/* One card: the pager is absent, so the tiles need the space back. */}
@@ -493,7 +516,7 @@ export default function CardPage({
           {activate}
           <div className="hidden lg:block">{cardList}</div>
           {card.activated && onAddCard && (
-            <Button variant="clear" size="xs" className="mt-2.5 w-full text-xs" onClick={onAddCard}>
+            <Button variant="clear" size="xs" className="mt-2.5 hidden w-full text-xs lg:block" onClick={onAddCard}>
               Add a virtual card
             </Button>
           )}

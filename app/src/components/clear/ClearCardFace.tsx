@@ -144,6 +144,14 @@ export default function ClearCardFace({
   const shell = {
     aspectRatio: '1.5857',
     color: '#EDEAE3',
+    /*
+     * The radius lives here, not only on the faces.
+     *
+     * The faces are rounded and clipped, but the shadow is cast by THIS box — and without a radius
+     * it was cast around a rectangle, so four faint square corners sat just outside the card. A
+     * shadow does not inherit its shape from the children it sits behind.
+     */
+    borderRadius: 16,
     boxShadow:
       '0 1px 1px rgba(0,0,0,.10), 0 8px 20px -6px rgba(30,28,40,.40), 0 20px 44px -20px rgba(30,28,40,.32)',
   } as const;
@@ -168,25 +176,17 @@ export default function ClearCardFace({
         style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,.20), inset 0 -1px 0 rgba(0,0,0,.28), inset 0 0 0 .5px rgba(255,255,255,.07)' }}
       />
       <div className="relative z-[4] flex h-full flex-col">
-        {/*
-          * The countdown follows the card over.
-          *
-          * It is the front's tag slot that carries it while the card is face up, and losing it on
-          * the turn would leave a member watching a card number with no idea it is about to hide.
-          */}
-        {hidesInSeconds != null && (
-          <div className="flex justify-end px-5 pt-3.5">
-            <span
-              className="rounded-full px-2 py-[3px] text-[8.5px] uppercase tracking-[.9px]"
-              style={{ border: '.5px solid rgba(255,255,255,.5)', background: 'rgba(255,255,255,.06)' }}
-            >
-              Hides in {hidesInSeconds}s
-            </span>
-          </div>
-        )}
         {/* The magnetic stripe, full bleed, where it is on a real card. */}
-        <div className={`h-9 w-full ${hidesInSeconds != null ? 'mt-2' : 'mt-4'}`} style={{ background: 'rgba(0,0,0,.55)' }} />
-        <div className="flex-1 px-5 pt-3">
+        <div className="mt-5 h-9 w-full" style={{ background: 'rgba(0,0,0,.55)' }} />
+        {/*
+          * Two rows under the stripe, not three.
+          *
+          * The details and the footer were separate blocks with the countdown above them, which
+          * made the back four stacked things in a space that holds two comfortably. The countdown
+          * moves onto the name row — it is status, and it belongs beside the other small print
+          * rather than taking a line of its own.
+          */}
+        <div className="flex flex-1 flex-col justify-between px-5 pb-4 pt-3">
           {embedUrl ? (
             /*
              * The issuer draws the details, in its own frame, styled by a stylesheet we host.
@@ -197,7 +197,7 @@ export default function ClearCardFace({
             <iframe
               src={embedUrl}
               title="Card details"
-              className="h-[74px] w-full border-0 bg-transparent"
+              className="h-[58px] w-full border-0 bg-transparent"
               sandbox="allow-scripts"
               referrerPolicy="no-referrer"
             />
@@ -206,10 +206,17 @@ export default function ClearCardFace({
               Card details aren&rsquo;t available for this card yet.
             </p>
           )}
-        </div>
-        <div className="flex items-end justify-between px-5 pb-4">
-          <p className="m-0 text-[10px] uppercase tracking-[.8px] opacity-95">{cardholder}</p>
-          <NetworkMark network={card.network} className="h-3 w-[38px] opacity-95" />
+          <div className="flex items-end justify-between">
+            <p className="m-0 text-[10px] uppercase tracking-[.8px] opacity-95">{cardholder}</p>
+            <div className="flex items-center gap-2.5">
+              {hidesInSeconds != null && (
+                <span className="text-[8.5px] uppercase tracking-[.9px] opacity-70">
+                  Hides in {hidesInSeconds}s
+                </span>
+              )}
+              <NetworkMark network={card.network} className="h-3 w-[38px] opacity-95" />
+            </div>
+          </div>
         </div>
       </div>
     </div>
