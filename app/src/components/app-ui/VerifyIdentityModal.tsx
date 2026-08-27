@@ -5,7 +5,8 @@ import { useAppKitAccount } from '@/lib/walletCompat';
 import { useIdentity } from '@/context/IdentityContext';
 import { openWhileWaiting, type IdentityState } from '@/lib/identityStatus';
 import { toIsoDob, toFormattedSsn } from '@/lib/identityFields';
-import { getBankIdentity, submitIdentity, type BankIdentity } from '@/utils/apiClient';
+import DocumentUpload from '@/components/app-ui/DocumentUpload';
+import { getBankIdentity, submitIdentity, updateMemberProfile, type BankIdentity } from '@/utils/apiClient';
 
 /*
  * Verifying identity — one modal, several entry points.
@@ -25,12 +26,12 @@ import { getBankIdentity, submitIdentity, type BankIdentity } from '@/utils/apiC
  * card issuer and are never persisted, logged or echoed back. Said where the field is, rather than
  * in a privacy policy.
  *
- * ## What is NOT here
+ * ## The photo path
  *
- * The ID-photo upload for PENDING_DOCUMENT. That screen explains the state and stops, because the
- * upload should go straight from the browser to the issuer rather than through us — routing a
- * passport photo through our server makes us responsible for it in exactly the way we are avoiding.
- * Building it half-way, as a button that looks like it works, would be worse than saying so.
+ * PENDING_DOCUMENT hands off to DocumentUpload, which sends the image from the browser straight to
+ * the card issuer's presigned URL. It never reaches a server of ours — forwarding a member's
+ * driver's licence would make us the custodian of every member's government ID, which would be a
+ * strange line to cross right after deciding not to keep their SSN.
  */
 
 type Step = 'form' | 'checking' | 'result';
@@ -88,18 +89,18 @@ function Outcome({ state, onClose }: { state: IdentityState; onClose: () => void
     );
   }
 
+  // The photo path is its own component: it talks to the issuer's storage directly and has no
+  // business sharing state with the form that sent the SSN.
+  if (state === 'needs_document') return <DocumentUpload onDone={onClose} />;
+
   const heading =
-    state === 'needs_document'
-      ? 'One more thing'
-      : state === 'needs_resubmit'
+    state === 'needs_resubmit'
         ? 'Something didn’t match'
         : 'Under review';
   const detail =
-    state === 'needs_document'
-      ? 'We couldn’t match your details automatically. A photo of your ID sorts it out — we’ll send you a secure link to add one.'
-      : state === 'needs_resubmit'
-        ? 'One of the details didn’t match your records. We’ll be in touch about which one so you can correct it.'
-        : 'Usually within a day.';
+    state === 'needs_resubmit'
+      ? 'One of the details didn’t match your records. We’ll be in touch about which one so you can correct it.'
+      : 'Usually within a day.';
 
   return (
     <div className="space-y-4 text-center">
@@ -205,6 +206,24 @@ export default function VerifyIdentityModal() {
       setStep('form');
       return;
     }
+
+    /*
+     * Keep the legal name, and only the legal name.
+     *
+     * Settings has a "Legal name" row that was rendering a fixture, because nothing ever supplied a
+     * real one — the display name is "Kai M" by design, since it is what other members see beside a
+     * payment. This is the moment a real one exists: the member has just confirmed it against their
+     * bank record and sent it to the issuer.
+     *
+     * A name is not in the same class as the two fields above it. It is already a stored, encrypted
+     * profile field and it is already shown on screen; the date of birth and the social security
+     * number are neither, and they are not written here or anywhere.
+     *
+     * Best-effort: the verification succeeded either way, and failing it over a display field would
+     * be the wrong trade.
+     */
+    void updateMemberProfile({ legalName: `${firstName} ${rest.join(' ')}`.trim() }).catch(() => {});
+
     await refresh();
     setStep('result');
   };
