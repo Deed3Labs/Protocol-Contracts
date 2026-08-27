@@ -26,12 +26,15 @@ export default function CardPage({
   onActivate,
   onToggleFreeze,
   busy = false,
+  notice = null,
 }: {
   data?: CardData;
   /** Issues the card. Absent in the preview harness, where the page stands alone. */
   onActivate?: () => void;
   onToggleFreeze?: (frozen: boolean) => void;
   busy?: boolean;
+  /** Why the last action did not do what it looked like it would. Absent when nothing went wrong. */
+  notice?: string | null;
 }) {
   const [frozen, setFrozen] = useState(data.frozen);
   const [variant, setVariant] = useState<CardData['variant']>(data.variant);
@@ -86,9 +89,17 @@ export default function CardPage({
       </Button>
     </div>
   ) : (
-    <Button variant="clear" size="xs" className="w-full" disabled={busy} onClick={onActivate}>
-      {busy ? 'Activating…' : 'Activate card'}
-    </Button>
+    <div className="space-y-2">
+      <Button variant="clear" size="xs" className="w-full" disabled={busy} onClick={onActivate}>
+        {busy ? 'Activating…' : 'Activate card'}
+      </Button>
+      {/* Sits under the button that failed, not in a toast — the member is looking here. */}
+      {notice && (
+        <p role="status" className="text-[11px] leading-relaxed text-muted-foreground">
+          {notice}
+        </p>
+      )}
+    </div>
   );
 
   const caption = (

@@ -33,6 +33,7 @@ export default function CardRoute() {
   const [card, setCard] = useState<MemberCard | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,11 +48,31 @@ export default function CardRoute() {
     };
   }, []);
 
+  /*
+   * Activate, and say what happened either way.
+   *
+   * This used to be `if (created) setCard(created)` — so a failure was indistinguishable from not
+   * having pressed the button. The server was answering 503 'Cards unavailable' the whole time and
+   * the member saw a spinner stop and nothing change.
+   *
+   * The two failures read differently on purpose. Cards being switched off is not something a
+   * member can retry, and telling them to try again would be sending them round a loop that cannot
+   * end.
+   */
   const activate = useCallback(async () => {
     setBusy(true);
+    setNotice(null);
     try {
-      const created = await createCard('Clear card');
-      if (created) setCard(created);
+      const { card: created, error, unavailable } = await createCard('Clear card');
+      if (created) {
+        setCard(created);
+        return;
+      }
+      setNotice(
+        unavailable
+          ? "Cards aren't switched on yet. Nothing to do — we'll enable this for your account."
+          : `That didn't go through. ${error ?? 'Please try again.'}`,
+      );
     } finally {
       setBusy(false);
     }
@@ -91,5 +112,5 @@ export default function CardRoute() {
         periodTotal: card ? 0 : CARD_DAY_ONE.periodTotal,
       };
 
-  return <CardPage data={data} onActivate={activate} onToggleFreeze={toggleFreeze} busy={busy} />;
+  return <CardPage data={data} onActivate={activate} onToggleFreeze={toggleFreeze} busy={busy} notice={notice} />;
 }
