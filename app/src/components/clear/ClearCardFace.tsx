@@ -108,6 +108,15 @@ export interface ClearCardFaceProps {
   hidesInSeconds?: number;
   /** The card behind in a stack: no number, no chip — a wallet, not a gallery. */
   behind?: boolean;
+  /**
+   * Lithic's card-details iframe, for the real number.
+   *
+   * A URL rather than values, deliberately: the PAN and CVV are rendered by the issuer inside their
+   * own frame and never enter our JavaScript, so they cannot reach our state, our logs or a
+   * screenshot in a bug report. The same reason the SSN passes through rather than being stored —
+   * a number we never hold is a number we cannot leak.
+   */
+  embedUrl?: string;
 }
 
 export default function ClearCardFace({
@@ -116,8 +125,9 @@ export default function ClearCardFace({
   revealNumber = false,
   hidesInSeconds,
   behind = false,
+  embedUrl,
 }: ClearCardFaceProps) {
-  const { variant, frozen, last4, cardholder, expiry, pan, cvc } = card;
+  const { variant, frozen, last4, cardholder, expiry, pan } = card;
   const revealed = revealNumber;
 
   const material = frozen ? MATERIAL.frozen : MATERIAL[variant];
@@ -192,39 +202,43 @@ export default function ClearCardFace({
               {variant === 'physical' && <Chip className="h-8 w-[42px]" />}
               <Contactless className="h-[19px] w-[15px]" />
             </div>
-            <p
-              className="mb-2.5 font-mono text-[14.5px] tracking-[2.2px]"
-              style={{ textShadow: '0 1px 1px rgba(0,0,0,.30)' }}
-            >
-              {groups.map((group, i) => (
-                <span key={i} className={i < groups.length - 1 ? 'mr-2' : undefined}>
-                  {group}
-                </span>
-              ))}
-            </p>
+            {revealed && embedUrl ? (
+              /*
+               * The issuer draws the number, in its own frame, over the space ours occupies.
+               *
+               * This replaced a dialog that showed `card.pan` — a field nothing ever filled for a
+               * real card, so it displayed the placeholder's number or nothing at all. The card is
+               * where a member looks for a card number, and an iframe is the only way to show a
+               * real one without our JavaScript ever touching it: the PAN and CVV are rendered by
+               * the issuer and cannot reach our state, our logs, or a screenshot in a bug report.
+               */
+              <iframe
+                src={embedUrl}
+                title="Card number"
+                className="mb-2 h-[54px] w-full border-0 bg-transparent"
+                sandbox="allow-scripts"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <p
+                className="mb-2.5 font-mono text-[14.5px] tracking-[2.2px]"
+                style={{ textShadow: '0 1px 1px rgba(0,0,0,.30)' }}
+              >
+                {groups.map((group, i) => (
+                  <span key={i} className={i < groups.length - 1 ? 'mr-2' : undefined}>
+                    {group}
+                  </span>
+                ))}
+              </p>
+            )}
             <div className="flex items-end justify-between">
-              {/*
-                * Expiry and CVV surface only when revealed, in the space the cardholder name
-                * occupies otherwise. A real card carries them on the back; this one has no back.
-                */}
-              {revealed && cvc ? (
-                <div className="flex gap-[18px]">
-                  <div>
-                    <p className="m-0 mb-[3px] text-[8px] uppercase tracking-[.7px] opacity-60">Expires</p>
-                    <p className="m-0 text-[10px] uppercase tracking-[.8px] opacity-95">{expiry}</p>
-                  </div>
-                  <div>
-                    <p className="m-0 mb-[3px] text-[8px] uppercase tracking-[.7px] opacity-60">CVV</p>
-                    <p className="m-0 text-[10px] uppercase tracking-[.8px] opacity-95">{cvc}</p>
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <p className="m-0 mb-[3px] text-[8px] uppercase tracking-[.7px] opacity-60">Valid thru {expiry}</p>
-                  <p className="m-0 text-[10px] uppercase tracking-[.8px] opacity-95">{cardholder}</p>
-                </div>
-              )}
-              <NetworkMark network={card.network} className="h-[18px] w-[27px] opacity-95" />
+              <div>
+                <p className="m-0 mb-[3px] text-[8px] uppercase tracking-[.7px] opacity-60">
+                  Valid thru {expiry}
+                </p>
+                <p className="m-0 text-[10px] uppercase tracking-[.8px] opacity-95">{cardholder}</p>
+              </div>
+              <NetworkMark network={card.network} className="h-3 w-[38px] opacity-95" />
             </div>
           </div>
         )}

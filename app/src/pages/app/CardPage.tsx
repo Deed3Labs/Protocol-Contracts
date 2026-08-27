@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Snowflake, Sun, Eye, CreditCard } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Snowflake, Sun, Eye, EyeOff, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ClearCardFace from '@/components/clear/ClearCardFace';
 import { CompositionBar, LegendRow } from '@/components/clear/CompositionBar';
 import { totalsByCategory, CATEGORY_LABEL, type MerchantCategory } from '@/lib/mccCategory';
 import CardControlsCard from '@/components/clear/CardControlsCard';
-import CardDetailsDialog from '@/components/clear/CardDetailsDialog';
 import TransactionRows from '@/components/clear/TransactionRows';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
@@ -31,6 +30,7 @@ export default function CardPage({
   notice = null,
   onAddToWallet,
   onAddCard,
+  onRevealDetails,
 }: {
   data?: CardData;
   /** Issues the card. Absent in the preview harness, where the page stands alone. */
@@ -41,13 +41,37 @@ export default function CardPage({
   notice?: string | null;
   onAddToWallet?: () => void;
   onAddCard?: () => void;
+  /** Fetches the issuer's short-lived card-details URL. Absent in the preview harness. */
+  onRevealDetails?: (cardId?: string) => Promise<string | undefined>;
 }) {
   const [frozen, setFrozen] = useState(data.frozen);
 
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  /*
+   * The reveal lives on the card, not in a dialog.
+   *
+   * The dialog rendered `card.pan`, which nothing ever fills for a real card — so it showed the
+   * placeholder's number or nothing. A card number belongs on the card, and the countdown goes in
+   * the type tag, which already reads as status: no new element appears and the card never jumps.
+   */
+  const [revealSeconds, setRevealSeconds] = useState(0);
+  const [embedUrl, setEmbedUrl] = useState<string | undefined>(undefined);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [dragX, setDragX] = useState(0);
+  const dragStart = useRef<number | null>(null);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
   const card = { ...data, frozen };
+
+  useEffect(() => {
+    if (revealSeconds <= 0) return;
+    const id = setTimeout(() => setRevealSeconds((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [revealSeconds]);
+
+  // The URL is short-lived and single-use, so it is dropped the moment the reveal ends rather than
+  // kept for a second look: a live link to a card number is not a thing to leave lying in state.
+  useEffect(() => {
+    if (revealSeconds === 0) setEmbedUrl(undefined);
+  }, [revealSeconds]);
 
   // Follow the server once it answers. The toggle below moves immediately so the card reads as
   // responsive, but the server is what decides — and if the freeze failed, the card must not go on
@@ -83,8 +107,43 @@ export default function CardPage({
           />
         </div>
       )}
-      <div className="relative z-[1]">
-        <ClearCardFace card={faceCard} />
+      <div
+        className="relative z-[1] touch-pan-y"
+        style={{ transform: `translateX(${dragX}px)`, transition: dragStart.current === null ? 'transform .2s' : 'none' }}
+        /*
+         * Swipe to change card.
+         *
+         * Pointer events rather than touch events, so a trackpad drag on a desktop works the same
+         * way — the stack is the affordance on both and it would be odd for only one to answer it.
+         */
+        onPointerDown={(e) => {
+          if (wallet.length < 2) return;
+          dragStart.current = e.clientX;
+        }}
+        onPointerMove={(e) => {
+          if (dragStart.current === null) return;
+          setDragX(e.clientX - dragStart.current);
+        }}
+        onPointerUp={() => {
+          const moved = dragX;
+          dragStart.current = null;
+          setDragX(0);
+          // A third of the card is far enough to mean it; less is a tap that wandered.
+          if (Math.abs(moved) > 60) {
+            setActiveIndex((i) => (moved < 0 ? (i + 1) % wallet.length : (i - 1 + wallet.length) % wallet.length));
+          }
+        }}
+        onPointerCancel={() => {
+          dragStart.current = null;
+          setDragX(0);
+        }}
+      >
+        <ClearCardFace
+          card={faceCard}
+          revealNumber={revealSeconds > 0}
+          hidesInSeconds={revealSeconds > 0 ? revealSeconds : undefined}
+          embedUrl={embedUrl}
+        />
       </div>
     </div>
   );
@@ -121,7 +180,28 @@ export default function CardPage({
   const tiles = card.activated && (
     <div className="mb-4 grid grid-cols-3 gap-[7px]">
       {[
-        { key: 'details', label: 'Show details', icon: Eye, tinted: true, onClick: () => setDetailsOpen(true), soon: false },
+        {
+          key: 'details',
+          label: revealSeconds > 0 ? 'Hide' : 'Show details',
+          icon: revealSeconds > 0 ? EyeOff : Eye,
+          tinted: true,
+          // Never disabled: without an issuer URL the reveal still shows what the card knows, and
+          // the preview harness has no handler at all. A dead-looking primary control is worse
+          // than one that reveals a masked number.
+          soon: false,
+          onClick: async () => {
+            if (revealSeconds > 0) {
+              setRevealSeconds(0);
+              return;
+            }
+            const url = await onRevealDetails?.(active?.id);
+            if (url) setEmbedUrl(url);
+            // Revealed either way: without an issuer URL the placeholder number shows, which is
+            // what the preview harness is for. A real card with no URL reveals nothing and says so
+            // by staying masked.
+            setRevealSeconds(30);
+          },
+        },
         {
           key: 'freeze',
           label: frozen ? 'Unfreeze' : 'Freeze',
@@ -149,7 +229,9 @@ export default function CardPage({
           onClick={tile.onClick}
           className={cn(
             'rounded-xl border border-border px-2 py-3.5 text-center transition-colors disabled:opacity-60',
-            tile.tinted ? 'bg-tier-boost/10 text-tier-boost-fg' : 'bg-card text-foreground',
+            // Freeze is transparent, not filled: it is the one control that undoes something, and a
+            // filled button reads as the thing to press.
+            tile.tinted ? 'bg-tier-boost/10 text-tier-boost-fg' : 'bg-transparent text-foreground',
           )}
         >
           <tile.icon className="mx-auto h-[17px] w-[17px]" strokeWidth={1.7} />
@@ -382,7 +464,6 @@ export default function CardPage({
         </div>
       </div>
 
-      <CardDetailsDialog card={card} open={detailsOpen} onOpenChange={setDetailsOpen} />
       {selected && (
         <TransactionDetailDialog
           row={selected}
