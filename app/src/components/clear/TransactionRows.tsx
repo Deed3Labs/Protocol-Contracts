@@ -1,6 +1,7 @@
 import { signedMoney } from '@/lib/money';
 import { sourceTag, type ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
+import TransactionAvatar from './TransactionAvatar';
 
 /**
  * Flat transaction rows — used by Home's recent-activity card and by the Card
@@ -11,6 +12,7 @@ import { cn } from '@/lib/utils';
  * the rate, and a list is the only place it shows. Desktop gives it a column;
  * mobile drops it to a sub-line under the name.
  */
+
 export default function TransactionRows({
   rows,
   emptyMessage,
@@ -44,12 +46,19 @@ export default function TransactionRows({
               i < rows.length - 1 && 'border-b-[0.5px] border-border',
             )}
           >
-            <div className="min-w-0">
-              <p className="truncate">{row.name}</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground lg:hidden">
-                {showDate && `${row.date} · `}
-                {tag.label}
-              </p>
+            <div className="flex min-w-0 items-center gap-3">
+              {/*
+                * Tinted by category, so the list is scannable by colour before it is scannable by
+                * name — and it makes the summary bar above and the rows below the same argument.
+                */}
+              <TransactionAvatar row={row} />
+              <div className="min-w-0">
+                <p className="truncate">{row.name}</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground lg:hidden">
+                  {showDate && `${row.date} · `}
+                  {tag.label}
+                </p>
+              </div>
             </div>
 
             <span className="hidden items-center gap-1.5 text-xs text-muted-foreground lg:flex">

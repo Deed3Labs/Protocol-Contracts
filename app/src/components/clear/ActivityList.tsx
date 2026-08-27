@@ -1,4 +1,5 @@
 import { signedMoney } from '@/lib/money';
+import TransactionAvatar from './TransactionAvatar';
 import { groupByDate, shortDate, sourceTag, type ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
@@ -53,10 +54,15 @@ export default function ActivityList({
                   i < group.rows.length - 1 && 'border-b-[0.5px] border-border',
                 )}
               >
-                <div className="min-w-0">
-                  <p className="truncate">{row.name}</p>
-                  {/* Source moves to a sub-line below lg, where there's no column for it */}
-                  <p className="mt-0.5 text-[11px] text-muted-foreground lg:hidden">{row.source}</p>
+                <div className="flex min-w-0 items-center gap-3">
+                  {/* The same avatar the Card page uses — one component, so the two lists cannot
+                      drift into looking like different kinds of thing. */}
+                  <TransactionAvatar row={row} />
+                  <div className="min-w-0">
+                    <p className="truncate">{row.name}</p>
+                    {/* Source moves to a sub-line below lg, where there's no column for it */}
+                    <p className="mt-0.5 text-[11px] text-muted-foreground lg:hidden">{row.source}</p>
+                  </div>
                 </div>
 
                 {/* Desktop names the tier that funded it — which tier paid is
