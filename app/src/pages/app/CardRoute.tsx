@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
@@ -6,7 +7,7 @@ import { createCard, getCards, setCardFrozen, getCredit, getCardTransactions, ge
 import { categoryForMcc } from '@/lib/mccCategory';
 import type { ActivityRow } from '@/lib/clearModel';
 import { onChainStale } from '@/lib/chainStale';
-import { toCreditTiers } from '@/lib/creditMapping';
+import { toCreditTiers, toLimitBacking } from '@/lib/creditMapping';
 import { useAppKitAccount } from '@/lib/walletCompat';
 
 /*
@@ -43,6 +44,7 @@ export default function CardRoute() {
   const [notice, setNotice] = useState<string | null>(null);
   const identity = useIdentity();
   const { address } = useAppKitAccount();
+  const member = useMemberProfile();
   const [credit, setCredit] = useState<CreditState | null>(null);
   const [spend, setSpend] = useState<CardTransaction[] | null>(null);
 
@@ -158,12 +160,20 @@ export default function CardRoute() {
     }
   }, [identity]);
 
+  /*
+   * Freeze the card the member is looking at, not the first one.
+   *
+   * This took `card` — always cards[0] — so on a wallet of three, swiping to the second and
+   * pressing Freeze froze the first. The card on screen said frozen, a different card actually was,
+   * and nothing on the page showed either fact correctly.
+   */
   const toggleFreeze = useCallback(
-    async (frozen: boolean) => {
-      if (!card) return;
+    async (frozen: boolean, cardId?: string) => {
+      const target = cards.find((c) => c.token === cardId) ?? card;
+      if (!target) return;
       setBusy(true);
       try {
-        const { value: updated, error, unavailable } = await setCardFrozen(card.token, frozen);
+        const { value: updated, error, unavailable } = await setCardFrozen(target.token, frozen);
         /*
          * Only trust the server's answer. A freeze that failed must not leave the card looking
          * frozen — a member who believes their card is dead when it is not is worse off than one
@@ -188,7 +198,7 @@ export default function CardRoute() {
         setBusy(false);
       }
     },
-    [card],
+    [card, cards],
   );
 
 
@@ -228,6 +238,15 @@ export default function CardRoute() {
         ...CARD_DAY_ONE,
         activated: Boolean(card),
         /*
+         * The name embossed on the card is the member's, not the fixture's.
+         *
+         * It read 'Kai M' for everybody — the placeholder's display name. The verified legal name
+         * first, because that is what an issuer prints and what a merchant checks; the display name
+         * second, which is at least the member's own; and the placeholder only when there is no
+         * member at all, which is the preview harness.
+         */
+        cardholder: member.legalName || member.name || CARD_DAY_ONE.cardholder,
+        /*
          * Every card, for the stack and the list.
          *
          * "Where" is what distinguishes them in a list where the number is masked: a plastic card
@@ -264,6 +283,9 @@ export default function CardRoute() {
         ...(credit?.complete
           ? {
               tiers: toCreditTiers(credit.tiers),
+              // The same breakdown Home links to, from the same rows — one surface, so the two
+              // pages cannot describe the limit differently.
+              backing: toLimitBacking(credit.tiers, CARD_DAY_ONE.backing ?? { assetBacked: [], unsecured: [] }),
               creditAfterCash: credit.tiers
                 .filter((tier) => tier.active)
                 .reduce((sum, tier) => sum + Math.max(0, tier.limitCents - tier.usedCents), 0) / 100,

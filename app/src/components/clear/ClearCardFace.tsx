@@ -127,22 +127,110 @@ export default function ClearCardFace({
   behind = false,
   embedUrl,
 }: ClearCardFaceProps) {
-  const { variant, frozen, last4, cardholder, expiry, pan } = card;
+  const { variant, frozen, last4, cardholder, expiry } = card;
   const revealed = revealNumber;
 
   const material = frozen ? MATERIAL.frozen : MATERIAL[variant];
-  const groups = revealed && pan ? pan.replace(/\s+/g, '').match(/.{1,4}/g) ?? [] : ['••••', '••••', '••••', last4 || '••••'];
+
+  /*
+   * The front is always masked.
+   *
+   * Revealing turns the card over rather than swapping text on the front — which is where these
+   * numbers live on a real card, and what every wallet app does. It also means the front has one
+   * appearance instead of two, so nothing on it shifts when a member presses Show details.
+   */
+  const groups = ['••••', '••••', '••••', last4 || '••••'];
+
+  const shell = {
+    aspectRatio: '1.5857',
+    color: '#EDEAE3',
+    boxShadow:
+      '0 1px 1px rgba(0,0,0,.10), 0 8px 20px -6px rgba(30,28,40,.40), 0 20px 44px -20px rgba(30,28,40,.32)',
+  } as const;
+
+  /*
+   * The back of the card.
+   *
+   * The reference has no back, so this is a design decision rather than an implementation of one:
+   * a real card's number, expiry and security code are on the back, every wallet app turns the card
+   * over to show them, and a member already knows to look there. The alternative — swapping text on
+   * the front — makes the front have two appearances and shifts its layout under the member's eyes.
+   *
+   * The stripe and signature panel are not decoration. They are what tells you at a glance that you
+   * are looking at the back of something, before you have read a word of it.
+   */
+  const back = (
+    <div className="absolute inset-0 overflow-hidden rounded-2xl" style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}>
+      <div className="absolute inset-0 z-0" style={{ background: material }} />
+      <div className="pointer-events-none absolute inset-0 z-[2]" style={{ opacity: 0.34, mixBlendMode: 'overlay', backgroundImage: GRAIN, backgroundSize: '180px 180px' }} />
+      <div
+        className="pointer-events-none absolute inset-0 z-[3] rounded-2xl"
+        style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,.20), inset 0 -1px 0 rgba(0,0,0,.28), inset 0 0 0 .5px rgba(255,255,255,.07)' }}
+      />
+      <div className="relative z-[4] flex h-full flex-col">
+        {/*
+          * The countdown follows the card over.
+          *
+          * It is the front's tag slot that carries it while the card is face up, and losing it on
+          * the turn would leave a member watching a card number with no idea it is about to hide.
+          */}
+        {hidesInSeconds != null && (
+          <div className="flex justify-end px-5 pt-3.5">
+            <span
+              className="rounded-full px-2 py-[3px] text-[8.5px] uppercase tracking-[.9px]"
+              style={{ border: '.5px solid rgba(255,255,255,.5)', background: 'rgba(255,255,255,.06)' }}
+            >
+              Hides in {hidesInSeconds}s
+            </span>
+          </div>
+        )}
+        {/* The magnetic stripe, full bleed, where it is on a real card. */}
+        <div className={`h-9 w-full ${hidesInSeconds != null ? 'mt-2' : 'mt-4'}`} style={{ background: 'rgba(0,0,0,.55)' }} />
+        <div className="flex-1 px-5 pt-3">
+          {embedUrl ? (
+            /*
+             * The issuer draws the details, in its own frame, styled by a stylesheet we host.
+             *
+             * The PAN and CVV never enter our JavaScript — they cannot reach our state, our logs or
+             * a screenshot in a bug report. Same reasoning as the SSN passing through.
+             */
+            <iframe
+              src={embedUrl}
+              title="Card details"
+              className="h-[74px] w-full border-0 bg-transparent"
+              sandbox="allow-scripts"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <p className="text-[11px] leading-relaxed opacity-70">
+              Card details aren&rsquo;t available for this card yet.
+            </p>
+          )}
+        </div>
+        <div className="flex items-end justify-between px-5 pb-4">
+          <p className="m-0 text-[10px] uppercase tracking-[.8px] opacity-95">{cardholder}</p>
+          <NetworkMark network={card.network} className="h-3 w-[38px] opacity-95" />
+        </div>
+      </div>
+    </div>
+  );
 
   return (
-    <div
-      className={`relative isolate overflow-hidden rounded-2xl ${className ?? ''}`}
-      style={{
-        aspectRatio: '1.5857',
-        color: '#EDEAE3',
-        boxShadow:
-          '0 1px 1px rgba(0,0,0,.10), 0 8px 20px -6px rgba(30,28,40,.40), 0 20px 44px -20px rgba(30,28,40,.32)',
-      }}
-    >
+    <div className={className} style={{ perspective: '1400px' }}>
+      <div
+        className="relative"
+        style={{
+          ...shell,
+          transformStyle: 'preserve-3d',
+          transition: 'transform .55s cubic-bezier(.2,.8,.2,1)',
+          transform: revealed ? 'rotateY(180deg)' : 'rotateY(0deg)',
+        }}
+      >
+      {back}
+      <div
+        className="absolute inset-0 isolate overflow-hidden rounded-2xl"
+        style={{ ...shell, backfaceVisibility: 'hidden' }}
+      >
       <div className="absolute inset-0 z-0" style={{ background: material }} />
       <div
         className="pointer-events-none absolute inset-0 z-[1]"
@@ -202,35 +290,16 @@ export default function ClearCardFace({
               {variant === 'physical' && <Chip className="h-8 w-[42px]" />}
               <Contactless className="h-[19px] w-[15px]" />
             </div>
-            {revealed && embedUrl ? (
-              /*
-               * The issuer draws the number, in its own frame, over the space ours occupies.
-               *
-               * This replaced a dialog that showed `card.pan` — a field nothing ever filled for a
-               * real card, so it displayed the placeholder's number or nothing at all. The card is
-               * where a member looks for a card number, and an iframe is the only way to show a
-               * real one without our JavaScript ever touching it: the PAN and CVV are rendered by
-               * the issuer and cannot reach our state, our logs, or a screenshot in a bug report.
-               */
-              <iframe
-                src={embedUrl}
-                title="Card number"
-                className="mb-2 h-[54px] w-full border-0 bg-transparent"
-                sandbox="allow-scripts"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <p
-                className="mb-2.5 font-mono text-[14.5px] tracking-[2.2px]"
-                style={{ textShadow: '0 1px 1px rgba(0,0,0,.30)' }}
-              >
-                {groups.map((group, i) => (
-                  <span key={i} className={i < groups.length - 1 ? 'mr-2' : undefined}>
-                    {group}
-                  </span>
-                ))}
-              </p>
-            )}
+            <p
+              className="mb-2.5 font-mono text-[14.5px] tracking-[2.2px]"
+              style={{ textShadow: '0 1px 1px rgba(0,0,0,.30)' }}
+            >
+              {groups.map((group, i) => (
+                <span key={i} className={i < groups.length - 1 ? 'mr-2' : undefined}>
+                  {group}
+                </span>
+              ))}
+            </p>
             <div className="flex items-end justify-between">
               <div>
                 <p className="m-0 mb-[3px] text-[8px] uppercase tracking-[.7px] opacity-60">
@@ -242,6 +311,8 @@ export default function ClearCardFace({
             </div>
           </div>
         )}
+      </div>
+      </div>
       </div>
     </div>
   );

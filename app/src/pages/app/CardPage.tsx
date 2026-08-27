@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Snowflake, Sun, Eye, EyeOff, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ClearCardFace from '@/components/clear/ClearCardFace';
 import { CompositionBar, LegendRow } from '@/components/clear/CompositionBar';
 import { totalsByCategory, CATEGORY_LABEL, type MerchantCategory } from '@/lib/mccCategory';
 import CardControlsCard from '@/components/clear/CardControlsCard';
+import LimitBreakdown from '@/components/clear/LimitBreakdown';
 import TransactionRows from '@/components/clear/TransactionRows';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
@@ -35,7 +37,7 @@ export default function CardPage({
   data?: CardData;
   /** Issues the card. Absent in the preview harness, where the page stands alone. */
   onActivate?: () => void;
-  onToggleFreeze?: (frozen: boolean) => void;
+  onToggleFreeze?: (frozen: boolean, cardId?: string) => void;
   busy?: boolean;
   /** Why the last action did not do what it looked like it would. Absent when nothing went wrong. */
   notice?: string | null;
@@ -57,6 +59,8 @@ export default function CardPage({
   const [embedUrl, setEmbedUrl] = useState<string | undefined>(undefined);
   const [activeIndex, setActiveIndex] = useState(0);
   const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
   const dragStart = useRef<number | null>(null);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
   const card = { ...data, frozen };
@@ -93,32 +97,69 @@ export default function CardPage({
     ? { ...card, variant: active.variant, last4: active.last4, frozen: active.frozen }
     : card;
 
+  const activeFrozen = active?.frozen ?? frozen;
+
+  /*
+   * A wallet, not a gallery.
+   *
+   * Up to three cards, each behind the last at a slight angle. The angles are the point: perfectly
+   * stacked rectangles read as one thick card, and it was not obvious there was anything behind the
+   * front one — the card behind showed as a blank sliver, which looked like a rendering fault
+   * rather than a second card.
+   *
+   * Three is the cap because a fourth adds nothing a member can act on: they can already see there
+   * is more than one and the pager says how many. Alternating angles rather than fanning one way,
+   * so a wallet of three does not lean over.
+   */
+  const DEPTH = [
+    { rotate: 0, y: 0, scale: 1, brightness: 1 },
+    { rotate: -3.2, y: 12, scale: 0.955, brightness: 0.88 },
+    { rotate: 2.4, y: 22, scale: 0.915, brightness: 0.78 },
+  ];
+
+  const behindCards = wallet
+    .map((c, i) => ({ c, depth: (i - activeIndex + wallet.length) % wallet.length }))
+    .filter((entry) => entry.depth > 0 && entry.depth < DEPTH.length)
+    // Deepest first, so the DOM order is the stacking order and no z-index is needed.
+    .sort((a, b) => b.depth - a.depth);
+
   const stack = (
-    <div className="relative pt-2.5">
-      {wallet.length > 1 && (
-        <div
-          className="absolute left-1/2 top-0 z-0 w-[93%] -translate-x-1/2"
-          style={{ filter: 'brightness(.88) saturate(.9)' }}
-          aria-hidden
-        >
-          <ClearCardFace
-            behind
-            card={{ ...card, variant: wallet[(activeIndex + 1) % wallet.length].variant }}
-          />
-        </div>
-      )}
+    <div className="relative">
+      {behindCards.map(({ c, depth }) => {
+        const d = DEPTH[depth];
+        return (
+          <div
+            key={c.id}
+            aria-hidden
+            className="absolute inset-x-0 top-0"
+            style={{
+              transform: `translateY(${d.y}px) scale(${d.scale}) rotate(${d.rotate}deg)`,
+              filter: `brightness(${d.brightness}) saturate(.92)`,
+              transition: 'transform .45s cubic-bezier(.2,.8,.2,1), filter .45s',
+            }}
+          >
+            {/*
+              * The cards behind show their face but not their number — the honest reading of a
+              * wallet, and one less thing on screen in a coffee shop. They are not blank: the mark
+              * and the type tag are what make it obvious a second card is there at all.
+              */}
+            <ClearCardFace behind card={{ ...card, variant: c.variant, frozen: c.frozen, last4: c.last4 }} />
+          </div>
+        );
+      })}
       <div
-        className="relative z-[1] touch-pan-y"
-        style={{ transform: `translateX(${dragX}px)`, transition: dragStart.current === null ? 'transform .2s' : 'none' }}
-        /*
-         * Swipe to change card.
-         *
-         * Pointer events rather than touch events, so a trackpad drag on a desktop works the same
-         * way — the stack is the affordance on both and it would be odd for only one to answer it.
-         */
+        className="relative touch-pan-y"
+        style={{
+          // Rotates as it moves, the way a card being pulled off a stack does. Purely a drag
+          // affordance: at rest both are zero and the transition takes over.
+          transform: `translateX(${dragX}px) rotate(${dragX / 26}deg)`,
+          transition: dragging ? 'none' : 'transform .45s cubic-bezier(.2,.8,.2,1)',
+        }}
         onPointerDown={(e) => {
-          if (wallet.length < 2) return;
+          if (wallet.length < 2 || revealSeconds > 0) return;
           dragStart.current = e.clientX;
+          setDragging(true);
+          e.currentTarget.setPointerCapture(e.pointerId);
         }}
         onPointerMove={(e) => {
           if (dragStart.current === null) return;
@@ -127,14 +168,16 @@ export default function CardPage({
         onPointerUp={() => {
           const moved = dragX;
           dragStart.current = null;
+          setDragging(false);
           setDragX(0);
-          // A third of the card is far enough to mean it; less is a tap that wandered.
-          if (Math.abs(moved) > 60) {
+          // A quarter of a card is far enough to mean it; less is a tap that wandered.
+          if (Math.abs(moved) > 70) {
             setActiveIndex((i) => (moved < 0 ? (i + 1) % wallet.length : (i - 1 + wallet.length) % wallet.length));
           }
         }}
         onPointerCancel={() => {
           dragStart.current = null;
+          setDragging(false);
           setDragX(0);
         }}
       >
@@ -145,6 +188,8 @@ export default function CardPage({
           embedUrl={embedUrl}
         />
       </div>
+      {/* The stack leans below the front card, so the column needs the room. */}
+      {behindCards.length > 0 && <div style={{ height: DEPTH[behindCards[0].depth].y }} />}
     </div>
   );
 
@@ -204,13 +249,14 @@ export default function CardPage({
         },
         {
           key: 'freeze',
-          label: frozen ? 'Unfreeze' : 'Freeze',
-          icon: frozen ? Sun : Snowflake,
+          label: activeFrozen ? 'Unfreeze' : 'Freeze',
+          icon: activeFrozen ? Sun : Snowflake,
           tinted: false,
           onClick: () => {
-            const next = !frozen;
+            const next = !activeFrozen;
             setFrozen(next);
-            onToggleFreeze?.(next);
+            // The card on screen, not the first one in the wallet.
+            onToggleFreeze?.(next, active?.id);
           },
         },
         /*
@@ -388,8 +434,14 @@ export default function CardPage({
       <div className="mb-3 flex items-baseline justify-between">
         <span className="text-[10px] uppercase tracking-[.5px] text-muted-foreground">On this card</span>
         {card.transactions.length > 0 && (
-          <span className="text-[11.5px] text-muted-foreground">
-            {card.transactions.length} {card.transactions.length === 1 ? 'purchase' : 'purchases'}
+          <span className="flex items-baseline gap-3">
+            <span className="text-[11.5px] text-muted-foreground">
+              {card.transactions.length} {card.transactions.length === 1 ? 'purchase' : 'purchases'}
+            </span>
+            {/* Activity is the everything list; this panel is the card's slice of it. */}
+            <Link to="/activity" className="text-[11.5px] text-tier-boost-fg underline">
+              See all
+            </Link>
           </span>
         )}
       </div>
@@ -439,7 +491,7 @@ export default function CardPage({
           {/* One card: the pager is absent, so the tiles need the space back. */}
           <div className={wallet.length > 1 ? '' : 'mt-3.5'}>{tiles}</div>
           {activate}
-          {cardList}
+          <div className="hidden lg:block">{cardList}</div>
           {card.activated && onAddCard && (
             <Button variant="clear" size="xs" className="mt-2.5 w-full text-xs" onClick={onAddCard}>
               Add a virtual card
@@ -464,6 +516,9 @@ export default function CardPage({
         </div>
       </div>
 
+      {data.backing && (
+        <LimitBreakdown backing={data.backing} open={breakdownOpen} onOpenChange={setBreakdownOpen} />
+      )}
       {selected && (
         <TransactionDetailDialog
           row={selected}

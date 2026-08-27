@@ -1,3 +1,5 @@
+import { useId, useMemo } from 'react';
+import { getSvgPath } from 'figma-squircle';
 import type { ActivityRow } from '@/lib/clearModel';
 
 /*
@@ -45,15 +47,60 @@ function avatarColor(row: ActivityRow): string {
   return 'rgb(var(--cat-other))';
 }
 
-/** A tinted initials avatar for a transaction row. */
+/**
+ * A tinted initials avatar for a transaction row.
+ *
+ * A real squircle, not a circle and not `rounded-lg`. `border-radius` draws four quarter-circles
+ * that meet the straight edges at a curvature break; `figma-squircle` generates the same path
+ * Figma's corner smoothing does, which is the construction the app mark already uses. Using it here
+ * means a row's avatar and the mark in the header are the same shape rather than two things that
+ * are nearly the same shape, which is the kind of difference nobody names and everybody feels.
+ */
+const SIZE = 32;
+const RADIUS_RATIO = 0.2237; // Apple's icon proportions, as in the wordmark.
+const SMOOTHING = 0.6;
+
 export default function TransactionAvatar({ row, className }: { row: ActivityRow; className?: string }) {
+  const clipId = useId();
+  const path = useMemo(
+    () =>
+      getSvgPath({
+        width: SIZE,
+        height: SIZE,
+        cornerRadius: SIZE * RADIUS_RATIO,
+        cornerSmoothing: SMOOTHING,
+        preserveSmoothing: true,
+      }),
+    [],
+  );
+
   return (
-    <span
+    <svg
+      width={SIZE}
+      height={SIZE}
+      viewBox={`0 0 ${SIZE} ${SIZE}`}
+      className={`shrink-0 ${className ?? ''}`}
       aria-hidden
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-medium text-white ${className ?? ''}`}
-      style={{ background: avatarColor(row) }}
+      focusable="false"
     >
-      {initialsOf(row.name)}
-    </span>
+      <defs>
+        <clipPath id={clipId}>
+          <path d={path} />
+        </clipPath>
+      </defs>
+      <rect width={SIZE} height={SIZE} fill={avatarColor(row)} clipPath={`url(#${clipId})`} />
+      <text
+        x="50%"
+        y="50%"
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill="#FBFAF7"
+        fontSize="11"
+        fontWeight="500"
+        fontFamily="inherit"
+      >
+        {initialsOf(row.name)}
+      </text>
+    </svg>
   );
 }
