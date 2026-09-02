@@ -90,6 +90,18 @@ describe('each relayer is checked on the chain it actually uses', () => {
     expect(gas).toContain('sendRelayerAddress');
   });
 
+  test('the address is resolved chain-suffixed first, as the service resolves it', () => {
+    /*
+     * The first version read only the global variable — the same suffixed-vs-global mistake this
+     * monitor exists to catch, made inside the monitor. It went on reporting the mainnet address on
+     * a testnet chain after the suffixed override was set, so the config fix looked like it had
+     * failed.
+     */
+    const fn = gas.slice(gas.indexOf('async function sendRelayerAddress'), gas.indexOf('export async function checkRelayerGas'));
+    expect(fn).toContain('SEND_CDP_EVM_ACCOUNT_ADDRESS_${chainId}');
+    expect(fn.indexOf('_${chainId}')).toBeLessThan(fn.indexOf('process.env.SEND_CDP_EVM_ACCOUNT_ADDRESS ||'));
+  });
+
   test('both are reported, not just the first', () => {
     const run = gas.slice(gas.indexOf('const run = async'));
     expect(run).toContain('for (const relayer of found)');
