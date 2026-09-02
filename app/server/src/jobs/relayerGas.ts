@@ -82,7 +82,17 @@ async function relayers(): Promise<Array<{ label: string; chainId: number; addre
 }
 
 async function sendRelayerAddress(chainId: number): Promise<string | null> {
-  const override = (process.env.SEND_CDP_EVM_ACCOUNT_ADDRESS || '').trim();
+  /*
+   * Chain-suffixed first, exactly as the service itself resolves it.
+   *
+   * The first version of this read only the global variable — the same suffixed-vs-global mistake
+   * this whole monitor exists to catch, made inside the monitor. It reported the mainnet address on
+   * a testnet chain even after the suffixed override had been set, so the fix looked like it had
+   * not worked.
+   */
+  const override =
+    (process.env[`SEND_CDP_EVM_ACCOUNT_ADDRESS_${chainId}` as keyof NodeJS.ProcessEnv] || '').trim() ||
+    (process.env.SEND_CDP_EVM_ACCOUNT_ADDRESS || '').trim();
   if (override) {
     try { return ethers.getAddress(override); } catch { return null; }
   }
