@@ -36,9 +36,28 @@ export function usePeriodicSync() {
       return false;
     }
 
+    /*
+     * Ask before attempting, so the ordinary case is silent.
+     *
+     * `periodic-background-sync` is queryable, so the state is knowable without throwing. A browser
+     * that does not know the name throws on the query itself, which is why this is wrapped and
+     * falls through rather than treating "cannot ask" as "cannot register".
+     */
+    try {
+      const status = await navigator.permissions?.query({
+        name: 'periodic-background-sync' as PermissionName,
+      });
+      if (status && status.state !== 'granted') {
+        console.info('[PeriodicSync] Not granted — the browser only allows this for installed apps.');
+        return false;
+      }
+    } catch {
+      // The permission name is unknown here; fall through and let the register call answer.
+    }
+
     try {
       const registration = await navigator.serviceWorker.ready;
-      
+
       const periodicSync = (registration as any).periodicSync;
       if (periodicSync) {
         await periodicSync.register(tag, {
@@ -50,10 +69,24 @@ export function usePeriodicSync() {
       }
       return false;
     } catch (error: any) {
-      console.error('[PeriodicSync] Registration failed:', error);
-      if (error.name === 'NotAllowedError') {
-        console.warn('[PeriodicSync] Permission denied - user needs to grant permission');
+      /*
+       * NotAllowedError is the expected answer, not a failure.
+       *
+       * Periodic Background Sync is only granted to an INSTALLED app whose site-engagement score
+       * the browser considers high enough, and it is never promptable — Chrome decides silently and
+       * there is no setting a member can reach. So in an ordinary tab this rejects every time, by
+       * design.
+       *
+       * It used to be a console.error saying "user needs to grant permission", which was wrong on
+       * both counts: nothing failed, and there is nothing for anyone to grant. A red line in the
+       * console for a documented no-op is how people learn to stop reading the console — and this
+       * one turned up in the middle of debugging something unrelated.
+       */
+      if (error?.name === 'NotAllowedError') {
+        console.info('[PeriodicSync] Not granted — the browser only allows this for installed apps.');
+        return false;
       }
+      console.error('[PeriodicSync] Registration failed:', error);
       return false;
     }
   }, [isSupported]);
@@ -68,7 +101,7 @@ export function usePeriodicSync() {
 
     try {
       const registration = await navigator.serviceWorker.ready;
-      
+
       const periodicSync = (registration as any).periodicSync;
       if (periodicSync) {
         await periodicSync.unregister(tag);
@@ -93,7 +126,7 @@ export function usePeriodicSync() {
 
     try {
       const registration = await navigator.serviceWorker.ready;
-      
+
       const periodicSync = (registration as any).periodicSync;
       if (periodicSync) {
         return await periodicSync.getTags();
