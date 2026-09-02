@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { getContractAddress } from '../config/contracts.js';
 import { savingsIntentService } from '../services/savingsIntentService.js';
 import { savingsRelayerService } from '../services/savingsRelayerService.js';
+import { sendRelayerService } from '../services/sendRelayerService.js';
 
 /*
  * Is the account that signs our chain writes able to pay for the next one?
@@ -21,6 +22,15 @@ import { savingsRelayerService } from '../services/savingsRelayerService.js';
  * So: ask the network what a unit of gas costs right now, multiply by what one push actually uses,
  * and report the answer as a count of transactions remaining. "About 40 syncs left" is a sentence
  * someone can act on. "0.0019 ETH" is not.
+ *
+ * ## Each relayer, on its own chain
+ *
+ * There are two, and they do not live on the same network: savings and collateral sign on Base
+ * Sepolia, send signs on Base mainnet. Checking both against one chain id reports the mainnet
+ * account as empty, because it holds nothing on testnet and never will — which is a false alarm
+ * every day, and a false alarm every day is how a real one gets ignored. I made exactly that
+ * mistake by hand before writing this, which is why the chain travels with the account here rather
+ * than being read once from the environment.
  */
 
 /** Measured from a real pushCapacities on Base Sepolia. Recomputed below when an estimate works. */
@@ -30,7 +40,9 @@ const FALLBACK_GAS_PER_SYNC = 470_000n;
 const LOW_RUNWAY = 50;
 
 export interface RelayerGasReport {
-  address: string | null;
+  label: string;
+  chainId: number;
+  address: string;
   balanceWei: bigint;
   gasPerSync: bigint;
   weiPerSync: bigint;
@@ -38,17 +50,55 @@ export interface RelayerGasReport {
   low: boolean;
 }
 
-function chainId(): number {
-  const raw = (process.env.SAVINGS_DEFAULT_CHAIN_ID || process.env.SEND_DEFAULT_CHAIN_ID || '').trim();
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 84532;
+function envChainId(...names: string[]): number | null {
+  for (const name of names) {
+    const parsed = Number((process.env[name] || '').trim());
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
 }
 
-export async function checkRelayerGas(): Promise<RelayerGasReport | null> {
-  const id = chainId();
-  const address = await savingsRelayerService.relayerAddress(id);
-  if (!address) return null;
+/** The signers this server pays gas for, each with the chain it actually operates on. */
+async function relayers(): Promise<Array<{ label: string; chainId: number; address: string }>> {
+  const out: Array<{ label: string; chainId: number; address: string }> = [];
 
+  const savingsChain = envChainId('SAVINGS_DEFAULT_CHAIN_ID', 'SEND_DEFAULT_CHAIN_ID') ?? 84532;
+  const savings = await savingsRelayerService.relayerAddress(savingsChain);
+  if (savings) out.push({ label: 'savings+collateral', chainId: savingsChain, address: savings });
+
+  /*
+   * Send is a separate account on a separate chain, and it is reported separately.
+   *
+   * Its address is resolved through its own service rather than assumed equal to savings': they
+   * were the same account once and are not now, and a monitor that quietly watches the wrong
+   * address is worse than one that watches none.
+   */
+  const sendChain = envChainId('SEND_DEFAULT_CHAIN_ID') ?? savingsChain;
+  const send = await sendRelayerAddress(sendChain);
+  if (send && !(send === savings && sendChain === savingsChain)) {
+    out.push({ label: 'send', chainId: sendChain, address: send });
+  }
+  return out;
+}
+
+async function sendRelayerAddress(chainId: number): Promise<string | null> {
+  const override = (process.env.SEND_CDP_EVM_ACCOUNT_ADDRESS || '').trim();
+  if (override) {
+    try { return ethers.getAddress(override); } catch { return null; }
+  }
+  try {
+    const resolved = (sendRelayerService as unknown as { relayerAddress?: (id: number) => Promise<string | null> })
+      .relayerAddress;
+    return resolved ? await resolved.call(sendRelayerService, chainId) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function checkRelayerGas(
+  relayer: { label: string; chainId: number; address: string },
+): Promise<RelayerGasReport | null> {
+  const { chainId: id, address } = relayer;
   const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(id));
   const [balanceWei, fees] = await Promise.all([provider.getBalance(address), provider.getFeeData()]);
 
@@ -72,7 +122,7 @@ export async function checkRelayerGas(): Promise<RelayerGasReport | null> {
   const weiPerSync = perGas * gasPerSync;
   const syncsRemaining = weiPerSync > 0n ? Number(balanceWei / weiPerSync) : 0;
 
-  return { address, balanceWei, gasPerSync, weiPerSync, syncsRemaining, low: syncsRemaining < LOW_RUNWAY };
+  return { label: relayer.label, chainId: id, address, balanceWei, gasPerSync, weiPerSync, syncsRemaining, low: syncsRemaining < LOW_RUNWAY };
 }
 
 /**
@@ -84,16 +134,25 @@ export async function checkRelayerGas(): Promise<RelayerGasReport | null> {
 export function startRelayerGasMonitor(): void {
   const run = async () => {
     try {
-      const report = await checkRelayerGas();
-      if (!report) {
+      const found = await relayers();
+      if (found.length === 0) {
         console.warn('[gas] No relayer address resolved — chain writes cannot be signed.');
         return;
       }
-      const line =
-        `[gas] ${report.address}: ${ethers.formatEther(report.balanceWei)} ETH · ` +
-        `~${report.syncsRemaining} syncs left (${ethers.formatEther(report.weiPerSync)} each)`;
-      if (report.low) console.warn(`${line} — LOW, top this account up.`);
-      else console.log(line);
+      for (const relayer of found) {
+        try {
+          const report = await checkRelayerGas(relayer);
+          if (!report) continue;
+          const line =
+            `[gas] ${report.label} ${report.address} on chain ${report.chainId}: ` +
+            `${ethers.formatEther(report.balanceWei)} ETH · ~${report.syncsRemaining} writes left ` +
+            `(${ethers.formatEther(report.weiPerSync)} each)`;
+          if (report.low) console.warn(`${line} — LOW, top this account up.`);
+          else console.log(line);
+        } catch (error) {
+          console.error(`[gas] ${relayer.label} check failed:`, error instanceof Error ? error.message : error);
+        }
+      }
     } catch (error) {
       console.error('[gas] check failed:', error instanceof Error ? error.message : error);
     }
