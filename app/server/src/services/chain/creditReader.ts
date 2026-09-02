@@ -2,6 +2,9 @@ import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
 
+// 0.25%. Below this the difference is accrual between two reads, not a capacity that failed to push.
+const DRIFT_BPS = 25n;
+
 /*
  * Reading a member's credit line from the contracts that own it.
  *
@@ -206,12 +209,28 @@ async function readTiers(
         }
       }
       const limit = live !== null && live < written ? live : written;
+      /*
+       * Only drift big enough to mean something.
+       *
+       * An exact-inequality warning fired on every single read: a bond accrues continuously, so the
+       * written capacity is always a few units behind the live one and never equal to it. That is
+       * the system working, and logging it turned the one line that would show a *real* divergence
+       * -- a pledge that landed with no capacity push behind it -- into six identical lines a minute
+       * that nobody would read.
+       *
+       * A relative floor rather than an absolute one, because these are unit counts across tiers of
+       * very different sizes: 100 units is rounding on a bond and the whole balance on a new member.
+       */
       if (live !== null && live !== written) {
-        // Logged because it should not happen and repairs itself only if something notices.
-        console.warn(
-          `[credit] capacity drift for ${wallet} ${ethers.decodeBytes32String(kind)}:`,
-          `issuer=${written.toString()} calculator=${live.toString()} — showing the lower.`,
-        );
+        const gap = live > written ? live - written : written - live;
+        const larger = live > written ? live : written;
+        const material = larger > 0n && (gap * 10_000n) / larger >= DRIFT_BPS;
+        if (material) {
+          console.warn(
+            `[credit] capacity drift for ${wallet} ${ethers.decodeBytes32String(kind)}:`,
+            `issuer=${written.toString()} calculator=${live.toString()} — showing the lower.`,
+          );
+        }
       }
 
       // What backs the tier, before the haircut the calculator then applies. Shown so a member can
