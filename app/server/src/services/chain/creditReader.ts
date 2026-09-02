@@ -59,6 +59,8 @@ export interface ChainTier {
   kind: string;
   /** Ceiling contribution, in cents. */
   limitCents: number;
+  /** What the issuer has written down. Differs from `limitCents` only when a push has not landed. */
+  writtenLimitCents: number;
   /** Drawn against it, carry included, in cents. */
   usedCents: number;
   /** Carry rate in basis points per cycle, as the tier charges it. */
@@ -150,11 +152,25 @@ async function readTiers(
   address: string,
   wallet: string,
   registryAddress: string | null,
+  calculatorAddress: string | null,
 ): Promise<ChainTier[] | null> {
   try {
     const issuer = new ethers.Contract(address, ISSUER_ABI, provider);
     const registry = registryAddress
       ? new ethers.Contract(registryAddress, REGISTRY_ABI, provider)
+      : null;
+    /*
+     * The calculator computes what the collateral supports right now; the issuer holds what was
+     * last *written* to it. They are supposed to agree, and they can silently stop.
+     *
+     * A member had a savings limit of $350 against $325 of savings: the pledge tracked their
+     * withdrawal correctly, and the `pushCapacities` that should have followed it did not land. The
+     * issuer is what gates a draw, so the line was under-collateralised — not mislabelled — and
+     * nothing anywhere noticed. It surfaced because someone read the screen and thought the number
+     * looked wrong.
+     */
+    const calculator = calculatorAddress
+      ? new ethers.Contract(calculatorAddress, LIMITS_ABI, provider)
       : null;
     const count = Number(await issuer.tierCount());
     const tiers: ChainTier[] = [];
@@ -163,12 +179,40 @@ async function readTiers(
       // Carry is read rather than derived from `used - principal`. The issuer computes it against
       // the tier's index, and subtracting two rounded figures produces a third with both errors in
       // it -- on a number the member is charged.
-      const [limit, used, principal, carry] = await Promise.all([
+      const [written, used, principal, carry] = await Promise.all([
         issuer.capacityOf(wallet, id),
         issuer.drawnOf(wallet, id),
         issuer.principalOf(wallet, id),
         issuer.carryOf(wallet, id),
       ]);
+
+      /*
+       * The lower of the two, on purpose.
+       *
+       * Taking the smaller means a stale issuer can only ever under-state a limit, never offer
+       * credit nothing backs. The other direction is the one that costs something real: a member
+       * drawing against collateral that is no longer there.
+       *
+       * It does mean a member can briefly see less than they are entitled to — between collateral
+       * arriving and the push landing. That is the right way round: a limit that grows a few
+       * seconds late is a wait, and a limit that shrinks late is an unsecured loan.
+       */
+      let live: bigint | null = null;
+      if (calculator) {
+        try {
+          live = await calculator.capacityOf(wallet, kind);
+        } catch {
+          // A kind the calculator does not know is not a drift; the issuer's figure stands.
+        }
+      }
+      const limit = live !== null && live < written ? live : written;
+      if (live !== null && live !== written) {
+        // Logged because it should not happen and repairs itself only if something notices.
+        console.warn(
+          `[credit] capacity drift for ${wallet} ${ethers.decodeBytes32String(kind)}:`,
+          `issuer=${written.toString()} calculator=${live.toString()} — showing the lower.`,
+        );
+      }
 
       // What backs the tier, before the haircut the calculator then applies. Shown so a member can
       // see the two figures that produce their limit rather than only the product of them.
@@ -187,6 +231,8 @@ async function readTiers(
       tiers.push({
         kind: ethers.decodeBytes32String(kind),
         limitCents: toCents(limit),
+        // What the issuer holds, so a caller can tell a stale limit from a small one.
+        writtenLimitCents: toCents(written),
         usedCents: toCents(used),
         principalCents: toCents(principal),
         carryCents: toCents(carry),
@@ -355,6 +401,7 @@ export async function readChainCredit(
   const issuer = getContractAddress(chainId, 'RevolvingIssuer');
   const term = getContractAddress(chainId, 'TermIssuer');
   const registry = getContractAddress(chainId, 'CollateralRegistry');
+  const limitCalculator = getContractAddress(chainId, 'LimitCalculator');
 
   let provider: ethers.JsonRpcProvider;
   try {
@@ -367,7 +414,7 @@ export async function readChainCredit(
   // An unset issuer is no credit line, not a failed read: a member cannot have drawn against a
   // contract that does not exist.
   const [tiers, plans, cycle, savingsEncumberedCents] = await Promise.all([
-    issuer ? readTiers(provider, issuer, wallet, registry) : Promise.resolve([]),
+    issuer ? readTiers(provider, issuer, wallet, registry, limitCalculator) : Promise.resolve([]),
     term ? readPlans(provider, term, wallet) : Promise.resolve([]),
     issuer ? readCycle(provider, issuer, wallet) : Promise.resolve(null),
     registry ? readEncumbered(provider, registry, wallet) : Promise.resolve(0),
