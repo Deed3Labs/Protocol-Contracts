@@ -119,9 +119,19 @@ export const notificationStore = {
     if (!row) return null; // deduped — already existed
     const notif = toRow(row);
     try {
-      await websocketService.broadcastToAddress(wallet, 'notification:new', notif);
-    } catch {
-      /* realtime is best-effort */
+      /*
+       * Logged with the delivery count, like the collateral announce.
+       * "The notification only appears after a refresh" has two very different causes -- the row was
+       * never written, or it was written and reached nobody -- and they are indistinguishable from
+       * the outside. Zero connections is the normal, correct answer for a phone whose PWA is
+       * backgrounded; it is only a bug when the app is open and still reads zero.
+       */
+      const delivered = await websocketService.broadcastToAddress(wallet, 'notification:new', notif);
+      console.log(`[notify] ${input.kind} → ${delivered} connection(s) for ${wallet.toLowerCase()}`);
+    } catch (error) {
+      // Best-effort, but not silent: the row is saved and the poll will find it, so this is a
+      // delivery failure rather than a lost notification.
+      console.warn('[notify] realtime delivery failed:', error instanceof Error ? error.message : error);
     }
     // Web Push for important kinds (or when explicitly forced) so it lands even when the app is closed.
     // Include the current unread count so the service worker can set the app-icon badge (native feel).

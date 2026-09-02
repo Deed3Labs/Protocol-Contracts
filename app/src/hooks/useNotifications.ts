@@ -11,6 +11,7 @@ import {
 } from '@/utils/apiClient';
 import { usePushRegistration } from '@/hooks/usePushRegistration';
 import { markChainSettled } from '@/lib/chainStale';
+import { refreshAllNow } from '@/lib/refreshAll';
 
 /**
  * Persistent in-app notifications from the backend (wallet-scoped). Fetches on mount + focus, receives
@@ -137,8 +138,10 @@ export function useNotificationsState() {
       // `notification:new` for a row already in the list left the list alone and still bumped the
       // badge — a count that no longer described anything on screen.
       setNotifications((prev) => (prev.some((x) => x.id === n.id) ? prev : [n, ...prev].slice(0, 40)));
-      // Money moved (deposit landed / cash-out sent) → refresh balances + activity right away.
-      if (n.kind === 'received' || n.kind === 'sent') window.dispatchEvent(new Event('clear:activity'));
+      // Money moved (deposit landed / cash-out sent) → refresh right away. Through refreshAllNow,
+      // because a deposit that lands is also collateral: it moves the credit limit, not just the
+      // balance. Dispatching `clear:activity` alone here refreshed the cash and left the limit stale.
+      if (n.kind === 'received' || n.kind === 'sent') refreshAllNow();
     };
     socket.on('notification:new', onNew);
     return () => {

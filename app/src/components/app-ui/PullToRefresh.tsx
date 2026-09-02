@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { refreshAllNow } from '@/lib/refreshAll';
 
 /*
  * Pull-to-refresh for the installed PWA / mobile web.
@@ -9,8 +10,10 @@ import { cn } from '@/lib/utils';
  * with no obvious way to force a fetch — there's no browser reload button in standalone mode. The
  * visibility listeners handle the resume case; this covers "I'm looking at it and want it fresh now".
  *
- * Refresh is broadcast as `clear:activity`, the event balances, transactions and wallet balances
- * already listen to, so there's no separate refresh path to keep in sync.
+ * Refresh goes through `refreshAllNow`, which fans out to both refresh channels. This used to
+ * dispatch `clear:activity` directly and claim there was no separate path to keep in sync -- true
+ * when it was written, and quietly false once credit, savings and vesting started listening to the
+ * chain-stale signal instead. Pulling refreshed balances and left the limit alone.
  *
  * Touch only: it attaches nothing on pointer devices, where the browser's own reload exists.
  */
@@ -37,7 +40,7 @@ export default function PullToRefresh({ children }: { children: React.ReactNode 
     refreshingRef.current = true;
     setRefreshing(true);
     setPullBoth(THRESHOLD);
-    window.dispatchEvent(new Event('clear:activity'));
+    refreshAllNow();
     await new Promise((r) => setTimeout(r, MIN_SPIN_MS));
     refreshingRef.current = false;
     setRefreshing(false);

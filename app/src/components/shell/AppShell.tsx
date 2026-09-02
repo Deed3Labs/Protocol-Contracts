@@ -3,6 +3,7 @@ import { Outlet, Navigate } from 'react-router-dom';
 import AppChrome from './AppChrome';
 import HeaderActions from './HeaderActions';
 import PullToRefresh from '@/components/app-ui/PullToRefresh';
+import { useRefreshOnResume } from '@/hooks/useRefreshOnResume';
 import { KycProvider } from '@/context/KycContext';
 import { BridgeProvider } from '@/context/BridgeContext';
 import { ClearBalancesProvider } from '@/hooks/useClearBalances';
@@ -76,6 +77,8 @@ function OnboardingGate({ children }: { children: ReactNode }) {
  * AppChrome (top nav on desktop, floating tab bar on mobile — design spec §1).
  */
 export default function AppShell() {
+  // A backgrounded PWA misses the transient `chain:changed` socket event; this is how it catches up.
+  useRefreshOnResume();
   return (
     // Bridge wraps KYC: verification state comes FROM Bridge, so KycModal can read useBridge().
     <BridgeProvider>
