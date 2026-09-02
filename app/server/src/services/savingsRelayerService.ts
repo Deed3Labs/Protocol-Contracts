@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { assertCdpNetworkMatches } from './cdpNetworkGuard.js';
 import { ethers } from 'ethers';
 import { savingsIntentService, type SavingsIntentPayload } from './savingsIntentService.js';
 
@@ -303,6 +304,9 @@ class SavingsRelayerService {
     if (!network) {
       throw new Error(`No CDP network configured for savings chain ${chainId}.`);
     }
+    // A testnet chain id paired with the mainnet network name would sign on mainnet without
+    // complaint. See cdpNetworkGuard.
+    assertCdpNetworkMatches(chainId, network, 'savings relayer');
 
     const tx = await client.evm.sendTransaction({
       address,
