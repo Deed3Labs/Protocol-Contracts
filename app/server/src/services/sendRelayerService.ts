@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { assertCdpNetworkMatches } from './cdpNetworkGuard.js';
 import { ethers } from 'ethers';
 
 const CLAIM_ESCROW_ABI = [
@@ -360,6 +361,15 @@ class SendRelayerService {
         `No CDP network configured for chainId=${request.chainId || this.resolveChainId()}. Set SEND_CDP_NETWORK or SEND_CDP_NETWORK_<chainId>`
       );
     }
+
+    /*
+     * The chain and the network have to agree before anything is signed.
+     *
+     * These resolve from separate env vars with separate fallbacks, and on the demo environment
+     * that produced chain 84532 with network "base" — a send from a testnet UI would have gone to
+     * Base mainnet with the mainnet relayer. See cdpNetworkGuard.
+     */
+    assertCdpNetworkMatches(request.chainId || this.resolveChainId(), network, 'send relayer');
 
     if (!this.resolveCdpClientOptions()) {
       return this.simulationOrThrow(
