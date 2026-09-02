@@ -60,6 +60,29 @@ function chainId(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 84532;
 }
 
+/*
+ * Which signer moves collateral, said out loud.
+ *
+ * This used to be decided by absence: a raw key was used if one happened to be in the environment,
+ * and the relayer only got a turn when none was. That is the wrong way round for the thing we are
+ * trying not to do. It also meant a private key appearing in the environment for any reason --
+ * copied in for a one-off script, inherited from another service -- silently took over signing, and
+ * nothing anywhere said so.
+ *
+ * So the mode is explicit and the default is the managed wallet, matching SAVINGS_RELAYER_MODE and
+ * SEND_RELAYER_MODE, which have worked that way all along. A raw key is now opt-in: set
+ * COLLATERAL_SIGNER_MODE=local_key and it is used, deliberately, by someone who meant it.
+ */
+type CollateralSignerMode = 'local_key' | 'cdp_server_wallet';
+
+function collateralSignerMode(): CollateralSignerMode {
+  const raw =
+    process.env.COLLATERAL_SIGNER_MODE?.trim().toLowerCase() ||
+    process.env.SAVINGS_RELAYER_MODE?.trim().toLowerCase() ||
+    'cdp_server_wallet';
+  return raw === 'local_key' ? 'local_key' : 'cdp_server_wallet';
+}
+
 function operatorKey(): string | null {
   const raw = (process.env.CREDIT_OPERATOR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY || '').trim();
   if (!raw) return null;
@@ -175,15 +198,28 @@ async function sendCollateralTx(
   method: string,
   args: unknown[],
 ): Promise<string> {
-  const key = operatorKey();
   const data = new ethers.Interface(abi).encodeFunctionData(method, args);
 
-  if (key) {
+  if (collateralSignerMode() === 'local_key') {
+    const key = operatorKey();
+    /*
+     * Asked for a raw key and there is not one: stop.
+     *
+     * Falling back to the relayer here would be the old behaviour wearing a new name. Someone set
+     * this mode on purpose, presumably because the managed wallet was not what they wanted, and
+     * quietly using it anyway answers a different question than the one they asked.
+     */
+    if (!key) {
+      throw new Error(
+        'COLLATERAL_SIGNER_MODE=local_key but no CREDIT_OPERATOR_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY is set.',
+      );
+    }
     const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
     const signer = new ethers.Wallet(key, provider);
     const tx = await signer.sendTransaction({ to, data });
     return (await tx.wait())?.hash ?? tx.hash;
   }
+
   return savingsRelayerService.sendAsRelayer(chainId(), to, data);
 }
 
