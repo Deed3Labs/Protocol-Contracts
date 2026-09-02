@@ -334,6 +334,35 @@ class SavingsRelayerService {
       : this.sendViaCdp(chainId, to, data);
   }
 
+  /**
+   * Send arbitrary calldata as the relayer, and tell the caller who sent it.
+   *
+   * Exposed so the collateral sync can use the wallet this service already owns rather than a raw
+   * private key of its own. That sync could only ever sign with CREDIT_OPERATOR_PRIVATE_KEY or
+   * DEPLOYER_PRIVATE_KEY — neither of which is set in the deployed environment — so it has been
+   * returning "no key" before touching the chain, and no deposit has pledged collateral there.
+   *
+   * The relayer's credentials are already configured, already funded, and already the way every
+   * other write reaches this chain. One signer for the server's writes is also one account to keep
+   * in gas and one address to hold a role, rather than three.
+   */
+  async sendAsRelayer(chainId: number, to: string, data: string): Promise<string> {
+    return this.submit(chainId, to, data);
+  }
+
+  /** The address the relayer signs as, which is what needs the role and the gas. */
+  async relayerAddress(chainId: number): Promise<string | null> {
+    try {
+      if (this.relayerMode() === 'local_key') {
+        const key = this.resolvePrivateKey();
+        return key ? new ethers.Wallet(key).address : null;
+      }
+      return await this.resolveCdpAddress(chainId);
+    } catch {
+      return null;
+    }
+  }
+
   async settleIntent(payload: SavingsIntentPayload): Promise<string> {
     const config = savingsIntentService.resolveChainConfig(payload.chainId);
     const iface = new ethers.Interface(FACTORY_ABI);
