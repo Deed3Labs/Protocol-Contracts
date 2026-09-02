@@ -53,6 +53,7 @@ import { startSendExpiryNotifier } from './jobs/sendExpiryNotifier.js';
 import { startPulledFundsReleaser } from './jobs/pulledFundsReleaser.js';
 import { startSweepRunner } from './jobs/sweepRunner.js';
 import { startMemoryMonitor } from './jobs/memoryMonitor.js';
+import { startRelayerGasMonitor } from './jobs/relayerGas.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
@@ -324,6 +325,9 @@ async function startServer() {
 
     // Cheap, and the only thing that will tell us the SHAPE of memory use rather than its peak.
     startMemoryMonitor();
+    // A signer with no gas fails silently — the pledge does not happen and every figure downstream
+    // is quietly stale. This is the only thing that would have said so.
+    startRelayerGasMonitor();
 
     startReconciler().catch((error) => {
       console.error('Failed to start reconciler:', error);

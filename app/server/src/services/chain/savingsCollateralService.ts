@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
+import { savingsRelayerService } from '../savingsRelayerService.js';
 import { websocketService } from '../websocketService.js';
 
 /*
@@ -156,26 +157,51 @@ export async function syncCollateralKind(
   return attempt;
 }
 
+/*
+ * How a collateral write reaches the chain.
+ *
+ * A raw operator key when one is configured, and otherwise the relayer this server already signs
+ * everything else with. That fallback is the whole point: CREDIT_OPERATOR_PRIVATE_KEY and
+ * DEPLOYER_PRIVATE_KEY are not set in the deployed environment, so this returned "no key" before
+ * touching the chain and no deposit there has ever pledged collateral or pushed a capacity. The
+ * relayer's credentials are already configured and already funded.
+ *
+ * One signer for the server's writes is also one account to keep in gas and one address to hold
+ * OPERATOR_ROLE, rather than three that can each be the one that is empty.
+ */
+async function sendCollateralTx(
+  to: string,
+  abi: string[],
+  method: string,
+  args: unknown[],
+): Promise<string> {
+  const key = operatorKey();
+  const data = new ethers.Interface(abi).encodeFunctionData(method, args);
+
+  if (key) {
+    const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
+    const signer = new ethers.Wallet(key, provider);
+    const tx = await signer.sendTransaction({ to, data });
+    return (await tx.wait())?.hash ?? tx.hash;
+  }
+  return savingsRelayerService.sendAsRelayer(chainId(), to, data);
+}
+
 async function runSync(wallet: string, kind: string, targetUnits: bigint): Promise<CollateralSyncResult> {
   const registryAddress = getContractAddress(chainId(), 'CollateralRegistry');
   const calculatorAddress = getContractAddress(chainId(), 'LimitCalculator');
   if (!registryAddress) return { ok: false, reason: 'no collateral registry on this chain' };
 
-  const key = operatorKey();
-  if (!key) return { ok: false, reason: 'no CREDIT_OPERATOR_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY' };
-
   try {
     const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
-    const signer = new ethers.Wallet(key, provider);
-    const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, signer);
+    const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, provider);
     const member = ethers.getAddress(wallet);
 
     const current: bigint = await registry.pledgedOf(member, kind);
     let txHash: string | undefined;
 
     if (targetUnits > current) {
-      const tx = await registry.pledge(member, kind, targetUnits - current);
-      txHash = (await tx.wait())?.hash ?? tx.hash;
+      txHash = await sendCollateralTx(registryAddress, REGISTRY_ABI, 'pledge', [member, kind, targetUnits - current]);
     } else if (targetUnits < current) {
       // Only what is actually free. The rest is holding up drawn credit and the registry will
       // refuse to let it go -- correctly.
@@ -183,8 +209,7 @@ async function runSync(wallet: string, kind: string, targetUnits: bigint): Promi
       const wanted = current - targetUnits;
       const amount = wanted < free ? wanted : free;
       if (amount > 0n) {
-        const tx = await registry.release(member, kind, amount);
-        txHash = (await tx.wait())?.hash ?? tx.hash;
+        txHash = await sendCollateralTx(registryAddress, REGISTRY_ABI, 'release', [member, kind, amount]);
       }
     }
 
@@ -193,7 +218,6 @@ async function runSync(wallet: string, kind: string, targetUnits: bigint): Promi
     // Permissionless by design -- a member whose collateral just moved should not wait for an
     // operator to notice.
     if (calculatorAddress) {
-      const calculator = new ethers.Contract(calculatorAddress, CALCULATOR_ABI, signer);
       /*
        * Estimated with headroom, not taken at face value.
        *
@@ -203,12 +227,16 @@ async function runSync(wallet: string, kind: string, targetUnits: bigint): Promi
        * exactly to the estimate runs out of gas and reverts with no reason data, which is what
        * happened. The buffer is on the gas limit only; unused gas is not charged.
        */
-      const estimate = await calculator.pushCapacities.estimateGas(member);
-      const push = await calculator.pushCapacities(member, { gasLimit: (estimate * 15n) / 10n });
-      const receipt = await push.wait();
-      if (receipt?.status === 0) {
-        return { ok: false, reason: 'pushCapacities reverted', pledgedUnits: targetUnits.toString() };
-      }
+      /*
+       * pushCapacities is permissionless, so this needs gas and not privilege — which is why the
+       * relayer can do it even before it holds OPERATOR_ROLE.
+       *
+       * The gas buffer that used to live here belonged to a locally-signed transaction. The relayer
+       * estimates for itself, and a hand-set limit computed against a different sender is worse than
+       * none: an estimate is a measurement of the world before the write it follows, and the pledge
+       * immediately above changes the very state this call reads.
+       */
+      await sendCollateralTx(calculatorAddress, CALCULATOR_ABI, 'pushCapacities', [member]);
     }
 
     // After the writes, not before: the point is that the figures are already new when a device
@@ -317,16 +345,14 @@ export async function syncBondCollateral(wallet: string): Promise<CollateralSync
   if (!registryAddress) return { ok: false, reason: 'no collateral registry on this chain' };
   if (!collectionAddress) return { ok: false, reason: 'no bond collection on this chain' };
 
-  const key = operatorKey();
-  if (!key) return { ok: false, reason: 'no CREDIT_OPERATOR_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY' };
-
   try {
     const rpc = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
-    const signer = new ethers.Wallet(key, rpc);
     const member = ethers.getAddress(wallet);
 
     const collection = new ethers.Contract(collectionAddress, BOND_COLLECTION_ABI, rpc);
-    const registry = new ethers.Contract(registryAddress, REGISTRY_ITEM_ABI, signer);
+    // Reads only. Writes go through sendCollateralTx, so bonds sign the same way savings do rather
+    // than keeping a second path that can be configured differently and break on its own.
+    const registry = new ethers.Contract(registryAddress, REGISTRY_ITEM_ABI, rpc);
 
     // Created is not held: a bond can be transferred, redeemed or seized, and one the member no
     // longer holds backs nothing of theirs.
@@ -340,31 +366,23 @@ export async function syncBondCollateral(wallet: string): Promise<CollateralSync
     const pledgedIds: bigint[] = await registry.pledgedItemsOf(member, BOND_KIND);
     const pledged = new Set(pledgedIds.map((id) => id.toString()));
 
-    let changed = 0;
     for (const id of held) {
       if (pledged.has(id)) continue;
-      const tx = await registry.pledgeItem(member, BOND_KIND, id);
-      await tx.wait();
-      changed += 1;
+      await sendCollateralTx(registryAddress, REGISTRY_ITEM_ABI, 'pledgeItem', [member, BOND_KIND, id]);
     }
     for (const id of pledged) {
       if (held.has(id)) continue;
       // `releaseItem` refuses while the bond is holding up drawn credit, which is correct — the
       // member cannot have moved it either.
       try {
-        const tx = await registry.releaseItem(member, BOND_KIND, id);
-        await tx.wait();
-        changed += 1;
+        await sendCollateralTx(registryAddress, REGISTRY_ITEM_ABI, 'releaseItem', [member, BOND_KIND, id]);
       } catch {
         // Encumbered, or already gone. Left as it is rather than treated as a failure of the sync.
       }
     }
 
     if (calculatorAddress) {
-      const calculator = new ethers.Contract(calculatorAddress, CALCULATOR_ABI, signer);
-      const estimate = await calculator.pushCapacities.estimateGas(member);
-      const push = await calculator.pushCapacities(member, { gasLimit: (estimate * 15n) / 10n });
-      await push.wait();
+      await sendCollateralTx(calculatorAddress, CALCULATOR_ABI, 'pushCapacities', [member]);
     }
 
     await announceChainChanged(member, 'BOND');
