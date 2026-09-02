@@ -29,7 +29,9 @@ describe('the account that signs can be seen to afford the next write', () => {
 
   test('and reports something a person can act on', () => {
     expect(gas).toContain('syncsRemaining');
-    expect(gas).toContain('syncs left');
+    // 'writes' rather than 'syncs' since this covers the send relayer too, which does not sync
+    // anything — a count of transactions is the unit both have in common.
+    expect(gas).toContain('writes left');
   });
 
   test('maxFeePerGas, not the base fee', () => {
@@ -65,5 +67,43 @@ describe('collateral writes use the signer the server already has', () => {
     const bond = collateral.slice(collateral.indexOf('export async function syncBondCollateral'));
     expect(bond).toContain('sendCollateralTx');
     expect(bond).not.toContain('new ethers.Wallet(');
+  });
+});
+
+/*
+ * The relayers are not on the same chain, and treating them as if they were produces a false alarm
+ * every day.
+ *
+ * Savings and collateral sign on Base Sepolia; send signs on Base mainnet. Checking the mainnet
+ * account against testnet reports it as empty, because it holds nothing there and never will. I
+ * made exactly that mistake by hand — told the user their send relayer was at zero when it was
+ * funded on the chain it actually uses — which is what this guards.
+ */
+describe('each relayer is checked on the chain it actually uses', () => {
+  test('the chain travels with the account, not read once from the environment', () => {
+    expect(gas).toMatch(/chainId: number; address: string/);
+    expect(gas).toContain('checkRelayerGas(relayer)');
+  });
+
+  test('send has its own chain and its own address', () => {
+    expect(gas).toContain("envChainId('SEND_DEFAULT_CHAIN_ID')");
+    expect(gas).toContain('sendRelayerAddress');
+  });
+
+  test('both are reported, not just the first', () => {
+    const run = gas.slice(gas.indexOf('const run = async'));
+    expect(run).toContain('for (const relayer of found)');
+  });
+
+  test('one relayer failing does not silence the other', () => {
+    // A single try/catch around the loop would let an RPC hiccup on one chain hide a genuinely
+    // empty account on the other.
+    const run = gas.slice(gas.indexOf('for (const relayer of found)'));
+    expect(run).toContain('catch');
+    expect(run).toContain('check failed');
+  });
+
+  test('the same account on the same chain is not reported twice', () => {
+    expect(gas).toContain('send === savings && sendChain === savingsChain');
   });
 });
