@@ -1,6 +1,8 @@
 import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
+import { chainProvider } from './provider.js';
+import { coalesce } from './readCache.js';
 
 /*
  * The Earn page's two products, read from the contracts that hold them.
@@ -103,13 +105,7 @@ function resolveChainId(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 84532;
 }
 
-let cachedProvider: { chainId: number; provider: ethers.JsonRpcProvider } | null = null;
-function getProvider(chainId: number): ethers.JsonRpcProvider {
-  if (cachedProvider?.chainId === chainId) return cachedProvider.provider;
-  const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId));
-  cachedProvider = { chainId, provider };
-  return provider;
-}
+const getProvider = chainProvider;
 
 async function readPool(
   provider: ethers.JsonRpcProvider,
@@ -294,7 +290,16 @@ async function readRedeemedGains(
 }
 
 /** The Earn page's state, as the contracts hold it. */
-export async function readChainEarn(
+/*
+ * Coalesced like the credit read, and for the same reason: the pool and bond figures are re-read by
+ * the same five listeners on the same retry backoff, so one move asked for them twenty times over.
+ * Dropped when the server writes collateral, so a settled read never answers from before the write.
+ */
+export function readChainEarn(wallet: string, chainId = resolveChainId()): Promise<ChainEarn> {
+  return coalesce(`earn:${wallet.toLowerCase()}:${chainId}`, () => readChainEarnUncached(wallet, chainId));
+}
+
+async function readChainEarnUncached(
   wallet: string,
   chainId = resolveChainId(),
 ): Promise<ChainEarn> {

@@ -3,6 +3,8 @@ import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
 import { savingsRelayerService } from '../savingsRelayerService.js';
 import { websocketService } from '../websocketService.js';
+import { chainProvider } from './provider.js';
+import { invalidate } from './readCache.js';
 
 /*
  * Making savings back a credit line.
@@ -109,6 +111,16 @@ const inFlight = new Map<string, Promise<CollateralSyncResult>>();
  * wallet — so it is exact, and it reaches every device rather than the one that did the moving.
  */
 async function announceChainChanged(wallet: string, kind: string): Promise<void> {
+  /*
+   * Before the broadcast, not after.
+   *
+   * Reads are coalesced for a second to survive the burst a single move sets off, and this runs at
+   * the one moment that window is dangerous: the figures just changed, and the read this broadcast
+   * is about to trigger is precisely the one that must not be answered from before them. Dropping
+   * the entry first means the settled read goes to chain, which is the entire point of telling
+   * anyone.
+   */
+  for (const scope of ['credit', 'earn']) invalidate(`${scope}:${wallet.toLowerCase()}:`);
   try {
     const delivered = await websocketService.broadcastToAddress(wallet.toLowerCase(), 'chain:changed', {
       wallet: wallet.toLowerCase(),
@@ -214,7 +226,7 @@ async function sendCollateralTx(
         'COLLATERAL_SIGNER_MODE=local_key but no CREDIT_OPERATOR_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY is set.',
       );
     }
-    const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
+    const provider = chainProvider(chainId());
     const signer = new ethers.Wallet(key, provider);
     const tx = await signer.sendTransaction({ to, data });
     return (await tx.wait())?.hash ?? tx.hash;
@@ -229,7 +241,7 @@ async function runSync(wallet: string, kind: string, targetUnits: bigint): Promi
   if (!registryAddress) return { ok: false, reason: 'no collateral registry on this chain' };
 
   try {
-    const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
+    const provider = chainProvider(chainId());
     const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, provider);
     const member = ethers.getAddress(wallet);
 
@@ -291,7 +303,7 @@ export async function readSavingsUnits(wallet: string): Promise<bigint | null> {
   const clrusd = getContractAddress(chainId(), 'CLRUSD') || getContractAddress(chainId(), 'ClearUSD');
   if (!clrusd) return null;
   try {
-    const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
+    const provider = chainProvider(chainId());
     const token = new ethers.Contract(clrusd, ['function balanceOf(address) view returns (uint256)'], provider);
     return await token.balanceOf(ethers.getAddress(wallet));
   } catch (error) {
@@ -333,7 +345,7 @@ export async function syncPoolCollateral(wallet: string): Promise<CollateralSync
   if (!pool) return { ok: false, reason: 'no lending pool on this chain' };
 
   try {
-    const rpc = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
+    const rpc = chainProvider(chainId());
     const contract = new ethers.Contract(pool, POOL_ABI, rpc);
     const shares: bigint = await contract.balanceOf(ethers.getAddress(wallet));
     const assets: bigint = shares === 0n ? 0n : await contract.convertToAssets(shares);
@@ -382,7 +394,7 @@ export async function syncBondCollateral(wallet: string): Promise<CollateralSync
   if (!collectionAddress) return { ok: false, reason: 'no bond collection on this chain' };
 
   try {
-    const rpc = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
+    const rpc = chainProvider(chainId());
     const member = ethers.getAddress(wallet);
 
     const collection = new ethers.Contract(collectionAddress, BOND_COLLECTION_ABI, rpc);

@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
+import { chainProvider } from './provider.js';
 
 /*
  * Reading a member's on-chain collateral — the layer the snapshot has been missing.
@@ -78,14 +79,7 @@ function toCents(amount: bigint, decimals: number): number {
   return Number(amount / divisor);
 }
 
-let cachedProvider: { chainId: number; provider: ethers.JsonRpcProvider } | null = null;
-
-function getProvider(chainId: number): ethers.JsonRpcProvider {
-  if (cachedProvider?.chainId === chainId) return cachedProvider.provider;
-  const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId));
-  cachedProvider = { chainId, provider };
-  return provider;
-}
+const getProvider = chainProvider;
 
 async function readTokenCents(
   provider: ethers.JsonRpcProvider,

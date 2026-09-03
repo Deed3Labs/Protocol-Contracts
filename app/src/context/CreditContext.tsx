@@ -5,6 +5,7 @@ import { useAppKitAccount } from '@/lib/walletCompat';
 import { onChainStale } from '@/lib/chainStale';
 import { getCredit, type CreditState } from '@/utils/apiClient';
 import { toCycle } from '@/lib/creditMapping';
+import { keepLastGood } from '@/lib/keepLastGood';
 
 export type ProductStatus = 'available' | 'active' | 'soon';
 export interface CreditProduct {
@@ -115,7 +116,21 @@ export function CreditProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const read = () => {
       void getCredit(address).then((result) => {
-        if (!cancelled) setCredit(result);
+        if (cancelled) return;
+        /*
+         * A failed read must not replace figures that worked.
+         *
+         * `complete: false` does not mean "this member has no credit line" -- an empty line reads as
+         * a complete result with no tiers. It means the chain read errored, and under rate limiting
+         * that happened often. Assigning it anyway blanked every tier, so the limit fell to zero and
+         * came back on the next successful read: not a stale number, a wrong one, flickering. Two
+         * separate reports of the credit component "showing the wrong thing" were this.
+         *
+         * Keeping the last good value is honest in a way zero is not. The figures are from a moment
+         * ago rather than from now, which is the ordinary condition of anything read over a network;
+         * zero is a claim about the member's money that was never true.
+         */
+        setCredit((prev) => keepLastGood(prev, result));
       });
     };
     read();

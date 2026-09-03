@@ -7,6 +7,7 @@ import { useAppKitAccount } from '@/lib/walletCompat';
 import { toActivityRow } from '@/lib/activityMapping';
 import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
 import { onChainStale } from '@/lib/chainStale';
+import { keepLastGood } from '@/lib/keepLastGood';
 import {
   getCredit,
   getLithicAccount,
@@ -84,7 +85,7 @@ export default function HomeRoute() {
     // telling a member their credit is gone because an RPC timed out is the worse mistake.
     const read = () => {
       void getCredit(address).then((result) => {
-        if (!cancelled) setCredit(result);
+        if (!cancelled) setCredit((prev) => keepLastGood(prev, result));
       });
       void getPaySummary(address).then((result) => {
         if (!cancelled) setPay(result);
