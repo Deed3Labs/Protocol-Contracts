@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const read = (p: string) => readFileSync(join(import.meta.dirname, '..', p), 'utf8');
+/** The merchant app lives outside this workspace; these assertions still belong with the route. */
+const readApp = (p: string) =>
+  readFileSync(join(import.meta.dirname, '..', '..', '..', 'merchant', 'src', p), 'utf8');
 
 /*
  * Raising a charge is the one action that creates money owed, and three decisions about it are
@@ -95,5 +98,19 @@ describe('the device header survives CORS', () => {
     const index = read('index.ts');
     const cors = index.slice(index.indexOf('allowedHeaders'), index.indexOf('exposedHeaders'));
     expect(cors).toContain('X-Clear-Device');
+  });
+});
+
+describe('cancelling a charge actually cancels it', () => {
+  test('both cancel buttons call the API, not just the router', () => {
+    // Both of these navigated and nothing else, so a charge the counter believed it had cancelled
+    // stayed live and the customer could still approve it. Money, silently.
+    const detail = readApp('pages/ChargeDetailPage.tsx');
+    const raise = readApp('pages/NewChargePage.tsx');
+    expect(detail).toContain('api.cancelCharge');
+    expect(raise).toContain('api.cancelCharge');
+    // The shape that was wrong: a bare navigate as the entire handler.
+    expect(detail).not.toMatch(/onClick=\{\(\) => navigate\('\/charges'\)\}[\s\S]{0,80}Cancel charge/);
+    expect(raise).not.toContain("onCancel={() => navigate('/')}");
   });
 });

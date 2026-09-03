@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import {
@@ -34,6 +35,8 @@ import { STUB_MERCHANT } from '@/data/stubs';
 
 export default function ChargeDetailPage() {
   const { id } = useParams();
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const navigate = useNavigate();
   const { session, canSeeMoney } = useAuth();
 
@@ -160,9 +163,35 @@ export default function ChargeDetailPage() {
       )}
 
       {cancellable && (
-        <Button onClick={() => navigate('/charges')} className="mt-2 w-full">
-          Cancel charge
-        </Button>
+        <>
+          <Button
+            disabled={cancelling}
+            onClick={async () => {
+              // This navigated and nothing else, so a cancelled charge stayed live and the
+              // customer could still approve it. The server decides whether it is too late.
+              setCancelling(true);
+              setCancelError(null);
+              try {
+                await api.cancelCharge(charge.code);
+                navigate('/charges');
+              } catch (e) {
+                setCancelError(
+                  e instanceof Error ? e.message : 'That could not be cancelled just now.',
+                );
+              } finally {
+                setCancelling(false);
+              }
+            }}
+            className="mt-2 w-full"
+          >
+            {cancelling ? 'Cancelling…' : 'Cancel charge'}
+          </Button>
+          {cancelError && (
+            <p role="alert" className="m-0 mt-2 text-center text-[12.5px] leading-[1.5]">
+              {cancelError}
+            </p>
+          )}
+        </>
       )}
 
       {isPending(charge.state) && (

@@ -218,7 +218,18 @@ export default function NewChargePage() {
         code={code}
         raisedAt={raisedAt}
         onSendAgain={() => setRaisedAt(Date.now())}
-        onCancel={() => navigate('/')}
+        onCancel={async () => {
+          // Navigating away used to be the whole of it, which left the charge live: the customer
+          // could still approve a charge the counter believed it had cancelled. The server is what
+          // decides, and it refuses once they have answered.
+          try {
+            if (code) await api.cancelCharge(code);
+          } catch {
+            // Already answered, or unreachable. Either way the counter is done with this screen;
+            // the charge list is the honest record of what actually happened to it.
+          }
+          navigate('/');
+        }}
         onApproved={() => setStage('confirmed')}
         onDeclined={() => setStage('declined')}
         onExpired={() => setStage('expired')}
