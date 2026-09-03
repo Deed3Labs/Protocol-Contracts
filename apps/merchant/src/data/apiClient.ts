@@ -423,15 +423,26 @@ export const api = {
    * Records a request; it does not move money. The response says what Clear will settle and when
    * the regular payout lands, so the screen can be specific rather than reassuring.
    */
-  async requestWithdrawal(amountCents: number): Promise<{
+  async requestWithdrawal(input: {
+    amountCents: number;
+    /** Owed money passes through the cash account; cash-account money goes straight out. */
+    source: 'owed' | 'cash';
+    destination: 'cash' | 'bank' | 'debit';
+  }): Promise<{
     id: string;
     amountCents: number;
+    source: 'owed' | 'cash';
+    destination: 'cash' | 'bank' | 'debit';
+    /** True when the route has the extra hop, which is what the Route line reports. */
+    throughCashAccount: boolean;
     nextPayoutOn: string | null;
+    cashAccountCents: number | null;
+    owedCents: number;
     status: string;
   }> {
     return request('/api/merchant/payouts/withdraw', {
       method: 'POST',
-      body: JSON.stringify({ amountCents }),
+      body: JSON.stringify(input),
     });
   },
 
@@ -525,6 +536,22 @@ export interface Refund {
 
 export interface PayoutPosition {
   owedCents: number;
+  /**
+   * Three parallel lines — reference section 07. Owed and held are different kinds of money, and
+   * one figure misstates both.
+   *
+   *   cashAccountCents    already the shop's, movable at any hour
+   *   releasedReadyCents  owed, and free today as far as the pool allows
+   *   scheduledCents      owed, and arriving on the scheduled payout
+   *
+   * Nulls mean "not known", never zero: an unreadable balance shown as $0.00 looks like an empty
+   * account rather than a failed lookup, and a merchant would act on it.
+   */
+  cashAccountCents: number | null;
+  releasedReadyCents: number | null;
+  scheduledCents: number;
+  /** What a merchant actually asks for: how much can I get right now. */
+  readyToWithdrawCents: number | null;
   /** When the next one lands. Null when none is scheduled — the screen says so rather than guessing. */
   nextPayoutOn: string | null;
   clearsBalanceCents: number;

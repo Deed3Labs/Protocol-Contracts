@@ -559,6 +559,13 @@ merchantRouter.post(
   async (req: Request, res: Response) => {
     const { merchant, staff } = req.merchant!;
     const amountCents = Number(req.body?.amountCents);
+    const source = req.body?.source === 'cash' ? 'cash' : 'owed';
+    const destination =
+      req.body?.destination === 'bank'
+        ? 'bank'
+        : req.body?.destination === 'debit'
+          ? 'debit'
+          : 'cash';
 
     if (!Number.isInteger(amountCents) || amountCents <= 0) {
       res.status(400).json({ error: 'Invalid request', message: 'That is not an amount.' });
@@ -569,6 +576,8 @@ merchantRouter.post(
       merchant,
       amountCents,
       requestedBy: staff.id,
+      source,
+      destination,
     });
     if (!result.ok) {
       res.status(409).json({ error: 'Cannot withdraw', message: result.reason ?? 'not available' });
@@ -579,8 +588,14 @@ merchantRouter.post(
     res.status(201).json({
       id: result.id,
       amountCents,
-      // What the shop should expect next, so the screen can say something true about timing.
+      source,
+      destination,
+      // The hop the reference's Route line describes: owed money passes through the cash account,
+      // cash-account money goes straight out.
+      throughCashAccount: source === 'owed' && destination !== 'cash',
       nextPayoutOn: position.nextPayoutOn,
+      cashAccountCents: position.cashAccountCents,
+      owedCents: position.owedCents,
       status: 'requested',
     });
   },

@@ -4,6 +4,7 @@ import { MERCHANT_SCHEMA, ensureMerchantSchema, getMerchantPool } from '../../co
 import { getPostgresPool } from '../../config/postgres.js';
 import { readMerchantTerms } from '../chargeService.js';
 import { CHARGE_TABLE_NAME } from '../chargeStore.js';
+import { cashAccountCents } from './cashAccount.js';
 
 /**
  * The shop's own record, and what it is owed.
@@ -136,21 +137,41 @@ export const merchantProfileStore = {
     merchant: string;
     amountCents: number;
     requestedBy: string;
+    /** Owed money passes through the cash account; cash-account money goes straight out. */
+    source: 'owed' | 'cash';
+    destination: 'cash' | 'bank' | 'debit';
   }): Promise<{ ok: boolean; id?: string; reason?: string }> {
     const pool = getMerchantPool();
     if (!pool) return { ok: false, reason: 'not configured' };
     await ensureMerchantSchema();
 
     const position = await this.payoutPosition(input.merchant);
-    const available = position.availableTodayCents;
 
-    // Null is "the pool cap is not known", which is not the same as zero. Refusing is the only
-    // honest answer: approving an amount nobody has sized is how a shop gets told yes and paid no.
-    if (available === null) {
-      return { ok: false, reason: 'We cannot size an early withdrawal just now. Try again shortly.' };
+    /**
+     * The cap depends on where the money is coming from — reference section 07b.
+     *
+     * Owed money is bounded by what the payout pool can free today; cash-account money is bounded
+     * only by the balance. Checking one cap for both would either block a merchant from moving
+     * their own money or let them draw against a pool that has not released it.
+     */
+    const cap =
+      input.source === 'cash' ? position.cashAccountCents : position.releasedReadyCents;
+
+    if (cap === null) {
+      return {
+        ok: false,
+        reason:
+          input.source === 'cash'
+            ? 'We cannot read your cash account just now. Try again shortly.'
+            : 'We cannot size an early release just now. It arrives on your scheduled payout.',
+      };
     }
-    if (input.amountCents <= 0 || input.amountCents > available) {
-      return { ok: false, reason: 'That is more than is available today.' };
+    if (input.amountCents <= 0 || input.amountCents > cap) {
+      return { ok: false, reason: 'That is more than is available from there.' };
+    }
+    // Cash to cash is not a movement. It drops out of the picker, and is refused here too.
+    if (input.source === 'cash' && input.destination === 'cash') {
+      return { ok: false, reason: 'That money is already in your cash account.' };
     }
 
     const id = `pay_${randomUUID()}`;
@@ -172,6 +193,10 @@ export const merchantProfileStore = {
     if (!pool) {
       return {
         owedCents: 0,
+        cashAccountCents: null as number | null,
+        releasedReadyCents: null as number | null,
+        scheduledCents: 0,
+        readyToWithdrawCents: null as number | null,
         nextPayoutOn: null as string | null,
         clearsBalanceCents: 0,
         toBankCents: 0,
@@ -242,14 +267,47 @@ export const merchantProfileStore = {
         )
       : { rows: [] };
 
+    /**
+     * Three parallel lines, not one figure — reference section 07.
+     *
+     *   cashAccountCents   already the merchant's, movable at any hour
+     *   releasedReadyCents owed, and free today as far as the pool allows
+     *   scheduledCents     owed, and arriving on the scheduled payout
+     *
+     * "Ready to withdraw" is the first two added together, which is the number a merchant actually
+     * asks for — how much can I get right now — and the reason the composition is shown beneath it
+     * rather than as two cards they have to add up themselves.
+     *
+     * The old shape could not express this: it had one owed figure and an availability cap, so
+     * money already sitting in the shop's own account was invisible.
+     */
+    /**
+     * How much of what is OWED the pool can free today. Null means unknown, which is not zero —
+     * the credit side answers this and nothing here should guess a cap it cannot verify.
+     */
+    const availableTodayCents: number | null = null;
+
+    const cash = await cashAccountCents(normalize(merchant));
+    const releasedReady = availableTodayCents === null ? null : Math.min(availableTodayCents, net);
+    const scheduled = releasedReady === null ? net : Math.max(0, net - releasedReady);
+
     return {
       owedCents: net,
+      cashAccountCents: cash,
+      releasedReadyCents: releasedReady,
+      scheduledCents: scheduled,
+      // Null when either half is unknown, so the screen says so rather than understating it.
+      // Cash-account money is withdrawable whatever the pool says, so an unknown early-release cap
+      // must not hide it. Null only when the balance itself could not be read.
+      readyToWithdrawCents: cash === null ? null : cash + (releasedReady ?? 0),
       nextPayoutOn: nextRes.rows[0]?.scheduled_for ?? null,
       clearsBalanceCents: Math.round(settle.clearsBalance * 100),
       toBankCents: Math.round(settle.toBank * 100),
       // The early-withdrawal cap is a pool question the credit side answers. Stated as null rather
       // than guessed: the app says the cap up front, and a made-up cap is worse than none.
-      availableTodayCents: null,
+      // The early-withdrawal cap is a pool question the credit side answers. Stated as null rather
+      // than guessed: a made-up cap is worse than none.
+      availableTodayCents,
       paid: paidRes.rows.map((p) => ({
         id: p.id,
         amountCents: Number(p.amount_cents),

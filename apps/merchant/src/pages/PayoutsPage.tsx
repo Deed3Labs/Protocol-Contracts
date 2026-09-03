@@ -72,7 +72,8 @@ export default function PayoutsPage() {
             setRequestError(null);
             try {
               const cents = Math.round((availableToday ?? 0) * 100);
-              await api.requestWithdrawal(cents);
+              // Interim: the source/destination picker from section 07b replaces this next.
+              await api.requestWithdrawal({ amountCents: cents, source: 'owed', destination: 'bank' });
               setRequestedCents(cents);
               setView('withdrawn');
             } catch (e) {
