@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { PrivyProvider, useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
 import { Button, PrimaryButton } from '@/shell/ui';
@@ -32,11 +32,38 @@ const PRIVY_APP_ID = (import.meta.env.VITE_PRIVY_APP_ID as string | undefined) ?
  * Scoping it here also matches what is true: counter staff have no Privy account, and a shift is
  * Clear's own record. Only an owner ever loads any of this.
  */
-export function OwnerSignIn(props: { onDone: () => void; onBack?: () => void }) {
+export function OwnerSignIn(props: {
+  onDone: () => void;
+  onBack?: () => void;
+  /**
+   * Onboarding needs the raw Privy token, not a session.
+   *
+   * A shop being created has no staff row to sign in as — that row is what onboarding produces —
+   * so `signInAsOwner` would refuse. When this is given, the screen hands back the verified token
+   * and lets the caller decide what it means. Same UI either way, because it is the same act.
+   */
+  onToken?: (token: string) => Promise<void>;
+  title?: string;
+  blurb?: ReactNode;
+  /**
+   * Rendered inside another screen rather than as one.
+   *
+   * Standalone this owns the viewport and centres itself; inside onboarding's step frame that
+   * `min-h-dvh` becomes a tall empty box with the form floating in the middle of it. Same markup
+   * either way, just without the wrapper that assumes it is the whole page.
+   */
+  embedded?: boolean;
+}) {
   if (!PRIVY_APP_ID) {
     return (
-      <div className="grid min-h-dvh place-items-center bg-[var(--clear-surface-2)] px-4">
-        <div className="w-full max-w-[340px]">
+      <div
+        className={
+          props.embedded
+            ? ''
+            : 'grid min-h-dvh place-items-center bg-[var(--clear-surface-2)] px-4'
+        }
+      >
+        <div className={props.embedded ? 'w-full' : 'w-full max-w-[340px]'}>
           <p className="m-0 mb-1.5 text-[16px] font-medium">Owner sign-in is not set up</p>
           <p className="m-0 mb-4 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
             This tablet has no Privy app configured, so there is no way to verify an owner. The
@@ -68,7 +95,28 @@ export function OwnerSignIn(props: { onDone: () => void; onBack?: () => void }) 
   );
 }
 
-function OwnerSignInForm({ onDone, onBack }: { onDone: () => void; onBack?: () => void }) {
+function OwnerSignInForm({
+  onDone,
+  onBack,
+  onToken,
+  title,
+  blurb,
+  embedded,
+}: {
+  onDone: () => void;
+  onBack?: () => void;
+  onToken?: (token: string) => Promise<void>;
+  title?: string;
+  blurb?: ReactNode;
+  /**
+   * Rendered inside another screen rather than as one.
+   *
+   * Standalone this owns the viewport and centres itself; inside onboarding's step frame that
+   * `min-h-dvh` becomes a tall empty box with the form floating in the middle of it. Same markup
+   * either way, just without the wrapper that assumes it is the whole page.
+   */
+  embedded?: boolean;
+}) {
   const { ready, getAccessToken, login } = usePrivy();
   const { sendCode, loginWithCode } = useLoginWithEmail();
 
@@ -82,7 +130,8 @@ function OwnerSignInForm({ onDone, onBack }: { onDone: () => void; onBack?: () =
   async function adoptSession() {
     const token = await getAccessToken();
     if (!token) throw new Error('That sign-in could not be verified.');
-    await api.signInAsOwner(token);
+    if (onToken) await onToken(token);
+    else await api.signInAsOwner(token);
     onDone();
   }
 
@@ -99,18 +148,33 @@ function OwnerSignInForm({ onDone, onBack }: { onDone: () => void; onBack?: () =
   }
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-[var(--clear-surface-2)] px-4">
-      <div className="w-full max-w-[340px]">
-        <p className="m-0 mb-[3px] text-[11.5px] text-[var(--clear-text-muted)]">
-          Clear for Merchants
-        </p>
-        <h1 className="m-0 mb-1.5 text-[16px] font-medium">Sign in as the owner</h1>
-        <p className="m-0 mb-[18px] text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
-          Needed to move money, change terms or manage staff.{' '}
-          <strong className="font-medium text-[var(--clear-text-primary)]">
-            Not needed to take a payment.
-          </strong>
-        </p>
+    <div
+      className={
+        embedded ? '' : 'grid min-h-dvh place-items-center bg-[var(--clear-surface-2)] px-4'
+      }
+    >
+      <div className={embedded ? 'w-full' : 'w-full max-w-[340px]'}>
+        {/* The product name belongs on a screen of its own, not on a step inside one. */}
+        {!embedded && (
+          <p className="m-0 mb-[3px] text-[11.5px] text-[var(--clear-text-muted)]">
+            Clear for Merchants
+          </p>
+        )}
+        {/* Embedded, the surrounding step already carries the heading — two of them reads as a
+            rendering bug rather than emphasis. */}
+        {(title || !embedded) && (
+          <h1 className="m-0 mb-1.5 text-[16px] font-medium">{title ?? 'Sign in as the owner'}</h1>
+        )}
+        <div className="m-0 mb-[18px] text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
+          {blurb ?? (
+            <>
+              Needed to move money, change terms or manage staff.{' '}
+              <strong className="font-medium text-[var(--clear-text-primary)]">
+                Not needed to take a payment.
+              </strong>
+            </>
+          )}
+        </div>
 
         {!sent ? (
           <>

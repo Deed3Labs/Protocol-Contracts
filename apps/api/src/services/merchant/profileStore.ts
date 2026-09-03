@@ -70,6 +70,45 @@ export const merchantProfileStore = {
    * a balance that can drift from the rows that produced it, and the first time a merchant
    * reconciles against their own books the drift is what they find.
    */
+  /**
+   * Create the shop's profile row. Onboarding's first write.
+   *
+   * `merchant` is the organization wallet's address, lowercased — the merchant address the
+   * registry knows IS that wallet, so identity comes from Privy rather than being chosen. ON
+   * CONFLICT DO NOTHING because onboarding is retried by people refreshing a page mid-signup, and
+   * a second attempt should land on the shop they already have rather than an error.
+   */
+  async create(input: {
+    merchant: string;
+    name: string;
+    category?: string | null;
+    town?: string | null;
+  }): Promise<boolean> {
+    const pool = getMerchantPool();
+    if (!pool) return false;
+    await ensureMerchantSchema();
+    const { rowCount } = await pool.query(
+      `INSERT INTO ${MERCHANT_SCHEMA}.profiles (merchant, name, category, town, partner_since)
+       VALUES ($1,$2,$3,$4,CURRENT_DATE)
+       ON CONFLICT (merchant) DO NOTHING`,
+      [normalize(input.merchant), input.name.trim(), input.category ?? null, input.town ?? null],
+    );
+    return (rowCount ?? 0) > 0;
+  },
+
+  /** Record Clear's signer on this shop, once the wallet has accepted it. */
+  async setClearSigner(merchant: string, quorumId: string, policyId: string): Promise<void> {
+    const pool = getMerchantPool();
+    if (!pool) return;
+    await ensureMerchantSchema();
+    await pool.query(
+      `UPDATE ${MERCHANT_SCHEMA}.profiles
+          SET clear_signer_quorum_id = $2, clear_policy_id = $3
+        WHERE merchant = $1`,
+      [normalize(merchant), quorumId, policyId],
+    );
+  },
+
   async payoutPosition(merchant: string) {
     const pool = getPostgresPool();
     if (!pool) return { owed: 0, clearsBalance: 0, toBank: 0, availableToday: 0, paid: [] };

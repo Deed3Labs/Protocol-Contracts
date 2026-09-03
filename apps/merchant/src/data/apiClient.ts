@@ -188,6 +188,33 @@ export const api = {
   },
 
 
+  /* ----------------------------------------------------------- onboarding */
+
+  /**
+   * Bring the shop into existence — reference section 13.
+   *
+   * The merchant address is NOT sent. It comes back: it is the address of the organization wallet
+   * Privy creates, so the registry, the payout destination and Clear's own record name the same
+   * thing by construction rather than by an owner pasting it correctly.
+   *
+   * `signerReady: false` means the wallet exists but Clear cannot yet sign on it. The shop can be
+   * signed into and set up; it cannot be paid out of. Worth surfacing rather than hiding, because
+   * the owner will otherwise discover it at the first payout.
+   */
+  async onboard(input: {
+    privyToken: string;
+    shopName: string;
+    ownerName: string;
+    ownerPin: string;
+    category?: string | null;
+    town?: string | null;
+  }): Promise<{ merchant: string; walletAddress: string; created: boolean; signerReady: boolean }> {
+    return request('/api/merchant/onboarding', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
   /* --------------------------------------------------------------- device */
 
   /**

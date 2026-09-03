@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Check } from 'lucide-react';
 import { dollars } from '@clear/domain';
 import { Button, Cap, Card, Inset, PrimaryButton, Row } from '@/shell/ui';
+import { api } from '@/data/apiClient';
+import { OwnerSignIn } from '@/auth/OwnerSignIn';
 import { STUB_MERCHANT, STUB_TERMS } from '@/data/stubs';
 
 /**
@@ -47,6 +49,49 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * The editable twin of `Field`.
+ *
+ * Same border, padding and type size, because a step where one row is typed and the next is shown
+ * should not look like two different screens. What changes is only whether it accepts a caret.
+ */
+function Input({
+  label,
+  value,
+  onChange,
+  placeholder,
+  hint,
+  inputMode,
+  maxLength,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  hint?: string;
+  inputMode?: 'text' | 'numeric';
+  maxLength?: number;
+}) {
+  return (
+    <div className="mb-3">
+      <p className="m-0 mb-1 text-[11px] tracking-[0.3px] text-[var(--clear-text-muted)]">
+        {label}
+      </p>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        inputMode={inputMode}
+        maxLength={maxLength}
+        className="w-full rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-1)] px-3 py-2 text-[13px] outline-none placeholder:text-[var(--clear-text-muted)]"
+      />
+      {hint && (
+        <p className="m-0 mt-1 text-[11px] leading-[1.5] text-[var(--clear-text-muted)]">{hint}</p>
+      )}
+    </div>
+  );
+}
+
 function TermLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="mt-1.5 flex justify-between gap-3 text-[12.5px] first:mt-0">
@@ -76,6 +121,43 @@ export default function OnboardingPage() {
   const next = () => setStep((s) => Math.min(s + 1, STEPS.length - 1));
   const rate = Math.round(STUB_MERCHANT.discountRate * 1000) / 10;
 
+  // Collected across the first three steps and submitted once, at Verify — the step that produces
+  // the Privy token. Nothing is written to Clear until then, so an owner who abandons signup
+  // halfway leaves nothing behind to clean up.
+  const [shopName, setShopName] = useState('');
+  const [ownerName, setOwnerName] = useState('');
+  const [category, setCategory] = useState('');
+  const [town, setTown] = useState('');
+  const [ownerPin, setOwnerPin] = useState('');
+  const [shop, setShop] = useState<{ merchant: string; signerReady: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Create the shop. Called with the token the Privy step just verified.
+   *
+   * The merchant address is not sent and not chosen — it comes back, because it is the address of
+   * the organization wallet Privy creates. Which means the registry, the payout destination and
+   * Clear's own row name the same thing by construction.
+   */
+  async function createShop(privyToken: string) {
+    setError(null);
+    try {
+      const res = await api.onboard({
+        privyToken,
+        shopName,
+        ownerName,
+        ownerPin,
+        category: category || null,
+        town: town || null,
+      });
+      setShop({ merchant: res.merchant, signerReady: res.signerReady });
+      next();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That did not work. Try again in a moment.');
+      throw e;
+    }
+  }
+
   return (
     <div className="@container min-h-dvh bg-[var(--clear-surface-2)] text-[var(--clear-text-primary)]">
       <div className="mx-auto max-w-[900px] px-5 py-6">
@@ -84,7 +166,7 @@ export default function OnboardingPage() {
             Clear <span className="font-normal text-[var(--clear-text-muted)]">for Merchants</span>
           </span>
           <span className="text-[12.5px] text-[var(--clear-text-muted)]">
-            Setting up {STUB_MERCHANT.name}
+            Setting up {shopName || 'your shop'}
           </span>
         </header>
 
@@ -131,9 +213,19 @@ export default function OnboardingPage() {
                 title="Clear for Merchants"
                 blurb="Finance work at your counter. Customers sign up in about three minutes; you are paid on your normal terms."
               >
-                <Field label="Business name" value={STUB_MERCHANT.name} />
-                <Field label="Your email" value="mike@mikestire.com" />
-                <Field label="Phone" value="(909) 555–0118" />
+                <Input
+                  label="Business name"
+                  value={shopName}
+                  onChange={setShopName}
+                  placeholder="Mike's Tire"
+                />
+                <Input
+                  label="Your name"
+                  value={ownerName}
+                  onChange={setOwnerName}
+                  placeholder="Mike R."
+                  hint="Shown on the shift screen and against every charge you raise."
+                />
                 <p className="m-0 mb-4 text-[11.5px] text-[var(--clear-text-muted)]">
                   Have a code?{' '}
                   <span className="text-[var(--clear-text-accent)] underline underline-offset-2">
@@ -141,7 +233,11 @@ export default function OnboardingPage() {
                   </span>{' '}
                   — some codes carry different terms.
                 </p>
-                <PrimaryButton onClick={next} className="!py-[11px] !text-[15px]">
+                <PrimaryButton
+                  disabled={!shopName.trim() || !ownerName.trim()}
+                  onClick={next}
+                  className="!py-[11px] !text-[15px]"
+                >
                   Get started
                 </PrimaryButton>
               </StepFrame>
@@ -152,14 +248,17 @@ export default function OnboardingPage() {
                 title="About the business"
                 blurb="This is also your entry in the Clear Partners directory, where members look for somewhere to spend."
               >
-                <Field label="Business name" value={STUB_MERCHANT.name} />
-                <Field label="Category" value="Auto & tires" />
-                <Field label="Address" value="412 W State St, Redlands, CA 92373" />
-                <Field label="Typical ticket" value="$300 – $1,500" />
-                <Field label="Phone" value="(909) 555–0118" />
+                <Field label="Business name" value={shopName || '—'} />
+                <Input
+                  label="Category"
+                  value={category}
+                  onChange={setCategory}
+                  placeholder="Auto & tires"
+                />
+                <Input label="Town" value={town} onChange={setTown} placeholder="Redlands, CA" />
                 <p className="m-0 mb-4 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
-                  Typical ticket sets your starting approval cap. It moves on its own once you have
-                  volume — you do not have to ask.
+                  Your approval cap starts from your typical ticket and moves on its own once you
+                  have volume — you do not have to ask.
                 </p>
                 <PrimaryButton onClick={next} className="!py-[11px] !text-[15px]">
                   Continue
@@ -198,7 +297,7 @@ export default function OnboardingPage() {
 
                 <Inset className="mb-3.5 !py-3">
                   <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-                    Signing also makes {STUB_MERCHANT.name} a{' '}
+                    Signing also makes {shopName || 'your shop'} a{' '}
                     <strong className="font-medium text-[var(--clear-text-primary)]">
                       partner member of the Clear co-op
                     </strong>{' '}
@@ -215,8 +314,8 @@ export default function OnboardingPage() {
 
             {step === 3 && (
               <StepFrame
-                title="Business details"
-                blurb="Standard for anyone receiving payouts — the same details your bank and your card processor already hold."
+                title="Verify it is you"
+                blurb="This is what creates your shop's wallet. Everything before it was a form; this step is the one that exists afterwards."
               >
                 {/*
                   Said before they ask, not after. A shop that thinks it is being credit-checked
@@ -232,13 +331,46 @@ export default function OnboardingPage() {
                   </p>
                 </div>
 
-                <Field label="Legal business name" value="Mike's Tire & Auto LLC" />
-                <Field label="EIN" value="88–•••••••" />
-                <Field label="Who is authorised to sign" value="Michael Ruiz" />
-                <Field label="Their role" value="Owner" />
-                <PrimaryButton onClick={next} className="!py-[11px] !text-[15px]">
-                  Continue
-                </PrimaryButton>
+                {/*
+                  The PIN before the sign-in, deliberately.
+                  
+                  Both are needed by the same call, and a PIN rejected AFTER an organization exists
+                  at Privy leaves an orphan nobody can reach — a wallet's entity cannot be changed
+                  once set. So the cheap check happens first and the irreversible one second.
+                */}
+                <Input
+                  label="Your PIN for the counter"
+                  value={ownerPin}
+                  onChange={(v) => setOwnerPin(v.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="4 digits"
+                  inputMode="numeric"
+                  maxLength={4}
+                  hint="Starts your shift and attributes charges. It is not what protects the money — signing in is."
+                />
+
+                {ownerPin.length === 4 ? (
+                  <div className="rounded-[10px] border-[0.5px] border-[var(--clear-border)] bg-[var(--clear-surface-1)] px-3.5 py-3">
+                    {/* The same sign-in screen the app uses everywhere else, handed the token
+                        instead of a session: there is no staff row to sign in as yet, because
+                        this call is what creates it. */}
+                    <OwnerSignIn
+                      blurb="Clear holds no password. Sign in with an emailed code or a passkey, and that account becomes the owner of this shop."
+                      embedded
+                      onToken={createShop}
+                      onDone={() => undefined}
+                    />
+                  </div>
+                ) : (
+                  <PrimaryButton disabled className="!py-[11px] !text-[15px]">
+                    Continue
+                  </PrimaryButton>
+                )}
+
+                {error && (
+                  <p role="alert" className="m-0 mt-3 text-[13px] leading-[1.6]">
+                    {error}
+                  </p>
+                )}
               </StepFrame>
             )}
 
@@ -304,6 +436,22 @@ export default function OnboardingPage() {
                     screen, they approve, you refund it — with no customer waiting.
                   </p>
                 </Inset>
+
+                {shop && (
+                  <Inset className="mb-3.5 !py-3">
+                    <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
+                      <strong className="font-medium text-[var(--clear-text-primary)]">
+                        {shopName} is set up.
+                      </strong>{' '}
+                      Its wallet is {shop.merchant.slice(0, 6)}…{shop.merchant.slice(-4)} — that
+                      address is your shop, on the register and on every payout.
+                      {/* Stated, not hidden. A shop that can take charges but cannot be paid out of
+                          should hear it here rather than discover it on the 14th. */}
+                      {!shop.signerReady &&
+                        ' Payouts are not switched on yet — we will finish that before your first one.'}
+                    </p>
+                  </Inset>
+                )}
 
                 <PrimaryButton onClick={() => navigate('/')} className="mb-2 !py-[11px] !text-[15px]">
                   Open Clear

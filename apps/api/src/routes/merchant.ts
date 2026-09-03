@@ -8,6 +8,7 @@ import { attemptLimiter, staffStore } from '../services/merchant/staffStore.js';
 import { merchantProfileStore } from '../services/merchant/profileStore.js';
 import { readMerchantTerms } from '../services/chargeService.js';
 import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
+import { onboardMerchant } from '../services/merchant/onboardingService.js';
 
 /**
  * The merchant surface.
@@ -166,6 +167,70 @@ merchantRouter.post('/session/owner', async (req: Request, res: Response) => {
     expiresAt: session.expiresAt,
     staff: { id: staff.id, name: staff.name, role: staff.role },
     merchant: staff.merchant,
+  });
+});
+
+
+/**
+ * Bringing a shop into existence — reference section 13.
+ *
+ * Unauthenticated by design, and the only route here that is. Every other merchant route needs
+ * either an enrolled device or a session, and a shop being created has neither: no staff exist to
+ * sign in as, no tablet has been set up, and there is no merchant address yet because the address
+ * is what this call produces. What stands in for auth is the Privy token — the owner signed in
+ * with an emailed code or a passkey before reaching this step, and that identity becomes the
+ * owner of the organization.
+ *
+ * The shop's address is NOT accepted from the client. It is the organization wallet's address, so
+ * the registry, the payout destination and Clear's own row name the same thing by construction.
+ */
+merchantRouter.post('/onboarding', async (req: Request, res: Response) => {
+  const privyToken = String(req.body?.privyToken ?? '');
+  const shopName = String(req.body?.shopName ?? '').trim();
+  const ownerName = String(req.body?.ownerName ?? '').trim();
+  const ownerPin = String(req.body?.ownerPin ?? '');
+
+  if (!privyToken || !shopName || !ownerName) {
+    res.status(400).json({
+      error: 'Invalid request',
+      message: 'A shop name, your name and a verified sign-in are all required.',
+    });
+    return;
+  }
+
+  const result = await onboardMerchant({
+    privyToken,
+    shopName,
+    ownerName,
+    ownerPin,
+    category: req.body?.category ? String(req.body.category) : null,
+    town: req.body?.town ? String(req.body.town) : null,
+  });
+
+  if (!result.ok) {
+    // Each failure says what the person can do about it. "Something went wrong" at step six of a
+    // signup is where shops give up.
+    const map = {
+      unverified: [401, 'That sign-in could not be verified. Sign in again to continue.'],
+      bad_pin: [400, 'A PIN is exactly four digits.'],
+      privy_unavailable: [
+        503,
+        'Your shop wallet could not be created just now. Nothing was charged and nothing was lost — try again in a moment.',
+      ],
+      not_configured: [503, 'Clear is not ready to set up shops just now. Try again in a moment.'],
+    } as const;
+    const [status, message] = map[result.reason];
+    res.status(status).json({ error: 'Onboarding failed', message });
+    return;
+  }
+
+  res.json({
+    merchant: result.merchant,
+    walletAddress: result.walletAddress,
+    created: result.created,
+    // Stated rather than hidden: a shop whose wallet exists but whose signer does not can be
+    // signed into and set up, and cannot yet be paid out of. The owner should know which they have.
+    signerReady: result.signerReady,
   });
 });
 

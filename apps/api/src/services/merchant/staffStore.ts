@@ -304,6 +304,24 @@ export const staffStore = {
     return rows.map(toRow);
   },
 
+  /**
+   * Bind a staff row to the Privy user who owns it.
+   *
+   * Separate from `add` because it only ever applies to owners, and because the two facts are
+   * established by different acts: the row is Clear's record of a person on the roster, the Privy
+   * id is who authenticated. Owner sign-in matches on this column, so a shop whose owner is not
+   * linked is a shop nobody can administer.
+   */
+  async linkPrivyUser(staffId: string, privyUserId: string): Promise<void> {
+    const pool = getMerchantPool();
+    if (!pool) return;
+    await ensureMerchantSchema();
+    await pool.query(`UPDATE ${MERCHANT_SCHEMA}.staff SET privy_user_id = $2 WHERE id = $1`, [
+      staffId,
+      privyUserId,
+    ]);
+  },
+
   async setActive(id: string, active: boolean): Promise<void> {
     const pool = getMerchantPool();
     if (!pool) return;
