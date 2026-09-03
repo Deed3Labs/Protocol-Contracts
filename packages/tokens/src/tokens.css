@@ -35,6 +35,18 @@
   --clear-bg-success: #e3f3ed;
   --clear-bg-accent: #e9e7fa;
 
+  /*
+   * The three states of a merchant's money — reference section 07.
+   *
+   * Held, released, and still to release. They are one ramp rather than three unrelated colours,
+   * because the composition bar has to read as one quantity in three states: the deeper the green,
+   * the more it is already yours. Locked is deliberately not red — it is not a problem, it is money
+   * arriving on a date.
+   */
+  --clear-tier-cash: #0f6e56;
+  --clear-tier-free: #3fa588;
+  --clear-tier-locked: #c9c6bc;
+
   --clear-radius: 8px;
   --clear-radius-sm: 4px;
   --clear-radius-lg: 12px;
@@ -90,6 +102,10 @@
 
   --clear-bg-success: #1e3a33;
   --clear-bg-accent: #2f2c4d;
+
+  --clear-tier-cash: #2f9d7d;
+  --clear-tier-free: #5fc0a4;
+  --clear-tier-locked: #55534b;
 }
 
 /** Dark — a shop closing up, or a tablet on a stand in a dim back office. */
@@ -110,4 +126,8 @@
 
   --clear-bg-success: #17302a;
   --clear-bg-accent: #272444;
+
+  --clear-tier-cash: #2f9d7d;
+  --clear-tier-free: #5fc0a4;
+  --clear-tier-locked: #46443d;
 }

@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { dollars, formatCalendarDate, payoutSettlement } from '@clear/domain';
-import { Big, Cap, Card, Inset, Lbl, PrimaryButton, Row } from '@/shell/ui';
+import { Cap, Card, Inset, PrimaryButton } from '@/shell/ui';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 import { WithdrawModal } from '@/payouts/WithdrawModal';
@@ -29,6 +30,54 @@ import { WithdrawModal } from '@/payouts/WithdrawModal';
  * stand" rather than making it also be the machinery.
  */
 type View = 'summary' | 'withdraw';
+
+/**
+ * One line of the composition — reference section 07's `.leg2`.
+ *
+ * The dot ties the row to its slice of the bar above, which is what makes the two read as one
+ * object. The third line is dimmed rather than hidden: money arriving on a date is not money you
+ * have, and pretending otherwise is the misstatement the whole two-balance design exists to avoid.
+ */
+function Leg({
+  dot,
+  name,
+  sub,
+  value,
+  chevron,
+  dim,
+}: {
+  dot: string;
+  name: string;
+  sub: string;
+  value: string;
+  chevron?: boolean;
+  dim?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-start justify-between border-b-[0.5px] border-[var(--clear-border)] py-[13px] text-[13.5px] last:border-b-0 ${
+        dim ? 'opacity-55' : ''
+      }`}
+    >
+      <span className="flex min-w-0 flex-1 items-start gap-[9px] pr-[14px] leading-[1.25]">
+        <i
+          style={{ background: dot }}
+          className="mt-[5px] block h-[7px] w-[7px] shrink-0 rounded-full"
+        />
+        <span className="min-w-0">
+          <span className="block truncate">{name}</span>
+          <span className="mt-1 block text-[11.5px] leading-[1.45] text-[var(--clear-text-muted)]">
+            {sub}
+          </span>
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-[7px] whitespace-nowrap text-[15px] leading-[1.25] tabular-nums">
+        {value}
+        {chevron && <ChevronRight size={13} className="text-[var(--clear-text-muted)]" />}
+      </span>
+    </div>
+  );
+}
 
 export default function PayoutsPage() {
   const navigate = useNavigate();
@@ -70,70 +119,82 @@ export default function PayoutsPage() {
             the subline says when the rest arrives. The composition answers the follow-up — where it
             currently sits — without making them read two cards and do the addition.
           */}
-          <Lbl>Ready to withdraw</Lbl>
-          <Big>{ready === null ? '—' : dollars(ready)}</Big>
-          <p className="m-0 mb-[18px] mt-[5px] text-[12.5px] text-[var(--clear-text-muted)]">
+          <p className="m-0 mb-0.5 text-[11px] tracking-[0.3px] text-[var(--clear-text-muted)]">
+            Ready to withdraw
+          </p>
+          <p className="m-0 text-[40px] font-medium leading-[1.05] tracking-[-1.2px] tabular-nums">
+            {ready === null ? '—' : dollars(ready)}
+          </p>
+          <p className="m-0 mb-[14px] mt-[5px] text-[12.5px] text-[var(--clear-text-muted)]">
             {scheduled > 0 && nextPayoutOn
               ? `${dollars(scheduled)} more releases ${formatCalendarDate(nextPayoutOn)}`
               : 'Net-30, and sooner when the pool allows'}
           </p>
 
           {/*
-            Three parallel lines — all states of the same money, rather than one account and two
-            conditions. "Still lent out" was wrong and is gone: that money is not on loan, it is
-            owed and simply beyond what the pool can free today, so the line names the date.
-          */}
-          <Card rows className="mb-3.5">
-            <Row
-              title="In your cash account"
-              right={
-                <span className="tabular-nums">
-                  {cashAccount === null ? '—' : dollars(cashAccount)}
-                </span>
-              }
-            />
-            <Row
-              title="Released and ready"
-              right={
-                <span className="tabular-nums">
-                  {releasedReady === null ? 'Nothing today' : dollars(releasedReady)}
-                </span>
-              }
-            />
-            <Row
-              title={nextPayoutOn ? `Releases ${formatCalendarDate(nextPayoutOn)}` : 'Releases on your next payout'}
-              right={<span className="tabular-nums">{dollars(scheduled)}</span>}
-            />
-          </Card>
+            The composition bar: one quantity in three states, sized by share.
 
-          {/*
-            Opens whenever the position has loaded, including at nothing.
-            
-            A dead button tells a merchant nothing about why. The modal already knows both caps and
-            says which is in force — "we cannot size an early release just now", "all of your cash
-            account" — so letting it open is the more informative refusal, and the submit inside it
-            is still guarded.
+            It is what makes the three lines beneath it a breakdown rather than a list — the eye
+            gets the proportion before it reads a single figure. Flex weights, so it needs no
+            percentages and degrades to nothing when every tier is zero.
           */}
+          <div className="mb-1 flex h-[7px] gap-[1.5px] overflow-hidden rounded-[4px] bg-[var(--clear-surface-0)]">
+            {[
+              { v: cashAccount ?? 0, c: 'var(--clear-tier-cash)' },
+              { v: releasedReady ?? 0, c: 'var(--clear-tier-free)' },
+              { v: scheduled, c: 'var(--clear-tier-locked)' },
+            ]
+              .filter((t) => t.v > 0)
+              .map((t) => (
+                <span key={t.c} style={{ flex: t.v, background: t.c }} />
+              ))}
+          </div>
+
+          <div className="mt-2.5 rounded-[11px] border-[0.5px] border-[var(--clear-border)] px-[14px]">
+            <Leg
+              dot="var(--clear-tier-cash)"
+              name="In your cash account"
+              sub="Spendable at partners"
+              value={cashAccount === null ? '—' : dollars(cashAccount)}
+              chevron
+            />
+            <Leg
+              dot="var(--clear-tier-free)"
+              name="Released and ready"
+              sub="Free to move today"
+              value={releasedReady === null ? 'Nothing today' : dollars(releasedReady)}
+            />
+            <Leg
+              dot="var(--clear-tier-locked)"
+              name={nextPayoutOn ? `Releases ${formatCalendarDate(nextPayoutOn)}` : 'Releases later'}
+              sub="On your next payout"
+              value={dollars(scheduled)}
+              dim
+            />
+          </div>
+
           <PrimaryButton
             onClick={() => setView('withdraw')}
             disabled={!position}
-            className="mb-[9px] !py-3.5 !text-[15px]"
+            className="mt-[14px] !py-[13px] !text-[15px]"
           >
             Withdraw
           </PrimaryButton>
-          <p className="m-0 text-center text-[11.5px] text-[var(--clear-text-muted)]">
+          <p className="m-0 mt-2.5 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
             Net-30, and sooner when the pool allows
           </p>
         </div>
 
-        <Inset className="!px-4 !py-[15px]">
-          <Cap>How this settles</Cap>
+        <Inset className="mb-[14px] !px-4 !py-[15px]">
+          <p className="m-0 mb-[11px] text-[10px] uppercase tracking-[0.5px] text-[var(--clear-text-muted)]">
+            How the next payout settles
+          </p>
           <div className="flex justify-between text-[13px]">
             <span className="text-[var(--clear-text-secondary)]">Clears your balance</span>
             <span className="tabular-nums">{dollars(settle.clearsBalance)}</span>
           </div>
           <div className="mt-[7px] flex justify-between text-[13px]">
-            <span className="text-[var(--clear-text-secondary)]">To your bank</span>
+            <span className="text-[var(--clear-text-secondary)]">To your cash account</span>
             <span className="font-medium tabular-nums">{dollars(settle.toBank)}</span>
           </div>
           <p className="m-0 mt-3 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
@@ -144,7 +205,7 @@ export default function PayoutsPage() {
       </div>
 
       <Cap>Paid out</Cap>
-      <Card rows={paid.length > 0}>
+      <Card rows={paid.length > 0} className={paid.length > 0 ? "!px-4 !py-0" : ""}>
         {/* Before the first payout lands this card is empty, which is a real and common state for
             a new shop rather than a failure — so it says which date to expect instead of nothing. */}
         {paid.length === 0 && (
