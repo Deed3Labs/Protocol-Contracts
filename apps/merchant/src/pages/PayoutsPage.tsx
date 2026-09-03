@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { dollars, formatCalendarDate, payoutSettlement } from '@clear/domain';
-import { Big, Button, Cap, Card, Inset, Lbl, PrimaryButton } from '@/shell/ui';
+import { Big, Cap, Card, Inset, Lbl, PrimaryButton, Row } from '@/shell/ui';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
+import { WithdrawModal } from '@/payouts/WithdrawModal';
 
 /**
  * Payouts — reference section 07, with the withdraw flow from section 18.
@@ -19,132 +20,101 @@ import { useApi } from '@/data/useApi';
  * they will ask for a spreadsheet every month.
  */
 
-type View = 'summary' | 'withdraw' | 'withdrawn';
+/**
+ * The withdraw flow is a modal now — reference section 07b.
+ *
+ * It was two full-page views, which could not express the thing that actually matters: money comes
+ * from one of two places and goes to one of three, and the route between them changes the fee and
+ * the timing. A modal that asks both legs keeps the payouts screen as the answer to "where do I
+ * stand" rather than making it also be the machinery.
+ */
+type View = 'summary' | 'withdraw';
 
 export default function PayoutsPage() {
   const navigate = useNavigate();
   const [view, setView] = useState<View>('summary');
-  const [requesting, setRequesting] = useState(false);
-  const [requestError, setRequestError] = useState<string | null>(null);
-  const [requestedCents, setRequestedCents] = useState(0);
 
-  const { data: position } = useApi(() => api.payouts(), []);
+  const { data: position, reload } = useApi(() => api.payouts(), []);
   const { data: profile } = useApi(() => api.profile(), []);
 
   const owed = (position?.owedCents ?? 0) / 100;
+  // Nulls stay null all the way to the screen: an unreadable balance rendered as $0.00 looks like
+  // an empty account rather than a failed lookup, and a merchant would act on it.
+  const cashAccount = position?.cashAccountCents == null ? null : position.cashAccountCents / 100;
+  const releasedReady =
+    position?.releasedReadyCents == null ? null : position.releasedReadyCents / 100;
+  const scheduled = (position?.scheduledCents ?? 0) / 100;
+  const ready = position?.readyToWithdrawCents == null ? null : position.readyToWithdrawCents / 100;
   const clearBalance = (position?.clearsBalanceCents ?? 0) / 100;
-  // Null means the pool cap is not known yet, which is not the same as nothing being available.
-  // Withdrawing is hidden rather than offered at zero — see the guard on the button.
-  const availableToday =
-    position?.availableTodayCents == null ? null : position.availableTodayCents / 100;
   const settle = payoutSettlement(owed, clearBalance);
   const bank = profile?.payoutAccount ?? 'your bank account';
   const nextPayoutOn = position?.nextPayoutOn ?? null;
-  // "the 14th" is the shop's whole mental model of Clear, so where a sentence is built around the
-  // date it stays a sentence when there is no date yet rather than rendering "Invalid Date".
-  const payoutDay = nextPayoutOn ? formatCalendarDate(nextPayoutOn) : 'your next payout date';
   const paid = position?.paid ?? [];
-
-  if (view === 'withdraw') {
-    return (
-      <div className="mx-auto w-full max-w-[340px]">
-        <Cap>Withdraw</Cap>
-        <p className="m-0 mb-3 text-[12.5px] text-[var(--clear-text-secondary)]">To {bank}</p>
-        <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">
-          {availableToday === null ? '—' : dollars(availableToday)}
-        </p>
-        <p className="m-0 mb-3.5 text-[11.5px] text-[var(--clear-text-muted)]">
-          Available today of {dollars(settle.toBank)} owed
-        </p>
-
-        <Inset className="mb-3.5 !px-3.5 !py-3">
-          <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-            The rest lands on {payoutDay} as usual. Withdrawing early does
-            not change your rate.
-          </p>
-        </Inset>
-
-        <PrimaryButton
-          disabled={requesting || availableToday === null || availableToday <= 0}
-          className="mb-2 !py-[11px] !text-[15px]"
-          onClick={async () => {
-            setRequesting(true);
-            setRequestError(null);
-            try {
-              const cents = Math.round((availableToday ?? 0) * 100);
-              // Interim: the source/destination picker from section 07b replaces this next.
-              await api.requestWithdrawal({ amountCents: cents, source: 'owed', destination: 'bank' });
-              setRequestedCents(cents);
-              setView('withdrawn');
-            } catch (e) {
-              setRequestError(
-                e instanceof Error ? e.message : 'That could not be requested just now.',
-              );
-            } finally {
-              setRequesting(false);
-            }
-          }}
-        >
-          {requesting ? 'Requesting…' : `Withdraw ${availableToday === null ? '—' : dollars(availableToday)}`}
-        </PrimaryButton>
-        {requestError && (
-          <p role="alert" className="m-0 mb-2 text-center text-[12.5px] leading-[1.5]">
-            {requestError}
-          </p>
-        )}
-        <Button onClick={() => setView('summary')} className="w-full">
-          {nextPayoutOn ? `Wait for the ${new Date(nextPayoutOn).getUTCDate()}th` : 'Wait for the next payout'}
-        </Button>
-      </div>
-    );
-  }
-
-  if (view === 'withdrawn') {
-    return (
-      <div className="mx-auto w-full max-w-[340px]">
-        <Cap>On its way</Cap>
-        <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">
-          {dollars(requestedCents / 100)}
-        </p>
-        <p className="m-0 mb-3.5 text-[12.5px] text-[var(--clear-text-muted)]">To {bank}</p>
-        <Inset className="mb-3.5 !px-3.5 !py-3">
-          <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-            {/* Specific about what has happened, because "on its way" on its own would be a claim
-                about a transfer rather than about a request Clear has accepted. */}
-            Requested. Clear settles early withdrawals to the account on file. The rest lands on{' '}
-            {payoutDay} as usual.
-          </p>
-        </Inset>
-        <Button onClick={() => setView('summary')} className="w-full">
-          Done
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <>
+      {view === 'withdraw' && position && (
+        <WithdrawModal
+          position={position}
+          bankName={profile?.payoutAccount ?? null}
+          onClose={() => setView('summary')}
+          onDone={reload}
+        />
+      )}
       <div className="mb-4 grid grid-cols-1 gap-3.5 @[900px]:grid-cols-2">
         <div>
-          <Lbl>Owed to you</Lbl>
-          <Big>{dollars(owed)}</Big>
+          {/*
+            One figure, then where it comes from — reference section 07.
+
+            A merchant thinks "how much can I get right now", so that is the number at the top and
+            the subline says when the rest arrives. The composition answers the follow-up — where it
+            currently sits — without making them read two cards and do the addition.
+          */}
+          <Lbl>Ready to withdraw</Lbl>
+          <Big>{ready === null ? '—' : dollars(ready)}</Big>
           <p className="m-0 mb-[18px] mt-[5px] text-[12.5px] text-[var(--clear-text-muted)]">
-            {nextPayoutOn ? `Next payout ${formatCalendarDate(nextPayoutOn)} · net-30` : 'Next payout · net-30'}
+            {scheduled > 0 && nextPayoutOn
+              ? `${dollars(scheduled)} more releases ${formatCalendarDate(nextPayoutOn)}`
+              : 'Net-30, and sooner when the pool allows'}
           </p>
+
+          {/*
+            Three parallel lines — all states of the same money, rather than one account and two
+            conditions. "Still lent out" was wrong and is gone: that money is not on loan, it is
+            owed and simply beyond what the pool can free today, so the line names the date.
+          */}
+          <Card rows className="mb-3.5">
+            <Row
+              title="In your cash account"
+              right={
+                <span className="tabular-nums">
+                  {cashAccount === null ? '—' : dollars(cashAccount)}
+                </span>
+              }
+            />
+            <Row
+              title="Released and ready"
+              right={
+                <span className="tabular-nums">
+                  {releasedReady === null ? 'Nothing today' : dollars(releasedReady)}
+                </span>
+              }
+            />
+            <Row
+              title={nextPayoutOn ? `Releases ${formatCalendarDate(nextPayoutOn)}` : 'Releases on your next payout'}
+              right={<span className="tabular-nums">{dollars(scheduled)}</span>}
+            />
+          </Card>
 
           <PrimaryButton
             onClick={() => setView('withdraw')}
-            // Disabled while the cap is unknown as well as while it is nothing: offering a
-            // withdrawal Clear cannot size yet is a button that fails after the tap.
-            disabled={availableToday === null || availableToday <= 0}
+            disabled={ready === null || ready <= 0}
             className="mb-[9px] !py-3.5 !text-[15px]"
           >
-            Withdraw now
+            Withdraw
           </PrimaryButton>
-          {/* The cap, before they press anything rather than after it fails. */}
           <p className="m-0 text-center text-[11.5px] text-[var(--clear-text-muted)]">
-            Available today: {availableToday === null ? '—' : dollars(availableToday)} of{' '}
-            {dollars(settle.toBank)}
+            Net-30, and sooner when the pool allows
           </p>
         </div>
 
