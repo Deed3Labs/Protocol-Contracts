@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { PrivyProvider, useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
 import { Button, PrimaryButton } from '@/shell/ui';
@@ -139,31 +139,44 @@ function OwnerSignInForm({
    *
    * So this waits for `authenticated` rather than assuming login is synchronous.
    */
+  /**
+   * Callbacks held in refs, and adoption run exactly once.
+   *
+   * `onDone` and `onToken` arrive as inline arrows, so they are a new function on every render.
+   * Putting them in the dependency array meant every re-render tore down the effect mid-flight —
+   * the cleanup set `cancelled`, the completed adopt skipped `onDone()`, and a fresh adopt started
+   * that the next render cancelled in turn. The session was being created server-side and then
+   * thrown away, over and over, which is why the screen never advanced and the log looked quiet.
+   *
+   * The ref keeps the latest callback without making it a trigger, and `startedRef` means a
+   * re-render cannot start a second adoption.
+   */
+  const cbRef = useRef({ onDone, onToken });
+  cbRef.current = { onDone, onToken };
+  const startedRef = useRef(false);
+
   useEffect(() => {
-    if (!adopting || !authenticated) return;
-    let cancelled = false;
+    if (!adopting || !authenticated || startedRef.current) return;
+    startedRef.current = true;
 
     (async () => {
       try {
         const token = await getAccessToken();
         if (!token) throw new Error('That sign-in could not be verified.');
-        if (onToken) await onToken(token);
+        if (cbRef.current.onToken) await cbRef.current.onToken(token);
         else await api.signInAsOwner(token);
-        if (!cancelled) onDone();
+        cbRef.current.onDone();
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'That did not work.');
+        // A failed adoption has to be retryable: the emailed code is spent, so the way back is a
+        // new code, not another press. Clearing the flag lets that happen.
+        startedRef.current = false;
+        setError(e instanceof Error ? e.message : 'That did not work.');
       } finally {
-        if (!cancelled) {
-          setAdopting(false);
-          setBusy(false);
-        }
+        setAdopting(false);
+        setBusy(false);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [adopting, authenticated, getAccessToken, onToken, onDone]);
+  }, [adopting, authenticated, getAccessToken]);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
