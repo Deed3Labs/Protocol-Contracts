@@ -56,12 +56,21 @@ export function WithdrawModal({
   onDone: () => void;
 }) {
   const [stage, setStage] = useState<Stage>('amount');
-  const [source, setSource] = useState<Source>(
-    // Start wherever the money actually is. A shop with nothing released today should not open on
-    // a source that can only refuse them.
-    (position.releasedReadyCents ?? 0) > 0 ? 'owed' : 'cash',
+  // Start wherever the money actually is. A shop with nothing released today should not open on a
+  // source that can only refuse them.
+  const initialSource: Source = (position.releasedReadyCents ?? 0) > 0 ? 'owed' : 'cash';
+  const [source, setSource] = useState<Source>(initialSource);
+  const [destination, setDestination] = useState<Destination>(
+    /**
+     * Never the same on both legs.
+     *
+     * The picker already drops cash from the destinations once it is the source, but the OPENING
+     * state was chosen independently — so a shop with an empty cash account and no bank on file
+     * opened on cash → cash, the one combination the reference says cannot exist. Two correct
+     * rules that never spoke to each other.
+     */
+    initialSource === 'cash' ? (bankName ? 'bank' : 'debit') : bankName ? 'bank' : 'cash',
   );
-  const [destination, setDestination] = useState<Destination>(bankName ? 'bank' : 'cash');
   const [entry, setEntry] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -202,8 +211,16 @@ export function WithdrawModal({
               </p>
             )}
 
+            {(cap ?? 0) <= 0 && (
+              <p className="m-0 mb-2 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
+                {source === 'owed'
+                  ? 'Nothing is released early today. Change the source, or it arrives on your scheduled payout.'
+                  : 'Your cash account is empty. Change the source to what you are owed.'}
+              </p>
+            )}
+
             <PrimaryButton
-              disabled={busy || cents <= 0 || overCap || cap === null}
+              disabled={busy || cents <= 0 || overCap || cap === null || cap <= 0}
               onClick={submit}
               className="!py-[13px] !text-[14.5px]"
             >

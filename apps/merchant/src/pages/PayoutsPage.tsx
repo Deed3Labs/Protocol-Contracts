@@ -106,9 +106,17 @@ export default function PayoutsPage() {
             />
           </Card>
 
+          {/*
+            Opens whenever the position has loaded, including at nothing.
+            
+            A dead button tells a merchant nothing about why. The modal already knows both caps and
+            says which is in force — "we cannot size an early release just now", "all of your cash
+            account" — so letting it open is the more informative refusal, and the submit inside it
+            is still guarded.
+          */}
           <PrimaryButton
             onClick={() => setView('withdraw')}
-            disabled={ready === null || ready <= 0}
+            disabled={!position}
             className="mb-[9px] !py-3.5 !text-[15px]"
           >
             Withdraw
