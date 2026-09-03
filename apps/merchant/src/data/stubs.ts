@@ -283,3 +283,53 @@ export const STUB_PAID_PAYOUTS = [
   { id: 'po_oct', on: '2026-10-14', charges: 24, amount: 13940 },
   { id: 'po_sep', on: '2026-09-14', charges: 19, amount: 11020 },
 ];
+
+/**
+ * Charges raised per person this month.
+ *
+ * The useful by-product of PINs: it shows who is actually offering it, which is how a shop finds
+ * out why one counter converts and another does not. Not surveillance — the reference is explicit
+ * that this is how an owner works out who needs another fifteen minutes of training.
+ */
+export const STUB_CHARGE_COUNTS: Record<string, number> = {
+  s_jen: 18,
+  s_luis: 11,
+  s_mike: 2,
+};
+
+/**
+ * Terms, shown but never editable.
+ *
+ * They live in the signed agreement. A settings page that lets a merchant change their own rate is
+ * a settings page that will be used to change their own rate.
+ */
+export const STUB_TERMS = {
+  /** Locked for the life of the partnership. */
+  rateForLife: true,
+  payoutTerms: 'Net-30',
+  approvalCap: 1500,
+  partnerSince: 'Nov 2026',
+  founding: true,
+};
+
+/** The shop's entry in the Clear Partners directory, where members look for somewhere to spend. */
+export const STUB_LISTING = {
+  initials: 'MT',
+  category: 'Auto & tires',
+  town: 'Redlands',
+  /** Marks a shop where a member can split a purchase. */
+  creditTag: true,
+};
+
+/**
+ * Notification settings.
+ *
+ * Rendered as the reference draws them — stated, not switched. Merchant notifications are one of
+ * the reference's own open questions ("the customer's are designed; the merchant's are not"), so
+ * this shows what is on without inventing the controls that would change it.
+ */
+export const STUB_NOTIFICATIONS = [
+  { id: 'confirmed', label: 'A charge is confirmed', on: true },
+  { id: 'expired', label: 'A charge expires', on: true },
+  { id: 'payout', label: 'A payout lands', on: true },
+];

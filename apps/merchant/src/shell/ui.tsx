@@ -193,3 +193,11 @@ export function Flag({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+/**
+ * Re-exported so a page reaches for one module of primitives.
+ *
+ * It lives with RoleChip because that is what it was built for — saying whose action a screen is
+ * — and the directory listing's "Credit" tag is the same shape.
+ */
+export { Chip } from '@/auth/RoleChip';
