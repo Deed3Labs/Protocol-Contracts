@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { PrivyProvider, useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
 import { Button, PrimaryButton } from '@/shell/ui';
@@ -117,7 +117,7 @@ function OwnerSignInForm({
    */
   embedded?: boolean;
 }) {
-  const { ready, getAccessToken, login } = usePrivy();
+  const { ready, authenticated, getAccessToken, login } = usePrivy();
   const { sendCode, loginWithCode } = useLoginWithEmail();
 
   const [email, setEmail] = useState('');
@@ -125,15 +125,45 @@ function OwnerSignInForm({
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [adopting, setAdopting] = useState(false);
 
-  /** Exchange the Privy token for a merchant session. Privy says who; Clear says whose shop. */
-  async function adoptSession() {
-    const token = await getAccessToken();
-    if (!token) throw new Error('That sign-in could not be verified.');
-    if (onToken) await onToken(token);
-    else await api.signInAsOwner(token);
-    onDone();
-  }
+  /**
+   * Exchange the Privy token for a merchant session — but only once Privy says it is signed in.
+   *
+   * `loginWithCode` resolving does NOT mean `getAccessToken()` will return a token: Privy's auth
+   * state propagates through React a beat later. Calling it immediately returned null, threw
+   * "That sign-in could not be verified", and left the screen exactly where it was — while the
+   * emailed code had already been spent. Pressing the button again then sent Privy a code it had
+   * consumed, which it correctly rejected as an invalid combination. The visible symptom was a
+   * sign-in that silently refused to advance and then blamed the code.
+   *
+   * So this waits for `authenticated` rather than assuming login is synchronous.
+   */
+  useEffect(() => {
+    if (!adopting || !authenticated) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        if (!token) throw new Error('That sign-in could not be verified.');
+        if (onToken) await onToken(token);
+        else await api.signInAsOwner(token);
+        if (!cancelled) onDone();
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'That did not work.');
+      } finally {
+        if (!cancelled) {
+          setAdopting(false);
+          setBusy(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [adopting, authenticated, getAccessToken, onToken, onDone]);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -228,7 +258,7 @@ function OwnerSignInForm({
               if (busy || code.length < 6) return;
               void run(async () => {
                 await loginWithCode({ code });
-                await adoptSession();
+                setAdopting(true);
               });
             }}
           >
@@ -246,15 +276,19 @@ function OwnerSignInForm({
                 if (busy || code.length < 6) return;
                 void run(async () => {
                   await loginWithCode({ code });
-                  await adoptSession();
+                  setAdopting(true);
                 });
               }}
               autoFocus
               placeholder="······"
               className="mb-2.5 w-full rounded-[10px] border-[0.5px] border-[var(--clear-border)] bg-[var(--clear-surface-1)] px-3.5 py-3 text-[19px] tracking-[4px] outline-none placeholder:text-[var(--clear-text-muted)]"
             />
-            <PrimaryButton type="submit" disabled={busy || code.length < 6} className="!py-[13px] !text-[14px]">
-              {busy ? 'Checking…' : 'Sign in'}
+            <PrimaryButton
+              type="submit"
+              disabled={busy || adopting || code.length < 6}
+              className="!py-[13px] !text-[14px]"
+            >
+              {busy || adopting ? 'Checking…' : 'Sign in'}
             </PrimaryButton>
             <button
               type="button"
@@ -279,11 +313,11 @@ function OwnerSignInForm({
         {/* Offered second, better on a device the owner uses often. Privy's own flow covers
             passkeys and an existing wallet, so this hands off rather than rebuilding either. */}
         <Button
-          disabled={!ready || busy}
+          disabled={!ready || busy || adopting}
           onClick={() =>
             run(async () => {
               await login();
-              await adoptSession();
+              setAdopting(true);
             })
           }
           className="w-full !py-[13px] !text-[14px]"
