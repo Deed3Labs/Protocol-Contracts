@@ -25,7 +25,12 @@ import { staffStore } from '../src/services/merchant/staffStore.js';
 
 const OWNER_EMAIL = process.env.SEED_OWNER_EMAIL || 'kyngkai909@gmail.com';
 const SHOP_NAME = process.env.SEED_SHOP_NAME || 'Clear Demo Shop';
-const OWNER_NAME = process.env.SEED_OWNER_NAME || 'Kai M.';
+/**
+ * No default. This shipped as an invented name and then appeared on the owner's own roster and
+ * against every charge they raised, looking like mock data that had leaked into real records.
+ * A name is the person's to give.
+ */
+const OWNER_NAME = process.env.SEED_OWNER_NAME || '';
 const OWNER_PIN = process.env.SEED_OWNER_PIN || '4821';
 
 const REGISTRY = process.env.MERCHANT_REGISTRY_84532 || '0x4172842Ab5B1675a9E7F65B4eAcb2CC3f6b2f1f5';
@@ -49,6 +54,10 @@ async function main() {
   // The owner is an EXISTING Privy user. Creating a second identity for somebody who already has
   // one is how a person ends up unable to sign in to their own shop — the org's key quorum names
   // a user id, and it has to be the one they actually authenticate as.
+  if (!OWNER_NAME.trim()) {
+    throw new Error('SEED_OWNER_NAME is required — this goes on the roster and on every charge.');
+  }
+
   const privy = new PrivyClient({ appId, appSecret });
   const user = await privy.users().getByEmailAddress({ address: OWNER_EMAIL });
   if (!user?.id) throw new Error(`No Privy user for ${OWNER_EMAIL}. Sign in once, then re-run.`);

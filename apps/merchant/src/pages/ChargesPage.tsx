@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { countsAsVolume, dollars, isPending } from '@clear/domain';
+import { CHARGE_LABEL, countsAsVolume, dollars, isPending } from '@clear/domain';
 import { Card, Pill } from '@/shell/ui';
 import { api, type MerchantCharge } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
@@ -182,13 +182,11 @@ export default function ChargesPage() {
                     <span className="w-[62px] text-right text-[11.5px] text-[var(--clear-text-muted)]">
                       {/* Expired is a visible state, not a silent disappearance: a charge that
                           timed out is a lost sale the shop should be able to follow up. */}
-                      {c.state === 'approved'
-                        ? 'Confirmed'
-                        : c.state === 'expired'
-                          ? 'Expired'
-                          : c.state === 'refunded'
-                            ? 'Refunded'
-                            : 'Declined'}
+                      {/* One mapping, in the domain, shared with charge detail. This was a
+                          ternary chain that fell through to "Declined" for anything it did not
+                          name — so a charge the shop cancelled itself was reported back to them
+                          as the customer refusing it, which is a different and worse story. */}
+                      {CHARGE_LABEL[c.state]}
                     </span>
                   )}
                 </span>
