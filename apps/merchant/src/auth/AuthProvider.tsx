@@ -45,6 +45,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // no roster to sign in against.
   useEffect(() => {
     let cancelled = false;
+
+    // Dev-only. Every screen behind the shell needs a session and an enrolled device, which means
+    // none of them can be looked at without a database — so this stands one up in memory. The
+    // pages still call the real client and still render their own empty states when it cannot
+    // reach an API, which is the point: it fakes who is signed in, never the data.
+    // `import.meta.env.DEV` is statically false in a production build, so this falls out entirely.
+    if (import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === '1') {
+      cachedMerchant = '0x0000000000000000000000000000000000000000';
+      setDevice({
+        id: 'preview',
+        label: 'Counter tablet',
+        idleLockSeconds: 300,
+        merchant: cachedMerchant,
+      });
+      setSession({
+        staff: {
+          id: 'preview-owner',
+          name: 'Mike R.',
+          role: 'owner',
+          hasPin: true,
+          active: true,
+        } as Staff,
+        method: 'pin',
+      });
+      setLoading(false);
+      return;
+    }
+
     (async () => {
       try {
         const d = await api.currentDevice();
