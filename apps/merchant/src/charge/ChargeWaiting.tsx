@@ -1,4 +1,6 @@
-import { dollars } from '@clear/domain';
+import { useEffect, useState } from 'react';
+import { dollars, fromWire } from '@clear/domain';
+import { api } from '@/data/apiClient';
 import { Button, Cap, Inset } from '@/shell/ui';
 
 /**
@@ -15,7 +17,7 @@ import { Button, Cap, Inset } from '@/shell/ui';
  */
 export function ChargeWaiting({
   amount,
-  memberName,
+  code,
   raisedAt,
   onSendAgain,
   onCancel,
@@ -24,7 +26,8 @@ export function ChargeWaiting({
   onExpired,
 }: {
   amount: number;
-  memberName: string;
+  /** The raised charge. Polled until the member's phone moves it on. */
+  code: string;
   raisedAt: number;
   onSendAgain: () => void;
   onCancel: () => void;
@@ -32,6 +35,47 @@ export function ChargeWaiting({
   onDeclined: () => void;
   onExpired: () => void;
 }) {
+  const [memberName, setMemberName] = useState<string | null>(null);
+
+  /**
+   * The member's phone drives this, so the tablet asks.
+   *
+   * Polling rather than a socket: a counter tablet sleeps, loses wifi and gets picked up again,
+   * and a poll recovers from all three by simply asking again. Every three seconds is well inside
+   * what a writer reads as immediate and nowhere near enough traffic to matter.
+   *
+   * The screen also says the customer can approve later — so this is not a countdown anybody has
+   * to watch. It exists so that when they do approve at the counter, the tablet notices.
+   */
+  useEffect(() => {
+    if (!code) return;
+    let stopped = false;
+
+    const tick = async () => {
+      try {
+        const c = await api.watchCharge(code);
+        if (stopped) return;
+        // "Not opened yet" until somebody scans it — the charge starts with no member at all.
+        if (c.openedAt && !memberName) setMemberName('Opened');
+        const state = fromWire(c.status);
+        if (state === 'approved') onApproved();
+        else if (state === 'declined') onDeclined();
+        else if (state === 'expired') onExpired();
+      } catch {
+        // A poll that fails changes nothing on screen. The charge is safe on the server, and the
+        // next tick asks again — showing an error here would put a failure in front of a writer
+        // for something that is not their problem and needs no action.
+      }
+    };
+
+    void tick();
+    const id = window.setInterval(tick, 3_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [code, memberName, onApproved, onDeclined, onExpired]);
+
   const secs = Math.max(0, Math.round((Date.now() - raisedAt) / 1000));
   const sent = secs < 90 ? `sent ${secs} seconds ago` : `sent ${Math.round(secs / 60)} min ago`;
 
@@ -41,7 +85,7 @@ export function ChargeWaiting({
         <Cap>Waiting</Cap>
         <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">{dollars(amount)}</p>
         <p className="m-0 mb-[18px] text-[12.5px] text-[var(--clear-text-muted)]">
-          {memberName} · {sent}
+          {memberName ?? 'Not opened yet'} · {sent}
         </p>
         <p className="m-0 mb-3.5 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
           They can approve any time today. You do not have to wait at the counter.
@@ -57,12 +101,14 @@ export function ChargeWaiting({
         </div>
 
         {/*
-          Stubbed transitions. Real life moves this on from the member's phone; until the data
-          layer is wired these stand in for it so the later screens are reachable.
+          Kept for development only. The member's phone drives this for real now — the poll above
+          moves the screen on — but a shop being demonstrated has no second phone in the room, and
+          statically dropped from a production build.
         */}
+        {import.meta.env.DEV && (
         <div className="mt-6 flex flex-wrap gap-2 border-t-[0.5px] border-[var(--clear-border)] pt-3">
           <p className="m-0 w-full text-[10px] uppercase tracking-[0.5px] text-[var(--clear-text-muted)]">
-            Stubbed — the member's phone drives this
+            Development only — the member's phone drives this
           </p>
           <Button onClick={onApproved} className="!text-[12px]">
             They approve
@@ -74,6 +120,7 @@ export function ChargeWaiting({
             Expires
           </Button>
         </div>
+        )}
       </div>
 
       <Inset className="!px-4 !py-[15px]">

@@ -40,7 +40,7 @@ export interface ChargeRow {
   code: string;
   merchantAddress: string;
   merchantName: string;
-  memberWallet: string;
+  memberWallet: string | null;
   amountCents: number;
   /** What the merchant receives, after their discount. The difference is the co-op's. */
   payoutCents: number;
@@ -63,7 +63,7 @@ interface DbRow {
   code: string;
   merchant_address: string;
   merchant_name: string;
-  member_wallet: string;
+  member_wallet: string | null;
   amount_cents: string | number;
   payout_cents: string | number;
   status: ChargeStatus;
@@ -119,6 +119,19 @@ async function ensureTables(): Promise<void> {
   // rather than inventing a name. Soft reference to merchant.staff(id): the schemas may one day
   // live in different databases, so this is not a foreign key.
   await pool.query(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS raised_by TEXT`);
+  /**
+   * The customer is not known when the charge is raised.
+   *
+   * Reference section 03: entering the amount goes straight to the code, because showing a code is
+   * the only path that works for every customer. A new customer installs from it and an existing
+   * member approves — either way nobody has said who they are yet, and a writer at a counter has
+   * no way to ask without turning a two-tap flow into an interrogation.
+   *
+   * So the wallet arrives when the code is opened, not when it is raised. The column was NOT NULL
+   * from when a merchant had to name the member up front; dropping that is what lets the designed
+   * flow exist at all.
+   */
+  await pool.query(`ALTER TABLE ${TABLE} ALTER COLUMN member_wallet DROP NOT NULL`);
   ensured = true;
 }
 
@@ -168,11 +181,13 @@ export const chargeStore = {
   async create(input: {
     merchantAddress: string;
     merchantName: string;
-    memberWallet: string;
+    /** Null on the show-the-code path: the customer attaches when they open it. */
+    memberWallet?: string | null;
     amountCents: number;
     payoutCents: number;
     chainId: number;
     ttlSeconds: number;
+    raisedBy?: string | null;
   }): Promise<ChargeRow | null> {
     const pool = getPostgresPool();
     if (!pool) return null;
@@ -185,19 +200,20 @@ export const chargeStore = {
       const result = await pool.query<DbRow>(
         `INSERT INTO ${TABLE}
            (code, merchant_address, merchant_name, member_wallet, amount_cents, payout_cents,
-            chain_id, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, now() + ($8 || ' seconds')::interval)
+            chain_id, expires_at, raised_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, now() + ($8 || ' seconds')::interval, $9)
          ON CONFLICT (code) DO NOTHING
          RETURNING ${COLUMNS}`,
         [
           code,
           normalizeWallet(input.merchantAddress),
           input.merchantName,
-          normalizeWallet(input.memberWallet),
+          input.memberWallet ? normalizeWallet(input.memberWallet) : null,
           input.amountCents,
           input.payoutCents,
           input.chainId,
           String(input.ttlSeconds),
+          input.raisedBy ?? null,
         ],
       );
       if (result.rows[0]) return toRow(result.rows[0]);
@@ -216,6 +232,30 @@ export const chargeStore = {
   },
 
   /** First open only — the merchant's "waiting" state distinguishes sent from seen. */
+  /**
+   * The customer opens the code and becomes the customer.
+   *
+   * On the show-the-code path a charge is raised with no member, so whoever opens it first claims
+   * it. `WHERE member_wallet IS NULL` makes that a race nobody can lose twice: two people scanning
+   * the same screen means the second gets the row already taken and is told so, rather than
+   * silently overwriting the first.
+   *
+   * Only while pending. A resolved charge is history and cannot change hands.
+   */
+  async attachMember(code: string, wallet: string): Promise<ChargeRow | null> {
+    const pool = getPostgresPool();
+    if (!pool) return null;
+    await ensureTables();
+    const { rows } = await pool.query<DbRow>(
+      `UPDATE ${TABLE}
+          SET member_wallet = $2, opened_at = COALESCE(opened_at, now())
+        WHERE code = $1 AND member_wallet IS NULL AND status = 'pending' AND expires_at > now()
+        RETURNING ${COLUMNS}`,
+      [code, normalizeWallet(wallet)],
+    );
+    return rows[0] ? toRow(rows[0]) : null;
+  },
+
   async markOpened(code: string): Promise<void> {
     const pool = getPostgresPool();
     if (!pool) return;

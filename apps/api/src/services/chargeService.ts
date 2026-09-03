@@ -233,6 +233,79 @@ export async function raiseCharge(input: {
   return { ok: true, charge };
 }
 
+
+/**
+ * A counter raises a charge — reference sections 02 and 03.
+ *
+ * **No signature, and no member.** Both were in the original design and section 20 removed the
+ * first: the counter device holds no signing material at all, so there is nothing for it to sign
+ * with. What proves this is a real shop is the enrolled device token, checked before this is
+ * called — which is strictly stronger than a key on a tablet, because an owner can revoke it from
+ * anywhere and it takes effect on the next request.
+ *
+ * The member is absent because entering the amount goes straight to the code. A new customer
+ * installs from it and an existing member approves; either way nobody has said who they are yet,
+ * and the wallet attaches when the code is opened.
+ *
+ * The registry is still the authority on terms. Active, cap and discount are read on chain exactly
+ * as before, and the payout is computed from the registry rather than from anything the caller
+ * sent — a merchant that could name its own payout could name the whole purchase.
+ */
+export async function raiseChargeFromDevice(input: {
+  merchant: string;
+  merchantName: string;
+  amountCents: number;
+  raisedBy?: string | null;
+}): Promise<RaiseResult> {
+  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
+    return { ok: false, reason: 'amount must be a positive whole number of cents' };
+  }
+
+  const merchant = input.merchant.trim().toLowerCase();
+  const registryAddress = getContractAddress(chainId(), 'MerchantRegistry');
+  if (!registryAddress) return { ok: false, reason: 'no merchant registry on this chain' };
+
+  let payoutCents: number;
+  try {
+    const registry = new ethers.Contract(registryAddress, MERCHANT_ABI, provider());
+    const [active, capRaw, discountBps] = await Promise.all([
+      registry.isActive(merchant) as Promise<boolean>,
+      registry.approvalCapOf(merchant) as Promise<bigint>,
+      registry.discountBpsOf(merchant) as Promise<bigint>,
+    ]);
+    if (!active) return { ok: false, reason: 'merchant is not active' };
+
+    const capCents = Number(capRaw / 10_000n);
+    if (capCents > 0 && input.amountCents > capCents) {
+      return { ok: false, reason: 'amount is over this merchant’s approval cap' };
+    }
+    payoutCents = input.amountCents - Math.floor((input.amountCents * Number(discountBps)) / 10_000);
+  } catch (error) {
+    console.error(
+      '[charge] registry read failed',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+    // A failed read is not a pass, for the same reason as the signed path: raising on an unreadable
+    // registry means charging on behalf of a merchant nobody could confirm is still one.
+    return { ok: false, reason: 'could not confirm the merchant right now' };
+  }
+
+  const charge = await chargeStore.create({
+    merchantAddress: merchant,
+    merchantName: input.merchantName.trim().slice(0, 80) || 'A Clear partner',
+    memberWallet: null,
+    amountCents: input.amountCents,
+    payoutCents,
+    chainId: chainId(),
+    ttlSeconds: CHARGE_TTL_SECONDS,
+    raisedBy: input.raisedBy ?? null,
+  });
+  if (!charge) return { ok: false, reason: 'could not record the charge' };
+
+  // No notification: the customer is at the counter and about to scan the screen.
+  return { ok: true, charge };
+}
+
 /**
  * The alert, in the reference's own words.
  *
@@ -240,6 +313,10 @@ export async function raiseCharge(input: {
  * safe to read on a lock screen, and it is why the body is not summarised or shortened here.
  */
 export async function notifyMember(charge: ChargeRow): Promise<void> {
+  // A charge raised by showing a code has no member yet — the customer is standing at the counter
+  // and will scan it in a moment. There is nobody to alert and nothing to say to them.
+  if (!charge.memberWallet) return;
+
   const amount = (charge.amountCents / 100).toLocaleString('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -514,16 +591,21 @@ export async function reconcileCharges(olderThanSeconds = 120): Promise<Reconcil
       summary.approved += 1;
 
       // The member pressed Approve and never saw it land. Tell them it did.
-      await notificationStore
-        .emit({
-          wallet: charge.memberWallet,
-          kind: 'credit',
-          title: 'Your plan is open',
-          body: `${charge.merchantName} · ${(charge.amountCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`,
-          data: { chargeCode: charge.code, planId },
-          dedupeKey: `charge-approved:${charge.code}`,
-        })
-        .catch(() => {});
+      //
+      // Guarded rather than defaulted: a charge reaching settlement always has a member, because
+      // approving is what attaches one. If that is ever untrue the right answer is to send nothing
+      // — a notification addressed to an empty wallet is delivered to nobody and hides the bug.
+      if (charge.memberWallet)
+        await notificationStore
+          .emit({
+            wallet: charge.memberWallet,
+            kind: 'credit',
+            title: 'Your plan is open',
+            body: `${charge.merchantName} · ${(charge.amountCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}`,
+            data: { chargeCode: charge.code, planId },
+            dedupeKey: `charge-approved:${charge.code}`,
+          })
+          .catch(() => {});
     } catch (error) {
       // An unreadable chain is not an answer. Left as it is for the next run.
       console.error('[charge] reconcile failed for', charge.code, error instanceof Error ? error.message : error);

@@ -6,7 +6,7 @@ import { DEFAULT_IDLE_LOCK_SECONDS, deviceStore } from '../services/merchant/dev
 import { sessionStore } from '../services/merchant/sessionStore.js';
 import { attemptLimiter, staffStore } from '../services/merchant/staffStore.js';
 import { merchantProfileStore } from '../services/merchant/profileStore.js';
-import { readMerchantTerms } from '../services/chargeService.js';
+import { raiseChargeFromDevice, readMerchantTerms } from '../services/chargeService.js';
 import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
 import { onboardMerchant } from '../services/merchant/onboardingService.js';
 
@@ -298,6 +298,92 @@ merchantRouter.get('/charges', requireMerchant, async (req: Request, res: Respon
  * guarded on `pending`, so a member approving at the same moment wins or loses cleanly rather
  * than both succeeding.
  */
+
+/**
+ * Raise a charge — reference sections 02 and 03.
+ *
+ * Two taps: the amount, then continue. There is no "how are they paying" step and no member field,
+ * because entering the amount goes straight to the code — showing a code is the only path that
+ * works for every customer, new or existing.
+ *
+ * Authenticated by the enrolled device plus the shift session, not by a signature. Section 20
+ * settled that the tablet holds no signing material, so `POST /api/charges` — which recovers an
+ * EIP-712 signature and matches it to the merchant — is unreachable from a counter and always was
+ * going to be. The device token replaces it and is stronger: it says which shop this is, an owner
+ * can revoke it from anywhere, and revocation takes effect on the very next request.
+ *
+ * The shop is taken from the device, never from the body. A counter cannot raise a charge for
+ * somebody else's shop even by asking to.
+ */
+merchantRouter.post(
+  '/charges',
+  requireDevice,
+  requireMerchant,
+  async (req: Request, res: Response) => {
+    const merchant = req.device!.merchant;
+    const amountCents = Number(req.body?.amountCents);
+
+    if (!Number.isInteger(amountCents) || amountCents <= 0) {
+      res.status(400).json({ error: 'Invalid request', message: 'That is not an amount.' });
+      return;
+    }
+
+    const profile = await merchantProfileStore.forDisplay(merchant, false);
+    const result = await raiseChargeFromDevice({
+      merchant,
+      merchantName: profile?.name ?? '',
+      amountCents,
+      // Who raised it. This is what a PIN buys — the staff name on every charge row is real.
+      raisedBy: req.merchant!.staff.id,
+    });
+
+    if (!result.ok || !result.charge) {
+      // One shape for every refusal. A counter writer needs something to say to the customer, and
+      // "over the cap" versus "not active" is a distinction only useful to somebody probing it.
+      res.status(400).json({
+        error: 'Charge refused',
+        message: result.reason ?? 'That charge could not be raised. Take the ticket the usual way.',
+      });
+      return;
+    }
+
+    res.status(201).json({
+      code: result.charge.code,
+      status: result.charge.status,
+      expiresAt: result.charge.expiresAt,
+      amountCents: result.charge.amountCents,
+    });
+  },
+);
+
+/**
+ * Watch one charge — what the waiting screen polls.
+ *
+ * Scoped to the device's own shop: a code is short enough to guess at, and a counter should not be
+ * able to watch another shop's charge by trying codes.
+ */
+merchantRouter.get(
+  '/charges/:code',
+  requireDevice,
+  requireMerchant,
+  async (req: Request, res: Response) => {
+    const charge = await chargeStore.get(req.params.code);
+    if (!charge || charge.merchantAddress !== req.device!.merchant) {
+      res.status(404).json({ error: 'Not found', message: 'no such charge' });
+      return;
+    }
+    res.json({
+      code: charge.code,
+      status: charge.status,
+      amountCents: charge.amountCents,
+      splitInto: charge.splitInto,
+      expiresAt: charge.expiresAt,
+      openedAt: charge.openedAt,
+      resolvedAt: charge.resolvedAt,
+    });
+  },
+);
+
 merchantRouter.post('/charges/:code/cancel', requireMerchant, async (req: Request, res: Response) => {
   const { merchant, staff } = req.merchant!;
   const existing = await chargeStore.get(req.params.code);

@@ -97,6 +97,35 @@ chargesRouter.get('/:code', requireAuth, async (req: Request, res: Response) => 
     res.status(404).json({ error: 'Not found', message: 'No such charge.' });
     return;
   }
+  /**
+   * Unclaimed charges belong to whoever opens them — reference section 03.
+   *
+   * A charge raised by showing a code has no member: the customer scans it off the tablet, and
+   * that scan is what says who they are. So an unclaimed charge is claimed here rather than
+   * refused for not naming the caller in advance.
+   *
+   * Once claimed it behaves exactly as before — the wallet must match, which is what stops a
+   * second person guessing a code and reading somebody else's charge.
+   */
+  if (!charge.memberWallet) {
+    const wallet = req.auth?.walletAddress;
+    if (!wallet) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Sign in to open this charge.' });
+      return;
+    }
+    const claimed = await chargeStore.attachMember(charge.code, wallet);
+    if (!claimed) {
+      // Somebody scanned it first, or it lapsed between the read and the write.
+      res.status(409).json({
+        error: 'Already open',
+        message: 'That code has already been opened, or it has expired.',
+      });
+      return;
+    }
+    res.json(memberView(claimed));
+    return;
+  }
+
   if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
 
   await chargeStore.markOpened(charge.code);

@@ -18,21 +18,37 @@ import { Button, Inset } from '@/shell/ui';
  * A tablet in a stand is what makes this natural: you turn the screen toward them, you never hand
  * over your device.
  */
+/**
+ * Where a scan lands: the MEMBER app, not this one.
+ *
+ * The customer scans with their own phone, and what they need is the screen that approves a
+ * charge — which lives on app.useclear.org. Pointing at the merchant domain would open the counter
+ * app on a customer's phone, which has no meaning for them and no route for this code.
+ */
+const MEMBER_APP =
+  ((import.meta.env.VITE_MEMBER_APP_URL as string | undefined) || 'https://app.useclear.org').replace(
+    /\/+$/,
+    '',
+  );
+
 export function ChargeCode({
   amount,
+  code,
   merchantName,
   onBack,
   onSent,
 }: {
   amount: number;
+  /** The raised charge's code. The charge already exists by the time this screen renders. */
+  code: string;
   merchantName: string;
   onBack: () => void;
   onSent: () => void;
 }) {
-  // The payload carries the charge, not the member: scanning it opens this amount at this shop.
-  const payload = `https://merchants.useclear.org/c/${encodeURIComponent(
-    `${merchantName}|${amount.toFixed(2)}`,
-  )}`;
+  // The payload carries the CHARGE, not the member — scanning it opens this amount at this shop,
+  // and whoever opens it becomes the customer. That is what makes the path work for someone who
+  // has never heard of Clear: they install from this and the charge is already waiting.
+  const payload = `${MEMBER_APP}/c/${code}`;
 
   return (
     <div className="mx-auto w-full max-w-[400px]">

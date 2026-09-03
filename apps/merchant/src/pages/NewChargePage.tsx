@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Delete } from 'lucide-react';
-import { dollars, merchantFee, merchantPayout } from '@clear/domain';
+import { dollars, merchantFee, merchantPayout, toCents } from '@clear/domain';
 import { Big, Inset, Lbl, PrimaryButton } from '@/shell/ui';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
@@ -31,6 +31,8 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'] as c
 function AmountEntry({
   amount,
   discountRate,
+  busy,
+  error,
   onKey,
   onContinue,
   onBack,
@@ -38,6 +40,8 @@ function AmountEntry({
   amount: string;
   /** Null until the shop's terms load. The preview says so rather than quoting a made-up fee. */
   discountRate: number | null;
+  busy?: boolean;
+  error?: string | null;
   onKey: (k: string) => void;
   onContinue: () => void;
   onBack: () => void;
@@ -106,14 +110,20 @@ function AmountEntry({
 
           <PrimaryButton
             onClick={onContinue}
-            disabled={value <= 0}
+            disabled={value <= 0 || busy}
             className="mt-3.5 !py-3.5 !text-[15px]"
           >
-            Continue
+            {busy ? 'Raising…' : 'Continue'}
           </PrimaryButton>
-          <p className="m-0 mt-[11px] text-center text-[11.5px] text-[var(--clear-text-muted)]">
-            Goes straight to the code — no extra step.
-          </p>
+          {error ? (
+            <p role="alert" className="m-0 mt-[11px] text-center text-[12.5px] leading-[1.55]">
+              {error}
+            </p>
+          ) : (
+            <p className="m-0 mt-[11px] text-center text-[11.5px] text-[var(--clear-text-muted)]">
+              Goes straight to the code — no extra step.
+            </p>
+          )}
         </div>
       </div>
 
@@ -133,6 +143,9 @@ export default function NewChargePage() {
   const { data: profile } = useApi(() => api.profile(), []);
   const discountRate = profile?.discountRate ?? null;
   const [stage, setStage] = useState<Stage>('amount');
+  const [code, setCode] = useState('');
+  const [raising, setRaising] = useState(false);
+  const [raiseError, setRaiseError] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [raisedAt, setRaisedAt] = useState<number>(() => Date.now());
 
@@ -154,9 +167,29 @@ export default function NewChargePage() {
         amount={amount}
         discountRate={discountRate}
         onKey={press}
-        onContinue={() => {
-          setRaisedAt(Date.now());
-          setStage('code');
+        busy={raising}
+        error={raiseError}
+        onContinue={async () => {
+          // The charge is created HERE, before the code is shown — the code is the charge's, so
+          // there is nothing to display until it exists. Two taps still: amount, continue.
+          setRaising(true);
+          setRaiseError(null);
+          try {
+            const raised = await api.raiseCharge({ amountCents: toCents(value) });
+            setCode(raised.code);
+            setRaisedAt(Date.now());
+            setStage('code');
+          } catch (e) {
+            // Stays on the amount screen with something the writer can say. A failure here means
+            // no charge exists, which is the safe direction to fail in.
+            setRaiseError(
+              e instanceof Error
+                ? e.message
+                : 'That charge could not be raised. Take the ticket the usual way.',
+            );
+          } finally {
+            setRaising(false);
+          }
         }}
         onBack={() => navigate('/')}
       />
@@ -167,9 +200,9 @@ export default function NewChargePage() {
     return (
       <ChargeCode
         amount={value}
+        code={code}
         merchantName={profile?.name ?? 'this shop'}
         onBack={() => setStage('amount')}
-        // Stubbed: the customer scanning is what really moves this on.
         onSent={() => {
           setRaisedAt(Date.now());
           setStage('waiting');
@@ -182,7 +215,7 @@ export default function NewChargePage() {
     return (
       <ChargeWaiting
         amount={value}
-        memberName="Dana R."
+        code={code}
         raisedAt={raisedAt}
         onSendAgain={() => setRaisedAt(Date.now())}
         onCancel={() => navigate('/')}

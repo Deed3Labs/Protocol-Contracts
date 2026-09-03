@@ -302,26 +302,37 @@ export const api = {
   /* ---------------------------------------------------------------- charges */
 
   /**
-   * Raise a charge.
+  /**
+   * Raise a charge — reference sections 02 and 03.
    *
-   * The one call that does not use the session. `signature` is EIP-712 over the charge, recovered
-   * server-side and checked against `MerchantRegistry` for active status, the per-charge cap and
-   * the discount — so the payout is computed from the chain and never from this request.
-   *
-   * `signCharge` is injected rather than implemented here because **where a counter tablet gets a
-   * signing key is an unresolved design question**, not an implementation detail. See
-   * `chargeSigner.ts`.
+   * The amount and nothing else. No member, because entering the amount goes straight to the code
+   * and the customer has not said who they are yet; no signature, because the tablet holds no
+   * signing material — the enrolled device token is what proves this is a real shop, and the
+   * backend reads the shop off that rather than taking it from here.
    */
-  async raiseCharge(input: {
-    merchant: string;
-    merchantName: string;
-    member: string;
+  async raiseCharge(input: { amountCents: number }): Promise<{
+    code: string;
+    status: string;
+    expiresAt: string;
     amountCents: number;
-    nonce: string;
-    issuedAt: number;
-    signature: string;
-  }): Promise<{ code: string; status: string; expiresAt: string; ttlSeconds: number }> {
-    return request('/api/charges', { method: 'POST', body: JSON.stringify(input) });
+  }> {
+    return request('/api/merchant/charges', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  },
+
+  /** What the waiting screen polls. Scoped to this device's shop server-side. */
+  async watchCharge(code: string): Promise<{
+    code: string;
+    status: string;
+    amountCents: number;
+    splitInto: number | null;
+    expiresAt: string;
+    openedAt: string | null;
+    resolvedAt: string | null;
+  }> {
+    return request(`/api/merchant/charges/${code}`);
   },
 
   async charges(opts: { since?: string; limit?: number } = {}): Promise<MerchantCharge[]> {
