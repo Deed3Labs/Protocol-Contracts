@@ -1,6 +1,9 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/auth/authContext';
+import { ProfileSheet, Squircle } from '@/shell/ProfileSheet';
+import { applyAppearance, readAppearance } from '@/shell/appearance';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 
@@ -22,16 +25,31 @@ import { useApi } from '@/data/useApi';
  * - **Sign out.** It lives in Settings, where a writer looks for it once a day at most.
  */
 
+/**
+ * Five destinations, and everything else behind the avatar — reference section 21.
+ *
+ * Settings left the nav because it is not a shift task. A counter tablet has five things a writer
+ * touches during a shift and a pile of things an owner touches monthly; mixing them makes the nav
+ * longer and the frequent items smaller. Overview takes the fifth slot — the month-end view an
+ * owner asks for, which is a shift-length question in a way Settings never was.
+ */
 const NAV = [
   { to: '/', label: 'Home', end: true },
   { to: '/charges', label: 'Charges' },
   { to: '/payouts', label: 'Payouts', ownerOnly: true },
   { to: '/staff', label: 'Staff', ownerOnly: true },
-  { to: '/settings', label: 'Settings' },
+  { to: '/overview', label: 'Overview', ownerOnly: true },
 ] as const;
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { canSeeMoney } = useAuth();
+  const { canSeeMoney, session } = useAuth();
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  // The tablet's own setting, applied before anything renders so there is no flash of the wrong
+  // palette on a counter that lives in dusk.
+  useEffect(() => {
+    applyAppearance(readAppearance());
+  }, []);
   // The shop's own name, in the one place it appears on every screen. Read here rather than passed
   // down: the header outlives every page, and a name that flickers on navigation reads as a reload.
   const { data: profile } = useApi(() => api.profile(), []);
@@ -63,8 +81,19 @@ export function AppShell({ children }: { children: ReactNode }) {
                 {item.label}
               </NavLink>
             ))}
+            {/* The avatar is the way into everything that is not a shift task. */}
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              aria-label="Your profile and settings"
+              className="ml-1"
+            >
+              <Squircle name={session?.staff.name ?? ''} size={26} />
+            </button>
           </nav>
         </header>
+
+        {sheetOpen && <ProfileSheet onClose={() => setSheetOpen(false)} />}
 
         <main className="flex flex-1 flex-col">{children}</main>
       </div>

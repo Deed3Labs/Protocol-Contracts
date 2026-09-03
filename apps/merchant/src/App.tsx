@@ -13,6 +13,7 @@ import PayoutDetailPage from '@/pages/PayoutDetailPage';
 import PayoutsPage from '@/pages/PayoutsPage';
 import StaffPage from '@/pages/StaffPage';
 import RefundThresholdPage from '@/pages/RefundThresholdPage';
+import OverviewPage from '@/pages/OverviewPage';
 import SettingsPage from '@/pages/SettingsPage';
 import OnboardingPage from '@/pages/OnboardingPage';
 
@@ -133,6 +134,16 @@ export default function App() {
             </OwnerOnly>
           }
         />
+        {/* Month end, owner-only — it took Settings' nav slot, so it takes its guard too. */}
+        <Route
+          path="/overview"
+          element={
+            <OwnerOnly>
+              <OverviewPage />
+            </OwnerOnly>
+          }
+        />
+        {/* Still routable, just no longer in the nav: the profile sheet links here. */}
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

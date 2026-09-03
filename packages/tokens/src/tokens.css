@@ -8,6 +8,12 @@
  *
  * Tokens and formatters are the entire shared design surface between the two apps. There is no
  * shared component library: a tablet counter app and a consumer phone app are different products.
+ *
+ * Three appearances now, because section 21 asks for them: a counter under fluorescent light at
+ * 8am and the same counter at 8pm are different problems. Light is the reference's own palette,
+ * transcribed. **Dusk and Dark are derived, not transcribed** — the reference specifies the
+ * control and not the colours, so these keep the warm hue family and invert the lightness ramp
+ * rather than reaching for a neutral grey. They are a starting point for review, not a decision.
  */
 
 :root {
@@ -58,4 +64,50 @@
   --clear-space-5: 24px;
   --clear-space-6: 32px;
   --clear-space-7: 48px;
+}
+
+/**
+ * Dusk — the one the reference expects people to leave it on.
+ *
+ * Dimmed rather than inverted: the same warm paper at low light, so a counter that switches at
+ * dusk is not switching to a different product. Text stays high-contrast because it is still read
+ * at arm's length across a counter.
+ */
+:root[data-theme='dusk'] {
+  --clear-surface-0: #24231f;
+  --clear-surface-1: #2b2a25;
+  --clear-surface-2: #33322c;
+
+  --clear-border: #45443c;
+  --clear-border-strong: #5c5a50;
+  --clear-border-accent: #8f88e4;
+
+  --clear-text-primary: #f2f0e9;
+  --clear-text-secondary: #c3c0b6;
+  --clear-text-muted: #918e84;
+  --clear-text-success: #5fc0a4;
+  --clear-text-accent: #a49cf0;
+
+  --clear-bg-success: #1e3a33;
+  --clear-bg-accent: #2f2c4d;
+}
+
+/** Dark — a shop closing up, or a tablet on a stand in a dim back office. */
+:root[data-theme='dark'] {
+  --clear-surface-0: #121210;
+  --clear-surface-1: #1a1a17;
+  --clear-surface-2: #201f1c;
+
+  --clear-border: #33322c;
+  --clear-border-strong: #4a4941;
+  --clear-border-accent: #8f88e4;
+
+  --clear-text-primary: #f5f3ec;
+  --clear-text-secondary: #b8b5ab;
+  --clear-text-muted: #85837a;
+  --clear-text-success: #5fc0a4;
+  --clear-text-accent: #a49cf0;
+
+  --clear-bg-success: #17302a;
+  --clear-bg-accent: #272444;
 }
