@@ -86,11 +86,19 @@ async function main() {
   // The operator half. Without this the counter raises a charge and the registry says the shop is
   // not active, which is the correct refusal and a confusing one to debug.
   const key = process.env.DEPLOYER_PRIVATE_KEY;
-  if (!key) throw new Error('DEPLOYER_PRIVATE_KEY is required to register the merchant');
-  const wallet = new ethers.Wallet(key, new ethers.JsonRpcProvider(RPC));
-  const registry = new ethers.Contract(REGISTRY, REGISTRY_ABI, wallet);
+  const provider = new ethers.JsonRpcProvider(RPC);
 
-  if (await registry.isRegistered(merchant)) {
+  // Registration is checked before the key is demanded. Writing Clear's own rows and registering
+  // on chain are separate acts, and re-running this to seed a second database should not require
+  // an operator key to do work that is already done.
+  const readOnly = new ethers.Contract(REGISTRY, REGISTRY_ABI, provider);
+  const already = await readOnly.isRegistered(merchant);
+  if (!already && !key) {
+    throw new Error('DEPLOYER_PRIVATE_KEY is required to register a merchant that is not yet registered');
+  }
+  const registry = key ? new ethers.Contract(REGISTRY, REGISTRY_ABI, new ethers.Wallet(key, provider)) : readOnly;
+
+  if (already) {
     console.log('registry     already registered');
   } else {
     const tx = await registry.registerMerchant(merchant, PAYOUT_WINDOW, APPROVAL_CAP_UNITS, DISCOUNT_BPS);
