@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Columns } from '@/shell/AppShell';
-import { dollars } from '@clear/domain';
+import { dollars, fromCents } from '@clear/domain';
 import { Button, Cap, Card, Chip, Row } from '@/shell/ui';
 import { useAuth } from '@/auth/authContext';
 import { api, type EnrolledDevice } from '@/data/apiClient';
+import { useApi } from '@/data/useApi';
 import {
   STUB_LISTING,
-  STUB_MERCHANT,
   STUB_NOTIFICATIONS,
   STUB_TERMS,
 } from '@/data/stubs';
@@ -30,9 +30,27 @@ import {
  * rendered from the merchant record so it agrees with the money; if 2% is the real term, changing
  * `discountRate` corrects all of it at once.
  */
+/** "Mike's Tire" → "MT". Derived rather than stored: a shop that renames itself keeps a matching mark. */
+function initials(name: string | undefined): string {
+  return (name ?? '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
 export default function SettingsPage() {
   const { session, device, canSeeMoney, signOut } = useAuth();
-  const ratePercent = Math.round(STUB_MERCHANT.discountRate * 1000) / 10;
+  const { data: profile } = useApi(() => api.profile(), []);
+
+  // The rate is rendered from the merchant record so it agrees with the money on every other
+  // screen. `forDisplay` reads it from the chain and falls back to the stored copy, so a Settings
+  // page never asserts a rate the arithmetic disagrees with. Em dash while it loads rather than a
+  // zero, which would be a wrong number rather than a missing one.
+  const rate = profile?.discountRate;
+  const ratePercent = rate == null ? null : Math.round(rate * 1000) / 10;
+  const cap = profile?.approvalCapCents;
 
   return (
     <Columns
@@ -44,22 +62,29 @@ export default function SettingsPage() {
               <Card rows className="mb-4">
                 <Row
                   title={<span className="text-[var(--clear-text-secondary)]">Rate</span>}
-                  right={<span>{ratePercent}%{STUB_TERMS.rateForLife ? ' · for life' : ''}</span>}
+                  right={
+                    <span>
+                      {ratePercent === null ? '—' : `${ratePercent}%`}
+                      {STUB_TERMS.rateForLife ? ' · for life' : ''}
+                    </span>
+                  }
                 />
                 <Row
                   title={<span className="text-[var(--clear-text-secondary)]">Payout</span>}
-                  right={<span>{STUB_TERMS.payoutTerms}</span>}
+                  right={<span>{profile?.payoutTerms ?? '—'}</span>}
                 />
                 <Row
                   title={<span className="text-[var(--clear-text-secondary)]">Approval cap</span>}
-                  right={<span>{dollars(STUB_TERMS.approvalCap)} per charge</span>}
+                  right={
+                    <span>{cap == null ? '—' : `${dollars(fromCents(cap))} per charge`}</span>
+                  }
                 />
                 <Row
                   title={<span className="text-[var(--clear-text-secondary)]">Partner since</span>}
                   right={
                     <span>
-                      {STUB_TERMS.partnerSince}
-                      {STUB_TERMS.founding ? ' · founding' : ''}
+                      {profile?.partnerSince ?? '—'}
+                      {profile?.founding ? ' · founding' : ''}
                     </span>
                   }
                 />
@@ -72,7 +97,7 @@ export default function SettingsPage() {
               <Cap>Where payouts go</Cap>
               <Card rows className="mb-4">
                 <Row
-                  title={`Chase ····${STUB_MERCHANT.payoutAccountLast4}`}
+                  title={profile?.payoutAccount ?? 'No account yet'}
                   meta="Business checking"
                   right={<Button className="!px-[11px] !py-1 !text-[12px]">Change</Button>}
                 />
@@ -143,12 +168,13 @@ export default function SettingsPage() {
               <Card className="mb-4 !py-[15px]">
                 <div className="mb-3 flex items-center gap-[11px]">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--clear-bg-success)] text-[11.5px] text-[var(--clear-text-success)]">
-                    {STUB_LISTING.initials}
+                    {initials(profile?.name)}
                   </div>
                   <div className="min-w-0">
-                    <p className="m-0 text-[13px]">{STUB_MERCHANT.name}</p>
+                    <p className="m-0 text-[13px]">{profile?.name ?? 'Your shop'}</p>
                     <p className="m-0 mt-0.5 text-[11.5px] text-[var(--clear-text-muted)]">
-                      {STUB_LISTING.category} · {STUB_LISTING.town}
+                      {profile?.category ?? STUB_LISTING.category} ·{' '}
+                      {profile?.town ?? STUB_LISTING.town}
                     </p>
                   </div>
                   {STUB_LISTING.creditTag && (
@@ -171,7 +197,7 @@ export default function SettingsPage() {
               <Cap>Your membership</Cap>
               <Card className="!py-[15px]">
                 <p className="m-0 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
-                  {STUB_MERCHANT.name} is a partner member of the Clear co-op. One member, one vote
+                  {profile?.name ?? 'Your shop'} is a partner member of the Clear co-op. One member, one vote
                   — the same as every other member.
                 </p>
               </Card>

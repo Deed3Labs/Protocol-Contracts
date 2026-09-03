@@ -3,10 +3,12 @@ import { dollars, formatCalendarDate } from '@clear/domain';
 import { Columns } from '@/shell/AppShell';
 import { Big, Button, Cap, Card, Inset, Lbl, Pill, PrimaryButton, Row } from '@/shell/ui';
 import { useAuth } from '@/auth/authContext';
+import { api, type MerchantCharge } from '@/data/apiClient';
+import { useApi } from '@/data/useApi';
 import {
   HOME_SCENARIOS,
   STUB_PAYOUTS,
-  STUB_STAFF,
+  STUB_SETUP,
   type HomeStage,
   type SetupTask,
 } from '@/data/stubs';
@@ -33,8 +35,6 @@ const timeOf = (iso: string) =>
     .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
     .toLowerCase()
     .replace(' ', '');
-
-const staffName = (id: string) => STUB_STAFF.find((s) => s.id === id)?.name ?? '—';
 
 const sinceLabel = (iso: string) => {
   const mins = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
@@ -137,23 +137,52 @@ export default function HomePage() {
   const { canSeeMoney } = useAuth();
   const [params] = useSearchParams();
 
-  const stage = (params.get('home') as HomeStage) ?? 'running';
-  const scenario = HOME_SCENARIOS[stage] ?? HOME_SCENARIOS.running;
-  const { charges, setup, hasHadPayout } = scenario;
+  // Dev-only: the three home states are a designed sequence, and each one is only true for a few
+  // days of a real shop's life. `?home=empty|early|running` holds one still so it can be looked at.
+  // Statically dropped from a production build.
+  const forced =
+    import.meta.env.DEV && params.get('home')
+      ? (HOME_SCENARIOS[params.get('home') as HomeStage] ?? null)
+      : null;
+
+  const { data: charged } = useApi(() => api.charges({ limit: 100 }), []);
+  // Both owner-only. `useApi` resolves a 403 to null rather than an error, because a counter writer
+  // being refused these is the rule working, not a failure — and the panels below already hide.
+  const { data: position } = useApi(() => api.payouts(), []);
+  const { data: staff } = useApi(() => api.staff(), []);
+
+  const isToday = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
+  const charges: MerchantCharge[] = forced
+    ? (forced.charges as unknown as MerchantCharge[])
+    : (charged ?? []).filter((c) => isToday(c.createdAt));
 
   const waiting = charges.filter((c) => c.state === 'waiting' || c.state === 'resolving');
   // Financed volume only. Card and balance payments run on ordinary rails and never reach this
   // app, so there is no "paid now" figure and nothing to add it to.
   const todayTotal = charges.reduce((sum, c) => sum + c.amount, 0);
-  const nextPayout = STUB_PAYOUTS.find((p) => p.status === 'scheduled');
+
+  // The schedule DATE is the one figure here with no API behind it yet — the payouts endpoint
+  // returns what is owed but not when it lands, and deriving a date from the "Net-30" string would
+  // be inventing one. The amount is real; the date is still a fixture.
+  const scheduled = STUB_PAYOUTS.find((p) => p.status === 'scheduled');
+  const nextPayout = scheduled
+    ? { scheduledFor: scheduled.scheduledFor, amount: (position?.owedCents ?? 0) / 100 }
+    : null;
+  const hasHadPayout = forced ? forced.hasHadPayout : (position?.paid.length ?? 0) > 0;
+
+  const setup: SetupTask[] = forced ? forced.setup : STUB_SETUP.map((t) => ({ ...t, done: true }));
   const setupDone = setup.every((t) => t.done);
 
-  // One writer raising everything, with a colleague who is not. True only while it is true.
-  const writers = [...new Set(charges.map((c) => c.raisedByStaffId))];
-  const idle = STUB_STAFF.filter(
+  // One writer raising everything, with a colleague who is not. True only while it is true — and
+  // only computable for an owner, since the roster is money-adjacent and counter staff cannot read
+  // it. The tip simply does not appear for them, which is correct: it is an owner's observation.
+  const writers = [...new Set(charges.map((c) => c.raisedByStaffId).filter(Boolean))];
+  const idle = (staff ?? []).filter(
     (s) => s.role === 'counter' && s.active && !writers.includes(s.id),
   );
-  const showWriterTip = charges.length > 0 && charges.length < 4 && writers.length === 1 && idle.length > 0;
+  const leader = charges.find((c) => c.raisedByStaffId === writers[0])?.raisedBy ?? '—';
+  const showWriterTip =
+    charges.length > 0 && charges.length < 4 && writers.length === 1 && idle.length > 0;
 
   return (
     <Columns
@@ -189,8 +218,8 @@ export default function HomePage() {
                 ) : (
                   waiting.map((c) => (
                     <Row
-                      key={c.id}
-                      title={c.member?.displayName ?? 'Not opened yet'}
+                      key={c.code}
+                      title={c.memberName ?? 'Not opened yet'}
                       meta={`${dollars(c.amount)} · ${sinceLabel(c.createdAt)}${
                         c.openedAt ? ' · app opened' : ''
                       }`}
@@ -212,9 +241,9 @@ export default function HomePage() {
             <Card rows className="mb-3.5">
               {charges.map((c) => (
                 <Row
-                  key={c.id}
-                  title={c.member?.displayName ?? 'Not opened yet'}
-                  meta={`${timeOf(c.createdAt)} · ${staffName(c.raisedByStaffId)}`}
+                  key={c.code}
+                  title={c.memberName ?? 'Not opened yet'}
+                  meta={`${timeOf(c.createdAt)} · ${c.raisedBy ?? '—'}`}
                   right={
                     c.state === 'waiting' || c.state === 'resolving' ? (
                       <Pill tone="pending">Waiting</Pill>
@@ -250,7 +279,7 @@ export default function HomePage() {
             )}
 
             {showWriterTip && (
-              <WriterTip leader={staffName(writers[0])} laggard={idle[0].name} count={charges.length} />
+              <WriterTip leader={leader} laggard={idle[0].name} count={charges.length} />
             )}
           </>
         )

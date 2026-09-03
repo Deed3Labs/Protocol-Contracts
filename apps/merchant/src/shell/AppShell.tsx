@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/auth/authContext';
-import { STUB_MERCHANT } from '@/data/stubs';
+import { api } from '@/data/apiClient';
+import { useApi } from '@/data/useApi';
 
 /**
  * The layout, at all three widths.
@@ -31,6 +32,10 @@ const NAV = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { canSeeMoney } = useAuth();
+  // The shop's own name, in the one place it appears on every screen. Read here rather than passed
+  // down: the header outlives every page, and a name that flickers on navigation reads as a reload.
+  const { data: profile } = useApi(() => api.profile(), []);
+  const shopName = profile?.name ?? 'your shop';
 
   return (
     <div className="@container min-h-dvh bg-[var(--clear-surface-2)] text-[var(--clear-text-primary)]">
@@ -39,7 +44,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="text-[15px] font-semibold tracking-[-0.2px]">
             Clear{' '}
             <span className="font-normal text-[var(--clear-text-muted)]">
-              for {STUB_MERCHANT.name}
+              for {shopName}
             </span>
           </span>
 

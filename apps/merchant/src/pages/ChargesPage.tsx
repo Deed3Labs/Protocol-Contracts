@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { type Charge, dollars, isPending } from '@clear/domain';
+import { dollars, isPending } from '@clear/domain';
 import { Card, Pill } from '@/shell/ui';
-import { ALL_CHARGES, STUB_PLANS, STUB_STAFF } from '@/data/stubs';
+import { api, type MerchantCharge } from '@/data/apiClient';
+import { useApi } from '@/data/useApi';
 
 /**
  * Charges — reference section 06.
@@ -19,8 +20,6 @@ import { ALL_CHARGES, STUB_PLANS, STUB_STAFF } from '@/data/stubs';
  */
 
 type Filter = 'waiting' | 'today' | 'month';
-
-const staffName = (id: string) => STUB_STAFF.find((s) => s.id === id)?.name ?? '—';
 
 const isToday = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
 
@@ -43,12 +42,11 @@ function whenLabel(iso: string): string {
  * Confirmed says the split — the merchant's only signal of how the customer is managing it, useful
  * context with no action attached. Expired says nothing further; the state is the whole story.
  */
-function detailOf(c: Charge): string | null {
+function detailOf(c: MerchantCharge): string | null {
   if (isPending(c.state)) return 'sent by text, email, app';
   if (c.state !== 'approved') return null;
-  const plan = STUB_PLANS[c.id];
-  if (!plan) return null;
-  return plan.splitInto === 1 ? 'in full' : `split in ${plan.splitInto}`;
+  if (c.splitInto === null) return null;
+  return c.splitInto === 1 ? 'in full' : `split in ${c.splitInto}`;
 }
 
 function FilterChip({
@@ -79,13 +77,15 @@ function FilterChip({
 export default function ChargesPage() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<Filter>('today');
+  // The month is the widest thing any filter shows, so it is fetched once and narrowed here rather
+  // than re-queried per chip — switching filters should not cost a round trip at a counter.
+  const { data, loading, error } = useApi(() => api.charges({ limit: 200 }), []);
+  const all = data ?? [];
 
-  const waiting = ALL_CHARGES.filter((c) => isPending(c.state));
-  const todays = ALL_CHARGES.filter((c) => isToday(c.createdAt));
+  const waiting = all.filter((c) => isPending(c.state));
+  const todays = all.filter((c) => isToday(c.createdAt));
 
-  const rows = (
-    filter === 'waiting' ? waiting : filter === 'today' ? todays : ALL_CHARGES
-  )
+  const rows = (filter === 'waiting' ? waiting : filter === 'today' ? todays : all)
     .slice()
     // Waiting first regardless of time — they are the only rows that need an action. Then newest.
     .sort((a, b) => {
@@ -116,7 +116,16 @@ export default function ChargesPage() {
         </span>
       </div>
 
-      {rows.length === 0 ? (
+      {error ? (
+        <Card>
+          {/* Every failure leaves the writer something to say. */}
+          <p className="m-0 text-[13px] text-[var(--clear-text-secondary)]">{error}</p>
+        </Card>
+      ) : loading ? (
+        <Card>
+          <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">Loading…</p>
+        </Card>
+      ) : rows.length === 0 ? (
         <Card>
           <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">
             {filter === 'waiting' ? 'Nothing waiting.' : 'No charges yet.'}
@@ -129,9 +138,9 @@ export default function ChargesPage() {
             const detail = detailOf(c);
             return (
               <button
-                key={c.id}
+                key={c.code}
                 type="button"
-                onClick={() => navigate(`/charges/${c.id}`)}
+                onClick={() => navigate(`/charges/${c.code}`)}
                 className={[
                   'flex items-center justify-between gap-3 border-b-[0.5px] border-[var(--clear-border)] py-3 text-left text-[13px] last:border-b-0',
                   // The accent field is how "who has not confirmed" is answered without reading, so
@@ -145,12 +154,12 @@ export default function ChargesPage() {
               >
                 <span className="min-w-0">
                   <span className={`block truncate ${pending ? 'font-medium' : ''}`}>
-                    {c.member?.displayName ?? 'Not opened yet'}
+                    {c.memberName ?? 'Not opened yet'}
                   </span>
                   <span className="mt-0.5 block text-[11.5px] text-[var(--clear-text-muted)]">
                     {/* Each row names who raised it. Not surveillance — it is how an owner works
                         out which writer is actually offering it. */}
-                    {whenLabel(c.createdAt)} · {staffName(c.raisedByStaffId)}
+                    {whenLabel(c.createdAt)} · {c.raisedBy ?? '—'}
                     {detail ? ` · ${detail}` : ''}
                   </span>
                 </span>
