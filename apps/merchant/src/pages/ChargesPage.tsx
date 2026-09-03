@@ -1,4 +1,5 @@
-import { Columns, Panel } from '@/shell/AppShell';
+import { Columns } from '@/shell/AppShell';
+import { Cap, Inset } from '@/shell/ui';
 
 /**
  * The charge list and, behind it, charge detail and the refund flow.
@@ -9,18 +10,18 @@ export default function ChargesPage() {
   return (
     <Columns
       action={
-        <Panel title="Charges">
-          <div className="rounded-[var(--clear-radius)] border border-dashed border-[var(--clear-border-strong)] bg-[var(--clear-surface-1)] p-5 text-[13px] text-[var(--clear-text-secondary)]">
+        <><Cap>Charges</Cap>
+          <Inset>
             Charge list goes here.
-          </div>
-        </Panel>
+          </Inset>
+        </>
       }
       context={
-        <Panel title="Context">
-          <div className="rounded-[var(--clear-radius)] border border-dashed border-[var(--clear-border)] bg-[var(--clear-surface-1)] p-5 text-[13px] text-[var(--clear-text-muted)]">
+        <><Cap>Context</Cap>
+          <Inset>
             Context sits here above 900px, and below the action under it.
-          </div>
-        </Panel>
+          </Inset>
+        </>
       }
     />
   );

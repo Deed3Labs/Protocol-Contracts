@@ -1,91 +1,130 @@
-import { Link } from 'react-router-dom';
-import { CHARGE_LABEL, dollars } from '@clear/domain';
-import { Columns, Panel } from '@/shell/AppShell';
+import { useNavigate } from 'react-router-dom';
+import { dollars, formatCalendarDate } from '@clear/domain';
+import { Columns } from '@/shell/AppShell';
+import { Big, Cap, Card, Inset, Pill, PrimaryButton, Row } from '@/shell/ui';
 import { useAuth } from '@/auth/authContext';
-import { STUB_CHARGES, waitingCharges } from '@/data/stubs';
+import { STUB_CHARGES, STUB_PAYOUTS, STUB_STAFF, waitingCharges } from '@/data/stubs';
 
 /**
- * Counter home.
+ * Counter home — the "running" state.
  *
- * Three states in the reference — nothing waiting, something waiting, and something just
- * confirmed. Scaffolded here with the waiting list wired to the stubs so the layout has real rows;
- * the three states proper are Phase 4, section 1.
+ * Today's financed total leads, because it is the one figure a writer glances at between customers.
+ * Under it the only action, then what is still open. The right column is the day's activity and
+ * the next payout: context, not tasks.
  *
- * Raising a charge is the only primary action, because it is what somebody standing at a counter
- * came here to do.
+ * The three states proper — empty, early, running — are Phase 4, section 1. This is the running
+ * one, built to the reference so the shell it sits in is right.
  */
+
+const timeOf = (iso: string) =>
+  new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase();
+
+const staffName = (id: string) => STUB_STAFF.find((s) => s.id === id)?.name ?? '—';
+
+function sinceLabel(iso: string) {
+  const mins = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
+  return mins < 1 ? 'just now' : `${mins} min ago`;
+}
+
 export default function HomePage() {
+  const navigate = useNavigate();
   const { canSeeMoney } = useAuth();
+
   const waiting = waitingCharges();
-  const recent = STUB_CHARGES.filter((c) => c.state !== 'waiting').slice(0, 4);
+  // Financed volume only. Card and balance payments run on ordinary rails and are not in any total
+  // on this screen — there is no "paid now" figure to add, by design.
+  const todayTotal = STUB_CHARGES.reduce((sum, c) => sum + c.amount, 0);
+  const nextPayout = STUB_PAYOUTS.find((p) => p.status === 'scheduled');
 
   return (
     <Columns
       action={
         <>
-          <Panel>
-            <Link
-              to="/new"
-              className="block rounded-[var(--clear-radius)] bg-[var(--clear-text-accent)] px-4 py-5 text-center text-[21px] font-medium text-[var(--clear-surface-2)]"
-            >
-              New charge
-            </Link>
-          </Panel>
+          <Cap>Today</Cap>
+          <Big>{dollars(todayTotal)}</Big>
+          <p className="m-0 mb-[18px] mt-1.5 text-[12.5px] text-[var(--clear-text-muted)]">
+            {STUB_CHARGES.length} charges
+            {waiting.length > 0 && ` · ${waiting.length} waiting on the customer`}
+          </p>
 
-          <Panel
-            title={waiting.length ? `Waiting · ${waiting.length}` : 'Waiting'}
-            footnote={
-              waiting.length
-                ? 'They approve on their phone. Nothing to do here until they do.'
-                : undefined
-            }
-          >
-            {waiting.length === 0 ? (
-              <p className="rounded-[var(--clear-radius)] border border-[var(--clear-border)] bg-[var(--clear-surface-1)] p-4 text-[13px] text-[var(--clear-text-muted)]">
-                Nothing waiting.
-              </p>
-            ) : (
-              <ul className="divide-y divide-[var(--clear-border)] rounded-[var(--clear-radius)] border border-[var(--clear-border)] bg-[var(--clear-surface-2)]">
-                {waiting.map((c) => (
-                  <li key={c.id} className="flex items-baseline gap-3 px-4 py-3">
-                    <span className="text-[15px] font-medium">
-                      {c.member?.displayName ?? 'Not yet opened'}
-                    </span>
-                    <span className="ml-auto text-[15px] tabular-nums">{dollars(c.amount)}</span>
-                    <span className="w-[92px] text-right text-[11.5px] text-[var(--clear-text-muted)]">
-                      {CHARGE_LABEL[c.state]}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
+          <PrimaryButton onClick={() => navigate('/new')} className="mb-[18px]">
+            New charge
+          </PrimaryButton>
+
+          <Cap>Waiting</Cap>
+          {waiting.length === 0 ? (
+            <Card className="py-3.5">
+              <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">Nothing waiting.</p>
+            </Card>
+          ) : (
+            <Card>
+              {waiting.map((c) => (
+                <Row
+                  key={c.id}
+                  title={c.member?.displayName ?? 'Not opened yet'}
+                  meta={`${dollars(c.amount)} · sent ${sinceLabel(c.createdAt)}${
+                    c.openedAt ? ' · app opened' : ''
+                  }`}
+                  right={<Pill tone="pending">Not confirmed</Pill>}
+                />
+              ))}
+            </Card>
+          )}
         </>
       }
       context={
-        <Panel title="Today">
-          <ul className="divide-y divide-[var(--clear-border)] rounded-[var(--clear-radius)] border border-[var(--clear-border)] bg-[var(--clear-surface-2)]">
-            {recent.map((c) => (
-              <li key={c.id} className="flex items-baseline gap-3 px-4 py-2.5">
-                <span className="text-[13px]">{c.member?.displayName ?? '—'}</span>
-                <span className="ml-auto text-[13px] tabular-nums">{dollars(c.amount)}</span>
-                <span className="w-[76px] text-right text-[11.5px] text-[var(--clear-text-muted)]">
-                  {CHARGE_LABEL[c.state]}
-                </span>
-              </li>
+        <>
+          <Cap>Today</Cap>
+          <Card className="mb-3.5">
+            {STUB_CHARGES.map((c) => (
+              <Row
+                key={c.id}
+                title={c.member?.displayName ?? 'Not opened yet'}
+                meta={`${timeOf(c.createdAt)} · ${staffName(c.raisedByStaffId)}`}
+                right={
+                  c.state === 'waiting' || c.state === 'resolving' ? (
+                    <Pill tone="pending">Waiting</Pill>
+                  ) : c.state === 'approved' ? (
+                    <span>{dollars(c.amount)}</span>
+                  ) : (
+                    // Declined never says why, and expired says only that it lapsed.
+                    <Pill>{c.state === 'expired' ? 'Expired' : 'Declined'}</Pill>
+                  )
+                }
+              />
             ))}
-          </ul>
-          {/*
-            Counter staff never see payout figures, bank details, the rate or monthly totals. The
-            role decides, and the role comes from the shared domain so both apps answer it alike.
-          */}
-          {canSeeMoney && (
-            <p className="mt-2 text-[11.5px] text-[var(--clear-text-muted)]">
-              Financed charges only. Card and balance payments settle on their own rails and never
-              appear here.
-            </p>
+          </Card>
+
+          {/* Payout figures are owner-only: counter staff never see them. */}
+          {canSeeMoney && nextPayout && (
+            <>
+              <Cap>Next payout</Cap>
+              <Card className="mb-3.5 py-3.5">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[13px]">
+                    {formatCalendarDate(nextPayout.scheduledFor)}
+                  </span>
+                  <span className="text-[19px] font-medium tabular-nums">
+                    {dollars(nextPayout.amount)}
+                  </span>
+                </div>
+                <p className="m-0 mt-1.5 text-[11.5px] text-[var(--clear-text-muted)]">
+                  Net-30 · may arrive sooner
+                </p>
+              </Card>
+            </>
           )}
-        </Panel>
+
+          <Inset className="flex-1">
+            <p className="m-0 text-[12.5px] leading-[1.7] text-[var(--clear-text-secondary)]">
+              <strong className="font-medium text-[var(--clear-text-primary)]">
+                Financed charges only.
+              </strong>{' '}
+              A member paying from their balance or tapping a Clear card runs on ordinary payment
+              rails and never appears here.
+            </p>
+          </Inset>
+        </>
       }
     />
   );

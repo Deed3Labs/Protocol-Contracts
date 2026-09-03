@@ -35,6 +35,8 @@ export { parsePendingTotal, shopDisplayName } from './counterCode';
 
 export { fromCents, toCents } from './units';
 
+export { formatCalendarDate, parseCalendarDate } from './dates';
+
 export type {
   Charge,
   MemberRef,
