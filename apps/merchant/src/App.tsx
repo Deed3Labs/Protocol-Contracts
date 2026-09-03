@@ -12,7 +12,6 @@ import RefundPage from '@/pages/RefundPage';
 import PayoutDetailPage from '@/pages/PayoutDetailPage';
 import PayoutsPage from '@/pages/PayoutsPage';
 import StaffPage from '@/pages/StaffPage';
-import RefundThresholdPage from '@/pages/RefundThresholdPage';
 import OverviewPage from '@/pages/OverviewPage';
 import SettingsPage from '@/pages/SettingsPage';
 import OnboardingPage from '@/pages/OnboardingPage';
@@ -120,17 +119,6 @@ export default function App() {
           element={
             <OwnerOnly>
               <StaffPage />
-            </OwnerOnly>
-          }
-        />
-        {/* Reached from Staff, and only after signing in. The owner code can never raise its own
-            limit, so this sits behind the same guard as the rest of Staff and behind
-            `requireOwner` on the server. */}
-        <Route
-          path="/staff/refunds"
-          element={
-            <OwnerOnly>
-              <RefundThresholdPage />
             </OwnerOnly>
           }
         />

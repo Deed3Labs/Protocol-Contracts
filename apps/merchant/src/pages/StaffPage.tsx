@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { dollars, fromCents, type StaffRole } from '@clear/domain';
+import { ChevronRight } from 'lucide-react';
+import { AddSomeoneModal, RefundLimitModal } from '@/staff/StaffModals';
+import { dollars, fromCents } from '@clear/domain';
 import { Columns } from '@/shell/AppShell';
-import { Button, Cap, Card, Inset, PrimaryButton, Row } from '@/shell/ui';
+import { Button, Cap, Card, Inset, Row } from '@/shell/ui';
 import { api, type StaffMember } from '@/data/apiClient';
 
 /**
@@ -28,11 +29,8 @@ export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[] | null>(null);
   const [limitCents, setLimitCents] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [newPin, setNewPin] = useState('');
-  const [newRole, setNewRole] = useState<StaffRole>('counter');
-  const [saving, setSaving] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
+  const [limitOpen, setLimitOpen] = useState(false);
+  const [maxCents, setMaxCents] = useState<number | null>(null);
 
   useEffect(() => {
     api.staff().then(setStaff).catch(() => setStaff([]));
@@ -40,11 +38,38 @@ export default function StaffPage() {
     // current rule, not an invitation to go and look it up.
     api
       .refundThreshold()
-      .then(({ limitCents: l }) => setLimitCents(l))
+      .then(({ limitCents: l, maxCents: m }) => {
+        setLimitCents(l);
+        setMaxCents(m);
+      })
       .catch(() => setLimitCents(null));
   }, []);
 
   return (
+    <>
+      {adding && (
+        <AddSomeoneModal
+          onClose={() => setAdding(false)}
+          onAdd={async ({ name, role }) => {
+            // The invite link needs an SMS provider we do not have, so the row is created now and
+            // the PIN is set on first shift. The mobile is collected and not yet used — saying so
+            // beats pretending a link went out.
+            await api.addStaff({ name, role, secret: '' });
+            setStaff(await api.staff());
+          }}
+        />
+      )}
+      {limitOpen && (
+        <RefundLimitModal
+          limitCents={limitCents}
+          maxCents={maxCents}
+          onClose={() => setLimitOpen(false)}
+          onSave={async (cents) => {
+            await api.setRefundThreshold(cents);
+            setLimitCents(cents);
+          }}
+        />
+      )}
     <Columns
       action={
         <>
@@ -78,17 +103,25 @@ export default function StaffPage() {
                     // it survives the list being reordered, which a live one will be.
                     meta={`${
                       s.role === 'owner'
-                        ? 'Owner · email or passkey'
+                        ? 'Owner · Privy sign-in'
                         : s.role === 'manager'
-                          ? 'Manager · PIN 4 digits'
-                          : 'Counter · PIN 4 digits'
+                          ? 'Manager · PIN'
+                          : 'Counter · PIN'
                     } · ${s.chargesThisMonth} charges this month`}
+                    /* The manager's label is the accent one: it is the only row that says this
+                       person can approve something, which is the fact an owner scans for. */
                     right={
-                      <span className="text-[11.5px] text-[var(--clear-text-muted)]">
+                      <span
+                        className={`text-[11.5px] ${
+                          s.role === 'manager'
+                            ? 'text-[var(--clear-text-accent)]'
+                            : 'text-[var(--clear-text-muted)]'
+                        }`}
+                      >
                         {s.role === 'owner'
                           ? 'Full access'
                           : s.role === 'manager'
-                            ? 'Runs the shop'
+                            ? 'Can approve'
                             : 'Can charge'}
                       </span>
                     }
@@ -96,117 +129,10 @@ export default function StaffPage() {
                 ))
             )}
           </Card>
-          {/* The button had no handler at all. Adding staff is what makes the name on a charge
-              row mean anything, so a shop with one writer stays a shop with one writer. */}
-          {!adding ? (
-            <Button onClick={() => setAdding(true)} className="mb-4 w-full">
-              Add someone
-            </Button>
-          ) : (
-            <Card className="mb-4 !py-3.5">
-              <p className="m-0 mb-1 text-[11px] text-[var(--clear-text-muted)]">Their name</p>
-              <input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="Jen R."
-                className="mb-2.5 w-full rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-1)] px-3 py-2 text-[13px] outline-none"
-              />
-              {/* Owner is deliberately absent. Changing who owns the business is not a self-serve
-                  action, and the server refuses it too — the UI just does not pretend otherwise. */}
-              <p className="m-0 mb-1 text-[11px] text-[var(--clear-text-muted)]">What they can do</p>
-              <div className="mb-1 grid grid-cols-2 gap-2">
-                {(['counter', 'manager'] as const).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setNewRole(r)}
-                    className={`rounded-[8px] border-[0.5px] py-2 text-[12.5px] ${
-                      newRole === r
-                        ? 'border-[var(--clear-text-primary)] bg-[var(--clear-surface-1)]'
-                        : 'border-[var(--clear-border)] bg-[var(--clear-surface-1)] text-[var(--clear-text-secondary)]'
-                    }`}
-                  >
-                    {r === 'counter' ? 'Counter' : 'Manager'}
-                  </button>
-                ))}
-              </div>
-              <p className="m-0 mb-2.5 text-[11px] leading-[1.5] text-[var(--clear-text-muted)]">
-                {newRole === 'counter'
-                  ? 'Raise a charge, see what is waiting, cancel one they raised. No money figures.'
-                  : 'Runs the shop: the money, the roster, payouts to your bank, and refunds under your limit. Cannot change your bank or your terms.'}
-              </p>
-
-              <p className="m-0 mb-1 text-[11px] text-[var(--clear-text-muted)]">
-                A four-digit PIN
-              </p>
-              <input
-                value={newPin}
-                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="4 digits"
-                className="mb-1 w-full rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-1)] px-3 py-2 text-[13px] outline-none"
-              />
-              <p className="m-0 mb-2.5 text-[11px] leading-[1.5] text-[var(--clear-text-muted)]">
-                It starts their shift and attributes their charges. It is not what protects the
-                money.
-              </p>
-              <div className="flex gap-2">
-                <PrimaryButton
-                  disabled={saving || !newName.trim() || newPin.length !== 4}
-                  onClick={async () => {
-                    setSaving(true);
-                    setAddError(null);
-                    try {
-                      await api.addStaff({ name: newName.trim(), role: newRole, secret: newPin });
-                      setStaff(await api.staff());
-                      setNewName('');
-                      setNewPin('');
-                      setNewRole('counter');
-                      setAdding(false);
-                    } catch (e) {
-                      setAddError(e instanceof Error ? e.message : 'That could not be saved.');
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                  className="!py-2 !text-[13px]"
-                >
-                  {saving ? 'Adding…' : 'Add to the roster'}
-                </PrimaryButton>
-                <Button onClick={() => setAdding(false)} className="!py-2 !text-[13px]">
-                  Cancel
-                </Button>
-              </div>
-              {addError && (
-                <p role="alert" className="m-0 mt-2 text-[12.5px]">
-                  {addError}
-                </p>
-              )}
-            </Card>
-          )}
-
-          {/* Stated as the rule it is, with the consequence attached. An owner reading this is
-              deciding whether their weekend cover should be able to clear a refund alone. */}
-          <Cap>Refunds</Cap>
-          <Card rows>
-            <Row
-              title="Clear with your code"
-              meta="Above this, only from your phone"
-              right={
-                <Link to="/staff/refunds" className="text-[12.5px] text-[var(--clear-text-accent)]">
-                  {limitCents === null
-                    ? 'Set'
-                    : limitCents === 0
-                      ? 'Off'
-                      : `Up to ${dollars(fromCents(limitCents))}`}
-                </Link>
-              }
-            />
-          </Card>
-          <p className="m-0 mt-2.5 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
-            Set it to zero and every refund waits for your phone.
-          </p>
+          {/* Add someone is a modal — one decision, taken from here and returning here. */}
+          <Button onClick={() => setAdding(true)} className="w-full">
+            Add someone
+          </Button>
         </>
       }
       context={
@@ -215,25 +141,56 @@ export default function StaffPage() {
           <div className="text-[12.5px] leading-[1.9]">
             <p className="m-0 mb-[3px] font-medium">Counter</p>
             <p className="m-0 mb-3 leading-[1.65] text-[var(--clear-text-secondary)]">
-              Raise a charge. See what is waiting. Cancel one they raised. Nothing else.
+              Raise a charge. See what is waiting. Cancel one they raised. Ask for a refund, but not
+              approve one.
             </p>
             <p className="m-0 mb-[3px] font-medium">Manager</p>
             <p className="m-0 mb-3 leading-[1.65] text-[var(--clear-text-secondary)]">
-              Runs the shop: the money, the roster, payouts to your bank, and refunds under your
-              limit. Cannot change where payouts go or what you are charged.
+              All of the above, plus approve refunds up to your limit, add and remove counter staff,
+              and send payouts to your business bank.
             </p>
             <p className="m-0 mb-[3px] font-medium">Owner</p>
             <p className="m-0 leading-[1.65] text-[var(--clear-text-secondary)]">
-              Everything, including the payout account, your terms, and refunds of any size. Added
-              by Clear rather than from the app.
+              Everything, including where payouts go, your terms, and who is a manager.
             </p>
           </div>
           <p className="m-0 mt-3.5 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
-            Counter staff never see the payout figure, the bank account, your rate or the month's
-            totals. A manager sees the money but cannot redirect it.
+            A manager can move money along the paths you set. Only you can change the paths.
           </p>
+          {/*
+            The refund limit lives in this panel, not as a card of its own — reference section 08.
+            It is a statement about what a role can do, so it belongs beside the roles.
+          */}
+          <p className="m-0 mb-2 mt-[18px] text-[10px] uppercase tracking-[0.5px] text-[var(--clear-text-muted)]">
+            Refunds
+          </p>
+          <button
+            type="button"
+            onClick={() => setLimitOpen(true)}
+            className="flex w-full items-center justify-between gap-3 border-t-[0.5px] border-[var(--clear-border)] py-[11px] text-left text-[13px]"
+          >
+            <span>
+              <span className="block">A manager can approve</span>
+              <span className="mt-0.5 block text-[11.5px] text-[var(--clear-text-muted)]">
+                Above this, only you
+              </span>
+            </span>
+            <span className="flex shrink-0 items-center gap-[7px] whitespace-nowrap text-[var(--clear-text-secondary)]">
+              {limitCents === null
+                ? 'Set'
+                : limitCents === 0
+                  ? 'Off'
+                  : `Up to ${dollars(fromCents(limitCents))}`}
+              <ChevronRight size={14} className="text-[var(--clear-text-muted)]" />
+            </span>
+          </button>
+          <p className="m-0 mt-[11px] text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
+            Every refund needs a PIN. This sets whose.
+          </p>
+
         </Inset>
       }
     />
+    </>
   );
 }

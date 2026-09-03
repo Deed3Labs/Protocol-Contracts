@@ -168,7 +168,17 @@ export const staffStore = {
     // Everyone on the shift screen has a four-digit PIN, owners included — it starts a shift and
     // attributes charges, and that is all it does. An owner's AUTHORITY comes from signing in with
     // Privy, never from anything stored here: Clear holds no owner credential.
-    if (!/^\d{4}$/.test(input.secret)) {
+    /**
+     * An empty secret means "not set yet" — reference section 08.
+     *
+     * The owner does not choose somebody else's PIN: the person sets four digits the first time
+     * they start a shift. A PIN chosen for you is one you write down, and a written-down PIN makes
+     * the staff name on a charge row a guess.
+     *
+     * `signInWithPin` already refuses anything that does not verify, and an empty stored secret
+     * verifies against nothing, so a pending row cannot start a shift until it is set.
+     */
+    if (input.secret !== '' && !/^\d{4}$/.test(input.secret)) {
       throw new Error('A PIN is exactly four digits.');
     }
 
@@ -181,7 +191,7 @@ export const staffStore = {
         normalizeMerchant(input.merchant),
         input.name.trim(),
         input.role,
-        await hashSecret(input.secret),
+        input.secret === '' ? '' : await hashSecret(input.secret),
         input.email?.trim().toLowerCase() ?? null,
       ],
     );
