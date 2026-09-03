@@ -69,3 +69,7 @@ typechain-types\ 2/
 
 # OpenZeppelin upgrade manifest stale backups (keep the live <network>.json)
 .openzeppelin/*.stale-*.json
+
+# iCloud duplicates. Documents/GitHub is synced, so it makes "<name> 2.ext" copies of files it
+# thinks conflict — they are byte-for-byte junk that git add -A will happily commit.
+* [0-9].*
