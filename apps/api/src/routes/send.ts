@@ -226,20 +226,40 @@ function otpBypassEnabled(): boolean {
     return false;
   }
 
-  const isProduction = (process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
-  if (isProduction) {
+  /**
+   * Anything that is not clearly a development environment counts as production.
+   *
+   * This read `NODE_ENV === 'production'`, which meant an UNSET NODE_ENV — the actual state of
+   * both Railway environments — was treated as "not production" and the bypass stayed armed on a
+   * live service. A guard on a money path has to fail closed: the question is not "is this
+   * production" but "has somebody deliberately said this is a sandbox".
+   */
+  const env = (process.env.NODE_ENV || '').trim().toLowerCase();
+  if (env !== 'development' && env !== 'test') {
     console.warn(
-      '[SendFunds] SEND_OTP_BYPASS_ENABLED=true ignored in production.'
+      `[SendFunds] SEND_OTP_BYPASS_ENABLED=true ignored (NODE_ENV=${env || 'unset'}).`
     );
+    return false;
+  }
+
+  /**
+   * And only with a code somebody chose.
+   *
+   * The code used to fall back to a hardcoded constant when unset, so enabling the bypass without
+   * configuring anything produced six digits anybody could guess. There is no default worth having
+   * here: if no code is set, there is no bypass.
+   */
+  if (!/^\d{6}$/.test((process.env.SEND_OTP_BYPASS_CODE || '').trim())) {
+    console.warn('[SendFunds] SEND_OTP_BYPASS_ENABLED=true ignored: no SEND_OTP_BYPASS_CODE set.');
     return false;
   }
 
   return true;
 }
 
+/** Only ever called behind `otpBypassEnabled()`, which has already checked this is six digits. */
 function otpBypassCode(): string {
-  const raw = (process.env.SEND_OTP_BYPASS_CODE || '000000').trim();
-  return /^\d{6}$/.test(raw) ? raw : '000000';
+  return (process.env.SEND_OTP_BYPASS_CODE || '').trim();
 }
 
 function payoutMethodsForRegion(region: string): Array<'DEBIT' | 'BANK' | 'WALLET'> {
