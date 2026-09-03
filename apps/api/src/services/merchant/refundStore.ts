@@ -24,6 +24,34 @@ import { type StaffRow, staffStore } from './staffStore.js';
 
 export type RefundState = 'requested' | 'approved' | 'declined' | 'settled';
 
+/**
+ * How an approval arrived.
+ *
+ * Not decoration. "Owner code at the counter" proves somebody knew four digits; "approved from
+ * the owner's phone" proves possession of the owner's device. Both are acceptable, they are not
+ * equal evidence, and a disputed refund six months later turns entirely on which.
+ */
+export type DecidedVia = 'owner_code' | 'owner_device';
+
+/**
+ * What a counter writer may clear with the owner's code — **set by the owner, not by Clear**.
+ *
+ * Escalate by size, as retail already does: the code clears small refunds so the counter stays
+ * fast for the common case, and anything larger goes to the owner's own device where real friction
+ * belongs. The genuine risk is not a guessed code — it is a writer refunding to something they
+ * control using a code they have watched a hundred times, and no credential strength fixes that.
+ * What bounds it is the amount; what catches it is the audit trail.
+ *
+ * Zero is "Off", and a real answer: every refund waits for the owner's phone.
+ *
+ * **Changing this requires a signed-in owner and can never be done with the code**, or a writer
+ * raises the ceiling with the code and then uses it. The rule is enforced by where the setter
+ * lives — behind `requireOwner`, which only a Privy session satisfies — and `/owner-check` issues
+ * no session by design. This comment exists so that stays true when somebody later adds a
+ * convenience that hands the code path a session.
+ */
+export const DEFAULT_OWNER_CODE_LIMIT_CENTS = 50_000;
+
 export interface RefundRow {
   id: string;
   chargeCode: string;
@@ -37,6 +65,7 @@ export interface RefundRow {
   requestedAt: string;
   decidedBy: string | null;
   decidedAt: string | null;
+  decidedVia: DecidedVia | null;
 }
 
 interface DbRefund {
@@ -52,6 +81,7 @@ interface DbRefund {
   requested_at: string;
   decided_by: string | null;
   decided_at: string | null;
+  decided_via: DecidedVia | null;
 }
 
 const toRow = (r: DbRefund): RefundRow => ({
@@ -67,7 +97,26 @@ const toRow = (r: DbRefund): RefundRow => ({
   requestedAt: new Date(r.requested_at).toISOString(),
   decidedBy: r.decided_by,
   decidedAt: r.decided_at ? new Date(r.decided_at).toISOString() : null,
+  decidedVia: r.decided_via,
 });
+
+/**
+ * The shop's current code limit, in cents. Zero is "Off".
+ *
+ * Read on every approval rather than cached: an owner who turns it off because of a weekend hire
+ * expects that to bite on the next refund, not after a deploy.
+ */
+export async function ownerCodeLimitFor(merchant: string): Promise<number> {
+  const pool = getMerchantPool();
+  if (!pool) return 0;
+  await ensureMerchantSchema();
+  const { rows } = await pool.query<{ owner_code_limit_cents: string | null }>(
+    `SELECT owner_code_limit_cents FROM ${MERCHANT_SCHEMA}.profiles WHERE merchant = $1`,
+    [merchant.trim().toLowerCase()],
+  );
+  const raw = rows[0]?.owner_code_limit_cents;
+  return raw == null ? DEFAULT_OWNER_CODE_LIMIT_CENTS : Number(raw);
+}
 
 export const refundStore = {
   /**
@@ -173,17 +222,35 @@ export const refundStore = {
    * Guarded on `state = 'requested'` in the UPDATE so two owners approving at once produce one
    * settlement, not two.
    */
-  async approve(id: string, owner: StaffRow): Promise<{ ok: boolean; refund?: RefundRow; reason?: string }> {
+  async approve(
+    id: string,
+    owner: StaffRow,
+    via: DecidedVia,
+  ): Promise<{ ok: boolean; refund?: RefundRow; reason?: string }> {
     const pool = getMerchantPool();
     if (!pool) return { ok: false, reason: 'not configured' };
     await ensureMerchantSchema();
 
+    // The size rule, enforced server-side rather than by hiding the field. A counter that can be
+    // talked into showing the code box is still a counter that cannot approve a large refund.
+    if (via === 'owner_code') {
+      const existing = await this.get(id, owner.merchant);
+      const limit = await ownerCodeLimitFor(owner.merchant);
+      // Off means off: at a zero limit nothing clears by code, whatever its size.
+      if (existing && (limit <= 0 || existing.amountCents >= limit)) {
+        return {
+          ok: false,
+          reason: 'That one needs approving from the owner’s phone, not a code at the counter.',
+        };
+      }
+    }
+
     const { rows } = await pool.query<DbRefund>(
       `UPDATE ${MERCHANT_SCHEMA}.refunds
-          SET state = 'settled', decided_by = $2, decided_at = now()
+          SET state = 'settled', decided_by = $2, decided_at = now(), decided_via = $3
         WHERE id = $1 AND state = 'requested'
         RETURNING *`,
-      [id, owner.id],
+      [id, owner.id, via],
     );
     const refund = rows[0];
     if (!refund) return { ok: false, reason: 'that refund is no longer waiting' };
@@ -193,16 +260,20 @@ export const refundStore = {
   },
 
   /** An owner declines. The charge stands; the writer is told and the customer is not. */
-  async decline(id: string, owner: StaffRow): Promise<{ ok: boolean; refund?: RefundRow; reason?: string }> {
+  async decline(
+    id: string,
+    owner: StaffRow,
+    via: DecidedVia,
+  ): Promise<{ ok: boolean; refund?: RefundRow; reason?: string }> {
     const pool = getMerchantPool();
     if (!pool) return { ok: false, reason: 'not configured' };
     await ensureMerchantSchema();
     const { rows } = await pool.query<DbRefund>(
       `UPDATE ${MERCHANT_SCHEMA}.refunds
-          SET state = 'declined', decided_by = $2, decided_at = now()
+          SET state = 'declined', decided_by = $2, decided_at = now(), decided_via = $3
         WHERE id = $1 AND state = 'requested'
         RETURNING *`,
-      [id, owner.id],
+      [id, owner.id, via],
     );
     return rows[0]
       ? { ok: true, refund: toRow(rows[0]) }

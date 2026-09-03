@@ -72,6 +72,17 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
   .phone{width:100%}
   .tablet,.desk{padding:1rem;border-radius:12px}
 }
+
+.pinrow{display:flex;gap:10px;justify-content:center;margin:6px 0 16px}
+.pinrow i{width:12px;height:12px;border-radius:50%;background:var(--surface-0);display:block}
+.pinrow i.on{background:var(--text-primary)}
+.av{width:30px;height:30px;border-radius:34%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-secondary);flex-shrink:0}
+.srow{display:flex;align-items:center;gap:11px;padding:12px 0;border-bottom:0.5px solid var(--border)}
+.srow:last-child{border-bottom:0}
+.srow .nm{font-size:14px;margin:0}
+.srow .sub{font-size:11.5px;color:var(--text-muted);margin:2px 0 0}
+.field{background:var(--surface-1);border:0.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.field p{margin:0;font-size:14.5px;color:var(--text-muted)}
 </style></head><body><div class="wrap">
 
 <h1>Clear for Merchants</h1>
@@ -434,13 +445,51 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
         <p style="margin:0;color:var(--text-secondary);line-height:1.65">Everything, including payouts, bank details, terms and staff.</p>
       </div>
       <p style="font-size:11.5px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Counter staff never see the payout figure, the bank account, your rate or the month's totals.</p>
+
+      <p class="cap" style="margin:18px 0 8px">Refunds</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-top:0.5px solid var(--border);font-size:13px;cursor:pointer">
+        <div><div>Clear with your code</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Above this, only from your phone</div></div>
+        <span style="color:var(--text-secondary);display:flex;align-items:center;gap:7px;white-space:nowrap">Up to $500.00 <span style="color:var(--text-muted)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px"><path d="m9 18 6-6-6-6"/></svg></span></span>
+      </div>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:11px 0 0;line-height:1.6">Set it to zero and every refund waits for your phone.</p>
     </div>
   </div>
 </div>
 <div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>The owner sets the refund threshold, not Clear.</b> It is their money and their staffing &mdash; a shop with one trusted manager wants it high, a shop with weekend cover wants it at zero. Ranges from nothing to the approval cap.</div>
+    <div class="flag"><b>Changing it requires signing in, never the code.</b> Otherwise a writer raises the ceiling with the code and then uses it. <strong>The code can never raise its own limit.</strong></div></div>
   <div class="side"><div class="flag"><b>A PIN, not a login.</b> Nobody types a password forty times a shift. Four digits on a shared device, with the owner on a real password because they reach the money.</div></div>
   <div class="side"><p class="note"><strong>Two roles, not a permission matrix.</strong> A shop with four staff does not want checkboxes. If a third role is ever needed it will be &ldquo;manager&rdquo;, and it can wait until someone asks.</p></div>
   <div class="side"><p class="note"><strong>Charge counts per person are the useful by-product.</strong> They show who is actually offering it, which is how you find out why one shop converts and another does not.</p></div>
+</div>
+
+<p class="note" style="margin:1.2rem 0 .7rem"><strong>Setting it</strong> &mdash; reached from Staff, and only after signing in.</p>
+<div class="stack">
+  <div class="tablet" style="max-width:340px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-size:15px;font-weight:500">Refunds with your code</span><span style="color:var(--text-secondary);cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+    <p style="font-size:11px;color:var(--text-muted);margin:0 0 2px">Counter staff can clear refunds up to</p>
+    <p style="font-size:34px;font-weight:500;letter-spacing:-1px;margin:0 0 3px">$500<span style="color:var(--surface-0)">.00</span></p>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Above this, only from your phone</p>
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      <button style="flex:1;padding:7px 0;font-size:12px">Off</button>
+      <button style="flex:1;padding:7px 0;font-size:12px">$250</button>
+      <button style="flex:1;padding:7px 0;font-size:12px;border-color:var(--border-accent);color:var(--text-accent);background:var(--bg-accent)">$500</button>
+      <button style="flex:1;padding:7px 0;font-size:12px">$1,000</button>
+    </div>
+    <div class="pad" style="margin-bottom:13px"><div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div><div class="fn">.</div><div>0</div><div class="fn">&#9003;</div></div>
+    <div class="card" style="padding:12px 14px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">Under $500.00</span><span>Your code, at the counter</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">$500.00 and above</span><span>Your phone only</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2;border-top:0.5px solid var(--border);margin-top:8px;padding-top:8px"><span style="color:var(--text-secondary)">Highest you can set</span><span>$1,500.00</span></div>
+    </div>
+    <button class="prim" style="width:100%;padding:12px 0">Save</button>
+  </div>
+  <div class="side">
+    <div class="flag"><b>&ldquo;Off&rdquo; is a first-class option, not a zero.</b> A shop with weekend cover it does not know well should be able to say every refund waits for the owner, in one tap, without typing a number that means nothing.</div>
+    <p class="note"><strong>The ceiling is the approval cap.</strong> An owner cannot authorise more by code than the shop can charge in one transaction, which keeps one number governing both directions.</p>
+    <p class="note"><strong>The summary states both sides of the line</strong> &mdash; what the code clears and what it does not. A threshold that only says its own value leaves the owner to infer the consequence.</p>
+  </div>
 </div>
 
 <h2>09 — Settings · tablet</h2>
@@ -972,10 +1021,10 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
     <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 16px;line-height:1.6">Jen requested a $412.00 refund for Marcus T. at 2:31pm.</p>
     <div class="inset" style="padding:13px 15px;margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--text-secondary)">Sent to Mike</span><span style="color:var(--text-muted)">Delivered</span></div>
-      <p style="font-size:11px;color:var(--text-muted);margin:9px 0 0;line-height:1.55">He can approve from his phone, or type his code below if he is here.</p>
+      <p style="font-size:11px;color:var(--text-muted);margin:9px 0 0;line-height:1.55">Mike set his code limit at $500.00. Under that he can type it here; above it, only from his phone.</p>
     </div>
     <div class="inset" style="padding:13px 15px;margin-bottom:12px">
-      <p class="cap" style="margin:0 0 7px">Owner code</p>
+      <p class="cap" style="margin:0 0 7px">Owner code &middot; your limit is $500.00</p>
       <p style="font-size:19px;letter-spacing:6px;color:var(--text-muted);margin:0">&bull;&bull;&bull;&bull;</p>
     </div>
     <button style="width:100%">Cancel the request</button>
@@ -1000,7 +1049,9 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
 
   <div class="side">
     <div class="flag"><b>The owner sees a different number than the writer.</b> Jen sees what the customer gets back. Mike sees what it does to <strong>his payout</strong> &mdash; $3,808.30 instead of $4,210.00. That is the figure the person authorising actually cares about, and it is the one that makes the decision.</div>
-    <p class="note"><strong>Two ways to authorise, one flow.</strong> Mike walks over and types his code on the tablet, or he approves from his phone in the back office. Step 2 holds either way, so a writer is never stuck waiting at the till.</p>
+    <p class="note"><strong>Two ways to authorise, one flow.</strong> Mike types his code on the tablet, or approves from his phone. Step 2 holds either way, so a writer is never stuck waiting at the till.</p>
+    <div class="flag"><b>The code approves one displayed action and expires with it.</b> It is never a session and never an owner sign-in &mdash; terms, staff and withdrawals still require Privy. This is the manager-override every till already has, and its exposure is bounded to the transaction on screen, which is why shops accept it.</div>
+    <p class="note"><strong>Escalate by size, as retail already does &mdash; and the owner sets the line.</strong> The code clears refunds below their chosen figure; above it, approval comes from their phone. The counter stays fast for the common case and real friction sits where the money is. Set to <em>Off</em>, every refund waits.</p>
     <p class="note"><strong>Nothing is said to the customer until step 3 completes.</strong> A refund that a writer promised and an owner declined is the worst possible counter conversation &mdash; the copy at each step keeps the promise unmade.</p>
   </div>
 </div>
@@ -1014,11 +1065,13 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
     </div>
     <div class="inset" style="padding:13px 15px">
       <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--text-secondary)">Requested by</span><span>Jen &middot; 2:31pm</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Approved by</span><span>Mike &middot; 2:34pm</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Approved by</span><span>Mike &middot; owner code &middot; 2:34pm</span></div>
       <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px;padding-top:8px;border-top:0.5px solid var(--border)"><span style="color:var(--text-secondary)">Next payout</span><span style="font-weight:500">$3,808.30</span></div>
     </div>
   </div>
   <div class="side">
+    <div class="flag"><b>The record says which path approved it.</b> <em>Owner code at the counter</em> is weaker evidence than <em>approved from Mike's phone</em> &mdash; one proves someone knew four digits, the other proves possession of the owner's device. Both are acceptable; a disputed refund six months later turns entirely on which.</div>
+    <p class="note"><strong>The real risk is the one retail already carries:</strong> a writer raises a refund to something they control and types a code they have watched a hundred times. Credential strength does not fix that &mdash; the audit trail does. <em>Requested by Jen &middot; approved by owner code &middot; same device</em> is a pattern an owner can spot, which is why every row carries a name.</p>
     <p class="note"><strong>Marcus is told once, here.</strong> His plan closes and $99.91 returns to the account it cleared from &mdash; the same account, so there is nothing for him to choose.</p>
   </div>
 </div>
@@ -1078,12 +1131,118 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
   </div>
 </div>
 
+<h2>19 &mdash; Signing in: device, shift and owner</h2>
+<p class="note">Three levels of authority and only one of them is a login. <strong>The device is authenticated, the shift PIN attributes, the owner's Privy sign-in authorises.</strong> A counter tablet needs the first two; nothing that moves money happens without the third.</p>
+
+<div class="flag" style="max-width:760px"><b>A PIN is attribution, not authentication.</b> Four digits on a counter tablet will be watched and shared &mdash; it is not a security boundary. What it buys is knowing who raised a charge, which is what makes the staff name on every charge row real. The boundary is the <strong>enrolled device</strong>, granted by the owner and removable in one tap from anywhere. A lost tablet is the risk; a guessed PIN is not.</div>
+
+<div class="stack">
+  <div class="tablet" style="max-width:330px">
+    <p class="cap">Start a shift</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 14px">Who's on the counter?</p>
+    <div class="card" style="padding:0 14px;margin-bottom:14px">
+      <div class="srow"><span class="av">JR</span><div style="flex:1"><p class="nm">Jen R.</p><p class="sub">Counter</p></div><span class="pill ">Start</span></div>
+      <div class="srow"><span class="av">LM</span><div style="flex:1"><p class="nm">Luis M.</p><p class="sub">Counter</p></div><span class="pill ">Start</span></div>
+      <div class="srow"><span class="av">MR</span><div style="flex:1"><p class="nm">Mike R.</p><p class="sub">Owner</p></div><span class="pill ">Start</span></div>
+    </div>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:0;line-height:1.55">Every charge is recorded against whoever is on shift.</p>
+  </div>
+
+  <div class="tablet" style="max-width:330px">
+    <p class="cap">Their PIN</p>
+    <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:14px">
+      <span class="av">JR</span><span style="font-size:14px">Jen R. &middot; Counter</span></div>
+    <div class="pinrow"><i class="on"></i><i class="on"></i><i></i><i></i></div>
+    <div class="pad" style="max-width:280px;margin:0 auto 16px"><div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div><div style="font-size:12px;color:var(--text-secondary)">Not me</div><div>0</div><div style="font-size:12px;color:var(--text-secondary)">&#9003;</div></div>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:0;text-align:center;line-height:1.55">Forgot it? Mike can reset it in Staff.</p>
+  </div>
+
+  <div class="tablet" style="max-width:330px">
+    <p class="cap">Owner sign in</p>
+    <p style="font-size:15px;font-weight:500;margin:0 0 6px">Sign in as the owner</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 16px;line-height:1.6">Needed to move money, change terms or manage staff. <strong style="color:var(--text-primary)">Not needed to take a payment.</strong></p>
+    <p style="font-size:11px;color:var(--text-muted);margin:0 0 3px">Email</p>
+    <div class="field"><p>mike@mikestire.com</p></div>
+    <button class="prim" style="width:100%;padding:12px 0;margin-top:4px">Email me a code</button>
+    <div style="display:flex;align-items:center;gap:12px;margin:16px 0">
+      <span style="flex:1;height:.5px;background:var(--border)"></span>
+      <span style="font-size:11px;color:var(--text-muted)">or</span>
+      <span style="flex:1;height:.5px;background:var(--border)"></span></div>
+    <button style="width:100%">Use a passkey</button>
+  </div>
+</div>
+
+<div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>No password field.</b> Privy signs in by emailed code, passkey or an existing wallet. A password box would imply Clear holds a credential it does not, on the one screen that controls the money.</div></div>
+  <div class="side"><p class="note"><strong>Pick a name, then a PIN</strong> &mdash; not a PIN alone. A bare field asks a writer to remember which of four codes is theirs, which is the most common reason someone borrows a colleague's.</p></div>
+  <div class="side"><p class="note"><strong>The owner appears in the shift list.</strong> Mike works the counter too; making him sign in differently to raise a charge is a reason to hand the tablet to Jen instead.</p></div>
+</div>
+
+<p class="note" style="margin:1.2rem 0 .7rem"><strong>Enrolling a device</strong> &mdash; once, by the owner. It states the ceiling before it asks for consent.</p>
+<div class="stack">
+  <div class="tablet" style="max-width:400px">
+    <p style="font-size:16px;font-weight:500;margin:0 0 12px">Set up this tablet</p>
+    <div class="card" style="padding:13px 15px;margin-bottom:12px">
+      <p style="font-size:12.5px;margin:0;line-height:1.65"><strong>This device will be able to raise charges for Mike's Tire.</strong> It will not be able to move money, change terms or see your bank details. Only you can do those, and only after signing in.</p>
+    </div>
+    <div class="card" style="padding:0 15px;margin-bottom:14px">
+      <div class="srow" style="cursor:default"><div style="flex:1"><p class="nm">Counter tablet</p><p class="sub">Name it so you recognise it later</p></div></div>
+      <div class="srow" style="cursor:default"><div style="flex:1"><p class="nm">Charges up to $1,500.00</p><p class="sub">Enforced by policy, not by this app</p></div><span class="pill ">Fixed</span></div>
+      <div class="srow" style="cursor:default"><div style="flex:1"><p class="nm">Locks after 5 minutes idle</p><p class="sub">Back to the shift screen</p></div><span class="pill pend">Change</span></div>
+    </div>
+    <button class="prim" style="width:100%;padding:12px 0">Enrol this device</button>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:10px 0 0;text-align:center;line-height:1.55">Remove it any time from Settings, from any device.</p>
+  </div>
+  <div class="side">
+    <div class="flag"><b>&ldquo;Remove it any time, from any device&rdquo;</b> is the sentence that makes a lost tablet survivable, and the reason the device rather than the PIN is the real control.</div>
+    <p class="note"><strong>&ldquo;Enforced by policy, not by this app&rdquo;</strong> is a load-bearing claim &mdash; see below. The cap is a wallet-level rule, so a compromised app cannot exceed it.</p>
+  </div>
+</div>
+
+<h2>20 &mdash; How this maps to Privy Organizations</h2>
+<p class="note">Privy shipped organization wallets in August. The shape fits, and it moves three things out of the app that were going to be honour-system restrictions.</p>
+
+<div class="stack">
+  <div class="tablet" style="max-width:520px">
+    <div class="card" style="padding:0 16px">
+      <div class="srow" style="cursor:default"><div style="flex:1"><p class="nm">The merchant is an organization</p><p class="sub">One org per shop, with a default key quorum that owns its wallets</p></div></div>
+      <div class="srow" style="cursor:default"><div style="flex:1"><p class="nm">The owner is the key quorum</p><p class="sub">Owns and administers the wallet; provisions scoped access to others</p></div></div>
+      <div class="srow" style="cursor:default"><div style="flex:1"><p class="nm">Clear's backend key is the scoped signer</p><p class="sub">One authorization key per org, capped by policy. The device holds only a session</p></div></div>
+      <div class="srow" style="cursor:default"><div style="flex:1"><p class="nm">The approval cap is a policy</p><p class="sub">Amount thresholds enforced at the wallet layer</p></div></div>
+      <div class="srow" style="cursor:default"><div style="flex:1"><p class="nm">The refund step-up is an intent</p><p class="sub">Asynchronous authorisation collected from the owner</p></div></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="flag"><b>The refund flow was already an intent before we knew the word for it.</b> Privy's intents system exists to collect approvals from people who are not all online at once &mdash; which is precisely &ldquo;Jen requested it, Mike approves from his phone.&rdquo; Section 16 does not need redesigning; it needs implementing on a primitive that already exists.</div>
+    <p class="note"><strong>The $1,500 cap stops being a UI restriction.</strong> Privy's policy engine enforces amount thresholds at the wallet layer, so the ceiling holds even if the counter app is compromised or bypassed. That is a materially different security claim than &ldquo;the button is disabled&rdquo;.</p>
+    <p class="note"><strong>Quorum approvals are available if wanted.</strong> Sensitive actions can require a threshold of named people rather than one. Not needed for a four-person shop; worth knowing exists before designing around its absence.</p>
+  </div>
+</div>
+
+<div class="flag" style="max-width:760px;margin-top:14px"><b>Recommendation: do not build against intents for v1.</b> Enterprise pricing at five merchants is the wrong economics, and the fallback is invisible to the user &mdash; the refund request lives in Clear's records, the owner approves in the app, Clear's backend signs. <strong>No screen changes.</strong> What intents actually buy is a property Clear does not have yet anyway: signatures collected such that Clear's own server cannot act alone. That becomes worth paying for when the co-op wants to claim it cannot move merchant funds unilaterally. Migrating later is cheap, because the intent sits behind Clear's own approval record.</div>
+
+<div class="flag" style="max-width:760px;margin-top:14px"><b>Recommendation: the approval cap lives in MerchantRegistry, not in a Privy policy.</b> It is business logic &mdash; it varies per merchant, moves with volume, and forms part of the agreement &mdash; so it belongs in the protocol and should hold whichever signer or path a transaction arrives through. Use the Privy policy as a coarse dollar ceiling, a backstop against a compromised backend key, and let the contract enforce the precise rule. That also removes the need to answer whether policies support per-contract, per-method caps before starting.</div>
+
+<div class="flag" style="max-width:760px;margin-top:14px"><b>Settled: a signer can be an authorization key, not only a person.</b> Privy's owners-and-signers model accepts a user, an authorization key, or a key quorum &mdash; so <strong>Clear's backend holds one P-256 authorization key per merchant org, registered as a signer and scoped by policy.</strong> Staff need no Privy identities, and the counter device holds no signing material at all.
+
+<br><br><b>Which corrects the model above in one place.</b> The enrolled device is not the signer &mdash; it holds only a session against Clear's backend. That is strictly better: a stolen tablet carries nothing, revoking a device is an instant server-side action, the policy cap applies to every device at once, and there is one key per merchant to rotate rather than one per tablet. The enrolment screen's claim &mdash; <em>enforced by policy, not by this app</em> &mdash; stays true and is now more precisely true.
+
+<br><br><b>One real gating item: intents are an Enterprise feature.</b> The docs say so and point at sales. The refund step-up depends on them. Confirm tier and pricing before building against it; a fallback exists &mdash; hold the request in Clear's records and have the owner's approval trigger a single signed action &mdash; which is less elegant and works.</div>
+
+<div class="stack" style="margin-top:14px">
+  <div class="side"><p class="note"><strong>Why staff should not be Privy users regardless:</strong> a counter worker will not manage keys or recovery, turnover means provisioning and deprovisioning per hire, and the wallet belongs to the business rather than the employee. Jen raising a charge is Mike's Tire acting.</p></div>
+  <div class="side"><p class="note"><strong>Privy also covers the fiat rails</strong> &mdash; deposits and payouts, with Bridge underneath. That bears on <em>PayoutPool</em> and the manual multisig boundary in the contracts plan, which is a separate conversation.</p></div>
+  <div class="side"><p class="note"><strong>A wallet's entity cannot be changed once set</strong>, and an org is capped at 150 wallets. Neither binds a shop, but both matter if merchant wallets are ever provisioned before the org exists.</p></div>
+</div>
+
 <h2>Open questions</h2>
 <div class="card" style="padding:15px 17px;max-width:760px">
   <p style="font-size:12.5px;margin:0 0 10px;line-height:1.6"><strong>Settled:</strong> a refund closes the plan, returns the member's principal, and <strong>the co-op keeps the carry already paid</strong> &mdash; they held the money, and that is what carry is for. Still to settle in the contracts: how the ledger unwinds it, since the plan's position has to close without leaving a stub.</p>
-  <p style="font-size:12.5px;margin:0 0 10px;line-height:1.6"><strong>Partial refunds.</strong> One tyre of four goes back. Does the plan resize, or does it close and reopen at the new amount? Resizing is kinder and much harder.</p>
-  <p style="font-size:12.5px;margin:0 0 10px;line-height:1.6"><strong>Does a declined charge tell the merchant anything?</strong> Drawn above as a flat no. &ldquo;Over their limit&rdquo; would help a writer offer a smaller amount, and is not the merchant's business.</p>
-  <p style="font-size:12.5px;margin:0;line-height:1.6"><strong>Merchant notifications.</strong> The customer's are designed; the merchant's are not. A confirmation at 9pm is useful; forty of them a day is noise someone turns off.</p>
+  <p style="font-size:12.5px;margin:0 0 10px;line-height:1.6"><strong>Settled &mdash; partial refunds are full refunds in v1.</strong> Resizing a plan means recomputing the schedule against carry already accrued on the larger balance. Refund in full and raise a new charge for the corrected amount: inelegant, correct, and it uses machinery that already exists.</p>
+  <p style="font-size:12.5px;margin:0 0 10px;line-height:1.6"><strong>Still open &mdash; does a declined charge tell the merchant anything?</strong> Drawn above as a flat no. &ldquo;Over their limit&rdquo; would help a writer offer a smaller amount, and is not the merchant's business. The only one of these still genuinely undecided.</p>
+  <p style="font-size:12.5px;margin:0 0 10px;line-height:1.6"><strong>Settled &mdash; a daily digest, plus immediate alerts only for money moving or action needed.</strong> A payout landing, a refund awaiting approval. Never per charge: forty a day is a notification someone switches off, and then they miss the refund request.</p>
+  <p style="font-size:12.5px;margin:0;line-height:1.6"><strong>Settled &mdash; shared email is fine for an owner who is also a member.</strong> Forcing two addresses gets you <code style="font-family:var(--font-mono);font-size:11px">mike+shop@</code>, which defeats it, and verification is scoped to the entity either way. The real fix is the account switcher: Clear shows &ldquo;Kai Moore&rdquo; and &ldquo;Mike's Tire&rdquo; as two contexts and is explicit about which you are acting as.</p>
 </div>
 
 </div></body></html>

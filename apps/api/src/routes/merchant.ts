@@ -1,10 +1,11 @@
 import { Router, type Request, type Response } from 'express';
 import { requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
 import { chargeStore } from '../services/chargeStore.js';
-import { refundStore } from '../services/merchant/refundStore.js';
+import { ownerCodeLimitFor, refundStore } from '../services/merchant/refundStore.js';
 import { sessionStore } from '../services/merchant/sessionStore.js';
 import { attemptLimiter, staffStore } from '../services/merchant/staffStore.js';
 import { merchantProfileStore } from '../services/merchant/profileStore.js';
+import { readMerchantTerms } from '../services/chargeService.js';
 
 /**
  * The merchant surface.
@@ -28,14 +29,37 @@ function merchantOf(req: Request): string {
 }
 
 /**
+ * The shift roster — who is on the counter to choose from.
+ *
+ * Reached before anyone has signed in, so it is scoped only by merchant. It returns first names
+ * and roles and nothing else: no counts, no emails, no secrets. That is close to public for a shop
+ * whose address is already on chain, and it is the price of not asking a writer to remember which
+ * of four codes is theirs — a borrowed PIN makes the name on every charge row a lie.
+ *
+ * Moves behind device authentication once enrolment ships.
+ */
+merchantRouter.post('/roster', async (req: Request, res: Response) => {
+  const merchant = merchantOf(req);
+  if (!merchant) {
+    res.status(400).json({ error: 'Invalid request', message: 'merchant is required' });
+    return;
+  }
+  res.json({ staff: await staffStore.roster(merchant) });
+});
+
+/**
  * Start a shift.
  *
- * PIN for counter staff, email and password for an owner. One route rather than two so a failed
- * attempt cannot be told apart by which endpoint refused it.
+ * A name was picked on the roster, then a PIN. This starts a SHIFT, not a login: it says who is at
+ * the counter so charges can be attributed, and it authorises nothing that moves money. An owner
+ * appears on the same roster and starts a shift the same way — making Mike sign in differently to
+ * raise a charge is a reason to hand the tablet to Jen instead.
+ *
+ * Anything that moves money needs the owner's Privy sign-in, which does not happen here.
  */
 merchantRouter.post('/session', async (req: Request, res: Response) => {
   const merchant = merchantOf(req);
-  const { pin, email, password } = req.body ?? {};
+  const { pin, staffId } = req.body ?? {};
 
   if (!merchant) {
     res.status(400).json({ error: 'Invalid request', message: 'merchant is required' });
@@ -51,12 +75,13 @@ merchantRouter.post('/session', async (req: Request, res: Response) => {
     return;
   }
 
+  // Shift start only. There is deliberately no password path: an owner authenticates through
+  // Privy — emailed code, passkey or an existing wallet — and Clear holds no owner credential to
+  // check. A password box on the one screen that controls the money would imply otherwise.
   const staff =
     typeof pin === 'string' && pin.length > 0
-      ? await staffStore.signInWithPin(merchant, pin)
-      : typeof email === 'string' && typeof password === 'string'
-        ? await staffStore.signInWithPassword(merchant, email, password)
-        : null;
+      ? await staffStore.signInWithPin(merchant, pin, typeof staffId === 'string' ? staffId : undefined)
+      : null;
 
   if (!staff) {
     // One message for every failure mode. A writer who mistypes and an attacker guessing get the
@@ -206,7 +231,12 @@ merchantRouter.post('/refunds', requireMerchant, async (req: Request, res: Respo
     res.status(400).json({ error: 'Refund refused', message: result.reason ?? 'could not start it' });
     return;
   }
-  res.status(201).json(await withNames(result.refund));
+  res.status(201).json({
+    ...(await withNames(result.refund)),
+    // Under this, an owner can approve with a code at the counter; at or above it, only from
+    // their own device. The screen states the rule rather than discovering it on refusal.
+    ownerCodeLimitCents: await ownerCodeLimitFor(merchant),
+  });
 });
 
 /**
@@ -234,8 +264,8 @@ merchantRouter.post('/refunds/:id/authorise', requireMerchant, async (req: Reque
 
   const result =
     decision === 'decline'
-      ? await refundStore.decline(refund.id, owner)
-      : await refundStore.approve(refund.id, owner);
+      ? await refundStore.decline(refund.id, owner, 'owner_code')
+      : await refundStore.approve(refund.id, owner, 'owner_code');
 
   if (!result.ok || !result.refund) {
     res.status(409).json({ error: 'Conflict', message: result.reason ?? 'could not settle it' });
@@ -243,6 +273,37 @@ merchantRouter.post('/refunds/:id/authorise', requireMerchant, async (req: Reque
   }
   res.json(await withNames(result.refund));
 });
+
+/**
+ * The owner approves from their own device, having signed in with Privy.
+ *
+ * The other of the two paths, and the stronger one: this proves possession of the owner's device
+ * rather than knowledge of four digits. It carries no amount limit for that reason — the counter
+ * code is capped precisely because it is the weaker evidence.
+ */
+merchantRouter.post(
+  '/refunds/:id/decide',
+  requireMerchant,
+  requireOwner,
+  async (req: Request, res: Response) => {
+    const { merchant, staff } = req.merchant!;
+    const refund = await refundStore.get(req.params.id, merchant);
+    if (!refund) {
+      res.status(404).json({ error: 'Not found', message: 'no such refund' });
+      return;
+    }
+    const result =
+      req.body?.decision === 'decline'
+        ? await refundStore.decline(refund.id, staff, 'owner_device')
+        : await refundStore.approve(refund.id, staff, 'owner_device');
+
+    if (!result.ok || !result.refund) {
+      res.status(409).json({ error: 'Conflict', message: result.reason ?? 'could not settle it' });
+      return;
+    }
+    res.json(await withNames(result.refund));
+  },
+);
 
 /** The writer withdraws their own request. Nothing was ever said to the customer. */
 merchantRouter.delete('/refunds/:id', requireMerchant, async (req: Request, res: Response) => {
@@ -257,6 +318,68 @@ merchantRouter.get('/payouts', requireMerchant, requireOwner, async (req: Reques
   const position = await merchantProfileStore.payoutPosition(merchant);
   res.json(position);
 });
+
+/**
+ * What a counter writer can clear with the owner's code.
+ *
+ * **Behind `requireOwner`, which only a Privy session satisfies.** That is the whole security
+ * property: `/owner-check` deliberately issues no session, so the code path cannot reach this
+ * route, and therefore the code can never raise its own limit. A writer who could would raise the
+ * ceiling with the code and then use it.
+ *
+ * The ceiling is the shop's approval cap — an owner cannot authorise more by code than the shop
+ * can charge in one transaction, so one number governs both directions. Zero is "Off" and a real
+ * answer, not a degenerate one.
+ */
+merchantRouter.get(
+  '/refund-threshold',
+  requireMerchant,
+  requireOwner,
+  async (req: Request, res: Response) => {
+    const { merchant } = req.merchant!;
+    const terms = await readMerchantTerms(merchant).catch(() => null);
+    res.json({
+      limitCents: await ownerCodeLimitFor(merchant),
+      // The highest it can be set to. Null when the registry is unreachable — the screen then says
+      // so rather than offering a ceiling it cannot verify.
+      maxCents: terms?.capCents ?? null,
+    });
+  },
+);
+
+merchantRouter.put(
+  '/refund-threshold',
+  requireMerchant,
+  requireOwner,
+  async (req: Request, res: Response) => {
+    const { merchant } = req.merchant!;
+    const requested = Number(req.body?.limitCents);
+
+    if (!Number.isFinite(requested) || requested < 0) {
+      res.status(400).json({ error: 'Invalid', message: 'that is not an amount' });
+      return;
+    }
+
+    const terms = await readMerchantTerms(merchant).catch(() => null);
+    if (!terms) {
+      res.status(503).json({
+        error: 'Unavailable',
+        message: 'Could not confirm your approval cap just now. Try again in a moment.',
+      });
+      return;
+    }
+    if (terms.capCents > 0 && requested > terms.capCents) {
+      res.status(400).json({
+        error: 'Above your cap',
+        message: 'The most you can clear by code is your approval cap.',
+      });
+      return;
+    }
+
+    await merchantProfileStore.setOwnerCodeLimit(merchant, Math.round(requested));
+    res.json({ limitCents: Math.round(requested), maxCents: terms.capCents });
+  },
+);
 
 /** Staff are the powers of the shop. Owner only. */
 merchantRouter.get('/staff', requireMerchant, requireOwner, async (req: Request, res: Response) => {

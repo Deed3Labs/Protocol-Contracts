@@ -157,12 +157,11 @@ export const staffStore = {
     if (!pool) return null;
     await ensureMerchantSchema();
 
-    // An owner reaches money, so their secret has to be a password rather than four digits.
-    if (input.role === 'owner' && input.secret.length < 8) {
-      throw new Error('An owner needs a password of at least 8 characters.');
-    }
-    if (input.role === 'counter' && !/^\d{4}$/.test(input.secret)) {
-      throw new Error('A counter PIN is exactly four digits.');
+    // Everyone on the shift screen has a four-digit PIN, owners included — it starts a shift and
+    // attributes charges, and that is all it does. An owner's AUTHORITY comes from signing in with
+    // Privy, never from anything stored here: Clear holds no owner credential.
+    if (!/^\d{4}$/.test(input.secret)) {
+      throw new Error('A PIN is exactly four digits.');
     }
 
     const id = `stf_${randomUUID()}`;
@@ -188,7 +187,7 @@ export const staffStore = {
    * no username. **Every candidate is verified even after one matches**, so the time taken does not
    * reveal how many staff a shop has or where in the list a PIN sits.
    */
-  async signInWithPin(merchant: string, pin: string): Promise<StaffRow | null> {
+  async signInWithPin(merchant: string, pin: string, staffId?: string): Promise<StaffRow | null> {
     const pool = getMerchantPool();
     if (!pool || !/^\d{4}$/.test(pin)) return null;
     await ensureMerchantSchema();
@@ -196,10 +195,18 @@ export const staffStore = {
     const gate = attemptLimiter(merchant);
     if (!gate.allowed) return null;
 
-    const { rows } = await pool.query<DbStaff>(
-      `SELECT * FROM ${MERCHANT_SCHEMA}.staff WHERE merchant = $1 AND active = true`,
-      [normalizeMerchant(merchant)],
-    );
+    // A name is picked first, so the PIN is checked against that person. A bare PIN field asks a
+    // writer to remember which of four codes is theirs, which is the most common reason somebody
+    // borrows a colleague's — and a borrowed code makes the name on every charge row a lie.
+    const { rows } = staffId
+      ? await pool.query<DbStaff>(
+          `SELECT * FROM ${MERCHANT_SCHEMA}.staff WHERE merchant = $1 AND active = true AND id = $2`,
+          [normalizeMerchant(merchant), staffId],
+        )
+      : await pool.query<DbStaff>(
+          `SELECT * FROM ${MERCHANT_SCHEMA}.staff WHERE merchant = $1 AND active = true`,
+          [normalizeMerchant(merchant)],
+        );
 
     let found: DbStaff | null = null;
     for (const row of rows) {
@@ -215,37 +222,19 @@ export const staffStore = {
     return toRow(found);
   },
 
-  /** An owner signs in with email and password, because they reach money. */
-  async signInWithPassword(
-    merchant: string,
-    email: string,
-    password: string,
-  ): Promise<StaffRow | null> {
-    const pool = getMerchantPool();
-    if (!pool) return null;
-    await ensureMerchantSchema();
-
-    const gate = attemptLimiter(merchant);
-    if (!gate.allowed) return null;
-
-    const { rows } = await pool.query<DbStaff>(
-      `SELECT * FROM ${MERCHANT_SCHEMA}.staff
-        WHERE merchant = $1 AND active = true AND lower(email) = lower($2)`,
-      [normalizeMerchant(merchant), email.trim()],
-    );
-
-    const row = rows[0];
-    // Verify against a decoy when there is no such email, so a missing account and a wrong
-    // password take the same time and cannot be told apart.
-    const stored = row?.secret ?? (await hashSecret('no-such-account'));
-    const ok = await verifySecret(password, stored);
-
-    if (!row || !ok) {
-      recordFailure(merchant);
-      return null;
-    }
-    clearFailures(merchant);
-    return toRow(row);
+  /**
+   * The shift roster — names and roles, nothing else.
+   *
+   * What the "Who's on the counter?" screen shows before anyone has signed in. Deliberately
+   * carries no secrets and no charge counts: it is a list of first names at a shop somebody
+   * already knows the address of, which is close to public, and it is the price of not asking a
+   * writer to remember which of four codes is theirs.
+   */
+  async roster(merchant: string): Promise<{ id: string; name: string; role: StaffRole }[]> {
+    const rows = await this.list(merchant);
+    // The owner appears here too. Mike works the counter, and making him sign in differently to
+    // raise a charge is a reason to hand the tablet to Jen instead.
+    return rows.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name, role: r.role }));
   },
 
   /**

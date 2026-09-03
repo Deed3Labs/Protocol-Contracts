@@ -115,11 +115,14 @@ export async function ensureMerchantSchema(): Promise<void> {
       merchant        TEXT NOT NULL,
       -- "Counter tablet". Named so an owner recognises it in a list months later.
       label           TEXT NOT NULL,
-      -- SHA-256 of the device credential. The credential itself is shown once, at enrolment.
+      -- SHA-256 of the device's SESSION token against Clear. Not a key, and not signing material
+      -- of any kind: a stolen tablet carries nothing that can sign. Clear's backend holds one
+      -- P-256 authorization key per merchant org and does the signing; the device only asks.
+      -- Revoking a device is therefore a row update here — instant, and effective immediately.
       token_hash      TEXT NOT NULL UNIQUE,
-      -- The ceiling stated to the owner before they consented. Enforced on every charge, and
-      -- never above the registry's own cap.
-      approval_cap_cents BIGINT,
+      -- No per-device cap. The approval cap is the merchant's, enforced in MerchantRegistry and
+      -- backstopped by the wallet policy, which is why the enrolment screen shows it as "Fixed"
+      -- and says "enforced by policy, not by this app".
       idle_lock_seconds  INTEGER NOT NULL DEFAULT 300,
       -- The Privy user who enrolled it. A device is authority the owner delegated, so the record
       -- keeps who delegated it.
@@ -158,6 +161,20 @@ export async function ensureMerchantSchema(): Promise<void> {
       privy_org_id      TEXT,
       privy_wallet_id   TEXT,
       key_quorum_id     TEXT,
+      -- Clear's own signer on this shop's wallet: a key quorum wrapping one P-256 authorization
+      -- key, plus the coarse policy ceiling attached to it. Provisioned at onboarding step six,
+      -- once the owner has been shown what it can do.
+      clear_signer_quorum_id TEXT,
+      clear_policy_id        TEXT,
+      -- How much a counter writer can clear with the owner's code, set by the OWNER and not by
+      -- Clear. It is their money and their staffing: a shop with one trusted manager wants it
+      -- high, a shop with weekend cover wants it at zero. NULL means never set; 0 means "Off",
+      -- which is a first-class choice rather than a degenerate number — every refund waits for
+      -- the owner's phone.
+      --
+      -- Its ceiling is the shop's approval cap, so one number governs both directions: an owner
+      -- cannot authorise more by code than the shop can charge in one transaction.
+      owner_code_limit_cents BIGINT,
       name              TEXT NOT NULL,
       category          TEXT,
       town              TEXT,
@@ -189,7 +206,11 @@ export async function ensureMerchantSchema(): Promise<void> {
       requested_by    TEXT NOT NULL REFERENCES ${MERCHANT_SCHEMA}.staff(id),
       requested_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
       decided_by      TEXT REFERENCES ${MERCHANT_SCHEMA}.staff(id),
-      decided_at      TIMESTAMPTZ
+      decided_at      TIMESTAMPTZ,
+      -- HOW it was approved, not just by whom. "Owner code at the counter" proves someone knew
+      -- four digits; "approved from Mike's phone" proves possession of the owner's device. Both
+      -- are acceptable and they are not equal evidence, so the record keeps which.
+      decided_via     TEXT CHECK (decided_via IN ('owner_code','owner_device'))
     );
     CREATE INDEX IF NOT EXISTS refunds_charge_idx ON ${MERCHANT_SCHEMA}.refunds (charge_code);
     CREATE INDEX IF NOT EXISTS refunds_merchant_idx ON ${MERCHANT_SCHEMA}.refunds (merchant, requested_at DESC);

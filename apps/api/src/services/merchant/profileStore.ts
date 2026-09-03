@@ -157,6 +157,23 @@ export const merchantProfileStore = {
     return out;
   },
 
+  /**
+   * Set the owner-code refund threshold.
+   *
+   * Callers must already have established that this is a signed-in owner and that the value is
+   * within the shop's approval cap — the route does both. Kept dumb on purpose: a store method
+   * that re-derives authority is a store method somebody calls from the wrong place.
+   */
+  async setOwnerCodeLimit(merchant: string, limitCents: number): Promise<void> {
+    const pool = getMerchantPool();
+    if (!pool) return;
+    await ensureMerchantSchema();
+    await pool.query(
+      `UPDATE ${MERCHANT_SCHEMA}.profiles SET owner_code_limit_cents = $2 WHERE merchant = $1`,
+      [normalize(merchant), Math.max(0, Math.round(limitCents))],
+    );
+  },
+
   /** What a charge pays out, for a quote before it is raised. */
   quotePayoutCents(amountCents: number, discountRate: number): number {
     return Math.round(merchantPayout(amountCents / 100, discountRate) * 100);
