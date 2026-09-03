@@ -79,3 +79,32 @@ describe('savings move notification', () => {
     expect(/if \(action === 'deposit'\)[\s\S]{0,80}syncSavingsCollateralFromBalance/.test(src)).toBe(false);
   });
 });
+
+describe('it does not double up with the equity-match notification', () => {
+  const src = code('routes/savings.ts');
+
+  test('suppressed when the 1:1 match already told the member', () => {
+    /*
+     * Found in the logs of a real deposit: two `[notify] credit` lines back to back. This one and
+     * `recordDepositMatch`'s "1:1 match applied", for the same deposit, from the same two routes.
+     * The match message predates this and carries the number the member cares about, so it wins;
+     * this one covers the deposits it does not -- a match capped for the month, or already awarded.
+     */
+    expect(src).toMatch(/if \(!matchNotified\) void notifySavingsMove\(/g);
+    expect((src.match(/if \(!matchNotified\) void notifySavingsMove\(/g) ?? []).length).toBe(2);
+  });
+
+  test('a duplicate ledger write counts as already notified', () => {
+    /*
+     * Both routes run for one deposit. The second gets rowCount 0, so creditAwarded is 0 -- and
+     * testing only that would let this fire as the second notification anyway, which is the exact
+     * bug. That is what the logs showed.
+     */
+    expect((src.match(/match\.creditAwarded > 0 \|\| match\.duplicate/g) ?? []).length).toBe(2);
+  });
+
+  test('a withdrawal is never suppressed by it', () => {
+    // The flag is only ever set in the deposit branch; a redeem has no match to duplicate.
+    expect(/clawbackDepositMatch[\s\S]{0,200}matchNotified =/.test(src)).toBe(false);
+  });
+});

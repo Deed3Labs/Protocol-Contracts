@@ -367,11 +367,13 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
 
     // Equity-credit ledger (best-effort — never fail the confirmed transfer): a deposit earns a
     // matched credit (1/$1, capped 1500/mo, 30-day vest); a redeem claws back pending deposit credits.
+    let matchNotified = false;
     try {
       const ledgerWallet = ethers.getAddress(owner).toLowerCase();
       const network = networkFromChainId(config.chainId);
       if (action === 'deposit') {
-        await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.amount), txRef: txHash, network });
+        const match = await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.amount), txRef: txHash, network });
+        matchNotified = match.creditAwarded > 0 || match.duplicate;
       } else {
         await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros: String(submit.clrusdAmount), network });
       }
@@ -397,7 +399,15 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
     void syncSavingsCollateralFromBalance(ethers.getAddress(owner)).then((result) => {
       if (!result.ok) console.error('[savings/gasless] collateral sync failed:', result.reason);
     });
-    void notifySavingsMove(action, owner, String(action === 'deposit' ? submit.amount : submit.clrusdAmount), txHash);
+    /*
+     * Not when the equity-match notification already covered it.
+     *
+     * `recordDepositMatch` emits "1:1 match applied" for the same deposit, from the same two routes.
+     * Two notifications for one action, saying overlapping things, is worse than either alone -- and the
+     * match message is the one that predates this and carries the number the member cares about. This
+     * one exists for the deposits it does not cover: a match capped for the month, or already awarded.
+     */
+    if (!matchNotified) void notifySavingsMove(action, owner, String(action === 'deposit' ? submit.amount : submit.clrusdAmount), txHash);
 
     res.json({ success: true, action, chainId: config.chainId, vaultAddress: config.vaultAddress, txHash, status: 'SUBMITTED' });
   } catch (error) {
@@ -606,9 +616,11 @@ savingsRouter.post('/gasless/record', async (req: Request, res: Response) => {
       return;
     }
     const amountMicros = (verified ?? BigInt(amount)).toString();
+    let matchNotified = false;
     const ledgerWallet = ethers.getAddress(wallet).toLowerCase();
     if (action === 'deposit') {
-      await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros, txRef: body.txHash, network });
+      const match = await payLedgerStore.recordDepositMatch({ wallet: ledgerWallet, amountMicros, txRef: body.txHash, network });
+      matchNotified = match.creditAwarded > 0 || match.duplicate;
     } else {
       await payLedgerStore.clawbackDepositMatch({ wallet: ledgerWallet, amountMicros, network });
     }
@@ -621,7 +633,7 @@ savingsRouter.post('/gasless/record', async (req: Request, res: Response) => {
     void syncSavingsCollateralFromBalance(ethers.getAddress(wallet)).then((result) => {
       if (!result.ok) console.error('[savings/record] collateral sync failed:', result.reason);
     });
-    void notifySavingsMove(action, wallet, amountMicros, body.txHash);
+    if (!matchNotified) void notifySavingsMove(action, wallet, amountMicros, body.txHash);
 
     res.json({ success: true });
   } catch (error) {
