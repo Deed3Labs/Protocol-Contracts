@@ -40,3 +40,33 @@ export function compactMoney(value: number): string {
 export function count(value: number): string {
   return Math.round(value).toLocaleString('en-US');
 }
+
+/**
+ * A dollar amount that always carries its decimals, including a round one: "$412.00".
+ *
+ * The merchant convention, and the one the design reference uses without exception — there is not
+ * a single bare round figure anywhere in it. It differs from `money` above deliberately, and the
+ * difference is not an inconsistency to be tidied away:
+ *
+ * A member app shows *balances* — a limit, what is left, a pool position — and a balance reads
+ * better round, because a member is judging a magnitude. A merchant app shows *transactions* only:
+ * a charge, a payout, a refund. Every figure on that surface is an exact sum somebody will
+ * reconcile against a bank statement, and dropping ".00" from one of them makes the whole column
+ * look like it has been rounded.
+ *
+ * So the rule is "balances round, transactions exact", and a merchant has no balances.
+ */
+export function dollars(value: number): string {
+  return money(value, { cents: true });
+}
+
+/**
+ * Equity credits: no decimals, but still a dollar sign — "$15,000".
+ *
+ * A credit is a whole thing, never a fraction of one, so decimals on it would be noise. It keeps
+ * the symbol because it is denominated in dollars even though it is not cash. `count` gives the
+ * bare number for places that supply their own unit.
+ */
+export function credits(value: number): string {
+  return `$${count(value)}`;
+}

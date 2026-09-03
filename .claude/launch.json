@@ -4,8 +4,24 @@
     {
       "name": "protocol-app",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "@clear/member"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@clear/member"
+      ],
       "port": 5173
+    },
+    {
+      "name": "clear-merchant",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "@clear/merchant"
+      ],
+      "port": 5174
     }
   ]
 }

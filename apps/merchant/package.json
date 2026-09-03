@@ -1,8 +1,32 @@
 {
   "name": "@clear/merchant",
-  "version": "0.0.0",
   "private": true,
+  "version": "0.0.0",
   "type": "module",
   "license": "UNLICENSED",
-  "scripts": {}
+  "scripts": {
+    "dev": "vite --port 5174",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "test": "bun test src",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "@clear/domain": "*",
+    "@clear/tokens": "*",
+    "@tailwindcss/vite": "^4.1.11",
+    "lucide-react": "^0.525.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.7.1",
+    "tailwindcss": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
 }

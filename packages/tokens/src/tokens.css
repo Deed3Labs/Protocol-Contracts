@@ -1,0 +1,61 @@
+/**
+ * Clear design tokens — color, type scale, spacing, radii.
+ *
+ * Taken from the merchant design reference, which is a warm paper palette rather than a white one:
+ * a counter tablet sits under shop lighting for eight hours and a pure-white field is tiring to
+ * read against. Light only, as the reference is — a till in a shop is not a device anyone reads in
+ * the dark, and inventing a second palette would mean inventing a second set of decisions.
+ *
+ * Tokens and formatters are the entire shared design surface between the two apps. There is no
+ * shared component library: a tablet counter app and a consumer phone app are different products.
+ */
+
+:root {
+  /* Surfaces, lightest last — the page sits on 0, cards rise to 2. */
+  --clear-surface-0: #e8e5dd;
+  --clear-surface-1: #f1efe8;
+  --clear-surface-2: #faf9f5;
+
+  --clear-border: #d4d1c7;
+  --clear-border-strong: #b4b2a9;
+  --clear-border-accent: #7f77dd;
+
+  --clear-text-primary: #2c2c2a;
+  --clear-text-secondary: #5f5e5a;
+  --clear-text-muted: #888780;
+  --clear-text-success: #0f6e56;
+  --clear-text-accent: #534ab7;
+
+  --clear-bg-success: #e3f3ed;
+  --clear-bg-accent: #e9e7fa;
+
+  --clear-radius: 8px;
+  --clear-radius-sm: 4px;
+  --clear-radius-lg: 12px;
+
+  --clear-font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --clear-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /*
+   * Type scale. Dense by design: a service writer reads this at arm's length across a counter,
+   * with more on screen at once than a phone would ever show.
+   */
+  --clear-text-2xs: 10px;
+  --clear-text-xs: 11.5px;
+  --clear-text-sm: 13px;
+  --clear-text-base: 15px;
+  --clear-text-md: 17px;
+  --clear-text-lg: 21px;
+  --clear-text-xl: 26px;
+  --clear-text-2xl: 32px;
+  /* The amount on the code screen, read across a shop. */
+  --clear-text-3xl: 40px;
+
+  --clear-space-1: 4px;
+  --clear-space-2: 8px;
+  --clear-space-3: 12px;
+  --clear-space-4: 16px;
+  --clear-space-5: 24px;
+  --clear-space-6: 32px;
+  --clear-space-7: 48px;
+}

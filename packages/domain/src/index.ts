@@ -29,9 +29,11 @@ export { type SplitQuote, splitQuote } from './split';
 
 export { type RefundQuote, carryAccrued, refundQuote } from './refund';
 
-export { compactMoney, count, money, signedMoney } from './money';
+export { compactMoney, count, credits, dollars, money, signedMoney } from './money';
 
 export { parsePendingTotal, shopDisplayName } from './counterCode';
+
+export { fromCents, toCents } from './units';
 
 export type {
   Charge,

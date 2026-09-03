@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+/* Colour, type scale, spacing and radii — shared with the member app, and the whole of what is. */
+@import '../../../packages/tokens/src/tokens.css';
+
+html {
+  background: var(--clear-surface-0);
+  font-family: var(--clear-font-sans);
+  /* A counter tablet is touched, not clicked; stop iOS zooming on a tapped input. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--clear-text-primary);
+}
+
+/* Figures line up in columns so a writer can scan a list of amounts without reading each one. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
