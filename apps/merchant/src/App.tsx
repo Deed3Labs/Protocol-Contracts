@@ -29,7 +29,7 @@ function OwnerOnly({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { session, device, loading } = useAuth();
+  const { session, device, loading, refresh } = useAuth();
 
   // Dev-only. Enrollment sits behind a backend and an owner's Privy sign-in, which makes it the one
   // screen that cannot be looked at while building it. `import.meta.env.DEV` is statically false in
@@ -65,8 +65,10 @@ export default function App() {
       return (
         <Routes>
           <Route path="/onboarding" element={<OnboardingPage />} />
-          {/* No `onBack`: there is no counter behind this yet. */}
-          <Route path="*" element={<OwnerSignIn onDone={() => undefined} />} />
+          {/* No `onBack`: there is no counter behind this yet. `onDone` re-reads the session —
+              sign-in stores its own bearer token, so without this the app would sit on this screen
+              having already signed in. */}
+          <Route path="*" element={<OwnerSignIn onDone={refresh} />} />
         </Routes>
       );
     }

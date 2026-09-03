@@ -71,6 +71,14 @@ export interface AuthValue {
    */
   authoriseWithOwnerCode: (code: string) => Promise<Staff>;
   signOut: () => void | Promise<void>;
+  /**
+   * Re-read who this tablet is and who is on it.
+   *
+   * Owner sign-in happens outside this provider — it exchanges a Privy token for a session and
+   * stores the bearer itself — so the provider has to be told to look again. Without it the app
+   * holds whatever it resolved on load and a successful sign-in changes nothing on screen.
+   */
+  refresh: () => Promise<void>;
   /** Enroll this tablet. Requires an owner session — a counter writer cannot reach it. */
   enrollDevice: (input: { label: string; idleLockSeconds?: number }) => Promise<void>;
 }

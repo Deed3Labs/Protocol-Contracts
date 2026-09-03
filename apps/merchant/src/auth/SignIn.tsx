@@ -42,7 +42,7 @@ function initials(name: string): string {
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'not-me', '0', 'del'] as const;
 
 export function SignIn() {
-  const { signInWithPin } = useAuth();
+  const { signInWithPin, refresh } = useAuth();
   const [ownerMode, setOwnerMode] = useState(false);
   const [roster, setRoster] = useState<RosterEntry[] | null>(null);
   const [picked, setPicked] = useState<RosterEntry | null>(null);
@@ -89,7 +89,15 @@ export function SignIn() {
   // A separate screen rather than a mode of this one: signing in as the owner is a different act
   // with a different authority, and blending them is how a tablet ends up left signed in as Mike.
   if (ownerMode) {
-    return <OwnerSignIn onDone={() => setOwnerMode(false)} onBack={() => setOwnerMode(false)} />;
+    return (
+      <OwnerSignIn
+        onDone={async () => {
+          await refresh();
+          setOwnerMode(false);
+        }}
+        onBack={() => setOwnerMode(false)}
+      />
+    );
   }
 
   return (

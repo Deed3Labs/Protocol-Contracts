@@ -80,13 +80,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (d) {
           cachedMerchant = d.merchant;
           setDevice({ ...d.device, merchant: d.merchant });
-          const res = await api.currentSession();
-          if (!cancelled && res) {
-            setSession({
-              staff: { ...res.staff, hasPin: true, active: true } as Staff,
-              method: 'pin',
-            });
-          }
+        }
+
+        /**
+         * The session is read whether or not a device exists.
+         *
+         * This used to sit inside `if (d)`, which made owner sign-in impossible to complete: you
+         * sign in as the owner IN ORDER TO enrol a device, and the app only looked for your session
+         * once a device was already enrolled. The sign-in succeeded, the token was stored, and the
+         * app kept showing the sign-in screen because it never asked who was signed in.
+         *
+         * A session with no device is exactly the state an owner is in between signing in and
+         * setting up the tablet, so it has to be representable.
+         */
+        const res = await api.currentSession();
+        if (!cancelled && res) {
+          if (!d) cachedMerchant = res.merchant;
+          setSession({
+            staff: { ...res.staff, hasPin: true, active: true } as Staff,
+            method: 'pin',
+          });
         }
       } catch {
         // A server that cannot be reached is a tablet that cannot take a charge. The sign-in
@@ -129,6 +142,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { ...owner, hasPin: true, active: true } as Staff;
   }, []);
 
+  const refresh = useCallback(async () => {
+    try {
+      const d = await api.currentDevice();
+      if (d) {
+        cachedMerchant = d.merchant;
+        setDevice({ ...d.device, merchant: d.merchant });
+      }
+      const res = await api.currentSession();
+      if (res) {
+        if (!d) cachedMerchant = res.merchant;
+        setSession({
+          staff: { ...res.staff, hasPin: true, active: true } as Staff,
+          method: 'pin',
+        });
+      }
+    } catch {
+      // Leave what we have. A refresh that cannot reach the server should not sign anybody out.
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
     await api.signOut().catch(() => storeToken(null));
     setSession(null);
@@ -166,8 +199,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authoriseWithOwnerCode,
       signOut,
       enrollDevice,
+      refresh,
     }),
-    [session, device, loading, signInWithPin, authoriseWithOwnerCode, signOut, enrollDevice],
+    [session, device, loading, signInWithPin, authoriseWithOwnerCode, signOut, enrollDevice, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
