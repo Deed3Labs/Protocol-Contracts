@@ -68,15 +68,25 @@ describe('the server and the shared domain agree on charge states', () => {
     expect(domainStates()).toContain('resolving');
   });
 
-  it('the states the domain adds are ones the server does not yet persist', () => {
-    // Documents the gap rather than asserting it away: cancelled and the refund states are real
-    // product states with no column behind them yet. Whoever adds them will see this list.
+  it('the states the domain adds are derived, not stored', () => {
+    // `cancelled` and `refunded` are now real columns values. What remains domain-only is the set
+    // that is derived rather than persisted:
+    //
+    //   draft            — the merchant has an amount on screen and nothing has been raised.
+    //   refund_requested — an open row in merchant.refunds; the charge is still 'approved'.
+    //   refund_declined  — a declined row in merchant.refunds; the charge still stands.
+    //
+    // A refund is its own record with its own lifecycle, and the charge stores only the terminal
+    // outcome. Deriving the in-flight states is the same move `withDerivedStatus` already makes
+    // for `expired`.
     const wire = serverStates();
-    const unbacked = domainStates()
+    const derived = domainStates()
       .map((s) => domainWireAliases()[s] ?? s)
-      .filter((s) => s !== 'draft' && !wire.includes(s));
-    expect(unbacked.sort()).toEqual(
-      ['cancelled', 'refund_declined', 'refund_requested', 'refunded'].sort(),
-    );
+      .filter((s) => !wire.includes(s));
+    expect(derived.sort()).toEqual(['draft', 'refund_declined', 'refund_requested'].sort());
+  });
+
+  it('persists the two terminal states the merchant app writes', () => {
+    for (const s of ['cancelled', 'refunded']) expect(serverStates()).toContain(s);
   });
 });

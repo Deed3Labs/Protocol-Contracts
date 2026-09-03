@@ -1,7 +1,11 @@
-# Protocol-Contracts service builds only apps/api (root dir = apps/api).
-# Keep `railway up` uploads small: ship just apps/api source, never node_modules.
+# The api service builds from the REPOSITORY ROOT so it can see packages/domain, which apps/api
+# imports for refund figures. Keep `railway up` uploads small: ship apps/api and the one package
+# it needs, never node_modules.
 /*
 !/apps
 /apps/*
 !/apps/api
+!/packages
+/packages/*
+!/packages/domain
 node_modules

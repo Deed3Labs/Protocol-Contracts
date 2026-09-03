@@ -30,6 +30,8 @@ export interface Session {
 
 export interface AuthValue {
   session: Session | null;
+  /** True until the stored token has been exchanged for a session (or found to be dead). */
+  loading: boolean;
   role: StaffRole | null;
   /** Payout figures, bank details, the rate, monthly totals. Counter staff see none of it. */
   canSeeMoney: boolean;
@@ -43,7 +45,7 @@ export interface AuthValue {
    * signed in, because the owner is authorising one act rather than starting a shift.
    */
   authoriseWithOwnerCode: (code: string) => Promise<Staff>;
-  signOut: () => void;
+  signOut: () => void | Promise<void>;
 }
 
 export const AuthContext = createContext<AuthValue | null>(null);

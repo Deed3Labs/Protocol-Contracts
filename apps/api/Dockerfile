@@ -9,14 +9,26 @@ FROM oven/bun:1-slim
 
 WORKDIR /app
 
+# The build context is the REPOSITORY ROOT, not apps/api.
+#
+# It was apps/api until the merchant app arrived. The api now imports @clear/domain — a refund's
+# figures must be the same number on the counter tablet, on the member's phone and in the row this
+# service writes, and the only way to guarantee that is one implementation. A container that can
+# only see apps/api cannot resolve it.
+#
+# The cost is a larger context, which is why .railwayignore is narrow: apps/api and packages/domain
+# and nothing else.
+COPY packages/domain ./packages/domain
+
 # Dependencies first, so a source-only change reuses this layer instead of reinstalling.
 # Deliberately not --frozen-lockfile: bun.lock is currently stale against package.json, and
 # regenerating it upgrades transitive versions. Same install semantics as before — the lockfile
 # drift is a separate problem and should not be smuggled into a build change.
-COPY package.json bun.lock* ./
+COPY apps/api/package.json apps/api/bun.lock* ./apps/api/
+WORKDIR /app/apps/api
 RUN bun install
 
-COPY . .
+COPY apps/api/ ./
 
 EXPOSE 3001
 

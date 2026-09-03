@@ -25,7 +25,16 @@ let ensured = false;
  * back to pending, where a member could approve a charge whose plan had in fact already been
  * opened. A stuck charge is visible and fixable; a duplicate term plan is somebody owing twice.
  */
-export type ChargeStatus = 'pending' | 'resolving' | 'approved' | 'declined' | 'expired';
+export type ChargeStatus =
+  | 'pending'
+  | 'resolving'
+  | 'approved'
+  | 'declined'
+  | 'expired'
+  /** The shop withdrew it before the member acted. */
+  | 'cancelled'
+  /** A refund settled against it. The in-flight refund states live in merchant.refunds. */
+  | 'refunded';
 
 export interface ChargeRow {
   code: string;
@@ -46,6 +55,8 @@ export interface ChargeRow {
   resolvedAt: string | null;
   /** Set the first time the member opens it — the merchant's "waiting" state reads this. */
   openedAt: string | null;
+  /** The staff member who raised it. Null for charges raised before staff existed. */
+  raisedBy: string | null;
 }
 
 interface DbRow {
@@ -64,6 +75,7 @@ interface DbRow {
   created_at: string;
   resolved_at: string | null;
   opened_at: string | null;
+  raised_by: string | null;
 }
 
 // No I, L, O or U: read over a phone line, those are the ones that come back wrong.
@@ -102,6 +114,11 @@ async function ensureTables(): Promise<void> {
     CREATE INDEX IF NOT EXISTS charge_member_idx ON ${TABLE} (member_wallet, created_at DESC);
     CREATE INDEX IF NOT EXISTS charge_merchant_idx ON ${TABLE} (merchant_address, created_at DESC);
   `);
+  // Who raised it. Added separately because the table predates the merchant app, and a shop's
+  // existing charges have no writer to attribute — the column is nullable and the UI says so
+  // rather than inventing a name. Soft reference to merchant.staff(id): the schemas may one day
+  // live in different databases, so this is not a foreign key.
+  await pool.query(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS raised_by TEXT`);
   ensured = true;
 }
 
@@ -136,11 +153,12 @@ const toRow = (r: DbRow): ChargeRow =>
     createdAt: r.created_at,
     resolvedAt: r.resolved_at,
     openedAt: r.opened_at,
+    raisedBy: r.raised_by ?? null,
   });
 
 const COLUMNS = `code, merchant_address, merchant_name, member_wallet, amount_cents, payout_cents,
                  status, split_into, plan_id, tx_hash, chain_id, expires_at, created_at,
-                 resolved_at, opened_at`;
+                 resolved_at, opened_at, raised_by`;
 
 export const chargeStore = {
   isConfigured(): boolean {
@@ -314,6 +332,75 @@ export const chargeStore = {
     const out: Record<number, string> = {};
     for (const row of r.rows) out[Number(row.plan_id)] = row.merchant_name;
     return out;
+  },
+
+  /**
+   * The charges a shop has raised — the merchant app's Charges list.
+   *
+   * `charge_merchant_idx` already exists on (merchant_address, created_at DESC), so this is the
+   * read the schema was built for. Waiting rows are NOT sorted first here: the API returns time
+   * order and the client decides, because "what needs an action" is a presentation question and a
+   * paged API that reorders by state cannot page consistently.
+   */
+  async listByMerchant(
+    merchant: string,
+    opts: { since?: Date; limit?: number } = {},
+  ): Promise<ChargeRow[]> {
+    const pool = getPostgresPool();
+    if (!pool) return [];
+    await ensureTables();
+    const r = await pool.query<DbRow>(
+      `SELECT ${COLUMNS} FROM ${TABLE}
+        WHERE merchant_address = $1
+          AND ($2::timestamptz IS NULL OR created_at >= $2)
+        ORDER BY created_at DESC
+        LIMIT $3`,
+      [normalizeWallet(merchant), opts.since?.toISOString() ?? null, opts.limit ?? 200],
+    );
+    return r.rows.map(toRow);
+  },
+
+  /**
+   * The shop withdraws a charge before the member has acted.
+   *
+   * Guarded on `status = 'pending'` in the UPDATE rather than checked first: a member pressing
+   * Approve at the same moment claims the row into `resolving`, and whichever statement lands
+   * first wins. Checking and then writing would let both succeed — the member opens a plan the
+   * shop believes it cancelled.
+   */
+  async cancel(code: string, merchant: string): Promise<ChargeRow | null> {
+    const pool = getPostgresPool();
+    if (!pool) return null;
+    await ensureTables();
+    const r = await pool.query<DbRow>(
+      `UPDATE ${TABLE} SET status = 'cancelled', resolved_at = now()
+        WHERE code = $1 AND merchant_address = $2 AND status = 'pending'
+        RETURNING ${COLUMNS}`,
+      [code.trim().toUpperCase(), normalizeWallet(merchant)],
+    );
+    return r.rows[0] ? toRow(r.rows[0]) : null;
+  },
+
+  /** Attribute a charge to the writer who raised it. */
+  async setRaisedBy(code: string, staffId: string): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTables();
+    await pool.query(`UPDATE ${TABLE} SET raised_by = $2 WHERE code = $1`, [
+      code.trim().toUpperCase(),
+      staffId,
+    ]);
+  },
+
+  /** Mark a charge refunded once the refund settles. */
+  async markRefunded(code: string): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTables();
+    await pool.query(
+      `UPDATE ${TABLE} SET status = 'refunded' WHERE code = $1 AND status = 'approved'`,
+      [code.trim().toUpperCase()],
+    );
   },
 
   /** Put a claimed row back when the chain call failed — it never became anything. */

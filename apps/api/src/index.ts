@@ -28,6 +28,7 @@ import portfolioRouter from './routes/portfolio.js';
 import payRouter from './routes/pay.js';
 import creditRouter from './routes/credit.js';
 import chargesRouter from './routes/charges.js';
+import merchantRouter from './routes/merchant.js';
 import { startChargeReconciler } from './services/chargeReconciler.js';
 import withdrawRouter from './routes/withdraw.js';
 import autopayRouter from './routes/autopay.js';
@@ -233,6 +234,12 @@ async function startServer() {
     // inside attach `requireAuth` themselves — see the note in routes/charges.ts for why that
     // must not be left to the mount.
     app.use('/api/charges', chargesRouter);
+
+    // The merchant surface. Its own auth (bearer tokens against merchant.staff), deliberately
+    // sharing nothing with the member session — different product, different origin, different
+    // threat model. Individual routes attach requireMerchant/requireOwner; the mount does not,
+    // because POST /session is how a shift starts and has no session yet.
+    app.use('/api/merchant', merchantRouter);
     app.use('/api/withdraw', requireAuth, withdrawRouter);
     app.use('/api/autopay', requireAuth, autopayRouter);
     app.use('/api/contacts', requireAuth, contactsRouter);

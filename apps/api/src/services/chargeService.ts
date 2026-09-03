@@ -108,6 +108,46 @@ export function chargeTypedData(input: {
   };
 }
 
+/**
+ * The terms the registry holds for a merchant.
+ *
+ * The same read `raiseCharge` performs, exposed for the surfaces that need to *show* terms rather
+ * than enforce them — Settings, and the payout figures. Enforcement still happens inside
+ * `raiseCharge`; this is deliberately a read.
+ *
+ * Returns null rather than throwing when the chain cannot be reached. A Settings page that fails
+ * to load because an RPC blipped is worse than one that renders without the rate, and the caller
+ * can say "unavailable" honestly. `raiseCharge` makes the opposite trade for the opposite reason:
+ * there, an unreadable registry means refusing the charge.
+ */
+export async function readMerchantTerms(
+  merchant: string,
+): Promise<{ active: boolean; capCents: number; discountRate: number } | null> {
+  const registryAddress = getContractAddress(chainId(), 'MerchantRegistry');
+  if (!registryAddress) return null;
+
+  try {
+    const registry = new ethers.Contract(registryAddress, MERCHANT_ABI, provider());
+    const [active, capRaw, discountBps] = await Promise.all([
+      registry.isActive(merchant) as Promise<boolean>,
+      registry.approvalCapOf(merchant) as Promise<bigint>,
+      registry.discountBpsOf(merchant) as Promise<bigint>,
+    ]);
+    return {
+      active,
+      // The cap is in token units (6dp); everything above the chain works in cents.
+      capCents: Number(capRaw / 10_000n),
+      discountRate: Number(discountBps) / 10_000,
+    };
+  } catch (error) {
+    console.error(
+      '[charge] merchant terms read failed',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+    return null;
+  }
+}
+
 /** A signature older than this is refused however valid it is. */
 const SIGNATURE_MAX_AGE_SECONDS = 5 * 60;
 
