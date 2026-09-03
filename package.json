@@ -1,5 +1,6 @@
 {
   "name": "@deed3labs/protocol-contracts",
+  "packageManager": "npm@10.2.4",
   "version": "0.1.0",
   "description": "DeedNFT Contracts with Validator integration for decentralized asset registration and verification",
   "main": "index.js",
@@ -47,7 +48,9 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test:apps": "turbo run test"
+    "test:apps": "turbo run test",
+    "build:member": "turbo run build --filter=@clear/member",
+    "build:merchant": "turbo run build --filter=@clear/merchant"
   },
   "repository": {
     "type": "git",
