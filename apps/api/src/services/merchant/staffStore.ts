@@ -330,6 +330,27 @@ export const staffStore = {
     ]);
   },
 
+  /**
+   * Reset somebody's PIN — reference section 08, "an owner can reset it in Staff".
+   *
+   * The same four-digit rule as `add`, and the same hashing, because a PIN set here and a PIN set
+   * at onboarding have to be interchangeable. Nothing reads the old one first: an owner resetting a
+   * writer's PIN does not know it, which is usually why they are resetting it.
+   */
+  async setPin(staffId: string, pin: string): Promise<boolean> {
+    const pool = getMerchantPool();
+    if (!pool) return false;
+    await ensureMerchantSchema();
+
+    if (!/^\d{4}$/.test(pin)) throw new Error('A PIN is exactly four digits.');
+
+    const { rowCount } = await pool.query(
+      `UPDATE ${MERCHANT_SCHEMA}.staff SET secret = $2 WHERE id = $1`,
+      [staffId, await hashSecret(pin)],
+    );
+    return (rowCount ?? 0) > 0;
+  },
+
   async setActive(id: string, active: boolean): Promise<void> {
     const pool = getMerchantPool();
     if (!pool) return;
