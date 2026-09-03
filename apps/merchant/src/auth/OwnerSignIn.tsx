@@ -177,7 +177,23 @@ function OwnerSignInForm({
         </div>
 
         {!sent ? (
-          <>
+          /*
+           * A form, so Return submits.
+           *
+           * These were bare inputs beside a button, which meant typing a code and pressing Return —
+           * the only thing a numeric keypad invites you to do — did nothing at all, silently. On a
+           * counter tablet that reads as a broken app rather than a missing click.
+           */
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!ready || busy || !email.includes('@')) return;
+              void run(async () => {
+                await sendCode({ email });
+                setSent(true);
+              });
+            }}
+          >
             <p className="m-0 mb-[3px] text-[11px] text-[var(--clear-text-muted)]">Email</p>
             <input
               type="email"
@@ -185,24 +201,37 @@ function OwnerSignInForm({
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                if (!ready || busy || !email.includes('@')) return;
+                void run(async () => {
+                  await sendCode({ email });
+                  setSent(true);
+                });
+              }}
               placeholder="mike@mikestire.com"
               className="mb-2.5 w-full rounded-[10px] border-[0.5px] border-[var(--clear-border)] bg-[var(--clear-surface-1)] px-3.5 py-3 text-[14.5px] outline-none placeholder:text-[var(--clear-text-muted)]"
             />
             <PrimaryButton
+              type="submit"
               disabled={!ready || busy || !email.includes('@')}
-              onClick={() =>
-                run(async () => {
-                  await sendCode({ email });
-                  setSent(true);
-                })
-              }
               className="!py-[13px] !text-[14px]"
             >
               {busy ? 'Sending…' : 'Email me a code'}
             </PrimaryButton>
-          </>
+          </form>
         ) : (
-          <>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (busy || code.length < 6) return;
+              void run(async () => {
+                await loginWithCode({ code });
+                await adoptSession();
+              });
+            }}
+          >
             <p className="m-0 mb-[3px] text-[11px] text-[var(--clear-text-muted)]">
               The code we emailed {email}
             </p>
@@ -211,19 +240,20 @@ function OwnerSignInForm({
               autoComplete="one-time-code"
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                if (busy || code.length < 6) return;
+                void run(async () => {
+                  await loginWithCode({ code });
+                  await adoptSession();
+                });
+              }}
+              autoFocus
               placeholder="······"
               className="mb-2.5 w-full rounded-[10px] border-[0.5px] border-[var(--clear-border)] bg-[var(--clear-surface-1)] px-3.5 py-3 text-[19px] tracking-[4px] outline-none placeholder:text-[var(--clear-text-muted)]"
             />
-            <PrimaryButton
-              disabled={busy || code.length < 6}
-              onClick={() =>
-                run(async () => {
-                  await loginWithCode({ code });
-                  await adoptSession();
-                })
-              }
-              className="!py-[13px] !text-[14px]"
-            >
+            <PrimaryButton type="submit" disabled={busy || code.length < 6} className="!py-[13px] !text-[14px]">
               {busy ? 'Checking…' : 'Sign in'}
             </PrimaryButton>
             <button
@@ -237,7 +267,7 @@ function OwnerSignInForm({
             >
               Use a different email
             </button>
-          </>
+          </form>
         )}
 
         <div className="my-[18px] flex items-center gap-3">
