@@ -3,6 +3,7 @@ import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
 import { chainProvider } from './provider.js';
 import { coalesce } from './readCache.js';
+import { scanLogs } from './logScan.js';
 
 /*
  * The Earn page's two products, read from the contracts that hold them.
@@ -111,6 +112,7 @@ async function readPool(
   provider: ethers.JsonRpcProvider,
   address: string,
   wallet: string,
+  chainId: number,
 ): Promise<ChainPool | null> {
   try {
     const pool = new ethers.Contract(address, POOL_ABI, provider);
@@ -124,7 +126,7 @@ async function readPool(
     // has earned anything.
     const position = shares > 0n ? await pool.convertToAssets(shares) : 0n;
 
-    const costBasis = await readPoolCostBasis(pool, wallet);
+    const costBasis = await readPoolCostBasis(pool, wallet, chainId);
     const positionCents = toCents(position);
     // Never negative. A position below its cost basis has lost money, and the page has no row for
     // that -- reporting it as negative earnings would put a minus sign where it means something
@@ -155,11 +157,12 @@ async function readPool(
  * Returns null on failure rather than zero: a cost basis of zero makes the whole position read as
  * profit, which is the most flattering possible wrong answer.
  */
-async function readPoolCostBasis(pool: ethers.Contract, wallet: string): Promise<number | null> {
+async function readPoolCostBasis(pool: ethers.Contract, wallet: string, chainId: number): Promise<number | null> {
   try {
+    const target = await pool.getAddress();
     const [deposits, withdrawals] = await Promise.all([
-      pool.queryFilter(pool.filters.Deposit(null, wallet), 0, 'latest'),
-      pool.queryFilter(pool.filters.Withdraw(null, null, wallet), 0, 'latest'),
+      scanLogs(`${chainId}:${target}:Deposit:${wallet.toLowerCase()}`, pool, pool.filters.Deposit(null, wallet), chainId),
+      scanLogs(`${chainId}:${target}:Withdraw:${wallet.toLowerCase()}`, pool, pool.filters.Withdraw(null, null, wallet), chainId),
     ]);
     let basis = 0;
     for (const event of deposits) basis += toCents((event as ethers.EventLog).args.assets);
@@ -268,13 +271,15 @@ async function readRedeemedGains(
   provider: ethers.JsonRpcProvider,
   address: string,
   wallet: string,
-): Promise<number> {
+  chainId: number,
+): Promise<number | null> {
   try {
     const collection = new ethers.Contract(address, BOND_ABI, provider);
-    const events = await collection.queryFilter(
+    const events = await scanLogs(
+      `${chainId}:${address}:BondRedeemed:${wallet.toLowerCase()}`,
+      collection,
       collection.filters.BondRedeemed(null, wallet),
-      0,
-      'latest',
+      chainId,
     );
     let gains = 0;
     for (const event of events) {
@@ -284,8 +289,14 @@ async function readRedeemedGains(
     }
     return gains;
   } catch (error) {
+    /*
+     * Null, not zero -- the same reason the pool cost basis beside this returns null. Zero is a
+     * figure the member can read as "you have earned nothing", and it was reported for months while
+     * the query was simply failing. An unknown makes the read incomplete, and the app then keeps the
+     * last figure that worked instead of showing a fabricated one.
+     */
     console.error('[earn] redeemed gains failed', address, error);
-    return 0;
+    return null;
   }
 }
 
@@ -315,10 +326,10 @@ async function readChainEarnUncached(
   }
 
   const [pool, bonds, terms, redeemedGains] = await Promise.all([
-    poolAddress ? readPool(provider, poolAddress, wallet) : Promise.resolve(null),
+    poolAddress ? readPool(provider, poolAddress, wallet, chainId) : Promise.resolve(null),
     bondAddress ? readBonds(provider, bondAddress, wallet) : Promise.resolve([]),
     bondAddress ? readTerms(provider, bondAddress) : Promise.resolve([]),
-    bondAddress ? readRedeemedGains(provider, bondAddress, wallet) : Promise.resolve(0),
+    bondAddress ? readRedeemedGains(provider, bondAddress, wallet, chainId) : Promise.resolve(0),
   ]);
 
   const accrued = (bonds ?? [])
@@ -329,7 +340,8 @@ async function readChainEarnUncached(
     pool,
     bonds,
     terms,
-    earnedToDateCents: accrued + redeemedGains + (pool?.earnedCents ?? 0),
-    complete: bonds !== null && terms !== null,
+    earnedToDateCents: accrued + (redeemedGains ?? 0) + (pool?.earnedCents ?? 0),
+    // A failed gains read makes this incomplete, so the client keeps its last good figure.
+    complete: bonds !== null && terms !== null && redeemedGains !== null,
   };
 }
