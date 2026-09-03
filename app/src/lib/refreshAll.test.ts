@@ -68,3 +68,15 @@ describe('every manual refresh trigger goes through it', () => {
     expect(code('components/shell/AppShell.tsx')).toContain('useRefreshOnResume()');
   });
 });
+
+describe('a notification that says a figure moved, moves it', () => {
+  test('credit notifications refresh, not just money ones', () => {
+    /*
+     * A savings deposit emits a `credit` notification. If that arrives and the limit beside it stays
+     * stale, this is the original bug wearing a bell -- the member is now being *told* about a number
+     * the screen is not showing.
+     */
+    const hook = code('hooks/useNotifications.ts');
+    expect(hook).toMatch(/n\.kind === 'credit'[\s\S]{0,40}refreshAllNow\(\)/);
+  });
+});

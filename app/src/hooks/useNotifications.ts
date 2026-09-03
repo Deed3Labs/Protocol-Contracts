@@ -138,10 +138,18 @@ export function useNotificationsState() {
       // `notification:new` for a row already in the list left the list alone and still bumped the
       // badge — a count that no longer described anything on screen.
       setNotifications((prev) => (prev.some((x) => x.id === n.id) ? prev : [n, ...prev].slice(0, 40)));
-      // Money moved (deposit landed / cash-out sent) → refresh right away. Through refreshAllNow,
-      // because a deposit that lands is also collateral: it moves the credit limit, not just the
-      // balance. Dispatching `clear:activity` alone here refreshed the cash and left the limit stale.
-      if (n.kind === 'received' || n.kind === 'sent') refreshAllNow();
+      /*
+       * Something the member owns changed → refresh right away.
+       *
+       * Through refreshAllNow, because a deposit that lands is also collateral: it moves the credit
+       * limit, not just the balance. Dispatching `clear:activity` alone here refreshed the cash and
+       * left the limit stale.
+       *
+       * `credit` is in the list for the same reason it exists: a savings deposit or an equity credit
+       * IS a change to the figures on Home and Savings. A notification that says the limit moved,
+       * arriving next to a limit that did not, is the original bug wearing a bell.
+       */
+      if (n.kind === 'received' || n.kind === 'sent' || n.kind === 'credit') refreshAllNow();
     };
     socket.on('notification:new', onNew);
     return () => {
