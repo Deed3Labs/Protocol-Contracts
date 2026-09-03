@@ -126,3 +126,85 @@ export const STUB_PAYOUTS: Payout[] = [
 /** What is on the counter right now — the merchant's waiting state. */
 export const waitingCharges = (charges: Charge[] = STUB_CHARGES) =>
   charges.filter((c) => c.state === 'waiting' || c.state === 'resolving');
+
+/**
+ * Setup tasks — the right column on day one.
+ *
+ * A shop that has signed but not run anything. The list retires itself: once every task is done
+ * the panel is replaced by the day's charges, which is what it was standing in for.
+ */
+export interface SetupTask {
+  id: string;
+  title: string;
+  detail: string;
+  action?: string;
+  done?: boolean;
+}
+
+export const STUB_SETUP: SetupTask[] = [
+  {
+    id: 'staff',
+    title: 'Add your counter staff',
+    detail: 'A PIN each, so charges are attributed',
+    action: 'Add',
+  },
+  {
+    id: 'cards',
+    title: 'Print counter cards',
+    detail: 'Goes home with an estimate',
+    action: 'Print',
+  },
+  {
+    id: 'bank',
+    title: 'Bank account added',
+    detail: `Chase ····${STUB_MERCHANT.payoutAccountLast4}`,
+    done: true,
+  },
+];
+
+/**
+ * The three stages Home has to hold, as the reference draws them.
+ *
+ * Home is the only screen that must fill a tablet at any stage, so the space activity will
+ * eventually occupy is never left empty — early on it carries setup and training. Charges,
+ * Payouts, Staff and Settings are lists with a one-line empty state; they need none of this.
+ *
+ * Selectable at `/?home=empty|early|running` so all three can be seen without waiting for a shop
+ * to age. Fixture data only — it selects between these arrays and nothing else.
+ */
+export type HomeStage = 'empty' | 'early' | 'running';
+
+export interface HomeScenario {
+  charges: Charge[];
+  setup: SetupTask[];
+  /** Nothing has landed yet, so the payout explainer still has a job to do. */
+  hasHadPayout: boolean;
+}
+
+export const HOME_SCENARIOS: Record<HomeStage, HomeScenario> = {
+  // Day one: signed, nothing run. Setup incomplete, so the right column is the setup list.
+  empty: { charges: [], setup: STUB_SETUP, hasHadPayout: false },
+  /**
+   * A few charges in. Activity has started but does not fill the column, so one tip stays.
+   *
+   * Both raised by Jen, which the reference's own early state does not quite say: its rows credit
+   * Priya's charge to Luis while the tip beside them reads "Jen has raised both of today's
+   * charges". Both cannot be true on one screen. The tip is the designed content — it is the
+   * insight the whole panel exists for — so the rows are made consistent with it rather than the
+   * other way round. A tip contradicting the list above it is worse than either version alone.
+   */
+  early: {
+    charges: STUB_CHARGES.filter((c) => c.id === 'c_priya' || c.id === 'c_marcus').map((c) => ({
+      ...c,
+      raisedByStaffId: 's_jen',
+    })),
+    setup: STUB_SETUP.map((t) => ({ ...t, done: true })),
+    hasHadPayout: false,
+  },
+  // Activity fills the column on its own. No tips, no prompts.
+  running: {
+    charges: STUB_CHARGES,
+    setup: STUB_SETUP.map((t) => ({ ...t, done: true })),
+    hasHadPayout: true,
+  },
+};
