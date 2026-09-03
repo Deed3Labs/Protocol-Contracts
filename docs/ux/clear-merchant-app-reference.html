@@ -11,6 +11,7 @@
   --radius:8px;
   --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
   --font-mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --tier-cash:#0F6E56; --tier-free:#3FA588; --tier-locked:#C9C6BC;
 }
 *{box-sizing:border-box}
 body{margin:0;padding:2rem;background:var(--surface-1);font-family:var(--font-sans);color:var(--text-primary);-webkit-font-smoothing:antialiased}
@@ -38,10 +39,10 @@ h2{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;c
 button{font-family:inherit;font-size:13px;padding:8px 15px;border:0.5px solid var(--border-strong);
   background:var(--surface-2);border-radius:var(--radius);color:var(--text-primary);cursor:pointer}
 .prim{background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)}
-.topbar{display:flex;justify-content:space-between;align-items:center;padding-bottom:13px;margin-bottom:18px;border-bottom:0.5px solid var(--border)}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:20px;padding-bottom:13px;margin-bottom:18px;border-bottom:0.5px solid var(--border)}
 .wm{font-size:15px;font-weight:600;letter-spacing:-.2px}
 .wm span{color:var(--text-muted);font-weight:400}
-nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
+nav{display:flex;margin-left:auto;gap:20px;font-size:13px;color:var(--text-secondary)}
 .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .pad div{background:var(--surface-1);border-radius:10px;padding:16px 0;text-align:center;font-size:21px;cursor:pointer}
 .scan{width:100%;aspect-ratio:4/3;background:var(--surface-0);border-radius:12px;position:relative;overflow:hidden}
@@ -67,6 +68,11 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
   nav{gap:12px;font-size:12px;flex-wrap:wrap}
   .big{font-size:32px}
 }
+@media (max-width:640px){
+  .desk div[style*="210px"]{grid-template-columns:minmax(0,1fr)!important;gap:16px!important}
+  .desk div[style*="216px"]{grid-template-columns:minmax(0,1fr)!important}
+  .topbar nav{display:none}
+}
 @media (max-width:520px){
   body{padding:1rem}
   .phone{width:100%}
@@ -83,6 +89,56 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
 .srow .sub{font-size:11.5px;color:var(--text-muted);margin:2px 0 0}
 .field{background:var(--surface-1);border:0.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px}
 .field p{margin:0;font-size:14.5px;color:var(--text-muted)}
+
+.route{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:4px;position:relative;align-items:stretch;margin-bottom:14px}
+.route .leg{background:var(--surface-1);padding:11px 13px;min-width:0}
+.route > .leg:nth-child(1){border-radius:10px 4px 4px 10px;padding-right:25px}
+.route > .leg:nth-child(2){border-radius:4px 10px 10px 4px;padding-left:25px;cursor:pointer}
+.route .cap2{font-size:9.5px;color:var(--text-muted);letter-spacing:.4px;text-transform:uppercase;margin:0 0 5px;line-height:1}
+.route .rn{font-size:13px;margin:0;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.route .rb{font-size:11.5px;color:var(--text-muted);margin:2px 0 0;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arrow{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;
+  background:var(--surface-2);border:0.5px solid var(--border);box-shadow:0 0 0 4px var(--surface-2);
+  display:flex;align-items:center;justify-content:center;z-index:2}
+.dest{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;border-bottom:0.5px solid var(--border);cursor:pointer}
+.dest:last-child{border-bottom:0}
+.dest.on{border-color:var(--border)}
+.dest .dn{font-size:13.5px;margin:0}
+.dest .dd{font-size:11.5px;color:var(--text-muted);margin:2px 0 0}
+.dest .rt{text-align:right;white-space:nowrap;font-size:12px;color:var(--text-secondary)}
+.tick{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--border-strong);flex-shrink:0}
+.tick.sel{border-color:var(--text-accent);background:var(--text-accent);position:relative}
+.tick.sel:after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--surface-2)}
+.sumbox{border:0.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:12px}
+.sumbox .r{display:flex;justify-content:space-between;font-size:12.5px;line-height:2}
+.sumbox .r span:first-child{color:var(--text-secondary)}
+.sumbox .r.tot{border-top:0.5px solid var(--border);margin-top:8px;padding-top:8px}
+.sumbox .r.tot span:last-child{font-weight:500}
+.spin{width:44px;height:44px;border-radius:50%;border:2.5px solid var(--surface-0);border-top-color:var(--text-accent);margin:0 auto}
+.stepr{display:flex;align-items:center;gap:9px;font-size:12.5px;line-height:2.1;color:var(--text-muted)}
+.stepr.ok{color:var(--text-secondary)} .stepr.on{color:var(--text-primary)}
+.stepr .d{width:15px;flex-shrink:0;display:flex;justify-content:center}
+
+.comp{display:flex;height:7px;border-radius:4px;overflow:hidden;background:var(--surface-0);gap:1.5px;margin-bottom:4px}
+.legs{margin-top:2px}
+.leg2{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:7px 0}
+.leg2 .l{display:flex;align-items:center;gap:8px;min-width:0}
+.leg2 .r{color:var(--text-secondary);white-space:nowrap;display:flex;align-items:center;gap:7px}
+.leg2 i{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0}
+.leg2.off,.leg2.off .r{color:var(--text-muted)}
+.leg2.off i{background:none;box-shadow:inset 0 0 0 1.5px var(--border-strong)}
+.leg2.tap{cursor:pointer;border-bottom:0.5px solid var(--border)}
+
+.sheet{width:340px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem}
+.sheet.mob{border-radius:20px 20px 0 0;border-bottom:0;padding-bottom:1.6rem}
+.grab{width:36px;height:4px;border-radius:2px;background:var(--border-strong);margin:0 auto 14px}
+.prow{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:0.5px solid var(--border);font-size:13.5px;cursor:pointer}
+.prow:last-child{border-bottom:0}
+.prow .ic{width:19px;flex-shrink:0;color:var(--text-secondary);display:flex}
+.prow .gr{margin-left:auto;color:var(--text-muted);font-size:12px;display:flex;align-items:center;gap:7px}
+.seg3{display:flex;gap:5px;background:var(--surface-1);border-radius:9px;padding:3px}
+.seg3 button{flex:1;padding:7px 0;font-size:12px;border:0;background:none;border-radius:7px;color:var(--text-secondary)}
+.seg3 button.on{background:var(--surface-2);color:var(--text-primary);box-shadow:0 1px 2px rgba(0,0,0,.06)}
 </style></head><body><div class="wrap">
 
 <h1>Clear for Merchants</h1>
@@ -99,7 +155,7 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
 
 <p class="note" style="margin-bottom:.6rem"><strong>Day one</strong> — signed, nothing run. The right column is a setup list; the left teaches the flow.</p>
 <div class="tablet tabletfull">
-  <div class="topbar"><span class="wm">Clear <span>for Mike's Tire</span></span><nav><span style="color:var(--text-primary)">Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span>Settings</span></nav></div>
+  <div class="topbar"><span class="wm">Clear <span>for Mike's Tire</span></span><nav><span style="color:var(--text-primary)">Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span>Overview</span></nav><span style="width:28px;height:28px;border-radius:34%;background:var(--surface-0);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--text-secondary);cursor:pointer;flex-shrink:0">JR</span></div>
   <div class="fill">
     <div class="g2" style="flex:1">
       <div style="display:flex;flex-direction:column">
@@ -135,7 +191,7 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
 
 <p class="note" style="margin:1.1rem 0 .6rem"><strong>Early</strong> — a few charges in. Activity has started but does not fill the column, so one tip stays.</p>
 <div class="tablet tabletfull">
-  <div class="topbar"><span class="wm">Clear <span>for Mike's Tire</span></span><nav><span style="color:var(--text-primary)">Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span>Settings</span></nav></div>
+  <div class="topbar"><span class="wm">Clear <span>for Mike's Tire</span></span><nav><span style="color:var(--text-primary)">Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span>Overview</span></nav><span style="width:28px;height:28px;border-radius:34%;background:var(--surface-0);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--text-secondary);cursor:pointer;flex-shrink:0">JR</span></div>
   <div class="fill">
     <div class="g2" style="flex:1">
       <div style="display:flex;flex-direction:column">
@@ -169,7 +225,7 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
 
 <p class="note" style="margin:1.1rem 0 .6rem"><strong>Running</strong> — activity fills the column on its own. No tips, no prompts.</p>
 <div class="tablet tabletfull">
-  <div class="topbar"><span class="wm">Clear <span>for Mike's Tire</span></span><nav><span style="color:var(--text-primary)">Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span>Settings</span></nav></div>
+  <div class="topbar"><span class="wm">Clear <span>for Mike's Tire</span></span><nav><span style="color:var(--text-primary)">Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span>Overview</span></nav><span style="width:28px;height:28px;border-radius:34%;background:var(--surface-0);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--text-secondary);cursor:pointer;flex-shrink:0">JR</span></div>
   <div class="fill">
     <div class="g2" style="flex:1">
       <div style="display:flex;flex-direction:column">
@@ -356,7 +412,7 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
 <div class="tablet">
   <div class="topbar">
     <span class="wm">Clear <span>for Mike's Tire</span></span>
-    <nav><span>Home</span><span style="color:var(--text-primary)">Charges</span><span>Payouts</span><span>Staff</span><span>Settings</span></nav>
+    <nav><span>Home</span><span style="color:var(--text-primary)">Charges</span><span>Payouts</span><span>Staff</span><span>Overview</span></nav><span style="width:28px;height:28px;border-radius:34%;background:var(--surface-0);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--text-secondary);cursor:pointer;flex-shrink:0">JR</span>
   </div>
   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
     <div style="display:flex;gap:7px">
@@ -384,39 +440,176 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
   <div class="side"><p class="note"><strong>The split shows on confirmed rows</strong> because it is the merchant's only signal of how the customer is managing it &mdash; useful context, no action attached.</p></div>
 </div>
 
-<h2>07 — Payouts · tablet</h2>
-<p class="note">Owed, settling, history. The withdraw flow lives here and states its cap rather than failing silently.</p>
+<h2>07 &mdash; Payouts: two balances, not one</h2>
+<p class="note"><strong>Owed and held are different kinds of money.</strong> What the co-op owes is a claim &mdash; scheduled, and released only as far as the payout pool allows. What sits in the cash account is already the merchant's, released and movable at any hour. Showing them as one figure would misstate both, and it is why a withdrawal has to ask where the money is coming <em>from</em>.</p>
+
 <div class="tablet">
-  <div class="topbar">
-    <span class="wm">Clear <span>for Mike's Tire</span></span>
-    <nav><span>Home</span><span>Charges</span><span style="color:var(--text-primary)">Payouts</span><span>Staff</span><span>Settings</span></nav>
-  </div>
-  <div class="g2" style="margin-bottom:16px">
+  <div class="topbar"><span class="wm">Clear <span>for Mike's Tire</span></span><nav><span>Home</span><span>Charges</span><span style="color:var(--text-primary)">Payouts</span><span>Staff</span><span>Overview</span></nav><span style="width:28px;height:28px;border-radius:34%;background:var(--surface-0);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--text-secondary);cursor:pointer;flex-shrink:0">JR</span></div>
+  <div class="g2" style="margin-bottom:18px">
     <div>
-      <p class="lbl" style="margin:0 0 3px">Owed to you</p>
-      <p class="big">$4,210.00</p>
-      <p style="font-size:12.5px;color:var(--text-muted);margin:5px 0 18px">Next payout Dec 14 &middot; net-30</p>
-      <button class="prim" style="width:100%;padding:14px 0;font-size:15px;margin-bottom:9px">Withdraw now</button>
-      <p style="font-size:11.5px;color:var(--text-muted);margin:0;text-align:center">Available today: $2,400.00 of $3,030.00</p>
+      <p class="lbl" style="margin:0 0 2px">Ready to withdraw</p>
+      <p class="big">$4,247.20</p>
+      <p style="font-size:12.5px;color:var(--text-muted);margin:5px 0 14px">$630.00 more releases Dec 14</p>
+      <div class="comp">
+        <span style="flex:1847;background:var(--tier-cash)"></span>
+        <span style="flex:2400;background:var(--tier-free)"></span>
+        <span style="flex:630;background:var(--tier-locked)"></span>
+      </div>
+      <div class="legs">
+        <div class="leg2 tap"><span class="l"><i style="background:var(--tier-cash)"></i>In your cash account</span>
+          <span class="r">$1,847.20 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="m9 18 6-6-6-6"/></svg></span></div>
+        <div class="leg2"><span class="l"><i style="background:var(--tier-free)"></i>Released and ready</span>
+          <span class="r">$2,400.00</span></div>
+        <div class="leg2 off"><span class="l"><i></i>Releases Dec 14</span>
+          <span class="r">$630.00</span></div>
+      </div>
+      <button class="prim" style="width:100%;padding:13px 0;font-size:15px;margin-top:14px">Withdraw</button>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:10px 0 0;text-align:center;line-height:1.55">Net-30, and sooner when the pool allows</p>
     </div>
-    <div class="inset" style="padding:15px 16px">
-      <p class="cap" style="margin:0 0 11px">How this settles</p>
-      <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">Clears your balance</span><span>$1,180.00</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">To your bank</span><span style="font-weight:500">$3,030.00</span></div>
-      <p style="font-size:11.5px;color:var(--text-muted);margin:12px 0 0;line-height:1.6">You are carrying $1,180.00 on Clear. That clears first &mdash; it costs you no carry.</p>
+    <div>
+      <div class="inset" style="padding:15px 16px;margin-bottom:14px">
+        <p class="cap" style="margin:0 0 11px">How the next payout settles</p>
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">Clears your balance</span><span>$1,180.00</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">To your cash account</span><span style="font-weight:500">$1,850.00</span></div>
+        <p style="font-size:11.5px;color:var(--text-muted);margin:12px 0 0;line-height:1.6">You are carrying $1,180.00 on Clear. That clears first &mdash; it costs you no carry.</p>
+      </div>
+      <p class="cap">Paid out</p>
+      <div class="card" style="padding:0 16px">
+        <div class="trow"><div><div>Nov 14</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">28 charges &middot; Chase &#183;&#183;&#183;&#183;9012</div></div><span>$16,180.00</span></div>
+        <div class="trow"><div><div>Oct 14</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">24 charges &middot; Chase &#183;&#183;&#183;&#183;9012</div></div><span>$13,940.00</span></div>
+      </div>
     </div>
   </div>
-  <p class="cap">Paid out</p>
-  <div class="card" style="padding:0 16px">
-    <div class="trow"><div><div>Nov 14</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">28 charges &middot; Chase &#183;&#183;&#183;&#183;9012</div></div><span>$16,180.00</span></div>
-    <div class="trow"><div><div>Oct 14</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">24 charges &middot; Chase &#183;&#183;&#183;&#183;9012</div></div><span>$13,940.00</span></div>
-    <div class="trow"><div><div>Sep 14</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">19 charges &middot; Chase &#183;&#183;&#183;&#183;9012</div></div><span>$11,020.00</span></div>
-  </div>
-  <p style="font-size:11.5px;color:var(--text-muted);margin:13px 0 0">Each payout opens to the charges inside it, so any figure can be traced to the jobs that produced it.</p>
 </div>
+
 <div class="stack" style="margin-top:14px">
-  <div class="side"><div class="flag"><b>Every payout traces to its charges.</b> A merchant reconciling against their own books needs to get from a bank deposit back to the tickets. Without it they will not trust the number, and they will ask you for a spreadsheet every month.</div></div>
-  <div class="side"><p class="note"><strong>Withdraw states the cap up front.</strong> Hiding a pool limit and failing the withdrawal is how a merchant stops trusting the app; naming it explains itself.</p></div>
+  <div class="side"><div class="flag"><b>One figure, then where it comes from.</b> A merchant thinks &ldquo;how much can I get right now&rdquo;, so that is the number at the top and the subline says when the rest arrives. The composition answers the follow-up &mdash; where it currently sits &mdash; without making them read two cards and do the addition.</div></div>
+  <div class="side"><div class="flag"><b>&ldquo;Still lent out&rdquo; was wrong and is gone.</b> That money is not on loan &mdash; it is owed, and simply beyond what the payout pool can free today. It arrives on the scheduled payout, so the line says <em>Releases Dec 14</em>: the date is the answer, and it does not borrow the yield pool's vocabulary for something unrelated.</div>
+    <p class="note"><strong>The three lines are now parallel</strong> &mdash; all states of the same money rather than one account and two conditions. <em>In your cash account</em>, <em>released and ready</em>, <em>releases Dec 14</em>.</p></div>
+  <div class="side"><p class="note"><strong>The first row is still the tappable one</strong>, carrying a chevron to the account details &mdash; it is the only line with a routing number behind it. Phrasing it as <em>in your cash account</em> rather than naming the account keeps the three lines reading as one set.</p></div>
+</div>
+
+<p class="note" style="margin:1.2rem 0 .7rem"><strong>Cash account details</strong> &mdash; the receiving account, and where a merchant sends money in.</p>
+<div class="stack">
+  <div class="tablet" style="max-width:330px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+      <span style="font-size:15px;font-weight:500">Cash account</span><span style="color:var(--text-secondary);cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 16px;line-height:1.55">Send money here by ACH or wire and it lands in your Clear balance.</p>
+    <div style="border-top:0.5px solid var(--border)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border);font-size:13px"><span style="color:var(--text-secondary);flex-shrink:0">Account name</span><span style="display:flex;align-items:center;gap:9px;min-width:0;text-align:right"><span style="">Mike's Tire &amp; Auto LLC</span></span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border);font-size:13px"><span style="color:var(--text-secondary);flex-shrink:0">Routing</span><span style="display:flex;align-items:center;gap:9px;min-width:0;text-align:right"><span style="font-family:var(--font-mono);font-size:12.5px;letter-spacing:.2px;">084106768</span><span style="cursor:pointer;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></span></span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:0.5px solid var(--border);font-size:13px"><span style="color:var(--text-secondary);flex-shrink:0">Account</span><span style="display:flex;align-items:center;gap:9px;min-width:0;text-align:right"><span style="font-family:var(--font-mono);font-size:12.5px;letter-spacing:.2px;">9600000418824</span><span style="cursor:pointer;flex-shrink:0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></span></span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;font-size:13px">
+        <span style="color:var(--text-secondary)">Type</span><span>Checking</span></div>
+    </div>
+    <button class="prim" style="width:100%;padding:11px 0;margin-top:14px">Copy all details</button>
+    <button style="width:100%;font-size:12px;margin-top:7px">Email them to me</button>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Held by our banking partner in your business's name. Deposits usually land the same business day.</p>
+  </div>
+  <div class="side">
+    <div class="flag"><b>It is a real account with real numbers, so show them.</b> A merchant who cannot copy a routing and account number cannot set up a transfer from their own bank, and a screen that hides them behind a support request is a screen nobody uses.</div>
+    <p class="note"><strong>&ldquo;In your business's name&rdquo; is the sentence that matters.</strong> An owner looking at an unfamiliar routing number wants to know whose account it is before they wire anything into it.</p>
+    <p class="note"><strong>Email them to me</strong> sits beside Copy, because a merchant setting this up is usually at a different computer than the one their bank is on.</p>
+  </div>
+</div>
+
+<h2>07b &mdash; Withdrawing: from where, to where</h2>
+<p class="note">Two sources and three destinations, so the modal asks both. <strong>Owed money must pass through the cash account &mdash; that hop is on-chain and happens regardless</strong> &mdash; while money already in the cash account goes straight out. The route line says which is happening.</p>
+
+<div class="stack">
+  <div class="tablet" style="max-width:340px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-size:15px;font-weight:500">Withdraw</span><span style="color:var(--text-secondary);cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+    <p style="font-size:11px;color:var(--text-muted);margin:0 0 2px">Amount</p>
+    <p style="font-size:34px;font-weight:500;letter-spacing:-1px;margin:0 0 3px">$2,400<span style="color:var(--surface-0)">.00</span></p>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 13px">All that is free today, of $3,030.00 owed</p>
+    <div style="display:flex;gap:6px;margin-bottom:13px">
+      <button style="flex:1;padding:7px 0;font-size:12px">$500</button>
+      <button style="flex:1;padding:7px 0;font-size:12px">$1,000</button>
+      <button style="flex:1;padding:7px 0;font-size:12px;border-color:var(--border-accent);color:var(--text-accent);background:var(--bg-accent)">All free</button>
+    </div>
+    <div class="route"><div class="leg"><p class="cap2">From</p><p class="rn">Owed to you</p><p class="rb">$2,400.00 free</p></div><div class="leg"><p class="cap2">To</p><p class="rn">Chase &#183;&#183;&#183;&#183;9012</p><p class="rb">1&ndash;3 days &middot; no fee</p></div><div class="arrow"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h14"/><path d="m13 6 6 6-6 6"/></svg></div></div>
+    <div class="pad" style="margin-bottom:13px"><div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div><div class="fn">.</div><div>0</div><div class="fn">&#9003;</div></div>
+    <div class="sumbox">
+      <div class="r"><span>Route</span><span>Cash account, then Chase</span></div>
+      <div class="r"><span>Fee</span><span>None</span></div>
+      <div class="r"><span>Arrives</span><span>By Dec 9</span></div>
+      <div class="r tot"><span>You receive</span><span>$2,400.00</span></div>
+    </div>
+    <button class="prim" style="width:100%;padding:12px 0">Withdraw to Chase</button>
+  </div>
+
+  <div class="tablet" style="max-width:340px">
+    <p class="cap">Tapping either leg</p>
+    <p style="font-size:13.5px;font-weight:500;margin:0 0 4px">Where is it coming from?</p>
+    <div class="card" style="padding:0 14px;margin-bottom:16px">
+      <div class="dest"><span class="tick sel"></span>
+        <div style="flex:1"><p class="dn">Owed to you</p><p class="dd">Passes through your cash account</p></div>
+        <span class="rt">$2,400.00<br>free today</span></div>
+      <div class="dest"><span class="tick"></span>
+        <div style="flex:1"><p class="dn">Cash account</p><p class="dd">Goes straight out</p></div>
+        <span class="rt">$1,847.20<br>all of it</span></div>
+    </div>
+    <p style="font-size:13.5px;font-weight:500;margin:0 0 4px">Where does it end up?</p>
+    <div class="card" style="padding:0 14px">
+      <div class="dest"><span class="tick"></span>
+        <div style="flex:1"><p class="dn">Cash account</p><p class="dd">Spend at partners, no wait</p></div>
+        <span class="rt">Instant<br>no fee</span></div>
+      <div class="dest"><span class="tick sel"></span>
+        <div style="flex:1"><p class="dn">Chase &#183;&#183;&#183;&#183;9012</p><p class="dd">Business checking</p></div>
+        <span class="rt">1&ndash;3 days<br>no fee</span></div>
+      <div class="dest"><span class="tick"></span>
+        <div style="flex:1"><p class="dn">Debit &#183;&#183;&#183;&#183;4417</p><p class="dd">Instant to your card</p></div>
+        <span class="rt">Minutes<br>1.5% &middot; $36.00</span></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="flag"><b>Cash account appears on both sides, and that is correct.</b> It is a destination when money is being released and a source when it is being sent on. The one combination that makes no sense &mdash; cash account to cash account &mdash; simply drops out of the second list once it is picked as the source.</div>
+    <p class="note"><strong>The constraint changes with the source.</strong> Owed money is capped by what the pool can free today; cash-account money is capped only by the balance. The amount line says which cap is in force.</p>
+    <p class="note"><strong>The Route line does the explaining</strong> &mdash; <em>Cash account, then Chase</em> when it starts as owed, <em>Straight to Chase</em> when it does not. One line, and the hop never becomes a step the merchant has to think about.</p>
+  </div>
+</div>
+
+<p class="note" style="margin:1.2rem 0 .7rem"><strong>Processing</strong> &mdash; where the hops become visible, and the only place they need to be.</p>
+<div class="stack">
+  <div class="tablet" style="max-width:340px">
+    <div style="text-align:center;padding:24px 0 18px">
+      <div class="spin"></div>
+      <p style="font-size:19px;font-weight:500;margin:18px 0 4px">Sending $2,400.00</p>
+      <p style="font-size:12.5px;color:var(--text-secondary);margin:0">To Chase &#183;&#183;&#183;&#183;9012</p>
+    </div>
+    <div class="sumbox">
+      <div class="stepr ok"><span class="d"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>Released from what you are owed</div>
+      <div class="stepr on"><span class="d"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-accent);display:inline-block"></span></span>In your cash account</div>
+      <div class="stepr"><span class="d"><span style="width:6px;height:6px;border-radius:50%;background:var(--border-strong);display:inline-block"></span></span>On its way to Chase</div>
+    </div>
+    <div class="card" style="padding:11px 13px">
+      <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.6">A few seconds to your cash account, then 1&ndash;3 business days to the bank. <strong style="color:var(--text-primary)">You can close this.</strong></p>
+    </div>
+  </div>
+
+  <div class="tablet" style="max-width:340px">
+    <div style="text-align:center;padding:14px 0 18px">
+      <div style="width:46px;height:46px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;margin:0 auto">
+        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+      <p style="font-size:19px;font-weight:500;margin:16px 0 4px">On its way</p>
+      <p style="font-size:12.5px;color:var(--text-secondary);margin:0">$2,400.00 to Chase &#183;&#183;&#183;&#183;9012</p>
+    </div>
+    <div class="sumbox">
+      <div class="r"><span>Arrives</span><span>By Dec 9</span></div>
+      <div class="r"><span>Still owed to you</span><span>$630.00</span></div>
+      <div class="r"><span>Cash account</span><span>$1,847.20</span></div>
+      <div class="r tot"><span>Next payout</span><span>Dec 14</span></div>
+    </div>
+    <button class="prim" style="width:100%;padding:12px 0">Done</button>
+  </div>
+
+  <div class="side">
+    <div class="flag"><b>Three steps when it starts as owed, two when it starts in the cash account.</b> The shorter flow is finished rather than truncated, and shows two steps rather than three with one greyed out.</div>
+    <p class="note"><strong>The done state reports both balances</strong>, because a merchant who has just moved money from one pot wants to see where both stand &mdash; and the remaining owed figure is the next question either way.</p>
+    <p class="note"><strong>Instant costs money and says so twice</strong> &mdash; as a rate in the picker, as dollars on the confirm. 1.5% of $2,400 is not a figure anyone computes at a counter.</p>
+  </div>
 </div>
 
 <h2>08 — Staff · tablet</h2>
@@ -424,15 +617,15 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
 <div class="tablet">
   <div class="topbar">
     <span class="wm">Clear <span>for Mike's Tire</span></span>
-    <nav><span>Home</span><span>Charges</span><span>Payouts</span><span style="color:var(--text-primary)">Staff</span><span>Settings</span></nav>
+    <nav><span>Home</span><span>Charges</span><span>Payouts</span><span style="color:var(--text-primary)">Staff</span><span>Overview</span></nav><span style="width:28px;height:28px;border-radius:34%;background:var(--surface-0);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--text-secondary);cursor:pointer;flex-shrink:0">JR</span>
   </div>
   <div class="g2">
     <div>
       <p class="cap">Who can use this tablet</p>
       <div class="card" style="padding:0 16px;margin-bottom:14px">
-        <div class="trow"><div><div>Jen</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Counter &middot; PIN 4 digits &middot; 18 charges this month</div></div><span style="font-size:11.5px;color:var(--text-muted)">Can charge</span></div>
-        <div class="trow"><div><div>Luis</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Counter &middot; PIN 4 digits &middot; 11 charges</div></div><span style="font-size:11.5px;color:var(--text-muted)">Can charge</span></div>
-        <div class="trow"><div><div>Mike</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Owner &middot; password &middot; 2 charges</div></div><span style="font-size:11.5px;color:var(--text-muted)">Full access</span></div>
+        <div class="trow"><div><div>Jen</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Counter &middot; PIN &middot; 18 charges this month</div></div><span style="font-size:11.5px;color:var(--text-muted)">Can charge</span></div>
+        <div class="trow"><div><div>Luis</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Manager &middot; PIN &middot; 11 charges</div></div><span style="font-size:11.5px;color:var(--text-accent)">Can approve</span></div>
+        <div class="trow"><div><div>Mike</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Owner &middot; Privy sign-in &middot; 2 charges</div></div><span style="font-size:11.5px;color:var(--text-muted)">Full access</span></div>
       </div>
       <button style="width:100%">Add someone</button>
     </div>
@@ -440,26 +633,28 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
       <p class="cap" style="margin:0 0 12px">What each role can do</p>
       <div style="font-size:12.5px;line-height:1.9">
         <p style="margin:0 0 3px;font-weight:500">Counter</p>
-        <p style="margin:0 0 12px;color:var(--text-secondary);line-height:1.65">Raise a charge. See what is waiting. Cancel one they raised. Nothing else.</p>
-        <p style="margin:0 0 3px;font-weight:500">Full access</p>
-        <p style="margin:0;color:var(--text-secondary);line-height:1.65">Everything, including payouts, bank details, terms and staff.</p>
+        <p style="margin:0 0 12px;color:var(--text-secondary);line-height:1.65">Raise a charge. See what is waiting. Cancel one they raised. Ask for a refund, but not approve one.</p>
+        <p style="margin:0 0 3px;font-weight:500">Manager</p>
+        <p style="margin:0 0 12px;color:var(--text-secondary);line-height:1.65">All of the above, plus approve refunds up to your limit, add and remove counter staff, and send payouts to your business bank.</p>
+        <p style="margin:0 0 3px;font-weight:500">Owner</p>
+        <p style="margin:0;color:var(--text-secondary);line-height:1.65">Everything, including where payouts go, your terms, and who is a manager.</p>
       </div>
-      <p style="font-size:11.5px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Counter staff never see the payout figure, the bank account, your rate or the month's totals.</p>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">A manager can move money along the paths you set. Only you can change the paths.</p>
 
       <p class="cap" style="margin:18px 0 8px">Refunds</p>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-top:0.5px solid var(--border);font-size:13px;cursor:pointer">
-        <div><div>Clear with your code</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Above this, only from your phone</div></div>
+        <div><div>A manager can approve</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Above this, only you</div></div>
         <span style="color:var(--text-secondary);display:flex;align-items:center;gap:7px;white-space:nowrap">Up to $500.00 <span style="color:var(--text-muted)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px"><path d="m9 18 6-6-6-6"/></svg></span></span>
       </div>
-      <p style="font-size:11.5px;color:var(--text-muted);margin:11px 0 0;line-height:1.6">Set it to zero and every refund waits for your phone.</p>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:11px 0 0;line-height:1.6">Every refund needs a PIN. This sets whose.</p>
     </div>
   </div>
 </div>
 <div class="stack" style="margin-top:14px">
-  <div class="side"><div class="flag"><b>The owner sets the refund threshold, not Clear.</b> It is their money and their staffing &mdash; a shop with one trusted manager wants it high, a shop with weekend cover wants it at zero. Ranges from nothing to the approval cap.</div>
-    <div class="flag"><b>Changing it requires signing in, never the code.</b> Otherwise a writer raises the ceiling with the code and then uses it. <strong>The code can never raise its own limit.</strong></div></div>
+  <div class="side"><div class="flag"><b>The owner sets what a manager can approve, not Clear.</b> It is their money and their staffing &mdash; a shop with one trusted manager wants it high, a shop with weekend cover wants it at zero. Ranges from nothing to the approval cap.</div>
+    <div class="flag"><b>Only the owner can change it, and only after signing in.</b> Otherwise a manager raises their own ceiling and then uses it. <strong>A PIN can never raise its own limit.</strong></div></div>
   <div class="side"><div class="flag"><b>A PIN, not a login.</b> Nobody types a password forty times a shift. Four digits on a shared device, with the owner on a real password because they reach the money.</div></div>
-  <div class="side"><p class="note"><strong>Two roles, not a permission matrix.</strong> A shop with four staff does not want checkboxes. If a third role is ever needed it will be &ldquo;manager&rdquo;, and it can wait until someone asks.</p></div>
+  <div class="side"><p class="note"><strong>Three roles, still not a permission matrix.</strong> Counter, Manager, Owner &mdash; each a whole set rather than a grid of checkboxes. A shop with four staff wants to say what someone <em>is</em>, not tick nine boxes.</p></div>
   <div class="side"><p class="note"><strong>Charge counts per person are the useful by-product.</strong> They show who is actually offering it, which is how you find out why one shop converts and another does not.</p></div>
 </div>
 
@@ -467,10 +662,10 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
 <div class="stack">
   <div class="tablet" style="max-width:340px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <span style="font-size:15px;font-weight:500">Refunds with your code</span><span style="color:var(--text-secondary);cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
-    <p style="font-size:11px;color:var(--text-muted);margin:0 0 2px">Counter staff can clear refunds up to</p>
+      <span style="font-size:15px;font-weight:500">What a manager can approve</span><span style="color:var(--text-secondary);cursor:pointer"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+    <p style="font-size:11px;color:var(--text-muted);margin:0 0 2px">A manager can approve refunds up to</p>
     <p style="font-size:34px;font-weight:500;letter-spacing:-1px;margin:0 0 3px">$500<span style="color:var(--surface-0)">.00</span></p>
-    <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Above this, only from your phone</p>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 14px">Above this, only you can approve</p>
     <div style="display:flex;gap:6px;margin-bottom:14px">
       <button style="flex:1;padding:7px 0;font-size:12px">Off</button>
       <button style="flex:1;padding:7px 0;font-size:12px">$250</button>
@@ -479,16 +674,60 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
     </div>
     <div class="pad" style="margin-bottom:13px"><div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div><div class="fn">.</div><div>0</div><div class="fn">&#9003;</div></div>
     <div class="card" style="padding:12px 14px;margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">Under $500.00</span><span>Your code, at the counter</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">$500.00 and above</span><span>Your phone only</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">Under $500.00</span><span>A manager's PIN</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">$500.00 and above</span><span>Your PIN or your phone</span></div>
       <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2;border-top:0.5px solid var(--border);margin-top:8px;padding-top:8px"><span style="color:var(--text-secondary)">Highest you can set</span><span>$1,500.00</span></div>
     </div>
     <button class="prim" style="width:100%;padding:12px 0">Save</button>
   </div>
   <div class="side">
-    <div class="flag"><b>&ldquo;Off&rdquo; is a first-class option, not a zero.</b> A shop with weekend cover it does not know well should be able to say every refund waits for the owner, in one tap, without typing a number that means nothing.</div>
+    <div class="flag"><b>Every refund needs a PIN. This setting decides whose.</b> Counter staff never approve one. A manager clears anything below the line; above it, only the owner. <em>Off</em> means every refund waits for the owner, in one tap, without typing a number that means nothing.</div>
     <p class="note"><strong>The ceiling is the approval cap.</strong> An owner cannot authorise more by code than the shop can charge in one transaction, which keeps one number governing both directions.</p>
     <p class="note"><strong>The summary states both sides of the line</strong> &mdash; what the code clears and what it does not. A threshold that only says its own value leaves the owner to infer the consequence.</p>
+  </div>
+</div>
+
+<p class="note" style="margin:1.2rem 0 .7rem"><strong>Adding someone</strong> &mdash; name, role, and a PIN they set on first shift.</p>
+<div class="stack">
+  <div class="tablet" style="max-width:330px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-size:15px;font-weight:500">Add someone</span><span style="color:var(--text-secondary);cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+    <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:9px;padding:10px 13px;margin-bottom:8px"><p style="font-size:9.5px;color:var(--text-muted);letter-spacing:.4px;text-transform:uppercase;margin:0 0 3px">Name</p><p style="font-size:13.5px;margin:0;color:var(--text-muted)">As it should appear on charges</p></div>
+    <div style="background:var(--surface-1);border:0.5px solid var(--border);border-radius:9px;padding:10px 13px;margin-bottom:8px"><p style="font-size:9.5px;color:var(--text-muted);letter-spacing:.4px;text-transform:uppercase;margin:0 0 3px">Mobile</p><p style="font-size:13.5px;margin:0;color:var(--text-muted)">For their PIN setup link</p></div>
+    <p class="cap" style="margin:14px 0 6px">Role</p>
+    <div class="card" style="padding:0 14px;margin-bottom:12px">
+      <div class="dest" ><span class="tick sel"></span><div style="flex:1"><p class="dn">Counter</p><p class="dd">Raise charges. Ask for refunds.</p></div></div>
+      <div class="dest"><span class="tick"></span><div style="flex:1"><p class="dn">Manager</p><p class="dd">Also approves refunds and sends payouts</p></div></div>
+    </div>
+    <div class="card" style="padding:11px 13px;margin-bottom:14px">
+      <p style="font-size:11.5px;color:var(--text-secondary);margin:0;line-height:1.6">They will set their own four-digit PIN the first time they start a shift. You can reset it any time.</p>
+    </div>
+    <button class="prim" style="width:100%;padding:12px 0">Send them a link</button>
+  </div>
+
+  <div class="tablet" style="max-width:330px">
+    <p class="cap">Choosing Manager</p>
+    <div class="card" style="padding:0 14px;margin-bottom:12px">
+      <div class="dest"><span class="tick"></span><div style="flex:1"><p class="dn">Counter</p><p class="dd">Raise charges. Ask for refunds.</p></div></div>
+      <div class="dest" ><span class="tick sel"></span><div style="flex:1"><p class="dn">Manager</p><p class="dd">Also approves refunds and sends payouts</p></div></div>
+    </div>
+    <div class="card" style="padding:12px 14px;margin-bottom:12px">
+      <p class="cap" style="margin:0 0 9px">What Luis will be able to do</p>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">Approve refunds</span><span>Up to $500.00</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">Add counter staff</span><span>Yes</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">Send payouts</span><span>To Chase &#183;&#183;&#183;&#183;9012</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2;border-top:0.5px solid var(--border);margin-top:8px;padding-top:8px"><span style="color:var(--text-secondary)">Change where payouts go</span><span style="color:var(--text-muted)">No</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">Change your terms</span><span style="color:var(--text-muted)">No</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;line-height:2"><span style="color:var(--text-secondary)">Add another manager</span><span style="color:var(--text-muted)">No</span></div>
+    </div>
+    <button class="prim" style="width:100%;padding:12px 0">Send them a link</button>
+  </div>
+
+  <div class="side">
+    <div class="flag"><b>A manager can move money along the paths you set. Only you can change the paths.</b> That is the whole rule, and every permission follows from it: a manager sends a payout to the bank you chose, and cannot choose a different bank.</div>
+    <p class="note"><strong>Picking Manager shows what it means, in full.</strong> Six lines, three yes and three no. A permission a shop owner grants without seeing the &ldquo;no&rdquo; half is one they will regret.</p>
+    <p class="note"><strong>The PIN is set by them, not by you.</strong> An owner typing a PIN for someone else means the owner knows it, which defeats attribution the moment there is a dispute.</p>
+    <p class="note"><strong>Owner is not in the picker.</strong> There is one, it is the Privy account that owns the wallet, and it is transferred rather than granted.</p>
   </div>
 </div>
 
@@ -497,7 +736,7 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
 <div class="tablet">
   <div class="topbar">
     <span class="wm">Clear <span>for Mike's Tire</span></span>
-    <nav><span>Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span style="color:var(--text-primary)">Settings</span></nav>
+    <nav><span>Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span style="color:var(--text-primary)">Overview</span></nav><span style="width:28px;height:28px;border-radius:34%;background:var(--surface-0);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--text-secondary);cursor:pointer;flex-shrink:0">JR</span>
   </div>
   <div class="g2">
     <div>
@@ -558,7 +797,7 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
 <div class="desk">
   <div class="topbar">
     <span class="wm">Clear <span>for Mike's Tire</span></span>
-    <nav><span>Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span style="color:var(--text-primary)">Overview</span></nav>
+    <nav><span>Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span style="color:var(--text-primary)">Overview</span></nav><span style="width:28px;height:28px;border-radius:34%;background:var(--surface-0);display:inline-flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--text-secondary);cursor:pointer;flex-shrink:0">JR</span>
   </div>
   <div class="g3" style="margin-bottom:16px">
     <div class="card" style="padding:15px 17px">
@@ -1021,10 +1260,10 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
     <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 16px;line-height:1.6">Jen requested a $412.00 refund for Marcus T. at 2:31pm.</p>
     <div class="inset" style="padding:13px 15px;margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--text-secondary)">Sent to Mike</span><span style="color:var(--text-muted)">Delivered</span></div>
-      <p style="font-size:11px;color:var(--text-muted);margin:9px 0 0;line-height:1.55">Mike set his code limit at $500.00. Under that he can type it here; above it, only from his phone.</p>
+      <p style="font-size:11px;color:var(--text-muted);margin:9px 0 0;line-height:1.55">Under $500.00 Luis can clear this with his PIN. Above it, only Mike &mdash; here or from his phone.</p>
     </div>
     <div class="inset" style="padding:13px 15px;margin-bottom:12px">
-      <p class="cap" style="margin:0 0 7px">Owner code &middot; your limit is $500.00</p>
+      <p class="cap" style="margin:0 0 7px">Manager or owner PIN &middot; under $500.00</p>
       <p style="font-size:19px;letter-spacing:6px;color:var(--text-muted);margin:0">&bull;&bull;&bull;&bull;</p>
     </div>
     <button style="width:100%">Cancel the request</button>
@@ -1234,6 +1473,80 @@ nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
   <div class="side"><p class="note"><strong>Why staff should not be Privy users regardless:</strong> a counter worker will not manage keys or recovery, turnover means provisioning and deprovisioning per hire, and the wallet belongs to the business rather than the employee. Jen raising a charge is Mike's Tire acting.</p></div>
   <div class="side"><p class="note"><strong>Privy also covers the fiat rails</strong> &mdash; deposits and payouts, with Bridge underneath. That bears on <em>PayoutPool</em> and the manual multisig boundary in the contracts plan, which is a separate conversation.</p></div>
   <div class="side"><p class="note"><strong>A wallet's entity cannot be changed once set</strong>, and an org is capped at 150 wallets. Neither binds a shop, but both matter if merchant wallets are ever provisioned before the org exists.</p></div>
+</div>
+
+<h2>21 &mdash; The profile sheet, and where Settings went</h2>
+<p class="note"><strong>Five destinations in the nav, and everything else behind the avatar.</strong> Home, Charges, Payouts, Staff and Overview are the things a shop opens during a shift. Settings, terms, appearance and who is on the counter are not &mdash; they sit behind a squircle avatar in the corner, the way a team tool does it.</p>
+
+<div class="stack">
+  <div class="sheet"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><span style="font-size:15px;font-weight:500">&nbsp;</span><span style="color:var(--text-secondary);cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true" style="vertical-align:-3px"><path d="M18 6 6 18M6 6l12 12"/></svg></span></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <span style="width:42px;height:42px;border-radius:34%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text-secondary)">JR</span>
+      <div style="flex:1"><p style="font-size:15px;font-weight:500;margin:0">Jen R.</p>
+        <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 0">On shift since 8:04am &middot; Counter</p></div>
+    </div>
+    <button style="width:100%;font-size:12.5px;margin-bottom:16px">End shift</button>
+
+    <p class="cap">Appearance</p>
+    <div class="seg3" style="margin-bottom:16px">
+      <button class="on">Light</button><button>Dusk</button><button>Dark</button>
+    </div>
+
+    <p class="cap">Shop</p>
+    <div style="border-top:0.5px solid var(--border);margin-bottom:16px">
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></span>Settings<span class="gr"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 9.2 8 10 4.6-.8 8-5 8-10V6Z"/></svg></span>Your terms<span class="gr">2% &middot; net-30 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span>Cash account<span class="gr">$1,847.20 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>Counter materials<span class="gr"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+    </div>
+
+    <p class="cap">This tablet</p>
+    <div style="border-top:0.5px solid var(--border);margin-bottom:16px">
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2.5"/><path d="M10 18h4"/></svg></span>Counter tablet<span class="gr">Enrolled <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg></span>Help<span class="gr"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+    </div>
+
+    <button style="width:100%;font-size:12.5px">Owner sign in</button></div>
+  <div class="sheet mob" style="align-self:flex-end"><div class="grab"></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <span style="width:42px;height:42px;border-radius:34%;background:var(--surface-0);display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--text-secondary)">JR</span>
+      <div style="flex:1"><p style="font-size:15px;font-weight:500;margin:0">Jen R.</p>
+        <p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 0">On shift since 8:04am &middot; Counter</p></div>
+    </div>
+    <button style="width:100%;font-size:12.5px;margin-bottom:16px">End shift</button>
+
+    <p class="cap">Appearance</p>
+    <div class="seg3" style="margin-bottom:16px">
+      <button class="on">Light</button><button>Dusk</button><button>Dark</button>
+    </div>
+
+    <p class="cap">Shop</p>
+    <div style="border-top:0.5px solid var(--border);margin-bottom:16px">
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></span>Settings<span class="gr"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 9.2 8 10 4.6-.8 8-5 8-10V6Z"/></svg></span>Your terms<span class="gr">2% &middot; net-30 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span>Cash account<span class="gr">$1,847.20 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg></span>Counter materials<span class="gr"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+    </div>
+
+    <p class="cap">This tablet</p>
+    <div style="border-top:0.5px solid var(--border);margin-bottom:16px">
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2.5"/><path d="M10 18h4"/></svg></span>Counter tablet<span class="gr">Enrolled <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+      <div class="prow"><span class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg></span>Help<span class="gr"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span></div>
+    </div>
+
+    <button style="width:100%;font-size:12.5px">Owner sign in</button></div>
+  <div class="side">
+    <div class="flag"><b>Settings left the nav because it is not a shift task.</b> A counter tablet has five things a writer touches during a shift and a pile of things an owner touches monthly. Mixing them makes the nav longer and the frequent items smaller.</div>
+    <p class="note"><strong>The sheet opens on who is on shift</strong>, with <em>End shift</em> directly beneath. It is the most common reason a writer taps their own avatar, and burying it under settings rows would be backwards.</p>
+    <p class="note"><strong>Appearance is a three-way segment, not a toggle.</strong> Light, Dusk, Dark &mdash; a counter under fluorescent light at 8am and the same counter at 8pm are different problems, and Dusk is the one people actually leave it on.</p>
+    <p class="note"><strong>Rows carry their current value</strong> &mdash; <em>2% &middot; net-30</em>, <em>$1,847.20</em>, <em>Enrolled</em>. An owner checking a term should not have to open the row to see it.</p>
+  </div>
+</div>
+
+<div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>On mobile every modal in this app slides up from the bottom</b>, with a grab handle and square top corners &mdash; matching the member app. The withdraw modal, the limits modal, the refund step-up, the account details, this sheet. One motion, one dismissal gesture, learned once.</div></div>
+  <div class="side"><p class="note"><strong>&ldquo;Owner sign in&rdquo; sits at the bottom</strong>, quiet. It is the escalation, not the default, and putting it under a writer's own profile is where an owner will look for it.</p></div>
+  <div class="side"><p class="note"><strong>The avatar is a squircle</strong>, matching the merchant avatars in the charges list. Circles read as people; squircles read as accounts and entities, which is what a shift is.</p></div>
 </div>
 
 <h2>Open questions</h2>
