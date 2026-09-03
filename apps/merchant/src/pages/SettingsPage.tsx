@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Columns } from '@/shell/AppShell';
-import { dollars, fromCents } from '@clear/domain';
+import { canChangePayoutAccount, dollars, fromCents } from '@clear/domain';
 import { Button, Cap, Card, Chip, Row } from '@/shell/ui';
 import { useAuth } from '@/auth/authContext';
 import { api, type EnrolledDevice } from '@/data/apiClient';
@@ -99,7 +99,15 @@ export default function SettingsPage() {
                 <Row
                   title={profile?.payoutAccount ?? 'No account yet'}
                   meta="Business checking"
-                  right={<Button className="!px-[11px] !py-1 !text-[12px]">Change</Button>}
+                  right={
+                    // Owner only, and shown as such rather than hidden: a manager should be able to
+                    // see where payouts land without being able to send them somewhere else.
+                    canChangePayoutAccount(session?.staff.role ?? 'counter') ? (
+                      <Button className="!px-[11px] !py-1 !text-[12px]">Change</Button>
+                    ) : (
+                      <span className="text-[11.5px] text-[var(--clear-text-muted)]">Owner only</span>
+                    )
+                  }
                 />
               </Card>
             </>

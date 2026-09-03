@@ -86,7 +86,7 @@ export async function ensureMerchantSchema(): Promise<void> {
       name          TEXT NOT NULL,
       -- 'counter' or 'owner'. Two roles, not a permission matrix; a CHECK rather than an enum
       -- because adding "manager" later should not need a type migration.
-      role          TEXT NOT NULL CHECK (role IN ('counter','owner')),
+      role          TEXT NOT NULL CHECK (role IN ('counter','manager','owner')),
       -- scrypt, as "scrypt$N$r$p$salt$hash". Never the PIN itself.
       --
       -- A PIN is ATTRIBUTION, not authentication: four digits on a counter tablet will be watched
@@ -105,6 +105,12 @@ export async function ensureMerchantSchema(): Promise<void> {
     -- have a 4821 and neither is wrong. Sign-in is always scoped to one merchant.
     CREATE UNIQUE INDEX IF NOT EXISTS staff_merchant_email_idx
       ON ${MERCHANT_SCHEMA}.staff (merchant, lower(email)) WHERE email IS NOT NULL;
+    -- Widen the role check for existing databases: a CHECK created before 'manager' existed will
+    -- reject every manager insert, and the table is created only once.
+    ALTER TABLE ${MERCHANT_SCHEMA}.staff DROP CONSTRAINT IF EXISTS staff_role_check;
+    ALTER TABLE ${MERCHANT_SCHEMA}.staff
+      ADD CONSTRAINT staff_role_check CHECK (role IN ('counter','manager','owner'));
+
     CREATE UNIQUE INDEX IF NOT EXISTS staff_privy_idx
       ON ${MERCHANT_SCHEMA}.staff (privy_user_id) WHERE privy_user_id IS NOT NULL;
   `);

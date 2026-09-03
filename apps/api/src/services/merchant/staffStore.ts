@@ -26,13 +26,21 @@ const scrypt = promisify(scryptCb) as (
 const SCRYPT = { N: 16_384, r: 8, p: 1 } as const;
 const KEY_LENGTH = 32;
 
-export type StaffRole = 'counter' | 'owner';
+/**
+ * Re-exported from the domain rather than declared again.
+ *
+ * This was a second copy of the same union, and when 'manager' was added to the domain the two
+ * disagreed — the compiler caught it here, but a duplicated type is a promise to drift. One
+ * definition, both apps and the API.
+ */
+export type { StaffRole } from '@clear/domain';
+type StaffRoleLocal = import('@clear/domain').StaffRole;
 
 export interface StaffRow {
   id: string;
   merchant: string;
   name: string;
-  role: StaffRole;
+  role: StaffRoleLocal;
   email: string | null;
   active: boolean;
   createdAt: string;
@@ -101,7 +109,7 @@ interface DbStaff {
   id: string;
   merchant: string;
   name: string;
-  role: StaffRole;
+  role: StaffRoleLocal;
   secret: string;
   email: string | null;
   active: boolean;
@@ -148,7 +156,7 @@ export const staffStore = {
   async add(input: {
     merchant: string;
     name: string;
-    role: StaffRole;
+    role: StaffRoleLocal;
     /** A 4-digit PIN for counter staff; a real password for an owner. */
     secret: string;
     email?: string;
@@ -230,7 +238,7 @@ export const staffStore = {
    * already knows the address of, which is close to public, and it is the price of not asking a
    * writer to remember which of four codes is theirs.
    */
-  async roster(merchant: string): Promise<{ id: string; name: string; role: StaffRole }[]> {
+  async roster(merchant: string): Promise<{ id: string; name: string; role: StaffRoleLocal }[]> {
     const rows = await this.list(merchant);
     // The owner appears here too. Mike works the counter, and making him sign in differently to
     // raise a charge is a reason to hand the tablet to Jen instead.

@@ -1,3 +1,4 @@
+import { canAuthoriseRefund } from '@clear/domain';
 import { randomUUID } from 'node:crypto';
 import { refundQuote, toCents } from '@clear/domain';
 import { MERCHANT_SCHEMA, ensureMerchantSchema, getMerchantPool } from '../../config/merchantDb.js';
@@ -233,16 +234,25 @@ export const refundStore = {
 
     // The size rule, enforced server-side rather than by hiding the field. A counter that can be
     // talked into showing the code box is still a counter that cannot approve a large refund.
-    if (via === 'owner_code') {
-      const existing = await this.get(id, owner.merchant);
-      const limit = await ownerCodeLimitFor(owner.merchant);
-      // Off means off: at a zero limit nothing clears by code, whatever its size.
-      if (existing && (limit <= 0 || existing.amountCents >= limit)) {
-        return {
-          ok: false,
-          reason: 'That one needs approving from the owner’s phone, not a code at the counter.',
-        };
-      }
+    const existing = await this.get(id, owner.merchant);
+    const limit = await ownerCodeLimitFor(owner.merchant);
+
+    // A code typed at the counter is bounded whoever's code it is. The ceiling is there because a
+    // code can be watched, borrowed and reused — not because of who owns it.
+    if (via === 'owner_code' && existing && (limit <= 0 || existing.amountCents >= limit)) {
+      return {
+        ok: false,
+        reason: 'That one needs approving from the owner’s phone, not a code at the counter.',
+      };
+    }
+
+    // And a manager is held to the same ceiling on their own device. Without this the threshold
+    // would bind counter staff and nobody else, which is not a threshold.
+    if (existing && !canAuthoriseRefund(owner.role, existing.amountCents, limit)) {
+      return {
+        ok: false,
+        reason: 'That one is above the refund limit and needs an owner.',
+      };
     }
 
     const { rows } = await pool.query<DbRefund>(

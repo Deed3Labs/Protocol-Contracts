@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { merchantDbConfigured } from '../config/merchantDb.js';
+import { seesMoney } from '@clear/domain';
 import { type DeviceRow, deviceStore } from '../services/merchant/deviceStore.js';
 import { type MerchantSession, sessionStore } from '../services/merchant/sessionStore.js';
 
@@ -97,6 +98,25 @@ export async function requireMerchant(req: Request, res: Response, next: NextFun
  * is legitimately signed in, they simply are not allowed here, and pretending otherwise makes a
  * confusing bug report out of a clear rule.
  */
+/**
+ * A manager or an owner — running the shop.
+ *
+ * Payouts, the roster and the day's money. Deliberately NOT the payout account or the terms: those
+ * redirect every future payout and change a signed agreement, have no ceiling that limits the
+ * damage, and so have no delegate. `requireOwner` still guards them.
+ */
+export function requireManager(req: Request, res: Response, next: NextFunction) {
+  if (!req.merchant) {
+    res.status(401).json({ error: 'Unauthorized', message: 'sign in to continue' });
+    return;
+  }
+  if (!seesMoney(req.merchant.staff.role)) {
+    res.status(403).json({ error: 'Forbidden', message: 'that needs a manager' });
+    return;
+  }
+  next();
+}
+
 export function requireOwner(req: Request, res: Response, next: NextFunction) {
   if (!req.merchant) {
     res.status(401).json({ error: 'Unauthorized', message: 'sign in to continue' });

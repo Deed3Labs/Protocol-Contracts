@@ -51,4 +51,12 @@ export type {
   StaffRole,
 } from './types';
 
-export { canAuthoriseRefund, seesMoney } from './types';
+export {
+  canAddRole,
+  canAuthoriseRefund,
+  canChangePayoutAccount,
+  canChangeTerms,
+  canInitiatePayout,
+  canManageStaff,
+  seesMoney,
+} from './types';

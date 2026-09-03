@@ -16,7 +16,19 @@ import type { ChargeState } from './charge';
  * A shop has people who take money at a counter and people whose money it is. Anything finer is a
  * configuration screen nobody fills in, and a writer who cannot tell what they are allowed to do.
  */
-export type StaffRole = 'counter' | 'owner';
+/**
+ * Three levels, and the middle one exists because somebody asked for it.
+ *
+ * The reference held the line at two — "if a third role is ever needed it will be manager, and it
+ * can wait until someone asks" — which is the right default and was never meant to be permanent.
+ *
+ * The distinction that matters is not seniority, it is **what a mistake costs**. A manager runs the
+ * shop: they see the money, hold the roster, and can send a payout to the bank already on file.
+ * What they cannot do is change where the money goes or what the shop is charged, because those
+ * are the two actions with no natural ceiling and no way back — a changed payout account redirects
+ * every future payout, and terms are a signed agreement. Those stay with the owner.
+ */
+export type StaffRole = 'counter' | 'manager' | 'owner';
 
 export interface Staff {
   id: string;
@@ -32,12 +44,59 @@ export interface Staff {
 
 /** What the counter role may never see: payout figures, bank details, the rate, monthly totals. */
 export function seesMoney(role: StaffRole): boolean {
+  return role === 'owner' || role === 'manager';
+}
+
+/** The roster is a manager's job. Handing out counter PINs is running the shop, not owning it. */
+export function canManageStaff(role: StaffRole): boolean {
+  return role === 'owner' || role === 'manager';
+}
+
+/** Sending what is owed to the account already on file. Not choosing the account. */
+export function canInitiatePayout(role: StaffRole): boolean {
+  return role === 'owner' || role === 'manager';
+}
+
+/**
+ * Changing where the money lands, or what the shop pays.
+ *
+ * Owner only, and the reason is not hierarchy: a changed payout account silently redirects every
+ * future payout, and the rate is part of a signed agreement. Neither has a ceiling that limits the
+ * damage, so neither has a delegate.
+ */
+export function canChangePayoutAccount(role: StaffRole): boolean {
   return role === 'owner';
 }
 
-/** Only an owner authorises a refund; anyone may start one. */
-export function canAuthoriseRefund(role: StaffRole): boolean {
+export function canChangeTerms(role: StaffRole): boolean {
   return role === 'owner';
+}
+
+/** Adding an owner is not a self-serve action — it is a change of who the business is. */
+export function canAddRole(actor: StaffRole, target: StaffRole): boolean {
+  if (target === 'owner') return false;
+  return canManageStaff(actor);
+}
+
+/**
+ * Who can clear this refund — a question about the amount, not only the person.
+ *
+ * Anyone may start one. A manager clears it up to the shop's threshold; above that it waits for an
+ * owner, which is what the threshold has always meant and now the only thing it means. Keeping one
+ * number governing one rule is the point: a ceiling that some roles ignore is not a ceiling.
+ *
+ * `limitCents` of zero is "off", and off means every refund waits for the owner.
+ */
+export function canAuthoriseRefund(
+  role: StaffRole,
+  amountCents?: number,
+  limitCents?: number,
+): boolean {
+  if (role === 'owner') return true;
+  if (role !== 'manager') return false;
+  // Asked without an amount — can this person EVER clear one — a manager can, under the ceiling.
+  if (amountCents === undefined || limitCents === undefined) return limitCents !== 0;
+  return limitCents > 0 && amountCents <= limitCents;
 }
 
 export interface Merchant {

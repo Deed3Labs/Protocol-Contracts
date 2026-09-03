@@ -1,12 +1,18 @@
 import { Router, type Request, type Response } from 'express';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
-import { requireDevice, requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
+import {
+  requireDevice,
+  requireManager,
+  requireMerchant,
+  requireOwner,
+} from '../middleware/merchantAuth.js';
 import { chargeStore } from '../services/chargeStore.js';
 import { ownerCodeLimitFor, refundStore } from '../services/merchant/refundStore.js';
 import { DEFAULT_IDLE_LOCK_SECONDS, deviceStore } from '../services/merchant/deviceStore.js';
 import { sessionStore } from '../services/merchant/sessionStore.js';
 import { attemptLimiter, staffStore } from '../services/merchant/staffStore.js';
 import { merchantProfileStore } from '../services/merchant/profileStore.js';
+import { canAddRole, type StaffRole } from '@clear/domain';
 import { raiseChargeFromDevice, readMerchantTerms } from '../services/chargeService.js';
 import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
 import { onboardMerchant } from '../services/merchant/onboardingService.js';
@@ -503,7 +509,9 @@ merchantRouter.post('/refunds/:id/authorise', requireMerchant, async (req: Reque
 merchantRouter.post(
   '/refunds/:id/decide',
   requireMerchant,
-  requireOwner,
+  // A manager reaches this; the store holds them to the shop's refund ceiling. An owner is not
+  // bounded by their own ceiling.
+  requireManager,
   async (req: Request, res: Response) => {
     const { merchant, staff } = req.merchant!;
     const refund = await refundStore.get(req.params.id, merchant);
@@ -532,7 +540,7 @@ merchantRouter.delete('/refunds/:id', requireMerchant, async (req: Request, res:
 });
 
 /** Payouts are money. Owner only, enforced here rather than in the nav. */
-merchantRouter.get('/payouts', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+merchantRouter.get('/payouts', requireMerchant, requireManager, async (req: Request, res: Response) => {
   const { merchant } = req.merchant!;
   const position = await merchantProfileStore.payoutPosition(merchant);
   res.json(position);
@@ -601,7 +609,7 @@ merchantRouter.put(
 );
 
 /** Staff are the powers of the shop. Owner only. */
-merchantRouter.get('/staff', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+merchantRouter.get('/staff', requireMerchant, requireManager, async (req: Request, res: Response) => {
   const { merchant } = req.merchant!;
   const [staff, counts] = await Promise.all([
     staffStore.list(merchant),
@@ -618,14 +626,37 @@ merchantRouter.get('/staff', requireMerchant, requireOwner, async (req: Request,
   });
 });
 
-merchantRouter.post('/staff', requireMerchant, requireOwner, async (req: Request, res: Response) => {
-  const { merchant } = req.merchant!;
+merchantRouter.post('/staff', requireMerchant, requireManager, async (req: Request, res: Response) => {
+  const { merchant, staff } = req.merchant!;
   const { name, role, secret, email } = req.body ?? {};
+
+  /**
+   * Who may create whom.
+   *
+   * This read `role === 'owner' ? 'owner' : 'counter'`, which was harmless while only owners could
+   * reach the route and is an escalation now that managers can: a manager could have minted an
+   * owner and inherited the bank account and the terms with it.
+   *
+   * Nobody adds an owner from inside the app. Changing who owns the business is not a self-serve
+   * action, and there is no in-product flow that could verify it.
+   */
+  const wanted: StaffRole = role === 'owner' ? 'owner' : role === 'manager' ? 'manager' : 'counter';
+  if (!canAddRole(staff.role, wanted)) {
+    res.status(403).json({
+      error: 'Forbidden',
+      message:
+        wanted === 'owner'
+          ? 'Owners are added by Clear, not from the app. Contact support.'
+          : 'That needs a manager.',
+    });
+    return;
+  }
+
   try {
     const added = await staffStore.add({
       merchant,
       name: String(name ?? ''),
-      role: role === 'owner' ? 'owner' : 'counter',
+      role: wanted,
       secret: String(secret ?? ''),
       email: typeof email === 'string' ? email : undefined,
     });
@@ -688,7 +719,7 @@ merchantRouter.post('/devices', requireMerchant, requireOwner, async (req: Reque
 });
 
 /** Every tablet this shop has. Owner-only: it is the list a lost tablet is removed from. */
-merchantRouter.get('/devices', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+merchantRouter.get('/devices', requireMerchant, requireManager, async (req: Request, res: Response) => {
   const devices = await deviceStore.list(req.merchant!.merchant);
   const names = await staffStore.roster(req.merchant!.merchant);
   const byId = new Map(names.map((n) => [n.id, n.name]));

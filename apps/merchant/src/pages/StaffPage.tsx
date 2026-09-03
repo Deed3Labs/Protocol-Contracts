@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { dollars, fromCents } from '@clear/domain';
+import { dollars, fromCents, type StaffRole } from '@clear/domain';
 import { Columns } from '@/shell/AppShell';
 import { Button, Cap, Card, Inset, PrimaryButton, Row } from '@/shell/ui';
 import { api, type StaffMember } from '@/data/apiClient';
@@ -30,6 +30,7 @@ export default function StaffPage() {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPin, setNewPin] = useState('');
+  const [newRole, setNewRole] = useState<StaffRole>('counter');
   const [saving, setSaving] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -75,10 +76,20 @@ export default function StaffPage() {
                     // converts and another does not.
                     // The reference states "this month" on the first row only; said on every row
                     // it survives the list being reordered, which a live one will be.
-                    meta={`${s.role === 'owner' ? 'Owner · email or passkey' : 'Counter · PIN 4 digits'} · ${s.chargesThisMonth} charges this month`}
+                    meta={`${
+                      s.role === 'owner'
+                        ? 'Owner · email or passkey'
+                        : s.role === 'manager'
+                          ? 'Manager · PIN 4 digits'
+                          : 'Counter · PIN 4 digits'
+                    } · ${s.chargesThisMonth} charges this month`}
                     right={
                       <span className="text-[11.5px] text-[var(--clear-text-muted)]">
-                        {s.role === 'owner' ? 'Full access' : 'Can charge'}
+                        {s.role === 'owner'
+                          ? 'Full access'
+                          : s.role === 'manager'
+                            ? 'Runs the shop'
+                            : 'Can charge'}
                       </span>
                     }
                   />
@@ -100,6 +111,31 @@ export default function StaffPage() {
                 placeholder="Jen R."
                 className="mb-2.5 w-full rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-1)] px-3 py-2 text-[13px] outline-none"
               />
+              {/* Owner is deliberately absent. Changing who owns the business is not a self-serve
+                  action, and the server refuses it too — the UI just does not pretend otherwise. */}
+              <p className="m-0 mb-1 text-[11px] text-[var(--clear-text-muted)]">What they can do</p>
+              <div className="mb-1 grid grid-cols-2 gap-2">
+                {(['counter', 'manager'] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setNewRole(r)}
+                    className={`rounded-[8px] border-[0.5px] py-2 text-[12.5px] ${
+                      newRole === r
+                        ? 'border-[var(--clear-text-primary)] bg-[var(--clear-surface-1)]'
+                        : 'border-[var(--clear-border)] bg-[var(--clear-surface-1)] text-[var(--clear-text-secondary)]'
+                    }`}
+                  >
+                    {r === 'counter' ? 'Counter' : 'Manager'}
+                  </button>
+                ))}
+              </div>
+              <p className="m-0 mb-2.5 text-[11px] leading-[1.5] text-[var(--clear-text-muted)]">
+                {newRole === 'counter'
+                  ? 'Raise a charge, see what is waiting, cancel one they raised. No money figures.'
+                  : 'Runs the shop: the money, the roster, payouts to your bank, and refunds under your limit. Cannot change your bank or your terms.'}
+              </p>
+
               <p className="m-0 mb-1 text-[11px] text-[var(--clear-text-muted)]">
                 A four-digit PIN
               </p>
@@ -122,10 +158,11 @@ export default function StaffPage() {
                     setSaving(true);
                     setAddError(null);
                     try {
-                      await api.addStaff({ name: newName.trim(), role: 'counter', secret: newPin });
+                      await api.addStaff({ name: newName.trim(), role: newRole, secret: newPin });
                       setStaff(await api.staff());
                       setNewName('');
                       setNewPin('');
+                      setNewRole('counter');
                       setAdding(false);
                     } catch (e) {
                       setAddError(e instanceof Error ? e.message : 'That could not be saved.');
@@ -180,14 +217,20 @@ export default function StaffPage() {
             <p className="m-0 mb-3 leading-[1.65] text-[var(--clear-text-secondary)]">
               Raise a charge. See what is waiting. Cancel one they raised. Nothing else.
             </p>
-            <p className="m-0 mb-[3px] font-medium">Full access</p>
+            <p className="m-0 mb-[3px] font-medium">Manager</p>
+            <p className="m-0 mb-3 leading-[1.65] text-[var(--clear-text-secondary)]">
+              Runs the shop: the money, the roster, payouts to your bank, and refunds under your
+              limit. Cannot change where payouts go or what you are charged.
+            </p>
+            <p className="m-0 mb-[3px] font-medium">Owner</p>
             <p className="m-0 leading-[1.65] text-[var(--clear-text-secondary)]">
-              Everything, including payouts, bank details, terms and staff.
+              Everything, including the payout account, your terms, and refunds of any size. Added
+              by Clear rather than from the app.
             </p>
           </div>
           <p className="m-0 mt-3.5 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
             Counter staff never see the payout figure, the bank account, your rate or the month's
-            totals.
+            totals. A manager sees the money but cannot redirect it.
           </p>
         </Inset>
       }
