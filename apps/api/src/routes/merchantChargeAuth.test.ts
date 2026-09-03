@@ -86,3 +86,14 @@ describe('the customer attaches by opening the code', () => {
     expect(fn.slice(0, 600)).toContain('if (!charge.memberWallet) return;');
   });
 });
+
+describe('the device header survives CORS', () => {
+  test('X-Clear-Device is in the preflight allowlist', () => {
+    // Every merchant request carries it, including the ones reached before anyone signs in.
+    // Omitting it blocks the entire surface at the preflight, starting with enrolment — the one
+    // request that cannot be worked around, because it is what creates the device.
+    const index = read('index.ts');
+    const cors = index.slice(index.indexOf('allowedHeaders'), index.indexOf('exposedHeaders'));
+    expect(cors).toContain('X-Clear-Device');
+  });
+});

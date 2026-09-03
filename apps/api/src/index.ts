@@ -132,7 +132,19 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Wallet-Address', 'X-Reown-Project-Id', 'X-Appkit-Project-Id'],
+  // X-Clear-Device is how a counter tablet says which shop it is. It is sent on every merchant
+  // request, including the ones reached before anyone signs in, so leaving it out of the preflight
+  // allowlist blocks the whole surface — enrolment first, which is the one request that cannot be
+  // worked around because it is what creates the device.
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'X-Wallet-Address',
+    'X-Reown-Project-Id',
+    'X-Appkit-Project-Id',
+    'X-Clear-Device',
+  ],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   maxAge: 86400, // 24 hours
   preflightContinue: false,
