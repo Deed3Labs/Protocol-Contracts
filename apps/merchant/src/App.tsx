@@ -5,6 +5,8 @@ import { useAuth } from '@/auth/authContext';
 import HomePage from '@/pages/HomePage';
 import NewChargePage from '@/pages/NewChargePage';
 import ChargesPage from '@/pages/ChargesPage';
+import ChargeDetailPage from '@/pages/ChargeDetailPage';
+import RefundPage from '@/pages/RefundPage';
 import PayoutsPage from '@/pages/PayoutsPage';
 import StaffPage from '@/pages/StaffPage';
 import SettingsPage from '@/pages/SettingsPage';
@@ -41,6 +43,8 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/new" element={<NewChargePage />} />
         <Route path="/charges" element={<ChargesPage />} />
+        <Route path="/charges/:id" element={<ChargeDetailPage />} />
+        <Route path="/charges/:id/refund" element={<RefundPage />} />
         <Route
           path="/payouts"
           element={

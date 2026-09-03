@@ -71,7 +71,7 @@ export const STUB_CHARGES: Charge[] = [
     createdAt: at(11, 2),
     expiresAt: at(11, 17),
     openedAt: at(11, 4),
-    resolvedAt: at(11, 5),
+    resolvedAt: at(11, 4),
   },
   {
     id: 'c_priya',
@@ -104,6 +104,59 @@ export const STUB_CHARGES: Charge[] = [
     resolvedAt: at(8, 33),
   },
 ];
+
+const yesterdayAt = (h: number, m: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+};
+
+/** Yesterday, so Charges has history to filter and sort. Reference section 06. */
+export const STUB_EARLIER_CHARGES: Charge[] = [
+  {
+    id: 'c_ray',
+    code: 'M3ZP',
+    merchantId: STUB_MERCHANT.id,
+    member: { id: 'mem_ray', displayName: 'Ray C.' },
+    amount: 1240,
+    state: 'approved',
+    splitInto: 2,
+    payout: 1209,
+    raisedByStaffId: 's_luis',
+    createdAt: yesterdayAt(15, 20),
+    expiresAt: yesterdayAt(15, 35),
+    openedAt: yesterdayAt(15, 22),
+    resolvedAt: yesterdayAt(15, 23),
+  },
+  {
+    id: 'c_tom',
+    code: 'D9KF',
+    merchantId: STUB_MERCHANT.id,
+    member: { id: 'mem_tom', displayName: 'Tom B.' },
+    amount: 310,
+    state: 'expired',
+    raisedByStaffId: 's_jen',
+    createdAt: yesterdayAt(16, 5),
+    expiresAt: yesterdayAt(16, 20),
+  },
+];
+
+/** Every charge the shop has, newest first. */
+export const ALL_CHARGES: Charge[] = [...STUB_CHARGES, ...STUB_EARLIER_CHARGES];
+
+/**
+ * The plans behind confirmed charges.
+ *
+ * `cyclesCleared` is what the detail screen needs to say "1 cleared", and what a refund needs to
+ * work out the carry already paid. Keyed by charge so the two screens read the same record.
+ */
+export const STUB_PLANS: Record<string, { splitInto: number; cyclesCleared: number }> = {
+  c_marcus: { splitInto: 4, cyclesCleared: 1 },
+  c_priya: { splitInto: 1, cyclesCleared: 0 },
+  c_ana: { splitInto: 4, cyclesCleared: 0 },
+  c_ray: { splitInto: 2, cyclesCleared: 1 },
+};
 
 export const STUB_PAYOUTS: Payout[] = [
   {
