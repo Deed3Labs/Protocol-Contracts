@@ -29,7 +29,7 @@ export { type SplitQuote, splitQuote } from './split';
 
 export { type RefundQuote, carryAccrued, refundQuote } from './refund';
 
-export { merchantFee, merchantPayout } from './merchant';
+export { type PayoutSettlement, merchantFee, merchantPayout, payoutSettlement } from './merchant';
 
 export { compactMoney, count, credits, dollars, money, signedMoney } from './money';
 

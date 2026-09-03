@@ -17,3 +17,31 @@ export function merchantFee(amount: number, discountRate: number): number {
 export function merchantPayout(amount: number, discountRate: number): number {
   return amount - merchantFee(amount, discountRate);
 }
+
+export interface PayoutSettlement {
+  /** Everything the co-op owes the shop for confirmed charges. */
+  owed: number;
+  /**
+   * The part that settles the shop's own Clear balance rather than reaching a bank.
+   *
+   * A merchant is usually also a member, and a balance they are carrying clears out of what they
+   * are owed before anything is transferred. It costs them no carry, which is why it goes first
+   * rather than sitting there accruing while a payout lands beside it.
+   */
+  clearsBalance: number;
+  /** What actually reaches the bank account. */
+  toBank: number;
+}
+
+/**
+ * How a payout settles — reference section 07, "How this settles".
+ *
+ * On $4,210.00 owed with $1,180.00 carried on Clear: $1,180.00 clears the balance and $3,030.00
+ * goes to the bank. The two always reconstruct the total, because a merchant checking this against
+ * their own books will add them up.
+ */
+export function payoutSettlement(owed: number, clearBalance: number): PayoutSettlement {
+  // A balance larger than the payout clears only as far as the payout goes; the rest stays owed.
+  const clearsBalance = Math.min(Math.max(0, clearBalance), Math.max(0, owed));
+  return { owed, clearsBalance, toBank: owed - clearsBalance };
+}

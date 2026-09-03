@@ -261,3 +261,25 @@ export const HOME_SCENARIOS: Record<HomeStage, HomeScenario> = {
     hasHadPayout: true,
   },
 };
+
+/**
+ * The payout position — reference section 07.
+ *
+ * `availableToday` is a pool cap, not arithmetic: it is what the co-op can release early, and it
+ * is stated up front rather than discovered by a failed withdrawal. Hiding a limit and then
+ * refusing the transfer is how a merchant stops trusting the app.
+ */
+export const STUB_PAYOUT_POSITION = {
+  owed: 4210,
+  /** The shop's own Clear balance, which clears out of the payout before anything reaches a bank. */
+  clearBalance: 1180,
+  availableToday: 2400,
+  nextPayoutOn: '2026-12-14',
+};
+
+/** Settled payouts. Each opens to the charges inside it, so any figure traces to its jobs. */
+export const STUB_PAID_PAYOUTS = [
+  { id: 'po_nov', on: '2026-11-14', charges: 28, amount: 16180 },
+  { id: 'po_oct', on: '2026-10-14', charges: 24, amount: 13940 },
+  { id: 'po_sep', on: '2026-09-14', charges: 19, amount: 11020 },
+];

@@ -7,6 +7,7 @@ import NewChargePage from '@/pages/NewChargePage';
 import ChargesPage from '@/pages/ChargesPage';
 import ChargeDetailPage from '@/pages/ChargeDetailPage';
 import RefundPage from '@/pages/RefundPage';
+import PayoutDetailPage from '@/pages/PayoutDetailPage';
 import PayoutsPage from '@/pages/PayoutsPage';
 import StaffPage from '@/pages/StaffPage';
 import SettingsPage from '@/pages/SettingsPage';
@@ -50,6 +51,14 @@ export default function App() {
           element={
             <OwnerOnly>
               <PayoutsPage />
+            </OwnerOnly>
+          }
+        />
+        <Route
+          path="/payouts/:id"
+          element={
+            <OwnerOnly>
+              <PayoutDetailPage />
             </OwnerOnly>
           }
         />

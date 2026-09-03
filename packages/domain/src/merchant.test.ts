@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { merchantFee, merchantPayout } from './merchant';
+import { merchantFee, merchantPayout, payoutSettlement } from './merchant';
 import { refundQuote } from './refund';
 
 describe('what the shop receives', () => {
@@ -30,5 +30,30 @@ describe('what the shop receives', () => {
     });
     // The same function behind both screens: what was received is what is given back.
     expect(q.merchantClawback).toBeCloseTo(merchantPayout(412, 0.025), 10);
+  });
+});
+
+describe('how a payout settles', () => {
+  it('matches the reference: $4,210.00 owed, $1,180.00 carried', () => {
+    const s = payoutSettlement(4210, 1180);
+    expect(s.clearsBalance).toBeCloseTo(1180, 10);
+    expect(s.toBank).toBeCloseTo(3030, 10);
+  });
+
+  it('the parts always reconstruct the total — a merchant will add them up', () => {
+    for (const [owed, bal] of [[4210, 1180], [900, 0], [500, 2000], [0, 100]] as const) {
+      const s = payoutSettlement(owed, bal);
+      expect(s.clearsBalance + s.toBank).toBeCloseTo(owed, 10);
+    }
+  });
+
+  it('a balance bigger than the payout clears only as far as the payout goes', () => {
+    const s = payoutSettlement(500, 2000);
+    expect(s.clearsBalance).toBe(500);
+    expect(s.toBank).toBe(0);
+  });
+
+  it('carrying nothing sends the whole payout to the bank', () => {
+    expect(payoutSettlement(900, 0).toBank).toBe(900);
   });
 });

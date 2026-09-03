@@ -1,28 +1,145 @@
-import { Columns } from '@/shell/AppShell';
-import { Cap, Inset } from '@/shell/ui';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { dollars, formatCalendarDate, payoutSettlement } from '@clear/domain';
+import { Big, Button, Cap, Card, Inset, Lbl, PrimaryButton } from '@/shell/ui';
+import { STUB_MERCHANT, STUB_PAID_PAYOUTS, STUB_PAYOUT_POSITION } from '@/data/stubs';
 
 /**
- * What the shop is owed, when it lands, and withdrawing early. Owner only.
+ * Payouts — reference section 07, with the withdraw flow from section 18.
  *
- * Scaffolded in Phase 3; built from the design reference in Phase 4, section 7.
+ * Owed, settling, history. Owner-only: the route is guarded in App, because a counter device is a
+ * shared device and a URL somebody typed once is a URL somebody can type again.
+ *
+ * **The withdraw cap is stated up front.** Hiding a pool limit and then failing the withdrawal is
+ * how a merchant stops trusting the app; naming it explains itself before they press anything.
+ *
+ * **Every payout traces to its charges.** A merchant reconciling against their own books has to
+ * get from a bank deposit back to the tickets — without that they will not trust the figure, and
+ * they will ask for a spreadsheet every month.
  */
+
+type View = 'summary' | 'withdraw' | 'withdrawn';
+
 export default function PayoutsPage() {
+  const navigate = useNavigate();
+  const [view, setView] = useState<View>('summary');
+
+  const { owed, clearBalance, availableToday, nextPayoutOn } = STUB_PAYOUT_POSITION;
+  const settle = payoutSettlement(owed, clearBalance);
+  const bank = `Chase ····${STUB_MERCHANT.payoutAccountLast4}`;
+
+  if (view === 'withdraw') {
+    return (
+      <div className="mx-auto w-full max-w-[340px]">
+        <Cap>Withdraw</Cap>
+        <p className="m-0 mb-3 text-[12.5px] text-[var(--clear-text-secondary)]">To {bank}</p>
+        <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">
+          {dollars(availableToday)}
+        </p>
+        <p className="m-0 mb-3.5 text-[11.5px] text-[var(--clear-text-muted)]">
+          Available today of {dollars(settle.toBank)} owed
+        </p>
+
+        <Inset className="mb-3.5 !px-3.5 !py-3">
+          <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
+            The rest lands on {formatCalendarDate(nextPayoutOn)} as usual. Withdrawing early does
+            not change your rate.
+          </p>
+        </Inset>
+
+        <PrimaryButton className="mb-2 !py-[11px] !text-[15px]" onClick={() => setView('withdrawn')}>
+          Withdraw {dollars(availableToday)}
+        </PrimaryButton>
+        <Button onClick={() => setView('summary')} className="w-full">
+          Wait for the {new Date(nextPayoutOn).getUTCDate()}th
+        </Button>
+      </div>
+    );
+  }
+
+  if (view === 'withdrawn') {
+    return (
+      <div className="mx-auto w-full max-w-[340px]">
+        <Cap>On its way</Cap>
+        <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">
+          {dollars(availableToday)}
+        </p>
+        <p className="m-0 mb-3.5 text-[12.5px] text-[var(--clear-text-muted)]">To {bank}</p>
+        <Inset className="mb-3.5 !px-3.5 !py-3">
+          <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
+            The rest lands on {formatCalendarDate(nextPayoutOn)} as usual.
+          </p>
+        </Inset>
+        <Button onClick={() => setView('summary')} className="w-full">
+          Done
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <Columns
-      action={
-        <><Cap>Payouts</Cap>
-          <Inset>
-            Payouts go here.
-          </Inset>
-        </>
-      }
-      context={
-        <><Cap>Context</Cap>
-          <Inset>
-            Context sits here above 900px, and below the action under it.
-          </Inset>
-        </>
-      }
-    />
+    <>
+      <div className="mb-4 grid grid-cols-1 gap-3.5 @[900px]:grid-cols-2">
+        <div>
+          <Lbl>Owed to you</Lbl>
+          <Big>{dollars(owed)}</Big>
+          <p className="m-0 mb-[18px] mt-[5px] text-[12.5px] text-[var(--clear-text-muted)]">
+            Next payout {formatCalendarDate(nextPayoutOn)} · net-30
+          </p>
+
+          <PrimaryButton
+            onClick={() => setView('withdraw')}
+            disabled={availableToday <= 0}
+            className="mb-[9px] !py-3.5 !text-[15px]"
+          >
+            Withdraw now
+          </PrimaryButton>
+          {/* The cap, before they press anything rather than after it fails. */}
+          <p className="m-0 text-center text-[11.5px] text-[var(--clear-text-muted)]">
+            Available today: {dollars(availableToday)} of {dollars(settle.toBank)}
+          </p>
+        </div>
+
+        <Inset className="!px-4 !py-[15px]">
+          <Cap>How this settles</Cap>
+          <div className="flex justify-between text-[13px]">
+            <span className="text-[var(--clear-text-secondary)]">Clears your balance</span>
+            <span className="tabular-nums">{dollars(settle.clearsBalance)}</span>
+          </div>
+          <div className="mt-[7px] flex justify-between text-[13px]">
+            <span className="text-[var(--clear-text-secondary)]">To your bank</span>
+            <span className="font-medium tabular-nums">{dollars(settle.toBank)}</span>
+          </div>
+          <p className="m-0 mt-3 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
+            You are carrying {dollars(settle.clearsBalance)} on Clear. That clears first — it costs
+            you no carry.
+          </p>
+        </Inset>
+      </div>
+
+      <Cap>Paid out</Cap>
+      <Card rows>
+        {STUB_PAID_PAYOUTS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => navigate(`/payouts/${p.id}`)}
+            className="flex w-full items-center justify-between gap-3 border-b-[0.5px] border-[var(--clear-border)] py-3 text-left text-[13px] last:border-b-0"
+          >
+            <span className="min-w-0">
+              <span className="block">{formatCalendarDate(p.on)}</span>
+              <span className="mt-0.5 block text-[11.5px] text-[var(--clear-text-muted)]">
+                {p.charges} charges · {bank}
+              </span>
+            </span>
+            <span className="shrink-0 tabular-nums">{dollars(p.amount)}</span>
+          </button>
+        ))}
+      </Card>
+      <p className="m-0 mt-[13px] text-[11.5px] text-[var(--clear-text-muted)]">
+        Each payout opens to the charges inside it, so any figure can be traced to the jobs that
+        produced it.
+      </p>
+    </>
   );
 }
