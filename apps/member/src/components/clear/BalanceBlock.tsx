@@ -1,5 +1,5 @@
 import SegmentedBar from './SegmentedBar';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import {
   availableToSpend,
   creditLeft,

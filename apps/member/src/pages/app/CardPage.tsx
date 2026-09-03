@@ -10,7 +10,7 @@ import LimitBreakdown from '@/components/clear/LimitBreakdown';
 import TransactionRows from '@/components/clear/TransactionRows';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import type { ActivityRow, CardData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 

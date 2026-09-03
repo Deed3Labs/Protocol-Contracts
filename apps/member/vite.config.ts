@@ -9,6 +9,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
+      // Ships TypeScript source, not a build. Aliasing it keeps vite treating it as first-party
+      // source rather than trying to pre-bundle a package with no dist/.
+      '@clear/domain': resolve(__dirname, '../../packages/domain/src/index.ts'),
     },
   },
   optimizeDeps: {

@@ -21,7 +21,7 @@ import BylawsPanel from '@/components/settings/BylawsPanel';
 import PatronagePanel from '@/components/settings/PatronagePanel';
 import VotingPanel from '@/components/settings/VotingPanel';
 import BallotDialog from '@/components/settings/BallotDialog';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import ThemePicker from '@/components/clear/ThemePicker';
 import InfoBlock from '@/components/clear/InfoBlock';
 import AccelerationDialog from '@/components/settings/AccelerationDialog';

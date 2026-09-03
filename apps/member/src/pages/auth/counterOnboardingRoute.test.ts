@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parsePendingTotal, shopDisplayName } from '@/lib/counterCode';
+import { parsePendingTotal, shopDisplayName } from '@clear/domain';
 import { isServed } from '@/lib/servedRegion';
 import { installActionLabel } from '@/lib/installPrompt';
 

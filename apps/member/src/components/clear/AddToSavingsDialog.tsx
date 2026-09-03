@@ -5,7 +5,7 @@ import AmountPicker from './AmountPicker';
 import DetailRows from './DetailRows';
 import InfoBlock from './InfoBlock';
 import { Check, Loader2 } from 'lucide-react';
-import { money, count } from '@/lib/money';
+import { money, count } from '@clear/domain';
 import type { SavingsData } from '@/lib/clearModel';
 
 /**

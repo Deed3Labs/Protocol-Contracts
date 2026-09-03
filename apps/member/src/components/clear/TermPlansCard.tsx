@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 import Card from './Card';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import {
   activePlans,
   clearsFromLabel,

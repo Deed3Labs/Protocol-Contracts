@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import Card, { CardRule } from '@/components/clear/Card';
 import Modal from '@/components/clear/Modal';
 import InfoBlock from '@/components/clear/InfoBlock';
-import { money, count, signedMoney } from '@/lib/money';
+import { money, count, signedMoney } from '@clear/domain';
 import { closureBalance, type AccountClosure } from '@/lib/clearModel';
 
 /**

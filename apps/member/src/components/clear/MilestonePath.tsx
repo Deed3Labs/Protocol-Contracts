@@ -1,5 +1,5 @@
 import Card from './Card';
-import { count } from '@/lib/money';
+import { count } from '@clear/domain';
 import { creditsToGo, milestoneStates, type Milestone, type MilestoneState } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 

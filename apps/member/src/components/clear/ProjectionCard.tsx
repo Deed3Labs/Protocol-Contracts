@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import Card from './Card';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import type { Savings, SavingsProjection } from '@/lib/clearModel';
 
 /**

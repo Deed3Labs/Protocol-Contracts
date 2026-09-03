@@ -1,4 +1,4 @@
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 
 /**
  * The shop and the amount, carried on every step between the scan and the choice.

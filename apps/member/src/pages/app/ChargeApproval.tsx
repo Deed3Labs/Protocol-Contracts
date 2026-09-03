@@ -2,7 +2,7 @@ import { ChevronLeft, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import SplitChooser from '@/components/clear/SplitChooser';
 import { splitQuote } from '@/lib/clearModel';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 
 /**
  * A charge arrives — the member side.

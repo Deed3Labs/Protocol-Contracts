@@ -1,6 +1,6 @@
 import Card from './Card';
 import SettingRows from './SettingRows';
-import { money, count } from '@/lib/money';
+import { money, count } from '@clear/domain';
 import type { AssuranceReserve } from '@/lib/clearModel';
 
 /**

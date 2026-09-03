@@ -9,6 +9,7 @@
     "baseUrl": "./src",
     "paths": {
       "@/*": ["*"],
+      "@clear/domain": ["../../../packages/domain/src/index.ts"],
     },
 
     /* Bundler mode */

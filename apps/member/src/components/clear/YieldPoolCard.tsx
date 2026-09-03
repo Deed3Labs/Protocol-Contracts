@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import Card from './Card';
-import { money, compactMoney, signedMoney } from '@/lib/money';
+import { money, compactMoney, signedMoney } from '@clear/domain';
 import { poolBacking, poolUtilization, type EarnData } from '@/lib/clearModel';
 
 /**

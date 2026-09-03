@@ -2,7 +2,7 @@ import { Copy, Flag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Modal from './Modal';
 import DetailRows, { type DetailRow } from './DetailRows';
-import { signedMoney } from '@/lib/money';
+import { signedMoney } from '@clear/domain';
 import { capitalise, TIER_FILL, type ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 

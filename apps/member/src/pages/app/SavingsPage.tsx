@@ -12,7 +12,7 @@ import VestingList from '@/components/clear/VestingList';
 import ConnectedMoveMoney from '@/components/clear/ConnectedMoveMoney';
 import AutoSaveDialog from '@/components/clear/AutoSaveDialog';
 import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import { savingsTotal, type SavingsData } from '@/lib/clearModel';
 
 /**

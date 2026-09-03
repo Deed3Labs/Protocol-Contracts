@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Card, { CardRule } from './Card';
 import ToggleRows from './ToggleRows';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import type { CardData } from '@/lib/clearModel';
 
 /**

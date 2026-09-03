@@ -14,7 +14,7 @@ import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { isServed } from '@/lib/servedRegion';
 import { runPlaidLink } from '@/lib/plaidLink';
 import { claimInstallUi, promptInstall } from '@/lib/installPrompt';
-import { parsePendingTotal, shopDisplayName } from '@/lib/counterCode';
+import { parsePendingTotal, shopDisplayName } from '@clear/domain';
 import { useInstallMode } from '@/hooks/useInstallMode';
 import CounterOnboarding, {
   type CounterStep,

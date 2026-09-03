@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import Card, { CardRule } from './Card';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import { hasUnspendableCash, type CashAccount } from '@/lib/clearModel';
 
 /**

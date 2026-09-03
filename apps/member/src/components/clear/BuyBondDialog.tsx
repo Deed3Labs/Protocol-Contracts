@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import Modal from './Modal';
 import DetailRows from './DetailRows';
 import InfoBlock from './InfoBlock';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import { bondAddsToLimit, type BondTerm, type EarnData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 

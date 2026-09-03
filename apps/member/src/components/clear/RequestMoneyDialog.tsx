@@ -6,7 +6,7 @@ import Avatar from './Avatar';
 import AmountPicker from './AmountPicker';
 import ContactRows from './ContactRows';
 import DetailRows from './DetailRows';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import { CONTACT_ROLE_LABEL, searchContacts, type Contact } from '@/lib/clearModel';
 
 /**

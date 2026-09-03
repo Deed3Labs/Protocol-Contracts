@@ -1,5 +1,5 @@
 import Card from './Card';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import { monthYear, type EarnData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 

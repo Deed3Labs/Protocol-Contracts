@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import Modal from './Modal';
 import AmountPicker from './AmountPicker';
 import DetailRows from './DetailRows';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import {
   CONTACT_ROLE_LABEL,
   nextDrawTier,

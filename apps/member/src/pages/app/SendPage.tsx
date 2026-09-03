@@ -11,7 +11,7 @@ import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
 import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
 import RequestMoneyDialog from '@/components/clear/RequestMoneyDialog';
 import { SEND_DAY_ONE, HOME_DAY_ONE } from '@/data/clearPlaceholder';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import { searchContacts, type Contact, type SendData } from '@/lib/clearModel';
 

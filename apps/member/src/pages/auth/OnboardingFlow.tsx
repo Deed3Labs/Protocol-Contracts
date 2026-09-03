@@ -6,7 +6,7 @@ import DetailRows from '@/components/clear/DetailRows';
 import InfoBlock from '@/components/clear/InfoBlock';
 import OnboardingShell from '@/components/onboarding/OnboardingShell';
 import CodeInput from '@/components/onboarding/CodeInput';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 
 /**
  * Sign-in, sign-up and onboarding.

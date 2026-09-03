@@ -1,7 +1,7 @@
 import { Lock } from 'lucide-react';
 import Card, { CardRule } from './Card';
 import SegmentedBar from './SegmentedBar';
-import { money, count } from '@/lib/money';
+import { money, count } from '@clear/domain';
 import { savingsTotal, type Savings } from '@/lib/clearModel';
 
 /**

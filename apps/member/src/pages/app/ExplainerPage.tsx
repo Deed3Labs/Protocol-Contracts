@@ -5,7 +5,7 @@ import InfoBlock from '@/components/clear/InfoBlock';
 import SettingRows from '@/components/clear/SettingRows';
 import ReservePanel from '@/components/clear/ReservePanel';
 import { ASSURANCE_RESERVE, SETTINGS } from '@/data/clearPlaceholder';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import { patronageBasis } from '@/lib/clearModel';
 
 /**

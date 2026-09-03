@@ -9,7 +9,7 @@ import ActivityList from '@/components/clear/ActivityList';
 import CycleSpendCard from '@/components/clear/CycleSpendCard';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { ACTIVITY_DAY_ONE } from '@/data/clearPlaceholder';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import {
   ACTIVITY_FILTERS,
   type ActivityRow,

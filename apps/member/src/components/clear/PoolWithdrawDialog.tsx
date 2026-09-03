@@ -4,7 +4,7 @@ import Modal from './Modal';
 import AmountPicker from './AmountPicker';
 import DetailRows from './DetailRows';
 import InfoBlock from './InfoBlock';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import {
   creditLimit,
   creditUsed,

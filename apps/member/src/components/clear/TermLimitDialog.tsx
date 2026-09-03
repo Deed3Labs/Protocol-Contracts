@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import Modal from './Modal';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import {
   bindingTermLimit,
   termPlansPerCycle,

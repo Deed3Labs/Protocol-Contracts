@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import Card, { CardRule } from './Card';
 import SegmentedBar, { type Segment } from './SegmentedBar';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import {
   addableTier,
   creditLimit,

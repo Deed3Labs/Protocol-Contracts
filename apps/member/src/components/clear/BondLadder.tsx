@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import Card from './Card';
-import { money, signedMoney } from '@/lib/money';
+import { money, signedMoney } from '@clear/domain';
 import type { BondTerm } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 

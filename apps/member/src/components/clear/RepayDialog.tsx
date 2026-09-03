@@ -4,7 +4,7 @@ import Card from './Card';
 import Modal from './Modal';
 import AmountPicker from './AmountPicker';
 import InfoBlock from './InfoBlock';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import {
   TIER_FILL,
   creditUsed,

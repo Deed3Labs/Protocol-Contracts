@@ -6,7 +6,7 @@ import PendingTotalHeader from '@/components/onboarding/PendingTotalHeader';
 import AddToHomeScreen from '@/components/onboarding/AddToHomeScreen';
 import BankLinkStep, { BankLinkSkip } from '@/components/onboarding/BankLinkStep';
 import { installActionLabel, type InstallMode } from '@/lib/installPrompt';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 
 /**
  * Signing up at a merchant counter — design spec §12b.

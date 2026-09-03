@@ -1,6 +1,6 @@
 import Card from '@/components/clear/Card';
 import SettingRows from '@/components/clear/SettingRows';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import { patronageBasis, type Patronage } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 

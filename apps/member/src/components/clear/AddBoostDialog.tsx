@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import Card from './Card';
 import Modal from './Modal';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import { creditLimit, type Credit, type CreditTier } from '@/lib/clearModel';
 
 /**

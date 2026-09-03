@@ -1,5 +1,5 @@
 import Card from './Card';
-import { count } from '@/lib/money';
+import { count } from '@clear/domain';
 import type { VestingRow } from '@/lib/clearModel';
 
 /** Credits vesting — design spec §5. Dated future rows, nothing retrospective. */

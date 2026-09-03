@@ -6,7 +6,7 @@ import Keypad from './Keypad';
 import { applyKey } from '@/lib/amountEntry';
 import { AlertMark, Spinner, Steps, Tick } from './MoveProgress';
 import { stepsFor, type MoveStatus } from '@/lib/moveSteps';
-import { money, count } from '@/lib/money';
+import { money, count } from '@clear/domain';
 import { cn } from '@/lib/utils';
 
 /**

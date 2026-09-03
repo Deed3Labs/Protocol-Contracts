@@ -12,7 +12,7 @@ import ConnectedBuyBond from '@/components/clear/ConnectedBuyBond';
 import ConnectedPoolMove from '@/components/clear/ConnectedPoolMove';
 import PoolWithdrawDialog from '@/components/clear/PoolWithdrawDialog';
 import { EARN_DAY_ONE, HOME_DAY_ONE } from '@/data/clearPlaceholder';
-import { money, signedMoney } from '@/lib/money';
+import { money, signedMoney } from '@clear/domain';
 import { assetBackedLimit, bondsTotal, earningTotal, type EarnData } from '@/lib/clearModel';
 
 /**

@@ -1,5 +1,5 @@
 import Card, { CardRule } from './Card';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import type { CycleSpend } from '@/lib/clearModel';
 
 /**

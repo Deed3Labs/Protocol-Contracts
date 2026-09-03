@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import { cn } from '@/lib/utils';
 
 /**

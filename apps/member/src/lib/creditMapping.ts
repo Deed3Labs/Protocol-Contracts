@@ -8,7 +8,7 @@ import type {
   LimitBacking,
   LimitBackingRow,
 } from '@/lib/clearModel';
-import { money, count } from '@/lib/money';
+import { money, count } from '@clear/domain';
 import type { CreditTierRow, CreditCycleRow, CreditTermPlanRow } from '@/utils/apiClient';
 
 /**

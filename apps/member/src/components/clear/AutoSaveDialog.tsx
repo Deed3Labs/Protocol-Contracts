@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import Modal from './Modal';
 import DetailRows from './DetailRows';
 import InfoBlock from './InfoBlock';
-import { money, count } from '@/lib/money';
+import { money, count } from '@clear/domain';
 import type { SavingsData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 

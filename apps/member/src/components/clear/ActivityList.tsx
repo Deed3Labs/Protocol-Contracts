@@ -1,4 +1,4 @@
-import { signedMoney } from '@/lib/money';
+import { signedMoney } from '@clear/domain';
 import TransactionAvatar from './TransactionAvatar';
 import { groupByDate, shortDate, sourceTag, type ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';

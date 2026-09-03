@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import Modal from './Modal';
 import SplitChooser from './SplitChooser';
-import { money } from '@/lib/money';
+import { money } from '@clear/domain';
 import type { TermPlan } from '@/lib/clearModel';
 
 /**

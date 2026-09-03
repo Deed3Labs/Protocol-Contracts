@@ -1,5 +1,5 @@
 import Card from './Card';
-import { count } from '@/lib/money';
+import { count } from '@clear/domain';
 import type { Savings } from '@/lib/clearModel';
 
 /**
