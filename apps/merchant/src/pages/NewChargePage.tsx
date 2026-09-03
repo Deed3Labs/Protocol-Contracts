@@ -72,7 +72,7 @@ function AmountEntry({
             The fee is shown before the charge is raised, not only at confirmation. A merchant
             deciding whether to offer this deserves the real number while it is still a decision.
           */}
-          <Inset>
+          <Inset className="!px-[15px] !py-[13px]">
             <p className="m-0 mb-1 text-[12px] text-[var(--clear-text-secondary)]">This charge</p>
             <div className="mt-1.5 flex justify-between text-[12.5px]">
               <span className="text-[var(--clear-text-muted)]">You receive</span>
