@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Delete } from 'lucide-react';
 import { dollars, merchantFee, merchantPayout } from '@clear/domain';
 import { Big, Inset, Lbl, PrimaryButton } from '@/shell/ui';
-import { STUB_MERCHANT } from '@/data/stubs';
+import { api } from '@/data/apiClient';
+import { useApi } from '@/data/useApi';
 import { ChargeCode } from '@/charge/ChargeCode';
 import { ChargeWaiting } from '@/charge/ChargeWaiting';
 import { ChargeConfirmed } from '@/charge/ChargeConfirmed';
@@ -29,11 +30,14 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'] as c
 
 function AmountEntry({
   amount,
+  discountRate,
   onKey,
   onContinue,
   onBack,
 }: {
   amount: string;
+  /** Null until the shop's terms load. The preview says so rather than quoting a made-up fee. */
+  discountRate: number | null;
   onKey: (k: string) => void;
   onContinue: () => void;
   onBack: () => void;
@@ -69,15 +73,15 @@ function AmountEntry({
             <div className="mt-1.5 flex justify-between text-[12.5px]">
               <span className="text-[var(--clear-text-muted)]">You receive</span>
               <span className="tabular-nums">
-                {dollars(merchantPayout(value, STUB_MERCHANT.discountRate))}
+                {discountRate === null ? '—' : dollars(merchantPayout(value, discountRate))}
               </span>
             </div>
             <div className="mt-[5px] flex justify-between text-[12.5px]">
               <span className="text-[var(--clear-text-muted)]">
-                Fee · {Math.round(STUB_MERCHANT.discountRate * 1000) / 10}%
+                Fee{discountRate === null ? '' : ` · ${Math.round(discountRate * 1000) / 10}%`}
               </span>
               <span className="tabular-nums">
-                {dollars(merchantFee(value, STUB_MERCHANT.discountRate))}
+                {discountRate === null ? '—' : dollars(merchantFee(value, discountRate))}
               </span>
             </div>
           </Inset>
@@ -124,6 +128,10 @@ function AmountEntry({
 
 export default function NewChargePage() {
   const navigate = useNavigate();
+  // The shop's own terms. A merchant deciding whether to offer this deserves the real number while
+  // it is still a decision, so the rate is fetched here rather than at confirmation.
+  const { data: profile } = useApi(() => api.profile(), []);
+  const discountRate = profile?.discountRate ?? null;
   const [stage, setStage] = useState<Stage>('amount');
   const [amount, setAmount] = useState('');
   const [raisedAt, setRaisedAt] = useState<number>(() => Date.now());
@@ -144,6 +152,7 @@ export default function NewChargePage() {
     return (
       <AmountEntry
         amount={amount}
+        discountRate={discountRate}
         onKey={press}
         onContinue={() => {
           setRaisedAt(Date.now());
@@ -158,7 +167,7 @@ export default function NewChargePage() {
     return (
       <ChargeCode
         amount={value}
-        merchantName={STUB_MERCHANT.name}
+        merchantName={profile?.name ?? 'this shop'}
         onBack={() => setStage('amount')}
         // Stubbed: the customer scanning is what really moves this on.
         onSent={() => {
@@ -189,7 +198,7 @@ export default function NewChargePage() {
       <ChargeConfirmed
         amount={value}
         memberName="Dana R."
-        discountRate={STUB_MERCHANT.discountRate}
+        discountRate={discountRate ?? 0}
         paidOut="2026-12-14"
         onDone={() => navigate('/')}
       />

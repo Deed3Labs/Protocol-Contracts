@@ -12,7 +12,9 @@ import {
 } from '@clear/domain';
 import { Button, Inset } from '@/shell/ui';
 import { useAuth } from '@/auth/authContext';
-import { ALL_CHARGES, STUB_MERCHANT, STUB_PLANS, STUB_STAFF } from '@/data/stubs';
+import { api } from '@/data/apiClient';
+import { useApi } from '@/data/useApi';
+import { STUB_MERCHANT } from '@/data/stubs';
 
 /**
  * Charge detail — reference section 15.
@@ -30,17 +32,28 @@ import { ALL_CHARGES, STUB_MERCHANT, STUB_PLANS, STUB_STAFF } from '@/data/stubs
  * the economics.
  */
 
-const staffName = (id: string) => STUB_STAFF.find((s) => s.id === id)?.name ?? '—';
-
 export default function ChargeDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { session, canSeeMoney } = useAuth();
 
-  const charge = ALL_CHARGES.find((c) => c.id === id);
+  // No single-charge endpoint: the list is what the tablet already reads, and a shop's day is
+  // small enough that finding the row in it costs less than another route. Hooks run before the
+  // guard below, which is why the fetch is not conditional on having found anything.
+  const { data: charges, loading } = useApi(() => api.charges({ limit: 200 }), []);
+  const { data: profile } = useApi(() => api.profile(), []);
+
+  const charge = (charges ?? []).find((c) => c.code === id);
+
+  if (loading && !charge) {
+    return <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">Loading…</p>;
+  }
   if (!charge) return <Navigate to="/charges" replace />;
 
-  const plan = STUB_PLANS[charge.id];
+  const rate = profile?.discountRate ?? null;
+  // The carry rate is a Clear product parameter rather than a merchant term, so it is not on the
+  // profile endpoint. Still a fixture until it is exposed somewhere honest.
+  const plan = charge.splitInto === null ? null : { splitInto: charge.splitInto };
   const quote = plan ? splitQuote(charge.amount, plan.splitInto, STUB_MERCHANT.ratePerCycle) : null;
 
   const resolvedOn = charge.resolvedAt ?? charge.createdAt;
@@ -71,14 +84,14 @@ export default function ChargeDetailPage() {
           <ChevronLeft size={20} />
         </button>
         <span className="text-[16px] font-medium">
-          {charge.member?.displayName ?? 'Not opened yet'}
+          {charge.memberName ?? 'Not opened yet'}
         </span>
       </div>
 
       <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">{dollars(charge.amount)}</p>
       <p className="m-0 mb-[18px] text-[12.5px] text-[var(--clear-text-muted)]">
         {CHARGE_LABEL[charge.state]} {today ? 'today' : formatCalendarDate(resolvedOn)}, {timeLabel}{' '}
-        · raised by {staffName(charge.raisedByStaffId)}
+        · raised by {charge.raisedBy ?? '—'}
       </p>
 
       {/* Payout figures, the fee and the rate are owner-only. */}
@@ -87,14 +100,21 @@ export default function ChargeDetailPage() {
           <div className="flex justify-between text-[13px]">
             <span className="text-[var(--clear-text-secondary)]">You receive</span>
             <span className="font-medium tabular-nums">
-              {dollars(merchantPayout(charge.amount, STUB_MERCHANT.discountRate))}
+              {/* The server already computed this for owners, and it is the figure of record.
+                  Computing it again here would be a second source of truth for the same money. */}
+              {charge.payout !== undefined
+                ? dollars(charge.payout)
+                : rate === null
+                  ? '—'
+                  : dollars(merchantPayout(charge.amount, rate))}
             </span>
           </div>
           <div className="mt-[7px] flex justify-between text-[13px]">
             <span className="text-[var(--clear-text-secondary)]">Fee</span>
             <span className="tabular-nums">
-              {dollars(merchantFee(charge.amount, STUB_MERCHANT.discountRate))} ·{' '}
-              {Math.round(STUB_MERCHANT.discountRate * 1000) / 10}%
+              {rate === null
+                ? '—'
+                : `${dollars(merchantFee(charge.amount, rate))} · ${Math.round(rate * 1000) / 10}%`}
             </span>
           </div>
           <div className="mt-[7px] flex justify-between text-[13px]">
@@ -105,9 +125,11 @@ export default function ChargeDetailPage() {
             <div className="mt-[7px] flex justify-between gap-3 border-t-[0.5px] border-[var(--clear-border)] pt-[9px] text-[13px]">
               <span className="text-[var(--clear-text-secondary)]">They chose</span>
               <span className="text-right">
+                {/* How many cycles the member has already cleared is not on the merchant's charge
+                    feed, and it is the member's repayment progress rather than the shop's business.
+                    The plan and the per-cycle figure are the parts that describe this sale. */}
                 {plan.splitInto === 1 ? 'In full' : `Split in ${plan.splitInto}`} ·{' '}
-                <span className="tabular-nums">{dollars(quote.perCycle)}</span> a cycle ·{' '}
-                {plan.cyclesCleared} cleared
+                <span className="tabular-nums">{dollars(quote.perCycle)}</span> a cycle
               </span>
             </div>
           )}
@@ -128,7 +150,7 @@ export default function ChargeDetailPage() {
       {refundable && (
         <>
           {/* Never "Refund". The writer is beginning something, not completing it. */}
-          <Button onClick={() => navigate(`/charges/${charge.id}/refund`)} className="w-full">
+          <Button onClick={() => navigate(`/charges/${charge.code}/refund`)} className="w-full">
             Start a refund
           </Button>
           <p className="m-0 mt-2.5 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">

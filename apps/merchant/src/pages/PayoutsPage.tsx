@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { dollars, formatCalendarDate, payoutSettlement } from '@clear/domain';
 import { Big, Button, Cap, Card, Inset, Lbl, PrimaryButton } from '@/shell/ui';
-import { STUB_MERCHANT, STUB_PAID_PAYOUTS, STUB_PAYOUT_POSITION } from '@/data/stubs';
+import { api } from '@/data/apiClient';
+import { useApi } from '@/data/useApi';
+import { STUB_PAYOUT_POSITION } from '@/data/stubs';
 
 /**
  * Payouts — reference section 07, with the withdraw flow from section 18.
@@ -24,9 +26,20 @@ export default function PayoutsPage() {
   const navigate = useNavigate();
   const [view, setView] = useState<View>('summary');
 
-  const { owed, clearBalance, availableToday, nextPayoutOn } = STUB_PAYOUT_POSITION;
+  const { data: position } = useApi(() => api.payouts(), []);
+  const { data: profile } = useApi(() => api.profile(), []);
+
+  const owed = (position?.owedCents ?? 0) / 100;
+  const clearBalance = (position?.clearsBalanceCents ?? 0) / 100;
+  // Null means the pool cap is not known yet, which is not the same as nothing being available.
+  // Withdrawing is hidden rather than offered at zero — see the guard on the button.
+  const availableToday =
+    position?.availableTodayCents == null ? null : position.availableTodayCents / 100;
   const settle = payoutSettlement(owed, clearBalance);
-  const bank = `Chase ····${STUB_MERCHANT.payoutAccountLast4}`;
+  const bank = profile?.payoutAccount ?? 'your bank account';
+  // The schedule date has no endpoint behind it yet; the amounts above are real.
+  const { nextPayoutOn } = STUB_PAYOUT_POSITION;
+  const paid = position?.paid ?? [];
 
   if (view === 'withdraw') {
     return (
@@ -34,7 +47,7 @@ export default function PayoutsPage() {
         <Cap>Withdraw</Cap>
         <p className="m-0 mb-3 text-[12.5px] text-[var(--clear-text-secondary)]">To {bank}</p>
         <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">
-          {dollars(availableToday)}
+          {availableToday === null ? '—' : dollars(availableToday)}
         </p>
         <p className="m-0 mb-3.5 text-[11.5px] text-[var(--clear-text-muted)]">
           Available today of {dollars(settle.toBank)} owed
@@ -48,7 +61,7 @@ export default function PayoutsPage() {
         </Inset>
 
         <PrimaryButton className="mb-2 !py-[11px] !text-[15px]" onClick={() => setView('withdrawn')}>
-          Withdraw {dollars(availableToday)}
+          Withdraw {availableToday === null ? '—' : dollars(availableToday)}
         </PrimaryButton>
         <Button onClick={() => setView('summary')} className="w-full">
           Wait for the {new Date(nextPayoutOn).getUTCDate()}th
@@ -62,7 +75,7 @@ export default function PayoutsPage() {
       <div className="mx-auto w-full max-w-[340px]">
         <Cap>On its way</Cap>
         <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">
-          {dollars(availableToday)}
+          {availableToday === null ? '—' : dollars(availableToday)}
         </p>
         <p className="m-0 mb-3.5 text-[12.5px] text-[var(--clear-text-muted)]">To {bank}</p>
         <Inset className="mb-3.5 !px-3.5 !py-3">
@@ -89,14 +102,17 @@ export default function PayoutsPage() {
 
           <PrimaryButton
             onClick={() => setView('withdraw')}
-            disabled={availableToday <= 0}
+            // Disabled while the cap is unknown as well as while it is nothing: offering a
+            // withdrawal Clear cannot size yet is a button that fails after the tap.
+            disabled={availableToday === null || availableToday <= 0}
             className="mb-[9px] !py-3.5 !text-[15px]"
           >
             Withdraw now
           </PrimaryButton>
           {/* The cap, before they press anything rather than after it fails. */}
           <p className="m-0 text-center text-[11.5px] text-[var(--clear-text-muted)]">
-            Available today: {dollars(availableToday)} of {dollars(settle.toBank)}
+            Available today: {availableToday === null ? '—' : dollars(availableToday)} of{' '}
+            {dollars(settle.toBank)}
           </p>
         </div>
 
@@ -118,8 +134,15 @@ export default function PayoutsPage() {
       </div>
 
       <Cap>Paid out</Cap>
-      <Card rows>
-        {STUB_PAID_PAYOUTS.map((p) => (
+      <Card rows={paid.length > 0}>
+        {/* Before the first payout lands this card is empty, which is a real and common state for
+            a new shop rather than a failure — so it says which date to expect instead of nothing. */}
+        {paid.length === 0 && (
+          <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">
+            No payouts yet. Your first lands on {formatCalendarDate(nextPayoutOn)}.
+          </p>
+        )}
+        {paid.map((p) => (
           <button
             key={p.id}
             type="button"
@@ -132,7 +155,7 @@ export default function PayoutsPage() {
                 {p.charges} charges · {bank}
               </span>
             </span>
-            <span className="shrink-0 tabular-nums">{dollars(p.amount)}</span>
+            <span className="shrink-0 tabular-nums">{dollars(p.amountCents / 100)}</span>
           </button>
         ))}
       </Card>
