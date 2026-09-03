@@ -9,6 +9,7 @@ import type { ActivityRow } from '@/lib/clearModel';
 import { onChainStale } from '@/lib/chainStale';
 import { toCreditTiers, toLimitBacking } from '@/lib/creditMapping';
 import { useAppKitAccount } from '@/lib/walletCompat';
+import { keepLastGood } from '@/lib/keepLastGood';
 
 /*
  * Day-one, not in-use.
@@ -74,7 +75,7 @@ export default function CardRoute() {
     let cancelled = false;
     const read = () => {
       void getCredit(address).then((result) => {
-        if (!cancelled) setCredit(result);
+        if (!cancelled) setCredit((prev) => keepLastGood(prev, result));
       });
     };
     read();

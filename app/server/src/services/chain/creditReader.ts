@@ -1,6 +1,8 @@
 import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
+import { chainProvider } from './provider.js';
+import { coalesce } from './readCache.js';
 
 // 0.25%. Below this the difference is accrual between two reads, not a capacity that failed to push.
 const DRIFT_BPS = 25n;
@@ -142,13 +144,7 @@ function resolveChainId(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 84532;
 }
 
-let cachedProvider: { chainId: number; provider: ethers.JsonRpcProvider } | null = null;
-function getProvider(chainId: number): ethers.JsonRpcProvider {
-  if (cachedProvider?.chainId === chainId) return cachedProvider.provider;
-  const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId));
-  cachedProvider = { chainId, provider };
-  return provider;
-}
+const getProvider = chainProvider;
 
 async function readTiers(
   provider: ethers.JsonRpcProvider,
@@ -413,7 +409,17 @@ async function readEncumbered(
   }
 }
 
-export async function readChainCredit(
+/*
+ * Coalesced, because one move sets off up to twenty identical calls to this from five listeners on
+ * a retry backoff, and each one of these fans out to roughly thirty contract calls. The cache is
+ * dropped the moment the server writes collateral, so the read triggered *by* a pledge landing
+ * never sees a figure from before it.
+ */
+export function readChainCredit(wallet: string, chainId = resolveChainId()): Promise<ChainCredit> {
+  return coalesce(`credit:${wallet.toLowerCase()}:${chainId}`, () => readChainCreditUncached(wallet, chainId));
+}
+
+async function readChainCreditUncached(
   wallet: string,
   chainId = resolveChainId(),
 ): Promise<ChainCredit> {

@@ -6,6 +6,7 @@ import { projectReserveDate } from '@/lib/reserveProjection';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { getEarn, getPaySummary, type EarnState, type PaySummary } from '@/utils/apiClient';
 import { onChainStale } from '@/lib/chainStale';
+import { keepLastGood } from '@/lib/keepLastGood';
 
 /*
  * Day-one, not in-use.
@@ -48,7 +49,8 @@ export default function EarnRoute() {
     const read = () => {
       void Promise.all([getEarn(address), getPaySummary(address)]).then(([e, p]) => {
         if (cancelled) return;
-        setEarn(e);
+        // Pool and bond figures blank the same way credit did when a read errors; same rule.
+        setEarn((prev) => keepLastGood(prev, e));
         setPay(p);
       });
     };

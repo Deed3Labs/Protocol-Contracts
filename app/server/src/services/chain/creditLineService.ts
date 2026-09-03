@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
 import { savingsIntentService } from '../savingsIntentService.js';
+import { chainProvider } from './provider.js';
 
 /*
  * Opening a member's credit line.
@@ -51,7 +52,7 @@ export async function hasCreditLine(wallet: string): Promise<boolean> {
   const issuer = getContractAddress(chainId(), 'RevolvingIssuer');
   if (!issuer) return false;
   try {
-    const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
+    const provider = chainProvider(chainId());
     const contract = new ethers.Contract(issuer, ISSUER_ABI, provider);
     const [issuedAt] = await contract.creditPeriods(wallet);
     return Number(issuedAt) > 0;
@@ -81,7 +82,7 @@ export async function openCreditLine(wallet: string): Promise<OpenLineResult> {
   if (!key) return { opened: false, reason: 'no CREDIT_OPERATOR_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY' };
 
   try {
-    const provider = new ethers.JsonRpcProvider(savingsIntentService.resolveRpcUrl(chainId()));
+    const provider = chainProvider(chainId());
     const signer = new ethers.Wallet(key, provider);
     const issuer = new ethers.Contract(issuerAddress, ISSUER_ABI, signer);
 
