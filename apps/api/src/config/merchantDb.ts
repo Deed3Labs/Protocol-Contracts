@@ -121,11 +121,12 @@ export async function ensureMerchantSchema(): Promise<void> {
       -- Revoking a device is therefore a row update here — instant, and effective immediately.
       token_hash      TEXT NOT NULL UNIQUE,
       -- No per-device cap. The approval cap is the merchant's, enforced in MerchantRegistry and
-      -- backstopped by the wallet policy, which is why the enrolment screen shows it as "Fixed"
+      -- backstopped by the wallet policy, which is why the enrollment screen shows it as "Fixed"
       -- and says "enforced by policy, not by this app".
       idle_lock_seconds  INTEGER NOT NULL DEFAULT 300,
-      -- The Privy user who enrolled it. A device is authority the owner delegated, so the record
-      -- keeps who delegated it.
+      -- The staff row of the owner who enrolled it. A device is authority the owner delegated, so
+      -- the record keeps who delegated it — and the staff row, not the Privy id, because that is
+      -- what every other attribution in this schema points at and what renders as a name.
       enrolled_by     TEXT NOT NULL,
       enrolled_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
       -- Removable any time, from any device. This is what makes a lost tablet survivable.

@@ -18,14 +18,31 @@ import { fromWire } from '@clear/domain';
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://localhost:3001';
 const TOKEN_KEY = 'clear.merchant.token';
 
+/**
+ * The enrolled device — reference section 19.
+ *
+ * Stored separately from the session token, because they are separate facts with separate
+ * lifetimes: this says which shop the tablet is and survives until an owner removes it; the
+ * session says who is on shift and expires overnight. Ending a shift must not make a tablet forget
+ * which shop it belongs to.
+ *
+ * It is not signing material. Clear's backend holds the merchant org's key and does the signing —
+ * so a stolen tablet carries nothing that can move money, and revoking it is a server-side row
+ * update that takes effect on the very next request.
+ */
+const DEVICE_KEY = 'clear.merchant.device';
+
 export class ApiError extends Error {
   // Declared and assigned rather than a constructor parameter property: this app compiles with
   // `erasableSyntaxOnly`, which forbids syntax that emits code rather than just erasing types.
   readonly status: number;
+  /** The parsed error body. A 409 from owner sign-in carries the shops to choose between. */
+  readonly details: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, details?: unknown) {
     super(message);
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -35,6 +52,23 @@ function readToken(): string | null {
   } catch {
     // Private windows and locked-down browsers throw rather than returning null.
     return null;
+  }
+}
+
+export function readDeviceToken(): string | null {
+  try {
+    return window.localStorage.getItem(DEVICE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function storeDeviceToken(token: string | null): void {
+  try {
+    if (token) window.localStorage.setItem(DEVICE_KEY, token);
+    else window.localStorage.removeItem(DEVICE_KEY);
+  } catch {
+    // A tablet that cannot persist cannot stay enrolled; the enrollment screen says so.
   }
 }
 
@@ -49,11 +83,15 @@ export function storeToken(token: string | null): void {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = readToken();
+  const device = readDeviceToken();
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // Which tablet this is. Sent on every request, including the ones reached before anyone has
+      // signed in, because the roster and the PIN pad are already scoped to one shop.
+      ...(device ? { 'X-Clear-Device': device } : {}),
       ...init.headers,
     },
     // Never send cookies. This surface has none, and asking for them is how one arrives.
@@ -74,7 +112,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       (body as { message?: string } | null)?.message ??
       // Never a raw status. Every failure state has to leave the writer with something to say.
       'Something went wrong. Take the ticket the usual way and try again.';
-    throw new ApiError(message, res.status);
+    throw new ApiError(message, res.status, body);
   }
   return body as T;
 }
@@ -88,6 +126,18 @@ export interface SessionResponse {
   merchant: string;
 }
 
+
+/* ----------------------------------------------------------------- device */
+
+export interface EnrolledDevice {
+  id: string;
+  label: string;
+  idleLockSeconds: number;
+  enrolledAt: string;
+  revokedAt: string | null;
+  enrolledByName?: string | null;
+}
+
 export const api = {
   /**
    * Who is on the counter, for the shift screen.
@@ -95,10 +145,10 @@ export const api = {
    * Names and roles only, and reachable before anyone has signed in — the screen exists so a
    * writer picks their own name rather than remembering which of four codes is theirs.
    */
-  async roster(merchant: string): Promise<{ id: string; name: string; role: StaffRole }[]> {
+  async roster(): Promise<{ id: string; name: string; role: StaffRole }[]> {
     const res = await request<{ staff: { id: string; name: string; role: StaffRole }[] }>(
       '/api/merchant/roster',
-      { method: 'POST', body: JSON.stringify({ merchant }) },
+      { method: 'POST', body: '{}' },
     );
     return res.staff;
   },
@@ -110,11 +160,7 @@ export const api = {
    * authorises nothing that moves money — that needs the owner's Privy sign-in. There is
    * deliberately no password parameter: Clear holds no owner credential to check.
    */
-  async startShift(input: {
-    merchant: string;
-    staffId: string;
-    pin: string;
-  }): Promise<SessionResponse> {
+  async startShift(input: { staffId: string; pin: string }): Promise<SessionResponse> {
     const res = await request<SessionResponse>('/api/merchant/session', {
       method: 'POST',
       body: JSON.stringify(input),
@@ -129,13 +175,78 @@ export const api = {
    * Privy says who they are; this says whose shop it is. Both are required — a valid Privy user is
    * not by itself an owner of anything, and the backend checks the staff record before issuing.
    */
-  async signInAsOwner(merchant: string, privyToken: string): Promise<SessionResponse> {
+  async signInAsOwner(privyToken: string, merchant?: string): Promise<SessionResponse> {
     const res = await request<SessionResponse>('/api/merchant/session/owner', {
       method: 'POST',
-      body: JSON.stringify({ merchant, privyToken }),
+      // No merchant on a tablet that is not enrolled yet — that is the entire reason enrollment
+      // exists, and the backend resolves the shop from the Privy identity instead. It answers 409
+      // with a list only when one account genuinely owns more than one shop.
+      body: JSON.stringify(merchant ? { merchant, privyToken } : { privyToken }),
     });
     if (res.token) storeToken(res.token);
     return res;
+  },
+
+
+  /* --------------------------------------------------------------- device */
+
+  /**
+   * What this tablet is, asked on load before anyone signs in.
+   *
+   * Returns null when the device is not enrolled, which the app must be able to tell apart from
+   * signed-out: one shows the enrollment screen, the other the PIN pad. The backend answers 409
+   * rather than 401 for exactly that reason — nobody's credentials are wrong.
+   *
+   * A revoked tablet lands here too, and correctly falls back to enrollment. That is what "remove
+   * it any time, from any device" looks like from the tablet's side.
+   */
+  async currentDevice(): Promise<{ merchant: string; device: EnrolledDevice } | null> {
+    if (!readDeviceToken()) return null;
+    try {
+      return await request<{ merchant: string; device: EnrolledDevice }>('/api/merchant/device');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        storeDeviceToken(null);
+        return null;
+      }
+      throw err;
+    }
+  },
+
+  /**
+   * Enroll this tablet. Needs the owner's session, which is why the enrollment screen sits behind
+   * owner sign-in rather than being something a counter writer can reach.
+   *
+   * The token comes back once and is written straight to storage. No cap is sent: the ceiling is
+   * the merchant's, enforced in MerchantRegistry and backstopped by the wallet policy, which is
+   * what lets the screen say "enforced by policy, not by this app" honestly.
+   */
+  async enrollDevice(input: { label: string; idleLockSeconds?: number }): Promise<EnrolledDevice> {
+    const res = await request<{ deviceToken: string; device: EnrolledDevice; merchant: string }>(
+      '/api/merchant/devices',
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+    storeDeviceToken(res.deviceToken);
+    return res.device;
+  },
+
+  /** Every tablet this shop has, for Settings. Owner-only. */
+  async devices(): Promise<EnrolledDevice[]> {
+    const res = await request<{ devices: EnrolledDevice[] }>('/api/merchant/devices');
+    return res.devices;
+  },
+
+  /** Remove a tablet — from any device, which is what makes a lost one survivable. */
+  async revokeDevice(id: string): Promise<void> {
+    await request(`/api/merchant/devices/${id}`, { method: 'DELETE' });
+  },
+
+  /** Rename, so "Counter tablet" can become "Front desk" without re-enrolling. */
+  async renameDevice(id: string, label: string): Promise<void> {
+    await request(`/api/merchant/devices/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ label }),
+    });
   },
 
   /** Called on load: the server decides what this device is, not localStorage. */

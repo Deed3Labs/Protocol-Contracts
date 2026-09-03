@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { canAuthoriseRefund, seesMoney, type Staff } from '@clear/domain';
 import { api, storeToken } from '@/data/apiClient';
-import { AuthContext, type AuthValue, type Session } from '@/auth/authContext';
+import { AuthContext, type AuthValue, type DeviceState, type Session } from '@/auth/authContext';
 
 /**
  * The provider, alone in its file.
@@ -17,54 +17,57 @@ import { AuthContext, type AuthValue, type Session } from '@/auth/authContext';
  */
 
 /**
- * Which shop this tablet belongs to.
+ * Which shop this tablet belongs to — now answered by enrollment.
  *
- * A PIN only means anything against one merchant — sign-in is scoped, so two shops can both have a
- * 4821 and neither is wrong. Provisioning a device with its merchant address is part of the same
- * unresolved question as the signing key (see `data/chargeSigner.ts`); until that is settled the
- * address comes from the environment, with a localStorage override for a device set up by hand.
+ * A PIN only means anything against one merchant: sign-in is scoped, so two shops can both have a
+ * 4821 and neither is wrong. This used to come from `VITE_MERCHANT_ADDRESS`, which was a build-time
+ * value and therefore only ever correct for a single-shop build — every merchant would have needed
+ * their own deployment of the same app.
+ *
+ * The tablet now learns it from the device token it was enrolled with. The server reads the shop
+ * off that row, so it is not something the client asserts and not something a request body can
+ * change. The cache below exists only for the charge signer, which needs the address synchronously
+ * and outside React; it is filled from the server's answer on load, never from user input.
  */
-const MERCHANT_KEY = 'clear.merchant.address';
+let cachedMerchant = '';
 
 export function merchantAddress(): string {
-  try {
-    const stored = window.localStorage.getItem(MERCHANT_KEY);
-    if (stored) return stored;
-  } catch {
-    // Private windows throw rather than returning null.
-  }
-  return (import.meta.env.VITE_MERCHANT_ADDRESS as string | undefined) ?? '';
-}
-
-export function setMerchantAddress(address: string): void {
-  try {
-    window.localStorage.setItem(MERCHANT_KEY, address.trim().toLowerCase());
-  } catch {
-    // A tablet that cannot persist still works for the length of a shift.
-  }
+  return cachedMerchant || ((import.meta.env.VITE_MERCHANT_ADDRESS as string | undefined) ?? '');
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const [device, setDevice] = useState<DeviceState | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Resolve whatever token this device holds, once, on load.
+  // Two questions on load, in order: what is this tablet, and who is on shift. The device answer
+  // comes first because it decides which screen the app can even show — an unenrolled tablet has
+  // no roster to sign in against.
   useEffect(() => {
     let cancelled = false;
-    api
-      .currentSession()
-      .then((res) => {
-        if (cancelled || !res) return;
-        setSession({ staff: { ...res.staff, hasPin: true, active: true } as Staff, method: 'pin' });
-      })
-      .catch(() => {
+    (async () => {
+      try {
+        const d = await api.currentDevice();
+        if (cancelled) return;
+        if (d) {
+          cachedMerchant = d.merchant;
+          setDevice({ ...d.device, merchant: d.merchant });
+          const res = await api.currentSession();
+          if (!cancelled && res) {
+            setSession({
+              staff: { ...res.staff, hasPin: true, active: true } as Staff,
+              method: 'pin',
+            });
+          }
+        }
+      } catch {
         // A server that cannot be reached is a tablet that cannot take a charge. The sign-in
         // screen says so rather than this failing silently into a signed-out state that looks
         // like a forgotten PIN.
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -78,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithPin = useCallback(
     async (pin: string, staffId: string) =>
-      adopt(await api.startShift({ merchant: merchantAddress(), staffId, pin })),
+      adopt(await api.startShift({ staffId, pin })),
     [adopt],
   );
 
@@ -101,11 +104,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     await api.signOut().catch(() => storeToken(null));
     setSession(null);
+    // Deliberately does NOT clear the device token. Ending a shift must not un-enroll the tablet,
+    // or every closing writer would need the owner back in the morning.
   }, []);
+
+  /**
+   * Enroll this tablet, from the owner's session.
+   *
+   * The device token is written by the client; what comes back here is the shop it is now bound
+   * to. Setting the cached merchant from the server's answer rather than from anything typed is
+   * the point — the tablet is told which shop it is, it does not decide.
+   */
+  const enrollDevice = useCallback(
+    async (input: { label: string; idleLockSeconds?: number }) => {
+      const d = await api.enrollDevice(input);
+      const current = await api.currentDevice();
+      if (!current) throw new Error('That tablet could not be set up.');
+      cachedMerchant = current.merchant;
+      setDevice({ ...d, merchant: current.merchant });
+    },
+    [],
+  );
 
   const value = useMemo<AuthValue>(
     () => ({
       session,
+      device,
       loading,
       role: session?.staff.role ?? null,
       canSeeMoney: session ? seesMoney(session.staff.role) : false,
@@ -113,8 +137,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithPin,
       authoriseWithOwnerCode,
       signOut,
+      enrollDevice,
     }),
-    [session, loading, signInWithPin, authoriseWithOwnerCode, signOut],
+    [session, device, loading, signInWithPin, authoriseWithOwnerCode, signOut, enrollDevice],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

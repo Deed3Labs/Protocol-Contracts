@@ -283,6 +283,27 @@ export const staffStore = {
     return rows[0] ? toRow(rows[0]) : null;
   },
 
+  /**
+   * Every shop this Privy user owns.
+   *
+   * A tablet that has not been enrolled yet does not know which shop it belongs to — that is the
+   * whole point of enrollment, and the reason the merchant address used to have to be baked into
+   * the build. So owner sign-in cannot require the merchant up front: the owner proves who they
+   * are with Privy, and this says what that entitles them to. Almost always one row.
+   */
+  async shopsForPrivyUser(privyUserId: string): Promise<StaffRow[]> {
+    const pool = getMerchantPool();
+    if (!pool || !privyUserId) return [];
+    await ensureMerchantSchema();
+    const { rows } = await pool.query<DbStaff>(
+      `SELECT * FROM ${MERCHANT_SCHEMA}.staff
+        WHERE privy_user_id = $1 AND role = 'owner' AND active = true
+        ORDER BY created_at ASC`,
+      [privyUserId],
+    );
+    return rows.map(toRow);
+  },
+
   async setActive(id: string, active: boolean): Promise<void> {
     const pool = getMerchantPool();
     if (!pool) return;

@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from 'express';
-import { requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
+import { requireDevice, requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
 import { chargeStore } from '../services/chargeStore.js';
 import { ownerCodeLimitFor, refundStore } from '../services/merchant/refundStore.js';
+import { DEFAULT_IDLE_LOCK_SECONDS, deviceStore } from '../services/merchant/deviceStore.js';
 import { sessionStore } from '../services/merchant/sessionStore.js';
 import { attemptLimiter, staffStore } from '../services/merchant/staffStore.js';
 import { merchantProfileStore } from '../services/merchant/profileStore.js';
@@ -37,15 +38,12 @@ function merchantOf(req: Request): string {
  * whose address is already on chain, and it is the price of not asking a writer to remember which
  * of four codes is theirs — a borrowed PIN makes the name on every charge row a lie.
  *
- * Moves behind device authentication once enrolment ships.
+ * Behind device authentication: the tablet says which shop it is, so this no longer takes a
+ * merchant address from the request body — which anyone could have supplied — and an unenrolled
+ * tablet gets no roster at all.
  */
-merchantRouter.post('/roster', async (req: Request, res: Response) => {
-  const merchant = merchantOf(req);
-  if (!merchant) {
-    res.status(400).json({ error: 'Invalid request', message: 'merchant is required' });
-    return;
-  }
-  res.json({ staff: await staffStore.roster(merchant) });
+merchantRouter.post('/roster', requireDevice, async (req: Request, res: Response) => {
+  res.json({ staff: await staffStore.roster(req.device!.merchant) });
 });
 
 /**
@@ -58,14 +56,9 @@ merchantRouter.post('/roster', async (req: Request, res: Response) => {
  *
  * Anything that moves money needs the owner's Privy sign-in, which does not happen here.
  */
-merchantRouter.post('/session', async (req: Request, res: Response) => {
-  const merchant = merchantOf(req);
+merchantRouter.post('/session', requireDevice, async (req: Request, res: Response) => {
+  const merchant = req.device!.merchant;
   const { pin, staffId } = req.body ?? {};
-
-  if (!merchant) {
-    res.status(400).json({ error: 'Invalid request', message: 'merchant is required' });
-    return;
-  }
 
   const gate = attemptLimiter(merchant);
   if (!gate.allowed) {
@@ -118,11 +111,14 @@ merchantRouter.post('/session', async (req: Request, res: Response) => {
  * split exists to prevent.
  */
 merchantRouter.post('/session/owner', async (req: Request, res: Response) => {
+  // Deliberately NOT behind `requireDevice`: this is the route an owner uses on a tablet that has
+  // not been enrolled yet, which is the only way a tablet ever becomes enrolled. Requiring a
+  // device here would make enrollment impossible to reach.
   const merchant = merchantOf(req);
   const token = String(req.body?.privyToken ?? '');
 
-  if (!merchant || !token) {
-    res.status(400).json({ error: 'Invalid request', message: 'merchant and token are required' });
+  if (!token) {
+    res.status(400).json({ error: 'Invalid request', message: 'token is required' });
     return;
   }
 
@@ -134,7 +130,26 @@ merchantRouter.post('/session/owner', async (req: Request, res: Response) => {
 
   // The token proves who they are; this proves the shop is theirs. Both are required — a valid
   // Privy user is not by itself an owner of anything.
-  const staff = await staffStore.findByPrivyUser(merchant, privyUserId);
+  //
+  // A fresh tablet cannot name the shop, so when it does not, Privy identity decides: almost every
+  // owner has exactly one. More than one is asked rather than guessed, because signing in to the
+  // wrong shop on a counter tablet is a mistake that only shows up in somebody's payouts.
+  let staff = null;
+  if (merchant) {
+    staff = await staffStore.findByPrivyUser(merchant, privyUserId);
+  } else {
+    const shops = await staffStore.shopsForPrivyUser(privyUserId);
+    if (shops.length > 1) {
+      res.status(409).json({
+        error: 'Choose a shop',
+        message: 'That account owns more than one shop.',
+        shops: shops.map((sh) => ({ merchant: sh.merchant, name: sh.name })),
+      });
+      return;
+    }
+    staff = shops[0] ?? null;
+  }
+
   if (!staff || staff.role !== 'owner') {
     res.status(403).json({ error: 'Forbidden', message: 'That account does not own this shop.' });
     return;
@@ -470,6 +485,104 @@ merchantRouter.post('/staff', requireMerchant, requireOwner, async (req: Request
 merchantRouter.get('/profile', requireMerchant, async (req: Request, res: Response) => {
   const { merchant, staff } = req.merchant!;
   res.json(await merchantProfileStore.forDisplay(merchant, staff.role === 'owner'));
+});
+
+
+/**
+ * Enrolling a tablet — reference section 19. Once, by the owner, on the tablet itself.
+ *
+ * Behind the owner's Privy session and nothing weaker: enrollment grants a device the standing
+ * ability to raise charges for this shop, which is authority the owner is delegating and should
+ * cost a real sign-in. A shift PIN cannot reach here.
+ *
+ * The token comes back exactly once and is never readable again. There is no route that lists
+ * tokens, because a token an owner can re-read is a token that can be copied onto a tablet nobody
+ * enrolled — which would quietly undo the one control this whole design rests on.
+ *
+ * What is deliberately NOT accepted here is a per-device spend cap. The enrollment screen shows the
+ * ceiling as "Fixed" and says "enforced by policy, not by this app" — it is the merchant's cap,
+ * held in MerchantRegistry and backstopped by the wallet policy, so it holds on every device at
+ * once and holds even if this app is bypassed. Letting a device carry its own cap here would make
+ * that sentence a lie.
+ */
+merchantRouter.post('/devices', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+  const { merchant, staff } = req.merchant!;
+  const label = String(req.body?.label ?? '').trim();
+  const idle = Number(req.body?.idleLockSeconds ?? DEFAULT_IDLE_LOCK_SECONDS);
+
+  // A tablet that never locks is a tablet anyone can pick up; one that locks every few seconds
+  // gets propped open. Bounded rather than free-form, and only between sensible ends.
+  const idleLockSeconds =
+    Number.isFinite(idle) && idle >= 60 && idle <= 3600 ? Math.round(idle) : DEFAULT_IDLE_LOCK_SECONDS;
+
+  const result = await deviceStore.enroll({
+    merchant,
+    label,
+    enrolledBy: staff.id,
+    idleLockSeconds,
+  });
+  if (!result) {
+    res.status(503).json({ error: 'Unavailable', message: 'devices are not configured' });
+    return;
+  }
+
+  res.json({
+    deviceToken: result.token,
+    device: result.device,
+    merchant,
+  });
+});
+
+/** Every tablet this shop has. Owner-only: it is the list a lost tablet is removed from. */
+merchantRouter.get('/devices', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+  const devices = await deviceStore.list(req.merchant!.merchant);
+  const names = await staffStore.roster(req.merchant!.merchant);
+  const byId = new Map(names.map((n) => [n.id, n.name]));
+  res.json({
+    devices: devices.map((d) => ({ ...d, enrolledByName: byId.get(d.enrolledBy) ?? null })),
+  });
+});
+
+/**
+ * Remove a tablet — from any device, which is the point.
+ *
+ * An owner whose counter tablet is in the back of a taxi opens this on their phone. It takes
+ * effect on that tablet's next request, because `requireDevice` reads the row rather than trusting
+ * anything the tablet holds.
+ */
+merchantRouter.delete('/devices/:id', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+  const ok = await deviceStore.revoke(req.params.id, req.merchant!.merchant);
+  if (!ok) {
+    res.status(404).json({ error: 'Not found', message: 'that device is not set up here' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+/** Renaming, so "Counter tablet" can become "Front desk" without re-enrolling. */
+merchantRouter.patch('/devices/:id', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+  const label = String(req.body?.label ?? '');
+  const ok = await deviceStore.rename(req.params.id, req.merchant!.merchant, label);
+  if (!ok) {
+    res.status(404).json({ error: 'Not found', message: 'that device is not set up here' });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+/**
+ * What this tablet is, asked on load before anyone signs in.
+ *
+ * The app needs to tell "not set up" from "signed out" to know whether to show the enrollment
+ * screen or the PIN pad, and `requireDevice` answers 409 for the former. This also carries the
+ * idle-lock setting, so the tablet does not need to be told it separately.
+ */
+merchantRouter.get('/device', requireDevice, (req: Request, res: Response) => {
+  const d = req.device!;
+  res.json({
+    merchant: d.merchant,
+    device: { id: d.id, label: d.label, idleLockSeconds: d.idleLockSeconds },
+  });
 });
 
 /** `0x1234…abcd` — a merchant is never shown a member's full address. */

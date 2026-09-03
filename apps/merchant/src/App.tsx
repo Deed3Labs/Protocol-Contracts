@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from '@/shell/AppShell';
 import { SignIn } from '@/auth/SignIn';
+import { OwnerSignIn } from '@/auth/OwnerSignIn';
+import { EnrollDevice } from '@/auth/EnrollDevice';
 import { useAuth } from '@/auth/authContext';
 import HomePage from '@/pages/HomePage';
 import NewChargePage from '@/pages/NewChargePage';
@@ -26,7 +28,54 @@ function OwnerOnly({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const { session } = useAuth();
+  const { session, device, loading } = useAuth();
+
+  // Dev-only. Enrollment sits behind a backend and an owner's Privy sign-in, which makes it the one
+  // screen that cannot be looked at while building it. `import.meta.env.DEV` is statically false in
+  // a production build, so this and the import fall out at bundle time.
+  if (import.meta.env.DEV && window.location.search.includes('screen=enroll')) {
+    return <EnrollDevice onDone={() => undefined} />;
+  }
+
+  // Nothing at all until the tablet has asked what it is. Rendering the PIN pad first and then
+  // replacing it with the enrollment screen would flash a sign-in at an owner who is setting the
+  // device up, which reads as a bug on the one screen that has to look deliberate.
+  if (loading) {
+    return (
+      <div className="grid min-h-dvh place-items-center bg-[var(--clear-surface-2)]">
+        <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">Starting up…</p>
+      </div>
+    );
+  }
+
+  /**
+   * Not set up, or removed — reference section 19.
+   *
+   * Distinct from signed out, and the app has to tell them apart: a signed-out tablet shows the
+   * PIN pad, an unenrolled one cannot, because the roster itself is behind device authentication.
+   * A tablet an owner revoked from across town lands here on its next request, which is what
+   * "remove it any time, from any device" looks like from this side.
+   *
+   * Enrollment is the owner's act, so it goes through the owner's sign-in first. There is no way to
+   * reach it with a shift PIN, which is the point — a device is authority being delegated.
+   */
+  if (!device) {
+    if (!session || session.staff.role !== 'owner') {
+      return (
+        <Routes>
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          {/* No `onBack`: there is no counter behind this yet. */}
+          <Route path="*" element={<OwnerSignIn onDone={() => undefined} />} />
+        </Routes>
+      );
+    }
+    return (
+      <Routes>
+        <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route path="*" element={<EnrollDevice onDone={() => undefined} />} />
+      </Routes>
+    );
+  }
 
   // Onboarding is reachable before anyone has a session — a shop setting up has no staff yet.
   if (!session) {

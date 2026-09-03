@@ -37,8 +37,24 @@ export interface Session {
   method: 'pin';
 }
 
+/** What this tablet is. Null when it has not been enrolled, or has been removed. */
+export interface DeviceState {
+  id: string;
+  label: string;
+  idleLockSeconds: number;
+  merchant: string;
+}
+
 export interface AuthValue {
   session: Session | null;
+  /**
+   * The enrolled tablet — reference section 19.
+   *
+   * Null means not set up, which the app must tell apart from signed out: one shows the enrollment
+   * screen, the other the PIN pad. It also goes null when an owner removes this tablet from
+   * anywhere, on its very next request, which is what makes a lost tablet survivable.
+   */
+  device: DeviceState | null;
   /** True until the stored token has been exchanged for a session (or found to be dead). */
   loading: boolean;
   role: StaffRole | null;
@@ -55,6 +71,8 @@ export interface AuthValue {
    */
   authoriseWithOwnerCode: (code: string) => Promise<Staff>;
   signOut: () => void | Promise<void>;
+  /** Enroll this tablet. Requires an owner session — a counter writer cannot reach it. */
+  enrollDevice: (input: { label: string; idleLockSeconds?: number }) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthValue | null>(null);

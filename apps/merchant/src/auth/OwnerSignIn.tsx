@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { PrivyProvider, useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
-import { merchantAddress } from '@/auth/AuthProvider';
 import { Button, PrimaryButton } from '@/shell/ui';
 
 /**
@@ -33,7 +32,7 @@ const PRIVY_APP_ID = (import.meta.env.VITE_PRIVY_APP_ID as string | undefined) ?
  * Scoping it here also matches what is true: counter staff have no Privy account, and a shift is
  * Clear's own record. Only an owner ever loads any of this.
  */
-export function OwnerSignIn(props: { onDone: () => void; onBack: () => void }) {
+export function OwnerSignIn(props: { onDone: () => void; onBack?: () => void }) {
   if (!PRIVY_APP_ID) {
     return (
       <div className="grid min-h-dvh place-items-center bg-[var(--clear-surface-2)] px-4">
@@ -43,9 +42,11 @@ export function OwnerSignIn(props: { onDone: () => void; onBack: () => void }) {
             This tablet has no Privy app configured, so there is no way to verify an owner. The
             counter still works — staff can start a shift and raise charges.
           </p>
-          <Button onClick={props.onBack} className="w-full">
-            Back to the counter
-          </Button>
+          {props.onBack && (
+            <Button onClick={props.onBack} className="w-full">
+              Back to the counter
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -67,7 +68,7 @@ export function OwnerSignIn(props: { onDone: () => void; onBack: () => void }) {
   );
 }
 
-function OwnerSignInForm({ onDone, onBack }: { onDone: () => void; onBack: () => void }) {
+function OwnerSignInForm({ onDone, onBack }: { onDone: () => void; onBack?: () => void }) {
   const { ready, getAccessToken, login } = usePrivy();
   const { sendCode, loginWithCode } = useLoginWithEmail();
 
@@ -81,7 +82,7 @@ function OwnerSignInForm({ onDone, onBack }: { onDone: () => void; onBack: () =>
   async function adoptSession() {
     const token = await getAccessToken();
     if (!token) throw new Error('That sign-in could not be verified.');
-    await api.signInAsOwner(merchantAddress(), token);
+    await api.signInAsOwner(token);
     onDone();
   }
 
@@ -202,13 +203,17 @@ function OwnerSignInForm({ onDone, onBack }: { onDone: () => void; onBack: () =>
           </p>
         )}
 
-        <button
-          type="button"
-          onClick={onBack}
-          className="mt-4 block w-full text-center text-[12.5px] text-[var(--clear-text-accent)]"
-        >
-          Back to the counter
-        </button>
+        {/* Only when there is a counter to go back to. A tablet that is not enrolled yet has no
+            shift screen behind this, and offering one would dead-end. */}
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="mt-4 block w-full text-center text-[12.5px] text-[var(--clear-text-accent)]"
+          >
+            Back to the counter
+          </button>
+        )}
       </div>
     </div>
   );

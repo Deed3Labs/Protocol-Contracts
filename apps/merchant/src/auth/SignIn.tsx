@@ -3,7 +3,6 @@ import { Delete } from 'lucide-react';
 import type { StaffRole } from '@clear/domain';
 import { api } from '@/data/apiClient';
 import { useAuth } from '@/auth/authContext';
-import { merchantAddress } from '@/auth/AuthProvider';
 import { Card } from '@/shell/ui';
 import { OwnerSignIn } from '@/auth/OwnerSignIn';
 
@@ -53,7 +52,7 @@ export function SignIn() {
 
   useEffect(() => {
     api
-      .roster(merchantAddress())
+      .roster()
       .then(setRoster)
       .catch(() => setRoster([]));
   }, []);

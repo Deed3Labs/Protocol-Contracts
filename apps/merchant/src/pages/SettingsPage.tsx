@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import { Columns } from '@/shell/AppShell';
 import { dollars } from '@clear/domain';
 import { Button, Cap, Card, Chip, Row } from '@/shell/ui';
 import { useAuth } from '@/auth/authContext';
+import { api, type EnrolledDevice } from '@/data/apiClient';
 import {
   STUB_LISTING,
   STUB_MERCHANT,
@@ -29,7 +31,7 @@ import {
  * `discountRate` corrects all of it at once.
  */
 export default function SettingsPage() {
-  const { session, canSeeMoney, signOut } = useAuth();
+  const { session, device, canSeeMoney, signOut } = useAuth();
   const ratePercent = Math.round(STUB_MERCHANT.discountRate * 1000) / 10;
 
   return (
@@ -79,7 +81,7 @@ export default function SettingsPage() {
           )}
 
           <Cap>This device</Cap>
-          <Card rows>
+          <Card rows className={canSeeMoney ? 'mb-4' : ''}>
             <Row
               title={session ? `Signed in as ${session.staff.name}` : 'Not signed in'}
               meta={session?.staff.role === 'owner' ? 'Owner · full access' : 'Counter · can charge'}
@@ -89,7 +91,19 @@ export default function SettingsPage() {
                 </Button>
               }
             />
+            {device && (
+              <Row
+                title={device.label}
+                meta={`Locks after ${Math.round(device.idleLockSeconds / 60)} min idle`}
+                right={<span className="text-[11.5px] text-[var(--clear-text-muted)]">Enrolled</span>}
+              />
+            )}
           </Card>
+
+          {/* The other half of the enrollment screen's promise. It is owner-only because removing a
+              tablet is removing authority, and it lists every tablet rather than only this one —
+              the tablet you need to remove is by definition the one not in your hand. */}
+          {canSeeMoney && <EnrolledDevices currentId={device?.id ?? null} />}
         </>
       }
       context={
@@ -166,5 +180,77 @@ export default function SettingsPage() {
         </>
       }
     />
+  );
+}
+
+/**
+ * Every tablet this shop has — reference section 19.
+ *
+ * "Remove it any time, from any device" is the sentence that makes a lost tablet survivable, and
+ * it is only true if this list exists somewhere an owner can reach on their phone. Revoking writes
+ * one row server-side and takes effect on that tablet's very next request; it does not wait for a
+ * session to expire.
+ *
+ * Removed tablets stay on the list, greyed. An owner asking "what was that one we lost in March"
+ * deserves an answer, and a list that silently forgets is a list that cannot be audited.
+ */
+function EnrolledDevices({ currentId }: { currentId: string | null }) {
+  const [devices, setDevices] = useState<EnrolledDevice[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.devices().then(setDevices).catch(() => setDevices([]));
+  }, []);
+
+  async function remove(id: string) {
+    setBusy(id);
+    try {
+      await api.revokeDevice(id);
+      setDevices(await api.devices());
+    } catch {
+      // Left on screen unchanged rather than half-updated: an owner who thinks they revoked a
+      // tablet that is still live is worse off than one who sees it did not work and retries.
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  if (!devices || devices.length === 0) return null;
+
+  return (
+    <>
+      <Cap>Tablets</Cap>
+      <Card rows>
+        {devices.map((d) => (
+          <Row
+            key={d.id}
+            title={
+              <span className={d.revokedAt ? 'text-[var(--clear-text-muted)] line-through' : ''}>
+                {d.label}
+              </span>
+            }
+            meta={
+              d.revokedAt
+                ? 'Removed'
+                : d.id === currentId
+                  ? 'This tablet'
+                  : d.enrolledByName
+                    ? `Set up by ${d.enrolledByName}`
+                    : 'Enrolled'
+            }
+            right={
+              d.revokedAt ? null : (
+                <Button
+                  onClick={() => remove(d.id)}
+                  className="!px-[11px] !py-1 !text-[12px]"
+                >
+                  {busy === d.id ? 'Removing…' : 'Remove'}
+                </Button>
+              )
+            }
+          />
+        ))}
+      </Card>
+    </>
   );
 }

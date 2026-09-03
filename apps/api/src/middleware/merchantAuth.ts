@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { merchantDbConfigured } from '../config/merchantDb.js';
+import { type DeviceRow, deviceStore } from '../services/merchant/deviceStore.js';
 import { type MerchantSession, sessionStore } from '../services/merchant/sessionStore.js';
 
 /**
@@ -21,8 +22,51 @@ declare global {
   namespace Express {
     interface Request {
       merchant?: MerchantSession;
+      device?: DeviceRow;
     }
   }
+}
+
+/**
+ * The enrolled tablet, from its own header.
+ *
+ * A separate header from `Authorization` because these are separate facts with separate lifetimes:
+ * the device token says which shop this tablet is and lasts until an owner removes it; the bearer
+ * token says who is on shift and expires overnight. Folding them into one header would mean a
+ * tablet forgot which shop it was every time a shift ended.
+ */
+function deviceToken(req: Request): string {
+  return String(req.headers['x-clear-device'] ?? '').trim();
+}
+
+/**
+ * This tablet is enrolled — reference section 19.
+ *
+ * The device is the real boundary. A PIN is attribution and a shift session says who is at the
+ * counter, but neither is a thing an owner can take away from across town; this is. Revocation
+ * writes one row and takes effect on the next request, which is what makes the enrollment screen's
+ * promise — remove it any time, from any device — true rather than aspirational.
+ *
+ * It also carries the merchant, so routes reached before anyone signs in no longer have to take a
+ * shop address from the request body and hope.
+ */
+export async function requireDevice(req: Request, res: Response, next: NextFunction) {
+  if (!merchantDbConfigured()) {
+    res.status(503).json({ error: 'Unavailable', message: 'merchant database is not configured' });
+    return;
+  }
+
+  const device = await deviceStore.resolve(deviceToken(req));
+  if (!device) {
+    // 409 rather than 401: nobody's credentials are wrong, this tablet is simply not set up — and
+    // the app needs to tell those apart to know whether to show the PIN pad or the enrollment
+    // screen. A revoked device lands here too, which is the correct outcome for a lost tablet.
+    res.status(409).json({ error: 'Not enrolled', message: 'this device is not set up' });
+    return;
+  }
+
+  req.device = device;
+  next();
 }
 
 function bearer(req: Request): string {
