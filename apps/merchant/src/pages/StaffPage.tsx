@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { dollars, fromCents } from '@clear/domain';
 import { Columns } from '@/shell/AppShell';
-import { Button, Cap, Card, Inset, Row } from '@/shell/ui';
+import { Button, Cap, Card, Inset, PrimaryButton, Row } from '@/shell/ui';
 import { api, type StaffMember } from '@/data/apiClient';
 
 /**
@@ -27,6 +27,11 @@ import { api, type StaffMember } from '@/data/apiClient';
 export default function StaffPage() {
   const [staff, setStaff] = useState<StaffMember[] | null>(null);
   const [limitCents, setLimitCents] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
   useEffect(() => {
     api.staff().then(setStaff).catch(() => setStaff([]));
@@ -80,7 +85,69 @@ export default function StaffPage() {
                 ))
             )}
           </Card>
-          <Button className="mb-4 w-full">Add someone</Button>
+          {/* The button had no handler at all. Adding staff is what makes the name on a charge
+              row mean anything, so a shop with one writer stays a shop with one writer. */}
+          {!adding ? (
+            <Button onClick={() => setAdding(true)} className="mb-4 w-full">
+              Add someone
+            </Button>
+          ) : (
+            <Card className="mb-4 !py-3.5">
+              <p className="m-0 mb-1 text-[11px] text-[var(--clear-text-muted)]">Their name</p>
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Jen R."
+                className="mb-2.5 w-full rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-1)] px-3 py-2 text-[13px] outline-none"
+              />
+              <p className="m-0 mb-1 text-[11px] text-[var(--clear-text-muted)]">
+                A four-digit PIN
+              </p>
+              <input
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="4 digits"
+                className="mb-1 w-full rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-1)] px-3 py-2 text-[13px] outline-none"
+              />
+              <p className="m-0 mb-2.5 text-[11px] leading-[1.5] text-[var(--clear-text-muted)]">
+                It starts their shift and attributes their charges. It is not what protects the
+                money.
+              </p>
+              <div className="flex gap-2">
+                <PrimaryButton
+                  disabled={saving || !newName.trim() || newPin.length !== 4}
+                  onClick={async () => {
+                    setSaving(true);
+                    setAddError(null);
+                    try {
+                      await api.addStaff({ name: newName.trim(), role: 'counter', secret: newPin });
+                      setStaff(await api.staff());
+                      setNewName('');
+                      setNewPin('');
+                      setAdding(false);
+                    } catch (e) {
+                      setAddError(e instanceof Error ? e.message : 'That could not be saved.');
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                  className="!py-2 !text-[13px]"
+                >
+                  {saving ? 'Adding…' : 'Add to the roster'}
+                </PrimaryButton>
+                <Button onClick={() => setAdding(false)} className="!py-2 !text-[13px]">
+                  Cancel
+                </Button>
+              </div>
+              {addError && (
+                <p role="alert" className="m-0 mt-2 text-[12.5px]">
+                  {addError}
+                </p>
+              )}
+            </Card>
+          )}
 
           {/* Stated as the rule it is, with the consequence attached. An owner reading this is
               deciding whether their weekend cover should be able to clear a refund alone. */}

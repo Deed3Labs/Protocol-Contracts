@@ -19,7 +19,7 @@ import { useApi } from '@/data/useApi';
  * they will ask for a spreadsheet every month.
  */
 
-type View = 'summary' | 'withdraw' | 'withdrawn';
+type View = 'summary' | 'withdraw';
 
 export default function PayoutsPage() {
   const navigate = useNavigate();
@@ -61,31 +61,20 @@ export default function PayoutsPage() {
           </p>
         </Inset>
 
-        <PrimaryButton className="mb-2 !py-[11px] !text-[15px]" onClick={() => setView('withdrawn')}>
+        {/*
+          Early withdrawal is designed but not built: there is no endpoint behind it, and no money
+          moves. This button used to open a screen reading "On its way — to your bank", which is a
+          lie about somebody's money and the worst kind of placeholder to ship. Until PayoutPool
+          and the off-ramp exist, the screen explains the trade-off and refuses.
+        */}
+        <PrimaryButton disabled className="mb-2 !py-[11px] !text-[15px]">
           Withdraw {availableToday === null ? '—' : dollars(availableToday)}
         </PrimaryButton>
+        <p className="m-0 mb-2.5 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
+          Early withdrawal is not switched on yet. Your payout lands on {payoutDay} as usual.
+        </p>
         <Button onClick={() => setView('summary')} className="w-full">
           {nextPayoutOn ? `Wait for the ${new Date(nextPayoutOn).getUTCDate()}th` : 'Wait for the next payout'}
-        </Button>
-      </div>
-    );
-  }
-
-  if (view === 'withdrawn') {
-    return (
-      <div className="mx-auto w-full max-w-[340px]">
-        <Cap>On its way</Cap>
-        <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">
-          {availableToday === null ? '—' : dollars(availableToday)}
-        </p>
-        <p className="m-0 mb-3.5 text-[12.5px] text-[var(--clear-text-muted)]">To {bank}</p>
-        <Inset className="mb-3.5 !px-3.5 !py-3">
-          <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-            The rest lands on {payoutDay} as usual.
-          </p>
-        </Inset>
-        <Button onClick={() => setView('summary')} className="w-full">
-          Done
         </Button>
       </div>
     );

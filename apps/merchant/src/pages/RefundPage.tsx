@@ -91,6 +91,9 @@ export default function RefundPage() {
   const [requestedAt, setRequestedAt] = useState('');
   const [approvedAt, setApprovedAt] = useState('');
   const [approvedBy, setApprovedBy] = useState('');
+  /** The refund record, created when the writer sends it. Everything after acts on this id. */
+  const [refundId, setRefundId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   // Hooks before the guard: the charge may not have arrived yet on a cold open of this URL.
   const { data: charges, loading } = useApi(() => api.charges({ limit: 200 }), []);
@@ -125,6 +128,33 @@ export default function RefundPage() {
   const owner = (staff ?? []).find((st) => st.role === 'owner' && st.active) ?? null;
   const ownerName = owner?.name ?? 'an owner';
   const writer = session?.staff.name ?? '—';
+
+  /**
+   * The owner's decision, against the refund record.
+   *
+   * Two ways in, and the server tells them apart: an owner who typed their code at the counter
+   * authorises through `authoriseRefund`, an owner already signed in on their own phone decides
+   * through `decideRefund`. Both were buttons that only changed the screen — the customer was
+   * told the refund was approved and nothing had happened.
+   */
+  async function decide(decision: 'approve' | 'decline') {
+    if (!refundId) {
+      setError('That refund was not recorded. Start it again.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      if (code.length === 4) await api.authoriseRefund(refundId, code, decision);
+      else await api.decideRefund(refundId, decision);
+      setApprovedAt(timeNow());
+      setStep(decision === 'approve' ? 'done' : 'declined');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That could not be recorded just now.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submitCode() {
     setError(null);
@@ -173,13 +203,33 @@ export default function RefundPage() {
           </Inset>
 
           <PrimaryButton
+            disabled={busy}
             className="mb-2 !py-[11px] !text-[15px]"
-            onClick={() => {
-              setRequestedAt(timeNow());
-              setStep('waiting');
+            onClick={async () => {
+              // This only moved the screen on. Nothing was recorded, so an owner had nothing to
+              // approve and the customer had been told a refund was on its way.
+              setBusy(true);
+              setError(null);
+              try {
+                const created = await api.requestRefund({
+                  chargeCode: charge.code,
+                  splitInto: plan.splitInto,
+                  cyclesCleared: plan.cyclesCleared,
+                  ratePerCycle: STUB_MERCHANT.ratePerCycle,
+                  discountRate: profile?.discountRate ?? 0,
+                  nextPayoutCents: position?.owedCents ?? 0,
+                });
+                setRefundId(created.id);
+                setRequestedAt(timeNow());
+                setStep('waiting');
+              } catch (e) {
+                setError(e instanceof Error ? e.message : 'That could not be sent just now.');
+              } finally {
+                setBusy(false);
+              }
             }}
           >
-            Send to an owner
+            {busy ? 'Sending…' : 'Send to an owner'}
           </PrimaryButton>
           <Button onClick={() => navigate(`/charges/${charge.code}`)} className="w-full">
             Cancel
@@ -268,15 +318,13 @@ export default function RefundPage() {
           </Inset>
 
           <PrimaryButton
+            disabled={busy}
             className="mb-2 !py-[11px] !text-[15px]"
-            onClick={() => {
-              setApprovedAt(timeNow());
-              setStep('done');
-            }}
+            onClick={() => void decide('approve')}
           >
-            Approve refund
+            {busy ? 'Approving…' : 'Approve refund'}
           </PrimaryButton>
-          <Button onClick={() => setStep('declined')} className="w-full">
+          <Button disabled={busy} onClick={() => void decide('decline')} className="w-full">
             Decline
           </Button>
           <p className="m-0 mt-[11px] text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
