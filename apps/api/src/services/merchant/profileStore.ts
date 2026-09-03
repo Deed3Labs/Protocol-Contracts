@@ -123,8 +123,22 @@ export const merchantProfileStore = {
         )
       : { rows: [] };
 
+    // When the next payout lands. The app showed a fixture date because this was computed but never
+    // returned — and a shop's whole relationship to Clear is "you are paid on the 14th", so the
+    // date is not decoration. Null when no payout is scheduled yet, which the screen states rather
+    // than filling in.
+    const nextRes = merchantPool
+      ? await merchantPool.query<{ scheduled_for: string }>(
+          `SELECT scheduled_for FROM ${MERCHANT_SCHEMA}.payouts
+            WHERE merchant = $1 AND status IN ('scheduled','available')
+            ORDER BY scheduled_for ASC LIMIT 1`,
+          [m],
+        )
+      : { rows: [] };
+
     return {
       owedCents: net,
+      nextPayoutOn: nextRes.rows[0]?.scheduled_for ?? null,
       clearsBalanceCents: Math.round(settle.clearsBalance * 100),
       toBankCents: Math.round(settle.toBank * 100),
       // The early-withdrawal cap is a pool question the credit side answers. Stated as null rather

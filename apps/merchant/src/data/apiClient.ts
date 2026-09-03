@@ -469,6 +469,8 @@ export interface Refund {
 
 export interface PayoutPosition {
   owedCents: number;
+  /** When the next one lands. Null when none is scheduled — the screen says so rather than guessing. */
+  nextPayoutOn: string | null;
   clearsBalanceCents: number;
   toBankCents: number;
   /** Null when the pool cap is not yet known. The app says so rather than inventing a figure. */

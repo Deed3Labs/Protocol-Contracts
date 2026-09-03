@@ -5,7 +5,9 @@ import { dollars, refundQuote } from '@clear/domain';
 import { Button, Cap, Inset, PrimaryButton } from '@/shell/ui';
 import { Chip, RoleChip } from '@/auth/RoleChip';
 import { useAuth } from '@/auth/authContext';
-import { ALL_CHARGES, STUB_MERCHANT, STUB_PAYOUTS, STUB_PLANS, STUB_STAFF } from '@/data/stubs';
+import { api } from '@/data/apiClient';
+import { useApi } from '@/data/useApi';
+import { STUB_MERCHANT } from '@/data/stubs';
 
 /**
  * The refund flow — reference section 16.
@@ -34,8 +36,6 @@ import { ALL_CHARGES, STUB_MERCHANT, STUB_PAYOUTS, STUB_PLANS, STUB_STAFF } from
  */
 
 type Step = 'review' | 'waiting' | 'authorise' | 'done' | 'declined';
-
-const anOwner = () => STUB_STAFF.find((s) => s.role === 'owner' && s.active);
 
 /**
  * A member's display name already ends in a full stop — "Marcus T." — so a sentence that ends on
@@ -92,23 +92,38 @@ export default function RefundPage() {
   const [approvedAt, setApprovedAt] = useState('');
   const [approvedBy, setApprovedBy] = useState('');
 
-  const charge = ALL_CHARGES.find((c) => c.id === id);
+  // Hooks before the guard: the charge may not have arrived yet on a cold open of this URL.
+  const { data: charges, loading } = useApi(() => api.charges({ limit: 200 }), []);
+  const { data: profile } = useApi(() => api.profile(), []);
+  const { data: position } = useApi(() => api.payouts(), []);
+  const { data: staff } = useApi(() => api.staff(), []);
+
+  const charge = (charges ?? []).find((c) => c.code === id);
+
+  if (loading && !charge) {
+    return <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">Loading…</p>;
+  }
   if (!charge) return <Navigate to="/charges" replace />;
 
-  const plan = STUB_PLANS[charge.id] ?? { splitInto: 1, cyclesCleared: 0 };
-  const nextPayout = STUB_PAYOUTS.find((p) => p.status === 'scheduled');
+  // How many cycles the member has cleared is not on the merchant's feed, so the clawback is
+  // quoted against the whole plan. That is the conservative direction — it never understates what
+  // a refund costs the shop, which is the number the person authorising is deciding on.
+  const plan = { splitInto: charge.splitInto ?? 1, cyclesCleared: 0 };
 
   const quote = refundQuote({
     amount: charge.amount,
     splitInto: plan.splitInto,
     ratePerCycle: STUB_MERCHANT.ratePerCycle,
     cyclesCleared: plan.cyclesCleared,
-    discountRate: STUB_MERCHANT.discountRate,
-    nextPayout: nextPayout?.amount ?? 0,
+    discountRate: profile?.discountRate ?? 0,
+    nextPayout: (position?.owedCents ?? 0) / 100,
   });
 
-  const who = charge.member?.displayName ?? 'the customer';
-  const owner = anOwner();
+  const who = charge.memberName ?? 'the customer';
+  // Named so the writer can say who it went to. Counter staff cannot read the roster, so this
+  // falls back to the role — "an owner" is still something they can say out loud.
+  const owner = (staff ?? []).find((st) => st.role === 'owner' && st.active) ?? null;
+  const ownerName = owner?.name ?? 'an owner';
   const writer = session?.staff.name ?? '—';
 
   async function submitCode() {
@@ -127,7 +142,7 @@ export default function RefundPage() {
       <div className="mb-4 flex items-center gap-2.5">
         <button
           type="button"
-          onClick={() => navigate(`/charges/${charge.id}`)}
+          onClick={() => navigate(`/charges/${charge.code}`)}
           aria-label="Back"
           className="text-[var(--clear-text-secondary)]"
         >
@@ -166,11 +181,11 @@ export default function RefundPage() {
           >
             Send to an owner
           </PrimaryButton>
-          <Button onClick={() => navigate(`/charges/${charge.id}`)} className="w-full">
+          <Button onClick={() => navigate(`/charges/${charge.code}`)} className="w-full">
             Cancel
           </Button>
           <p className="m-0 mt-[11px] text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
-            Nothing moves yet. {owner?.name} will get this on their phone, or they can type their
+            Nothing moves yet. {ownerName} will get this on their phone, or they can type their
             code here.
           </p>
         </>
@@ -179,13 +194,13 @@ export default function RefundPage() {
       {step === 'waiting' && (
         <>
           <StepHeader label="Step 2 · Waiting" chip={<Chip tone="accent">Needs an owner</Chip>} />
-          <p className="m-0 mb-1 text-[14px] font-medium">Waiting on {owner?.name}</p>
+          <p className="m-0 mb-1 text-[14px] font-medium">Waiting on {ownerName}</p>
           <p className="m-0 mb-4 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
             {writer} requested a {dollars(charge.amount)} refund for {who} at {requestedAt}.
           </p>
 
           <Inset className="mb-3.5 !px-[15px] !py-[13px]">
-            <Line label={`Sent to ${owner?.name}`} value="Delivered" />
+            <Line label={`Sent to ${ownerName}`} value="Delivered" />
             <p className="m-0 mt-2.5 text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
               They can approve from their phone, or type their code below if they are here.
             </p>
@@ -223,7 +238,7 @@ export default function RefundPage() {
             </p>
           )}
 
-          <Button onClick={() => navigate(`/charges/${charge.id}`)} className="w-full">
+          <Button onClick={() => navigate(`/charges/${charge.code}`)} className="w-full">
             Cancel the request
           </Button>
           <p className="m-0 mt-[11px] text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
@@ -236,7 +251,7 @@ export default function RefundPage() {
         <>
           <StepHeader
             label="Step 3 · Authorise"
-            chip={<Chip tone="accent">{approvedBy || owner?.name} · owner</Chip>}
+            chip={<Chip tone="accent">{approvedBy || ownerName} · owner</Chip>}
           />
           <p className="m-0 mb-1 text-[14px] font-medium">Approve this refund?</p>
           <p className="m-0 mb-4 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
@@ -288,7 +303,7 @@ export default function RefundPage() {
               who approved. */}
           <Inset className="!px-[15px] !py-[13px]">
             <Line label="Requested by" value={`${writer} · ${requestedAt}`} />
-            <Line label="Approved by" value={`${approvedBy || owner?.name} · ${approvedAt}`} />
+            <Line label="Approved by" value={`${approvedBy || ownerName} · ${approvedAt}`} />
             {canSeeMoney && <Line label="Next payout" value={dollars(quote.payoutAfter)} strong ruled />}
           </Inset>
 
@@ -315,7 +330,7 @@ export default function RefundPage() {
               {approvedBy || owner?.name} before you speak to them.
             </p>
           </Inset>
-          <Button onClick={() => navigate(`/charges/${charge.id}`)} className="w-full">
+          <Button onClick={() => navigate(`/charges/${charge.code}`)} className="w-full">
             Back to the charge
           </Button>
         </>

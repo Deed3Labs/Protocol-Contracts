@@ -7,7 +7,6 @@ import { api, type MerchantCharge } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 import {
   HOME_SCENARIOS,
-  STUB_PAYOUTS,
   STUB_SETUP,
   type HomeStage,
   type SetupTask,
@@ -161,12 +160,8 @@ export default function HomePage() {
   // app, so there is no "paid now" figure and nothing to add it to.
   const todayTotal = charges.reduce((sum, c) => sum + c.amount, 0);
 
-  // The schedule DATE is the one figure here with no API behind it yet — the payouts endpoint
-  // returns what is owed but not when it lands, and deriving a date from the "Net-30" string would
-  // be inventing one. The amount is real; the date is still a fixture.
-  const scheduled = STUB_PAYOUTS.find((p) => p.status === 'scheduled');
-  const nextPayout = scheduled
-    ? { scheduledFor: scheduled.scheduledFor, amount: (position?.owedCents ?? 0) / 100 }
+  const nextPayout = position?.nextPayoutOn
+    ? { scheduledFor: position.nextPayoutOn, amount: position.owedCents / 100 }
     : null;
   const hasHadPayout = forced ? forced.hasHadPayout : (position?.paid.length ?? 0) > 0;
 

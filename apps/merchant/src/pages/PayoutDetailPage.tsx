@@ -1,8 +1,9 @@
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
-import { dollars, formatCalendarDate, merchantFee, merchantPayout } from '@clear/domain';
-import { Cap, Card, Inset, Row } from '@/shell/ui';
-import { ALL_CHARGES, STUB_MERCHANT, STUB_PAID_PAYOUTS, STUB_STAFF } from '@/data/stubs';
+import { dollars, formatCalendarDate, merchantFee } from '@clear/domain';
+import { Cap, Card, Inset } from '@/shell/ui';
+import { api } from '@/data/apiClient';
+import { useApi } from '@/data/useApi';
 
 /**
  * What a payout was made of.
@@ -16,18 +17,28 @@ import { ALL_CHARGES, STUB_MERCHANT, STUB_PAID_PAYOUTS, STUB_STAFF } from '@/dat
  * question in the same shape.
  */
 
-const staffName = (id: string) => STUB_STAFF.find((s) => s.id === id)?.name ?? '—';
-
 export default function PayoutDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const payout = STUB_PAID_PAYOUTS.find((p) => p.id === id);
+  const { data: position, loading } = useApi(() => api.payouts(), []);
+  const { data: profile } = useApi(() => api.profile(), []);
+
+  const payout = (position?.paid ?? []).find((p) => p.id === id);
+
+  if (loading && !payout) {
+    return <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">Loading…</p>;
+  }
   if (!payout) return <Navigate to="/payouts" replace />;
 
-  // Stubbed: the settled charges behind this payout. Wired when the data layer is.
-  const charges = ALL_CHARGES.filter((c) => c.state === 'approved');
-  const gross = charges.reduce((sum, c) => sum + c.amount, 0);
+  const rate = profile?.discountRate ?? null;
+  const bank = profile?.payoutAccount ?? 'your bank account';
+  const net = payout.amountCents / 100;
+  // The payout is recorded net, so the gross it came from is derived rather than summed. There is
+  // no charge-to-payout column yet — nothing batches charges into a payout run — so the individual
+  // jobs behind this figure genuinely cannot be listed, and the screen says that rather than
+  // showing a plausible sample that would not add up to the total above it.
+  const gross = rate === null || rate >= 1 ? null : net / (1 - rate);
 
   return (
     <>
@@ -43,47 +54,37 @@ export default function PayoutDetailPage() {
         <span className="text-[16px] font-medium">{formatCalendarDate(payout.on)}</span>
       </div>
 
-      <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">{dollars(payout.amount)}</p>
+      <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">{dollars(net)}</p>
       <p className="m-0 mb-4 text-[12.5px] text-[var(--clear-text-muted)]">
-        {payout.charges} charges · Chase ····{STUB_MERCHANT.payoutAccountLast4}
+        {payout.charges} charges · {bank}
       </p>
 
       <Inset className="mb-4 !px-4 !py-3.5">
         <div className="flex justify-between text-[13px]">
           <span className="text-[var(--clear-text-secondary)]">Charged</span>
-          <span className="tabular-nums">{dollars(gross)}</span>
+          <span className="tabular-nums">{gross === null ? '—' : dollars(gross)}</span>
         </div>
         <div className="mt-[7px] flex justify-between text-[13px]">
           <span className="text-[var(--clear-text-secondary)]">
-            Fee · {Math.round(STUB_MERCHANT.discountRate * 1000) / 10}%
+            Fee{rate === null ? '' : ` · ${Math.round(rate * 1000) / 10}%`}
           </span>
           <span className="tabular-nums">
-            {dollars(merchantFee(gross, STUB_MERCHANT.discountRate))}
+            {gross === null || rate === null ? '—' : dollars(merchantFee(gross, rate))}
           </span>
         </div>
         <div className="mt-[7px] flex justify-between border-t-[0.5px] border-[var(--clear-border)] pt-[9px] text-[13px]">
           <span className="text-[var(--clear-text-secondary)]">You received</span>
-          <span className="font-medium tabular-nums">
-            {dollars(merchantPayout(gross, STUB_MERCHANT.discountRate))}
-          </span>
+          <span className="font-medium tabular-nums">{dollars(net)}</span>
         </div>
       </Inset>
 
       <Cap>The charges inside it</Cap>
-      <Card rows>
-        {charges.map((c) => (
-          <Row
-            key={c.id}
-            title={c.member?.displayName ?? 'Not opened yet'}
-            meta={`${formatCalendarDate(c.createdAt)} · ${staffName(c.raisedByStaffId)}`}
-            right={<span>{dollars(c.amount)}</span>}
-          />
-        ))}
+      <Card>
+        <p className="m-0 text-[13px] leading-[1.6] text-[var(--clear-text-secondary)]">
+          The {payout.charges} charges behind this payout are not itemised yet. Nothing batches
+          charges into a payout run, so there is no record of which jobs produced this figure.
+        </p>
       </Card>
-      <p className="m-0 mt-[13px] text-[11.5px] text-[var(--clear-text-muted)]">
-        Showing a sample while the data layer is stubbed — the real payout carries all{' '}
-        {payout.charges}.
-      </p>
     </>
   );
 }

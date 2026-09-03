@@ -4,7 +4,6 @@ import { dollars, formatCalendarDate, payoutSettlement } from '@clear/domain';
 import { Big, Button, Cap, Card, Inset, Lbl, PrimaryButton } from '@/shell/ui';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
-import { STUB_PAYOUT_POSITION } from '@/data/stubs';
 
 /**
  * Payouts — reference section 07, with the withdraw flow from section 18.
@@ -37,8 +36,10 @@ export default function PayoutsPage() {
     position?.availableTodayCents == null ? null : position.availableTodayCents / 100;
   const settle = payoutSettlement(owed, clearBalance);
   const bank = profile?.payoutAccount ?? 'your bank account';
-  // The schedule date has no endpoint behind it yet; the amounts above are real.
-  const { nextPayoutOn } = STUB_PAYOUT_POSITION;
+  const nextPayoutOn = position?.nextPayoutOn ?? null;
+  // "the 14th" is the shop's whole mental model of Clear, so where a sentence is built around the
+  // date it stays a sentence when there is no date yet rather than rendering "Invalid Date".
+  const payoutDay = nextPayoutOn ? formatCalendarDate(nextPayoutOn) : 'your next payout date';
   const paid = position?.paid ?? [];
 
   if (view === 'withdraw') {
@@ -55,7 +56,7 @@ export default function PayoutsPage() {
 
         <Inset className="mb-3.5 !px-3.5 !py-3">
           <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-            The rest lands on {formatCalendarDate(nextPayoutOn)} as usual. Withdrawing early does
+            The rest lands on {payoutDay} as usual. Withdrawing early does
             not change your rate.
           </p>
         </Inset>
@@ -64,7 +65,7 @@ export default function PayoutsPage() {
           Withdraw {availableToday === null ? '—' : dollars(availableToday)}
         </PrimaryButton>
         <Button onClick={() => setView('summary')} className="w-full">
-          Wait for the {new Date(nextPayoutOn).getUTCDate()}th
+          {nextPayoutOn ? `Wait for the ${new Date(nextPayoutOn).getUTCDate()}th` : 'Wait for the next payout'}
         </Button>
       </div>
     );
@@ -80,7 +81,7 @@ export default function PayoutsPage() {
         <p className="m-0 mb-3.5 text-[12.5px] text-[var(--clear-text-muted)]">To {bank}</p>
         <Inset className="mb-3.5 !px-3.5 !py-3">
           <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-            The rest lands on {formatCalendarDate(nextPayoutOn)} as usual.
+            The rest lands on {payoutDay} as usual.
           </p>
         </Inset>
         <Button onClick={() => setView('summary')} className="w-full">
@@ -97,7 +98,7 @@ export default function PayoutsPage() {
           <Lbl>Owed to you</Lbl>
           <Big>{dollars(owed)}</Big>
           <p className="m-0 mb-[18px] mt-[5px] text-[12.5px] text-[var(--clear-text-muted)]">
-            Next payout {formatCalendarDate(nextPayoutOn)} · net-30
+            {nextPayoutOn ? `Next payout ${formatCalendarDate(nextPayoutOn)} · net-30` : 'Next payout · net-30'}
           </p>
 
           <PrimaryButton
@@ -139,7 +140,9 @@ export default function PayoutsPage() {
             a new shop rather than a failure — so it says which date to expect instead of nothing. */}
         {paid.length === 0 && (
           <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">
-            No payouts yet. Your first lands on {formatCalendarDate(nextPayoutOn)}.
+            {nextPayoutOn
+              ? `No payouts yet. Your first lands on ${formatCalendarDate(nextPayoutOn)}.`
+              : 'No payouts yet.'}
           </p>
         )}
         {paid.map((p) => (

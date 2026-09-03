@@ -50,10 +50,14 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncStat
           setData(null);
           return;
         }
+        // Only a server-worded message reaches a writer. A failed fetch throws
+        // `TypeError: Failed to fetch`, which is true, useless at a counter, and not something
+        // anybody can say to the person standing there — so an unreachable server gets a sentence
+        // about what to do instead of the browser's word for what broke.
         setError(
-          e instanceof Error
+          e instanceof ApiError
             ? e.message
-            : 'Something went wrong. Take the ticket the usual way and try again.',
+            : 'Could not reach Clear. Take the ticket the usual way and try again.',
         );
       })
       .finally(() => {
