@@ -123,6 +123,21 @@ export const api = {
     return res;
   },
 
+  /**
+   * Exchange a Privy token for an owner session.
+   *
+   * Privy says who they are; this says whose shop it is. Both are required — a valid Privy user is
+   * not by itself an owner of anything, and the backend checks the staff record before issuing.
+   */
+  async signInAsOwner(merchant: string, privyToken: string): Promise<SessionResponse> {
+    const res = await request<SessionResponse>('/api/merchant/session/owner', {
+      method: 'POST',
+      body: JSON.stringify({ merchant, privyToken }),
+    });
+    if (res.token) storeToken(res.token);
+    return res;
+  },
+
   /** Called on load: the server decides what this device is, not localStorage. */
   async currentSession(): Promise<SessionResponse | null> {
     if (!readToken()) return null;

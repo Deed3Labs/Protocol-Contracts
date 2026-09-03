@@ -270,6 +270,19 @@ export const staffStore = {
     return toRow(found);
   },
 
+  /** The staff row a Privy account owns at this shop, if any. */
+  async findByPrivyUser(merchant: string, privyUserId: string): Promise<StaffRow | null> {
+    const pool = getMerchantPool();
+    if (!pool) return null;
+    await ensureMerchantSchema();
+    const { rows } = await pool.query<DbStaff>(
+      `SELECT * FROM ${MERCHANT_SCHEMA}.staff
+        WHERE merchant = $1 AND privy_user_id = $2 AND active = true`,
+      [normalizeMerchant(merchant), privyUserId],
+    );
+    return rows[0] ? toRow(rows[0]) : null;
+  },
+
   async setActive(id: string, active: boolean): Promise<void> {
     const pool = getMerchantPool();
     if (!pool) return;

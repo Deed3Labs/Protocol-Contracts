@@ -5,6 +5,7 @@ import { api } from '@/data/apiClient';
 import { useAuth } from '@/auth/authContext';
 import { merchantAddress } from '@/auth/AuthProvider';
 import { Card } from '@/shell/ui';
+import { OwnerSignIn } from '@/auth/OwnerSignIn';
 
 /**
  * Starting a shift — reference section 19.
@@ -43,6 +44,7 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'not-me', '0', 'del']
 
 export function SignIn() {
   const { signInWithPin } = useAuth();
+  const [ownerMode, setOwnerMode] = useState(false);
   const [roster, setRoster] = useState<RosterEntry[] | null>(null);
   const [picked, setPicked] = useState<RosterEntry | null>(null);
   const [pin, setPin] = useState('');
@@ -83,6 +85,12 @@ export function SignIn() {
       return;
     }
     setPin((p) => (p.length >= 4 ? p : p + key));
+  }
+
+  // A separate screen rather than a mode of this one: signing in as the owner is a different act
+  // with a different authority, and blending them is how a tablet ends up left signed in as Mike.
+  if (ownerMode) {
+    return <OwnerSignIn onDone={() => setOwnerMode(false)} onBack={() => setOwnerMode(false)} />;
   }
 
   return (
@@ -138,6 +146,16 @@ export function SignIn() {
             <p className="m-0 mt-4 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
               Every charge is recorded against whoever is on shift.
             </p>
+
+            {/* Deliberately quiet and last. Taking a payment needs a shift, not this — an owner
+                who thinks otherwise signs in on a shared tablet and leaves it signed in. */}
+            <button
+              type="button"
+              onClick={() => setOwnerMode(true)}
+              className="mt-4 block w-full text-center text-[12.5px] text-[var(--clear-text-accent)]"
+            >
+              Sign in as the owner
+            </button>
           </>
         ) : (
           <>

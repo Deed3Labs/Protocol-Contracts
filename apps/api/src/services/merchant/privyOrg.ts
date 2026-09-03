@@ -108,6 +108,32 @@ export async function createMerchantOrg(input: {
   }
 }
 
+/**
+ * Verify an owner's Privy access token and return their user id.
+ *
+ * Uses `@privy-io/server-auth`, the same local JWT check the member API already relies on, rather
+ * than the org SDK — the two packages sit side by side because they do different jobs: one
+ * authenticates people, the other administers organizations.
+ *
+ * Null on any failure. A token that cannot be verified is not an owner, and there is nothing more
+ * useful to say about it than that.
+ */
+export async function verifyPrivyToken(token: string): Promise<string | null> {
+  if (!APP_ID || !APP_SECRET) return null;
+  try {
+    const { PrivyClient: AuthClient } = await import('@privy-io/server-auth');
+    const auth = new AuthClient(APP_ID, APP_SECRET);
+    const claims = await auth.verifyAuthToken(token);
+    return claims.userId;
+  } catch (error) {
+    console.error(
+      '[merchant] owner token verification failed',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+    return null;
+  }
+}
+
 /** Record the organization against the shop, so later calls do not have to ask Privy. */
 export async function saveMerchantOrg(merchant: string, org: MerchantOrg): Promise<void> {
   const pool = getMerchantPool();

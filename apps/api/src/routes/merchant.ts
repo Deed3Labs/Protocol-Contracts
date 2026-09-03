@@ -6,6 +6,7 @@ import { sessionStore } from '../services/merchant/sessionStore.js';
 import { attemptLimiter, staffStore } from '../services/merchant/staffStore.js';
 import { merchantProfileStore } from '../services/merchant/profileStore.js';
 import { readMerchantTerms } from '../services/chargeService.js';
+import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
 
 /**
  * The merchant surface.
@@ -87,6 +88,55 @@ merchantRouter.post('/session', async (req: Request, res: Response) => {
     // One message for every failure mode. A writer who mistypes and an attacker guessing get the
     // same sentence, because the difference is only useful to the attacker.
     res.status(401).json({ error: 'Unauthorized', message: 'That did not match.' });
+    return;
+  }
+
+  const session = await sessionStore.create(staff);
+  if (!session) {
+    res.status(503).json({ error: 'Unavailable', message: 'sessions are not configured' });
+    return;
+  }
+
+  res.json({
+    token: session.token,
+    expiresAt: session.expiresAt,
+    staff: { id: staff.id, name: staff.name, role: staff.role },
+    merchant: staff.merchant,
+  });
+});
+
+/**
+ * Sign in as the owner — the only thing here that is a login.
+ *
+ * Takes a Privy access token, nothing else. Clear never sees an owner credential: Privy
+ * authenticated them by emailed code, passkey or an existing wallet, and this route's whole job is
+ * to check that token and find which shop the resulting user owns.
+ *
+ * Needed to move money, change terms or manage staff. **Not** needed to take a payment — that is
+ * a shift, and it starts with a PIN on the roster. An owner who believes signing in is required to
+ * raise a charge will sign in on a shared tablet and leave it signed in, which is the thing this
+ * split exists to prevent.
+ */
+merchantRouter.post('/session/owner', async (req: Request, res: Response) => {
+  const merchant = merchantOf(req);
+  const token = String(req.body?.privyToken ?? '');
+
+  if (!merchant || !token) {
+    res.status(400).json({ error: 'Invalid request', message: 'merchant and token are required' });
+    return;
+  }
+
+  const privyUserId = await verifyPrivyToken(token);
+  if (!privyUserId) {
+    res.status(401).json({ error: 'Unauthorized', message: 'That sign-in could not be verified.' });
+    return;
+  }
+
+  // The token proves who they are; this proves the shop is theirs. Both are required — a valid
+  // Privy user is not by itself an owner of anything.
+  const staff = await staffStore.findByPrivyUser(merchant, privyUserId);
+  if (!staff || staff.role !== 'owner') {
+    res.status(403).json({ error: 'Forbidden', message: 'That account does not own this shop.' });
     return;
   }
 
