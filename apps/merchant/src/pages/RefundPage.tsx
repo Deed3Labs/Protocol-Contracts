@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Check, ChevronLeft } from 'lucide-react';
-import { dollars, refundQuote } from '@clear/domain';
+import { dollars, fromCents, refundQuote } from '@clear/domain';
 import { Button, Cap, Inset, PrimaryButton } from '@/shell/ui';
 import { Chip, RoleChip } from '@/auth/RoleChip';
 import { useAuth } from '@/auth/authContext';
@@ -100,6 +100,9 @@ export default function RefundPage() {
   const { data: profile } = useApi(() => api.profile(), []);
   const { data: position } = useApi(() => api.payouts(), []);
   const { data: staff } = useApi(() => api.staff(), []);
+  // The shop's limit decides whose PIN clears this one, so the step-2 label can be specific.
+  const { data: threshold } = useApi(() => api.refundThreshold(), []);
+  const limitCents = threshold?.limitCents ?? null;
 
   const charge = (charges ?? []).find((c) => c.code === id);
 
@@ -257,11 +260,19 @@ export default function RefundPage() {
           </Inset>
 
           {/*
-            The second of the two ways to authorise. An owner typing their code here is authorising
-            one act — it deliberately does not take over the writer's session.
+            The second of the two ways to authorise — reference section 16.
+
+            A manager clears anything under the shop's limit with their own PIN; above it only the
+            owner can, here or from their phone. Either way this authorises ONE act and deliberately
+            does not take over the writer's session: the person who raised the charge stays signed
+            in, because the approver is approving rather than starting a shift.
           */}
           <Inset className="mb-3 !px-[15px] !py-[13px]">
-            <Cap>Owner code</Cap>
+            <Cap>
+              {limitCents === null || limitCents === 0
+                ? 'Owner PIN'
+                : `Manager or owner PIN · under ${dollars(fromCents(limitCents))}`}
+            </Cap>
             <input
               inputMode="numeric"
               autoComplete="off"
@@ -272,7 +283,7 @@ export default function RefundPage() {
                 if (e.key === 'Enter' && code.length === 4) void submitCode();
               }}
               placeholder="••••"
-              aria-label="Owner code"
+              aria-label="Manager or owner PIN"
               className="w-full bg-transparent text-[19px] tracking-[6px] text-[var(--clear-text-primary)] outline-none placeholder:text-[var(--clear-text-muted)]"
             />
           </Inset>

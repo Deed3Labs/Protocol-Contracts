@@ -134,7 +134,7 @@ export default function ChargesPage() {
           </p>
         </Card>
       ) : (
-        <Card rows>
+        <Card rows className="!px-4 !py-0">
           {rows.map((c) => {
             const pending = isPending(c.state);
             const detail = detailOf(c);
@@ -149,8 +149,11 @@ export default function ChargesPage() {
                   // it has to bleed to BOTH card edges. The width is conditional rather than
                   // additive: emitting `w-full` alongside the calc leaves CSS order to decide, and
                   // `w-full` wins — the field then stops short on the right by exactly the padding.
+                  // The card is padded 0 16px, so the accent field bleeds by exactly that to reach
+                  // both edges. The width is conditional rather than additive: emitting `w-full`
+                  // alongside the calc leaves CSS order to decide, and `w-full` wins.
                   pending
-                    ? '-mx-3.5 w-[calc(100%+1.75rem)] bg-[var(--clear-bg-accent)] px-3.5'
+                    ? '-mx-4 w-[calc(100%+2rem)] bg-[var(--clear-bg-accent)] px-4'
                     : 'w-full',
                 ].join(' ')}
               >

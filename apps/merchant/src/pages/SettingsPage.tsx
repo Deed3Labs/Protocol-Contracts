@@ -41,7 +41,7 @@ function initials(name: string | undefined): string {
 }
 
 export default function SettingsPage() {
-  const { session, device, canSeeMoney, signOut } = useAuth();
+  const { session, device, canSeeMoney } = useAuth();
   const { data: profile } = useApi(() => api.profile(), []);
 
   // The rate is rendered from the merchant record so it agrees with the money on every other
@@ -59,7 +59,7 @@ export default function SettingsPage() {
           {canSeeMoney && (
             <>
               <Cap>Your terms</Cap>
-              <Card rows className="mb-4">
+              <Card rows className="mb-4 !px-4 !py-0">
                 <Row
                   title={<span className="text-[var(--clear-text-secondary)]">Rate</span>}
                   right={
@@ -95,7 +95,7 @@ export default function SettingsPage() {
               </p>
 
               <Cap>Where payouts go</Cap>
-              <Card rows className="mb-4">
+              <Card rows className="mb-4 !px-4 !py-0">
                 <Row
                   title={profile?.payoutAccount ?? 'No account yet'}
                   meta="Business checking"
@@ -113,29 +113,9 @@ export default function SettingsPage() {
             </>
           )}
 
-          <Cap>This device</Cap>
-          <Card rows className={canSeeMoney ? 'mb-4' : ''}>
-            <Row
-              title={session ? `Signed in as ${session.staff.name}` : 'Not signed in'}
-              meta={session?.staff.role === 'owner' ? 'Owner · full access' : 'Counter · can charge'}
-              right={
-                <Button onClick={signOut} className="!px-[11px] !py-1 !text-[12px]">
-                  Sign out
-                </Button>
-              }
-            />
-            {device && (
-              <Row
-                title={device.label}
-                meta={`Locks after ${Math.round(device.idleLockSeconds / 60)} min idle`}
-                right={<span className="text-[11.5px] text-[var(--clear-text-muted)]">Enrolled</span>}
-              />
-            )}
-          </Card>
-
-          {/* The other half of the enrollment screen's promise. It is owner-only because removing a
-              tablet is removing authority, and it lists every tablet rather than only this one —
-              the tablet you need to remove is by definition the one not in your hand. */}
+          {/* Signing out and which shift is running moved to the profile sheet in section 21 —
+              they are not settings, they are who is on the counter right now. The tablet LIST
+              stays: section 19 promises removal from Settings, from any device. */}
           {canSeeMoney && <EnrolledDevices currentId={device?.id ?? null} />}
         </>
       }
@@ -158,7 +138,7 @@ export default function SettingsPage() {
           {canSeeMoney && (
             <>
               <Cap>Notifications</Cap>
-              <Card rows className="mb-4">
+              <Card rows className="mb-4 !px-4 !py-0">
                 {STUB_NOTIFICATIONS.map((n) => (
                   <Row
                     key={n.id}
@@ -254,7 +234,7 @@ function EnrolledDevices({ currentId }: { currentId: string | null }) {
   return (
     <>
       <Cap>Tablets</Cap>
-      <Card rows>
+      <Card rows className="!px-4 !py-0">
         {devices.map((d) => (
           <Row
             key={d.id}
