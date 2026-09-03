@@ -7,8 +7,45 @@ import { savingsRelayerService } from '../services/savingsRelayerService.js';
 import { savingsGaslessService } from '../services/savingsGaslessService.js';
 import { relayEsaDeposit } from '../services/savings/esaDeposit.js';
 import { payLedgerStore, networkFromChainId } from '../services/payLedgerStore.js';
+import { notificationStore } from '../services/notificationStore.js';
 
 const savingsRouter = Router();
+
+/*
+ * Tell the member their savings deposit landed.
+ *
+ * One helper rather than an emit at each call site, because there are two deposit paths -- the
+ * sponsored UserOp reports to /record and the relayer fallback goes through /gasless/submit -- and
+ * two copies of a message is how the two copies of the collateral sync drifted before it.
+ *
+ * Deduped on the transaction hash for the same reason: those paths can both run for one deposit
+ * (they sync to the balance precisely so that is harmless), and a member should not be told twice
+ * about one deposit.
+ *
+ * The body deliberately quotes no limit. What a deposit is worth as credit is the calculator's
+ * decision, applied after a haircut and after two more writes land; a number invented here would be
+ * wrong often enough to be worse than no number. It says the deposit landed and that it backs the
+ * line, which is what is actually known at this point.
+ *
+ * Best-effort, like the ledger and collateral writes around it: the deposit is already on chain, and
+ * an undelivered notification is not a reason to report a confirmed deposit as failed.
+ */
+async function notifySavingsDeposit(wallet: string, amountMicros: string, txRef: string): Promise<void> {
+  const usd = Number(amountMicros) / 1_000_000;
+  if (!Number.isFinite(usd) || usd <= 0) return;
+  try {
+    await notificationStore.emit({
+      wallet: ethers.getAddress(wallet).toLowerCase(),
+      kind: 'credit',
+      title: 'Savings deposit added',
+      body: `$${usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} added to Savings, now backing your credit line`,
+      data: { amountMicros, txRef, href: '/savings' },
+      dedupeKey: `savings:deposit:${txRef}`,
+    });
+  } catch (error) {
+    console.error('[savings] deposit notification failed:', error instanceof Error ? error.message : error);
+  }
+}
 
 function parseAction(value: unknown): 'deposit' | 'redeem' | null {
   if (typeof value !== 'string') return null;
@@ -345,6 +382,7 @@ savingsRouter.post('/gasless/submit', async (req: Request, res: Response) => {
     void syncSavingsCollateralFromBalance(ethers.getAddress(owner)).then((result) => {
       if (!result.ok) console.error('[savings/gasless] collateral sync failed:', result.reason);
     });
+    if (action === 'deposit') void notifySavingsDeposit(owner, String(submit.amount), txHash);
 
     res.json({ success: true, action, chainId: config.chainId, vaultAddress: config.vaultAddress, txHash, status: 'SUBMITTED' });
   } catch (error) {
@@ -568,6 +606,7 @@ savingsRouter.post('/gasless/record', async (req: Request, res: Response) => {
     void syncSavingsCollateralFromBalance(ethers.getAddress(wallet)).then((result) => {
       if (!result.ok) console.error('[savings/record] collateral sync failed:', result.reason);
     });
+    if (action === 'deposit') void notifySavingsDeposit(wallet, amountMicros, body.txHash);
 
     res.json({ success: true });
   } catch (error) {
