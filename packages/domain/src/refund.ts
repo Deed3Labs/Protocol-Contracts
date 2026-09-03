@@ -14,6 +14,7 @@
  * cents (`amountCents`, `payoutCents`); converting at that boundary is the caller's job.
  */
 
+import { merchantPayout } from './merchant';
 import { splitQuote } from './split';
 
 export interface RefundQuote {
@@ -75,7 +76,7 @@ export function refundQuote(input: {
 
   // What the merchant received for the charge, which is what they give back. Not the charge
   // amount: the co-op's fee was never theirs, so it is not theirs to return.
-  const merchantClawback = amount * (1 - discountRate);
+  const merchantClawback = merchantPayout(amount, discountRate);
 
   return {
     amount,
