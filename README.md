@@ -19,6 +19,43 @@ Deed Protocol provides:
 - Claim escrow settlement for link-based payout and refund flows
 - PWA-compatible frontend with installability, offline-aware caching, background sync, and notification support
 
+## Repository layout
+
+A workspace (npm workspaces + Turborepo). Each app under `apps/` is its own deploy target with
+its own root directory.
+
+```
+apps/
+  member/          consumer app        → useclear.org (apex)      Vite + React 19
+  merchant/        counter app         → merchants.useclear.org   scaffolded in Phase 3
+  api/             Express + bun       → Railway (Docker)
+packages/
+  domain/          charge lifecycle, split + carry math, money formatting, shared types
+  tokens/          color, type scale, spacing, radii
+  contracts-sdk/   generated ABIs, typechain output, addresses, read helpers
+contracts/         Solidity — AGPL-3.0, see NOTICE.md
+```
+
+The member app and the merchant app are two ends of one state machine. Anything both must agree
+on lives in `packages/domain` and is computed once. Neither app reimplements any of it, and there
+is deliberately **no shared component library** — a tablet counter app and a consumer phone app
+are different products, so screen-level components stay in the app that owns them.
+
+### Deploy targets
+
+| Target | Vercel/Railway root directory | Host |
+|---|---|---|
+| member | `apps/member` | `useclear.org` |
+| merchant | `apps/merchant` | `merchants.useclear.org` |
+| api | `apps/api` | Railway |
+
+**Auth sessions do not cross the two surfaces.** The member and merchant apps have different auth
+models. No cookie is scoped to `.useclear.org` — cookies are host-only on their exact origin, and
+neither app reads the other's storage.
+
+> Vercel's root directory is a dashboard setting, not a repo file. After this restructure the
+> member project must be repointed from `app` to `apps/member` or its deploy will fail.
+
 ## Developer Quickstart
 
 ### Contracts (repo root)
@@ -33,16 +70,16 @@ npm run test
 ### Frontend (`app/`)
 
 ```bash
-cd app
+cd apps/member
 npm install
 cp .env.example .env
 npm run dev
 ```
 
-### Backend (`app/server/`)
+### Backend (`apps/api/`)
 
 ```bash
-cd app/server
+cd apps/api
 npm install
 cp env.example .env
 npm run dev
@@ -61,7 +98,7 @@ npm run dev
 ### Application Layers
 
 1. Frontend (`app/`): wallet-connected UX for minting, portfolio, validation/admin, bonds, send/claim flows, and PWA delivery
-2. Backend (`app/server/`): REST + websocket services for data aggregation, orchestration, notifications, and settlement support
+2. Backend (`apps/api/`): REST + websocket services for data aggregation, orchestration, notifications, and settlement support
 
 ## Credit System
 
@@ -197,7 +234,7 @@ Deployment artifacts are written to `deployments/<network>/<Contract>.json`.
 
 ## Backend API Surface
 
-Primary route groups mounted in `app/server/src/index.ts`:
+Primary route groups mounted in `apps/api/src/index.ts`:
 
 - `/api/prices`
 - `/api/balances`
@@ -247,7 +284,7 @@ Developer notes:
 Recommended contributor flow:
 
 1. Implement contract/app/backend changes in focused PRs
-2. Run relevant tests (`npm run test`, targeted suites, and app/server checks)
+2. Run relevant tests (`npm run test`, targeted suites, and apps/api checks)
 3. Update docs for interface or workflow changes
 4. Validate deployment/upgrade scripts when touching contract initialization or permissions
 5. Verify security assumptions when changing roles, settlement, pricing, or reserve logic
@@ -269,8 +306,8 @@ Test locations:
 
 - Protocol index: [`docs/README.md`](./docs/README.md)
 - Deployment runbooks: [`deploy/README.md`](./deploy/README.md)
-- Frontend docs: [`app/README.md`](./app/README.md)
-- Backend docs: [`app/server/README.md`](./app/server/README.md)
+- Frontend docs: [`apps/member/README.md`](./apps/member/README.md)
+- Backend docs: [`apps/api/README.md`](./apps/api/README.md)
 
 ## Security
 

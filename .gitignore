@@ -33,6 +33,8 @@ yarn-error.log*
 # Build
 dist/
 build/
+.turbo/
+**/.turbo/
 
 # Webflow specific
 webflow/node_modules/

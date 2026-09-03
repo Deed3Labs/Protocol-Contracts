@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clear for Merchants — design reference</title>
+<style>
+:root{
+  --surface-0:#E8E5DD; --surface-1:#F1EFE8; --surface-2:#FAF9F5;
+  --border:#D4D1C7; --border-strong:#B4B2A9; --border-accent:#7F77DD;
+  --text-primary:#2C2C2A; --text-secondary:#5F5E5A; --text-muted:#888780;
+  --text-success:#0F6E56; --text-accent:#534AB7;
+  --bg-success:#E3F3ED; --bg-accent:#E9E7FA;
+  --radius:8px;
+  --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;padding:2rem;background:var(--surface-1);font-family:var(--font-sans);color:var(--text-primary);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto}
+h1{font-size:22px;font-weight:600;margin:0 0 4px;letter-spacing:-.3px}
+h2{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);
+   margin:2.75rem 0 .5rem;padding-bottom:5px;border-bottom:0.5px solid var(--border)}
+.sub{font-size:13px;color:var(--text-secondary);margin:0 0 2rem;line-height:1.6;max-width:720px}
+.note{font-size:12px;color:var(--text-secondary);line-height:1.6;margin:0 0 .9rem;max-width:760px}
+.note strong{color:var(--text-primary)}
+.cap{font-size:10px;color:var(--text-muted);letter-spacing:.5px;text-transform:uppercase;margin:0 0 8px}
+.stack{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+
+/* device frames */
+.tabletfull{min-height:540px;display:flex;flex-direction:column}
+.tabletfull .fill{flex:1;display:flex;flex-direction:column}
+.tablet{width:100%;max-width:720px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.4rem}
+.desk{width:100%;max-width:900px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:14px;padding:1.4rem}
+.phone{width:290px;flex-shrink:0;background:var(--surface-2);border:0.5px solid var(--border);border-radius:18px;padding:1.05rem}
+.side{width:270px;flex-shrink:0}
+
+.card{background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px}
+.inset{background:var(--surface-1);border-radius:10px}
+.lbl{font-size:11px;color:var(--text-muted);letter-spacing:.3px}
+button{font-family:inherit;font-size:13px;padding:8px 15px;border:0.5px solid var(--border-strong);
+  background:var(--surface-2);border-radius:var(--radius);color:var(--text-primary);cursor:pointer}
+.prim{background:var(--text-primary);color:var(--surface-2);border-color:var(--text-primary)}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding-bottom:13px;margin-bottom:18px;border-bottom:0.5px solid var(--border)}
+.wm{font-size:15px;font-weight:600;letter-spacing:-.2px}
+.wm span{color:var(--text-muted);font-weight:400}
+nav{display:flex;gap:20px;font-size:13px;color:var(--text-secondary)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pad div{background:var(--surface-1);border-radius:10px;padding:16px 0;text-align:center;font-size:21px;cursor:pointer}
+.scan{width:100%;aspect-ratio:4/3;background:var(--surface-0);border-radius:12px;position:relative;overflow:hidden}
+.scanbox{position:absolute;inset:16%;border:2px solid var(--surface-2);border-radius:10px;box-shadow:0 0 0 999px rgba(44,44,42,.35)}
+.tick{width:46px;height:46px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center}
+.trow{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:0.5px solid var(--border);font-size:13px}
+.trow:last-child{border-bottom:0}
+.pill{font-size:10.5px;border-radius:999px;padding:2px 9px;white-space:nowrap}
+.pend{color:var(--text-accent);background:var(--bg-accent);border:0.5px solid var(--border-accent)}
+.navbar{display:flex;justify-content:space-around;border-top:0.5px solid var(--border);margin-top:16px;padding-top:11px;font-size:10px;color:var(--text-muted)}
+.navbar b{color:var(--text-primary);font-weight:500}
+.flag{border-left:2.5px solid var(--border-accent);background:var(--bg-accent);border-radius:0 var(--radius) var(--radius) 0;padding:11px 13px;font-size:12px;line-height:1.6;margin:0 0 .8rem}
+.flag b{color:var(--text-accent)}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.g3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.big{font-size:40px;font-weight:500;letter-spacing:-1.2px;margin:0;line-height:1.05}
+.mid{font-size:26px;font-weight:500;margin:0}
+
+@media (max-width:900px){
+  body{padding:1.25rem}
+  .g2,.g3{grid-template-columns:minmax(0,1fr)}
+  .side{width:100%}
+  nav{gap:12px;font-size:12px;flex-wrap:wrap}
+  .big{font-size:32px}
+}
+@media (max-width:520px){
+  body{padding:1rem}
+  .phone{width:100%}
+  .tablet,.desk{padding:1rem;border-radius:12px}
+}
+</style></head><body><div class="wrap">
+
+<h1>Clear for Merchants</h1>
+<div class="flag" style="max-width:760px;margin-bottom:1.2rem"><b>Scope: this app is for financed transactions only.</b> A member paying from their balance or tapping a Clear card runs on ordinary payment rails and never appears here. Every figure in this reference is financed volume &mdash; do not add card or balance payments to any total, and do not build a &ldquo;paid now&rdquo; state.</div>
+
+<p class="sub"><strong>Designed tablet-first.</strong> The counter device is a tablet in a stand or a laptop in the back office — a phone is the fallback, not the target. A separate app from the member app: different user, different job. Someone at a counter with a queue behind them, using it forty times a week. Installs as a PWA in any browser; the loaner phone is just a device with it already open.</p>
+
+<div class="flag" style="max-width:760px"><b>Showing a code is the default path, not one of two options.</b> Most customers at a counter are new, and it is the only route that never dead-ends &mdash; a new customer installs from it, an existing member just approves. Scanning their code and entering a phone number are shortcuts underneath it.</div>
+
+<div class="flag" style="max-width:760px"><b>Breakpoints.</b> Above ~900px the counter runs two columns — the action on the left, context on the right. Between 520 and 900 it collapses to one column with the action first. Below 520 it is the phone layout. Nothing is removed at any width; only the arrangement changes.</div>
+
+<h2>01 — Counter home · three states</h2>
+<p class="note">Home is the only screen that has to hold a full tablet at any stage. <strong>The space that activity will eventually fill is not left empty in the meantime</strong> — early on it carries setup and training, and it retires itself as real rows arrive.</p>
+
+<p class="note" style="margin-bottom:.6rem"><strong>Day one</strong> — signed, nothing run. The right column is a setup list; the left teaches the flow.</p>
+<div class="tablet tabletfull">
+  <div class="topbar"><span class="wm">Clear <span>for Mike's Tire</span></span><nav><span style="color:var(--text-primary)">Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span>Settings</span></nav></div>
+  <div class="fill">
+    <div class="g2" style="flex:1">
+      <div style="display:flex;flex-direction:column">
+        <p class="lbl" style="margin:0 0 3px">Today</p>
+        <p class="big" style="color:var(--text-muted)">$0.00</p>
+        <p style="font-size:12.5px;color:var(--text-muted);margin:5px 0 18px">No charges yet</p>
+        <button class="prim" style="width:100%;padding:16px 0;font-size:16px;margin-bottom:18px">New charge</button>
+        <div class="inset" style="padding:15px 16px;flex:1">
+          <p class="cap" style="margin:0 0 10px">How it goes</p>
+          <div style="font-size:12.5px;color:var(--text-secondary);line-height:1.9">
+            <p style="margin:0 0 5px">1 &middot; Type the amount from the ticket.</p>
+            <p style="margin:0 0 5px">2 &middot; Turn the screen. They scan it.</p>
+            <p style="margin:0 0 5px">3 &middot; They approve on their phone &mdash; here or later.</p>
+            <p style="margin:0">4 &middot; You are paid on the 14th.</p>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column">
+        <p class="cap">Finish setting up</p>
+        <div class="card" style="padding:0 16px;margin-bottom:14px">
+          <div class="trow"><div><div>Add your counter staff</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">A PIN each, so charges are attributed</div></div><button style="font-size:12px;padding:4px 11px">Add</button></div>
+          <div class="trow"><div><div>Print counter cards</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Goes home with an estimate</div></div><button style="font-size:12px;padding:4px 11px">Print</button></div>
+          <div class="trow"><div><div style="color:var(--text-muted)">Bank account added</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Chase &#183;&#183;&#183;&#183;9012</div></div><span style="font-size:11.5px;color:var(--text-success)">Done</span></div>
+        </div>
+        <div class="inset" style="padding:15px 16px;flex:1;display:flex;flex-direction:column;justify-content:center">
+          <p style="font-size:13px;font-weight:500;margin:0 0 7px">Who to offer it to</p>
+          <p style="font-size:12.5px;color:var(--text-secondary);margin:0;line-height:1.7">Anyone whose ticket is over $300. <strong style="color:var(--text-primary)">Offer it to everyone above that</strong>, not only to people who look like they need it &mdash; that is both fairer and where the volume is.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="note" style="margin:1.1rem 0 .6rem"><strong>Early</strong> — a few charges in. Activity has started but does not fill the column, so one tip stays.</p>
+<div class="tablet tabletfull">
+  <div class="topbar"><span class="wm">Clear <span>for Mike's Tire</span></span><nav><span style="color:var(--text-primary)">Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span>Settings</span></nav></div>
+  <div class="fill">
+    <div class="g2" style="flex:1">
+      <div style="display:flex;flex-direction:column">
+        <p class="lbl" style="margin:0 0 3px">Today</p>
+        <p class="big">$600.00</p>
+        <p style="font-size:12.5px;color:var(--text-muted);margin:5px 0 18px">2 charges &middot; nothing waiting</p>
+        <button class="prim" style="width:100%;padding:16px 0;font-size:16px;margin-bottom:18px">New charge</button>
+        <div class="inset" style="padding:15px 16px;flex:1;display:flex;flex-direction:column;justify-content:center">
+          <p style="font-size:13px;font-weight:500;margin:0 0 7px">Your first payout is Dec 14</p>
+          <p style="font-size:12.5px;color:var(--text-secondary);margin:0;line-height:1.7">Everything confirmed before then lands together. You can withdraw earlier once there is enough in the pool &mdash; we will tell you when.</p>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column">
+        <p class="cap">Today</p>
+        <div class="card" style="padding:0 16px;margin-bottom:14px">
+          <div class="trow"><div><div>Priya S.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">9:47am &middot; Luis</div></div><span>$188.00</span></div>
+          <div class="trow"><div><div>Marcus T.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">11:02am &middot; Jen</div></div><span>$412.00</span></div>
+        </div>
+        <p class="cap">Next payout</p>
+        <div class="card" style="padding:13px 14px;margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:13px">Dec 14</span><span style="font-size:19px;font-weight:500">$600.00</span></div>
+          <p style="font-size:11.5px;color:var(--text-muted);margin:5px 0 0">Net-30 &middot; may arrive sooner</p>
+        </div>
+        <div class="inset" style="padding:14px 16px;flex:1;display:flex;flex-direction:column;justify-content:center">
+          <p style="font-size:12.5px;color:var(--text-secondary);margin:0;line-height:1.7"><strong style="color:var(--text-primary)">Jen has raised both of today's charges.</strong> Worth a word with Luis &mdash; the shops that do well are the ones where every writer offers it.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="note" style="margin:1.1rem 0 .6rem"><strong>Running</strong> — activity fills the column on its own. No tips, no prompts.</p>
+<div class="tablet tabletfull">
+  <div class="topbar"><span class="wm">Clear <span>for Mike's Tire</span></span><nav><span style="color:var(--text-primary)">Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span>Settings</span></nav></div>
+  <div class="fill">
+    <div class="g2" style="flex:1">
+      <div style="display:flex;flex-direction:column">
+        <p class="lbl" style="margin:0 0 3px">Today</p>
+        <p class="big">$1,840.00</p>
+        <p style="font-size:12.5px;color:var(--text-muted);margin:5px 0 18px">4 charges &middot; 1 waiting on the customer</p>
+        <button class="prim" style="width:100%;padding:16px 0;font-size:16px;margin-bottom:18px">New charge</button>
+        <p class="cap">Waiting</p>
+        <div class="card" style="padding:0 14px;flex:1">
+          <div class="trow"><div><div>Dana R.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">$940.00 &middot; sent 6 min ago &middot; app opened</div></div><span class="pill pend">Not confirmed</span></div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column">
+        <p class="cap">Today</p>
+        <div class="card" style="padding:0 16px;margin-bottom:14px">
+          <div class="trow"><div><div>Dana R.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">2:14pm &middot; Jen</div></div><span class="pill pend">Waiting</span></div>
+          <div class="trow"><div><div>Marcus T.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">11:02am &middot; Jen</div></div><span>$412.00</span></div>
+          <div class="trow"><div><div>Priya S.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">9:47am &middot; Luis</div></div><span>$188.00</span></div>
+          <div class="trow"><div><div>Ana V.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">8:30am &middot; Luis</div></div><span>$300.00</span></div>
+        </div>
+        <p class="cap">Next payout</p>
+        <div class="card" style="padding:13px 14px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:13px">Dec 14</span><span style="font-size:19px;font-weight:500">$4,210.00</span></div>
+          <p style="font-size:11.5px;color:var(--text-muted);margin:5px 0 0">Net-30 &middot; may arrive sooner</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>Guidance retires itself.</b> Each panel is replaced by the activity it was standing in for &mdash; setup by today's charges, the payout explainer by the payout itself. Nothing has to be dismissed, and nothing lingers once it is untrue.</div></div>
+  <div class="side"><p class="note"><strong>The early-stage tip is the most valuable one in the app.</strong> "Jen has raised both of today's charges, worth a word with Luis" is the difference between a shop that converts and one that does not, and only Clear can see it.</p></div>
+  <div class="side"><p class="note"><strong>Only Home needs this treatment.</strong> Charges, Payouts, Staff and Settings are lists that either have rows or carry a one-line empty state &mdash; they do not have a hero figure holding open a half-empty screen.</p></div>
+</div>
+
+<h2>02 — New charge · tablet</h2>
+<p class="note">Two columns: the amount and its context on the left, the pad on the right, both reachable without moving the tablet. A number pad, never a keyboard.</p>
+<div class="tablet">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+    <span style="color:var(--text-secondary);font-size:20px;cursor:pointer">&lsaquo;</span><span style="font-size:16px;font-weight:500">New charge</span>
+  </div>
+  <div class="g2">
+    <div>
+      <p class="lbl" style="margin:0 0 3px">Amount</p>
+      <p class="big" style="margin-bottom:20px">$940.00</p>
+      <div class="inset" style="padding:13px 15px">
+        <p style="font-size:12px;color:var(--text-secondary);margin:0 0 4px">This charge</p>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-muted)">You receive</span><span>$916.50</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:5px"><span style="color:var(--text-muted)">Fee &middot; 2.5%</span><span>$23.50</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="pad">
+        <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div>
+        <div>7</div><div>8</div><div>9</div><div>.</div><div>0</div><div>&#9003;</div>
+      </div>
+      <button class="prim" style="width:100%;padding:14px 0;font-size:15px;margin-top:14px">Continue</button>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:11px 0 0;text-align:center">Goes straight to the code &mdash; no extra step.</p>
+    </div>
+  </div>
+</div>
+<div class="stack" style="margin-top:14px">
+  <div class="side"><p class="note"><strong>No tip line, no split, no item entry.</strong> This is not a point of sale &mdash; it settles one number the shop's own system already produced.</p></div>
+  <div class="side"><p class="note"><strong>The fee is visible before the charge is raised</strong>, not only at confirmation. The extra width is worth spending on it.</p></div>
+</div>
+
+<h2>03 — Showing the code · tablet</h2>
+<p class="note"><strong>There is no &ldquo;how are they paying&rdquo; step.</strong> Entering the amount goes straight to the code, because showing a code is the only path that works for every customer &mdash; new or existing. The alternatives are links underneath it, not a fork in front of it.</p>
+
+<div class="flag" style="max-width:760px"><b>Why a choice screen was removed.</b> Most customers at a counter are new. A writer who taps &ldquo;scan their code&rdquo; and points at someone with no app has hit a dead end &mdash; back out, start over, with a queue waiting. Showing a code never dead-ends: a new customer installs from it, an existing member just approves.</div>
+
+<div class="stack">
+  <div class="tablet" style="max-width:400px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <span style="color:var(--text-secondary);font-size:20px;cursor:pointer">&lsaquo;</span><span style="font-size:16px;font-weight:500">$940.00</span>
+    </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin:0 0 16px">Turn the screen toward them.</p>
+    <div style="max-width:230px;margin:0 auto"><svg viewBox="0 0 33 33" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges" style="width:100%;height:auto;display:block;border-radius:10px;background:#FAF9F5" role="img" aria-label="QR code linking to this charge"><path d="M2 2h7v1h-7zM15 2h3v1h-3zM20 2h1v1h-1zM22 2h1v1h-1zM24 2h7v1h-7zM2 3h1v1h-1zM8 3h1v1h-1zM10 3h1v1h-1zM13 3h1v1h-1zM17 3h1v1h-1zM19 3h1v1h-1zM22 3h1v1h-1zM24 3h1v1h-1zM30 3h1v1h-1zM2 4h1v1h-1zM4 4h3v1h-3zM8 4h1v1h-1zM10 4h2v1h-2zM13 4h1v1h-1zM16 4h1v1h-1zM18 4h1v1h-1zM21 4h1v1h-1zM24 4h1v1h-1zM26 4h3v1h-3zM30 4h1v1h-1zM2 5h1v1h-1zM4 5h3v1h-3zM8 5h1v1h-1zM10 5h2v1h-2zM16 5h2v1h-2zM19 5h2v1h-2zM22 5h1v1h-1zM24 5h1v1h-1zM26 5h3v1h-3zM30 5h1v1h-1zM2 6h1v1h-1zM4 6h3v1h-3zM8 6h1v1h-1zM11 6h2v1h-2zM14 6h4v1h-4zM19 6h1v1h-1zM21 6h2v1h-2zM24 6h1v1h-1zM26 6h3v1h-3zM30 6h1v1h-1zM2 7h1v1h-1zM8 7h1v1h-1zM13 7h4v1h-4zM18 7h1v1h-1zM20 7h1v1h-1zM22 7h1v1h-1zM24 7h1v1h-1zM30 7h1v1h-1zM2 8h7v1h-7zM10 8h1v1h-1zM12 8h1v1h-1zM14 8h1v1h-1zM16 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM22 8h1v1h-1zM24 8h7v1h-7zM10 9h1v1h-1zM12 9h4v1h-4zM20 9h3v1h-3zM2 10h1v1h-1zM8 10h1v1h-1zM10 10h1v1h-1zM12 10h2v1h-2zM16 10h2v1h-2zM21 10h1v1h-1zM23 10h2v1h-2zM27 10h3v1h-3zM4 11h1v1h-1zM6 11h2v1h-2zM9 11h2v1h-2zM13 11h2v1h-2zM16 11h1v1h-1zM21 11h2v1h-2zM25 11h2v1h-2zM28 11h2v1h-2zM5 12h1v1h-1zM7 12h2v1h-2zM13 12h1v1h-1zM20 12h1v1h-1zM22 12h1v1h-1zM24 12h2v1h-2zM3 13h1v1h-1zM9 13h2v1h-2zM12 13h1v1h-1zM14 13h1v1h-1zM16 13h3v1h-3zM21 13h2v1h-2zM26 13h2v1h-2zM2 14h1v1h-1zM5 14h1v1h-1zM7 14h2v1h-2zM11 14h1v1h-1zM14 14h3v1h-3zM19 14h1v1h-1zM21 14h2v1h-2zM24 14h2v1h-2zM30 14h1v1h-1zM2 15h2v1h-2zM5 15h1v1h-1zM7 15h1v1h-1zM13 15h4v1h-4zM19 15h4v1h-4zM24 15h3v1h-3zM29 15h2v1h-2zM2 16h2v1h-2zM7 16h2v1h-2zM10 16h2v1h-2zM13 16h1v1h-1zM15 16h6v1h-6zM25 16h4v1h-4zM3 17h3v1h-3zM7 17h1v1h-1zM9 17h1v1h-1zM12 17h1v1h-1zM15 17h2v1h-2zM18 17h1v1h-1zM21 17h6v1h-6zM28 17h1v1h-1zM30 17h1v1h-1zM2 18h3v1h-3zM6 18h1v1h-1zM8 18h3v1h-3zM14 18h1v1h-1zM16 18h2v1h-2zM19 18h2v1h-2zM22 18h1v1h-1zM27 18h2v1h-2zM2 19h1v1h-1zM4 19h1v1h-1zM6 19h2v1h-2zM10 19h1v1h-1zM13 19h1v1h-1zM18 19h1v1h-1zM21 19h2v1h-2zM24 19h3v1h-3zM28 19h3v1h-3zM2 20h3v1h-3zM6 20h3v1h-3zM11 20h2v1h-2zM14 20h3v1h-3zM18 20h1v1h-1zM20 20h2v1h-2zM23 20h2v1h-2zM27 20h1v1h-1zM30 20h1v1h-1zM2 21h1v1h-1zM4 21h2v1h-2zM9 21h2v1h-2zM12 21h1v1h-1zM14 21h1v1h-1zM16 21h3v1h-3zM20 21h4v1h-4zM26 21h1v1h-1zM2 22h1v1h-1zM5 22h2v1h-2zM8 22h3v1h-3zM12 22h1v1h-1zM18 22h1v1h-1zM20 22h7v1h-7zM28 22h3v1h-3zM10 23h1v1h-1zM14 23h2v1h-2zM18 23h3v1h-3zM22 23h1v1h-1zM26 23h2v1h-2zM2 24h7v1h-7zM11 24h1v1h-1zM13 24h7v1h-7zM21 24h2v1h-2zM24 24h1v1h-1zM26 24h3v1h-3zM2 25h1v1h-1zM8 25h1v1h-1zM12 25h1v1h-1zM15 25h1v1h-1zM19 25h4v1h-4zM26 25h1v1h-1zM29 25h2v1h-2zM2 26h1v1h-1zM4 26h3v1h-3zM8 26h1v1h-1zM11 26h2v1h-2zM14 26h2v1h-2zM17 26h3v1h-3zM21 26h7v1h-7zM29 26h1v1h-1zM2 27h1v1h-1zM4 27h3v1h-3zM8 27h1v1h-1zM12 27h2v1h-2zM15 27h1v1h-1zM18 27h1v1h-1zM20 27h1v1h-1zM22 27h2v1h-2zM25 27h1v1h-1zM27 27h3v1h-3zM2 28h1v1h-1zM4 28h3v1h-3zM8 28h1v1h-1zM11 28h3v1h-3zM15 28h1v1h-1zM20 28h3v1h-3zM24 28h6v1h-6zM2 29h1v1h-1zM8 29h1v1h-1zM12 29h1v1h-1zM14 29h2v1h-2zM17 29h1v1h-1zM24 29h5v1h-5zM30 29h1v1h-1zM2 30h7v1h-7zM10 30h3v1h-3zM14 30h3v1h-3zM18 30h1v1h-1zM20 30h1v1h-1zM23 30h6v1h-6z" fill="#2C2C2A"/></svg></div>
+    <p class="mid" style="text-align:center;margin:18px 0 3px">$940.00</p>
+    <p style="font-size:12px;color:var(--text-muted);text-align:center;margin:0 0 18px">Mike's Tire &middot; the amount is in the code</p>
+    <div class="inset" style="padding:12px 14px;margin-bottom:16px">
+      <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.6">New to Clear? Scanning installs the app and starts signup with this charge already waiting.</p>
+    </div>
+    <div style="border-top:0.5px solid var(--border);padding-top:13px;display:flex;gap:8px">
+      <button style="flex:1;font-size:12px">Scan their code instead</button>
+      <button style="flex:1;font-size:12px">Enter phone number</button>
+    </div>
+  </div>
+
+  <div class="side">
+    <p class="note"><strong>Two taps from start to done:</strong> amount, continue. The code is already on screen.</p>
+    <p class="note"><strong>The two alternatives sit below a rule</strong>, styled as secondary. They are shortcuts for a known member, not a decision the writer has to make first.</p>
+    <div class="flag"><b>A tablet in a stand makes this natural.</b> You turn the screen toward the customer; you never hand over your device. On a phone the same gesture means giving someone your unlocked device across a counter.</div>
+  </div>
+</div>
+
+<h2>04 — The three real scenarios</h2>
+<p class="note">Every counter interaction is one of these. <strong>The first path covers all three</strong>, which is why it is the default.</p>
+
+<div class="stack">
+  <div class="tablet" style="max-width:280px">
+    <p class="cap">A &middot; new customer, at the counter</p>
+    <div style="font-size:12.5px;line-height:1.75;color:var(--text-secondary)">
+      <p style="margin:0 0 8px">Writer enters $940 and turns the screen.</p>
+      <p style="margin:0 0 8px">Customer scans &rarr; app installs &rarr; signs up &rarr; links their bank.</p>
+      <p style="margin:0 0 8px">The charge is waiting for them at the end of signup.</p>
+      <p style="margin:0;color:var(--text-primary)"><strong>Most common at merchants one to five.</strong></p>
+    </div>
+  </div>
+
+  <div class="tablet" style="max-width:280px">
+    <p class="cap">B &middot; existing member, at the counter</p>
+    <div style="font-size:12.5px;line-height:1.75;color:var(--text-secondary)">
+      <p style="margin:0 0 8px">Same screen, same gesture.</p>
+      <p style="margin:0 0 8px">Customer scans &rarr; app opens &rarr; approves. No signup, no application.</p>
+      <p style="margin:0 0 8px">Or the writer taps <em>scan their code</em> if the customer already has theirs open.</p>
+      <p style="margin:0;color:var(--text-primary)"><strong>Becomes the majority as the corridor fills.</strong></p>
+    </div>
+  </div>
+
+  <div class="tablet" style="max-width:280px">
+    <p class="cap">C &middot; signed up in the waiting room</p>
+    <div style="font-size:12.5px;line-height:1.75;color:var(--text-secondary)">
+      <p style="margin:0 0 8px">Writer hands over a card or pamphlet with the job estimate.</p>
+      <p style="margin:0 0 8px">Customer signs up on their own while they wait, deciding in their own time.</p>
+      <p style="margin:0 0 8px">Writer raises the charge; it reaches them by text, email and push.</p>
+      <p style="margin:0;color:var(--text-primary)"><strong>No queue, no pressure &mdash; the best version.</strong></p>
+    </div>
+  </div>
+</div>
+
+<div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>Path C is worth designing for, not just tolerating.</b> A customer deciding alone in a waiting room, with the estimate in front of them, makes a better decision than one deciding at a counter with people behind them. It is also the path where they actually read the terms.</div></div>
+  <div class="side"><p class="note"><strong>The counter card is the artefact that makes C work</strong> &mdash; a printed code that goes home with the estimate. It is the same code the tablet shows, so nothing new has to be built.</p></div>
+  <div class="side"><p class="note"><strong>All three end identically</strong>, at the waiting state. A writer never has to remember which path a customer took.</p></div>
+</div>
+
+<h2>05 — Waiting, and confirmed · tablet</h2>
+<p class="note">The state that separates this from a card terminal: <strong>a charge can be raised and confirmed asynchronously.</strong> The customer's phone can be dead, or they can be under the car, and it still completes when they get to it.</p>
+<div class="tablet">
+  <div class="g2">
+    <div>
+      <p class="cap">Waiting</p>
+      <p class="mid" style="margin-bottom:3px">$940.00</p>
+      <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 18px">Dana R. &middot; sent 40 seconds ago</p>
+      <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 14px;line-height:1.6">She can approve any time today. You do not have to wait at the counter.</p>
+      <div style="display:flex;gap:8px"><button style="flex:1">Send again</button><button style="flex:1">Cancel charge</button></div>
+    </div>
+    <div class="inset" style="padding:15px 16px">
+      <p class="cap" style="margin:0 0 11px">Reached her</p>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--text-secondary)">Text</span><span style="color:var(--text-muted)">Delivered</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:7px"><span style="color:var(--text-secondary)">Email</span><span style="color:var(--text-muted)">Delivered</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:7px"><span style="color:var(--text-secondary)">App</span><span style="color:var(--text-success)">Opened</span></div>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:12px 0 0;line-height:1.55">All three go out together. &ldquo;Opened&rdquo; is what tells you not to walk to the waiting room.</p>
+    </div>
+  </div>
+</div>
+
+<div class="tablet" style="margin-top:14px">
+  <div class="g2">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div class="tick"><svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+      <div>
+        <p class="mid" style="margin:0">$940.00</p>
+        <p style="font-size:12.5px;color:var(--text-muted);margin:4px 0 0">Dana R. &middot; approved just now</p>
+      </div>
+    </div>
+    <div class="inset" style="padding:14px 16px">
+      <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">You receive</span><span style="font-weight:500">$916.50</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Fee</span><span>$23.50 &middot; 2.5%</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px;padding-top:9px;border-top:0.5px solid var(--border)"><span style="color:var(--text-secondary)">Paid out</span><span>Dec 14</span></div>
+    </div>
+  </div>
+  <button class="prim" style="width:100%;padding:13px 0;margin-top:16px">Done</button>
+</div>
+<div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>Show the fee at confirmation, every time.</b> A merchant who learns their real rate from a monthly statement feels sold to. One who sees $23.50 as it happens is being told the truth when it is cheapest to hear.</div></div>
+  <div class="side"><p class="note"><strong>Delivery receipts are not decoration.</strong> They are how a writer decides whether to chase someone, and they are the reason the async flow is trustworthy rather than a black hole.</p></div>
+</div>
+
+<h2>06 — Charges · tablet</h2>
+<p class="note">The list a writer opens to answer one of two questions: <strong>who has not confirmed</strong>, and <strong>what did we run today</strong>. Waiting charges sort to the top regardless of time, because they are the only rows that need an action.</p>
+<div class="tablet">
+  <div class="topbar">
+    <span class="wm">Clear <span>for Mike's Tire</span></span>
+    <nav><span>Home</span><span style="color:var(--text-primary)">Charges</span><span>Payouts</span><span>Staff</span><span>Settings</span></nav>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+    <div style="display:flex;gap:7px">
+      <button style="font-size:12px;padding:5px 12px;border-color:var(--border-accent);color:var(--text-accent)">Waiting &middot; 1</button>
+      <button style="font-size:12px;padding:5px 12px">Today</button>
+      <button style="font-size:12px;padding:5px 12px">This month</button>
+    </div>
+    <span style="font-size:12.5px;color:var(--text-muted)">4 charges today &middot; $1,840.00</span>
+  </div>
+  <div class="card" style="padding:0 16px">
+    <div class="trow" style="background:var(--bg-accent);margin:0 -16px;padding:12px 16px">
+      <div><div style="font-weight:500">Dana R.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">2:14pm &middot; Jen &middot; sent by text, email, app</div></div>
+      <div style="display:flex;align-items:center;gap:12px"><span style="font-size:13px">$940.00</span><span class="pill pend">Waiting</span></div>
+    </div>
+    <div class="trow"><div><div>Marcus T.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">11:02am &middot; Jen &middot; split in 4</div></div><div style="display:flex;align-items:center;gap:12px"><span>$412.00</span><span style="font-size:11.5px;color:var(--text-muted)">Confirmed</span></div></div>
+    <div class="trow"><div><div>Priya S.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">9:47am &middot; Luis &middot; in full</div></div><div style="display:flex;align-items:center;gap:12px"><span>$188.00</span><span style="font-size:11.5px;color:var(--text-muted)">Confirmed</span></div></div>
+    <div class="trow"><div><div>Ray C.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Yesterday &middot; Luis &middot; split in 2</div></div><div style="display:flex;align-items:center;gap:12px"><span>$1,240.00</span><span style="font-size:11.5px;color:var(--text-muted)">Confirmed</span></div></div>
+    <div class="trow"><div><div>Tom B.</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Yesterday &middot; Jen</div></div><div style="display:flex;align-items:center;gap:12px"><span style="color:var(--text-muted)">$310.00</span><span style="font-size:11.5px;color:var(--text-muted)">Expired</span></div></div>
+  </div>
+  <p style="font-size:11.5px;color:var(--text-muted);margin:13px 0 0">Tap any charge for the fee, the payout date, or to cancel one still waiting.</p>
+</div>
+<div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>Each row names the staff member who raised it.</b> Not surveillance &mdash; it is how an owner works out which writer is actually offering it, and who needs another fifteen minutes of training.</div></div>
+  <div class="side"><p class="note"><strong>Expired is a visible state, not a silent disappearance.</strong> A charge that timed out is a lost sale the shop should be able to see and follow up.</p></div>
+  <div class="side"><p class="note"><strong>The split shows on confirmed rows</strong> because it is the merchant's only signal of how the customer is managing it &mdash; useful context, no action attached.</p></div>
+</div>
+
+<h2>07 — Payouts · tablet</h2>
+<p class="note">Owed, settling, history. The withdraw flow lives here and states its cap rather than failing silently.</p>
+<div class="tablet">
+  <div class="topbar">
+    <span class="wm">Clear <span>for Mike's Tire</span></span>
+    <nav><span>Home</span><span>Charges</span><span style="color:var(--text-primary)">Payouts</span><span>Staff</span><span>Settings</span></nav>
+  </div>
+  <div class="g2" style="margin-bottom:16px">
+    <div>
+      <p class="lbl" style="margin:0 0 3px">Owed to you</p>
+      <p class="big">$4,210.00</p>
+      <p style="font-size:12.5px;color:var(--text-muted);margin:5px 0 18px">Next payout Dec 14 &middot; net-30</p>
+      <button class="prim" style="width:100%;padding:14px 0;font-size:15px;margin-bottom:9px">Withdraw now</button>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:0;text-align:center">Available today: $2,400.00 of $3,030.00</p>
+    </div>
+    <div class="inset" style="padding:15px 16px">
+      <p class="cap" style="margin:0 0 11px">How this settles</p>
+      <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">Clears your balance</span><span>$1,180.00</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">To your bank</span><span style="font-weight:500">$3,030.00</span></div>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:12px 0 0;line-height:1.6">You are carrying $1,180.00 on Clear. That clears first &mdash; it costs you no carry.</p>
+    </div>
+  </div>
+  <p class="cap">Paid out</p>
+  <div class="card" style="padding:0 16px">
+    <div class="trow"><div><div>Nov 14</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">28 charges &middot; Chase &#183;&#183;&#183;&#183;9012</div></div><span>$16,180.00</span></div>
+    <div class="trow"><div><div>Oct 14</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">24 charges &middot; Chase &#183;&#183;&#183;&#183;9012</div></div><span>$13,940.00</span></div>
+    <div class="trow"><div><div>Sep 14</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">19 charges &middot; Chase &#183;&#183;&#183;&#183;9012</div></div><span>$11,020.00</span></div>
+  </div>
+  <p style="font-size:11.5px;color:var(--text-muted);margin:13px 0 0">Each payout opens to the charges inside it, so any figure can be traced to the jobs that produced it.</p>
+</div>
+<div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>Every payout traces to its charges.</b> A merchant reconciling against their own books needs to get from a bank deposit back to the tickets. Without it they will not trust the number, and they will ask you for a spreadsheet every month.</div></div>
+  <div class="side"><p class="note"><strong>Withdraw states the cap up front.</strong> Hiding a pool limit and failing the withdrawal is how a merchant stops trusting the app; naming it explains itself.</p></div>
+</div>
+
+<h2>08 — Staff · tablet</h2>
+<p class="note">The tablet is shared and the roles are not. Without accounts, whoever picks it up has the owner's powers &mdash; and the first time a writer taps <em>Withdraw now</em> out of curiosity, the relationship is over.</p>
+<div class="tablet">
+  <div class="topbar">
+    <span class="wm">Clear <span>for Mike's Tire</span></span>
+    <nav><span>Home</span><span>Charges</span><span>Payouts</span><span style="color:var(--text-primary)">Staff</span><span>Settings</span></nav>
+  </div>
+  <div class="g2">
+    <div>
+      <p class="cap">Who can use this tablet</p>
+      <div class="card" style="padding:0 16px;margin-bottom:14px">
+        <div class="trow"><div><div>Jen</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Counter &middot; PIN 4 digits &middot; 18 charges this month</div></div><span style="font-size:11.5px;color:var(--text-muted)">Can charge</span></div>
+        <div class="trow"><div><div>Luis</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Counter &middot; PIN 4 digits &middot; 11 charges</div></div><span style="font-size:11.5px;color:var(--text-muted)">Can charge</span></div>
+        <div class="trow"><div><div>Mike</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Owner &middot; password &middot; 2 charges</div></div><span style="font-size:11.5px;color:var(--text-muted)">Full access</span></div>
+      </div>
+      <button style="width:100%">Add someone</button>
+    </div>
+    <div class="inset" style="padding:15px 16px">
+      <p class="cap" style="margin:0 0 12px">What each role can do</p>
+      <div style="font-size:12.5px;line-height:1.9">
+        <p style="margin:0 0 3px;font-weight:500">Counter</p>
+        <p style="margin:0 0 12px;color:var(--text-secondary);line-height:1.65">Raise a charge. See what is waiting. Cancel one they raised. Nothing else.</p>
+        <p style="margin:0 0 3px;font-weight:500">Full access</p>
+        <p style="margin:0;color:var(--text-secondary);line-height:1.65">Everything, including payouts, bank details, terms and staff.</p>
+      </div>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Counter staff never see the payout figure, the bank account, your rate or the month's totals.</p>
+    </div>
+  </div>
+</div>
+<div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>A PIN, not a login.</b> Nobody types a password forty times a shift. Four digits on a shared device, with the owner on a real password because they reach the money.</div></div>
+  <div class="side"><p class="note"><strong>Two roles, not a permission matrix.</strong> A shop with four staff does not want checkboxes. If a third role is ever needed it will be &ldquo;manager&rdquo;, and it can wait until someone asks.</p></div>
+  <div class="side"><p class="note"><strong>Charge counts per person are the useful by-product.</strong> They show who is actually offering it, which is how you find out why one shop converts and another does not.</p></div>
+</div>
+
+<h2>09 — Settings · tablet</h2>
+<p class="note">One page with sections, not a rail. A merchant has few settings and visits them rarely &mdash; a nav would be more structure than content.</p>
+<div class="tablet">
+  <div class="topbar">
+    <span class="wm">Clear <span>for Mike's Tire</span></span>
+    <nav><span>Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span style="color:var(--text-primary)">Settings</span></nav>
+  </div>
+  <div class="g2">
+    <div>
+      <p class="cap">Your terms</p>
+      <div class="card" style="padding:0 16px;margin-bottom:16px">
+        <div class="trow"><span style="color:var(--text-secondary)">Rate</span><span>2% &middot; for life</span></div>
+        <div class="trow"><span style="color:var(--text-secondary)">Payout</span><span>Net-30</span></div>
+        <div class="trow"><span style="color:var(--text-secondary)">Approval cap</span><span>$1,500.00 per charge</span></div>
+        <div class="trow"><span style="color:var(--text-secondary)">Partner since</span><span>Nov 2026 &middot; founding</span></div>
+      </div>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:0 0 16px;line-height:1.6">Terms are set in your agreement. To change one, talk to us &mdash; there is nothing to edit here.</p>
+
+      <p class="cap">Where payouts go</p>
+      <div class="card" style="padding:0 16px">
+        <div class="trow"><div><div>Chase &#183;&#183;&#183;&#183;9012</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Business checking</div></div><button style="font-size:12px;padding:4px 11px">Change</button></div>
+      </div>
+    </div>
+    <div>
+      <p class="cap">Counter materials</p>
+      <div class="card" style="padding:15px 16px;margin-bottom:16px">
+        <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 12px;line-height:1.6">The printed card carries the same code as this tablet. Send it home with an estimate and they can sign up while they wait.</p>
+        <div style="display:flex;gap:8px"><button style="flex:1;font-size:12px">Print counter cards</button><button style="flex:1;font-size:12px">Order more</button></div>
+      </div>
+
+      <p class="cap">Notifications</p>
+      <div class="card" style="padding:0 16px;margin-bottom:16px">
+        <div class="trow"><span style="color:var(--text-secondary)">A charge is confirmed</span><span style="font-size:11.5px;color:var(--text-muted)">On</span></div>
+        <div class="trow"><span style="color:var(--text-secondary)">A charge expires</span><span style="font-size:11.5px;color:var(--text-muted)">On</span></div>
+        <div class="trow"><span style="color:var(--text-secondary)">A payout lands</span><span style="font-size:11.5px;color:var(--text-muted)">On</span></div>
+      </div>
+
+      <p class="cap">How members see you</p>
+      <div class="card" style="padding:15px 16px;margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:11px">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--bg-success);display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--text-success);flex-shrink:0">MT</div>
+          <div style="min-width:0"><p style="font-size:13px;margin:0">Mike's Tire</p><p style="font-size:11.5px;color:var(--text-muted);margin:2px 0 0">Auto &amp; tires &middot; Redlands</p></div>
+          <span style="font-size:10.5px;color:var(--text-accent);border:0.5px solid var(--border-accent);background:var(--bg-accent);border-radius:999px;padding:2px 9px;margin-left:auto;flex-shrink:0">Credit</span>
+        </div>
+        <p style="font-size:11.5px;color:var(--text-secondary);margin:0 0 12px;line-height:1.6">Your entry in the Clear Partners directory, where members look for somewhere to spend. The <strong style="color:var(--text-primary)">Credit</strong> tag marks you as a shop where they can split a purchase.</p>
+        <button style="width:100%;font-size:12px">Edit listing</button>
+      </div>
+
+      <p class="cap">Your membership</p>
+      <div class="card" style="padding:15px 16px">
+        <p style="font-size:12.5px;color:var(--text-secondary);margin:0;line-height:1.6">Mike's Tire is a partner member of the Clear co-op. One member, one vote &mdash; the same as every other member.</p>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>Terms are shown but not editable.</b> They live in the signed agreement. A settings page that lets a merchant change their own rate is a settings page that will be used to change their own rate.</div></div>
+  <div class="side"><p class="note"><strong>Counter cards sit in settings, not in a menu somewhere</strong> &mdash; they are the artefact that makes the waiting-room path work, and a merchant should be able to reorder them without asking.</p></div>
+  <div class="side"><p class="note"><strong>The membership line is small and deliberate.</strong> It is the one place the co-op is stated plainly, away from the counter where it would only slow a sale down.</p></div>
+</div>
+
+<h2>10 — Back office · desktop</h2>
+<p class="note">The same PWA at width. Everything an owner asks at month end, and nothing a writer needs mid-shift.</p>
+<div class="desk">
+  <div class="topbar">
+    <span class="wm">Clear <span>for Mike's Tire</span></span>
+    <nav><span>Home</span><span>Charges</span><span>Payouts</span><span>Staff</span><span style="color:var(--text-primary)">Overview</span></nav>
+  </div>
+  <div class="g3" style="margin-bottom:16px">
+    <div class="card" style="padding:15px 17px">
+      <p class="lbl" style="margin:0 0 3px">This month</p>
+      <p style="font-size:25px;font-weight:500;margin:0">$18,420.00</p>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:5px 0 0">31 charges &middot; avg $594.00</p>
+    </div>
+    <div class="card" style="padding:15px 17px">
+      <p class="lbl" style="margin:0 0 3px">Owed to you</p>
+      <p style="font-size:25px;font-weight:500;margin:0">$4,210.00</p>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:5px 0 0">Next payout Dec 14</p>
+    </div>
+    <div class="card" style="padding:15px 17px">
+      <p class="lbl" style="margin:0 0 3px">Fees this month</p>
+      <p style="font-size:25px;font-weight:500;margin:0">$460.50</p>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:5px 0 0">2% &middot; founding partner rate</p>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:16px">
+    <div class="card" style="padding:15px 17px">
+      <p class="cap">Recent charges</p>
+      <div class="trow"><div>Dana R. &middot; today</div><span class="pill pend">Waiting</span></div>
+      <div class="trow"><div>Marcus T. &middot; today</div><span>$412.00</span></div>
+      <div class="trow"><div>Priya S. &middot; today</div><span>$188.00</span></div>
+      <div class="trow"><div>Ray C. &middot; yesterday</div><span>$1,240.00</span></div>
+      <div class="trow"><div>Ana V. &middot; yesterday</div><span>$620.00</span></div>
+    </div>
+    <div>
+      <div class="card" style="padding:15px 17px;margin-bottom:12px">
+        <p class="cap">Your terms</p>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--text-secondary)">Rate</span><span>2% &middot; for life</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:7px"><span style="color:var(--text-secondary)">Payout</span><span>Net-30</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:7px"><span style="color:var(--text-secondary)">Approval cap</span><span>$1,500.00</span></div>
+        <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0;line-height:1.55">Founding partner &mdash; first five shops.</p>
+      </div>
+      <div class="card" style="padding:15px 17px">
+        <p class="cap">Staff</p>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px"><span>Jen &middot; counter</span><span style="color:var(--text-muted)">Can charge</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:7px"><span>Luis &middot; counter</span><span style="color:var(--text-muted)">Can charge</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:7px"><span>Mike &middot; owner</span><span style="color:var(--text-muted)">Full access</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="flag" style="max-width:760px;margin-top:14px"><b>Staff permissions are the first thing an owner asks for.</b> A writer should be able to raise a charge and nothing else &mdash; not withdraw, not change terms, not see bank details.</div>
+
+<h2>11 — Phone · the fallback</h2>
+<p class="note">Same screens, one column, action first. Nothing is removed &mdash; the two-column panels stack, and the context that sat on the right moves below the action.</p>
+<div class="stack">
+  <div class="phone">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span class="wm" style="font-size:14px">Clear <span>for Mike's Tire</span></span>
+    </div>
+    <p class="lbl" style="margin:0 0 2px">Today</p>
+    <p style="font-size:32px;font-weight:500;letter-spacing:-1px;margin:0">$1,840.00</p>
+    <p style="font-size:12px;color:var(--text-muted);margin:4px 0 16px">4 charges &middot; 1 waiting</p>
+    <button class="prim" style="width:100%;padding:13px 0;font-size:15px;margin-bottom:16px">New charge</button>
+    <p class="cap">Waiting</p>
+    <div class="card" style="padding:0 13px;margin-bottom:14px">
+      <div class="trow"><div><div>Dana R.</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">$940.00 &middot; 6 min</div></div><span class="pill pend">Not confirmed</span></div>
+    </div>
+    <p class="cap">Next payout</p>
+    <div class="card" style="padding:12px 13px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:13px">Dec 14</span><span style="font-size:17px;font-weight:500">$4,210.00</span></div>
+      <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0">Net-30 &middot; may arrive sooner</p>
+    </div>
+    <div class="navbar"><b>Home</b><span>Charges</span><span>Payouts</span><span>More</span></div>
+  </div>
+
+  <div class="phone">
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:16px">
+      <span style="color:var(--text-secondary);font-size:19px">&lsaquo;</span><span style="font-size:15px;font-weight:500">New charge</span>
+    </div>
+    <p class="lbl" style="margin:0 0 2px">Amount</p>
+    <p style="font-size:32px;font-weight:500;letter-spacing:-1px;margin:0 0 16px">$940.00</p>
+    <div class="pad" style="gap:7px">
+      <div style="padding:13px 0;font-size:19px">1</div><div style="padding:13px 0;font-size:19px">2</div><div style="padding:13px 0;font-size:19px">3</div>
+      <div style="padding:13px 0;font-size:19px">4</div><div style="padding:13px 0;font-size:19px">5</div><div style="padding:13px 0;font-size:19px">6</div>
+      <div style="padding:13px 0;font-size:19px">7</div><div style="padding:13px 0;font-size:19px">8</div><div style="padding:13px 0;font-size:19px">9</div>
+      <div style="padding:13px 0;font-size:19px">.</div><div style="padding:13px 0;font-size:19px">0</div><div style="padding:13px 0;font-size:19px">&#9003;</div>
+    </div>
+    <button class="prim" style="width:100%;padding:13px 0;font-size:15px;margin-top:13px">Continue</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:11px 0 0;text-align:center">You receive $916.50 &middot; fee $23.50</p>
+    <p style="font-size:11px;color:var(--text-muted);margin:5px 0 0;text-align:center">Continue shows the code</p>
+  </div>
+
+  <div class="phone">
+    <p class="cap">Waiting</p>
+    <p style="font-size:26px;font-weight:500;margin:0 0 2px">$940.00</p>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 16px">Dana R. &middot; sent 40s ago</p>
+    <div class="inset" style="padding:12px 13px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--text-secondary)">Text</span><span style="color:var(--text-muted)">Delivered</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:6px"><span style="color:var(--text-secondary)">Email</span><span style="color:var(--text-muted)">Delivered</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:6px"><span style="color:var(--text-secondary)">App</span><span style="color:var(--text-success)">Opened</span></div>
+    </div>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:0 0 13px;line-height:1.55">She can approve any time today.</p>
+    <button style="width:100%;margin-bottom:7px">Send again</button>
+    <button style="width:100%">Cancel charge</button>
+  </div>
+</div>
+
+<h2>12 — What the customer sees</h2>
+<p class="note">Not part of this app &mdash; it belongs to the member app and to their inbox. Shown only so the handoff reads. <strong>The full treatment lives in the member reference under &ldquo;A charge arrives &mdash; the member side&rdquo;</strong>, and the two must stay in step: the merchant's <em>waiting</em> state is that screen, unopened.</p>
+<div class="stack">
+  <div class="phone">
+    <p class="cap">Text message</p>
+    <div class="inset" style="padding:13px">
+      <p style="font-size:13px;margin:0;line-height:1.6">Mike's Tire is charging <strong>$940.00</strong> to your Clear account.<br><br>Approve or decline: useclear.org/c/8QK2<br><br>You have not been charged yet.</p>
+    </div>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:12px 0 0;line-height:1.55"><strong style="color:var(--text-primary)">&ldquo;You have not been charged yet&rdquo;</strong> is the whole message. Everything else is detail.</p>
+  </div>
+  <div class="phone">
+    <p class="cap">In the app</p>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 12px">Mike's Tire wants to charge</p>
+    <p style="font-size:32px;font-weight:500;letter-spacing:-1px;margin:0 0 16px">$940.00</p>
+    <div class="card" style="padding:12px 13px;margin-bottom:14px">
+      <p class="cap" style="margin:0 0 8px">How to clear it &middot; 2% a cycle on what you still owe</p>
+      <div style="display:flex;gap:5px">
+        <button style="flex:1;padding:5px 0;font-size:11px">In full</button>
+        <button style="flex:1;padding:5px 0;font-size:11px">In 2</button>
+        <button style="flex:1;padding:5px 0;font-size:11px;border-color:var(--border-accent);color:var(--text-accent)">In 4</button>
+        <button style="flex:1;padding:5px 0;font-size:11px">In 12</button>
+      </div>
+      <div style="font-size:12px;line-height:2;border-top:0.5px solid var(--border);margin-top:11px;padding-top:9px">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-secondary)">Each cycle</span><span>$246.75</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-secondary)">Carry this cycle</span><span>$18.80</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-secondary)">Total</span><span style="font-weight:500">$987.00</span></div>
+      </div>
+    </div>
+    <button class="prim" style="width:100%;padding:11px 0;margin-bottom:7px">Approve</button>
+    <button style="width:100%">Not now</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:10px 0 0;line-height:1.55;text-align:center">Expires in 24 hours. Nothing is charged until you approve.</p>
+  </div>
+  <div class="side">
+    <div class="flag"><b>The split is chosen on the customer's phone.</b> Never on the merchant device &mdash; a service writer must not be choosing a member's repayment terms, and a member deciding at a counter under a queue is deciding badly.</div>
+  </div>
+</div>
+
+<h2>13 — Merchant onboarding</h2>
+<p class="note">The merchant signs themselves up, in the app, on the tablet or their own laptop. <strong>For merchants one to five a rep is sitting there</strong> — but the flow must not require one, or merchant twenty needs a visit that does not scale.</p>
+
+<div class="flag" style="max-width:760px"><b>The last step is the one that decides whether the shop transacts.</b> Signing takes four minutes and any owner will do it. Training the counter takes fifteen and is the step people skip &mdash; so it is inside the flow, not a follow-up email.</div>
+
+<p class="note" style="margin-bottom:.6rem"><strong>Desktop is the primary view for onboarding</strong> &mdash; an owner does this at the back-office computer, not standing at the counter. Step rail left, one step at a time on the right. All six shown in order; the frame is identical throughout.</p>
+
+<div class="desk" style="margin-bottom:14px">
+  <div class="topbar"><span class="wm">Clear <span>for Merchants</span></span><span style="font-size:12.5px;color:var(--text-muted)">Setting up Mike's Tire</span></div>
+  <div style="display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px">
+    <div><div style="border-radius:8px;background:var(--surface-1);padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary)"><span style="font-size:11px;color:var(--text-primary);width:13px;display:inline-block;text-align:center">1</span>Start</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">2</span>Your shop</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">3</span>Your terms</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">4</span>Verify</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">5</span>Where payouts go</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">6</span>The counter</div></div>
+    <div style="max-width:520px">
+      <p style="font-size:19px;font-weight:500;margin:0 0 5px">Clear for Merchants</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Finance work at your counter. Customers sign up in about three minutes; you are paid on your normal terms.</p>
+      <div class="g2" style="gap:12px;margin-bottom:9px"><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Business name</p><p style="font-size:14px;margin:0">Mike's Tire</p></div><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Your email</p><p style="font-size:14px;margin:0">mike@mikestire.com</p></div></div>
+      <div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Phone</p><p style="font-size:14px;margin:0">(909) 555&ndash;0118</p></div>
+      <div style="border-top:0.5px solid var(--border);margin:16px 0;padding-top:14px">
+        <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 9px">Have a code? <span style="color:var(--text-accent);cursor:pointer">Enter it</span> &mdash; some codes carry different terms.</p>
+      </div>
+      <div style="display:flex;gap:9px"><button class="prim" style="padding:11px 26px">Get started</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="desk" style="margin-bottom:14px">
+  <div class="topbar"><span class="wm">Clear <span>for Merchants</span></span><span style="font-size:12.5px;color:var(--text-muted)">Setting up Mike's Tire</span></div>
+  <div style="display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px">
+    <div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Start</div><div style="border-radius:8px;background:var(--surface-1);padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary)"><span style="font-size:11px;color:var(--text-primary);width:13px;display:inline-block;text-align:center">2</span>Your shop</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">3</span>Your terms</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">4</span>Verify</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">5</span>Where payouts go</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">6</span>The counter</div></div>
+    <div style="max-width:520px">
+      <p style="font-size:19px;font-weight:500;margin:0 0 5px">About the business</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">This is also your entry in the Clear Partners directory, where members look for somewhere to spend.</p>
+      <div class="g2" style="gap:12px;margin-bottom:9px"><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Business name</p><p style="font-size:14px;margin:0;">Mike's Tire</p></div><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Category</p><p style="font-size:14px;margin:0;">Auto &amp; tires</p></div></div><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Address</p><p style="font-size:14px;margin:0;">412 W State St, Redlands, CA 92373</p></div><div class="g2" style="gap:12px;margin-bottom:16px"><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Typical ticket</p><p style="font-size:14px;margin:0;">$300 &ndash; $1,500</p></div><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Phone</p><p style="font-size:14px;margin:0;">(909) 555&ndash;0118</p></div></div><div class="inset" style="padding:14px 16px;margin-bottom:16px"><p style="font-size:12.5px;color:var(--text-secondary);margin:0;line-height:1.65"><strong style="color:var(--text-primary)">Typical ticket sets your starting approval cap.</strong> It moves on its own once you have volume &mdash; you do not have to ask.</p></div>
+      <div style="display:flex;gap:9px"><button class="prim" style="padding:11px 26px">Continue</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="desk" style="margin-bottom:14px">
+  <div class="topbar"><span class="wm">Clear <span>for Merchants</span></span><span style="font-size:12.5px;color:var(--text-muted)">Setting up Mike's Tire</span></div>
+  <div style="display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px">
+    <div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Start</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Your shop</div><div style="border-radius:8px;background:var(--surface-1);padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary)"><span style="font-size:11px;color:var(--text-primary);width:13px;display:inline-block;text-align:center">3</span>Your terms</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">4</span>Verify</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">5</span>Where payouts go</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">6</span>The counter</div></div>
+    <div style="max-width:520px">
+      <p style="font-size:19px;font-weight:500;margin:0 0 5px">One page, in plain terms</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Read it here. The full agreement is linked below and emailed to you when you sign.</p>
+      <div class="g2" style="gap:12px;margin-bottom:12px">
+        <div class="card" style="padding:14px 16px">
+          <p class="cap" style="margin:0 0 9px">What you pay</p>
+          <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">Your rate</span><span>2.5% of financed amount</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Instead of</span><span style="color:var(--text-muted)">Card processing</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Setup, monthly, hardware</span><span>None</span></div>
+        </div>
+        <div class="card" style="padding:14px 16px">
+          <p class="cap" style="margin:0 0 9px">What you get</p>
+          <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">You are paid</span><span>Net-30</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Who bears a default</span><span>Clear</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Approval cap</span><span>$1,500 per charge</span></div>
+        </div>
+      </div>
+      <div class="inset" style="padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">Exclusivity</span><span>None &mdash; keep Synchrony, Snap, anything else</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Leaving</span><span>Any time, no fee, no notice</span></div>
+      </div>
+      <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 16px;line-height:1.6">Signing also makes Mike's Tire a <strong style="color:var(--text-primary)">partner member of the Clear co-op</strong> &mdash; one member, one vote, the same as every other member.</p>
+      <div style="display:flex;gap:9px">
+        <button class="prim" style="padding:11px 26px">Agree &amp; sign</button>
+        <button style="padding:11px 20px">Read the full agreement</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="desk" style="margin-bottom:14px">
+  <div class="topbar"><span class="wm">Clear <span>for Merchants</span></span><span style="font-size:12.5px;color:var(--text-muted)">Setting up Mike's Tire</span></div>
+  <div style="display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px">
+    <div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Start</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Your shop</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Your terms</div><div style="border-radius:8px;background:var(--surface-1);padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary)"><span style="font-size:11px;color:var(--text-primary);width:13px;display:inline-block;text-align:center">4</span>Verify</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">5</span>Where payouts go</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">6</span>The counter</div></div>
+    <div style="max-width:520px">
+      <p style="font-size:19px;font-weight:500;margin:0 0 5px">Business details</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Standard for anyone receiving payouts &mdash; the same details your bank and your card processor already hold.</p>
+      <div class="inset" style="padding:14px 16px;margin-bottom:16px;border-left:2.5px solid var(--border-accent);background:var(--bg-accent);border-radius:0 8px 8px 0"><p style="font-size:12.5px;margin:0;line-height:1.65"><strong style="color:var(--text-accent)">This is not a credit check.</strong> Nothing here affects your rate, your cap or whether you are approved. You already have terms &mdash; you signed them on the last screen.</p></div><div class="g2" style="gap:12px;margin-bottom:9px"><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Legal business name</p><p style="font-size:14px;margin:0;">Mike's Tire &amp; Auto LLC</p></div><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">EIN</p><p style="font-size:14px;margin:0;">88&ndash;•••••••</p></div></div><div class="g2" style="gap:12px;margin-bottom:16px"><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Who is authorised to sign</p><p style="font-size:14px;margin:0;">Michael Ruiz</p></div><div class="inset" style="padding:12px 15px;margin-bottom:9px"><p class="cap" style="margin:0 0 4px">Their role</p><p style="font-size:14px;margin:0;">Owner</p></div></div>
+      <div style="display:flex;gap:9px"><button class="prim" style="padding:11px 26px">Continue</button><button style="padding:11px 20px">Why do you need this?</button></div><p style="font-size:11.5px;color:var(--text-muted);margin:13px 0 0;line-height:1.55">Say it is standard <em>before</em> they ask. A shop that thinks it is being credit-checked stops here, and the reason never reaches you.</p>
+    </div>
+  </div>
+</div>
+
+<div class="desk" style="margin-bottom:14px">
+  <div class="topbar"><span class="wm">Clear <span>for Merchants</span></span><span style="font-size:12.5px;color:var(--text-muted)">Setting up Mike's Tire</span></div>
+  <div style="display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px">
+    <div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Start</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Your shop</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Your terms</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Verify</div><div style="border-radius:8px;background:var(--surface-1);padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary)"><span style="font-size:11px;color:var(--text-primary);width:13px;display:inline-block;text-align:center">5</span>Where payouts go</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">6</span>The counter</div></div>
+    <div style="max-width:520px">
+      <p style="font-size:19px;font-weight:500;margin:0 0 5px">Where payouts go</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Payouts land here on the 14th of each month. You can change it any time in Settings.</p>
+      <div class="card" style="padding:16px 18px;margin-bottom:12px"><p style="font-size:14px;margin:0 0 12px">Search for your bank</p><div class="inset" style="padding:12px 15px;margin-bottom:12px"><p style="font-size:13px;margin:0;color:var(--text-muted)">Chase, Bank of America, a credit union&hellip;</p></div><div style="display:flex;gap:9px"><button class="prim" style="padding:10px 22px">Connect securely</button><button style="padding:10px 18px">Enter account details instead</button></div></div><div class="inset" style="padding:14px 16px;margin-bottom:16px"><p style="font-size:12.5px;color:var(--text-secondary);margin:0;line-height:1.65"><strong style="color:var(--text-primary)">Nobody from Clear ever sees your banking credentials.</strong> You sign in to your own bank; we receive a token that lets us send money to you and nothing else. If someone from Clear is sitting with you, they should stand back for this step &mdash; and say so.</p></div>
+      <div style="display:flex;gap:9px"><button style="padding:11px 20px">Skip &mdash; add it before my first payout</button></div><p style="font-size:11.5px;color:var(--text-muted);margin:13px 0 0;line-height:1.55">Skippable on purpose. A merchant can sign, train the counter and start taking charges today, and add banking before the 14th.</p>
+    </div>
+  </div>
+</div>
+
+<div class="desk" style="margin-bottom:14px">
+  <div class="topbar"><span class="wm">Clear <span>for Merchants</span></span><span style="font-size:12.5px;color:var(--text-muted)">Setting up Mike's Tire</span></div>
+  <div style="display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px">
+    <div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Start</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Your shop</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Your terms</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Verify</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Where payouts go</div><div style="border-radius:8px;background:var(--surface-1);padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary)"><span style="font-size:11px;color:var(--text-primary);width:13px;display:inline-block;text-align:center">6</span>The counter</div></div>
+    <div style="max-width:520px">
+      <p style="font-size:19px;font-weight:500;margin:0 0 5px">Set up your counter</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">The part that decides whether any of this gets used. Fifteen minutes, once.</p>
+      <div class="card" style="padding:0 16px;margin-bottom:16px">
+        <div class="trow"><div><div>Add your staff</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">A four-digit PIN each, so charges are attributed</div></div><button style="font-size:12px;padding:5px 13px">Add</button></div>
+        <div class="trow"><div><div>Print counter cards</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">The same code the tablet shows &mdash; goes home with an estimate</div></div><button style="font-size:12px;padding:5px 13px">Print</button></div>
+        <div class="trow"><div><div>Run a test charge</div><div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">$1.00 to your own phone, refunded straight away</div></div><button style="font-size:12px;padding:5px 13px">Run</button></div>
+      </div>
+      <div class="inset" style="padding:14px 16px;margin-bottom:16px">
+        <p style="font-size:12.5px;color:var(--text-secondary);margin:0;line-height:1.65"><strong style="color:var(--text-primary)">Run the test charge with whoever works the counter.</strong> It puts the whole loop in front of them once &mdash; enter the amount, turn the screen, they approve, you refund it &mdash; with no customer waiting.</p>
+      </div>
+      <div style="display:flex;gap:9px">
+        <button class="prim" style="padding:11px 26px">Open Clear</button>
+        <button style="padding:11px 20px">Finish later</button>
+      </div>
+      <p style="font-size:11.5px;color:var(--text-muted);margin:13px 0 0;line-height:1.55">Anything skipped carries over to Home as a checklist until it is done.</p>
+    </div>
+  </div>
+</div>
+
+<p class="note" style="margin-bottom:.6rem"><strong>Tablet and phone</strong> &mdash; the same six steps in the same order, one column, the rail replaced by a progress indicator. <strong>No step is removed and no state differs</strong>; only the two-column panels stack.</p>
+<div class="stack">
+
+  <div class="tablet" style="max-width:300px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span class="cap" style="margin:0">Start</span><span style="display:flex;gap:4px;align-items:center"><span style="width:18px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span></span></div>
+    <p style="font-size:16px;font-weight:500;margin:0 0 6px">Clear for Merchants</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Finance work at your counter. Customers sign up in about three minutes; you are paid on your normal terms.</p>
+    <div class="inset" style="padding:11px 13px;margin-bottom:8px"><p style="font-size:13px;margin:0">Mike's Tire</p></div>
+    <div class="inset" style="padding:11px 13px;margin-bottom:8px"><p style="font-size:13px;margin:0;color:var(--text-muted)">mike@mikestire.com</p></div>
+    <div class="inset" style="padding:11px 13px;margin-bottom:14px"><p style="font-size:13px;margin:0;color:var(--text-muted)">(909) 555&ndash;0118</p></div>
+    <div style="border-top:0.5px solid var(--border);padding-top:12px;margin-bottom:12px">
+      <p style="font-size:11.5px;color:var(--text-secondary);margin:0">Have a code? <span style="color:var(--text-accent)">Enter it</span> &mdash; some carry different terms.</p>
+    </div>
+    <button class="prim" style="width:100%;padding:12px 0">Get started</button>
+  </div>
+
+  <div class="tablet" style="max-width:300px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span class="cap" style="margin:0">Your shop</span><span style="display:flex;gap:4px;align-items:center"><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:18px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span></span></div>
+    <p style="font-size:15px;font-weight:500;margin:0 0 14px">About the business</p>
+    <div class="inset" style="padding:11px 13px;margin-bottom:8px"><p style="font-size:13px;margin:0">Mike's Tire</p></div>
+    <div class="inset" style="padding:11px 13px;margin-bottom:8px"><p style="font-size:13px;margin:0;color:var(--text-muted)">Auto &amp; tires</p></div>
+    <div class="inset" style="padding:11px 13px;margin-bottom:8px"><p style="font-size:13px;margin:0;color:var(--text-muted)">412 W State St, Redlands</p></div>
+    <div class="inset" style="padding:11px 13px;margin-bottom:14px"><p style="font-size:13px;margin:0;color:var(--text-muted)">Typical ticket &mdash; $300 to $1,500</p></div>
+    <button class="prim" style="width:100%;padding:12px 0">Continue</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:11px 0 0;line-height:1.55">This is also your Clear Partners listing. Members see it when they look for somewhere to spend.</p>
+  </div>
+
+  <div class="tablet" style="max-width:300px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span class="cap" style="margin:0">Your terms</span><span style="display:flex;gap:4px;align-items:center"><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:18px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span></span></div>
+    <p style="font-size:15px;font-weight:500;margin:0 0 4px">One page, in plain terms</p>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 14px;line-height:1.6">Read it here. The full agreement is linked below and emailed to you.</p>
+    <div class="inset" style="padding:13px 15px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--text-secondary)">Your rate</span><span>2.5% of financed</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Setup, monthly, hardware</span><span>None</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">You are paid</span><span>Net-30</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Who bears a default</span><span>Clear</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Approval cap</span><span>$1,500 per charge</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Exclusivity</span><span>None</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Leaving</span><span>Any time, no fee</span></div>
+    </div>
+    <p style="font-size:11.5px;color:var(--text-secondary);margin:0 0 12px;line-height:1.6">Signing also makes Mike's Tire a <strong style="color:var(--text-primary)">partner member of the Clear co-op</strong> &mdash; one member, one vote.</p>
+    <button class="prim" style="width:100%;padding:12px 0">Agree &amp; sign</button>
+  </div>
+
+  <div class="tablet" style="max-width:300px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span class="cap" style="margin:0">Verify</span><span style="display:flex;gap:4px;align-items:center"><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:18px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span></span></div>
+    <p style="font-size:15px;font-weight:500;margin:0 0 4px">Business details</p>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 14px;line-height:1.6">Standard for anyone receiving payouts. Not a credit check &mdash; nothing here affects your terms.</p>
+    <div class="inset" style="padding:11px 13px;margin-bottom:8px"><p style="font-size:13px;margin:0;color:var(--text-muted)">Legal business name</p></div>
+    <div class="inset" style="padding:11px 13px;margin-bottom:8px"><p style="font-size:13px;margin:0;color:var(--text-muted)">EIN</p></div>
+    <div class="inset" style="padding:11px 13px;margin-bottom:14px"><p style="font-size:13px;margin:0;color:var(--text-muted)">Who is authorised to sign</p></div>
+    <button class="prim" style="width:100%;padding:12px 0">Continue</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:11px 0 0;line-height:1.55">Say it is standard before they ask. A shop that thinks it is being credit-checked will stop here.</p>
+  </div>
+
+  <div class="tablet" style="max-width:300px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span class="cap" style="margin:0">Where payouts go</span><span style="display:flex;gap:4px;align-items:center"><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:18px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--surface-0)"></span></span></div>
+    <p style="font-size:15px;font-weight:500;margin:0 0 4px">Connect your bank</p>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 14px;line-height:1.6">Payouts land here on the 14th of each month.</p>
+    <div class="inset" style="padding:12px 14px;margin-bottom:12px"><p style="font-size:13px;margin:0">Search your bank</p></div>
+    <button class="prim" style="width:100%;padding:12px 0;margin-bottom:8px">Connect securely</button>
+    <button style="width:100%;font-size:12px">Enter account details instead</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:11px 0 0;line-height:1.55"><strong style="color:var(--text-primary)">Nobody from Clear ever sees your banking credentials.</strong> If a rep is with you, they should stand back for this step and say so.</p>
+  </div>
+
+  <div class="tablet" style="max-width:300px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><span class="cap" style="margin:0">The counter</span><span style="display:flex;gap:4px;align-items:center"><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:6px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span><span style="width:18px;height:6px;border-radius:3px;display:inline-block;background:var(--text-primary)"></span></span></div>
+    <p style="font-size:15px;font-weight:500;margin:0 0 4px">Set up your counter</p>
+    <p style="font-size:12px;color:var(--text-secondary);margin:0 0 14px;line-height:1.6">The part that decides whether any of this gets used.</p>
+    <div class="card" style="padding:0 14px;margin-bottom:12px">
+      <div class="trow"><div><div>Add your staff</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">A PIN each</div></div><button style="font-size:12px;padding:4px 11px">Add</button></div>
+      <div class="trow"><div><div>Print counter cards</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">Goes home with an estimate</div></div><button style="font-size:12px;padding:4px 11px">Print</button></div>
+      <div class="trow"><div><div>Run a test charge</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px">$1.00, refunded straight away</div></div><button style="font-size:12px;padding:4px 11px">Run</button></div>
+    </div>
+    <button class="prim" style="width:100%;padding:12px 0">Open Clear</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:11px 0 0;line-height:1.55">Skippable &mdash; and the checklist carries over to Home until it is done.</p>
+  </div>
+
+</div>
+
+<div class="stack" style="margin-top:14px">
+  <div class="side"><div class="flag"><b>Terms are shown as six lines, not a document.</b> An owner who reads six lines has actually read their agreement. One who scrolls a contract has not, and will be surprised later &mdash; which is the same thing as churning.</div></div>
+  <div class="side"><p class="note"><strong>The $1.00 test charge is the real training.</strong> It puts the whole loop in front of them once &mdash; enter, show the code, approve, refund &mdash; with no customer watching. A shop that has run it once will run it live.</p></div>
+  <div class="side"><p class="note"><strong>Nothing here asks a rep to touch anything.</strong> The bank step says so explicitly, because a partnerships hire standing over a laptop while an owner types account numbers is the single worst moment in the whole relationship.</p></div>
+</div>
+
+<h2>14 — Codes, and what they change</h2>
+<p class="note"><strong>A code is a terms mechanism, not a referral tag.</strong> Standard terms are the default screen everyone sees. A code replaces some of them, and different codes carry different replacements &mdash; founding partners now, and later a regional launch, a category pilot, or a partner-referred shop.</p>
+
+<div class="stack">
+  <div class="tablet" style="max-width:300px">
+    <p class="cap">Entering a code</p>
+    <p style="font-size:14px;font-weight:500;margin:0 0 12px">Do you have a code?</p>
+    <div class="inset" style="padding:12px 14px;margin-bottom:12px"><p style="font-size:16px;letter-spacing:2px;margin:0">KAI&ndash;1104</p></div>
+    <div class="card" style="padding:12px 14px;border-color:var(--border-accent);background:var(--bg-accent);margin-bottom:12px">
+      <p style="font-size:12px;color:var(--text-accent);margin:0 0 4px;letter-spacing:.2px">FOUNDING PARTNER &middot; 2 OF 5 LEFT</p>
+      <p style="font-size:12px;margin:0;line-height:1.6">Changes your rate and waives the fee on your first twenty charges.</p>
+    </div>
+    <button class="prim" style="width:100%;padding:11px 0">Apply</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:11px 0 0;line-height:1.55">No code is fine. Standard terms are what most shops sign.</p>
+  </div>
+
+  <div class="side">
+    <div class="flag"><b>Show what a code changes before it is applied, and show the scarcity honestly.</b> &ldquo;2 of 5 left&rdquo; is true and it is the reason a shop signs this week instead of thinking about it. A code that silently improves terms is a discount nobody thanked you for.</div>
+    <p class="note"><strong>Codes are per-terms, not per-rep.</strong> One code can be handed to many shops; a different code carries different terms. That keeps attribution and terms separate, so a rep is never negotiating &mdash; they are handing over a code that already means something.</p>
+  </div>
+</div>
+
+<p class="note" style="margin:1.1rem 0 .6rem"><strong>The terms screen with a founding code applied.</strong> Same layout; only the changed lines are tinted, so a merchant can see exactly what the code bought.</p>
+<div class="desk" style="margin-bottom:14px">
+  <div class="topbar"><span class="wm">Clear <span>for Merchants</span></span><span style="font-size:12.5px;color:var(--text-muted)">Setting up Mike's Tire</span></div>
+  <div style="display:grid;grid-template-columns:210px minmax(0,1fr);gap:28px">
+    <div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Start</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-secondary)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-success)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Your shop</div><div style="border-radius:8px;background:var(--surface-1);padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-primary)"><span style="font-size:11px;color:var(--text-primary);width:13px;display:inline-block;text-align:center">3</span>Your terms</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">4</span>Verify</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">5</span>Where payouts go</div><div style="padding:9px 11px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-muted)"><span style="font-size:11px;color:var(--text-muted);width:13px;display:inline-block;text-align:center">6</span>The counter</div></div>
+    <div style="max-width:520px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+        <p style="font-size:19px;font-weight:500;margin:0">One page, in plain terms</p>
+        <span style="font-size:10.5px;color:var(--text-accent);border:0.5px solid var(--border-accent);background:var(--bg-accent);border-radius:999px;padding:2px 9px;white-space:nowrap">KAI&ndash;1104 applied</span>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0 0 18px;line-height:1.6">Two lines differ from standard terms. Everything else is the same.</p>
+      <div class="g2" style="gap:12px;margin-bottom:12px">
+        <div class="card" style="padding:14px 16px;border-color:var(--border-accent)">
+          <p class="cap" style="margin:0 0 9px">What you pay</p>
+          <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">Your rate</span><span style="color:var(--text-accent)">2% &middot; for life</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Standard is</span><span style="color:var(--text-muted)">2.5%</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">First 20 charges</span><span style="color:var(--text-accent)">No fee</span></div>
+        </div>
+        <div class="card" style="padding:14px 16px">
+          <p class="cap" style="margin:0 0 9px">What you get</p>
+          <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">You are paid</span><span>Net-30</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Who bears a default</span><span>Clear</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Approval cap</span><span>$1,500 per charge</span></div>
+        </div>
+      </div>
+      <div class="inset" style="padding:14px 16px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">Named a founding partner</span><span style="color:var(--text-accent)">Yes</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Exclusivity</span><span>None</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Leaving</span><span>Any time, no fee, no notice</span></div>
+      </div>
+      <div style="display:flex;gap:9px">
+        <button class="prim" style="padding:11px 26px">Agree &amp; sign</button>
+        <button style="padding:11px 20px">Read the full agreement</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="stack">
+  <div class="side"><div class="flag"><b>&ldquo;Standard is 2.5%&rdquo; stays on the screen.</b> A discount nobody can see the size of is not a discount. Showing both makes the 2% mean something, and it sets the expectation for what a shop referred later will be offered.</div></div>
+  <div class="side"><p class="note"><strong>Only two lines change.</strong> Keeping the layout identical means a merchant comparing notes with another shop can see precisely where they differ &mdash; which they will do, in a corridor this small.</p></div>
+</div>
+
+<h2>15 — Charge detail, and refunds</h2>
+<p class="note">Tapping a charge opens this. <strong>Refunds are unavoidable in retail</strong> &mdash; wrong tyre, returned part, job cancelled &mdash; and a merchant will ask about them in the first conversation.</p>
+<div class="stack">
+  <div class="tablet" style="max-width:400px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <span style="color:var(--text-secondary);font-size:20px;cursor:pointer">&lsaquo;</span><span style="font-size:16px;font-weight:500">Marcus T.</span>
+    </div>
+    <p class="mid" style="margin:0 0 3px">$412.00</p>
+    <p style="font-size:12.5px;color:var(--text-muted);margin:0 0 18px">Confirmed today, 11:04am &middot; raised by Jen</p>
+    <div class="inset" style="padding:14px 16px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:var(--text-secondary)">You receive</span><span style="font-weight:500">$401.70</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Fee</span><span>$10.30 &middot; 2.5%</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px"><span style="color:var(--text-secondary)">Paid out</span><span>Dec 14</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-top:7px;padding-top:9px;border-top:0.5px solid var(--border)"><span style="color:var(--text-secondary)">They chose</span><span>Split in 4 &middot; $108.15 a cycle &middot; 1 cleared</span></div>
+    </div>
+    <button style="width:100%">Start a refund</button>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:10px 0 0;line-height:1.55;text-align:center">Any staff member can start one. An owner finishes it.</p>
+  </div>
+  <div class="side">
+    <div class="flag"><b>&ldquo;Start a refund&rdquo;, not &ldquo;Refund&rdquo;.</b> The label has to tell a writer they are beginning something rather than doing it &mdash; otherwise they promise the customer a refund and then discover they cannot complete it.</div>
+  </div>
+</div>
+
+<h2>16 — Refund: who does what</h2>
+<p class="note">Two people, three steps, and <strong>every screen says whose it is</strong>. The manager-override pattern every retail till already uses &mdash; nobody needs training because it is what they already do.</p>
+
+<div class="stack">
+
+  <div class="tablet" style="max-width:300px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span class="cap" style="margin:0">Step 1 &middot; Review</span><span style="font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;border-radius:999px;padding:2px 8px;white-space:nowrap;color:var(--text-muted);border:0.5px solid var(--border)">Jen &middot; counter</span>
+    </div>
+    <p style="font-size:14px;font-weight:500;margin:0 0 12px">Refund $412.00 to Marcus T.?</p>
+    <div class="inset" style="padding:13px 15px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--text-secondary)">His plan closes</span><span>$412.00</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">He gets back</span><span>$99.91</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Carry he already paid</span><span>$8.24 &mdash; kept</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px;padding-top:8px;border-top:0.5px solid var(--border)"><span style="color:var(--text-secondary)">Off your next payout</span><span style="font-weight:500">$401.70</span></div>
+    </div>
+    <button class="prim" style="width:100%;padding:11px 0;margin-bottom:8px">Send to an owner</button>
+    <button style="width:100%">Cancel</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:11px 0 0;line-height:1.55">Nothing moves yet. Mike will get this on his phone, or he can type his code here.</p>
+  </div>
+
+  <div class="tablet" style="max-width:300px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span class="cap" style="margin:0">Step 2 &middot; Waiting</span><span style="font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;border-radius:999px;padding:2px 8px;white-space:nowrap;color:var(--text-accent);border:0.5px solid var(--border-accent);background:var(--bg-accent)">Needs an owner</span>
+    </div>
+    <p style="font-size:14px;font-weight:500;margin:0 0 4px">Waiting on Mike</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 16px;line-height:1.6">Jen requested a $412.00 refund for Marcus T. at 2:31pm.</p>
+    <div class="inset" style="padding:13px 15px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--text-secondary)">Sent to Mike</span><span style="color:var(--text-muted)">Delivered</span></div>
+      <p style="font-size:11px;color:var(--text-muted);margin:9px 0 0;line-height:1.55">He can approve from his phone, or type his code below if he is here.</p>
+    </div>
+    <div class="inset" style="padding:13px 15px;margin-bottom:12px">
+      <p class="cap" style="margin:0 0 7px">Owner code</p>
+      <p style="font-size:19px;letter-spacing:6px;color:var(--text-muted);margin:0">&bull;&bull;&bull;&bull;</p>
+    </div>
+    <button style="width:100%">Cancel the request</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:11px 0 0;line-height:1.55">The customer has not been told anything yet. Nothing has moved.</p>
+  </div>
+
+  <div class="tablet" style="max-width:300px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span class="cap" style="margin:0">Step 3 &middot; Authorise</span><span style="font-size:9.5px;letter-spacing:.5px;text-transform:uppercase;border-radius:999px;padding:2px 8px;white-space:nowrap;color:var(--text-accent);border:0.5px solid var(--border-accent);background:var(--bg-accent)">Mike &middot; owner</span>
+    </div>
+    <p style="font-size:14px;font-weight:500;margin:0 0 4px">Approve this refund?</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 16px;line-height:1.6"><strong style="color:var(--text-primary)">Jen</strong> requested this for Marcus T.</p>
+    <div class="inset" style="padding:13px 15px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--text-secondary)">Refund</span><span style="font-weight:500">$412.00</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Off your next payout</span><span>$401.70</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Next payout becomes</span><span>$3,808.30</span></div>
+    </div>
+    <button class="prim" style="width:100%;padding:11px 0;margin-bottom:8px">Approve refund</button>
+    <button style="width:100%">Decline</button>
+    <p style="font-size:11px;color:var(--text-muted);margin:11px 0 0;line-height:1.55">Declining tells Jen, not the customer.</p>
+  </div>
+
+  <div class="side">
+    <div class="flag"><b>The owner sees a different number than the writer.</b> Jen sees what the customer gets back. Mike sees what it does to <strong>his payout</strong> &mdash; $3,808.30 instead of $4,210.00. That is the figure the person authorising actually cares about, and it is the one that makes the decision.</div>
+    <p class="note"><strong>Two ways to authorise, one flow.</strong> Mike walks over and types his code on the tablet, or he approves from his phone in the back office. Step 2 holds either way, so a writer is never stuck waiting at the till.</p>
+    <p class="note"><strong>Nothing is said to the customer until step 3 completes.</strong> A refund that a writer promised and an owner declined is the worst possible counter conversation &mdash; the copy at each step keeps the promise unmade.</p>
+  </div>
+</div>
+
+<p class="note" style="margin:1rem 0 .6rem"><strong>Done</strong> &mdash; and the record keeps both names, because an owner reviewing the month needs to know who asked as well as who approved.</p>
+<div class="stack">
+  <div class="tablet" style="max-width:340px">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+      <div class="tick"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+      <div><p class="mid" style="margin:0">$412.00 refunded</p><p style="font-size:12px;color:var(--text-muted);margin:4px 0 0">Marcus T. &middot; just now</p></div>
+    </div>
+    <div class="inset" style="padding:13px 15px">
+      <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--text-secondary)">Requested by</span><span>Jen &middot; 2:31pm</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px"><span style="color:var(--text-secondary)">Approved by</span><span>Mike &middot; 2:34pm</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px;padding-top:8px;border-top:0.5px solid var(--border)"><span style="color:var(--text-secondary)">Next payout</span><span style="font-weight:500">$3,808.30</span></div>
+    </div>
+  </div>
+  <div class="side">
+    <p class="note"><strong>Marcus is told once, here.</strong> His plan closes and $99.91 returns to the account it cleared from &mdash; the same account, so there is nothing for him to choose.</p>
+  </div>
+</div>
+
+<h2>17 — When it does not work</h2>
+<p class="note">Three failures a counter will actually hit. <strong>Each one has to leave the writer with something to say to the customer</strong> &mdash; that is the whole job of these screens.</p>
+<div class="stack">
+  <div class="tablet" style="max-width:280px">
+    <p class="cap">Declined</p>
+    <p style="font-size:15px;font-weight:500;margin:0 0 10px">Clear could not cover this one</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 14px;line-height:1.65">Dana can see why in her app. Nothing has been charged.</p>
+    <button style="width:100%;font-size:12px">Try a smaller amount</button>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:12px 0 0;line-height:1.6">The merchant is never told the reason &mdash; that is between Clear and the member.</p>
+  </div>
+  <div class="tablet" style="max-width:280px">
+    <p class="cap">Expired</p>
+    <p style="font-size:15px;font-weight:500;margin:0 0 10px">Dana did not approve in time</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 14px;line-height:1.65">Charges expire after 24 hours. Nothing was charged and nothing is owed.</p>
+    <button style="width:100%;font-size:12px">Send it again</button>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:12px 0 0;line-height:1.6">Re-sending is one tap because the common cause is a phone that was face-down.</p>
+  </div>
+  <div class="tablet" style="max-width:280px">
+    <p class="cap">No connection</p>
+    <p style="font-size:15px;font-weight:500;margin:0 0 10px">Clear is offline</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 14px;line-height:1.65">You cannot raise a charge right now. Take the ticket the usual way and raise it when you are back.</p>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:0;line-height:1.6"><strong style="color:var(--text-primary)">No offline queue.</strong> Capturing a charge the ledger has not seen means promising the merchant something that may not hold.</p>
+  </div>
+</div>
+
+<h2>18 — The two shortcuts, and withdrawing</h2>
+<p class="note">The paths that sit under the code, plus the flow behind <em>Withdraw now</em>.</p>
+<div class="stack">
+  <div class="tablet" style="max-width:300px">
+    <p class="cap">Scan their code</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 14px">For a member who already has theirs open.</p>
+    <div class="scan"><div class="scanbox"></div></div>
+    <p style="font-size:12.5px;color:var(--text-secondary);text-align:center;margin:14px 0 0;line-height:1.6">Their code identifies them &mdash; <strong style="color:var(--text-primary)">it carries no amount.</strong></p>
+    <p style="font-size:11.5px;color:var(--text-muted);text-align:center;margin:5px 0 0">You entered $940.00. They approve it.</p>
+  </div>
+  <div class="tablet" style="max-width:300px">
+    <p class="cap">Enter phone number</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 14px">Dead battery, cracked screen, or they are in the waiting room.</p>
+    <div class="inset" style="padding:13px 15px;margin-bottom:12px"><p style="font-size:15px;margin:0;color:var(--text-muted)">(909) 555&ndash;0142</p></div>
+    <button class="prim" style="width:100%;padding:11px 0">Send the charge</button>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:12px 0 0;line-height:1.6">Reaches them by text and email. They approve whenever they pick up their phone.</p>
+  </div>
+  <div class="tablet" style="max-width:300px">
+    <p class="cap">Withdraw</p>
+    <p style="font-size:12.5px;color:var(--text-secondary);margin:0 0 12px">To Chase &#183;&#183;&#183;&#183;9012</p>
+    <p class="mid" style="margin:0 0 3px">$2,400.00</p>
+    <p style="font-size:11.5px;color:var(--text-muted);margin:0 0 14px">Available today of $3,030.00 owed</p>
+    <div class="inset" style="padding:12px 14px;margin-bottom:14px">
+      <p style="font-size:12px;color:var(--text-secondary);margin:0;line-height:1.6">The rest lands on Dec 14 as usual. Withdrawing early does not change your rate.</p>
+    </div>
+    <button class="prim" style="width:100%;padding:11px 0;margin-bottom:8px">Withdraw $2,400.00</button>
+    <button style="width:100%">Wait for the 14th</button>
+  </div>
+</div>
+
+<h2>Open questions</h2>
+<div class="card" style="padding:15px 17px;max-width:760px">
+  <p style="font-size:12.5px;margin:0 0 10px;line-height:1.6"><strong>Settled:</strong> a refund closes the plan, returns the member's principal, and <strong>the co-op keeps the carry already paid</strong> &mdash; they held the money, and that is what carry is for. Still to settle in the contracts: how the ledger unwinds it, since the plan's position has to close without leaving a stub.</p>
+  <p style="font-size:12.5px;margin:0 0 10px;line-height:1.6"><strong>Partial refunds.</strong> One tyre of four goes back. Does the plan resize, or does it close and reopen at the new amount? Resizing is kinder and much harder.</p>
+  <p style="font-size:12.5px;margin:0 0 10px;line-height:1.6"><strong>Does a declined charge tell the merchant anything?</strong> Drawn above as a flat no. &ldquo;Over their limit&rdquo; would help a writer offer a smaller amount, and is not the merchant's business.</p>
+  <p style="font-size:12.5px;margin:0;line-height:1.6"><strong>Merchant notifications.</strong> The customer's are designed; the merchant's are not. A confirmation at 9pm is useful; forty of them a day is noise someone turns off.</p>
+</div>
+
+</div></body></html>

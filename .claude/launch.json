@@ -4,12 +4,7 @@
     {
       "name": "protocol-app",
       "runtimeExecutable": "npm",
-      "runtimeArgs": [
-        "run",
-        "dev",
-        "--prefix",
-        "app"
-      ],
+      "runtimeArgs": ["run", "dev", "--workspace", "@clear/member"],
       "port": 5173
     }
   ]

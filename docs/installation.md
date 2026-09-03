@@ -45,7 +45,7 @@ cd Protocol-Contracts
 npm install
 
 # Install frontend dependencies
-cd app
+cd apps/member
 npm install
 ```
 
@@ -63,7 +63,7 @@ nano .env
 
 ```bash
 # Start frontend development server
-cd app
+cd apps/member
 npm run dev
 
 # In another terminal, start local blockchain
@@ -184,7 +184,7 @@ npx hardhat node
 npx hardhat run deploy/deploy_all.ts --network localhost
 
 # Start frontend
-cd app && npm run dev
+cd apps/member && npm run dev
 ```
 
 #### 2. Local Testing
@@ -261,7 +261,7 @@ npx hardhat verify --network base DEPLOYED_CONTRACT_ADDRESS
 npm i -g vercel
 
 # Deploy to Vercel
-cd app
+cd apps/member
 vercel --prod
 ```
 
