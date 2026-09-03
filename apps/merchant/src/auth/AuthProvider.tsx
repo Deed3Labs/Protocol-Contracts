@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { canAuthoriseRefund, seesMoney, type Staff } from '@clear/domain';
-import { api, ApiError, storeToken } from '@/data/apiClient';
+import { api, storeToken } from '@/data/apiClient';
 import { AuthContext, type AuthValue, type Session } from '@/auth/authContext';
 
 /**
@@ -55,10 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .currentSession()
       .then((res) => {
         if (cancelled || !res) return;
-        setSession({
-          staff: { ...res.staff, hasPin: true, active: true } as Staff,
-          method: res.staff.role === 'owner' ? 'password' : 'pin',
-        });
+        setSession({ staff: { ...res.staff, hasPin: true, active: true } as Staff, method: 'pin' });
       })
       .catch(() => {
         // A server that cannot be reached is a tablet that cannot take a charge. The sign-in
@@ -73,20 +70,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const adopt = useCallback((res: Awaited<ReturnType<typeof api.signIn>>): Staff => {
+  const adopt = useCallback((res: Awaited<ReturnType<typeof api.startShift>>): Staff => {
     const staff = { ...res.staff, hasPin: true, active: true } as Staff;
-    setSession({ staff, method: res.staff.role === 'owner' ? 'password' : 'pin' });
+    setSession({ staff, method: 'pin' });
     return staff;
   }, []);
 
   const signInWithPin = useCallback(
-    async (pin: string) => adopt(await api.signIn({ merchant: merchantAddress(), pin })),
-    [adopt],
-  );
-
-  const signInWithPassword = useCallback(
-    async (email: string, password: string) =>
-      adopt(await api.signIn({ merchant: merchantAddress(), email, password })),
+    async (pin: string, staffId: string) =>
+      adopt(await api.startShift({ merchant: merchantAddress(), staffId, pin })),
     [adopt],
   );
 
@@ -119,11 +111,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canSeeMoney: session ? seesMoney(session.staff.role) : false,
       canAuthoriseRefunds: session ? canAuthoriseRefund(session.staff.role) : false,
       signInWithPin,
-      signInWithPassword,
       authoriseWithOwnerCode,
       signOut,
     }),
-    [session, loading, signInWithPin, signInWithPassword, authoriseWithOwnerCode, signOut],
+    [session, loading, signInWithPin, authoriseWithOwnerCode, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

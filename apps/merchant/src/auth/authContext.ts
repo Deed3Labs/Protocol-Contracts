@@ -10,8 +10,13 @@ import type { Staff, StaffRole } from '@clear/domain';
  * can they see money, can they authorise a refund — live in the domain so both apps answer them
  * the same way.
  *
- * Counter staff sign in with a PIN because they do it twenty times a shift on a shared tablet.
- * An owner gets a real password, because they reach money.
+ * **A PIN is attribution, not authentication.** Four digits on a shared counter tablet will be
+ * watched and shared — it is not a security boundary. What it buys is knowing who raised a charge,
+ * which is what makes the staff name on every charge row real. The boundary is the enrolled
+ * device, granted by an owner and removable in one tap from anywhere.
+ *
+ * An owner's authority does not live here at all. It comes from signing in with Privy — an emailed
+ * code, a passkey, an existing wallet — and Clear stores no owner credential of any kind.
  *
  * **Session storage is host-only and unshared.** The merchant app and the member app have
  * different auth models and must never see each other's session: no cookie is scoped to
@@ -25,7 +30,11 @@ export const SESSION_KEY = 'clear.merchant.session';
 export interface Session {
   staff: Staff;
   /** How they got in. An owner who typed a PIN to authorise one refund is still not signed in. */
-  method: 'pin' | 'password';
+  /**
+   * How the shift started. Always a PIN — there is no password anywhere in this app. An owner's
+   * AUTHORITY comes from signing in with Privy, which is a separate act from being on shift.
+   */
+  method: 'pin';
 }
 
 export interface AuthValue {
@@ -36,8 +45,8 @@ export interface AuthValue {
   /** Payout figures, bank details, the rate, monthly totals. Counter staff see none of it. */
   canSeeMoney: boolean;
   canAuthoriseRefunds: boolean;
-  signInWithPin: (pin: string) => Promise<Staff>;
-  signInWithPassword: (email: string, password: string) => Promise<Staff>;
+  /** A name was picked on the roster, then a PIN. Starts a SHIFT, not a login. */
+  signInWithPin: (pin: string, staffId: string) => Promise<Staff>;
   /**
    * An owner authorising something on a counter device without taking over the session.
    *

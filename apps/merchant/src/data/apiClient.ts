@@ -19,11 +19,13 @@ const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http:
 const TOKEN_KEY = 'clear.merchant.token';
 
 export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
+  // Declared and assigned rather than a constructor parameter property: this app compiles with
+  // `erasableSyntaxOnly`, which forbids syntax that emits code rather than just erasing types.
+  readonly status: number;
+
+  constructor(message: string, status: number) {
     super(message);
+    this.status = status;
   }
 }
 
@@ -87,12 +89,31 @@ export interface SessionResponse {
 }
 
 export const api = {
-  /** A counter writer starts a shift with a PIN; an owner with email and password. */
-  async signIn(input: {
+  /**
+   * Who is on the counter, for the shift screen.
+   *
+   * Names and roles only, and reachable before anyone has signed in — the screen exists so a
+   * writer picks their own name rather than remembering which of four codes is theirs.
+   */
+  async roster(merchant: string): Promise<{ id: string; name: string; role: StaffRole }[]> {
+    const res = await request<{ staff: { id: string; name: string; role: StaffRole }[] }>(
+      '/api/merchant/roster',
+      { method: 'POST', body: JSON.stringify({ merchant }) },
+    );
+    return res.staff;
+  },
+
+  /**
+   * Start a shift: a name was picked, then a PIN.
+   *
+   * This is not a login. It says who is at the counter so charges can be attributed, and it
+   * authorises nothing that moves money — that needs the owner's Privy sign-in. There is
+   * deliberately no password parameter: Clear holds no owner credential to check.
+   */
+  async startShift(input: {
     merchant: string;
-    pin?: string;
-    email?: string;
-    password?: string;
+    staffId: string;
+    pin: string;
   }): Promise<SessionResponse> {
     const res = await request<SessionResponse>('/api/merchant/session', {
       method: 'POST',
@@ -191,11 +212,38 @@ export const api = {
     });
   },
 
-  /** An owner authorises by code, without taking over the writer's session. */
+  /**
+   * An owner authorises with their code, at the counter, without taking over the writer's session.
+   *
+   * The weaker of the two paths — it proves somebody knew four digits — which is why the shop's
+   * threshold caps what it can clear. Above that the decision must come from the owner's own
+   * device, and the record keeps which path was used.
+   */
   async authoriseRefund(id: string, code: string, decision: 'approve' | 'decline'): Promise<Refund> {
     return request(`/api/merchant/refunds/${encodeURIComponent(id)}/authorise`, {
       method: 'POST',
       body: JSON.stringify({ code, decision }),
+    });
+  },
+
+  /** An owner decides from their own device, signed in with Privy. No amount limit. */
+  async decideRefund(id: string, decision: 'approve' | 'decline'): Promise<Refund> {
+    return request(`/api/merchant/refunds/${encodeURIComponent(id)}/decide`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    });
+  },
+
+  /** What a counter writer may clear with the owner's code. Zero is "Off". */
+  async refundThreshold(): Promise<{ limitCents: number; maxCents: number | null }> {
+    return request('/api/merchant/refund-threshold');
+  },
+
+  /** Owner only, and never reachable by the code path — the code cannot raise its own limit. */
+  async setRefundThreshold(limitCents: number): Promise<{ limitCents: number }> {
+    return request('/api/merchant/refund-threshold', {
+      method: 'PUT',
+      body: JSON.stringify({ limitCents }),
     });
   },
 
@@ -289,6 +337,8 @@ export interface Refund {
   decidedByName: string | null;
   requestedAt: string;
   decidedAt: string | null;
+  /** How it was approved. Not equal evidence, so the record keeps which. */
+  decidedVia: 'owner_code' | 'owner_device' | null;
 }
 
 export interface PayoutPosition {
