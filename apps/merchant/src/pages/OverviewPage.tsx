@@ -73,7 +73,7 @@ export default function OverviewPage() {
   return (
     <div className="@container">
       {/* Three figures across, stacking on anything narrow. */}
-      <div className="mb-4 grid grid-cols-1 gap-3.5 @[560px]:grid-cols-3">
+      <div className="mb-3 grid grid-cols-1 gap-3 @[560px]:grid-cols-3">
         <Figure
           label="This month"
           value={dollars(total)}
@@ -113,7 +113,7 @@ export default function OverviewPage() {
             recent.map((c) => (
               <div
                 key={c.code}
-                className="flex items-center justify-between gap-3 border-b-[0.5px] border-[var(--clear-border)] py-[9px] text-[13px] last:border-b-0"
+                className="flex items-center justify-between gap-3 border-b-[0.5px] border-[var(--clear-border)] py-3 text-[13px] last:border-b-0"
               >
                 <Link to={`/charges/${c.code}`} className="min-w-0 truncate">
                   {c.memberName ?? 'Not opened yet'} · {whenLabel(c.createdAt)}

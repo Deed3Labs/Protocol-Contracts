@@ -198,7 +198,7 @@ export function WithdrawModal({
               ))}
             </div>
 
-            <div className="mb-3 rounded-[10px] border-[0.5px] border-[var(--clear-border)] px-3.5 py-3">
+            <div className="mb-3 rounded-[10px] border-[0.5px] border-[var(--clear-border)] px-[14px] py-3">
               <Line label="Route" value={routeLabel(source, destination, bank)} />
               <Line label="Fee" value={feeLabel(destination, cents)} />
               <Line label="Arrives" value={arrivalLabel(destination)} />
@@ -271,15 +271,15 @@ function Route({
 
   return (
     <div className="relative mb-3.5 grid grid-cols-2 items-stretch gap-1">
-      <button type="button" onClick={onTap} className="min-w-0 rounded-l-[10px] rounded-r-[4px] bg-[var(--clear-surface-1)] py-[11px] pl-3.5 pr-6 text-left">
-        <p className="m-0 mb-[5px] text-[9.5px] uppercase tracking-[0.4px] text-[var(--clear-text-muted)]">From</p>
-        <p className="m-0 truncate text-[13px]">{from.name}</p>
-        <p className="m-0 mt-0.5 truncate text-[11.5px] text-[var(--clear-text-muted)]">{from.sub}</p>
+      <button type="button" onClick={onTap} className="min-w-0 rounded-l-[10px] rounded-r-[4px] bg-[var(--clear-surface-1)] py-[11px] pl-[13px] pr-[25px] text-left">
+        <p className="m-0 mb-[5px] text-[9.5px] uppercase leading-none tracking-[0.4px] text-[var(--clear-text-muted)]">From</p>
+        <p className="m-0 truncate text-[13px] leading-[1.3]">{from.name}</p>
+        <p className="m-0 mt-0.5 truncate text-[11.5px] leading-[1.35] text-[var(--clear-text-muted)]">{from.sub}</p>
       </button>
-      <button type="button" onClick={onTap} className="min-w-0 rounded-l-[4px] rounded-r-[10px] bg-[var(--clear-surface-1)] py-[11px] pl-6 pr-3.5 text-left">
-        <p className="m-0 mb-[5px] text-[9.5px] uppercase tracking-[0.4px] text-[var(--clear-text-muted)]">To</p>
-        <p className="m-0 truncate text-[13px]">{to.name}</p>
-        <p className="m-0 mt-0.5 truncate text-[11.5px] text-[var(--clear-text-muted)]">{to.sub}</p>
+      <button type="button" onClick={onTap} className="min-w-0 rounded-l-[4px] rounded-r-[10px] bg-[var(--clear-surface-1)] py-[11px] pl-[25px] pr-[13px] text-left">
+        <p className="m-0 mb-[5px] text-[9.5px] uppercase leading-none tracking-[0.4px] text-[var(--clear-text-muted)]">To</p>
+        <p className="m-0 truncate text-[13px] leading-[1.3]">{to.name}</p>
+        <p className="m-0 mt-0.5 truncate text-[11.5px] leading-[1.35] text-[var(--clear-text-muted)]">{to.sub}</p>
       </button>
       <span className="pointer-events-none absolute left-1/2 top-1/2 flex h-[26px] w-[26px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[0.5px] border-[var(--clear-border)] bg-[var(--clear-surface-2)] shadow-[0_0_0_4px_var(--clear-surface-2)]">
         <ArrowRight size={13} className="text-[var(--clear-text-secondary)]" />
@@ -408,7 +408,7 @@ function Option({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 border-b-[0.5px] border-[var(--clear-border)] py-3 text-left last:border-b-0 disabled:opacity-45"
+      className="flex w-full items-center justify-between gap-3 border-b-[0.5px] border-[var(--clear-border)] py-[13px] text-left last:border-b-0 disabled:opacity-45"
     >
       <span className="min-w-0">
         <span className="block text-[13.5px]">{name}</span>

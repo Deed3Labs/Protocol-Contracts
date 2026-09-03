@@ -120,14 +120,18 @@ nav{display:flex;margin-left:auto;gap:20px;font-size:13px;color:var(--text-secon
 .stepr .d{width:15px;flex-shrink:0;display:flex;justify-content:center}
 
 .comp{display:flex;height:7px;border-radius:4px;overflow:hidden;background:var(--surface-0);gap:1.5px;margin-bottom:4px}
-.legs{margin-top:2px}
-.leg2{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:7px 0}
-.leg2 .l{display:flex;align-items:center;gap:8px;min-width:0}
-.leg2 .r{color:var(--text-secondary);white-space:nowrap;display:flex;align-items:center;gap:7px}
+.legs{margin-top:10px;border:0.5px solid var(--border);border-radius:11px;padding:0 14px}
+.leg2{display:flex;justify-content:space-between;align-items:flex-start;font-size:13.5px;padding:13px 0;border-bottom:0.5px solid var(--border)}
+.leg2:last-child{border-bottom:0}
+.leg2 .sub3{font-size:11.5px;color:var(--text-muted);margin:4px 0 0;line-height:1.45}
+.leg2 .l{display:flex;align-items:flex-start;gap:9px;min-width:0;flex:1;padding-right:14px;line-height:1.25}
+.leg2 .l i{margin-top:5px}
+.leg2 .r{font-size:15px;color:var(--text-primary);white-space:nowrap;display:flex;align-items:center;gap:7px;line-height:1.25}
 .leg2 i{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0}
 .leg2.off,.leg2.off .r{color:var(--text-muted)}
+.leg2.off .r{font-weight:400}
 .leg2.off i{background:none;box-shadow:inset 0 0 0 1.5px var(--border-strong)}
-.leg2.tap{cursor:pointer;border-bottom:0.5px solid var(--border)}
+.leg2.tap{cursor:pointer}
 
 .sheet{width:340px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:16px;padding:1.1rem}
 .sheet.mob{border-radius:20px 20px 0 0;border-bottom:0;padding-bottom:1.6rem}
@@ -456,14 +460,17 @@ nav{display:flex;margin-left:auto;gap:20px;font-size:13px;color:var(--text-secon
         <span style="flex:630;background:var(--tier-locked)"></span>
       </div>
       <div class="legs">
-        <div class="leg2 tap"><span class="l"><i style="background:var(--tier-cash)"></i>In your cash account</span>
+        <div class="leg2 tap"><span class="l"><i style="background:var(--tier-cash)"></i>
+          <span><div>In your cash account</div><div class="sub3">Spendable at partners</div></span></span>
           <span class="r">$1,847.20 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="m9 18 6-6-6-6"/></svg></span></div>
-        <div class="leg2"><span class="l"><i style="background:var(--tier-free)"></i>Released and ready</span>
+        <div class="leg2"><span class="l"><i style="background:var(--tier-free)"></i>
+          <span><div>Released and ready</div><div class="sub3">Free to move today</div></span></span>
           <span class="r">$2,400.00</span></div>
-        <div class="leg2 off"><span class="l"><i></i>Releases Dec 14</span>
+        <div class="leg2 off"><span class="l"><i></i>
+          <span><div>Releases Dec 14</div><div class="sub3">On your next payout</div></span></span>
           <span class="r">$630.00</span></div>
       </div>
-      <button class="prim" style="width:100%;padding:13px 0;font-size:15px;margin-top:14px">Withdraw</button>
+            <button class="prim" style="width:100%;padding:13px 0;font-size:15px;margin-top:14px">Withdraw</button>
       <p style="font-size:11.5px;color:var(--text-muted);margin:10px 0 0;text-align:center;line-height:1.55">Net-30, and sooner when the pool allows</p>
     </div>
     <div>
@@ -486,7 +493,8 @@ nav{display:flex;margin-left:auto;gap:20px;font-size:13px;color:var(--text-secon
   <div class="side"><div class="flag"><b>One figure, then where it comes from.</b> A merchant thinks &ldquo;how much can I get right now&rdquo;, so that is the number at the top and the subline says when the rest arrives. The composition answers the follow-up &mdash; where it currently sits &mdash; without making them read two cards and do the addition.</div></div>
   <div class="side"><div class="flag"><b>&ldquo;Still lent out&rdquo; was wrong and is gone.</b> That money is not on loan &mdash; it is owed, and simply beyond what the payout pool can free today. It arrives on the scheduled payout, so the line says <em>Releases Dec 14</em>: the date is the answer, and it does not borrow the yield pool's vocabulary for something unrelated.</div>
     <p class="note"><strong>The three lines are now parallel</strong> &mdash; all states of the same money rather than one account and two conditions. <em>In your cash account</em>, <em>released and ready</em>, <em>releases Dec 14</em>.</p></div>
-  <div class="side"><p class="note"><strong>The first row is still the tappable one</strong>, carrying a chevron to the account details &mdash; it is the only line with a routing number behind it. Phrasing it as <em>in your cash account</em> rather than naming the account keeps the three lines reading as one set.</p></div>
+  <div class="side"><p class="note"><strong>The rows sit in a bordered container with sub-labels</strong>, matching the cash-account component in the member app rather than floating as a bare legend. The dots still tie each row to its segment in the bar above &mdash; the container groups them, the dots explain them.</p>
+    <p class="note"><strong>The first row is the tappable one</strong>, carrying a chevron to the account details. It is the only line with a routing number behind it.</p></div>
 </div>
 
 <p class="note" style="margin:1.2rem 0 .7rem"><strong>Cash account details</strong> &mdash; the receiving account, and where a merchant sends money in.</p>
