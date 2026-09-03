@@ -87,9 +87,16 @@ export async function ensureMerchantSchema(): Promise<void> {
       -- 'counter' or 'owner'. Two roles, not a permission matrix; a CHECK rather than an enum
       -- because adding "manager" later should not need a type migration.
       role          TEXT NOT NULL CHECK (role IN ('counter','owner')),
-      -- scrypt, as "scrypt$N$r$p$salt$hash". Never the PIN or password itself.
+      -- scrypt, as "scrypt$N$r$p$salt$hash". Never the PIN itself.
+      --
+      -- A PIN is ATTRIBUTION, not authentication: four digits on a counter tablet will be watched
+      -- and shared, and the real boundary is the enrolled device. It is still hashed, because a
+      -- readable PIN column is a readable PIN column — but nothing here is load-bearing security.
       secret        TEXT NOT NULL,
       email         TEXT,
+      -- Owners sign in through Privy, so an owner row carries their Privy user id rather than a
+      -- password. Clear stores no owner credential at all.
+      privy_user_id TEXT,
       active        BOOLEAN NOT NULL DEFAULT true,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -98,6 +105,30 @@ export async function ensureMerchantSchema(): Promise<void> {
     -- have a 4821 and neither is wrong. Sign-in is always scoped to one merchant.
     CREATE UNIQUE INDEX IF NOT EXISTS staff_merchant_email_idx
       ON ${MERCHANT_SCHEMA}.staff (merchant, lower(email)) WHERE email IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS staff_privy_idx
+      ON ${MERCHANT_SCHEMA}.staff (privy_user_id) WHERE privy_user_id IS NOT NULL;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${MERCHANT_SCHEMA}.devices (
+      id              TEXT PRIMARY KEY,
+      merchant        TEXT NOT NULL,
+      -- "Counter tablet". Named so an owner recognises it in a list months later.
+      label           TEXT NOT NULL,
+      -- SHA-256 of the device credential. The credential itself is shown once, at enrolment.
+      token_hash      TEXT NOT NULL UNIQUE,
+      -- The ceiling stated to the owner before they consented. Enforced on every charge, and
+      -- never above the registry's own cap.
+      approval_cap_cents BIGINT,
+      idle_lock_seconds  INTEGER NOT NULL DEFAULT 300,
+      -- The Privy user who enrolled it. A device is authority the owner delegated, so the record
+      -- keeps who delegated it.
+      enrolled_by     TEXT NOT NULL,
+      enrolled_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+      -- Removable any time, from any device. This is what makes a lost tablet survivable.
+      revoked_at      TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS devices_merchant_idx ON ${MERCHANT_SCHEMA}.devices (merchant, revoked_at);
   `);
 
   await pool.query(`
@@ -105,7 +136,11 @@ export async function ensureMerchantSchema(): Promise<void> {
       -- The token itself is never stored; this is its SHA-256. A leaked table is not a set of
       -- working sessions.
       token_hash    TEXT PRIMARY KEY,
+      -- Who is on the counter. Attribution: it is why a charge row can say "raised by Jen".
       staff_id      TEXT NOT NULL REFERENCES ${MERCHANT_SCHEMA}.staff(id) ON DELETE CASCADE,
+      -- The device the shift is running on. THIS is the security boundary: a shift is only ever
+      -- as authorised as the device carrying it, and revoking the device ends every shift on it.
+      device_id     TEXT REFERENCES ${MERCHANT_SCHEMA}.devices(id) ON DELETE CASCADE,
       merchant      TEXT NOT NULL,
       created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
       expires_at    TIMESTAMPTZ NOT NULL
@@ -117,6 +152,12 @@ export async function ensureMerchantSchema(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${MERCHANT_SCHEMA}.profiles (
       merchant          TEXT PRIMARY KEY,
+      -- The Privy organization this shop is, and the smart wallet that organization owns.
+      -- The merchant address the registry knows IS this wallet's address: a charge raised at the
+      -- counter is the shop acting, not the writer acting.
+      privy_org_id      TEXT,
+      privy_wallet_id   TEXT,
+      key_quorum_id     TEXT,
       name              TEXT NOT NULL,
       category          TEXT,
       town              TEXT,
