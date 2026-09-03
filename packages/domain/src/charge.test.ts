@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   CHARGE_LABEL,
+  countsAsVolume,
   CHARGE_TRANSITIONS,
   type ChargeState,
   canTransition,
@@ -8,8 +9,7 @@ import {
   isFinanced,
   isPending,
   isTerminal,
-  toWire,
-} from './charge';
+  toWire, } from './charge';
 
 const ALL = Object.keys(CHARGE_TRANSITIONS) as ChargeState[];
 
@@ -129,5 +129,17 @@ describe('what a merchant is shown', () => {
     expect(CHARGE_LABEL.resolving).toBe('Confirming');
     expect(isPending('resolving')).toBe(true);
     expect(isPending('waiting')).toBe(true);
+  });
+});
+
+describe('what counts toward the day', () => {
+  it('counts waiting and approved, and not the dead ones', () => {
+    // A cancelled charge was still counted, so Home showed a shop it had taken money it had not.
+    expect(countsAsVolume('waiting')).toBe(true);
+    expect(countsAsVolume('resolving')).toBe(true);
+    expect(countsAsVolume('approved')).toBe(true);
+    for (const dead of ['cancelled', 'declined', 'expired', 'refunded'] as const) {
+      expect(countsAsVolume(dead)).toBe(false);
+    }
   });
 });

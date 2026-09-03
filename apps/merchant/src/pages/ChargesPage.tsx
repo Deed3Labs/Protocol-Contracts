@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { dollars, isPending } from '@clear/domain';
+import { countsAsVolume, dollars, isPending } from '@clear/domain';
 import { Card, Pill } from '@/shell/ui';
 import { api, type MerchantCharge } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
@@ -93,7 +93,9 @@ export default function ChargesPage() {
       return p !== 0 ? p : Date.parse(b.createdAt) - Date.parse(a.createdAt);
     });
 
-  const todayTotal = todays.reduce((sum, c) => sum + c.amount, 0);
+  // Same rule as Home: the strip counts what the shop is actually owed, not every row raised.
+  const countedToday = todays.filter((c) => countsAsVolume(c.state));
+  const todayTotal = countedToday.reduce((sum, c) => sum + c.amount, 0);
 
   return (
     <>
@@ -112,7 +114,7 @@ export default function ChargesPage() {
           />
         </div>
         <span className="text-[12.5px] text-[var(--clear-text-muted)]">
-          {todays.length} charges today · {dollars(todayTotal)}
+          {countedToday.length} charges today · {dollars(todayTotal)}
         </span>
       </div>
 

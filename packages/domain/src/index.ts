@@ -20,6 +20,7 @@ export {
   canTransition,
   fromWire,
   isFinanced,
+  countsAsVolume,
   isPending,
   isTerminal,
   toWire,

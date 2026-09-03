@@ -1,5 +1,5 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { dollars, formatCalendarDate } from '@clear/domain';
+import { countsAsVolume, dollars, formatCalendarDate } from '@clear/domain';
 import { Columns } from '@/shell/AppShell';
 import { Big, Button, Cap, Card, Inset, Lbl, Pill, PrimaryButton, Row } from '@/shell/ui';
 import { useAuth } from '@/auth/authContext';
@@ -158,7 +158,10 @@ export default function HomePage() {
   const waiting = charges.filter((c) => c.state === 'waiting' || c.state === 'resolving');
   // Financed volume only. Card and balance payments run on ordinary rails and never reach this
   // app, so there is no "paid now" figure and nothing to add it to.
-  const todayTotal = charges.reduce((sum, c) => sum + c.amount, 0);
+  // Cancelled, declined and expired charges are not money. Counting them told a merchant they
+  // had taken more than they had, which is the one direction of wrong they will notice.
+  const counted = charges.filter((c) => countsAsVolume(c.state));
+  const todayTotal = counted.reduce((sum, c) => sum + c.amount, 0);
 
   const nextPayout = position?.nextPayoutOn
     ? { scheduledFor: position.nextPayoutOn, amount: position.owedCents / 100 }
@@ -188,9 +191,9 @@ export default function HomePage() {
             <Big>{dollars(todayTotal)}</Big>
           </div>
           <p className="m-0 mb-[18px] mt-[5px] text-[12.5px] text-[var(--clear-text-muted)]">
-            {charges.length === 0
+            {counted.length === 0
               ? 'No charges yet'
-              : `${charges.length} charges · ${
+              : `${counted.length} charges · ${
                   waiting.length > 0 ? `${waiting.length} waiting on the customer` : 'nothing waiting'
                 }`}
           </p>

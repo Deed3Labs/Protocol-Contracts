@@ -2,6 +2,7 @@ import { merchantPayout, payoutSettlement } from '@clear/domain';
 import { MERCHANT_SCHEMA, ensureMerchantSchema, getMerchantPool } from '../../config/merchantDb.js';
 import { getPostgresPool } from '../../config/postgres.js';
 import { readMerchantTerms } from '../chargeService.js';
+import { CHARGE_TABLE_NAME } from '../chargeStore.js';
 
 /**
  * The shop's own record, and what it is owed.
@@ -16,7 +17,17 @@ import { readMerchantTerms } from '../chargeService.js';
  * believes the wrong number about their own money.
  */
 
-const CHARGES_TABLE = 'charges';
+/**
+ * The charge table's real name.
+ *
+ * This said 'charges'. chargeStore — the only thing that creates or writes the table — calls it
+ * `charge_requests`, so every query here failed with "relation does not exist": the owner's charge
+ * counts and the whole payout position, silently, because the routes had no error handling and the
+ * rejection meant Express never answered at all. The Staff page hung rather than failing.
+ *
+ * Imported from chargeStore rather than retyped, so the two cannot drift again.
+ */
+const CHARGES_TABLE = CHARGE_TABLE_NAME;
 const normalize = (m: string) => m.trim().toLowerCase();
 
 export const merchantProfileStore = {

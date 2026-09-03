@@ -129,3 +129,18 @@ export const CHARGE_LABEL: Readonly<Record<ChargeState, string>> = {
   refund_declined: 'Refund declined',
   refunded: 'Refunded',
 } as const;
+
+/**
+ * Does this charge count toward the day's takings?
+ *
+ * A cancelled, declined or expired charge is not money and never will be, so counting it makes the
+ * figure on Home wrong in the one direction a merchant will notice — it says they took more than
+ * they did. Waiting still counts, because it is money the customer has been asked for and the
+ * reference's own Today figure includes it.
+ *
+ * Refunded is excluded too: it happened and then un-happened, and the day's total is what the shop
+ * is owed rather than what passed through it.
+ */
+export function countsAsVolume(state: ChargeState): boolean {
+  return state === 'waiting' || state === 'resolving' || state === 'approved';
+}

@@ -14,7 +14,9 @@ import { getPostgresPool } from '../config/postgres.js';
  * Crockford-ish base32 over a crypto RNG is ~40 bits, and a wrong guess reveals nothing because
  * the read is member-authenticated on top.
  */
-const TABLE = 'charge_requests';
+/** Exported so nothing else has to guess it. Guessing wrong is exactly what happened. */
+export const CHARGE_TABLE_NAME = 'charge_requests';
+const TABLE = CHARGE_TABLE_NAME;
 let ensured = false;
 
 /**

@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireDevice, requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
 import { chargeStore } from '../services/chargeStore.js';
 import { ownerCodeLimitFor, refundStore } from '../services/merchant/refundStore.js';
@@ -24,7 +25,9 @@ import { onboardMerchant } from '../services/merchant/onboardingService.js';
  * month's totals — and none of those fields leave this file without passing it.
  */
 
-const merchantRouter = Router();
+// Every handler below is async, and Express 4 lets a rejected one hang the request forever rather
+// than answering. This makes them fail loudly instead — including the ones added after today.
+const merchantRouter = forwardAsyncErrors(Router());
 
 /** Sign-in is scoped to one shop: a four-digit PIN only means anything against a merchant. */
 function merchantOf(req: Request): string {
