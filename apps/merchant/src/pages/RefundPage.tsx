@@ -1,25 +1,129 @@
+import { useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
-import { Inset } from '@/shell/ui';
-import { ALL_CHARGES } from '@/data/stubs';
+import { Check, ChevronLeft } from 'lucide-react';
+import { dollars, refundQuote } from '@clear/domain';
+import { Button, Cap, Inset, PrimaryButton } from '@/shell/ui';
+import { Chip, RoleChip } from '@/auth/RoleChip';
+import { useAuth } from '@/auth/authContext';
+import { ALL_CHARGES, STUB_MERCHANT, STUB_PAYOUTS, STUB_PLANS, STUB_STAFF } from '@/data/stubs';
 
 /**
  * The refund flow — reference section 16.
  *
- * Three steps with a visible transfer of authority: a writer reviews, an owner authorises, and
- * nothing is said to the customer until the owner approves. Built next.
+ * Two people, three steps, and **every screen says whose it is**. The manager-override pattern
+ * every retail till already uses, so nobody needs training: it is what they already do.
  *
- * A placeholder rather than no route: "Start a refund" is a control a writer will press, and a
- * control that silently returns them to Home teaches them the button is broken.
+ * **Nothing is said to the customer until step 3 completes.** A refund a writer promised and an
+ * owner declined is the worst possible counter conversation, so the copy at every step before that
+ * keeps the promise unmade — "nothing moves yet", "the customer has not been told anything yet",
+ * and a decline that tells the writer rather than the customer.
+ *
+ * **The waiting step persists.** An owner may walk over minutes later and type their code, or
+ * approve from their phone in the back office. Step 2 holds either way, so a writer is never stuck
+ * at the till.
+ *
+ * **The two parties see different numbers, deliberately.** The writer sees what the customer gets
+ * back; the owner sees what it does to their payout, which is the figure the person authorising
+ * actually cares about. Both come from one `refundQuote`, so they cannot drift apart.
+ *
+ * One deviation from the drawing, taken on purpose. The reference's step 1 is labelled
+ * "Jen · counter" and shows "Off your next payout $401.70" — but counter staff never see payout
+ * figures. The line is role-gated here rather than shown to everyone; a writer still has
+ * everything they need to speak to the customer, and the owner still gets the figure that makes
+ * the decision.
  */
+
+type Step = 'review' | 'waiting' | 'authorise' | 'done' | 'declined';
+
+const anOwner = () => STUB_STAFF.find((s) => s.role === 'owner' && s.active);
+
+/**
+ * A member's display name already ends in a full stop — "Marcus T." — so a sentence that ends on
+ * one renders "Marcus T..". Ending the sentence with the name's own stop reads correctly.
+ */
+const endsSentence = (name: string) => (name.endsWith('.') ? '' : '.');
+
+const timeNow = () =>
+  new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+
+function StepHeader({ label, chip }: { label: string; chip: React.ReactNode }) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <span className="text-[10px] uppercase tracking-[0.5px] text-[var(--clear-text-muted)]">
+        {label}
+      </span>
+      {chip}
+    </div>
+  );
+}
+
+function Line({
+  label,
+  value,
+  strong,
+  ruled,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  ruled?: boolean;
+}) {
+  return (
+    <div
+      className={`flex justify-between gap-3 text-[12.5px] ${
+        ruled ? 'mt-1.5 border-t-[0.5px] border-[var(--clear-border)] pt-2' : 'mt-1.5 first:mt-0'
+      }`}
+    >
+      <span className="text-[var(--clear-text-secondary)]">{label}</span>
+      <span className={`tabular-nums ${strong ? 'font-medium' : ''}`}>{value}</span>
+    </div>
+  );
+}
+
 export default function RefundPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { session, canSeeMoney, authoriseWithOwnerCode } = useAuth();
+
+  const [step, setStep] = useState<Step>('review');
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [requestedAt, setRequestedAt] = useState('');
+  const [approvedAt, setApprovedAt] = useState('');
+  const [approvedBy, setApprovedBy] = useState('');
+
   const charge = ALL_CHARGES.find((c) => c.id === id);
   if (!charge) return <Navigate to="/charges" replace />;
 
+  const plan = STUB_PLANS[charge.id] ?? { splitInto: 1, cyclesCleared: 0 };
+  const nextPayout = STUB_PAYOUTS.find((p) => p.status === 'scheduled');
+
+  const quote = refundQuote({
+    amount: charge.amount,
+    splitInto: plan.splitInto,
+    ratePerCycle: STUB_MERCHANT.ratePerCycle,
+    cyclesCleared: plan.cyclesCleared,
+    discountRate: STUB_MERCHANT.discountRate,
+    nextPayout: nextPayout?.amount ?? 0,
+  });
+
+  const who = charge.member?.displayName ?? 'the customer';
+  const owner = anOwner();
+  const writer = session?.staff.name ?? '—';
+
+  async function submitCode() {
+    setError(null);
+    try {
+      const approver = await authoriseWithOwnerCode(code);
+      setApprovedBy(approver.name);
+      setStep('authorise');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That code was not recognised.');
+    }
+  }
+
   return (
-    <div className="mx-auto w-full max-w-[400px]">
+    <div className="mx-auto w-full max-w-[380px]">
       <div className="mb-4 flex items-center gap-2.5">
         <button
           type="button"
@@ -29,14 +133,193 @@ export default function RefundPage() {
         >
           <ChevronLeft size={20} />
         </button>
-        <span className="text-[16px] font-medium">Refund</span>
+        <span className="text-[16px] font-medium">{who}</span>
       </div>
-      <Inset>
-        <p className="m-0 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
-          The three-step refund is built next, from reference section 16. Nothing has been started
-          and nothing has moved.
-        </p>
-      </Inset>
+
+      {step === 'review' && (
+        <>
+          <StepHeader
+            label="Step 1 · Review"
+            chip={session && <RoleChip name={session.staff.name} role={session.staff.role} />}
+          />
+          <p className="m-0 mb-3 text-[14px] font-medium">
+            Refund {dollars(charge.amount)} to {who}?
+          </p>
+
+          <Inset className="mb-3.5 !px-[15px] !py-[13px]">
+            <Line label="Their plan closes" value={dollars(quote.amount)} />
+            <Line label="They get back" value={dollars(quote.memberReceives)} />
+            {/* Carry is not refunded: a refund unwinds the purchase, not the time. */}
+            <Line label="Carry they already paid" value={`${dollars(quote.carryKept)} — kept`} />
+            {/* Payout figures are owner-only — see the note at the top of this file. */}
+            {canSeeMoney && (
+              <Line label="Off your next payout" value={dollars(quote.merchantClawback)} strong ruled />
+            )}
+          </Inset>
+
+          <PrimaryButton
+            className="mb-2 !py-[11px] !text-[15px]"
+            onClick={() => {
+              setRequestedAt(timeNow());
+              setStep('waiting');
+            }}
+          >
+            Send to an owner
+          </PrimaryButton>
+          <Button onClick={() => navigate(`/charges/${charge.id}`)} className="w-full">
+            Cancel
+          </Button>
+          <p className="m-0 mt-[11px] text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
+            Nothing moves yet. {owner?.name} will get this on their phone, or they can type their
+            code here.
+          </p>
+        </>
+      )}
+
+      {step === 'waiting' && (
+        <>
+          <StepHeader label="Step 2 · Waiting" chip={<Chip tone="accent">Needs an owner</Chip>} />
+          <p className="m-0 mb-1 text-[14px] font-medium">Waiting on {owner?.name}</p>
+          <p className="m-0 mb-4 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
+            {writer} requested a {dollars(charge.amount)} refund for {who} at {requestedAt}.
+          </p>
+
+          <Inset className="mb-3.5 !px-[15px] !py-[13px]">
+            <Line label={`Sent to ${owner?.name}`} value="Delivered" />
+            <p className="m-0 mt-2.5 text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
+              They can approve from their phone, or type their code below if they are here.
+            </p>
+          </Inset>
+
+          {/*
+            The second of the two ways to authorise. An owner typing their code here is authorising
+            one act — it deliberately does not take over the writer's session.
+          */}
+          <Inset className="mb-3 !px-[15px] !py-[13px]">
+            <Cap>Owner code</Cap>
+            <input
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={4}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && code.length === 4) void submitCode();
+              }}
+              placeholder="••••"
+              aria-label="Owner code"
+              className="w-full bg-transparent text-[19px] tracking-[6px] text-[var(--clear-text-primary)] outline-none placeholder:text-[var(--clear-text-muted)]"
+            />
+          </Inset>
+
+          {code.length === 4 && (
+            <PrimaryButton className="mb-2 !py-[11px] !text-[15px]" onClick={() => void submitCode()}>
+              Authorise
+            </PrimaryButton>
+          )}
+          {error && (
+            <p role="alert" className="m-0 mb-2 text-[12.5px]">
+              {error}
+            </p>
+          )}
+
+          <Button onClick={() => navigate(`/charges/${charge.id}`)} className="w-full">
+            Cancel the request
+          </Button>
+          <p className="m-0 mt-[11px] text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
+            The customer has not been told anything yet. Nothing has moved.
+          </p>
+        </>
+      )}
+
+      {step === 'authorise' && (
+        <>
+          <StepHeader
+            label="Step 3 · Authorise"
+            chip={<Chip tone="accent">{approvedBy || owner?.name} · owner</Chip>}
+          />
+          <p className="m-0 mb-1 text-[14px] font-medium">Approve this refund?</p>
+          <p className="m-0 mb-4 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
+            <strong className="font-medium text-[var(--clear-text-primary)]">{writer}</strong>{' '}
+            requested this for {who}
+            {endsSentence(who)}
+          </p>
+
+          {/* The owner's numbers: what it does to their payout, which is what makes the decision. */}
+          <Inset className="mb-3.5 !px-[15px] !py-[13px]">
+            <Line label="Refund" value={dollars(quote.amount)} strong />
+            <Line label="Off your next payout" value={dollars(quote.merchantClawback)} />
+            <Line label="Next payout becomes" value={dollars(quote.payoutAfter)} />
+          </Inset>
+
+          <PrimaryButton
+            className="mb-2 !py-[11px] !text-[15px]"
+            onClick={() => {
+              setApprovedAt(timeNow());
+              setStep('done');
+            }}
+          >
+            Approve refund
+          </PrimaryButton>
+          <Button onClick={() => setStep('declined')} className="w-full">
+            Decline
+          </Button>
+          <p className="m-0 mt-[11px] text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
+            Declining tells {writer}, not the customer.
+          </p>
+        </>
+      )}
+
+      {step === 'done' && (
+        <>
+          <div className="mb-4 flex items-center gap-3.5">
+            <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full bg-[var(--clear-bg-success)]">
+              <Check size={22} strokeWidth={2.4} className="text-[var(--clear-text-success)]" aria-hidden />
+            </div>
+            <div>
+              <p className="m-0 text-[26px] font-medium tabular-nums">
+                {dollars(quote.amount)} refunded
+              </p>
+              <p className="m-0 mt-1 text-[12px] text-[var(--clear-text-muted)]">{who} · just now</p>
+            </div>
+          </div>
+
+          {/* Both names are kept: an owner reviewing the month needs to know who asked as well as
+              who approved. */}
+          <Inset className="!px-[15px] !py-[13px]">
+            <Line label="Requested by" value={`${writer} · ${requestedAt}`} />
+            <Line label="Approved by" value={`${approvedBy || owner?.name} · ${approvedAt}`} />
+            {canSeeMoney && <Line label="Next payout" value={dollars(quote.payoutAfter)} strong ruled />}
+          </Inset>
+
+          <p className="m-0 mt-3.5 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
+            {who} is told once, now. Their plan closes and {dollars(quote.memberReceives)} returns to
+            the account it cleared from — the same account, so there is nothing for them to choose.
+          </p>
+
+          <Button onClick={() => navigate('/charges')} className="mt-3.5 w-full">
+            Done
+          </Button>
+        </>
+      )}
+
+      {step === 'declined' && (
+        <>
+          <StepHeader label="Refund declined" chip={<Chip>{writer} · told</Chip>} />
+          <p className="m-0 mb-3 text-[14px] font-medium">
+            {approvedBy || owner?.name} declined this refund
+          </p>
+          <Inset className="mb-3.5">
+            <p className="m-0 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
+              The charge stands and nothing has moved. {who} has not been told anything — speak to{' '}
+              {approvedBy || owner?.name} before you speak to them.
+            </p>
+          </Inset>
+          <Button onClick={() => navigate(`/charges/${charge.id}`)} className="w-full">
+            Back to the charge
+          </Button>
+        </>
+      )}
     </div>
   );
 }
