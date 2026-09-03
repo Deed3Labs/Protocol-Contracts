@@ -417,6 +417,24 @@ export const api = {
 
   /* ------------------------------------------------------- owner-only reads */
 
+  /**
+   * Ask for what is owed, before the scheduled date.
+   *
+   * Records a request; it does not move money. The response says what Clear will settle and when
+   * the regular payout lands, so the screen can be specific rather than reassuring.
+   */
+  async requestWithdrawal(amountCents: number): Promise<{
+    id: string;
+    amountCents: number;
+    nextPayoutOn: string | null;
+    status: string;
+  }> {
+    return request('/api/merchant/payouts/withdraw', {
+      method: 'POST',
+      body: JSON.stringify({ amountCents }),
+    });
+  },
+
   async payouts(): Promise<PayoutPosition> {
     return request('/api/merchant/payouts');
   },

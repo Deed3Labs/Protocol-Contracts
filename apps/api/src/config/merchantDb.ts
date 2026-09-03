@@ -235,9 +235,23 @@ export async function ensureMerchantSchema(): Promise<void> {
       charge_count    INTEGER NOT NULL DEFAULT 0,
       scheduled_for   DATE NOT NULL,
       paid_at         TIMESTAMPTZ,
-      status          TEXT NOT NULL CHECK (status IN ('scheduled','available','paid')),
+      -- 'requested' is an early withdrawal a merchant asked for and Clear has not settled yet.
+      -- It is a real state, not a synonym for paid: the money has not moved, and the screen that
+      -- reports it must not say it has.
+      status          TEXT NOT NULL CHECK (status IN ('scheduled','available','requested','paid')),
+      -- Who asked, and when. An early withdrawal is a decision somebody made; a payout that simply
+      -- came due is not, and the difference matters when reconciling.
+      requested_by    TEXT,
+      requested_at    TIMESTAMPTZ,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
     );
+    ALTER TABLE ${MERCHANT_SCHEMA}.payouts DROP CONSTRAINT IF EXISTS payouts_status_check;
+    ALTER TABLE ${MERCHANT_SCHEMA}.payouts
+      ADD CONSTRAINT payouts_status_check
+      CHECK (status IN ('scheduled','available','requested','paid'));
+    ALTER TABLE ${MERCHANT_SCHEMA}.payouts ADD COLUMN IF NOT EXISTS requested_by TEXT;
+    ALTER TABLE ${MERCHANT_SCHEMA}.payouts ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ;
+
     CREATE INDEX IF NOT EXISTS payouts_merchant_idx ON ${MERCHANT_SCHEMA}.payouts (merchant, scheduled_for DESC);
   `);
 

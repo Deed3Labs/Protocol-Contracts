@@ -19,11 +19,14 @@ import { useApi } from '@/data/useApi';
  * they will ask for a spreadsheet every month.
  */
 
-type View = 'summary' | 'withdraw';
+type View = 'summary' | 'withdraw' | 'withdrawn';
 
 export default function PayoutsPage() {
   const navigate = useNavigate();
   const [view, setView] = useState<View>('summary');
+  const [requesting, setRequesting] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [requestedCents, setRequestedCents] = useState(0);
 
   const { data: position } = useApi(() => api.payouts(), []);
   const { data: profile } = useApi(() => api.profile(), []);
@@ -61,20 +64,58 @@ export default function PayoutsPage() {
           </p>
         </Inset>
 
-        {/*
-          Early withdrawal is designed but not built: there is no endpoint behind it, and no money
-          moves. This button used to open a screen reading "On its way — to your bank", which is a
-          lie about somebody's money and the worst kind of placeholder to ship. Until PayoutPool
-          and the off-ramp exist, the screen explains the trade-off and refuses.
-        */}
-        <PrimaryButton disabled className="mb-2 !py-[11px] !text-[15px]">
-          Withdraw {availableToday === null ? '—' : dollars(availableToday)}
+        <PrimaryButton
+          disabled={requesting || availableToday === null || availableToday <= 0}
+          className="mb-2 !py-[11px] !text-[15px]"
+          onClick={async () => {
+            setRequesting(true);
+            setRequestError(null);
+            try {
+              const cents = Math.round((availableToday ?? 0) * 100);
+              await api.requestWithdrawal(cents);
+              setRequestedCents(cents);
+              setView('withdrawn');
+            } catch (e) {
+              setRequestError(
+                e instanceof Error ? e.message : 'That could not be requested just now.',
+              );
+            } finally {
+              setRequesting(false);
+            }
+          }}
+        >
+          {requesting ? 'Requesting…' : `Withdraw ${availableToday === null ? '—' : dollars(availableToday)}`}
         </PrimaryButton>
-        <p className="m-0 mb-2.5 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
-          Early withdrawal is not switched on yet. Your payout lands on {payoutDay} as usual.
-        </p>
+        {requestError && (
+          <p role="alert" className="m-0 mb-2 text-center text-[12.5px] leading-[1.5]">
+            {requestError}
+          </p>
+        )}
         <Button onClick={() => setView('summary')} className="w-full">
           {nextPayoutOn ? `Wait for the ${new Date(nextPayoutOn).getUTCDate()}th` : 'Wait for the next payout'}
+        </Button>
+      </div>
+    );
+  }
+
+  if (view === 'withdrawn') {
+    return (
+      <div className="mx-auto w-full max-w-[340px]">
+        <Cap>On its way</Cap>
+        <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">
+          {dollars(requestedCents / 100)}
+        </p>
+        <p className="m-0 mb-3.5 text-[12.5px] text-[var(--clear-text-muted)]">To {bank}</p>
+        <Inset className="mb-3.5 !px-3.5 !py-3">
+          <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
+            {/* Specific about what has happened, because "on its way" on its own would be a claim
+                about a transfer rather than about a request Clear has accepted. */}
+            Requested. Clear settles early withdrawals to the account on file. The rest lands on{' '}
+            {payoutDay} as usual.
+          </p>
+        </Inset>
+        <Button onClick={() => setView('summary')} className="w-full">
+          Done
         </Button>
       </div>
     );

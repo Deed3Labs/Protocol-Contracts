@@ -540,6 +540,52 @@ merchantRouter.delete('/refunds/:id', requireMerchant, async (req: Request, res:
 });
 
 /** Payouts are money. Owner only, enforced here rather than in the nav. */
+
+/**
+ * Ask for what is owed, early — reference section 18.
+ *
+ * A manager may send money to the account already on file; only an owner may change that account.
+ * That split is the whole point of the role: the damage from a wrong withdrawal is bounded by what
+ * the shop is owed, and it lands somewhere the owner chose.
+ *
+ * This records the request and answers with what was recorded. It does not claim the money has
+ * moved, because it has not — settlement is a separate act, and the row sits at `requested` until
+ * then.
+ */
+merchantRouter.post(
+  '/payouts/withdraw',
+  requireMerchant,
+  requireManager,
+  async (req: Request, res: Response) => {
+    const { merchant, staff } = req.merchant!;
+    const amountCents = Number(req.body?.amountCents);
+
+    if (!Number.isInteger(amountCents) || amountCents <= 0) {
+      res.status(400).json({ error: 'Invalid request', message: 'That is not an amount.' });
+      return;
+    }
+
+    const result = await merchantProfileStore.requestWithdrawal({
+      merchant,
+      amountCents,
+      requestedBy: staff.id,
+    });
+    if (!result.ok) {
+      res.status(409).json({ error: 'Cannot withdraw', message: result.reason ?? 'not available' });
+      return;
+    }
+
+    const position = await merchantProfileStore.payoutPosition(merchant);
+    res.status(201).json({
+      id: result.id,
+      amountCents,
+      // What the shop should expect next, so the screen can say something true about timing.
+      nextPayoutOn: position.nextPayoutOn,
+      status: 'requested',
+    });
+  },
+);
+
 merchantRouter.get('/payouts', requireMerchant, requireManager, async (req: Request, res: Response) => {
   const { merchant } = req.merchant!;
   const position = await merchantProfileStore.payoutPosition(merchant);

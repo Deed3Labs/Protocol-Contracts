@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { merchantPayout, payoutSettlement } from '@clear/domain';
 import { MERCHANT_SCHEMA, ensureMerchantSchema, getMerchantPool } from '../../config/merchantDb.js';
 import { getPostgresPool } from '../../config/postgres.js';
@@ -120,9 +121,64 @@ export const merchantProfileStore = {
     );
   },
 
+  /**
+   * Ask for what is owed, before it is due — reference section 18.
+   *
+   * This records a request; it does not move money. Settlement is a separate act and the row says
+   * so, sitting at `requested` until it is paid. The screen that reports it has to be equally
+   * careful: "on its way" is true of a request that will be settled, and false of a request nobody
+   * has picked up, so the honest version names the date rather than implying a transfer.
+   *
+   * Bounded by what the position says is available today. A merchant cannot ask for more than they
+   * are owed, and the pool cap is the credit side's answer rather than something asserted here.
+   */
+  async requestWithdrawal(input: {
+    merchant: string;
+    amountCents: number;
+    requestedBy: string;
+  }): Promise<{ ok: boolean; id?: string; reason?: string }> {
+    const pool = getMerchantPool();
+    if (!pool) return { ok: false, reason: 'not configured' };
+    await ensureMerchantSchema();
+
+    const position = await this.payoutPosition(input.merchant);
+    const available = position.availableTodayCents;
+
+    // Null is "the pool cap is not known", which is not the same as zero. Refusing is the only
+    // honest answer: approving an amount nobody has sized is how a shop gets told yes and paid no.
+    if (available === null) {
+      return { ok: false, reason: 'We cannot size an early withdrawal just now. Try again shortly.' };
+    }
+    if (input.amountCents <= 0 || input.amountCents > available) {
+      return { ok: false, reason: 'That is more than is available today.' };
+    }
+
+    const id = `pay_${randomUUID()}`;
+    await pool.query(
+      `INSERT INTO ${MERCHANT_SCHEMA}.payouts
+         (id, merchant, amount_cents, charge_count, scheduled_for, status, requested_by, requested_at)
+       VALUES ($1,$2,$3,0,CURRENT_DATE,'requested',$4, now())`,
+      [id, normalize(input.merchant), Math.round(input.amountCents), input.requestedBy],
+    );
+    return { ok: true, id };
+  },
+
   async payoutPosition(merchant: string) {
     const pool = getPostgresPool();
-    if (!pool) return { owed: 0, clearsBalance: 0, toBank: 0, availableToday: 0, paid: [] };
+    // Same shape as the real return, which it was not: this said `owed`/`clearsBalance`/`toBank`
+    // while the success path says `owedCents`/`clearsBalanceCents`/`toBankCents`. A caller reading
+    // the documented keys got undefined and rendered it as zero — a wrong number that looks like a
+    // quiet day rather than a missing database.
+    if (!pool) {
+      return {
+        owedCents: 0,
+        nextPayoutOn: null as string | null,
+        clearsBalanceCents: 0,
+        toBankCents: 0,
+        availableTodayCents: null as number | null,
+        paid: [] as { id: string; amountCents: number; charges: number; on: string; paidAt: string | null }[],
+      };
+    }
 
     const m = normalize(merchant);
 
