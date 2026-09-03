@@ -1,17 +1,27 @@
 import type { ReactNode } from 'react';
 
 /**
- * The primitives, taken from the design reference rather than invented.
+ * The primitives, transcribed from the design reference's stylesheet.
  *
- * Every value here is lifted from the reference's own stylesheet: hairline borders at 0.5px, cards
- * at 10px radius on `surface-2`, rows at 13px with 12px of vertical padding and a rule between but
- * not after, the primary button in near-black rather than the accent, and the accent reserved for
- * outlined pills and links.
- *
- * The lightness is the point and it is mostly the hairlines. A counter screen is read at arm's
- * length all day; at 1px the rules start to feel like a grid the writer has to look past, and the
- * amounts stop being the loudest thing on it.
+ * Not approximated — every number here is the reference's own: hairline borders at 0.5px, cards at
+ * 10px radius on surface-2, buttons at 8px, rows at 13px with 12px of vertical padding and a rule
+ * between but not after, the accent reserved for outlined pills, the primary action in
+ * text-primary. Where a value looks arbitrary it is because it was copied rather than chosen.
  */
+
+/**
+ * The quiet label above a hero figure — "Today".
+ *
+ * Not the same as `Cap`, and the difference is easy to miss: this is 11px, sentence case, loosely
+ * tracked. A section heading shouts a little; this one is just naming the number under it.
+ */
+export function Lbl({ children }: { children: ReactNode }) {
+  return (
+    <p className="m-0 mb-[3px] text-[11px] tracking-[0.3px] text-[var(--clear-text-muted)]">
+      {children}
+    </p>
+  );
+}
 
 /** Uppercase section label — "WAITING", "TODAY", "NEXT PAYOUT". */
 export function Cap({ children }: { children: ReactNode }) {
@@ -22,7 +32,7 @@ export function Cap({ children }: { children: ReactNode }) {
   );
 }
 
-/** The hero figure. 40px on a tablet, 32px once the layout is one column. */
+/** The hero figure. 40px, dropping to 32px once the layout is one column. */
 export function Big({ children }: { children: ReactNode }) {
   return (
     <p className="m-0 text-[32px] font-medium leading-[1.05] tracking-[-1.2px] @[900px]:text-[40px]">
@@ -31,21 +41,26 @@ export function Big({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * A card.
+ *
+ * `rows` cards are padded sideways only — the rows bring their own vertical rhythm and their rules
+ * need to reach the card's edges minus that padding.
+ */
 export function Card({
   children,
+  rows = false,
   className = '',
-  padded = true,
 }: {
   children: ReactNode;
+  rows?: boolean;
   className?: string;
-  /** Rows supply their own vertical padding, so a card of rows is only padded sideways. */
-  padded?: boolean;
 }) {
   return (
     <div
       className={[
         'rounded-[10px] border-[0.5px] border-[var(--clear-border)] bg-[var(--clear-surface-2)]',
-        padded ? 'px-3.5' : '',
+        rows ? 'px-3.5' : 'px-3.5 py-3',
         className,
       ].join(' ')}
     >
@@ -54,7 +69,7 @@ export function Card({
   );
 }
 
-/** A quieter block for asides and tips — no border, one step down the surface scale. */
+/** A quieter block for guidance — no border, one step down the surface scale. */
 export function Inset({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div className={`rounded-[10px] bg-[var(--clear-surface-1)] px-4 py-3.5 ${className}`}>
@@ -66,8 +81,8 @@ export function Inset({ children, className = '' }: { children: ReactNode; class
 /**
  * A list row: something on the left, a figure or a pill on the right.
  *
- * `meta` is the second line — the time, who raised it, how long it has been waiting. It is what
- * makes the list answerable at a glance rather than a column of names.
+ * `meta` is the second line — the time and who raised it, or the amount and how long it has been
+ * waiting. It is what makes the list answerable at a glance rather than a column of names.
  */
 export function Row({
   title,
@@ -82,9 +97,7 @@ export function Row({
     <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-[var(--clear-border)] py-3 text-[13px] last:border-b-0">
       <div className="min-w-0">
         <div className="truncate">{title}</div>
-        {meta && (
-          <div className="mt-0.5 text-[11.5px] text-[var(--clear-text-muted)]">{meta}</div>
-        )}
+        {meta && <div className="mt-0.5 text-[11.5px] text-[var(--clear-text-muted)]">{meta}</div>}
       </div>
       {right && <div className="shrink-0 tabular-nums">{right}</div>}
     </div>
@@ -94,9 +107,8 @@ export function Row({
 /**
  * A status pill.
  *
- * `pending` is the only one that draws the eye, because it is the only one anybody at a counter
- * can act on. Settled states are muted: a writer scanning the list is looking for what is still
- * open, not admiring what is finished.
+ * `pending` is the only one that draws the eye, because it is the only one anybody at a counter can
+ * act on. A writer scanning the list is looking for what is still open.
  */
 export function Pill({
   children,
@@ -110,19 +122,18 @@ export function Pill({
       'text-[var(--clear-text-accent)] bg-[var(--clear-bg-accent)] border-[var(--clear-border-accent)]',
     success:
       'text-[var(--clear-text-success)] bg-[var(--clear-bg-success)] border-[var(--clear-border)]',
-    muted:
-      'text-[var(--clear-text-muted)] bg-transparent border-[var(--clear-border)]',
+    muted: 'text-[var(--clear-text-muted)] bg-transparent border-[var(--clear-border)]',
   } as const;
   return (
     <span
-      className={`inline-block whitespace-nowrap rounded-full border-[0.5px] px-2.5 py-0.5 text-[10.5px] ${tones[tone]}`}
+      className={`inline-block whitespace-nowrap rounded-full border-[0.5px] px-[9px] py-0.5 text-[10.5px] ${tones[tone]}`}
     >
       {children}
     </span>
   );
 }
 
-/** The primary action. Near-black, not the accent — the accent is for pills and links. */
+/** The primary action. Near-black, not the accent — the accent is for pills. */
 export function PrimaryButton({
   children,
   onClick,
@@ -141,22 +152,44 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`w-full rounded-[10px] border-[0.5px] border-[var(--clear-text-primary)] bg-[var(--clear-text-primary)] py-4 text-[16px] text-[var(--clear-surface-2)] disabled:opacity-40 ${className}`}
+      className={`w-full rounded-[8px] border-[0.5px] border-[var(--clear-text-primary)] bg-[var(--clear-text-primary)] py-4 text-[16px] text-[var(--clear-surface-2)] disabled:opacity-40 ${className}`}
     >
       {children}
     </button>
   );
 }
 
-/** A small outlined action sitting at the end of a row — "Add", "Print". */
-export function RowButton({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
+/** A secondary action: the reference's default button, before `.prim` recolours it. */
+export function Button({
+  children,
+  onClick,
+  type = 'button',
+  disabled,
+  className = '',
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  type?: 'button' | 'submit';
+  disabled?: boolean;
+  className?: string;
+}) {
   return (
     <button
-      type="button"
+      type={type}
       onClick={onClick}
-      className="rounded-full border-[0.5px] border-[var(--clear-border-strong)] px-3.5 py-1 text-[12px] text-[var(--clear-text-primary)]"
+      disabled={disabled}
+      className={`rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-2)] px-[15px] py-2 text-[13px] text-[var(--clear-text-primary)] disabled:opacity-40 ${className}`}
     >
       {children}
     </button>
+  );
+}
+
+/** An accent-flagged aside — guidance that retires itself once the activity replaces it. */
+export function Flag({ children }: { children: ReactNode }) {
+  return (
+    <div className="mb-3 rounded-r-[8px] border-l-[2.5px] border-[var(--clear-border-accent)] bg-[var(--clear-bg-accent)] px-3.5 py-3 text-[12px] leading-[1.6]">
+      {children}
+    </div>
   );
 }

@@ -3,7 +3,15 @@
 @import '../../../packages/tokens/src/tokens.css';
 
 html {
-  background: var(--clear-surface-0);
+  /*
+   * The screen is surface-2, not surface-0.
+   *
+   * In the reference the darker tones are the *document* the mockups sit on; the tablet's own
+   * screen is the lightest one, and cards are that same colour defined only by a hairline. Using
+   * surface-0 here made every card a panel floating on a brown field, which is a different and
+   * much heavier product.
+   */
+  background: var(--clear-surface-2);
   font-family: var(--clear-font-sans);
   /* A counter tablet is touched, not clicked; stop iOS zooming on a tapped input. */
   -webkit-text-size-adjust: 100%;

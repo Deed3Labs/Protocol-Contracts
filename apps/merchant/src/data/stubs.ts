@@ -17,8 +17,8 @@ import type { Charge, Merchant, Payout, Staff } from '@clear/domain';
  */
 
 export const STUB_MERCHANT: Merchant = {
-  id: 'm_westside',
-  name: 'Westside Tire & Auto',
+  id: 'm_mikes',
+  name: "Mike's Tire",
   discountRate: 0.025,
   ratePerCycle: 0.02,
   splitOptions: [1, 2, 4, 12],
@@ -27,16 +27,39 @@ export const STUB_MERCHANT: Merchant = {
 
 export const STUB_STAFF: Staff[] = [
   { id: 's_jen', name: 'Jen', role: 'counter', hasPin: true, active: true },
-  { id: 's_amir', name: 'Amir', role: 'counter', hasPin: true, active: true },
+  { id: 's_luis', name: 'Luis', role: 'counter', hasPin: true, active: true },
   { id: 's_mike', name: 'Mike', role: 'owner', hasPin: true, active: true },
 ];
 
-const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
-const minutesFromNow = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
+/**
+ * Today's charges, mirroring the design reference's "running" counter home exactly — same names,
+ * same amounts, same times, same writers — so the built screen can be held against the drawing.
+ *
+ * Times are fixed to today's date at the reference's clock times rather than offsets from now, so
+ * the screen reads the same whenever it is opened.
+ */
+const at = (h: number, m: number) => {
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+};
+const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 
 export const STUB_CHARGES: Charge[] = [
   {
-    id: 'c_1',
+    id: 'c_dana',
+    code: 'P8QT',
+    merchantId: STUB_MERCHANT.id,
+    member: { id: 'mem_dana', displayName: 'Dana R.' },
+    amount: 940,
+    state: 'waiting',
+    raisedByStaffId: 's_jen',
+    createdAt: minutesAgo(6),
+    expiresAt: new Date(Date.now() + 9 * 60_000).toISOString(),
+    openedAt: minutesAgo(4),
+  },
+  {
+    id: 'c_marcus',
     code: 'K4M2',
     merchantId: STUB_MERCHANT.id,
     member: { id: 'mem_marcus', displayName: 'Marcus T.' },
@@ -45,45 +68,40 @@ export const STUB_CHARGES: Charge[] = [
     splitInto: 4,
     payout: 401.7,
     raisedByStaffId: 's_jen',
-    createdAt: hoursAgo(3),
-    expiresAt: hoursAgo(2.75),
-    openedAt: hoursAgo(2.95),
-    resolvedAt: hoursAgo(2.9),
+    createdAt: at(11, 2),
+    expiresAt: at(11, 17),
+    openedAt: at(11, 4),
+    resolvedAt: at(11, 5),
   },
   {
-    id: 'c_2',
-    code: 'P8QT',
-    merchantId: STUB_MERCHANT.id,
-    member: { id: 'mem_dana', displayName: 'Dana R.' },
-    amount: 940,
-    state: 'waiting',
-    raisedByStaffId: 's_jen',
-    createdAt: hoursAgo(0.05),
-    expiresAt: minutesFromNow(12),
-    openedAt: hoursAgo(0.02),
-  },
-  {
-    id: 'c_3',
-    code: 'R2WX',
-    merchantId: STUB_MERCHANT.id,
-    amount: 186.4,
-    state: 'expired',
-    raisedByStaffId: 's_amir',
-    createdAt: hoursAgo(5),
-    expiresAt: hoursAgo(4.75),
-  },
-  {
-    id: 'c_4',
+    id: 'c_priya',
     code: 'B7HL',
     merchantId: STUB_MERCHANT.id,
     member: { id: 'mem_priya', displayName: 'Priya S.' },
-    amount: 68,
-    state: 'declined',
-    raisedByStaffId: 's_amir',
-    createdAt: hoursAgo(6),
-    expiresAt: hoursAgo(5.75),
-    openedAt: hoursAgo(5.9),
-    resolvedAt: hoursAgo(5.88),
+    amount: 188,
+    state: 'approved',
+    splitInto: 2,
+    payout: 183.3,
+    raisedByStaffId: 's_luis',
+    createdAt: at(9, 47),
+    expiresAt: at(10, 2),
+    openedAt: at(9, 49),
+    resolvedAt: at(9, 50),
+  },
+  {
+    id: 'c_ana',
+    code: 'R2WX',
+    merchantId: STUB_MERCHANT.id,
+    member: { id: 'mem_ana', displayName: 'Ana V.' },
+    amount: 300,
+    state: 'approved',
+    splitInto: 4,
+    payout: 292.5,
+    raisedByStaffId: 's_luis',
+    createdAt: at(8, 30),
+    expiresAt: at(8, 45),
+    openedAt: at(8, 32),
+    resolvedAt: at(8, 33),
   },
 ];
 

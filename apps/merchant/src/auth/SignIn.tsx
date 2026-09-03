@@ -34,7 +34,7 @@ export function SignIn() {
   }
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-[var(--clear-surface-0)] px-4">
+    <div className="grid min-h-dvh place-items-center bg-[var(--clear-surface-2)] px-4">
       <div className="w-full max-w-[360px]">
         <p className="mb-1 text-[13px] text-[var(--clear-text-muted)]">Clear for Merchants</p>
         <h1 className="mb-5 text-[21px] font-semibold tracking-[-0.01em]">{STUB_MERCHANT.name}</h1>
