@@ -382,6 +382,61 @@ export async function declineCharge(code: string, member: string): Promise<Resol
  * only describes it. Writing `approved` first and opening the plan second would leave a charge
  * that says it was approved and a member who owes nothing — or, on a retry, two plans.
  */
+/**
+ * A chain error, said in a sentence a member can act on.
+ *
+ * What reaches this function is an ethers message with calldata in it — the whole thing was
+ * rendered on the approval screen once, under the amount, in red. A member cannot do anything with
+ * a selector, and a revert is not a system failure they should be asked to interpret. The custom
+ * errors that mean something to them are named; everything else gets one honest line rather than
+ * a guess about a cause we do not know.
+ */
+export function explainChainError(error: unknown): string {
+  const data = (error as { data?: unknown; info?: { error?: { data?: unknown } } })?.data;
+  const raw = typeof data === 'string' ? data : null;
+
+  if (raw) {
+    try {
+      const parsed = new ethers.Interface(TERM_ISSUER_ERRORS).parseError(raw);
+      switch (parsed?.name) {
+        case 'TermIssuerExceedsTermLimit': {
+          const limit = Number(parsed.args.limit) / 1_000_000;
+          return limit > 0
+            ? `This is more than your plan line covers right now — ${usd(limit)} is left of it.`
+            : 'Your account is not set up to split purchases yet.';
+        }
+        case 'TermIssuerSplitNotOffered':
+          return 'That way of splitting is not offered on this purchase.';
+        case 'RateTooHigh':
+        case 'TermIssuerInvalidSchedule':
+          return 'Something about this charge does not add up. Ask the shop to send a new one.';
+        case 'TermIssuerPlanClosed':
+        case 'TermIssuerUnknownPlan':
+          return 'This charge is no longer open. Ask the shop to send a new one.';
+      }
+    } catch {
+      /* Not one of ours -- fall through to the plain line. */
+    }
+  }
+
+  // Deliberately not the ethers message. It names contracts and encodes calldata, and neither is
+  // a member's to read.
+  return 'We could not approve this charge. Nothing was charged — try again in a moment.';
+}
+
+const usd = (n: number) =>
+  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+/** Just the errors, for decoding a revert. The call ABI above does not carry them. */
+const TERM_ISSUER_ERRORS = [
+  'error TermIssuerExceedsTermLimit(address member, uint256 requested, uint256 limit)',
+  'error TermIssuerSplitNotOffered(uint32 installments)',
+  'error TermIssuerInvalidSchedule()',
+  'error TermIssuerPlanClosed(uint256 planId)',
+  'error TermIssuerUnknownPlan(uint256 planId)',
+  'error RateTooHigh(uint256 ratePerCycle)',
+];
+
 export async function approveCharge(
   code: string,
   member: string,
@@ -417,7 +472,32 @@ export async function approveCharge(
     // chain does not take would fail at the last possible moment.
     if (!(await issuer.isOfferedSplit(installments))) {
       await chargeStore.release(code);
-      return { ok: false, reason: 'that split is not offered' };
+      return { ok: false, reason: 'That way of splitting is not offered on this purchase.' };
+    }
+
+    /*
+     * The ceiling, asked before the transaction rather than discovered by reverting into one.
+     *
+     * `openPlan` checks `totalPrincipalOf(member) + purchase` against `termLimitOf(member)`, so
+     * the same question can be asked here, where the answer is still a sentence instead of a
+     * failed gas estimate. It also keeps the charge answerable: nothing has been submitted, so it
+     * goes back rather than sitting in `resolving`.
+     */
+    const purchaseUnits = BigInt(claimed.amountCents) * 10_000n;
+    const [termLimit, principal]: [bigint, bigint] = await Promise.all([
+      issuer.termLimitOf(claimed.memberWallet),
+      issuer.totalPrincipalOf(claimed.memberWallet),
+    ]);
+    if (principal + purchaseUnits > termLimit) {
+      await chargeStore.release(code);
+      const left = Number(termLimit - principal) / 1_000_000;
+      return {
+        ok: false,
+        reason:
+          termLimit > 0n
+            ? `This is more than your plan line covers right now — ${usd(Math.max(0, left))} is left of it.`
+            : 'Your account is not set up to split purchases yet.',
+      };
     }
 
     // One clock. The cycle comes from the revolving issuer, which is what a member's own cycle is
@@ -432,13 +512,12 @@ export async function approveCharge(
     }
 
     // Contract amounts are 6dp; the table is in cents.
-    const purchase = BigInt(claimed.amountCents) * 10_000n;
     const payout = BigInt(claimed.payoutCents) * 10_000n;
 
     const tx = await issuer.openPlan(
       claimed.memberWallet,
       claimed.merchantAddress,
-      purchase,
+      purchaseUnits,
       payout,
       BigInt(DEFAULT_RATE_BPS),
       cycle,
@@ -475,7 +554,8 @@ export async function approveCharge(
     if (!submitted) {
       // The transaction never left, so nothing was opened and the charge is answerable again.
       await chargeStore.release(code);
-      return { ok: false, reason: message };
+      // The log keeps the ethers message; the member gets a sentence. See explainChainError.
+      return { ok: false, reason: explainChainError(error) };
     }
 
     // It did leave, and we do not know whether it landed -- a dropped connection while waiting

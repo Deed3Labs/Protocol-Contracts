@@ -2493,8 +2493,20 @@ export interface CreditState {
    * `balance − pledged`: a fully pledged line nobody has drawn on encumbers nothing.
    */
   savingsEncumberedCents: number | null;
+  /**
+   * The ceiling a split plan draws on, read from TermIssuer — separate from the revolving tiers,
+   * which are backed by pledged collateral. Null when that read failed, which is not a member with
+   * no line.
+   */
+  term: CreditTermCeiling | null;
   source: string;
   complete: boolean;
+}
+
+export interface CreditTermCeiling {
+  limitCents: number;
+  usedCents: number;
+  availableCents: number;
 }
 
 /**

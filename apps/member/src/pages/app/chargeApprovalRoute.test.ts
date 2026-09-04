@@ -56,3 +56,28 @@ describe('the handoff into the installed app', () => {
     expect(view).toContain('Scan screen');
   });
 });
+
+/**
+ * The screen quoted "$747.59/cycle" and then reverted with TermIssuerExceedsTermLimit(limit=0).
+ * Two different lines: openPlan measures against termLimitOf, and the contract says outright that
+ * this is separate from the revolving tiers, which are backed by pledged collateral.
+ */
+describe('the limit on the footer is the one that will be enforced', () => {
+  test('it reads the term ceiling, not a sum of tiers', () => {
+    expect(SOURCE).toContain('credit.term.availableCents');
+    expect(SOURCE).not.toContain('credit.tiers');
+  });
+
+  test('an unread ceiling stays null rather than becoming a zero', () => {
+    expect(SOURCE).toContain('if (cancelled || !credit?.term) return;');
+  });
+});
+
+/** The reference draws this in a 360px mockup frame; that is its device, not the app's width. */
+describe('the screen fills a phone', () => {
+  test('the column is capped only from lg up, as everywhere else in the app', () => {
+    const view = readFileSync(new URL('./ChargeApproval.tsx', import.meta.url), 'utf8');
+    expect(view).not.toContain('max-w-[360px]');
+    expect(view).toContain('w-full px-5 py-8 lg:mx-auto lg:max-w-[420px]');
+  });
+});

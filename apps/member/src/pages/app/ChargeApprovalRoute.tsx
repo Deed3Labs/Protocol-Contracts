@@ -98,20 +98,23 @@ export default function ChargeApprovalRoute() {
   }, [code, isAuthenticated, memberStatus, profileLoaded, navigate, location]);
 
   /**
-   * The limit shown on the footer, read from the contracts rather than guessed.
+   * The limit shown on the footer — the one this decision is checked against.
    *
-   * Left null when the read fails. "Not set" is the honest thing to show when we could not ask —
-   * a number invented here would be sitting next to a decision somebody is about to make.
+   * The term ceiling, not the revolving tiers. TermIssuer.openPlan measures a new plan against
+   * `termLimitOf(member)`, and the contract is explicit that this is a separate line: underwritten
+   * off-chain against attested income, where the tiers are backed by pledged collateral. Summing
+   * the tiers here quoted a member $747.59 of room on a line the plan cannot draw on, and the
+   * approval then reverted with a ceiling of zero.
+   *
+   * Left null when the read fails. "Not set" is the honest thing to show when we could not ask — a
+   * number invented here would be sitting next to a decision somebody is about to make.
    */
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
     void getCredit(address).then((credit) => {
-      if (cancelled || !credit) return;
-      const available = credit.tiers
-        .filter((tier) => tier.active)
-        .reduce((sum, tier) => sum + Math.max(0, tier.limitCents - tier.usedCents), 0);
-      setPerCycleLimit(available / 100);
+      if (cancelled || !credit?.term) return;
+      setPerCycleLimit(credit.term.availableCents / 100);
     });
     return () => {
       cancelled = true;
@@ -162,7 +165,7 @@ export default function ChargeApprovalRoute() {
 
   if (!charge) {
     return (
-      <div className="mx-auto w-full max-w-[360px] px-5 py-8 text-center">
+      <div className="w-full px-5 py-8 lg:mx-auto lg:max-w-[420px] text-center">
         <p className="mb-1.5 text-[19px] font-medium">Nothing to approve</p>
         <p className="text-[13px] leading-relaxed text-foreground-secondary">
           This charge has already been dealt with, or it was never yours.
@@ -181,7 +184,7 @@ export default function ChargeApprovalRoute() {
           ? 'You declined this charge. Nothing was charged.'
           : 'This one is still going through. Give it a moment before trying again.';
     return (
-      <div className="mx-auto w-full max-w-[360px] px-5 py-8 text-center">
+      <div className="w-full px-5 py-8 lg:mx-auto lg:max-w-[420px] text-center">
         <p className="mb-1.5 text-[19px] font-medium">{charge.merchantName}</p>
         <p className="text-[13px] leading-relaxed text-foreground-secondary">{explain}</p>
       </div>

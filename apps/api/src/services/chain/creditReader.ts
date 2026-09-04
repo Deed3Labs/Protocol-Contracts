@@ -54,6 +54,8 @@ const TERM_ABI = [
   'function plansOf(address member) external view returns (uint256[])',
   'function planAt(uint256 planId) external view returns (address member, uint256 principal, uint256 principalOutstanding, uint256 repaid, uint64 openedAt, uint32 installments, uint64 installmentLength, uint256 ratePerCycle, bool closed)',
   'function scheduleOf(uint256 planId) external view returns (uint256 installmentAmount, uint256 scheduleTotal, uint32 installments, uint64 scheduleStart)',
+  'function termLimitOf(address) external view returns (uint256)',
+  'function totalPrincipalOf(address member) external view returns (uint256)',
 ];
 
 /** Credit units are the ledger's, which are the reserve token's: six decimals. */
@@ -130,7 +132,23 @@ export interface ChainCredit {
   savingsEncumberedCents: number | null;
   /** Null when the read failed; zeroed when the member has never opened a line. */
   cycle: ChainCycle | null;
+  /**
+   * What a split plan may draw on — the ceiling TermIssuer enforces when one is opened.
+   *
+   * Deliberately not the tiers. The contract says so itself: the term ceiling is underwritten
+   * off-chain against attested income, where the revolving tiers are backed by pledged collateral.
+   * They are different lines, and a member can hold one without the other, so showing a tier total
+   * beside a decision about a plan promises capacity that will not be there.
+   */
+  term: ChainTermCeiling | null;
   complete: boolean;
+}
+
+export interface ChainTermCeiling {
+  limitCents: number;
+  /** Principal already outstanding across open plans, which the ceiling is measured against. */
+  usedCents: number;
+  availableCents: number;
 }
 
 function toCents(amount: bigint): number {
@@ -260,6 +278,33 @@ async function readTiers(
     return tiers;
   } catch (error) {
     console.error('[credit] tier read failed', address, error);
+    return null;
+  }
+}
+
+/**
+ * The ceiling a new plan is checked against, read from the contract that does the checking.
+ *
+ * `openPlan` reverts with TermIssuerExceedsTermLimit when `totalPrincipalOf(member) + purchase`
+ * passes `termLimitOf(member)`, so those are the two numbers, read together.
+ */
+async function readTermCeiling(
+  provider: ethers.JsonRpcProvider,
+  address: string,
+  wallet: string,
+): Promise<ChainTermCeiling | null> {
+  try {
+    const term = new ethers.Contract(address, TERM_ABI, provider);
+    const [limit, used]: [bigint, bigint] = await Promise.all([
+      term.termLimitOf(wallet),
+      term.totalPrincipalOf(wallet),
+    ]);
+    const limitCents = toCents(limit);
+    const usedCents = toCents(used);
+    return { limitCents, usedCents, availableCents: Math.max(0, limitCents - usedCents) };
+  } catch (error) {
+    // Null, never zero. A member whose RPC blipped has not had their line withdrawn.
+    console.error('[credit] term ceiling read failed', error);
     return null;
   }
 }
@@ -433,15 +478,22 @@ async function readChainCreditUncached(
     provider = getProvider(chainId);
   } catch (error) {
     console.error('[credit] no RPC for chain', chainId, error);
-    return { tiers: null, plans: null, cycle: null, savingsEncumberedCents: null, complete: false };
+    return {
+      tiers: null, plans: null, cycle: null, term: null, savingsEncumberedCents: null,
+      complete: false,
+    };
   }
 
   // An unset issuer is no credit line, not a failed read: a member cannot have drawn against a
   // contract that does not exist.
-  const [tiers, plans, cycle, savingsEncumberedCents] = await Promise.all([
+  const [tiers, plans, cycle, ceiling, savingsEncumberedCents] = await Promise.all([
     issuer ? readTiers(provider, issuer, wallet, registry, limitCalculator) : Promise.resolve([]),
     term ? readPlans(provider, term, wallet) : Promise.resolve([]),
     issuer ? readCycle(provider, issuer, wallet) : Promise.resolve(null),
+    term
+      ? readTermCeiling(provider, term, wallet)
+      : // No issuer on this chain is no term line, not a failed read.
+        Promise.resolve<ChainTermCeiling>({ limitCents: 0, usedCents: 0, availableCents: 0 }),
     registry ? readEncumbered(provider, registry, wallet) : Promise.resolve(0),
   ]);
 
@@ -449,6 +501,7 @@ async function readChainCreditUncached(
     tiers,
     plans,
     cycle,
+    term: ceiling,
     savingsEncumberedCents,
     complete: tiers !== null && plans !== null,
   };

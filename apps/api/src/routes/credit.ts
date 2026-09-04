@@ -55,6 +55,10 @@ creditRouter.get('/:wallet', async (req: Request, res: Response) => {
       tiers: credit.tiers ?? [],
       plans: open.map((plan) => ({ ...plan, merchantName: merchantNames[plan.planId] ?? null })),
       cycle: credit.cycle,
+      // The ceiling a split plan is actually checked against, which is not the tiers. A screen
+      // that offers to split a purchase has to quote this one; the tier total belongs to the
+      // revolving line and promises room a plan cannot use.
+      term: credit.term,
       // What of a member's savings cannot leave. Carried because it is not derivable from the
       // tiers: encumbrance follows what is drawn, not what is pledged.
       savingsEncumberedCents: credit.savingsEncumberedCents,

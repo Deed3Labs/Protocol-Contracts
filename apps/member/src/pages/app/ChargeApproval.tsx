@@ -98,7 +98,7 @@ export default function ChargeApproval({
 }: ChargeApprovalProps) {
   if (approved) {
     return (
-      <div className="mx-auto w-full max-w-[360px] px-5 py-8">
+      <div className="w-full px-5 py-8 lg:mx-auto lg:max-w-[420px]">
         <div className="px-0 pb-1 pt-3.5 text-center">
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-positive/15">
             <Check className="h-[22px] w-[22px] text-positive" strokeWidth={2.4} />
@@ -141,8 +141,16 @@ export default function ChargeApproval({
     );
   }
 
+  /*
+   * Full width on a phone, capped only where a phone-shaped column stops making sense.
+   *
+   * The reference draws this inside a 360px `.phone` frame, but that frame is the mockup's device,
+   * not a width for the app to hold to on a real one -- transcribed as a max-width it left a
+   * narrow column adrift in the middle of a large screen, while every other page in the app fills
+   * to `px-5`. This route renders outside AppShell, so it carries that gutter itself.
+   */
   return (
-    <div className="mx-auto w-full max-w-[360px] px-5 py-8">
+    <div className="w-full px-5 py-8 lg:mx-auto lg:max-w-[420px]">
       <div className="mb-3.5 flex items-center gap-2.5">
         {onBack && (
           <button type="button" onClick={onBack} aria-label="Back" className="text-foreground-secondary">
