@@ -488,16 +488,22 @@ The member app is installable.
 
 ## The merchant app (`apps/merchant`)
 
-Staff raise financed charges at a counter; owners manage payouts, staff and refunds.
+Staff raise charges at a counter; owners manage payouts, staff and refunds.
 
 **Network-originated transactions only.** What reaches this app is a charge raised as a Clear code
 and approved in the member app — the QR path, settling on Clear's own rails. A card tap, a Clear
 card included, runs on ordinary card rails and never appears here. One counter takes both; this app
 is the Clear half of it.
 
-Today every network-originated charge opens a term plan, which is why `packages/domain` names the
-settled state `approved` and gates refunds behind `isFinanced`. That is what the product does now,
-not where the boundary sits — the boundary is which rail originated the transaction.
+**One tender, whatever backs it.** Paying from a funded balance and drawing on a line are the same
+transaction here — the balance is collateral for a fully secured draw, not a second tender. Both
+are charge-and-settle through the ledger and the merchant sees one thing either way. Hence
+`approved` and `isFinanced` in `packages/domain`: the design, not a phase.
+
+**Direction.** The app is built to work either way — as the shop's point of sale where nothing else
+is mandated, or as a settlement surface beside an incumbent system the merchant's category requires
+them to keep. Clear is one tender on that counter in both cases. Per-merchant terms — payout
+window, approval cap, discount — live in `MerchantRegistry`.
 
 ```mermaid
 flowchart LR
