@@ -141,7 +141,7 @@ export default function HomeRoute() {
     ...(txLoading ? {} : { recent: items.slice(0, 4).map(toActivityRow) }),
     ...(credit?.complete
       ? {
-          credit: toCredit(credit.tiers, HOME_DAY_ONE.credit),
+          credit: toCredit(credit.tiers, HOME_DAY_ONE.credit, credit.term?.carryOwedCents ?? 0),
           cycle: toCycle(credit.cycle, HOME_DAY_ONE.cycle),
           backing: toLimitBacking(credit.tiers, HOME_DAY_ONE.backing),
           // The last placeholder on this page, and the one that made day one's two arrivals

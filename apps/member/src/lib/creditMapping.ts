@@ -104,11 +104,24 @@ export function toCreditTiers(rows: CreditTierRow[]): CreditTier[] {
  * issuer computes it against the tier's index; subtracting two rounded figures would produce a
  * third carrying both errors, on a number the member is actually charged.
  */
-export function toCredit(rows: CreditTierRow[], fallback: Credit): Credit {
+export function toCredit(
+  rows: CreditTierRow[],
+  fallback: Credit,
+  /**
+   * Carry a closed plan left on the ledger, in cents.
+   *
+   * Added to the tiers' own carry rather than shown apart from it. The member is charged one
+   * figure and thinks in one figure; where the carry came from is our bookkeeping, not theirs. It
+   * had no home at all before — the plan that carried it is closed, so the Term plans shelf does
+   * not list it, and this function summed only the tier rows, so the credit card did not either.
+   */
+  carryOwedCents = 0,
+): Credit {
   const tiers = toCreditTiers(rows);
-  if (tiers.length === 0) return fallback;
-  const carryCost = rows.reduce((sum, row) => sum + fromCents(row.carryCents), 0);
-  return { ...fallback, tiers, carryCost };
+  if (tiers.length === 0 && carryOwedCents === 0) return fallback;
+  const carryCost =
+    rows.reduce((sum, row) => sum + fromCents(row.carryCents), 0) + fromCents(carryOwedCents);
+  return { ...fallback, tiers: tiers.length === 0 ? fallback.tiers : tiers, carryCost };
 }
 
 const DAY_SECONDS = 86_400;

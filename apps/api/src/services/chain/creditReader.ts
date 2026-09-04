@@ -58,6 +58,8 @@ const TERM_ABI = [
   'function totalPrincipalOf(address member) external view returns (uint256)',
 ];
 
+const LEDGER_ABI = ['function creditBalanceOf(address) view returns (uint256)'];
+
 /** Credit units are the ledger's, which are the reserve token's: six decimals. */
 const CREDIT_DECIMALS = 6;
 
@@ -149,6 +151,16 @@ export interface ChainTermCeiling {
   /** Principal already outstanding across open plans, which the ceiling is measured against. */
   usedCents: number;
   availableCents: number;
+  /**
+   * Owed on the ledger but attached to no open plan and no tier — carry left behind when a plan
+   * closed, which a refund does over whatever carry had accrued.
+   *
+   * It has to be read this way round because nothing records it directly. The plan that carried it
+   * is closed, so the Term plans shelf does not show it, and `carryCost` is summed from the tier
+   * rows, so the revolving card does not either. Without this it is a real obligation on no screen
+   * at all — a member owing money nothing tells them about.
+   */
+  carryOwedCents: number;
 }
 
 function toCents(amount: bigint): number {
@@ -292,6 +304,8 @@ async function readTermCeiling(
   provider: ethers.JsonRpcProvider,
   address: string,
   wallet: string,
+  ledgerAddress: string | null,
+  tiersUsedCents: number,
 ): Promise<ChainTermCeiling | null> {
   try {
     const term = new ethers.Contract(address, TERM_ABI, provider);
@@ -301,7 +315,22 @@ async function readTermCeiling(
     ]);
     const limitCents = toCents(limit);
     const usedCents = toCents(used);
-    return { limitCents, usedCents, availableCents: Math.max(0, limitCents - usedCents) };
+
+    // Everything the member owes, minus everything a screen already accounts for. Zero for almost
+    // everybody; non-zero once a plan has been closed with carry still on it.
+    let carryOwedCents = 0;
+    if (ledgerAddress) {
+      const ledger = new ethers.Contract(ledgerAddress, LEDGER_ABI, provider);
+      const owed = toCents(await ledger.creditBalanceOf(wallet));
+      carryOwedCents = Math.max(0, owed - usedCents - tiersUsedCents);
+    }
+
+    return {
+      limitCents,
+      usedCents,
+      availableCents: Math.max(0, limitCents - usedCents),
+      carryOwedCents,
+    };
   } catch (error) {
     // Null, never zero. A member whose RPC blipped has not had their line withdrawn.
     console.error('[credit] term ceiling read failed', error);
@@ -486,16 +515,26 @@ async function readChainCreditUncached(
 
   // An unset issuer is no credit line, not a failed read: a member cannot have drawn against a
   // contract that does not exist.
-  const [tiers, plans, cycle, ceiling, savingsEncumberedCents] = await Promise.all([
+  const [tiers, plans, cycle, savingsEncumberedCents] = await Promise.all([
     issuer ? readTiers(provider, issuer, wallet, registry, limitCalculator) : Promise.resolve([]),
     term ? readPlans(provider, term, wallet) : Promise.resolve([]),
     issuer ? readCycle(provider, issuer, wallet) : Promise.resolve(null),
-    term
-      ? readTermCeiling(provider, term, wallet)
-      : // No issuer on this chain is no term line, not a failed read.
-        Promise.resolve<ChainTermCeiling>({ limitCents: 0, usedCents: 0, availableCents: 0 }),
     registry ? readEncumbered(provider, registry, wallet) : Promise.resolve(0),
   ]);
+
+  /*
+   * After the tiers, not beside them: the ceiling read subtracts what the tiers already account
+   * for, to work out what is owed on no plan and no tier. A failed tier read passes through as
+   * zero drawn, which can only understate that remainder — and understating it shows nothing,
+   * which is what happens today anyway.
+   */
+  const tiersUsedCents = (tiers ?? []).reduce((sum, tier) => sum + (tier.usedCents ?? 0), 0);
+  const ceiling = term
+    ? await readTermCeiling(
+        provider, term, wallet, getContractAddress(chainId, 'ClearCredit'), tiersUsedCents,
+      )
+    : // No issuer on this chain is no term line, not a failed read.
+      ({ limitCents: 0, usedCents: 0, availableCents: 0, carryOwedCents: 0 } as ChainTermCeiling);
 
   return {
     tiers,

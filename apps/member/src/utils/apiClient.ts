@@ -2507,6 +2507,12 @@ export interface CreditTermCeiling {
   limitCents: number;
   usedCents: number;
   availableCents: number;
+  /**
+   * Owed on the ledger but on no open plan and no tier — carry a plan left behind when it closed,
+   * which a refund does over whatever had accrued. Belongs with the rest of the carry a member is
+   * being charged, because that is what it is.
+   */
+  carryOwedCents: number;
 }
 
 /**

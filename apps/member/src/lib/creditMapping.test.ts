@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { toCredit, toCreditTiers, toCycle, toLimitBacking } from './creditMapping.js';
 import type { CreditTierRow } from '../utils/apiClient.js';
+import { HOME_DAY_ONE } from '../data/clearPlaceholder.js';
 
 /*
  * Mapping the contracts' credit line onto the one a member reads.
@@ -168,5 +169,32 @@ describe('a member who has never opened a line', () => {
     // A date where there was none is the signal that a line was actually opened.
     expect(cycle.clearsOn).not.toBe('');
     expect(cycle.daysLeft).toBe(30);
+  });
+});
+
+/**
+ * Carry a closed plan left behind had no home on any screen: the Term plans shelf lists only open
+ * plans, and this mapping summed only the tier rows. A refund closes a plan over whatever carry had
+ * accrued, so it made a real obligation invisible.
+ */
+describe('carry left by a closed plan is still charged, so it is still shown', () => {
+  const tiers = [
+    { kind: 'ASSET', limitCents: 50_000, usedCents: 10_000, carryCents: 250, active: true, ratePerCycleBps: 75 },
+  ] as unknown as CreditTierRow[];
+
+  test('it is added to the carry the tiers already report', () => {
+    const withOrphan = toCredit(tiers, HOME_DAY_ONE.credit, 578);
+    const without = toCredit(tiers, HOME_DAY_ONE.credit, 0);
+    expect(withOrphan.carryCost).toBeCloseTo(without.carryCost + 5.78, 6);
+  });
+
+  test('it shows even for a member with no tiers at all', () => {
+    // The case that made this necessary: a refunded plan and nothing else. Returning the fallback
+    // here is what hid it, because the fallback carries a zero.
+    expect(toCredit([], HOME_DAY_ONE.credit, 578).carryCost).toBeCloseTo(5.78, 6);
+  });
+
+  test('a member owing nothing still gets the untouched fallback', () => {
+    expect(toCredit([], HOME_DAY_ONE.credit, 0)).toBe(HOME_DAY_ONE.credit);
   });
 });
