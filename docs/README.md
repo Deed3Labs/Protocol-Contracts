@@ -1,81 +1,148 @@
-# The Deed Protocol Documentation
+# Documentation
 
-Welcome to the comprehensive documentation for **The Deed Protocol** - a decentralized platform for Real World Asset (RWA) tokenization and validation.
+Everything written down about **CLEAR** and about **the Deed Protocol** underneath it. Start with
+the root [`README.md`](../README.md) for what the repository is and how to run it; this index is for
+the longer-form material.
 
-## 📚 Documentation Sections
+Two eras of documentation live here. The Clear docs describe what is being built now. The Deed
+Protocol docs describe the RWA layer, and the ones about its *frontend* predate the app rebuild —
+each group says which it is.
 
-### 🚀 Getting Started
-- **[User Guide](./user-guide/README.md)** - Complete user experience guide
-- **[Quick Start](./quick-start.md)** - Get up and running in minutes
-- **[Installation](./installation.md)** - Setup and deployment instructions
-
-### 🏗️ Protocol Architecture
-- **[Protocol Overview](./architecture/protocol-overview.md)** - High-level system design
-- **[Smart Contracts](./architecture/smart-contracts.md)** - Contract architecture and relationships
-- **[Validation System](./architecture/validation-system.md)** - How validation works
-- **[Asset Subdivision](./architecture/subdivision.md)** - Asset subdivision functionality and workflows
-- **[Asset Fractionalization](./architecture/fractionalization.md)** - Asset fractionalization functionality and workflows
-- **[Asset Workflows](./architecture/asset-workflows.md)** - Complete asset lifecycle from minting to fractionalization
-
-### 💼 Asset Types & Requirements
-- **[Land Assets](./assets/land-assets.md)** - Land property validation requirements
-- **[Vehicle Assets](./assets/vehicle-assets.md)** - Vehicle validation requirements
-- **[Estate Assets](./assets/estate-assets.md)** - Estate property validation requirements
-- **[Commercial Equipment](./assets/commercial-equipment.md)** - Equipment validation requirements
-
-### 🔧 Technical Documentation
-- **[API Reference](./api/README.md)** - Complete API documentation
-- **[Contract Interfaces](./api/contract-interfaces.md)** - Smart contract interfaces
-- **[Frontend Components](./api/components.md)** - React component documentation
-
-### 🎯 User Experience
-- **[Minting Process](./ux/minting-process.md)** - Step-by-step minting guide
-- **[Validation Workflow](./ux/validation-workflow.md)** - Asset validation process
-- **[Messaging Guide](./ux/messaging.md)** - XMTP messaging instructions
-- **[Admin Operations](./ux/admin-operations.md)** - Administrative functions
-- **[Troubleshooting](./ux/troubleshooting.md)** - Common issues and solutions
-
-### 🔒 Security & Compliance
-- **[Security Model](./security/security-model.md)** - Security architecture
-- **[Compliance Guidelines](./security/compliance.md)** - Regulatory compliance
-- **[Audit Information](./security/audits.md)** - Security audit details
-
-### 🚀 Development
-- **[Developer Guide](./development/README.md)** - For developers and integrators
-- **[Contributing](./development/contributing.md)** - How to contribute
-- **[Testing](./development/testing.md)** - Testing guidelines
-
-## 🎯 Quick Navigation
-
-### For End Users
-Start with the **[User Guide](./user-guide/README.md)** to understand how to use the protocol for minting and managing your assets.
-
-### For Validators
-Check **[Validation System](./architecture/validation-system.md)** and **[Asset Requirements](./assets/)** to understand validation criteria.
-
-### For Developers
-Begin with **[Developer Guide](./development/README.md)** and **[API Reference](./api/README.md)** for integration details.
-
-### For Administrators
-Review **[Admin Operations](./ux/admin-operations.md)** and **[Security Model](./security/security-model.md)** for protocol management.
-
-## 📖 Documentation Status
-
-- ✅ **Complete**: User Guide, Quick Start, Asset Requirements, Smart Contracts, Validation System, Subdivision, Fractionalization, Asset Workflows
-- 🔄 **In Progress**: API Reference, Security Documentation
-- 📋 **Planned**: Advanced Features, Integration Guides
-
-## 🤝 Contributing to Documentation
-
-We welcome contributions to improve our documentation! Please see our **[Contributing Guide](./development/contributing.md)** for details.
-
-## 📞 Support
-
-- **GitHub Issues**: [Report bugs or request features](https://github.com/Deed3Labs/Protocol-Contracts/issues)
-- **Discussions**: [Join community discussions](https://github.com/Deed3Labs/Protocol-Contracts/discussions)
-- **Email**: dev@deed3.io
+Every link below points at a file that exists. If one does not, that is a bug worth fixing.
 
 ---
 
-*Last updated: January 2025*
-*Version: v0.2.0-beta* 
+## Clear — the product
+
+| | |
+|---|---|
+| [`CLEAR_MEMBER_OVERVIEW_2026.md`](./CLEAR_MEMBER_OVERVIEW_2026.md) | What CLEAR is, for members and depositors. The plainest statement of the model |
+| [`CLEAR_RECONCILIATION_BASELINE_2026.md`](./CLEAR_RECONCILIATION_BASELINE_2026.md) | The decision-ready baseline reconciling repository, narrative and docs — and the source hierarchy to use when they disagree |
+| [`CLEAR_INVESTOR_PROTOCOL_DOSSIER.md`](./CLEAR_INVESTOR_PROTOCOL_DOSSIER.md) | The protocol explained for investors, banks and financiers |
+| [`CLEAR_LPVC_INVESTMENT_MEMO_2026.md`](./CLEAR_LPVC_INVESTMENT_MEMO_2026.md) | Investment memo for LPs and VCs |
+
+## Clear — the contracts
+
+| | |
+|---|---|
+| [`contracts/clear-contracts-build-plan.md`](./contracts/clear-contracts-build-plan.md) | **Read this before touching the on-chain code.** StableCredit as a ledger of obligations rather than a pot of money, the ESA, the yield pool, BurnerBonds, and the connection points to the app and to Lithic |
+| [`contracts/clear-deployment-plan.md`](./contracts/clear-deployment-plan.md) | What has to be deployed, in what order, and which part of the app each step unlocks. Companion to the build plan |
+| [`clrusd-esa-bootstrap.md`](./clrusd-esa-bootstrap.md) | Runbook for issuing CLRUSD from an isolated `ESADepositVault`, with backing kept segregated from the AssurancePool, and CCIP burn/mint pools for cross-chain |
+| [`token-registry.md`](./token-registry.md) | `TokenRegistry` — the presence-based whitelist, and what it means for onboarding a token |
+| [`assurancePool.md`](./assurancePool.md) | Multi-token reserve: deposits, withdrawals, RTD |
+| [`assuranceOracle.md`](./assuranceOracle.md) | Uniswap-based universal pricing with registry fallback |
+| [`burner-bond-complete.md`](./burner-bond-complete.md) | The ERC-1155 discount-bond system end to end |
+
+Deployment runbooks proper live outside `docs/`: [`deploy/README.md`](../deploy/README.md) and
+[`deploy/DEPLOYMENT_GUIDE.md`](../deploy/DEPLOYMENT_GUIDE.md). Deployed addresses are tabulated in the
+root [`README.md`](../README.md).
+
+## Clear — the apps
+
+| | |
+|---|---|
+| [`ux/clear-app-design-spec.md`](./ux/clear-app-design-spec.md) | The member app's navigation and screens — what the rebuild is built to |
+| [`reference/clear-app-reference-screens.html`](./reference/clear-app-reference-screens.html) | Static reference screens: Home, limit breakdown, Savings, Earn, Activity, Send, Card. Colors, spacing and structure are authoritative; the implementation approach is not |
+| [`ux/clear-onboarding-plan.md`](./ux/clear-onboarding-plan.md) | Making the reference onboarding flow real, and the components it needs |
+| [`ux/clear-merchant-app-reference.html`](./ux/clear-merchant-app-reference.html) | Design reference for the counter app |
+| [`ux/clear-merchant-auth.html`](./ux/clear-merchant-auth.html) | Signing in, shifts, and who is allowed to see what |
+| [`ux/clear-merchant-privy-orgs.md`](./ux/clear-merchant-privy-orgs.md) | Why the merchant app creates four Privy objects where the consumer app creates one, and where each call lands in onboarding |
+| [`reference/README.md`](./reference/README.md) | Index of the visual reference material |
+
+App-level docs sit with their apps: [`apps/member/README.md`](../apps/member/README.md),
+[`apps/api/README.md`](../apps/api/README.md), and the data-fetching, caching and pricing notes in
+[`apps/member/docs/`](../apps/member/docs/).
+
+## Clear — integrations
+
+| | |
+|---|---|
+| [`integrations/lithic-integration-spec.md`](./integrations/lithic-integration-spec.md) | The banking and card rail. Program Managed, and the two rails it must never blur. Read before writing card code |
+
+---
+
+## The Deed Protocol — architecture
+
+Current. These describe the contracts, which are still what they say they are.
+
+| | |
+|---|---|
+| [`architecture/protocol-overview.md`](./architecture/protocol-overview.md) | High-level system design |
+| [`architecture/smart-contracts.md`](./architecture/smart-contracts.md) | Contract architecture and relationships |
+| [`architecture/validation-system.md`](./architecture/validation-system.md) | How validation works, and the validator lifecycle |
+| [`architecture/asset-workflows.md`](./architecture/asset-workflows.md) | The full asset lifecycle, minting through fractionalization |
+| [`architecture/subdivision.md`](./architecture/subdivision.md) | ERC-1155 subdivision |
+| [`architecture/fractionalization.md`](./architecture/fractionalization.md) | ERC-20 fractional shares |
+| [`architecture/metadata-renderer.md`](./architecture/metadata-renderer.md) | Trait-aware metadata, documents and features |
+| [`api/contract-interfaces.md`](./api/contract-interfaces.md) | Contract interfaces, function by function |
+| [`architecture/XMTP.md`](./architecture/XMTP.md) | XMTP messaging between members and T-Deed owners |
+
+## The Deed Protocol — asset requirements
+
+What a validator checks, per asset type.
+
+- [Land](./assets/land-assets.md)
+- [Vehicles](./assets/vehicle-assets.md)
+- [Estates](./assets/estate-assets.md)
+- [Commercial equipment](./assets/commercial-equipment.md)
+
+## The Deed Protocol — user guides
+
+| | |
+|---|---|
+| [`user-guide/README.md`](./user-guide/README.md) | Tokenizing and managing assets as DeedNFTs |
+| [`quick-start.md`](./quick-start.md) | The five-minute version |
+| [`ux/minting-process.md`](./ux/minting-process.md) | Minting, step by step |
+| [`ux/admin-operations.md`](./ux/admin-operations.md) | Validator management and other admin operations |
+| [`ux/messaging.md`](./ux/messaging.md) | XMTP messaging, for users |
+
+---
+
+## Pre-rebuild frontend docs
+
+> These describe the Deed Protocol frontend as it was before the Clear rebuild — Reown AppKit for
+> wallets, a component tree that no longer exists, and an `app/` directory that is now `apps/member`.
+> They are kept because the T-Deed surface they document is still in the codebase, but check them
+> against the code before relying on anything. [`apps/member/README.md`](../apps/member/README.md) is
+> the current account of that app.
+
+| | |
+|---|---|
+| [`installation.md`](./installation.md) | Local setup and deployment. Paths are pre-monorepo |
+| [`api/components.md`](./api/components.md) | React component reference |
+| [`api/hooks.md`](./api/hooks.md) | Custom hook reference |
+| [`api/DeedNFTMap.md`](./api/DeedNFTMap.md) | The Mapbox asset map |
+| [`api/MapEnvironmentSetup.md`](./api/MapEnvironmentSetup.md) | Mapbox tokens |
+| [`api/XMTP.md`](./api/XMTP.md) | The `XMTPMessaging` component |
+| [`multichain-implementation.md`](./multichain-implementation.md) | Multichain asset views |
+| [`rpc-optimization.md`](./rpc-optimization.md) | Reducing RPC calls and rate-limit errors |
+
+---
+
+## Where the missing pieces actually are
+
+This index used to link nine files that were never written: an API reference, a developer guide,
+contributing and testing guides, a security model, compliance and audit notes, a validation
+workflow, and a troubleshooting page. The links are gone. What they promised, where it exists:
+
+| Was linked as | Read instead |
+|---|---|
+| `api/README.md` | [`apps/api/README.md`](../apps/api/README.md) — the real route map, auth model and env. For contracts, [`api/contract-interfaces.md`](./api/contract-interfaces.md) |
+| `development/README.md`, `development/contributing.md` | The **Quickstart** and **Contributing** sections of the root [`README.md`](../README.md) |
+| `development/testing.md` | **Contract tooling → Tests** in the root [`README.md`](../README.md), and the suites in [`test/`](../test/) |
+| `security/security-model.md` | **Security** in the root [`README.md`](../README.md); role boundaries are in [`architecture/smart-contracts.md`](./architecture/smart-contracts.md) |
+| `security/audits.md` | There has been no audit. The contracts are unaudited and should not carry real money without an independent review |
+| `security/compliance.md` | Not written. The nearest thing is the KYC/KYB and program-management split in [`integrations/lithic-integration-spec.md`](./integrations/lithic-integration-spec.md) |
+| `ux/validation-workflow.md` | [`architecture/validation-system.md`](./architecture/validation-system.md) |
+| `ux/troubleshooting.md` | Not written |
+
+---
+
+## Contributing to these docs
+
+Focused PRs against `dev`, same as code. Update the doc in the same change as the interface or
+workflow it describes — that is the only way any of this stays true. If you add a file here, add it
+to this index; if you find a link that does not resolve, fix it or remove it rather than leaving it.
+
+- Issues: [Deed3Labs/Protocol-Contracts/issues](https://github.com/Deed3Labs/Protocol-Contracts/issues)
+- Discussions: [Deed3Labs/Protocol-Contracts/discussions](https://github.com/Deed3Labs/Protocol-Contracts/discussions)
