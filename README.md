@@ -490,20 +490,28 @@ The member app is installable.
 
 Staff raise charges at a counter; owners manage payouts, staff and refunds.
 
-**Network-originated transactions only.** What reaches this app is a charge raised as a Clear code
-and approved in the member app — the QR path, settling on Clear's own rails. A card tap, a Clear
-card included, runs on ordinary card rails and never appears here. One counter takes both; this app
-is the Clear half of it.
+```mermaid
+flowchart TD
+  C(["One counter"]) --> QR["Clear code<br/><i>network-originated</i>"]
+  C --> TAP["Card tap<br/><i>a Clear card too</i>"]
+  TAP --> OUT["Ordinary card rails<br/><i>never reaches this app</i>"]
+  QR --> BAL["Funded balance"]
+  QR --> LN["Credit line"]
+  BAL --> ONE["<b>One tender</b><br/>charge-and-settle"]
+  LN --> ONE
+  ONE --> APP["The merchant app"]
+```
 
-**One tender, whatever backs it.** Paying from a funded balance and drawing on a line are the same
-transaction here — the balance is collateral for a fully secured draw, not a second tender. Both
-are charge-and-settle through the ledger and the merchant sees one thing either way. Hence
+**Network-originated transactions only.** A Clear code, approved in the member app, settles on
+Clear's rails and lands here. A card tap never does. This is the Clear half of the counter.
+
+**One tender, whatever backs it.** A funded balance is collateral for a fully secured draw, not a
+second tender — so balance and line are the same charge, and the merchant sees one thing. Hence
 `approved` and `isFinanced` in `packages/domain`: the design, not a phase.
 
-**Direction.** The app is built to work either way — as the shop's point of sale where nothing else
-is mandated, or as a settlement surface beside an incumbent system the merchant's category requires
-them to keep. Clear is one tender on that counter in both cases. Per-merchant terms — payout
-window, approval cap, discount — live in `MerchantRegistry`.
+**Direction.** Either the shop's point of sale, or a settlement surface beside an incumbent system
+the merchant's category requires them to keep. Per-merchant terms — payout window, approval cap,
+discount — live in `MerchantRegistry`.
 
 ```mermaid
 flowchart LR
