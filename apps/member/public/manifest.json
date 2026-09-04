@@ -1,116 +1,50 @@
 {
-  "name": "CLEAR Credit",
-  "short_name": "CLEAR",
-  "description": "A Modern Platform for Tokenization, On-Chain Credit and Portfolio Management",
-  "start_url": "https://app.useclear.org/",
+  "id": "/",
+  "name": "Clear",
+  "short_name": "Clear",
+  "description": "Pay over time, save alongside it, and see where every dollar sits.",
+  "start_url": "/",
   "scope": "/",
-  "display_override": ["window-controls-overlay", "fullscreen", "standalone"],
+  "display_override": ["standalone", "fullscreen"],
   "display": "standalone",
-  "background_color": "#0e0e0e",
-  "theme_color": "#0e0e0e",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "background_color": "#f5f5f5",
+  "theme_color": "#f5f5f5",
   "orientation": "portrait-primary",
   "icons": [
     {
       "src": "/ClearPath-Logo.png",
-      "sizes": "72x72",
+      "sizes": "500x500",
       "type": "image/png",
       "purpose": "any"
-    },
-    {
-      "src": "/ClearPath-Logo.png",
-      "sizes": "96x96",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/ClearPath-Logo.png",
-      "sizes": "128x128",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/ClearPath-Logo.png",
-      "sizes": "144x144",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/ClearPath-Logo.png",
-      "sizes": "152x152",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/ClearPath-Logo.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/ClearPath-Logo.png",
-      "sizes": "384x384",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/ClearPath-Logo.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
     }
   ],
   "shortcuts": [
     {
-      "name": "View Portfolio",
-      "short_name": "Portfolio",
-      "description": "View your portfolio and holdings",
-      "url": "/portfolio",
-      "icons": [
-        {
-          "src": "/ClearPath-Logo.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
+      "name": "Scan to pay",
+      "short_name": "Scan",
+      "description": "Open the camera and scan a Clear code",
+      "url": "/scan"
     },
     {
-      "name": "Mint Asset",
-      "short_name": "Mint",
-      "description": "Mint a new T-Deed NFT",
-      "url": "/mint",
-      "icons": [
-        {
-          "src": "/ClearPath-Logo.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Explore",
-      "short_name": "Explore",
-      "description": "Explore available assets",
-      "url": "/explore",
-      "icons": [
-        {
-          "src": "/ClearPath-Logo.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
+      "name": "Send",
+      "short_name": "Send",
+      "description": "Send money to someone",
+      "url": "/send"
     },
     {
       "name": "Activity",
       "short_name": "Activity",
-      "description": "View transaction history",
-      "url": "/portfolio?tab=activity",
-      "icons": [
-        {
-          "src": "/ClearPath-Logo.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
+      "description": "Everything that has moved",
+      "url": "/activity"
+    },
+    {
+      "name": "Card",
+      "short_name": "Card",
+      "description": "Your Clear card",
+      "url": "/card"
     }
   ],
   "share_target": {
@@ -122,8 +56,8 @@
       "url": "url"
     }
   },
-  "categories": ["finance", "trading", "banking", "crypto", "productivity"],
+  "categories": ["finance"],
   "lang": "en",
   "dir": "ltr",
   "prefer_related_applications": false
-} 
+}

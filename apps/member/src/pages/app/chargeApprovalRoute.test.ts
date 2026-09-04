@@ -39,3 +39,20 @@ describe('a scanner who is not a member yet is sent to signup', () => {
     expect(branch.slice(0, 400)).toContain('{ replace: true }');
   });
 });
+
+/**
+ * iOS will not open an installed home screen app for a scanned link, and its storage is a separate
+ * jar from Safari's — so a member with the app lands here signed out. The code is the way across.
+ */
+describe('the handoff into the installed app', () => {
+  test('is offered on iOS outside the app, and nowhere else', () => {
+    expect(SOURCE).toContain("appHandoffCode={installMode === 'ios' ? charge.code : null}");
+  });
+
+  test('the line names the code and the screen that takes it', () => {
+    const view = readFileSync(new URL('./ChargeApproval.tsx', import.meta.url), 'utf8');
+    expect(view).toContain('Have the Clear app?');
+    expect(view).toContain('{appHandoffCode}');
+    expect(view).toContain('Scan screen');
+  });
+});

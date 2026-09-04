@@ -68,6 +68,12 @@ export interface ChargeApprovalProps {
   onBack?: () => void;
   /** Set once approved — the screen becomes the confirmation rather than navigating away. */
   approved?: boolean;
+  /**
+   * The charge's code, shown as a way into the installed app — set only where the platform will
+   * not open it for us. Null everywhere else, including inside the app itself, where the line
+   * would be telling somebody to go where they already are.
+   */
+  appHandoffCode?: string | null;
 }
 
 export default function ChargeApproval({
@@ -88,6 +94,7 @@ export default function ChargeApproval({
   onDecline,
   onBack,
   approved = false,
+  appHandoffCode = null,
 }: ChargeApprovalProps) {
   if (approved) {
     return (
@@ -189,6 +196,23 @@ export default function ChargeApproval({
       <p className="mt-2.5 text-center text-[11px] leading-relaxed text-muted-foreground">
         Expires in 24 hours. Nothing is charged until you approve.
       </p>
+
+      {/*
+        iOS will not open an installed home screen app for a scanned link -- there is no
+        manifest-scope link handling on the platform, only Universal Links, and those are for
+        native apps. So a member who has Clear on their home screen lands here in Safari, where the
+        app's storage is a separate jar and they are signed out.
+
+        Nothing routes around that, so the way across is the code itself. It is already on the
+        merchant's screen and the in-app scanner already takes a typed one.
+      */}
+      {appHandoffCode && (
+        <p className="mt-1.5 text-center text-[11px] leading-relaxed text-muted-foreground">
+          Have the Clear app? Open it and enter{' '}
+          <span className="font-medium tracking-wide text-foreground">{appHandoffCode}</span> on the
+          Scan screen.
+        </p>
+      )}
     </div>
   );
 }

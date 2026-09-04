@@ -10,6 +10,7 @@ import {
 } from '@/utils/apiClient';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { useInstallMode } from '@/hooks/useInstallMode';
 import { shopSlug } from '@clear/domain';
 import ChargeApproval from './ChargeApproval';
 
@@ -29,6 +30,7 @@ export default function ChargeApprovalRoute() {
   const { code = '' } = useParams<{ code: string }>();
   const { isAuthenticated, address } = useAppKitAuth();
   const { memberStatus, loaded: profileLoaded } = useMemberProfile();
+  const installMode = useInstallMode();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -200,6 +202,14 @@ export default function ChargeApprovalRoute() {
       onDecline={onDecline}
       onBack={() => navigate('/')}
       approved={charge.status === 'approved'}
+      /*
+       * Only on iOS, and only outside the installed app.
+       *
+       * That is the one combination the platform strands: Android hands a scanned link to the
+       * installed PWA, and inside the app there is nowhere to hand off to. On Android without the
+       * app the useful offer is to install it, which is not this line's job.
+       */
+      appHandoffCode={installMode === 'ios' ? charge.code : null}
     />
   );
 }
