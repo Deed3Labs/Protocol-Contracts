@@ -32,6 +32,8 @@ export interface MemberProfile {
   address: string;
   initials: string;
   loading: boolean;
+  /** The read has come back at least once — including when it came back empty or failed. */
+  loaded: boolean;
   /** Member lifecycle status; 'ONBOARDING' = brand-new, hasn't completed onboarding. null until loaded. */
   memberStatus: MemberStatus | null;
   /** On the Accelerated track (membershipPlan LIFETIME) — earns the full 1.5× equity-credit multiplier. */
@@ -44,7 +46,7 @@ export interface MemberProfile {
 
 const EMPTY: MemberProfile = {
   name: '', legalName: '', firstName: 'there', handle: '', email: '', phone: '', avatarUrl: null,
-  username: '', address: '', initials: 'CL', loading: false, memberStatus: null, accelerated: false, refresh: () => {}, setAvatar: () => {}, raw: null,
+  username: '', address: '', initials: 'CL', loading: false, loaded: false, memberStatus: null, accelerated: false, refresh: () => {}, setAvatar: () => {}, raw: null,
 };
 
 const Ctx = createContext<MemberProfile | null>(null);
@@ -59,6 +61,7 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
   const [memberStatus, setMemberStatus] = useState<MemberStatus | null>(null);
   const [accelerated, setAccelerated] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [localAvatar, setLocalAvatar] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,6 +81,7 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
       setRaw(null);
       setMemberStatus(null);
       setAccelerated(false);
+      setLoaded(true);
       return;
     }
     setLoading(true);
@@ -95,6 +99,10 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
       setMemberStatus(null);
       setAccelerated(false);
     } finally {
+      // Set on the way out of every path, the failures included. A caller waiting on this is
+      // waiting for an answer, and "we could not tell" is one -- leaving it false would park them
+      // on a spinner for as long as the API is unhappy.
+      setLoaded(true);
       setLoading(false);
     }
   }, [isConnected, address]);
@@ -132,6 +140,7 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
     address: addr,
     initials: initialsOf(pub?.displayName || pub?.username || '', addr),
     loading,
+    loaded,
     memberStatus,
     accelerated,
     refresh: () => void load(),

@@ -28,7 +28,7 @@ import ChargeApproval from './ChargeApproval';
 export default function ChargeApprovalRoute() {
   const { code = '' } = useParams<{ code: string }>();
   const { isAuthenticated, address } = useAppKitAuth();
-  const { memberStatus } = useMemberProfile();
+  const { memberStatus, loaded: profileLoaded } = useMemberProfile();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -48,6 +48,16 @@ export default function ChargeApprovalRoute() {
       navigate('/login', { state: { from: location }, replace: true });
       return;
     }
+    /**
+     * Wait for the profile before reading the charge.
+     *
+     * `memberStatus` is null while it loads, and reading the charge first would render the
+     * approval screen to somebody who is not a member yet -- then yank it away a beat later when
+     * the status lands. Opening a charge also claims it, so this is a screen with a side effect;
+     * it should happen once, after there is enough known to say where it belongs.
+     */
+    if (!profileLoaded) return;
+
     let cancelled = false;
     void getCharge(code)
       .then((found) => {
@@ -83,7 +93,7 @@ export default function ChargeApprovalRoute() {
     return () => {
       cancelled = true;
     };
-  }, [code, isAuthenticated, memberStatus, navigate, location]);
+  }, [code, isAuthenticated, memberStatus, profileLoaded, navigate, location]);
 
   /**
    * The limit shown on the footer, read from the contracts rather than guessed.
@@ -136,7 +146,15 @@ export default function ChargeApprovalRoute() {
     navigate('/', { replace: true });
   }, [charge, navigate]);
 
-  if (loading) {
+  /**
+   * Hold until the profile has answered, because the answer decides whose screen this is.
+   *
+   * Rendering first would show a non-member an approval they cannot give and then pull it away a
+   * beat later. `loaded` rather than `memberStatus !== null`: a failed read has also answered, and
+   * gating on the status would park an existing member on a spinner for as long as the API is
+   * unhappy.
+   */
+  if (loading || (isAuthenticated && !profileLoaded)) {
     return <p className="px-5 py-8 text-center text-[13px] text-muted-foreground">Loading…</p>;
   }
 
