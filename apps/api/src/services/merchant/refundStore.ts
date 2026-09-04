@@ -265,8 +265,29 @@ export const refundStore = {
     const refund = rows[0];
     if (!refund) return { ok: false, reason: 'that refund is no longer waiting' };
 
-    await chargeStore.markRefunded(refund.charge_code);
+    // The charge is NOT flagged here. Marking it refunded is what claws the payout back, and
+    // that must not happen until the member's plan is actually closed -- see settleRefund. This
+    // row moving to `settled` is only the decision; the settlement follows it.
     return { ok: true, refund: toRow(refund) };
+  },
+
+  /**
+   * Put an approved refund back to waiting, when the settlement behind it did not happen.
+   *
+   * Nothing outside has seen it: the member has not been told and the payout has not moved, so
+   * this is a decision being un-made rather than a refund being reversed.
+   */
+  async reopen(id: string): Promise<boolean> {
+    const pool = getMerchantPool();
+    if (!pool) return false;
+    await ensureMerchantSchema();
+    const { rowCount } = await pool.query(
+      `UPDATE ${MERCHANT_SCHEMA}.refunds
+          SET state = 'requested', decided_by = NULL, decided_at = NULL, decided_via = NULL
+        WHERE id = $1 AND state = 'settled'`,
+      [id],
+    );
+    return (rowCount ?? 0) > 0;
   },
 
   /** An owner declines. The charge stands; the writer is told and the customer is not. */

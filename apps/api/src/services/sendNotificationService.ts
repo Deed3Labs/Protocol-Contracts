@@ -9,7 +9,7 @@ export interface SendNotificationResult {
 }
 
 type NotificationChannel = 'email' | 'sms';
-type NotificationKind = 'claim_link' | 'otp' | 'charge_alert';
+type NotificationKind = 'claim_link' | 'otp' | 'charge_alert' | 'refund_alert';
 
 type GenericWebhookResponse = {
   provider?: string;
@@ -150,6 +150,32 @@ class SendNotificationService {
     }
   }
 
+  async sendRefundAlert(params: {
+    recipientType: RecipientType;
+    recipientContact: string;
+    merchantName: string;
+    amount: string;
+  }): Promise<SendNotificationResult | null> {
+    const channel: NotificationChannel = params.recipientType === 'email' ? 'email' : 'sms';
+    try {
+      const dispatchResult = await this.dispatchNotification({
+        channel,
+        kind: 'refund_alert',
+        destination: params.recipientContact,
+        payload: { merchantName: params.merchantName, amount: params.amount },
+      });
+      return {
+        provider: dispatchResult.provider,
+        providerMessageId: dispatchResult.providerMessageId,
+        destinationHash: hashDestination(params.recipientContact.trim().toLowerCase()),
+        status: dispatchResult.status,
+      };
+    } catch (error) {
+      console.error('[refund] alert dispatch failed', error instanceof Error ? error.message : error);
+      return null;
+    }
+  }
+
   private async dispatchNotification(params: {
     channel: NotificationChannel;
     kind: NotificationKind;
@@ -174,6 +200,13 @@ class SendNotificationService {
     if (params.kind === 'otp') {
       const otp = params.payload.otp || '';
       return `Your claim verification code is ${otp}.`;
+    }
+
+    if (params.kind === 'refund_alert') {
+      // Says the thing a refunded member most needs to know — that the payments stop — because
+      // otherwise they keep budgeting for instalments that are no longer coming.
+      const { merchantName = '', amount = '' } = params.payload;
+      return `${merchantName} refunded ${amount} to your Clear account.\n\nIt has been taken off what you owe. Nothing more is due on it.`;
     }
 
     if (params.kind === 'charge_alert') {

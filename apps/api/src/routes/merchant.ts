@@ -8,6 +8,7 @@ import {
 } from '../middleware/merchantAuth.js';
 import { chargeStore } from '../services/chargeStore.js';
 import { ownerCodeLimitFor, refundStore } from '../services/merchant/refundStore.js';
+import { settleRefund } from '../services/refundSettlement.js';
 import { DEFAULT_IDLE_LOCK_SECONDS, deviceStore } from '../services/merchant/deviceStore.js';
 import { sessionStore } from '../services/merchant/sessionStore.js';
 import { attemptLimiter, staffStore } from '../services/merchant/staffStore.js';
@@ -471,6 +472,30 @@ merchantRouter.post('/refunds', requireMerchant, async (req: Request, res: Respo
  * the whole point of the three-step flow, and it is why this verifies a secret rather than issuing
  * a token.
  */
+/**
+ * The half of a refund that happens outside the merchant's books.
+ *
+ * `approve` records the decision; this closes the member's plan, claws the payout back by flagging
+ * the charge, and tells them. If the chain half does not happen the decision is un-made and the
+ * refund goes back to waiting -- better a writer told to try again than a member told they were
+ * refunded while their instalments keep coming.
+ */
+async function settleApproved(
+  refund: { id: string; chargeCode: string; amountCents: number },
+  res: Response,
+): Promise<boolean> {
+  const settled = await settleRefund(refund.chargeCode, refund.amountCents);
+  if (!settled.ok) {
+    await refundStore.reopen(refund.id);
+    res.status(409).json({
+      error: 'Conflict',
+      message: settled.reason ?? 'That refund could not be settled. Nothing was refunded.',
+    });
+    return false;
+  }
+  return true;
+}
+
 merchantRouter.post('/refunds/:id/authorise', requireMerchant, async (req: Request, res: Response) => {
   const { merchant } = req.merchant!;
   const { code, decision } = req.body ?? {};
@@ -496,6 +521,7 @@ merchantRouter.post('/refunds/:id/authorise', requireMerchant, async (req: Reque
     res.status(409).json({ error: 'Conflict', message: result.reason ?? 'could not settle it' });
     return;
   }
+  if (decision !== 'decline' && !(await settleApproved(result.refund, res))) return;
   res.json(await withNames(result.refund));
 });
 
@@ -528,6 +554,7 @@ merchantRouter.post(
       res.status(409).json({ error: 'Conflict', message: result.reason ?? 'could not settle it' });
       return;
     }
+    if (req.body?.decision !== 'decline' && !(await settleApproved(result.refund, res))) return;
     res.json(await withNames(result.refund));
   },
 );
