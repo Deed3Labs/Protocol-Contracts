@@ -490,8 +490,14 @@ The member app is installable.
 
 Staff raise financed charges at a counter; owners manage payouts, staff and refunds.
 
-**Financed transactions only.** A member paying from their balance or tapping a Clear card runs on
-ordinary payment rails and never appears here.
+**Network-originated transactions only.** What reaches this app is a charge raised as a Clear code
+and approved in the member app — the QR path, settling on Clear's own rails. A card tap, a Clear
+card included, runs on ordinary card rails and never appears here. One counter takes both; this app
+is the Clear half of it.
+
+Today every network-originated charge opens a term plan, which is why `packages/domain` names the
+settled state `approved` and gates refunds behind `isFinanced`. That is what the product does now,
+not where the boundary sits — the boundary is which rail originated the transaction.
 
 ```mermaid
 flowchart LR

@@ -156,8 +156,8 @@ export default function HomePage() {
     : (charged ?? []).filter((c) => isToday(c.createdAt));
 
   const waiting = charges.filter((c) => c.state === 'waiting' || c.state === 'resolving');
-  // Financed volume only. Card and balance payments run on ordinary rails and never reach this
-  // app, so there is no "paid now" figure and nothing to add it to.
+  // Network-originated volume only. Card-rail payments never reach this app, so there is no "paid
+  // now" figure and nothing to add it to.
   // Cancelled, declined and expired charges are not money. Counting them told a merchant they
   // had taken more than they had, which is the one direction of wrong they will notice.
   const counted = charges.filter((c) => countsAsVolume(c.state));

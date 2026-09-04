@@ -11,9 +11,9 @@ import type { Charge, Merchant, Payout, Staff } from '@clear/domain';
  * The figures are the design reference's, so what appears on screen while scaffolding matches what
  * the reference drew.
  *
- * **Financed transactions only.** A member paying from their balance or tapping a Clear card runs
- * on ordinary payment rails and never reaches this app, so there is nothing here representing one
- * and no total that mixes them.
+ * **Network-originated transactions only.** What reaches this app is a charge raised as a Clear
+ * code and approved in the member app. Card-rail payments — a Clear card included — never reach it,
+ * so there is nothing here representing one and no total that mixes the two rails.
  */
 
 export const STUB_MERCHANT: Merchant = {
