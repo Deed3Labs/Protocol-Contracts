@@ -52,7 +52,21 @@ const EMPTY: MemberProfile = {
 const Ctx = createContext<MemberProfile | null>(null);
 
 export function useMemberProfile(): MemberProfile {
-  return useContext(Ctx) ?? EMPTY;
+  const ctx = useContext(Ctx);
+  /**
+   * The fallback is deliberate — a component can read a name it does not have yet — but it is a
+   * bad answer for anything that WAITS on this. `loaded` and `loading` are both frozen false in
+   * EMPTY, so "no provider" is indistinguishable from "still reading", and a screen that holds
+   * for the member's status holds forever. That is a silent hang, so say it out loud in dev.
+   */
+  if (!ctx && import.meta.env.DEV) {
+    console.error(
+      'useMemberProfile: no MemberProfileProvider above this component. Falling back to empty ' +
+        'values — memberStatus stays null and loaded stays false, so anything waiting on either ' +
+        'will wait forever. Wrap the route.',
+    );
+  }
+  return ctx ?? EMPTY;
 }
 
 export function MemberProfileProvider({ children }: { children: ReactNode }) {

@@ -18,6 +18,7 @@ import ClaimFunds from "@/pages/auth/ClaimFunds";
 import OnboardingRoute from "@/pages/auth/OnboardingRoute";
 import CounterOnboardingRoute from "@/pages/auth/CounterOnboardingRoute";
 import ChargeApprovalRoute from "@/pages/app/ChargeApprovalRoute";
+import { MemberProfileProvider } from '@/hooks/useMemberProfile';
 import LoginRoute from "@/pages/auth/LoginRoute";
 import WalletLinkPage from "@/pages/auth/WalletLink";
 import { PWAInitializer } from "@/components/PWAInitializer";
@@ -107,7 +108,18 @@ function App() {
                     {/* `/c/<code>` — the link in the charge alert. Outside the protected shell
                         because the route sends an unauthenticated member to sign in and come
                         back, which reads better than the shell bouncing them somewhere else. */}
-                    <Route path="/c/:code" element={<ChargeApprovalRoute />} />
+                    {/* The provider lives inside AppShell, and this route is outside it on
+                        purpose, so it has to bring its own. Without one the hook falls back to a
+                        frozen default whose `loaded` never turns true -- the screen waits on the
+                        member's status forever. */}
+                    <Route
+                      path="/c/:code"
+                      element={
+                        <MemberProfileProvider>
+                          <ChargeApprovalRoute />
+                        </MemberProfileProvider>
+                      }
+                    />
                     <Route path="/wallet-link" element={<WalletLinkPage />} />
                     
                     {/* Share Target - Public */}
