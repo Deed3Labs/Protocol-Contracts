@@ -562,11 +562,11 @@ here assumes they do not — that has not been reviewed by counsel, and should b
 | Contract build plan | [`docs/contracts/clear-contracts-build-plan.md`](./docs/contracts/clear-contracts-build-plan.md) |
 | Deployment + wiring plan | [`docs/contracts/clear-deployment-plan.md`](./docs/contracts/clear-deployment-plan.md) |
 | Deployment runbooks | [`deploy/README.md`](./deploy/README.md) |
-| CLRUSD + ESA bootstrap | [`docs/clrusd-esa-bootstrap.md`](./docs/clrusd-esa-bootstrap.md) |
+| CLRUSD + ESA bootstrap | [`docs/contracts/clrusd-esa-bootstrap.md`](./docs/contracts/clrusd-esa-bootstrap.md) |
 | Lithic integration | [`docs/integrations/lithic-integration-spec.md`](./docs/integrations/lithic-integration-spec.md) |
 | App design spec | [`docs/ux/clear-app-design-spec.md`](./docs/ux/clear-app-design-spec.md) |
 | Merchant reference | [`docs/ux/clear-merchant-app-reference.html`](./docs/ux/clear-merchant-app-reference.html) |
-| Member overview | [`docs/CLEAR_MEMBER_OVERVIEW_2026.md`](./docs/CLEAR_MEMBER_OVERVIEW_2026.md) |
+| Contract guides | [`docs/contracts/`](./docs/contracts/) — assurance, token registry, bonds |
 | Architecture | [`docs/architecture/`](./docs/architecture/) |
 | Frontend | [`apps/member/README.md`](./apps/member/README.md) · Backend [`apps/api/README.md`](./apps/api/README.md) |
 

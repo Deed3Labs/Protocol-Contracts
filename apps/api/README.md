@@ -274,7 +274,7 @@ rotated independently.
 - [`TEST_GUIDE.md`](./TEST_GUIDE.md) · [`QUICK_TEST.md`](./QUICK_TEST.md) — poking at it
 - [`docs/integrations/lithic-integration-spec.md`](../../docs/integrations/lithic-integration-spec.md)
   — the card and banking rail, and the two rails it must not blur
-- [`docs/clrusd-esa-bootstrap.md`](../../docs/clrusd-esa-bootstrap.md) — the savings path this API settles against
+- [`docs/contracts/clrusd-esa-bootstrap.md`](../../docs/contracts/clrusd-esa-bootstrap.md) — the savings path this API settles against
 - [`apps/member/README.md`](../member/README.md) — the app on the other end
 
 ---

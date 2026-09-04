@@ -1,5 +1,10 @@
 # CLEAR Reconciliation Baseline (2026)
 
+> **Archived, written March 2026.** Kept for the record. This predates the monorepo restructure, the credit
+> stack deploying to Base Sepolia, the Privy migration, Lithic card issuing and the merchant app —
+> so its contract inventory and product surface are both behind the repository. For current state
+> see the root [`README`](../../README.md) and [`docs/contracts/`](../contracts/).
+
 Purpose: unify repository implementation, current CLEAR product narrative, and CLEAR documentation into one decision-ready baseline for legal, investor, and product communication.
 
 Date: March 1, 2026 

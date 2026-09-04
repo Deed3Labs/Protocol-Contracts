@@ -19,12 +19,12 @@ Every link below points at a file that exists. If one does not, that is a bug wo
 
 ## Clear — the product
 
+The current statement of what Clear is and how the pieces fit lives in the root
+[`README`](../README.md). The product docs that used to sit here are archived.
+
 | | |
 |---|---|
-| [`CLEAR_MEMBER_OVERVIEW_2026.md`](./CLEAR_MEMBER_OVERVIEW_2026.md) | What CLEAR is, for members and depositors. The plainest statement of the model |
-| [`CLEAR_RECONCILIATION_BASELINE_2026.md`](./CLEAR_RECONCILIATION_BASELINE_2026.md) | The decision-ready baseline reconciling repository, narrative and docs — and the source hierarchy to use when they disagree |
-| [`CLEAR_INVESTOR_PROTOCOL_DOSSIER.md`](./CLEAR_INVESTOR_PROTOCOL_DOSSIER.md) | The protocol explained for investors, banks and financiers |
-| [`CLEAR_LPVC_INVESTMENT_MEMO_2026.md`](./CLEAR_LPVC_INVESTMENT_MEMO_2026.md) | Investment memo for LPs and VCs |
+| [`archive/`](./archive/) | **Archived, March 2026.** The member overview and the reconciliation baseline — kept for the record, both behind the repository |
 
 ## The Clear Protocol — contracts
 
@@ -32,11 +32,11 @@ Every link below points at a file that exists. If one does not, that is a bug wo
 |---|---|
 | [`contracts/clear-contracts-build-plan.md`](./contracts/clear-contracts-build-plan.md) | **Read this before touching the on-chain code.** StableCredit as a ledger of obligations rather than a pot of money, the ESA, the yield pool, BurnerBonds, and the connection points to the app and to Lithic |
 | [`contracts/clear-deployment-plan.md`](./contracts/clear-deployment-plan.md) | What has to be deployed, in what order, and which part of the app each step unlocks. Companion to the build plan |
-| [`clrusd-esa-bootstrap.md`](./clrusd-esa-bootstrap.md) | Runbook for issuing CLRUSD from an isolated `ESADepositVault`, with backing kept segregated from the AssurancePool, and CCIP burn/mint pools for cross-chain |
-| [`token-registry.md`](./token-registry.md) | `TokenRegistry` — the presence-based whitelist, and what it means for onboarding a token |
-| [`assurancePool.md`](./assurancePool.md) | Multi-token reserve: deposits, withdrawals, RTD |
-| [`assuranceOracle.md`](./assuranceOracle.md) | Uniswap-based universal pricing with registry fallback |
-| [`burner-bond-complete.md`](./burner-bond-complete.md) | The ERC-1155 discount-bond system end to end |
+| [`clrusd-esa-bootstrap.md`](./contracts/clrusd-esa-bootstrap.md) | Runbook for issuing CLRUSD from an isolated `ESADepositVault`, with backing kept segregated from the AssurancePool, and CCIP burn/mint pools for cross-chain |
+| [`token-registry.md`](./contracts/token-registry.md) | `TokenRegistry` — the presence-based whitelist, and what it means for onboarding a token |
+| [`assurancePool.md`](./contracts/assurancePool.md) | Multi-token reserve: deposits, withdrawals, RTD |
+| [`assuranceOracle.md`](./contracts/assuranceOracle.md) | Uniswap-based universal pricing with registry fallback |
+| [`burner-bond-complete.md`](./contracts/burner-bond-complete.md) | The ERC-1155 discount-bond system end to end |
 
 Deployment runbooks proper live outside `docs/`: [`deploy/README.md`](../deploy/README.md) and
 [`deploy/DEPLOYMENT_GUIDE.md`](../deploy/DEPLOYMENT_GUIDE.md). Deployed addresses are tabulated in the
@@ -121,8 +121,7 @@ What a validator checks, per asset type.
 | [`api/DeedNFTMap.md`](./api/DeedNFTMap.md) | The Mapbox asset map |
 | [`api/MapEnvironmentSetup.md`](./api/MapEnvironmentSetup.md) | Mapbox tokens |
 | [`api/XMTP.md`](./api/XMTP.md) | The `XMTPMessaging` component |
-| [`multichain-implementation.md`](./multichain-implementation.md) | Multichain asset views |
-| [`rpc-optimization.md`](./rpc-optimization.md) | Reducing RPC calls and rate-limit errors |
+| [`apps/member/docs/`](../apps/member/docs/) | Member-app internals: data fetching, portfolio and pricing architecture, RPC and Alchemy cost |
 
 ---
 

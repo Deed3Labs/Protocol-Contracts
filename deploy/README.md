@@ -266,8 +266,8 @@ These roles need careful management:
 - [Quick Start Guide](./QUICK_START.md) - Get started in 5 minutes
 - [Deployment Guide](./DEPLOYMENT_GUIDE.md) - Complete deployment documentation
 - [Smart Contract Docs](../docs/architecture/smart-contracts.md) - Architecture overview
-- [Token Registry Docs](../docs/token-registry.md) - TokenRegistry details
-- [BurnerBond Docs](../docs/burner-bond-complete.md) - BurnerBond system details
+- [Token Registry Docs](../docs/contracts/token-registry.md) - TokenRegistry details
+- [BurnerBond Docs](../docs/contracts/burner-bond-complete.md) - BurnerBond system details
 
 ## 🐛 Troubleshooting
 

@@ -321,8 +321,8 @@ After deployment:
 - [Deploy README](./deploy/README.md) - Complete deployment documentation
 - [Quick Start](./deploy/QUICK_START.md) - Get started in 5 minutes
 - [Deployment Guide](./deploy/DEPLOYMENT_GUIDE.md) - Comprehensive guide
-- [Token Registry Docs](./docs/token-registry.md) - TokenRegistry details
-- [BurnerBond Docs](./docs/burner-bond-complete.md) - System architecture
+- [Token Registry Docs](./docs/contracts/token-registry.md) - TokenRegistry details
+- [BurnerBond Docs](./docs/contracts/burner-bond-complete.md) - System architecture
 
 ## 💡 Tips
 
