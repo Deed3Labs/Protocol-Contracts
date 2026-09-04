@@ -548,4 +548,115 @@ describe("TermIssuer", function () {
       expect(await issuer.totalPrincipalOf(ctx.member.address)).to.equal(0n);
     });
   });
+
+  /**
+   * A refund is not a payment. Origination minted three entries that summed to zero without any
+   * capital, so giving a purchase back must not need any either — and the two cases a shop
+   * actually meets differ only in whether the merchant still holds what they were credited.
+   */
+  describe("a refund unwinds the purchase rather than paying it", function () {
+    const PURCHASE = 1_000n * ONE_USDC;
+    const PAYOUT = 970n * ONE_USDC;
+    const DISCOUNT = PURCHASE - PAYOUT;
+
+    beforeEach(async function () {
+      await setLimit(5_000n * ONE_USDC);
+      await openPlan(PURCHASE, PAYOUT);
+    });
+
+    it("costs nobody anything when the merchant has not been paid out", async function () {
+      const reserveBefore = await ctx.usdc.balanceOf(await ctx.stableCredit.getAddress());
+
+      await issuer
+        .connect(ctx.operator)
+        .closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT);
+
+      // The purchase is gone from both sides: the merchant's claim is burned and the member is
+      // released of it. What is left on each is the carry for the moment they held it — equal and
+      // opposite, which is the netting holding.
+      const owedByMember = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
+      expect(owedByMember).to.equal(await ctx.stableCredit.balanceOf(coop.address));
+      expect(owedByMember).to.be.lessThan(ONE_USDC); // carry only, not the $1,000
+      // And none of it took any capital.
+      expect(await ctx.usdc.balanceOf(await ctx.stableCredit.getAddress())).to.equal(reserveBefore);
+    });
+
+    it("closes the plan and does not call it repaid", async function () {
+      await issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT);
+      const plan = await issuer.planAt(0);
+      expect(plan.closed).to.equal(true);
+      // Nobody paid this. A plan reporting it as repayment would tell a member they had settled
+      // something they never did.
+      expect(plan.repaid).to.equal(0n);
+    });
+
+    it("moves the debt to the merchant when they have already drawn it down", async function () {
+      // Spend the payout, the way a withdrawal would.
+      await ctx.stableCredit.connect(merchant).transfer(payer.address, PAYOUT);
+      expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
+
+      await issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT);
+
+      // The member is released either way — they are owed their refund by the co-op, not by the
+      // shop — and the merchant carries what they were paid, to come off what they are paid next.
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.be.lessThan(ONE_USDC);
+      expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(PAYOUT);
+    });
+
+    it("says so on chain when a merchant is left carrying it", async function () {
+      await ctx.stableCredit.connect(merchant).transfer(payer.address, PAYOUT);
+      await expect(
+        issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT)
+      )
+        .to.emit(ctx.stableCredit, "RefundOwedByMerchant")
+        .withArgs(merchant.address, PAYOUT);
+    });
+
+    it("takes back only what is left when the merchant spent part of it", async function () {
+      await ctx.stableCredit.connect(merchant).transfer(payer.address, 400n * ONE_USDC);
+
+      await issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT);
+
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.be.lessThan(ONE_USDC);
+      expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
+      // Only the part they no longer held becomes a debt.
+      expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(400n * ONE_USDC);
+    });
+
+    it("leaves carry owed, because giving the purchase back does not unmake the time", async function () {
+      await advance(Number(CYCLE) * 2);
+      await issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT);
+
+      // Principal is gone; what the member accrued for holding it is not — it is on their ledger,
+      // owed to the treasury, and the plan is closed because it is not what holds it.
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.be.greaterThan(0n);
+      expect((await issuer.planAt(0)).closed).to.equal(true);
+    });
+
+    it("refuses legs that do not add up", async function () {
+      await expect(
+        issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PURCHASE + 1n)
+      ).to.be.reverted;
+    });
+
+    it("a partial refund leaves the rest of the plan running", async function () {
+      const half = PURCHASE / 2n;
+      await issuer
+        .connect(ctx.operator)
+        .closePlanForRefund(0, half, merchant.address, PAYOUT / 2n);
+
+      const plan = await issuer.planAt(0);
+      expect(plan.closed).to.equal(false);
+      // Half the principal, plus whatever carry materialised on the way in.
+      expect(plan.principalOutstanding).to.be.greaterThanOrEqual(half);
+      expect(plan.principalOutstanding).to.be.lessThan(half + ONE_USDC);
+    });
+
+    it("is the operator's to call, not anybody's", async function () {
+      await expect(
+        issuer.connect(payer).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT)
+      ).to.be.reverted;
+    });
+  });
 });

@@ -21,7 +21,7 @@ import { savingsIntentService } from './savingsIntentService.js';
 
 const TERM_ABI = [
   'function planAt(uint256 planId) view returns (address member, uint256 principal, uint256 principalOutstanding, uint256 repaid, uint64 openedAt, uint32 installments, uint64 installmentLength, uint256 ratePerCycle, bool closed)',
-  'function payPlan(uint256 planId, uint256 amount)',
+  'function closePlanForRefund(uint256 planId, uint256 amount, address merchant, uint256 payout) returns (uint256)',
 ];
 
 function operatorKey(): string | null {
@@ -38,15 +38,15 @@ export interface SettleResult {
 }
 
 /**
- * Pay the member's plan down by what is being given back.
+ * Unwind the member's plan by what is being given back.
  *
- * `payPlan` is permissionless and settles the member's obligation from whoever calls it — the
- * payer moves reserve tokens, so the operator wallet needs both a balance and an allowance to
- * StableCredit. That is a funding requirement, not a code path: with neither, this reverts inside
- * `transferFrom`, and the refund must not proceed on the strength of a transaction that failed.
+ * `closePlanForRefund`, not `payPlan`. A payment brings reserve tokens in to settle an obligation;
+ * a refund undoes the entry that created one. Origination was capital-free, so this is too — which
+ * is why no wallet needs funding for a refund to work.
  *
- * Capped at what is outstanding. A partial refund pays down principal; carry already accrued is
- * not given back, which is what the contract does on its own since payPlan only touches principal.
+ * The legs are reconstructed from the charge, proportionally for a partial refund, and StableCredit
+ * asserts they net. Rounding is given to the discount rather than the payout: the co-op absorbing a
+ * cent is better than a merchant being clawed back one they were never paid.
  */
 async function closePlan(charge: ChargeRow, amountCents: number): Promise<SettleResult> {
   if (charge.planId == null) {
@@ -72,23 +72,31 @@ async function closePlan(charge: ChargeRow, amountCents: number): Promise<Settle
 
     const owed: bigint = principalOutstanding;
     const asked = BigInt(amountCents) * 10_000n;
-    const pay = asked < owed ? asked : owed;
+    const giving = asked < owed ? asked : owed;
 
-    const tx = await issuer.payPlan(charge.planId, pay);
+    // The merchant's share of what is being given back, in the same proportion as the sale. Floor
+    // division, so the remainder falls to the co-op's discount.
+    const payoutShare =
+      charge.amountCents > 0
+        ? (BigInt(charge.payoutCents) * giving) / BigInt(charge.amountCents)
+        : 0n;
+
+    const tx = await issuer.closePlanForRefund(
+      charge.planId,
+      giving,
+      charge.merchantAddress,
+      payoutShare,
+    );
     const receipt = await tx.wait();
     return { ok: true, txHash: receipt?.hash ?? tx.hash };
   } catch (error) {
-    console.error('[refund] payPlan failed for charge', charge.code, error);
+    console.error('[refund] closePlanForRefund failed for charge', charge.code, error);
     return { ok: false, reason: explainRefundFailure(error) };
   }
 }
 
 /** The merchant is the reader here, so the sentence is theirs — and it names what to do. */
 function explainRefundFailure(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
-  if (/transfer amount exceeds balance|insufficient|allowance/i.test(text)) {
-    return 'The refund account is not funded to settle this yet. Nothing was refunded.';
-  }
   return explainChainError(error).replace('approve this charge', 'settle this refund');
 }
 

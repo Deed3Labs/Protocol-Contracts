@@ -77,6 +77,8 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     error TermIssuerPlanClosed(uint256 planId);
     error TermIssuerInvalidSchedule();
     error TermIssuerExceedsTermLimit(address member, uint256 requested, uint256 limit);
+    /// @notice principal given back on a plan. Not a repayment -- see closePlanForRefund.
+    event PlanRefunded(uint256 indexed planId, uint256 amount);
     error TermIssuerNothingToPay(uint256 planId);
     error TermIssuerSplitNotOffered(uint32 installments);
     error TermIssuerNotPlanHolder(address caller);
@@ -319,6 +321,80 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
             stableCredit.updateCreditLimit(member, limit);
         } else {
             stableCredit.createCreditLine(member, limit, 0);
+        }
+    }
+
+    /// @notice gives a purchase back: unwinds the principal and closes the plan when none is left.
+    /// @dev The refund path, and deliberately not `payPlan`. A payment brings reserve tokens in to
+    /// settle an obligation; a refund undoes the entry that created it. Sending refunds through
+    /// `payPlan` would make whoever called it buy the member's debt back with real money that
+    /// nobody received, and would leave the co-op's discount minted against nothing.
+    ///
+    /// Carry is deliberately materialised first rather than skipped. A member who held a plan for
+    /// two cycles accrued carry over those cycles, and giving the purchase back does not unmake
+    /// the time -- materialising it turns it into an obligation of its own, which survives the
+    /// reversal below because only principal is unwound. Refunding the carry too would mean the
+    /// co-op paid a member to hold a balance.
+    ///
+    /// The merchant and payout are arguments rather than plan state: the plan never recorded them,
+    /// and appending fields to a struct inside a dynamic array would move every element of it,
+    /// which is not something an upgrade may do. StableCredit asserts the legs net, exactly as it
+    /// does on the way in, so a caller cannot invent a split that does not add up.
+    /// @param planId the plan being unwound.
+    /// @param amount principal to give back, capped at what is still outstanding.
+    /// @param merchant address whose claim is taken back.
+    /// @param payout the merchant's share of `amount`.
+    /// @return refunded principal actually unwound.
+    function closePlanForRefund(uint256 planId, uint256 amount, address merchant, uint256 payout)
+        external
+        onlyOperator
+        returns (uint256 refunded)
+    {
+        _requirePlan(planId);
+        Plan storage plan = plans[planId];
+        if (plan.closed) revert TermIssuerPlanClosed(planId);
+
+        // Read before materialising: afterwards `principalOutstanding` is principal AND carry,
+        // and the difference between the two readings is exactly the carry. That difference is
+        // what must survive this call.
+        uint256 principalOnly = plan.principalOutstanding;
+        _materialiseCarry(planId);
+        uint256 carry = plan.principalOutstanding - principalOnly;
+
+        if (principalOnly == 0) revert TermIssuerNothingToPay(planId);
+        // Capped at principal, never at what is owed. A refund that reached into the carry would
+        // mean the co-op paid a member for the time they held the balance.
+        refunded = amount < principalOnly ? amount : principalOnly;
+        if (payout > refunded) revert TermIssuerInvalidSchedule();
+
+        stableCredit.reversePurchase(
+            plan.member, refunded, merchant, payout, carryTreasury, refunded - payout
+        );
+
+        uint256 index = plan.index.currentIndex(block.timestamp);
+        uint256 reduction = CarryIndex.normalizeUp(refunded, index);
+        plan.normalized = reduction >= plan.normalized ? 0 : plan.normalized - reduction;
+        plan.principalOutstanding -= refunded;
+
+        // Not added to `repaid`. Nobody paid this -- it was given back, and a plan that reports it
+        // as repayment would tell a member they had settled something they never did.
+        emit PlanRefunded(planId, refunded);
+
+        /*
+         * Closed once the purchase is gone, even with carry left on it.
+         *
+         * The carry is already the member's obligation -- `_materialiseCarry` put it on the ledger
+         * and minted the treasury's claim to match -- so the plan is not what holds it, and a plan
+         * kept open to carry it would be a second copy of the same debt.
+         *
+         * Without this, refunding a purchase the moment it is made leaves a plan owing millionths
+         * of a cent, sitting on a member's shelf for a purchase that was given back. The remainder
+         * is left on the struct rather than zeroed, as the record of what was outstanding when it
+         * closed; nothing reads it once `closed` is set.
+         */
+        if (plan.principalOutstanding <= carry) {
+            plan.closed = true;
+            emit PlanClosed(planId);
         }
     }
 

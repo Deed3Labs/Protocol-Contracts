@@ -44,6 +44,22 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     /// @param amount amount settled.
     function repayCreditBalanceFor(address payer, address member, uint128 amount) external;
 
+    /// @notice unwinds a partner purchase. The inverse of originatePurchase, and capital-free.
+    /// @param member address released of the obligation.
+    /// @param purchase the amount to take off what the member owes.
+    /// @param merchant address whose claim is taken back, and who carries any shortfall.
+    /// @param payout the merchant's share of the original mint.
+    /// @param coop address holding the discount.
+    /// @param discount the co-op's share of the original mint.
+    function reversePurchase(
+        address member,
+        uint256 purchase,
+        address merchant,
+        uint256 payout,
+        address coop,
+        uint256 discount
+    ) external;
+
     /// @notice originates a partner purchase as a three-party mint.
     /// @param member address taking on the obligation.
     /// @param purchase the amount the member is debited.
@@ -86,6 +102,17 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
         uint256 payout,
         uint256 discount
     );
+    /// @notice a purchase was unwound. The inverse of PurchaseOriginated, and capital-free.
+    event PurchaseReversed(
+        address indexed member,
+        address indexed merchant,
+        uint256 purchase,
+        uint256 payout,
+        uint256 discount
+    );
+    /// @notice a refund outran what the merchant still held, so they carry the difference. This is
+    /// the on-chain record of a clawback owed -- to come off what they are paid next.
+    event RefundOwedByMerchant(address indexed merchant, uint256 amount);
     event ComplianceUpdated(
         address sender, address recipient, bool senderCompliance, bool recipientCompliance
     );

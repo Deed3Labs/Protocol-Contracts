@@ -127,6 +127,46 @@ contract MutualCredit is IMutualCredit, ERC20BurnableUpgradeable {
         _mint(recipient, amount);
     }
 
+    /// @notice unwinds an accrual: burns the claim and shrinks the obligation that matched it.
+    /// @dev The exact inverse of `_accrueCredit`, and the only way an obligation leaves this
+    /// ledger without reserve tokens arriving to settle it. That is the point -- origination put
+    /// the obligation here without capital, so undoing it must not require any either.
+    ///
+    /// The claim is burned from whoever holds it, which is why the holder is a parameter rather
+    /// than assumed: a purchase mints to the merchant, and reversing it has to take it back from
+    /// the merchant, not from the member who never held it.
+    /// @param member address whose obligation shrinks.
+    /// @param holder address the matching claim is burned from.
+    /// @param amount amount to unwind.
+    function _reverseCredit(address member, address holder, uint256 amount) internal virtual {
+        if (amount == 0) return;
+        CreditLine memory _creditLine = creditLines[member];
+        // Callers check this and revert with something that names the pair. Belt and braces: an
+        // underflow here would wrap a member's obligation to an enormous number.
+        require(_creditLine.creditBalance >= amount, "MutualCredit: reversal exceeds obligation");
+        creditLines[member].creditBalance = (_creditLine.creditBalance - amount).toUInt128();
+        _burn(holder, amount);
+    }
+
+    /// @notice moves an obligation from one party to another. No claim is minted or burned.
+    /// @dev What is left of a reversal once there is no claim to take back. The merchant drew
+    /// their payout down, so nothing can be burned from them -- but the member must still be
+    /// released, and the debt does not simply evaporate. It changes hands.
+    ///
+    /// Claims are untouched on purpose: the total owed to the network is the same before and
+    /// after, it is owed by somebody else. Burning and re-minting to express that would take a
+    /// claim off a holder who never agreed to give one up.
+    /// @param from address released of the obligation.
+    /// @param to address taking it on.
+    /// @param amount amount moved.
+    function _transferObligation(address from, address to, uint256 amount) internal virtual {
+        if (amount == 0) return;
+        CreditLine memory _from = creditLines[from];
+        require(_from.creditBalance >= amount, "MutualCredit: transfer exceeds obligation");
+        creditLines[from].creditBalance = (_from.creditBalance - amount).toUInt128();
+        creditLines[to].creditBalance = (creditLines[to].creditBalance + amount).toUInt128();
+    }
+
     /// @notice sets the credit limit of a given member
     /// @param member address of member to update
     /// @param limit new credit limit

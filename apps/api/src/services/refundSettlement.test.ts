@@ -35,6 +35,30 @@ describe('a refund reaches the member', () => {
 });
 
 /**
+ * A refund is not a payment. Routing it through payPlan made the co-op buy the member's obligation
+ * back with reserve tokens nobody had received, left the discount minted against nothing, and
+ * needed a funded wallet to do something origination did for free.
+ */
+describe('the refund unwinds rather than pays', () => {
+  test('it calls the reversal, not the repayment', () => {
+    expect(SETTLE).toContain('issuer.closePlanForRefund(');
+    // Not merely absent from the prose — absent as a call and absent from the ABI it can reach.
+    expect(SETTLE).not.toContain('issuer.payPlan(');
+    expect(SETTLE.slice(SETTLE.indexOf('TERM_ABI'), SETTLE.indexOf('];'))).not.toContain('payPlan');
+  });
+
+  test('the merchant leg is proportional, and rounding falls to the co-op', () => {
+    // Floor division: the discount absorbs the remainder, so a merchant is never clawed back a
+    // cent they were not paid.
+    expect(SETTLE).toContain('(BigInt(charge.payoutCents) * giving) / BigInt(charge.amountCents)');
+  });
+
+  test('nothing needs funding, so no funding message survives', () => {
+    expect(SETTLE).not.toContain('not funded');
+  });
+});
+
+/**
  * Flagging the charge is what claws the payout back, so it cannot happen on the strength of a
  * decision alone — only once the member's plan is really closed.
  */

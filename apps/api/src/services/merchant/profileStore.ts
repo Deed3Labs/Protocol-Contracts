@@ -193,6 +193,7 @@ export const merchantProfileStore = {
     if (!pool) {
       return {
         owedCents: 0,
+        clawbackOwedCents: 0,
         cashAccountCents: null as number | null,
         releasedReadyCents: null as number | null,
         scheduledCents: 0,
@@ -230,7 +231,19 @@ export const merchantProfileStore = {
       clawbackCents = Number(r.rows[0]?.total ?? 0);
     }
 
-    const net = Math.max(0, owedCents - clawbackCents);
+    /*
+     * A refund can outrun what a merchant is currently owed — they were already paid for the sale
+     * being given back. `Math.max(0, ...)` used to swallow that difference: the co-op absorbed it
+     * and no record of it existed anywhere, which is the off-chain twin of the same missing
+     * negative position the ledger had.
+     *
+     * It is carried instead. `owedCents` stays at zero because a payout cannot be negative, and
+     * the overdraw is reported beside it as what it is — a debt that comes off the next sales,
+     * which happens on its own, since both sides of this subtraction span all time.
+     */
+    const gross = owedCents - clawbackCents;
+    const net = Math.max(0, gross);
+    const clawbackOwedCents = Math.max(0, -gross);
 
     // The shop's own Clear balance clears out of the payout first — it costs them no carry there.
     // Not yet read from the credit contracts; zero until that is wired, which reads as "all of it
@@ -293,6 +306,8 @@ export const merchantProfileStore = {
 
     return {
       owedCents: net,
+      /** What refunds have outrun the pool by, owed back. Zero in the ordinary case. */
+      clawbackOwedCents,
       cashAccountCents: cash,
       releasedReadyCents: releasedReady,
       scheduledCents: scheduled,

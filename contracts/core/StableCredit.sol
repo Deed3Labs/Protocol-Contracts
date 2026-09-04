@@ -31,6 +31,8 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     error StableCreditInvalidCarryRecipient();
     /// @notice thrown when a purchase's three legs do not sum to zero.
     error StableCreditPurchaseDoesNotNet(uint256 purchase, uint256 payout, uint256 discount);
+    error StableCreditReversalExceedsObligation(address member, uint256 reversing, uint256 owed);
+    error StableCreditTreasuryCannotCoverDiscount(uint256 discount, uint256 held);
     /// @notice thrown when an origination would put a member past their ceiling.
     error StableCreditCeilingExceeded(address member, uint256 owed, uint256 ceiling);
 
@@ -206,6 +208,75 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
             _accrueCredit(member, coop, discount);
         }
         emit PurchaseOriginated(member, merchant, purchase, payout, discount);
+    }
+
+    /// @notice unwinds a purchase: the exact inverse of `originatePurchase`, and capital-free.
+    /// @dev A refund is not a payment. Origination minted three entries that summed to zero
+    /// without capital, so undoing it must not need any either -- routing a refund through
+    /// `repayCreditBalanceFor` would make the co-op buy the member's obligation back with reserve
+    /// tokens it never received, and would leave the discount minted.
+    ///
+    /// The netting is asserted the same way it is on the way in, for the same reason: a reversal
+    /// that does not net either burns claims nobody gave up or forgives obligations nobody held.
+    ///
+    /// **What makes this work whether or not the merchant has been paid.** Their claim is the
+    /// payables ledger. If they still hold it, it is burned and the whole thing nets to zero with
+    /// nothing moving. If they have already drawn it down, there is less to burn than to reverse,
+    /// and the shortfall becomes an obligation of theirs with the matching claim minted to the
+    /// co-op -- which is the same entry with the sign flipped, and reads as what it is: the co-op
+    /// is now owed that much by the merchant, to come off what they are paid next.
+    ///
+    /// The member's leg is not limit-checked. Their obligation only shrinks here, and a member
+    /// already over their ceiling must still be able to have a purchase given back to them.
+    /// @param member address whose obligation is being unwound.
+    /// @param purchase the amount to take off what the member owes.
+    /// @param merchant address whose claim is being taken back.
+    /// @param payout the merchant's share of the original mint.
+    /// @param coop address holding the discount, and the counterparty for any shortfall.
+    /// @param discount the co-op's share of the original mint.
+    function reversePurchase(
+        address member,
+        uint256 purchase,
+        address merchant,
+        uint256 payout,
+        address coop,
+        uint256 discount
+    ) external override onlyCreditIssuer {
+        if (purchase != payout + discount) {
+            revert StableCreditPurchaseDoesNotNet(purchase, payout, discount);
+        }
+        uint256 owed = creditBalanceOf(member);
+        if (purchase > owed) revert StableCreditReversalExceedsObligation(member, purchase, owed);
+
+        if (discount > 0) {
+            if (coop == address(0)) revert StableCreditInvalidCarryRecipient();
+            // The treasury's own leg. If it cannot cover it, that is an internal matter and worth
+            // stopping on rather than papering over with an entry against itself.
+            uint256 treasuryHeld = balanceOf(coop);
+            if (treasuryHeld < discount) {
+                revert StableCreditTreasuryCannotCoverDiscount(discount, treasuryHeld);
+            }
+            _reverseCredit(member, coop, discount);
+        }
+
+        if (payout > 0) {
+            if (merchant == address(0)) revert StableCreditInvalidCarryRecipient();
+            uint256 held = balanceOf(merchant);
+            uint256 burnable = held < payout ? held : payout;
+            // Whatever is still on the shelf comes straight back off it.
+            _reverseCredit(member, merchant, burnable);
+
+            uint256 shortfall = payout - burnable;
+            if (shortfall > 0) {
+                // Drawn down already, so there is no claim left to take back -- and none is
+                // minted or burned to stand in for one. The obligation simply changes hands: the
+                // member is released, the merchant carries it, and it comes off what they are
+                // paid next. Same entry as the burn above, with the sign flipped.
+                _transferObligation(member, merchant, shortfall);
+                emit RefundOwedByMerchant(merchant, shortfall);
+            }
+        }
+        emit PurchaseReversed(member, merchant, purchase, payout, discount);
     }
 
     /// @notice deepens a member's negative balance by carry their issuer has accrued.
