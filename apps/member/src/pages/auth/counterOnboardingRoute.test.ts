@@ -206,3 +206,28 @@ describe('nobody reaches the split without a member record', () => {
     expect(SOURCE).toContain('submitted.current || (await submit())');
   });
 });
+
+/**
+ * The acquisition path — merchant reference section 03.
+ *
+ * Somebody scans the tablet, has no account, and is standing at a counter while a writer waits.
+ * They go through this flow with the charge riding along in `?c=`, and the whole point is that
+ * they come back out at the charge rather than at a home screen with nothing said about the sale.
+ */
+describe('a scan carries its charge through signup', () => {
+  test('the flow ends at the charge, not at the home screen', () => {
+    const finish = SOURCE.slice(SOURCE.indexOf('const finish ='), SOURCE.indexOf('const onStepChange'));
+    expect(finish).toContain('navigate(`/c/${pendingCharge}`');
+    // Before the split picker, so one purchase cannot open two plans.
+    expect(finish.indexOf('pendingCharge')).toBeLessThan(finish.indexOf("setStep('choose')"));
+  });
+
+  test('a scan is not recorded as an invite the shop never issued', () => {
+    expect(SOURCE).toContain("useMemo(() => (pendingCharge ? '' : shop.toUpperCase())");
+  });
+
+  test('the name and total come from the charge, not from the URL', () => {
+    expect(SOURCE).toContain('scanned ? scanned.amountCents / 100 : urlAmount');
+    expect(SOURCE).toContain('scanned?.merchantName || shopDisplayName(shop)');
+  });
+});

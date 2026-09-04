@@ -34,7 +34,7 @@ export { type PayoutSettlement, merchantFee, merchantPayout, payoutSettlement } 
 
 export { compactMoney, count, credits, dollars, money, signedMoney } from './money';
 
-export { parsePendingTotal, shopDisplayName } from './counterCode';
+export { parsePendingTotal, shopDisplayName, shopSlug } from './counterCode';
 
 export { fromCents, toCents } from './units';
 

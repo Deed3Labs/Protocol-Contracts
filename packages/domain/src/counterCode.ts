@@ -26,6 +26,21 @@ export function shopDisplayName(slug: string): string {
  * is allowed to put on somebody's screen — the amount here can motivate a signup and must never
  * authorize a debt, and the container is what enforces the second half.
  */
+/**
+ * The inverse of `shopDisplayName` — a name back into the slug `/s/<shop>` expects.
+ *
+ * A merchant's display name is what a charge carries; the counter route takes a slug. Deriving one
+ * from the other keeps a scan working for a shop nobody has assigned a slug to, which is every
+ * shop until somebody does.
+ */
+export function shopSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+}
+
 export function parsePendingTotal(raw: string | null): number | null {
   if (!raw) return null;
   const value = Number(raw);

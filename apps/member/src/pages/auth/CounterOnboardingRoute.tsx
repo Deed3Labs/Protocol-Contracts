@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { track } from '@/lib/analytics';
+import type { ChargeView } from '@/utils/apiClient';
 import {
   acceptMemberTerms,
   bootstrapMemberAccount,
+  getCharge,
   getCredit,
   getServedZipPrefixes,
   submitMemberOnboarding,
@@ -68,9 +70,41 @@ export default function CounterOnboardingRoute() {
   // catch the case where it did not, and the step advances for other reasons.
   const submitted = useRef(false);
 
-  const amount = useMemo(() => parsePendingTotal(params.get('total')), [params]);
-  const merchant = useMemo(() => shopDisplayName(shop), [shop]);
-  const inviteCode = useMemo(() => shop.toUpperCase(), [shop]);
+  /**
+   * Set when they arrived by scanning a charge rather than by reading the shop's sticker: the sale
+   * is already a real charge waiting on the writer's screen, not just a number on this one.
+   */
+  const pendingCharge = useMemo(() => params.get('c')?.trim().toUpperCase() || null, [params]);
+  const [scanned, setScanned] = useState<ChargeView | null>(null);
+
+  /**
+   * The charge is a better source than the URL for both of the things this screen says out loud.
+   *
+   * The slug can only give back a mangled name (`Isaiah S Shop`) and a total anybody could edit.
+   * The charge carries the merchant's real name and the amount the writer actually keyed, so when
+   * there is one, it wins -- the URL values stay as the first paint, before the read lands.
+   */
+  const urlAmount = useMemo(() => parsePendingTotal(params.get('total')), [params]);
+  const amount = scanned ? scanned.amountCents / 100 : urlAmount;
+  const merchant = scanned?.merchantName || shopDisplayName(shop);
+
+  /**
+   * No invite code on a scan. `/s/<slug>` doubles as the invite the shop printed, and a slug
+   * derived from a merchant's name is not one -- recording it would attribute the signup to an
+   * invite that was never issued. The charge is the real record of where they came from.
+   */
+  const inviteCode = useMemo(() => (pendingCharge ? '' : shop.toUpperCase()), [shop, pendingCharge]);
+
+  useEffect(() => {
+    if (!pendingCharge) return;
+    let cancelled = false;
+    void getCharge(pendingCharge).then((found) => {
+      if (!cancelled) setScanned(found);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingCharge]);
   const shopUrl = `clear.coop/${shop}`;
 
   // The first-visit takeover would otherwise land on top of step one of five, which is the worst
@@ -186,6 +220,20 @@ export default function CounterOnboardingRoute() {
       // Idempotent so a retry after a failed submit does not re-run a chain that half-succeeded.
       const ok = submitted.current || (await submit());
       if (!ok) return;
+
+      /**
+       * Scanned in: the charge is the ending, not this flow's own plan picker.
+       *
+       * Choosing here would open a plan against `?total=`, which is a display of the sale, and
+       * leave the actual charge still pending -- two plans for one purchase, and a writer still
+       * waiting. Approval belongs on the charge, so hand them straight to it. Whether they linked
+       * a bank or skipped it is the approval screen's problem to state, and it already does.
+       */
+      if (pendingCharge) {
+        navigate(`/c/${pendingCharge}`, { replace: true });
+        return;
+      }
+
       if (!linked) {
         // Required for the plan, not for the membership (§6.4). Day one leads with saving, the
         // plan is locked, and the shop was told nothing was approved -- which is what happened.
@@ -195,7 +243,7 @@ export default function CounterOnboardingRoute() {
       await readApproved();
       setStep('choose');
     },
-    [submit, navigate, readApproved],
+    [submit, navigate, readApproved, pendingCharge],
   );
 
   const connectBank = useCallback(async () => {

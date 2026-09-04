@@ -9,6 +9,8 @@ import {
   type ChargeView,
 } from '@/utils/apiClient';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { shopSlug } from '@clear/domain';
 import ChargeApproval from './ChargeApproval';
 
 /**
@@ -26,6 +28,7 @@ import ChargeApproval from './ChargeApproval';
 export default function ChargeApprovalRoute() {
   const { code = '' } = useParams<{ code: string }>();
   const { isAuthenticated, address } = useAppKitAuth();
+  const { memberStatus } = useMemberProfile();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -49,6 +52,28 @@ export default function ChargeApprovalRoute() {
     void getCharge(code)
       .then((found) => {
         if (cancelled) return;
+
+        /**
+         * Scanned by somebody who is not a member yet — merchant reference section 03.
+         *
+         * "Scanning installs the app and starts signup with this charge already waiting." Signing
+         * in creates a Privy account, which is not the same as being a member: no region check, no
+         * terms, no credit. Landing them on an approval screen they cannot act on is the worst
+         * version of this, because a writer has already turned the tablet toward them and said it
+         * is waiting.
+         *
+         * So they go to the counter flow — the one built for signing up while standing at a shop —
+         * and the code rides along so approval is where they finish rather than something they
+         * have to find again.
+         */
+        if (found && memberStatus === 'ONBOARDING') {
+          const params = new URLSearchParams({ c: code });
+          // `?total=` is display only on the counter flow, and it is dollars there.
+          if (found.amountCents) params.set('total', String(found.amountCents / 100));
+          navigate(`/s/${shopSlug(found.merchantName ?? 'clear')}?${params}`, { replace: true });
+          return;
+        }
+
         setCharge(found);
         if (found?.splitInto) setSplitInto(found.splitInto);
       })
@@ -58,7 +83,7 @@ export default function ChargeApprovalRoute() {
     return () => {
       cancelled = true;
     };
-  }, [code, isAuthenticated, navigate, location]);
+  }, [code, isAuthenticated, memberStatus, navigate, location]);
 
   /**
    * The limit shown on the footer, read from the contracts rather than guessed.
