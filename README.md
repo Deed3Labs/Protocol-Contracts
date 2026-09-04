@@ -515,19 +515,22 @@ Design reference: [`docs/ux/clear-merchant-app-reference.html`](./docs/ux/clear-
 
 This repository carries more than one license, and which applies depends on the directory.
 
-| Directory | License |
-|---|---|
-| `contracts/`, `deploy/`, `scripts/`, `test/` | AGPL-3.0 |
-| `apps/member`, `apps/merchant`, `apps/api` | Proprietary — all rights reserved |
-| `packages/domain`, `packages/tokens`, `packages/contracts-sdk` | MIT |
+| Directory | License | File |
+|---|---|---|
+| `contracts/`, `deploy/`, `scripts/`, `test/` | AGPL-3.0 | [`contracts/LICENSE`](./contracts/LICENSE) |
+| `apps/member`, `apps/merchant`, `apps/api` | Proprietary — all rights reserved | [`LICENSE`](./LICENSE) |
+| `packages/domain`, `packages/tokens`, `packages/contracts-sdk` | MIT | [`domain`](./packages/domain/LICENSE) · [`tokens`](./packages/tokens/LICENSE) · [`contracts-sdk`](./packages/contracts-sdk/LICENSE) |
 
 `contracts/` is a fork of **StableCredit**, hence AGPL-3.0. **No application code imports Solidity
 source from it** — the apps reach the chain through committed ABI JSON and, in future,
 `packages/contracts-sdk`, which ships generated artifacts only. That rule is what keeps the copyleft
 inside `contracts/`.
 
-Read [`NOTICE.md`](./NOTICE.md) before moving code across those boundaries — it also records the
-unsettled question of whether generated bindings inherit the copyleft.
+**Read [`NOTICE.md`](./NOTICE.md) before moving code across those boundaries.** It is the
+authority on which license applies where, records the fork lineage file by file, and flags one
+unsettled question: whether bindings generated from AGPL sources inherit the copyleft. The layout
+here assumes they do not — that has not been reviewed by counsel, and should be before
+`packages/contracts-sdk` is distributed outside Deed3Labs.
 
 ---
 
