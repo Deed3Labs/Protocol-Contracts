@@ -117,7 +117,7 @@ const Footer = () => {
           
           {/* Center - Copyright */}
           <div className="text-center">
-            &copy; {new Date().getFullYear()} The Deed Protocol by Deed3Labs.
+            &copy; {new Date().getFullYear()} Clear by Deed3Labs.
           </div>
           
           {/* Right Side - Documentation Links */}

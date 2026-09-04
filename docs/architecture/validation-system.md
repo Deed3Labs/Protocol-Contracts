@@ -1,6 +1,6 @@
 # Validation System
 
-The Deed Protocol's validation system ensures the authenticity, accuracy, and compliance of real-world assets before they are tokenized as DeedNFTs. This document explains how validation works from both technical and user experience perspectives.
+The Clear Protocol's validation system ensures the authenticity, accuracy, and compliance of real-world assets before they are tokenized as DeedNFTs. This document explains how validation works from both technical and user experience perspectives.
 
 ## 🎯 Overview
 
@@ -325,4 +325,4 @@ function setValidationCriteria(
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions or contributions, please contact the development team.* 
+*This documentation is part of the Clear Protocol docs. For questions or contributions, please contact the development team.* 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Deed Protocol v0.2.0 introduces **XMTP (Extensible Message Transport Protocol)** messaging capabilities, enabling secure, end-to-end encrypted communication between users and DeedNFT owners directly within the application.
+the Clear Protocol documentation introduces **XMTP (Extensible Message Transport Protocol)** messaging capabilities, enabling secure, end-to-end encrypted communication between users and DeedNFT owners directly within the application.
 
 ## 🔐 Security Features
 
@@ -310,8 +310,8 @@ When reporting issues, please include:
 - **[XMTP Documentation](https://docs.xmtp.org/)**
 - **[XMTP GitHub](https://github.com/xmtp)**
 - **[XMTP Chat App](https://xmtp.chat/)**
-- **[The Deed Protocol Documentation](../README.md)**
+- **[Clear Protocol Documentation](../README.md)**
 
 ---
 
-*This messaging feature is part of The Deed Protocol v0.2.0. For technical questions about XMTP integration, please refer to the API documentation.* 
+*This messaging feature is part of the Clear Protocol documentation. For technical questions about XMTP integration, please refer to the API documentation.* 

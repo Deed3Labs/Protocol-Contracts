@@ -448,4 +448,4 @@ When transferring estate assets:
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions about estate asset validation, please contact the development team.* 
+*This documentation is part of the Clear Protocol docs. For questions about estate asset validation, please contact the development team.* 

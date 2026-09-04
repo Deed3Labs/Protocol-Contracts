@@ -1,12 +1,19 @@
 # Installation and Setup Guide
 
-This guide provides comprehensive instructions for setting up The Deed Protocol, including local development, deployment, and configuration options.
+> **Scope.** This document covers the **Deed track** — T-Deeds, validation, subdivision and
+> fractionalization. The Clear Protocol also includes the savings (CLRUSD, ESA), credit,
+> merchant settlement and bond subsystems, which are not described here; see
+> [`./contracts/clear-contracts-build-plan.md`](./contracts/clear-contracts-build-plan.md).
+
+This guide provides comprehensive instructions for setting up The Clear Protocol, including local development, deployment, and configuration options.
 
 ## 🎯 Overview
 
-The Deed Protocol consists of two main components:
-- **Smart Contracts**: Solidity contracts deployed on blockchain networks
-- **Frontend Application**: React-based web interface for user interactions
+The repository is a workspace with four deploy targets:
+- **Smart Contracts**: Solidity contracts under `contracts/`, deployed on Base and Base Sepolia
+- **Member app** (`apps/member`): the consumer PWA
+- **Merchant app** (`apps/merchant`): the counter app
+- **API** (`apps/api`): Express on Bun
 
 ## 📋 Prerequisites
 
@@ -652,4 +659,4 @@ npx hardhat run scripts/check-network.ts --network mainnet
 
 ---
 
-*This installation guide is part of The Deed Protocol v0.2.0-beta. For additional support, please contact the development team.* 
+*This installation guide is part of the Clear Protocol documentation. For additional support, please contact the development team.* 

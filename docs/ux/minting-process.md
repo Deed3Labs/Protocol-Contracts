@@ -33,7 +33,7 @@ Before starting the minting process, ensure you have:
 ### Step 1: Connect Wallet
 
 1. **Navigate to the Application**
-   - Open the Deed Protocol frontend
+   - Open the Clear Protocol frontend
    - Click "Connect Wallet" in the header
 
 2. **Choose Wallet Provider**
@@ -381,10 +381,9 @@ Before starting the minting process, ensure you have:
 ## 🔗 Related Resources
 
 - **[Asset Requirements](./../assets/)** - Detailed requirements for each asset type
-- **[Validation Workflow](./validation-workflow.md)** - Understanding the validation process
-- **[Troubleshooting](./troubleshooting.md)** - Common issues and solutions
+- **[Validation System](../architecture/validation-system.md)** - Understanding the validation process
 - **[Admin Operations](./admin-operations.md)** - Administrative functions
 
 ---
 
-*This guide is part of The Deed Protocol v0.2.0-beta. For additional support, please contact the development team or visit our community forums.* 
+*This guide is part of the Clear Protocol documentation. For additional support, please contact the development team or visit our community forums.* 

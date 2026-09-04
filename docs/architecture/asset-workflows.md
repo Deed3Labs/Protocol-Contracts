@@ -1,10 +1,10 @@
 # Asset Workflows
 
-This document outlines the complete asset lifecycle in The Deed Protocol, from initial minting through subdivision and fractionalization. It provides a comprehensive guide to understanding how assets flow through the system and the various operations available at each stage.
+This document outlines the complete asset lifecycle in The Clear Protocol, from initial minting through subdivision and fractionalization. It provides a comprehensive guide to understanding how assets flow through the system and the various operations available at each stage.
 
 ## 🎯 Overview
 
-The Deed Protocol supports a complete asset lifecycle with three main stages:
+The Clear Protocol supports a complete asset lifecycle with three main stages:
 
 1. **Asset Minting**: Create and validate DeedNFTs
 2. **Asset Subdivision**: Break down assets into smaller units
@@ -505,4 +505,4 @@ graph TD
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions about asset workflows, please contact the development team.*
+*This documentation is part of the Clear Protocol docs. For questions about asset workflows, please contact the development team.*

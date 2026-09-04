@@ -1,10 +1,15 @@
 # Smart Contracts Architecture
 
-This document provides a comprehensive overview of The Deed Protocol's smart contract architecture, including all core contracts, interfaces, and their relationships.
+> **Scope.** This document covers the **Deed track** — T-Deeds, validation, subdivision and
+> fractionalization. The Clear Protocol also includes the savings (CLRUSD, ESA), credit,
+> merchant settlement and bond subsystems, which are not described here; see
+> [`../contracts/clear-contracts-build-plan.md`](../contracts/clear-contracts-build-plan.md).
+
+This document provides an overview of the Deed track's smart contract architecture — its core contracts, interfaces, and their relationships.
 
 ## 🏗️ Contract Overview
 
-The Deed Protocol consists of several interconnected smart contracts that work together to provide a complete RWA tokenization and validation system.
+The Deed track consists of several interconnected smart contracts that work together to provide a complete RWA tokenization and validation system.
 
 ### Core Contracts
 
@@ -595,4 +600,4 @@ contract DeedNFT is UUPSUpgradeable {
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For technical questions about smart contracts, please contact the development team.* 
+*This documentation is part of the Clear Protocol docs. For technical questions about smart contracts, please contact the development team.* 

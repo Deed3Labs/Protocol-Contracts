@@ -1,6 +1,6 @@
 # MetadataRenderer Contract Documentation
 
-The MetadataRenderer contract is a sophisticated component of The Deed Protocol that handles dynamic metadata rendering, trait management, and asset information storage. This document provides comprehensive documentation of its functionality, architecture, and usage.
+The MetadataRenderer contract is a sophisticated component of The Clear Protocol that handles dynamic metadata rendering, trait management, and asset information storage. This document provides comprehensive documentation of its functionality, architecture, and usage.
 
 ## 🎯 Overview
 
@@ -557,4 +557,4 @@ event MetadataSynced(uint256 indexed tokenId, bytes32 indexed traitKey, bytes va
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions about the MetadataRenderer contract, please contact the development team.* 
+*This documentation is part of the Clear Protocol docs. For questions about the MetadataRenderer contract, please contact the development team.* 

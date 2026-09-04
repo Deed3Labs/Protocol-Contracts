@@ -1,6 +1,6 @@
 # Asset Fractionalization System
 
-The Deed Protocol's fractionalization system enables asset owners to convert their DeedNFTs and Subdivision units into tradeable ERC-20 shares, providing liquidity and enabling fractional ownership. This document explains the fractionalization functionality, workflows, and technical implementation.
+The Clear Protocol's fractionalization system enables asset owners to convert their DeedNFTs and Subdivision units into tradeable ERC-20 shares, providing liquidity and enabling fractional ownership. This document explains the fractionalization functionality, workflows, and technical implementation.
 
 ## 🎯 Overview
 
@@ -434,4 +434,4 @@ function getAssetInformation(uint256 fractionId) external view returns (
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions about fractionalization functionality, please contact the development team.*
+*This documentation is part of the Clear Protocol docs. For questions about fractionalization functionality, please contact the development team.*

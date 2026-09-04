@@ -1,6 +1,6 @@
 # Admin Operations - User Experience Guide
 
-This guide provides comprehensive documentation for administrative operations in The Deed Protocol, including validator management, fund management, contract configuration, and emergency controls.
+This guide provides comprehensive documentation for administrative operations in The Clear Protocol, including validator management, fund management, contract configuration, and emergency controls.
 
 ## 🎯 Overview
 
@@ -606,4 +606,4 @@ interface ReportRequest {
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions about admin operations, please contact the development team.* 
+*This documentation is part of the Clear Protocol docs. For questions about admin operations, please contact the development team.* 

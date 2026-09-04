@@ -1,10 +1,15 @@
 # Protocol Overview
 
-The Deed Protocol is a comprehensive decentralized platform for Real World Asset (RWA) tokenization, validation, and management. Built on Ethereum and Base networks, the protocol enables the creation, validation, and trading of digital representations of real-world assets through a robust smart contract ecosystem.
+> **Scope.** This document covers the **Deed track** — T-Deeds, validation, subdivision and
+> fractionalization. The Clear Protocol also includes the savings (CLRUSD, ESA), credit,
+> merchant settlement and bond subsystems, which are not described here; see
+> [`../contracts/clear-contracts-build-plan.md`](../contracts/clear-contracts-build-plan.md).
+
+The Deed track of the Clear Protocol is a decentralized platform for Real World Asset (RWA) tokenization, validation, and management. Built on Ethereum and Base networks, it enables the creation, validation, and trading of digital representations of real-world assets through a robust smart contract ecosystem.
 
 ## 🎯 Core Mission
 
-The Deed Protocol bridges the gap between traditional real-world assets and blockchain technology by providing:
+The Deed track bridges the gap between traditional real-world assets and blockchain technology by providing:
 
 - **Secure Tokenization**: Convert real-world assets into tradeable digital tokens
 - **Decentralized Validation**: Community-driven asset verification and validation
@@ -158,7 +163,7 @@ The protocol provides comprehensive user interfaces:
 
 ### Frontend Application
 - **Modern React Interface**: Built with React, TypeScript, and Vite
-- **Wallet Integration**: Seamless wallet connection via Reowns AppKit
+- **Wallet Integration**: Privy embedded and external wallets, with wagmi/viem underneath
 - **Multi-Network Support**: Automatic network detection and switching
 - **Real-time Updates**: Live blockchain state synchronization
 
@@ -241,4 +246,4 @@ The protocol is designed for regulatory compliance:
 
 ---
 
-*This protocol overview provides a comprehensive understanding of the Deed Protocol's architecture, capabilities, and vision. For detailed technical documentation, see the [Smart Contracts](./smart-contracts.md) and [API Reference](../api/README.md) sections.*
+*This overview covers the Deed track's architecture. For detailed technical documentation, see [Smart Contracts](./smart-contracts.md) and [Contract Interfaces](../api/contract-interfaces.md); for the rest of the protocol, see the [contract build plan](../contracts/clear-contracts-build-plan.md).*

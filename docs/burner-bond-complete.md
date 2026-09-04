@@ -591,7 +591,7 @@ uint256 maturityDate = block.timestamp + (20 * 365 * 24 * 60 * 60); // 20 years
 - **Superior Returns:** 6.7-8.6% vs TradFi's 3.5-3.8% for 6 months - 5 years
 - **Competitive Edge:** 5% minimum discount makes short-term bonds very attractive
 - **DeFi Integration:** Works within DeFi ecosystem
-- **Protocol Utility:** Supports Deed Protocol's assurance pool
+- **Protocol Utility:** Supports the Clear Protocol's assurance pool
 
 #### **🎯 TradFi Still Better for Long-Term:**
 - **Higher Long-Term Rates:** 4.1-4.46% vs BurnerBond's 2.2-3.4% for 10+ years
@@ -601,7 +601,7 @@ uint256 maturityDate = block.timestamp + (20 * 365 * 24 * 60 * 60); // 20 years
 
 #### **🎯 BurnerBond Advantages:**
 - **DeFi Integration:** Works within DeFi ecosystem
-- **Protocol Utility:** Supports Deed Protocol's assurance pool
+- **Protocol Utility:** Supports the Clear Protocol's assurance pool
 - **NFT Format:** Transferable, programmable bonds
 - **Innovation:** Novel approach to bond mechanics
 

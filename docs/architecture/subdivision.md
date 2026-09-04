@@ -1,6 +1,6 @@
 # Asset Subdivision System
 
-The Deed Protocol's subdivision system enables DeedNFT owners to break down their assets into smaller, tradeable units using ERC1155 tokens. This document explains the subdivision functionality, workflows, and technical implementation.
+The Clear Protocol's subdivision system enables DeedNFT owners to break down their assets into smaller, tradeable units using ERC1155 tokens. This document explains the subdivision functionality, workflows, and technical implementation.
 
 ## 🎯 Overview
 
@@ -412,4 +412,4 @@ function getTransferValidator() external view returns (address)
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions about subdivision functionality, please contact the development team.*
+*This documentation is part of the Clear Protocol docs. For questions about subdivision functionality, please contact the development team.*

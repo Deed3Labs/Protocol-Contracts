@@ -230,8 +230,8 @@ function App() {
 - **[XMTP Documentation](https://docs.xmtp.org/)**
 - **[XMTP GitHub](https://github.com/xmtp)**
 - **[XMTP Chat App](https://xmtp.chat/)**
-- **[The Deed Protocol Documentation](../../docs/README.md)**
+- **[Clear Protocol Documentation](../../docs/README.md)**
 
 ---
 
-*This component is part of The Deed Protocol v0.2.0. For technical questions about XMTP integration, please refer to the API documentation.* 
+*This component is part of the Clear Protocol documentation. For technical questions about XMTP integration, please refer to the API documentation.* 

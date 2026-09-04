@@ -1,13 +1,13 @@
 # Font Files
 
-This directory contains custom fonts for the Deed Protocol application.
+This directory contains custom fonts for the Clear member app.
 
 ## Font Files Structure
 
 ### Coolvetica Fonts
 - **Directory**: `Coolvetica/`
 - **Main File**: `coolvetica-compressed-hv.otf` (Coolvetica Compressed)
-- **Usage**: Used for the "Deed Protocol" logo text and main page titles
+- **Usage**: Used for the wordmark and main page titles
 - **Other Variants**: Regular, Italic, Condensed, Crammed
 
 ### General Sans Fonts
@@ -43,7 +43,7 @@ The fonts are loaded via CSS `@font-face` declarations in `src/index.css`:
 
 ## Usage in Components
 
-- **Coolvetica Compressed**: Applied to "Deed Protocol" text in Header and main title in Home
+- **Coolvetica Compressed**: Applied to the wordmark and main titles (the Header and Home components it named were removed in the app rebuild)
 - **General Sans**: Applied globally as the default font family
 
 ## Utility Classes

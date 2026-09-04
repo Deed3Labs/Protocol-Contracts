@@ -1,6 +1,6 @@
 # Contract Interfaces Documentation
 
-This document provides comprehensive documentation for all contract interfaces in The Deed Protocol, including their purpose, function signatures, and usage patterns.
+This document provides comprehensive documentation for all contract interfaces in The Clear Protocol, including their purpose, function signatures, and usage patterns.
 
 ## 🎯 Overview
 
@@ -811,4 +811,4 @@ event EscrowCreated(uint256 indexed escrowId, address indexed token, uint256 amo
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions about contract interfaces, please contact the development team.* 
+*This documentation is part of the Clear Protocol docs. For questions about contract interfaces, please contact the development team.* 

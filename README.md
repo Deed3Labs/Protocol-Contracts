@@ -1,7 +1,7 @@
 # Clear
 
 Monorepo for **CLEAR** — a fintech app and financial co-op built to turn renters into owners — and
-for **the Deed Protocol**, the open-source real-world-asset layer underneath it.
+and for its **Deed track**, the open-source real-world-asset layer underneath it.
 
 Four deployable things and one chain live here: the Solidity protocol, a consumer app, a merchant
 counter app, and the API both apps talk to.

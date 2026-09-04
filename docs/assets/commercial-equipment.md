@@ -454,4 +454,4 @@ When transferring equipment assets:
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions about commercial equipment asset validation, please contact the development team.* 
+*This documentation is part of the Clear Protocol docs. For questions about commercial equipment asset validation, please contact the development team.* 

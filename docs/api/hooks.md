@@ -1,6 +1,11 @@
 # Custom Hooks Documentation
 
-This document provides comprehensive documentation for all custom hooks in The Deed Protocol frontend application, including their functionality, usage patterns, and integration with the protocol.
+> **Stale.** This document describes the pre-rebuild frontend. The components and hooks it
+> catalogues — AdminPanel, Dashboard, MintForm, Explore, Faucet, Header, Home — were removed
+> when the member app was rebuilt. See [`apps/member/README.md`](../../apps/member/README.md)
+> for what the app is now.
+
+This document provides comprehensive documentation for all custom hooks in The Clear Protocol frontend application, including their functionality, usage patterns, and integration with the protocol.
 
 ## 🎯 Overview
 
@@ -835,4 +840,4 @@ describe('useAppKitAuth', () => {
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions about custom hooks, please contact the development team.* 
+*This documentation is part of the Clear Protocol docs. For questions about custom hooks, please contact the development team.* 

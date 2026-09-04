@@ -1,6 +1,11 @@
 # Frontend Components Documentation
 
-This document provides comprehensive documentation for all React components in The Deed Protocol frontend application, including their functionality, props, and usage examples.
+> **Stale.** This document describes the pre-rebuild frontend. The components and hooks it
+> catalogues — AdminPanel, Dashboard, MintForm, Explore, Faucet, Header, Home — were removed
+> when the member app was rebuilt. See [`apps/member/README.md`](../../apps/member/README.md)
+> for what the app is now.
+
+This document provides comprehensive documentation for all React components in The Clear Protocol frontend application, including their functionality, props, and usage examples.
 
 ## 🎯 Component Overview
 
@@ -1031,4 +1036,4 @@ The application uses shadcn/ui components for consistent styling:
 
 ---
 
-*This documentation is part of The Deed Protocol v0.2.0-beta. For questions about frontend components, please contact the development team.* 
+*This documentation is part of the Clear Protocol docs. For questions about frontend components, please contact the development team.* 

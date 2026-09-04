@@ -1,10 +1,15 @@
-# The Deed Protocol - User Guide
+# The Clear Protocol - User Guide
 
-Welcome to **The Deed Protocol** - a comprehensive platform for tokenizing and managing real-world assets as DeedNFTs. This user guide will help you understand how to use the protocol effectively, whether you're an asset owner, validator, or administrator.
+> **Scope.** This document covers the **Deed track** — T-Deeds, validation, subdivision and
+> fractionalization. The Clear Protocol also includes the savings (CLRUSD, ESA), credit,
+> merchant settlement and bond subsystems, which are not described here; see
+> [`../contracts/clear-contracts-build-plan.md`](../contracts/clear-contracts-build-plan.md).
 
-## 🎯 What is The Deed Protocol?
+Welcome to the **Deed track** of the Clear Protocol - the platform for tokenizing and managing real-world assets as T-Deeds. This user guide will help you understand how to use the protocol effectively, whether you're an asset owner, validator, or administrator.
 
-The Deed Protocol is a decentralized platform that enables the tokenization of real-world assets (RWAs) as Non-Fungible Tokens (NFTs) called DeedNFTs. These digital deeds represent ownership of physical assets like land, vehicles, estates, and commercial equipment.
+## 🎯 What is the Deed track?
+
+The Deed track is a decentralized platform that enables the tokenization of real-world assets (RWAs) as Non-Fungible Tokens (NFTs) called DeedNFTs. These digital deeds represent ownership of physical assets like land, vehicles, estates, and commercial equipment.
 
 ### Key Benefits
 
@@ -50,7 +55,7 @@ Protocol managers who oversee system operations and governance.
 
 1. **Connect Your Wallet**
    - Install a Web3 wallet (MetaMask, WalletConnect, etc.)
-   - Connect to the Deed Protocol application
+   - Connect to the Clear Protocol application
    - Ensure you're on a supported network
 
 2. **Mint Your First Asset**
@@ -258,7 +263,7 @@ Protocol managers who oversee system operations and governance.
 ## 💬 Messaging and Communication
 
 ### XMTP Messaging (v0.2.0)
-The Deed Protocol now includes **end-to-end encrypted messaging** between users and DeedNFT owners.
+The Clear Protocol now includes **end-to-end encrypted messaging** between users and DeedNFT owners.
 
 #### Key Features
 - **Secure Communication**: End-to-end encrypted messages
@@ -370,7 +375,7 @@ For detailed messaging instructions, see **[XMTP Messaging Guide](../ux/messagin
 
 ---
 
-*This user guide is part of The Deed Protocol v0.2.0-beta. For questions, support, or contributions, please contact the development team.*
+*This user guide is part of the Clear Protocol documentation. For questions, support, or contributions, please contact the development team.*
 
 **Last Updated**: January 2025  
 **Version**: v0.2.0-beta 

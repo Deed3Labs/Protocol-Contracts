@@ -1,6 +1,11 @@
 # Quick Start Guide
 
-Get up and running with The Deed Protocol in minutes! This guide will help you quickly understand the basics and start using the platform.
+> **Scope.** This document covers the **Deed track** — T-Deeds, validation, subdivision and
+> fractionalization. The Clear Protocol also includes the savings (CLRUSD, ESA), credit,
+> merchant settlement and bond subsystems, which are not described here; see
+> [`./contracts/clear-contracts-build-plan.md`](./contracts/clear-contracts-build-plan.md).
+
+Get up and running with The Clear Protocol in minutes! This guide will help you quickly understand the basics and start using the platform.
 
 ## ⚡ 5-Minute Setup
 
@@ -12,7 +17,7 @@ Get up and running with The Deed Protocol in minutes! This guide will help you q
    - Or use Reowns AppKit
 
 2. **Connect to the Protocol**
-   - Visit the Deed Protocol application
+   - Visit the Clear Protocol application
    - Click "Connect Wallet"
    - Approve the connection
 
@@ -276,4 +281,4 @@ const status = await getValidationStatus(tokenId)
 
 ---
 
-*This quick start guide is part of The Deed Protocol v0.2.0-beta. For comprehensive documentation, see the full user guide and technical documentation.* 
+*This quick start guide is part of the Clear Protocol documentation. For comprehensive documentation, see the full user guide and technical documentation.* 
