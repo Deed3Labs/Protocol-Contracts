@@ -109,9 +109,12 @@ export function SignIn() {
 
         {!picked ? (
           <>
-            <h1 className="m-0 mb-[22px] text-[24px] font-semibold tracking-[-0.4px]">
+            <p className="m-0 mb-2 text-[10px] uppercase tracking-[0.5px] text-[var(--clear-text-muted)]">
+              Start a shift
+            </p>
+            <p className="m-0 mb-[14px] text-[12.5px] text-[var(--clear-text-secondary)]">
               Who&rsquo;s on the counter?
-            </h1>
+            </p>
 
             {roster === null ? (
               <Card className="!py-3.5">
@@ -125,7 +128,7 @@ export function SignIn() {
                 </p>
               </Card>
             ) : (
-              <Card rows>
+              <Card rows className="mb-[14px] !px-[14px] !py-0">
                 {roster.map((s) => (
                   <button
                     key={s.id}
@@ -166,7 +169,9 @@ export function SignIn() {
           </>
         ) : (
           <>
-            <h1 className="m-0 mb-[18px] text-[24px] font-semibold tracking-[-0.4px]">Their PIN</h1>
+            <p className="m-0 mb-2 text-[10px] uppercase tracking-[0.5px] text-[var(--clear-text-muted)]">
+              Their PIN
+            </p>
 
             <div className="mb-[18px] flex items-center justify-center gap-2.5">
               <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[34%] bg-[var(--clear-surface-0)] text-[11px] text-[var(--clear-text-secondary)]">
@@ -178,18 +183,18 @@ export function SignIn() {
             </div>
 
             {/* Dots, not a text field: the PIN is never legible over a customer's shoulder. */}
-            <div className="mb-4 flex justify-center gap-2.5">
+            <div className="mb-4 mt-1.5 flex justify-center gap-2.5">
               {[0, 1, 2, 3].map((i) => (
                 <span
                   key={i}
-                  className={`block h-[13px] w-[13px] rounded-full ${
+                  className={`block h-3 w-3 rounded-full ${
                     i < pin.length ? 'bg-[var(--clear-text-primary)]' : 'bg-[var(--clear-surface-0)]'
                   }`}
                 />
               ))}
             </div>
 
-            <div className="mx-auto mb-[18px] grid max-w-[300px] grid-cols-3 gap-2">
+            <div className="mx-auto mb-4 grid max-w-[280px] grid-cols-3 gap-2">
               {KEYS.map((k) => (
                 <button
                   key={k}

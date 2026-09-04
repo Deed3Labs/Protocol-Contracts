@@ -38,11 +38,11 @@ const STEPS = [
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="mb-3">
-      <p className="m-0 mb-1 text-[11px] tracking-[0.3px] text-[var(--clear-text-muted)]">
+    <div className="mb-[9px]">
+      <p className="m-0 mb-1 text-[10px] uppercase tracking-[0.5px] text-[var(--clear-text-muted)]">
         {label}
       </p>
-      <div className="rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-2)] px-3 py-2 text-[13px]">
+      <div className="rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-2)] px-[15px] py-3 text-[13px]">
         {value}
       </div>
     </div>
@@ -73,8 +73,8 @@ function Input({
   maxLength?: number;
 }) {
   return (
-    <div className="mb-3">
-      <p className="m-0 mb-1 text-[11px] tracking-[0.3px] text-[var(--clear-text-muted)]">
+    <div className="mb-[9px]">
+      <p className="m-0 mb-1 text-[10px] uppercase tracking-[0.5px] text-[var(--clear-text-muted)]">
         {label}
       </p>
       <input
@@ -83,7 +83,7 @@ function Input({
         placeholder={placeholder}
         inputMode={inputMode}
         maxLength={maxLength}
-        className="w-full rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-1)] px-3 py-2 text-[13px] outline-none placeholder:text-[var(--clear-text-muted)]"
+        className="w-full rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-1)] px-[15px] py-3 text-[13px] outline-none placeholder:text-[var(--clear-text-muted)]"
       />
       {hint && (
         <p className="m-0 mt-1 text-[11px] leading-[1.5] text-[var(--clear-text-muted)]">{hint}</p>
