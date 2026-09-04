@@ -6,9 +6,10 @@ counter. Deploys to `useclear.org` from root directory `apps/member`.
 
 React 19 + Vite 7 + Tailwind 4, Radix primitives, React Router 7.
 
-> This app was the Deed Protocol frontend before it was Clear. The T-Deed surface is still here —
-> `DeedNFTContext`, the Mapbox asset map, the subdivide/fractionalize modals, the bond components —
-> but it is no longer what the app is for, and none of it is routed from the nav.
+> Before it was Clear, this app was the frontend for the protocol's **Deed track** — T-Deed
+> minting, validation, the asset map. That surface is still here — `DeedNFTContext`, the Mapbox
+> map, the subdivide/fractionalize modals, the bond components — but it is no longer what the app
+> is for, and none of it is routed from the nav.
 
 ---
 
@@ -142,7 +143,7 @@ src/
   components/clear     the money UI — balances, keypad, limit breakdown, card face, dialogs
   components/app-ui    app-level primitives
   components/ui        shadcn/Radix primitives
-  components/          the Deed-era surface: DeedNFTMap, viewers, subdivide/fractionalize, bonds
+  components/          the Deed-track surface: DeedNFTMap, viewers, subdivide/fractionalize, bonds
   context/             Portfolio, Credit, Pay, Kyc, Bridge, Contacts, LinkedWallets, XMTP, …
   hooks/               data hooks — useClearBalances, useClearCard, usePlaid*, useWebSocket, …
   lib/                 the model: clearModel, creditMapping, earnMapping, cashflow, clearCode, …

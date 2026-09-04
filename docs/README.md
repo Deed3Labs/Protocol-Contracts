@@ -1,12 +1,17 @@
 # Documentation
 
-Everything written down about **CLEAR** and about **the Deed Protocol** underneath it. Start with
-the root [`README.md`](../README.md) for what the repository is and how to run it; this index is for
-the longer-form material.
+Everything written down about **CLEAR** — the app and the co-op — and about **the Clear Protocol**,
+the on-chain layer underneath it. Start with the root [`README.md`](../README.md) for what the
+repository is and how to run it; this index is for the longer-form material.
 
-Two eras of documentation live here. The Clear docs describe what is being built now. The Deed
-Protocol docs describe the RWA layer, and the ones about its *frontend* predate the app rebuild —
-each group says which it is.
+The **Deed track** — T-Deeds, validators, subdivision, fractionalization — is a named subsystem
+inside the Clear Protocol, not a separate thing. It is ten of the forty-four production contracts
+under [`contracts/`](../contracts/); CLRUSD, the ESA, the two credit issuers, collateral, the
+lending pool, merchant settlement and the bond vault are most of the rest.
+
+Two eras of documentation live here. The Clear docs describe what is being built now. The Deed-track
+docs describe the RWA layer, and the ones about its *frontend* predate the app rebuild — each group
+says which it is.
 
 Every link below points at a file that exists. If one does not, that is a bug worth fixing.
 
@@ -21,7 +26,7 @@ Every link below points at a file that exists. If one does not, that is a bug wo
 | [`CLEAR_INVESTOR_PROTOCOL_DOSSIER.md`](./CLEAR_INVESTOR_PROTOCOL_DOSSIER.md) | The protocol explained for investors, banks and financiers |
 | [`CLEAR_LPVC_INVESTMENT_MEMO_2026.md`](./CLEAR_LPVC_INVESTMENT_MEMO_2026.md) | Investment memo for LPs and VCs |
 
-## Clear — the contracts
+## The Clear Protocol — contracts
 
 | | |
 |---|---|
@@ -61,9 +66,11 @@ App-level docs sit with their apps: [`apps/member/README.md`](../apps/member/REA
 
 ---
 
-## The Deed Protocol — architecture
+## The Deed track — architecture
 
-Current. These describe the contracts, which are still what they say they are.
+Current. These describe the contracts, which are still what they say they are. The track keeps its
+own names throughout — `DeedNFT`, `Validator`, the T-Deed token — and those are on-chain
+identifiers, so they are not going to change with the protocol's.
 
 | | |
 |---|---|
@@ -77,7 +84,7 @@ Current. These describe the contracts, which are still what they say they are.
 | [`api/contract-interfaces.md`](./api/contract-interfaces.md) | Contract interfaces, function by function |
 | [`architecture/XMTP.md`](./architecture/XMTP.md) | XMTP messaging between members and T-Deed owners |
 
-## The Deed Protocol — asset requirements
+## The Deed track — asset requirements
 
 What a validator checks, per asset type.
 
@@ -86,7 +93,7 @@ What a validator checks, per asset type.
 - [Estates](./assets/estate-assets.md)
 - [Commercial equipment](./assets/commercial-equipment.md)
 
-## The Deed Protocol — user guides
+## The Deed track — user guides
 
 | | |
 |---|---|
@@ -100,7 +107,7 @@ What a validator checks, per asset type.
 
 ## Pre-rebuild frontend docs
 
-> These describe the Deed Protocol frontend as it was before the Clear rebuild — Reown AppKit for
+> These describe the frontend as it was before the Clear rebuild — Reown AppKit for
 > wallets, a component tree that no longer exists, and an `app/` directory that is now `apps/member`.
 > They are kept because the T-Deed surface they document is still in the codebase, but check them
 > against the code before relying on anything. [`apps/member/README.md`](../apps/member/README.md) is
