@@ -45,7 +45,14 @@ export function ChargeFailed({
       cap: 'No connection',
       title: 'Clear is offline',
       body: 'You cannot raise a charge right now. Take the ticket the usual way and raise it when you are back.',
-      action: 'Try again',
+      /**
+       * No action, and the reference gives it none.
+       *
+       * There is nothing to retry — a charge cannot be raised at all — so a button invites a writer
+       * to stand there tapping it while somebody waits at the counter. The screen's whole job here
+       * is to send them to paper, and an affordance that looks like progress works against that.
+       */
+      action: null,
     },
   }[kind];
 
@@ -65,8 +72,12 @@ export function ChargeFailed({
         </p>
       </Inset>
 
-      <PrimaryButton onClick={onRetry}>{copy.action}</PrimaryButton>
-      <Button onClick={onDone} className="mt-2 w-full">
+      {copy.action && (
+        <PrimaryButton onClick={onRetry} className="!text-[12px]">
+          {copy.action}
+        </PrimaryButton>
+      )}
+      <Button onClick={onDone} className={copy.action ? 'mt-2 w-full' : 'w-full'}>
         Back to home
       </Button>
     </div>

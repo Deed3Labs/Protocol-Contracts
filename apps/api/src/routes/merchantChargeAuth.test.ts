@@ -114,3 +114,25 @@ describe('cancelling a charge actually cancels it', () => {
     expect(raise).not.toContain("onCancel={() => navigate('/')}");
   });
 });
+
+describe('a failure leaves the writer something to say', () => {
+  test('offline offers no retry, because there is nothing to retry', () => {
+    // The reference gives Declined and Expired a button each and offline none. A button there
+    // invites a writer to stand tapping it while somebody waits; the screen's job is to send them
+    // to paper. This is the third element I added that the reference does not have.
+    const failed = readApp('charge/ChargeFailed.tsx');
+    const offline = failed.slice(failed.indexOf('offline: {'), failed.indexOf('}[kind]'));
+    expect(offline).toContain('action: null');
+    expect(offline).toContain('Take the ticket the usual way');
+  });
+
+  test('a decline never carries a reason to the counter', () => {
+    const failed = readApp('charge/ChargeFailed.tsx');
+    const declined = failed.slice(failed.indexOf('declined: {'), failed.indexOf('expired: {'));
+    // Why Clear could not cover it is between Clear and the member.
+    expect(declined).toContain('can see why in their app');
+    for (const leak of ['limit', 'credit', 'balance', 'score']) {
+      expect(declined.toLowerCase()).not.toContain(leak);
+    }
+  });
+});
