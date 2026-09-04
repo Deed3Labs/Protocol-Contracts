@@ -354,6 +354,23 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "PlanRefunded",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "PlanSplitChanged",
       "inputs": [
         {
@@ -540,6 +557,36 @@
         {
           "type": "address",
           "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "closePlanForRefund",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "planId"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "address",
+          "name": "merchant"
+        },
+        {
+          "type": "uint256",
+          "name": "payout"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "refunded"
         }
       ]
     },

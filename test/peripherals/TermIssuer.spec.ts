@@ -653,6 +653,25 @@ describe("TermIssuer", function () {
       expect(plan.principalOutstanding).to.be.lessThan(half + ONE_USDC);
     });
 
+    it("gives the member their headroom back", async function () {
+      // A closed plan must not hold any of the ceiling. Before this, the carry remainder left on
+      // a refunded plan counted against `totalPrincipalOf` for ever — a slice of a member's limit
+      // held against a purchase that had been given back.
+      await advance(Number(CYCLE) * 2);
+      await issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT);
+      expect(await issuer.totalPrincipalOf(ctx.member.address)).to.equal(0n);
+    });
+
+    it("leaves the member's remaining carry as the only thing against them", async function () {
+      await advance(Number(CYCLE) * 2);
+      await issuer.connect(ctx.operator).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT);
+
+      // Nothing of the plan is held against the term ceiling. The carry still sits on the ledger
+      // and still counts against the ledger's own ceiling, which is right — they do owe it.
+      expect(await issuer.totalPrincipalOf(ctx.member.address)).to.equal(0n);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.be.greaterThan(0n);
+    });
+
     it("is the operator's to call, not anybody's", async function () {
       await expect(
         issuer.connect(payer).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT)

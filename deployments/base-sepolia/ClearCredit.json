@@ -68,6 +68,24 @@
     },
     {
       "type": "error",
+      "name": "StableCreditReversalExceedsObligation",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "reversing"
+        },
+        {
+          "type": "uint256",
+          "name": "owed"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "StableCreditTransactionInvalid",
       "inputs": [
         {
@@ -81,6 +99,20 @@
         {
           "type": "uint256",
           "name": "amount"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "StableCreditTreasuryCannotCoverDiscount",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "discount"
+        },
+        {
+          "type": "uint256",
+          "name": "held"
         }
       ]
     },
@@ -379,6 +411,55 @@
         {
           "type": "uint256",
           "name": "discount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PurchaseReversed",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "merchant",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "purchase",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "payout",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "discount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RefundOwedByMerchant",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "merchant",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
           "indexed": false
         }
       ]
@@ -954,6 +1035,39 @@
         {
           "type": "uint128",
           "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "reversePurchase",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "purchase"
+        },
+        {
+          "type": "address",
+          "name": "merchant"
+        },
+        {
+          "type": "uint256",
+          "name": "payout"
+        },
+        {
+          "type": "address",
+          "name": "coop"
+        },
+        {
+          "type": "uint256",
+          "name": "discount"
         }
       ],
       "outputs": []

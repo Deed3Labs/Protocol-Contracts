@@ -272,6 +272,11 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     function totalPrincipalOf(address member) public view returns (uint256 total) {
         uint256[] storage ids = memberPlans[member];
         for (uint256 i = 0; i < ids.length; i++) {
+            // Closed plans are skipped. Until refunds existed every closed plan had nothing
+            // outstanding, so the sum was the same either way; a refund can close one over a carry
+            // remainder, and counting that would hold a slice of a member's ceiling against a
+            // purchase that was given back.
+            if (plans[ids[i]].closed) continue;
             total += plans[ids[i]].principalOutstanding;
         }
     }
@@ -388,11 +393,16 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
          * kept open to carry it would be a second copy of the same debt.
          *
          * Without this, refunding a purchase the moment it is made leaves a plan owing millionths
-         * of a cent, sitting on a member's shelf for a purchase that was given back. The remainder
-         * is left on the struct rather than zeroed, as the record of what was outstanding when it
-         * closed; nothing reads it once `closed` is set.
+         * of a cent, sitting on a member's shelf for a purchase that was given back.
+         *
+         * The remainder is cleared rather than left as a record: `totalPrincipalOf` reads it to
+         * measure a member against their term ceiling, so a figure left on a closed plan would
+         * quietly hold a slice of their headroom for ever. What was outstanding is on the ledger,
+         * where the carry itself lives.
          */
         if (plan.principalOutstanding <= carry) {
+            plan.principalOutstanding = 0;
+            plan.normalized = 0;
             plan.closed = true;
             emit PlanClosed(planId);
         }
