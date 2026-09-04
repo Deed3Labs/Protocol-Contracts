@@ -28,9 +28,6 @@
     "@privy-io/server-auth": "^1.32.5",
     "@types/pg": "^8.16.0",
     "@types/socket.io": "^3.0.1",
-    "@zerodev/ecdsa-validator": "^5.4.9",
-    "@zerodev/permissions": "^5.5.14",
-    "@zerodev/sdk": "^5.5.10",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -58,5 +55,10 @@
     "eslint": "^8.56.0",
     "typescript": "^5.3.3"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "overrides": {
+    "axios": "^1.20.0",
+    "qs": "^6.16.0",
+    "ws": "^8.21.0"
+  }
 }
