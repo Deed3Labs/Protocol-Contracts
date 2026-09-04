@@ -45,6 +45,13 @@ export default function ScanPage() {
     'starting',
   );
   const [notACode, setNotACode] = useState(false);
+  /**
+   * State as well as a ref. The ref is what cleanup and `finish` reach for on the way out; the
+   * state is what the attach effect watches, so a second stream replacing a first is a change the
+   * effect can see. Keying that effect on `status` alone would miss it -- the status is already
+   * 'scanning' by then, and the element would hold a stopped stream.
+   */
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   /** One place to leave, so a scan cannot fire twice and the camera always stops. */
   const finish = useCallback(
@@ -59,6 +66,7 @@ export default function ScanPage() {
 
   useEffect(() => {
     let raf = 0;
+    let cancelled = false;
     let detector: BarcodeDetectorLike | null = null;
 
     const Ctor = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
@@ -71,6 +79,7 @@ export default function ScanPage() {
     }
 
     async function tick() {
+      if (cancelled) return;
       const video = videoRef.current;
       const canvas = canvasRef.current;
       if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
@@ -82,6 +91,7 @@ export default function ScanPage() {
       if (detector) {
         try {
           const [first] = await detector.detect(video);
+          if (cancelled) return;
           raw = first?.rawValue ?? null;
         } catch {
           // A detector that throws mid-stream is not worth retrying every frame.
@@ -116,33 +126,66 @@ export default function ScanPage() {
       raf = requestAnimationFrame(tick);
     }
 
+    // Checked before the call, not after. `navigator.mediaDevices` is undefined on an insecure
+    // origin as well as on an old browser, and `?.getUserMedia(...).then(...)` reads `.then` of
+    // undefined -- the effect threw before it could reach a branch that says so.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setStatus('unsupported');
+      setManual(true);
+      return;
+    }
+
     navigator.mediaDevices
-      ?.getUserMedia({ video: { facingMode: 'environment' } })
+      .getUserMedia({ video: { facingMode: 'environment' } })
       .then((stream) => {
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play();
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
         }
+        // Only recorded here. Attaching it is the other effect's job, because the element it
+        // attaches to does not exist until this line has rendered.
+        streamRef.current = stream;
+        setStream(stream);
         setStatus('scanning');
         raf = requestAnimationFrame(tick);
       })
       .catch(() => {
-        // Refused, unavailable, or an insecure origin. All three mean: type it instead.
+        // Refused, or no camera. Both mean: type it instead.
         setStatus('blocked');
         setManual(true);
       });
 
-    if (!navigator.mediaDevices) {
-      setStatus('unsupported');
-      setManual(true);
-    }
-
     return () => {
+      cancelled = true;
       cancelAnimationFrame(raf);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     };
   }, [finish]);
+
+  /**
+   * Point the element at the stream, once both exist.
+   *
+   * These two arrive in an order that cannot be relied on -- the stream comes back from a
+   * permission prompt, the element from a render -- and the previous version assigned inside the
+   * `getUserMedia` callback, when the video had not mounted yet and the ref was still null. The
+   * assignment was skipped, silently, and the result was a live camera with an empty frame: the
+   * recording indicator on, the aim window drawn, and nothing behind it.
+   *
+   * `muted` is set here as well as in the markup because iOS refuses to play a stream inline
+   * without both it and `playsinline`, and an attribute React has not yet flushed does not count.
+   */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !stream || video.srcObject === stream) return;
+    video.srcObject = stream;
+    video.muted = true;
+    video.playsInline = true;
+    void video.play().catch(() => {
+      // Autoplay refused. The stream is attached, so the frame is there either way; a browser that
+      // wants a gesture gets one from the tap that opened this screen.
+    });
+  }, [stream, status]);
 
   const typed = chargeCodeFrom(code);
 
