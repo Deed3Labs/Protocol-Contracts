@@ -1,10 +1,15 @@
 # Clear
 
 Monorepo for **CLEAR** — a fintech app and financial co-op built to turn renters into owners — and
-and for its **Deed track**, the open-source real-world-asset layer underneath it.
+for its **Deed track**, the open-source real-world-asset layer underneath it.
 
-Four deployable things and one chain live here: the Solidity protocol, a consumer app, a merchant
-counter app, and the API both apps talk to.
+Four deployable things and one chain: the Solidity protocol, a consumer app, a merchant counter
+app, and the API both apps talk to.
+
+[System](#what-the-system-is) · [Layout](#repository-layout) · [Quickstart](#quickstart) ·
+[Contracts](#the-on-chain-layer) · [Addresses](#deployed-addresses) · [Tooling](#contract-tooling) ·
+[API](#the-api-appsapi) · [Member](#the-member-app-appsmember) · [Merchant](#the-merchant-app-appsmerchant) ·
+[Licensing](#licensing) · [Docs](#documentation)
 
 > ⚠️ **Status: alpha, developer preview.** The contracts are deployed on Base Sepolia and partly on
 > Base, and they are **unaudited**. Interfaces still move. Do not put real money behind them without
@@ -14,22 +19,35 @@ counter app, and the API both apps talk to.
 
 ## What the system is
 
-A member deposits USDC, which mints CLRUSD 1:1 — that is their savings, liquid and redeemable at any
-time. Against that balance the co-op extends a credit line, and separately accrues **equity credits**
-that are not spendable and not redeemable: they exist only to be applied toward a home. Members spend
-at partner merchants, on a Clear card, or by sending money to each other; merchants raise financed
-charges at a counter and get paid on a schedule. Ownership itself is represented on-chain as a T-Deed.
+Deposit USDC, get CLRUSD 1:1 — liquid savings, redeemable any time. That balance backs a credit
+line and, separately, accrues **equity credits** that can only ever be spent on a home. Members pay
+partner merchants, tap a Clear card, or send to each other. The home itself is a T-Deed.
 
-Two mechanics are worth knowing before reading any of the contract code:
+```mermaid
+flowchart LR
+  USDC["USDC"] -->|"ESADepositVault<br/>mints 1:1"| CLR["CLRUSD<br/><i>savings, redeemable</i>"]
+  CLR --> CEIL["Credit ceiling<br/><i>tiered, collateral-backed</i>"]
+  CLR --> EQ["Equity credits<br/><i>never redeemable</i>"]
+  CEIL --> SPEND["Spend at a partner,<br/>on a card, or peer to peer"]
+  EQ --> DEED["T-Deed<br/><i>the home</i>"]
+```
 
-- **CLRUSD and the credit ledger are separate tokens, deliberately.** CLRUSD is money, fully reserved
-  1:1 against deposited USDC, always redeemable. StableCredit is a signed per-member balance — an
-  obligation ledger, not a pot of money. Merging them would leave CLRUSD backed partly by USDC and
-  partly by somebody's promise.
-- **A purchase is a three-party mint that nets to zero.** The member goes negative, the merchant goes
-  positive, the co-op takes the discount. Nobody lends anything at origination, so origination is
-  capital-free; liquidity is only needed at redemption, when a merchant converts a positive balance
-  to USDC.
+Two mechanics to know before reading the contract code.
+
+**CLRUSD and the credit ledger are separate tokens, deliberately.** CLRUSD is money, fully reserved
+against deposited USDC. `ClearCredit` is a signed per-member balance — an obligation ledger, not a
+pot of money. Merge them and CLRUSD is backed partly by USDC and partly by somebody's promise.
+
+**A purchase is a three-party mint that nets to zero.** Nobody lends anything at origination, so
+origination is capital-free. Liquidity is needed only at redemption, when a merchant converts a
+positive balance to USDC.
+
+```mermaid
+flowchart LR
+  M["Member<br/><b>−100</b>"] --> L{{"one mint,<br/>nets to zero"}}
+  L --> R["Merchant<br/><b>+97</b>"]
+  L --> C["Co-op<br/><b>+3</b> discount"]
+```
 
 Both are argued out in [`docs/contracts/clear-contracts-build-plan.md`](./docs/contracts/clear-contracts-build-plan.md).
 
@@ -59,15 +77,23 @@ docs/               protocol docs, contract build plans, UX specs, integration s
 
 ### One state machine, two ends
 
-The member app and the merchant app are two ends of the same flow — the merchant's "waiting" screen
-is the member's approval screen, unopened. Anything both surfaces must agree on lives in
-`packages/domain` and is computed once. If the two apps ever disagree on a number for the same
-charge, that package is wrong, which is why the reference figures live there as unit tests rather
-than in either app.
+The merchant's "waiting" screen is the member's approval screen, unopened. Anything both must agree
+on is computed once in `packages/domain` — which is why the reference figures live there as unit
+tests. **If the two apps ever disagree on a number for the same charge, that package is wrong.**
 
-There is deliberately **no shared component library**. A tablet counter app and a consumer phone app
-are different products with different density and vocabulary; tokens and formatters are the whole
-shared design surface.
+```mermaid
+flowchart TD
+  MEM["Member app<br/><code>apps/member</code>"] --> API["API<br/><code>apps/api</code>"]
+  MER["Merchant app<br/><code>apps/merchant</code>"] --> API
+  MEM -.->|"charge math, money,<br/>shared types"| DOM(["packages/domain"])
+  MER -.-> DOM
+  API -.-> DOM
+  API --> CH["Base · Base Sepolia<br/><code>contracts/</code>"]
+  MEM --> CH
+```
+
+No shared component library, deliberately: a tablet counter app and a consumer phone app are
+different products. Tokens and formatters are the whole shared design surface.
 
 ### Deploy targets
 
@@ -77,12 +103,11 @@ shared design surface.
 | merchant | `apps/merchant` | `merchants.useclear.org` |
 | api | `apps/api` | Railway (Docker) |
 
-**Auth sessions do not cross the two app surfaces.** The member and merchant apps have different auth
-models, no cookie is scoped to `.useclear.org`, and neither app reads the other's storage.
+**Auth sessions do not cross the two surfaces.** Different auth models, no cookie scoped to
+`.useclear.org`, neither app reads the other's storage.
 
-> Vercel's root directory is a dashboard setting, not a repo file. The merchant project builds from
-> the workspace root (see `apps/merchant/vercel.json`); the member project's root directory must
-> point at `apps/member`.
+> Vercel's root directory is a dashboard setting, not a repo file. Merchant builds from the
+> workspace root (`apps/merchant/vercel.json`); member's root must point at `apps/member`.
 
 ---
 
@@ -144,9 +169,22 @@ npm run build:member # or build:merchant, filtered
 
 ### Credit
 
-The credit system is a first-class protocol component, not an add-on. **The waterfall is not four
-accounts — it is one balance with a tiered ceiling.** `ClearCredit` answers what the balance and the
-ceiling are; the issuers answer what the ceiling is made of.
+**The waterfall is not four accounts — it is one balance with a tiered ceiling.** `ClearCredit`
+answers what the balance and the ceiling are; the issuers answer what the ceiling is made of.
+
+```mermaid
+flowchart LR
+  V["ESADepositVault"] -->|"mints"| U["CLRUSD"]
+  U --> CR["CollateralRegistry"]
+  CR --> LC["LimitCalculator<br/><i>haircuts → ceiling</i>"]
+  LC --> RI["RevolvingIssuer<br/><i>tiers</i>"]
+  LC --> TI["TermIssuer<br/><i>plans</i>"]
+  LP["LendingPool"] -->|"funds unsecured tiers"| RI
+  RI --> CC["ClearCredit<br/><b>the ledger</b>"]
+  TI --> CC
+  CC --> PP["PayoutPool"] --> OUT["Merchant USDC"]
+  CC -.->|"on default"| LQ["Liquidator"] -.->|"liquidates ESA"| V
+```
 
 | Contract | Role |
 |---|---|
@@ -174,9 +212,9 @@ ceiling are; the issuers answer what the ceiling is made of.
 | `MerchantRegistry.sol` | Per-merchant terms: payout schedule, approval cap, discount rate, status |
 | `PayoutPool.sol` | Funds merchant redemptions at par, separately from the AssurancePool, and reports its own shortfall |
 
-A merchant's positive balance **is** the payables ledger — what the co-op owes them, on-chain,
-with no parallel off-chain record. A merchant who carries credit of their own is paid by drawdown
-first; only the surplus is redeemable.
+A merchant's positive balance **is** the payables ledger — what the co-op owes them, on-chain, with
+no parallel off-chain record. A merchant carrying credit of their own is paid by drawdown first;
+only the surplus is redeemable.
 
 ### Reserve, pricing and bonds
 
@@ -206,7 +244,9 @@ first; only the surplus is redeemable.
 
 Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 
-### Base Sepolia (`base-sepolia`) — the working network
+<details>
+<summary><b>Base Sepolia</b> — the working network (35 contracts)</summary>
+
 
 | Contract | Address |
 |---|---|
@@ -246,9 +286,13 @@ Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 | FractionTokenFactory | `0x3E513d3c3c2845B5cAc4FA5e21C0f7f80f9328dc` |
 | Create2Deployer | `0x2BFba336A1B5E79E4717CA00677C65DDCa63cB06` |
 
-`ESADepositVaultLegacy` and `RevolvingIssuerV1` are retained for reference; they are superseded.
+`ESADepositVaultLegacy` and `RevolvingIssuerV1` are retained for reference; superseded.
 
-### Base (`base`) — partial
+</details>
+
+<details>
+<summary><b>Base</b> — savings and send rails only</summary>
+
 
 | Contract | Address |
 |---|---|
@@ -257,13 +301,19 @@ Artifacts live in `deployments/<network>/<Contract>.json` alongside their ABIs.
 | ClaimEscrow | `0xb30E97FEd437bf89B122693D26338C8D64515096` |
 | Create2Deployer | `0xF313b7b748691e778cAaBD1dDF8e8dca7bD33c21` |
 
-### Ethereum Sepolia (`sepolia`) — CLRUSD cross-chain only
+</details>
+
+<details>
+<summary><b>Ethereum Sepolia</b> — CLRUSD cross-chain only</summary>
+
 
 | Contract | Address |
 |---|---|
 | ClearUSD | `0x54Dd3449Eb54adC02C33cD880178BfA718991753` |
 | CLRUSDTokenPool | `0x7ec282D0501407f52ce2099BFa5d76AAc1f4890d` |
 | Create2Deployer | `0xc54dA54b0BDa1BAfE279cc61Ade42ac73A6D2023` |
+
+</details>
 
 The credit stack is **not** on mainnet. Base carries the savings and send rails only.
 
@@ -281,13 +331,15 @@ npm run test:coverage
 npm run test:gas
 ```
 
-Suites cover the Deed track (`DeedNFT`, `Validator`, `ValidatorRegistry`, `FundManager`,
-`MetadataRenderer`), the credit stack (`StableCredit`, `StableCreditIssuers`, `RevolvingIssuer`,
-`TermIssuer`, `LimitCalculator`, `CollateralRegistry`, `LendingPool`, `Liquidator`, `PayoutPool`,
-seniority and first-loss ordering, repayment routing, income-to-debt), savings and settlement
-(`ESADepositVault`, `SavingsIntentFactory`, `ClearUSDUpgradeable`, `ClaimEscrow`), bonds
-(`BurnerBond`, `BondVault`, `BondCollateral`), reserve (`AssurancePool`, `AssuranceOracle`) and the
-`CarryIndex` / `ExposureMath` libraries.
+| Area | Suites |
+|---|---|
+| Deed track | `DeedNFT`, `Validator`, `ValidatorRegistry`, `FundManager`, `MetadataRenderer` |
+| Credit | `StableCredit`, `StableCreditIssuers`, `RevolvingIssuer`, `TermIssuer`, `LimitCalculator`, `CollateralRegistry`, `LendingPool`, `Liquidator`, `PayoutPool` |
+| Credit invariants | seniority, first-loss ordering, repayment routing, income-to-debt, asset-backed default |
+| Savings + settlement | `ESADepositVault`, `SavingsIntentFactory`, `ClearUSDUpgradeable`, `ClaimEscrow` |
+| Bonds | `BurnerBond`, `BondVault`, `BondCollateral` |
+| Reserve | `AssurancePool`, `AssuranceOracle` |
+| Libraries | `CarryIndex`, `ExposureMath` |
 
 ### Deployment
 
@@ -375,12 +427,15 @@ Route groups mounted in `apps/api/src/index.ts`:
 GET /health
 ```
 
-Most groups sit behind `requireAuth`; webhooks and a small set of public reads do not. Rate limiting
-is Redis-backed and applied at `/api`.
+Most groups sit behind `requireAuth`; webhooks and a few public reads do not. Rate limiting is
+Redis-backed, applied at `/api`.
 
-**Provider split:** Bridge handles fiat → USDC deposits and hosted KYC; Lithic handles card issuing,
-JIT authorization and ACH push/pull; Plaid handles bank linking and identity; Stripe and Coinbase
-handle card/crypto on-ramps.
+| Provider | Owns |
+|---|---|
+| **Bridge** | Fiat → USDC deposits, hosted KYC |
+| **Lithic** | Card issuing, JIT authorization, ACH push/pull |
+| **Plaid** | Bank linking and identity |
+| **Stripe** · **Coinbase** | Card and crypto on-ramps |
 
 More: [`apps/api/README.md`](./apps/api/README.md), [`apps/api/DEPLOY.md`](./apps/api/DEPLOY.md),
 [`docs/integrations/lithic-integration-spec.md`](./docs/integrations/lithic-integration-spec.md).
@@ -389,9 +444,14 @@ More: [`apps/api/README.md`](./apps/api/README.md), [`apps/api/DEPLOY.md`](./app
 
 ## The member app (`apps/member`)
 
-React 19 + Vite + Tailwind, Radix primitives. Auth and wallets are **Privy** (embedded smart wallets),
-with wagmi/viem underneath and ZeroDev for account abstraction and session keys. XMTP for messaging,
-Mapbox for the asset map, LiFi for cross-chain routing, Stripe for card on-ramp.
+React 19 + Vite + Tailwind, Radix primitives.
+
+| Concern | Stack |
+|---|---|
+| Auth + wallets | **Privy** — embedded smart wallets, wagmi/viem underneath |
+| Account abstraction | ZeroDev — sponsored gas, session keys |
+| Messaging · Map | XMTP · Mapbox |
+| Routing · On-ramp | LiFi · Stripe |
 
 Routes:
 
@@ -412,31 +472,40 @@ authorize a charge. `/claim/:token` is the recipient side of a send link and nee
 
 ### PWA
 
-The member app is installable. Manifest at `apps/member/public/manifest.json` (standalone display,
-shortcuts, share target); service worker at `apps/member/public/sw.js` with per-route cache
-strategies — network-only for stateful endpoints such as Plaid. Offline state surfaces through
-`OfflineIndicator`, install through `InstallPrompt`, and periodic/background sync registration
-through `PWAInitializer`. Registration helpers live in `apps/member/src/utils/serviceWorker.ts`.
+The member app is installable.
 
-Bundle secrets are scanned on every build (`npm run scan:secrets`) — dynamic `import.meta.env[key]`
-access inlines the entire `VITE_` namespace, so the scan is a build gate, not a lint.
+- **Manifest** — `public/manifest.json`: standalone display, shortcuts, share target
+- **Service worker** — `public/sw.js`: per-route cache strategies, network-only for stateful
+  endpoints such as Plaid
+- **Runtime** — `OfflineIndicator`, `InstallPrompt`, `PWAInitializer` for sync + notification
+  registration; helpers in `src/utils/serviceWorker.ts`
+
+> **Bundle secrets are scanned on every build** (`npm run scan:secrets`). Dynamic
+> `import.meta.env[key]` access inlines the entire `VITE_` namespace — so the scan is a build gate,
+> not a lint.
 
 ---
 
 ## The merchant app (`apps/merchant`)
 
-Staff at a counter raise financed charges; owners manage payouts, staff and refunds. Deploys to
-`merchants.useclear.org`, builds from the workspace root.
+Staff raise financed charges at a counter; owners manage payouts, staff and refunds.
 
 **Financed transactions only.** A member paying from their balance or tapping a Clear card runs on
-ordinary payment rails and never appears in this app.
+ordinary payment rails and never appears here.
 
-Three levels of auth, escalating: an enrolled **device**, a staff **PIN**, and an **owner** signed in
-through Privy organizations. Owners can reset a PIN; staff cannot choose each other's. The two
-balances an owner sees — owed and held — are different money and are never summed.
+```mermaid
+flowchart LR
+  D["Enrolled device"] --> P["Staff PIN"] --> O["Owner<br/><i>Privy organizations</i>"]
+  D -.- d1["raise a charge"]
+  P -.- p1["refund, staff list"]
+  O -.- o1["payouts, withdraw,<br/>reset a PIN"]
+```
 
-Screens: `/` counter, `/new` raise a charge, `/charges` + detail + refund, `/payouts` + detail with
-the withdraw modal, `/staff`, `/overview`, `/settings`, `/onboarding`.
+Owners can reset a PIN; staff cannot choose each other's. The two balances an owner sees — **owed**
+and **held** — are different money and are never summed.
+
+Screens: `/` counter, `/new`, `/charges` + detail + refund, `/payouts` + detail with the withdraw
+modal, `/staff`, `/overview`, `/settings`, `/onboarding`.
 
 Design reference: [`docs/ux/clear-merchant-app-reference.html`](./docs/ux/clear-merchant-app-reference.html).
 
@@ -452,13 +521,13 @@ This repository carries more than one license, and which applies depends on the 
 | `apps/member`, `apps/merchant`, `apps/api` | Proprietary — all rights reserved |
 | `packages/domain`, `packages/tokens`, `packages/contracts-sdk` | MIT |
 
-`contracts/` is a fork of **StableCredit** and is AGPL-3.0 in consequence. No application code
-imports Solidity source from it — the apps reach the chain through committed ABI JSON and, in future,
-through `packages/contracts-sdk`, which ships generated artifacts only. Keeping that rule is what
-keeps the copyleft inside `contracts/`.
+`contracts/` is a fork of **StableCredit**, hence AGPL-3.0. **No application code imports Solidity
+source from it** — the apps reach the chain through committed ABI JSON and, in future,
+`packages/contracts-sdk`, which ships generated artifacts only. That rule is what keeps the copyleft
+inside `contracts/`.
 
-Read [`NOTICE.md`](./NOTICE.md) before moving code across those boundaries; it also records the
-unsettled question about whether generated bindings inherit the copyleft.
+Read [`NOTICE.md`](./NOTICE.md) before moving code across those boundaries — it also records the
+unsettled question of whether generated bindings inherit the copyleft.
 
 ---
 
