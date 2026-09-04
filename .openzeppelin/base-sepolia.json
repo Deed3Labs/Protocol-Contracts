@@ -2507,7 +2507,7 @@
             "label": "incomeOf",
             "offset": 0,
             "slot": "254",
-            "type": "t_mapping(t_address,t_struct(IncomeRecord)57922_storage)",
+            "type": "t_mapping(t_address,t_struct(IncomeRecord)57925_storage)",
             "contract": "CreditIssuer",
             "src": "contracts/peripherals/CreditIssuer.sol:46"
           },
@@ -2515,7 +2515,7 @@
             "label": "plans",
             "offset": 0,
             "slot": "255",
-            "type": "t_array(t_struct(Plan)67942_storage)dyn_storage",
+            "type": "t_array(t_struct(Plan)68039_storage)dyn_storage",
             "contract": "TermIssuer",
             "src": "contracts/peripherals/TermIssuer.sol:59"
           },
@@ -2557,7 +2557,7 @@
             "label": "address",
             "numberOfBytes": "20"
           },
-          "t_array(t_struct(Plan)67942_storage)dyn_storage": {
+          "t_array(t_struct(Plan)68039_storage)dyn_storage": {
             "label": "struct TermIssuer.Plan[]",
             "numberOfBytes": "32"
           },
@@ -2593,7 +2593,7 @@
             "label": "mapping(address => struct ICreditIssuer.CreditPeriod)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_address,t_struct(IncomeRecord)57922_storage)": {
+          "t_mapping(t_address,t_struct(IncomeRecord)57925_storage)": {
             "label": "mapping(address => struct CreditIssuer.IncomeRecord)",
             "numberOfBytes": "32"
           },
@@ -2635,7 +2635,7 @@
             ],
             "numberOfBytes": "128"
           },
-          "t_struct(IncomeRecord)57922_storage": {
+          "t_struct(IncomeRecord)57925_storage": {
             "label": "struct CreditIssuer.IncomeRecord",
             "members": [
               {
@@ -2701,7 +2701,7 @@
             ],
             "numberOfBytes": "96"
           },
-          "t_struct(Plan)67942_storage": {
+          "t_struct(Plan)68039_storage": {
             "label": "struct TermIssuer.Plan",
             "members": [
               {
