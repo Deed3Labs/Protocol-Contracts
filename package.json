@@ -75,7 +75,7 @@
     "@chainlink/contracts-ccip": "1.6.4",
     "@limitbreak/creator-token-standards": "^4.0.1",
     "@openzeppelin/contracts": "4.9.6",
-    "@openzeppelin/contracts-upgradeable": "4.9.3",
+    "@openzeppelin/contracts-upgradeable": "4.9.6",
     "debug": "^4.4.0",
     "qs": "^6.14.0",
     "side-channel-weakmap": "^1.0.2",
