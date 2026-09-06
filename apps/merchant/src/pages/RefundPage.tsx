@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Check, ChevronLeft } from 'lucide-react';
 import { dollars, fromCents, refundQuote } from '@clear/domain';
@@ -43,8 +43,10 @@ type Step = 'review' | 'waiting' | 'authorise' | 'done' | 'declined';
  */
 const endsSentence = (name: string) => (name.endsWith('.') ? '' : '.');
 
-const timeNow = () =>
-  new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+const clockOf = (d: Date | string) =>
+  new Date(d).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+
+const timeNow = () => clockOf(new Date());
 
 function StepHeader({ label, chip }: { label: string; chip: React.ReactNode }) {
   return (
@@ -102,6 +104,23 @@ export default function RefundPage() {
   const { data: staff } = useApi(() => api.staff(), []);
   // The shop's limit decides whose PIN clears this one, so the step-2 label can be specific.
   const { data: threshold } = useApi(() => api.refundThreshold(), []);
+
+  /**
+   * Adopt a refund this screen did not start.
+   *
+   * `step` and `refundId` used to be seeded only by the writer's own submit, so any screen that
+   * arrived at an in-flight refund began at step 1 — an owner opening it on their phone, or the
+   * same tab after a reload. Approving was impossible (`decide` has no id to act on) and starting
+   * over was refused by the server, which already holds a request for the charge. The record on
+   * the server is the truth about which step this is; read it rather than assume step 1.
+   */
+  const { data: openRefund } = useApi(() => api.openRefundFor(id ?? ''), [id]);
+  useEffect(() => {
+    if (!openRefund || refundId) return;
+    setRefundId(openRefund.id);
+    setRequestedAt(clockOf(openRefund.requestedAt));
+    setStep('waiting');
+  }, [openRefund, refundId]);
   const limitCents = threshold?.limitCents ?? null;
 
   const charge = (charges ?? []).find((c) => c.code === id);

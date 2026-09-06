@@ -1,5 +1,5 @@
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { countsAsVolume, dollars, formatCalendarDate } from '@clear/domain';
+import { CHARGE_LABEL, countsAsVolume, dollars, formatCalendarDate } from '@clear/domain';
 import { Columns } from '@/shell/AppShell';
 import { Big, Button, Cap, Card, Inset, Lbl, Pill, PrimaryButton, Row } from '@/shell/ui';
 import { useAuth } from '@/auth/authContext';
@@ -248,8 +248,12 @@ export default function HomePage() {
                     ) : c.state === 'approved' ? (
                       <span>{dollars(c.amount)}</span>
                     ) : (
-                      // A decline never says why — that is between Clear and the member.
-                      <Pill>{c.state === 'expired' ? 'Expired' : 'Declined'}</Pill>
+                      // Every other state takes its word from the domain's own map. Spelling them
+                      // out here meant the fall-through called a refund awaiting an owner
+                      // "Declined" — the one word that tells a writer the opposite of the truth,
+                      // while Charges read the same row correctly.
+                      // A decline still never says why; that is between Clear and the member.
+                      <Pill>{CHARGE_LABEL[c.state]}</Pill>
                     )
                   }
                 />
