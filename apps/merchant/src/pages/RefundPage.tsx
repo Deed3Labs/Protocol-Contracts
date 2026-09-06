@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { Check, ChevronLeft } from 'lucide-react';
-import { dollars, fromCents, refundQuote } from '@clear/domain';
+import { canAuthoriseRefund, dollars, fromCents, refundQuote, toCents } from '@clear/domain';
 import { Button, Cap, Inset, PrimaryButton } from '@/shell/ui';
 import { Chip, RoleChip } from '@/auth/RoleChip';
 import { useAuth } from '@/auth/authContext';
@@ -152,6 +152,27 @@ export default function RefundPage() {
   const writer = session?.staff.name ?? '—';
 
   /**
+   * Who can clear THIS refund, and by which route.
+   *
+   * Both questions go to `canAuthoriseRefund`, the same predicate the server decides on, so the
+   * screen cannot offer an act the server will refuse. It was offering exactly that: the PIN box
+   * was the only control on step 2 at any amount, and a code is capped, so a refund at or above
+   * the ceiling could only ever come back 409 — which is what a $500 refund did, repeatedly, with
+   * the counter code being the sole thing the screen would accept.
+   *
+   * `limitCents` is null only while the threshold is still loading; passing undefined there leaves
+   * the question to the server rather than hiding controls on a value we do not have yet.
+   */
+  const amountCents = toCents(charge.amount);
+  const role = session?.staff.role ?? null;
+  const limitKnown = limitCents !== null;
+  /** A code at the counter is bounded whoever's it is — strictly under the ceiling. */
+  const codeCanClear = !limitKnown || (limitCents > 0 && amountCents < limitCents);
+  /** This viewer, on this device, signed in — the stronger evidence, and uncapped for an owner. */
+  const viewerCanDecide =
+    role !== null && canAuthoriseRefund(role, amountCents, limitKnown ? limitCents : undefined);
+
+  /**
    * The owner's decision, against the refund record.
    *
    * Two ways in, and the server tells them apart: an owner who typed their code at the counter
@@ -159,7 +180,7 @@ export default function RefundPage() {
    * through `decideRefund`. Both were buttons that only changed the screen — the customer was
    * told the refund was approved and nothing had happened.
    */
-  async function decide(decision: 'approve' | 'decline') {
+  async function decide(decision: 'approve' | 'decline', via: 'code' | 'device') {
     if (!refundId) {
       setError('That refund was not recorded. Start it again.');
       return;
@@ -167,7 +188,7 @@ export default function RefundPage() {
     setBusy(true);
     setError(null);
     try {
-      if (code.length === 4) await api.authoriseRefund(refundId, code, decision);
+      if (via === 'code') await api.authoriseRefund(refundId, code, decision);
       else await api.decideRefund(refundId, decision);
       setApprovedAt(timeNow());
       setStep(decision === 'approve' ? 'done' : 'declined');
@@ -274,9 +295,36 @@ export default function RefundPage() {
           <Inset className="mb-3.5 !px-[15px] !py-[13px]">
             <Line label={`Sent to ${ownerName}`} value="Delivered" />
             <p className="m-0 mt-2.5 text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
-              They can approve from their phone, or type their code below if they are here.
+              {codeCanClear
+                ? 'They can approve from their phone, or type their code below if they are here.'
+                : `Over ${dollars(fromCents(limitCents ?? 0))}, only the owner’s own device can clear it. A code at the counter cannot.`}
             </p>
           </Inset>
+
+          {/*
+            The owner reading this on their own signed-in device. This is the stronger of the two
+            routes and the only one that clears a large refund, but it had no control at all — the
+            screen rendered the PIN box and nothing else, so `decideRefund` was unreachable and an
+            owner holding their own phone still had to type a code that the server would refuse.
+          */}
+          {viewerCanDecide && (
+            <Inset className="mb-3 !px-[15px] !py-[13px]">
+              <Cap>Signed in as {session?.staff.name} · {role}</Cap>
+              <p className="m-0 mb-2.5 mt-1.5 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
+                Approving here uses this device, so no code is needed.
+              </p>
+              <PrimaryButton
+                disabled={busy}
+                className="mb-2 !py-[11px] !text-[15px]"
+                onClick={() => void decide('approve', 'device')}
+              >
+                {busy ? 'Approving…' : `Approve ${dollars(charge.amount)} refund`}
+              </PrimaryButton>
+              <Button disabled={busy} onClick={() => void decide('decline', 'device')} className="w-full">
+                Decline
+              </Button>
+            </Inset>
+          )}
 
           {/*
             The second of the two ways to authorise — reference section 16.
@@ -286,31 +334,40 @@ export default function RefundPage() {
             does not take over the writer's session: the person who raised the charge stays signed
             in, because the approver is approving rather than starting a shift.
           */}
-          <Inset className="mb-3 !px-[15px] !py-[13px]">
-            <Cap>
-              {limitCents === null || limitCents === 0
-                ? 'Owner PIN'
-                : `Manager or owner PIN · under ${dollars(fromCents(limitCents))}`}
-            </Cap>
-            <input
-              inputMode="numeric"
-              autoComplete="off"
-              maxLength={4}
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && code.length === 4) void submitCode();
-              }}
-              placeholder="••••"
-              aria-label="Manager or owner PIN"
-              className="w-full bg-transparent text-[19px] tracking-[6px] text-[var(--clear-text-primary)] outline-none placeholder:text-[var(--clear-text-muted)]"
-            />
-          </Inset>
+          {codeCanClear && (
+            <Inset className="mb-3 !px-[15px] !py-[13px]">
+              <Cap>
+                {limitCents === null || limitCents === 0
+                  ? 'Owner PIN'
+                  : `Manager or owner PIN · under ${dollars(fromCents(limitCents))}`}
+              </Cap>
+              <input
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && code.length === 4) void submitCode();
+                }}
+                placeholder="••••"
+                aria-label="Manager or owner PIN"
+                className="w-full bg-transparent text-[19px] tracking-[6px] text-[var(--clear-text-primary)] outline-none placeholder:text-[var(--clear-text-muted)]"
+              />
+            </Inset>
+          )}
 
-          {code.length === 4 && (
+          {codeCanClear && code.length === 4 && (
             <PrimaryButton className="mb-2 !py-[11px] !text-[15px]" onClick={() => void submitCode()}>
               Authorise
             </PrimaryButton>
+          )}
+
+          {/* Neither route open to this viewer: say who it needs rather than showing a dead box. */}
+          {!codeCanClear && !viewerCanDecide && (
+            <p className="m-0 mb-3 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
+              {ownerName} has to approve this one from their own device.
+            </p>
           )}
           {error && (
             <p role="alert" className="m-0 mb-2 text-[12.5px]">
@@ -350,11 +407,11 @@ export default function RefundPage() {
           <PrimaryButton
             disabled={busy}
             className="mb-2 !py-[11px] !text-[15px]"
-            onClick={() => void decide('approve')}
+            onClick={() => void decide('approve', 'code')}
           >
             {busy ? 'Approving…' : 'Approve refund'}
           </PrimaryButton>
-          <Button disabled={busy} onClick={() => void decide('decline')} className="w-full">
+          <Button disabled={busy} onClick={() => void decide('decline', 'code')} className="w-full">
             Decline
           </Button>
           <p className="m-0 mt-[11px] text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
