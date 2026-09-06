@@ -75,6 +75,12 @@ export default function ChargeDetailPage() {
 
   const refundable = canTransition(charge.state, 'refund_requested');
 
+  // A refund already started, waiting on a decision. This was the only state the screen offered
+  // no way out of: `refundable` is false here — correctly, since a second request is not a legal
+  // move — and it gated the sole link into the refund flow, so a charge that needed an owner had
+  // nowhere for one to go. The lifecycle says a decision is exactly what is owed on it.
+  const awaitingDecision = charge.state === 'refund_requested';
+
   return (
     <div className="mx-auto w-full max-w-[400px]">
       <div className="mb-4 flex items-center gap-2.5">
@@ -158,6 +164,21 @@ export default function ChargeDetailPage() {
           </Button>
           <p className="m-0 mt-2.5 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
             Any staff member can start one. An owner finishes it.
+          </p>
+        </>
+      )}
+
+      {awaitingDecision && (
+        <>
+          {/* The label differs by who is reading. An owner is being asked to decide; a writer is
+              being told where it stands, and follows the same link to withdraw it. */}
+          <Button onClick={() => navigate(`/charges/${charge.code}/refund`)} className="w-full">
+            {canSeeMoney ? 'Approve or decline the refund' : 'See the refund'}
+          </Button>
+          <p className="m-0 mt-2.5 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
+            {canSeeMoney
+              ? 'Nothing has been said to the customer yet.'
+              : 'Waiting on an owner. Nothing has been said to the customer yet.'}
           </p>
         </>
       )}

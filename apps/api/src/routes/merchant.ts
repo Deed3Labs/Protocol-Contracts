@@ -566,6 +566,30 @@ merchantRouter.delete('/refunds/:id', requireMerchant, async (req: Request, res:
   res.status(ok ? 200 : 409).json({ ok });
 });
 
+/**
+ * The refund already in flight on a charge, if there is one.
+ *
+ * Without this the id of a started refund lived only in the tab that started it. An owner opening
+ * the charge on their own phone — the case the flow is designed around, and the only way to
+ * approve anything above the counter-code limit — had no way to name the refund they were being
+ * asked to decide, so the charge sat at `refund_requested` with nothing able to move it.
+ *
+ * `openForCharge` matches on the charge code alone, so the merchant check here is load-bearing:
+ * charge codes are short and guessable, and without it one shop could read another's refunds.
+ */
+merchantRouter.get('/charges/:code/refund', requireMerchant, async (req: Request, res: Response) => {
+  const { merchant } = req.merchant!;
+  const refund = await refundStore.openForCharge(req.params.code);
+  if (!refund || refund.merchant !== merchant) {
+    res.status(404).json({ error: 'Not found', message: 'no refund in flight on that charge' });
+    return;
+  }
+  res.json({
+    ...(await withNames(refund)),
+    ownerCodeLimitCents: await ownerCodeLimitFor(merchant),
+  });
+});
+
 /** Payouts are money. Owner only, enforced here rather than in the nav. */
 
 /**

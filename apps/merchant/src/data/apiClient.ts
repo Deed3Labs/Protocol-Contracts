@@ -351,6 +351,24 @@ export const api = {
 
   /* ---------------------------------------------------------------- refunds */
 
+  /**
+   * The refund already in flight on a charge, or null.
+   *
+   * How a screen that did not start the refund finds the one it is being asked to decide — an
+   * owner on their own phone, or the writer's own tab after a reload. `null` for 404 because "no
+   * refund in flight" is an ordinary answer here, not a failure.
+   */
+  async openRefundFor(chargeCode: string): Promise<Refund | null> {
+    try {
+      return await request(`/api/merchant/charges/${encodeURIComponent(chargeCode)}/refund`);
+    } catch (e) {
+      // Only "there isn't one" is an ordinary answer. Swallowing the rest would put the screen
+      // back at step 1 on a server fault, which is the failure this whole path exists to end.
+      if (e instanceof ApiError && e.status === 404) return null;
+      throw e;
+    }
+  },
+
   /** A writer starts one. Nothing moves and the customer is told nothing. */
   async requestRefund(input: {
     chargeCode: string;
