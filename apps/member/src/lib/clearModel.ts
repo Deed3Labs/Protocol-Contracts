@@ -985,7 +985,8 @@ export interface PartnersData {
   count: number;
   /** Where "near you" means, e.g. "the Inland Empire". */
   region: string;
-  /** e.g. "Partners shown are within 20 miles of Redlands." */
+  /** The scope of the list, e.g. "Partners shown are across the Inland
+   *  Empire." Names the region, not a town: the list spans counties. */
   radiusNote: string;
   /** The same fact at phone width. */
   radiusShort: string;
