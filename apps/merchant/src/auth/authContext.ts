@@ -20,7 +20,7 @@ import type { Staff, StaffRole } from '@clear/domain';
  *
  * **Session storage is host-only and unshared.** The merchant app and the member app have
  * different auth models and must never see each other's session: no cookie is scoped to
- * `.useclear.org`, and this key is namespaced to this app. On `merchants.useclear.org` a cookie
+ * `.useclear.org`, and this key is namespaced to this app. On `merchant.useclear.org` a cookie
  * without a Domain attribute is host-only by definition, which is what we want and why none is set
  * here.
  */
