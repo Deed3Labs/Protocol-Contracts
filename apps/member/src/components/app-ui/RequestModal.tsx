@@ -7,6 +7,12 @@ import { useAppKitAccount } from '@/lib/walletCompat';
 import { createPaymentRequest } from '@/utils/apiClient';
 import { cn } from '@/lib/utils';
 
+/* Where a copied link points. window.location.origin keeps it correct on the
+   live app, the demo and localhost alike; demo.useclear.org is the fallback
+   for a non-browser render because this modal's data is demo data. */
+const PAY_LINK_ORIGIN =
+  typeof window !== 'undefined' ? window.location.origin : 'https://demo.useclear.org';
+
 /*
  * "Request" — ask a contact to pay you. Same shape as Send (compose → review → status), minus
  * the funding source. A contact with a wallet gets an in-app request; email/phone-only gets a
@@ -353,7 +359,14 @@ export default function RequestModal({ open, onOpenChange }: { open: boolean; on
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard?.writeText('https://useclear.org/pay/demo-request').catch(() => {});
+                      /* The origin you are on, not a hardcoded host: this
+                         link is copied out and opened elsewhere, so on the
+                         demo it has to stay on the demo. It read
+                         useclear.org, which is the marketing site and has no
+                         /pay route at all. */
+                      navigator.clipboard
+                        ?.writeText(`${PAY_LINK_ORIGIN}/pay/demo-request`)
+                        .catch(() => {});
                       setCopied(true);
                     }}
                     className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-border py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
