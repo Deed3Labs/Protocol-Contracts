@@ -99,7 +99,7 @@ different products. Tokens and formatters are the whole shared design surface.
 
 | Target | Root directory | Host |
 |---|---|---|
-| member | `apps/member` | `useclear.org` |
+| member | `apps/member` | `app.useclear.org` |
 | merchant | `apps/merchant` | `merchant.useclear.org` |
 | api | `apps/api` | Railway (Docker) |
 

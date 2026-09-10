@@ -2,7 +2,7 @@
 
 `@clear/member` — the consumer PWA. A member deposits USDC, watches savings and equity credits
 accrue, draws on a credit line, sends money, taps a card, and approves charges raised at a merchant
-counter. Deploys to `useclear.org` from root directory `apps/member`.
+counter. Deploys to `app.useclear.org` from root directory `apps/member`.
 
 React 19 + Vite 7 + Tailwind 4, Radix primitives, React Router 7.
 
