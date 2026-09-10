@@ -1,7 +1,7 @@
 # Clear for Merchants
 
 Scaffolded in Phase 3. Staff at a counter raise charges here; owners manage
-payouts, staff and refunds. Deploys to `merchants.useclear.org`.
+payouts, staff and refunds. Deploys to `merchant.useclear.org`.
 
 Design reference: [`docs/ux/clear-merchant-app-reference.html`](../../docs/ux/clear-merchant-app-reference.html).
 

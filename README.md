@@ -100,7 +100,7 @@ different products. Tokens and formatters are the whole shared design surface.
 | Target | Root directory | Host |
 |---|---|---|
 | member | `apps/member` | `useclear.org` |
-| merchant | `apps/merchant` | `merchants.useclear.org` |
+| merchant | `apps/merchant` | `merchant.useclear.org` |
 | api | `apps/api` | Railway (Docker) |
 
 **Auth sessions do not cross the two surfaces.** Different auth models, no cookie scoped to
