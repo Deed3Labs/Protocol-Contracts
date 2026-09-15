@@ -1,46 +1,99 @@
 import { useState } from 'react';
-import { Users } from 'lucide-react';
-import ContactsPanel from '@/components/clear/ContactsPanel';
+import { Btn, CFoot, CHead, CMain, Cell, Line, SecHead } from '@/components/clear/brand/anatomy';
+import MenuButton from '@/components/clear/brand/MenuButton';
+import AddContactDialog from '@/components/clear/AddContactDialog';
+import ContactRows from '@/components/clear/ContactRows';
 import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
-import { CONTACTS, HOME_DAY_ONE } from '@/data/clearPlaceholder';
+import { CONTACTS } from '@/data/clearPlaceholder';
 import type { Contact } from '@/lib/clearModel';
 
+type Filter = 'all' | 'members' | 'pending';
+type Sort = 'recent' | 'name';
+
+const FILTERS: { id: Filter; label: string }[] = [
+  { id: 'all', label: 'All contacts' },
+  { id: 'members', label: 'Members' },
+  { id: 'pending', label: 'Not members yet' },
+];
+
+const SORTS: { id: Sort; label: string }[] = [
+  { id: 'recent', label: 'Recent' },
+  { id: 'name', label: 'Name' },
+];
+
 /**
- * Contacts — design spec §7.
- *
- * A page of its own, reached from Send, and the same panel appears as a settings
- * section: people manage their address book from either place depending on what
- * they came to do, and both are the same list.
+ * Contacts — the full list behind Send's Contacts cell. The control bar is page chrome above the
+ * slab, the same filter and sort pair as the bonds you own on Earn. A row opens Send; sending to
+ * someone who is not a member is the same modal with escrow in its consequences.
  */
-export default function ContactsPage({ contacts = CONTACTS }: { contacts?: Contact[] }) {
+export default function ContactsPage({
+  contacts = CONTACTS,
+  available = 0,
+}: {
+  contacts?: Contact[];
+  available?: number;
+}) {
   const [recipient, setRecipient] = useState<Contact | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [sort, setSort] = useState<Sort>('recent');
+
+  const filtered = contacts.filter((c) =>
+    filter === 'members' ? !c.pending : filter === 'pending' ? c.pending : true,
+  );
+  // Stored order is most recent first, so Recent is the list as it comes.
+  const shown = sort === 'name' ? [...filtered].sort((a, b) => a.name.localeCompare(b.name)) : filtered;
 
   return (
-    <>
-      <div className="mb-4 hidden items-center gap-2.5 lg:flex">
-        <Users
-          aria-hidden
-          className="h-[18px] w-[18px] shrink-0 text-foreground-secondary"
-          strokeWidth={1.75}
-        />
-        <h1 className="text-[17px] font-medium lg:text-xl">Contacts</h1>
+    <div className="lg:mx-auto lg:max-w-[560px]">
+      <div className="c-cbarline">
+        <div className="c-listctl">
+          <MenuButton label={FILTERS.find((f) => f.id === filter)!.label} options={FILTERS} value={filter} onChange={setFilter} />
+          <MenuButton
+            label={SORTS.find((s) => s.id === sort)!.label}
+            options={SORTS}
+            value={sort}
+            onChange={setSort}
+            align="end"
+          />
+        </div>
       </div>
 
-      {/* Narrow on desktop: it's a list of names, and a full-width one would run
-          the actions a screen away from the person they belong to. */}
-      <div className="lg:max-w-[560px]">
-        <ContactsPanel contacts={contacts} onSelect={setRecipient} />
+      <div className="c-slab c-one">
+        <Cell>
+          <CHead>
+            <SecHead label="Contacts">
+              <span className="c-det">
+                {shown.length} {shown.length === 1 ? 'person' : 'people'}
+              </span>
+            </SecHead>
+          </CHead>
+          <CMain>
+            <ContactRows
+              contacts={shown}
+              onSelect={setRecipient}
+              emptyMessage={contacts.length === 0 ? 'No one yet.' : 'No one in this view.'}
+            />
+          </CMain>
+          <CFoot>
+            <Line className="items-center!">
+              <span className="c-det">Added when you first send to someone</span>
+              <Btn onClick={() => setAddOpen(true)}>Add by handle</Btn>
+            </Line>
+          </CFoot>
+        </Cell>
       </div>
+
+      <AddContactDialog open={addOpen} onOpenChange={setAddOpen} />
 
       {recipient && (
         <SendMoneyDialog
           contact={recipient}
-          credit={HOME_DAY_ONE.credit}
-          cash={HOME_DAY_ONE.cash}
+          available={available}
           open={recipient !== null}
           onOpenChange={(o) => !o && setRecipient(null)}
         />
       )}
-    </>
+    </div>
   );
 }

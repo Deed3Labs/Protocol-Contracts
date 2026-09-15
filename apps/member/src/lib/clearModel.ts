@@ -1009,6 +1009,8 @@ export interface Partner {
   /** e.g. "Modular homes", "Trades". */
   category: string;
   city: string;
+  /** Accepts split pay — "Credit means you can split there". */
+  credit?: boolean;
 }
 
 export const CONTACT_ROLE_LABEL: Record<Contact['role'], string> = {
@@ -1060,6 +1062,15 @@ export interface SendData {
   keptInNetwork: number;
   /** Money sent to someone who hasn't joined yet, still waiting to be claimed. */
   pendingClaim?: PendingClaim;
+  /** Ready to allocate — what a send draws from. */
+  available?: number;
+  /** Partner credit a member can split at partner shops. */
+  atPartners?: number;
+  /** How many payments made up keptInNetwork this cycle. */
+  networkPayments?: number;
+  /** The member, for the full-screen code: "Kai Moore · Member since March 2026". */
+  name?: string;
+  memberSince?: string;
 }
 
 /** Match a contact on name or handle, for the Send search field. */

@@ -311,6 +311,19 @@
 /* stacked sections share the anatomy's rule, so a group break is never a floating label */
 .c-cmain + .c-cmain{border-top:1px solid var(--ink-13)}
 .c-mono{font-family:var(--font-mono);font-size:var(--t-detail)}
+
+/* ================= SEND ================= */
+.c-searchrow{display:flex;gap:var(--s1);align-items:center}
+.c-btn.c-iconsq{width:44px;height:44px;padding:0;flex-shrink:0}
+.c-searchrow .c-btn{height:44px}
+.c-cbarline{padding-bottom:var(--s2);border-bottom:1px solid var(--ink-13);margin-bottom:var(--s3)}
+/* viewfinder — corners only, drawn with the same hairlines as everything else */
+.c-viewfinder{position:relative;aspect-ratio:1;background:var(--ink);border:1px solid var(--ink-28);overflow:hidden}
+.c-vf{position:absolute;width:34px;height:34px;border:2px solid var(--paper);z-index:1}
+.c-vf.c-tl{top:16px;left:16px;border-right:0;border-bottom:0}
+.c-vf.c-tr{top:16px;right:16px;border-left:0;border-bottom:0}
+.c-vf.c-bl{bottom:16px;left:16px;border-right:0;border-top:0}
+.c-vf.c-br{bottom:16px;right:16px;border-left:0;border-top:0}
 .c-field{flex:1;min-width:0;height:44px;padding:0 var(--s2);border:1px solid var(--ink-28);
        background:var(--paper-2);color:var(--ink);font-family:var(--font-text);
        font-size:var(--t-sec);border-radius:var(--radius-none)}

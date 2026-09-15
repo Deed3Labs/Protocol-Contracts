@@ -1,187 +1,203 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ScanLine, HandCoins } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import Card from '@/components/clear/Card';
+import { Link, useNavigate } from 'react-router-dom';
+import { Btn, CFoot, CHead, CMain, Cell, Line, SecHead } from '@/components/clear/brand/anatomy';
+import { ChevronIcon, PlusIcon, ScanIcon } from '@/components/clear/brand/icons';
 import ClearCode from '@/components/clear/ClearCode';
+import CodeFoot from '@/components/clear/CodeFoot';
 import ContactRows from '@/components/clear/ContactRows';
 import PartnerRows from '@/components/clear/PartnerRows';
 import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
 import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
 import RequestMoneyDialog from '@/components/clear/RequestMoneyDialog';
-import { SEND_DAY_ONE, HOME_DAY_ONE } from '@/data/clearPlaceholder';
+import { useSetMobileAction } from '@/components/shell/MobileAction';
+import { SEND_DAY_ONE } from '@/data/clearPlaceholder';
 import { money } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import { searchContacts, type Contact, type SendData } from '@/lib/clearModel';
 
+/** A header or footer link: detail text with a chevron, never a Unicode arrow. */
+function MoreLink({ to, children }: { to: string; children: string }) {
+  return (
+    <Link to={to} className="c-det inline-flex! items-center gap-1 hover:text-ink">
+      {children}
+      <ChevronIcon />
+    </Link>
+  );
+}
+
 /**
- * Send — design spec §7.
+ * Send — the page with no balance at the top. What it leads with is your identity, not your money.
  *
- * Not a payment form: a directory of who you can pay. The field at the top takes
- * anyone — a member, a phone number, someone who hasn't joined — and the two
- * lists under it are the answer most of the time, which is why they're on the
- * page rather than behind a search.
+ * Search sits above everything as page chrome, then the same three-block shape as Home: money
+ * waiting to be claimed is the temporary slot, and the standing lists are the slab. Both columns
+ * have two cells, so they go straight into the shared grid — nesting only when cell counts differ.
  *
- * The two layouts are different pages, not one reflowed. On mobile the Clear code
- * leads, because showing a QR is how most payments start there. On desktop the
- * field leads and the code moves into a column beside it — nobody holds a monitor
- * up to a camera.
+ * The phone puts Your code first, because the phone is the thing you hold up at a counter, and the
+ * nav's action button reads Scan.
  */
 export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
+  const navigate = useNavigate();
+  const desktop = useIsDesktop();
   const [query, setQuery] = useState('');
   const [recipient, setRecipient] = useState<Contact | null>(null);
-  const [requestOpen, setRequestOpen] = useState(false);
-  const isDesktop = useIsDesktop();
+  const [request, setRequest] = useState<{ contact?: Contact } | null>(null);
+
+  useSetMobileAction({ label: 'Scan', icon: PlusIcon, onSelect: () => navigate('/scan') });
+
   const searching = query.trim().length > 0;
-  const matches = searchContacts(data.contacts, query);
-  // Unsearched, these are shortlists — the full lists are on /contacts and
-  // /partners. One fewer on a phone, where the rows are twice as tall.
-  const shortlist = isDesktop ? 4 : 3;
-  const contacts = searching ? matches : data.contacts.slice(0, shortlist);
+  const contacts = searching ? searchContacts(data.contacts, query) : data.contacts.slice(0, 4);
+  const available = data.available ?? 0;
+  const atPartners = data.atPartners ?? 0;
+  const sentTo = data.contacts.length;
 
-  const searchField = (
-    <Input
-      value={query}
-      onChange={(e) => setQuery(e.target.value)}
-      placeholder="Name, phone, or @handle"
-      aria-label="Search people to pay"
-      className="h-9 text-xs"
-    />
+  const contactsCell = (
+    <Cell>
+      <CHead>
+        <SecHead label="Contacts">
+          <MoreLink to="/contacts">Manage</MoreLink>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <ContactRows
+          contacts={contacts}
+          onSelect={setRecipient}
+          emptyMessage={
+            searching
+              ? `No one matching "${query.trim()}". Try a phone number or @handle.`
+              : 'No one yet. Search for a name, phone number or @handle to send.'
+          }
+        />
+      </CMain>
+      <CFoot>
+        <Line className="items-center!">
+          <span className="c-det">
+            {sentTo} {sentTo === 1 ? 'person' : 'people'} you have sent to
+          </span>
+          <MoreLink to="/contacts">See all</MoreLink>
+        </Line>
+      </CFoot>
+    </Cell>
   );
 
-  const contactList = (
-    <ContactRows
-      onSelect={setRecipient}
-      contacts={contacts}
-      emptyMessage={
-        searching
-          ? `No one matching "${query.trim()}". Try a phone number or @handle.`
-          : 'No one yet — search for a name, phone number or @handle to send.'
-      }
-    />
+  const codeCell = (
+    <Cell>
+      <CHead>
+        <SecHead label="Your code">
+          <MoreLink to="/code">Full screen</MoreLink>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <ClearCode handle={data.handle} codeUrl={data.codeUrl} width={desktop ? 150 : 170} />
+        <p className="mt-s2 text-center text-sec">Your Clear code</p>
+        <p className="c-det mt-[3px] text-center">{data.handle}</p>
+        <p className="c-det mt-s2 leading-[1.6]!">
+          Says who you are, not an amount. The shop enters the figure and{' '}
+          <strong className="font-medium text-ink">you approve it here</strong>.
+        </p>
+      </CMain>
+      <CFoot>
+        <CodeFoot available={available} atPartners={atPartners} />
+      </CFoot>
+    </Cell>
   );
 
-  const claim = data.pendingClaim && (
-    <div className="mb-4">
-      <PendingClaimBanner claim={data.pendingClaim} />
-    </div>
+  const partnersCell = (
+    <Cell>
+      <CHead>
+        <SecHead label="Partners near you">
+          <span className="c-det">{data.partnerCount} nearby</span>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <PartnerRows partners={data.partners.slice(0, 4)} emptyMessage="No partners near you yet." />
+      </CMain>
+      <CFoot>
+        <Line className="items-center!">
+          <span className="c-det">Credit means you can split there</span>
+          <MoreLink to="/partners">See all</MoreLink>
+        </Line>
+      </CFoot>
+    </Cell>
   );
 
-  /** Section heading with a way through to the full list. */
-  const heading = (label: string, to: string, action: string) => (
-    <div className="mb-1.5 flex items-baseline justify-between gap-3">
-      <span className="text-[13px] text-foreground-secondary">{label}</span>
-      <Link to={to} className="text-xs text-tier-boost-fg hover:underline">
-        {action}
-      </Link>
-    </div>
-  );
-
-  const partners = (
-    <PartnerRows
-      partners={data.partners.slice(0, shortlist)}
-      emptyMessage="No partners near you yet."
-    />
-  );
-
-  const network = (
-    <Card>
-      <p className="mb-1 text-xs text-foreground-secondary">Kept in the network</p>
-      <p className="font-display text-[26px] font-medium leading-none">
-        {money(data.keptInNetwork)}
-      </p>
-      <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-        sent to members and partners this cycle. No fees, instant.
-      </p>
-    </Card>
+  const payments = data.networkPayments ?? 0;
+  const networkCell = (
+    <Cell>
+      <CHead>
+        <SecHead label="Kept in the network">
+          <p className="c-fig c-fig-sec">{money(data.keptInNetwork, { cents: true })}</p>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <p className="c-det">Sent to members and partners this cycle. No fees, and it arrives instantly.</p>
+      </CMain>
+      <CFoot>
+        <Line className="items-center!">
+          <span className="c-det">
+            {payments} {payments === 1 ? 'payment' : 'payments'} this cycle
+          </span>
+          <MoreLink to="/activity">See in Activity</MoreLink>
+        </Line>
+      </CFoot>
+    </Cell>
   );
 
   return (
     <>
-      {/* Mobile: the code leads, then the two ways to start, then the directory */}
-      <div className="lg:hidden">
-        <ClearCode handle={data.handle} codeUrl={data.codeUrl} />
-
-        <div className="mb-4 mt-3 flex gap-2">
-          <Button variant="clear" size="xs" className="flex-1" asChild>
-            <Link to="/scan">
-              <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Scan to pay
-            </Link>
-          </Button>
-          <Button
-            variant="clear"
-            size="xs"
-            className="flex-1"
-            onClick={() => setRequestOpen(true)}
-          >
-            <HandCoins className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Request
-          </Button>
+      <div className="mb-s3">
+        <div className="c-searchrow">
+          <input
+            className="c-field"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Name, phone, or @handle"
+            aria-label="Search people to pay"
+          />
+          <Link to="/scan" className="c-btn c-iconsq" aria-label="Scan to pay">
+            <ScanIcon />
+          </Link>
+          <Btn onClick={() => setRequest({})}>Request</Btn>
         </div>
-
-        <div className="mb-4">{searchField}</div>
-        {claim}
-
-        {heading('Contacts', '/contacts', 'Manage')}
-        {contactList}
-
-        <div className="mt-5">
-          {heading('Clear Partners', '/partners', `See all ${data.partnerCount}`)}
-          {partners}
-        </div>
-
-        <div className="mt-5">{network}</div>
       </div>
 
-      {/* Desktop: the directory on the left, getting paid on the right */}
-      <div className="hidden lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-6">
-        <div>
-          <div className="mb-4 flex items-center gap-2">
-            <div className="min-w-0 flex-1">{searchField}</div>
-            <Button variant="clear" size="xs" onClick={() => setRequestOpen(true)}>
-              <HandCoins className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Request
-            </Button>
+      <div className="c-home">
+        {data.pendingClaim && <PendingClaimBanner claim={data.pendingClaim} />}
+
+        {desktop ? (
+          <div className="c-slab">
+            {contactsCell}
+            {codeCell}
+            {partnersCell}
+            {networkCell}
           </div>
-
-          {claim}
-
-          {heading('Contacts', '/contacts', 'Manage')}
-          {contactList}
-
-          <div className="mt-5">
-            {heading('Clear Partners near you', '/partners', `See all ${data.partnerCount}`)}
-            {partners}
+        ) : (
+          <div className="c-slab c-one">
+            {codeCell}
+            {contactsCell}
+            {partnersCell}
+            {networkCell}
           </div>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <ClearCode handle={data.handle} codeUrl={data.codeUrl} variant="titled" />
-          <Button variant="clear" size="sm" className="w-full text-xs" asChild>
-            <Link to="/scan">
-              <ScanLine className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Scan to pay
-            </Link>
-          </Button>
-          {network}
-        </div>
+        )}
       </div>
 
       <RequestMoneyDialog
+        key={request?.contact?.id ?? 'pick'}
+        contact={request?.contact}
         contacts={data.contacts}
-        open={requestOpen}
-        onOpenChange={setRequestOpen}
+        open={request !== null}
+        onOpenChange={(o) => !o && setRequest(null)}
       />
 
       {recipient && (
         <SendMoneyDialog
           contact={recipient}
-          credit={HOME_DAY_ONE.credit}
-          cash={HOME_DAY_ONE.cash}
+          available={available}
           open={recipient !== null}
           onOpenChange={(o) => !o && setRecipient(null)}
+          onSwap={() => {
+            setRequest({ contact: recipient });
+            setRecipient(null);
+          }}
         />
       )}
     </>

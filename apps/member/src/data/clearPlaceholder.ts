@@ -674,10 +674,10 @@ export const CONTACTS: Contact[] = [
 ];
 
 export const PARTNERS: Partner[] = [
-  { id: 'b1', name: 'TinyBox Systems', initials: 'TB', category: 'Modular homes', city: 'Redlands' },
-  { id: 'b2', name: 'Vega Electric', initials: 'VE', category: 'Trades', city: 'Redlands' },
-  { id: 'b3', name: 'Rincon Coffee', initials: 'RC', category: 'Food & drink', city: 'Riverside' },
-  { id: 'b4', name: 'Highland Supply', initials: 'HS', category: 'Materials', city: 'Highland' },
+  { id: 'b1', name: 'TinyBox Systems', initials: 'TB', category: 'Modular homes', city: 'Redlands', credit: true },
+  { id: 'b2', name: 'Vega Electric', initials: 'VE', category: 'Trades', city: 'Redlands', credit: true },
+  { id: 'b3', name: 'Rincon Coffee', initials: 'RC', category: 'Food and drink', city: 'Riverside' },
+  { id: 'b4', name: 'Highland Supply', initials: 'HS', category: 'Materials', city: 'Highland', credit: true },
   { id: 'b5', name: 'Orange St Market', initials: 'OM', category: 'Groceries', city: 'Redlands' },
   {
     id: 'b6',
@@ -704,6 +704,11 @@ export const SEND_IN_USE: SendData = {
   partners: PARTNERS,
   partnerCount: 14,
   keptInNetwork: 215,
+  networkPayments: 9,
+  available: 2109,
+  atPartners: 1000,
+  name: 'Kai Moore',
+  memberSince: 'March 2026',
   pendingClaim: { amount: 40, recipient: 'Marcus T.', sentOn: 'Oct 26', expiresInDays: 12 },
 };
 

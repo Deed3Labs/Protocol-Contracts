@@ -18,6 +18,7 @@ import ContactsPage from '@/pages/app/ContactsPage';
 import AssurancePage from '@/pages/app/AssurancePage';
 import InboxPage from '@/pages/app/InboxPage';
 import ScanPage from '@/pages/app/ScanPage';
+import CodePage from '@/pages/app/CodePage';
 import ExplainerPage from '@/pages/app/ExplainerPage';
 import PartnersPage from '@/pages/app/PartnersPage';
 import SendPage from '@/pages/app/SendPage';
@@ -572,7 +573,7 @@ export default function PreviewApp() {
                         <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
                         <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
                         <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
-                        <Route path="/contacts" element={<ContactsPage contacts={empty ? [] : CONTACTS} />} />
+                        <Route path="/contacts" element={<ContactsPage contacts={empty ? [] : CONTACTS} available={empty ? 0 : SEND_IN_USE.available} />} />
                         <Route path="/partners" element={<PartnersPage />} />
                         <Route
                           path="/assurance"
@@ -588,6 +589,7 @@ export default function PreviewApp() {
                         />
                         <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
                         <Route path="/scan" element={<ScanPage />} />
+                        <Route path="/code" element={<CodePage data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
                         <Route path="/cycle" element={<CyclePreview />} />
                         <Route path="/repay" element={<RepayPreview />} />
                         <Route path="/term-plans" element={<TermPlansPreview />} />

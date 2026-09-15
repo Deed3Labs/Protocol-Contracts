@@ -1,23 +1,23 @@
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { useEffect, useState } from 'react';
 import Modal from './Modal';
-import Avatar from './Avatar';
-import AmountPicker from './AmountPicker';
+import Keypad from './Keypad';
 import ContactRows from './ContactRows';
-import DetailRows from './DetailRows';
+import { TypedAmount } from './SendMoneyDialog';
+import { Btn } from './brand/anatomy';
+import { SwapIcon } from './brand/icons';
+import { applyKey } from '@/lib/amountEntry';
 import { money } from '@clear/domain';
-import { CONTACT_ROLE_LABEL, searchContacts, type Contact } from '@/lib/clearModel';
+import { contactHandle, searchContacts, type Contact } from '@/lib/clearModel';
+import { cn } from '@/lib/utils';
+
+const PRESETS = [20, 50, 120];
 
 /**
- * Ask someone for money.
+ * Request — the Send modal with the legs reversed: from them, to you. The clearest way to show that
+ * nothing moves until the other person acts, which the closing line says outright. It is a request,
+ * not a charge.
  *
- * Deliberately quieter than sending: the last line says nothing moves until they
- * choose to pay, because a request that looks like a charge is how payment apps
- * get people shouting at each other.
- *
- * Opened without a recipient it starts on the picker — asking "who" before "how
- * much" matches how people actually think about it.
+ * Opened without a recipient it starts on the picker — who before how much.
  */
 export default function RequestMoneyDialog({
   contact,
@@ -35,82 +35,131 @@ export default function RequestMoneyDialog({
 }) {
   const [picked, setPicked] = useState<Contact | null>(contact ?? null);
   const [query, setQuery] = useState('');
-  const [amount, setAmount] = useState(180);
+  const [typed, setTyped] = useState('120');
   const [note, setNote] = useState('');
 
-  const matched = query.trim() ? searchContacts(contacts, query) : contacts;
+  useEffect(() => {
+    if (!open) return;
+    setPicked(contact ?? null);
+    setQuery('');
+    setTyped('120');
+    setNote('');
+  }, [open, contact]);
+
+  const amount = Number(typed) || 0;
 
   if (!picked) {
+    const matched = query.trim() ? searchContacts(contacts, query) : contacts;
     return (
-      <Modal
-        open={open}
-        onOpenChange={onOpenChange}
-        title="Request money"
-        description="Choose who to request money from."
-      >
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Name, phone, or @handle"
-          aria-label="Search people to request from"
-          className="mb-3 h-9 text-xs"
-        />
+      <Modal open={open} onOpenChange={onOpenChange} title="Request" description="Choose who to request money from.">
+        <div className="c-searchrow mb-s2">
+          <input
+            className="c-field"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Name, phone, or @handle"
+            aria-label="Search people to request from"
+          />
+        </div>
         <ContactRows
           contacts={matched}
           onSelect={setPicked}
-          emptyMessage="No one matching — try a phone number or @handle."
+          emptyMessage="No one matching. Try a phone number or @handle."
         />
       </Modal>
     );
   }
 
+  const footer = (
+    <>
+      <div className="c-conseq">
+        <div className="c-earn">
+          <span>They see</span>
+          <span>A request, not a charge</span>
+        </div>
+        <div>
+          <span>Expires</span>
+          <span>In 7 days</span>
+        </div>
+        <div>
+          <span>You are told</span>
+          <span>When they pay or decline</span>
+        </div>
+        <div className="c-limit">
+          <span>Nothing moves until they approve</span>
+          <span>Always</span>
+        </div>
+      </div>
+      <Btn primary lg className="mt-s2" disabled={amount <= 0} onClick={() => onRequest?.(picked, amount, note)}>
+        Request {money(amount, { cents: true })}
+      </Btn>
+    </>
+  );
+
+  const pad = <Keypad onKey={(key) => setTyped((current) => applyKey(current, key))} />;
+  const noteField = (
+    <input
+      className="c-field mt-s2 w-full"
+      value={note}
+      onChange={(e) => setNote(e.target.value)}
+      placeholder="Add a note so they know what it is for."
+      aria-label="What the request is for"
+    />
+  );
+
   return (
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Request money"
-      description={`Request money from ${picked.name}.`}
+      title="Request"
+      description={`Request money from ${picked.name}`}
       onBack={contact ? undefined : () => setPicked(null)}
+      className="sm:w-[640px] sm:max-w-[640px] sm:rounded-none"
+      footer={footer}
     >
-      <div className="mb-3.5 flex items-center gap-2.5 border-b-[0.5px] border-border pb-3.5">
-        <Avatar id={picked.id} initials={picked.initials} className="h-[34px] w-[34px] text-xs" />
-        <div className="min-w-0">
-          <p className="truncate text-[13px]">{picked.name}</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {CONTACT_ROLE_LABEL[picked.role]}
-          </p>
+      <div className="sm:grid sm:grid-cols-[minmax(0,1fr)_216px] sm:items-start sm:gap-s3">
+        <div>
+          <p className="c-label">Amount</p>
+          <TypedAmount typed={typed} />
+          <div className="c-qc">
+            {PRESETS.map((preset) => (
+              <Btn
+                key={preset}
+                className={cn('c-chip-q', amount === preset && 'c-on')}
+                aria-pressed={amount === preset}
+                onClick={() => setTyped(String(preset))}
+              >
+                {money(preset)}
+              </Btn>
+            ))}
+            {/* The keypad is the input; Custom clears the figure so it is ready to type into. */}
+            <Btn className={cn('c-chip-q', amount > 0 && !PRESETS.includes(amount) && 'c-on')} onClick={() => setTyped('')}>
+              Custom
+            </Btn>
+          </div>
+          <div className="c-route">
+            <div className="c-leg">
+              <p className="c-label">From</p>
+              <p className="c-nm">{picked.name}</p>
+              <p className="c-bal">{contactHandle(picked)}</p>
+            </div>
+            <div className="c-leg">
+              <p className="c-label">To</p>
+              <p className="c-nm">You</p>
+              <p className="c-bal">Ready to allocate</p>
+            </div>
+            <span aria-hidden className="c-swap">
+              <SwapIcon className="text-ink-70" />
+            </span>
+          </div>
+          <div className="sm:hidden">
+            {pad}
+            {noteField}
+          </div>
+          <div className="hidden sm:block">{noteField}</div>
         </div>
+        <div className="hidden sm:block">{pad}</div>
       </div>
-
-      <AmountPicker amount={amount} onChange={setAmount} editable />
-
-      <Input
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder="What's it for?"
-        aria-label="What the request is for"
-        className="mb-3.5 h-9 text-xs"
-      />
-
-      <DetailRows
-        className="mb-3.5"
-        rows={[
-          { label: "They'll get", value: 'A link and a notification' },
-          { label: 'Expires', value: 'In 14 days' },
-        ]}
-      />
-
-      <Button
-        size="xs"
-        className="w-full"
-        disabled={amount <= 0}
-        onClick={() => onRequest?.(picked, amount, note)}
-      >
-        Request {money(amount)}
-      </Button>
-      <p className="mt-2.5 text-center text-[11px] text-muted-foreground">
-        They choose whether to pay. Nothing moves until they do.
-      </p>
     </Modal>
   );
 }

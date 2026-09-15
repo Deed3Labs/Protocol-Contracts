@@ -44,6 +44,7 @@ export default function AppChrome({
     '/assurance': 'Assurance',
     '/inbox': 'Inbox',
     '/scan': 'Scan to pay',
+    '/code': 'Your code',
     '/learn/patronage': 'How patronage works',
     '/learn/assurance-reserve': 'The assurance reserve',
     '/learn/disputes': 'Dispute resolution',

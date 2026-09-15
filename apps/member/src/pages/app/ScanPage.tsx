@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ScanLine } from 'lucide-react';
 import jsQR from 'jsqr';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import Card from '@/components/clear/Card';
+import { Btn, CFoot, CMain, Cell, Line } from '@/components/clear/brand/anatomy';
 import { chargeCodeFrom } from '@/lib/clearCode';
 
 /**
  * Scan to pay — design spec §7.
  *
- * The camera fills the screen because there is exactly one thing to do here. "Enter a code
- * instead" is the escape hatch that keeps the page usable when the camera is refused, the light is
- * bad, or the code is on a screen too small to read — which is most of the times this fails.
+ * The viewfinder is corners on ink: four brackets at the weight of every other line, no rounded
+ * frame and no overlay chrome. When the camera is refused or missing, the cell under it grows a
+ * code field so the page stays usable; "Enter a handle" is the way out for a shop with no code.
  *
  * **Two decoders, and the native one first.** `BarcodeDetector` is hardware-accelerated where it
  * exists; jsQR is the fallback that works everywhere else, which matters because iOS Safari is the
@@ -191,64 +188,62 @@ export default function ScanPage() {
 
   return (
     <div className="lg:mx-auto lg:max-w-[420px]">
-      <h1 className="mb-4 hidden text-xl font-medium lg:block">Scan to pay</h1>
-
-      <Card className="relative mb-3 flex aspect-square flex-col items-center justify-center gap-3 overflow-hidden bg-secondary">
+      <div className="c-viewfinder">
+        <span aria-hidden className="c-vf c-tl" />
+        <span aria-hidden className="c-vf c-tr" />
+        <span aria-hidden className="c-vf c-bl" />
+        <span aria-hidden className="c-vf c-br" />
         {status === 'scanning' ? (
-          <>
-            <video
-              ref={videoRef}
-              muted
-              playsInline
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-            {/* A window rather than a full frame: it tells you where to aim without hiding the code. */}
-            <div className="pointer-events-none absolute inset-[18%] rounded-xl border-2 border-white/70" />
-            <p className="absolute bottom-3 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
-              {notACode ? 'That is not a Clear code' : 'Point at a Clear code'}
-            </p>
-          </>
+          <video ref={videoRef} muted playsInline className="absolute inset-0 h-full w-full object-cover" />
         ) : (
-          <>
-            <ScanLine aria-hidden className="h-10 w-10 text-muted-foreground" strokeWidth={1.25} />
-            <p className="px-6 text-center text-xs text-muted-foreground">
-              {status === 'starting'
-                ? 'Starting the camera…'
-                : status === 'blocked'
-                  ? 'The camera is not available. Type the code under the merchant’s QR instead.'
-                  : 'This browser cannot use the camera. Type the code instead.'}
-            </p>
-          </>
+          <p className="c-det absolute inset-x-0 top-1/2 -translate-y-1/2 px-s4 text-center text-paper!">
+            {status === 'starting'
+              ? 'Starting the camera.'
+              : status === 'blocked'
+                ? 'The camera is not available. Type the code under the shop\u2019s QR instead.'
+                : 'This browser cannot use the camera. Type the code instead.'}
+          </p>
         )}
-      </Card>
+      </div>
 
       <canvas ref={canvasRef} className="hidden" />
 
-      {manual ? (
-        <>
-          <label className="mb-1.5 block text-xs text-foreground-secondary" htmlFor="clear-code">
-            Clear code
-          </label>
-          <Input
-            id="clear-code"
-            autoFocus
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && typed) finish(typed);
-            }}
-            placeholder="8 characters"
-            className="mb-3 h-9 text-xs"
-          />
-          <Button size="xs" className="w-full" disabled={!typed} onClick={() => typed && finish(typed)}>
-            Continue
-          </Button>
-        </>
-      ) : (
-        <Button variant="clear" size="sm" className="w-full text-xs" onClick={() => setManual(true)}>
-          Enter a code instead
-        </Button>
-      )}
+      <div className="c-slab c-one mt-s3">
+        <Cell>
+          <CMain>
+            <p className="c-det">
+              {notACode
+                ? 'That is not a Clear code. Point it at the shop code.'
+                : 'Point it at the shop code. Nothing is charged until you see the amount and approve it.'}
+            </p>
+            {manual && (
+              <div className="c-searchrow mt-s2">
+                <input
+                  id="clear-code"
+                  className="c-field"
+                  autoFocus
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && typed) finish(typed);
+                  }}
+                  placeholder="Clear code, 8 characters"
+                  aria-label="Clear code"
+                />
+                <Btn primary disabled={!typed} onClick={() => typed && finish(typed)}>
+                  Continue
+                </Btn>
+              </div>
+            )}
+          </CMain>
+          <CFoot>
+            <Line className="items-center!">
+              <span className="c-det">No code? Ask for their @handle</span>
+              <Btn onClick={() => navigate('/send')}>Enter a handle</Btn>
+            </Line>
+          </CFoot>
+        </Cell>
+      </div>
     </div>
   );
 }

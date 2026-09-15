@@ -266,3 +266,16 @@ export function SortIcon({ size = 13, strokeWidth = 2, ...props }: IconProps) {
     </svg>
   );
 }
+
+/** Scan to pay: a frame's corners and the line across. */
+export function ScanIcon({ size = 18, strokeWidth = 1.9, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M3 8V5a2 2 0 0 1 2-2h3" />
+      <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+      <path d="M21 16v3a2 2 0 0 1-2 2h-3" />
+      <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+      <path d="M3 12h18" />
+    </svg>
+  );
+}
