@@ -2,7 +2,7 @@
  * Settings addresses. Each section and drill-in is a route under /settings, so the phone header can
  * title it and its back arrow knows where up is — one level, not wherever the browser was before.
  */
-export type SettingsSection = 'account' | 'membership' | 'security' | 'notifications' | 'linked' | 'appearance' | 'help';
+export type SettingsSection = 'account' | 'membership' | 'security' | 'notifications' | 'contacts' | 'linked' | 'appearance' | 'help';
 export type SettingsSub = 'bylaws' | 'patronage' | 'voting' | 'legal' | 'logins' | 'permissions';
 export type SettingsPageId = SettingsSection | SettingsSub;
 
@@ -12,6 +12,7 @@ export const SETTINGS_PAGES: Record<SettingsPageId, { title: string; rail: Setti
   membership: { title: 'Membership', rail: 'membership', up: '/settings' },
   security: { title: 'Security', rail: 'security', up: '/settings' },
   notifications: { title: 'Notifications', rail: 'notifications', up: '/settings' },
+  contacts: { title: 'Contacts', rail: 'contacts', up: '/settings' },
   linked: { title: 'Linked accounts', rail: 'linked', up: '/settings' },
   appearance: { title: 'Appearance', rail: 'appearance', up: '/settings' },
   help: { title: 'Help', rail: 'help', up: '/settings' },

@@ -27,7 +27,6 @@ import HomeRoute from "@/pages/app/HomeRoute";
 import SavingsRoute from "@/pages/app/SavingsRoute";
 import ActivityRoute from "@/pages/app/ActivityRoute";
 import CardRoute from "@/pages/app/CardRoute";
-import ContactsRoute from "@/pages/app/ContactsRoute";
 import CodeRoute from "@/pages/app/CodeRoute";
 import AssurancePage from "@/pages/app/AssurancePage";
 import InboxRoute from "@/pages/app/InboxRoute";
@@ -144,7 +143,7 @@ function App() {
                       <Route path="/send" element={<SendRoute />} />
                       <Route path="/activity" element={<ActivityRoute />} />
                       <Route path="/card" element={<CardRoute />} />
-                      <Route path="/contacts" element={<ContactsRoute />} />
+                      <Route path="/contacts" element={<Navigate to="/settings/contacts" replace />} />
                       <Route path="/partners" element={<PartnersPage />} />
                       <Route path="/assurance" element={<AssurancePage />} />
                       <Route path="/inbox" element={<InboxRoute />} />

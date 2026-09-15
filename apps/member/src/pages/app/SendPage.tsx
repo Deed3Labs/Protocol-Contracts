@@ -54,7 +54,7 @@ export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
     <Cell>
       <CHead>
         <SecHead label="Contacts">
-          <MoreLink to="/contacts">Manage</MoreLink>
+          <MoreLink to="/settings/contacts">Manage</MoreLink>
         </SecHead>
       </CHead>
       <CMain>
@@ -73,7 +73,7 @@ export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
           <span className="c-det">
             {sentTo} {sentTo === 1 ? 'person' : 'people'} you have sent to
           </span>
-          <MoreLink to="/contacts">See all</MoreLink>
+          <MoreLink to="/settings/contacts">See all</MoreLink>
         </Line>
       </CFoot>
     </Cell>

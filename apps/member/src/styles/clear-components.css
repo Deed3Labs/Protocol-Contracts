@@ -69,6 +69,8 @@
 .c-cfoot > .c-line > :first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .c-cfoot > .c-line > :last-child{flex-shrink:0}
 .c-pair .c-btn{flex:1;height:44px}
+.c-btn.c-btn-danger{border-color:var(--absent);color:var(--absent)}
+.c-btn.c-btn-danger:hover{border-color:var(--absent);background:transparent}
 
 .c-btn{font-family:var(--font-text);font-size:var(--t-sec);font-weight:500;height:36px;padding:0 var(--s2);
      border:1px solid var(--ink-28);background:transparent;color:var(--ink);border-radius:var(--radius-pill);

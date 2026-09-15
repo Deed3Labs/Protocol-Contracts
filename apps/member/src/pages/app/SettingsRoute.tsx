@@ -1,6 +1,9 @@
 import SettingsPage from './SettingsPage';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useLogout } from '@/hooks/useLogout';
+import { useContacts } from '@/context/ContactsContext';
+import { useClearBalances } from '@/hooks/useClearBalances';
+import { toSendContact } from './SendRoute';
 import { SETTINGS } from '@/data/clearPlaceholder';
 import { uploadMemberAvatar, deleteMemberAvatar } from '@/utils/apiClient';
 
@@ -16,6 +19,8 @@ import { uploadMemberAvatar, deleteMemberAvatar } from '@/utils/apiClient';
 export default function SettingsRoute() {
   const member = useMemberProfile();
   const logout = useLogout();
+  const { contacts } = useContacts();
+  const { cash } = useClearBalances();
 
   const profile = {
     ...SETTINGS.profile,
@@ -41,6 +46,8 @@ export default function SettingsRoute() {
     <SettingsPage
       data={{ ...SETTINGS, profile, accelerationActive: member.accelerated }}
       onSignOut={() => void logout()}
+      contacts={contacts.map(toSendContact)}
+      available={cash}
       // The photo is applied locally first and the backend call is best-effort:
       // avatar_url is capped at 2048 chars, so a real photo lives in local
       // storage until there's image hosting (see lib/avatarStore). A failed or

@@ -36,10 +36,9 @@ export default function AppChrome({
   // its title, like a pane.
   const showLockup = Boolean(active);
 
-  // Routes off the nav — Settings from the avatar, Contacts and Partners from
+  // Routes off the nav — Settings from the avatar, Partners from
   // Send — still need a title, and one that matches what the link promised.
   const OFF_NAV: Record<string, string> = {
-    '/contacts': 'Contacts',
     '/partners': 'Clear Partners',
     '/settings': 'Settings',
     '/assurance': 'Assurance',

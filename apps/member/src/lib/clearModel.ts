@@ -845,15 +845,28 @@ export interface AccelerationPlan {
 
 /** What leaving would actually cost, spelled out before anyone commits. */
 export interface AccountClosure {
-  savingsReturned: number;
+  /** Where the payout goes. */
+  payoutAccount: string;
+  savings: number;
+  cash: number;
+  /** Credit carried. Closing waits until this is zero. */
   creditToSettle: number;
-  bondsNote: string;
-  creditsForfeited: number;
+  creditsVested: number;
+  creditsVesting: number;
+  /** Credits in a whole Clear Deed, to say what the forfeited ones were worth. */
+  creditsPerDeed: number;
+  /** The member's co-op share at book value. No source yet. */
+  shareBookValue?: number;
 }
 
-/** Positive means the member is owed; negative means they owe. */
-export function closureBalance(closure: AccountClosure): number {
-  return closure.savingsReturned - closure.creditToSettle;
+/** Everything paid out on leaving: savings and cash together. */
+export function closurePayout(closure: AccountClosure): number {
+  return closure.savings + closure.cash;
+}
+
+/** Every credit is forfeited, vested or not — vesting protects against withdrawals, not leaving. */
+export function closureCreditsForfeited(closure: AccountClosure): number {
+  return closure.creditsVested + closure.creditsVesting;
 }
 
 /** A document the member has agreed to, or can read. */

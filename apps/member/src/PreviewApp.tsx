@@ -14,7 +14,6 @@ import HomePage from '@/pages/app/HomePage';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
-import ContactsPage from '@/pages/app/ContactsPage';
 import AssurancePage from '@/pages/app/AssurancePage';
 import InboxPage from '@/pages/app/InboxPage';
 import ScanPage from '@/pages/app/ScanPage';
@@ -573,7 +572,7 @@ export default function PreviewApp() {
                         <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
                         <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
                         <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
-                        <Route path="/contacts" element={<ContactsPage contacts={empty ? [] : CONTACTS} available={empty ? 0 : SEND_IN_USE.available} />} />
+                        <Route path="/contacts" element={<Navigate to="/settings/contacts" replace />} />
                         <Route path="/partners" element={<PartnersPage />} />
                         <Route
                           path="/assurance"
@@ -594,8 +593,8 @@ export default function PreviewApp() {
                         <Route path="/repay" element={<RepayPreview />} />
                         <Route path="/term-plans" element={<TermPlansPreview />} />
                         <Route path="/learn/:topic" element={<ExplainerPage />} />
-                        <Route path="/settings" element={<SettingsPage />} />
-                        <Route path="/settings/:page" element={<SettingsPage />} />
+                        <Route path="/settings" element={<SettingsPage contacts={empty ? [] : CONTACTS} available={empty ? 0 : SEND_IN_USE.available} />} />
+                        <Route path="/settings/:page" element={<SettingsPage contacts={empty ? [] : CONTACTS} available={empty ? 0 : SEND_IN_USE.available} />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </Routes>
                     </AppChrome>

@@ -945,9 +945,12 @@ export const SETTINGS: SettingsData = {
     },
   ],
   closure: {
-    savingsReturned: 3000,
-    creditToSettle: 3200,
-    bondsNote: 'Held',
-    creditsForfeited: 3000,
+    payoutAccount: 'Chase ····4471',
+    savings: 6000,
+    cash: 2109,
+    creditToSettle: 0,
+    creditsVested: 1500,
+    creditsVesting: 1500,
+    creditsPerDeed: 15000,
   },
 };

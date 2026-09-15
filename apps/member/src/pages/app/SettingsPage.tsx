@@ -25,9 +25,10 @@ import AccelerationDialog from '@/components/settings/AccelerationDialog';
 import ChangePhoneDialog from '@/components/settings/ChangePhoneDialog';
 import TrustedDevicesDialog from '@/components/settings/TrustedDevicesDialog';
 import CloseAccountDialog from '@/components/settings/CloseAccountDialog';
+import ContactsPane from '@/components/settings/ContactsPane';
 import { SETTINGS, CONTACTS } from '@/data/clearPlaceholder';
 import { useIsDesktop } from '@/lib/useIsDesktop';
-import type { SettingsData } from '@/lib/clearModel';
+import type { Contact, SettingsData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 import { SETTINGS_PAGES, settingsPageOf, type SettingsPageId, type SettingsSection } from './settingsPages';
 
@@ -48,6 +49,7 @@ const RAIL: { id: SettingsSection | 'advanced'; label: string; detail: string }[
   { id: 'membership', label: 'Membership', detail: 'Shares, votes, your co-op record' },
   { id: 'security', label: 'Security', detail: 'Passkeys, devices, recovery' },
   { id: 'notifications', label: 'Notifications', detail: 'What reaches you and how' },
+  { id: 'contacts', label: 'Contacts', detail: 'People you send to and partners you follow' },
   { id: 'linked', label: 'Linked accounts', detail: 'Banks and cards that clear your balance' },
   // Appearance returns with the dark/dusk pass; while the theme is pinned there is nothing to pick.
   ...(THEME_PINNED ? [] : [{ id: 'appearance' as const, label: 'Appearance', detail: 'Theme and display' }]),
@@ -59,8 +61,13 @@ export default function SettingsPage({
   onSavePhoto,
   onRemovePhoto,
   onSignOut,
+  contacts = CONTACTS,
+  available = 0,
 }: {
   data?: SettingsData;
+  /** The address book, and Ready to allocate for sending from it. */
+  contacts?: Contact[];
+  available?: number;
   /** Live wiring — see SettingsRoute. Absent in the preview harness. */
   onSavePhoto?: (dataUrl: string) => Promise<void> | void;
   onRemovePhoto?: () => Promise<void> | void;
@@ -245,6 +252,8 @@ export default function SettingsPage({
       </div>
     ),
 
+    contacts: <ContactsPane contacts={contacts} available={available} />,
+
     appearance: (
       <Pane label="Appearance">
         <CMain>
@@ -304,7 +313,16 @@ export default function SettingsPage({
           setCloseOpen(true);
         }}
       />
-      <CloseAccountDialog open={closeOpen} onOpenChange={setCloseOpen} />
+      <CloseAccountDialog
+        closure={data.closure}
+        handle={profile.handle}
+        open={closeOpen}
+        onOpenChange={setCloseOpen}
+        onTalk={() => {
+          setCloseOpen(false);
+          go('help');
+        }}
+      />
       {data.ballot && <BallotDialog ballot={data.ballot} open={ballotOpen} onOpenChange={setBallotOpen} />}
     </>
   );

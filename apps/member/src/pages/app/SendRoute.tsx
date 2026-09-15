@@ -77,7 +77,7 @@ export function useSendData() {
  * outright, and one without gets a claim link and an Invite action instead. That is decided by
  * whether Clear knows an address for them, which is exactly what the saved record holds.
  */
-function toSendContact(contact: SavedContact): Contact {
+export function toSendContact(contact: SavedContact): Contact {
   return {
     id: contact.id,
     name: contact.name,

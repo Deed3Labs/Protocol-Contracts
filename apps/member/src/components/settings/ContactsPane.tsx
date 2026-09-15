@@ -22,11 +22,15 @@ const SORTS: { id: Sort; label: string }[] = [
 ];
 
 /**
- * Contacts — the full list behind Send's Contacts cell. The control bar is page chrome above the
- * slab, the same filter and sort pair as the bonds you own on Earn. A row opens Send; sending to
- * someone who is not a member is the same modal with escrow in its consequences.
+ * Contacts — people you send to and partners you follow. A Settings pane, between Notifications and
+ * Linked accounts: people, then institutions. Send's Manage and See all come here rather than to a
+ * page of its own.
+ *
+ * The control bar sits above the slab, the same filter and sort pair as the bonds you own on Earn.
+ * A row opens Send; sending to someone who is not a member is the same modal with escrow in its
+ * consequences.
  */
-export default function ContactsPage({
+export default function ContactsPane({
   contacts = CONTACTS,
   available = 0,
 }: {
@@ -45,7 +49,7 @@ export default function ContactsPage({
   const shown = sort === 'name' ? [...filtered].sort((a, b) => a.name.localeCompare(b.name)) : filtered;
 
   return (
-    <div className="lg:mx-auto lg:max-w-[560px]">
+    <>
       <div className="c-cbarline">
         <div className="c-listctl">
           <MenuButton label={FILTERS.find((f) => f.id === filter)!.label} options={FILTERS} value={filter} onChange={setFilter} />
@@ -94,6 +98,6 @@ export default function ContactsPage({
           onOpenChange={(o) => !o && setRecipient(null)}
         />
       )}
-    </div>
+    </>
   );
 }
