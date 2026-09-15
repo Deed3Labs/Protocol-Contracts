@@ -387,6 +387,18 @@
 .c-wf > div:last-child{padding-right:0}
 .c-wf .c-ord{display:block;width:auto;margin-bottom:6px}
 
+/* ================= ACTIVITY ================= */
+.c-searchfield{flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:var(--s1);height:34px;
+             padding:0 12px;border:1px solid var(--ink-28);background:var(--paper-2)}
+.c-searchfield .c-ic{color:var(--ink-50);display:flex;flex-shrink:0}
+.c-field.c-bare{border:0;background:transparent;height:auto;padding:0;flex:1;min-width:0;color:var(--ink)}
+.c-field.c-bare:focus-visible{outline:0}
+.c-searchfield:focus-within{border-color:var(--ink)}
+.c-ctlstack{display:flex;flex-direction:column;gap:var(--s1)}
+.c-ctlstack .c-searchfield{flex:none;width:100%}
+.c-listctl.c-nowrap{flex-wrap:nowrap}
+.c-listctl.c-nowrap .c-btn{min-width:0}
+
 /* ================= QUICK ACTIONS FAN ================= */
 .c-qafan{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s1)}
 .c-qaitem{height:40px;padding:0 var(--s2);display:flex;align-items:center;background:var(--paper-2);

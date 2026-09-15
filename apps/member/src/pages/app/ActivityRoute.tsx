@@ -2,6 +2,7 @@ import ActivityPage from './ActivityPage';
 import { ACTIVITY_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { toActivityRow } from '@/lib/activityMapping';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
 
 /*
  * Day-one, not in-use.
@@ -32,10 +33,11 @@ import { toActivityRow } from '@/lib/activityMapping';
  */
 export default function ActivityRoute() {
   const { items, loading } = useClearTransactions();
+  const member = useMemberProfile();
 
   const data = loading
     ? ACTIVITY_DAY_ONE
     : { ...ACTIVITY_DAY_ONE, rows: items.map(toActivityRow) };
 
-  return <ActivityPage data={data} />;
+  return <ActivityPage data={data} email={member.email || undefined} />;
 }

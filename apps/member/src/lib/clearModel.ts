@@ -317,6 +317,12 @@ export interface ActivityRow {
    * bar lives on the Card page and not on Activity.
    */
   category?: MerchantCategory;
+  /** Authorised but not settled. A state, not a source: a pending charge still came from somewhere. */
+  pending?: boolean;
+  /** The other member, for a payment sent or received. */
+  counterpartyHandle?: string;
+  /** This payment's place in a term plan. */
+  termPayment?: { index: number; count: number };
 }
 
 /** Where a flow draws the money from, and what's in it. */
@@ -367,6 +373,12 @@ export interface ActivityData {
   insideCoop?: number;
   /** Set when money has been sent to someone who isn't a member yet. */
   pendingClaim?: PendingClaim;
+  /** Payments that stayed inside the co-op this cycle. */
+  insideCoopPayments?: number;
+  /** Rows this cycle, when the list holds only the most recent of them. */
+  cycleCount?: number;
+  /** Rows on the account in all, for export. */
+  totalCount?: number;
 }
 
 /**

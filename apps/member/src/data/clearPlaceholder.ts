@@ -537,6 +537,9 @@ export const ACTIVITY_IN_USE: ActivityData = {
     { label: 'Everything else', amount: 957 },
   ],
   insideCoop: 35,
+  insideCoopPayments: 2,
+  cycleCount: 24,
+  totalCount: 112,
   pendingClaim: { amount: 40, recipient: 'Marcus T.', sentOn: 'Oct 26', expiresInDays: 12 },
   rows: [
     {
@@ -554,13 +557,11 @@ export const ACTIVITY_IN_USE: ActivityData = {
       cardLast4: '8836',
       status: 'Settled',
     },
-    { id: 't2', name: 'Sent to Marcus T.', date: 'Today · Oct 26', source: 'pending', kind: 'sent', amount: -40 },
-    { id: 't3', name: 'Payroll deposit', date: 'Oct 25', source: 'cash account', kind: 'deposit', amount: 2000 },
-    { id: 't4', name: 'Equity credits vested', date: 'Oct 25', source: 'savings', kind: 'savings', amount: 500 },
+    { id: 't6', name: 'Chipotle', date: 'Today · Oct 26', source: 'cash account', kind: 'spending', amount: -14.2, pending: true, status: 'Pending' },
     {
       id: 't5',
       name: 'Stater Bros',
-      date: 'Oct 25',
+      date: 'Today · Oct 26',
       source: 'credit',
       kind: 'spending',
       amount: -118.44,
@@ -569,19 +570,13 @@ export const ACTIVITY_IN_USE: ActivityData = {
       rate: '0.65% per cycle',
       cardLast4: '8836',
     },
-    {
-      id: 't7',
-      name: 'Diego R.',
-      date: 'Oct 25',
-      source: 'received',
-      // Money in from a member — the Deposits filter is "money arriving", not just payroll.
-      kind: 'deposit',
-      amount: 35,
-    },
+    { id: 't3', name: 'Payroll deposit', date: 'Yesterday · Oct 25', source: 'cash account', kind: 'deposit', amount: 2000 },
+    { id: 't4', name: 'Equity credits vested', date: 'Yesterday · Oct 25', source: 'savings', kind: 'savings', amount: 500 },
+    { id: 't7', name: 'Diego R.', date: 'Yesterday · Oct 25', source: 'cash', kind: 'sent', amount: -40, counterpartyHandle: '@diegor' },
     {
       id: 't8',
       name: 'Verizon',
-      date: 'Oct 24',
+      date: 'Fri · Oct 24',
       source: 'credit',
       kind: 'spending',
       amount: -85,
@@ -590,7 +585,17 @@ export const ACTIVITY_IN_USE: ActivityData = {
       rate: '0.65% per cycle',
       cardLast4: '8836',
     },
-    { id: 't6', name: 'Chipotle', date: 'Oct 23', source: 'cash', kind: 'spending', amount: -14.2 },
+    {
+      id: 't9',
+      name: "Mike's Tire",
+      date: 'Fri · Oct 24',
+      source: 'credit',
+      kind: 'spending',
+      amount: -246.75,
+      paidFromTier: 'income',
+      paidFromLabel: 'Term plan',
+      termPayment: { index: 2, count: 4 },
+    },
   ],
 };
 

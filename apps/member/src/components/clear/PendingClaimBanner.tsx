@@ -9,9 +9,12 @@ import type { PendingClaim } from '@/lib/clearModel';
 export default function PendingClaimBanner({
   claim,
   onRemind,
+  showSent,
 }: {
   claim: PendingClaim;
   onRemind?: () => void;
+  /** Activity dates the send; Send says why it is waiting. */
+  showSent?: boolean;
 }) {
   return (
     <Panel>
@@ -23,7 +26,9 @@ export default function PendingClaimBanner({
                 <p className="text-sec">
                   {money(claim.amount, { cents: true })} waiting for {claim.recipient} to claim
                 </p>
-                <p className="c-det mt-[3px]">Not a member yet &middot; expires in {claim.expiresInDays} days</p>
+                <p className="c-det mt-[3px]">
+                  {showSent ? `Sent ${claim.sentOn}` : 'Not a member yet'} &middot; expires in {claim.expiresInDays} days
+                </p>
               </div>
               <Btn onClick={onRemind}>Remind</Btn>
             </Line>

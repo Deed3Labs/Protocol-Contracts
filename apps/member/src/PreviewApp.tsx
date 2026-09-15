@@ -570,7 +570,7 @@ export default function PreviewApp() {
                         <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
                         <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
                         <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
-                        <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
+                        <Route path="/activity" element={<ActivityPage key={String(empty)} data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} email="kai@example.com" />} />
                         <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
                         <Route path="/contacts" element={<Navigate to="/settings/contacts" replace />} />
                         <Route path="/partners" element={<PartnersPage />} />

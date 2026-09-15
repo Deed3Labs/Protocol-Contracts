@@ -288,3 +288,22 @@ export function ContactlessIcon({ size = 16, strokeWidth = 1.9, ...props }: Icon
     </svg>
   );
 }
+
+/** Search. */
+export function SearchIcon({ size = 16, strokeWidth = 1.9, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+/** Filters. */
+export function FilterIcon({ size = 14, strokeWidth = 1.9, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M3 5h18l-7 8v6l-4 2v-8z" />
+    </svg>
+  );
+}
