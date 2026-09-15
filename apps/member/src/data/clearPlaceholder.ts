@@ -687,7 +687,7 @@ export const CONTACTS: Contact[] = [
 ];
 
 export const PARTNERS: Partner[] = [
-  { id: 'b1', name: 'TinyBox Systems', initials: 'TB', category: 'Modular homes', city: 'Redlands', credit: true },
+  { id: 'b1', name: 'TinyBox Systems', initials: 'TB', category: 'Modular homes', city: 'Redlands', credit: true, splitCap: 850, referredBy: 'A member, Mar 2026' },
   { id: 'b2', name: 'Vega Electric', initials: 'VE', category: 'Trades', city: 'Redlands', credit: true },
   { id: 'b3', name: 'Rincon Coffee', initials: 'RC', category: 'Food and drink', city: 'Riverside' },
   { id: 'b4', name: 'Highland Supply', initials: 'HS', category: 'Materials', city: 'Highland', credit: true },
@@ -698,6 +698,7 @@ export const PARTNERS: Partner[] = [
     initials: 'CP',
     category: 'Trades',
     city: 'San Bernardino',
+    credit: true,
   },
 ];
 
@@ -705,8 +706,9 @@ export const PARTNERS_DATA: PartnersData = {
   partners: PARTNERS,
   count: 14,
   region: 'the Inland Empire',
-  radiusNote: 'Partners shown are across the Inland Empire.',
-  radiusShort: 'Across the Inland Empire.',
+  near: 'Redlands',
+  radiusMiles: 20,
+  referrals: 0,
 };
 
 export const SEND_IN_USE: SendData = {

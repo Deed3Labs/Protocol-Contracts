@@ -36,7 +36,7 @@ export default function PartnerRows({
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sec">{partner.name}</span>
-              <span className="c-det mt-[2px] block truncate">
+              <span className="c-det mt-[2px] block">
                 {partner.category} &middot; {partner.city}
               </span>
             </span>

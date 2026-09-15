@@ -399,6 +399,12 @@
 .c-listctl.c-nowrap{flex-wrap:nowrap}
 .c-listctl.c-nowrap .c-btn{min-width:0}
 
+/* ================= PARTNERS ================= */
+.c-cell.c-tall{grid-row:span 2}
+.c-mapbox{aspect-ratio:16/10;background:var(--paper-2);border:1px solid var(--ink-28);
+        display:flex;align-items:center;justify-content:center;
+        font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;color:var(--ink-50);text-transform:uppercase}
+
 /* ================= QUICK ACTIONS FAN ================= */
 .c-qafan{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s1)}
 .c-qaitem{height:40px;padding:0 var(--s2);display:flex;align-items:center;background:var(--paper-2);

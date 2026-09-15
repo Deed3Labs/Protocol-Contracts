@@ -1,28 +1,38 @@
 import { useState } from 'react';
-import { Store } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import Card from '@/components/clear/Card';
-import FilterChips from '@/components/clear/FilterChips';
+import { Link, useNavigate } from 'react-router-dom';
+import { Btn, CBar, CFoot, CHead, CMain, Cell, Line, SecHead } from '@/components/clear/brand/anatomy';
+import { BackIcon, ChevronIcon, SearchIcon } from '@/components/clear/brand/icons';
+import MenuButton from '@/components/clear/brand/MenuButton';
 import PartnerRows from '@/components/clear/PartnerRows';
+import PartnerSheet from '@/components/clear/PartnerSheet';
 import { PARTNERS_DATA } from '@/data/clearPlaceholder';
-import { partnerCategories, type PartnersData } from '@/lib/clearModel';
+import { useIsDesktop } from '@/lib/useIsDesktop';
+import { partnerCategories, type Partner, type PartnersData } from '@/lib/clearModel';
+import { cn } from '@/lib/utils';
+
+/** How many partners the list opens with. */
+const SHORTLIST = 6;
 
 /**
- * Clear Partners — design spec §7. Businesses that take Clear Pay.
+ * Clear Partners — the directory Send's See all opens. A pane, not a modal, because it is a place.
  *
- * Reached from Send rather than the tab bar: it's a directory you consult when
- * you're about to pay someone, not a place to sit. The line under the title is
- * the whole argument for the page — a partner is paid instantly with no
- * processing fee, and the money stays inside the co-op.
+ * The list keeps the same row as Contacts and the same control bar as every other growing list, so
+ * the only page-specific parts are the map and the referral note — and the referral note is the one
+ * that matters, because members refer most partners. On desktop the list spans both rows of the
+ * slab, beside the two short cells.
  */
 export default function PartnersPage({ data = PARTNERS_DATA }: { data?: PartnersData }) {
+  const navigate = useNavigate();
+  const desktop = useIsDesktop();
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('all');
-  const categories = partnerCategories(data.partners);
+  const [alphabetical, setAlphabetical] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  const [selected, setSelected] = useState<Partner | null>(null);
 
+  const categories = partnerCategories(data.partners).map((c) => (c.id === 'all' ? { ...c, label: 'All categories' } : c));
   const term = query.trim().toLowerCase();
-  const partners = data.partners.filter(
+  const matching = data.partners.filter(
     (p) =>
       (category === 'all' || p.category === category) &&
       (term === '' ||
@@ -30,97 +40,152 @@ export default function PartnersPage({ data = PARTNERS_DATA }: { data?: Partners
         p.category.toLowerCase().includes(term) ||
         p.city.toLowerCase().includes(term)),
   );
+  // Nearest is the order the directory arrives in; there is no distance to sort by yet.
+  const ordered = alphabetical ? [...matching].sort((a, b) => a.name.localeCompare(b.name)) : matching;
+  const shown = showAll ? ordered : ordered.slice(0, SHORTLIST);
+  const narrowed = term !== '' || category !== 'all';
+  const total = narrowed ? matching.length : data.count;
 
-  const list = (
-    <PartnerRows
-      partners={partners}
-      emptyMessage={
-        term || category !== 'all'
-          ? 'No partners match — try another category.'
-          : 'No partners near you yet.'
-      }
-    />
+  const search = (
+    <label className="c-searchfield">
+      <span className="c-ic">
+        <SearchIcon />
+      </span>
+      <input
+        className="c-field c-bare"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search partners"
+        aria-label="Search partners"
+      />
+    </label>
+  );
+  const buttons = (
+    <>
+      <MenuButton
+        label={categories.find((c) => c.id === category)!.label}
+        options={categories}
+        value={category}
+        onChange={setCategory}
+      />
+      <Btn className="c-linkish" aria-pressed={!alphabetical} onClick={() => setAlphabetical((a) => !a)}>
+        {alphabetical ? 'A to Z' : 'Nearest'}
+      </Btn>
+    </>
   );
 
-  const map = (
-    <Card className="overflow-hidden p-0">
-      <div className="flex h-[130px] items-center justify-center bg-secondary text-xs text-muted-foreground lg:h-[150px]">
-        Map view
-      </div>
-      <p className="px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">
-        <span className="hidden lg:inline">{data.radiusNote}</span>
-        <span className="lg:hidden">{data.radiusShort}</span>
-      </p>
-    </Card>
+  const list = (
+    <Cell className={cn(desktop && 'c-tall')}>
+      <CHead>
+        <SecHead label="Clear Partners">
+          <span className="c-det">
+            {data.count} within {data.radiusMiles} miles
+          </span>
+        </SecHead>
+      </CHead>
+      <CBar>
+        {desktop ? (
+          <div className="c-listctl">
+            {search}
+            {buttons}
+          </div>
+        ) : (
+          <div className="c-ctlstack">
+            {search}
+            <div className="c-listctl c-nowrap">{buttons}</div>
+          </div>
+        )}
+      </CBar>
+      <CMain>
+        <PartnerRows
+          partners={shown}
+          onSelect={setSelected}
+          emptyMessage={narrowed ? 'No partners match. Try another category or search.' : 'No partners near you yet.'}
+        />
+      </CMain>
+      <CFoot>
+        <Line className="items-center!">
+          <span className="c-det">
+            {shown.length} of {total} shown &middot; Credit means you can split there
+          </span>
+          {ordered.length > shown.length && (
+            <button type="button" onClick={() => setShowAll(true)} className="c-det inline-flex! items-center gap-1 hover:text-ink">
+              Show all {ordered.length}
+              <ChevronIcon />
+            </button>
+          )}
+        </Line>
+      </CFoot>
+    </Cell>
+  );
+
+  const nearYou = (
+    <Cell>
+      <CHead>
+        <SecHead label="Near you">
+          <span className="c-det">{data.near}</span>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <div className="c-mapbox" role="img" aria-label="Map of partners near you, not available yet">
+          Map
+        </div>
+      </CMain>
+      <CFoot>
+        <p className="c-det">
+          Partners shown are within {data.radiusMiles} miles. Change your ZIP in Settings to look somewhere else.
+        </p>
+      </CFoot>
+    </Cell>
   );
 
   const refer = (
-    <Card>
-      <p className="mb-1.5 text-xs text-foreground-secondary">Know a business?</p>
-      <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
-        <span className="hidden lg:inline">Members refer most partners. </span>They get paid
-        instantly with no processing fee.
-      </p>
-      <Button variant="clear" size="xs" className="w-full">
-        Refer a business
-      </Button>
-    </Card>
+    <Cell>
+      <CHead>
+        <SecHead label="Know a business?">
+          <p className="c-fig c-fig-sec">{data.referrals === 0 ? 'None' : data.referrals}</p>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <p className="c-det">
+          Members refer most partners. They are paid instantly when you pay from your balance, with no processing fee
+          taken out of it.
+        </p>
+      </CMain>
+      <CFoot>
+        <Btn lg>Refer a business</Btn>
+      </CFoot>
+    </Cell>
   );
 
   return (
     <>
-      <div className="mb-1.5 hidden items-center gap-2.5 lg:flex">
-        <Store
-          aria-hidden
-          className="h-[18px] w-[18px] shrink-0 text-foreground-secondary"
-          strokeWidth={1.75}
-        />
-        <h1 className="text-[17px] font-medium lg:text-xl">Clear Partners</h1>
-      </div>
-      <p className="mb-4 text-xs text-foreground-secondary">
-        <span className="hidden lg:inline">
-          {data.count} businesses in {data.region} accept Clear Pay. Paying them keeps money inside
-          the co-op.
-        </span>
-        <span className="lg:hidden">{data.count} businesses accept Clear Pay nearby.</span>
+      {desktop && (
+        <Link to="/send" className="c-paneback mb-[6px]! w-fit">
+          <BackIcon className="text-ink-50" />
+          <span className="c-panetitle">Clear Partners</span>
+        </Link>
+      )}
+      <p className="c-det mb-s3 max-w-[66ch]">
+        {desktop
+          ? `${data.count} businesses in ${data.region} accept Clear. Paying them keeps money inside the co-op, and those marked Credit also let you split a purchase over cycles.`
+          : `${data.count} businesses accept Clear within ${data.radiusMiles} miles.`}
       </p>
 
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start lg:gap-6">
-        <div>
-          {/* Desktop keeps the field and the chips on one line; on a phone the
-              chips need the full width to scroll. */}
-          <div className="mb-3 lg:mb-4 lg:flex lg:items-center lg:gap-2">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search partners"
-              aria-label="Search partners"
-              className="h-9 min-w-0 text-xs lg:flex-1"
-            />
-            <FilterChips
-              className="mt-3 lg:mt-0 lg:shrink-0"
-              options={categories}
-              value={category}
-              onChange={setCategory}
-            />
-          </div>
-
-          {/* Mobile shows the map above the list — "which of these is near me"
-              is the first question, and it can't be answered by the rows alone.
-              The map itself is a placeholder until there's a tile source; the
-              note under it is the part that answers it either way. */}
-          <div className="mb-4 lg:hidden">{map}</div>
-
-          {list}
-
-          <div className="mt-4 lg:hidden">{refer}</div>
-        </div>
-
-        <div className="hidden flex-col gap-3 lg:flex">
-          {map}
-          {refer}
-        </div>
+      <div className={cn('c-slab', !desktop && 'c-one')}>
+        {list}
+        {nearYou}
+        {refer}
       </div>
+
+      {selected && (
+        <PartnerSheet
+          partner={selected}
+          open={selected !== null}
+          onOpenChange={(o) => !o && setSelected(null)}
+          onPay={() => navigate('/scan')}
+        />
+      )}
     </>
   );
 }

@@ -1036,7 +1036,14 @@ export interface Partner {
   city: string;
   /** Accepts split pay — "Credit means you can split there". */
   credit?: boolean;
+  /** The most a member can split here in a cycle. */
+  splitCap?: number;
+  /** Who brought them in, e.g. "A member, Mar 2026". */
+  referredBy?: string;
 }
+
+/** The split plans a Credit partner offers. */
+export const PARTNER_SPLIT_CYCLES = [2, 4, 12];
 
 export const CONTACT_ROLE_LABEL: Record<Contact['role'], string> = {
   member: 'Member',
@@ -1047,13 +1054,14 @@ export interface PartnersData {
   partners: Partner[];
   /** Total, which can exceed what's listed. */
   count: number;
-  /** Where "near you" means, e.g. "the Inland Empire". */
+  /** Where the list spans, e.g. "the Inland Empire". */
   region: string;
-  /** The scope of the list, e.g. "Partners shown are across the Inland
-   *  Empire." Names the region, not a town: the list spans counties. */
-  radiusNote: string;
-  /** The same fact at phone width. */
-  radiusShort: string;
+  /** The member's town, which "Near you" is measured from. */
+  near: string;
+  /** How far the list reaches. */
+  radiusMiles: number;
+  /** Businesses this member has referred. */
+  referrals: number;
 }
 
 /**
