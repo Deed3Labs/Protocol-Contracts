@@ -277,6 +277,9 @@ function MoveMoneyPreview() {
 function PoolMovePreview() {
   const [direction, setDirection] = useState<MoveDirection>('deposit');
   const [lent, setLent] = useState(false);
+  // The reference's short states: carrying $11,000 against $12,300, with Ready to allocate either
+  // covering the $450 gap or not.
+  const [short, setShort] = useState<'no' | 'covered' | 'capped'>('no');
 
   return (
     <div className="min-h-screen bg-background">
@@ -286,9 +289,9 @@ function PoolMovePreview() {
         destination="pool"
         direction={direction}
         onDirectionChange={setDirection}
-        cashReady={2109}
+        cashReady={short === 'capped' ? 120 : 2109}
         savingsTotal={2500}
-        savingsFree={2541}
+        savingsFree={short === 'no' ? 2541 : 2500}
         credits={0}
         creditsGoal={0}
         pool={{
@@ -297,20 +300,27 @@ function PoolMovePreview() {
           freeNow: lent ? 600 : 2541,
           utilizationBps: lent ? 7_600 : 7_400,
           limit: 12300,
-          owed: 2400,
+          owed: short === 'no' ? 2400 : 11000,
         }}
         onMove={() => {}}
       />
 
       <div className="fixed inset-x-0 bottom-0 z-[60] flex justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
-        {([['add', 'deposit', false], ['take', 'withdraw', false], ['fully lent', 'withdraw', true]] as const).map(
-          ([label, dir, isLent]) => (
+        {([
+          ['add', 'deposit', false, 'no'],
+          ['take', 'withdraw', false, 'no'],
+          ['fully lent', 'withdraw', true, 'no'],
+          ['short, covered', 'withdraw', false, 'covered'],
+          ['short, capped', 'withdraw', false, 'capped'],
+        ] as const).map(
+          ([label, dir, isLent, isShort]) => (
             <button
               key={label}
               type="button"
               onClick={() => {
                 setDirection(dir as MoveDirection);
                 setLent(isLent);
+                setShort(isShort);
               }}
               className="rounded-md border-[0.5px] border-border px-2 py-1 text-[11px] text-muted-foreground"
             >

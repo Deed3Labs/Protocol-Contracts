@@ -744,7 +744,7 @@ describe('a bond the collection would refuse', () => {
     // rather than a greyed one. The mint refuses this face, and sending a transaction that reverts
     // with nothing in it is what produced the original report.
     expect(DIALOG).toContain('const action = bondLimit && bond ? (');
-    const guarded = DIALOG.slice(DIALOG.indexOf('const action = bondLimit'), DIALOG.indexOf(') : canQueue ? ('));
+    const guarded = DIALOG.slice(DIALOG.indexOf('const action = bondLimit'), DIALOG.indexOf(') : shortfall > 0 && coverable ? ('));
     expect(guarded).not.toContain('onMove');
   });
 });
@@ -756,5 +756,32 @@ describe('the bond route icon', () => {
     const arrow = DIALOG.slice(DIALOG.indexOf('<ArrowIcon') - 120, DIALOG.indexOf('<ArrowIcon'));
     expect(arrow).toContain('className="c-swap');
     expect(DIALOG).toContain('className="c-swap">');
+  });
+});
+
+/*
+ * Brand guide (Earn): a withdrawal that would drop the limit below what the member carries is never
+ * refused — it is paired with the repayment that makes it safe, or capped at the most that is.
+ */
+describe('a withdrawal is never refused, only paired or capped', () => {
+  test('the gap is measured against what is carried', () => {
+    expect(DIALOG).toContain('Math.max(0, cents(carried - limitAfter))');
+    expect(DIALOG).toContain('const coverable = shortfall > 0 && cashReady >= shortfall;');
+  });
+
+  test('covered: repay and withdraw in one action', () => {
+    expect(DIALOG).toContain('onRepayAndMove?.(shortfall, amount)');
+    expect(DIALOG).toContain('label="Repaid first"');
+  });
+
+  test('not covered: the safe maximum, beside a way to repay', () => {
+    expect(DIALOG).toContain('onMove(safeMax)');
+    expect(DIALOG).toContain('Repay first');
+    expect(DIALOG).toContain('label="Short by"');
+  });
+
+  test('the red is used for the broken constraint and nothing else', () => {
+    expect(DIALOG).toContain("short && 'c-short'");
+    expect(DIALOG.match(/ short\b/g)?.length).toBeGreaterThan(0);
   });
 });

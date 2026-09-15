@@ -105,15 +105,18 @@ function Row({
   accent,
   gain,
   down,
+  short,
 }: {
   label: string;
   value: string;
   accent?: boolean;
   gain?: boolean;
   down?: boolean;
+  /** A broken constraint — the one line on these screens that takes absent red. */
+  short?: boolean;
 }) {
   return (
-    <div className={cn(accent && 'c-earn', gain && 'c-limit', gain && down && 'c-down')}>
+    <div className={cn(accent && 'c-earn', short && 'c-short', gain && 'c-limit', gain && down && 'c-down')}>
       <span>{label}</span>
       <span>{value}</span>
     </div>
@@ -153,6 +156,13 @@ export interface MoveMoneyProps {
   onAgain?: () => void;
   /** Retry after a failure, with the amount still on screen. */
   onRetry?: () => void;
+  /**
+   * A pool withdrawal that would drop the limit below what the member carries, where Ready to
+   * allocate can cover the gap: repay that much first, then withdraw, as one action.
+   */
+  onRepayAndMove?: (repay: number, amount: number) => void;
+  /** The same, where it cannot: the way to repaying, beside taking the safe maximum. */
+  onRepayFirst?: () => void;
   onAddMoney?: () => void;
   onAutoSave?: () => void;
 }
@@ -179,6 +189,8 @@ export default function MoveMoneyDialog({
   onAmountChange,
   onAgain,
   onRetry,
+  onRepayAndMove,
+  onRepayFirst,
   onAddMoney,
   onAutoSave,
 }: MoveMoneyProps) {
@@ -215,6 +227,22 @@ export default function MoveMoneyDialog({
   // The pool can be fully lent. Asking for more than is free is not a mistake to refuse — pay what is
   // there and queue the rest, which is what the contract's requestWithdrawal exists for.
   const canQueue = isPool && !isDeposit && over;
+
+  /*
+   * A withdrawal is never refused, only paired or capped. Where the limit it lands on would fall
+   * below what the member carries, the gap is either repaid from Ready to allocate in the same action,
+   * or, when that cannot cover it, the button offers the most that is safe. The keypad never clamps
+   * what was typed and the button is never dead.
+   */
+  const cents = (v: number) => Math.round(v * 100) / 100;
+  const limitAfter = isPool && !isDeposit && pool?.limit !== undefined ? pool.limit - (amount * pool.haircutBps) / 10_000 : null;
+  const carried = isPool && !isDeposit ? pool?.owed : undefined;
+  const shortfall = limitAfter !== null && carried !== undefined && !canQueue && amount > 0 ? Math.max(0, cents(carried - limitAfter)) : 0;
+  const coverable = shortfall > 0 && cashReady >= shortfall;
+  const safeMax =
+    pool?.limit !== undefined && carried !== undefined
+      ? Math.max(0, Math.floor(((pool.limit - carried) * 10_000) / pool.haircutBps))
+      : 0;
   const shortBy = amount - available;
   // A bond is measured against the collection's limits rather than against a balance.
   const belowMin = isBond && bond ? amount > 0 && amount < bond.minFace : false;
@@ -336,7 +364,7 @@ export default function MoveMoneyDialog({
           </Btn>
         ))}
         <Btn
-          className={cn('c-chip-q', amount === available && available > 0 && 'c-on')}
+          className={cn('c-chip-q', amount === available && available > 0 && !presets.includes(amount) && 'c-on')}
           onClick={() => changeTyped(String(available))}
         >
           {/* "All free" on a savings withdrawal — it moves everything that can move, and the word does
@@ -416,6 +444,25 @@ export default function MoveMoneyDialog({
             down
           />
         </>
+      ) : isPool && pool && shortfall > 0 && coverable ? (
+        <>
+          <Row label="Repaid first" value={`${money(shortfall, { cents: true })} from Ready to allocate`} accent />
+          <Row label="You carry" value={money(carried ?? 0, { cents: true })} />
+          <Row label="Limit after" value={money(limitAfter ?? 0, { cents: true })} />
+          <Row
+            label="Left to spend after"
+            value={money(Math.max(0, (limitAfter ?? 0) - ((carried ?? 0) - shortfall)), { cents: true })}
+            gain
+            down
+          />
+        </>
+      ) : isPool && pool && shortfall > 0 ? (
+        <>
+          <Row label="Short by" value={money(shortfall, { cents: true })} short />
+          <Row label="You carry" value={money(carried ?? 0, { cents: true })} />
+          <Row label="Ready to allocate" value={money(cashReady, { cents: true })} />
+          <Row label="Most you can take now" value={money(safeMax, { cents: true })} gain down />
+        </>
       ) : isPool && pool ? (
         <>
           {/* Taking money out is the same lines with the signs turned round. The earn row still leads,
@@ -465,6 +512,11 @@ export default function MoveMoneyDialog({
     <p className="c-det mt-s2">
       Locked until maturity, but it backs your credit line at {Math.round(bond.haircutBps / 100)}%, so you can borrow
       against it any time for 0.65% a cycle.
+    </p>
+  ) : shortfall > 0 ? (
+    <p className="c-det c-errline mt-s2">
+      {amount >= savingsFree ? 'Taking all of it' : `Taking ${money(amount, { cents: true })}`} leaves your limit{' '}
+      {money(shortfall, { cents: true })} below the {money(carried ?? 0, { cents: true })} you carry.
     </p>
   ) : isPool && !isDeposit && poolLent ? (
     <p className="c-det mt-s2">
@@ -607,6 +659,25 @@ export default function MoveMoneyDialog({
             Use {money(belowMin ? bond.minFace : bond.maxFace, { cents: true })} instead
           </Btn>
         </>
+      ) : shortfall > 0 && coverable ? (
+        <>
+          {error && <p className="c-det mt-s2 text-absent">{error}</p>}
+          <Btn primary lg className="mt-s2" disabled={busy} onClick={() => onRepayAndMove?.(shortfall, amount)}>
+            {busy
+              ? 'Moving…'
+              : `Repay ${money(shortfall, { cents: true })} and withdraw ${money(amount, { cents: true })}`}
+          </Btn>
+        </>
+      ) : shortfall > 0 ? (
+        <>
+          {error && <p className="c-det mt-s2 text-absent">{error}</p>}
+          <div className="c-pair mt-s2">
+            <Btn primary disabled={busy || safeMax <= 0} onClick={() => onMove(safeMax)}>
+              Take {money(safeMax, { cents: true })}
+            </Btn>
+            <Btn onClick={onRepayFirst}>Repay first</Btn>
+          </div>
+        </>
       ) : canQueue ? (
         <>
           {error && <p className="c-det mt-s2 text-absent">{error}</p>}
@@ -664,17 +735,20 @@ export default function MoveMoneyDialog({
         </div>
       </div>
     );
-    // Whether the limit this withdrawal lands on still clears what the member carries.
-    const limitLandsAt = isPool && !isDeposit && pool?.limit !== undefined ? pool.limit - (amount * pool.haircutBps) / 10_000 : null;
-    const carryNote = limitLandsAt !== null && pool?.owed !== undefined && !canQueue && (
-      <div className="c-footnote">
-        <p>
-          {limitLandsAt >= pool.owed
-            ? `Still above the ${money(pool.owed, { cents: true })} you carry.`
-            : `${money(pool.owed - limitLandsAt, { cents: true })} below the ${money(pool.owed, { cents: true })} you carry.`}
-        </p>
-      </div>
-    );
+    // Whether the limit this withdrawal lands on still clears what the member carries — and when it
+    // does not, why the button below is paired or capped.
+    const carryNote =
+      limitAfter !== null && carried !== undefined && !canQueue ? (
+        <div className="c-footnote">
+          <p>
+            {shortfall === 0
+              ? `Still above the ${money(carried, { cents: true })} you carry.`
+              : coverable
+                ? `Repaying ${money(shortfall, { cents: true })} first keeps your limit level with what you carry. It comes out of Ready to allocate, and nothing leaves Clear.`
+                : `${money(safeMax, { cents: true })} is the most you can take without dropping below what you carry. Clear some of the ${money(carried, { cents: true })} and the rest frees up.`}
+          </p>
+        </div>
+      ) : null;
     footer = (
       <>
         {summaryRows()}

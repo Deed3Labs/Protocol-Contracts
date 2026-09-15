@@ -62,11 +62,13 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
   const dayOne = creditLimit(data.credit) === 0 && savingsTotal(data.savings) === 0 && data.cash === 0;
   const boost = addableTier(data.credit);
 
-  // Deep links: add money from the nav's quick actions, the limit breakdown from a bond on Earn.
+  // Deep links: add money from the nav's quick actions, the limit breakdown from a bond on Earn, and
+  // repaying from a pool withdrawal that would leave the limit short.
   useEffect(() => {
     const action = params.get('do');
     if (action === 'add-money') setAddMoneyOpen(true);
     else if (action === 'limit-breakdown') setBreakdownOpen(true);
+    else if (action === 'repay') setRepayOpen(true);
     else return;
     params.delete('do');
     setParams(params, { replace: true });

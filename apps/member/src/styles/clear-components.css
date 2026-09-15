@@ -249,6 +249,11 @@
 .c-conseq .c-limit{border-top:1px solid var(--ink-13);margin-top:var(--s1);padding-top:var(--s1)}
 .c-conseq .c-limit span:last-child{color:var(--settled);font-weight:600}
 .c-conseq .c-limit.c-down span:last-child{color:var(--ink)}
+/* Absent red, once and for the right thing: a limit that would fall below the balance is a broken
+   constraint, not a discouraged decision. */
+.c-conseq .c-short span{color:var(--absent)}
+.c-conseq .c-short span:last-child{font-weight:600}
+.c-errline{color:var(--absent)}
 .c-mcols{display:grid;grid-template-columns:minmax(0,1fr) 216px;gap:var(--s3);align-items:start}
 .c-mhero{text-align:center;padding:var(--s3) 0}
 .c-paytoday{font-size:var(--t-sec);color:var(--live);margin:6px 0 0}
