@@ -170,3 +170,51 @@ export function SignOutIcon({ size = 17, strokeWidth = 1.75, ...props }: IconPro
     </svg>
   );
 }
+
+/** The route's two-way swap: sits on the seam between the legs. */
+export function SwapIcon({ size = 13, strokeWidth = 2, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M4 7h16M20 7l-3-3M20 17H4M4 17l3 3" />
+    </svg>
+  );
+}
+
+/** One way only — a bond cannot go back to cash before maturity. */
+export function ArrowIcon({ size = 14, strokeWidth = 2.2, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M4 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
+  );
+}
+
+/** The keypad's delete key, drawn rather than a Unicode glyph. */
+export function BackspaceIcon({ size = 19, strokeWidth = 1.8, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M20 5H9l-6 7 6 7h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z" />
+      <path d="m16 9-5 6M11 9l5 6" />
+    </svg>
+  );
+}
+
+/** The tick, without a circle. */
+export function TickIcon({ size = 13, strokeWidth = 3, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+/** The failure mark — deliberately not a red cross: the member's money is still theirs. */
+export function AlertIcon({ size = 30, strokeWidth = 2, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M12 8v5M12 16.5v.01" />
+      <circle cx="12" cy="12" r="9" />
+    </svg>
+  );
+}

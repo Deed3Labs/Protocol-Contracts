@@ -1,7 +1,9 @@
-import { Delete } from 'lucide-react';
+import { BackspaceIcon } from './brand/icons';
+import { cn } from '@/lib/utils';
 
 /**
- * The digit pad for amount entry — design spec, "Move money".
+ * The digit pad for amount entry — the guide's `.keypad`: cells on a 1px seam, the slab idea at
+ * small scale, with the point and delete keys in ink-50.
  *
  * A pad rather than a text input because these surfaces are thumb-first and the amount is the only
  * thing being typed. It also removes a class of problem a numeric text field has on mobile: no
@@ -17,12 +19,14 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'] as c
 export default function Keypad({
   onKey,
   disabled = false,
+  className,
 }: {
   onKey: (key: string) => void;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
-    <div className="grid grid-cols-3 gap-1">
+    <div className={cn('c-keypad', className)}>
       {KEYS.map((key) => (
         <button
           key={key}
@@ -30,9 +34,9 @@ export default function Keypad({
           disabled={disabled}
           onClick={() => onKey(key)}
           aria-label={key === 'del' ? 'Delete' : key}
-          className="flex h-12 items-center justify-center rounded-[10px] bg-secondary/50 text-[17px] tabular-nums transition-colors hover:bg-secondary active:bg-secondary/80 disabled:opacity-40"
+          className={cn((key === '.' || key === 'del') && 'c-fn')}
         >
-          {key === 'del' ? <Delete className="h-[18px] w-[18px]" /> : key}
+          {key === 'del' ? <BackspaceIcon /> : key}
         </button>
       ))}
     </div>

@@ -255,6 +255,7 @@ export default function ConnectedBuyBond({
         // limit it has not read.
         minFace: faceLimits?.min ?? 0,
         maxFace: faceLimits?.max ?? Number.MAX_SAFE_INTEGER,
+        heldBefore: data.bonds.length,
       }}
       busy={busy}
       error={error}

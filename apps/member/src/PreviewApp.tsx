@@ -228,7 +228,7 @@ function MoveMoneyPreview() {
         credits={1500}
         creditsGoal={15000}
         reachesGoalBy="Jan 2028"
-        goalShift="2 months later"
+        goalShift="2 later"
         progress={progress}
         onMove={() => {}}
       />

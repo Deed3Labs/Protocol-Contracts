@@ -85,7 +85,8 @@ describe('one component, two directions', () => {
   test('the cost of withdrawing is stated, not moralised', () => {
     // Three facts and no scare copy. A member taking out their own money is exercising the thing
     // that makes this an equity account rather than a lock-up.
-    expect(DIALOG).toContain('Vested credits stay. Only the credits this money was still earning are given up.');
+    // The brand-guide reference turned the vesting sentence into a consequence line of its own.
+    expect(DIALOG).toContain('label="Vested credits" value="Keep them"');
     expect(DIALOG).toContain('Credits given up');
     expect(DIALOG).toContain('Your credit limit drops by');
     // No confirmation gate in front of it — asserted on the rendered strings, not the file, so a
@@ -226,24 +227,25 @@ describe('never block the keypad', () => {
 });
 
 describe('withdrawing is stated, not warned about', () => {
-  test('one summary box, not a tinted one and a bare list', () => {
-    // Colour does what a second container was doing: the earn row is tinted, the credit-limit
-    // footer is green and divided, and everything sits in one bordered box.
+  test('the summary is the footer, not a box inside the modal', () => {
+    // Brand guide: the consequences live in the modal's footer, so the footer rule and the sheet edge
+    // contain them. The earn row takes the cobalt, the credit-limit line closes below a rule — green
+    // when it rises, ink when it falls.
     expect(DIALOG).toContain('const summaryRows = (past = false) => (');
-    expect(DIALOG).toContain("gain && 'mt-2 border-t-[0.5px] border-border pt-2'");
-    expect(DIALOG).toContain("accent && 'text-tier-boost-fg'");
+    expect(DIALOG).toContain("gain && 'c-limit'");
+    expect(DIALOG).toContain("gain && down && 'c-down'");
+    expect(DIALOG).toContain("accent && 'c-earn'");
   });
 
-  test('the vesting note survives the restructure', () => {
-    // The update that introduced the single summary draws only deposits. That is not evidence a
-    // withdrawal should say less.
-    expect(DIALOG).toContain('const vestingNote =');
-    expect(DIALOG).toContain('Vested credits stay.');
+  test('withdrawing still says vested credits are safe', () => {
+    // The reference moved it from a sentence to a line; the fact survives either way.
+    expect(DIALOG).toContain('Vested credits');
+    expect(DIALOG).toContain('Keep them');
   });
 
-  test('each direction keeps its own closing line', () => {
+  test('a deposit keeps its closing line', () => {
+    // The reference draws it under the deposit's button and nothing under the withdrawal's.
     expect(DIALOG).toContain('Instant. You can move it back any time.');
-    expect(DIALOG).toContain('Instant. Move it back whenever you like.');
   });
 });
 
@@ -538,15 +540,15 @@ describe('the bond is the third destination, not a third modal', () => {
 
   test('the route shows a direction, not a control', () => {
     // A two-headed swap would promise a reversal the product cannot do before maturity.
-    expect(DIALOG).toContain('<ArrowRight');
-    expect(DIALOG).toContain('{isBond ? (');
-    const bondArrow = DIALOG.slice(DIALOG.indexOf('{isBond ? (\n        /*'), DIALOG.indexOf('<button\n          type="button"\n          onClick={swap}'));
-    expect(bondArrow).not.toContain('onClick');
+    expect(DIALOG).toContain('<ArrowIcon');
+    const bondArrow = DIALOG.slice(DIALOG.indexOf('<ArrowIcon') - 200, DIALOG.indexOf('<SwapIcon'));
+    expect(bondArrow).toContain('aria-hidden');
+    expect(bondArrow.slice(0, bondArrow.indexOf('</span>'))).not.toContain('onClick');
   });
 
   test('the To leg carries a date, because a bond has no balance yet', () => {
-    expect(DIALOG).toContain('note={`Matures ${bond.maturesShort}`}');
-    expect(DIALOG).toContain('balance === undefined ? note');
+    // Brand guide: the leg shows the maturity date itself, e.g. "Aug 25, 2028".
+    expect(DIALOG).toContain('<Leg label="To" name="BurnerBond" balance={bond.maturesLong} />');
   });
 
   test('yield is one line, rate and dollars together', () => {
@@ -562,7 +564,9 @@ describe('the bond is the third destination, not a third modal', () => {
 
   test('the lock note is context, so desktop moves it off the read', () => {
     expect(DIALOG).toContain('const lockNote =');
-    expect(DIALOG).toContain('<div className="sm:hidden">{lockNote}</div>');
+    // Under the keypad in both layouts: the pad's column on desktop, below it on a phone.
+    expect(DIALOG).toContain('{pad}\n            {lockNote}');
+    expect(DIALOG).toContain('{pad}\n          {lockNote}');
   });
 });
 
@@ -634,10 +638,12 @@ describe('done repeats what was promised, past tense', () => {
   });
 
   test('and the bond leads with the gain, not the payment', () => {
-    // The member already knows what left their account — they confirmed it. What they bought is
-    // the difference and a date.
-    expect(DIALOG).toContain("past ? 'You gain' : 'You get at maturity'");
-    expect(DIALOG).toContain('past ? Math.max(0, amount - bond.priceToday) : amount');
+    // The member already knows what left their account — they confirmed it. The brand-guide done
+    // screen leads with the yield, then the face value, the date and how many bonds they now hold.
+    const done = DIALOG.slice(DIALOG.indexOf('isBond && bond ? (\n        past ? ('), DIALOG.indexOf(') : (\n          <>\n            <Row label="You pay today"'));
+    expect(done.indexOf('label="Yield"')).toBeLessThan(done.indexOf('label="Face value"'));
+    expect(done).toContain('label="Bonds held"');
+    expect(done).not.toContain('You pay today');
   });
 
   test('the next move is offered where somebody is inclined to make one', () => {
@@ -654,7 +660,7 @@ describe('a failure answers the only question that matters', () => {
   test('the steps stay and show the reversal', () => {
     // Somebody who watched money leave needs to watch it come back, not be told it never left.
     expect(DIALOG).toContain("state: 'done' as const }");
-    expect(DIALOG).toContain('Returned — ${progress.failureNote');
+    expect(DIALOG).toContain('Returned, ${progress.failureNote');
   });
 
   test('the reason is short enough for one line', () => {
@@ -746,8 +752,8 @@ describe('the bond route icon', () => {
   test('matches the swap it sits in place of', () => {
     // Same circle, same position, same background — only the glyph differs. Two heads means you
     // can flip it; one head means you cannot.
-    const arrow = DIALOG.slice(DIALOG.indexOf('{isBond ? ('), DIALOG.indexOf('<ArrowRight'));
-    expect(arrow).toContain('bg-background ring-4 ring-background');
-    expect(arrow).not.toContain('bg-secondary');
+    const arrow = DIALOG.slice(DIALOG.indexOf('<ArrowIcon') - 120, DIALOG.indexOf('<ArrowIcon'));
+    expect(arrow).toContain('className="c-swap');
+    expect(DIALOG).toContain('className="c-swap">');
   });
 });

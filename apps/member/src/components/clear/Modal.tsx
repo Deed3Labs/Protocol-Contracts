@@ -47,6 +47,7 @@ export default function Modal({
   open,
   onOpenChange,
   title,
+  titleHidden,
   description,
   onBack,
   children,
@@ -57,6 +58,8 @@ export default function Modal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  /** Keep the title for screen readers but leave the header visually empty (a done screen). */
+  titleHidden?: boolean;
   /** Screen-reader only context, when the title alone isn't enough. */
   description?: string;
   onBack?: () => void;
@@ -78,7 +81,9 @@ export default function Modal({
                 <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
               </button>
             )}
-            <span className="c-mtitle truncate">{title}</span>
+            <span className="c-mtitle truncate" aria-hidden={titleHidden}>
+              {titleHidden ? '\u00a0' : title}
+            </span>
           </span>
           {!onBack && (
             <button type="button" aria-label="Close" onClick={() => onOpenChange(false)} className="c-mclose">

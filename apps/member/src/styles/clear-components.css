@@ -154,6 +154,11 @@
    caret, which is focus enough. NOT FROM THE GUIDE: flagged for review. */
 .c-text :focus-visible{box-shadow:none;outline:1px solid var(--ink);outline-offset:2px}
 .c-text .c-bigamt:focus-visible{outline:none}
+/* A modal or menu surface takes focus when it opens (see Modal). The app's base ring sets Tailwind's
+   ring variables, and any shadow utility on the surface rebuilds box-shadow from them — so clearing
+   box-shadow alone loses to the utility layer. Zero the variables instead. */
+[role=dialog]:focus-visible,[data-radix-popper-content-wrapper] > :focus-visible{
+  --tw-ring-shadow:0 0 #0000;--tw-ring-offset-shadow:0 0 #0000;box-shadow:none;outline:none}
 .c-mtitle{font-size:var(--t-body);font-weight:600}
 .c-mclose{color:var(--ink-50);cursor:pointer;display:flex}
 
@@ -176,6 +181,52 @@
 .c-conseq .c-limit{border-top:1px solid var(--ink-13);margin-top:var(--s1);padding-top:var(--s1)}
 .c-conseq .c-limit span:last-child{color:var(--settled);font-weight:600}
 .c-conseq .c-limit.c-down span:last-child{color:var(--ink)}
+.c-mcols{display:grid;grid-template-columns:minmax(0,1fr) 216px;gap:var(--s3);align-items:start}
+.c-mhero{text-align:center;padding:var(--s3) 0}
+.c-paytoday{font-size:var(--t-sec);color:var(--live);margin:6px 0 0}
+
+/* route — two legs on a shared seam, the control sitting on it. nth-child, not last-child: the swap
+   is appended after both legs, so :last-child would match the swap and leave the To leg unpadded. */
+.c-route{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1px;background:var(--seam);
+       border:1px solid var(--seam);position:relative;margin-top:var(--s2)}
+.c-route .c-leg{background:var(--paper-2);padding:var(--s2);min-width:0}
+.c-route > .c-leg:nth-child(1){padding-right:25px}
+.c-route > .c-leg:nth-child(2){padding-left:25px}
+.c-route .c-nm{font-size:var(--t-sec);margin:6px 0 0;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-route .c-bal{font-size:var(--t-detail);color:var(--ink-50);margin:2px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-swap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:28px;height:28px;
+      border-radius:var(--radius-pill);background:var(--paper-2);border:1px solid var(--seam);
+      box-shadow:0 0 0 3px var(--paper-2);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
+
+/* keypad — the slab idea at small scale */
+.c-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--seam);
+        border:1px solid var(--seam);margin-top:var(--s2)}
+.c-keypad > *{background:var(--paper-2);padding:13px 0;text-align:center;font-family:var(--font-text);
+            font-size:19px;font-weight:500;cursor:pointer;user-select:none;display:flex;
+            align-items:center;justify-content:center;font-variant-numeric:tabular-nums;color:var(--ink);border:0}
+.c-keypad .c-fn{color:var(--ink-50)}
+.c-keypad > :disabled{cursor:default;opacity:.45}
+
+/* named steps */
+.c-steps{margin-top:var(--s3)}
+.c-steps > div{display:flex;align-items:center;gap:10px;font-size:var(--t-sec);line-height:2.1;color:var(--ink-50)}
+.c-steps > div.c-ok{color:var(--ink-70)}
+.c-steps > div.c-on{color:var(--ink);font-weight:500}
+.c-marker{width:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.c-marker .c-core{width:7px;height:7px;border-radius:50%;background:currentColor;
+              box-shadow:0 0 6px 1px color-mix(in srgb, currentColor 55%, transparent)}
+.c-pend{width:6px;height:6px;border-radius:50%;background:var(--ink-28);display:block}
+
+/* ================= SPLIT PAY ================= */
+/* segment bars — one block per payment. A count made visible, not a ratio. */
+.c-segs{display:flex;gap:4px;height:9px;margin-top:var(--s2)}
+.c-segs > div{flex:1;background:var(--ink);min-width:0}
+.c-segcap{font-size:var(--t-sec);color:var(--ink-70);margin:var(--s1) 0 0}
+.c-balrow{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
+.c-balrow .c-nm{font-size:var(--t-sec);color:var(--ink-70);margin:0}
+.c-conseq .c-total{border-top:1px solid var(--ink-13);margin-top:var(--s1);padding-top:var(--s1)}
+.c-conseq .c-total span{color:var(--live)}
+.c-conseq .c-total span:last-child{font-weight:600}
 .c-footnote{border-top:1px solid var(--ink-13);margin-top:var(--s2);padding-top:var(--s2)}
 .c-footnote p{margin:0;font-size:var(--t-detail);color:var(--ink-50);line-height:1.6}
 

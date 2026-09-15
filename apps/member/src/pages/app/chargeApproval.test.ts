@@ -150,7 +150,9 @@ describe('what the member is shown', () => {
   });
 
   test('the reference’s exact reassurance is on the screen', () => {
-    expect(SCREEN).toContain('Expires in 24 hours. Nothing is charged until you approve.');
+    // Brand guide: the two questions at a counter, one line each.
+    expect(SCREEN).toContain('You have not been charged yet.');
+    expect(SCREEN).toContain('Expires in 24 hours.');
     expect(SCREEN).toContain('MAKE THE NEXT ONE FREE');
   });
 });
