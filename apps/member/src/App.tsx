@@ -155,6 +155,7 @@ function App() {
                       <Route path="/learn/:topic" element={<ExplainerPage />} />
                       {/* Not a nav item — reached from the avatar menu (spec §1). */}
                       <Route path="/settings" element={<SettingsRoute />} />
+                      <Route path="/settings/:page" element={<SettingsRoute />} />
                     </Route>
 
                     {/* Archived pages (src/pages/_archive + src/pages/legacy) are kept on disk

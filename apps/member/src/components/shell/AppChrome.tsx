@@ -7,6 +7,7 @@ import MobileTabBar from './MobileTabBar';
 import { MobileActionProvider } from './MobileAction';
 import { navItems } from './navItems';
 import { capitalise } from '@/lib/clearModel';
+import { SETTINGS_PAGES, settingsPageOf } from '@/pages/app/settingsPages';
 
 /**
  * The visual shell. Deliberately free of providers and data so the preview harness can mount it
@@ -50,8 +51,14 @@ export default function AppChrome({
     '/learn/disputes': 'Dispute resolution',
   };
   const fallbackTitle = pathname.replace(/^\//, '').split('/')[0];
+  const settingsPage = settingsPageOf(pathname);
   const title =
-    active?.label ?? OFF_NAV[pathname] ?? (fallbackTitle ? capitalise(fallbackTitle) : 'Clear');
+    active?.label ??
+    (settingsPage ? SETTINGS_PAGES[settingsPage].title : undefined) ??
+    OFF_NAV[pathname] ??
+    (fallbackTitle ? capitalise(fallbackTitle) : 'Clear');
+  // A settings pane goes up one level; everything else goes back where it came from.
+  const goBack = () => (settingsPage ? navigate(SETTINGS_PAGES[settingsPage].up) : navigate(-1));
 
   return (
     <MobileActionProvider>
@@ -66,11 +73,9 @@ export default function AppChrome({
             ) : (
               <span className="c-paneback mb-0! min-w-0">
                 {/* A page reached from another page gets a way back; the tab bar is
-                    the way back from everything else, so it would be noise there.
-                    Settings is excluded because it has levels of its own and draws
-                    the back arrow for them itself — two would disagree. */}
-                {!active && pathname !== '/settings' && (
-                  <button type="button" aria-label="Back" onClick={() => navigate(-1)} className="c-mclose">
+                    the way back from everything else, so it would be noise there. */}
+                {!active && (
+                  <button type="button" aria-label="Back" onClick={goBack} className="c-mclose">
                     <BackIcon />
                   </button>
                 )}

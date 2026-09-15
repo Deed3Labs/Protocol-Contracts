@@ -17,9 +17,9 @@ import type { MemberProfile } from '@/lib/clearModel';
 
 const LINKS = [
   { label: 'Profile and membership', icon: UserIcon, to: '/settings' },
-  { label: 'Security', icon: ShieldIcon, to: '/settings' },
-  { label: 'Notifications', icon: BellIcon, to: '/settings' },
-  { label: 'Help', icon: HelpIcon, to: '/settings' },
+  { label: 'Security', icon: ShieldIcon, to: '/settings/security' },
+  { label: 'Notifications', icon: BellIcon, to: '/settings/notifications' },
+  { label: 'Help', icon: HelpIcon, to: '/settings/help' },
 ] as const;
 
 /**

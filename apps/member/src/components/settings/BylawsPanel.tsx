@@ -1,20 +1,15 @@
 import { useState } from 'react';
-import { Search } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import Card from '@/components/clear/Card';
+import { Btn, CBar, CMain } from '@/components/clear/brand/anatomy';
+import { Pane } from './SettingsKit';
 import type { Bylaws } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /**
  * The bylaws, in full.
  *
- * Long-form legal text is unreadable as a wall, so the two controls at the bottom
- * are the page: jump to an article, or search the text. Both stay pinned while
- * you read rather than scrolling away at the end.
- *
- * The version and date sit at the top because these are amendable by member vote
- * — which version you're reading is a real question here, not boilerplate.
+ * Long-form legal text is unreadable as a wall, so jumping to an article and searching the text are
+ * the page, pinned in the footer while you read. The version and date sit in the header because
+ * these are amendable by member vote — which version you're reading is a real question here.
  */
 export default function BylawsPanel({ bylaws }: { bylaws: Bylaws }) {
   const [query, setQuery] = useState('');
@@ -34,93 +29,71 @@ export default function BylawsPanel({ bylaws }: { bylaws: Bylaws }) {
     : bylaws.articles;
 
   return (
-    <>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <span className="text-xs text-foreground-secondary">
-          {bylaws.version} · Updated {bylaws.updated}
-        </span>
-        <button
-          type="button"
-          aria-label="Search the bylaws"
-          aria-pressed={searching}
-          onClick={() => setSearching((v) => !v)}
-          className="text-foreground-secondary transition-colors hover:text-foreground"
-        >
-          <Search className="h-[15px] w-[15px]" strokeWidth={1.75} />
-        </button>
-      </div>
-
+    <Pane
+      label={bylaws.version}
+      aside={<span className="c-det">Updated {bylaws.updated}</span>}
+      foot={
+        <div className="c-pair">
+          <Btn aria-pressed={jumping} onClick={() => setJumping((v) => !v)}>
+            Jump to article
+          </Btn>
+          <Btn aria-pressed={searching} onClick={() => setSearching((v) => !v)}>
+            Search
+          </Btn>
+        </div>
+      }
+    >
       {searching && (
-        <Input
-          autoFocus
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search the bylaws"
-          aria-label="Search the bylaws"
-          className="mb-3 h-9 text-xs"
-        />
+        <CBar>
+          <div className="c-searchrow">
+            <input
+              autoFocus
+              className="c-field"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search the bylaws"
+              aria-label="Search the bylaws"
+            />
+          </div>
+        </CBar>
       )}
 
       {jumping && (
-        <Card className="mb-3 px-3.5 py-3">
-          <p className="mb-1.5 text-[11px] text-foreground-secondary">Jump to article</p>
-          <div className="flex flex-wrap gap-1.5">
+        <CBar>
+          <p className="c-label mb-s1">Jump to article</p>
+          <div className="flex flex-wrap gap-s1">
             {bylaws.articles.map((article) => (
-              <Button
+              <Btn
                 key={article.id}
-                variant="clear"
-                size="xs"
+                className="h-[30px]! px-[12px]! text-detail!"
                 onClick={() => {
                   setJumping(false);
-                  document
-                    .getElementById(`article-${article.id}`)
-                    ?.scrollIntoView({ block: 'start' });
+                  document.getElementById(`article-${article.id}`)?.scrollIntoView({ block: 'start' });
                 }}
               >
                 {article.title.replace(' — ', ': ')}
-              </Button>
+              </Btn>
             ))}
           </div>
-        </Card>
+        </CBar>
       )}
 
-      <div className="max-h-[420px] overflow-y-auto pr-1 text-xs leading-relaxed">
+      <CMain className="max-h-[420px] overflow-y-auto">
         {articles.length === 0 ? (
-          <p className="py-3 text-muted-foreground">Nothing in the bylaws matches that.</p>
+          <p className="c-det">Nothing in the bylaws matches that.</p>
         ) : (
           articles.map((article, i) => (
-            <div key={article.id} id={`article-${article.id}`} className={cn(i > 0 && 'mt-4')}>
-              <p className="mb-1.5 text-[13px] font-medium">{article.title}</p>
+            <div key={article.id} id={`article-${article.id}`} className={cn(i > 0 && 'mt-s3')}>
+              <p className="mb-s1 text-sec font-semibold">{article.title}</p>
               {article.clauses.map((clause) => (
-                <p key={clause.number} className="mb-2 text-foreground-secondary">
-                  <span className="text-foreground">{clause.number}</span> {clause.text}
+                <p key={clause.number} className="mb-s1 text-sec text-ink-70">
+                  <span className="text-ink">{clause.number}</span> {clause.text}
                 </p>
               ))}
             </div>
           ))
         )}
-      </div>
-
-      <div className="mt-3.5 flex gap-2">
-        <Button
-          variant="clear"
-          size="xs"
-          className="flex-1"
-          aria-pressed={jumping}
-          onClick={() => setJumping((v) => !v)}
-        >
-          Jump to article
-        </Button>
-        <Button
-          variant="clear"
-          size="xs"
-          className="flex-1"
-          aria-pressed={searching}
-          onClick={() => setSearching((v) => !v)}
-        >
-          Search
-        </Button>
-      </div>
-    </>
+      </CMain>
+    </Pane>
   );
 }

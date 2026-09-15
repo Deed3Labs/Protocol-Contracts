@@ -1,88 +1,54 @@
-import { TriangleAlert } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import Card, { CardRule } from '@/components/clear/Card';
 import Modal from '@/components/clear/Modal';
-import InfoBlock from '@/components/clear/InfoBlock';
-import { money, count, signedMoney } from '@clear/domain';
-import { closureBalance, type AccountClosure } from '@/lib/clearModel';
+import { Btn, Rows } from '@/components/clear/brand/anatomy';
+import { KvRow } from './SettingsKit';
 
 /**
- * Close account — what leaving actually costs.
+ * Close account — what leaving actually does, before the exit.
  *
- * Every figure is stated before the exit, including the one that's easiest to
- * leave out: credits are forfeited, because they're earned by staying. The
- * settlement is computed, so it can't quietly disagree with the balances the
- * rest of the app shows.
- *
- * "Talk to someone first" is the primary action and closing is the quiet one.
- * That's deliberate, and it isn't a dark pattern — closing is still one click
- * away, but a member owing money on exit should have the conversation offered.
+ * The same shape as move money: the four consequences in main, and the footer is what follows and
+ * the commit. Continue does not close anything; the confirmation is the next screen.
  */
 export default function CloseAccountDialog({
-  closure,
   open,
   onOpenChange,
+  onContinue,
 }: {
-  closure: AccountClosure;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onContinue?: () => void;
 }) {
-  const balance = closureBalance(closure);
-  const owed = balance < 0;
-
   return (
     <Modal
       open={open}
       onOpenChange={onOpenChange}
       title="Close account"
       description="What happens to your savings, credit and equity credits if you leave."
+      footer={
+        <>
+          <div className="c-footnote mt-0! border-t-0! pt-0!">
+            <p>Nothing happens until you confirm on the next screen.</p>
+          </div>
+          <Btn primary lg className="mt-s2" onClick={onContinue}>
+            Continue
+          </Btn>
+        </>
+      }
     >
-      <InfoBlock tone="neutral" className="mb-3.5 flex gap-2.5">
-        <TriangleAlert className="mt-px h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
-        <span>Leaving ends your membership. Here&rsquo;s exactly what happens.</span>
-      </InfoBlock>
-
-      <Card className="mb-3">
-        <div className="text-xs leading-[2]">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Savings returned</span>
-            <span className="tabular-nums">{money(closure.savingsReturned, { cents: true })}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Credit balance settled first</span>
-            <span className="tabular-nums">{signedMoney(-closure.creditToSettle)}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Bonds redeemed at maturity</span>
-            <span>{closure.bondsNote}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Equity credits forfeited</span>
-            <span className="tabular-nums text-foreground-secondary">
-              {count(closure.creditsForfeited)}
-            </span>
-          </div>
+      <p className="text-sec">Leaving ends your membership. Here is exactly what happens.</p>
+      <Rows className="mt-s2">
+        <div>
+          <KvRow label="Savings and cash" value="Paid out in full" />
         </div>
-
-        <CardRule className="flex items-baseline justify-between gap-3">
-          <span className="text-xs">{owed ? 'You’d owe' : 'You’d receive'}</span>
-          <span className="text-[13px] font-medium tabular-nums">
-            {money(Math.abs(balance), { cents: true })}
-          </span>
-        </CardRule>
-      </Card>
-
-      <InfoBlock className="mb-3.5">
-        Your {count(closure.creditsForfeited)} equity credits go back to the co-op. They&rsquo;re
-        earned by staying, so they don&rsquo;t come with you.
-      </InfoBlock>
-
-      <Button variant="clear" size="xs" className="mb-2 w-full">
-        Talk to someone first
-      </Button>
-      <Button variant="clear" size="xs" className="w-full text-foreground-secondary">
-        Continue closing
-      </Button>
+        <div>
+          <KvRow label="Equity credits" value="Vested credits are kept, vesting stops" />
+        </div>
+        <div>
+          <KvRow label="Credit you carry" value="Must clear first" />
+        </div>
+        <div>
+          <KvRow label="Your share of the co-op" value="Returned at book value" />
+        </div>
+      </Rows>
     </Modal>
   );
 }

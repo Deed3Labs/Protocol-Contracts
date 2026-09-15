@@ -1,54 +1,63 @@
 import { useState } from 'react';
-import { Input } from '@/components/ui/input';
-import SettingRows from '@/components/clear/SettingRows';
+import { CMain, Rows } from '@/components/clear/brand/anatomy';
+import { KvRow, Pane } from './SettingsKit';
 import type { HelpTopic } from '@/lib/clearModel';
 
 /**
  * Help — questions first, people second.
  *
- * The four questions are the ones this product actually generates, not a generic
- * FAQ: the limit, the credits, the rebalance, the home. "Get in touch" names how
- * long support takes, because an unanswered "we'll get back to you" is worse than
- * no promise at all.
+ * The questions are the ones this product actually generates, not a generic FAQ. "Message support"
+ * names how long support takes, because an unanswered "we'll get back to you" is worse than no
+ * promise at all. Not drawn in the settings reference: the pane anatomy with the existing content.
  */
-export default function HelpPanel({
-  topics,
-  onDispute,
-}: {
-  topics: HelpTopic[];
-  onDispute?: () => void;
-}) {
+export default function HelpPanel({ topics, onDispute }: { topics: HelpTopic[]; onDispute?: () => void }) {
   const [query, setQuery] = useState('');
   const term = query.trim().toLowerCase();
   const matched = term ? topics.filter((t) => t.question.toLowerCase().includes(term)) : topics;
 
   return (
     <>
-      <Input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search help"
-        aria-label="Search help"
-        className="mb-4 h-9 text-xs"
-      />
+      <div className="c-searchrow mb-s3">
+        <input
+          className="c-field"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search help"
+          aria-label="Search help"
+        />
+      </div>
 
-      <p className="mb-0.5 text-[11px] text-foreground-secondary">Common questions</p>
-      {matched.length === 0 ? (
-        <p className="py-3 text-xs text-muted-foreground">
-          Nothing matches that. Message support and someone will answer.
-        </p>
-      ) : (
-        <SettingRows rows={matched.map((t) => ({ label: t.question }))} />
-      )}
+      <Pane label="Common questions">
+        <CMain>
+          {matched.length === 0 ? (
+            <p className="c-det">Nothing matches that. Message support and someone will answer.</p>
+          ) : (
+            <Rows>
+              {matched.map((t) => (
+                <div key={t.id}>
+                  <KvRow label={t.question} onSelect={() => {}} />
+                </div>
+              ))}
+            </Rows>
+          )}
+        </CMain>
+      </Pane>
 
-      <p className="mb-0.5 mt-4 text-[11px] text-foreground-secondary">Get in touch</p>
-      <SettingRows
-        rows={[
-          { label: 'Message support', value: 'Replies in ~4 hrs' },
-          { label: 'Report a transaction' },
-          { label: 'Dispute resolution', onSelect: onDispute },
-        ]}
-      />
+      <Pane label="Get in touch" className="mt-s3">
+        <CMain>
+          <Rows>
+            <div>
+              <KvRow label="Message support" value="Replies in ~4 hrs" onSelect={() => {}} />
+            </div>
+            <div>
+              <KvRow label="Report a transaction" onSelect={() => {}} />
+            </div>
+            <div>
+              <KvRow label="Dispute resolution" onSelect={onDispute} />
+            </div>
+          </Rows>
+        </CMain>
+      </Pane>
     </>
   );
 }

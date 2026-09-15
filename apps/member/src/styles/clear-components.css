@@ -311,6 +311,16 @@
 /* stacked sections share the anatomy's rule, so a group break is never a floating label */
 .c-cmain + .c-cmain{border-top:1px solid var(--ink-13)}
 .c-mono{font-family:var(--font-mono);font-size:var(--t-detail)}
+/* The rail is a selector drawn with rules, not filled chips. */
+.c-pane{display:grid;grid-template-columns:190px minmax(0,1fr);gap:var(--s3);align-items:start}
+.c-railnav{font-size:var(--t-sec)}
+.c-railnav > a,.c-railnav > button,.c-railnav .c-sep > a{display:block;width:100%;text-align:left;padding:var(--s1) 0 var(--s1) 12px;color:var(--ink-50);
+           text-decoration:none;border-left:2px solid transparent}
+.c-railnav > a:hover,.c-railnav > button:hover,.c-railnav .c-sep > a:hover{color:var(--ink)}
+.c-railnav .c-on{color:var(--ink);font-weight:600;border-left-color:var(--ink)}
+.c-railnav .c-sep{border-top:1px solid var(--ink-13);margin:var(--s1) 0;padding-top:var(--s1)}
+.c-avatar{width:52px;height:52px;background:var(--paper-2);border:1px solid var(--ink-28);
+        display:flex;align-items:center;justify-content:center;font-weight:600;font-size:17px;flex-shrink:0;overflow:hidden}
 
 /* ================= SEND ================= */
 .c-searchrow{display:flex;gap:var(--s1);align-items:center}

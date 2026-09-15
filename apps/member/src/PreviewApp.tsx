@@ -595,6 +595,7 @@ export default function PreviewApp() {
                         <Route path="/term-plans" element={<TermPlansPreview />} />
                         <Route path="/learn/:topic" element={<ExplainerPage />} />
                         <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="/settings/:page" element={<SettingsPage />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </Routes>
                     </AppChrome>
