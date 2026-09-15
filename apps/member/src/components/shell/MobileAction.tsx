@@ -7,11 +7,12 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { LucideIcon } from 'lucide-react';
+import type { ComponentType } from 'react';
 
 export interface MobileAction {
   label: string;
-  icon: LucideIcon;
+  /** Any icon that takes a class and a stroke width — the brand icons, or lucide's. */
+  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   onSelect: () => void;
 }
 

@@ -1,22 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
 import Modal from './Modal';
-import SplitChooser from './SplitChooser';
+import { SplitConsequences, SplitControl } from './SplitChooser';
+import { Btn } from './brand/anatomy';
 import { money } from '@clear/domain';
 import type { TermPlan } from '@/lib/clearModel';
 
 /**
- * Choosing the split — design spec §4c.
+ * Change your split — opened from a plan on Term plans.
  *
- * Offered at checkout and changeable any time after, which is why it's one surface rather than a
- * checkout step: a member who took four cycles and then came into money should be able to collapse
- * it from the same place they set it.
- *
- * The three figures beneath the control are what make the choice honest. Spreading further costs
- * more, and the carry line says so in dollars as the member moves between options — no warning
- * needed, and none given. Carry accrues by time held with no fixed due date, so clearing early
- * always costs less; the footer says that outright because it's the rule the whole product turns on
- * and it isn't visible from any single option.
+ * The balance and the control are what you touch, so they are main; every figure that follows from
+ * the choice is footer, in the same place the move-money summary sits. Picking an option previews it;
+ * nothing moves until the button is pressed. A schedule that rewrote itself under the member's finger
+ * would be the wrong kind of responsive.
  */
 export default function SplitPlanDialog({
   plan,
@@ -31,9 +26,9 @@ export default function SplitPlanDialog({
   /** The splits on offer, e.g. [1, 2, 4, 12]. */
   options: number[];
   ratePerCycle: number;
-  /** When the currently chosen split finishes, e.g. "Mar 14". */
+  /** When the currently chosen split finishes. */
   doneBy: (splitInto: number) => string;
-  /** Commit the chosen split. Nothing changes until this runs — see the Save button below. */
+  /** Commit the chosen split. Nothing changes until this runs. */
   onSave?: (splitInto: number) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -46,42 +41,32 @@ export default function SplitPlanDialog({
     if (open) setSplitInto(plan.splitInto ?? 1);
   }, [open, plan.splitInto]);
 
+  const rate = `${+(ratePerCycle * 100).toFixed(2)}%`;
 
   return (
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title={plan.name}
-      description="Choose how many cycles this plan is spread over."
+      title="Change your split"
+      description={`Choose how many cycles your ${plan.name} balance is spread over.`}
+      footer={
+        <>
+          <SplitConsequences amount={amount} ratePerCycle={ratePerCycle} splitInto={splitInto} doneBy={doneBy} />
+          <div className="c-footnote">
+            <p>{rate} a cycle on what you still owe.</p>
+            <p>Clearing early always costs less. You can change this any time.</p>
+          </div>
+          <Btn primary lg className="mt-s2" disabled={splitInto === plan.splitInto} onClick={() => onSave?.(splitInto)}>
+            Use this split
+          </Btn>
+        </>
+      }
     >
-      <p className="font-display mb-3.5 text-2xl font-medium tabular-nums">
-        {money(amount, { cents: true })}
-      </p>
-
-      <SplitChooser
-        amount={amount}
-        options={options}
-        ratePerCycle={ratePerCycle}
-        rate={plan.rate}
-        splitInto={splitInto}
-        onChange={setSplitInto}
-        doneBy={doneBy}
-      />
-
-      {/* Picking an option previews it; nothing moves until this is pressed. A schedule that
-          rewrote itself under the member's finger would be the wrong kind of responsive. */}
-      <Button
-        size="sm"
-        className="mt-3.5 w-full"
-        disabled={splitInto === plan.splitInto}
-        onClick={() => onSave?.(splitInto)}
-      >
-        {splitInto === plan.splitInto ? 'No changes' : 'Save changes'}
-      </Button>
-
-      <p className="mt-2.5 text-[11px] leading-relaxed text-muted-foreground">
-        Clearing early always costs less. You can change this any time.
-      </p>
+      <div className="c-balrow">
+        <p className="c-nm">Balance at {plan.name}</p>
+        <p className="c-fig c-fig-sec">{money(amount, { cents: true })}</p>
+      </div>
+      <SplitControl amount={amount} options={options} ratePerCycle={ratePerCycle} splitInto={splitInto} onChange={setSplitInto} />
     </Modal>
   );
 }

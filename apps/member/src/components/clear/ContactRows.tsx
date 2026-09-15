@@ -1,16 +1,18 @@
-import { ArrowUpRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import Avatar from './Avatar';
+import { Btn, Line, Rows } from './brand/anatomy';
+import { ChevronIcon } from './brand/icons';
 import { contactHandle, type Contact } from '@/lib/clearModel';
-import { cn } from '@/lib/utils';
 
 /**
- * People you can pay — design spec §7. Initials avatar, name, and the handle or
- * phone number underneath, which is what actually identifies them.
+ * People you can pay — one row component for contacts and, with a category line and a chip, for
+ * partners (see PartnerRows).
  *
- * Someone who hasn't joined yet gets Invite instead of the send arrow: money sent
- * to them becomes a claim link rather than a transfer, so the honest action is to
- * get them in first.
+ * A square avatar with initials (an avatar is an image, and images are square), the name, and the
+ * handle or phone number underneath, which is what actually identifies them; a chevron, because
+ * the row opens something.
+ *
+ * `onInvite` is for surfaces that separate not-yet-members: they get Invite instead of the chevron.
+ * The Send page does not pass it, because sending to a non-member is the same modal with different
+ * consequences.
  */
 export default function ContactRows({
   contacts,
@@ -26,32 +28,31 @@ export default function ContactRows({
   className?: string;
 }) {
   if (contacts.length === 0) {
-    return <p className="py-3 text-xs text-muted-foreground">{emptyMessage}</p>;
+    return <p className="c-det">{emptyMessage}</p>;
   }
 
   return (
-    <div className={className}>
-      {contacts.map((contact, i) => {
-        const rule = i < contacts.length - 1 && 'border-b-[0.5px] border-border';
+    <Rows className={className}>
+      {contacts.map((contact) => {
+        const person = (
+          <span className="flex min-w-0 items-center gap-[11px]">
+            <span aria-hidden className="c-avatarbtn c-sm cursor-default">
+              {contact.initials}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sec">{contact.name}</span>
+              <span className="c-det mt-[2px] block truncate">{contactHandle(contact)}</span>
+            </span>
+          </span>
+        );
 
         if (contact.pending && onInvite) {
           return (
-            <div
-              key={contact.id}
-              className={cn('flex items-center justify-between gap-3 py-2 text-[13px]', rule)}
-            >
-              <span className="flex min-w-0 items-center gap-2.5">
-                <Avatar id={contact.id} initials={contact.initials} />
-                <span className="min-w-0">
-                  <span className="block truncate">{contact.name}</span>
-                  <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                    {contactHandle(contact)}
-                  </span>
-                </span>
-              </span>
-              <Button variant="clear" size="xs" onClick={() => onInvite(contact)}>
-                Invite
-              </Button>
+            <div key={contact.id}>
+              <Line className="items-center!">
+                {person}
+                <Btn onClick={() => onInvite(contact)}>Invite</Btn>
+              </Line>
             </div>
           );
         }
@@ -61,26 +62,13 @@ export default function ContactRows({
             key={contact.id}
             type="button"
             onClick={() => onSelect?.(contact)}
-            className={cn(
-              'flex w-full items-center gap-2.5 py-2 text-left text-[13px] transition-colors hover:bg-secondary/60',
-              rule,
-            )}
+            className="c-line w-full items-center! text-left"
           >
-            <Avatar id={contact.id} initials={contact.initials} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate">{contact.name}</span>
-              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                {contactHandle(contact)}
-              </span>
-            </span>
-            <ArrowUpRight
-              aria-hidden
-              className="h-4 w-4 shrink-0 text-muted-foreground"
-              strokeWidth={1.75}
-            />
+            {person}
+            <ChevronIcon size={14} strokeWidth={2} className="shrink-0 text-ink-50" />
           </button>
         );
       })}
-    </div>
+    </Rows>
   );
 }

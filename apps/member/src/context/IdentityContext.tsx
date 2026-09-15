@@ -85,6 +85,25 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The design preview's stand-in (`/?preview=1` only — never mount it in the app).
+ *
+ * Settings reads identity, and the harness renders it without AppShell. This answers what a member
+ * with no card account sees — the same mapping the real provider applies before its first read.
+ */
+export function PreviewIdentityProvider({ children }: { children: ReactNode }) {
+  const value: IdentityValue = {
+    status: toIdentityStatus(null),
+    account: null,
+    loading: false,
+    refresh: async () => {},
+    open: false,
+    openVerification: () => {},
+    closeVerification: () => {},
+  };
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
 /** The member's identity state. Throws outside the provider rather than answering "unverified". */
 export function useIdentity(): IdentityValue {
   const value = useContext(Ctx);

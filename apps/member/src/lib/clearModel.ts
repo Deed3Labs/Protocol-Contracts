@@ -43,6 +43,11 @@ export interface Cycle {
   clearsOn: string;
   /** When the limit contracts if the cycle doesn't clear, e.g. "Nov 12". */
   rebalanceBy: string;
+  /**
+   * When the member last carried nothing at a cycle's close, e.g. "Oct 1". Optional: nothing reads it
+   * from the chain yet, and the all-clear footer leaves it out rather than inventing a date.
+   */
+  lastClearedOn?: string;
 }
 
 /**
@@ -312,6 +317,12 @@ export interface ActivityRow {
    * bar lives on the Card page and not on Activity.
    */
   category?: MerchantCategory;
+  /** Authorised but not settled. A state, not a source: a pending charge still came from somewhere. */
+  pending?: boolean;
+  /** The other member, for a payment sent or received. */
+  counterpartyHandle?: string;
+  /** This payment's place in a term plan. */
+  termPayment?: { index: number; count: number };
 }
 
 /** Where a flow draws the money from, and what's in it. */
@@ -362,6 +373,12 @@ export interface ActivityData {
   insideCoop?: number;
   /** Set when money has been sent to someone who isn't a member yet. */
   pendingClaim?: PendingClaim;
+  /** Payments that stayed inside the co-op this cycle. */
+  insideCoopPayments?: number;
+  /** Rows this cycle, when the list holds only the most recent of them. */
+  cycleCount?: number;
+  /** Rows on the account in all, for export. */
+  totalCount?: number;
 }
 
 /**
@@ -582,7 +599,18 @@ export interface SavingsProjection {
   withExtra: string;
 }
 
+export type AutoSaveCadence = 'payday' | 'monthly' | 'weekly';
+
+/** Auto-save as it is set up. Absent when it isn't — which is every member until it has a backend. */
+export interface AutoSave {
+  amount: number;
+  cadence: AutoSaveCadence;
+  savedThisYear: number;
+}
+
 export interface SavingsData {
+  /** Present once auto-save is running; the modal opens in its adjust state. */
+  autoSave?: AutoSave;
   savings: Savings;
   projection: SavingsProjection;
   /** Where a deposit into savings draws from. */
@@ -656,6 +684,11 @@ export interface HeldBond {
    * value. This, not the face, is what the credit line lends against.
    */
   worthToday: number;
+  /**
+   * The fixed annual rate it was bought at. Stored at purchase, never derived later from face, paid
+   * and term: it is a disclosure figure a member was quoted, and a derivation drifts by rounding.
+   */
+  rate?: number;
 }
 
 export interface EarnData {
@@ -743,8 +776,24 @@ export function bondsBacking(data: EarnData): number {
   return toCents(bondsWorth(data.bonds) * data.bondLtv);
 }
 
+/**
+ * What the Earn positions back on the credit line together — rounded DOWN to the dollar.
+ *
+ * 95% of $6,895.00 of bonds plus 70% of the pool is $8,300.25; Home's tier and the $12,300.00 total
+ * are whole dollars, so the two pages disagreed by twenty-five cents. Down is the conservative
+ * direction for a credit limit. The per-product figures stay in cents: they are what a row states.
+ */
 export function assetBackedLimit(data: EarnData): number {
-  return poolBacking(data) + bondsBacking(data);
+  return Math.floor(poolBacking(data) + bondsBacking(data));
+}
+
+/**
+ * Earned to date, derived from the rows: pool interest plus what the bonds have appreciated
+ * (worth today less what was paid). A figure that included yield already withdrawn would be a
+ * different quantity and need a different label.
+ */
+export function earnedFromPositions(data: EarnData): number {
+  return toCents(data.pool.earned + bondsWorth(data.bonds) - bondsTotal(data.bonds));
 }
 
 /** Share of the pool lent out, 0–1. */
@@ -808,15 +857,28 @@ export interface AccelerationPlan {
 
 /** What leaving would actually cost, spelled out before anyone commits. */
 export interface AccountClosure {
-  savingsReturned: number;
+  /** Where the payout goes. */
+  payoutAccount: string;
+  savings: number;
+  cash: number;
+  /** Credit carried. Closing waits until this is zero. */
   creditToSettle: number;
-  bondsNote: string;
-  creditsForfeited: number;
+  creditsVested: number;
+  creditsVesting: number;
+  /** Credits in a whole Clear Deed, to say what the forfeited ones were worth. */
+  creditsPerDeed: number;
+  /** The member's co-op share at book value. No source yet. */
+  shareBookValue?: number;
 }
 
-/** Positive means the member is owed; negative means they owe. */
-export function closureBalance(closure: AccountClosure): number {
-  return closure.savingsReturned - closure.creditToSettle;
+/** Everything paid out on leaving: savings and cash together. */
+export function closurePayout(closure: AccountClosure): number {
+  return closure.savings + closure.cash;
+}
+
+/** Every credit is forfeited, vested or not — vesting protects against withdrawals, not leaving. */
+export function closureCreditsForfeited(closure: AccountClosure): number {
+  return closure.creditsVested + closure.creditsVesting;
 }
 
 /** A document the member has agreed to, or can read. */
@@ -972,6 +1034,8 @@ export interface Partner {
   /** e.g. "Modular homes", "Trades". */
   category: string;
   city: string;
+  /** Accepts split pay — "Credit means you can split there". */
+  credit?: boolean;
 }
 
 export const CONTACT_ROLE_LABEL: Record<Contact['role'], string> = {
@@ -1023,6 +1087,15 @@ export interface SendData {
   keptInNetwork: number;
   /** Money sent to someone who hasn't joined yet, still waiting to be claimed. */
   pendingClaim?: PendingClaim;
+  /** Ready to allocate — what a send draws from. */
+  available?: number;
+  /** Partner credit a member can split at partner shops. */
+  atPartners?: number;
+  /** How many payments made up keptInNetwork this cycle. */
+  networkPayments?: number;
+  /** The member, for the full-screen code: "Kai Moore · Member since March 2026". */
+  name?: string;
+  memberSince?: string;
 }
 
 /** Match a contact on name or handle, for the Send search field. */
@@ -1055,6 +1128,9 @@ export interface CardSummary {
   where: string;
 }
 
+/** The co-op's daily ceiling on any one card — what Max means in Adjust limits. */
+export const CARD_DAILY_CEILING = 5000;
+
 export interface CardData {
   /**
    * Every card the member holds, newest first. The first is the one on the face.
@@ -1079,6 +1155,8 @@ export interface CardData {
   period: string;
   /** What the card spent over that period. */
   periodTotal: number;
+  /** How many card transactions that period holds, when the list shown is only some of them. */
+  periodCount?: number;
   /** Which card is on screen — the same account, two ways to present it. */
   variant: 'physical' | 'virtual';
   controls: CardControl[];
@@ -1273,6 +1351,10 @@ export interface LinkedAccount {
   kind: string;
   /** Whether the limit is read from this account's flow. Not every linked account is. */
   readForLimit?: boolean;
+  /** Ownership verified at link. */
+  verified?: boolean;
+  /** When it was linked, e.g. "Mar 2026". */
+  linkedOn?: string;
 }
 
 export interface TermPlans {

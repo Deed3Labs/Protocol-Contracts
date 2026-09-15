@@ -5,40 +5,32 @@ import { cn } from '@/lib/utils';
 import { navItems } from './navItems';
 
 /**
- * Desktop top bar — design spec §1.
+ * Desktop top bar — the guide's `.topbar`.
  *
- * Wordmark left, nav right, 0.5px bottom border. Active item takes the primary
- * text color, inactive the secondary one. Hidden below `lg`, where the floating
- * pill takes over.
- *
- * `trailing` is a slot for the avatar/notifications cluster: the real menus need
- * the member/wallet providers, which the preview harness doesn't mount.
+ * Lockup left; nav, then the bell and avatar as their own group on the right, so anything added to
+ * the corner later sits with them rather than a nav-width gap away. The current page is ink at 500,
+ * the rest ink-50. One ink-28 rule underneath — structure, not content.
  */
 export default function TopNav({ trailing }: { trailing?: ReactNode }) {
   return (
-    <header className="sticky top-0 z-30 hidden bg-background/85 backdrop-blur-md lg:block">
-      <div className="mx-auto flex h-14 w-full max-w-[1280px] items-center justify-between gap-6 border-b-[0.5px] border-border px-10">
+    <header className="sticky top-0 z-30 hidden bg-paper px-s3 lg:block">
+      <div className="mx-auto flex w-full max-w-[1120px] items-center justify-between border-b border-ink-28 py-s2">
         <Wordmark />
 
-        <div className="flex items-center gap-6">
-          <nav className="flex items-center gap-4">
+        <div className="c-tbright">
+          <nav className="c-tbnav" aria-label="Main">
             {navItems.map(({ to, label, end }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={end}
-                className={({ isActive }) =>
-                  cn(
-                    'text-[13px] transition-colors hover:text-foreground',
-                    isActive ? 'text-foreground' : 'text-foreground-secondary',
-                  )
-                }
+                className={({ isActive }) => cn('hover:text-ink', isActive && 'c-on')}
               >
                 {label}
               </NavLink>
             ))}
           </nav>
-          {trailing && <div className="flex items-center gap-1.5">{trailing}</div>}
+          {trailing}
         </div>
       </div>
     </header>

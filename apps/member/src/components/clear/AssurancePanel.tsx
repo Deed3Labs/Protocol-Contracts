@@ -1,15 +1,14 @@
-import { ShieldCheck, Shield } from 'lucide-react';
-import SettingRows from './SettingRows';
+import { CFoot, CHead, CMain, Cell, Rows, SecHead } from './brand/anatomy';
+import { ChevronIcon, LockIcon, ShieldCheckIcon } from './brand/icons';
 import { assuranceStatus, isAssuranceActive, type AssuranceItem } from '@/lib/clearModel';
-import { cn } from '@/lib/utils';
 
 /**
- * What each protection covers and where it stands — design spec §5.
+ * What each protection covers and where it stands — the Assurance pane's cell.
  *
- * The summary card on Savings answers "how many do I have"; this answers "what
- * are they", so every row carries its description and either the credits it took
- * or the credits still to go. Locked ones stay legible rather than greyed to
- * nothing — they're the reason to keep saving.
+ * The summary on Savings answers "how many do I have"; this answers "what are they", so every row
+ * carries its description and either the credits it took or the credits still to go. Locked ones
+ * stay legible at 60% rather than greyed to nothing — they're the reason to keep saving. The footer
+ * is the way through to what the reserve covers.
  */
 export default function AssurancePanel({
   items,
@@ -20,56 +19,44 @@ export default function AssurancePanel({
   credits: number;
   onExplainReserve?: () => void;
 }) {
+  const activeCount = items.filter((i) => isAssuranceActive(i, credits)).length;
+
   return (
-    <>
-      <p className="mb-3.5 text-xs leading-relaxed text-foreground-secondary">
-        Protections that unlock as your credits grow. Backed by the co-op&rsquo;s assurance reserve.
-      </p>
-
-      <div>
-        {items.map((item, i) => {
-          const active = isAssuranceActive(item, credits);
-          const Icon = active ? ShieldCheck : Shield;
-
-          return (
-            <div
-              key={item.id}
-              className={cn(
-                'flex gap-2.5 py-3',
-                i < items.length - 1 && 'border-b-[0.5px] border-border',
-              )}
-            >
-              <Icon
-                aria-hidden
-                className={cn(
-                  'mt-0.5 h-4 w-4 shrink-0',
-                  active ? 'text-tier-asset' : 'text-muted-foreground',
-                )}
-                strokeWidth={1.75}
-              />
-              <div className="min-w-0">
-                <p className="text-[13px]">{item.name}</p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-                  {item.description}
-                </p>
-                <p
-                  className={cn(
-                    'mt-1 text-[11px]',
-                    active ? 'text-tier-savings-fg' : 'text-muted-foreground',
-                  )}
-                >
-                  {assuranceStatus(item, credits)}
-                </p>
+    <Cell>
+      <CHead>
+        <SecHead label="Assurance">
+          <span className="c-det">
+            {activeCount} of {items.length} active
+          </span>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <Rows>
+          {items.map((item) => {
+            const active = isAssuranceActive(item, credits);
+            return (
+              <div key={item.id}>
+                <div className="flex gap-[11px]" style={active ? undefined : { opacity: 0.6 }}>
+                  <span className={active ? 'c-t-ast shrink-0 leading-[1.4]' : 'c-muted shrink-0 leading-[1.4]'}>
+                    {active ? <ShieldCheckIcon /> : <LockIcon />}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sec">{item.name}</p>
+                    <p className="c-det mt-[3px]">{item.description}</p>
+                    <p className={active ? 'c-det c-pos mt-[5px]' : 'c-det mt-[5px]'}>{assuranceStatus(item, credits)}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <SettingRows
-        className="mt-2 border-t-[0.5px] border-border pt-1"
-        rows={[{ label: 'What the assurance reserve covers', onSelect: onExplainReserve }]}
-      />
-    </>
+            );
+          })}
+        </Rows>
+      </CMain>
+      <CFoot>
+        <button type="button" className="c-line w-full items-center! text-left" onClick={onExplainReserve}>
+          <span className="text-sec">What the assurance reserve covers</span>
+          <ChevronIcon size={14} strokeWidth={2} className="shrink-0 text-ink-50" />
+        </button>
+      </CFoot>
+    </Cell>
   );
 }

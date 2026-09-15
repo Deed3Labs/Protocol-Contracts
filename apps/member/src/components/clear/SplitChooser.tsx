@@ -1,24 +1,113 @@
-import { Button } from '@/components/ui/button';
+import { Btn } from './brand/anatomy';
 import { money } from '@clear/domain';
 import { splitQuote } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /**
- * The split control and what each option costs — design spec §4c.
+ * The split control — what you touch, so it is a modal's main: one chip per option, then one block
+ * per payment and a caption saying the same thing in words.
  *
- * Shared by the counter checkout and the plan modal on purpose. The split is chosen once at the
- * counter and changeable afterwards, and a member who set it in one place and revisited it in the
- * other should be reading the same five figures both times.
+ * The blocks are a count made visible, not a ratio: twelve blocks means twelve payments, which is why
+ * they pass where a progress bar on a split would not. The caption means the blocks are never the
+ * only signal.
+ */
+export function SplitControl({
+  amount,
+  options,
+  ratePerCycle,
+  splitInto,
+  onChange,
+}: {
+  amount: number;
+  options: number[];
+  ratePerCycle: number;
+  splitInto: number;
+  onChange: (splitInto: number) => void;
+}) {
+  const quote = splitQuote(amount, splitInto, ratePerCycle);
+
+  return (
+    <>
+      <div className="c-qc c-split">
+        {options.map((option) => (
+          <Btn
+            key={option}
+            aria-pressed={splitInto === option}
+            onClick={() => onChange(option)}
+            className={cn('c-chip-q', splitInto === option && 'c-on')}
+          >
+            {option === 1 ? 'In full' : `In ${option}`}
+          </Btn>
+        ))}
+      </div>
+      <div className="c-segs" aria-hidden>
+        {Array.from({ length: quote.splitInto }, (_, i) => (
+          <div key={i} />
+        ))}
+      </div>
+      <p className="c-segcap">
+        {quote.splitInto === 1
+          ? `One payment of ${money(quote.perCycle, { cents: true })}`
+          : `${quote.splitInto} payments of ${money(quote.perCycle, { cents: true })}`}
+      </p>
+    </>
+  );
+}
+
+/**
+ * What follows from the split — a modal's footer. Five lines, Total in cobalt, because on this
+ * screen the total is the reason you are looking.
  *
- * Those figures are what make the choice honest: spreading further costs more and the carry lines
- * say so in dollars, so no warning has to.
+ * Two carry figures, because they answer different questions: what holding it costs now, and what
+ * the whole plan costs. Either alone misleads.
+ */
+export function SplitConsequences({
+  amount,
+  ratePerCycle,
+  splitInto,
+  doneBy,
+}: {
+  amount: number;
+  ratePerCycle: number;
+  splitInto: number;
+  doneBy: (splitInto: number) => string;
+}) {
+  const quote = splitQuote(amount, splitInto, ratePerCycle);
+
+  return (
+    <div className="c-conseq">
+      <div>
+        <span>Each cycle</span>
+        <span>{money(quote.perCycle, { cents: true })}</span>
+      </div>
+      <div>
+        <span>Carry this cycle</span>
+        <span>{money(quote.carryThisCycle, { cents: true })}</span>
+      </div>
+      <div>
+        <span>Carry over the plan</span>
+        <span>{money(quote.carry, { cents: true })}</span>
+      </div>
+      <div className="c-total">
+        <span>Total</span>
+        <span>{money(quote.total, { cents: true })}</span>
+      </div>
+      <div>
+        <span>Done by</span>
+        <span>{doneBy(splitInto)}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Both halves together, for surfaces not yet on the modal shell (the counter onboarding). Shared on
+ * purpose: a member who set the split at a counter and revisits it later reads the same five figures.
  */
 export default function SplitChooser({
   amount,
   options,
   ratePerCycle,
-  /** Display rate, e.g. "2% / cycle" — heads the section rather than repeating per row. */
-  rate,
   splitInto,
   onChange,
   doneBy,
@@ -26,51 +115,17 @@ export default function SplitChooser({
   amount: number;
   options: number[];
   ratePerCycle: number;
+  /** No longer shown here: the rate is stated in the footnote of the surface around the control. */
   rate?: string;
   splitInto: number;
   onChange: (splitInto: number) => void;
   doneBy: (splitInto: number) => string;
 }) {
-  const quote = splitQuote(amount, splitInto, ratePerCycle);
-
-  const Row = ({ label, value, strong }: { label: string; value: string; strong?: boolean }) => (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-foreground-secondary">{label}</span>
-      <span className={cn('tabular-nums', strong && 'font-medium')}>{value}</span>
-    </div>
-  );
-
   return (
     <>
-      {/* The rate is stated once, with what it's charged on. Repeated per row it left open whether
-          it applied to the original amount or to the balance. */}
-      <p className="mb-2 text-[11px] uppercase tracking-[0.2px] text-muted-foreground">
-        How to clear it{rate ? ` · ${rate.replace(' / cycle', '')} a cycle on what you still owe` : ''}
-      </p>
-
-      <div className="mb-3 flex gap-1.5">
-        {options.map((option) => (
-          <Button
-            key={option}
-            variant="clear"
-            size="xs"
-            aria-pressed={splitInto === option}
-            onClick={() => onChange(option)}
-            className={cn('flex-1', splitInto === option && 'border-tier-boost text-tier-boost-fg')}
-          >
-            {option === 1 ? 'In full' : `In ${option}`}
-          </Button>
-        ))}
-      </div>
-
-      <div className="border-t-[0.5px] border-border pt-2.5 text-xs leading-[2.1]">
-        <Row label="Each cycle" value={money(quote.perCycle, { cents: true })} />
-        {/* Two carry figures, because they answer different questions: what holding it costs now,
-            and what the whole plan costs. Either alone misleads. */}
-        <Row label="Carry this cycle" value={money(quote.carryThisCycle, { cents: true })} />
-        <Row label="Carry over the whole plan" value={money(quote.carry, { cents: true })} />
-        <Row label="Total" value={money(quote.total, { cents: true })} strong />
-        <Row label="Done by" value={doneBy(splitInto)} />
+      <SplitControl amount={amount} options={options} ratePerCycle={ratePerCycle} splitInto={splitInto} onChange={onChange} />
+      <div className="mt-s2 border-t border-ink-13 pt-s2">
+        <SplitConsequences amount={amount} ratePerCycle={ratePerCycle} splitInto={splitInto} doneBy={doneBy} />
       </div>
     </>
   );

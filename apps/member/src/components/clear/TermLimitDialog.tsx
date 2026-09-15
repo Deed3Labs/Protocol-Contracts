@@ -1,140 +1,85 @@
-import { Button } from '@/components/ui/button';
 import Modal from './Modal';
+import BigAmount from './brand/BigAmount';
+import { Line, Rows, Track } from './brand/anatomy';
 import { money } from '@clear/domain';
-import {
-  bindingTermLimit,
-  termPlansPerCycle,
-  termPlansTotal,
-  type TermPlans,
-} from '@/lib/clearModel';
-import { cn } from '@/lib/utils';
-
-/** One constraint, with what it means. The binding one carries the accent. */
-function Constraint({
-  label,
-  used,
-  limit,
-  note,
-  binding,
-}: {
-  label: string;
-  used: number;
-  limit: number;
-  note: string;
-  binding?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        'rounded-[10px] border-[0.5px] px-3.5 py-[11px]',
-        binding ? 'border-tier-boost' : 'border-border',
-      )}
-    >
-      <div className="flex items-baseline justify-between gap-3">
-        <span className={cn('text-xs', binding ? 'text-tier-boost-fg' : 'text-foreground-secondary')}>
-          {label}
-        </span>
-        <span
-          className={cn('text-sm font-medium tabular-nums', binding && 'text-tier-boost-fg')}
-        >
-          {money(used, { cents: true })} of {money(limit, { cents: true })}
-        </span>
-      </div>
-      <p className="mt-1 text-[11px] text-muted-foreground">{note}</p>
-    </div>
-  );
-}
+import { activePlans, planPerCycle, termPlansPerCycle, type TermPlans } from '@/lib/clearModel';
 
 /**
- * Your term limit — design spec §4c, opened from the shelf's `Limit` cell.
+ * Term plan limit — behind Limit in the Term plans footer.
  *
- * Two constraints, and the lower one applies. **Both are shown even though only one binds**, because
- * a member who sees only the binding figure can't tell what would move it — and the two move for
- * completely different reasons: one tracks the money flowing through their accounts, the other is a
- * flat ceiling that doesn't care how much they earn.
- *
- * It leads by saying what sets the limit, because the assumption otherwise is a credit score, and
- * the whole point is that it isn't one. Nothing here is applied for.
+ * A disclosure, not a setting: what the ceiling is, what is already committed against it and to
+ * what, and what a new plan could still add. The figure comes from observed income, so the footer
+ * says so plainly rather than offering a control that would not do anything.
  */
 export default function TermLimitDialog({
   data,
-  onManageAccounts,
   open,
   onOpenChange,
 }: {
   data: TermPlans;
+  /** No longer offered: the sheet is a disclosure, and linked accounts are managed from Clears from. */
   onManageAccounts?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const binding = bindingTermLimit(data);
-  const readFrom = data.accounts.filter((a) => a.readForLimit);
+  const limit = data.perCycleLimit;
+  const committed = termPlansPerCycle(data);
+  const free = limit !== undefined ? Math.max(0, limit - committed) : undefined;
+  const parts = activePlans(data)
+    .map((p) => ({ name: p.name, perCycle: planPerCycle(p) }))
+    .filter((p): p is { name: string; perCycle: number } => p.perCycle !== undefined && p.perCycle > 0);
 
   return (
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Your term limit"
-      description="What you can schedule across term plans, and what sets it."
-    >
-      <p className="mb-3.5 text-xs leading-relaxed text-foreground-secondary">
-        Set by the income landing in your accounts and what already goes out of them — not a
-        credit score.
-      </p>
-
-      <div className="mb-3.5 space-y-2">
-        {data.perCycleLimit !== undefined && (
-          <Constraint
-            label="Payments a cycle"
-            used={termPlansPerCycle(data)}
-            limit={data.perCycleLimit}
-            note={
-              binding === 'perCycle'
-                ? 'Across every open plan. This is the one binding you now.'
-                : 'Across every open plan.'
-            }
-            binding={binding === 'perCycle'}
-          />
-        )}
-        {data.balanceLimit !== undefined && (
-          <Constraint
-            label="Total open at once"
-            used={termPlansTotal(data)}
-            limit={data.balanceLimit}
-            note={
-              binding === 'balance'
-                ? 'A ceiling regardless of income. This is the one binding you now.'
-                : 'A ceiling regardless of income.'
-            }
-            binding={binding === 'balance'}
-          />
-        )}
-      </div>
-
-      {readFrom.length > 0 && (
+      title="Term plan limit"
+      description="The most you can commit to term plans each cycle, and what is already committed."
+      footer={
         <>
-          <p className="mb-1.5 text-[11px] tracking-[0.2px] text-muted-foreground">INCOME AND OUTGOINGS READ FROM</p>
-          <div className="mb-3.5 text-xs leading-loose">
-            {readFrom.map((account) => (
-              <div key={account.id} className="flex items-baseline justify-between gap-3">
-                <span className="min-w-0 truncate text-foreground-secondary">{account.name}</span>
-                <span className="shrink-0">{account.kind}</span>
-              </div>
-            ))}
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-foreground-secondary">Your Clear balance</span>
-              <span className="shrink-0">Cash account</span>
-            </div>
-          </div>
+          <Line>
+            <span className="c-sub">Set from</span>
+            <span className="c-det">Observed income, not a credit score</span>
+          </Line>
+          <p className="c-det mt-s1">It moves when your income does. Clearing a plan early frees its share straight away.</p>
         </>
+      }
+    >
+      <p className="c-label">Most you can commit each cycle</p>
+      {limit !== undefined ? (
+        <>
+          <BigAmount amount={limit} />
+          <div className="mt-s3">
+            <Track
+              label={`${money(committed, { cents: true })} of ${money(limit, { cents: true })} committed`}
+              pct={limit > 0 ? (committed / limit) * 100 : 0}
+              color="var(--tier-income)"
+            />
+          </div>
+          <Rows className="mt-s2">
+            <div>
+              <Line>
+                <span className="c-sub">Committed now</span>
+                <span className="c-fig c-fig-row">{money(committed, { cents: true })}</span>
+              </Line>
+              {parts.length > 0 && (
+                <p className="c-det mt-[3px]">
+                  {parts.map((p) => `${p.name} ${money(p.perCycle, { cents: true })}`).join(' · ')}
+                </p>
+              )}
+            </div>
+            <div>
+              <Line>
+                <span className="c-sub">Free this cycle</span>
+                <span className="c-fig c-fig-row">{money(free ?? 0, { cents: true })}</span>
+              </Line>
+              <p className="c-det mt-[3px]">The most a new plan can add</p>
+            </div>
+          </Rows>
+        </>
+      ) : (
+        <p className="c-det mt-s1">Not set yet. It is worked out from the income landing in a linked account.</p>
       )}
-
-      <Button variant="clear" size="xs" className="mb-2.5 w-full" onClick={onManageAccounts}>
-        Manage linked accounts
-      </Button>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        It grows as your income holds steady and plans clear on time. Nothing to apply for.
-      </p>
     </Modal>
   );
 }

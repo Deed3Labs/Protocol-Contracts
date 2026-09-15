@@ -68,7 +68,7 @@ describe('what is free to withdraw', () => {
 
 describe('one component, two directions', () => {
   test('each leg carries its own balance, which is what gives the presets stated meanings', () => {
-    expect(DIALOG).toContain("isDeposit ? 'All' : 'All free'");
+    expect(DIALOG).toContain("isDeposit || isPool ? 'All' : 'All free'");
     // Each direction takes its cap from its own leg, and the pool's leg is capped again by what
     // the pool can actually pay.
     expect(DIALOG).toContain('const available = isDeposit ? cashReady : isPool ? poolFree : savingsFree;');
@@ -85,7 +85,8 @@ describe('one component, two directions', () => {
   test('the cost of withdrawing is stated, not moralised', () => {
     // Three facts and no scare copy. A member taking out their own money is exercising the thing
     // that makes this an equity account rather than a lock-up.
-    expect(DIALOG).toContain('Vested credits stay. Only the credits this money was still earning are given up.');
+    // The brand-guide reference turned the vesting sentence into a consequence line of its own.
+    expect(DIALOG).toContain('label="Vested credits" value="Keep them"');
     expect(DIALOG).toContain('Credits given up');
     expect(DIALOG).toContain('Your credit limit drops by');
     // No confirmation gate in front of it — asserted on the rendered strings, not the file, so a
@@ -226,24 +227,25 @@ describe('never block the keypad', () => {
 });
 
 describe('withdrawing is stated, not warned about', () => {
-  test('one summary box, not a tinted one and a bare list', () => {
-    // Colour does what a second container was doing: the earn row is tinted, the credit-limit
-    // footer is green and divided, and everything sits in one bordered box.
+  test('the summary is the footer, not a box inside the modal', () => {
+    // Brand guide: the consequences live in the modal's footer, so the footer rule and the sheet edge
+    // contain them. The earn row takes the cobalt, the credit-limit line closes below a rule — green
+    // when it rises, ink when it falls.
     expect(DIALOG).toContain('const summaryRows = (past = false) => (');
-    expect(DIALOG).toContain("gain && 'mt-2 border-t-[0.5px] border-border pt-2'");
-    expect(DIALOG).toContain("accent && 'text-tier-boost-fg'");
+    expect(DIALOG).toContain("gain && 'c-limit'");
+    expect(DIALOG).toContain("gain && down && 'c-down'");
+    expect(DIALOG).toContain("accent && 'c-earn'");
   });
 
-  test('the vesting note survives the restructure', () => {
-    // The update that introduced the single summary draws only deposits. That is not evidence a
-    // withdrawal should say less.
-    expect(DIALOG).toContain('const vestingNote =');
-    expect(DIALOG).toContain('Vested credits stay.');
+  test('withdrawing still says vested credits are safe', () => {
+    // The reference moved it from a sentence to a line; the fact survives either way.
+    expect(DIALOG).toContain('Vested credits');
+    expect(DIALOG).toContain('Keep them');
   });
 
-  test('each direction keeps its own closing line', () => {
+  test('a deposit keeps its closing line', () => {
+    // The reference draws it under the deposit's button and nothing under the withdrawal's.
     expect(DIALOG).toContain('Instant. You can move it back any time.');
-    expect(DIALOG).toContain('Instant. Move it back whenever you like.');
   });
 });
 
@@ -383,8 +385,9 @@ describe('the pool is the same component, redirected', () => {
   });
 
   test('it names itself for what it does', () => {
+    // Brand guide (Earn): adding reads "Add to the pool"; taking out is "Move money", like savings.
     expect(DIALOG).toContain("'Add to the pool'");
-    expect(DIALOG).toContain("'Take from the pool'");
+    expect(DIALOG).toContain("isPool && isDeposit ? 'Add to the pool' : 'Move money'");
   });
 
   test('the limit it quotes moves with the amount', () => {
@@ -400,18 +403,11 @@ describe('the pool is the same component, redirected', () => {
     expect(DIALOG).toContain('Rate moves with how much of the pool is lent.');
   });
 
-  test('the withdraw panel names the limit it lands on, not only the drop', () => {
-    // The question a member is actually asking is whether they stay above what they owe.
-    expect(DIALOG).toContain('const landingNote =');
-    expect(DIALOG).toContain('Limit falls to');
-    expect(DIALOG).toContain('you owe');
-  });
-
   test('and taking from the pool is not described as earning', () => {
     // The pool branch ignored direction at first, so a withdrawal read "Earning 6.8% APY" and
     // "Backs your credit limit" — both the wrong sign and the wrong claim.
     expect(DIALOG).toContain('isPool && pool && isDeposit ?');
-    expect(DIALOG).toContain('Yield lost');
+    expect(DIALOG).toContain('Yield given up');
   });
 });
 
@@ -424,14 +420,21 @@ describe('fully lent is queued, not refused', () => {
     expect(DIALOG).toContain('Math.min(savingsFree, pool.freeNow)');
   });
 
-  test('the state is named before the constrained figures are read', () => {
-    expect(DIALOG).toContain('Pool is fully lent');
+  test('the state is stated with its numbers, not refused', () => {
+    // Brand guide: the leg reads "free", a line under the keypad says how much is lent out, and the
+    // consequences split what comes now from what queues.
+    expect(DIALOG).toContain('of your\n      position is lent out.');
+    expect(DIALOG).toContain('label="Available now"');
+    expect(DIALOG).toContain('label="Queued"');
+    expect(DIALOG).toContain('label="Sent as members repay" value="Automatically"');
   });
 
-  test('both actions are offered — take what is free, queue the rest', () => {
-    expect(DIALOG).toContain('Take {money(available, { cents: true })} now');
-    expect(DIALOG).toContain('Queue the remaining');
-    expect(DIALOG).toContain('Sent automatically. Nothing to come back and do.');
+  test('one action takes what is free and queues the rest', () => {
+    // The hook sends both in the same batch, so the button moves the whole amount.
+    expect(DIALOG).toContain('now and queue the rest');
+    const queue = DIALOG.slice(DIALOG.indexOf(') : canQueue ? ('), DIALOG.indexOf(') : over ? ('));
+    expect(queue).toContain('onMove(amount)');
+    expect(queue).not.toContain('onMove(available)');
   });
 
   test('the split is computed in shares from the contract’s own cap', () => {
@@ -538,15 +541,15 @@ describe('the bond is the third destination, not a third modal', () => {
 
   test('the route shows a direction, not a control', () => {
     // A two-headed swap would promise a reversal the product cannot do before maturity.
-    expect(DIALOG).toContain('<ArrowRight');
-    expect(DIALOG).toContain('{isBond ? (');
-    const bondArrow = DIALOG.slice(DIALOG.indexOf('{isBond ? (\n        /*'), DIALOG.indexOf('<button\n          type="button"\n          onClick={swap}'));
-    expect(bondArrow).not.toContain('onClick');
+    expect(DIALOG).toContain('<ArrowIcon');
+    const bondArrow = DIALOG.slice(DIALOG.indexOf('<ArrowIcon') - 200, DIALOG.indexOf('<SwapIcon'));
+    expect(bondArrow).toContain('aria-hidden');
+    expect(bondArrow.slice(0, bondArrow.indexOf('</span>'))).not.toContain('onClick');
   });
 
   test('the To leg carries a date, because a bond has no balance yet', () => {
-    expect(DIALOG).toContain('note={`Matures ${bond.maturesShort}`}');
-    expect(DIALOG).toContain('balance === undefined ? note');
+    // Brand guide: the leg shows the maturity date itself, e.g. "Aug 25, 2028".
+    expect(DIALOG).toContain('<Leg label="To" name="BurnerBond" balance={bond.maturesLong} />');
   });
 
   test('yield is one line, rate and dollars together', () => {
@@ -562,7 +565,9 @@ describe('the bond is the third destination, not a third modal', () => {
 
   test('the lock note is context, so desktop moves it off the read', () => {
     expect(DIALOG).toContain('const lockNote =');
-    expect(DIALOG).toContain('<div className="sm:hidden">{lockNote}</div>');
+    // Under the keypad in both layouts: the pad's column on desktop, below it on a phone.
+    expect(DIALOG).toContain('{pad}\n            {lockNote}');
+    expect(DIALOG).toContain('{pad}\n          {lockNote}');
   });
 });
 
@@ -634,10 +639,12 @@ describe('done repeats what was promised, past tense', () => {
   });
 
   test('and the bond leads with the gain, not the payment', () => {
-    // The member already knows what left their account — they confirmed it. What they bought is
-    // the difference and a date.
-    expect(DIALOG).toContain("past ? 'You gain' : 'You get at maturity'");
-    expect(DIALOG).toContain('past ? Math.max(0, amount - bond.priceToday) : amount');
+    // The member already knows what left their account — they confirmed it. The brand-guide done
+    // screen leads with the yield, then the face value, the date and how many bonds they now hold.
+    const done = DIALOG.slice(DIALOG.indexOf('isBond && bond ? (\n        past ? ('), DIALOG.indexOf(') : (\n          <>\n            <Row label="You pay today"'));
+    expect(done.indexOf('label="Yield"')).toBeLessThan(done.indexOf('label="Face value"'));
+    expect(done).toContain('label="Bonds held"');
+    expect(done).not.toContain('You pay today');
   });
 
   test('the next move is offered where somebody is inclined to make one', () => {
@@ -654,7 +661,7 @@ describe('a failure answers the only question that matters', () => {
   test('the steps stay and show the reversal', () => {
     // Somebody who watched money leave needs to watch it come back, not be told it never left.
     expect(DIALOG).toContain("state: 'done' as const }");
-    expect(DIALOG).toContain('Returned — ${progress.failureNote');
+    expect(DIALOG).toContain('Returned, ${progress.failureNote');
   });
 
   test('the reason is short enough for one line', () => {
@@ -737,7 +744,7 @@ describe('a bond the collection would refuse', () => {
     // rather than a greyed one. The mint refuses this face, and sending a transaction that reverts
     // with nothing in it is what produced the original report.
     expect(DIALOG).toContain('const action = bondLimit && bond ? (');
-    const guarded = DIALOG.slice(DIALOG.indexOf('const action = bondLimit'), DIALOG.indexOf(') : canQueue ? ('));
+    const guarded = DIALOG.slice(DIALOG.indexOf('const action = bondLimit'), DIALOG.indexOf(') : shortfall > 0 && coverable ? ('));
     expect(guarded).not.toContain('onMove');
   });
 });
@@ -746,8 +753,35 @@ describe('the bond route icon', () => {
   test('matches the swap it sits in place of', () => {
     // Same circle, same position, same background — only the glyph differs. Two heads means you
     // can flip it; one head means you cannot.
-    const arrow = DIALOG.slice(DIALOG.indexOf('{isBond ? ('), DIALOG.indexOf('<ArrowRight'));
-    expect(arrow).toContain('bg-background ring-4 ring-background');
-    expect(arrow).not.toContain('bg-secondary');
+    const arrow = DIALOG.slice(DIALOG.indexOf('<ArrowIcon') - 120, DIALOG.indexOf('<ArrowIcon'));
+    expect(arrow).toContain('className="c-swap');
+    expect(DIALOG).toContain('className="c-swap">');
+  });
+});
+
+/*
+ * Brand guide (Earn): a withdrawal that would drop the limit below what the member carries is never
+ * refused — it is paired with the repayment that makes it safe, or capped at the most that is.
+ */
+describe('a withdrawal is never refused, only paired or capped', () => {
+  test('the gap is measured against what is carried', () => {
+    expect(DIALOG).toContain('Math.max(0, cents(carried - limitAfter))');
+    expect(DIALOG).toContain('const coverable = shortfall > 0 && cashReady >= shortfall;');
+  });
+
+  test('covered: repay and withdraw in one action', () => {
+    expect(DIALOG).toContain('onRepayAndMove?.(shortfall, amount)');
+    expect(DIALOG).toContain('label="Repaid first"');
+  });
+
+  test('not covered: the safe maximum, beside a way to repay', () => {
+    expect(DIALOG).toContain('onMove(safeMax)');
+    expect(DIALOG).toContain('Repay first');
+    expect(DIALOG).toContain('label="Short by"');
+  });
+
+  test('the red is used for the broken constraint and nothing else', () => {
+    expect(DIALOG).toContain("short && 'c-short'");
+    expect(DIALOG.match(/ short\b/g)?.length).toBeGreaterThan(0);
   });
 });

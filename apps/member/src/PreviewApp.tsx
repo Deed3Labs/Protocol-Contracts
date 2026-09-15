@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@/context/ThemeContext';
+import { PreviewBalancesProvider } from '@/hooks/useClearBalances';
+import { PreviewIdentityProvider } from '@/context/IdentityContext';
 import AppChrome from '@/components/shell/AppChrome';
 import CycleCard from '@/components/clear/CycleCard';
 import RepayDialog from '@/components/clear/RepayDialog';
@@ -12,10 +14,10 @@ import HomePage from '@/pages/app/HomePage';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
-import ContactsPage from '@/pages/app/ContactsPage';
 import AssurancePage from '@/pages/app/AssurancePage';
 import InboxPage from '@/pages/app/InboxPage';
 import ScanPage from '@/pages/app/ScanPage';
+import CodePage from '@/pages/app/CodePage';
 import ExplainerPage from '@/pages/app/ExplainerPage';
 import PartnersPage from '@/pages/app/PartnersPage';
 import SendPage from '@/pages/app/SendPage';
@@ -226,7 +228,7 @@ function MoveMoneyPreview() {
         credits={1500}
         creditsGoal={15000}
         reachesGoalBy="Jan 2028"
-        goalShift="2 months later"
+        goalShift="2 later"
         progress={progress}
         onMove={() => {}}
       />
@@ -275,6 +277,9 @@ function MoveMoneyPreview() {
 function PoolMovePreview() {
   const [direction, setDirection] = useState<MoveDirection>('deposit');
   const [lent, setLent] = useState(false);
+  // The reference's short states: carrying $11,000 against $12,300, with Ready to allocate either
+  // covering the $450 gap or not.
+  const [short, setShort] = useState<'no' | 'covered' | 'capped'>('no');
 
   return (
     <div className="min-h-screen bg-background">
@@ -284,9 +289,9 @@ function PoolMovePreview() {
         destination="pool"
         direction={direction}
         onDirectionChange={setDirection}
-        cashReady={2109}
+        cashReady={short === 'capped' ? 120 : 2109}
         savingsTotal={2500}
-        savingsFree={2541}
+        savingsFree={short === 'no' ? 2541 : 2500}
         credits={0}
         creditsGoal={0}
         pool={{
@@ -294,21 +299,28 @@ function PoolMovePreview() {
           haircutBps: 7_000,
           freeNow: lent ? 600 : 2541,
           utilizationBps: lent ? 7_600 : 7_400,
-          limitAfter: 7600,
-          owed: 2400,
+          limit: 12300,
+          owed: short === 'no' ? 2400 : 11000,
         }}
         onMove={() => {}}
       />
 
       <div className="fixed inset-x-0 bottom-0 z-[60] flex justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
-        {([['add', 'deposit', false], ['take', 'withdraw', false], ['fully lent', 'withdraw', true]] as const).map(
-          ([label, dir, isLent]) => (
+        {([
+          ['add', 'deposit', false, 'no'],
+          ['take', 'withdraw', false, 'no'],
+          ['fully lent', 'withdraw', true, 'no'],
+          ['short, covered', 'withdraw', false, 'covered'],
+          ['short, capped', 'withdraw', false, 'capped'],
+        ] as const).map(
+          ([label, dir, isLent, isShort]) => (
             <button
               key={label}
               type="button"
               onClick={() => {
                 setDirection(dir as MoveDirection);
                 setLent(isLent);
+                setShort(isShort);
               }}
               className="rounded-md border-[0.5px] border-border px-2 py-1 text-[11px] text-muted-foreground"
             >
@@ -492,73 +504,115 @@ export default function PreviewApp() {
   return (
     <BrowserRouter>
       <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
-        <Routes>
-          <Route path="/onboarding" element={<OnboardingPreview />} />
-          <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
-          <Route path="/charge" element={<ChargeApprovalPreview />} />
-          <Route path="/move-money" element={<MoveMoneyPreview />} />
-          <Route path="/pool" element={<PoolMovePreview />} />
-          <Route path="/bond" element={<BondPreview />} />
+        <PreviewBalancesProvider>
+          <PreviewIdentityProvider>
+            <Routes>
+              <Route path="/onboarding" element={<OnboardingPreview />} />
+              <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
+              <Route path="/charge" element={<ChargeApprovalPreview />} />
+              <Route path="/move-money" element={<MoveMoneyPreview />} />
+              <Route path="/pool" element={<PoolMovePreview />} />
+              <Route path="/bond" element={<BondPreview />} />
 
-          <Route
-            path="*"
-            element={
-              <>
-                <AppChrome
-                  trailing={
-                    <HeaderActions
-                      profile={SETTINGS.profile}
-                      unread={empty ? 0 : unreadAlerts(INBOX.alerts) + unreadThreads(INBOX.threads)}
-                      accelerationActive={SETTINGS.accelerationActive}
-                    />
-                  }
-                >
-                  <Routes>
-                    <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} />} />
-                    {/* Day one has two arrivals; the toggle only reaches the direct one. */}
-                    <Route path="/day-one-counter" element={<HomePage data={HOME_DAY_ONE_COUNTER} />} />
-                    <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
-                    <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
-                    <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
-                    <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
-                    <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
-                    <Route path="/contacts" element={<ContactsPage contacts={empty ? [] : CONTACTS} />} />
-                    <Route path="/partners" element={<PartnersPage />} />
-                    <Route
-                      path="/assurance"
-                      element={<AssurancePage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />}
-                    />
-                    <Route
-                      path="/inbox"
-                      element={
-                        <InboxPage
-                          data={empty ? { alerts: [], threads: [], messages: {} } : INBOX}
+              <Route
+                path="*"
+                element={
+                  <>
+                    <AppChrome
+                      trailing={
+                        <HeaderActions
+                          profile={SETTINGS.profile}
+                          unread={empty ? 0 : unreadAlerts(INBOX.alerts) + unreadThreads(INBOX.threads)}
+                          accelerationActive={SETTINGS.accelerationActive}
+                          notifications={
+                            empty
+                              ? []
+                              : INBOX.alerts.map((a) => ({
+                                  id: a.id,
+                                  title: a.title,
+                                  detail: a.detail,
+                                  time: a.time,
+                                  unread: !a.read,
+                                }))
+                          }
                         />
                       }
-                    />
-                    <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
-                    <Route path="/scan" element={<ScanPage />} />
-                    <Route path="/cycle" element={<CyclePreview />} />
-                    <Route path="/repay" element={<RepayPreview />} />
-                    <Route path="/term-plans" element={<TermPlansPreview />} />
-                    <Route path="/learn/:topic" element={<ExplainerPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Routes>
-                </AppChrome>
+                    >
+                      <Routes>
+                        <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} />} />
+                        {/* Day one has two arrivals; the toggle only reaches the direct one. */}
+                        <Route path="/day-one-counter" element={<HomePage data={HOME_DAY_ONE_COUNTER} />} />
+                        {/* All clear: nothing carried, nothing owed, nothing prompting — the slot drops out. */}
+                        <Route
+                          path="/all-clear"
+                          element={
+                            <HomePage
+                              data={{
+                                ...HOME_IN_USE,
+                                // The reference's all-clear member: cash in hand, nothing parked, and
+                                // only the locked ELPA left on the shelf.
+                                cash: 2000,
+                                cashAccount: { ...HOME_IN_USE.cashAccount, spendable: 2000, readyToAllocate: 0 },
+                                termPlans: {
+                                  ...HOME_IN_USE.termPlans,
+                                  plans: HOME_IN_USE.termPlans.plans.filter((p) => p.balance === undefined),
+                                },
+                                credit: {
+                                  ...HOME_IN_USE.credit,
+                                  carryCost: 0,
+                                  tiers: HOME_IN_USE.credit.tiers.map((t) => ({ ...t, used: 0 })),
+                                },
+                                tasks: HOME_IN_USE.tasks.map((t) => ({ ...t, done: true })),
+                              }}
+                            />
+                          }
+                        />
+                        <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
+                        <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
+                        <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
+                        <Route path="/activity" element={<ActivityPage key={String(empty)} data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} email="kai@example.com" />} />
+                        <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
+                        <Route path="/contacts" element={<Navigate to="/settings/contacts" replace />} />
+                        <Route path="/partners" element={<PartnersPage />} />
+                        <Route
+                          path="/assurance"
+                          element={<AssurancePage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />}
+                        />
+                        <Route
+                          path="/inbox"
+                          element={
+                            <InboxPage
+                              data={empty ? { alerts: [], threads: [], messages: {} } : INBOX}
+                            />
+                          }
+                        />
+                        <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
+                        <Route path="/scan" element={<ScanPage />} />
+                        <Route path="/code" element={<CodePage data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
+                        <Route path="/cycle" element={<CyclePreview />} />
+                        <Route path="/repay" element={<RepayPreview />} />
+                        <Route path="/term-plans" element={<TermPlansPreview />} />
+                        <Route path="/learn/:topic" element={<ExplainerPage />} />
+                        <Route path="/settings" element={<SettingsPage contacts={empty ? [] : CONTACTS} available={empty ? 0 : SEND_IN_USE.available} />} />
+                        <Route path="/settings/:page" element={<SettingsPage contacts={empty ? [] : CONTACTS} available={empty ? 0 : SEND_IN_USE.available} />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </Routes>
+                    </AppChrome>
 
-                {/* Harness control — not part of the app */}
-                <button
-                  type="button"
-                  onClick={() => setEmpty((e) => !e)}
-                  className="fixed right-3 top-[62px] z-[60] rounded-md border-[0.5px] border-border bg-background/90 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"
-                >
-                  state: {empty ? 'empty' : 'populated'}
-                </button>
-              </>
-            }
-          />
-        </Routes>
+                    {/* Harness control — not part of the app */}
+                    <button
+                      type="button"
+                      onClick={() => setEmpty((e) => !e)}
+                      className="fixed right-3 top-[62px] z-[60] rounded-md border-[0.5px] border-border bg-background/90 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"
+                    >
+                      state: {empty ? 'empty' : 'populated'}
+                    </button>
+                  </>
+                }
+              />
+            </Routes>
+          </PreviewIdentityProvider>
+        </PreviewBalancesProvider>
       </ThemeProvider>
     </BrowserRouter>
   );

@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui/button';
+import { Btn } from './brand/anatomy';
 import { cn } from '@/lib/utils';
 
 export interface QuickAction {
@@ -7,31 +7,17 @@ export interface QuickAction {
 }
 
 /**
- * The four things you can start from Home — design spec §4.
- *
- * A 2×2 grid rather than a row: it sits beside the balance on desktop and keeps
- * every target the same size, so none of the four reads as the primary one. They
- * are all equally ordinary things to do with money.
+ * The four things you can start from Home — desktop only; on a phone they live in the nav's action
+ * button. A 2×2 grid of equal ghost buttons beside the hero, so none of the four reads as the primary
+ * one: they are all equally ordinary things to do with money.
  */
-export default function QuickActions({
-  actions,
-  className,
-}: {
-  actions: QuickAction[];
-  className?: string;
-}) {
+export default function QuickActions({ actions, className }: { actions: QuickAction[]; className?: string }) {
   return (
-    <div className={cn('grid grid-cols-2 gap-2', className)}>
+    <div className={cn('c-qa', className)}>
       {actions.map((action) => (
-        <Button
-          key={action.label}
-          variant="clear"
-          size="sm"
-          className="h-9 text-xs"
-          onClick={action.onSelect}
-        >
+        <Btn key={action.label} onClick={action.onSelect}>
           {action.label}
-        </Button>
+        </Btn>
       ))}
     </div>
   );

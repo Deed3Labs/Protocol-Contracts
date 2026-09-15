@@ -1,34 +1,110 @@
-import { TriangleAlert } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import Card, { CardRule } from '@/components/clear/Card';
+import { useEffect, useState } from 'react';
 import Modal from '@/components/clear/Modal';
-import InfoBlock from '@/components/clear/InfoBlock';
-import { money, count, signedMoney } from '@clear/domain';
-import { closureBalance, type AccountClosure } from '@/lib/clearModel';
+import { Btn, Rows } from '@/components/clear/brand/anatomy';
+import { KvRow } from './SettingsKit';
+import { count, money } from '@clear/domain';
+import { closureCreditsForfeited, closurePayout, type AccountClosure } from '@/lib/clearModel';
 
 /**
- * Close account — what leaving actually costs.
+ * Close account — two screens: what happens, then what it costs in figures.
  *
- * Every figure is stated before the exit, including the one that's easiest to
- * leave out: credits are forfeited, because they're earned by staying. The
- * settlement is computed, so it can't quietly disagree with the balances the
- * rest of the app shows.
+ * The first is the same shape as move money: four consequences in main, the reassurance and the
+ * commit in the footer. Credits are forfeited on leaving, vested or not, and it says so in red —
+ * the one fact most likely to change someone's mind. Vesting protects credits from your own
+ * withdrawals, not from leaving; without that sentence this and move money read as a contradiction.
  *
- * "Talk to someone first" is the primary action and closing is the quiet one.
- * That's deliberate, and it isn't a dark pattern — closing is still one click
- * away, but a member owing money on exit should have the conversation offered.
+ * Talk to someone first carries the weight: on a screen like this the exit ramp should not be
+ * quieter than the exit. The dollar settlement lives on the second screen, where the decision is
+ * actually made.
  */
 export default function CloseAccountDialog({
   closure,
+  handle,
   open,
   onOpenChange,
+  onTalk,
+  onCloseAccount,
 }: {
   closure: AccountClosure;
+  handle: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Talk to someone first. */
+  onTalk?: () => void;
+  onCloseAccount?: () => void;
 }) {
-  const balance = closureBalance(closure);
-  const owed = balance < 0;
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (open) setConfirming(false);
+  }, [open]);
+
+  const forfeited = closureCreditsForfeited(closure);
+  const deedShare = closure.creditsPerDeed > 0 ? Math.round((forfeited / closure.creditsPerDeed) * 100) : 0;
+  const carrying = closure.creditToSettle > 0;
+
+  if (confirming) {
+    return (
+      <Modal
+        open={open}
+        onOpenChange={onOpenChange}
+        title="Confirm"
+        description="What closing your account pays out and forfeits."
+        footer={
+          <>
+            <div className="c-footnote mt-0! border-t-0! pt-0!">
+              <p>
+                This cannot be undone. Your handle {handle} is released and the credits cannot be restored if you come
+                back.
+              </p>
+            </div>
+            <div className="c-pair mt-s2">
+              <Btn primary onClick={() => onOpenChange(false)}>
+                Keep my account
+              </Btn>
+              <Btn className="c-btn-danger" disabled={carrying} onClick={onCloseAccount}>
+                Close my account
+              </Btn>
+            </div>
+          </>
+        }
+      >
+        <Rows>
+          <div>
+            <KvRow
+              label={`Paid out to ${closure.payoutAccount}`}
+              value={<span className="text-ink">{money(closurePayout(closure), { cents: true })}</span>}
+            />
+            <p className="c-det mt-[3px]">
+              {money(closure.savings, { cents: true })} savings &middot; {money(closure.cash, { cents: true })} cash
+            </p>
+          </div>
+          <div>
+            <KvRow label="Equity credits forfeited" value={<span className="text-absent">{count(forfeited)}</span>} />
+            <p className="c-det mt-[3px]">
+              {count(closure.creditsVested)} vested &middot; {count(closure.creditsVesting)} vesting &middot; worth{' '}
+              {deedShare}% of a Clear Deed
+            </p>
+          </div>
+          <div>
+            <KvRow
+              label="Credit carried"
+              value={<span className="text-ink">{money(closure.creditToSettle, { cents: true })}</span>}
+            />
+            <p className="c-det mt-[3px]">
+              {carrying ? 'Must clear before you can close' : 'Cleared before you reached this screen'}
+            </p>
+          </div>
+          <div>
+            <KvRow
+              label="Share returned at book value"
+              value={closure.shareBookValue === undefined ? '—' : money(closure.shareBookValue, { cents: true })}
+            />
+          </div>
+        </Rows>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -36,53 +112,38 @@ export default function CloseAccountDialog({
       onOpenChange={onOpenChange}
       title="Close account"
       description="What happens to your savings, credit and equity credits if you leave."
+      footer={
+        <>
+          <div className="c-footnote mt-0! border-t-0! pt-0!">
+            <p>Nothing happens until you confirm on the next screen.</p>
+          </div>
+          <div className="c-pair mt-s2">
+            <Btn primary onClick={onTalk}>
+              Talk to someone first
+            </Btn>
+            <Btn onClick={() => setConfirming(true)}>Continue</Btn>
+          </div>
+        </>
+      }
     >
-      <InfoBlock tone="neutral" className="mb-3.5 flex gap-2.5">
-        <TriangleAlert className="mt-px h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
-        <span>Leaving ends your membership. Here&rsquo;s exactly what happens.</span>
-      </InfoBlock>
-
-      <Card className="mb-3">
-        <div className="text-xs leading-[2]">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Savings returned</span>
-            <span className="tabular-nums">{money(closure.savingsReturned, { cents: true })}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Credit balance settled first</span>
-            <span className="tabular-nums">{signedMoney(-closure.creditToSettle)}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Bonds redeemed at maturity</span>
-            <span>{closure.bondsNote}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Equity credits forfeited</span>
-            <span className="tabular-nums text-foreground-secondary">
-              {count(closure.creditsForfeited)}
-            </span>
-          </div>
+      <p className="text-sec">Leaving ends your membership. Here is exactly what happens.</p>
+      <Rows className="mt-s2">
+        <div>
+          <KvRow label="Savings and cash" value="Paid out in full" />
         </div>
-
-        <CardRule className="flex items-baseline justify-between gap-3">
-          <span className="text-xs">{owed ? 'You’d owe' : 'You’d receive'}</span>
-          <span className="text-[13px] font-medium tabular-nums">
-            {money(Math.abs(balance), { cents: true })}
-          </span>
-        </CardRule>
-      </Card>
-
-      <InfoBlock className="mb-3.5">
-        Your {count(closure.creditsForfeited)} equity credits go back to the co-op. They&rsquo;re
-        earned by staying, so they don&rsquo;t come with you.
-      </InfoBlock>
-
-      <Button variant="clear" size="xs" className="mb-2 w-full">
-        Talk to someone first
-      </Button>
-      <Button variant="clear" size="xs" className="w-full text-foreground-secondary">
-        Continue closing
-      </Button>
+        <div>
+          <KvRow label="Equity credits" value={<span className="text-absent">All forfeited, vested or not</span>} />
+        </div>
+        <div>
+          <KvRow label="Credit you carry" value="Must clear first" />
+        </div>
+        <div>
+          <KvRow label="Your share of the co-op" value="Returned at book value" />
+        </div>
+      </Rows>
+      <p className="c-det mt-s2">
+        Vesting protects your credits from your own withdrawals. It does not protect them if you leave.
+      </p>
     </Modal>
   );
 }

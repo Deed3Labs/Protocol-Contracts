@@ -72,6 +72,22 @@ export function useClearBalances(): ClearBalances {
   return value;
 }
 
+/**
+ * The design preview's stand-in (`/?preview=1` only — never mount it in the app).
+ *
+ * The harness renders pages without AppShell, and Home, Savings and Earn mount connected dialogs
+ * that read this context, so without a provider the harness throws before anything draws. The
+ * throw above stays: this is an explicit harness provider, not a silent fallback, and the figures
+ * pages show come from their `data` props, not from here.
+ */
+export function PreviewBalancesProvider({ children }: { children: ReactNode }) {
+  const value = useMemo<ClearBalances>(
+    () => ({ cash: 0, savings: 0, total: 0, loading: false, refresh: () => {}, applyOptimistic: () => {} }),
+    [],
+  );
+  return createElement(Ctx.Provider, { value }, children);
+}
+
 const POLL_MS = 30_000; // steady auto-refresh
 const FAST_POLL_MS = 6_000; // while an optimistic update awaits on-chain reconciliation
 const PENDING_TTL_MS = 90_000; // give up the overlay after this and trust the chain

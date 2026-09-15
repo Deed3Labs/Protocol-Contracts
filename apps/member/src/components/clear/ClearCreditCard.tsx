@@ -1,129 +1,133 @@
-import { Button } from '@/components/ui/button';
-import Card, { CardRule } from './Card';
-import SegmentedBar, { type Segment } from './SegmentedBar';
+import { Bar, Btn, CFoot, CHead, CMain, Cell, HeadFig, Line, SecHead } from './brand/anatomy';
 import { money } from '@clear/domain';
+import { useIsDesktop } from '@/lib/useIsDesktop';
 import {
   addableTier,
   creditLimit,
   creditUsed,
   orderedTiers,
-  TIER_FILL,
-  TIER_TINT,
   type Credit,
   type CreditTier,
+  type TierKey,
 } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
-function TierDot({ tier }: { tier: CreditTier['key'] }) {
-  return <span aria-hidden className={cn('h-1.5 w-1.5 shrink-0 rounded-full', TIER_FILL[tier])} />;
-}
+/** Tier text, on the guide's ramp. Asset takes land-ink: land itself is too light to read as text. */
+export const TIER_TEXT_CLASS: Record<TierKey, string> = {
+  savings: 'c-t-sav',
+  asset: 'c-t-ast',
+  income: 'c-t-inc',
+  boost: 'c-t-bst',
+};
 
-function TierRow({ tier }: { tier: CreditTier }) {
-  return (
-    <div className={cn('flex items-center justify-between gap-3 leading-[1.9]', !tier.added && 'opacity-50')}>
-      <span className="flex min-w-0 items-center gap-1.5">
-        <TierDot tier={tier.key} />
-        <span className="truncate">
-          {tier.shortLabel && <span className="lg:hidden">{tier.shortLabel}</span>}
-          <span className={cn(tier.shortLabel && 'hidden lg:inline')}>{tier.label}</span>
-          <span className="px-1">·</span>
-          {tier.rate}
-        </span>
-      </span>
-      <span className="shrink-0 tabular-nums">
-        {tier.added ? `${money(tier.used)} of ${money(tier.limit)}` : 'not added'}
-      </span>
-    </div>
-  );
+/** Tier fill, as a colour for inline bar segments. */
+export const TIER_COLOR: Record<TierKey, string> = {
+  savings: 'var(--tier-savings)',
+  asset: 'var(--tier-asset)',
+  income: 'var(--tier-income)',
+  boost: 'var(--tier-boost)',
+};
+
+/**
+ * An "X of Y" figure on this cell: whole dollars, floored. The reference sets every X-of-Y here
+ * without decimals, and a limit derived from haircut collateral ($8,300.25) otherwise prints its cents
+ * and pushes the legend onto two lines at phone width. Floored rather than rounded so a limit is
+ * never overstated.
+ */
+const whole = (v: number) => money(Math.floor(v));
+
+/** Legend label. The phone drops "(CLRUSD)" from savings and "/ cycle" from every rate. */
+function tierName(tier: CreditTier, desktop: boolean) {
+  const label = !desktop && tier.key === 'savings' && tier.shortLabel ? tier.shortLabel : tier.label;
+  const rate = desktop ? tier.rate : tier.rate.replace(' / cycle', '');
+  return `${label} · ${rate}`;
 }
 
 /**
- * Clear credit — design spec §4.
+ * Credit used — a cell on Home's slab.
  *
- * The bar is the load-bearing part: segments are sized from each tier's actual
- * usage against the limit and drawn cheapest-first (rules 4 and 7), with each
- * tier's remaining headroom tinted behind it, so the bar answers "how much is
- * left, and in which tier" rather than just "how full". It sits entirely in
- * tints while cash is being spent. The card takes an accent border once credit
- * is engaged (rule 6).
+ * Header: the label and "$5,400 of $12,300" (X of Y, no decimals). Main: the tier bar, the legend
+ * and, while anything is drawn, the carry. Footer: Add Boost and Limit breakdown, the same place in
+ * every state.
+ *
+ * The bar is the shape of the limit — each added tier's share of it, cheapest first — so it reads as
+ * a cost ramp. Nothing drawn, it stays at 35% so it reads as available rather than spent, and every
+ * legend line goes muted and states its capacity and that none of it is drawn.
  */
 export default function ClearCreditCard({
   credit,
-  engaged,
   onViewBreakdown,
   onAddBoost,
 }: {
   credit: Credit;
-  engaged: boolean;
   onViewBreakdown?: () => void;
   onAddBoost?: () => void;
 }) {
+  const desktop = useIsDesktop();
   const tiers = orderedTiers(credit.tiers);
   const used = creditUsed(credit);
   const limit = creditLimit(credit);
+  const drawn = used > 0;
   const addable = addableTier(credit);
 
-  // Each added tier draws twice: what's been used in its own colour, then what's
-  // left of it in a tint of the same colour. The added tiers total the limit, so
-  // the bar fills — the empty-looking part is headroom in a specific tier, not an
-  // anonymous remainder. Tiers that haven't been added contribute neither.
-  const segments: Segment[] = tiers
-    .filter((t) => t.added)
-    .flatMap((t) => [
-      { value: t.used, className: TIER_FILL[t.key], label: `${t.label} used` },
-      {
-        value: Math.max(0, t.limit - t.used),
-        className: TIER_TINT[t.key],
-        label: `${t.label} left`,
-      },
-    ]);
-
   return (
-    <Card accent={engaged} className="flex flex-col">
-      <div className="mb-2.5 flex items-baseline justify-between gap-3">
-        <span className="text-[13px] text-foreground-secondary">Clear credit used</span>
-        <span className="shrink-0 text-[17px] font-medium tabular-nums">
-          {money(used)}{' '}
-          <span className="text-[13px] font-normal text-foreground-secondary">of {money(limit)}</span>
-        </span>
-      </div>
-
-      <SegmentedBar
-        segments={segments}
-        total={limit}
-        label={`${money(used)} of ${money(limit)} used`}
-        className="mb-2.5"
-      />
-
-      <div className="text-xs text-muted-foreground">
-        {tiers.map((t) => (
-          <TierRow key={t.key} tier={t} />
-        ))}
-      </div>
-
-      <CardRule className="flex items-baseline justify-between gap-3">
-        <span className="text-xs text-foreground-secondary">Carry cost so far</span>
-        <span className="text-[13px] font-medium tabular-nums">{money(credit.carryCost, { cents: true })}</span>
-      </CardRule>
-      <p className="mt-[7px] text-[11px] leading-relaxed text-muted-foreground">
-        Drops to {money(0)} when you get back under {money(credit.carryFreeUnder)}
-      </p>
-
-      {/* Adding the opt-in tier is offered next to the breakdown that explains it,
-          and only while there's something left to add. */}
-      <div className="mt-2.5 flex gap-2">
-        {addable && (
-          <Button variant="clear" size="xs" className="flex-1" onClick={onAddBoost}>
-            {/* Not the tier's full name: it's a button, and the surface it opens says the rest.
-                Deliberately not `shortLabel` either — that drives the mobile legend, which keeps the
-                full mark. */}
-            Add Boost
-          </Button>
+    <Cell>
+      <CHead>
+        <SecHead label="Credit used">
+          <HeadFig value={whole(used)} of={whole(limit)} />
+        </SecHead>
+      </CHead>
+      <CMain>
+        <Bar
+          label={`${whole(used)} of ${whole(limit)} credit used`}
+          className="mb-s2"
+          style={drawn ? undefined : { opacity: 0.35 }}
+          segments={tiers
+            .filter((t) => t.added)
+            .map((t) => ({
+              label: t.label,
+              pct: limit > 0 ? (t.limit / limit) * 100 : 0,
+              color: TIER_COLOR[t.key],
+            }))}
+        />
+        <div className="c-legend">
+          {tiers.map((t) => {
+            const muted = !t.added || !drawn;
+            return (
+              <div key={t.key}>
+                <span className={muted ? 'c-muted' : TIER_TEXT_CLASS[t.key]}>{tierName(t, desktop)}</span>
+                <span className={cn(muted && 'c-muted')}>
+                  {!t.added
+                    ? 'not added'
+                    : drawn
+                      ? `${whole(t.used)} of ${whole(t.limit)}`
+                      : `${whole(t.limit)} · not drawn`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        {drawn && (
+          <>
+            <Line className="mt-s2 border-t border-ink-13 pt-s2">
+              <span className="c-sub">{desktop ? 'Carry cost so far' : 'Carry cost'}</span>
+              <span className="c-fig c-fig-row">{money(credit.carryCost, { cents: true })}</span>
+            </Line>
+            {desktop && (
+              <p className="c-det mt-[6px]">
+                Drops to {money(0, { cents: true })} when you get back under{' '}
+                {money(credit.carryFreeUnder, { cents: true })}
+              </p>
+            )}
+          </>
         )}
-        <Button variant="clear" size="xs" className="flex-1" onClick={onViewBreakdown}>
-          Limit breakdown
-        </Button>
-      </div>
-    </Card>
+      </CMain>
+      <CFoot>
+        <div className="c-pair">
+          {addable && <Btn onClick={onAddBoost}>Add Boost</Btn>}
+          <Btn onClick={onViewBreakdown}>Limit breakdown</Btn>
+        </div>
+      </CFoot>
+    </Cell>
   );
 }

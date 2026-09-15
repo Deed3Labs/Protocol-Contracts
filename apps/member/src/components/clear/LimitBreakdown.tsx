@@ -1,43 +1,8 @@
-import { Button } from '@/components/ui/button';
 import Modal from './Modal';
+import { Btn, Line, Rows } from './brand/anatomy';
+import { TIER_TEXT_CLASS } from './ClearCreditCard';
 import { money } from '@clear/domain';
-import {
-  backingTotal,
-  sectionTotal,
-  TIER_FILL,
-  type LimitBacking,
-  type LimitBackingRow,
-} from '@/lib/clearModel';
-import { cn } from '@/lib/utils';
-
-function Row({ row, last, onAdd }: { row: LimitBackingRow; last: boolean; onAdd?: () => void }) {
-  return (
-    <div className={cn('py-2', !last && 'border-b-[0.5px] border-border')}>
-      <div className="flex items-center justify-between gap-3">
-        <span
-          className={cn(
-            'flex min-w-0 items-center gap-1.5',
-            row.notAdded && 'text-muted-foreground',
-          )}
-        >
-          <span aria-hidden className={cn('h-1.5 w-1.5 shrink-0 rounded-full', TIER_FILL[row.tier])} />
-          <span className="truncate">{row.label}</span>
-        </span>
-
-        {/* An opt-in tier isn't a number yet — it's an offer, so it gets the action
-            rather than a greyed-out figure. */}
-        {row.notAdded ? (
-          <Button variant="clear" size="xs" className="shrink-0" onClick={onAdd}>
-            Add {money(row.addAmount ?? row.contribution)}
-          </Button>
-        ) : (
-          <span className="shrink-0 tabular-nums">{money(row.contribution)}</span>
-        )}
-      </div>
-      <p className="pl-[14px] text-[11px] text-muted-foreground">{row.detail}</p>
-    </div>
-  );
-}
+import { backingTotal, sectionTotal, type LimitBacking, type LimitBackingRow } from '@/lib/clearModel';
 
 function Section({
   title,
@@ -48,28 +13,43 @@ function Section({
   rows: LimitBackingRow[];
   onAdd?: (row: LimitBackingRow) => void;
 }) {
-  if (rows.length === 0) return null;
   return (
     <>
-      <p className="mb-1.5 text-[11px] tracking-[0.3px] text-muted-foreground">
-        {title} · {money(sectionTotal(rows))}
+      <p className="c-grouplabel">
+        {title} &middot; {money(sectionTotal(rows), { cents: true })}
       </p>
-      <div className="mb-3.5 text-xs">
-        {rows.map((row, i) => (
-          <Row key={row.label} row={row} last={i === rows.length - 1} onAdd={() => onAdd?.(row)} />
+      <Rows>
+        {rows.map((row) => (
+          <div key={row.label}>
+            {/* An opt-in tier isn't a figure yet — it's an offer, so it gets the action. */}
+            {row.notAdded ? (
+              <Line className="items-center!">
+                <span className="c-muted">{row.label}</span>
+                <Btn className="h-[30px]! px-3! text-detail!" onClick={() => onAdd?.(row)}>
+                  Add {money(row.addAmount ?? row.contribution, { cents: true })}
+                </Btn>
+              </Line>
+            ) : (
+              <Line>
+                <span className={TIER_TEXT_CLASS[row.tier]}>{row.label}</span>
+                <span className="c-fig c-fig-row">{money(row.contribution, { cents: true })}</span>
+              </Line>
+            )}
+            <p className="c-det mt-[3px]">{row.detail}</p>
+          </div>
         ))}
-      </div>
+      </Rows>
     </>
   );
 }
 
 /**
- * "What backs your limit" — design spec §4, the sub-view behind the credit card.
+ * "What backs your limit" — behind Limit breakdown on the Credit cell.
  *
- * Every figure here counts only what's actually backing the limit, so the section
- * subtotals and the footer total agree with the number on the credit card. An
- * opt-in tier that hasn't been added is still listed — as an offer with an Add
- * action — but contributes nothing until it's taken up.
+ * Keeps its secured and unsecured grouping as two stacked mains, so the group break is a full-bleed
+ * rule rather than a floating label. Boost sits in the unsecured group as the one row you can act on,
+ * rather than being listed as a tier you already have. The footer is the total, which is the same
+ * figure as the Credit cell's limit because it is that figure.
  */
 export default function LimitBreakdown({
   backing,
@@ -82,26 +62,27 @@ export default function LimitBreakdown({
   onOpenChange: (open: boolean) => void;
   onAdd?: (row: LimitBackingRow) => void;
 }) {
+  const sections = [
+    backing.assetBacked.length > 0 && <Section key="s" title="Secured" rows={backing.assetBacked} onAdd={onAdd} />,
+    backing.unsecured.length > 0 && <Section key="u" title="Unsecured" rows={backing.unsecured} onAdd={onAdd} />,
+  ].filter(Boolean);
+
   return (
     <Modal
       open={open}
       onOpenChange={onOpenChange}
       title="What backs your limit"
       description="The positions and income that set your Clear credit limit."
-      onBack={() => onOpenChange(false)}
-    >
-      <div>
-          <Section title="ASSET-BACKED" rows={backing.assetBacked} onAdd={onAdd} />
-          <Section title="UNSECURED" rows={backing.unsecured} onAdd={onAdd} />
-
-          <div className="flex items-baseline justify-between gap-3 border-t-[0.5px] border-border pt-2.5">
-            <span className="text-xs text-foreground-secondary">Total limit</span>
-            <span className="text-[15px] font-medium tabular-nums">{money(backingTotal(backing))}</span>
-          </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-          Your bonds are worth more each month, so this limit grows on its own.
-        </p>
-      </div>
-    </Modal>
+      sections={sections}
+      footer={
+        <>
+          <Line>
+            <span className="c-sub">Total limit</span>
+            <span className="c-fig c-fig-sec">{money(backingTotal(backing), { cents: true })}</span>
+          </Line>
+          <p className="c-det mt-s1">Your bonds are worth more each month, so this limit grows on its own.</p>
+        </>
+      }
+    />
   );
 }

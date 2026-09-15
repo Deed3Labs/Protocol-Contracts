@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import MoveMoneyDialog, { type MoveDirection } from './MoveMoneyDialog';
 import { usePoolMove } from '@/hooks/usePoolMove';
 import { useClearBalances } from '@/hooks/useClearBalances';
@@ -25,14 +26,21 @@ import { POOL_SHARE_HAIRCUT_BPS } from '@/lib/clearModel';
 export default function ConnectedPoolMove({
   open,
   onOpenChange,
+  initialDirection = 'deposit',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Which way it opens: Deposit and Withdraw on the pool cell each open their own direction. */
+  initialDirection?: MoveDirection;
 }) {
+  const navigate = useNavigate();
   const balances = useClearBalances();
   const address = useOptionalAddress();
   const { openAddMoney, openAutoSave } = useMoneyActions();
-  const [direction, setDirection] = useState<MoveDirection>('deposit');
+  const [direction, setDirection] = useState<MoveDirection>(initialDirection);
+  useEffect(() => {
+    if (open) setDirection(initialDirection);
+  }, [open, initialDirection]);
   const [limitCents, setLimitCents] = useState<number | null>(null);
   const [owedCents, setOwedCents] = useState<number | null>(null);
   // Read here rather than passed in. A page holding a mapped model would have to hand over
@@ -106,7 +114,7 @@ export default function ConnectedPoolMove({
         haircutBps: POOL_SHARE_HAIRCUT_BPS,
         freeNow,
         utilizationBps,
-        ...(limitCents !== null ? { limitAfter: limitCents / 100 } : {}),
+        ...(limitCents !== null ? { limit: limitCents / 100 } : {}),
         ...(owedCents !== null ? { owed: owedCents / 100 } : {}),
       }}
       busy={busy}
@@ -115,6 +123,12 @@ export default function ConnectedPoolMove({
       onMove={(amount) => void move(direction, amount, freeNow)}
       onAgain={reset}
       onRetry={reset}
+      // Repaying lives on Home's cycle; there is no rail yet that repays and withdraws in one batch,
+      // so the paired action is left to that surface until one exists.
+      onRepayFirst={() => {
+        onOpenChange(false);
+        navigate('/?do=repay');
+      }}
       onAddMoney={() => {
         onOpenChange(false);
         openAddMoney();

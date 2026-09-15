@@ -30,6 +30,7 @@ export function toActivityRow(item: ActivityItem): ActivityRow {
     source: sourceOf(item),
     kind: kindOf(item),
     amount: item.amount,
+    pending: item.status === 'pending',
     datetime: new Date(item.ts).toLocaleString(undefined, {
       month: 'short',
       day: 'numeric',
@@ -41,7 +42,6 @@ export function toActivityRow(item: ActivityItem): ActivityRow {
 }
 
 function sourceOf(item: ActivityItem): ActivitySource {
-  if (item.status === 'pending') return 'pending';
   if (item.category === 'Deposit' && item.internal) return 'savings';
   if (item.source === 'bank') return 'cash account';
   // Money in from another wallet that is not the member's own is money from a member.

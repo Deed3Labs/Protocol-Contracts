@@ -30,8 +30,16 @@ function defaultByTime(fallback: Theme): Theme {
   return fallback;
 }
 
+/**
+ * Pinned to light during the brand guide conversion. The guide defines one appearance, and the
+ * dusk and dark palettes below predate it; they come back in a dedicated pass once every page is
+ * converted. Flip this to restore the picker and the time-of-day default untouched.
+ */
+export const THEME_PINNED: Theme | null = 'light';
+
 export function ThemeProvider({ children, defaultTheme = 'light', storageKey = 'theme' }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
+    if (THEME_PINNED) return THEME_PINNED;
     const stored = localStorage.getItem(storageKey) as Theme | null;
     if (stored === 'light' || stored === 'dusk' || stored === 'dark') return stored;
     return defaultByTime(defaultTheme);
@@ -50,6 +58,7 @@ export function ThemeProvider({ children, defaultTheme = 'light', storageKey = '
   const value = {
     theme,
     setTheme: (next: Theme) => {
+      if (THEME_PINNED) return;
       localStorage.setItem(storageKey, next);
       setTheme(next);
       window.dispatchEvent(new Event('themechange'));

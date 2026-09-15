@@ -1,34 +1,44 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Plus, ScanLine, ArrowLeftRight, PiggyBank, Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mobileNavItems } from './navItems';
 import { useMobileAction } from './MobileAction';
+import { ActivityIcon, CardIcon, EarnIcon, HomeIcon, PlusIcon, SavingsIcon } from '@/components/clear/brand/icons';
 
 /**
- * The things you can start from anywhere, in the order they're reached for. Each
- * is a route or a route that opens a surface — see `?do=` in HomePage and
- * SavingsPage — so a quick action can also be linked to.
+ * The quick actions — the same four Home offers on desktop, in the same order. Each is a route or a
+ * route that opens a surface (see `?do=` in HomePage and SavingsPage), so a quick action can also be
+ * linked to.
  */
 const QUICK_ACTIONS = [
-  { label: 'Scan to pay', icon: ScanLine, to: '/scan' },
-  { label: 'Send or request', icon: ArrowLeftRight, to: '/send' },
-  { label: 'Add to savings', icon: PiggyBank, to: '/savings?do=add' },
-  { label: 'Add money', icon: Landmark, to: '/?do=add-money' },
+  { label: 'Add money', to: '/?do=add-money' },
+  { label: 'Send', to: '/send' },
+  { label: 'Save', to: '/savings?do=add' },
+  { label: 'Pay', to: '/card' },
 ];
 
+/** The guide's glyph for each destination. */
+const GLYPH: Record<string, typeof HomeIcon> = {
+  '/': HomeIcon,
+  '/savings': SavingsIcon,
+  '/earn': EarnIcon,
+  '/activity': ActivityIcon,
+  '/card': CardIcon,
+};
+
 /**
- * Floating mobile nav — design spec §1. Split in two: a pill of destinations on
- * the left, an action button on the right.
+ * Mobile nav — the guide's `.navwrap`: a square bar of destinations and a round action button.
  *
- * The split is the point. The tabs are places you go; the button is the thing
- * you came to do, and it changes with the page — Save on Savings, Buy on Earn,
- * and everywhere else a plus that fans out the four things you can start from
- * anywhere. That's what makes room to drop Send from the pill without losing it:
- * it's an action, not a destination, and it was competing with places.
+ * The bar is drawn, so it is square; the action is a button, so it is a pill. The current page is
+ * ink and the rest ink-50, nothing else — no underline, no fill.
  *
- * Vertical offset lives in `.mobile-tabbar` (index.css) so the safe-area inset
- * and the PWA-standalone lift stay in one place.
+ * The button opens the quick-actions fan unless the page declares an action of its own, in which
+ * case it becomes the guide's wide variant with a label. The fan is right-aligned above the nav, the
+ * plus rotates to a close, and the screen behind dims rather than being replaced: these are
+ * shortcuts, not a destination.
+ *
+ * Vertical offset lives in `.mobile-tabbar` (index.css) so the safe-area inset and the PWA-standalone
+ * lift stay in one place.
  */
 export default function MobileTabBar() {
   const [open, setOpen] = useState(false);
@@ -46,102 +56,61 @@ export default function MobileTabBar() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  const fabIcon = action ? (
-    <action.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />
-  ) : (
-    <Plus
-      className={cn('h-[21px] w-[21px] shrink-0 transition-transform', open && 'rotate-45')}
-      strokeWidth={2}
-    />
-  );
-
   return (
     <>
-      {/* Tapping anywhere off the fan closes it — the only way back on a phone
-          with no cursor to move away. */}
+      {/* The page behind dims to 12%, as drawn. Tapping it closes the fan. */}
       {open && (
         <button
           type="button"
           aria-label="Close quick actions"
           onClick={() => setOpen(false)}
-          className="fixed inset-0 z-40 bg-background/70 backdrop-blur-[2px] lg:hidden"
+          className="fixed inset-0 z-40 bg-paper/88 lg:hidden"
         />
       )}
 
       {open && (
-        <div className="mobile-quick-actions fixed right-4 z-50 flex flex-col items-end gap-[7px] lg:hidden">
-          {QUICK_ACTIONS.map((item, i) => (
-            <button
-              key={item.label}
-              type="button"
-              onClick={() => navigate(item.to)}
-              style={{ transitionDelay: `${(QUICK_ACTIONS.length - 1 - i) * 30}ms` }}
-              className={cn(
-                'flex h-10 items-center gap-2.5 whitespace-nowrap rounded-[14px] border-[0.5px] border-border',
-                'bg-card px-3.5 text-[13px] shadow-[0_4px_16px_rgb(0_0_0/0.12)]',
-                'animate-in fade-in slide-in-from-bottom-2 fill-mode-both',
-              )}
-            >
+        <div className="c-qafan mobile-quick-actions fixed right-s2 z-50 lg:hidden">
+          {QUICK_ACTIONS.map((item) => (
+            <button key={item.label} type="button" className="c-qaitem" onClick={() => navigate(item.to)}>
               {item.label}
-              <item.icon className="h-4 w-4 shrink-0 text-foreground-secondary" strokeWidth={1.75} />
             </button>
           ))}
         </div>
       )}
 
-      <div className="mobile-tabbar fixed inset-x-4 z-50 flex items-center justify-between gap-2.5 lg:hidden">
-        <nav
-          aria-label="Primary"
-          className={cn(
-            'relative flex h-[50px] shrink items-center gap-0.5 overflow-hidden rounded-[17px] px-[5px]',
-            'border-[0.5px] border-border bg-background/85 backdrop-blur-[20px]',
-            'shadow-[0_6px_22px_rgb(0_0_0/0.11)] transition-opacity',
-            open && 'opacity-50',
-          )}
-        >
-          {mobileNavItems.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              aria-label={label}
-              className={({ isActive }) =>
-                cn(
-                  'relative flex h-full w-11 items-center justify-center transition-colors',
-                  isActive ? 'text-foreground' : 'text-muted-foreground',
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  {/* Marks where you are without spending a line on labels */}
-                  {isActive && (
-                    <span
-                      aria-hidden
-                      className="absolute inset-x-2.5 top-0 h-[2.5px] rounded-b-[2px] bg-tier-asset"
-                    />
-                  )}
-                  <Icon className="h-5 w-5 shrink-0" strokeWidth={isActive ? 1.9 : 1.75} />
-                </>
-              )}
-            </NavLink>
-          ))}
+      <div className="c-navwrap mobile-tabbar fixed inset-x-s2 z-50 lg:hidden">
+        <nav aria-label="Main" className="c-navbar">
+          {mobileNavItems.map(({ to, label, end }) => {
+            const Glyph = GLYPH[to] ?? HomeIcon;
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                aria-label={label}
+                className={({ isActive }) => cn(isActive && 'c-on')}
+              >
+                {({ isActive }) => <Glyph strokeWidth={isActive ? 1.9 : 1.75} />}
+              </NavLink>
+            );
+          })}
         </nav>
 
         <button
           type="button"
-          aria-label={action ? action.label : 'Quick actions'}
+          aria-label={action ? action.label : open ? 'Close quick actions' : 'Quick actions'}
           aria-expanded={action ? undefined : open}
           onClick={() => (action ? action.onSelect() : setOpen((v) => !v))}
-          className={cn(
-            'flex h-[50px] shrink-0 items-center justify-center gap-[7px] rounded-[17px]',
-            'bg-foreground text-background shadow-[0_6px_22px_rgb(0_0_0/0.2)]',
-            'text-[13px] font-medium transition-transform active:scale-[0.97]',
-            action ? 'px-4' : 'w-[50px]',
-          )}
+          className={cn('c-navfab', action && 'c-wide', !action && open && 'c-open')}
         >
-          {fabIcon}
-          {action && <span>{action.label}</span>}
+          {action ? (
+            <>
+              <action.icon className="h-[21px] w-[21px] shrink-0" strokeWidth={2} />
+              <span>{action.label}</span>
+            </>
+          ) : (
+            <PlusIcon />
+          )}
         </button>
       </div>
     </>

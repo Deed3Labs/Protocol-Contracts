@@ -1,27 +1,49 @@
-import Card from './Card';
+import { CFoot, CHead, CMain, Cell, Line, SecHead } from './brand/anatomy';
 import { count } from '@clear/domain';
 import type { VestingRow } from '@/lib/clearModel';
 
-/** Credits vesting — design spec §5. Dated future rows, nothing retrospective. */
+/**
+ * Credits vesting — dated future rows, nothing retrospective.
+ *
+ * The header totals what is vesting and when the last of it lands, a number the old page never
+ * summed. The footer says when the next one arrives.
+ */
 export default function VestingList({ rows }: { rows: VestingRow[] }) {
-  return (
-    <Card className="px-4 py-3.5">
-      <p className="mb-2 text-[13px] text-foreground-secondary">Credits vesting</p>
+  const total = rows.reduce((sum, r) => sum + r.credits, 0);
+  const last = rows.at(-1);
 
-      {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          Nothing vesting yet — credits start vesting after your first deposit.
-        </p>
-      ) : (
-        <div className="text-xs leading-[1.95]">
-          {rows.map((row) => (
-            <div key={row.id} className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">{row.date}</span>
-              <span className="tabular-nums">{count(row.credits)} credits</span>
-            </div>
-          ))}
-        </div>
+  return (
+    <Cell>
+      <CHead>
+        <SecHead label="Credits vesting">
+          {last ? (
+            <p className="c-fig c-fig-sec">
+              {count(total)} <span className="c-of">by {last.date}</span>
+            </p>
+          ) : (
+            <span className="c-det">None yet</span>
+          )}
+        </SecHead>
+      </CHead>
+      <CMain>
+        {rows.length === 0 ? (
+          <p className="c-det">Nothing vesting yet — credits start vesting after your first deposit.</p>
+        ) : (
+          rows.map((row) => (
+            <Line key={row.id}>
+              <span className="c-sub">{row.date}</span>
+              <span className="c-fig c-fig-row">{count(row.credits)} credits</span>
+            </Line>
+          ))
+        )}
+      </CMain>
+      {rows.length > 0 && (
+        <CFoot>
+          <Line className="items-center!">
+            <span className="c-det">Next on {rows[0].date} &middot; vests on payday</span>
+          </Line>
+        </CFoot>
       )}
-    </Card>
+    </Cell>
   );
 }

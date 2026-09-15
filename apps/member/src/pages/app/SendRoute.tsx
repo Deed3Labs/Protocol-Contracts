@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import SendPage from './SendPage';
+import { useClearBalances } from '@/hooks/useClearBalances';
 import { SEND_DAY_ONE } from '@/data/clearPlaceholder';
 import { useContacts, type Contact as SavedContact } from '@/context/ContactsContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
@@ -29,6 +30,12 @@ import type { SendTransferSummary } from '@/types/send';
  * the credit route.
  */
 export default function SendRoute() {
+  return <SendPage data={useSendData()} />;
+}
+
+/** The live Send data — shared with the full-screen code and the contacts list. */
+export function useSendData() {
+  const { cash, loading: balancesLoading } = useClearBalances();
   const profile = useMemberProfile();
   const { contacts } = useContacts();
   const [pendingClaim, setPendingClaim] = useState<PendingClaim | undefined>(undefined);
@@ -56,9 +63,11 @@ export default function SendRoute() {
     // worse than having none.
     ...(profile.loading ? {} : { contacts: contacts.map(toSendContact) }),
     ...(pendingClaim ? { pendingClaim } : {}),
+    // Available is Ready to allocate. At partners has no source yet, so it stays at day one's zero.
+    ...(balancesLoading ? {} : { available: cash }),
   };
 
-  return <SendPage data={data} />;
+  return data;
 }
 
 /**
@@ -68,7 +77,7 @@ export default function SendRoute() {
  * outright, and one without gets a claim link and an Invite action instead. That is decided by
  * whether Clear knows an address for them, which is exactly what the saved record holds.
  */
-function toSendContact(contact: SavedContact): Contact {
+export function toSendContact(contact: SavedContact): Contact {
   return {
     id: contact.id,
     name: contact.name,

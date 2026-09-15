@@ -27,7 +27,7 @@ import HomeRoute from "@/pages/app/HomeRoute";
 import SavingsRoute from "@/pages/app/SavingsRoute";
 import ActivityRoute from "@/pages/app/ActivityRoute";
 import CardRoute from "@/pages/app/CardRoute";
-import ContactsPage from "@/pages/app/ContactsPage";
+import CodeRoute from "@/pages/app/CodeRoute";
 import AssurancePage from "@/pages/app/AssurancePage";
 import InboxRoute from "@/pages/app/InboxRoute";
 import ScanPage from "@/pages/app/ScanPage";
@@ -143,16 +143,18 @@ function App() {
                       <Route path="/send" element={<SendRoute />} />
                       <Route path="/activity" element={<ActivityRoute />} />
                       <Route path="/card" element={<CardRoute />} />
-                      <Route path="/contacts" element={<ContactsPage />} />
+                      <Route path="/contacts" element={<Navigate to="/settings/contacts" replace />} />
                       <Route path="/partners" element={<PartnersPage />} />
                       <Route path="/assurance" element={<AssurancePage />} />
                       <Route path="/inbox" element={<InboxRoute />} />
                       {/* The standalone Alerts page became the Inbox's first tab */}
                       <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
                       <Route path="/scan" element={<ScanPage />} />
+                      <Route path="/code" element={<CodeRoute />} />
                       <Route path="/learn/:topic" element={<ExplainerPage />} />
                       {/* Not a nav item — reached from the avatar menu (spec §1). */}
                       <Route path="/settings" element={<SettingsRoute />} />
+                      <Route path="/settings/:page" element={<SettingsRoute />} />
                     </Route>
 
                     {/* Archived pages (src/pages/_archive + src/pages/legacy) are kept on disk

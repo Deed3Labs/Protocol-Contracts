@@ -1,47 +1,48 @@
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, User, Shield, Bell, CircleHelp, LogOut } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
 import ThemePicker from '@/components/clear/ThemePicker';
+import { THEME_PINNED } from '@/context/ThemeContext';
 import MemberAvatar from '@/components/clear/MemberAvatar';
-import { useIsDesktop } from '@/lib/useIsDesktop';
+import Surface from '@/components/clear/brand/Surface';
+import { Btn, CFoot, CHead, CMain, Line } from '@/components/clear/brand/anatomy';
+import {
+  BellIcon,
+  ChevronIcon,
+  HelpIcon,
+  ShieldIcon,
+  SignOutIcon,
+  UserIcon,
+} from '@/components/clear/brand/icons';
 import type { MemberProfile } from '@/lib/clearModel';
-import { cn } from '@/lib/utils';
 
 const LINKS = [
-  { label: 'Profile & membership', icon: User, to: '/settings' },
-  { label: 'Security', icon: Shield, to: '/settings' },
-  { label: 'Notifications', icon: Bell, to: '/settings' },
-  { label: 'Help', icon: CircleHelp, to: '/settings' },
+  { label: 'Profile and membership', icon: UserIcon, to: '/settings' },
+  { label: 'Security', icon: ShieldIcon, to: '/settings/security' },
+  { label: 'Notifications', icon: BellIcon, to: '/settings/notifications' },
+  { label: 'Help', icon: HelpIcon, to: '/settings/help' },
 ] as const;
 
 /**
- * Everything about you that isn't a page — design spec §1.
+ * Everything about you that isn't a page — the guide's `.sheet.menu`.
  *
- * A dropdown off the avatar on desktop, a bottom sheet on mobile, because a
- * dropdown anchored to a 28px target in a phone's top-right corner is a menu you
- * open by accident and dismiss by accident.
- *
- * Theme sits at the top as a three-way control rather than a toggle: there are
- * three themes, and a toggle would hide one of them.
+ * A dropdown off the avatar on desktop and a bottom sheet on mobile; the same component either way.
+ * Header is who you are and the way into Settings; main holds appearance, acceleration and the links;
+ * the footer is Sign out, on its own, muted.
  */
 export default function ProfileMenu({
   profile,
   accelerationActive,
   onAcceleration,
   onSignOut,
-  children,
+  trigger,
 }: {
   profile: MemberProfile;
   accelerationActive?: boolean;
   onAcceleration?: () => void;
   onSignOut?: () => void;
-  /** The trigger — the avatar in the header. */
-  children: ReactNode;
+  /** The avatar button. Receives the opener — see Surface. */
+  trigger: (open: () => void) => ReactNode;
 }) {
-  const isDesktop = useIsDesktop();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -50,105 +51,77 @@ export default function ProfileMenu({
     navigate(to);
   };
 
-  const body = (
-    <>
-      <button
-        type="button"
-        onClick={() => go('/settings')}
-        className="mb-3.5 flex w-full items-center gap-3 border-b-[0.5px] border-border px-0.5 pb-3.5 text-left"
-      >
-        <MemberAvatar profile={profile} className="h-[42px] w-[42px] rounded-[14px] text-sm" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{profile.name}</span>
-          <span className="mt-[3px] block truncate text-xs text-muted-foreground">
-            {profile.handle} · Member since {profile.memberSince}
+  return (
+    <Surface open={open} onOpenChange={setOpen} width={280} label="Account" trigger={trigger}>
+      <CHead>
+        <button type="button" onClick={() => go('/settings')} className="c-line w-full items-center! text-left">
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="c-avatarbtn h-10! w-10! text-sec!">
+              <MemberAvatar profile={profile} className="h-full w-full bg-transparent text-inherit" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sec font-semibold">{profile.name}</span>
+              <span className="c-det mt-[3px] block truncate">
+                {profile.handle} &middot; Member since {profile.memberSince}
+              </span>
+            </span>
           </span>
-        </span>
-        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" strokeWidth={1.75} />
-      </button>
+          <ChevronIcon size={14} strokeWidth={2} className="shrink-0 text-ink-50" />
+        </button>
+      </CHead>
 
-      <p className="mb-2 text-[11px] uppercase tracking-[0.2px] text-muted-foreground">
-        Appearance
-      </p>
-      <ThemePicker className="mb-4" />
-
-      <div className="mb-4 flex items-center justify-between gap-3 rounded-[11px] bg-secondary px-3 py-2.5">
-        <div>
-          <p className="text-[13px]">Acceleration</p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            {accelerationActive ? 'Active' : 'Not active'}
-          </p>
-        </div>
-        <Button
-          variant="clear"
-          size="xs"
-          onClick={() => {
-            setOpen(false);
-            onAcceleration?.();
-          }}
-        >
-          Explore
-        </Button>
-      </div>
-
-      <div className="text-[13px]">
-        {LINKS.map((link) => (
-          <button
-            key={link.label}
-            type="button"
-            onClick={() => go(link.to)}
-            className="flex h-[38px] w-full items-center gap-3 text-left transition-colors hover:text-foreground"
+      <CMain>
+        {/* Pinned to light for the conversion; the picker returns with the dark-mode pass. While it's
+            hidden, acceleration is the first thing in main, so it doesn't draw the rule that
+            separates it from the picker. */}
+        {!THEME_PINNED && (
+          <>
+            <p className="c-label">Appearance</p>
+            <ThemePicker className="mt-s2" />
+          </>
+        )}
+        <Line className={THEME_PINNED ? 'items-center!' : 'mt-s2 items-center! border-t border-ink-13 pt-s2'}>
+          <div>
+            <p className="text-sec">Acceleration</p>
+            <p className="c-det mt-[3px]">{accelerationActive ? 'Active' : 'Not active'}</p>
+          </div>
+          <Btn
+            className="h-[30px]! px-3! text-detail!"
+            onClick={() => {
+              setOpen(false);
+              onAcceleration?.();
+            }}
           >
-            <link.icon
-              aria-hidden
-              className="h-4 w-4 shrink-0 text-foreground-secondary"
-              strokeWidth={1.75}
-            />
-            {link.label}
-          </button>
-        ))}
-      </div>
+            Explore
+          </Btn>
+        </Line>
+        <div className="mt-s2 border-t border-ink-13 pt-s1">
+          {LINKS.map((link) => (
+            <button key={link.label} type="button" className="c-menurow" onClick={() => go(link.to)}>
+              <span className="c-ic">
+                <link.icon />
+              </span>
+              {link.label}
+            </button>
+          ))}
+        </div>
+      </CMain>
 
-      <div className="mt-2.5 border-t-[0.5px] border-border pt-1.5">
+      <CFoot>
         <button
           type="button"
+          className="c-menurow c-muted"
           onClick={() => {
             setOpen(false);
             onSignOut?.();
           }}
-          className="flex h-[38px] w-full items-center gap-3 text-left text-[13px] text-foreground-secondary transition-colors hover:text-foreground"
         >
-          <LogOut aria-hidden className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+          <span className="c-ic">
+            <SignOutIcon />
+          </span>
           Sign out
         </button>
-      </div>
-    </>
-  );
-
-  if (isDesktop) {
-    return (
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>{children}</PopoverTrigger>
-        <PopoverContent
-          align="end"
-          sideOffset={10}
-          className={cn(
-            'w-[280px] rounded-2xl border-[0.5px] border-border bg-card p-3.5',
-            'shadow-[0_8px_32px_rgb(0_0_0/0.12)]',
-          )}
-        >
-          {body}
-        </PopoverContent>
-      </Popover>
-    );
-  }
-
-  return (
-    <>
-      <span onClick={() => setOpen(true)}>{children}</span>
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent className="px-5 pb-8 pt-5">{body}</SheetContent>
-      </Sheet>
-    </>
+      </CFoot>
+    </Surface>
   );
 }

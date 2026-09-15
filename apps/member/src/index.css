@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/clear-tokens.css";
+@import "./styles/clear-components.css" layer(components);
 
 @custom-variant dark (&:is(.dark *));
 
@@ -206,13 +208,10 @@
 
 
   /* ---- Product tokens: credit tiers & savings vesting --------------------
-     These encode product meaning, not taste (design spec §2) — a bar segment's
-     color tells you which tier is being drawn and what it costs. The FILLS are
-     the spec's exact values and stay constant across all three themes, so a
-     tier always looks like itself. Only the -fg (text) variants are retuned
-     per theme, because the fill colors are too dark to read as text on dark.
-     Tints come from opacity modifiers (bg-tier-boost/10), matching how
-     --positive/--negative are already used in this app. */
+     The tier and vest ramps now come from the brand guide (styles/clear-tokens.css)
+     and are mapped for Tailwind in the @theme inline block below. --tier-cash and
+     the --cat-* scale are not in the guide; they stay until the pages that use
+     them (Card, TransactionAvatar) are converted. */
   /* Cash is not a credit tier, but it is the first thing the card spends, so it needs a place in
      the same scale — and the deepest one, because the waterfall runs cheapest to dearest and a
      member's own money is the cheapest thing there is. Reading the bar left to right is reading the
@@ -229,18 +228,6 @@
   --cat-shopping: 90 110 150; /* #5A6E96 */
   --cat-transport: 120 90 140; /* #785A8C */
   --cat-other: 180 178 169; /* #B4B2A9 */
-  --tier-savings: 15 110 86; /* #0F6E56 — savings-backed, free */
-  --tier-asset: 29 158 117; /* #1D9E75 — asset-backed */
-  --tier-income: 186 117 23; /* #BA7517 — income-backed */
-  --tier-boost: 127 119 221; /* #7F77DD — boost, and the cash→credit crossing accent */
-  --vest-cash: 15 110 86; /* #0F6E56 — savings: cash */
-  --vest-vested: 93 202 165; /* #5DCAA5 — savings: vested */
-  --vest-vesting: 159 225 203; /* #9FE1CB — savings: vesting */
-
-  --tier-savings-fg: 15 110 86; /* #0F6E56 */
-  --tier-asset-fg: 22 122 91;
-  --tier-income-fg: 133 79 11; /* #854F0B */
-  --tier-boost-fg: 83 74 183; /* #534AB7 */
 }
 
 .dark {
@@ -463,17 +450,68 @@ body.onboarding-scroll-enabled {
   --color-cp-external: rgb(var(--cp-external));
   --color-cp-external-fg: rgb(var(--cp-external-fg));
   --color-foreground-secondary: rgb(var(--foreground-secondary));
-  --color-tier-savings: rgb(var(--tier-savings));
-  --color-tier-savings-fg: rgb(var(--tier-savings-fg));
-  --color-tier-asset: rgb(var(--tier-asset));
-  --color-tier-asset-fg: rgb(var(--tier-asset-fg));
-  --color-tier-income: rgb(var(--tier-income));
-  --color-tier-income-fg: rgb(var(--tier-income-fg));
-  --color-tier-boost: rgb(var(--tier-boost));
-  --color-tier-boost-fg: rgb(var(--tier-boost-fg));
-  --color-vest-cash: rgb(var(--vest-cash));
-  --color-vest-vested: rgb(var(--vest-vested));
-  --color-vest-vesting: rgb(var(--vest-vesting));
+
+  /* ---- Brand guide (styles/clear-tokens.css) ----
+     Colour: bg-paper, text-ink-50, border-seam, bg-tier-boost/10 ... */
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-ink-70: var(--ink-70);
+  --color-ink-50: var(--ink-50);
+  --color-ink-28: var(--ink-28);
+  --color-ink-13: var(--ink-13);
+  --color-seam: var(--seam);
+  --color-live: var(--live);
+  --color-land: var(--land);
+  --color-land-ink: var(--land-ink);
+  --color-settled: var(--settled);
+  --color-underway: var(--underway);
+  --color-absent: var(--absent);
+
+  /* Tiers keep the app's existing utility names. The guide has one text variant
+     (asset-ink, because land is too light to read as text); the other -fg
+     utilities point at the fill, which already reads as text on paper. */
+  --color-tier-savings: var(--tier-savings);
+  --color-tier-savings-fg: var(--tier-savings);
+  --color-tier-asset: var(--tier-asset);
+  --color-tier-asset-fg: var(--tier-asset-ink);
+  --color-tier-asset-ink: var(--tier-asset-ink);
+  --color-tier-income: var(--tier-income);
+  --color-tier-income-fg: var(--tier-income);
+  --color-tier-boost: var(--tier-boost);
+  --color-tier-boost-fg: var(--tier-boost);
+  --color-vest-cash: var(--vest-cash);
+  --color-vest-vested: var(--vest-vested);
+  --color-vest-vesting: var(--vest-vesting);
+
+  /* Spacing: p-s2, gap-s1, mt-s4 ... */
+  --spacing-s1: var(--s1);
+  --spacing-s2: var(--s2);
+  --spacing-s3: var(--s3);
+  --spacing-s4: var(--s4);
+  --spacing-s5: var(--s5);
+  --spacing-s6: var(--s6);
+
+  /* Type sizes: text-hero, text-fig, text-sec, text-label ... */
+  --text-hero: var(--t-hero);
+  --text-hero-m: var(--t-hero-m);
+  --text-fig: var(--t-fig);
+  --text-row: var(--t-row);
+  --text-body: var(--t-body);
+  --text-sec: var(--t-sec);
+  --text-detail: var(--t-detail);
+  --text-label: var(--t-label);
+
+  /* Radius: square is rounded-none, pill is rounded-full. Neither needs a token
+     here, and mapping --radius-pill onto itself would be a cycle.
+     Fonts: font-mono already reads --font-mono, which clear-tokens.css now sets
+     to Plex Mono. font-text is the @utility below. font-display is still the
+     legacy Space Grotesk class (76 uses, all figures) until Phase 1 moves those
+     figures to font-text; only then does it become Bricolage. */
+}
+
+@utility font-text {
+  font-family: var(--font-text);
 }
 
 /* Animation utilities */
@@ -558,22 +596,23 @@ body.onboarding-scroll-enabled {
   border: none;
 }
 
-/* Floating mobile tab bar offset. Spec §1 asks for bottom: 24px; the safe-area
-   inset wins when it's larger, so the pill never sits under the home indicator.
-   Lifts higher when installed (PWA standalone) for thumb reach. */
+/* Mobile nav offset. The guide draws it 16px off the bottom (.navwrap); the
+   safe-area inset wins when it's larger, so the bar never sits under the home
+   indicator. Lifts higher when installed (PWA standalone) for thumb reach. */
 .mobile-tabbar {
-  bottom: max(env(safe-area-inset-bottom), 1.25rem);
+  bottom: max(env(safe-area-inset-bottom), var(--s2));
 }
-/* The quick-action fan sits directly above the 50px action button. */
+/* The fan sits 80px off the bottom in the guide: the nav's 16px, its 52px, and
+   a 12px gap. */
 .mobile-quick-actions {
-  bottom: calc(max(env(safe-area-inset-bottom), 1.25rem) + 60px);
+  bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + 64px);
 }
 @media (display-mode: standalone) {
   .mobile-tabbar {
     bottom: calc(env(safe-area-inset-bottom) + 1.75rem);
   }
   .mobile-quick-actions {
-    bottom: calc(env(safe-area-inset-bottom) + 1.75rem + 60px);
+    bottom: calc(env(safe-area-inset-bottom) + 1.75rem + 64px);
   }
 }
 

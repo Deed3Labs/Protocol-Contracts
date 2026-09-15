@@ -1,17 +1,17 @@
-import { Copy, Flag } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import type { ReactNode } from 'react';
 import Modal from './Modal';
-import DetailRows, { type DetailRow } from './DetailRows';
+import { Btn, Rows } from './brand/anatomy';
+import { TIER_TEXT_CLASS } from './ClearCreditCard';
 import { signedMoney } from '@clear/domain';
-import { capitalise, TIER_FILL, type ActivityRow } from '@/lib/clearModel';
+import { capitalise, TIER_SHORT_LABEL, type ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /**
- * One transaction, opened from any of the three lists that show them.
+ * One transaction, opened from any list that shows them.
  *
- * The row that matters is "Paid from": a card charge silently picks a tier, and
- * this is where a member finds out which one it landed on and what that draw
- * costs. Rows the data doesn't carry are dropped rather than shown blank.
+ * The row that matters is "Paid from": a card charge silently picks a tier, and this is where a
+ * member finds out which one it landed on and what that draw costs — so it takes the tier's colour.
+ * Rows the data doesn't carry are dropped rather than shown blank.
  */
 export default function TransactionDetailDialog({
   row,
@@ -22,28 +22,16 @@ export default function TransactionDetailDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const rows: DetailRow[] = [];
-  if (row.datetime) rows.push({ label: 'Date', value: row.datetime });
-
-  rows.push({
+  const details: { label: string; value: ReactNode; className?: string }[] = [];
+  if (row.datetime) details.push({ label: 'Date', value: row.datetime });
+  details.push({
     label: 'Paid from',
-    value: (
-      <span className="flex items-center gap-1.5">
-        {row.paidFromTier && (
-          <span
-            aria-hidden
-            className={cn('h-1.5 w-1.5 shrink-0 rounded-full', TIER_FILL[row.paidFromTier])}
-          />
-        )}
-        {row.paidFromLabel ?? capitalise(row.source)}
-      </span>
-    ),
+    value: row.paidFromLabel ?? (row.paidFromTier ? `${TIER_SHORT_LABEL[row.paidFromTier]} credit` : capitalise(row.source)),
+    className: row.paidFromTier ? TIER_TEXT_CLASS[row.paidFromTier] : undefined,
   });
-
-  if (row.rate) rows.push({ label: 'Rate on this draw', value: row.rate });
-  if (row.cardLast4)
-    rows.push({ label: 'Card', value: <span className="font-mono">•••• {row.cardLast4}</span> });
-  if (row.status) rows.push({ label: 'Status', value: row.status });
+  if (row.rate) details.push({ label: 'Rate on this draw', value: row.rate });
+  if (row.cardLast4) details.push({ label: 'Card', value: `•••• ${row.cardLast4}`, className: 'c-mono' });
+  if (row.status) details.push({ label: 'Status', value: row.status });
 
   return (
     <Modal
@@ -51,27 +39,28 @@ export default function TransactionDetailDialog({
       onOpenChange={onOpenChange}
       title="Transaction"
       description={`${row.name}, ${signedMoney(row.amount)}.`}
+      footer={
+        <div className="c-pair">
+          <Btn>Split this</Btn>
+          <Btn>Something wrong</Btn>
+        </div>
+      }
     >
-      <p className="font-display mb-1 text-[32px] font-medium leading-none tracking-[-0.5px]">
-        {signedMoney(row.amount)}
-      </p>
-      <p className="mb-4 text-xs text-foreground-secondary">
+      <p className="c-bigamt text-hero-m">{signedMoney(row.amount)}</p>
+      <p className="c-sub mt-[6px]">
         {row.name}
         {row.location && ` · ${row.location}`}
       </p>
-
-      <DetailRows className="mb-3" rows={rows} />
-
-      <div className="flex gap-2">
-        <Button variant="clear" size="xs" className="flex-1">
-          <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />
-          Receipt
-        </Button>
-        <Button variant="clear" size="xs" className="flex-1">
-          <Flag className="h-3.5 w-3.5" strokeWidth={1.75} />
-          Report an issue
-        </Button>
-      </div>
+      <Rows className="mt-s3">
+        {details.map((d) => (
+          <div key={d.label}>
+            <div className="c-kv">
+              <span>{d.label}</span>
+              <span className={cn('c-v', d.className)}>{d.value}</span>
+            </div>
+          </div>
+        ))}
+      </Rows>
     </Modal>
   );
 }

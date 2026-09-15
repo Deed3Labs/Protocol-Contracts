@@ -1,16 +1,12 @@
 import { useState, type ReactNode } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useIdentity } from '@/context/IdentityContext';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Copy, CircleCheck } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import Card, { CardRule } from '@/components/clear/Card';
-import SettingRows from '@/components/clear/SettingRows';
-import ToggleRows from '@/components/clear/ToggleRows';
-import ContactsPanel from '@/components/clear/ContactsPanel';
+import { Btn, CMain, Rows } from '@/components/clear/brand/anatomy';
+import { ChevronIcon } from '@/components/clear/brand/icons';
+import { Done, KvRow, Pane, TwoLineRow } from '@/components/settings/SettingsKit';
+import Switch from '@/components/clear/brand/Switch';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
 import RecoveryContactsDialog from '@/components/clear/RecoveryContactsDialog';
-import ProfilePhotoRow from '@/components/settings/ProfilePhotoRow';
 import ProfilePhotoDialog from '@/components/settings/ProfilePhotoDialog';
 import MemberAvatar from '@/components/clear/MemberAvatar';
 import LoginHistoryPanel from '@/components/settings/LoginHistoryPanel';
@@ -21,470 +17,272 @@ import BylawsPanel from '@/components/settings/BylawsPanel';
 import PatronagePanel from '@/components/settings/PatronagePanel';
 import VotingPanel from '@/components/settings/VotingPanel';
 import BallotDialog from '@/components/settings/BallotDialog';
+import AdvancedDialog from '@/components/settings/AdvancedDialog';
 import { money } from '@clear/domain';
 import ThemePicker from '@/components/clear/ThemePicker';
-import InfoBlock from '@/components/clear/InfoBlock';
+import { THEME_PINNED } from '@/context/ThemeContext';
 import AccelerationDialog from '@/components/settings/AccelerationDialog';
 import ChangePhoneDialog from '@/components/settings/ChangePhoneDialog';
 import TrustedDevicesDialog from '@/components/settings/TrustedDevicesDialog';
 import CloseAccountDialog from '@/components/settings/CloseAccountDialog';
+import ContactsPane from '@/components/settings/ContactsPane';
 import { SETTINGS, CONTACTS } from '@/data/clearPlaceholder';
-import type { SettingsData } from '@/lib/clearModel';
+import { useIsDesktop } from '@/lib/useIsDesktop';
+import type { Contact, SettingsData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
+import { SETTINGS_PAGES, settingsPageOf, type SettingsPageId, type SettingsSection } from './settingsPages';
 
 /**
- * Profile & settings — reached from the avatar, not the nav.
+ * Settings — reached from the avatar, not the nav.
  *
- * One section is shown at a time on both layouts: the desktop rail swaps the
- * pane beside it, mobile pushes the same content as a sub-page with a back
- * arrow. Section contents are written once and rendered by both, so the two
- * can't drift.
+ * Sub-pages are panes; only actions are modals. A pane and a mobile drill-in are the same content in
+ * two frames, so each body is written once: the desktop rail selects it beside the rail, the phone
+ * pushes it as its own route with the header's back arrow. A pane is a component — header, main,
+ * footer — like anything in a slab.
  *
- * What's a pane and what's a modal is a real distinction, not a coin toss.
- * Sections are places you go and browse; modals are single decisions with a
- * consequence — changing the number you sign in with, paying for acceleration,
- * closing the account. Those interrupt on purpose.
+ * Advanced and Close account are actions, so they are modals; Permissions, reached from Advanced, is
+ * a pane and keeps Advanced lit on the rail.
  */
 
-type SectionId =
-  | 'account'
-  | 'membership'
-  | 'contacts'
-  | 'security'
-  | 'notifications'
-  | 'linked'
-  | 'appearance'
-  | 'advanced'
-  | 'help';
-
-/** Pages that sit one level below a section, on both layouts. */
-type SubId = 'bylaws' | 'patronage' | 'voting' | 'legal' | 'logins' | 'permissions';
+const RAIL: { id: SettingsSection | 'advanced'; label: string; detail: string }[] = [
+  { id: 'account', label: 'Account', detail: 'Name, contact, identity' },
+  { id: 'membership', label: 'Membership', detail: 'Shares, votes, your co-op record' },
+  { id: 'security', label: 'Security', detail: 'Passkeys, devices, recovery' },
+  { id: 'notifications', label: 'Notifications', detail: 'What reaches you and how' },
+  { id: 'contacts', label: 'Contacts', detail: 'People you send to and partners you follow' },
+  { id: 'linked', label: 'Linked accounts', detail: 'Banks and cards that clear your balance' },
+  // Appearance returns with the dark/dusk pass; while the theme is pinned there is nothing to pick.
+  ...(THEME_PINNED ? [] : [{ id: 'appearance' as const, label: 'Appearance', detail: 'Theme and display' }]),
+  { id: 'advanced', label: 'Advanced', detail: 'Wallet, exports, permissions' },
+];
 
 export default function SettingsPage({
   data = SETTINGS,
   onSavePhoto,
   onRemovePhoto,
+  onSignOut,
+  contacts = CONTACTS,
+  available = 0,
 }: {
   data?: SettingsData;
+  /** The address book, and Ready to allocate for sending from it. */
+  contacts?: Contact[];
+  available?: number;
   /** Live wiring — see SettingsRoute. Absent in the preview harness. */
   onSavePhoto?: (dataUrl: string) => Promise<void> | void;
   onRemovePhoto?: () => Promise<void> | void;
+  onSignOut?: () => void;
 }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const desktop = useIsDesktop();
+  const verification = useIdentity();
   const { profile } = data;
-  const [section, setSection] = useState<SectionId>('account');
-  /** Mobile only: null means the section list, otherwise the pushed sub-page. */
-  const [mobileSection, setMobileSection] = useState<SectionId | null>(null);
+
+  // The bare /settings is the index on a phone and Account beside the rail on desktop.
+  const page: SettingsPageId | null = settingsPageOf(pathname) ?? (desktop ? 'account' : null);
 
   const [accelerationOpen, setAccelerationOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
-  const verification = useIdentity();
   const [devicesOpen, setDevicesOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
-  /** A drill-in below the current section, on either layout. */
-  const [sub, setSub] = useState<SubId | null>(null);
   const [ballotOpen, setBallotOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [toggles, setToggles] = useState<Record<string, boolean>>(() => ({
+    faceid: data.faceIdOn,
+    'faceid-payments': true,
+    ...Object.fromEntries(data.notificationGroups.flatMap((g) => g.prefs.map((p) => [`notify-${p.id}`, true] as const))),
+  }));
 
-  const [notifyOn, setNotifyOn] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(
-      data.notificationGroups.flatMap((g) => g.prefs.map((p) => [p.id, true] as const)),
+  const go = (id: SettingsPageId) => navigate(`/settings/${id}`);
+  const toggle = (id: string) => (
+    <Switch
+      id={id}
+      checked={toggles[id] ?? false}
+      onCheckedChange={(v) => setToggles((prev) => ({ ...prev, [id]: v }))}
+    />
+  );
+  /** Rows children must be direct divs, so the rule runs between them. */
+  const rows = (items: ReactNode[]) => (
+    <Rows>
+      {items.map((item, i) => (
+        <div key={i}>{item}</div>
+      ))}
+    </Rows>
+  );
+
+  const verified = verification.status.state === 'verified';
+
+  // ---- Pane bodies, rendered by both frames ------------------------------------------------------
+
+  const BODIES: Record<SettingsPageId, ReactNode> = {
+    account: (
+      <Pane
+        label="Personal information"
+        aside={<span className="c-det">{verification.status.label}</span>}
+        foot={<p className="c-det">Name and date of birth are locked after identity verification. Contact support to correct them.</p>}
+      >
+        <CMain>
+          {rows([
+            <KvRow label="Legal name" value={profile.legalName} />,
+            /*
+             * Date of birth is not listed. It rendered a hardcoded year for everybody, and a real one
+             * cannot replace it: a date of birth is passed straight to the card issuer and never kept.
+             */
+            <KvRow label="Home address" value={profile.address} />,
+            <KvRow
+              label="Identity"
+              value={verified ? <Done>{verification.status.label}</Done> : verification.status.label}
+              onSelect={verification.status.actionable ? verification.openVerification : undefined}
+            />,
+            <KvRow label="Phone" value={profile.phone} onSelect={() => setPhoneOpen(true)} />,
+            <KvRow label="Email" value={profile.email} />,
+          ])}
+        </CMain>
+      </Pane>
     ),
-  );
 
-  // ---- Section contents, rendered by both layouts ----------------------------
+    membership: (
+      <Pane label="Membership" aside={<span className="c-det">{profile.region}</span>}>
+        <CMain>
+          {rows([
+            <KvRow label="Member since" value={<span className="text-ink">{profile.memberSince}</span>} />,
+            <KvRow label="Your stake" value={<span className="text-ink">Your savings balance</span>} />,
+            <KvRow label="Your vote" value={<span className="text-ink">{profile.votes} of {profile.votes}</span>} />,
+          ])}
+          <p className="c-det mt-s2">However much you save, your vote counts the same as every other member&rsquo;s.</p>
+        </CMain>
+        <CMain>
+          {rows([
+            <KvRow label="Membership agreement" onSelect={() => go('legal')} />,
+            <KvRow label="Bylaws" value={data.bylaws.version} onSelect={() => go('bylaws')} />,
+            <KvRow label="Patronage & distributions" onSelect={() => go('patronage')} />,
+            <KvRow label="Voting history" value={`${data.votesCast} votes cast`} onSelect={() => go('voting')} />,
+            <KvRow
+              label="Acceleration"
+              value={data.accelerationActive ? 'Active' : 'Not active'}
+              onSelect={() => setAccelerationOpen(true)}
+            />,
+          ])}
+        </CMain>
+      </Pane>
+    ),
 
-  const personalInformation = (
-    <>
-      <ProfilePhotoRow profile={profile} onOpen={() => setPhotoOpen(true)} />
+    security: (
+      <Pane
+        label="Security"
+        foot={<p className="c-det">There&rsquo;s no password on your account. Sign-in uses your phone, email, or Face ID.</p>}
+      >
+        <CMain>
+          {rows([
+            <TwoLineRow title={<label htmlFor="faceid">Face ID</label>} detail="Sign in without a code" trailing={toggle('faceid')} />,
+            <TwoLineRow
+              title={<label htmlFor="faceid-payments">Require Face ID for payments</label>}
+              detail={`Over ${money(data.paymentFaceIdOver)}`}
+              trailing={toggle('faceid-payments')}
+            />,
+          ])}
+        </CMain>
+        <CMain>
+          {rows([
+            <KvRow label="Trusted devices" value={String(data.devices.length)} onSelect={() => setDevicesOpen(true)} />,
+            <KvRow label="Login history" value={`Last: ${data.lastLogin}`} onSelect={() => go('logins')} />,
+            <KvRow
+              label="Recovery contacts"
+              value={data.recoveryContacts.length === 0 ? 'None set' : String(data.recoveryContacts.length)}
+              onSelect={() => setRecoveryOpen(true)}
+            />,
+          ])}
+        </CMain>
+      </Pane>
+    ),
 
-      <SettingRows
-        rows={[
-          { label: 'Legal name', value: profile.legalName },
-          /*
-           * One identity row, in the order the reference puts it.
-           *
-           * There used to be two answers to "am I verified" — Bridge's KycModal and Lithic's
-           * provisioning — and Settings was where they would have appeared side by side meaning
-           * different things. This reads the single status; see lib/identityStatus.ts.
-           */
-          {
-            label: 'Identity',
-            value: verification.status.label,
-            ...(verification.status.actionable ? { onSelect: verification.openVerification } : {}),
-          },
-          { label: 'Phone', value: profile.phone, onSelect: () => setPhoneOpen(true) },
-          { label: 'Email', value: profile.email },
-          { label: 'Home address', value: profile.address },
-        ]}
-      />
-      {/*
-        * Date of birth is gone from this list on purpose.
-        *
-        * It rendered a hardcoded `••/••/1994` for everybody — a fabricated birth year presented as
-        * the member's own — and it could not be replaced with a real one: a date of birth is passed
-        * straight through to the card issuer and never kept, so there is nothing here to show.
-        */}
-      <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
-        Your legal name is locked after identity verification — contact support to correct it. Your
-        date of birth and social security number are sent to our card issuer and never kept by
-        Clear, so they are not shown here.
-      </InfoBlock>
-    </>
-  );
-
-  /** The four membership facts, shown both in the overview card and its own pane. */
-  const membershipStats = (
-    <div className="text-xs leading-[2]">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-foreground-secondary">Member since</span>
-        <span>{profile.memberSince}</span>
+    notifications: (
+      <div className="flex flex-col gap-s3">
+        {data.notificationGroups.map((group) => (
+          <Pane key={group.title} label={group.title}>
+            <CMain>
+              {rows(
+                group.prefs.map((pref) => (
+                  <TwoLineRow
+                    title={<label htmlFor={`notify-${pref.id}`}>{pref.label}</label>}
+                    detail={pref.detail}
+                    trailing={toggle(`notify-${pref.id}`)}
+                  />
+                )),
+              )}
+            </CMain>
+          </Pane>
+        ))}
       </div>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-foreground-secondary">Your stake</span>
-        <span>Your savings balance</span>
-      </div>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-foreground-secondary">Your vote</span>
-        <span>
-          {profile.votes} of {profile.votes}
-        </span>
-      </div>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-foreground-secondary">Region</span>
-        <span>{profile.region}</span>
-      </div>
-    </div>
-  );
+    ),
 
-  /**
-   * Open a drill-in and select the section it belongs to, so the desktop rail
-   * points at the right parent however the page was reached — including from the
-   * mobile list, which has no rail of its own.
-   */
-  const openSub = (id: SubId, parent: SectionId) => {
-    setSection(parent);
-    setSub(id);
-  };
-
-  const SECTIONS: Record<SectionId, { label: string; title: string; content: ReactNode }> = {
-    account: {
-      label: 'Account',
-      title: 'Personal information',
-      content: personalInformation,
-    },
-
-    membership: {
-      label: 'Membership',
-      title: 'Membership',
-      content: (
-        <>
-          <Card className="mb-3.5">{membershipStats}</Card>
-
-          <p className="mb-3.5 text-xs leading-relaxed text-muted-foreground">
-            However much you save, your vote counts the same as every other member&rsquo;s.
-          </p>
-
-          <SettingRows
-            rows={[
-              { label: 'Membership agreement', onSelect: () => openSub('legal', 'membership') },
-              { label: 'Bylaws', value: data.bylaws.version, onSelect: () => openSub('bylaws', 'membership') },
-              { label: 'Patronage & distributions', onSelect: () => openSub('patronage', 'membership') },
-              {
-                label: 'Voting history',
-                value: `${data.votesCast} votes cast`,
-                onSelect: () => openSub('voting', 'membership'),
-              },
-              {
-                label: 'Acceleration',
-                value: data.accelerationActive ? 'Active' : 'Not active',
-                onSelect: () => setAccelerationOpen(true),
-              },
-            ]}
-          />
-        </>
-      ),
-    },
-
-    contacts: {
-      label: 'Contacts',
-      title: 'Contacts',
-      content: <ContactsPanel contacts={CONTACTS} />,
-    },
-
-    security: {
-      label: 'Security',
-      title: 'Security',
-      content: (
-        <>
-          <ToggleRows
-            rows={[
-              {
-                id: 'faceid',
-                label: 'Face ID',
-                detail: 'Sign in without a code',
-                defaultOn: data.faceIdOn,
-              },
-              {
-                id: 'faceid-payments',
-                label: 'Require Face ID for payments',
-                detail: `Over ${money(data.paymentFaceIdOver)}`,
-                defaultOn: true,
-              },
-            ]}
-          />
-
-          <SettingRows
-            className="mt-3.5 border-t-[0.5px] border-border pt-1"
-            rows={[
-              {
-                label: 'Trusted devices',
-                value: String(data.devices.length),
-                onSelect: () => setDevicesOpen(true),
-              },
-              {
-                label: 'Login history',
-                value: `Last: ${data.lastLogin}`,
-                onSelect: () => openSub('logins', 'security'),
-              },
-              {
-                label: 'Recovery contacts',
-                value:
-                  data.recoveryContacts.length === 0
-                    ? 'None set'
-                    : String(data.recoveryContacts.length),
-                onSelect: () => setRecoveryOpen(true),
-              },
-            ]}
-          />
-
-          {/* Says the quiet part out loud: there is nothing here to phish. */}
-          <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
-            There's no password on your account. Sign-in uses your phone, email, or Face ID.
-          </InfoBlock>
-        </>
-      ),
-    },
-
-    notifications: {
-      label: 'Notifications',
-      title: 'Notifications',
-      content: (
-        <>
-          {data.notificationGroups.map((group, gi) => (
-            <div key={group.title} className={cn(gi > 0 && 'mt-4')}>
-              <p className="mb-0.5 text-[11px] text-foreground-secondary">{group.title}</p>
-              <div className="text-[13px]">
-                {group.prefs.map((pref, i) => (
-                  <div
-                    key={pref.id}
-                    className={cn(
-                      'flex items-center justify-between gap-3.5 py-2.5',
-                      i < group.prefs.length - 1 && 'border-b-[0.5px] border-border',
-                    )}
-                  >
-                    <span className="min-w-0">
-                      <label htmlFor={`notify-${pref.id}`} className="block truncate">
-                        {pref.label}
-                      </label>
-                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                        {pref.detail}
-                      </span>
-                    </span>
-                    <Switch
-                      id={`notify-${pref.id}`}
-                      checked={notifyOn[pref.id]}
-                      onCheckedChange={(v) => setNotifyOn((prev) => ({ ...prev, [pref.id]: v }))}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </>
-      ),
-    },
-
-    linked: {
-      label: 'Linked accounts',
-      title: 'Linked accounts',
-      content: (
-        <>
-          <Card className="mb-3">
-            <div className="mb-1.5 flex items-center justify-between gap-3">
-              <span className="text-xs text-foreground-secondary">Direct deposit</span>
-              <span className="flex items-center gap-1.5 text-[11px] text-tier-savings-fg">
-                <CircleCheck className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
-                Active
-              </span>
-            </div>
-            <p className="mb-2.5 text-[11px] leading-relaxed text-muted-foreground">
+    linked: (
+      <div className="flex flex-col gap-s3">
+        <Pane label="Direct deposit" aside={<span className="c-det"><Done>Active</Done></span>} foot={<Btn lg>Account details</Btn>}>
+          <CMain>
+            <p className="c-det">
               Payroll from {data.employer} arrives here. This is what backs your income-based limit.
             </p>
-            <Button variant="clear" size="xs" className="w-full">
-              Account details
-            </Button>
-          </Card>
+          </CMain>
+        </Pane>
+        <Pane
+          label="Accounts"
+          foot={
+            <>
+              <p className="c-det">
+                We use your linked bank to verify income and pull scheduled savings. We never move money without you asking.
+              </p>
+              <Btn lg className="mt-s2" onClick={() => setLinkOpen(true)}>
+                Link another account
+              </Btn>
+            </>
+          }
+        >
+          <CMain>
+            {rows([
+              <KvRow label="External bank" value={data.externalBank} />,
+              <KvRow label="Employer" value={data.employer} />,
+            ])}
+          </CMain>
+        </Pane>
+      </div>
+    ),
 
-          <SettingRows
-            rows={[
-              { label: 'External bank', value: data.externalBank },
-              { label: 'Employer', value: data.employer },
-            ]}
-          />
+    contacts: <ContactsPane contacts={contacts} available={available} />,
 
-          <Button
-            variant="clear"
-            size="xs"
-            className="mt-3.5 w-full"
-            onClick={() => setLinkOpen(true)}
-          >
-            Link another account
-          </Button>
+    appearance: (
+      <Pane label="Appearance">
+        <CMain>
+          <ThemePicker />
+        </CMain>
+      </Pane>
+    ),
 
-          <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
-            We use your linked bank to verify income and pull scheduled savings. We never move money
-            without you asking.
-          </InfoBlock>
-        </>
-      ),
-    },
-
-    appearance: { label: 'Appearance', title: 'Appearance', content: <ThemePicker /> },
-
-    advanced: {
-      label: 'Advanced',
-      title: 'Advanced',
-      content: (
-        <>
-          <Card className="mb-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs text-foreground-secondary">Wallet address</p>
-                <p className="mt-[3px] truncate font-mono text-xs">{profile.walletAddress}</p>
-              </div>
-              <Button
-                variant="clear"
-                size="xs"
-                aria-label="Copy wallet address"
-                onClick={() => navigator.clipboard?.writeText(profile.walletAddress).catch(() => {})}
-              >
-                <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />
-              </Button>
-            </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              Your account is a smart wallet. You don&rsquo;t need this for anything in the app —
-              it&rsquo;s here if you want it.
-            </p>
-          </Card>
-
-          <SettingRows
-            rows={[
-              {
-                label: 'Permissions',
-                value: String(data.permissions.length),
-                onSelect: () => openSub('permissions', 'advanced'),
-              },
-            ]}
-          />
-
-          <div className="mt-3.5 border-t-[0.5px] border-border pt-1 text-[13px]">
-            <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-border py-2.5">
-              <span>Export account data</span>
-              <Button variant="clear" size="xs">
-                Download
-              </Button>
-            </div>
-            <div className="flex items-center justify-between gap-3 py-2.5">
-              <span>Transaction history (CSV)</span>
-              <Button variant="clear" size="xs">
-                Download
-              </Button>
-            </div>
-          </div>
-
-          <CardRule>
-            <Button
-              variant="clear"
-              size="xs"
-              className="w-full text-foreground-secondary"
-              onClick={() => setCloseOpen(true)}
-            >
-              Close account &amp; withdraw
-            </Button>
-          </CardRule>
-        </>
-      ),
-    },
-
-    help: {
-      label: 'Help',
-      title: 'Help',
-      content: <HelpPanel topics={data.helpTopics} onDispute={() => navigate('/learn/disputes')} />,
-    },
+    help: <HelpPanel topics={data.helpTopics} onDispute={() => navigate('/learn/disputes')} />,
+    bylaws: <BylawsPanel bylaws={data.bylaws} />,
+    permissions: <PermissionsPanel permissions={data.permissions} />,
+    patronage: <PatronagePanel patronage={data.patronage} onExplain={() => navigate('/learn/patronage')} />,
+    voting: <VotingPanel ballot={data.ballot} pastVotes={data.pastVotes} onVote={() => setBallotOpen(true)} />,
+    legal: <LegalPanel docs={data.legalDocs} />,
+    logins: <LoginHistoryPanel logins={data.logins} />,
   };
 
-  /**
-   * One level below a section. Same content in both layouts — pushed on mobile,
-   * swapped into the pane on desktop — because a document you're reading is a
-   * place you go, not a dialog over the page you came from.
-   */
-  // `bare` opts a drill-in out of the pane's Card wrapper, for content that supplies its own
-  // cards. Permissions needs it: its group labels belong above their cards, and nesting cards
-  // inside a card puts them inside one instead.
-  const SUBPAGES: Record<SubId, { title: string; content: ReactNode; bare?: boolean }> = {
-    bylaws: { title: 'Bylaws', content: <BylawsPanel bylaws={data.bylaws} /> },
-    permissions: {
-      title: 'Permissions',
-      content: <PermissionsPanel permissions={data.permissions} />,
-      bare: true,
-    },
-    patronage: {
-      title: 'Patronage & distributions',
-      content: (
-        <PatronagePanel
-          patronage={data.patronage}
-          onExplain={() => navigate('/learn/patronage')}
-        />
-      ),
-    },
-    voting: {
-      title: 'Voting',
-      content: (
-        <VotingPanel
-          ballot={data.ballot}
-          pastVotes={data.pastVotes}
-          onVote={() => setBallotOpen(true)}
-        />
-      ),
-    },
-    legal: { title: 'Legal & agreements', content: <LegalPanel docs={data.legalDocs} /> },
-    logins: { title: 'Login history', content: <LoginHistoryPanel logins={data.logins} /> },
-  };
-
-  const RAIL: SectionId[] = [
-    'account',
-    'membership',
-    'contacts',
-    'security',
-    'notifications',
-    'linked',
-    'appearance',
-    'advanced',
-  ];
-
-  const identity = (avatarSize: string, nameSize: string) => (
-    <>
-      <MemberAvatar profile={profile} className={cn('rounded-full', avatarSize)} />
-      <span className="min-w-0">
-        <span className={cn('block truncate font-medium', nameSize)}>{profile.name}</span>
-        <span className="mt-[3px] block text-xs text-foreground-secondary">
-          {profile.handle} · Member since {profile.memberSince}
-        </span>
-      </span>
-    </>
+  const identity = (
+    <div className="mb-s3 flex items-center gap-s2">
+      <button type="button" onClick={() => setPhotoOpen(true)} aria-label="Change profile photo" className="c-avatar">
+        <MemberAvatar profile={profile} className="h-full w-full bg-transparent text-inherit" />
+      </button>
+      <div className="min-w-0">
+        <p className="c-fig c-fig-sec truncate">{profile.name}</p>
+        <p className="c-sub mt-[3px] truncate">
+          {profile.handle} &middot; Member since {profile.memberSince}
+        </p>
+      </div>
+    </div>
   );
 
   const modals = (
@@ -500,242 +298,116 @@ export default function SettingsPage({
         onSave={onSavePhoto}
         onRemove={onRemovePhoto}
       />
-      <RecoveryContactsDialog
-        contacts={CONTACTS}
-        open={recoveryOpen}
-        onOpenChange={setRecoveryOpen}
+      <RecoveryContactsDialog contacts={CONTACTS} open={recoveryOpen} onOpenChange={setRecoveryOpen} />
+      <AdvancedDialog
+        walletAddress={profile.walletAddress}
+        permissionsOn={data.permissions.filter((p) => !p.held).length}
+        open={advancedOpen}
+        onOpenChange={setAdvancedOpen}
+        onPermissions={() => {
+          setAdvancedOpen(false);
+          go('permissions');
+        }}
+        onClose={() => {
+          setAdvancedOpen(false);
+          setCloseOpen(true);
+        }}
       />
-      <CloseAccountDialog closure={data.closure} open={closeOpen} onOpenChange={setCloseOpen} />
-      {data.ballot && (
-        <BallotDialog ballot={data.ballot} open={ballotOpen} onOpenChange={setBallotOpen} />
-      )}
+      <CloseAccountDialog
+        closure={data.closure}
+        handle={profile.handle}
+        open={closeOpen}
+        onOpenChange={setCloseOpen}
+        onTalk={() => {
+          setCloseOpen(false);
+          go('help');
+        }}
+      />
+      {data.ballot && <BallotDialog ballot={data.ballot} open={ballotOpen} onOpenChange={setBallotOpen} />}
     </>
   );
 
-  /** Back arrow + title, shared by every pushed page. */
-  const pushedHeader = (title: string, onBack: () => void) => (
-    <div className="mb-4 flex items-center gap-2.5">
-      <button
-        type="button"
-        aria-label="Back to settings"
-        onClick={onBack}
-        className="text-foreground-secondary transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-[17px] w-[17px]" strokeWidth={1.75} />
-      </button>
-      <span className="text-[15px] font-medium">{title}</span>
-    </div>
-  );
+  // ---- Desktop: the rail selects the pane beside it ----------------------------------------------
 
-  /** Desktop: the rail swaps the pane beside it. */
-  const desktopSettings = (
-    <div className="hidden lg:block">
-      <div className="mb-5 flex items-center gap-3.5">
-        {identity('h-[52px] w-[52px] text-[17px]', 'text-xl')}
-      </div>
+  if (desktop && page) {
+    const meta = SETTINGS_PAGES[page];
+    const isSub = meta.up !== '/settings' || page === 'permissions';
+    const railClass = (id: string) => cn(meta.rail === id && 'c-on');
 
-      <div className="grid grid-cols-[190px_minmax(0,1fr)] items-start gap-6">
-        <nav className="sticky top-[72px] text-[13px]">
-          {RAIL.map((id) => (
-            <button
-              key={id}
-              type="button"
-              // Picking a rail item leaves any drill-in below it: the rail is the
-              // top level, so it always lands you at the top level.
-              onClick={() => {
-                setSection(id);
-                setSub(null);
-              }}
-              aria-current={id === section ? 'true' : undefined}
-              className={cn(
-                'block w-full rounded-lg px-2.5 py-2 text-left transition-colors',
-                id === section
-                  ? 'bg-secondary text-foreground'
-                  : 'text-foreground-secondary hover:text-foreground',
-              )}
-            >
-              {SECTIONS[id].label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => {
-              setSection('help');
-              setSub(null);
-            }}
-            aria-current={section === 'help' ? 'true' : undefined}
-            className={cn(
-              'mt-1.5 block w-full rounded-lg border-t-[0.5px] border-border px-2.5 pb-2 pt-3 text-left transition-colors',
-              section === 'help' ? 'text-foreground' : 'text-foreground-secondary hover:text-foreground',
-            )}
-          >
-            Help
-          </button>
-        </nav>
-
-        <div>
-          {/* A drill-in takes the pane while the rail keeps its parent
-              selected — you're still inside that section, one level down. */}
-          {sub ? (
-            <>
-              {pushedHeader(SUBPAGES[sub].title, () => setSub(null))}
-              {SUBPAGES[sub].bare ? (
-                SUBPAGES[sub].content
-              ) : (
-                <Card>{SUBPAGES[sub].content}</Card>
-              )}
-            </>
-          ) : section === 'account' ? (
-            <div className="flex flex-col gap-3">
-              <Card>
-                <p className="mb-1 text-[13px] text-foreground-secondary">Personal information</p>
-                {personalInformation}
-              </Card>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Card>
-                  <p className="mb-2.5 text-[13px] text-foreground-secondary">Membership</p>
-                  {membershipStats}
-                  <CardRule>
-                    <Button variant="clear" size="xs" className="w-full">
-                      Membership agreement &amp; bylaws
-                    </Button>
-                  </CardRule>
-                </Card>
-
-                <Card className="flex flex-col">
-                  <div className="mb-1.5 flex items-baseline justify-between gap-3">
-                    <span className="text-[13px] text-foreground-secondary">Acceleration</span>
-                    <span className="text-xs text-muted-foreground">
-                      {data.accelerationActive ? 'Active' : 'Not active'}
-                    </span>
-                  </div>
-                  <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                    Reach member benefits sooner instead of earning them over time through saving
-                    and clean cycles.
-                  </p>
-                  <Button
-                    variant="clear"
-                    size="xs"
-                    className="mt-auto w-full"
-                    onClick={() => setAccelerationOpen(true)}
-                  >
-                    See what it unlocks
-                  </Button>
-                </Card>
-              </div>
-
-              <Card>
-                <p className="mb-2.5 text-[13px] text-foreground-secondary">Appearance</p>
-                <ThemePicker />
-              </Card>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Card>
-                  <p className="mb-1 text-[13px] text-foreground-secondary">Security</p>
-                  {SECTIONS.security.content}
-                </Card>
-                <Card>
-                  <p className="mb-1 text-[13px] text-foreground-secondary">Linked accounts</p>
-                  {SECTIONS.linked.content}
-                </Card>
-              </div>
-
-              <Card>
-                <p className="mb-1 text-[13px] text-foreground-secondary">Advanced</p>
-                {SECTIONS.advanced.content}
-              </Card>
-            </div>
-          ) : (
-            <Card>{SECTIONS[section].content}</Card>
-          )}
-
-          <Button variant="clear" size="xs" className="mt-3 w-full">
-            Sign out
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ---- Mobile: pushed sub-page ------------------------------------------------
-
-  if (mobileSection || sub) {
-    // Mobile only: the desktop layout renders the same drill-in in its pane, so
-    // this branch is hidden there rather than replacing the page.
-    const current = sub ? SUBPAGES[sub] : SECTIONS[mobileSection as SectionId];
     return (
       <>
-        <div className="lg:hidden">
-          {pushedHeader(current.title, () => (sub ? setSub(null) : setMobileSection(null)))}
-          {current.content}
+        {identity}
+        <div className="c-pane">
+          <nav className="c-railnav" aria-label="Settings">
+            {RAIL.map((item) =>
+              item.id === 'advanced' ? (
+                <button key={item.id} type="button" className={railClass(item.id)} onClick={() => setAdvancedOpen(true)}>
+                  {item.label}
+                </button>
+              ) : (
+                <Link
+                  key={item.id}
+                  to={`/settings/${item.id}`}
+                  className={railClass(item.id)}
+                  aria-current={meta.rail === item.id ? 'page' : undefined}
+                >
+                  {item.label}
+                </Link>
+              ),
+            )}
+            <div className="c-sep">
+              <Link to="/settings/help" className={railClass('help')} aria-current={page === 'help' ? 'page' : undefined}>
+                Help
+              </Link>
+            </div>
+          </nav>
+
+          <div className="min-w-0">
+            {isSub ? (
+              <button type="button" className="c-paneback mb-s2!" onClick={() => navigate(meta.up)}>
+                <ChevronIcon size={16} strokeWidth={2} className="rotate-180 text-ink-50" />
+                <span className="c-panetitle">{meta.title}</span>
+              </button>
+            ) : (
+              <p className="c-panetitle mb-s2">{meta.title}</p>
+            )}
+            {BODIES[page]}
+          </div>
         </div>
-        {desktopSettings}
         {modals}
       </>
     );
   }
 
+  // ---- Phone: a pushed page, titled by the header -----------------------------------------------
+
+  if (page) {
+    return (
+      <>
+        {BODIES[page]}
+        {modals}
+      </>
+    );
+  }
+
+  // ---- Phone: the index. Each row states what is inside, not only its name. ----------------------
+
   return (
     <>
-      {/* Mobile: the section list */}
-      <div className="lg:hidden">
-        <div className="mb-3.5 flex items-center gap-3 border-b-[0.5px] border-border pb-3.5">
-          {identity('h-11 w-11 text-sm', 'text-[15px]')}
-        </div>
-
-        <p className="mb-2 text-[11px] text-foreground-secondary">Appearance</p>
-        <ThemePicker className="mb-4" />
-
-        <p className="mb-0.5 text-[11px] text-foreground-secondary">Account</p>
-        <SettingRows
-          rows={[
-            { label: 'Personal information', onSelect: () => setMobileSection('account') },
-            {
-              label: 'Membership',
-              value: `${profile.votes} vote`,
-              onSelect: () => setMobileSection('membership'),
-            },
-            {
-              label: 'Acceleration',
-              value: data.accelerationActive ? 'Active' : 'Not active',
-              onSelect: () => setAccelerationOpen(true),
-            },
-            {
-              label: 'Contacts',
-              value: String(CONTACTS.length),
-              onSelect: () => setMobileSection('contacts'),
-            },
-            {
-              label: 'Security',
-              value: data.faceIdOn ? 'Face ID on' : 'Off',
-              onSelect: () => setMobileSection('security'),
-            },
-            { label: 'Notifications', onSelect: () => setMobileSection('notifications') },
-            {
-              label: 'Linked accounts',
-              value: String(data.linkedAccountCount),
-              onSelect: () => setMobileSection('linked'),
-            },
-          ]}
-        />
-
-        <p className="mb-0.5 mt-4 text-[11px] text-foreground-secondary">More</p>
-        <SettingRows
-          rows={[
-            { label: 'Advanced', onSelect: () => setMobileSection('advanced') },
-            { label: 'Help', onSelect: () => setMobileSection('help') },
-            { label: 'Legal & agreements', onSelect: () => openSub('legal', 'membership') },
-          ]}
-        />
-
-        <Button variant="clear" size="xs" className="mt-4 w-full">
-          Sign out
-        </Button>
-      </div>
-
-      {desktopSettings}
-
+      {identity}
+      <Pane foot={<Btn lg onClick={onSignOut}>Sign out</Btn>}>
+        <CMain>
+          {rows(
+            RAIL.map((item) => (
+              <TwoLineRow
+                title={item.label}
+                detail={item.detail}
+                onSelect={() => (item.id === 'advanced' ? setAdvancedOpen(true) : go(item.id))}
+              />
+            )),
+          )}
+        </CMain>
+      </Pane>
       {modals}
     </>
   );

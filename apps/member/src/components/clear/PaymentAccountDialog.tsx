@@ -1,16 +1,22 @@
 import { useEffect, useState } from 'react';
-import { CircleCheck } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import Modal from './Modal';
+import { Btn, Line, Rows } from './brand/anatomy';
+import { TickIcon } from './brand/icons';
 import type { LinkedAccount } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
+/** "Chase ····4471" → the bank, and the masked number that follows it. */
+function splitName(name: string): { bank: string; mask?: string } {
+  const at = name.indexOf(' ····');
+  return at === -1 ? { bank: name } : { bank: name.slice(0, at), mask: name.slice(at + 1) };
+}
+
 /**
- * Payment account — design spec §4c, opened from the shelf's "Clears from" footer.
+ * Clears from — a leg picker, reached from the Term plans footer and from the route in Add money.
  *
- * The same list as Settings › Linked accounts, scoped to the ACH fallback. It leads by saying the
- * Clear balance is always used first, because otherwise picking an account reads as choosing who
- * gets paid — and a member who thinks that will keep money out of Clear to steer it.
+ * Plans clear from the Clear balance first, and it says so before anything else, because otherwise
+ * picking an account reads as choosing who gets paid. The chooser mark is square like every other
+ * drawn control. The footer states the limit of what a linked account can do before you pick one.
  */
 export default function PaymentAccountDialog({
   accounts,
@@ -22,7 +28,7 @@ export default function PaymentAccountDialog({
 }: {
   accounts: LinkedAccount[];
   selectedId?: string;
-  /** Commit the choice. Picking a row only previews it — this is what applies it to every plan. */
+  /** Commit the choice. Picking a row only previews it. */
   onSave?: (id: string) => void;
   onLink?: () => void;
   open: boolean;
@@ -39,58 +45,61 @@ export default function PaymentAccountDialog({
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Payment account"
-      description="Choose which linked account term plans clear from after your Clear balance."
+      title="Clears from"
+      description="Choose which linked account covers what your Clear balance does not."
+      footer={
+        <>
+          <Line className="items-center!">
+            <span className="c-det">Read-only · Clear cannot pull from it except to clear a plan</span>
+            <Btn className="c-linkish" onClick={onLink}>
+              Link another
+            </Btn>
+          </Line>
+          <Btn primary lg className="mt-s2" disabled={picked === undefined} onClick={() => picked && onSave?.(picked)}>
+            Use this account
+          </Btn>
+        </>
+      }
     >
-      <p className="mb-3.5 text-xs leading-relaxed text-foreground-secondary">
-        Your Clear balance is always used first. This is where the rest comes from.
-      </p>
-
-      <div className="mb-3.5 space-y-2">
-        {accounts.map((account) => {
-          const selected = account.id === picked;
-          return (
-            <button
-              key={account.id}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => setPicked(account.id)}
-              className={cn(
-                'flex w-full items-center justify-between gap-3 rounded-[10px] border-[0.5px] px-3.5 py-[11px] text-left',
-                selected ? 'border-tier-boost' : 'border-border',
-              )}
-            >
-              <span className="min-w-0">
-                <span className="block truncate text-[13px]">{account.name}</span>
-                <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                  {account.detail}
+      <p className="c-det mb-s2">Plans clear from your Clear balance first. This account covers whatever is left.</p>
+      {accounts.length === 0 ? (
+        <p className="c-det">No accounts linked yet.</p>
+      ) : (
+        <Rows>
+          {accounts.map((account) => {
+            const on = account.id === picked;
+            const { bank, mask } = splitName(account.name);
+            return (
+              <button
+                key={account.id}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => setPicked(account.id)}
+                className="c-line block w-full items-center! text-left"
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className={cn('c-pick', on && 'c-on')}>
+                    {on && <TickIcon size={12} strokeWidth={3.2} className="text-paper" />}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sec">{bank}</span>
+                    <span className="c-det mt-[2px] block">
+                      {account.kind}
+                      {mask ? ` ${mask}` : ''}
+                    </span>
+                    <span className="c-det block">
+                      {account.linkedOn
+                        ? `${account.verified ? 'Verified · ' : ''}linked ${account.linkedOn}`
+                        : account.detail}
+                    </span>
+                  </span>
                 </span>
-              </span>
-              {selected && (
-                <CircleCheck className="h-4 w-4 shrink-0 text-tier-boost-fg" strokeWidth={2} />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      <Button variant="clear" size="xs" className="mb-2.5 w-full" onClick={onLink}>
-        Link another account
-      </Button>
-      {/* This applies to every plan at once, so it's an explicit commit rather than something that
-          happens the moment a row is tapped. */}
-      <Button
-        size="sm"
-        className="mb-2.5 w-full"
-        disabled={picked === selectedId || picked === undefined}
-        onClick={() => picked && onSave?.(picked)}
-      >
-        {picked === selectedId ? 'No changes' : 'Save changes'}
-      </Button>
-      <p className="text-[11px] leading-relaxed text-muted-foreground">
-        Changing this applies to every term plan. Nothing scheduled is missed — the next clearing
-        uses the new account.
-      </p>
+              </button>
+            );
+          })}
+        </Rows>
+      )}
     </Modal>
   );
 }
