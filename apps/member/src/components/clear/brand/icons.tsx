@@ -279,3 +279,12 @@ export function ScanIcon({ size = 18, strokeWidth = 1.9, ...props }: IconProps) 
     </svg>
   );
 }
+
+/** Contactless, as the card face draws it. */
+export function ContactlessIcon({ size = 16, strokeWidth = 1.9, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M12 20h.01M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 14 0" />
+    </svg>
+  );
+}

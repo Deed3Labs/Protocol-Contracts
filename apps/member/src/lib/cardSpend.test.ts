@@ -50,12 +50,8 @@ describe('the month bar is made of real categories', () => {
     expect(route).toMatch(/periodTotal: cardRows\.reduce/);
   });
 
-  test('the bar is skipped when the rows carry no category', () => {
-    // Placeholder rows and non-card activity have no MCC; a bar built from them would be a picture
-    // of our ignorance rather than of a member's month.
-    expect(page).toContain('row.category != null');
-    expect(page).toContain('categoryTotals.length > 1');
-  });
+  // The category bar went with the brand-guide rebuild: the reference has none. When it returns it must
+  // still skip rows without a merchant category code, which categoryForMcc above already pins.
 });
 
 describe('the network mark is swappable', () => {

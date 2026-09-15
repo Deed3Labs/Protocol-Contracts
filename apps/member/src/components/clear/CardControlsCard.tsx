@@ -1,49 +1,68 @@
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import Card, { CardRule } from './Card';
-import ToggleRows from './ToggleRows';
+import { Btn, CFoot, CHead, CMain, Cell, Line, Rows, SecHead } from './brand/anatomy';
+import Switch from './brand/Switch';
 import { money } from '@clear/domain';
-import type { CardData } from '@/lib/clearModel';
+import type { CardControl } from '@/lib/clearModel';
 
 /**
- * Card controls — design spec §9.
- *
- * Switches rather than a freeze: freezing stops everything, and most of what
- * people actually want is narrower ("never let this card work abroad"). The two
- * limits sit under them because they're the same kind of decision, read far more
- * often than they're changed.
+ * Controls — switches rather than a freeze: freezing stops everything, and most of what people want
+ * is narrower ("never let this card work abroad"). The two limits are the footer, because they are
+ * facts about the controls above them, read far more often than they are changed.
  */
 export default function CardControlsCard({
-  card,
+  controls,
+  perTransactionLimit,
+  perDayLimit,
   onAdjustLimits,
 }: {
-  card: CardData;
+  controls: CardControl[];
+  perTransactionLimit: number;
+  perDayLimit: number;
   onAdjustLimits?: () => void;
 }) {
-  const [rows] = useState(() =>
-    card.controls.map((c) => ({ id: c.id, label: c.label, defaultOn: c.on })),
-  );
+  const [on, setOn] = useState<Record<string, boolean>>(() => Object.fromEntries(controls.map((c) => [c.id, c.on])));
+  const onCount = controls.filter((c) => on[c.id]).length;
 
   return (
-    <Card>
-      <p className="mb-0.5 text-xs text-foreground-secondary">Controls</p>
-
-      <ToggleRows rows={rows} />
-
-      <CardRule className="text-xs">
-        <div className="flex items-baseline justify-between gap-3 leading-[1.9]">
-          <span className="text-foreground-secondary">Per transaction</span>
-          <span className="tabular-nums">{money(card.perTransactionLimit)}</span>
-        </div>
-        <div className="flex items-baseline justify-between gap-3 leading-[1.9]">
-          <span className="text-foreground-secondary">Per day</span>
-          <span className="tabular-nums">{money(card.perDayLimit)}</span>
-        </div>
-      </CardRule>
-
-      <Button variant="clear" size="xs" className="mt-3 w-full" onClick={onAdjustLimits}>
-        Adjust limits
-      </Button>
-    </Card>
+    <Cell>
+      <CHead>
+        <SecHead label="Controls">
+          <span className="c-det">
+            {onCount} of {controls.length} on
+          </span>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <Rows>
+          {controls.map((control) => (
+            <div key={control.id}>
+              <Line className="items-center!">
+                <label htmlFor={`control-${control.id}`} className="text-sec">
+                  {control.label}
+                </label>
+                <Switch
+                  id={`control-${control.id}`}
+                  checked={on[control.id] ?? false}
+                  onCheckedChange={(v) => setOn((prev) => ({ ...prev, [control.id]: v }))}
+                />
+              </Line>
+            </div>
+          ))}
+        </Rows>
+      </CMain>
+      <CFoot>
+        <Line>
+          <span className="c-sub">Per transaction</span>
+          <span className="c-fig c-fig-row">{money(perTransactionLimit, { cents: true })}</span>
+        </Line>
+        <Line className="mt-[6px]">
+          <span className="c-sub">Per day</span>
+          <span className="c-fig c-fig-row">{money(perDayLimit, { cents: true })}</span>
+        </Line>
+        <Btn lg className="mt-s2" onClick={onAdjustLimits}>
+          Adjust limits
+        </Btn>
+      </CFoot>
+    </Cell>
   );
 }

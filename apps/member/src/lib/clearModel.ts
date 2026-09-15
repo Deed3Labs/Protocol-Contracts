@@ -1116,6 +1116,9 @@ export interface CardSummary {
   where: string;
 }
 
+/** The co-op's daily ceiling on any one card — what Max means in Adjust limits. */
+export const CARD_DAILY_CEILING = 5000;
+
 export interface CardData {
   /**
    * Every card the member holds, newest first. The first is the one on the face.
@@ -1140,6 +1143,8 @@ export interface CardData {
   period: string;
   /** What the card spent over that period. */
   periodTotal: number;
+  /** How many card transactions that period holds, when the list shown is only some of them. */
+  periodCount?: number;
   /** Which card is on screen — the same account, two ways to present it. */
   variant: 'physical' | 'virtual';
   controls: CardControl[];

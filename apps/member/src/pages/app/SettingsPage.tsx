@@ -4,7 +4,7 @@ import { useIdentity } from '@/context/IdentityContext';
 import { Btn, CMain, Rows } from '@/components/clear/brand/anatomy';
 import { ChevronIcon } from '@/components/clear/brand/icons';
 import { Done, KvRow, Pane, TwoLineRow } from '@/components/settings/SettingsKit';
-import { Switch } from '@/components/ui/switch';
+import Switch from '@/components/clear/brand/Switch';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
 import RecoveryContactsDialog from '@/components/clear/RecoveryContactsDialog';
 import ProfilePhotoDialog from '@/components/settings/ProfilePhotoDialog';

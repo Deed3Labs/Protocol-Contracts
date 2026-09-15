@@ -598,6 +598,13 @@ export const ACTIVITY_DAY_ONE: ActivityData = { rows: [] };
 
 export const CARD_IN_USE: CardData = {
   activated: true,
+  cards: [
+    { id: 'physical', variant: 'physical', last4: '8836', frozen: false, where: 'In your wallet' },
+    { id: 'virtual', variant: 'virtual', last4: '3519', frozen: false, where: 'Apple Pay, online' },
+  ],
+  // The card spends what is ready to allocate first, then the same tiers Home draws.
+  cardCash: 0,
+  tiers: HOME_IN_USE.credit.tiers,
   last4: '8836',
   cardholder: 'Kai M',
   expiry: '04/29',
@@ -607,11 +614,12 @@ export const CARD_IN_USE: CardData = {
   cvc: '318',
   period: 'October',
   periodTotal: 1842,
+  periodCount: 24,
   variant: 'physical',
   controls: [
     { id: 'contactless', label: 'Contactless', on: true },
     { id: 'online', label: 'Online payments', on: true },
-    { id: 'atm', label: 'ATM withdrawals', on: true },
+    { id: 'atm', label: 'ATM withdrawals', on: false },
     { id: 'international', label: 'International', on: false },
   ],
   perTransactionLimit: 2000,
