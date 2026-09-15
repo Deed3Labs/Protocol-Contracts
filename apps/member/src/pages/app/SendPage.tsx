@@ -9,11 +9,12 @@ import PartnerRows from '@/components/clear/PartnerRows';
 import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
 import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
 import RequestMoneyDialog from '@/components/clear/RequestMoneyDialog';
+import PartnerSheet from '@/components/clear/PartnerSheet';
 import { useSetMobileAction } from '@/components/shell/MobileAction';
 import { SEND_DAY_ONE } from '@/data/clearPlaceholder';
 import { money } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
-import { searchContacts, type Contact, type SendData } from '@/lib/clearModel';
+import { searchContacts, type Contact, type Partner, type SendData } from '@/lib/clearModel';
 
 /** A header or footer link: detail text with a chevron, never a Unicode arrow. */
 function MoreLink({ to, children }: { to: string; children: string }) {
@@ -41,6 +42,7 @@ export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
   const [query, setQuery] = useState('');
   const [recipient, setRecipient] = useState<Contact | null>(null);
   const [request, setRequest] = useState<{ contact?: Contact } | null>(null);
+  const [partner, setPartner] = useState<Partner | null>(null);
 
   useSetMobileAction({ label: 'Scan', icon: PlusIcon, onSelect: () => navigate('/scan') });
 
@@ -109,7 +111,7 @@ export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
         </SecHead>
       </CHead>
       <CMain>
-        <PartnerRows partners={data.partners.slice(0, 4)} emptyMessage="No partners near you yet." />
+        <PartnerRows partners={data.partners.slice(0, 4)} onSelect={setPartner} emptyMessage="No partners near you yet." />
       </CMain>
       <CFoot>
         <Line className="items-center!">
@@ -187,6 +189,15 @@ export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
         open={request !== null}
         onOpenChange={(o) => !o && setRequest(null)}
       />
+
+      {partner && (
+        <PartnerSheet
+          partner={partner}
+          open={partner !== null}
+          onOpenChange={(o) => !o && setPartner(null)}
+          onPay={() => navigate('/scan')}
+        />
+      )}
 
       {recipient && (
         <SendMoneyDialog

@@ -41,7 +41,7 @@ export default function ContactRows({
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sec">{contact.name}</span>
-              <span className="c-det mt-[2px] block truncate">{contactHandle(contact)}</span>
+              <span className="c-det mt-[2px] block">{contactHandle(contact)}</span>
             </span>
           </span>
         );
