@@ -18,6 +18,7 @@ import TermLimitDialog from '@/components/clear/TermLimitDialog';
 import AddBoostDialog from '@/components/clear/AddBoostDialog';
 import ConnectedMoveMoney from '@/components/clear/ConnectedMoveMoney';
 import LinkAccountDialog from '@/components/clear/LinkAccountDialog';
+import AddMoneyDialog from '@/components/clear/AddMoneyDialog';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { HOME_DAY_ONE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useIsDesktop } from '@/lib/useIsDesktop';
@@ -45,6 +46,7 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [boostOpen, setBoostOpen] = useState(false);
   const [addSavingsOpen, setAddSavingsOpen] = useState(false);
+  const [addMoneyOpen, setAddMoneyOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [repayOpen, setRepayOpen] = useState(false);
   const [payAccountOpen, setPayAccountOpen] = useState(false);
@@ -63,7 +65,7 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
   // Deep links: add money from the nav's quick actions, the limit breakdown from a bond on Earn.
   useEffect(() => {
     const action = params.get('do');
-    if (action === 'add-money') setLinkOpen(true);
+    if (action === 'add-money') setAddMoneyOpen(true);
     else if (action === 'limit-breakdown') setBreakdownOpen(true);
     else return;
     params.delete('do');
@@ -85,7 +87,7 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
 
   // A setup step opens the surface that completes it.
   const onTask = (id: string) => {
-    if (id === 'deposit') setLinkOpen(true);
+    if (id === 'deposit') setAddMoneyOpen(true);
     else if (id === 'direct-deposit') setAccountOpen(true);
     else if (id === 'card') navigate('/card');
   };
@@ -104,7 +106,7 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
   const quickActions = (
     <QuickActions
       actions={[
-        { label: 'Add money', onSelect: () => setLinkOpen(true) },
+        { label: 'Add money', onSelect: () => setAddMoneyOpen(true) },
         { label: 'Send', onSelect: () => navigate('/send') },
         { label: 'Save', onSelect: () => setAddSavingsOpen(true) },
         { label: 'Pay', onSelect: () => navigate('/card') },
@@ -125,15 +127,7 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
 
   const modals = (
     <>
-      <TermLimitDialog
-        data={termPlansData}
-        open={termLimitOpen}
-        onOpenChange={setTermLimitOpen}
-        onManageAccounts={() => {
-          setTermLimitOpen(false);
-          setPayAccountOpen(true);
-        }}
-      />
+      <TermLimitDialog data={termPlansData} open={termLimitOpen} onOpenChange={setTermLimitOpen} />
       <PaymentAccountDialog
         accounts={termPlansData.accounts}
         selectedId={clearsFromId}
@@ -163,6 +157,15 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
         />
       )}
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
+      {/* Its From leg is the Clears from picker, so the account it pulls from is the one plans use. */}
+      <AddMoneyDialog
+        open={addMoneyOpen}
+        onOpenChange={setAddMoneyOpen}
+        account={termPlansData.accounts.find((a) => a.id === clearsFromId) ?? termPlansData.accounts[0]}
+        readyToAllocate={data.cashAccount.readyToAllocate}
+        firstDeposit={!data.tasks.find((t) => t.id === 'deposit')?.done}
+        onPickAccount={() => setPayAccountOpen(true)}
+      />
       <AccountDetailsDialog account={data.cashAccount} open={accountOpen} onOpenChange={setAccountOpen} />
       {/* Savings deposit is the same surface Savings uses; the credit limit it quotes comes from this
           page's own tiers so the two can't disagree. */}
@@ -184,7 +187,7 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
       <>
         {hero}
         <div className="c-home">
-          <SetupPanel tasks={data.tasks} onAction={onTask} onAddMoney={() => setLinkOpen(true)} />
+          <SetupPanel tasks={data.tasks} onAction={onTask} onAddMoney={() => setAddMoneyOpen(true)} />
           {fromCounter && termPlans(true)}
           <SavingsSummaryCard savings={data.savings} emptyState />
         </div>

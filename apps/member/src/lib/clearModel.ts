@@ -1310,6 +1310,10 @@ export interface LinkedAccount {
   kind: string;
   /** Whether the limit is read from this account's flow. Not every linked account is. */
   readForLimit?: boolean;
+  /** Ownership verified at link. */
+  verified?: boolean;
+  /** When it was linked, e.g. "Mar 2026". */
+  linkedOn?: string;
 }
 
 export interface TermPlans {

@@ -77,8 +77,10 @@ const LINKED_ACCOUNTS: LinkedAccount[] = [
     detail: 'Checking · paycheck arrives here',
     kind: 'Checking',
     readForLimit: true,
+    verified: true,
+    linkedOn: 'Mar 2026',
   },
-  { id: 'golden1', name: 'Golden 1 ····8802', detail: 'Savings', kind: 'Savings' },
+  { id: 'golden1', name: 'Golden 1 ····8802', detail: 'Savings', kind: 'Savings', verified: true, linkedOn: 'Aug 2026' },
 ];
 
 const SPLIT_OPTIONS = [1, 2, 4, 12];
