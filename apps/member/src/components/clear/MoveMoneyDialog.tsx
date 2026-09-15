@@ -203,6 +203,8 @@ export default function MoveMoneyDialog({
   // The pool can be fully lent — a state savings does not have. What is free to take is capped by
   // the pool's cash, not by the member's position.
   const poolFree = isPool && pool ? Math.min(savingsFree, pool.freeNow) : savingsFree;
+  // Some of the member's position is lent out right now, so not all of it can leave today.
+  const poolLent = isPool && !!pool && pool.freeNow < savingsFree;
   const amount = Number(typed) || 0;
   // Each leg carries its balance, so the constraint is visible before anything is typed and the
   // "All" chip has a stated meaning.
@@ -210,6 +212,9 @@ export default function MoveMoneyDialog({
   // The chips are shortcuts; the pad is the input.
   const presets = isPool ? [500, 1000, 2500] : isDeposit ? [100, 250, 500] : [100, 500, 1000];
   const over = amount > available;
+  // The pool can be fully lent. Asking for more than is free is not a mistake to refuse — pay what is
+  // there and queue the rest, which is what the contract's requestWithdrawal exists for.
+  const canQueue = isPool && !isDeposit && over;
   const shortBy = amount - available;
   // A bond is measured against the collection's limits rather than against a balance.
   const belowMin = isBond && bond ? amount > 0 && amount < bond.minFace : false;
@@ -233,9 +238,6 @@ export default function MoveMoneyDialog({
 
   const amountBlock = (dim = false) => (
     <>
-      {/* The pool can be fully lent; savings cannot. Named at the top so the constrained figures
-          below have a reason before they are read. */}
-      {isPool && !isDeposit && over && <p className="c-label mb-s1">Pool is fully lent</p>}
       <p className="c-label">{isBond ? 'Face value — what you get back' : 'Amount'}</p>
       <p className={cn('c-bigamt', dim && 'text-ink-28')}>
         {/* Grouped for reading, but the typed string stays the source — formatting the whole figure
@@ -258,7 +260,7 @@ export default function MoveMoneyDialog({
           {money(amount - bond.maxFace, { cents: true })} above the {money(bond.maxFace, { cents: true })} largest bond
         </p>
       )}
-      {over && (
+      {over && !canQueue && (
         // Stated as the difference, because that is the number they can act on — not as a refusal.
         <p className="c-sub mt-[6px]">
           {money(shortBy, { cents: true })} more than is{' '}
@@ -273,10 +275,11 @@ export default function MoveMoneyDialog({
       <Leg
         label="From"
         name={isDeposit ? 'Cash account' : isPool ? 'Yield pool' : 'Savings'}
-        // "free" on every From leg: money that can move — unallocated on the cash side, unencumbered
-        // on the savings side, not lent out on the pool's.
-        balance={`${money(isDeposit ? cashReady : isPool ? poolFree : savingsFree, { cents: true })} ${
-          !isDeposit && isPool && pool && pool.freeNow < savingsFree ? 'free now' : 'free'
+        // "free" where something caps what can move: unallocated cash, unencumbered savings, and a
+        // pool position only once some of it is lent out. A pool position that can all leave is just
+        // its balance.
+        balance={`${money(isDeposit ? cashReady : isPool ? poolFree : savingsFree, { cents: true })}${
+          !isDeposit && isPool && !poolLent ? '' : ' free'
         }`}
       />
       {isBond && bond ? (
@@ -336,9 +339,9 @@ export default function MoveMoneyDialog({
           className={cn('c-chip-q', amount === available && available > 0 && 'c-on')}
           onClick={() => changeTyped(String(available))}
         >
-          {/* "All free" rather than "All" — it moves everything that can move, and the word does the
-              explaining. */}
-          {isDeposit ? 'All' : 'All free'}
+          {/* "All free" on a savings withdrawal — it moves everything that can move, and the word does
+              the explaining. The pool's leg already says what is free, so its chip is plain "All". */}
+          {isDeposit || isPool ? 'All' : 'All free'}
         </Btn>
       </div>
     );
@@ -399,14 +402,27 @@ export default function MoveMoneyDialog({
             gain
           />
         </>
+      ) : isPool && pool && over ? (
+        <>
+          {/* Asking for more than is free is answered, not refused: what comes now leads, then what
+              waits, and how it arrives. */}
+          <Row label="Available now" value={money(available, { cents: true })} accent />
+          <Row label="Queued" value={money(amount - available, { cents: true })} />
+          <Row label="Sent as members repay" value="Automatically" />
+          <Row
+            label="Your credit limit drops by"
+            value={`−${money((amount * pool.haircutBps) / 10_000, { cents: true })}`}
+            gain
+            down
+          />
+        </>
       ) : isPool && pool ? (
         <>
-          {/* Taking money out is the same five lines with the signs turned round. The earn row still
-              leads, because what a withdrawal costs in yield is the thing being weighed. */}
-          <Row label="Yield lost" value={`~${money((amount * pool.apyPercent) / 100, { cents: true })} a year`} accent />
+          {/* Taking money out is the same lines with the signs turned round. The earn row still leads,
+              because what a withdrawal costs in yield is the thing being weighed. */}
+          <Row label="Yield given up" value={`~${money((amount * pool.apyPercent) / 100, { cents: true })} a year`} accent />
           <Row label="Position after" value={money(after.savings, { cents: true })} />
-          <Row label="Arrives" value={over ? 'Some queued' : 'Within 24 hours'} />
-          <Row label="Pool utilization" value={`${Math.round(pool.utilizationBps / 100)}%`} />
+          <Row label="Arrives" value="Instantly" />
           <Row
             label="Your credit limit drops by"
             value={`−${money((amount * pool.haircutBps) / 10_000, { cents: true })}`}
@@ -440,26 +456,19 @@ export default function MoveMoneyDialog({
     </div>
   );
 
-  // The question a member withdrawing from the pool is actually asking is whether they stay above
-  // what they owe, so it names the limit it lands on rather than only the drop.
-  const landingNote = isPool && !isDeposit && pool?.limitAfter !== undefined && (
-    <p className="c-det mt-s2">
-      Limit falls to {money(pool.limitAfter, { cents: true })}
-      {pool.owed !== undefined ? `, still above the ${money(pool.owed, { cents: true })} you owe.` : '.'}
-    </p>
-  );
-
-  // Context rather than consequence, which is why desktop keeps it under the keypad.
-  const lockNote = isBond && bond && (
+  // Context rather than consequence, which is why desktop keeps it under the keypad. A bond's is what
+  // locked means; a partly lent pool's is how much of the position is out.
+  const lockNote = isBond && bond ? (
     <p className="c-det mt-s2">
       Locked until maturity, but it backs your credit line at {Math.round(bond.haircutBps / 100)}%, so you can borrow
       against it any time for 0.65% a cycle.
     </p>
-  );
-
-  // The pool can be fully lent. Asking for more than is free is not a mistake to refuse — pay what is
-  // there and queue the rest, which is what the contract's requestWithdrawal exists for.
-  const canQueue = isPool && !isDeposit && over;
+  ) : isPool && !isDeposit && poolLent ? (
+    <p className="c-det mt-s2">
+      Only {money(poolFree, { cents: true })} is free right now. {money(savingsFree - poolFree, { cents: true })} of your
+      position is lent out.
+    </p>
+  ) : null;
 
   /*
    * The three things that actually happen, named: money leaves, the thing it is going into takes it,
@@ -492,7 +501,7 @@ export default function MoveMoneyDialog({
         ? `${money(amount, { cents: true })} saved`
         : `${money(amount, { cents: true })} moved`;
 
-  const title = isBond ? 'Buy a bond' : isPool ? (isDeposit ? 'Add to the pool' : 'Take from the pool') : 'Move money';
+  const title = isBond ? 'Buy a bond' : isPool && isDeposit ? 'Add to the pool' : 'Move money';
 
   // ---- Progress: the modal replaces its own content. ----
   let body: ReactNode;
@@ -597,17 +606,11 @@ export default function MoveMoneyDialog({
         </>
       ) : canQueue ? (
         <>
-          <p className="c-det mt-s2">
-            The rest is lent out. <strong className="font-semibold text-ink">Queue it</strong> and it is sent as members
-            repay.
-          </p>
-          <Btn primary lg className="mt-s2" disabled={busy} onClick={() => onMove(available)}>
-            Take {money(available, { cents: true })} now
+          {error && <p className="c-det mt-s2 text-absent">{error}</p>}
+          {/* One move: what is free goes now and the rest queues, in the same batch. */}
+          <Btn primary lg className="mt-s2" disabled={busy} onClick={() => onMove(amount)}>
+            {busy ? 'Moving…' : `Take ${money(available, { cents: true })} now and queue the rest`}
           </Btn>
-          <Btn lg className="mt-s1" disabled={busy} onClick={() => onMove(amount)}>
-            Queue the remaining {money(amount - available, { cents: true })}
-          </Btn>
-          <p className="c-det mt-s1 text-center">Sent automatically. Nothing to come back and do.</p>
         </>
       ) : over ? (
         <>
@@ -627,13 +630,13 @@ export default function MoveMoneyDialog({
               ? 'Moving…'
               : isBond
                 ? 'Buy this bond'
-                : isPool
-                  ? `${isDeposit ? 'Add' : 'Take'} ${money(amount, { cents: true })}`
+                : isPool && isDeposit
+                  ? `Add ${money(amount, { cents: true })}`
                   : `Move ${money(amount, { cents: true })} to ${isDeposit ? 'savings' : 'cash'}`}
           </Btn>
-          {!isBond && (isPool || isDeposit) && (
+          {!isBond && isDeposit && (
             <p className="c-det mt-s1 text-center">
-              {isPool ? (isDeposit ? 'Rate moves with how much of the pool is lent.' : 'Sent to your cash account.') : 'Instant. You can move it back any time.'}
+              {isPool ? 'Rate moves with how much of the pool is lent.' : 'Instant. You can move it back any time.'}
             </p>
           )}
         </>
@@ -661,7 +664,6 @@ export default function MoveMoneyDialog({
     footer = (
       <>
         {summaryRows()}
-        {landingNote}
         {action}
       </>
     );

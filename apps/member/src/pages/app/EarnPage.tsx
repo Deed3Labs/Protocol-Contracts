@@ -1,146 +1,113 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useSetMobileAction } from '@/components/shell/MobileAction';
-import Card from '@/components/clear/Card';
-import SegmentedBar from '@/components/clear/SegmentedBar';
-import InfoBlock from '@/components/clear/InfoBlock';
+import { Bar, CHead, Cell } from '@/components/clear/brand/anatomy';
+import { PlusIcon } from '@/components/clear/brand/icons';
 import YieldPoolCard from '@/components/clear/YieldPoolCard';
 import HeldBondsCard from '@/components/clear/HeldBondsCard';
 import BondLadder from '@/components/clear/BondLadder';
 import ConnectedBuyBond from '@/components/clear/ConnectedBuyBond';
 import ConnectedPoolMove from '@/components/clear/ConnectedPoolMove';
-import PoolWithdrawDialog from '@/components/clear/PoolWithdrawDialog';
-import { EARN_DAY_ONE, HOME_DAY_ONE } from '@/data/clearPlaceholder';
+import type { MoveDirection } from '@/components/clear/MoveMoneyDialog';
+import { EARN_DAY_ONE } from '@/data/clearPlaceholder';
+import { useIsDesktop } from '@/lib/useIsDesktop';
 import { money, signedMoney } from '@clear/domain';
 import { assetBackedLimit, bondsTotal, earningTotal, type EarnData } from '@/lib/clearModel';
 
+/** A stat tile: a label and a figure, which is exactly a header — so it has no main and no footer. */
+function Stat({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
+  return (
+    <Cell className="c-stat">
+      <CHead>
+        <p className="c-label">{label}</p>
+        <p className={positive ? 'c-fig c-fig-sec c-pos' : 'c-fig c-fig-sec'}>{value}</p>
+      </CHead>
+    </Cell>
+  );
+}
+
 /**
- * Earn — design spec §6. Two products with deliberately different visual
- * languages: a variable pool you can leave at any time, and fixed-term bonds
- * that lock until maturity.
+ * Earn — a variable pool you can leave any time, and fixed-term bonds that lock until maturity.
  *
- * The page is organised around one claim: locking money up doesn't cost you
- * access to it. So the header pairs what's been earned with what the positions
- * back on the credit line, the note under it says why, and each position card
- * repeats its own backing figure. Buying comes last — you decide whether to lock
- * more money up only after seeing what locking it up actually costs you.
+ * Hero on paper: what is earning, its bar (pool underway because it is variable, bonds settled
+ * because they are fixed), the key, and a rule and a line on the page's whole argument — locked does
+ * not mean unavailable.
+ *
+ * Then the slab, pool first, then buying a bond, then the bonds you own. Each column opens with a
+ * stat tile; owned bonds are the only thing here that grows, so they take the full width at the
+ * bottom. The phone keeps the same cells and order, the two stats side by side, and puts Buy on the
+ * nav's action button.
  */
 export default function EarnPage({ data = EARN_DAY_ONE }: { data?: EarnData }) {
+  const desktop = useIsDesktop();
   const [buyOpen, setBuyOpen] = useState(false);
-  const [depositOpen, setDepositOpen] = useState(false);
-  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [poolOpen, setPoolOpen] = useState<MoveDirection | null>(null);
   const total = earningTotal(data);
   const inBonds = bondsTotal(data.bonds);
+  const share = (v: number) => (total > 0 ? (v / total) * 100 : 0);
 
-  useSetMobileAction({ label: 'Buy', icon: Plus, onSelect: () => setBuyOpen(true) });
+  useSetMobileAction({ label: 'Buy', icon: PlusIcon, onSelect: () => setBuyOpen(true) });
 
-  const stats = (
-    <div className="grid grid-cols-2 gap-3">
-      <Card className="px-3.5 py-3">
-        <p className="mb-1 text-xs text-foreground-secondary">
-          Earned<span className="hidden lg:inline"> to date</span>
-        </p>
-        <p className="font-display text-xl font-medium leading-none text-tier-savings-fg">
-          {signedMoney(data.earnedToDate)}
-        </p>
-      </Card>
-      <Card className="px-3.5 py-3">
-        <p className="mb-1 text-xs text-foreground-secondary">
-          Backs <span className="hidden lg:inline">your </span>limit
-        </p>
-        <p className="font-display text-xl font-medium leading-none">
-          {money(assetBackedLimit(data), { cents: true })}
-        </p>
-      </Card>
-    </div>
+  const earned = <Stat label={desktop ? 'Earned to date' : 'Earned'} value={signedMoney(data.earnedToDate)} positive />;
+  const backs = (
+    <Stat label={desktop ? 'Backs your limit' : 'Backs limit'} value={money(assetBackedLimit(data), { cents: true })} />
   );
+  const pool = (
+    <YieldPoolCard data={data} onDeposit={() => setPoolOpen('deposit')} onWithdraw={() => setPoolOpen('withdraw')} />
+  );
+  const ladder = <BondLadder terms={data.terms} ltv={data.bondLtv} onBuy={() => setBuyOpen(true)} />;
+  const bonds = <HeldBondsCard data={data} />;
 
   return (
     <>
-      <div className="mb-4 grid items-end gap-4 lg:mb-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6">
-        <div>
-          <p className="mb-1 text-xs text-foreground-secondary">Earning</p>
-          <p className="font-display mb-2.5 text-[32px] font-medium leading-none tracking-[-0.5px] lg:text-[38px] lg:tracking-[-0.8px]">
-            {money(total, { cents: true })}
-          </p>
+      <div className="mb-s3">
+        <p className="c-label mb-s1">Earning</p>
+        <p className="c-fig text-hero-m leading-[1.05] lg:text-hero">{money(total, { cents: true })}</p>
+        <Bar
+          className="mt-s2"
+          label="Earning by product: yield pool, bonds"
+          segments={[
+            { label: 'Yield pool', pct: share(data.pool.position), color: 'var(--tier-income)' },
+            { label: 'BurnerBonds', pct: share(inBonds), color: 'var(--tier-savings)' },
+          ]}
+        />
+        <p className="c-keyline">
+          <span className="c-t-inc">{desktop ? 'Yield pool' : 'Pool'}</span>{' '}
+          <strong>{money(data.pool.position, { cents: true })}</strong>
+          <span className="c-sep">&middot;</span>
+          <span className="c-t-sav">{desktop ? 'BurnerBonds' : 'Bonds'}</span> <strong>{money(inBonds, { cents: true })}</strong>
+        </p>
+        <p className="c-det mt-s2 border-t border-ink-13 pt-s2">
+          Locked does not mean unavailable. Both products back your credit line at under 1% a cycle.
+        </p>
+      </div>
 
-          <SegmentedBar
-            className="mb-2"
-            total={total}
-            label="Earning by product"
-            segments={[
-              { value: data.pool.position, className: 'bg-tier-boost', label: 'Yield pool' },
-              { value: inBonds, className: 'bg-tier-savings', label: 'BurnerBonds' },
-            ]}
-          />
-
-          <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-tier-boost" />
-              Yield pool
-              <span aria-hidden className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-tier-savings" />
-              BurnerBonds
-            </span>
-            <span className="tabular-nums">
-              {money(data.pool.position, { cents: true })} · {money(inBonds, { cents: true })}
-            </span>
+      {desktop ? (
+        <div className="c-slab c-earn">
+          <div className="c-col">
+            {earned}
+            {pool}
           </div>
+          <div className="c-col">
+            {backs}
+            {ladder}
+          </div>
+          {bonds}
         </div>
-
-        {stats}
-      </div>
-
-      {/* One line, and it's the page's whole argument: locking money up doesn't cost you access to
-          it. Everything below is read in its light. */}
-      <InfoBlock className="mb-4">
-        Locked doesn't mean unavailable — both<span className="hidden lg:inline"> products</span>{' '}
-        back your credit line at under 1% a cycle.
-      </InfoBlock>
-
-      <p className="mb-2.5 text-[13px] text-foreground-secondary">Your positions</p>
-      <div className="mb-5 grid items-start gap-3 lg:grid-cols-2">
-        <YieldPoolCard
-          data={data}
-          onDeposit={() => setDepositOpen(true)}
-          onWithdraw={() => setWithdrawOpen(true)}
-        />
-        <HeldBondsCard data={data} />
-      </div>
-
-      <p className="mb-2.5 text-[13px] text-foreground-secondary">Buy a bond</p>
-      <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-        {/* The ladder carries its own action on mobile; on desktop it belongs with
-            the note that explains why the longest term is worth considering. */}
-        <BondLadder
-          terms={data.terms}
-          onBuy={() => setBuyOpen(true)}
-          showBuy
-          className="lg:hidden"
-        />
-        <BondLadder terms={data.terms} className="hidden lg:block" />
-
-        <Card className="hidden lg:block">
-          <p className="mb-2 text-xs text-foreground-secondary">Longer terms pay more</p>
-          <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
-            Locked until maturity, but backs {Math.round(data.bondLtv * 100)}% of its value as
-            credit.
-          </p>
-          <Button size="sm" className="w-full text-xs" onClick={() => setBuyOpen(true)}>
-            Buy a bond
-          </Button>
-        </Card>
-      </div>
+      ) : (
+        <div className="c-slab">
+          {earned}
+          {backs}
+          {pool}
+          {ladder}
+          {bonds}
+        </div>
+      )}
 
       <ConnectedBuyBond open={buyOpen} onOpenChange={setBuyOpen} />
-      <ConnectedPoolMove open={depositOpen} onOpenChange={setDepositOpen} />
-      {/* The limit it quotes comes from Home's own tiers, so the drop it shows is
-          the drop that would actually happen. */}
-      <PoolWithdrawDialog
-        data={data}
-        credit={HOME_DAY_ONE.credit}
-        open={withdrawOpen}
-        onOpenChange={setWithdrawOpen}
+      <ConnectedPoolMove
+        open={poolOpen !== null}
+        initialDirection={poolOpen ?? 'deposit'}
+        onOpenChange={(o) => !o && setPoolOpen(null)}
       />
     </>
   );

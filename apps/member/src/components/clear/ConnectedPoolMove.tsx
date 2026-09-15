@@ -25,14 +25,20 @@ import { POOL_SHARE_HAIRCUT_BPS } from '@/lib/clearModel';
 export default function ConnectedPoolMove({
   open,
   onOpenChange,
+  initialDirection = 'deposit',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Which way it opens: Deposit and Withdraw on the pool cell each open their own direction. */
+  initialDirection?: MoveDirection;
 }) {
   const balances = useClearBalances();
   const address = useOptionalAddress();
   const { openAddMoney, openAutoSave } = useMoneyActions();
-  const [direction, setDirection] = useState<MoveDirection>('deposit');
+  const [direction, setDirection] = useState<MoveDirection>(initialDirection);
+  useEffect(() => {
+    if (open) setDirection(initialDirection);
+  }, [open, initialDirection]);
   const [limitCents, setLimitCents] = useState<number | null>(null);
   const [owedCents, setOwedCents] = useState<number | null>(null);
   // Read here rather than passed in. A page holding a mapped model would have to hand over

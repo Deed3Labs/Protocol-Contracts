@@ -19,7 +19,7 @@
 .c-cell,.c-panel{display:flex;flex-direction:column;min-width:0}
 .c-cell{background:var(--paper)}
 .c-panel{border:1px solid var(--seam);background:var(--paper)}
-.c-chead,.c-cmain,.c-cfoot{padding:var(--s2)}
+.c-chead,.c-cmain,.c-cfoot,.c-cbar{padding:var(--s2)}
 .c-cmain{flex:1 1 auto}
 .c-cmain,.c-cfoot,.c-cbar{border-top:1px solid var(--ink-13)}
 .c-cmain:first-child,.c-cfoot:first-child,.c-cbar:first-child{border-top:0}
@@ -36,6 +36,8 @@
       grid-template-columns:minmax(0,1.08fr) minmax(0,1fr)}
 .c-slab.c-one{grid-template-columns:minmax(0,1fr)}
 .c-cell.c-full{grid-column:1/-1}
+/* Earn: the ladder needs more width than the pool does */
+.c-slab.c-earn{grid-template-columns:minmax(0,.86fr) minmax(0,1.14fr)}
 .c-col{display:grid;gap:1px;background:var(--seam);grid-template-rows:auto 1fr;min-width:0}
 .c-home{display:flex;flex-direction:column;gap:var(--s3)}
 
@@ -62,6 +64,10 @@
 .c-line{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
 .c-line > :first-child{min-width:0}
 .c-pair{display:flex;gap:var(--s1)}
+/* a footer pair is one line: the left side truncates, the right side never shrinks */
+.c-cfoot > .c-line > *{white-space:nowrap}
+.c-cfoot > .c-line > :first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.c-cfoot > .c-line > :last-child{flex-shrink:0}
 .c-pair .c-btn{flex:1;height:44px}
 
 .c-btn{font-family:var(--font-text);font-size:var(--t-sec);font-weight:500;height:36px;padding:0 var(--s2);
@@ -118,6 +124,37 @@
 .c-mstone.c-later{opacity:.6}
 .c-mstone .c-det{white-space:nowrap}
 .c-mstone .c-line > span:first-child{min-width:0}
+
+/* ================= EARN ================= */
+/* A ring is a data mark, not a container, so the square/pill rule does not reach it — but its caps
+   are squared, because a round cap is the one rounded gesture the guide otherwise never makes. */
+.c-ring{position:relative;flex-shrink:0}
+.c-ring svg{transform:rotate(-90deg);display:block}
+.c-ring .c-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+           font-family:var(--font-text);font-weight:600;font-size:var(--t-sec);font-variant-numeric:tabular-nums}
+.c-rate{display:flex;align-items:center;gap:var(--s2)}
+.c-rate .c-apy{font-family:var(--font-text);font-weight:600;font-size:26px;letter-spacing:-.02em;margin:0;line-height:1.1}
+.c-rate .c-apy small{font-size:var(--t-detail);font-weight:400;color:var(--ink-70)}
+
+.c-ladder{font-size:var(--t-sec);font-variant-numeric:tabular-nums}
+.c-ladder .c-lrow{display:grid;gap:10px;align-items:center;padding:var(--s2) 0;border-bottom:1px solid var(--ink-13)}
+.c-ladder .c-lrow:first-child{padding-top:0}
+.c-ladder .c-lrow:last-child{border-bottom:0;padding-bottom:0}
+.c-ladder .c-lhead{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;
+               text-transform:uppercase;color:var(--ink-50);padding-top:0}
+.c-ladder .c-lrow > :not(:first-child){text-align:right}
+.c-ladder.c-sm{font-size:11px}
+.c-ladder.c-sm .c-lrow{gap:6px}
+/* stat tile — label above figure. Side by side it clipped at phone width. */
+.c-stat .c-label{margin-bottom:6px}
+.c-stat .c-fig{white-space:nowrap}
+
+.c-listctl{display:flex;justify-content:space-between;align-items:center;gap:var(--s1);flex-wrap:wrap}
+.c-listctl .c-btn{height:34px;padding:0 12px;gap:6px;font-size:var(--t-sec);flex-shrink:0}
+.c-listctl .c-btn svg{flex-shrink:0}
+.c-bondrow{padding:var(--s2) 0;border-bottom:1px solid var(--ink-13)}
+.c-bondrow:first-child{padding-top:0}
+.c-bondrow:last-child{border-bottom:0;padding-bottom:0}
 
 /* ================= PANES ================= */
 .c-panetitle{font-family:var(--font-text);font-weight:600;font-size:17px;letter-spacing:-.02em;margin:0}

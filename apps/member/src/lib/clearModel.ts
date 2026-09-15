@@ -672,6 +672,8 @@ export interface HeldBond {
    * value. This, not the face, is what the credit line lends against.
    */
   worthToday: number;
+  /** The fixed annual rate it was bought at, when known. */
+  rate?: number;
 }
 
 export interface EarnData {

@@ -68,7 +68,7 @@ describe('what is free to withdraw', () => {
 
 describe('one component, two directions', () => {
   test('each leg carries its own balance, which is what gives the presets stated meanings', () => {
-    expect(DIALOG).toContain("isDeposit ? 'All' : 'All free'");
+    expect(DIALOG).toContain("isDeposit || isPool ? 'All' : 'All free'");
     // Each direction takes its cap from its own leg, and the pool's leg is capped again by what
     // the pool can actually pay.
     expect(DIALOG).toContain('const available = isDeposit ? cashReady : isPool ? poolFree : savingsFree;');
@@ -385,8 +385,9 @@ describe('the pool is the same component, redirected', () => {
   });
 
   test('it names itself for what it does', () => {
+    // Brand guide (Earn): adding reads "Add to the pool"; taking out is "Move money", like savings.
     expect(DIALOG).toContain("'Add to the pool'");
-    expect(DIALOG).toContain("'Take from the pool'");
+    expect(DIALOG).toContain("isPool && isDeposit ? 'Add to the pool' : 'Move money'");
   });
 
   test('the limit it quotes moves with the amount', () => {
@@ -402,18 +403,11 @@ describe('the pool is the same component, redirected', () => {
     expect(DIALOG).toContain('Rate moves with how much of the pool is lent.');
   });
 
-  test('the withdraw panel names the limit it lands on, not only the drop', () => {
-    // The question a member is actually asking is whether they stay above what they owe.
-    expect(DIALOG).toContain('const landingNote =');
-    expect(DIALOG).toContain('Limit falls to');
-    expect(DIALOG).toContain('you owe');
-  });
-
   test('and taking from the pool is not described as earning', () => {
     // The pool branch ignored direction at first, so a withdrawal read "Earning 6.8% APY" and
     // "Backs your credit limit" — both the wrong sign and the wrong claim.
     expect(DIALOG).toContain('isPool && pool && isDeposit ?');
-    expect(DIALOG).toContain('Yield lost');
+    expect(DIALOG).toContain('Yield given up');
   });
 });
 
@@ -426,14 +420,21 @@ describe('fully lent is queued, not refused', () => {
     expect(DIALOG).toContain('Math.min(savingsFree, pool.freeNow)');
   });
 
-  test('the state is named before the constrained figures are read', () => {
-    expect(DIALOG).toContain('Pool is fully lent');
+  test('the state is stated with its numbers, not refused', () => {
+    // Brand guide: the leg reads "free", a line under the keypad says how much is lent out, and the
+    // consequences split what comes now from what queues.
+    expect(DIALOG).toContain('of your\n      position is lent out.');
+    expect(DIALOG).toContain('label="Available now"');
+    expect(DIALOG).toContain('label="Queued"');
+    expect(DIALOG).toContain('label="Sent as members repay" value="Automatically"');
   });
 
-  test('both actions are offered — take what is free, queue the rest', () => {
-    expect(DIALOG).toContain('Take {money(available, { cents: true })} now');
-    expect(DIALOG).toContain('Queue the remaining');
-    expect(DIALOG).toContain('Sent automatically. Nothing to come back and do.');
+  test('one action takes what is free and queues the rest', () => {
+    // The hook sends both in the same batch, so the button moves the whole amount.
+    expect(DIALOG).toContain('now and queue the rest');
+    const queue = DIALOG.slice(DIALOG.indexOf(') : canQueue ? ('), DIALOG.indexOf(') : over ? ('));
+    expect(queue).toContain('onMove(amount)');
+    expect(queue).not.toContain('onMove(available)');
   });
 
   test('the split is computed in shares from the contract’s own cap', () => {

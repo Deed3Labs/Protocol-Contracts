@@ -1,89 +1,70 @@
-import { Button } from '@/components/ui/button';
-import Card from './Card';
+import { Btn, CFoot, CHead, CMain, Cell, Line, SecHead } from './brand/anatomy';
 import { money, signedMoney } from '@clear/domain';
+import { useIsDesktop } from '@/lib/useIsDesktop';
 import type { BondTerm } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
-/** The five columns, in one place so the header and the rows can't drift out of alignment. */
-const COLS =
-  'grid grid-cols-[46px_1fr_1fr_1fr_42px] gap-2 lg:grid-cols-[74px_1fr_1fr_1fr_52px] lg:gap-2.5';
-
 /**
- * The bond ladder — design spec §6.
+ * Buy a bond — the ladder, as a table.
  *
- * A table, not a chart. Four terms is too few to read as a curve — plotted, it looks like a line
- * with dots on it, and the member still has to read the numbers off the axis. Here the discount is
- * visible by subtraction, on the row.
- *
- * Every row states its own face value rather than leaning on a "per $1,000" caption above the
- * table. It costs a column and removes a thing to remember: what you pay and what you get sit side
- * by side, and the yield is the same fact expressed as a rate.
+ * Four terms is too few to read as a curve, so the discount is visible by subtraction on the row and
+ * every row states its own face value. The footer is the note and the button that used to be a
+ * sidebar card: a note plus a primary button is a footer by definition, and the table gets the width
+ * back.
  */
 export default function BondLadder({
   terms,
+  ltv,
   onBuy,
-  /** Mobile carries the action inside this card; desktop puts it in the note beside it. */
-  showBuy = false,
-  className,
 }: {
   terms: BondTerm[];
+  /** The haircut a bond backs credit at, as a fraction. */
+  ltv: number;
   onBuy?: () => void;
-  showBuy?: boolean;
-  className?: string;
 }) {
+  const desktop = useIsDesktop();
+  const cols = desktop ? '74px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 56px' : '46px 1fr 1fr 1fr 42px';
+
   return (
-    <Card className={cn('px-[14px] pb-3 pt-1 lg:px-[17px] lg:pb-[15px]', className)}>
-      <div
-        className={cn(
-          COLS,
-          'border-b-[0.5px] border-border pb-2 pt-2.5 text-[10px] text-muted-foreground lg:text-[11px]',
-        )}
-      >
-        <span>Term</span>
-        <span className="text-right">
-          <span className="lg:hidden">Pay</span>
-          <span className="hidden lg:inline">You pay</span>
-        </span>
-        <span className="text-right">
-          <span className="lg:hidden">Disc</span>
-          <span className="hidden lg:inline">Discount</span>
-        </span>
-        <span className="text-right">
-          <span className="lg:hidden">Get</span>
-          <span className="hidden lg:inline">You get</span>
-        </span>
-        <span className="text-right">Yield</span>
-      </div>
-
-      {terms.map((term, i) => (
-        <div
-          key={term.months}
-          className={cn(
-            COLS,
-            'items-center py-2.5 text-[11px] tabular-nums lg:text-[13px]',
-            i < terms.length - 1 && 'border-b-[0.5px] border-border',
-          )}
-        >
-          <span>
-            {term.months} <span className="lg:hidden">mo</span>
-            <span className="hidden lg:inline">months</span>
-          </span>
-          <span className="text-right text-muted-foreground">{money(term.price, { cents: true })}</span>
-          {/* The discount stated outright. It's the same fact as the yield, but in dollars, and it's
-              what the member is actually being offered — the subtraction shouldn't be homework. */}
-          <span className="text-right text-tier-savings-fg">
-            {signedMoney(term.face - term.price)}
-          </span>
-          <span className="text-right">{money(term.face, { cents: true })}</span>
-          <span className="text-right font-medium">{term.rate.toFixed(1)}%</span>
+    <Cell full>
+      <CHead>
+        <SecHead label="Buy a bond">
+          <span className="c-det">Longer terms pay more</span>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <div className={cn('c-ladder', !desktop && 'c-sm')}>
+          <div className="c-lrow c-lhead" style={{ gridTemplateColumns: cols }}>
+            <span>Term</span>
+            <span>{desktop ? 'You pay' : 'Pay'}</span>
+            <span>{desktop ? 'Discount' : 'Disc'}</span>
+            <span>{desktop ? 'You get' : 'Get'}</span>
+            <span>Yield</span>
+          </div>
+          {terms.map((term) => (
+            <div key={term.months} className="c-lrow" style={{ gridTemplateColumns: cols }}>
+              <span>
+                {term.months} {desktop ? 'months' : 'mo'}
+              </span>
+              <span className="c-muted">{money(term.price, { cents: true })}</span>
+              {/* The discount stated outright — the same fact as the yield, in dollars. */}
+              <span className="c-pos">{signedMoney(term.face - term.price)}</span>
+              <span>{money(term.face, { cents: true })}</span>
+              <span className="font-semibold">{term.rate.toFixed(1)}%</span>
+            </div>
+          ))}
         </div>
-      ))}
-
-      {showBuy && (
-        <Button size="sm" className="mt-3 w-full text-xs" onClick={onBuy}>
-          Buy a bond
-        </Button>
-      )}
-    </Card>
+      </CMain>
+      <CFoot>
+        <Line className="items-center!">
+          <span className="c-det whitespace-normal!">
+            Locked until maturity, but backs {Math.round(ltv * 100)}% of its value as credit.
+          </span>
+          <Btn primary onClick={onBuy}>
+            Buy a bond
+          </Btn>
+        </Line>
+      </CFoot>
+    </Cell>
   );
 }

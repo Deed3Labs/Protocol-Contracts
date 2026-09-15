@@ -248,3 +248,21 @@ export function BackIcon({ size = 17, strokeWidth = 1.9, ...props }: IconProps) 
     </svg>
   );
 }
+
+/** A menu button's disclosure. */
+export function CaretIcon({ size = 11, strokeWidth = 2.4, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+/** Sort. On the sort button only — a filter reads as a filter from its label. */
+export function SortIcon({ size = 13, strokeWidth = 2, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M4 6h13M4 12h9M4 18h5" />
+    </svg>
+  );
+}
