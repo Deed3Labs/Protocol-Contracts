@@ -105,7 +105,7 @@ export default function MobileTabBar() {
         >
           {action ? (
             <>
-              <action.icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />
+              <action.icon className="h-[21px] w-[21px] shrink-0" strokeWidth={2} />
               <span>{action.label}</span>
             </>
           ) : (

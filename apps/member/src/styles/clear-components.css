@@ -98,6 +98,31 @@
 .c-legend > div span:last-child{flex-shrink:0;white-space:nowrap;color:var(--ink-70)}
 .c-legend > div span.c-muted:last-child{color:var(--ink-50)}
 
+/* hero key — one line, name then its figure, colour on the name.
+   Nothing tries to sit under its own segment of the bar. */
+.c-keyline{font-size:var(--t-sec);color:var(--ink-70);margin:var(--s1) 0 0;line-height:1.7}
+.c-keyline strong{font-weight:500;color:var(--ink)}
+.c-keyline .c-sep{color:var(--ink-50);margin:0 4px}
+
+/* ================= MILESTONE RAIL ================= */
+.c-rail{position:relative}
+.c-mstone{position:relative;padding-left:26px;padding-bottom:var(--s2)}
+.c-mstone.c-last{padding-bottom:0}
+.c-mstone::before{content:'';position:absolute;left:6px;top:14px;bottom:0;width:1px;background:var(--ink-28)}
+.c-mstone.c-last::before{display:none}
+.c-mdot{position:absolute;left:0;top:3px;width:13px;height:13px;border-radius:50%;
+      border:1.5px solid var(--ink-28);background:var(--paper);display:block}
+.c-mstone.c-done .c-mdot{background:var(--settled);border-color:var(--settled)}
+.c-mstone.c-now .c-mdot{border-color:var(--live);background:var(--paper);
+                  box-shadow:0 0 6px 1px color-mix(in srgb, var(--live) 45%, transparent)}
+.c-mstone.c-later{opacity:.6}
+.c-mstone .c-det{white-space:nowrap}
+.c-mstone .c-line > span:first-child{min-width:0}
+
+/* ================= PANES ================= */
+.c-panetitle{font-family:var(--font-text);font-weight:600;font-size:17px;letter-spacing:-.02em;margin:0}
+.c-paneback{display:flex;align-items:center;gap:9px;margin-bottom:6px}
+
 .c-wm{font-family:var(--font-display);font-weight:800;font-size:19px;letter-spacing:-.035em}
 .c-lockup{display:inline-flex;align-items:center;color:var(--ink)}
 .c-lockup .c-mk{display:block;flex-shrink:0;width:20px;height:20px}
@@ -238,6 +263,10 @@
 /* stacked sections share the anatomy's rule, so a group break is never a floating label */
 .c-cmain + .c-cmain{border-top:1px solid var(--ink-13)}
 .c-mono{font-family:var(--font-mono);font-size:var(--t-detail)}
+.c-field{flex:1;min-width:0;height:44px;padding:0 var(--s2);border:1px solid var(--ink-28);
+       background:var(--paper-2);color:var(--ink);font-family:var(--font-text);
+       font-size:var(--t-sec);border-radius:var(--radius-none)}
+.c-field::placeholder{color:var(--ink-50)}
 
 /* ================= QUICK ACTIONS FAN ================= */
 .c-qafan{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s1)}

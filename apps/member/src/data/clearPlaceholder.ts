@@ -500,6 +500,8 @@ export const HOME_DAY_ONE_COUNTER: HomeData = {
 };
 
 export const SAVINGS_IN_USE: SavingsData = {
+  // A member a year in, so the harness can reach auto-save's adjust state.
+  autoSave: { amount: 500, cadence: 'payday', savedThisYear: 4500 },
   savings: HOME_IN_USE.savings,
   projection: { perPayday: 500, extraMonthly: 250, withExtra: 'Apr 2027' },
   payFrom: PAY_FROM,

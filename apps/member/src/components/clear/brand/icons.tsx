@@ -218,3 +218,33 @@ export function AlertIcon({ size = 30, strokeWidth = 2, ...props }: IconProps) {
     </svg>
   );
 }
+
+/** Protection that is on. */
+export function ShieldCheckIcon({ size = 15, strokeWidth = 1.75, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
+
+/** Protection not yet unlocked. Square-cornered body, like every drawn shape. */
+export function LockIcon({ size = 15, strokeWidth = 1.75, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <rect x="3" y="11" width="18" height="11" rx="0" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
+/** A pane's way back. */
+export function BackIcon({ size = 17, strokeWidth = 1.9, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M19 12H5" />
+      <path d="m12 19-7-7 7-7" />
+    </svg>
+  );
+}

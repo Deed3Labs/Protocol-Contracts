@@ -587,7 +587,18 @@ export interface SavingsProjection {
   withExtra: string;
 }
 
+export type AutoSaveCadence = 'payday' | 'monthly' | 'weekly';
+
+/** Auto-save as it is set up. Absent when it isn't — which is every member until it has a backend. */
+export interface AutoSave {
+  amount: number;
+  cadence: AutoSaveCadence;
+  savedThisYear: number;
+}
+
 export interface SavingsData {
+  /** Present once auto-save is running; the modal opens in its adjust state. */
+  autoSave?: AutoSave;
   savings: Savings;
   projection: SavingsProjection;
   /** Where a deposit into savings draws from. */

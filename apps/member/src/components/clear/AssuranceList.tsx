@@ -1,18 +1,14 @@
-import { ShieldCheck, Shield, ChevronRight } from 'lucide-react';
-import Card from './Card';
+import { CFoot, CHead, CMain, Cell, Line, Rows, SecHead } from './brand/anatomy';
+import { ChevronIcon, LockIcon, ShieldCheckIcon } from './brand/icons';
 import { isAssuranceActive, type AssuranceItem } from '@/lib/clearModel';
-import { cn } from '@/lib/utils';
 
 /**
- * Assurance summary on Savings — design spec §5. Lives here because protections
- * are unlocked by saving.
+ * Assurance on Savings — the protections saving unlocks, and how many are on.
  *
- * Locked rows say "Locked" rather than counting down credits: the countdown lives
- * on the milestone path, and repeating it here made the card read as a second
- * progress tracker instead of a list of what you have.
- *
- * The count in the header is the way through to the detail page, where each
- * protection is actually explained.
+ * Locked rows say Locked rather than counting down credits: the countdown lives on the path, and
+ * repeating it here made the cell read as a second progress tracker. The 2 of 5 counter is quiet —
+ * the cobalt on this page belongs to the current milestone. The footer says who backs it and is the
+ * way through to the Assurance pane, where each protection is explained.
  */
 export default function AssuranceList({
   items,
@@ -26,55 +22,41 @@ export default function AssuranceList({
   const activeCount = items.filter((i) => isAssuranceActive(i, credits)).length;
 
   return (
-    <Card className="px-4 py-3.5">
-      <div className="mb-1 flex items-center justify-between gap-3">
-        <span className="text-[13px] text-foreground-secondary">Assurance</span>
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex items-center gap-1 text-xs text-tier-boost-fg transition-opacity hover:opacity-80"
-        >
-          {activeCount} of {items.length}
-          <ChevronRight className="h-[15px] w-[15px]" strokeWidth={1.75} />
-        </button>
-      </div>
-
-      <div className="text-xs">
-        {items.map((item, i) => {
-          const active = isAssuranceActive(item, credits);
-          const Icon = active ? ShieldCheck : Shield;
-
-          return (
-            <div
-              key={item.id}
-              className={cn(
-                'flex items-center justify-between gap-2.5 py-2',
-                i < items.length - 1 && 'border-b-[0.5px] border-border',
-                !active && 'opacity-55',
-              )}
-            >
-              <span className="flex min-w-0 items-center gap-2.5">
-                <Icon
-                  className={cn(
-                    'h-[15px] w-[15px] shrink-0',
-                    active ? 'text-tier-asset' : 'text-muted-foreground',
-                  )}
-                  strokeWidth={1.75}
-                />
-                <span className="truncate">{item.name}</span>
-              </span>
-              <span
-                className={cn(
-                  'shrink-0 text-[11px]',
-                  active ? 'text-tier-savings-fg' : 'text-muted-foreground',
-                )}
-              >
-                {active ? 'Active' : 'Locked'}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </Card>
+    <Cell>
+      <CHead>
+        <SecHead label="Assurance">
+          <span className="c-det">
+            {activeCount} of {items.length} active
+          </span>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <Rows>
+          {items.map((item) => {
+            const active = isAssuranceActive(item, credits);
+            return (
+              <div key={item.id}>
+                <Line className="items-center!" style={active ? undefined : { opacity: 0.6 }}>
+                  <span className="flex items-center gap-[9px] text-detail">
+                    <span className={active ? 'c-t-ast' : 'c-muted'}>{active ? <ShieldCheckIcon /> : <LockIcon />}</span>
+                    {item.name}
+                  </span>
+                  <span className={active ? 'c-det c-pos' : 'c-det'}>{active ? 'Active' : 'Locked'}</span>
+                </Line>
+              </div>
+            );
+          })}
+        </Rows>
+      </CMain>
+      <CFoot>
+        <Line className="items-center!">
+          <span className="c-det">Backed by the assurance reserve</span>
+          <button type="button" className="c-det flex items-center gap-1 hover:text-ink" onClick={onOpen}>
+            See all
+            <ChevronIcon />
+          </button>
+        </Line>
+      </CFoot>
+    </Cell>
   );
 }

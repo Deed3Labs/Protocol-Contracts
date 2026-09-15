@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { BackIcon } from '@/components/clear/brand/icons';
 import TopNav from './TopNav';
 import Wordmark from './Wordmark';
 import MobileTabBar from './MobileTabBar';
@@ -31,7 +31,9 @@ export default function AppChrome({
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const active = navItems.find((i) => (i.end ? pathname === i.to : pathname.startsWith(i.to)));
-  const isHome = pathname === '/';
+  // Every destination on the nav gets the lockup; a page reached from another gets its way back and
+  // its title, like a pane.
+  const showLockup = Boolean(active);
 
   // Routes off the nav — Settings from the avatar, Contacts and Partners from
   // Send — still need a title, and one that matches what the link promised.
@@ -55,28 +57,24 @@ export default function AppChrome({
       <div className="c-text min-h-screen bg-paper">
         <TopNav trailing={trailing} />
 
-        {/* Mobile header — the lockup on Home, the page name elsewhere. */}
+        {/* Mobile header — the lockup on every nav page, a pane's back and title elsewhere. */}
         <header className="sticky top-0 z-30 bg-paper px-s2 lg:hidden">
           <div className="c-line items-center! py-s2">
-            {isHome ? (
+            {showLockup ? (
               <Wordmark sm />
             ) : (
-              <span className="flex min-w-0 items-center gap-2.5">
+              <span className="c-paneback mb-0! min-w-0">
                 {/* A page reached from another page gets a way back; the tab bar is
                     the way back from everything else, so it would be noise there.
                     Settings is excluded because it has levels of its own and draws
                     the back arrow for them itself — two would disagree. */}
                 {!active && pathname !== '/settings' && (
-                  <button
-                    type="button"
-                    aria-label="Back"
-                    onClick={() => navigate(-1)}
-                    className="-ml-1 text-ink-50"
-                  >
-                    <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={1.75} />
+                  <button type="button" aria-label="Back" onClick={() => navigate(-1)} className="c-mclose">
+                    <BackIcon />
                   </button>
                 )}
-                <span className="truncate text-body font-semibold text-ink">{title}</span>
+                {/* A pane's title, as the guide draws it: 15px on a phone. */}
+                <span className="c-panetitle truncate text-body!">{title}</span>
               </span>
             )}
             {trailing}
