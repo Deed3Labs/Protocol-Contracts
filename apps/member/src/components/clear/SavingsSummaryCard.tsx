@@ -1,98 +1,95 @@
-import { Lock } from 'lucide-react';
-import Card, { CardRule } from './Card';
-import SegmentedBar from './SegmentedBar';
+import { Bar, CFoot, CHead, CMain, Cell, HeadFig, Line, Panel, SecHead, Track } from './brand/anatomy';
 import { money, count } from '@clear/domain';
+import { useIsDesktop } from '@/lib/useIsDesktop';
 import { savingsTotal, type Savings } from '@/lib/clearModel';
 
 /**
- * Savings summary on Home — design spec §4.
+ * Savings on Home — a cell on the slab, or a standalone panel on day one.
  *
- * The lock is literal: savings is an ESA and is never summed into "available to
- * spend" (rule 5). Legend reads cash first, then vested and vesting together.
+ * Header: Savings and the total. Main: the bar in vest colours (cash ink, vested settled, vesting
+ * underway) and its legend. Footer: the credits progress — the count, the date it implies, and the
+ * track that produced both.
+ *
+ * Day one has no breakdown to give: an empty track, and the footer says what saving does instead.
+ * Savings is an ESA and is never summed into available to spend.
  */
 export default function SavingsSummaryCard({
   savings,
-  /** Day one: empty bar plus the pitch line instead of a breakdown. */
   emptyState,
 }: {
   savings: Savings;
+  /** Day one: empty track plus the pitch line, drawn as a panel. */
   emptyState?: boolean;
 }) {
+  const desktop = useIsDesktop();
   const total = savingsTotal(savings);
+  const share = (v: number) => (total > 0 ? (v / total) * 100 : 0);
+
+  if (emptyState) {
+    return (
+      <Panel>
+        <CHead>
+          <SecHead label="Savings">
+            <HeadFig value={money(0, { cents: true })} />
+          </SecHead>
+        </CHead>
+        <CMain>
+          <Track label="Nothing saved yet" />
+        </CMain>
+        <CFoot>
+          <p className="c-det">Every $1 saved is matched $1 in credits and raises your limit by $1.</p>
+        </CFoot>
+      </Panel>
+    );
+  }
 
   return (
-    <Card className="flex h-full flex-col">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="flex items-center gap-1.5 text-[13px] text-foreground-secondary">
-          Savings
-          <Lock className="h-[13px] w-[13px] shrink-0" strokeWidth={1.75} />
-        </span>
-        <span className="text-[17px] font-medium tabular-nums">{money(total, { cents: true })}</span>
-      </div>
-
-      <SegmentedBar
-        className="my-2.5"
-        total={total}
-        label="Savings by state"
-        segments={[
-          { value: savings.cash, className: 'bg-vest-cash', label: 'Cash' },
-          { value: savings.vested, className: 'bg-vest-vested', label: 'Vested' },
-          { value: savings.vesting, className: 'bg-vest-vesting', label: 'Vesting' },
-        ]}
-      />
-
-      {emptyState ? (
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          Every $1 saved is matched $1 in credits and raises your limit by $1.
-        </p>
-      ) : (
-        <>
-          <div className="text-xs text-muted-foreground">
-            <div className="flex items-center justify-between gap-3 leading-[1.9]">
-              <span className="flex items-center gap-1.5">
-                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-vest-cash" />
-                Cash (CLRUSD)
-              </span>
-              <span className="tabular-nums">{money(savings.cash, { cents: true })}</span>
-            </div>
-            <div className="flex items-center justify-between gap-3 leading-[1.9]">
-              <span className="flex items-center gap-1.5">
-                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-vest-vested" />
-                Vested
-                <span aria-hidden className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-vest-vesting" />
-                Vesting
-              </span>
-              <span className="tabular-nums">
-                {money(savings.vested)} · {money(savings.vesting)}
-              </span>
-            </div>
+    <Cell>
+      <CHead>
+        <SecHead label="Savings">
+          <HeadFig value={money(total, { cents: true })} />
+        </SecHead>
+      </CHead>
+      <CMain>
+        <Bar
+          label="Savings by state: cash, vested, vesting"
+          className="mb-s2"
+          segments={[
+            { label: 'Cash', pct: share(savings.cash), color: 'var(--vest-cash)' },
+            { label: 'Vested', pct: share(savings.vested), color: 'var(--vest-vested)' },
+            { label: 'Vesting', pct: share(savings.vesting), color: 'var(--vest-vesting)' },
+          ]}
+        />
+        <div className="c-legend">
+          <div>
+            <span>Cash (CLRUSD)</span>
+            <span>{money(savings.cash, { cents: true })}</span>
           </div>
-
-          {/* Credits get the same treatment as the Savings page: the count and
-              the date it implies, over the progress that produced both. Adding
-              money is a Home action now, not a button buried in this card. */}
-          <CardRule className="mt-auto">
-            <div className="mb-1.5 flex items-baseline justify-between gap-3 text-xs">
-              <span>
-                {count(savings.credits)} of {count(savings.creditsGoal)} credits
-              </span>
-              {savings.onTrackFor && (
-                <span className="shrink-0 text-muted-foreground">
-                  On track for {savings.onTrackFor}
-                </span>
-              )}
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-[3px] bg-border">
-              <div
-                className="h-full bg-tier-savings"
-                style={{
-                  width: `${Math.min(100, (savings.credits / Math.max(1, savings.creditsGoal)) * 100)}%`,
-                }}
-              />
-            </div>
-          </CardRule>
-        </>
-      )}
-    </Card>
+          <div>
+            <span className="c-t-sav">Vested</span>
+            <span>{money(savings.vested)}</span>
+          </div>
+          <div>
+            <span className="c-t-inc">Vesting</span>
+            <span>{money(savings.vesting)}</span>
+          </div>
+        </div>
+      </CMain>
+      <CFoot>
+        <Line className="mb-s1">
+          <span className="c-sub">
+            {count(savings.credits)} of {count(savings.creditsGoal)} credits
+          </span>
+          {savings.onTrackFor && (
+            <span className="c-det">{desktop ? `On track for ${savings.onTrackFor}` : savings.onTrackFor}</span>
+          )}
+        </Line>
+        <Track
+          label={`${count(savings.credits)} of ${count(savings.creditsGoal)} credits`}
+          pct={(savings.credits / Math.max(1, savings.creditsGoal)) * 100}
+          color="var(--tier-savings)"
+        />
+      </CFoot>
+    </Cell>
   );
 }

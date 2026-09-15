@@ -1,25 +1,33 @@
-import { CircleCheck } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import Card, { CardRule } from './Card';
+import { Btn, CFoot, CMain, Line, Panel } from './brand/anatomy';
 import { money } from '@clear/domain';
-import { cycleShortfall, cycleStatus, securedUsed, unsecuredUsed, type Credit, type Cycle } from '@/lib/clearModel';
-import { cn } from '@/lib/utils';
+import { useIsDesktop } from '@/lib/useIsDesktop';
+import {
+  cycleStatus,
+  orderedTiers,
+  SECURED_TIERS,
+  securedUsed,
+  unsecuredUsed,
+  type Credit,
+  type Cycle,
+} from '@/lib/clearModel';
 
 /**
- * The cycle — design spec §4b. Shown only once the member is in use; day one has no cycle running.
+ * The cycle — the first block on Home.
  *
- * One component, two rows, identical on desktop and mobile. The top row never changes shape: the
- * same label, an amount in the same place, and the days left. **The label is fixed and the amount
- * never becomes prose** — nothing to clear reads `$0.00`, not "Nothing to clear" — so the eye lands
- * on the same spot every time and a member learns where to look once rather than reading the card
- * afresh each cycle.
+ * Main never changes shape: the label "To clear this cycle", an amount beneath it, the days left
+ * opposite. **The label is fixed and the number never becomes prose**, so the eye lands in the same
+ * place every time. The footer changes job with the state, and the border carries the state with the
+ * countdown taking the same colour:
  *
- * The amount is the *unsecured* draw and never the full carried balance. Savings- and asset-backed
- * credit is covered by collateral the co-op already holds, so a default settles from that; printing
- * the total here would make secured borrowing look like a debt problem.
+ *   1 short    — cobalt border and countdown, filled Repay. The only state that asks for anything,
+ *                and the only place cobalt appears on Home.
+ *   2 covered  — default border; the button is a ghost on purpose, because nothing is required.
+ *   3 secured  — default border, filled Top off. Deliberately not green: nothing is owed, but savings
+ *                have been drawn down, which pauses housing progress.
+ *   4 clear    — settled green. The footer moves from what you owe to what is next.
  *
- * Only the second row varies, and the border says how much attention the card wants: accent when
- * something is needed, default when nothing is required, green only when nothing is carried at all.
+ * The amount is the *unsecured* draw and never the full carried balance: secured credit is covered by
+ * collateral the co-op already holds, and printing the total would make it look like a debt problem.
  */
 export default function CycleCard({
   cycle,
@@ -27,6 +35,7 @@ export default function CycleCard({
   expectedDeposit = 0,
   depositOn,
   onRepay,
+  onTopOff,
 }: {
   cycle: Cycle;
   /** Needed to work out what actually has to clear. Without it the cycle reads as fully clear. */
@@ -35,101 +44,86 @@ export default function CycleCard({
   expectedDeposit?: number;
   /** When that deposit lands, e.g. "Nov 1". Comes from the cash account, not a second field here. */
   depositOn?: string;
-  /** Every action on this card opens the same surface; only the label changes. */
+  /** Repay and Repay early. */
   onRepay?: () => void;
-  className?: string;
+  /** Top off and Add to savings — both put money back into savings. */
+  onTopOff?: () => void;
 }) {
+  const isDesktop = useIsDesktop();
   const status = cycleStatus(credit, expectedDeposit);
   const toClear = credit ? unsecuredUsed(credit) : 0;
-  const shortfall = credit ? cycleShortfall(credit, expectedDeposit) : 0;
-  const covered = Math.max(0, toClear - shortfall);
 
-  const action = (label: string) => (
-    <Button variant="clear" size="xs" className="shrink-0" onClick={onRepay}>
-      {label}
-    </Button>
-  );
+  // The rate that applies to what's carried unsecured: the dearest unsecured tier with a draw on it,
+  // since that is the one clearing it pays down first.
+  const carriedRate = credit
+    ? orderedTiers(credit.tiers)
+        .filter((t) => !SECURED_TIERS.includes(t.key) && t.used > 0)
+        .at(-1)?.rate
+    : undefined;
 
-  const good = (text: string) => (
-    <span className="flex items-center gap-2 text-xs text-tier-savings-fg lg:text-[13px]">
-      <CircleCheck className="h-[15px] w-[15px] shrink-0" strokeWidth={1.75} />
-      {text}
-    </span>
-  );
+  let lead: string;
+  let detail: string;
+  let action: { label: string; primary: boolean; onSelect?: () => void };
+
+  switch (status) {
+    case 'short':
+      lead = 'Nothing scheduled to cover it';
+      detail = `Carrying ${money(toClear, { cents: true })} unsecured${carriedRate ? ` · ${carriedRate}` : ''}`;
+      action = { label: 'Repay', primary: true, onSelect: onRepay };
+      break;
+    case 'covered':
+      lead = depositOn ? `Your ${depositOn} deposit covers this` : 'Your deposit covers this';
+      detail = `Carrying ${money(toClear, { cents: true })} unsecured · nothing due`;
+      action = { label: 'Repay early', primary: false, onSelect: onRepay };
+      break;
+    case 'secured': {
+      const carry = money(credit?.carryCost ?? 0, { cents: true });
+      const drawn = money(credit ? securedUsed(credit) : 0, { cents: true });
+      lead = isDesktop ? `Using ${drawn} of your own savings` : `Using ${drawn} of your savings`;
+      detail = isDesktop
+        ? `Nothing owed · credits paused while drawn · carry ${carry}`
+        : `Nothing owed · credits paused · carry ${carry}`;
+      action = { label: 'Top off', primary: true, onSelect: onTopOff };
+      break;
+    }
+    default:
+      lead = 'Nothing carried this cycle';
+      detail = [
+        cycle.lastClearedOn ? `Last cleared ${cycle.lastClearedOn}` : null,
+        depositOn ? `nothing due ${depositOn}` : 'nothing due',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      // Capitalise when "Last cleared" isn't there to lead the line.
+      detail = detail.charAt(0).toUpperCase() + detail.slice(1);
+      action = { label: 'Add to savings', primary: true, onSelect: onTopOff };
+  }
 
   return (
-    <Card
-      accent={status === 'short'}
-      // Green is reserved for carrying nothing at all — see cycleStatus.
-      className={cn('px-[18px] py-3.5', status === 'clear' && 'border-tier-asset')}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs text-foreground-secondary">To clear this cycle</p>
-          <p className="mt-[3px] text-xl font-medium tabular-nums lg:text-[22px]">
-            {money(toClear, { cents: true })}
-          </p>
-        </div>
-        <div className="shrink-0 text-center">
-          <p className="text-[23px] font-medium leading-none tabular-nums lg:text-[26px]">
-            {cycle.daysLeft}
-          </p>
-          <p className="mt-[3px] text-[10px] text-muted-foreground lg:text-[11px]">days left</p>
-        </div>
-      </div>
-
-      <CardRule className="flex items-center justify-between gap-3">
-        {status === 'short' && (
-          <>
-            <div className="min-w-0">
-              <p className="text-[11px] text-muted-foreground lg:text-xs">
-                {depositOn && expectedDeposit > 0 ? (
-                  <>
-                    {depositOn}
-                    <span className="hidden lg:inline"> deposit</span> covers{' '}
-                    {money(covered, { cents: true })}
-                  </>
-                ) : (
-                  'No deposit expected this cycle'
-                )}
-              </p>
-              <p className="mt-0.5 text-[11px] text-tier-boost-fg tabular-nums lg:text-xs">
-                {money(shortfall, { cents: true })} short
-              </p>
-            </div>
-            {action('Repay')}
-          </>
-        )}
-
-        {status === 'covered' && (
-          <>
-            {good(depositOn ? `${depositOn} deposit covers it` : 'Your deposit covers it')}
-            {action('Repay early')}
-          </>
-        )}
-
-        {/* Nothing is owed, but this isn't "clear": it pauses housing progress and accrues carry on
-            the asset-backed part. "Top off" rather than "pay down" — they didn't borrow. */}
-        {status === 'secured' && credit && (
-          <>
-            <div className="min-w-0">
-              <p className="text-xs lg:text-[13px]">
-                Using {money(securedUsed(credit), { cents: true })} of your
-                <span className="hidden lg:inline"> own</span> savings
-              </p>
-              {/* Naming the paused credits is the whole reason this state isn't green: nothing is
-                  owed, but housing progress has stopped for as long as the savings are drawn. */}
-              <p className="mt-[3px] text-[11px] text-muted-foreground">
-                Nothing owed · credits paused<span className="hidden lg:inline"> while drawn</span> ·
-                carry {money(credit.carryCost, { cents: true })}
-              </p>
-            </div>
-            {action('Top off')}
-          </>
-        )}
-
-        {status === 'clear' && good('All clear · nothing carried')}
-      </CardRule>
-    </Card>
+    <Panel act tone={status === 'short' ? 'short' : status === 'clear' ? 'clear' : undefined}>
+      <CMain>
+        <Line className="items-center!">
+          <div>
+            <p className="c-label">To clear this cycle</p>
+            <p className="c-fig c-fig-sec mt-[6px]">{money(toClear, { cents: true })}</p>
+          </div>
+          <div className="text-right">
+            <p className="c-fig c-cyc-num text-[24px] leading-none lg:text-[26px]">{cycle.daysLeft}</p>
+            <p className="c-det mt-1">days left</p>
+          </div>
+        </Line>
+      </CMain>
+      <CFoot>
+        <Line className="items-center!">
+          <div className="min-w-0">
+            <p className="text-detail lg:text-sec">{lead}</p>
+            <p className="c-det mt-[3px]">{detail}</p>
+          </div>
+          <Btn primary={action.primary} className={action.primary ? 'max-lg:px-s2!' : undefined} onClick={action.onSelect}>
+            {action.label}
+          </Btn>
+        </Line>
+      </CFoot>
+    </Panel>
   );
 }

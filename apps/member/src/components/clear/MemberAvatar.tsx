@@ -13,9 +13,9 @@ import { cn } from '@/lib/utils';
  * image glyph in the header is the worst of the three outcomes.
  *
  * Distinct from `Avatar`, which colours *other* people deterministically by id.
- * This one is always the same person, so it always takes the accent tint. Shape
- * comes from the caller: a rounded square where it's you being configured, a
- * circle where you're one face among several.
+ * This one is always the same person. Paper-2 and ink, as the guide draws the
+ * avatar button. Shape comes from the caller — and the guide's is square, because
+ * an avatar is an image and images are square.
  */
 export default function MemberAvatar({
   profile,
@@ -45,7 +45,7 @@ export default function MemberAvatar({
     <span
       aria-hidden
       className={cn(
-        'flex shrink-0 items-center justify-center bg-tier-boost/10 text-tier-boost-fg',
+        'flex shrink-0 items-center justify-center bg-paper-2 font-semibold text-ink',
         className,
       )}
     >

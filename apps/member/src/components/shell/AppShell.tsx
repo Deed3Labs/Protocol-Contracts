@@ -22,6 +22,20 @@ import { SETTINGS } from '@/data/clearPlaceholder';
 import XMTPMessaging from '@/components/XMTPMessaging';
 
 /**
+ * When a notification landed, the way the panel says it: a time today, "Yesterday", then days ago.
+ */
+function notificationTime(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return '';
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const days = Math.ceil((startOfToday.getTime() - at.getTime()) / 86_400_000);
+  if (days <= 0) return at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  if (days === 1) return 'Yesterday';
+  return `${days} days ago`;
+}
+
+/**
  * The header cluster with live data behind it: the unread count comes from the
  * backend notification feed, the identity from the member profile.
  *
@@ -30,12 +44,20 @@ import XMTPMessaging from '@/components/XMTPMessaging';
  * of the rebuild carries, and the one place it's visible in the chrome.
  */
 function LiveHeaderActions() {
-  const { unreadCount } = useNotifications();
+  const { notifications, unreadCount, markAllRead } = useNotifications();
   const member = useMemberProfile();
 
   return (
     <HeaderActions
       unread={unreadCount}
+      notifications={notifications.slice(0, 5).map((n) => ({
+        id: n.id,
+        title: n.title,
+        detail: n.body,
+        time: notificationTime(n.createdAt),
+        unread: !n.read,
+      }))}
+      onMarkAllRead={() => void markAllRead()}
       profile={{
         ...SETTINGS.profile,
         name: member.name || SETTINGS.profile.name,

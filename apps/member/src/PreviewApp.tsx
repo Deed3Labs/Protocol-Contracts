@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { PreviewBalancesProvider } from '@/hooks/useClearBalances';
+import { PreviewIdentityProvider } from '@/context/IdentityContext';
 import AppChrome from '@/components/shell/AppChrome';
 import CycleCard from '@/components/clear/CycleCard';
 import RepayDialog from '@/components/clear/RepayDialog';
@@ -494,73 +495,111 @@ export default function PreviewApp() {
     <BrowserRouter>
       <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
         <PreviewBalancesProvider>
-          <Routes>
-            <Route path="/onboarding" element={<OnboardingPreview />} />
-            <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
-            <Route path="/charge" element={<ChargeApprovalPreview />} />
-            <Route path="/move-money" element={<MoveMoneyPreview />} />
-            <Route path="/pool" element={<PoolMovePreview />} />
-            <Route path="/bond" element={<BondPreview />} />
+          <PreviewIdentityProvider>
+            <Routes>
+              <Route path="/onboarding" element={<OnboardingPreview />} />
+              <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
+              <Route path="/charge" element={<ChargeApprovalPreview />} />
+              <Route path="/move-money" element={<MoveMoneyPreview />} />
+              <Route path="/pool" element={<PoolMovePreview />} />
+              <Route path="/bond" element={<BondPreview />} />
 
-            <Route
-              path="*"
-              element={
-                <>
-                  <AppChrome
-                    trailing={
-                      <HeaderActions
-                        profile={SETTINGS.profile}
-                        unread={empty ? 0 : unreadAlerts(INBOX.alerts) + unreadThreads(INBOX.threads)}
-                        accelerationActive={SETTINGS.accelerationActive}
-                      />
-                    }
-                  >
-                    <Routes>
-                      <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} />} />
-                      {/* Day one has two arrivals; the toggle only reaches the direct one. */}
-                      <Route path="/day-one-counter" element={<HomePage data={HOME_DAY_ONE_COUNTER} />} />
-                      <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
-                      <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
-                      <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
-                      <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
-                      <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
-                      <Route path="/contacts" element={<ContactsPage contacts={empty ? [] : CONTACTS} />} />
-                      <Route path="/partners" element={<PartnersPage />} />
-                      <Route
-                        path="/assurance"
-                        element={<AssurancePage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />}
-                      />
-                      <Route
-                        path="/inbox"
-                        element={
-                          <InboxPage
-                            data={empty ? { alerts: [], threads: [], messages: {} } : INBOX}
-                          />
-                        }
-                      />
-                      <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
-                      <Route path="/scan" element={<ScanPage />} />
-                      <Route path="/cycle" element={<CyclePreview />} />
-                      <Route path="/repay" element={<RepayPreview />} />
-                      <Route path="/term-plans" element={<TermPlansPreview />} />
-                      <Route path="/learn/:topic" element={<ExplainerPage />} />
-                      <Route path="/settings" element={<SettingsPage />} />
-                      <Route path="*" element={<Navigate to="/" replace />} />
-                    </Routes>
-                  </AppChrome>
+              <Route
+                path="*"
+                element={
+                  <>
+                    <AppChrome
+                      trailing={
+                        <HeaderActions
+                          profile={SETTINGS.profile}
+                          unread={empty ? 0 : unreadAlerts(INBOX.alerts) + unreadThreads(INBOX.threads)}
+                          accelerationActive={SETTINGS.accelerationActive}
+                          notifications={
+                            empty
+                              ? []
+                              : INBOX.alerts.map((a) => ({
+                                  id: a.id,
+                                  title: a.title,
+                                  detail: a.detail,
+                                  time: a.time,
+                                  unread: !a.read,
+                                }))
+                          }
+                        />
+                      }
+                    >
+                      <Routes>
+                        <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} />} />
+                        {/* Day one has two arrivals; the toggle only reaches the direct one. */}
+                        <Route path="/day-one-counter" element={<HomePage data={HOME_DAY_ONE_COUNTER} />} />
+                        {/* All clear: nothing carried, nothing owed, nothing prompting — the slot drops out. */}
+                        <Route
+                          path="/all-clear"
+                          element={
+                            <HomePage
+                              data={{
+                                ...HOME_IN_USE,
+                                // The reference's all-clear member: cash in hand, nothing parked, and
+                                // only the locked ELPA left on the shelf.
+                                cash: 2000,
+                                cashAccount: { ...HOME_IN_USE.cashAccount, spendable: 2000, readyToAllocate: 0 },
+                                termPlans: {
+                                  ...HOME_IN_USE.termPlans,
+                                  plans: HOME_IN_USE.termPlans.plans.filter((p) => p.balance === undefined),
+                                },
+                                credit: {
+                                  ...HOME_IN_USE.credit,
+                                  carryCost: 0,
+                                  tiers: HOME_IN_USE.credit.tiers.map((t) => ({ ...t, used: 0 })),
+                                },
+                                tasks: HOME_IN_USE.tasks.map((t) => ({ ...t, done: true })),
+                              }}
+                            />
+                          }
+                        />
+                        <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
+                        <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
+                        <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
+                        <Route path="/activity" element={<ActivityPage data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} />} />
+                        <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
+                        <Route path="/contacts" element={<ContactsPage contacts={empty ? [] : CONTACTS} />} />
+                        <Route path="/partners" element={<PartnersPage />} />
+                        <Route
+                          path="/assurance"
+                          element={<AssurancePage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />}
+                        />
+                        <Route
+                          path="/inbox"
+                          element={
+                            <InboxPage
+                              data={empty ? { alerts: [], threads: [], messages: {} } : INBOX}
+                            />
+                          }
+                        />
+                        <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
+                        <Route path="/scan" element={<ScanPage />} />
+                        <Route path="/cycle" element={<CyclePreview />} />
+                        <Route path="/repay" element={<RepayPreview />} />
+                        <Route path="/term-plans" element={<TermPlansPreview />} />
+                        <Route path="/learn/:topic" element={<ExplainerPage />} />
+                        <Route path="/settings" element={<SettingsPage />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </Routes>
+                    </AppChrome>
 
-                  {/* Harness control — not part of the app */}
-                  <button
-                    type="button"
-                    onClick={() => setEmpty((e) => !e)}
-                    className="fixed right-3 top-[62px] z-[60] rounded-md border-[0.5px] border-border bg-background/90 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"
-                  >
-                    state: {empty ? 'empty' : 'populated'}
-                  </button>
-                </>
-              }
-            />
-          </Routes>
+                    {/* Harness control — not part of the app */}
+                    <button
+                      type="button"
+                      onClick={() => setEmpty((e) => !e)}
+                      className="fixed right-3 top-[62px] z-[60] rounded-md border-[0.5px] border-border bg-background/90 px-2.5 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"
+                    >
+                      state: {empty ? 'empty' : 'populated'}
+                    </button>
+                  </>
+                }
+              />
+            </Routes>
+          </PreviewIdentityProvider>
         </PreviewBalancesProvider>
       </ThemeProvider>
     </BrowserRouter>

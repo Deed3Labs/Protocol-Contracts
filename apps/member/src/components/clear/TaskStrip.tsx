@@ -1,24 +1,105 @@
-import { Button } from '@/components/ui/button';
+import { Btn, CFoot, CHead, CMain, Chip, Line, Panel, Rows, SecHead } from './brand/anatomy';
+import { ChevronIcon } from './brand/icons';
 import type { SetupTask } from '@/lib/clearModel';
 
 /**
- * Setup nudge under the balance — design spec §4. Renders the first outstanding
- * task and disappears once everything is done.
+ * Home's temporary slot, in use: the setup steps still outstanding, one row each with its button.
+ *
+ * **Absent when empty, never present and empty.** With nothing outstanding Home drops from three
+ * blocks to two.
  */
-export default function TaskStrip({ tasks, onAction }: { tasks: SetupTask[]; onAction?: (id: string) => void }) {
-  const next = tasks.find((t) => !t.done);
-  if (!next) return null;
+export default function TaskStrip({
+  tasks,
+  onAction,
+  limit,
+}: {
+  tasks: SetupTask[];
+  onAction?: (id: string) => void;
+  /** How many rows to show. The phone shows the first only. */
+  limit?: number;
+}) {
+  const open = tasks.filter((t) => !t.done).slice(0, limit);
+  if (open.length === 0) return null;
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-tier-boost/10 px-3.5 py-2.5">
-      <span className="text-[13px] text-tier-boost-fg">{next.label}</span>
-      {/* Button border: the default hairline disappears against the tint, so it
-          borrows the accent's own edge. */}
-      {next.cta && (
-        <Button variant="clear" size="xs" className="border-tier-boost/30" onClick={() => onAction?.(next.id)}>
-          {next.cta}
-        </Button>
-      )}
-    </div>
+    <Panel>
+      <CMain>
+        <Rows>
+          {open.map((task) => (
+            <div key={task.id}>
+              <Line className="items-center!">
+                <span className="text-sec">{task.label}</span>
+                {task.cta && <Btn onClick={() => onAction?.(task.id)}>{task.cta}</Btn>}
+              </Line>
+            </div>
+          ))}
+        </Rows>
+      </CMain>
+    </Panel>
+  );
+}
+
+/**
+ * Getting set up — the temporary slot on day one.
+ *
+ * Every step in order. Done steps carry a settled chip; the first open step is the one current thing
+ * on the screen, so it takes the cobalt and a pinging chip — the only thing on day one that pulses.
+ * Later steps are muted with a chevron. The footer is the action that moves the member forward.
+ */
+export function SetupPanel({
+  tasks,
+  onAction,
+  onAddMoney,
+}: {
+  tasks: SetupTask[];
+  onAction?: (id: string) => void;
+  onAddMoney?: () => void;
+}) {
+  const done = tasks.filter((t) => t.done).length;
+  const current = tasks.find((t) => !t.done);
+
+  return (
+    <Panel act>
+      <CHead>
+        <SecHead label="Getting set up">
+          <span className="c-det">
+            {done} of {tasks.length}
+          </span>
+        </SecHead>
+      </CHead>
+      <CMain>
+        <Rows>
+          {tasks.map((task) => (
+            <div key={task.id}>
+              {task.done ? (
+                <Line className="items-center!">
+                  <span className="text-sec">{task.label}</span>
+                  <Chip tone="settled" core>
+                    Done
+                  </Chip>
+                </Line>
+              ) : task === current ? (
+                <Line className="items-center!">
+                  <span className="text-sec font-medium text-live">{task.label}</span>
+                  <Chip tone="live" ping>
+                    Now
+                  </Chip>
+                </Line>
+              ) : (
+                <button type="button" className="c-line w-full items-center! text-left" onClick={() => onAction?.(task.id)}>
+                  <span className="c-muted text-sec">{task.label}</span>
+                  <ChevronIcon size={14} strokeWidth={2.2} className="shrink-0 text-ink-50" />
+                </button>
+              )}
+            </div>
+          ))}
+        </Rows>
+      </CMain>
+      <CFoot>
+        <Btn primary lg onClick={onAddMoney}>
+          Add money
+        </Btn>
+      </CFoot>
+    </Panel>
   );
 }

@@ -23,6 +23,7 @@ import VotingPanel from '@/components/settings/VotingPanel';
 import BallotDialog from '@/components/settings/BallotDialog';
 import { money } from '@clear/domain';
 import ThemePicker from '@/components/clear/ThemePicker';
+import { THEME_PINNED } from '@/context/ThemeContext';
 import InfoBlock from '@/components/clear/InfoBlock';
 import AccelerationDialog from '@/components/settings/AccelerationDialog';
 import ChangePhoneDialog from '@/components/settings/ChangePhoneDialog';
@@ -471,7 +472,8 @@ export default function SettingsPage({
     'security',
     'notifications',
     'linked',
-    'appearance',
+    // Appearance returns with the dark/dusk pass; while the theme is pinned there is nothing to pick.
+    ...(THEME_PINNED ? [] : (['appearance'] as SectionId[])),
     'advanced',
   ];
 
@@ -625,10 +627,12 @@ export default function SettingsPage({
                 </Card>
               </div>
 
-              <Card>
-                <p className="mb-2.5 text-[13px] text-foreground-secondary">Appearance</p>
-                <ThemePicker />
-              </Card>
+              {!THEME_PINNED && (
+                <Card>
+                  <p className="mb-2.5 text-[13px] text-foreground-secondary">Appearance</p>
+                  <ThemePicker />
+                </Card>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <Card>
@@ -684,8 +688,12 @@ export default function SettingsPage({
           {identity('h-11 w-11 text-sm', 'text-[15px]')}
         </div>
 
-        <p className="mb-2 text-[11px] text-foreground-secondary">Appearance</p>
-        <ThemePicker className="mb-4" />
+        {!THEME_PINNED && (
+          <>
+            <p className="mb-2 text-[11px] text-foreground-secondary">Appearance</p>
+            <ThemePicker className="mb-4" />
+          </>
+        )}
 
         <p className="mb-0.5 text-[11px] text-foreground-secondary">Account</p>
         <SettingRows

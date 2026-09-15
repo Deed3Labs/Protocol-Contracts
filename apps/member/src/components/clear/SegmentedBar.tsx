@@ -9,7 +9,7 @@ export interface Segment {
 }
 
 /**
- * Stacked progress bar — design spec §2: 8px tall, 4px radius.
+ * Stacked progress bar — the brand guide's `.bar`: 8px tall, square, ink-13 track.
  *
  * One bar means one thing (spec §3, rule 4): segments are sized from real values
  * against `total`, and whatever is left over stays as empty track. A tier that
@@ -36,9 +36,7 @@ export default function SegmentedBar({
     <div
       role="img"
       aria-label={`${label}: ${filled.map((s) => s.label).join(', ') || 'nothing used'}`}
-      // Track uses the border color, not `secondary`: the spec's empty-track step is
-      // clearly darker than the page, and `secondary` sits only 5 levels off `background`.
-      className={cn('flex h-2 overflow-hidden rounded-[4px] bg-border', className)}
+      className={cn('flex h-2 overflow-hidden bg-ink-13', className)}
     >
       {filled.map((s) => (
         <div key={s.label} className={s.className} style={{ width: `${pct(s.value)}%` }} />

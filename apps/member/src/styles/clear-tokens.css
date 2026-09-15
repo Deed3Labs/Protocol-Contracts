@@ -1,0 +1,35 @@
+/* Clear brand guide tokens — useclear.org/style.
+
+   The :root block of the brand guide's clear-app-tokens.css, transcribed as-is. That file is the
+   single source of truth: change a value there first, then copy it here. Nothing else belongs in
+   this file.
+
+   Its component classes (.chead, .btn, .chip, .route, ...) are deliberately NOT imported — they
+   become React primitives in src/components/clear/, and several of their bare names collide with
+   Tailwind utilities (.ring) or with each other (.sw is both the switch and the token swatch).
+   Its document chrome (body padding, h1/h2, .doc, .phone, the dark doc variables) describes the
+   guide page, not the app.
+
+   Tailwind sees these through the @theme inline block in index.css. Kept unlayered on purpose:
+   Tailwind's own theme variables live in @layer theme, so --font-mono here wins over its default. */
+
+:root {
+  --paper: #DFE3DE; --paper-2: #E9ECE7; --ink: #16211D;
+  --ink-70: #525B57; --ink-50: #5A635F; --ink-28: #A7ADA8; --ink-13: #C5CAC5;
+  --live: #24409E;
+  --land: #6B7F5C; --land-ink: #55654A;
+  --settled: #0E6B4E; --underway: #8A5512; --absent: #9B2C22;
+  --s1: 8px; --s2: 16px; --s3: 24px; --s4: 40px; --s5: 64px; --s6: 96px;
+  --radius-none: 0; --radius-pill: 999px;
+  --font-display: 'Bricolage Grotesque', Georgia, serif;
+  --font-text: 'Instrument Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --t-hero: 40px; --t-hero-m: 32px;
+  --t-fig: 20px; --t-row: 15px;
+  --t-body: 15px; --t-sec: 13px; --t-detail: 12px; --t-label: 11.5px;
+  --tier-savings: var(--settled);
+  --tier-asset: var(--land); --tier-asset-ink: var(--land-ink);
+  --tier-income: var(--underway); --tier-boost: var(--absent);
+  --vest-cash: var(--ink); --vest-vested: var(--settled); --vest-vesting: var(--underway);
+  --seam: var(--ink-28);
+}

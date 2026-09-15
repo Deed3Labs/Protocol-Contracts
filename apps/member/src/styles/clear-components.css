@@ -1,0 +1,201 @@
+/* Clear brand guide — component rules, transcribed from clear-app-tokens.css.
+
+   Every rule here is a copy of the guide's, with its class names prefixed `c-` so none of them can
+   collide with a Tailwind utility (the guide's bare `.ring`, `.line`, `.row` would). Values are not
+   re-derived: when a number looks odd, it is the guide's number. React primitives in
+   components/clear/brand apply these classes; pages should reach for the primitives, not the
+   classes.
+
+   Order matters and follows the guide's: several rules exist only to beat an earlier one at equal
+   specificity (the header line-height, the ruled list's last row). Keep additions in source order
+   with the section they belong to.
+
+   Imported inside @layer components, so a Tailwind utility on the same element still wins. */
+
+/* ---------- COMPONENT ANATOMY ----------
+   Every component is header / main / footer. Padding lives on the
+   sections, not the container, so every divider runs edge to edge.
+   Main takes the slack, which pins the footer to the bottom. */
+.c-cell,.c-panel{display:flex;flex-direction:column;min-width:0}
+.c-cell{background:var(--paper)}
+.c-panel{border:1px solid var(--seam);background:var(--paper)}
+.c-chead,.c-cmain,.c-cfoot{padding:var(--s2)}
+.c-cmain{flex:1 1 auto}
+.c-cmain,.c-cfoot,.c-cbar{border-top:1px solid var(--ink-13)}
+.c-cmain:first-child,.c-cfoot:first-child,.c-cbar:first-child{border-top:0}
+.c-chead + .c-cfoot{border-top:1px solid var(--ink-13)}
+.c-chead .c-sechead{border-bottom:0;padding-bottom:0;margin-bottom:0}
+.c-panel.c-act{background:var(--paper-2)}
+.c-panel.c-act.c-short{border-color:var(--live)}
+.c-panel.c-act.c-clear{border-color:var(--settled)}
+.c-cyc-num{color:var(--ink)}
+.c-panel.c-act.c-short .c-cyc-num{color:var(--live)}
+.c-panel.c-act.c-clear .c-cyc-num{color:var(--settled)}
+
+.c-slab{display:grid;gap:1px;background:var(--seam);border:1px solid var(--seam);
+      grid-template-columns:minmax(0,1.08fr) minmax(0,1fr)}
+.c-slab.c-one{grid-template-columns:minmax(0,1fr)}
+.c-cell.c-full{grid-column:1/-1}
+.c-col{display:grid;gap:1px;background:var(--seam);grid-template-rows:auto 1fr;min-width:0}
+.c-home{display:flex;flex-direction:column;gap:var(--s3)}
+
+.c-label{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-50);margin:0}
+.c-sechead{display:flex;flex-wrap:nowrap;justify-content:space-between;align-items:baseline;gap:var(--s2);height:24px}
+.c-sechead > *{white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+
+.c-fig{font-family:var(--font-text);font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;margin:0}
+.c-fig-hero{font-size:var(--t-hero);line-height:1.05}
+.c-fig-sec{font-size:var(--t-fig);line-height:1.2}
+.c-fig-row{font-size:var(--t-row);font-weight:500}
+.c-of{font-weight:400;font-size:var(--t-sec);color:var(--ink-50)}
+.c-sub{font-size:var(--t-sec);color:var(--ink-70);margin:0}
+.c-det{font-size:var(--t-detail);color:var(--ink-50);margin:0;line-height:1.5}
+/* A header is a fixed 24px line, whatever it holds. These selectors sit after .det and .fig-sec
+   deliberately: at equal specificity the later rule wins. */
+.c-sechead .c-label,.c-sechead .c-det,.c-sechead .c-fig,.c-sechead > span{line-height:24px}
+
+.c-rows > *{padding:var(--s2) 0;border-bottom:1px solid var(--ink-13)}
+.c-rows > :first-child{padding-top:0}
+.c-rows > :last-child{border-bottom:0;padding-bottom:0}
+/* a ruled list closes itself, so the space below reads as slack not content */
+.c-rows.c-ruled > :last-child{border-bottom:1px solid var(--ink-13);padding-bottom:var(--s2)}
+.c-line{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
+.c-line > :first-child{min-width:0}
+.c-pair{display:flex;gap:var(--s1)}
+.c-pair .c-btn{flex:1;height:44px}
+
+.c-btn{font-family:var(--font-text);font-size:var(--t-sec);font-weight:500;height:36px;padding:0 var(--s2);
+     border:1px solid var(--ink-28);background:transparent;color:var(--ink);border-radius:var(--radius-pill);
+     cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:var(--s1);white-space:nowrap}
+.c-btn:hover{border-color:var(--ink)}
+.c-btn:disabled{opacity:.45;cursor:default}
+.c-btn:disabled:hover{border-color:var(--ink-28)}
+.c-btn-primary{height:44px;background:var(--ink);color:var(--paper);border-color:var(--ink);padding:0 var(--s3)}
+.c-btn-primary:disabled:hover{border-color:var(--ink)}
+.c-btn-lg{height:44px;width:100%}
+
+.c-chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--radius-pill);
+      font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
+      border:1px solid currentColor;white-space:nowrap}
+.c-chip .c-core{width:6px;height:6px;border-radius:50%;background:currentColor;
+            box-shadow:0 0 4px 1px color-mix(in srgb, currentColor 45%, transparent);flex-shrink:0}
+.c-chip.c-settled{color:var(--settled)} .c-chip.c-underway{color:var(--underway)} .c-chip.c-neutral{color:var(--ink-50)} .c-chip.c-live{color:var(--live)}
+.c-ping{position:relative}
+.c-ping::after{content:'';position:absolute;inset:0;border-radius:inherit;background:currentColor;
+             animation:c-live-ping 2s cubic-bezier(0,0,.2,1) infinite}
+@keyframes c-live-ping{0%{transform:scale(1);opacity:.6}75%,100%{transform:scale(3.4);opacity:0}}
+@media (prefers-reduced-motion:reduce){.c-ping::after{animation:none;opacity:0}}
+
+.c-bar{display:flex;height:8px;background:var(--ink-13);overflow:hidden}
+.c-bar > div{height:100%}
+.c-track{height:8px;background:var(--ink-13)}
+.c-t-sav{color:var(--tier-savings)} .c-t-ast{color:var(--tier-asset-ink)}
+.c-t-inc{color:var(--tier-income)} .c-muted{color:var(--ink-50)} .c-pos{color:var(--settled)}
+/* Boost's text colour. The guide uses .t-bst in the Repay modal without defining it; this follows
+   the ramp (boost → absent), the same way the other three tiers map. */
+.c-t-bst{color:var(--tier-boost)}
+.c-legend > div{display:flex;justify-content:space-between;gap:var(--s2);font-size:var(--t-detail);line-height:2}
+.c-legend > div span:last-child{flex-shrink:0;white-space:nowrap;color:var(--ink-70)}
+.c-legend > div span.c-muted:last-child{color:var(--ink-50)}
+
+.c-wm{font-family:var(--font-display);font-weight:800;font-size:19px;letter-spacing:-.035em}
+.c-lockup{display:inline-flex;align-items:center;color:var(--ink)}
+.c-lockup .c-mk{display:block;flex-shrink:0;width:20px;height:20px}
+.c-lockup .c-wm{font-size:19px;margin-left:10px;line-height:1}
+.c-lockup.c-sm .c-mk{width:18px;height:18px}
+.c-lockup.c-sm .c-wm{font-size:17px;margin-left:9px}
+.c-tbnav{display:flex;gap:var(--s3);font-size:var(--t-sec);color:var(--ink-50)}
+.c-tbnav .c-on{color:var(--ink);font-weight:500}
+.c-tbright{display:flex;align-items:center;gap:var(--s3)}
+/* the corner is its own group, so anything added later sits with the bell and the avatar */
+.c-tbicons{display:flex;align-items:center;gap:var(--s1)}
+.c-iconbtn{position:relative;width:34px;height:34px;border:0;background:transparent;color:var(--ink-50);
+         display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:var(--radius-pill)}
+.c-iconbtn:hover{color:var(--ink)}
+/* unread is the guide's dot: core plus glow, no ping — mail is not an event */
+.c-unread{position:absolute;top:5px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--live);
+        box-shadow:0 0 0 2px var(--paper), 0 0 6px 1px color-mix(in srgb, var(--live) 55%, transparent)}
+/* an avatar is an image, and images are square */
+.c-avatarbtn{width:32px;height:32px;border:1px solid var(--ink-28);background:var(--paper-2);color:var(--ink);
+           font-family:var(--font-text);font-weight:600;font-size:var(--t-detail);display:flex;
+           align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;overflow:hidden}
+.c-avatarbtn.c-sm{width:28px;height:28px;font-size:11px}
+.c-menurow{display:flex;align-items:center;gap:12px;height:38px;font-size:var(--t-sec);cursor:pointer;width:100%;text-align:left}
+.c-menurow span.c-ic{color:var(--ink-50);display:flex;flex-shrink:0}
+
+/* the split footer keeps its centred hairline, inside .cfoot */
+.c-foot2{display:grid;grid-template-columns:1fr 1fr}
+.c-foot2 > *{min-width:0;display:flex;justify-content:space-between;align-items:center;gap:6px;cursor:pointer;text-align:left}
+.c-foot2 > :first-child{padding-right:var(--fp,14px)}
+.c-foot2 > :last-child{padding-left:var(--fp,14px);border-left:1px solid var(--ink-13)}
+.c-foot2 p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.c-navwrap{display:flex;gap:var(--s1);align-items:center}
+.c-navbar{flex:1;height:52px;display:flex;align-items:center;justify-content:space-around;
+        background:var(--paper-2);border:1px solid var(--ink-28)}
+.c-navbar a{color:var(--ink-50);display:flex;align-items:center;justify-content:center;
+          flex:1;min-width:44px;height:44px}
+.c-navbar a.c-on{color:var(--ink)}
+.c-navfab.c-wide{width:auto;padding:0 var(--s2);gap:7px;font-size:var(--t-sec);font-weight:500}
+.c-navfab{height:52px;width:52px;border-radius:var(--radius-pill);background:var(--ink);color:var(--paper);
+        border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
+.c-navfab svg{transition:transform .15s ease}
+.c-qa{display:grid;grid-template-columns:1fr 1fr;gap:var(--s1)}
+.c-qa .c-btn{width:100%}
+
+/* ================= MODAL — a component like any other ================= */
+.c-sheet{background:var(--paper);border:1px solid var(--ink-28);border-radius:26px;overflow:hidden;color:var(--ink)}
+.c-modal{display:flex;flex-direction:column;min-width:0}
+/* The guide's body text. Pages inherit it from the shell; modals and menus render in a portal outside
+   the shell, so they carry it themselves. */
+.c-text{font-family:var(--font-text);font-size:var(--t-body);line-height:1.6;color:var(--ink);font-variant-numeric:tabular-nums}
+/* Keyboard focus. The guide draws none; this keeps it visible in the guide's own terms — a square
+   1px ink outline — instead of the app's grey ring with a white offset. The amount field shows its
+   caret, which is focus enough. NOT FROM THE GUIDE: flagged for review. */
+.c-text :focus-visible{box-shadow:none;outline:1px solid var(--ink);outline-offset:2px}
+.c-text .c-bigamt:focus-visible{outline:none}
+.c-mtitle{font-size:var(--t-body);font-weight:600}
+.c-mclose{color:var(--ink-50);cursor:pointer;display:flex}
+
+.c-bigamt{font-family:var(--font-text);font-weight:600;font-size:var(--t-hero);letter-spacing:-.03em;
+        line-height:1.05;margin:4px 0 0;font-variant-numeric:tabular-nums}
+.c-bigamt .c-dec{color:var(--ink-50)}
+
+.c-qc{display:flex;gap:var(--s1);margin-top:var(--s2)}
+.c-chip-q{flex:1;padding:0;height:34px;font-size:var(--t-detail)}
+.c-chip-q.c-on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.c-qc.c-split{margin-top:var(--s2)}
+.c-qc.c-split .c-chip-q{height:36px;font-size:var(--t-sec)}
+
+/* consequences — the five lines, no longer a box inside a box */
+.c-conseq > div{display:flex;justify-content:space-between;gap:var(--s2);font-size:var(--t-sec);line-height:1.95}
+.c-conseq > div span:first-child{color:var(--ink-70)}
+.c-conseq > div span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.c-conseq .c-earn span{color:var(--live)}
+.c-conseq .c-earn span:last-child{font-weight:600}
+.c-conseq .c-limit{border-top:1px solid var(--ink-13);margin-top:var(--s1);padding-top:var(--s1)}
+.c-conseq .c-limit span:last-child{color:var(--settled);font-weight:600}
+.c-conseq .c-limit.c-down span:last-child{color:var(--ink)}
+.c-footnote{border-top:1px solid var(--ink-13);margin-top:var(--s2);padding-top:var(--s2)}
+.c-footnote p{margin:0;font-size:var(--t-detail);color:var(--ink-50);line-height:1.6}
+
+.c-kv{display:flex;justify-content:space-between;align-items:center;gap:var(--s2);font-size:var(--t-sec)}
+.c-kv .c-v{display:flex;align-items:center;gap:8px;color:var(--ink-50);font-size:var(--t-detail);
+       white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-grouplabel{font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;
+            text-transform:uppercase;color:var(--ink-50);margin:0 0 var(--s2)}
+/* stacked sections share the anatomy's rule, so a group break is never a floating label */
+.c-cmain + .c-cmain{border-top:1px solid var(--ink-13)}
+.c-mono{font-family:var(--font-mono);font-size:var(--t-detail)}
+
+/* ================= QUICK ACTIONS FAN ================= */
+.c-qafan{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s1)}
+.c-qaitem{height:40px;padding:0 var(--s2);display:flex;align-items:center;background:var(--paper-2);
+        border:1px solid var(--ink-28);font-size:var(--t-sec);font-weight:500;white-space:nowrap;
+        border-radius:var(--radius-pill);color:var(--ink);cursor:pointer}
+.c-navfab.c-open svg{transform:rotate(45deg)}
+
+/* The guide's mobile .home gap, keyed to the app's breakpoint instead of the .phone frame. */
+@media (max-width:1023px){
+  .c-home{gap:var(--s2)}
+}

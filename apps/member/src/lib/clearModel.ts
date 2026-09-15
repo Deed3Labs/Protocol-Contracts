@@ -43,6 +43,11 @@ export interface Cycle {
   clearsOn: string;
   /** When the limit contracts if the cycle doesn't clear, e.g. "Nov 12". */
   rebalanceBy: string;
+  /**
+   * When the member last carried nothing at a cycle's close, e.g. "Oct 1". Optional: nothing reads it
+   * from the chain yet, and the all-clear footer leaves it out rather than inventing a date.
+   */
+  lastClearedOn?: string;
 }
 
 /**
