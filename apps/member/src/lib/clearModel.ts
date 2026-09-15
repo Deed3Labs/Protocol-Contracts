@@ -672,7 +672,10 @@ export interface HeldBond {
    * value. This, not the face, is what the credit line lends against.
    */
   worthToday: number;
-  /** The fixed annual rate it was bought at, when known. */
+  /**
+   * The fixed annual rate it was bought at. Stored at purchase, never derived later from face, paid
+   * and term: it is a disclosure figure a member was quoted, and a derivation drifts by rounding.
+   */
   rate?: number;
 }
 
@@ -761,8 +764,24 @@ export function bondsBacking(data: EarnData): number {
   return toCents(bondsWorth(data.bonds) * data.bondLtv);
 }
 
+/**
+ * What the Earn positions back on the credit line together — rounded DOWN to the dollar.
+ *
+ * 95% of $6,895.00 of bonds plus 70% of the pool is $8,300.25; Home's tier and the $12,300.00 total
+ * are whole dollars, so the two pages disagreed by twenty-five cents. Down is the conservative
+ * direction for a credit limit. The per-product figures stay in cents: they are what a row states.
+ */
 export function assetBackedLimit(data: EarnData): number {
-  return poolBacking(data) + bondsBacking(data);
+  return Math.floor(poolBacking(data) + bondsBacking(data));
+}
+
+/**
+ * Earned to date, derived from the rows: pool interest plus what the bonds have appreciated
+ * (worth today less what was paid). A figure that included yield already withdrawn would be a
+ * different quantity and need a different label.
+ */
+export function earnedFromPositions(data: EarnData): number {
+  return toCents(data.pool.earned + bondsWorth(data.bonds) - bondsTotal(data.bonds));
 }
 
 /** Share of the pool lent out, 0–1. */

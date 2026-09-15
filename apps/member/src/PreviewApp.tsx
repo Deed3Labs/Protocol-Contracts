@@ -296,7 +296,7 @@ function PoolMovePreview() {
           haircutBps: 7_000,
           freeNow: lent ? 600 : 2541,
           utilizationBps: lent ? 7_600 : 7_400,
-          limitAfter: 7600,
+          limit: 12300,
           owed: 2400,
         }}
         onMove={() => {}}

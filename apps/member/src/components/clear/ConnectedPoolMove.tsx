@@ -112,7 +112,7 @@ export default function ConnectedPoolMove({
         haircutBps: POOL_SHARE_HAIRCUT_BPS,
         freeNow,
         utilizationBps,
-        ...(limitCents !== null ? { limitAfter: limitCents / 100 } : {}),
+        ...(limitCents !== null ? { limit: limitCents / 100 } : {}),
         ...(owedCents !== null ? { owed: owedCents / 100 } : {}),
       }}
       busy={busy}

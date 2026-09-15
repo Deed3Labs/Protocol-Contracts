@@ -11,7 +11,7 @@ import type { MoveDirection } from '@/components/clear/MoveMoneyDialog';
 import { EARN_DAY_ONE } from '@/data/clearPlaceholder';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import { money, signedMoney } from '@clear/domain';
-import { assetBackedLimit, bondsTotal, earningTotal, type EarnData } from '@/lib/clearModel';
+import { assetBackedLimit, bondsTotal, earnedFromPositions, earningTotal, type EarnData } from '@/lib/clearModel';
 
 /** A stat tile: a label and a figure, which is exactly a header — so it has no main and no footer. */
 function Stat({ label, value, positive }: { label: string; value: string; positive?: boolean }) {
@@ -47,7 +47,7 @@ export default function EarnPage({ data = EARN_DAY_ONE }: { data?: EarnData }) {
 
   useSetMobileAction({ label: 'Buy', icon: PlusIcon, onSelect: () => setBuyOpen(true) });
 
-  const earned = <Stat label={desktop ? 'Earned to date' : 'Earned'} value={signedMoney(data.earnedToDate)} positive />;
+  const earned = <Stat label={desktop ? 'Earned to date' : 'Earned'} value={signedMoney(earnedFromPositions(data))} positive />;
   const backs = (
     <Stat label={desktop ? 'Backs your limit' : 'Backs limit'} value={money(assetBackedLimit(data), { cents: true })} />
   );

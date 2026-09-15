@@ -78,8 +78,8 @@ export interface PoolTerms {
   /** Cash the pool can pay right now. Below the request, the rest queues. */
   freeNow: number;
   utilizationBps: number;
-  /** The limit this withdrawal lands on, and what is owed against it. */
-  limitAfter?: number;
+  /** The credit limit today, before this withdrawal, and what the member carries against it. */
+  limit?: number;
   owed?: number;
 }
 
@@ -422,7 +422,10 @@ export default function MoveMoneyDialog({
               because what a withdrawal costs in yield is the thing being weighed. */}
           <Row label="Yield given up" value={`~${money((amount * pool.apyPercent) / 100, { cents: true })} a year`} accent />
           <Row label="Position after" value={money(after.savings, { cents: true })} />
-          <Row label="Arrives" value="Instantly" />
+          {/* The question a member withdrawing is actually asking: where the limit lands. */}
+          {pool.limit !== undefined && (
+            <Row label="Limit after" value={money(pool.limit - (amount * pool.haircutBps) / 10_000, { cents: true })} />
+          )}
           <Row
             label="Your credit limit drops by"
             value={`−${money((amount * pool.haircutBps) / 10_000, { cents: true })}`}
@@ -661,9 +664,21 @@ export default function MoveMoneyDialog({
         </div>
       </div>
     );
+    // Whether the limit this withdrawal lands on still clears what the member carries.
+    const limitLandsAt = isPool && !isDeposit && pool?.limit !== undefined ? pool.limit - (amount * pool.haircutBps) / 10_000 : null;
+    const carryNote = limitLandsAt !== null && pool?.owed !== undefined && !canQueue && (
+      <div className="c-footnote">
+        <p>
+          {limitLandsAt >= pool.owed
+            ? `Still above the ${money(pool.owed, { cents: true })} you carry.`
+            : `${money(pool.owed - limitLandsAt, { cents: true })} below the ${money(pool.owed, { cents: true })} you carry.`}
+        </p>
+      </div>
+    );
     footer = (
       <>
         {summaryRows()}
+        {carryNote}
         {action}
       </>
     );

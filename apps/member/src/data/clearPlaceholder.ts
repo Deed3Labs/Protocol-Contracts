@@ -726,7 +726,8 @@ const BOND_TERMS: BondTerm[] = [
 ];
 
 export const EARN_IN_USE: EarnData = {
-  earnedToDate: 412.6,
+  // Pool interest plus bond appreciation: 41.20 + (6,895.00 − 6,725.00). Earn derives it the same way.
+  earnedToDate: 211.2,
   payFrom: PAY_FROM,
   bondLtv: BOND_LTV,
   poolLtv: POOL_LTV,

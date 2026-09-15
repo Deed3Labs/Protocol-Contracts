@@ -60,10 +60,12 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
   const dayOne = creditLimit(data.credit) === 0 && savingsTotal(data.savings) === 0 && data.cash === 0;
   const boost = addableTier(data.credit);
 
-  // Deep link from the mobile nav's quick actions.
+  // Deep links: add money from the nav's quick actions, the limit breakdown from a bond on Earn.
   useEffect(() => {
-    if (params.get('do') !== 'add-money') return;
-    setLinkOpen(true);
+    const action = params.get('do');
+    if (action === 'add-money') setLinkOpen(true);
+    else if (action === 'limit-breakdown') setBreakdownOpen(true);
+    else return;
     params.delete('do');
     setParams(params, { replace: true });
   }, [params, setParams]);

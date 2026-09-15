@@ -31,7 +31,7 @@ const SHOWN = 4;
  * exist somewhere other than the row.
  *
  * Face value leads, with what it is worth today beneath it in cobalt; then what was paid, when it
- * matures, what it yields and what it backs.
+ * matures, what it gains and what it backs.
  */
 function BondDetailDialog({
   bond,
@@ -56,17 +56,20 @@ function BondDetailDialog({
       footer={
         <>
           <div className="c-footnote mt-0! border-t-0! pt-0!">
-            <p>Locked until maturity. You can borrow against it any time for 0.65% a cycle.</p>
+            <p>
+              Locked until maturity. It backs your credit line automatically at 0.65% a cycle &mdash; there is nothing to
+              borrow, the card just reaches it when the cheaper tiers run out.
+            </p>
           </div>
+          {/* No borrow button: credit draws on its own, so the way through is to the limit it backs. */}
           <div className="c-pair mt-s2">
             <Btn
-              primary
               onClick={() => {
                 onOpenChange(false);
-                navigate('/');
+                navigate('/?do=limit-breakdown');
               }}
             >
-              Borrow against it
+              See your limit
             </Btn>
             <Btn
               onClick={() => {
@@ -103,10 +106,8 @@ function BondDetailDialog({
         </div>
         <div>
           <div className="c-kv">
-            <span>Yield</span>
-            <span className="c-v">
-              {bond.rate !== undefined ? `${bond.rate.toFixed(1)}% fixed · ` : ''}+{money(gain, { cents: true })}
-            </span>
+            <span>Gain at maturity</span>
+            <span className="c-v">+{money(gain, { cents: true })}</span>
           </div>
         </div>
         <div>
