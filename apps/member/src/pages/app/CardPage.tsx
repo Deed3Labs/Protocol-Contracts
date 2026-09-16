@@ -71,8 +71,13 @@ export default function CardPage({
   addError?: string | null;
   /** Where a physical card would be posted, from Personal information. */
   address?: { name: string; lines: string } | null;
-  /** Fetches the issuer's short-lived card-details URL. Absent in the preview harness. */
-  onRevealDetails?: (cardId?: string) => Promise<string | undefined>;
+  /**
+   * Gets whatever the issuer will give us for this card: a session for the modern embed, or the
+   * old whole-page URL. Absent in the preview harness.
+   */
+  onRevealDetails?: (
+    cardId?: string,
+  ) => Promise<{ session?: { session: string; environment: 'sandbox' | 'production' }; url?: string } | undefined>;
 }) {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
@@ -90,6 +95,7 @@ export default function CardPage({
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [embedUrl, setEmbedUrl] = useState<string | undefined>(undefined);
+  const [embedSession, setEmbedSession] = useState<{ session: string; environment: 'sandbox' | 'production' } | undefined>(undefined);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [replaceOpen, setReplaceOpen] = useState(false);
@@ -118,13 +124,16 @@ export default function CardPage({
 
   const openDetails = async () => {
     setDetailsOpen(true);
-    // The issuer's URL lasts a minute. Anything still in hand is from a previous open and would
+    // Both of these are short-lived. Anything still in hand is from a previous open and would
     // render as "Embed request expired" before the fresh one arrives.
     setEmbedUrl(undefined);
+    setEmbedSession(undefined);
     if (!onRevealDetails) return;
     setLoadingDetails(true);
     try {
-      setEmbedUrl(await onRevealDetails(active.id));
+      const got = await onRevealDetails(active.id);
+      setEmbedSession(got?.session);
+      setEmbedUrl(got?.url);
     } finally {
       setLoadingDetails(false);
     }
@@ -362,16 +371,21 @@ export default function CardPage({
         expiry={data.expiry}
         cvc={data.cvc}
         embedUrl={embedUrl}
+        embedSession={embedSession}
         loading={loadingDetails}
         open={detailsOpen}
         onOpenChange={(open) => {
           setDetailsOpen(open);
           // The URL is short-lived and single-use: dropped the moment the details close.
-          if (!open) setEmbedUrl(undefined);
+          if (!open) {
+            setEmbedUrl(undefined);
+            setEmbedSession(undefined);
+          }
         }}
         onReplace={() => {
           setDetailsOpen(false);
           setEmbedUrl(undefined);
+          setEmbedSession(undefined);
           setReplaceOpen(true);
         }}
       />

@@ -578,6 +578,12 @@ function CardPreview({ empty, many }: { empty: boolean; many: boolean }) {
       newCard={newCard}
       onNewCardDone={() => setNewCard(null)}
       address={{ name: 'Kai Moore', lines: '1420 Orange St, Redlands, CA 92374' }}
+      /*
+       * A session the issuer will never honour, so the sheet can be looked at in both of its
+       * states: the rows with their frames mounting, and the fallback it takes when they do not
+       * arrive. The real one comes from the server and is exchanged by the SDK.
+       */
+      onRevealDetails={async () => ({ session: { session: 'preview', environment: 'sandbox' as const } })}
     />
   );
 }

@@ -72,6 +72,38 @@ export function requireLithic(): Lithic {
   return lithic;
 }
 
+/** The REST base for the current environment, matching what the SDK would pick. */
+export function lithicBaseUrl(): string {
+  return lithicEnvironment() === 'production'
+    ? 'https://api.lithic.com/v1'
+    : 'https://sandbox.lithic.com/v1';
+}
+
+/**
+ * A call the SDK does not type yet.
+ *
+ * The embed session endpoint is newer than the pinned SDK, which still only carries the deprecated
+ * embed helpers. Auth is the bare API key — no Bearer prefix — which is the one thing easy to get
+ * wrong by habit.
+ */
+export async function lithicFetch<T>(
+  path: string,
+  init: { method: string; body?: unknown },
+): Promise<T> {
+  const key = apiKey();
+  if (!key) throw new Error('Lithic is not configured (LITHIC_API_KEY missing)');
+  const response = await fetch(`${lithicBaseUrl()}${path}`, {
+    method: init.method,
+    headers: { Authorization: key, 'Content-Type': 'application/json' },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`Lithic ${init.method} ${path} failed (${response.status}) ${detail}`.trim());
+  }
+  return (await response.json()) as T;
+}
+
 /** Test seam — drops the memoised client so an env change takes effect. */
 export function resetLithicClient(): void {
   client = null;
