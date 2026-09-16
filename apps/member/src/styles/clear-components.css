@@ -61,6 +61,8 @@
 .c-rows > :last-child{border-bottom:0;padding-bottom:0}
 /* a ruled list closes itself, so the space below reads as slack not content */
 .c-rows.c-ruled > :last-child{border-bottom:1px solid var(--ink-13);padding-bottom:var(--s2)}
+/* a swiped row keeps its padding on the body, so the ruled list adds only the rule */
+.c-rows.c-ruled > div.c-swiped:last-child{padding-bottom:0}
 .c-line{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
 .c-line > :first-child{min-width:0}
 .c-pair{display:flex;gap:var(--s1)}

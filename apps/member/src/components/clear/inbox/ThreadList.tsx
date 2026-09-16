@@ -123,7 +123,9 @@ export default function ThreadList({
             )}
           </div>
         ) : (
-          <Rows>
+          // Ruled: the list fills the screen, so the last row closes itself and the space under it
+          // reads as slack rather than as more list.
+          <Rows ruled>
             {threads.map((thread) => (
               <SwipeRow
                 key={thread.id}
