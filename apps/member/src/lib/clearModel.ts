@@ -343,7 +343,8 @@ export interface PendingClaim {
   amount: number;
   /** Who the money is waiting on. */
   recipient: string;
-  sentOn: string;
+  /** When it was sent. Absent for a live send: the server keeps the expiry, not the send date. */
+  sentOn?: string;
   expiresInDays: number;
 }
 
@@ -361,6 +362,15 @@ export interface SpendCategory {
   amount: number;
 }
 
+/** What one merchant took, and the group it currently sits in — what Change groups moves. */
+export interface MerchantSpend {
+  name: string;
+  /** The group's label, e.g. "Groceries". */
+  group: string;
+  payments: number;
+  amount: number;
+}
+
 export interface ActivityData {
   rows: ActivityRow[];
   /**
@@ -369,6 +379,8 @@ export interface ActivityData {
    */
   cycleSpend?: CycleSpend;
   categories?: SpendCategory[];
+  /** The merchants behind those groups, for Change groups. Absent when nothing has been spent. */
+  merchants?: MerchantSpend[];
   /** What stayed with members and Clear Partners this cycle. */
   insideCoop?: number;
   /** Set when money has been sent to someone who isn't a member yet. */

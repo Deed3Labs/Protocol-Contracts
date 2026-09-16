@@ -149,13 +149,25 @@ export default function HeaderActions({
         onAcceleration={onAcceleration}
         onSignOut={onSignOut}
         trigger={(open) => (
+          /*
+           * On a phone the square the guide draws is the picture, not the target: the button around it
+           * is 44px, pulled in by 6px so the header keeps its height. A pointer needs neither.
+           */
           <button
             type="button"
             aria-label="Account"
             onClick={open}
-            className={cn('c-avatarbtn', !isDesktop && 'c-sm')}
+            className={cn(
+              isDesktop ? 'c-avatarbtn' : 'flex h-11 w-11 shrink-0 items-center justify-center -my-[6px]',
+            )}
           >
-            <MemberAvatar profile={profile} className="h-full w-full bg-transparent text-inherit" />
+            {isDesktop ? (
+              <MemberAvatar profile={profile} className="h-full w-full bg-transparent text-inherit" />
+            ) : (
+              <span className="c-avatarbtn">
+                <MemberAvatar profile={profile} className="h-full w-full bg-transparent text-inherit" />
+              </span>
+            )}
           </button>
         )}
       />

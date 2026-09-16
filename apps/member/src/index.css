@@ -596,16 +596,17 @@ body.onboarding-scroll-enabled {
   border: none;
 }
 
-/* Mobile nav offset. The guide draws it 16px off the bottom (.navwrap); the
-   safe-area inset wins when it's larger, so the bar never sits under the home
-   indicator. Lifts higher when installed (PWA standalone) for thumb reach. */
+/* Mobile nav offset. The guide draws it 16px off the bottom (.navwrap), and this sits a further
+   16px up: at the guide's own offset the bar was a stretch for a thumb on a tall phone. The
+   safe-area inset wins when it is larger, so the bar never sits under the home indicator, and it
+   lifts higher again when installed (PWA standalone). */
 .mobile-tabbar {
-  bottom: max(env(safe-area-inset-bottom), var(--s2));
+  bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s2));
 }
 /* The fan sits 80px off the bottom in the guide: the nav's 16px, its 52px, and
    a 12px gap. */
 .mobile-quick-actions {
-  bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + 64px);
+  bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s2) + 64px);
 }
 @media (display-mode: standalone) {
   .mobile-tabbar {

@@ -8,6 +8,7 @@ import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import FiltersDialog from '@/components/clear/activity/FiltersDialog';
 import ExportDialog from '@/components/clear/activity/ExportDialog';
+import GroupsDialog from '@/components/clear/activity/GroupsDialog';
 import { ACTIVITY_DAY_ONE } from '@/data/clearPlaceholder';
 import { money, signedMoney } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
@@ -24,6 +25,7 @@ import {
   type ActivityFilters,
   type ActivitySort,
 } from '@/lib/activityView';
+import { groupsFromMerchants } from '@/lib/activityCycle';
 import type { ActivityData, ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
@@ -58,6 +60,9 @@ function MoreLink({ to, onClick, children }: { to?: string; onClick?: () => void
  * cash, from credit and the carry, on one bar. Search, filters, sort and export sit in the list's
  * control bar, because they act on the list and nothing else. Days are sections, and pending is a
  * state: a chip and a quiet amount.
+ *
+ * Change groups works per merchant, and a move is a rule that applies to what has already been
+ * spent — so the figures that sent the member there are the ones that change.
  */
 export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?: ActivityData; email?: string }) {
   const navigate = useNavigate();
@@ -69,10 +74,16 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const [grouping, setGrouping] = useState(true);
+  /** Merchant to the group the member moved it to. A rule, applied to what they have already spent. */
+  const [moved, setMoved] = useState<Record<string, string>>({});
 
   useSetMobileAction({ label: 'Scan', icon: PlusIcon, onSelect: () => navigate('/scan') });
 
-  const cycle = data.cycleSpend;
+  // Zero is an answer: the hero and the two cells stand whether or not anything has moved, because
+  // this page is where a member looks to find out either way.
+  const cycle = data.cycleSpend ?? { spent: 0, daysLeft: 0, fromCash: 0, fromCredit: 0, carryCost: 0 };
   const matching = sortRows(filterRows(data.rows, filters, query), sort);
   const shown = matching.slice(0, limit);
   const narrowed = query.trim() !== '' || filters.direction !== 'all' || filters.paidFrom !== 'any';
@@ -81,7 +92,7 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
 
   // ---- Hero ---------------------------------------------------------------------------------------
 
-  const hero = cycle && (
+  const hero = (
     <div className="mb-s3">
       <p className="c-label mb-s1">Spent this cycle</p>
       <p className="c-fig text-hero-m leading-[1.05] lg:text-hero">{money(cycle.spent, { cents: true })}</p>
@@ -105,15 +116,29 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
 
   // ---- Standing cells -----------------------------------------------------------------------------
 
-  const shares = cycle && data.categories?.length ? categoryShares(data.categories, cycle.spent) : [];
-  const whereItWent = shares.length > 0 && (
+  // With merchants to hand the groups are rebuilt from them, so a move shows immediately and
+  // retroactively — which is what the sheet promises.
+  const merchants = data.merchants ?? [];
+  const groups = merchants.length > 0 ? groupsFromMerchants(merchants, moved) : (data.categories ?? []);
+  const flat = merchants.map((m) => ({ label: m.name, amount: m.amount })).slice(0, 6);
+  const shares = categoryShares(grouping ? groups : flat, cycle.spent);
+  const whereItWent = (
     <Cell>
       <CHead>
         <SecHead label="Where it went">
-          <span className="c-det">{shares.length} groups</span>
+          <span className="c-det">
+            {grouping
+              ? shares.length === 1
+                ? '1 group'
+                : `${shares.length} groups`
+              : `${shares.length} merchants`}
+          </span>
         </SecHead>
       </CHead>
       <CMain>
+        {shares.length === 0 ? (
+          <p className="c-det">Nothing has gone out this cycle yet. Spending is grouped here as it arrives.</p>
+        ) : (
         <Rows>
           {shares.map((group) => (
             <div key={group.label}>
@@ -125,21 +150,24 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
             </div>
           ))}
         </Rows>
+        )}
       </CMain>
       <CFoot>
         <Line className="items-center!">
-          <span className="c-det">Grouped automatically</span>
-          <MoreLink onClick={() => {}}>Change groups</MoreLink>
+          <span className="c-det">{grouping ? 'Grouped automatically' : 'Not grouped'}</span>
+          <MoreLink onClick={() => setGroupsOpen(true)}>Change groups</MoreLink>
         </Line>
       </CFoot>
     </Cell>
   );
 
-  const insideCoop = data.insideCoop !== undefined && cycle && (
+  // The figure has no source yet — nothing records which payments stayed in the network — so the
+  // cell states an em dash rather than a number assembled from what we happen to have.
+  const insideCoop = (
     <Cell>
       <CHead>
         <SecHead label="Inside the co-op">
-          <p className="c-fig c-fig-sec">{money(data.insideCoop, { cents: true })}</p>
+          <p className="c-fig c-fig-sec">{data.insideCoop === undefined ? '—' : money(data.insideCoop, { cents: true })}</p>
         </SecHead>
       </CHead>
       <CMain>
@@ -151,7 +179,9 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
       <CFoot>
         <Line className="items-center!">
           <span className="c-det">
-            {data.insideCoopPayments ?? 0} {data.insideCoopPayments === 1 ? 'payment' : 'payments'}
+            {data.insideCoopPayments === undefined
+              ? '— payments'
+              : `${data.insideCoopPayments} ${data.insideCoopPayments === 1 ? 'payment' : 'payments'}`}
           </span>
           <MoreLink to="/partners">Find partners</MoreLink>
         </Line>
@@ -181,6 +211,8 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
   const narrowedCount = Number(filters.direction !== 'all') + Number(filters.paidFrom !== 'any');
   const buttons = (
     <>
+      {/* What narrows the list travels together; Export, which takes it elsewhere, sits apart. */}
+      <span className="c-ctlgroup">
       <Btn onClick={() => setFiltersOpen(true)} aria-label={narrowedCount ? `Filters, ${narrowedCount} on` : 'Filters'}>
         <FilterIcon />
         {narrowedCount ? `Filters · ${narrowedCount}` : 'Filters'}
@@ -193,6 +225,7 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
         onChange={setSort}
         align="end"
       />
+      </span>
       <Btn className="c-linkish" onClick={() => setExportOpen(true)}>
         Export
       </Btn>
@@ -322,7 +355,7 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
       {hero}
       <div className="c-home">
         {data.pendingClaim && <PendingClaimBanner claim={data.pendingClaim} showSent />}
-        <div className={cn('c-slab', (!desktop || !whereItWent || !insideCoop) && 'c-one')}>
+        <div className={cn('c-slab', !desktop && 'c-one')}>
           {whereItWent}
           {insideCoop}
           {list}
@@ -340,6 +373,15 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
           setLimit(PAGE);
           setFiltersOpen(false);
         }}
+      />
+      <GroupsDialog
+        merchants={merchants}
+        moved={moved}
+        grouping={grouping}
+        open={groupsOpen}
+        onOpenChange={setGroupsOpen}
+        onGrouping={setGrouping}
+        onMove={(merchant, group) => setMoved((prev) => ({ ...prev, [merchant]: group }))}
       />
       <ExportDialog
         cycleRows={data.cycleCount ?? data.rows.length}
