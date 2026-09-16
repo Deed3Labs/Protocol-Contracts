@@ -130,6 +130,21 @@ describe('limit backing', () => {
     expect(unsecured[0].detail).not.toContain('0%');
   });
 
+  test('names the position, not the tier: two asset rows are a bond ladder and a pool share', () => {
+    const { assetBacked } = toLimitBacking(
+      [
+        tier({ kind: 'BOND', limitCents: 655_000, collateralValueCents: 689_500, haircutBps: 9500, rateBps: 65 }),
+        tier({ kind: 'POOL_SHARE', limitCents: 175_000, collateralValueCents: 250_000, haircutBps: 7000, rateBps: 75 }),
+      ],
+      { assetBacked: [], unsecured: [] },
+    );
+    expect(assetBacked.map((r) => r.label)).toEqual(['BurnerBonds', 'Yield pool']);
+    // Each keeps its own colour, and the rate reads as a rate rather than repeating "per cycle".
+    expect(assetBacked.map((r) => r.tier)).toEqual(['savings', 'income']);
+    expect(assetBacked[0].detail).toBe('$6,895 value today · 95% · 0.65%');
+    expect(assetBacked[1].detail).toBe('$2,500 position · 70% · 0.75%');
+  });
+
   test('offers a tier that lends nothing rather than showing it as a zero', () => {
     const { unsecured } = toLimitBacking(
       [tier({ kind: 'BOOST', limitCents: 0, rateBps: 300 })],

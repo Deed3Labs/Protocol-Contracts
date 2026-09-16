@@ -191,7 +191,7 @@ export const HOME_IN_USE: HomeData = {
     assetBacked: [
       { label: 'Savings (CLRUSD)', contribution: 3000, detail: '$3,000 balance · 100% · free', tier: 'savings' },
       { label: 'BurnerBonds', contribution: 6550, detail: '$6,895 value today · 95% · 0.65%', tier: 'savings' },
-      { label: 'Yield pool', contribution: 1750, detail: '$2,500 position · 70% · 0.75%', tier: 'asset' },
+      { label: 'Yield pool', contribution: 1750, detail: '$2,500 position · 70% · 0.75%', tier: 'income' },
     ],
     unsecured: [
       { label: 'Income-backed', contribution: 1000, detail: '50% of ~$2,000/mo · 1.5%', tier: 'income' },

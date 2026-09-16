@@ -41,6 +41,26 @@ const LABELS: Record<TierKey, { label: string; shortLabel: string }> = {
   boost: { label: 'Clear Boost', shortLabel: 'Boost' },
 };
 
+/*
+ * The breakdown names the position, not the tier.
+ *
+ * The credit cell merges bonds and the pool into "Assets", because what a member spends from is one
+ * tier at one price. The breakdown is the other question — what is actually behind the limit — and
+ * there the answer is a bond ladder and a pool share, each with its own haircut and its own rate.
+ * Two rows both reading "Assets" told a member nothing and looked like a bug.
+ *
+ * `measure` is what the collateral figure is: a balance, a position, or what it is worth today.
+ */
+const BACKING: Record<string, { label: string; tier: TierKey; measure?: string }> = {
+  SAVINGS: { label: 'Savings (CLRUSD)', tier: 'savings', measure: 'balance' },
+  BOND: { label: 'BurnerBonds', tier: 'savings', measure: 'value today' },
+  POOL_SHARE: { label: 'Yield pool', tier: 'income', measure: 'position' },
+  ASSET: { label: 'Assets', tier: 'asset', measure: 'value today' },
+  ASSET_INTERNAL: { label: 'Assets', tier: 'asset', measure: 'value today' },
+  INCOME: { label: 'Income-backed', tier: 'income' },
+  BOOST: { label: 'Clear Boost™', tier: 'boost' },
+};
+
 /** Basis points per cycle, as the member is told it. */
 function rateLabel(rateBps: number): string {
   if (rateBps === 0) return 'free';
@@ -189,13 +209,17 @@ export function toLimitBacking(rows: CreditTierRow[], fallback: LimitBacking): L
     const secured = key === 'savings' || key === 'asset';
     const rate = rateLabel(row.rateBps);
 
+    const named = BACKING[row.kind] ?? { label: LABELS[key].label, tier: key, measure: 'value today' };
+    // "0.65% / cycle" is the tier's price on the card; in a line of three facts it reads as 0.65%.
+    const shortRate = rate.replace(/\s*\/\s*cycle$/, '');
+
     const entry: LimitBackingRow = {
-      label: LABELS[key].label,
+      label: named.label,
       contribution,
       detail: secured
-        ? `${money(collateral)} value today · ${row.haircutBps / 100}% · ${rate}`
+        ? `${money(collateral)} ${named.measure} · ${row.haircutBps / 100}% · ${shortRate}`
         : rate,
-      tier: key,
+      tier: named.tier,
       ...(contribution === 0 ? { notAdded: true } : {}),
     };
 

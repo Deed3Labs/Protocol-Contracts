@@ -44,7 +44,7 @@ function notificationTime(iso: string): string {
  * of the rebuild carries, and the one place it's visible in the chrome.
  */
 function LiveHeaderActions() {
-  const { notifications, unreadCount, markAllRead } = useNotifications();
+  const { notifications, unreadCount, markAllRead, markRead, dismiss } = useNotifications();
   const member = useMemberProfile();
 
   return (
@@ -58,6 +58,10 @@ function LiveHeaderActions() {
         unread: !n.read,
       }))}
       onMarkAllRead={() => void markAllRead()}
+      onRead={(id) => void markRead(id)}
+      onClear={(id) => void dismiss(id)}
+      // Clearing empties the panel; it does not delete anything that moved money, which is in Activity.
+      onClearAll={() => notifications.forEach((n) => void dismiss(n.id))}
       profile={{
         ...SETTINGS.profile,
         name: member.name || SETTINGS.profile.name,

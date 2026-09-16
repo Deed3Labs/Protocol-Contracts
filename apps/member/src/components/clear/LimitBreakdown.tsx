@@ -25,8 +25,11 @@ function Section({
             {row.notAdded ? (
               <Line className="items-center!">
                 <span className="c-muted">{row.label}</span>
+                {/* The figure only when there is one: an offer nobody has priced yet is just Add. */}
                 <Btn className="h-[30px]! px-3! text-detail!" onClick={() => onAdd?.(row)}>
-                  Add {money(row.addAmount ?? row.contribution, { cents: true })}
+                  {(row.addAmount ?? row.contribution) > 0
+                    ? `Add ${money(row.addAmount ?? row.contribution, { cents: true })}`
+                    : 'Add'}
                 </Btn>
               </Line>
             ) : (
