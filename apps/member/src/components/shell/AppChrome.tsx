@@ -5,6 +5,7 @@ import TopNav from './TopNav';
 import Wordmark from './Wordmark';
 import MobileTabBar from './MobileTabBar';
 import { MobileActionProvider } from './MobileAction';
+import { PaneTitleProvider, usePaneTitle } from './PaneTitle';
 import { navItems } from './navItems';
 import { capitalise } from '@/lib/clearModel';
 import { SETTINGS_PAGES, settingsPageOf } from '@/pages/app/settingsPages';
@@ -21,7 +22,15 @@ import { SETTINGS_PAGES, settingsPageOf } from '@/pages/app/settingsPages';
  * Desktop: the top bar. Mobile: lockup, bell and avatar in the header, and the nav bar pinned to the
  * bottom, with 96px of padding on the content so the last component clears it.
  */
-export default function AppChrome({
+export default function AppChrome(props: { children: ReactNode; trailing?: ReactNode }) {
+  return (
+    <PaneTitleProvider>
+      <Chrome {...props} />
+    </PaneTitleProvider>
+  );
+}
+
+function Chrome({
   children,
   trailing,
 }: {
@@ -51,13 +60,21 @@ export default function AppChrome({
   };
   const fallbackTitle = pathname.replace(/^\//, '').split('/')[0];
   const settingsPage = settingsPageOf(pathname);
+  // A page can name itself — a thread is called after whoever is in it.
+  const paneTitle = usePaneTitle();
   const title =
+    paneTitle ??
     active?.label ??
     (settingsPage ? SETTINGS_PAGES[settingsPage].title : undefined) ??
     OFF_NAV[pathname] ??
     (fallbackTitle ? capitalise(fallbackTitle) : 'Clear');
   // A settings pane goes up one level; everything else goes back where it came from.
-  const goBack = () => (settingsPage ? navigate(SETTINGS_PAGES[settingsPage].up) : navigate(-1));
+  const goBack = () => {
+    if (settingsPage) return navigate(SETTINGS_PAGES[settingsPage].up);
+    // A thread goes up to the list rather than back out of the Inbox.
+    if (/^\/inbox\/.+/.test(pathname)) return navigate('/inbox');
+    return navigate(-1);
+  };
 
   return (
     <MobileActionProvider>

@@ -41,6 +41,7 @@ import {
   SEND_IN_USE,
   SEND_DAY_ONE,
   CONTACTS,
+  ALERTS,
   INBOX,
   SETTINGS,
   EARN_IN_USE,
@@ -506,7 +507,14 @@ function OnboardingPreview() {
  */
 function PreviewHeaderActions({ empty }: { empty: boolean }) {
   const [notifications, setNotifications] = useState(() =>
-    INBOX.alerts.map((a) => ({ id: a.id, title: a.title, detail: a.detail, time: a.time, unread: !a.read })),
+    ALERTS.map((a) => ({
+      id: a.id,
+      title: a.title,
+      detail: a.detail,
+      time: a.time,
+      unread: !a.read,
+      ...(a.action ? { action: a.action } : {}),
+    })),
   );
   const shown = empty ? [] : notifications;
 
@@ -593,7 +601,19 @@ export default function PreviewApp() {
                           path="/inbox"
                           element={
                             <InboxPage
-                              data={empty ? { alerts: [], threads: [], messages: {} } : INBOX}
+                              key={String(empty)}
+                              data={empty ? { threads: [], messages: {} } : INBOX}
+                              contacts={empty ? [] : CONTACTS}
+                            />
+                          }
+                        />
+                        <Route
+                          path="/inbox/:threadId"
+                          element={
+                            <InboxPage
+                              key={String(empty)}
+                              data={empty ? { threads: [], messages: {} } : INBOX}
+                              contacts={empty ? [] : CONTACTS}
                             />
                           }
                         />

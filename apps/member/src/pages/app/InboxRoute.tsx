@@ -1,28 +1,18 @@
-import { useMemo } from 'react';
 import InboxPage from './InboxPage';
-import { useNotifications } from '@/context/ClearNotificationsContext';
+import { useContacts } from '@/context/ContactsContext';
 import { INBOX } from '@/data/clearPlaceholder';
-import { toAlerts } from '@/lib/notificationsAdapter';
+import { toSendContact } from './SendRoute';
 
 /**
- * The live Inbox — the presentational page with the real notification feed
- * behind it.
+ * Messages, with the member's own contacts behind New message.
  *
- * The wiring lives here rather than in InboxPage so the page stays mountable
- * without providers (the preview harness does exactly that). Messages are still
- * placeholder: the XMTP conversations in `context/XMTPContext` are the source to
- * map next, and `toThreads` is where that adapter goes.
+ * The threads themselves are still placeholder: conversations live in XMTP (context/XMTPContext),
+ * and mapping those to threads — with the payment or plan each one is about — is the adapter this
+ * page is waiting on. Alerts are no longer here at all; they are the notifications panel's, and the
+ * footer is the way across.
  */
 export default function InboxRoute() {
-  const { notifications, markRead, markAllRead, dismiss } = useNotifications();
-  const alerts = useMemo(() => toAlerts(notifications), [notifications]);
+  const { contacts } = useContacts();
 
-  return (
-    <InboxPage
-      data={{ ...INBOX, alerts }}
-      onRead={markRead}
-      onClear={dismiss}
-      onMarkAllRead={markAllRead}
-    />
-  );
+  return <InboxPage data={INBOX} contacts={contacts.map(toSendContact)} />;
 }

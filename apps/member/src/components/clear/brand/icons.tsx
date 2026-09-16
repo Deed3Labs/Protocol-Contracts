@@ -307,3 +307,14 @@ export function FilterIcon({ size = 14, strokeWidth = 1.9, ...props }: IconProps
     </svg>
   );
 }
+
+/** A partner: a storefront with its awning. */
+export function StorefrontIcon({ size = 11, strokeWidth = 1.75, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M4 9h16v11H4z" />
+      <path d="M4 9 5.5 5h13L20 9" />
+      <path d="M9 20v-5h6v5" />
+    </svg>
+  );
+}

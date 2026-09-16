@@ -49,7 +49,12 @@ const DESTINATION: Record<string, { label: string; to: string }> = {
   kyc: { label: 'Finish verification', to: '/settings' },
 };
 
-/** Backend notifications → the Inbox's alert rows. */
+/** Where a notification leads, if anywhere — for the panel's own swipe action. */
+export function destinationFor(kind: string): { label: string; to: string } | undefined {
+  return DESTINATION[kind];
+}
+
+/** Backend notifications → alert rows. */
 export function toAlerts(notifications: ApiNotification[], now = new Date()): Alert[] {
   return notifications.map((n) => ({
     id: n.id,

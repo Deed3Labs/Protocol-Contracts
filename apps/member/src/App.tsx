@@ -147,6 +147,7 @@ function App() {
                       <Route path="/partners" element={<PartnersPage />} />
                       <Route path="/assurance" element={<AssurancePage />} />
                       <Route path="/inbox" element={<InboxRoute />} />
+                      <Route path="/inbox/:threadId" element={<InboxRoute />} />
                       {/* The standalone Alerts page became the Inbox's first tab */}
                       <Route path="/alerts" element={<Navigate to="/inbox" replace />} />
                       <Route path="/scan" element={<ScanPage />} />

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ProfileMenu from './ProfileMenu';
 import MemberAvatar from '@/components/clear/MemberAvatar';
@@ -43,6 +43,14 @@ export default function HeaderActions({
   const navigate = useNavigate();
   const [notifOpen, setNotifOpen] = useState(false);
 
+  // The Inbox's footer points here, and this is how it asks: the panel lives in the header, so the
+  // page cannot open it directly.
+  useEffect(() => {
+    const open = () => setNotifOpen(true);
+    window.addEventListener('clear:open-notifications', open);
+    return () => window.removeEventListener('clear:open-notifications', open);
+  }, []);
+
   return (
     <div className="c-tbicons">
       <Surface
@@ -68,6 +76,7 @@ export default function HeaderActions({
           onClearAll={onClearAll}
           onRead={onRead}
           onClear={onClear}
+          onNavigate={() => setNotifOpen(false)}
           onOpenInbox={() => {
             setNotifOpen(false);
             navigate('/inbox');
