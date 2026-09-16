@@ -1,5 +1,9 @@
 import { Btn, CBar, CFoot, CHead, CMain, Cell, Line, Rows, SecHead } from '../brand/anatomy';
-import { ChevronIcon, SearchIcon, ShieldIcon, StorefrontIcon } from '../brand/icons';
+import { useRef } from 'react';
+import SwipeRow from '../brand/SwipeRow';
+import { ArchiveIcon, ChevronIcon, ComposeIcon, SearchIcon, ShieldIcon, StorefrontIcon } from '../brand/icons';
+import { useIsDesktop } from '@/lib/useIsDesktop';
+import { useOverflows } from '@/lib/useOverflows';
 import { unreadThreads, type Thread } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +41,11 @@ export default function ThreadList({
   onSelect,
   onNew,
   onOpenNotifications,
+  onRead,
+  onArchive,
+  onDelete,
+  showingArchived = false,
+  onShowArchived,
 }: {
   threads: Thread[];
   activeId?: string;
@@ -45,48 +54,104 @@ export default function ThreadList({
   onSelect: (thread: Thread) => void;
   onNew: () => void;
   onOpenNotifications: () => void;
+  onRead?: (thread: Thread, read: boolean) => void;
+  onArchive?: (thread: Thread, archived: boolean) => void;
+  onDelete?: (thread: Thread) => void;
+  showingArchived?: boolean;
+  onShowArchived?: (show: boolean) => void;
 }) {
+  const desktop = useIsDesktop();
   const unread = unreadThreads(threads);
+  // The rule under the last row is only needed while the list stops short of the bottom.
+  const main = useRef<HTMLDivElement>(null);
+  const full = useOverflows(main, [threads.length, showingArchived]);
 
   return (
     <Cell>
       <CHead>
         <SecHead label="Inbox">
-          <span className="c-det">{threads.length === 0 ? 'Nothing yet' : `${unread} unread`}</span>
+          <span className="c-det">
+            {showingArchived
+              ? `${threads.length} archived`
+              : threads.length === 0
+                ? 'Nothing yet'
+                : `${unread} unread`}
+          </span>
         </SecHead>
       </CHead>
-      {threads.length > 0 && (
-        <CBar>
-          <div className="c-listctl c-nowrap">
-            <label className="c-searchfield">
-              <span className="c-ic">
-                <SearchIcon />
-              </span>
-              <input
-                className="c-field c-bare"
-                value={query}
-                onChange={(e) => onQuery(e.target.value)}
-                placeholder="Search messages"
-                aria-label="Search messages"
-              />
-            </label>
+      <CBar>
+        {/* One row at every width: the field, then New and Archived as glyphs. Desktop keeps the word
+            on New, because that is the thing you came to do. */}
+        <div className="c-listctl c-nowrap">
+          <label className="c-searchfield">
+            <span className="c-ic">
+              <SearchIcon />
+            </span>
+            <input
+              className="c-field c-bare"
+              value={query}
+              onChange={(e) => onQuery(e.target.value)}
+              placeholder="Search messages"
+              aria-label="Search messages"
+            />
+          </label>
+          {desktop ? (
             <Btn onClick={onNew}>New</Btn>
-          </div>
-        </CBar>
-      )}
-      <CMain>
+          ) : (
+            <Btn className="c-icon36" aria-label="New message" onClick={onNew}>
+              <ComposeIcon />
+            </Btn>
+          )}
+          <Btn
+            className={cn('c-icon36', showingArchived && 'border-ink!')}
+            aria-label={showingArchived ? 'Back to the inbox' : 'Archived'}
+            aria-pressed={showingArchived}
+            onClick={() => onShowArchived?.(!showingArchived)}
+          >
+            <ArchiveIcon />
+          </Btn>
+        </div>
+      </CBar>
+      <CMain ref={main} className={threads.length > 0 ? 'c-flush' : undefined}>
         {threads.length === 0 ? (
           <div className="py-s4 text-center">
-            <p className="c-fig c-fig-sec">No messages</p>
-            <p className="c-det mt-s1">Support answers here, and so do members and partners you have paid.</p>
-            <Btn primary className="mt-s3" onClick={onNew}>
-              Message support
-            </Btn>
+            <p className="c-fig c-fig-sec">{showingArchived ? 'Nothing archived' : 'No messages'}</p>
+            <p className="c-det mt-s1">
+              {showingArchived
+                ? 'Threads you archive are kept here, and you can put them back any time.'
+                : 'Support answers here, and so do members and partners you have paid.'}
+            </p>
+            {!showingArchived && (
+              <Btn primary className="mt-s3" onClick={onNew}>
+                Message support
+              </Btn>
+            )}
           </div>
         ) : (
-          <Rows>
+          // Ruled while the list stops short: the last row closes itself so the space under it reads
+          // as slack rather than as more list. A list that reaches the bottom has the box's own edge.
+          <Rows ruled={!full}>
             {threads.map((thread) => (
-              <div key={thread.id} className={cn(thread.id === activeId && 'c-on')}>
+              <SwipeRow
+                key={thread.id}
+                className={cn(thread.id === activeId && 'c-on')}
+                actions={[
+                  // What you would do takes the ink; archive is quiet and reversible; delete is red
+                  // and confirms.
+                  {
+                    key: 'read',
+                    label: thread.unread ? 'Read' : 'Unread',
+                    tone: 'lead' as const,
+                    onSelect: () => onRead?.(thread, Boolean(thread.unread)),
+                  },
+                  {
+                    key: 'archive',
+                    label: showingArchived ? 'Restore' : 'Archive',
+                    onSelect: () => onArchive?.(thread, !showingArchived),
+                  },
+                  { key: 'delete', label: 'Delete', tone: 'danger' as const, onSelect: () => onDelete?.(thread) },
+                ]}
+              >
                 <button type="button" onClick={() => onSelect(thread)} className="block w-full text-left">
                   <Line className="items-start!">
                     <span className="flex min-w-0 gap-[11px]">
@@ -112,7 +177,7 @@ export default function ThreadList({
                     </span>
                   </Line>
                 </button>
-              </div>
+              </SwipeRow>
             ))}
           </Rows>
         )}

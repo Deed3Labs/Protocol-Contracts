@@ -61,6 +61,8 @@
 .c-rows > :last-child{border-bottom:0;padding-bottom:0}
 /* a ruled list closes itself, so the space below reads as slack not content */
 .c-rows.c-ruled > :last-child{border-bottom:1px solid var(--ink-13);padding-bottom:var(--s2)}
+/* a swiped row keeps its padding on the body, so the ruled list adds only the rule */
+.c-rows.c-ruled > div.c-swiped:last-child{padding-bottom:0}
 .c-line{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
 .c-line > :first-child{min-width:0}
 .c-pair{display:flex;gap:var(--s1)}
@@ -91,6 +93,9 @@
 .c-chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--radius-pill);
       font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
       border:1px solid currentColor;white-space:nowrap}
+/* A chip of figures is not a word: the tracking that opens up a label pulls "2 of 4" apart, so a
+   counting chip keeps its numerals together and tabular. */
+.c-chip.c-figs{letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .c-chip .c-core{width:6px;height:6px;border-radius:50%;background:currentColor;
             box-shadow:0 0 4px 1px color-mix(in srgb, currentColor 45%, transparent);flex-shrink:0}
 .c-chip.c-settled{color:var(--settled)} .c-chip.c-underway{color:var(--underway)} .c-chip.c-neutral{color:var(--ink-50)} .c-chip.c-live{color:var(--live)}
@@ -335,6 +340,8 @@
 /* ================= SEND ================= */
 .c-searchrow{display:flex;gap:var(--s1);align-items:center}
 .c-btn.c-iconsq{width:44px;height:44px;padding:0;flex-shrink:0}
+/* the glyph button that keeps a control bar on one line */
+.c-btn.c-icon36{width:36px;height:36px;padding:0;flex-shrink:0}
 .c-searchrow .c-btn{height:44px}
 .c-cbarline{padding-bottom:var(--s2);border-bottom:1px solid var(--ink-13);margin-bottom:var(--s3)}
 /* viewfinder — corners only, drawn with the same hairlines as everything else */
@@ -441,8 +448,13 @@
 .c-sact{width:78px;flex-shrink:0;border:0;cursor:pointer;font-family:var(--font-mono);font-size:10.5px;
       letter-spacing:.07em;text-transform:uppercase;display:flex;align-items:center;justify-content:center;
       padding:0 6px;text-align:center;line-height:1.2}
-.c-sact.c-read{background:var(--paper-2);color:var(--ink);border-left:1px solid var(--ink-28)}
-.c-sact.c-clear{background:var(--ink);color:var(--paper)}
+/* the leading action is what you would do, and it takes the ink; dismiss stays quiet; red marks
+   irreversible, not disapproved */
+.c-sact.c-lead{background:var(--ink);color:var(--paper)}
+.c-sact.c-dismiss{background:var(--paper-2);color:var(--ink);border-left:1px solid var(--ink-28)}
+.c-sact.c-danger{background:var(--absent);color:var(--paper)}
+/* three fit because they sit over the row rather than inside it */
+.c-sacts.c-three .c-sact{width:62px}
 
 /* ================= MESSAGES ================= */
 /* No bubbles. A message is a square block: theirs on paper-2, yours in ink. */
@@ -460,8 +472,14 @@
 .c-sysmsg .c-ic{color:var(--settled);display:flex;flex-shrink:0;margin-top:1px}
 .c-composer{display:flex;gap:var(--s1);align-items:center}
 .c-composer .c-field{flex:1;min-width:0}
-/* a selected row is marked with a rule, like the settings rail — not a fill that ignores the dividers */
-.c-rows > .c-on{border-left:2px solid var(--ink);padding-left:13px;margin-left:-15px}
+/* a selected row is marked with a rule, like the settings rail — not a fill that ignores where the
+   dividers sit. The mark is centred on the row and flush to the cell's edge, rather than a border
+   inheriting the row's own padding. */
+.c-rows > .c-on{position:relative}
+.c-rows > .c-on::before{content:'';position:absolute;left:calc(var(--s2) * -1);top:50%;
+                       transform:translateY(-50%);height:calc(100% - var(--s2));width:2px;background:var(--ink)}
+/* a row that carries its own padding is already flush, so the mark sits on its edge */
+.c-cmain.c-flush .c-rows > .c-on::before{left:0}
 .c-rows > .c-on .c-det{color:var(--ink-70)}
 /* the kind is one signal, not two: a badge beside the name, avatars all equal.
    A fixed square centres predictably against a text line; a bare glyph does not. */

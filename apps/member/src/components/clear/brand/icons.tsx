@@ -318,3 +318,24 @@ export function StorefrontIcon({ size = 11, strokeWidth = 1.75, ...props }: Icon
     </svg>
   );
 }
+
+/** New message: a square with a pen across its corner. */
+export function ComposeIcon({ size = 16, strokeWidth = 1.75, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M12 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" />
+      <path d="m18.5 3.5 2 2L13 13l-3 1 1-3z" />
+    </svg>
+  );
+}
+
+/** Archived: a box with its lid. */
+export function ArchiveIcon({ size = 16, strokeWidth = 1.75, ...props }: IconProps) {
+  return (
+    <svg {...base(size, strokeWidth, props)}>
+      <path d="M3 8h18v11H3z" />
+      <path d="M3 8V5h18v3" />
+      <path d="M10 12h4" />
+    </svg>
+  );
+}

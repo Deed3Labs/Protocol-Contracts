@@ -63,7 +63,11 @@ export default function ThreadView({
         <CBar>
           <div className="c-listctl c-nowrap">
             <span className="flex min-w-0 items-center gap-s1">
-              <Chip tone={thread.context.tone} core={thread.context.tone === 'settled'}>
+              <Chip
+                tone={thread.context.tone}
+                core={thread.context.tone === 'settled'}
+                figs={/\d/.test(thread.context.status)}
+              >
                 {thread.context.status}
               </Chip>
               <span className="c-det truncate">{thread.context.about}</span>
