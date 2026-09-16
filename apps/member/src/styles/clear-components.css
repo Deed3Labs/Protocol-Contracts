@@ -396,7 +396,8 @@
 .c-wf .c-ord{display:block;width:auto;margin-bottom:6px}
 
 /* ================= ACTIVITY ================= */
-.c-searchfield{flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:var(--s1);height:34px;
+/* the field is the height of the buttons beside it: 34 against 36 read as a mistake */
+.c-searchfield{flex:1 1 200px;min-width:0;display:flex;align-items:center;gap:var(--s1);height:36px;
              padding:0 12px;border:1px solid var(--ink-28);background:var(--paper-2)}
 .c-searchfield .c-ic{color:var(--ink-50);display:flex;flex-shrink:0}
 .c-field.c-bare{border:0;background:transparent;height:auto;padding:0;flex:1;min-width:0;color:var(--ink)}
@@ -433,6 +434,32 @@
       letter-spacing:.07em;text-transform:uppercase;display:flex;align-items:center;justify-content:center}
 .c-sact.c-read{background:var(--paper-2);color:var(--ink);border-left:1px solid var(--ink-28)}
 .c-sact.c-clear{background:var(--ink);color:var(--paper)}
+
+/* ================= MESSAGES ================= */
+/* No bubbles. A message is a square block: theirs on paper-2, yours in ink. */
+.c-msgrow{margin-bottom:14px}
+.c-msgrow:last-child{margin-bottom:0}
+.c-msg{background:var(--paper-2);border:1px solid var(--ink-28);padding:11px var(--s2);
+     font-size:var(--t-sec);line-height:1.55;max-width:82%;display:inline-block}
+.c-msg.c-me{background:var(--ink);border-color:var(--ink);color:var(--paper)}
+.c-msgrow.c-me{text-align:right}
+.c-msgrow.c-me .c-msg{text-align:left}
+.c-msgtime{font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;color:var(--ink-50);margin:4px 0 0}
+.c-sysmsg{display:flex;align-items:flex-start;gap:9px;font-size:var(--t-detail);color:var(--ink-50);
+        line-height:1.55;border-top:1px solid var(--ink-13);border-bottom:1px solid var(--ink-13);
+        padding:var(--s2) 0;margin-bottom:var(--s2)}
+.c-sysmsg .c-ic{color:var(--settled);display:flex;flex-shrink:0;margin-top:1px}
+.c-composer{display:flex;gap:var(--s1);align-items:center}
+.c-composer .c-field{flex:1;min-width:0}
+/* a selected row is marked with a rule, like the settings rail — not a fill that ignores the dividers */
+.c-rows > .c-on{border-left:2px solid var(--ink);padding-left:13px;margin-left:-15px}
+.c-rows > .c-on .c-det{color:var(--ink-70)}
+/* the kind is one signal, not two: a badge beside the name, avatars all equal.
+   A fixed square centres predictably against a text line; a bare glyph does not. */
+.c-kindbadge{width:18px;height:18px;border:1px solid var(--ink-28);color:var(--ink-50);
+           display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:8px}
+.c-kindbadge svg{width:11px;height:11px;display:block}
+.c-kindbadge.c-support{border-color:var(--settled);color:var(--settled)}
 
 /* ================= QUICK ACTIONS FAN ================= */
 .c-qafan{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s1)}

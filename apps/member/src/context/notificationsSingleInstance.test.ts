@@ -47,11 +47,9 @@ describe('notifications have exactly one state', () => {
   });
 
   test('every surface reads the shared context instead', () => {
-    for (const path of [
-      'components/app-ui/NotificationsMenu.tsx',
-      'pages/app/InboxRoute.tsx',
-      'components/shell/AppShell.tsx',
-    ]) {
+    // The Inbox is not on this list any more: alerts moved to the header's notifications panel, and
+    // the Inbox is conversations only. AppShell is where the panel reads the feed.
+    for (const path of ['components/app-ui/NotificationsMenu.tsx', 'components/shell/AppShell.tsx']) {
       const file = FILES.find((f) => f.path === path)!;
       expect(file.text).toContain("from '@/context/ClearNotificationsContext'");
       expect(file.text).not.toContain("useNotifications } from '@/hooks/useNotifications'");

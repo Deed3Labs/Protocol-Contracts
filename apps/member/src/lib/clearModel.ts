@@ -535,16 +535,33 @@ export interface Alert {
 }
 
 /** A message conversation — spec §1. */
+/** What a thread is: support, a member you paid, or a partner you owe. */
+export type ThreadKind = 'support' | 'member' | 'partner';
+
 export interface Thread {
   id: string;
   name: string;
   initials: string;
+  kind: ThreadKind;
   /** Last message, truncated in the list. */
   preview: string;
   time: string;
   unread?: boolean;
-  /** e.g. "Usually replies within 4 hours" — shown in the thread header. */
-  subtitle?: string;
+  /**
+   * Why this conversation exists, carried in the thread's control bar: support states its status
+   * and what it is about, a partner the plan and how far through it you are, a member the payment
+   * that started it. One component, three payloads — it is what stops a partner thread being a chat
+   * window with no memory of why it is there.
+   */
+  context?: {
+    /** The chip: "Answered", "Sent", "2 of 4". */
+    status: string;
+    tone: 'settled' | 'underway' | 'neutral' | 'live';
+    /** The line beside it: "About · October carry", "$40.00 · Oct 26", "Term plan · $940.00". */
+    about: string;
+    /** Where it leads back to. */
+    link?: { label: string; to: string };
+  };
 }
 
 export interface ChatMessage {
@@ -552,16 +569,11 @@ export interface ChatMessage {
   body: string;
   /** Sent by this member rather than received. */
   mine?: boolean;
-  /**
-   * A transaction the message refers to, rendered as a small card under it —
-   * support answering "which tier paid for this" is the whole reason messages
-   * exist inside the app rather than over email.
-   */
-  attachment?: { label: string; tier: TierKey; note: string };
+  /** "9:12 AM", "Mon 7:41 PM". */
+  time?: string;
 }
 
 export interface InboxData {
-  alerts: Alert[];
   threads: Thread[];
   /** Keyed by thread id. */
   messages: Record<string, ChatMessage[]>;

@@ -1,129 +1,122 @@
 import { useState } from 'react';
-import { SquarePen } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import Card from '@/components/clear/Card';
-import InfoBlock from '@/components/clear/InfoBlock';
-import SegmentedTabs from '@/components/clear/SegmentedTabs';
-import AlertRows from '@/components/clear/AlertRows';
-import ThreadRows from '@/components/clear/ThreadRows';
-import ChatThread from '@/components/clear/ChatThread';
-import { INBOX } from '@/data/clearPlaceholder';
-import { unreadAlerts, unreadThreads, type InboxData } from '@/lib/clearModel';
+import { useNavigate, useParams } from 'react-router-dom';
+import { PlusIcon } from '@/components/clear/brand/icons';
+import { useSetMobileAction } from '@/components/shell/MobileAction';
+import { useSetPaneTitle } from '@/components/shell/PaneTitle';
+import ThreadList from '@/components/clear/inbox/ThreadList';
+import ThreadView from '@/components/clear/inbox/ThreadView';
+import NewMessageDialog from '@/components/clear/inbox/NewMessageDialog';
+import { CONTACTS, INBOX } from '@/data/clearPlaceholder';
 import { useIsDesktop } from '@/lib/useIsDesktop';
+import type { ChatMessage, Contact, InboxData, Thread } from '@/lib/clearModel';
+
+/** Ask the header to open its notifications panel — the footer's way back to alerts. */
+export const OPEN_NOTIFICATIONS = 'clear:open-notifications';
 
 /**
- * Inbox — design spec §1. One surface, two tabs: what the app is telling you, and
- * who is talking to you.
+ * Messages — three things sharing a thread but not a purpose: support, a member you paid, and a
+ * partner you owe.
  *
- * They're together because from the member's side they're the same question —
- * "what's waiting for me" — and splitting them into a notification tray and a
- * messages app means checking two places and trusting neither.
- *
- * Desktop keeps the list and the open thread side by side; mobile pushes the
- * thread over the list, since a 375px column can't hold both.
+ * Notifications are events and this is conversations, so they are separate surfaces that point at
+ * each other in their footers. Desktop puts the list and the thread side by side, two cells with
+ * their rules lined up; a phone opens the thread over the list, because a 340px column cannot hold
+ * both, and the nav's action button reads New.
  */
 export default function InboxPage({
   data = INBOX,
-  onMarkAllRead,
-  onRead,
-  onClear,
+  contacts = CONTACTS,
+  onSend,
 }: {
   data?: InboxData;
-  onMarkAllRead?: () => void;
-  onRead?: (id: string) => void;
-  onClear?: (id: string) => void;
+  contacts?: Contact[];
+  onSend?: (threadId: string, body: string) => void;
 }) {
-  const isDesktop = useIsDesktop();
-  const [tab, setTab] = useState<'alerts' | 'messages'>('alerts');
-  const [openId, setOpenId] = useState<string | null>(null);
+  const desktop = useIsDesktop();
+  const navigate = useNavigate();
+  // A thread is an address on a phone, so its header can name it and its back arrow knows the list
+  // is above it. On desktop the list and the thread share a screen, so the choice is just state.
+  const { threadId } = useParams();
+  const [selected, setSelected] = useState<string | null>(null);
+  const openId = threadId ?? selected;
+  const [query, setQuery] = useState('');
+  const [newOpen, setNewOpen] = useState(false);
+  /** Messages sent in this session, until there is somewhere to send them. */
+  const [sent, setSent] = useState<Record<string, ChatMessage[]>>({});
 
-  const openThread = data.threads.find((t) => t.id === openId);
-  const messages = openId ? (data.messages[openId] ?? []) : [];
+  useSetMobileAction({ label: 'New', icon: PlusIcon, onSelect: () => setNewOpen(true) });
 
-  const tabs = (
-    <SegmentedTabs
-      className="mb-3.5"
-      value={tab}
-      onChange={(id) => {
-        setTab(id);
-        setOpenId(null);
-      }}
-      tabs={[
-        { id: 'alerts', label: 'Alerts', count: unreadAlerts(data.alerts) },
-        { id: 'messages', label: 'Messages', count: unreadThreads(data.threads) },
-      ]}
+  const term = query.trim().toLowerCase();
+  const threads = term
+    ? data.threads.filter((t) => t.name.toLowerCase().includes(term) || t.preview.toLowerCase().includes(term))
+    : data.threads;
+  // Desktop always has a thread open: an empty half of the slab reads as broken.
+  const open = data.threads.find((t) => t.id === openId) ?? (desktop ? threads[0] : undefined);
+  const messages = open ? [...(data.messages[open.id] ?? []), ...(sent[open.id] ?? [])] : [];
+
+  const send = (body: string) => {
+    if (!open) return;
+    setSent((prev) => ({
+      ...prev,
+      [open.id]: [...(prev[open.id] ?? []), { id: `local-${Date.now()}`, body, mine: true, time: 'Just now' }],
+    }));
+    onSend?.(open.id, body);
+  };
+
+  const openThread = (thread: Thread) => (desktop ? setSelected(thread.id) : navigate(`/inbox/${thread.id}`));
+
+  // The pushed thread is named after whoever is in it; the list keeps the address's own name.
+  useSetPaneTitle(!desktop && threadId && open ? open.name : undefined);
+
+  const list = (
+    <ThreadList
+      threads={threads}
+      activeId={desktop ? open?.id : undefined}
+      query={query}
+      onQuery={setQuery}
+      onSelect={openThread}
+      onNew={() => setNewOpen(true)}
+      onOpenNotifications={() => window.dispatchEvent(new Event(OPEN_NOTIFICATIONS))}
     />
   );
 
-  const list =
-    tab === 'alerts' ? (
-      <AlertRows alerts={data.alerts} onRead={onRead} onClear={onClear} />
-    ) : (
-      <>
-        <ThreadRows
-          threads={data.threads}
-          activeId={openId ?? undefined}
-          onSelect={(thread) => setOpenId(thread.id)}
-        />
-        <InfoBlock tone="neutral" className="mt-3.5 text-[11px]">
-          Messages are end-to-end encrypted and tied to your account, not your phone number.
-        </InfoBlock>
-      </>
-    );
+  const dialog = (
+    <NewMessageDialog
+      contacts={contacts}
+      open={newOpen}
+      onOpenChange={setNewOpen}
+      onSupport={() => {
+        setNewOpen(false);
+        const support = data.threads.find((t) => t.kind === 'support');
+        if (support) openThread(support);
+      }}
+      onContact={(contact) => {
+        setNewOpen(false);
+        // Until a thread can be created, this opens the one that already exists with them.
+        const existing = data.threads.find((t) => t.name === contact.name);
+        if (existing) openThread(existing);
+      }}
+    />
+  );
 
-  // Mobile: the open thread replaces the list entirely.
-  if (!isDesktop && openThread) {
+  // A phone opens the thread over the list.
+  if (!desktop && open && openId) {
     return (
-      <ChatThread
-        thread={openThread}
-        messages={messages}
-        onBack={() => setOpenId(null)}
-        className="min-h-[70vh]"
-      />
+      <>
+        <div className="c-slab c-one">
+          <ThreadView thread={open} messages={messages} onSend={send} />
+        </div>
+        {dialog}
+      </>
     );
   }
 
   return (
     <>
-      {/* The chrome already names the page on mobile, so only the actions show
-          there — a second "Inbox" under the header is just noise. */}
-      <div className="mb-3 flex items-center justify-end gap-3 lg:justify-between">
-        <h1 className="hidden text-xl font-medium lg:block">Inbox</h1>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onMarkAllRead}
-            className="text-xs text-tier-boost-fg transition-opacity hover:opacity-80"
-          >
-            Mark all read
-          </button>
-          <Button variant="clear" size="xs" className="hidden lg:inline-flex">
-            <SquarePen className="h-3.5 w-3.5" strokeWidth={1.75} />
-            New message
-          </Button>
-        </div>
+      <div className={desktop ? 'c-slab' : 'c-slab c-one'}>
+        {list}
+        {desktop && open && <ThreadView thread={open} messages={messages} onSend={send} />}
       </div>
-
-      <div className="lg:grid lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:items-start lg:gap-6">
-        <div>
-          {tabs}
-          {list}
-        </div>
-
-        {/* Desktop always shows a thread pane — an empty one still says what the
-            tab is for, where a blank half-screen would just look broken. */}
-        <Card className="hidden lg:block">
-          {openThread ? (
-            <ChatThread thread={openThread} messages={messages} className="min-h-[420px]" />
-          ) : (
-            <p className="py-16 text-center text-xs text-muted-foreground">
-              {tab === 'messages'
-                ? 'Pick a conversation to read it here.'
-                : 'Alerts are on the left. Switch to Messages to talk to someone.'}
-            </p>
-          )}
-        </Card>
-      </div>
+      {dialog}
     </>
   );
 }
