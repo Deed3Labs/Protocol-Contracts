@@ -1,4 +1,5 @@
 import { Btn, CBar, CFoot, CHead, CMain, Cell, Line, Rows, SecHead } from '../brand/anatomy';
+import SwipeRow from '../brand/SwipeRow';
 import { ChevronIcon, SearchIcon, ShieldIcon, StorefrontIcon } from '../brand/icons';
 import { unreadThreads, type Thread } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
@@ -37,6 +38,12 @@ export default function ThreadList({
   onSelect,
   onNew,
   onOpenNotifications,
+  onRead,
+  onArchive,
+  onDelete,
+  archived = 0,
+  showingArchived = false,
+  onShowArchived,
 }: {
   threads: Thread[];
   activeId?: string;
@@ -45,6 +52,13 @@ export default function ThreadList({
   onSelect: (thread: Thread) => void;
   onNew: () => void;
   onOpenNotifications: () => void;
+  onRead?: (thread: Thread) => void;
+  onArchive?: (thread: Thread, archived: boolean) => void;
+  onDelete?: (thread: Thread) => void;
+  /** How many are put away, so the footer can offer them. */
+  archived?: number;
+  showingArchived?: boolean;
+  onShowArchived?: (show: boolean) => void;
 }) {
   const unread = unreadThreads(threads);
 
@@ -52,7 +66,13 @@ export default function ThreadList({
     <Cell>
       <CHead>
         <SecHead label="Inbox">
-          <span className="c-det">{threads.length === 0 ? 'Nothing yet' : `${unread} unread`}</span>
+          <span className="c-det">
+            {showingArchived
+              ? `${threads.length} archived`
+              : threads.length === 0
+                ? 'Nothing yet'
+                : `${unread} unread`}
+          </span>
         </SecHead>
       </CHead>
       {threads.length > 0 && (
@@ -74,19 +94,39 @@ export default function ThreadList({
           </div>
         </CBar>
       )}
-      <CMain>
+      <CMain className={threads.length > 0 ? 'c-flush' : undefined}>
         {threads.length === 0 ? (
           <div className="py-s4 text-center">
-            <p className="c-fig c-fig-sec">No messages</p>
-            <p className="c-det mt-s1">Support answers here, and so do members and partners you have paid.</p>
-            <Btn primary className="mt-s3" onClick={onNew}>
-              Message support
-            </Btn>
+            <p className="c-fig c-fig-sec">{showingArchived ? 'Nothing archived' : 'No messages'}</p>
+            <p className="c-det mt-s1">
+              {showingArchived
+                ? 'Threads you archive are kept here, and you can put them back any time.'
+                : 'Support answers here, and so do members and partners you have paid.'}
+            </p>
+            {!showingArchived && (
+              <Btn primary className="mt-s3" onClick={onNew}>
+                Message support
+              </Btn>
+            )}
           </div>
         ) : (
           <Rows>
             {threads.map((thread) => (
-              <div key={thread.id} className={cn(thread.id === activeId && 'c-on')}>
+              <SwipeRow
+                key={thread.id}
+                className={cn(thread.id === activeId && 'c-on')}
+                actions={[
+                  // Read while it is unread, then the two ways to take it off the list: one you can
+                  // undo, one you cannot.
+                  ...(thread.unread ? [{ key: 'read', label: 'Read', onSelect: () => onRead?.(thread) }] : []),
+                  {
+                    key: 'archive',
+                    label: showingArchived ? 'Restore' : 'Archive',
+                    onSelect: () => onArchive?.(thread, !showingArchived),
+                  },
+                  { key: 'delete', label: 'Delete', tone: 'ink' as const, onSelect: () => onDelete?.(thread) },
+                ]}
+              >
                 <button type="button" onClick={() => onSelect(thread)} className="block w-full text-left">
                   <Line className="items-start!">
                     <span className="flex min-w-0 gap-[11px]">
@@ -112,14 +152,21 @@ export default function ThreadList({
                     </span>
                   </Line>
                 </button>
-              </div>
+              </SwipeRow>
             ))}
           </Rows>
         )}
       </CMain>
       <CFoot>
         <Line className="items-center!">
-          <span className="c-det">Alerts live in Notifications</span>
+          {/* Archiving is only reversible if the archive can be opened, so the footer offers it. */}
+          {archived > 0 || showingArchived ? (
+            <button type="button" onClick={() => onShowArchived?.(!showingArchived)} className="c-det hover:text-ink">
+              {showingArchived ? 'Back to the inbox' : `${archived} archived`}
+            </button>
+          ) : (
+            <span className="c-det">Alerts live in Notifications</span>
+          )}
           <button type="button" onClick={onOpenNotifications} className="c-det inline-flex! items-center gap-1 hover:text-ink">
             Open notifications
             <ChevronIcon />
