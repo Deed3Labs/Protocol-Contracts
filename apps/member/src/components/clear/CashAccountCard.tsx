@@ -40,11 +40,12 @@ export default function CashAccountCard({
       <CMain>
         <Line>
           <span className="c-det">Card and payments</span>
-          {account.nextDepositOn && (
-            <span className="c-det">
-              {account.nextDepositOn} &middot; ~{money(account.nextDepositEstimate, { cents: true })}
-            </span>
-          )}
+          {/* An em dash rather than nothing: a line with one end missing reads as a rendering fault. */}
+          <span className="c-det">
+            {account.nextDepositOn
+              ? `${account.nextDepositOn} · ~${money(account.nextDepositEstimate, { cents: true })}`
+              : '—'}
+          </span>
         </Line>
         <Line className="mt-s2 border-t border-ink-13 pt-s2">
           <span className="c-sub">Ready to allocate</span>

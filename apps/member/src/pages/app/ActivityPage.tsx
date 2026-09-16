@@ -181,6 +181,8 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
   const narrowedCount = Number(filters.direction !== 'all') + Number(filters.paidFrom !== 'any');
   const buttons = (
     <>
+      {/* What narrows the list travels together; Export, which takes it elsewhere, sits apart. */}
+      <span className="c-ctlgroup">
       <Btn onClick={() => setFiltersOpen(true)} aria-label={narrowedCount ? `Filters, ${narrowedCount} on` : 'Filters'}>
         <FilterIcon />
         {narrowedCount ? `Filters · ${narrowedCount}` : 'Filters'}
@@ -193,6 +195,7 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
         onChange={setSort}
         align="end"
       />
+      </span>
       <Btn className="c-linkish" onClick={() => setExportOpen(true)}>
         Export
       </Btn>

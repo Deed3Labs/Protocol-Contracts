@@ -152,6 +152,9 @@
                text-transform:uppercase;color:var(--ink-50);padding-top:0}
 .c-ladder .c-lrow > :not(:first-child){text-align:right}
 .c-ladder.c-sm{font-size:11px}
+/* At phone width the money columns start together instead of ending together: right-aligned, a
+   short "+$61.00" sat under the wide "$1,000.00" beside it and every header read as off its column. */
+.c-ladder.c-sm .c-lrow > :not(:first-child):not(:last-child){text-align:left}
 .c-ladder.c-sm .c-lrow{gap:6px}
 /* stat tile — label above figure. Side by side it clipped at phone width. */
 .c-stat .c-label{margin-bottom:6px}
@@ -395,7 +398,9 @@
 .c-field.c-bare:focus-visible{outline:0}
 .c-searchfield:focus-within{border-color:var(--ink)}
 .c-ctlstack{display:flex;flex-direction:column;gap:var(--s1)}
-.c-ctlstack .c-searchfield{flex:none;width:100%}
+.c-ctlstack .c-searchfield{flex:none;width:100%;height:44px}
+/* the controls under it: what narrows the list on the left, what leaves it on the right */
+.c-ctlgroup{display:flex;align-items:center;gap:var(--s1);min-width:0}
 .c-listctl.c-nowrap{flex-wrap:nowrap}
 .c-listctl.c-nowrap .c-btn{min-width:0}
 
