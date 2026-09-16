@@ -82,15 +82,12 @@ export default function EarnPage({ data = EARN_DAY_ONE }: { data?: EarnData }) {
       </div>
 
       {desktop ? (
+        // Two cells a side, so they share the grid's rows and the rules line up across the seam.
         <div className="c-slab c-earn">
-          <div className="c-col">
-            {earned}
-            {pool}
-          </div>
-          <div className="c-col">
-            {backs}
-            {ladder}
-          </div>
+          {earned}
+          {backs}
+          {pool}
+          {ladder}
           {bonds}
         </div>
       ) : (

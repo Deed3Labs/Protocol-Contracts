@@ -236,15 +236,13 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
         {cycle}
         <TaskStrip tasks={data.tasks} onAction={onTask} limit={desktop ? undefined : 1} />
         {desktop ? (
+          /* Both columns hold two cells, so they go straight into the shared grid: one grid row per
+             pair means every divider meets its neighbour. Nest only when the cell counts differ. */
           <div className="c-slab">
-            <div className="c-col">
-              {credit}
-              {termPlans()}
-            </div>
-            <div className="c-col">
-              {cash}
-              {savings}
-            </div>
+            {credit}
+            {cash}
+            {termPlans()}
+            {savings}
             {activity}
           </div>
         ) : (

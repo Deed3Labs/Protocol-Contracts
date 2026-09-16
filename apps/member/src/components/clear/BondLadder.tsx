@@ -26,7 +26,7 @@ export default function BondLadder({
   const cols = desktop ? '74px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 56px' : '46px 1fr 1fr 1fr 42px';
 
   return (
-    <Cell full>
+    <Cell full={!desktop}>
       <CHead>
         <SecHead label="Buy a bond">
           <span className="c-det">Longer terms pay more</span>

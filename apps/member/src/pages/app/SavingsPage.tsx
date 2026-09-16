@@ -88,15 +88,12 @@ export default function SavingsPage({ data = SAVINGS_DAY_ONE }: { data?: Savings
       </div>
 
       {desktop ? (
+        // Two cells a side, so they share the grid's rows and the rules line up across the seam.
         <div className="c-slab">
-          <div className="c-col">
-            {path}
-            {vesting}
-          </div>
-          <div className="c-col">
-            {onTrack}
-            {assurance}
-          </div>
+          {path}
+          {onTrack}
+          {vesting}
+          {assurance}
         </div>
       ) : (
         <div className="c-slab c-one">
