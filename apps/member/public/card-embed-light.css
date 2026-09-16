@@ -3,7 +3,7 @@
  *
  * Lithic's embed takes a PUBLICLY reachable stylesheet URI and applies it inside their frame. That
  * is the only way to make it match: the markup is theirs and served from their origin, so nothing
- * in the app can reach into it. Unstyled it renders as black serif text on white.
+ * in the app can reach into it, and the number never enters this app at all.
  *
  * There is one file per appearance because the frame cannot see ours: an explicit theme is not a
  * system preference, so the server points Lithic at the sheet that matches what the member picked.
@@ -44,28 +44,44 @@ body {
   line-height: 1.5;
 }
 
-/* One row per value, ruled like every other list in the app. */
-body > * {
+/*
+ * Two shapes, because the frame's markup is not ours to fix.
+ *
+ * The three values arrive either as siblings or wrapped in one container — the first pass assumed
+ * siblings, and on a wrapper it labelled the wrapper and left the values as three bare lines. Both
+ * are handled: the wrapper stops being a row when it is the only child, and its children become
+ * the rows instead.
+ */
+body > *,
+body > *:only-child > * {
   display: block;
   padding: 16px 0;
   border-bottom: 1px solid #C5CAC5 !important;
 }
-body > *:first-child {
+body > *:first-child,
+body > *:only-child > *:first-child {
   padding-top: 0;
 }
-body > *:last-child {
+body > *:last-child,
+body > *:only-child > *:last-child {
   border-bottom: 0 !important;
   padding-bottom: 0;
+}
+body > *:only-child {
+  padding: 0;
+  border-bottom: 0 !important;
 }
 
 /*
  * The labels are ours.
  *
- * The embed ships the three values and nothing to call them, so they are added here by position —
- * number, expiry, code, which is the order a card back reads in. If Lithic ever reorders them the
- * values still show; only the names would be wrong, which is visible rather than silent.
+ * The embed ships the values and nothing to call them. Lithic's own ids are used where they exist,
+ * because a name that follows the element cannot be put on the wrong one; position is the fallback,
+ * and if they ever reorder, the values still show and only the names would be wrong — visible
+ * rather than silent.
  */
-body > *::before {
+body > *::before,
+body > *:only-child > *::before {
   display: block;
   margin-bottom: 4px;
   font-size: 11.5px;
@@ -73,14 +89,42 @@ body > *::before {
   text-transform: uppercase;
   color: #5A635F !important;
 }
-body > *:nth-child(1)::before {
+body > *:nth-child(1)::before,
+body > *:only-child > *:nth-child(1)::before {
   content: "Card number";
 }
-body > *:nth-child(2)::before {
+body > *:nth-child(2)::before,
+body > *:only-child > *:nth-child(2)::before {
   content: "Expires";
 }
-body > *:nth-child(3)::before {
+body > *:nth-child(3)::before,
+body > *:only-child > *:nth-child(3)::before {
   content: "Security code";
+}
+/* A container is not a value, so it keeps neither a name nor a rule. */
+body > *:only-child::before {
+  content: none;
+}
+
+#pan::before {
+  content: "Card number" !important;
+}
+#exp::before,
+#expiry::before,
+#expMonth::before {
+  content: "Expires" !important;
+}
+#cvv::before {
+  content: "Security code" !important;
+}
+/* The year sits on the same line as the month rather than starting a row of its own. */
+#expYear {
+  display: inline !important;
+  padding: 0 !important;
+  border-bottom: 0 !important;
+}
+#expYear::before {
+  content: none !important;
 }
 
 /* Anything the embed calls a label of its own would be a second name for the same thing. */
