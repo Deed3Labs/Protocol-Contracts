@@ -12,10 +12,13 @@ import { oldestUnclaimed } from '@/lib/sendClaims';
 import {
   getCardTransactions,
   getCredit,
+  getSpendGroups,
   listSendTransfers,
+  setSpendGroups,
   type CardTransaction,
   type CreditState,
 } from '@/utils/apiClient';
+import { merchantKey } from '@/lib/activityCycle';
 import type { PendingClaim } from '@/lib/clearModel';
 
 /*
@@ -44,6 +47,9 @@ import type { PendingClaim } from '@/lib/clearModel';
  * Inside the co-op has no source yet: nothing records which payments stayed with members and
  * partners. The cell stands with an em dash rather than a figure assembled from what we do have.
  *
+ * Change groups writes to the member's record rather than this page: a move is a rule about a
+ * merchant, so it has to hold on every screen they open, not just this session.
+ *
  * An empty list after loading is left empty rather than filled with placeholder rows. Activity is
  * the one page where nothing to show is a true and useful answer -- a new member has no history,
  * and inventing some would be the page lying about their account rather than merely decorating it.
@@ -55,6 +61,8 @@ export default function ActivityRoute() {
   const [credit, setCredit] = useState<CreditState | null>(null);
   const [cards, setCards] = useState<CardTransaction[]>([]);
   const [pendingClaim, setPendingClaim] = useState<PendingClaim | undefined>(undefined);
+  const [moved, setMoved] = useState<Record<string, string>>({});
+  const [grouping, setGrouping] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +76,21 @@ export default function ActivityRoute() {
       cancelled = true;
     };
   }, []);
+
+  // The member's own grouping rules. They are read once and then kept in step optimistically: the
+  // sheet has already shown the move, and the server's answer is the same move.
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    void getSpendGroups(address).then((saved) => {
+      if (cancelled || !saved) return;
+      setMoved(saved.groups);
+      setGrouping(saved.grouping);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
 
   // The cycle moves when the line does, so this re-reads on the same signal as Home and Card.
   useEffect(() => {
@@ -111,5 +134,20 @@ export default function ActivityRoute() {
         ...(pendingClaim ? { pendingClaim } : {}),
       };
 
-  return <ActivityPage data={data} email={member.email || undefined} />;
+  return (
+    <ActivityPage
+      data={data}
+      email={member.email || undefined}
+      moved={moved}
+      grouping={grouping}
+      onMoveMerchant={(merchant, group) => {
+        setMoved((prev) => ({ ...prev, [merchantKey(merchant)]: group }));
+        if (address) void setSpendGroups(address, { name: merchant, group });
+      }}
+      onGrouping={(on) => {
+        setGrouping(on);
+        if (address) void setSpendGroups(address, { grouping: on });
+      }}
+    />
+  );
 }

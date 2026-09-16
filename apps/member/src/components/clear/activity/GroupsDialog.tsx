@@ -13,9 +13,11 @@ import { cn } from '@/lib/utils';
  * Change groups — two sheets, because the useful control is per merchant, not per group. Nobody
  * wants to rename Groceries; they want Costco out of Everything else.
  *
- * The first lists the groups with what is in them; opening one lists its merchants; choosing a
- * merchant is where the move happens. A move is a rule and it applies to payments already made,
- * because otherwise the figures that sent the member here stay wrong — both sheets say so.
+ * The first lists the groups with what is in them; opening one lists its merchants and what they
+ * took; choosing a merchant is where the move happens. A move is a rule and it applies to payments
+ * already made, because otherwise the figures that sent the member here stay wrong — both sheets
+ * say so. Naming a new group happens inline: a modal on top of a modal to collect one word is not
+ * worth the stack.
  */
 export default function GroupsDialog({
   merchants,
@@ -88,7 +90,7 @@ export default function GroupsDialog({
                 setPicked(null);
               }}
             >
-              Move to {current || 'a new group'}
+              {newGroup !== null ? `Create ${typed || 'a group'} and move` : `Move to ${current}`}
             </Btn>
           </>
         }
@@ -150,6 +152,7 @@ export default function GroupsDialog({
 
   if (group) {
     const inGroup = merchants.filter((m) => groupOf(m) === group);
+    const total = inGroup.reduce((sum, m) => sum + m.amount, 0);
     return (
       <Modal
         open={open}
@@ -158,11 +161,19 @@ export default function GroupsDialog({
         description={`The merchants in ${group}.`}
         onBack={() => setGroup(null)}
         footer={
-          <div className="c-footnote mt-0! border-t-0! pt-0!">
-            <p>Choose a merchant to move it. The move applies to payments you have already made.</p>
-          </div>
+          <Line className="items-center!">
+            {/* What governs the whole sheet: the groups are Clear's, and a merchant is how you change one. */}
+            <span className="c-det">Set by Clear &middot; move a merchant to change what is in it</span>
+            <button type="button" className="c-det hover:text-ink" onClick={() => setGroup(null)}>
+              Done
+            </button>
+          </Line>
         }
       >
+        <Line className="mb-s2 items-baseline!">
+          <span className="c-sub">This cycle</span>
+          <span className="c-fig c-fig-sec">{money(total, { cents: true })}</span>
+        </Line>
         {inGroup.length === 0 ? (
           <p className="c-det">Nothing in this group yet.</p>
         ) : (

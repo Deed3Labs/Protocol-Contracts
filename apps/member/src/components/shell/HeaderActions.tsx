@@ -151,14 +151,16 @@ export default function HeaderActions({
         trigger={(open) => (
           /*
            * On a phone the square the guide draws is the picture, not the target: the button around it
-           * is 44px, pulled in by 6px so the header keeps its height. A pointer needs neither.
+           * is 44px, pulled in by 6px on every side so it takes a 32px square's room and the bell stays
+           * the guide's 8px away. The extra bleeds into that gap and the header's padding, where there
+           * is nothing else to press. A pointer needs none of it.
            */
           <button
             type="button"
             aria-label="Account"
             onClick={open}
             className={cn(
-              isDesktop ? 'c-avatarbtn' : 'flex h-11 w-11 shrink-0 items-center justify-center -my-[6px]',
+              isDesktop ? 'c-avatarbtn' : 'flex h-11 w-11 shrink-0 items-center justify-center -m-[6px]',
             )}
           >
             {isDesktop ? (

@@ -147,6 +147,17 @@ async function ensureTables(): Promise<void> {
       PRIMARY KEY (wallet, name_key)
     );
   `);
+  // A merchant's spend group, when the member has moved it out of the one Clear picked. Same table,
+  // because it is the same fact: what this merchant is, kept once per member rather than per payment.
+  await pool.query(`ALTER TABLE pay_merchant_meta ADD COLUMN IF NOT EXISTS spend_group TEXT;`);
+  // Whether spending is grouped at all. A member preference, not a merchant one.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS pay_spend_prefs (
+      wallet TEXT PRIMARY KEY,
+      grouping BOOLEAN NOT NULL DEFAULT true,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
   ensured = true;
 }
 
@@ -272,6 +283,50 @@ export const payLedgerStore = {
       source: String(x.source),
       period: String(x.period),
     }));
+  },
+
+  /**
+   * Every merchant the member has moved, and whether they want grouping at all.
+   *
+   * Keyed by the normalized merchant name, so a rule set from one payment covers every payment by
+   * that merchant — which is what makes a move retroactive.
+   */
+  async getSpendGroups(wallet: string): Promise<{ groups: Record<string, string>; grouping: boolean }> {
+    const pool = getPayPool();
+    if (!pool) return { groups: {}, grouping: true };
+    await ensureTables();
+    const [rules, prefs] = await Promise.all([
+      pool.query(`SELECT name_key, spend_group FROM pay_merchant_meta WHERE wallet = $1 AND spend_group IS NOT NULL`, [wallet]),
+      pool.query(`SELECT grouping FROM pay_spend_prefs WHERE wallet = $1`, [wallet]),
+    ]);
+    const groups: Record<string, string> = {};
+    for (const row of rules.rows) groups[String(row.name_key)] = String(row.spend_group);
+    return { groups, grouping: prefs.rows[0] ? prefs.rows[0].grouping !== false : true };
+  },
+
+  /** Move a merchant into a group, or clear the rule and let Clear group it again. */
+  async setSpendGroup(wallet: string, name: string, group: string | null): Promise<void> {
+    const pool = getPayPool();
+    if (!pool) throw new Error('Postgres not configured');
+    await ensureTables();
+    await pool.query(
+      `INSERT INTO pay_merchant_meta (wallet, name_key, spend_group, updated_at)
+         VALUES ($1,$2,$3, now())
+       ON CONFLICT (wallet, name_key) DO UPDATE SET spend_group = $3, updated_at = now()`,
+      [wallet, merchantKey(name), group],
+    );
+  },
+
+  /** Turn grouping on or off for this member. */
+  async setSpendGrouping(wallet: string, grouping: boolean): Promise<void> {
+    const pool = getPayPool();
+    if (!pool) throw new Error('Postgres not configured');
+    await ensureTables();
+    await pool.query(
+      `INSERT INTO pay_spend_prefs (wallet, grouping, updated_at) VALUES ($1,$2, now())
+       ON CONFLICT (wallet) DO UPDATE SET grouping = $2, updated_at = now()`,
+      [wallet, grouping],
+    );
   },
 
   /** Read a merchant's shared metadata (portal + address) by name. */

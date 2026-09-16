@@ -2632,6 +2632,35 @@ export async function setMerchantMeta(wallet: string, name: string, patch: Parti
   return r.error || !r.data ? null : r.data.meta;
 }
 
+export interface SpendGroups {
+  /** Normalized merchant name to the group the member moved it to. */
+  groups: Record<string, string>;
+  grouping: boolean;
+}
+
+/**
+ * The member's spend-group rules — what Activity's Change groups sets.
+ *
+ * Kept per member rather than per device: a move is a rule about a merchant, and the figures it
+ * changes are the same on every screen they open.
+ */
+export async function getSpendGroups(wallet: string): Promise<SpendGroups | null> {
+  const r = await apiRequest<SpendGroups>(`/api/pay/${wallet.toLowerCase()}/spend-groups`);
+  return r.error || !r.data ? null : r.data;
+}
+
+/** Move a merchant into a group (an empty group clears the rule), or turn grouping off. */
+export async function setSpendGroups(
+  wallet: string,
+  patch: { name?: string; group?: string | null; grouping?: boolean },
+): Promise<SpendGroups | null> {
+  const r = await apiRequest<SpendGroups>(`/api/pay/${wallet.toLowerCase()}/spend-groups`, {
+    method: 'PUT',
+    body: JSON.stringify(patch),
+  });
+  return r.error || !r.data ? null : r.data;
+}
+
 export async function addPayBiller(
   wallet: string,
   b: { name: string; payee?: string; type: PayBillerType; defaultAmount: number; dueDay?: number | null; portalUrl?: string | null; address?: string | null },

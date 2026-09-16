@@ -110,6 +110,45 @@ router.put('/:wallet/merchant-meta', async (req: Request, res: Response) => {
   }
 });
 
+/*
+ * Spend groups — the rules behind Activity's "Where it went".
+ *
+ * A move is per merchant and retroactive: the group is stored against the merchant, so every payment
+ * by that merchant is grouped by it, past and future. Grouping itself can be turned off.
+ */
+// GET /api/pay/:wallet/spend-groups
+router.get('/:wallet/spend-groups', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  try {
+    res.json(await payLedgerStore.getSpendGroups(w));
+  } catch (error) {
+    console.error('[pay/spend-groups GET]', error);
+    res.status(500).json({ error: 'Failed to load spend groups' });
+  }
+});
+
+// PUT /api/pay/:wallet/spend-groups  { name, group } | { grouping }
+router.put('/:wallet/spend-groups', async (req: Request, res: Response) => {
+  const w = wallet(req);
+  if (!requireWalletMatch(req, res, w, 'wallet')) return;
+  if (!ensureReady(res)) return;
+  const b = req.body as { name?: string; group?: string | null; grouping?: boolean };
+  try {
+    if (typeof b?.grouping === 'boolean') await payLedgerStore.setSpendGrouping(w, b.grouping);
+    if (b?.name) {
+      // An empty group clears the rule rather than creating a group with no name.
+      const group = typeof b.group === 'string' && b.group.trim() ? b.group.trim().slice(0, 40) : null;
+      await payLedgerStore.setSpendGroup(w, String(b.name), group);
+    }
+    res.json(await payLedgerStore.getSpendGroups(w));
+  } catch (error) {
+    console.error('[pay/spend-groups PUT]', error);
+    res.status(500).json({ error: 'Failed to save spend groups' });
+  }
+});
+
 // POST /api/pay/:wallet/billers  { name, payee?, type, defaultAmount, dueDay }
 router.post('/:wallet/billers', async (req: Request, res: Response) => {
   const w = wallet(req);

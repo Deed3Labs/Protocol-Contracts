@@ -203,8 +203,11 @@
 .c-foot2 > :last-child{padding-left:var(--fp,14px);border-left:1px solid var(--ink-13)}
 .c-foot2 p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-.c-navwrap{display:flex;gap:var(--s1);align-items:center}
-.c-navbar{flex:1;height:52px;display:flex;align-items:center;justify-content:space-around;
+/* The bar takes the width it needs and no more: stretched across a large phone the five glyphs sat
+   a thumb's width apart and the bar read as mostly empty. Capped and centred with the button, it
+   keeps the density the guide draws at 340px on every screen. */
+.c-navwrap{display:flex;gap:var(--s1);align-items:center;justify-content:center}
+.c-navbar{flex:1 1 auto;max-width:330px;height:52px;display:flex;align-items:center;justify-content:space-around;
         background:var(--paper-2);border:1px solid var(--ink-28)}
 /* Each destination is a 44px target, not a stretched column: filled to the bar's width they ran
    into each other on a large phone, and the gaps are what make five glyphs read as five buttons. */

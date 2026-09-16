@@ -135,17 +135,31 @@ export function groupsFromMerchants(
 ): SpendCategory[] {
   const totals = new Map<string, number>();
   for (const merchant of merchants) {
-    const group = moved[merchant.name] ?? merchant.group;
+    const group = groupOfMerchant(merchant, moved);
     totals.set(group, (totals.get(group) ?? 0) + merchant.amount);
   }
+  // A group the member put something in stays on the list whatever its size: they made it, and
+  // folding it back into Everything else would read as the move not having worked.
+  const pinned = new Set(Object.values(moved));
   const named = [...totals.entries()].filter(([label]) => label !== REST).sort((a, b) => b[1] - a[1]);
-  const rest = named.slice(keep).reduce((sum, [, amount]) => sum + amount, 0) + (totals.get(REST) ?? 0);
-  const groups = named.slice(0, keep).map(([label, amount]) => ({ label, amount }));
+  const shown = named.filter(([label], i) => i < keep || pinned.has(label));
+  const rest =
+    named.filter((entry) => !shown.includes(entry)).reduce((sum, [, amount]) => sum + amount, 0) +
+    (totals.get(REST) ?? 0);
+  const groups = shown.map(([label, amount]) => ({ label, amount }));
   if (rest > 0) groups.push({ label: REST, amount: rest });
   return groups;
 }
 
+/**
+ * The key a rule is stored under: the merchant's name, normalized, so "COSTCO #221" and "Costco"
+ * are one merchant. Matches the server's `merchantKey` in payLedgerStore.
+ */
+export function merchantKey(name: string): string {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9&]+/g, '');
+}
+
 /** Where a merchant sits now, with the member's rules applied. */
 export function groupOfMerchant(merchant: MerchantSpend, moved: Record<string, string> = {}): string {
-  return moved[merchant.name] ?? merchant.group;
+  return moved[merchantKey(merchant.name)] ?? merchant.group;
 }
