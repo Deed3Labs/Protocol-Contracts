@@ -166,8 +166,13 @@ router.get('/:token/embed', async (req: Request, res: Response) => {
   const owned = await ownedCard(req);
   if (!owned) return res.status(404).json({ error: 'Card not found' });
 
+  // The member's appearance, so the frame is styled for the sheet it opens in rather than for a
+  // ground it is not on. Anything else falls back to paper.
+  const asked = String(req.query.theme ?? '');
+  const theme = asked === 'dusk' || asked === 'dark' ? asked : 'light';
+
   try {
-    const url = await cardService.getCardEmbedUrl(owned.token);
+    const url = await cardService.getCardEmbedUrl(owned.token, theme);
     // no-store: a URL that reveals card details must not sit in a shared cache.
     res.set('Cache-Control', 'no-store');
     return res.json({ url, expiresInSeconds: 60 });

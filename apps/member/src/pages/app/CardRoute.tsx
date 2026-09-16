@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { useTheme } from '@/context/ThemeContext';
 import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
@@ -46,6 +47,7 @@ export default function CardRoute() {
   const identity = useIdentity();
   const { address } = useAppKitAccount();
   const member = useMemberProfile();
+  const { theme } = useTheme();
   const [credit, setCredit] = useState<CreditState | null>(null);
   /** The card the New card sheet just made, so its last step can show what happened. */
   const [newCard, setNewCard] = useState<{ kind: 'virtual' | 'physical'; last4: string; label?: string } | null>(null);
@@ -419,7 +421,7 @@ export default function CardRoute() {
       onRevealDetails={async (cardId) => {
         const token = cardId ?? cards[0]?.token;
         if (!token) return undefined;
-        return (await getCardEmbedUrl(token)) ?? undefined;
+        return (await getCardEmbedUrl(token, theme)) ?? undefined;
       }}
     />
   );

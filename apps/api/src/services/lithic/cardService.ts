@@ -297,7 +297,14 @@ export async function setSpendLimit(
  * `targetOrigin` must be our own app origin so the embedded page will not render inside someone
  * else's site.
  */
-export async function getCardEmbedUrl(cardToken: string, expirationSeconds = 60): Promise<string> {
+/** The three grounds the app can be on. The frame cannot see ours, so it is told which. */
+export type EmbedTheme = 'light' | 'dusk' | 'dark';
+
+export async function getCardEmbedUrl(
+  cardToken: string,
+  theme: EmbedTheme = 'light',
+  expirationSeconds = 60,
+): Promise<string> {
   const lithic = getLithic();
   if (!lithic) throw new Error('Lithic not configured');
 
@@ -307,13 +314,18 @@ export async function getCardEmbedUrl(cardToken: string, expirationSeconds = 60)
   /*
    * `css` is a publicly reachable stylesheet URI, applied inside Lithic's frame.
    *
-   * It is the only way to make the embed match the card it sits on: the markup is theirs and served
-   * from their origin, so nothing in our app can style it. Without this it renders as black serif
-   * text on a white sheet, which looked exactly like a bug pasted over the card face.
+   * It is the only way to make the embed match the sheet it sits in: the markup is theirs and
+   * served from their origin, so nothing in our app can style it. Without this it renders as black
+   * serif text on a white sheet.
+   *
+   * One file per appearance, because an explicit theme is not a system preference: the frame cannot
+   * read ours, so it is pointed at the sheet that matches what the member picked. A stylesheet
+   * written for one ground is unreadable on another — paper-coloured text on the tan sheet was
+   * exactly that.
    */
   return lithic.cards.getEmbedURL({
     token: cardToken,
-    css: `${targetOrigin.replace(/\/$/, '')}/card-embed.css`,
+    css: `${targetOrigin.replace(/\/$/, '')}/card-embed-${theme}.css`,
     expiration: new Date(Date.now() + expirationSeconds * 1000).toISOString(),
     target_origin: targetOrigin,
   });

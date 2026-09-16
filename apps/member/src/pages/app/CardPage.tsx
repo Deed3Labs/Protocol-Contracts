@@ -118,6 +118,9 @@ export default function CardPage({
 
   const openDetails = async () => {
     setDetailsOpen(true);
+    // The issuer's URL lasts a minute. Anything still in hand is from a previous open and would
+    // render as "Embed request expired" before the fresh one arrives.
+    setEmbedUrl(undefined);
     if (!onRevealDetails) return;
     setLoadingDetails(true);
     try {
@@ -163,19 +166,29 @@ export default function CardPage({
 
   // ---- Slab ---------------------------------------------------------------------------------------
 
-  const variants = (['physical', 'virtual'] as const).filter((v) => wallet.some((c) => c.variant === v));
   /*
-   * The stack, read from the card you are on: the selected one in front, then the wallet in order
-   * after it, wrapping round. Two behind is the whole depth — a wallet of six looks like a wallet
-   * of three, and the marker underneath is what says how many there are.
+   * Physical and virtual are two wallets, not two ends of one.
+   *
+   * The chooser used to jump to the first card of a kind and leave the rest of the stack behind it,
+   * so swiping ran through both kinds and the chip stopped describing what was in front of you. It
+   * filters now: the stack holds the kind you picked, and the marker counts that kind.
    */
-  const order = wallet.map((_, i) => wallet[(wallet.indexOf(active) + i) % wallet.length]);
+  const variants = (['physical', 'virtual'] as const).filter((v) => wallet.some((c) => c.variant === v));
+  const kind = wallet.filter((c) => c.variant === active.variant);
+  /*
+   * The stack, read from the card you are on: the selected one in front, then the rest of its kind
+   * in order after it, wrapping round. One behind is the whole depth — the marker underneath is
+   * what says how many there are.
+   */
+  const order = kind.map((_, i) => kind[(kind.indexOf(active) + i) % kind.length]);
   const cardCell = (
     <Cell>
       <CHead>
         <SecHead label={wallet.length === 1 ? 'Your card' : 'Your cards'}>
+          {/* The count describes the stack under it, which is one kind of card, and the chooser
+              beside it says which. A total over a filtered stack would not match its own marker. */}
           <span className="c-det">
-            {wallet.length} {wallet.length === 1 ? 'card' : 'cards'}
+            {kind.length} {kind.length === 1 ? 'card' : 'cards'}
           </span>
         </SecHead>
       </CHead>
@@ -201,9 +214,9 @@ export default function CardPage({
       </CBar>
       <CMain>
         <CardStack
-          count={wallet.length}
-          index={wallet.indexOf(active)}
-          onIndexChange={(i) => setActiveId(wallet[i].id)}
+          count={kind.length}
+          index={kind.indexOf(active)}
+          onIndexChange={(i) => setActiveId(kind[i].id)}
         >
           {order.map((card) => (
             <CardFace
