@@ -93,6 +93,9 @@
 .c-chip{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--radius-pill);
       font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
       border:1px solid currentColor;white-space:nowrap}
+/* A chip of figures is not a word: the tracking that opens up a label pulls "2 of 4" apart, so a
+   counting chip keeps its numerals together and tabular. */
+.c-chip.c-figs{letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .c-chip .c-core{width:6px;height:6px;border-radius:50%;background:currentColor;
             box-shadow:0 0 4px 1px color-mix(in srgb, currentColor 45%, transparent);flex-shrink:0}
 .c-chip.c-settled{color:var(--settled)} .c-chip.c-underway{color:var(--underway)} .c-chip.c-neutral{color:var(--ink-50)} .c-chip.c-live{color:var(--live)}

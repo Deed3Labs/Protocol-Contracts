@@ -98,20 +98,25 @@ export function Btn({ primary, lg, className, type = 'button', ...props }: BtnPr
 
 export type ChipTone = 'settled' | 'underway' | 'neutral' | 'live';
 
-/** Status chip. `core` adds the glowing dot; `ping` animates it, for the one live thing on a screen. */
+/**
+ * Status chip. `core` adds the glowing dot; `ping` animates it, for the one live thing on a screen.
+ * `figs` is for a chip that counts rather than names — its numerals stay together.
+ */
 export function Chip({
   tone,
   core,
   ping,
+  figs,
   children,
 }: {
   tone: ChipTone;
   core?: boolean;
   ping?: boolean;
+  figs?: boolean;
   children: ReactNode;
 }) {
   return (
-    <span className={cn('c-chip', `c-${tone}`)}>
+    <span className={cn('c-chip', `c-${tone}`, figs && 'c-figs')}>
       {(core || ping) && <span className={cn('c-core', ping && 'c-ping')} />}
       {children}
     </span>
