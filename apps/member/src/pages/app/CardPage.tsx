@@ -5,6 +5,8 @@ import { ChevronIcon, PlusIcon, SortIcon } from '@/components/clear/brand/icons'
 import MenuButton from '@/components/clear/brand/MenuButton';
 import { useSetMobileAction } from '@/components/shell/MobileAction';
 import CardFace from '@/components/clear/card/CardFace';
+import CardStack from '@/components/clear/card/CardStack';
+import NewCardDialog, { type CardKind, type NewCardResult } from '@/components/clear/card/NewCardDialog';
 import SpendsFrom from '@/components/clear/card/SpendsFrom';
 import ActivateCard from '@/components/clear/card/ActivateCard';
 import AdjustLimitsDialog from '@/components/clear/card/AdjustLimitsDialog';
@@ -47,6 +49,10 @@ export default function CardPage({
   busy = false,
   notice = null,
   onAddCard,
+  newCard = null,
+  onNewCardDone,
+  addError = null,
+  address = null,
   onRevealDetails,
 }: {
   data?: CardData;
@@ -56,7 +62,15 @@ export default function CardPage({
   busy?: boolean;
   /** Why the last action did not do what it looked like it would. Absent when nothing went wrong. */
   notice?: string | null;
-  onAddCard?: () => void;
+  /** Makes the card. The sheet asks which kind and what to call it; the container issues it. */
+  onAddCard?: (kind: CardKind, label: string) => void;
+  /** The card that was just made, which turns the sheet into its last step. */
+  newCard?: NewCardResult | null;
+  /** Cleared when the sheet closes, so the next New card starts at the first step. */
+  onNewCardDone?: () => void;
+  addError?: string | null;
+  /** Where a physical card would be posted, from Personal information. */
+  address?: { name: string; lines: string } | null;
   /** Fetches the issuer's short-lived card-details URL. Absent in the preview harness. */
   onRevealDetails?: (cardId?: string) => Promise<string | undefined>;
 }) {
@@ -79,6 +93,7 @@ export default function CardPage({
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [replaceOpen, setReplaceOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [limits, setLimits] = useState({ perTransaction: data.perTransactionLimit, perDay: data.perDayLimit });
   const [sort, setSort] = useState<Sort>('newest');
   const [selected, setSelected] = useState<ActivityRow | null>(null);
@@ -149,10 +164,16 @@ export default function CardPage({
   // ---- Slab ---------------------------------------------------------------------------------------
 
   const variants = (['physical', 'virtual'] as const).filter((v) => wallet.some((c) => c.variant === v));
+  /*
+   * The stack, read from the card you are on: the selected one in front, then the wallet in order
+   * after it, wrapping round. Two behind is the whole depth — a wallet of six looks like a wallet
+   * of three, and the marker underneath is what says how many there are.
+   */
+  const order = wallet.map((_, i) => wallet[(wallet.indexOf(active) + i) % wallet.length]);
   const cardCell = (
     <Cell>
       <CHead>
-        <SecHead label="Your card">
+        <SecHead label={wallet.length === 1 ? 'Your card' : 'Your cards'}>
           <span className="c-det">
             {wallet.length} {wallet.length === 1 ? 'card' : 'cards'}
           </span>
@@ -172,21 +193,31 @@ export default function CardPage({
             })}
           </div>
           {onAddCard && (
-            <Btn className="c-linkish" disabled={busy} onClick={onAddCard}>
-              New virtual
+            <Btn className="c-linkish" disabled={busy} onClick={() => setAddOpen(true)}>
+              New card
             </Btn>
           )}
         </div>
       </CBar>
       <CMain>
-        <CardFace
-          variant={active.variant}
-          frozen={frozen}
-          last4={active.last4}
-          cardholder={data.cardholder}
-          expiry={data.expiry}
-          network={data.network}
-        />
+        <CardStack
+          count={wallet.length}
+          index={wallet.indexOf(active)}
+          onIndexChange={(i) => setActiveId(wallet[i].id)}
+        >
+          {order.map((card) => (
+            <CardFace
+              key={card.id}
+              variant={card.variant}
+              frozen={card.id === active.id ? frozen : (frozenOverride[card.id] ?? card.frozen)}
+              last4={card.last4}
+              cardholder={data.cardholder}
+              expiry={data.expiry}
+              network={data.network}
+              meta={card.variant === 'virtual' ? `Virtual${card.where ? ` · ${card.where}` : ' · online'}` : undefined}
+            />
+          ))}
+        </CardStack>
         {notice && (
           <p role="status" className="c-det mt-s2">
             {notice}
@@ -344,6 +375,30 @@ export default function CardPage({
         }}
       />
       <ReplaceCardDialog open={replaceOpen} onOpenChange={setReplaceOpen} onReplace={() => setReplaceOpen(false)} />
+      <NewCardDialog
+        open={addOpen}
+        onOpenChange={(o) => {
+          setAddOpen(o);
+          // The outcome belongs to the sheet that was open: closing it is what ends that card's
+          // story, so the next New card starts at the decision again.
+          if (!o) onNewCardDone?.();
+        }}
+        cardholder={data.cardholder}
+        expiry={data.expiry}
+        network={data.network}
+        address={address}
+        cardsHeld={wallet.length}
+        busy={busy}
+        error={addError}
+        result={newCard}
+        onCreate={onAddCard}
+        onChangeAddress={() => navigate('/settings/account')}
+        onSeeDetails={() => {
+          setAddOpen(false);
+          onNewCardDone?.();
+          void openDetails();
+        }}
+      />
       {selected && (
         <TransactionDetailDialog row={selected} open={selected !== null} onOpenChange={(o) => !o && setSelected(null)} />
       )}

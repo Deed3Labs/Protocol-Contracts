@@ -2121,6 +2121,24 @@ export async function createCard(memo?: string): Promise<CardResult<MemberCard>>
   return { value: r.data?.card ?? null };
 }
 
+/**
+ * Order a physical card, posted to the address on the member's identity record.
+ *
+ * Shipping is required by the issuer and is not asked for again here: it comes from Personal
+ * information, so a card cannot be sent somewhere the identity record has never heard of.
+ */
+export async function orderPhysicalCard(
+  shipping: { firstName: string; lastName: string; address1: string; address2?: string; city: string; state: string; postalCode: string },
+  memo?: string,
+): Promise<CardResult<MemberCard>> {
+  const r = await apiRequest<{ card: MemberCard }>('/api/lithic/cards/physical', {
+    method: 'POST',
+    body: JSON.stringify(memo ? { shipping, memo } : { shipping }),
+  });
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.card ?? null };
+}
+
 /** Freeze or unfreeze. Reports why it failed — a toggle that springs back explains nothing. */
 export async function setCardFrozen(token: string, frozen: boolean): Promise<CardResult<MemberCard>> {
   const r = await apiRequest<{ card: MemberCard }>(

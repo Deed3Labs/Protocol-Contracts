@@ -397,8 +397,34 @@
 @keyframes c-caret{50%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.c-pinbox > span.c-live::after{animation:none}}
 
-.c-cardsel{display:flex;align-items:center;gap:var(--s1);margin-bottom:var(--s2)}
+.c-cardsel{display:flex;align-items:center;gap:var(--s1)}
 .c-cardsel .c-qc{flex:1;min-width:0;margin-top:0}
+
+/* The page shows a wallet, not a card: the selected one in front, the rest behind it and a little
+   below, faded back. A covered card only has to say that it exists — and which card it is, which
+   is what the last four in the top strip is for. */
+.c-ctag{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:var(--ink-28)}
+/* The guide puts the position classes on the face itself; here each face sits in the element that
+   follows the finger, so the same rules are keyed to the stack's own children. */
+.c-cardstack{position:relative;padding-bottom:18px}
+.c-cardstack > *{position:absolute;top:0;left:0;right:0}
+.c-cardstack > .c-sel{position:relative;z-index:3}
+/* The guide offsets these by 9 and 18 from the top, which with the face's own aspect ratio leaves
+   them a couple of pixels SHORT of the card in front — a stack with nothing showing behind it. The
+   bottom is pinned instead, so the same 9 and 18 show below, which is what the drawing means. */
+.c-cardstack > .c-b1{top:9px;left:9px;right:9px;bottom:9px;opacity:.62;z-index:2}
+.c-cardstack > .c-b2{top:18px;left:18px;right:18px;bottom:0;opacity:.4;z-index:1}
+.c-cardstack > .c-b1 > *,.c-cardstack > .c-b2 > *{height:100%}
+/* the marker stretches to the card you are on rather than just filling in */
+.c-stackdots{display:flex;gap:5px;justify-content:center;margin-top:10px}
+.c-stackdots > *{width:5px;height:5px;background:var(--ink-28);display:block;padding:0;border:0;
+                transition:width .28s ease,background .28s ease}
+.c-stackdots > .c-on{width:17px;background:var(--ink);animation:c-dotgrow .28s ease}
+@keyframes c-dotgrow{from{width:5px}to{width:17px}}
+@media (prefers-reduced-motion:reduce){
+  .c-stackdots > *{transition:none}
+  .c-stackdots > .c-on{animation:none}
+}
 
 /* the waterfall runs left to right on desktop: order is the fact, so it reads
    as an order rather than a stack of rows in a wide column */
