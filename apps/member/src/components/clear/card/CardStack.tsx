@@ -61,7 +61,9 @@ export default function CardStack({
       <div
         className="c-cardstack"
         onPointerDown={(e) => {
-          if (e.pointerType === 'mouse') return;
+          // A mouse drags it too: the stack has no hover affordance the way a swiped row does, so
+          // ignoring pointer devices left a desktop member with only the dots.
+          if (e.pointerType === 'mouse' && e.button !== 0) return;
           start.current = { x: e.clientX, y: e.clientY };
           swiping.current = false;
         }}

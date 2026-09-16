@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { refreshAllNow } from '@/lib/refreshAll';
+import { pullDistance } from '@/lib/pullGesture';
 
 /*
  * Pull-to-refresh for the installed PWA / mobile web.
@@ -19,15 +20,15 @@ import { refreshAllNow } from '@/lib/refreshAll';
  */
 
 const THRESHOLD = 68; // px of pull (after resistance) that commits to a refresh
-const MAX_PULL = 104; // clamp so the indicator can't be dragged down the whole screen
-const RESISTANCE = 0.5; // drag feels weighted rather than 1:1 with the finger
 const MIN_SPIN_MS = 550; // keep the spinner up long enough to read as deliberate, not a flicker
+
 
 export default function PullToRefresh({ children }: { children: React.ReactNode }) {
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   // Touch handlers are bound once; refs let them read current values without rebinding per frame.
   const startY = useRef<number | null>(null);
+  const startX = useRef<number | null>(null);
   const pullRef = useRef(0);
   const refreshingRef = useRef(false);
 
@@ -57,6 +58,7 @@ export default function PullToRefresh({ children }: { children: React.ReactNode 
         return;
       }
       startY.current = e.touches[0].clientY;
+      startX.current = e.touches[0].clientX;
     };
 
     const onMove = (e: TouchEvent) => {
@@ -68,11 +70,18 @@ export default function PullToRefresh({ children }: { children: React.ReactNode 
         return;
       }
       const dy = e.touches[0].clientY - startY.current;
-      if (dy <= 0) {
-        setPullBoth(0);
-        return; // upward drag is a normal scroll
+      const dx = startX.current == null ? 0 : e.touches[0].clientX - startX.current;
+      const next = pullDistance(dx, dy);
+      if (next === 0) {
+        // An upward drag is a scroll and a sideways one is somebody else's — the card stack's, on
+        // the page where this matters most. Hand the gesture back rather than half-holding it.
+        if (dy <= 0) setPullBoth(0);
+        else {
+          startY.current = null;
+          setPullBoth(0);
+        }
+        return;
       }
-      const next = Math.min(MAX_PULL, dy * RESISTANCE);
       setPullBoth(next);
       // Only swallow the event once it's clearly a pull, so small jitters still scroll normally.
       if (next > 4 && e.cancelable) e.preventDefault();
