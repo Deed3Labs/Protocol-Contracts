@@ -475,6 +475,28 @@ function CounterOnboardingPreview() {
   );
 }
 
+/**
+ * Card, driven the way `CardRoute` drives it.
+ *
+ * New card is the reason: the button only appears when a container is handling it, and the sheet's
+ * last step needs a card to have been made. The harness makes one up so all three steps can be
+ * looked at, with an address on file so the physical branch is not stuck on its first screen.
+ */
+function CardPreview({ empty }: { empty: boolean }) {
+  const [newCard, setNewCard] = useState<{ kind: 'virtual' | 'physical'; last4: string; label?: string } | null>(null);
+
+  return (
+    <CardPage
+      key={String(empty)}
+      data={empty ? CARD_DAY_ONE : CARD_IN_USE}
+      onAddCard={(kind, label) => setNewCard({ kind, last4: kind === 'virtual' ? '5507' : '4102', label })}
+      newCard={newCard}
+      onNewCardDone={() => setNewCard(null)}
+      address={{ name: 'Kai Moore', lines: '1420 Orange St, Redlands, CA 92374' }}
+    />
+  );
+}
+
 /** Onboarding sits outside the app chrome — there's no nav until you're a member. */
 function OnboardingPreview() {
   const [step, setStep] = useState<OnboardingStep>('enter');
@@ -617,7 +639,7 @@ export default function PreviewApp() {
                         <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
                         <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
                         <Route path="/activity" element={<ActivityPage key={String(empty)} data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} email="kai@example.com" />} />
-                        <Route path="/card" element={<CardPage key={String(empty)} data={empty ? CARD_DAY_ONE : CARD_IN_USE} />} />
+                        <Route path="/card" element={<CardPreview empty={empty} />} />
                         <Route path="/contacts" element={<Navigate to="/settings/contacts" replace />} />
                         <Route path="/partners" element={<PartnersPage />} />
                         <Route

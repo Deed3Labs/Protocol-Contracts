@@ -3,7 +3,7 @@ import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
-import { createCard, getCards, setCardFrozen, getCredit, getCardTransactions, getCardEmbedUrl, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
+import { createCard, orderPhysicalCard, getCards, setCardFrozen, getCredit, getCardTransactions, getCardEmbedUrl, getBankIdentity, type BankIdentity, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
 import { categoryForMcc } from '@/lib/mccCategory';
 import type { ActivityRow } from '@/lib/clearModel';
 import { onChainStale } from '@/lib/chainStale';
@@ -47,6 +47,17 @@ export default function CardRoute() {
   const { address } = useAppKitAccount();
   const member = useMemberProfile();
   const [credit, setCredit] = useState<CreditState | null>(null);
+  /** The card the New card sheet just made, so its last step can show what happened. */
+  const [newCard, setNewCard] = useState<{ kind: 'virtual' | 'physical'; last4: string; label?: string } | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
+  /*
+   * Where a physical card would be posted.
+   *
+   * From the linked bank's identity record, which is the same place Personal information reads
+   * from — not typed again in the sheet, so a shipping address cannot quietly diverge from the
+   * identity the issuer checked. No address means the sheet says so and cannot order.
+   */
+  const [identityAddress, setIdentityAddress] = useState<BankIdentity['address']>(null);
   const [spend, setSpend] = useState<CardTransaction[] | null>(null);
 
   /*
@@ -160,6 +171,69 @@ export default function CardRoute() {
       setBusy(false);
     }
   }, [identity]);
+
+  // Read once, and only to fill the shipping review — a card cannot be posted to an address the
+  // identity record has never seen.
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    void getBankIdentity(address).then((identityRecord) => {
+      if (!cancelled) setIdentityAddress(identityRecord.address);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [address]);
+
+  /**
+   * A new card, of the kind the sheet asked for.
+   *
+   * Virtual is issued now and the label is the member's own memo. Physical is posted, and its
+   * shipping comes from the identity record rather than from the sheet.
+   */
+  const addCard = useCallback(
+    async (kind: 'virtual' | 'physical', label: string) => {
+      setBusy(true);
+      setAddError(null);
+      try {
+        if (kind === 'physical') {
+          const parts = (member.legalName || member.name || '').trim().split(/\s+/);
+          if (!identityAddress?.address1 || parts.length < 2) {
+            setAddError('We need your name and address on Personal information before a card can be posted.');
+            return;
+          }
+          const { value: ordered, error } = await orderPhysicalCard(
+            {
+              firstName: parts[0],
+              lastName: parts.slice(1).join(' '),
+              address1: identityAddress.address1,
+              city: identityAddress.city ?? '',
+              state: identityAddress.state ?? '',
+              postalCode: identityAddress.postalCode ?? '',
+            },
+            label || undefined,
+          );
+          if (!ordered) {
+            setAddError(error ?? "That didn't go through. Please try again.");
+            return;
+          }
+          setCards((prev) => [...prev, ordered]);
+          setNewCard({ kind: 'physical', last4: ordered.lastFour ?? '', label: label || undefined });
+          return;
+        }
+        const { value: created, error } = await createCard(label || 'Clear card');
+        if (!created) {
+          setAddError(error ?? "That didn't go through. Please try again.");
+          return;
+        }
+        setCards((prev) => [...prev, created]);
+        setNewCard({ kind: 'virtual', last4: created.lastFour ?? '', label: label || undefined });
+      } finally {
+        setBusy(false);
+      }
+    },
+    [identityAddress, member.legalName, member.name],
+  );
 
   /*
    * Freeze the card the member is looking at, not the first one.
@@ -301,9 +375,25 @@ export default function CardRoute() {
       onToggleFreeze={toggleFreeze}
       busy={busy}
       notice={notice}
-      // Same call as activation — issuing a second virtual card is issuing a card. Passing the
-      // handler is what makes the button appear at all, so it cannot render as a dead control.
-      onAddCard={activate}
+      // Passing the handler is what makes New card appear at all, so it cannot render as a dead
+      // control.
+      onAddCard={(kind, label) => void addCard(kind, label)}
+      newCard={newCard}
+      onNewCardDone={() => {
+        setNewCard(null);
+        setAddError(null);
+      }}
+      addError={addError}
+      address={
+        identityAddress?.address1
+          ? {
+              name: member.legalName || member.name,
+              lines: [identityAddress.address1, identityAddress.city, identityAddress.state, identityAddress.postalCode]
+                .filter(Boolean)
+                .join(', '),
+            }
+          : null
+      }
       /*
        * The issuer's short-lived details URL.
        *

@@ -45,7 +45,15 @@ export default function AuthShell({
   solo?: boolean;
 }) {
   return (
-    <div className="flex min-h-[100dvh] flex-col justify-center p-s2 lg:items-center lg:p-s3">
+    /*
+     * Paper, explicitly: these screens render outside the app shell, which is what paints the
+     * ground everywhere else. Without it the panel sat on the browser's white and read as a card
+     * floating on a different page.
+     *
+     * The floor is 40px up from the bottom edge on a phone, because the action lives down there and
+     * the last inch of a tall screen is the hardest part of it to reach.
+     */
+    <div className="flex min-h-[100dvh] flex-col justify-center bg-paper px-s2 pb-s4 pt-s2 lg:items-center lg:p-s3">
       {/* A phone has no brand column, so the lockup stands where it would have been. The counter
           path carries no lockup at all: the shop's code is what brought the member here. */}
       {!solo && (
