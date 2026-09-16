@@ -18,6 +18,7 @@ import { IdentityProvider } from '@/context/IdentityContext';
 import { MoneyActionsProvider } from '@/context/MoneyActionsContext';
 import { useGlobalModals } from '@/context/GlobalModalsContext';
 import { useNotifications } from '@/context/ClearNotificationsContext';
+import { destinationFor } from '@/lib/notificationsAdapter';
 import { SETTINGS } from '@/data/clearPlaceholder';
 import XMTPMessaging from '@/components/XMTPMessaging';
 
@@ -56,6 +57,8 @@ function LiveHeaderActions() {
         detail: n.body,
         time: notificationTime(n.createdAt),
         unread: !n.read,
+        // Only kinds with one obvious destination carry an action; the rest keep Read and Clear.
+        ...(destinationFor(n.kind) ? { action: destinationFor(n.kind) } : {}),
       }))}
       onMarkAllRead={() => void markAllRead()}
       onRead={(id) => void markRead(id)}

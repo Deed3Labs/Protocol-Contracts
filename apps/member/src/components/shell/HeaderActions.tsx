@@ -76,6 +76,7 @@ export default function HeaderActions({
           onClearAll={onClearAll}
           onRead={onRead}
           onClear={onClear}
+          onNavigate={() => setNotifOpen(false)}
           onOpenInbox={() => {
             setNotifOpen(false);
             navigate('/inbox');

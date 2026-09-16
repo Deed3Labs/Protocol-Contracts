@@ -422,25 +422,25 @@
 .c-headacts button{cursor:pointer;white-space:nowrap}
 .c-headacts button + button{border-left:1px solid var(--ink-13);padding-left:var(--s2)}
 
-/* the row does not move: the actions come in over its right end, full row height, so nothing
-   reflows and the body keeps the width it had */
+/* A swiped row carries its own padding, so it slides its own ground: nothing shows through at the
+   edges, the actions reach the panel's edge, and the unread dot's glow is not clipped by a gap that
+   belongs to the section rather than the row. */
+.c-cmain.c-flush{padding:0}
 .c-rows > div.c-swiped{padding:0;position:relative;overflow:hidden}
-.c-rows > div.c-swiped .c-sbody{padding:var(--s2) 0;touch-action:pan-y}
-/* the row's own padding rules, moved to the body that carries them */
-.c-rows > div.c-swiped:first-child .c-sbody{padding-top:0}
-.c-rows > div.c-swiped:last-child .c-sbody{padding-bottom:0}
-/* the time and its dot would sit under the actions, so they go while the actions are showing */
-.c-swiped .c-meta{transition:opacity .18s ease}
-.c-rows > div.c-swiped.c-open .c-meta{opacity:0}
+.c-rows > div.c-swiped .c-sbody{padding:var(--s2);background:var(--paper);position:relative;z-index:1;
+      transition:transform .18s ease;touch-action:pan-y}
+/* the content moves with the swipe and the actions follow it in, at full row height */
 .c-sacts{position:absolute;top:0;right:0;bottom:0;display:flex;transform:translateX(100%);
       transition:transform .18s ease}
+.c-rows > div.c-swiped.c-open .c-sbody{transform:translateX(calc(-1 * var(--reveal, 156px)))}
 .c-rows > div.c-swiped.c-open .c-sacts{transform:none}
 @media (hover:hover){
+  .c-rows > div.c-swiped:hover .c-sbody{transform:translateX(calc(-1 * var(--reveal, 156px)))}
   .c-rows > div.c-swiped:hover .c-sacts{transform:none}
-  .c-rows > div.c-swiped:hover .c-meta{opacity:0}
 }
 .c-sact{width:78px;flex-shrink:0;border:0;cursor:pointer;font-family:var(--font-mono);font-size:10.5px;
-      letter-spacing:.07em;text-transform:uppercase;display:flex;align-items:center;justify-content:center}
+      letter-spacing:.07em;text-transform:uppercase;display:flex;align-items:center;justify-content:center;
+      padding:0 6px;text-align:center;line-height:1.2}
 .c-sact.c-read{background:var(--paper-2);color:var(--ink);border-left:1px solid var(--ink-28)}
 .c-sact.c-clear{background:var(--ink);color:var(--paper)}
 

@@ -507,7 +507,14 @@ function OnboardingPreview() {
  */
 function PreviewHeaderActions({ empty }: { empty: boolean }) {
   const [notifications, setNotifications] = useState(() =>
-    ALERTS.map((a) => ({ id: a.id, title: a.title, detail: a.detail, time: a.time, unread: !a.read })),
+    ALERTS.map((a) => ({
+      id: a.id,
+      title: a.title,
+      detail: a.detail,
+      time: a.time,
+      unread: !a.read,
+      ...(a.action ? { action: a.action } : {}),
+    })),
   );
   const shown = empty ? [] : notifications;
 
