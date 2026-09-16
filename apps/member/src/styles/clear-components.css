@@ -370,6 +370,20 @@
 .c-cardface .c-wm{color:var(--paper)}
 .c-cardface.c-virtual{background:linear-gradient(160deg,#1E2C27 0%,#16211D 70%)}
 .c-cardface.c-frozen{background:var(--ink-70)}
+/* Five things are objects rather than page surfaces, so they stay dark on a dark ground: the card
+   face and its three states, the number and the wordmark on it, the chip, and the scan viewfinder.
+   The test is simple — if it would still be dark in the real world, it does not flip. */
+.dark .c-cardface,.dusk .c-cardface{background:#0E1714}
+.dark .c-cardface.c-virtual,.dusk .c-cardface.c-virtual{
+  background:linear-gradient(160deg,#1B2A24 0%,#0E1714 70%)}
+.dark .c-cardface.c-frozen,.dusk .c-cardface.c-frozen{background:#2C3A35}
+.dark .c-pan,.dusk .c-pan,
+.dark .c-cardface .c-wm,.dusk .c-cardface .c-wm,
+.dark .c-cstate,.dusk .c-cstate{color:#DFE3DE}
+.dark .c-cchip,.dusk .c-cchip{background:#5A635F}
+.dark .c-viewfinder,.dusk .c-viewfinder{background:#0E1714}
+.dark .c-vf,.dusk .c-vf{border-color:#DFE3DE}
+
 .c-cchip{width:36px;height:27px;border-radius:4px;background:var(--ink-28);display:block;position:relative}
 .c-cchip::after{content:'';position:absolute;inset:6px 4px;border-left:1px solid var(--ink-70);
               border-right:1px solid var(--ink-70)}
