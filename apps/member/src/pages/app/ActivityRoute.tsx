@@ -1,8 +1,22 @@
+import { useEffect, useState } from 'react';
 import ActivityPage from './ActivityPage';
 import { ACTIVITY_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { toActivityRow } from '@/lib/activityMapping';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { onChainStale } from '@/lib/chainStale';
+import { keepLastGood } from '@/lib/keepLastGood';
+import { categoriesFrom, cycleSpendFrom } from '@/lib/activityCycle';
+import { oldestUnclaimed } from '@/lib/sendClaims';
+import {
+  getCardTransactions,
+  getCredit,
+  listSendTransfers,
+  type CardTransaction,
+  type CreditState,
+} from '@/utils/apiClient';
+import type { PendingClaim } from '@/lib/clearModel';
 
 /*
  * Day-one, not in-use.
@@ -19,25 +33,80 @@ import { useMemberProfile } from '@/hooks/useMemberProfile';
  */
 
 /**
- * Live Activity — the member's real transactions.
+ * Live Activity — the member's real transactions, and what the cycle was made of.
  *
- * The rows are real as soon as there are any. The side rail is not: cycle spend, category
- * breakdown and the inside-the-co-op figure are cycle-level views that need the credit route
- * before they mean anything, so they stay on placeholder.
+ * The hero and Where it went are derived rather than fetched: the credit line gives the cycle's
+ * start and the carry, card authorizations give the cash-or-credit split and the merchant category,
+ * and everything else that left the account is cash by definition. Both are absent until there is
+ * spending to describe, which is the honest shape for a member who has not spent yet.
+ *
+ * Inside the co-op has no source: nothing records which payments stayed with members and partners,
+ * and a figure assembled from what we do have would be a guess with a dollar sign on it.
  *
  * An empty list after loading is left empty rather than filled with placeholder rows. Activity is
  * the one page where nothing to show is a true and useful answer -- a new member has no history,
  * and inventing some would be the page lying about their account rather than merely decorating it.
- * That is the opposite of the call made on Savings, where a zero balance mid-fetch would have
- * been the lie.
  */
 export default function ActivityRoute() {
   const { items, loading } = useClearTransactions();
   const member = useMemberProfile();
+  const { address } = useAppKitAccount();
+  const [credit, setCredit] = useState<CreditState | null>(null);
+  const [cards, setCards] = useState<CardTransaction[]>([]);
+  const [pendingClaim, setPendingClaim] = useState<PendingClaim | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getCardTransactions().then(({ value }) => {
+      if (!cancelled) setCards(value ?? []);
+    });
+    void listSendTransfers().then((transfers) => {
+      if (!cancelled) setPendingClaim(oldestUnclaimed(transfers));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The cycle moves when the line does, so this re-reads on the same signal as Home and Card.
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    const read = () => {
+      void getCredit(address).then((result) => {
+        if (!cancelled) setCredit((prev) => keepLastGood(prev, result));
+      });
+    };
+    read();
+    const stopListening = onChainStale(read);
+    return () => {
+      cancelled = true;
+      stopListening();
+    };
+  }, [address]);
+
+  const cycleRow = credit?.complete ? credit.cycle : null;
+  const startMs = cycleRow && cycleRow.issuedAt > 0 ? cycleRow.issuedAt * 1000 : 0;
+  const daysLeft =
+    cycleRow && cycleRow.expiration > 0
+      ? Math.max(0, Math.ceil((cycleRow.expiration * 1000 - Date.now()) / 86_400_000))
+      : 0;
+  const cycleSpend = cycleSpendFrom(cards, items, {
+    startMs,
+    daysLeft,
+    carryCost: (credit?.term?.carryOwedCents ?? 0) / 100,
+  });
+  const categories = cycleSpend ? categoriesFrom(cards, items, startMs) : [];
 
   const data = loading
     ? ACTIVITY_DAY_ONE
-    : { ...ACTIVITY_DAY_ONE, rows: items.map(toActivityRow) };
+    : {
+        ...ACTIVITY_DAY_ONE,
+        rows: items.map(toActivityRow),
+        ...(cycleSpend ? { cycleSpend } : {}),
+        ...(categories.length > 0 ? { categories } : {}),
+        ...(pendingClaim ? { pendingClaim } : {}),
+      };
 
   return <ActivityPage data={data} email={member.email || undefined} />;
 }

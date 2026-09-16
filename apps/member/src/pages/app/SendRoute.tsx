@@ -5,8 +5,8 @@ import { SEND_DAY_ONE } from '@/data/clearPlaceholder';
 import { useContacts, type Contact as SavedContact } from '@/context/ContactsContext';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { listSendTransfers } from '@/utils/apiClient';
+import { oldestUnclaimed } from '@/lib/sendClaims';
 import type { Contact, PendingClaim } from '@/lib/clearModel';
-import type { SendTransferSummary } from '@/types/send';
 
 /*
  * Day-one, not in-use.
@@ -94,29 +94,4 @@ function initialsOf(name: string): string {
   const first = parts[0][0] ?? '';
   const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? '') : '';
   return (first + last).toUpperCase();
-}
-
-/**
- * The oldest send that is locked but not yet collected.
- *
- * Only one is surfaced, because the page shows one banner. Oldest rather than largest: it is the
- * one closest to expiring, and expiry is the thing the member would want to act on.
- */
-function oldestUnclaimed(transfers: SendTransferSummary[]): PendingClaim | undefined {
-  const waiting = transfers
-    .filter((t) => t.status === 'LOCK_CONFIRMED' || t.status === 'CLAIM_STARTED')
-    .sort((a, b) => Date.parse(a.expiresAt) - Date.parse(b.expiresAt));
-
-  const next = waiting[0];
-  if (!next) return undefined;
-
-  const msLeft = Date.parse(next.expiresAt) - Date.now();
-  return {
-    amount: Number(next.principalUsdc),
-    // The recipient is deliberately not stored in the clear -- the server keeps a hash of the
-    // hint, not the phone number -- so the banner names the send rather than the person.
-    recipient: 'someone you sent to',
-    sentOn: new Date(next.expiresAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-    expiresInDays: Math.max(0, Math.ceil(msLeft / 86_400_000)),
-  };
 }

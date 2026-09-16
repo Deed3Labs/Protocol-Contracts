@@ -27,7 +27,11 @@ export default function PendingClaimBanner({
                   {money(claim.amount, { cents: true })} waiting for {claim.recipient} to claim
                 </p>
                 <p className="c-det mt-[3px]">
-                  {showSent ? `Sent ${claim.sentOn}` : 'Not a member yet'} &middot; expires in {claim.expiresInDays} days
+                  {showSent
+                    ? claim.sentOn
+                      ? `Sent ${claim.sentOn} · expires in ${claim.expiresInDays} days`
+                      : `Expires in ${claim.expiresInDays} days`
+                    : `Not a member yet · expires in ${claim.expiresInDays} days`}
                 </p>
               </div>
               <Btn onClick={onRemind}>Remind</Btn>

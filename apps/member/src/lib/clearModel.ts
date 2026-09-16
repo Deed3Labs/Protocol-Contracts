@@ -343,7 +343,8 @@ export interface PendingClaim {
   amount: number;
   /** Who the money is waiting on. */
   recipient: string;
-  sentOn: string;
+  /** When it was sent. Absent for a live send: the server keeps the expiry, not the send date. */
+  sentOn?: string;
   expiresInDays: number;
 }
 
