@@ -69,6 +69,7 @@ export default function SettingsPage({
   onSaveAddress,
   savingAddress = false,
   addressError = null,
+  phoneChange,
 }: {
   data?: SettingsData;
   /** The address book, and Ready to allocate for sending from it. */
@@ -83,6 +84,18 @@ export default function SettingsPage({
   onSaveAddress?: (next: MailingAddress) => void;
   savingAddress?: boolean;
   addressError?: string | null;
+  /**
+   * Changing the number a code goes to. Absent in the preview harness, where the sheet is there to
+   * be looked at rather than to move a credential.
+   */
+  phoneChange?: {
+    stage: 'enter' | 'code';
+    busy: boolean;
+    error: string | null;
+    onSendCode: (phone: string) => void;
+    onVerify: (code: string) => void;
+    onClose: () => void;
+  };
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -311,7 +324,19 @@ export default function SettingsPage({
   const modals = (
     <>
       <AccelerationDialog data={data} open={accelerationOpen} onOpenChange={setAccelerationOpen} />
-      <ChangePhoneDialog current={profile.phone} open={phoneOpen} onOpenChange={setPhoneOpen} />
+      <ChangePhoneDialog
+        current={profile.phone}
+        open={phoneOpen}
+        onOpenChange={(o) => {
+          setPhoneOpen(o);
+          if (!o) phoneChange?.onClose();
+        }}
+        stage={phoneChange?.stage ?? 'enter'}
+        busy={phoneChange?.busy ?? false}
+        error={phoneChange?.error ?? null}
+        onSendCode={phoneChange?.onSendCode}
+        onVerify={phoneChange?.onVerify}
+      />
       <ChangeAddressDialog
         current={address}
         open={addressOpen}

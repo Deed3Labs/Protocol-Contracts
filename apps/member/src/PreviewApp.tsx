@@ -485,6 +485,8 @@ function CounterOnboardingPreview() {
  */
 function SettingsPreview({ empty }: { empty: boolean }) {
   const [address, setAddress] = useState<MailingAddress>(EMPTY_ADDRESS);
+  // Changing a phone number is two screens, so the harness carries the step rather than the change.
+  const [stage, setStage] = useState<'enter' | 'code'>('enter');
 
   return (
     <SettingsPage
@@ -492,6 +494,14 @@ function SettingsPreview({ empty }: { empty: boolean }) {
       available={empty ? 0 : SEND_IN_USE.available}
       address={address}
       onSaveAddress={setAddress}
+      phoneChange={{
+        stage,
+        busy: false,
+        error: null,
+        onSendCode: () => setStage('code'),
+        onVerify: () => setStage('enter'),
+        onClose: () => setStage('enter'),
+      }}
     />
   );
 }

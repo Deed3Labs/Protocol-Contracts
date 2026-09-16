@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useUpdatePhone } from '@privy-io/react-auth';
 import SettingsPage from './SettingsPage';
 import { useMemberProfile, type MailingAddress } from '@/hooks/useMemberProfile';
 import { useLogout } from '@/hooks/useLogout';
@@ -21,6 +22,7 @@ export default function SettingsRoute() {
   const member = useMemberProfile();
   const [savingAddress, setSavingAddress] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
+  const phone = usePhoneChange(() => member.refresh());
   const logout = useLogout();
   const { contacts } = useContacts();
   const { cash } = useClearBalances();
@@ -49,6 +51,7 @@ export default function SettingsRoute() {
     <SettingsPage
       data={{ ...SETTINGS, profile, accelerationActive: member.accelerated }}
       onSignOut={() => void logout()}
+      phoneChange={phone}
       address={member.mailingAddress}
       savingAddress={savingAddress}
       addressError={addressError}
@@ -101,4 +104,73 @@ export default function SettingsRoute() {
       }}
     />
   );
+}
+
+
+/** Privy wants E.164. Strip everything else and keep a single leading +. */
+const toE164 = (raw: string) => {
+  const digits = raw.replace(/\D/g, '');
+  return `+${digits.length === 10 ? `1${digits}` : digits}`;
+};
+
+/**
+ * Changing the number a code goes to.
+ *
+ * Two real steps against Privy — send, then verify — because the phone is the credential and a new
+ * one has to answer before it replaces the old one. Privy holds the number that signs you in; the
+ * member's own profile holds the one Settings shows, so a successful change writes both. The sheet
+ * itself is headless for the same reason the sign-in screen is: Privy's own modal cannot say any of
+ * this.
+ */
+function usePhoneChange(onChanged: () => void) {
+  const { sendCode, verifyCode } = useUpdatePhone();
+  const [stage, setStage] = useState<'enter' | 'code'>('enter');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState('');
+
+  const onSendCode = useCallback(
+    (raw: string) => {
+      setBusy(true);
+      setError(null);
+      const number = toE164(raw);
+      void sendCode({ newPhoneNumber: number })
+        .then(() => {
+          setPending(number);
+          setStage('code');
+        })
+        .catch((e: unknown) =>
+          setError(e instanceof Error ? e.message : "We couldn't send a code to that number."),
+        )
+        .finally(() => setBusy(false));
+    },
+    [sendCode],
+  );
+
+  const onVerify = useCallback(
+    (code: string) => {
+      setBusy(true);
+      setError(null);
+      void verifyCode({ code })
+        .then(async () => {
+          // Privy now signs them in on the new number; the profile row still shows the old one.
+          await updateMemberProfile({ phone: pending }).catch(() => null);
+          onChanged();
+          setStage('enter');
+        })
+        .catch((e: unknown) =>
+          setError(e instanceof Error ? e.message : 'That code did not work. Try again.'),
+        )
+        .finally(() => setBusy(false));
+    },
+    [verifyCode, pending, onChanged],
+  );
+
+  const onClose = useCallback(() => {
+    setStage('enter');
+    setError(null);
+    setPending('');
+  }, []);
+
+  return { stage, busy, error, onSendCode, onVerify, onClose };
 }
