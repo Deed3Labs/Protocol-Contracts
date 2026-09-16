@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
@@ -53,9 +53,10 @@ export default function CardRoute() {
   /*
    * Where a physical card would be posted.
    *
-   * From the linked bank's identity record, which is the same place Personal information reads
-   * from — not typed again in the sheet, so a shipping address cannot quietly diverge from the
-   * identity the issuer checked. No address means the sheet says so and cannot order.
+   * The member's own address first — Personal information is the one place the app holds one, and
+   * the sheet reads it rather than asking again, so a shipping address cannot quietly diverge from
+   * what the identity record says. The linked bank's is the fallback for a member who has not
+   * filled one in but whose bank knows it. Neither means the sheet says so and cannot order.
    */
   const [identityAddress, setIdentityAddress] = useState<BankIdentity['address']>(null);
   const [spend, setSpend] = useState<CardTransaction[] | null>(null);
@@ -191,6 +192,27 @@ export default function CardRoute() {
    * Virtual is issued now and the label is the member's own memo. Physical is posted, and its
    * shipping comes from the identity record rather than from the sheet.
    */
+  /** What the shipping label would say: the member's own, then the bank's. */
+  const shipping = useMemo(() => {
+    const own = member.mailingAddress;
+    if (own.line1) {
+      return {
+        address1: own.line1,
+        address2: own.line2 || undefined,
+        city: own.city,
+        state: own.state,
+        postalCode: own.postalCode,
+      };
+    }
+    if (!identityAddress?.address1) return null;
+    return {
+      address1: identityAddress.address1,
+      city: identityAddress.city ?? '',
+      state: identityAddress.state ?? '',
+      postalCode: identityAddress.postalCode ?? '',
+    };
+  }, [member.mailingAddress, identityAddress]);
+
   const addCard = useCallback(
     async (kind: 'virtual' | 'physical', label: string) => {
       setBusy(true);
@@ -198,19 +220,12 @@ export default function CardRoute() {
       try {
         if (kind === 'physical') {
           const parts = (member.legalName || member.name || '').trim().split(/\s+/);
-          if (!identityAddress?.address1 || parts.length < 2) {
+          if (!shipping || parts.length < 2) {
             setAddError('We need your name and address on Personal information before a card can be posted.');
             return;
           }
           const { value: ordered, error } = await orderPhysicalCard(
-            {
-              firstName: parts[0],
-              lastName: parts.slice(1).join(' '),
-              address1: identityAddress.address1,
-              city: identityAddress.city ?? '',
-              state: identityAddress.state ?? '',
-              postalCode: identityAddress.postalCode ?? '',
-            },
+            { firstName: parts[0], lastName: parts.slice(1).join(' '), ...shipping },
             label || undefined,
           );
           if (!ordered) {
@@ -232,7 +247,7 @@ export default function CardRoute() {
         setBusy(false);
       }
     },
-    [identityAddress, member.legalName, member.name],
+    [shipping, member.legalName, member.name],
   );
 
   /*
@@ -385,10 +400,10 @@ export default function CardRoute() {
       }}
       addError={addError}
       address={
-        identityAddress?.address1
+        shipping
           ? {
               name: member.legalName || member.name,
-              lines: [identityAddress.address1, identityAddress.city, identityAddress.state, identityAddress.postalCode]
+              lines: [shipping.address1, shipping.address2, shipping.city, shipping.state, shipping.postalCode]
                 .filter(Boolean)
                 .join(', '),
             }

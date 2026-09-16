@@ -20,6 +20,23 @@ function initialsOf(name: string, address: string): string {
   return (address.slice(2, 4) || 'CL').toUpperCase();
 }
 
+/** Where post goes. Empty strings rather than nulls, so a form can hold it without translating. */
+export interface MailingAddress {
+  line1: string;
+  line2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+}
+
+export const EMPTY_ADDRESS: MailingAddress = { line1: '', line2: '', city: '', state: '', postalCode: '' };
+
+/** One line for a row that shows it; empty when there is nothing on file. */
+export function formatAddress(a: MailingAddress): string {
+  const tail = [a.city, a.state].filter(Boolean).join(', ');
+  return [a.line1, a.line2, [tail, a.postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+}
+
 export interface MemberProfile {
   name: string; // display name, or short address
   /** The name on legal documents. Empty until identity verification supplies one. */
@@ -28,6 +45,8 @@ export interface MemberProfile {
   handle: string; // email, @username, or short address
   email: string;
   phone: string;
+  /** The member's own mailing address, which is where a physical card is posted. */
+  mailingAddress: MailingAddress;
   avatarUrl: string | null;
   username: string;
   address: string;
@@ -46,7 +65,8 @@ export interface MemberProfile {
 }
 
 const EMPTY: MemberProfile = {
-  name: '', legalName: '', firstName: 'there', handle: '', email: '', phone: '', avatarUrl: null,
+  name: '', legalName: '', firstName: 'there', handle: '', email: '', phone: '',
+  mailingAddress: EMPTY_ADDRESS, avatarUrl: null,
   username: '', address: '', initials: 'CL', loading: false, loaded: false, memberStatus: null, accelerated: false, refresh: () => {}, setAvatar: () => {}, raw: null,
 };
 
@@ -163,6 +183,13 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
     handle: email || (pub?.username ? `@${pub.username}` : '') || short(addr),
     email,
     phone: priv?.phone || '',
+    mailingAddress: {
+      line1: priv?.addressLine1 || '',
+      line2: priv?.addressLine2 || '',
+      city: priv?.addressCity || '',
+      state: priv?.addressState || '',
+      postalCode: priv?.addressPostalCode || '',
+    },
     // Prefer the backend (cross-device) avatar URL; local cache is the optimistic/offline fallback.
     avatarUrl: (pub?.avatarUrl?.startsWith('http') ? pub.avatarUrl : null) || localAvatar,
     username: pub?.username || '',

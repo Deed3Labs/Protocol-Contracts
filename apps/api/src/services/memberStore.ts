@@ -71,6 +71,18 @@ export interface MemberPrivateProfile {
   email: string | null;
   phone: string | null;
   cityRegion: string | null;
+  /*
+   * Where post goes. Private for the same reason the legal name is: it identifies a member at their
+   * door, and the card issuer is the only other party that ever sees it.
+   *
+   * Kept as the pieces a shipping label needs rather than one string, because that is what an issuer
+   * asks for — a free-text address cannot be split back apart reliably.
+   */
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressCity: string | null;
+  addressState: string | null;
+  addressPostalCode: string | null;
 }
 
 export interface MemberProfileView {
@@ -242,6 +254,11 @@ export interface UpdateProfileInput {
   email?: string | null;
   phone?: string | null;
   cityRegion?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressCity?: string | null;
+  addressState?: string | null;
+  addressPostalCode?: string | null;
 }
 
 export interface UpdateSecuritySettingsInput {
@@ -1392,7 +1409,12 @@ export class MemberStore {
       patch.legalName !== undefined
       || patch.email !== undefined
       || patch.phone !== undefined
-      || patch.cityRegion !== undefined;
+      || patch.cityRegion !== undefined
+      || patch.addressLine1 !== undefined
+      || patch.addressLine2 !== undefined
+      || patch.addressCity !== undefined
+      || patch.addressState !== undefined
+      || patch.addressPostalCode !== undefined;
 
     if (hasPrivatePatch) {
       if (!this.isPrivateDataEncryptionConfigured()) {
@@ -1406,6 +1428,11 @@ export class MemberStore {
         email: resolvePatchedEmail(patch.email, currentPrivate?.email ?? null),
         phone: resolvePatchedPhone(patch.phone, currentPrivate?.phone ?? null),
         cityRegion: resolvePatchedString(patch.cityRegion, currentPrivate?.cityRegion ?? null, 160),
+        addressLine1: resolvePatchedString(patch.addressLine1, currentPrivate?.addressLine1 ?? null, 160),
+        addressLine2: resolvePatchedString(patch.addressLine2, currentPrivate?.addressLine2 ?? null, 160),
+        addressCity: resolvePatchedString(patch.addressCity, currentPrivate?.addressCity ?? null, 120),
+        addressState: resolvePatchedString(patch.addressState, currentPrivate?.addressState ?? null, 60),
+        addressPostalCode: resolvePatchedString(patch.addressPostalCode, currentPrivate?.addressPostalCode ?? null, 20),
       };
 
       const encrypted = encryptMemberPrivateData(
@@ -2608,6 +2635,11 @@ export class MemberStore {
         email: normalizeOptionalEmail(parsed?.email ?? null) ?? null,
         phone: normalizeOptionalPhone(parsed?.phone ?? null) ?? null,
         cityRegion: normalizeOptionalString(parsed?.cityRegion ?? null, 160) ?? null,
+        addressLine1: normalizeOptionalString(parsed?.addressLine1 ?? null, 160) ?? null,
+        addressLine2: normalizeOptionalString(parsed?.addressLine2 ?? null, 160) ?? null,
+        addressCity: normalizeOptionalString(parsed?.addressCity ?? null, 120) ?? null,
+        addressState: normalizeOptionalString(parsed?.addressState ?? null, 60) ?? null,
+        addressPostalCode: normalizeOptionalString(parsed?.addressPostalCode ?? null, 20) ?? null,
       },
       privateProfileExists: true,
       privateProfileLocked: false,

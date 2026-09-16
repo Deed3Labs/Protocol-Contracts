@@ -418,15 +418,17 @@
 .c-ctag{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;color:var(--ink-28)}
 /* The guide puts the position classes on the face itself; here each face sits in the element that
    follows the finger, so the same rules are keyed to the stack's own children. */
-.c-cardstack{position:relative;padding-bottom:18px}
+/* pan-y, so a finger heading down the page still scrolls it: sideways is the stack's, and every
+   other direction belongs to the page. */
+.c-cardstack{position:relative;padding-bottom:9px;touch-action:pan-y}
 .c-cardstack > *{position:absolute;top:0;left:0;right:0}
 .c-cardstack > .c-sel{position:relative;z-index:3}
-/* The guide offsets these by 9 and 18 from the top, which with the face's own aspect ratio leaves
-   them a couple of pixels SHORT of the card in front — a stack with nothing showing behind it. The
-   bottom is pinned instead, so the same 9 and 18 show below, which is what the drawing means. */
-.c-cardstack > .c-b1{top:9px;left:9px;right:9px;bottom:9px;opacity:.62;z-index:2}
-.c-cardstack > .c-b2{top:18px;left:18px;right:18px;bottom:0;opacity:.4;z-index:1}
-.c-cardstack > .c-b1 > *,.c-cardstack > .c-b2 > *{height:100%}
+/* One card behind, whatever the wallet holds. The guide draws two, but the marker under the stack
+   is what says how many there are — a third layer costs height and says nothing the dots have not.
+   The guide offsets by 9 from the top, which with the face's own aspect ratio leaves it a couple of
+   pixels SHORT of the card in front; the bottom is pinned instead, so the 9 shows below. */
+.c-cardstack > .c-b1{top:9px;left:9px;right:9px;bottom:0;opacity:.5;z-index:2}
+.c-cardstack > .c-b1 > *{height:100%}
 /* the marker stretches to the card you are on rather than just filling in */
 .c-stackdots{display:flex;gap:5px;justify-content:center;margin-top:10px}
 .c-stackdots > *{width:5px;height:5px;background:var(--ink-28);display:block;padding:0;border:0;
