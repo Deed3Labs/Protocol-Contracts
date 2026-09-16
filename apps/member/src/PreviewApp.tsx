@@ -9,7 +9,7 @@ import RepayDialog from '@/components/clear/RepayDialog';
 import TermPlansCard from '@/components/clear/TermPlansCard';
 import { Button } from '@/components/ui/button';
 import HeaderActions from '@/components/shell/HeaderActions';
-import { unreadAlerts, unreadThreads } from '@/lib/clearModel';
+import { unreadThreads } from '@/lib/clearModel';
 import HomePage from '@/pages/app/HomePage';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
@@ -498,6 +498,32 @@ function OnboardingPreview() {
   );
 }
 
+/**
+ * The header, with the notification panel's own state behind it.
+ *
+ * Read and Clear are the panel's whole point, so the harness holds a copy of the list to act on —
+ * the live app dismisses them through the notifications context instead.
+ */
+function PreviewHeaderActions({ empty }: { empty: boolean }) {
+  const [notifications, setNotifications] = useState(() =>
+    INBOX.alerts.map((a) => ({ id: a.id, title: a.title, detail: a.detail, time: a.time, unread: !a.read })),
+  );
+  const shown = empty ? [] : notifications;
+
+  return (
+    <HeaderActions
+      profile={SETTINGS.profile}
+      unread={empty ? 0 : shown.filter((n) => n.unread).length + unreadThreads(INBOX.threads)}
+      accelerationActive={SETTINGS.accelerationActive}
+      notifications={shown}
+      onMarkAllRead={() => setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })))}
+      onRead={(id) => setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)))}
+      onClear={(id) => setNotifications((prev) => prev.filter((n) => n.id !== id))}
+      onClearAll={() => setNotifications([])}
+    />
+  );
+}
+
 export default function PreviewApp() {
   const [empty, setEmpty] = useState(false);
 
@@ -520,22 +546,7 @@ export default function PreviewApp() {
                   <>
                     <AppChrome
                       trailing={
-                        <HeaderActions
-                          profile={SETTINGS.profile}
-                          unread={empty ? 0 : unreadAlerts(INBOX.alerts) + unreadThreads(INBOX.threads)}
-                          accelerationActive={SETTINGS.accelerationActive}
-                          notifications={
-                            empty
-                              ? []
-                              : INBOX.alerts.map((a) => ({
-                                  id: a.id,
-                                  title: a.title,
-                                  detail: a.detail,
-                                  time: a.time,
-                                  unread: !a.read,
-                                }))
-                          }
-                        />
+                        <PreviewHeaderActions empty={empty} />
                       }
                     >
                       <Routes>

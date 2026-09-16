@@ -415,6 +415,25 @@
         display:flex;align-items:center;justify-content:center;
         font-family:var(--font-mono);font-size:var(--t-label);letter-spacing:.1em;color:var(--ink-50);text-transform:uppercase}
 
+/* ================= NOTIFICATIONS ================= */
+/* two header actions, separated by a rule rather than running together */
+.c-headacts{display:flex;align-items:center;gap:var(--s2)}
+.c-headacts button{cursor:pointer;white-space:nowrap}
+.c-headacts button + button{border-left:1px solid var(--ink-13);padding-left:var(--s2)}
+
+/* a swiped row slides, it does not shrink. The body keeps its full width so
+   nothing reflows; the actions sit over its right end at full row height. */
+.c-rows > div.c-swiped{padding:0;position:relative;overflow:hidden}
+.c-rows > div.c-swiped .c-sbody{padding:var(--s2) 0;background:var(--paper);position:relative;z-index:1;
+      transition:transform .18s ease;touch-action:pan-y}
+.c-rows > div.c-swiped.c-open .c-sbody{transform:translateX(-156px)}
+@media (hover:hover){.c-rows > div.c-swiped:hover .c-sbody{transform:translateX(-156px)}}
+.c-sacts{position:absolute;top:0;right:0;bottom:0;display:flex}
+.c-sact{width:78px;flex-shrink:0;border:0;cursor:pointer;font-family:var(--font-mono);font-size:10.5px;
+      letter-spacing:.07em;text-transform:uppercase;display:flex;align-items:center;justify-content:center}
+.c-sact.c-read{background:var(--paper-2);color:var(--ink);border-left:1px solid var(--ink-28)}
+.c-sact.c-clear{background:var(--ink);color:var(--paper)}
+
 /* ================= QUICK ACTIONS FAN ================= */
 .c-qafan{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s1)}
 .c-qaitem{height:40px;padding:0 var(--s2);display:flex;align-items:center;background:var(--paper-2);
