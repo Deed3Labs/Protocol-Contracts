@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { Btn, CMain, Cell } from '@/components/clear/brand/anatomy';
 import { PlusIcon } from '@/components/clear/brand/icons';
 import { useSetMobileAction } from '@/components/shell/MobileAction';
 import { useSetPaneTitle } from '@/components/shell/PaneTitle';
@@ -65,8 +66,9 @@ export default function InboxPage({
   const threads = term
     ? inList.filter((t) => t.name.toLowerCase().includes(term) || t.preview.toLowerCase().includes(term))
     : inList;
-  // Desktop always has a thread open: an empty half of the slab reads as broken.
-  const open = all.find((t) => t.id === openId) ?? (desktop ? threads[0] : undefined);
+  // Nothing selected is a state rather than a gap: the pane keeps its width and says what the inbox
+  // holds, instead of opening a thread the member did not ask for.
+  const open = all.find((t) => t.id === openId);
   const messages = open ? [...(data.messages[open.id] ?? []), ...(sent[open.id] ?? [])] : [];
 
   const send = (body: string) => {
@@ -166,9 +168,26 @@ export default function InboxPage({
   return (
     <>
       {/* The list is a screen too: the control bar and the footer hold while the threads scroll. */}
-      <div className={desktop ? 'c-slab' : 'c-slab c-one c-fillscreen -mt-s1'}>
+      <div className={desktop ? 'c-slab c-inbox c-fillscreen' : 'c-slab c-one c-fillscreen -mt-s1'}>
         {list}
-        {desktop && open && <ThreadView thread={open} messages={messages} onSend={send} />}
+        {desktop &&
+          (open ? (
+            <ThreadView thread={open} messages={messages} onSend={send} />
+          ) : (
+            <Cell>
+              <CMain>
+                <div className="c-panehint">
+                  <p className="c-fig c-fig-sec">Pick a thread</p>
+                  <p className="c-det mt-s1 max-w-[34ch]">
+                    Support, members you have paid and partners you owe all land in the same inbox.
+                  </p>
+                  <Btn className="mt-s3" onClick={() => setNewOpen(true)}>
+                    New message
+                  </Btn>
+                </div>
+              </CMain>
+            </Cell>
+          ))}
       </div>
       {dialogs}
     </>

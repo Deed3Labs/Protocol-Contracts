@@ -69,7 +69,8 @@ export default function ThreadList({
   return (
     <Cell>
       <CHead>
-        <SecHead label="Inbox">
+        {/* Archived is the same screen with a different list, and it says so. */}
+        <SecHead label={showingArchived ? 'Archived' : 'Inbox'}>
           <span className="c-det">
             {showingArchived
               ? `${threads.length} archived`
@@ -114,9 +115,11 @@ export default function ThreadList({
       </CBar>
       <CMain ref={main} className={threads.length > 0 ? 'c-flush' : undefined}>
         {threads.length === 0 ? (
-          <div className="py-s4 text-center">
+          // An empty list stands in the middle of the box it is empty in, now that the box is a
+          // screen rather than a height that follows its contents.
+          <div className="c-panehint">
             <p className="c-fig c-fig-sec">{showingArchived ? 'Nothing archived' : 'No messages'}</p>
-            <p className="c-det mt-s1">
+            <p className="c-det mt-s1 max-w-[34ch]">
               {showingArchived
                 ? 'Threads you archive are kept here, and you can put them back any time.'
                 : 'Support answers here, and so do members and partners you have paid.'}
