@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { categoriesFrom, cycleSpendFrom, type SpendRow } from './activityCycle';
+import { categoriesFrom, cycleSpendFrom, groupsFromMerchants, merchantsFrom, type SpendRow } from './activityCycle';
 import type { CardTransaction } from '@/utils/apiClient';
 
 const START = Date.parse('2026-10-01T00:00:00Z');
@@ -25,11 +25,11 @@ const cards = [
 ];
 
 const rows: SpendRow[] = [
-  { ts: START + 86_400_000, amount: -40, internal: false },
-  { ts: START + 86_400_000, amount: 2_000, internal: false },
+  { name: 'Diego R.', ts: START + 86_400_000, amount: -40, internal: false },
+  { name: 'Payroll deposit', ts: START + 86_400_000, amount: 2_000, internal: false },
   // A move to the member's own savings is not spending.
-  { ts: START + 86_400_000, amount: -500, internal: true },
-  { ts: START - 86_400_000, amount: -99, internal: false },
+  { name: 'To savings', ts: START + 86_400_000, amount: -500, internal: true },
+  { name: 'Older send', ts: START - 86_400_000, amount: -99, internal: false },
 ];
 
 describe('what the cycle was made of', () => {
@@ -66,5 +66,24 @@ describe('where it went', () => {
 
   test('a single group still stands, because the cell always does', () => {
     expect(categoriesFrom([cards[0]], [], START)).toEqual([{ label: 'Groceries', amount: 118.44 }]);
+  });
+});
+
+describe('changing the groups', () => {
+  const merchants = merchantsFrom(cards, rows, START);
+
+  test('a merchant carries its payments, its total and the group it starts in', () => {
+    expect(merchants).toEqual([
+      { name: 'groceries', group: 'Groceries', payments: 1, amount: 118.44 },
+      { name: 'fuel', group: 'Fuel', payments: 1, amount: 52.1 },
+      { name: 'Diego R.', group: 'Everything else', payments: 1, amount: 40 },
+    ]);
+  });
+
+  test('a move is retroactive: the groups are rebuilt from the merchants', () => {
+    expect(groupsFromMerchants(merchants, { 'Diego R.': 'Groceries' })).toEqual([
+      { label: 'Groceries', amount: 158.44 },
+      { label: 'Fuel', amount: 52.1 },
+    ]);
   });
 });

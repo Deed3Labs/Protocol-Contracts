@@ -8,6 +8,7 @@ import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import FiltersDialog from '@/components/clear/activity/FiltersDialog';
 import ExportDialog from '@/components/clear/activity/ExportDialog';
+import GroupsDialog from '@/components/clear/activity/GroupsDialog';
 import { ACTIVITY_DAY_ONE } from '@/data/clearPlaceholder';
 import { money, signedMoney } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
@@ -24,6 +25,7 @@ import {
   type ActivityFilters,
   type ActivitySort,
 } from '@/lib/activityView';
+import { groupsFromMerchants } from '@/lib/activityCycle';
 import type { ActivityData, ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
@@ -58,6 +60,9 @@ function MoreLink({ to, onClick, children }: { to?: string; onClick?: () => void
  * cash, from credit and the carry, on one bar. Search, filters, sort and export sit in the list's
  * control bar, because they act on the list and nothing else. Days are sections, and pending is a
  * state: a chip and a quiet amount.
+ *
+ * Change groups works per merchant, and a move is a rule that applies to what has already been
+ * spent — so the figures that sent the member there are the ones that change.
  */
 export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?: ActivityData; email?: string }) {
   const navigate = useNavigate();
@@ -69,6 +74,10 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const [grouping, setGrouping] = useState(true);
+  /** Merchant to the group the member moved it to. A rule, applied to what they have already spent. */
+  const [moved, setMoved] = useState<Record<string, string>>({});
 
   useSetMobileAction({ label: 'Scan', icon: PlusIcon, onSelect: () => navigate('/scan') });
 
@@ -107,12 +116,23 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
 
   // ---- Standing cells -----------------------------------------------------------------------------
 
-  const shares = data.categories?.length ? categoryShares(data.categories, cycle.spent) : [];
+  // With merchants to hand the groups are rebuilt from them, so a move shows immediately and
+  // retroactively — which is what the sheet promises.
+  const merchants = data.merchants ?? [];
+  const groups = merchants.length > 0 ? groupsFromMerchants(merchants, moved) : (data.categories ?? []);
+  const flat = merchants.map((m) => ({ label: m.name, amount: m.amount })).slice(0, 6);
+  const shares = categoryShares(grouping ? groups : flat, cycle.spent);
   const whereItWent = (
     <Cell>
       <CHead>
         <SecHead label="Where it went">
-          <span className="c-det">{shares.length === 1 ? '1 group' : `${shares.length} groups`}</span>
+          <span className="c-det">
+            {grouping
+              ? shares.length === 1
+                ? '1 group'
+                : `${shares.length} groups`
+              : `${shares.length} merchants`}
+          </span>
         </SecHead>
       </CHead>
       <CMain>
@@ -134,8 +154,8 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
       </CMain>
       <CFoot>
         <Line className="items-center!">
-          <span className="c-det">Grouped automatically</span>
-          <MoreLink onClick={() => {}}>Change groups</MoreLink>
+          <span className="c-det">{grouping ? 'Grouped automatically' : 'Not grouped'}</span>
+          <MoreLink onClick={() => setGroupsOpen(true)}>Change groups</MoreLink>
         </Line>
       </CFoot>
     </Cell>
@@ -353,6 +373,15 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
           setLimit(PAGE);
           setFiltersOpen(false);
         }}
+      />
+      <GroupsDialog
+        merchants={merchants}
+        moved={moved}
+        grouping={grouping}
+        open={groupsOpen}
+        onOpenChange={setGroupsOpen}
+        onGrouping={setGrouping}
+        onMove={(merchant, group) => setMoved((prev) => ({ ...prev, [merchant]: group }))}
       />
       <ExportDialog
         cycleRows={data.cycleCount ?? data.rows.length}

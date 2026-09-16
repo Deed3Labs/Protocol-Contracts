@@ -7,7 +7,7 @@ import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
-import { categoriesFrom, cycleSpendFrom } from '@/lib/activityCycle';
+import { categoriesFrom, cycleSpendFrom, merchantsFrom } from '@/lib/activityCycle';
 import { oldestUnclaimed } from '@/lib/sendClaims';
 import {
   getCardTransactions,
@@ -98,6 +98,7 @@ export default function ActivityRoute() {
     carryCost: (credit?.term?.carryOwedCents ?? 0) / 100,
   });
   const categories = categoriesFrom(cards, items, startMs);
+  const merchants = merchantsFrom(cards, items, startMs);
 
   const data = loading
     ? ACTIVITY_DAY_ONE
@@ -106,6 +107,7 @@ export default function ActivityRoute() {
         rows: items.map(toActivityRow),
         cycleSpend,
         categories,
+        merchants,
         ...(pendingClaim ? { pendingClaim } : {}),
       };
 
