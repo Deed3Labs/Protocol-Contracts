@@ -422,14 +422,23 @@
 .c-headacts button{cursor:pointer;white-space:nowrap}
 .c-headacts button + button{border-left:1px solid var(--ink-13);padding-left:var(--s2)}
 
-/* a swiped row slides, it does not shrink. The body keeps its full width so
-   nothing reflows; the actions sit over its right end at full row height. */
+/* the row does not move: the actions come in over its right end, full row height, so nothing
+   reflows and the body keeps the width it had */
 .c-rows > div.c-swiped{padding:0;position:relative;overflow:hidden}
-.c-rows > div.c-swiped .c-sbody{padding:var(--s2) 0;background:var(--paper);position:relative;z-index:1;
-      transition:transform .18s ease;touch-action:pan-y}
-.c-rows > div.c-swiped.c-open .c-sbody{transform:translateX(-156px)}
-@media (hover:hover){.c-rows > div.c-swiped:hover .c-sbody{transform:translateX(-156px)}}
-.c-sacts{position:absolute;top:0;right:0;bottom:0;display:flex}
+.c-rows > div.c-swiped .c-sbody{padding:var(--s2) 0;touch-action:pan-y}
+/* the row's own padding rules, moved to the body that carries them */
+.c-rows > div.c-swiped:first-child .c-sbody{padding-top:0}
+.c-rows > div.c-swiped:last-child .c-sbody{padding-bottom:0}
+/* the time and its dot would sit under the actions, so they go while the actions are showing */
+.c-swiped .c-meta{transition:opacity .18s ease}
+.c-rows > div.c-swiped.c-open .c-meta{opacity:0}
+.c-sacts{position:absolute;top:0;right:0;bottom:0;display:flex;transform:translateX(100%);
+      transition:transform .18s ease}
+.c-rows > div.c-swiped.c-open .c-sacts{transform:none}
+@media (hover:hover){
+  .c-rows > div.c-swiped:hover .c-sacts{transform:none}
+  .c-rows > div.c-swiped:hover .c-meta{opacity:0}
+}
 .c-sact{width:78px;flex-shrink:0;border:0;cursor:pointer;font-family:var(--font-mono);font-size:10.5px;
       letter-spacing:.07em;text-transform:uppercase;display:flex;align-items:center;justify-content:center}
 .c-sact.c-read{background:var(--paper-2);color:var(--ink);border-left:1px solid var(--ink-28)}
@@ -460,6 +469,16 @@
            display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:8px}
 .c-kindbadge svg{width:11px;height:11px;display:block}
 .c-kindbadge.c-support{border-color:var(--settled);color:var(--settled)}
+
+/* A thread is a screen, not a box that grows to fit what is in it. The header, the context bar and
+   the composer hold their places and the messages scroll between them, so two messages and two
+   hundred are the same screen. 170px is the phone's chrome: the header (66), the page's top padding
+   (8) and the room kept for the nav (96). */
+/* height only: the slab is still the grid, and its cell stretches to fill it */
+.c-fillscreen{height:calc(100dvh - 170px);min-height:320px}
+.c-fillscreen > .c-cell{min-height:0}
+.c-fillscreen .c-cmain{overflow-y:auto;min-height:0}
+.c-fillscreen .c-cmain::-webkit-scrollbar{width:0}
 
 /* ================= QUICK ACTIONS FAN ================= */
 .c-qafan{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s1)}

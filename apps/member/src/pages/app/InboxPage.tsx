@@ -102,7 +102,8 @@ export default function InboxPage({
   if (!desktop && open && openId) {
     return (
       <>
-        <div className="c-slab c-one">
+        {/* The thread is the screen: nothing above or below it scrolls, only the messages do. */}
+        <div className="c-slab c-one c-fillscreen">
           <ThreadView thread={open} messages={messages} onSend={send} />
         </div>
         {dialog}

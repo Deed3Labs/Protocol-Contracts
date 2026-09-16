@@ -26,9 +26,11 @@ export default function ThreadView({
   const [draft, setDraft] = useState('');
   const end = useRef<HTMLDivElement>(null);
 
-  // A thread opens at its newest message, which is the one the member came for.
+  // A thread opens at its newest message, which is the one the member came for. The box is scrolled
+  // rather than the sentinel scrolled into view: that left the last timestamp under the padding.
   useEffect(() => {
-    end.current?.scrollIntoView({ block: 'end' });
+    const box = end.current?.parentElement;
+    if (box) box.scrollTop = box.scrollHeight;
   }, [thread.id, messages.length]);
 
   const send = () => {

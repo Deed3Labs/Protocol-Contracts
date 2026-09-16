@@ -36,13 +36,14 @@ function SwipeRow({
   const [drag, setDrag] = useState(0);
   const start = useRef<number | null>(null);
 
-  const offset = open ? -REVEAL + Math.max(0, drag) : Math.max(-REVEAL, Math.min(0, drag));
+  // The actions slide in over the row's right end; the row itself never moves, so nothing reflows
+  // and the text keeps the width it had.
+  const offset = Math.min(REVEAL, Math.max(0, (open ? 0 : REVEAL) + drag));
 
   return (
     <div className={cn('c-swiped', open && 'c-open')}>
       <div
         className="c-sbody"
-        style={drag !== 0 ? { transform: `translateX(${offset}px)`, transition: 'none' } : undefined}
         onPointerDown={(e) => {
           if (e.pointerType === 'mouse') return;
           start.current = e.clientX;
@@ -69,7 +70,10 @@ function SwipeRow({
             <p className={cn('text-sec', notification.unread && 'font-semibold')}>{notification.title}</p>
             <p className="c-det mt-[3px]">{notification.detail}</p>
           </div>
-          <span className="c-det flex shrink-0 items-center gap-[7px]">
+          <span
+            className="c-det c-meta flex shrink-0 items-center gap-[7px]"
+            style={drag !== 0 ? { opacity: offset < REVEAL ? 0 : 1 } : undefined}
+          >
             {notification.time}
             {notification.unread && (
               <span
@@ -80,7 +84,7 @@ function SwipeRow({
           </span>
         </Line>
       </div>
-      <div className="c-sacts">
+      <div className="c-sacts" style={drag !== 0 ? { transform: `translateX(${offset}px)`, transition: 'none' } : undefined}>
         {notification.unread && (
           <button type="button" className="c-sact c-read" onClick={onRead}>
             Read
