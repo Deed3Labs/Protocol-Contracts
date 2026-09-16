@@ -419,8 +419,11 @@
 /* The guide puts the position classes on the face itself; here each face sits in the element that
    follows the finger, so the same rules are keyed to the stack's own children. */
 /* pan-y, so a finger heading down the page still scrolls it: sideways is the stack's, and every
-   other direction belongs to the page. */
-.c-cardstack{position:relative;padding-bottom:9px;touch-action:pan-y}
+   other direction belongs to the page.
+   On the faces as well as the stack, because the finger lands on a face — Safari reads this from
+   the element under it, and a swiped row works precisely because that is where its rule sits. */
+.c-cardstack,.c-cardstack > *,.c-cardstack .c-cardface{touch-action:pan-y}
+.c-cardstack{position:relative;padding-bottom:9px}
 .c-cardstack > *{position:absolute;top:0;left:0;right:0}
 .c-cardstack > .c-sel{position:relative;z-index:3}
 /* One card behind, whatever the wallet holds. The guide draws two, but the marker under the stack

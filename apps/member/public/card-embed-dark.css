@@ -1,0 +1,97 @@
+/*
+ * Styling for the card-details iframe the issuer renders — the ink ground.
+ *
+ * Lithic's embed takes a PUBLICLY reachable stylesheet URI and applies it inside their frame. That
+ * is the only way to make it match: the markup is theirs and served from their origin, so nothing
+ * in the app can reach into it. Unstyled it renders as black serif text on white.
+ *
+ * There is one file per appearance because the frame cannot see ours: an explicit theme is not a
+ * system preference, so the server points Lithic at the sheet that matches what the member picked.
+ * Keep the three in step — same rules, three grounds.
+ *
+ * The values are laid out as the sheet's own rows: a mono label, the value under it, a hairline
+ * between. A PAN is an identifier rather than a figure, which is why it stays in mono.
+ */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  /* Transparent: the sheet behind it is the ground. */
+  background: transparent !important;
+  color: #DFE3DE;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Broad selectors on purpose.
+ *
+ * The embed's internal markup is Lithic's and can change without warning; targeting their class
+ * names would break silently the day they rename one, and the failure would be a member's card
+ * number rendering as unstyled serif text.
+ */
+body * {
+  background: transparent !important;
+  color: #DFE3DE !important;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  border: 0 !important;
+}
+
+body {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+}
+
+/* One row per value, ruled like every other list in the app. */
+body > * {
+  display: block;
+  padding: 16px 0;
+  border-bottom: 1px solid #3A4440 !important;
+}
+body > *:first-child {
+  padding-top: 0;
+}
+body > *:last-child {
+  border-bottom: 0 !important;
+  padding-bottom: 0;
+}
+
+/*
+ * The labels are ours.
+ *
+ * The embed ships the three values and nothing to call them, so they are added here by position —
+ * number, expiry, code, which is the order a card back reads in. If Lithic ever reorders them the
+ * values still show; only the names would be wrong, which is visible rather than silent.
+ */
+body > *::before {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #939995 !important;
+}
+body > *:nth-child(1)::before {
+  content: "Card number";
+}
+body > *:nth-child(2)::before {
+  content: "Expires";
+}
+body > *:nth-child(3)::before {
+  content: "Security code";
+}
+
+/* Anything the embed calls a label of its own would be a second name for the same thing. */
+label,
+span[class*="label"],
+div[class*="label"] {
+  display: none !important;
+}
+
+input {
+  padding: 0 !important;
+  outline: none !important;
+  width: 100% !important;
+}
