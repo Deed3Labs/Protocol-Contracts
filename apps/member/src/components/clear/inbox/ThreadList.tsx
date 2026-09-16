@@ -1,7 +1,9 @@
 import { Btn, CBar, CFoot, CHead, CMain, Cell, Line, Rows, SecHead } from '../brand/anatomy';
+import { useRef } from 'react';
 import SwipeRow from '../brand/SwipeRow';
 import { ArchiveIcon, ChevronIcon, ComposeIcon, SearchIcon, ShieldIcon, StorefrontIcon } from '../brand/icons';
 import { useIsDesktop } from '@/lib/useIsDesktop';
+import { useOverflows } from '@/lib/useOverflows';
 import { unreadThreads, type Thread } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
@@ -60,6 +62,9 @@ export default function ThreadList({
 }) {
   const desktop = useIsDesktop();
   const unread = unreadThreads(threads);
+  // The rule under the last row is only needed while the list stops short of the bottom.
+  const main = useRef<HTMLDivElement>(null);
+  const full = useOverflows(main, [threads.length, showingArchived]);
 
   return (
     <Cell>
@@ -107,7 +112,7 @@ export default function ThreadList({
           </Btn>
         </div>
       </CBar>
-      <CMain className={threads.length > 0 ? 'c-flush' : undefined}>
+      <CMain ref={main} className={threads.length > 0 ? 'c-flush' : undefined}>
         {threads.length === 0 ? (
           <div className="py-s4 text-center">
             <p className="c-fig c-fig-sec">{showingArchived ? 'Nothing archived' : 'No messages'}</p>
@@ -123,9 +128,9 @@ export default function ThreadList({
             )}
           </div>
         ) : (
-          // Ruled: the list fills the screen, so the last row closes itself and the space under it
-          // reads as slack rather than as more list.
-          <Rows ruled>
+          // Ruled while the list stops short: the last row closes itself so the space under it reads
+          // as slack rather than as more list. A list that reaches the bottom has the box's own edge.
+          <Rows ruled={!full}>
             {threads.map((thread) => (
               <SwipeRow
                 key={thread.id}

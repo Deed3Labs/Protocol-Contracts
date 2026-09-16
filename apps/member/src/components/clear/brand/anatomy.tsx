@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, CSSProperties, HTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, CSSProperties, HTMLAttributes, ReactNode, Ref } from 'react';
 import { cn } from '@/lib/utils';
 
 /*
@@ -11,7 +11,8 @@ import { cn } from '@/lib/utils';
  * restyling a section by hand.
  */
 
-type DivProps = HTMLAttributes<HTMLDivElement>;
+// React 19 passes a ref like any other prop, which is how a section can be measured from outside.
+type DivProps = HTMLAttributes<HTMLDivElement> & { ref?: Ref<HTMLDivElement> };
 
 /** A cell on the slab: paper, no border of its own — the seam is the grid's background. */
 export function Cell({ full, className, ...props }: DivProps & { full?: boolean }) {
