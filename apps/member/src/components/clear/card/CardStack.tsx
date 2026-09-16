@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -37,6 +37,26 @@ export default function CardStack({
    * gesture rather than a fast one.
    */
   const travelled = useRef(0);
+  const box = useRef<HTMLDivElement>(null);
+
+  /*
+   * Hold the gesture once it is ours.
+   *
+   * touch-action says a sideways drag is not a scroll, and on a mouse that is the end of it — which
+   * is why this worked on a desktop and not on a phone. A touch browser still decides for itself
+   * partway through, and the moment it decides to scroll it takes the pointer back: the drag ends
+   * mid-swipe and the card springs home. Saying no to the default on a claimed swipe is what stops
+   * that, and it has to be a listener we attach ourselves, because React's are passive and cannot.
+   */
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const hold = (e: TouchEvent) => {
+      if (swiping.current && e.cancelable) e.preventDefault();
+    };
+    el.addEventListener('touchmove', hold, { passive: false });
+    return () => el.removeEventListener('touchmove', hold);
+  }, []);
 
   const go = (delta: number) => {
     const next = index + delta;
@@ -59,6 +79,7 @@ export default function CardStack({
   return (
     <div>
       <div
+        ref={box}
         className="c-cardstack"
         onPointerDown={(e) => {
           // A mouse drags it too: the stack has no hover affordance the way a swiped row does, so
