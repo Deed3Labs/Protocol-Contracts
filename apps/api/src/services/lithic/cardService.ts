@@ -1,4 +1,4 @@
-import { getLithic } from './lithicClient.js';
+import { getLithic, lithicEnvironment, lithicFetch, type LithicEnvironment } from './lithicClient.js';
 import { lithicStore } from './lithicStore.js';
 import { cardStore, type CardRecord } from './cardStore.js';
 import { refreshSnapshot, refreshSnapshotsFor } from './snapshotService.js';
@@ -331,6 +331,38 @@ export async function getCardEmbedUrl(
   });
 }
 
+/**
+ * A session for the modern embedded card UI.
+ *
+ * The frame this replaces is Lithic's whole card page, styled at a distance through a stylesheet
+ * they load. A session instead lets their SDK mount one small frame per value — the number, the
+ * month, the year, the code — inside markup that is ours, so the labels, the rules and the ground
+ * are the app's own. The card data still never touches this server: the member's browser fetches it
+ * from Lithic with this session, which is what keeps us out of PCI scope either way.
+ *
+ * Their SDK still only types the deprecated helpers, so this is the REST call by hand.
+ */
+export async function createCardEmbedSession(
+  cardToken: string,
+  expirationSeconds = 600,
+): Promise<{ session: string; environment: LithicEnvironment }> {
+  const targetOrigin = (process.env.APP_ORIGIN || process.env.FRONTEND_URL || '').trim();
+  if (!targetOrigin) throw new Error('APP_ORIGIN must be set to embed card details');
+
+  const { session } = await lithicFetch<{ session: string }>(
+    `/cards/${encodeURIComponent(cardToken)}/embed`,
+    {
+      method: 'POST',
+      body: {
+        type: 'CARD_EMBED',
+        target_origin: targetOrigin.replace(/\/$/, ''),
+        expiration: Math.floor(Date.now() / 1000) + expirationSeconds,
+      },
+    },
+  );
+  return { session, environment: lithicEnvironment() };
+}
+
 export const cardService = {
   createVirtualCard,
   createPhysicalCard,
@@ -338,4 +370,5 @@ export const cardService = {
   setFrozen,
   setSpendLimit,
   getCardEmbedUrl,
+  createCardEmbedSession,
 };

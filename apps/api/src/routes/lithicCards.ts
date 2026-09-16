@@ -182,4 +182,26 @@ router.get('/:token/embed', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/lithic/cards/:token/embed-session — a session for the modern embedded card UI.
+ *
+ * Returns a short-lived session, never card data: the member's browser exchanges it with Lithic
+ * directly, so the PAN and CVV never pass through this server. The deprecated URL above stays as
+ * the fallback for a program that cannot mint one.
+ */
+router.get('/:token/embed-session', async (req: Request, res: Response) => {
+  const owned = await ownedCard(req);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
+
+  try {
+    const session = await cardService.createCardEmbedSession(owned.token);
+    // no-store: a session that reveals card details must not sit in a shared cache.
+    res.set('Cache-Control', 'no-store');
+    return res.json(session);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to prepare card details';
+    return res.status(400).json({ error: message });
+  }
+});
+
 export default router;

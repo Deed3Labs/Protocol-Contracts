@@ -4,7 +4,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
-import { createCard, orderPhysicalCard, getCards, setCardFrozen, getCredit, getCardTransactions, getCardEmbedUrl, getBankIdentity, type BankIdentity, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
+import { createCard, orderPhysicalCard, getCards, setCardFrozen, getCredit, getCardTransactions, getCardEmbedUrl, getCardEmbedSession, getBankIdentity, type BankIdentity, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
 import { categoryForMcc } from '@/lib/mccCategory';
 import type { ActivityRow } from '@/lib/clearModel';
 import { onChainStale } from '@/lib/chainStale';
@@ -421,7 +421,14 @@ export default function CardRoute() {
       onRevealDetails={async (cardId) => {
         const token = cardId ?? cards[0]?.token;
         if (!token) return undefined;
-        return (await getCardEmbedUrl(token, theme)) ?? undefined;
+        /*
+         * The session first, because it is the one that puts the numbers in our own rows. The old
+         * whole-page URL is the fallback, and it is deprecated at Lithic — a program that cannot
+         * mint a session still shows a member their card.
+         */
+        const session = await getCardEmbedSession(token);
+        if (session) return { session };
+        return { url: (await getCardEmbedUrl(token, theme)) ?? undefined };
       }}
     />
   );

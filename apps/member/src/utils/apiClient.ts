@@ -2178,6 +2178,16 @@ export async function setCardSpendLimit(
  * Returns a URL, never card data. The browser loads it directly from Lithic, so the PAN and CVV
  * never pass through our servers — which is why this is a URL and not a number.
  */
+/** A session for the modern embedded card UI: the SDK exchanges it for the card's own frames. */
+export async function getCardEmbedSession(
+  token: string,
+): Promise<{ session: string; environment: 'sandbox' | 'production' } | null> {
+  const r = await apiRequest<{ session: string; environment: 'sandbox' | 'production' }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/embed-session`,
+  );
+  return r.error || !r.data?.session ? null : r.data;
+}
+
 export async function getCardEmbedUrl(
   token: string,
   /** The sheet's ground, so the issuer's frame is styled for the one it opens in. */

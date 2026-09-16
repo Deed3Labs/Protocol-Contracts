@@ -1,13 +1,18 @@
+import { useState } from 'react';
 import Modal from './Modal';
+import EmbeddedCardDetails from './card/EmbeddedCardDetails';
 import { Btn, Line, Rows } from './brand/anatomy';
 import { RowBtn, RowChevron } from '@/components/settings/SettingsKit';
 
 /**
  * Card details — number, expiry and security code behind a deliberate tap, hidden again on close.
  *
- * Two sources. On a live card the numbers never enter this app: the issuer renders them inside its
- * own frame from a short-lived URL, so there is nothing here to copy. The preview harness has
- * placeholder digits, which render as the reference's copyable rows.
+ * Three sources, and on a live card the numbers never enter this app in any of them.
+ *
+ * A session is the good one: the issuer's SDK mounts one small frame per value inside our own rows,
+ * so the sheet is the app's and only the digits are theirs. A program that cannot mint one falls
+ * back to the issuer's whole card page in a single frame, styled at a distance. The preview harness
+ * has placeholder digits, which render as the reference's copyable rows.
  *
  * Replace this card is reached from here: it is about this card, and Details is where a member
  * already is when they are looking at it.
@@ -17,6 +22,7 @@ export default function CardDetailsDialog({
   expiry,
   cvc,
   embedUrl,
+  embedSession,
   loading,
   open,
   onOpenChange,
@@ -25,14 +31,18 @@ export default function CardDetailsDialog({
   pan: string;
   expiry: string;
   cvc: string;
-  /** The issuer's frame, for a live card. */
+  /** The issuer's whole card page, for a program that cannot mint a session. */
   embedUrl?: string;
+  /** A session for the modern embed: one small frame per value, inside our own rows. */
+  embedSession?: { session: string; environment: 'sandbox' | 'production' };
   /** Waiting on the issuer's URL. */
   loading?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onReplace?: () => void;
 }) {
+  // A session that fails to mount falls back to the issuer's page rather than an empty sheet.
+  const [mountFailed, setMountFailed] = useState(false);
   const copy = (value: string) => navigator.clipboard?.writeText(value.replace(/\s/g, '')).catch(() => {});
   const field = (label: string, value: string) => (
     <div>
@@ -65,7 +75,13 @@ export default function CardDetailsDialog({
         </>
       }
     >
-      {embedUrl ? (
+      {embedSession && !mountFailed ? (
+        <EmbeddedCardDetails
+          session={embedSession.session}
+          environment={embedSession.environment}
+          onFailed={() => setMountFailed(true)}
+        />
+      ) : embedUrl ? (
         <iframe title="Card details" src={embedUrl} className="block h-[180px] w-full border-0" />
       ) : pan ? (
         <Rows>
