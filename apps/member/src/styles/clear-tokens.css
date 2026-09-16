@@ -46,7 +46,6 @@
    ============================================================ */
 .dark, .dusk {
   --live: #7C8CC5; --settled: #6FCB9F; --underway: #E3B667; --absent: #E58C7F;
-  --ink-70: #ABB1AC; --ink-50: #939995; --ink-28: #5A635F; --ink-13: #3A4440;
   /* The guide has no land on ink. This is lightened from #6B7F5C to clear 4.5:1 on both dark
      grounds, because asset-backed is the biggest tier and cannot be the one with no colour. */
   --land: #9CAE8B; --land-ink: #9CAE8B;
@@ -55,9 +54,23 @@
   --vest-cash: var(--ink); --vest-vested: var(--settled); --vest-vesting: var(--underway);
   --seam: var(--ink-28);
 }
-.dark { --paper: #16211D; --paper-2: #1E2C27; --ink: #DFE3DE; }
-.dusk { --paper: #1E2C27; --paper-2: #26332E; --ink: #CFD6CF; }
+/* Dark is the guide's ink ground, cool. */
+.dark {
+  --paper: #16211D; --paper-2: #1E2C27; --ink: #DFE3DE;
+  --ink-70: #ABB1AC; --ink-50: #939995; --ink-28: #5A635F; --ink-13: #3A4440;
+}
+/* Dusk is a tan page, not a dark one — a mid ground between paper and ink, off the underway family.
+   Because it is light it keeps the guide's light-ground status colours: settled is still #0E6B4E
+   and the tier ramp is identical to light, so nobody has to learn the ramp three times. */
+.dusk {
+  --paper: #E6DBC6; --paper-2: #F1E9DA; --ink: #221C14;
+  --ink-70: #4E4739; --ink-50: #5A5244; --ink-28: #AFA48D; --ink-13: #CCC0A8;
+  --live: #24409E; --settled: #0E6B4E; --underway: #8A5512; --absent: #9B2C22;
+  --land: #6B7F5C; --land-ink: #55654A;
+}
 
 /* The page's own ground, for the inch above and below what the shell paints. The legacy themes set
    a near-black and a warm cream here; both are from before the guide. */
-.dark, .dusk { color-scheme: dark; background-color: var(--paper); color: var(--ink); }
+.dark, .dusk { background-color: var(--paper); color: var(--ink); }
+.dark { color-scheme: dark; }
+.dusk { color-scheme: light; }

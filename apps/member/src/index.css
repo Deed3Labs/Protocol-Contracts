@@ -290,14 +290,14 @@
 }
 
 .dusk {
-  /* Dusk is the ink palette one step up, not the old warm cream — see styles/clear-tokens. */
-  color-scheme: dark;
+  /* Dusk is the guide's tan page — a mid ground between paper and ink. See styles/clear-tokens. */
+  color-scheme: light;
   color: var(--ink);
   background-color: var(--paper);
 
-  /* Dusk — the guide's raised ink ground, not the site's golden hour. */
-  --background: 30 44 39;
-  --foreground: 207 214 207;
+  /* Dusk — the guide's tan ground and its warm ink. */
+  --background: 230 219 198;
+  --foreground: 34 28 20;
   --card: 247 238 220;
   --card-foreground: 46 32 18;
   --popover: 252 245 234;

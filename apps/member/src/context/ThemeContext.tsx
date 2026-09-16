@@ -39,6 +39,37 @@ function defaultByTime(fallback: Theme): Theme {
  */
 export const THEME_PINNED: Theme | null = null;
 
+/** The ground each theme stands on — the same values the token layer sets for --paper. */
+const CHROME: Record<Theme, string> = {
+  light: '#DFE3DE',
+  dusk: '#E6DBC6',
+  dark: '#16211D',
+};
+
+/**
+ * Browser chrome follows the member's choice, not the system's.
+ *
+ * index.html ships a pair of `theme-color` metas keyed to `prefers-color-scheme`, because they have
+ * to answer before any of this runs. Once it does, the member's own choice is the better answer: a
+ * member on dusk with a light system had a light address bar over a dark page. The static pair goes
+ * and a single tag takes over, so there are never two answers for a browser to choose between.
+ *
+ * The splash is the exception that cannot be fixed this way — the OS paints it from the manifest's
+ * background_color before any script exists, which is why it is ink in every theme.
+ */
+function setChromeColour(theme: Theme): void {
+  const head = document.head;
+  if (!head) return;
+  for (const stale of head.querySelectorAll('meta[name="theme-color"][media]')) stale.remove();
+  let tag = head.querySelector<HTMLMetaElement>('meta[name="theme-color"]:not([media])');
+  if (!tag) {
+    tag = document.createElement('meta');
+    tag.name = 'theme-color';
+    head.appendChild(tag);
+  }
+  tag.content = CHROME[theme];
+}
+
 export function ThemeProvider({ children, defaultTheme = 'light', storageKey = 'theme' }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
     if (THEME_PINNED) return THEME_PINNED;
@@ -52,6 +83,8 @@ export function ThemeProvider({ children, defaultTheme = 'light', storageKey = '
     root.classList.remove('dark', 'dusk');
     if (theme === 'dark') root.classList.add('dark');
     else if (theme === 'dusk') root.classList.add('dusk');
+
+    setChromeColour(theme);
 
     // Notify other listeners (e.g. AppKitThemeSync).
     window.dispatchEvent(new Event('themechange'));
