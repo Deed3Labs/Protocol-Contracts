@@ -24,6 +24,7 @@ import PartnersPage from '@/pages/app/PartnersPage';
 import SendPage from '@/pages/app/SendPage';
 import EarnPage from '@/pages/app/EarnPage';
 import SettingsPage from '@/pages/app/SettingsPage';
+import { EMPTY_ADDRESS, type MailingAddress } from '@/hooks/useMemberProfile';
 import OnboardingFlow, { type OnboardingStep } from '@/pages/auth/OnboardingFlow';
 import CounterOnboarding, { COUNTER_STEPS, type CounterStep } from '@/pages/auth/CounterOnboarding';
 import { useInstallMode } from '@/hooks/useInstallMode';
@@ -477,6 +478,25 @@ function CounterOnboardingPreview() {
 }
 
 /**
+ * Settings, with the one row that saves something.
+ *
+ * Home address is editable only when a container can store it, so the harness keeps it for the
+ * session — otherwise the row is an em dash nobody can open, and the dialog cannot be looked at.
+ */
+function SettingsPreview({ empty }: { empty: boolean }) {
+  const [address, setAddress] = useState<MailingAddress>(EMPTY_ADDRESS);
+
+  return (
+    <SettingsPage
+      contacts={empty ? [] : CONTACTS}
+      available={empty ? 0 : SEND_IN_USE.available}
+      address={address}
+      onSaveAddress={setAddress}
+    />
+  );
+}
+
+/**
  * The splash, which the app itself only shows for a few hundred milliseconds.
  *
  * Both progress states are here because they are different screens: a real bar when there is
@@ -717,8 +737,8 @@ export default function PreviewApp() {
                         <Route path="/repay" element={<RepayPreview />} />
                         <Route path="/term-plans" element={<TermPlansPreview />} />
                         <Route path="/learn/:topic" element={<ExplainerPage />} />
-                        <Route path="/settings" element={<SettingsPage contacts={empty ? [] : CONTACTS} available={empty ? 0 : SEND_IN_USE.available} />} />
-                        <Route path="/settings/:page" element={<SettingsPage contacts={empty ? [] : CONTACTS} available={empty ? 0 : SEND_IN_USE.available} />} />
+                        <Route path="/settings" element={<SettingsPreview empty={empty} />} />
+                        <Route path="/settings/:page" element={<SettingsPreview empty={empty} />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </Routes>
                     </AppChrome>

@@ -660,11 +660,30 @@ router.patch('/me/profile', async (req: Request, res: Response) => {
   if (phone === INVALID) return;
   const cityRegion = parseOptionalString(body.cityRegion, 'cityRegion', 160, res, { allowNull: true });
   if (cityRegion === INVALID) return;
+  // Where post goes, in the pieces a shipping label needs — see MemberPrivateProfile.
+  const addressLine1 = parseOptionalString(body.addressLine1, 'addressLine1', 160, res, { allowNull: true });
+  if (addressLine1 === INVALID) return;
+  const addressLine2 = parseOptionalString(body.addressLine2, 'addressLine2', 160, res, { allowNull: true });
+  if (addressLine2 === INVALID) return;
+  const addressCity = parseOptionalString(body.addressCity, 'addressCity', 120, res, { allowNull: true });
+  if (addressCity === INVALID) return;
+  const addressState = parseOptionalString(body.addressState, 'addressState', 60, res, { allowNull: true });
+  if (addressState === INVALID) return;
+  const addressPostalCode = parseOptionalString(body.addressPostalCode, 'addressPostalCode', 20, res, { allowNull: true });
+  if (addressPostalCode === INVALID) return;
   const notificationsOptIn = parseOptionalBoolean(body.notificationsOptIn, 'notificationsOptIn', res);
   if (notificationsOptIn === INVALID) return;
 
   const hasPrivateFields =
-    legalName !== undefined || email !== undefined || phone !== undefined || cityRegion !== undefined;
+    legalName !== undefined
+    || email !== undefined
+    || phone !== undefined
+    || cityRegion !== undefined
+    || addressLine1 !== undefined
+    || addressLine2 !== undefined
+    || addressCity !== undefined
+    || addressState !== undefined
+    || addressPostalCode !== undefined;
 
   if (hasPrivateFields && !memberStore.isPrivateDataEncryptionConfigured()) {
     return res.status(503).json({
@@ -688,6 +707,11 @@ router.patch('/me/profile', async (req: Request, res: Response) => {
     email,
     phone,
     cityRegion,
+    addressLine1,
+    addressLine2,
+    addressCity,
+    addressState,
+    addressPostalCode,
   };
 
   try {

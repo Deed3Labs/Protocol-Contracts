@@ -1604,6 +1604,12 @@ export interface MemberPrivateProfileResponse {
   email: string | null;
   phone: string | null;
   cityRegion: string | null;
+  /** Where post goes, in the pieces a shipping label needs. Private, like the legal name. */
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressCity: string | null;
+  addressState: string | null;
+  addressPostalCode: string | null;
 }
 
 export interface MemberProfileViewResponse {
@@ -1882,6 +1888,11 @@ export async function updateMemberProfile(
     email: string | null;
     phone: string | null;
     cityRegion: string | null;
+    addressLine1: string | null;
+    addressLine2: string | null;
+    addressCity: string | null;
+    addressState: string | null;
+    addressPostalCode: string | null;
   }>
 ): Promise<{ profile: MemberProfileViewResponse; capabilities: MemberCapabilitiesResponse | null } | null> {
   const response = await apiRequest<{

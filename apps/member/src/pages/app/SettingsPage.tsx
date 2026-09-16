@@ -23,6 +23,8 @@ import ThemePicker from '@/components/clear/ThemePicker';
 import { THEME_PINNED } from '@/context/ThemeContext';
 import AccelerationDialog from '@/components/settings/AccelerationDialog';
 import ChangePhoneDialog from '@/components/settings/ChangePhoneDialog';
+import ChangeAddressDialog from '@/components/settings/ChangeAddressDialog';
+import { EMPTY_ADDRESS, formatAddress, type MailingAddress } from '@/hooks/useMemberProfile';
 import TrustedDevicesDialog from '@/components/settings/TrustedDevicesDialog';
 import CloseAccountDialog from '@/components/settings/CloseAccountDialog';
 import ContactsPane from '@/components/settings/ContactsPane';
@@ -63,6 +65,10 @@ export default function SettingsPage({
   onSignOut,
   contacts = CONTACTS,
   available = 0,
+  address = EMPTY_ADDRESS,
+  onSaveAddress,
+  savingAddress = false,
+  addressError = null,
 }: {
   data?: SettingsData;
   /** The address book, and Ready to allocate for sending from it. */
@@ -72,6 +78,11 @@ export default function SettingsPage({
   onSavePhoto?: (dataUrl: string) => Promise<void> | void;
   onRemovePhoto?: () => Promise<void> | void;
   onSignOut?: () => void;
+  /** The member's own mailing address. The Home address row shows and edits this. */
+  address?: MailingAddress;
+  onSaveAddress?: (next: MailingAddress) => void;
+  savingAddress?: boolean;
+  addressError?: string | null;
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -84,6 +95,7 @@ export default function SettingsPage({
 
   const [accelerationOpen, setAccelerationOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [addressOpen, setAddressOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [ballotOpen, setBallotOpen] = useState(false);
@@ -132,7 +144,18 @@ export default function SettingsPage({
              * Date of birth is not listed. It rendered a hardcoded year for everybody, and a real one
              * cannot replace it: a date of birth is passed straight to the card issuer and never kept.
              */
-            <KvRow label="Home address" value={profile.address} />,
+            /*
+             * The address the member gave us, and an em dash when they have not.
+             *
+             * It read 'Redlands, CA' for everybody — the fixture's value, shown as though it were
+             * theirs. Editable here because this is the only place the app holds it, and ordering a
+             * physical card reads it rather than asking again.
+             */
+            <KvRow
+              label="Home address"
+              value={formatAddress(address) || '—'}
+              onSelect={onSaveAddress ? () => setAddressOpen(true) : undefined}
+            />,
             <KvRow
               label="Identity"
               value={verified ? <Done>{verification.status.label}</Done> : verification.status.label}
@@ -289,6 +312,14 @@ export default function SettingsPage({
     <>
       <AccelerationDialog data={data} open={accelerationOpen} onOpenChange={setAccelerationOpen} />
       <ChangePhoneDialog current={profile.phone} open={phoneOpen} onOpenChange={setPhoneOpen} />
+      <ChangeAddressDialog
+        current={address}
+        open={addressOpen}
+        onOpenChange={setAddressOpen}
+        onSave={(next) => onSaveAddress?.(next)}
+        busy={savingAddress}
+        error={addressError}
+      />
       <TrustedDevicesDialog devices={data.devices} open={devicesOpen} onOpenChange={setDevicesOpen} />
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
       <ProfilePhotoDialog

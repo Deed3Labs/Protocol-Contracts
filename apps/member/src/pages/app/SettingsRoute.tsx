@@ -1,11 +1,12 @@
+import { useState } from 'react';
 import SettingsPage from './SettingsPage';
-import { useMemberProfile } from '@/hooks/useMemberProfile';
+import { useMemberProfile, type MailingAddress } from '@/hooks/useMemberProfile';
 import { useLogout } from '@/hooks/useLogout';
 import { useContacts } from '@/context/ContactsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { toSendContact } from './SendRoute';
 import { SETTINGS } from '@/data/clearPlaceholder';
-import { uploadMemberAvatar, deleteMemberAvatar } from '@/utils/apiClient';
+import { uploadMemberAvatar, deleteMemberAvatar, updateMemberProfile } from '@/utils/apiClient';
 
 /**
  * Live Settings — the presentational page with the member's real identity behind
@@ -18,6 +19,8 @@ import { uploadMemberAvatar, deleteMemberAvatar } from '@/utils/apiClient';
  */
 export default function SettingsRoute() {
   const member = useMemberProfile();
+  const [savingAddress, setSavingAddress] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
   const logout = useLogout();
   const { contacts } = useContacts();
   const { cash } = useClearBalances();
@@ -46,6 +49,33 @@ export default function SettingsRoute() {
     <SettingsPage
       data={{ ...SETTINGS, profile, accelerationActive: member.accelerated }}
       onSignOut={() => void logout()}
+      address={member.mailingAddress}
+      savingAddress={savingAddress}
+      addressError={addressError}
+      /*
+       * The one place the app holds an address. Ordering a physical card reads it rather than
+       * asking again, so a save here is what unblocks that sheet.
+       */
+      onSaveAddress={(next: MailingAddress) => {
+        setSavingAddress(true);
+        setAddressError(null);
+        void updateMemberProfile({
+          addressLine1: next.line1.trim() || null,
+          addressLine2: next.line2.trim() || null,
+          addressCity: next.city.trim() || null,
+          addressState: next.state.trim() || null,
+          addressPostalCode: next.postalCode.trim() || null,
+        })
+          .then((saved) => {
+            if (!saved) {
+              setAddressError("We couldn't save that. Please try again.");
+              return;
+            }
+            member.refresh();
+          })
+          .catch(() => setAddressError("We couldn't save that. Please try again."))
+          .finally(() => setSavingAddress(false));
+      }}
       contacts={contacts.map(toSendContact)}
       available={cash}
       // The photo is applied locally first and the backend call is best-effort:
