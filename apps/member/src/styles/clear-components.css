@@ -69,6 +69,9 @@
 .c-line{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2)}
 .c-line > :first-child{min-width:0}
 .c-pair{display:flex;gap:var(--s1)}
+/* stacked buttons: never .c-pair, whose flex basis collapses on the cross axis */
+.c-stack{display:flex;flex-direction:column;gap:var(--s1)}
+.c-stack .c-btn{width:100%;height:44px;flex:none}
 /* a footer pair is one line: the left side truncates, the right side never shrinks */
 .c-cfoot > .c-line > *{white-space:nowrap}
 .c-cfoot > .c-line > :first-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -509,6 +512,41 @@
 /* Nothing selected is a state, not a gap: the pane keeps its width and says what the inbox is for. */
 .c-panehint{display:flex;flex-direction:column;align-items:center;justify-content:center;
           height:100%;text-align:center;padding:var(--s4) var(--s3)}
+
+/* ================= AUTH AND ONBOARDING ================= */
+/* A sign-in screen is a screen: one height for every step, with the content
+   spaced inside it rather than the frame shrinking to whatever the step holds. */
+.c-authshell{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:1px;background:var(--seam);
+           border:1px solid var(--seam);max-width:880px;height:600px;overflow:hidden}
+.c-authshell > .c-cell{min-height:0;overflow:hidden}
+.c-authshell .c-cmain{flex:1 1 auto;overflow-y:auto;min-height:0}
+.c-authshell .c-cmain::-webkit-scrollbar{width:0}
+.c-brandpanel{background:var(--paper-2);padding:var(--s5) var(--s4);display:flex;flex-direction:column;justify-content:space-between}
+.c-brandpanel .c-statement{font-family:var(--font-display);font-weight:800;font-size:32px;letter-spacing:-.035em;
+                       line-height:1.05;margin:var(--s5) 0 var(--s2);max-width:16ch}
+.c-authshell .c-cell{background:var(--paper)}
+/* The counter path has no brand column at any width: it is read standing at a till, and the
+   argument was made by the shop's code, not by a panel. */
+.c-authshell.c-solo{grid-template-columns:minmax(0,1fr);max-width:380px}
+.c-ordiv{display:flex;align-items:center;gap:var(--s2);margin:var(--s2) 0;color:var(--ink-50);font-size:var(--t-detail)}
+.c-ordiv::before,.c-ordiv::after{content:'';flex:1;height:1px;background:var(--ink-13)}
+.c-pinbox.c-six{grid-template-columns:repeat(6,1fr)}
+.c-pinbox.c-six > span{height:48px;font-size:19px}
+.c-pinbox > span.c-done{border-color:var(--ink)}
+.c-pinbox.c-err > span{border-color:var(--absent)}
+.c-errline{color:var(--absent)}
+.c-pending{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);
+         padding:var(--s1) var(--s2);border:1px solid var(--ink-28);background:var(--paper-2);
+         margin-bottom:var(--s2);font-size:var(--t-sec)}
+.c-scanbox{border:1px dashed var(--ink-28);padding:var(--s4) var(--s2);text-align:center}
+/* A phone has no room for the brand column, and the statement is on the site it came from. The
+   panel is still a screen: it takes the height it is given, so the action lands on the floor of
+   the phone at every step rather than wherever that step's fields ended. */
+@media (max-width:1023px){
+  .c-authshell,.c-authshell.c-solo{grid-template-columns:minmax(0,1fr);height:auto;max-width:none;
+                                   flex:1 1 auto;min-height:0}
+  .c-brandpanel{display:none}
+}
 
 /* ================= QUICK ACTIONS FAN ================= */
 .c-qafan{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s1)}

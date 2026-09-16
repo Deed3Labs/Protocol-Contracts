@@ -1,29 +1,29 @@
 import { money } from '@clear/domain';
+import { cn } from '@/lib/utils';
 
 /**
  * The shop and the amount, carried on every step between the scan and the choice.
  *
+ * It sits above the panel rather than inside it, because it belongs to the visit and not to the
+ * step — it is the strongest motivation in the product, and what makes five steps tolerable while
+ * somebody waits at a till.
+ *
  * Its own component rather than a detail of the counter flow because the charge approval screen
  * shows the same pair, and the reference is explicit that these are one pattern rather than two.
- * A member who saw this while signing up should recognise it on every charge afterwards.
  */
 export default function PendingTotalHeader({
   merchant,
   amount,
-  className = '',
+  className,
 }: {
   merchant: string;
   amount: number;
   className?: string;
 }) {
   return (
-    <div
-      className={`flex items-baseline justify-between gap-3 rounded-lg bg-tier-boost/10 px-3 py-2.5 ${className}`}
-    >
-      <span className="min-w-0 truncate text-xs text-tier-boost-fg">{merchant}</span>
-      <span className="shrink-0 text-sm font-medium tabular-nums text-tier-boost-fg">
-        {money(amount, { cents: true })}
-      </span>
+    <div className={cn('c-pending', className)}>
+      <span className="min-w-0 truncate">{merchant}</span>
+      <span className="c-fig c-fig-row shrink-0">{money(amount, { cents: true })}</span>
     </div>
   );
 }

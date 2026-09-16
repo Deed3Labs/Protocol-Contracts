@@ -2,6 +2,7 @@ import { createContext, createElement, useCallback, useContext, useEffect, useSt
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { getMemberAccountCenter, bootstrapMemberAccount, type MemberProfileViewResponse, type MemberStatus } from '@/utils/apiClient';
 import { getStoredAvatar, setStoredAvatar } from '@/lib/avatarStore';
+import { rememberMember } from '@/lib/rememberedMember';
 
 /**
  * The connected member's profile (real), shared once for the whole shell. Resolves a display name,
@@ -124,6 +125,20 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Coming back is a different screen from arriving, and it needs a name to say. Written here
+  // because this is the only place that knows one — see lib/rememberedMember.
+  useEffect(() => {
+    const pub = raw?.publicProfile;
+    const priv = raw?.privateProfile;
+    const display = pub?.displayName || pub?.username || '';
+    if (!loaded || !display) return;
+    rememberMember({
+      name: display,
+      handle: priv?.email || (pub?.username ? `@${pub.username}` : ''),
+      contact: priv?.phone || priv?.email || '',
+    });
+  }, [loaded, raw]);
 
   const addr = address || '';
   const pub = raw?.publicProfile;

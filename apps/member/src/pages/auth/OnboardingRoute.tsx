@@ -10,6 +10,7 @@ import {
   getServedZipPrefixes,
 } from '@/utils/apiClient';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { isServed } from '@/lib/servedRegion';
 import OnboardingFlow, {
   type OnboardingStep,
@@ -31,6 +32,7 @@ import OnboardingFlow, {
 
 export default function OnboardingRoute() {
   const { isAuthenticated } = useAppKitAuth();
+  const profile = useMemberProfile();
   const navigate = useNavigate();
 
   const [step, setStep] = useState<OnboardingStep>('join');
@@ -178,9 +180,12 @@ export default function OnboardingRoute() {
         onStepChange={onStepChange}
         values={values}
         onValuesChange={onValuesChange}
+        // The Verify step shows a legal name it did not ask for. It comes from the linked account
+        // when there is one, and stays empty rather than guessing from a display handle.
+        member={profile.legalName ? { name: profile.legalName, handle: profile.handle } : undefined}
       />
     ),
-    [step, onStepChange, values, onValuesChange],
+    [step, onStepChange, values, onValuesChange, profile.legalName, profile.handle],
   );
 
   return (
