@@ -25,7 +25,7 @@ import {
   type ActivityFilters,
   type ActivitySort,
 } from '@/lib/activityView';
-import { groupsFromMerchants } from '@/lib/activityCycle';
+import { groupsFromMerchants, merchantKey } from '@/lib/activityCycle';
 import type { ActivityData, ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
@@ -64,7 +64,22 @@ function MoreLink({ to, onClick, children }: { to?: string; onClick?: () => void
  * Change groups works per merchant, and a move is a rule that applies to what has already been
  * spent — so the figures that sent the member there are the ones that change.
  */
-export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?: ActivityData; email?: string }) {
+export default function ActivityPage({
+  data = ACTIVITY_DAY_ONE,
+  email,
+  moved: savedMoved,
+  grouping: savedGrouping,
+  onMoveMerchant,
+  onGrouping,
+}: {
+  data?: ActivityData;
+  email?: string;
+  /** The member's stored rules, keyed by normalized merchant name. Absent in the preview harness. */
+  moved?: Record<string, string>;
+  grouping?: boolean;
+  onMoveMerchant?: (merchant: string, group: string) => void;
+  onGrouping?: (on: boolean) => void;
+}) {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
   const [query, setQuery] = useState('');
@@ -75,9 +90,20 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
   const [exportOpen, setExportOpen] = useState(false);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
   const [groupsOpen, setGroupsOpen] = useState(false);
-  const [grouping, setGrouping] = useState(true);
-  /** Merchant to the group the member moved it to. A rule, applied to what they have already spent. */
-  const [moved, setMoved] = useState<Record<string, string>>({});
+  /*
+   * The rules live with the member when there is a route to save them to, and in the page when there
+   * is not — which is the preview harness. Either way the page reads one pair of values, so the
+   * sheet does not need to know which it is.
+   */
+  const [localGrouping, setLocalGrouping] = useState(true);
+  const [localMoved, setLocalMoved] = useState<Record<string, string>>({});
+  const moved = savedMoved ?? localMoved;
+  const grouping = savedGrouping ?? localGrouping;
+  const setGrouping = (on: boolean) => (onGrouping ? onGrouping(on) : setLocalGrouping(on));
+  const moveMerchant = (merchant: string, group: string) =>
+    onMoveMerchant
+      ? onMoveMerchant(merchant, group)
+      : setLocalMoved((prev) => ({ ...prev, [merchantKey(merchant)]: group }));
 
   useSetMobileAction({ label: 'Scan', icon: PlusIcon, onSelect: () => navigate('/scan') });
 
@@ -381,7 +407,7 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
         open={groupsOpen}
         onOpenChange={setGroupsOpen}
         onGrouping={setGrouping}
-        onMove={(merchant, group) => setMoved((prev) => ({ ...prev, [merchant]: group }))}
+        onMove={moveMerchant}
       />
       <ExportDialog
         cycleRows={data.cycleCount ?? data.rows.length}

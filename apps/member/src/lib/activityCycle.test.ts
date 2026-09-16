@@ -80,8 +80,16 @@ describe('changing the groups', () => {
     ]);
   });
 
+  test('a group the member moved into stays on the list however small', () => {
+    expect(groupsFromMerchants(merchants, { diegor: 'Warehouse' }).map((g) => g.label)).toEqual([
+      'Groceries',
+      'Fuel',
+      'Warehouse',
+    ]);
+  });
+
   test('a move is retroactive: the groups are rebuilt from the merchants', () => {
-    expect(groupsFromMerchants(merchants, { 'Diego R.': 'Groceries' })).toEqual([
+    expect(groupsFromMerchants(merchants, { diegor: 'Groceries' })).toEqual([
       { label: 'Groceries', amount: 158.44 },
       { label: 'Fuel', amount: 52.1 },
     ]);
