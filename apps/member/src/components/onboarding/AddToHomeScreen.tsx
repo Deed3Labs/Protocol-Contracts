@@ -19,27 +19,26 @@ export default function AddToHomeScreen({
 }) {
   return (
     <>
-      <div className="rounded-xl border-[0.5px] border-dashed border-border px-5 py-5 text-center">
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
+      <div className="c-scanbox">
+        <p className="c-det">
           Shop code opens
           <br />
           {shopUrl}
         </p>
       </div>
 
-      {mode === 'ios' && (
+      {mode === 'ios' ? (
         // iOS has no install API. Safari only offers Share → Add to Home Screen, by hand, and no
         // amount of JavaScript changes that — so the step spends its words on where the button is.
-        <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-          Tap <strong className="font-medium">Share</strong> at the bottom of Safari, then{' '}
-          <strong className="font-medium">Add to Home Screen</strong>.
+        <p className="c-det mt-s2">
+          Tap <strong className="font-medium text-ink">Share</strong> at the bottom of Safari, then{' '}
+          <strong className="font-medium text-ink">Add to Home Screen</strong>. No app store, no
+          download.
         </p>
-      )}
-
-      {mode === 'installed' && (
-        <p className="mt-3 text-[11px] leading-relaxed text-positive">
-          Clear is already on your home screen.
-        </p>
+      ) : mode === 'installed' ? (
+        <p className="c-det mt-s2 text-settled">Clear is already on your home screen.</p>
+      ) : (
+        <p className="c-det mt-s2">Then Add to Home Screen. No app store, no download.</p>
       )}
     </>
   );

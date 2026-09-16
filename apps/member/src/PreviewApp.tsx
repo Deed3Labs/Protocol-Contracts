@@ -65,6 +65,8 @@ import {
 const ONBOARDING_STEPS: OnboardingStep[] = [
   'enter',
   'verify',
+  'welcome',
+  'recovery',
   'join',
   'identity',
   'waitlist',
@@ -476,12 +478,37 @@ function CounterOnboardingPreview() {
 /** Onboarding sits outside the app chrome — there's no nav until you're a member. */
 function OnboardingPreview() {
   const [step, setStep] = useState<OnboardingStep>('enter');
+  // A code that failed is the same screen with a reason on it, so the harness can produce one.
+  const [failed, setFailed] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
-      <OnboardingFlow step={step} onStepChange={setStep} />
+      <OnboardingFlow
+        step={step}
+        onStepChange={setStep}
+        member={{ name: 'Kai Moore', handle: '@kaim' }}
+        auth={{
+          busy: false,
+          error: failed ? 'Expired · sent again just now' : null,
+          resendIn: 24,
+          onContinue: () => setStep('verify'),
+          onOAuth: () => setStep('verify'),
+          onSubmitCode: () => setStep('join'),
+          onResend: () => setFailed(false),
+          onPasskey: () => setStep('join'),
+        }}
+      />
 
       <div className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        <button
+          type="button"
+          onClick={() => setFailed((f) => !f)}
+          className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+            failed ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+          }`}
+        >
+          bad code
+        </button>
         {ONBOARDING_STEPS.map((s) => (
           <button
             key={s}

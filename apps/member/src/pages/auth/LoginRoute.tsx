@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useLoginWithEmail, useLoginWithOAuth, useLoginWithSms } from '@privy-io/react-auth';
+import { useLoginWithEmail, useLoginWithOAuth, useLoginWithPasskey, useLoginWithSms } from '@privy-io/react-auth';
 import { track } from '@/lib/analytics';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
+import { forgetMember, rememberedMember } from '@/lib/rememberedMember';
 import OnboardingFlow, { type OnboardingStep, type OnboardingValues } from './OnboardingFlow';
 
 /**
@@ -44,10 +45,14 @@ export default function LoginRoute() {
   const email = useLoginWithEmail();
   const sms = useLoginWithSms();
   const oauth = useLoginWithOAuth();
+  const passkey = useLoginWithPasskey();
 
-  const [step, setStep] = useState<OnboardingStep>('enter');
+  // Who this device signed in as last. Coming back is its own screen: it says the name, offers the
+  // device itself, and keeps a code as the fallback.
+  const [remembered, setRemembered] = useState(() => rememberedMember());
+  const [step, setStep] = useState<OnboardingStep>(remembered ? 'welcome' : 'enter');
   const [values, setValues] = useState<OnboardingValues>({
-    contact: '',
+    contact: remembered?.contact ?? '',
     code: '',
     zip: '',
     invite: '',
@@ -151,6 +156,25 @@ export default function LoginRoute() {
     [oauth],
   );
 
+  /**
+   * The device itself, on the returning screen.
+   *
+   * Passkeys have to be turned on for the Privy app before this can succeed, so a failure is not
+   * treated as a dead end: the screen keeps its code fallback right underneath, and the message
+   * points at it rather than explaining WebAuthn.
+   */
+  const signInWithPasskey = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await passkey.loginWithPasskey();
+    } catch {
+      setError('That did not work on this device. Send yourself a code instead.');
+    } finally {
+      setBusy(false);
+    }
+  }, [passkey]);
+
   const auth = useMemo(
     () => ({
       busy,
@@ -160,21 +184,30 @@ export default function LoginRoute() {
       onOAuth: (provider: 'google' | 'apple') => void startOAuth(provider),
       onSubmitCode: (code: string) => void submitCode(code),
       onResend: () => void send(values.contact),
+      onPasskey: () => void signInWithPasskey(),
     }),
-    [busy, error, resendIn, send, startOAuth, submitCode, values.contact],
+    [busy, error, resendIn, send, signInWithPasskey, startOAuth, submitCode, values.contact],
   );
 
   return (
     <OnboardingFlow
       step={step}
       onStepChange={(next) => {
-        // Back to `enter` is the only move this screen offers. Anything further belongs to
-        // onboarding, which runs after there is an account.
-        if (next === 'enter') setStep('enter');
+        // Back to `enter` is the only move this screen offers, and taking it means this is somebody
+        // else — so the device stops claiming to know them. Anything further belongs to onboarding,
+        // which runs after there is an account.
+        if (next === 'enter') {
+          forgetMember();
+          setRemembered(null);
+          setValues((previous) => ({ ...previous, contact: '', code: '' }));
+          setError(null);
+          setStep('enter');
+        }
       }}
       values={values}
       onValuesChange={onValuesChange}
       sentTo={values.contact || 'your phone'}
+      member={remembered ? { name: remembered.name, handle: remembered.handle } : undefined}
       auth={auth}
     />
   );

@@ -98,7 +98,16 @@ function App() {
                   <Routes>
                     {/* Login Page - Public */}
                     <Route path="/login" element={<LoginRoute />} />
-                    <Route path="/onboarding" element={<OnboardingRoute />} />
+                    {/* Outside the shell, and it reads the member's legal name for the Verify
+                        step, so it brings its own provider for the same reason /c/:code does. */}
+                    <Route
+                      path="/onboarding"
+                      element={
+                        <MemberProfileProvider>
+                          <OnboardingRoute />
+                        </MemberProfileProvider>
+                      }
+                    />
                     {/* The counter entry. `/s/<shop>` is what a shop's code opens, and it is a
                         separate route rather than a mode of /onboarding because the two flows
                         differ in their first step, their last step, and whether an account

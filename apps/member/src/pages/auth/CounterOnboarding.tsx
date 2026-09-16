@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import AuthShell, { LabelledField, StepHead } from '@/components/clear/auth/AuthShell';
+import { Btn } from '@/components/clear/brand/anatomy';
 import SplitChooser from '@/components/clear/SplitChooser';
 import PendingTotalHeader from '@/components/onboarding/PendingTotalHeader';
 import AddToHomeScreen from '@/components/onboarding/AddToHomeScreen';
@@ -14,12 +14,12 @@ import { money } from '@clear/domain';
  * A different flow from the direct path, not a variant of it. It starts by scanning the shop's code
  * rather than arriving at a site, and the **pending total rides along on every step**: it's the
  * strongest motivation in the product, and it's what makes a five-step flow tolerable while someone
- * stands at a counter waiting.
+ * stands at a counter waiting. The total sits above the panel, because it belongs to the visit
+ * rather than to any one step.
  *
  * **Linking an account is required here**, where the direct path defers it. It's the underwriting,
  * the repayment rail and the limit calculation at once — and it's the likeliest place to lose
- * someone, which is why the step spends its words on what the link is for rather than on the
- * mechanics of connecting it.
+ * someone, which is why the step states all three reasons rather than asking for trust.
  *
  * Identity verification still waits for the first deposit, exactly as on the direct path. A bank
  * link isn't a KYC substitute, but it's enough to extend a small term plan.
@@ -38,71 +38,67 @@ export interface CounterValues {
   splitInto: number;
 }
 
-const EYEBROW: Record<CounterStep, string> = {
-  scan: '1 · SCAN',
-  enter: '2 · ENTER',
-  join: '3 · JOIN',
-  link: '4 · LINK',
-  choose: '5 · CHOOSE',
+const LABEL: Record<CounterStep, string> = {
+  scan: '1 · Scan',
+  enter: '2 · Enter',
+  join: '3 · Join',
+  link: '4 · Link',
+  choose: '5 · Choose',
 };
 
 function Step({
   step,
-  headline,
-  body,
+  title,
+  lede,
   children,
   footnote,
   action,
   onAction,
   pending,
-  afterFootnote,
+  afterAction,
   busy = false,
   actionDisabled = false,
 }: {
   step: CounterStep;
-  headline: string;
-  body: string;
+  title: string;
+  lede: ReactNode;
   children?: ReactNode;
-  footnote: ReactNode;
+  footnote?: ReactNode;
   action: string;
   onAction?: () => void;
   pending?: ReactNode;
-  /** Sits below the step's footnote — for anything that must not interrupt it. */
-  afterFootnote?: ReactNode;
+  /** Sits below the action — for anything that must not interrupt the step's own reasoning. */
+  afterAction?: ReactNode;
   busy?: boolean;
   actionDisabled?: boolean;
 }) {
   return (
-    // Full-bleed and full-height: this is someone's whole screen while they stand at a counter.
-    <div className="flex min-h-screen flex-col px-5 py-8">
-      <div className="mx-auto flex w-full max-w-[360px] flex-1 flex-col">
-        <p className="mb-5 text-[10px] tracking-[0.3px] text-muted-foreground">
-          {EYEBROW[step]}
-          {step === 'link' && <span className="text-tier-boost-fg"> — REQUIRED</span>}
-        </p>
-
-        {pending}
-
-        <p className="mb-1.5 text-[19px] font-medium tracking-[-0.3px]">{headline}</p>
-        <p className="mb-5 text-[13px] leading-relaxed text-foreground-secondary">{body}</p>
-
-        {children}
-
-        <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">{footnote}</p>
-
-        {afterFootnote}
-
-        {/* Pinned to the bottom so the button lands under the thumb regardless of step length. */}
-        <Button
-          size="sm"
-          className="mt-auto w-full"
-          onClick={onAction}
-          disabled={busy || actionDisabled}
-        >
+    <AuthShell
+      solo
+      label={LABEL[step]}
+      count={step === 'link' ? 'Required' : undefined}
+      pending={pending}
+      footer={
+        <Btn primary lg onClick={onAction} disabled={busy || actionDisabled}>
           {busy ? 'One moment…' : action}
-        </Button>
-      </div>
-    </div>
+        </Btn>
+      }
+      // The way out goes after the step's own reassurance, never between the action and it:
+      // offering the exit before finishing the reason to stay is how a step loses somebody.
+      footnote={
+        afterAction ? (
+          <>
+            {footnote}
+            {afterAction}
+          </>
+        ) : (
+          footnote
+        )
+      }
+    >
+      <StepHead title={title} lede={lede} />
+      {children && <div className="mt-s3">{children}</div>}
+    </AuthShell>
   );
 }
 
@@ -155,21 +151,15 @@ export default function CounterOnboarding({
 
   const go = (next: CounterStep) => () => onStepChange?.(next);
   const pending =
-    amount == null ? undefined : <PendingTotalHeader merchant={merchant} amount={amount} className="mb-[18px]" />;
+    amount == null ? undefined : <PendingTotalHeader merchant={merchant} amount={amount} />;
 
   if (step === 'scan') {
     const mode = install?.mode ?? 'prompt';
     return (
       <Step
         step="scan"
-        headline="Add Clear"
-        body="Point your camera at the code on the counter."
-        footnote={
-          <>
-            Then tap <strong className="font-medium">Add to Home Screen</strong>. No app store, no
-            download.
-          </>
-        }
+        title="Add Clear"
+        lede="Point your camera at the code on the counter."
         action={install ? installActionLabel(mode) : 'Add to Home Screen'}
         onAction={install ? install.onInstall : go('enter')}
         busy={busy}
@@ -184,20 +174,22 @@ export default function CounterOnboarding({
       <Step
         step="enter"
         pending={pending}
-        headline="Cover this over time"
-        body="Clear pays the shop today. You pay Clear back over the next few cycles."
-        footnote="No credit check. About three minutes."
+        title="Cover this over time"
+        lede="Clear pays the shop today. You pay Clear back over the next few cycles."
         action="Continue"
         onAction={go('join')}
         busy={busy}
       >
-        <Input
-          value={v.phone}
-          onChange={(e) => setValues({ phone: e.target.value })}
-          placeholder="Phone number"
-          aria-label="Phone number"
-          inputMode="tel"
-        />
+        <LabelledField label="Phone number">
+          <input
+            className="c-field w-full"
+            value={v.phone}
+            onChange={(e) => setValues({ phone: e.target.value })}
+            placeholder="Phone number"
+            inputMode="tel"
+          />
+        </LabelledField>
+        <p className="c-det mt-s2">No credit check. About three minutes.</p>
       </Step>
     );
   }
@@ -207,23 +199,27 @@ export default function CounterOnboarding({
       <Step
         step="join"
         pending={pending}
-        headline="You're joining a co-op"
-        body="Not signing up for a card. Members own Clear — one member, one vote, no buy-in."
-        footnote="Invite code filled in from the shop."
-        action="Agree & join"
+        title="Join the co-op"
+        lede="Joining makes you a part-owner. No buy-in, no fee."
+        action="Join Clear"
         onAction={go('link')}
         busy={busy}
       >
-        <Input
-          value={v.zip}
-          onChange={(e) => setValues({ zip: e.target.value })}
-          placeholder="ZIP code"
-          aria-label="ZIP code"
-          inputMode="numeric"
-          className="mb-2"
-        />
         {/* Pre-filled from the shop's code — the member never types it, and shouldn't have to. */}
-        <Input value={inviteCode} readOnly aria-label="Invite code" />
+        <LabelledField label="Invite">
+          <input className="c-field w-full" value={inviteCode} readOnly />
+        </LabelledField>
+        <p className="c-det mt-[6px]">Filled in from the shop code</p>
+        <div className="mt-s2">
+          <LabelledField label="Your ZIP">
+            <input
+              className="c-field w-full"
+              value={v.zip}
+              onChange={(e) => setValues({ zip: e.target.value })}
+              inputMode="numeric"
+            />
+          </LabelledField>
+        </div>
       </Step>
     );
   }
@@ -233,29 +229,18 @@ export default function CounterOnboarding({
       <Step
         step="link"
         pending={pending}
-        headline="Connect your bank"
-        body="This is how we say yes without a credit check, and how repayment comes out. Use the account your pay lands in."
-        footnote="Read-only. We never see your login, and nothing moves without your say-so."
-        action={bank?.linked ? 'Continue' : 'Connect securely'}
+        title="Link an account"
+        lede="This is how we say yes without a credit check."
+        action={bank?.linked ? 'Continue' : 'Link with Plaid'}
         onAction={bank && !bank.linked ? bank.onConnect : go('choose')}
         busy={busy}
         actionDisabled={bank?.busy ?? false}
-        afterFootnote={
-          bank?.onSkip && !bank.linked ? (
-            <BankLinkSkip busy={bank.busy} onSkip={bank.onSkip} />
-          ) : undefined
+        footnote="Required here. It is the only step that cannot be deferred."
+        afterAction={
+          bank?.onSkip && !bank.linked ? <BankLinkSkip busy={bank.busy} onSkip={bank.onSkip} /> : undefined
         }
       >
-        {bank ? (
-          <BankLinkStep
-            linked={bank.linked}
-            busy={bank.busy}
-            error={bank.error}
-            onConnect={bank.onConnect}
-          />
-        ) : (
-          <BankLinkStep linked={false} busy={false} onConnect={go('choose')} />
-        )}
+        <BankLinkStep linked={bank?.linked ?? false} error={bank?.error} />
       </Step>
     );
   }
@@ -270,16 +255,17 @@ export default function CounterOnboarding({
   return (
     <Step
       step="choose"
-      headline={covered ? `${money(due, { cents: true })} approved` : `${money(available, { cents: true })} available`}
-      body={
+      pending={pending}
+      title={covered ? 'Pick how to clear it' : `${money(available, { cents: true })} available`}
+      lede={
         covered
-          ? 'Pick how to clear it. You can change this any time.'
+          ? 'You can change this later that week, or three cycles in.'
           : 'Your line covers part of this today. Pick how to clear that part, and put the rest on another method.'
       }
-      footnote="Clearing early always costs less."
-      action="Confirm & show the shop"
+      action="Approve"
       onAction={go('scan')}
       busy={busy}
+      footnote="You have not been charged yet."
     >
       <SplitChooser
         amount={covered ? due : available}

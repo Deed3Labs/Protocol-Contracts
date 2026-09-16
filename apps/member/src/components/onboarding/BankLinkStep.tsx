@@ -1,4 +1,4 @@
-import { Loader2, Check } from 'lucide-react';
+import { Rows } from '@/components/clear/brand/anatomy';
 
 /**
  * Connecting an account, presented as a step rather than a settings action.
@@ -13,43 +13,44 @@ import { Loader2, Check } from 'lucide-react';
  * one with the plan locked and the shop told nothing was approved, which is the true outcome, and
  * leaves them a member who can link an account later instead of a signup we lost at the counter.
  *
- * Binary would have picked the wrong one of those either way: block, and we lose the member at the
- * step we already know loses the most; wave it through, and we have approved a plan on no
- * underwriting at all.
+ * The step states all three reasons rather than asking for trust, and the connect action itself
+ * belongs to the panel's footer, where every other step keeps its action.
  */
+const REASONS = [
+  { title: 'It sets your limit', body: 'From income landing and what already goes out' },
+  { title: 'It is how the plan clears', body: 'Balance first, then this account' },
+  {
+    title: 'Read-only',
+    body: 'Clear cannot move money out of it except to clear a plan',
+  },
+];
+
 export default function BankLinkStep({
   linked,
-  busy,
   error,
-  onConnect,
 }: {
   linked: boolean;
-  busy: boolean;
+  busy?: boolean;
   error?: string | null;
-  onConnect: () => void;
+  onConnect?: () => void;
 }) {
   if (linked) {
     return (
-      <div className="flex items-center gap-2 rounded-[10px] border-[0.5px] border-positive/40 bg-positive/10 px-3.5 py-[11px] text-[13px] text-positive">
-        <Check className="h-3.5 w-3.5 shrink-0" />
-        Account connected
-      </div>
+      <p className="text-sec text-settled">Account connected</p>
     );
   }
 
   return (
     <>
-      <button
-        type="button"
-        onClick={onConnect}
-        disabled={busy}
-        className="flex w-full items-center gap-2 rounded-[10px] border-[0.5px] border-border px-3.5 py-[11px] text-left text-[13px] disabled:opacity-60"
-      >
-        {busy && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />}
-        {busy ? 'Opening your bank…' : 'Search your bank'}
-      </button>
-
-      {error && <p className="mt-2 text-[11px] leading-relaxed text-negative">{error}</p>}
+      <Rows>
+        {REASONS.map((reason) => (
+          <div key={reason.title}>
+            <p className="text-sec">{reason.title}</p>
+            <p className="c-det mt-[3px]">{reason.body}</p>
+          </div>
+        ))}
+      </Rows>
+      {error && <p className="c-det c-errline mt-s2">{error}</p>}
     </>
   );
 }
@@ -57,28 +58,20 @@ export default function BankLinkStep({
 /**
  * The way out, placed after the step's own reassurance rather than before it.
  *
- * Its own export because of where it has to sit. "Read-only, we never see your login" is what
- * answers the objection somebody is actually having at this step, and a skip wedged between the
- * button and that sentence interrupts the answer with an exit — offering the way out before
- * finishing the reason to stay.
+ * Its own export because of where it has to sit. The three reasons are what answer the objection
+ * somebody is actually having at this step, and a skip wedged in among them interrupts the answer
+ * with an exit — offering the way out before finishing the reason to stay.
  *
- * Quiet, left-aligned with the copy it follows, and honest about the cost. Not a second primary
- * button: this is still the step we want them to finish, and the consequence is named here rather
- * than discovered on day one.
+ * Quiet and honest about the cost. Not a second button: this is still the step we want them to
+ * finish, and the consequence is named here rather than discovered on day one.
  */
-export function BankLinkSkip({
-  busy,
-  onSkip,
-}: {
-  busy: boolean;
-  onSkip: () => void;
-}) {
+export function BankLinkSkip({ busy, onSkip }: { busy: boolean; onSkip: () => void }) {
   return (
     <button
       type="button"
       onClick={onSkip}
       disabled={busy}
-      className="mt-2 block text-left text-[11px] leading-relaxed text-muted-foreground underline underline-offset-2 disabled:opacity-60"
+      className="c-det mt-s1 block w-full text-center underline underline-offset-2 disabled:opacity-60"
     >
       Skip — join without covering this today
     </button>
