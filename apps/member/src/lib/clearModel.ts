@@ -543,6 +543,8 @@ export interface Thread {
   name: string;
   initials: string;
   kind: ThreadKind;
+  /** Who they are, under the name where the thread is named: "@mariac", "Case · October carry". */
+  subtitle?: string;
   /** Last message, truncated in the list. */
   preview: string;
   time: string;

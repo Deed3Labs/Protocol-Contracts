@@ -6,6 +6,7 @@ import { useSetPaneTitle } from '@/components/shell/PaneTitle';
 import ThreadList from '@/components/clear/inbox/ThreadList';
 import ThreadView from '@/components/clear/inbox/ThreadView';
 import NewMessageDialog from '@/components/clear/inbox/NewMessageDialog';
+import DeleteThreadDialog from '@/components/clear/inbox/DeleteThreadDialog';
 import { CONTACTS, INBOX } from '@/data/clearPlaceholder';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import type { ChatMessage, Contact, InboxData, Thread } from '@/lib/clearModel';
@@ -47,17 +48,19 @@ export default function InboxPage({
    * and deleted. Archiving is reversible and has its own view; deleting is not, which is why it is
    * the last action and the only one in ink.
    */
-  const [read, setRead] = useState<Set<string>>(new Set());
+  const [readState, setReadState] = useState<Record<string, boolean>>({});
   const [archived, setArchived] = useState<Set<string>>(new Set());
   const [deleted, setDeleted] = useState<Set<string>>(new Set());
   const [showArchived, setShowArchived] = useState(false);
+  /** The thread waiting on its confirmation, because deleting cannot be undone. */
+  const [deleting, setDeleting] = useState<Thread | null>(null);
 
   useSetMobileAction({ label: 'New', icon: PlusIcon, onSelect: () => setNewOpen(true) });
 
   const term = query.trim().toLowerCase();
   const all = data.threads
     .filter((t) => !deleted.has(t.id))
-    .map((t) => (read.has(t.id) ? { ...t, unread: false } : t));
+    .map((t) => (t.id in readState ? { ...t, unread: !readState[t.id] } : t));
   const inList = all.filter((t) => archived.has(t.id) === showArchived);
   const threads = term
     ? inList.filter((t) => t.name.toLowerCase().includes(term) || t.preview.toLowerCase().includes(term))
@@ -76,7 +79,7 @@ export default function InboxPage({
   };
 
   const openThread = (thread: Thread) => {
-    setRead((prev) => new Set(prev).add(thread.id));
+    setReadState((prev) => ({ ...prev, [thread.id]: true }));
     return desktop ? setSelected(thread.id) : navigate(`/inbox/${thread.id}`);
   };
 
@@ -92,7 +95,7 @@ export default function InboxPage({
       onSelect={openThread}
       onNew={() => setNewOpen(true)}
       onOpenNotifications={() => window.dispatchEvent(new Event(OPEN_NOTIFICATIONS))}
-      onRead={(thread) => setRead((prev) => new Set(prev).add(thread.id))}
+      onRead={(thread, markRead) => setReadState((prev) => ({ ...prev, [thread.id]: markRead }))}
       onArchive={(thread, put) =>
         setArchived((prev) => {
           const next = new Set(prev);
@@ -103,15 +106,31 @@ export default function InboxPage({
           return next;
         })
       }
-      onDelete={(thread) => setDeleted((prev) => new Set(prev).add(thread.id))}
-      archived={all.filter((t) => archived.has(t.id)).length}
+      onDelete={setDeleting}
       showingArchived={showArchived}
       onShowArchived={setShowArchived}
     />
   );
 
-  const dialog = (
-    <NewMessageDialog
+  const dialogs = (
+    <>
+      {deleting && (
+        <DeleteThreadDialog
+          thread={deleting}
+          messages={data.messages[deleting.id] ?? []}
+          open={deleting !== null}
+          onOpenChange={(o) => !o && setDeleting(null)}
+          onDelete={() => {
+            setDeleted((prev) => new Set(prev).add(deleting.id));
+            if (openId === deleting.id) {
+              setSelected(null);
+              if (threadId) navigate('/inbox');
+            }
+            setDeleting(null);
+          }}
+        />
+      )}
+      <NewMessageDialog
       contacts={contacts}
       open={newOpen}
       onOpenChange={setNewOpen}
@@ -126,7 +145,8 @@ export default function InboxPage({
         const existing = data.threads.find((t) => t.name === contact.name);
         if (existing) openThread(existing);
       }}
-    />
+      />
+    </>
   );
 
   // A phone opens the thread over the list.
@@ -138,18 +158,19 @@ export default function InboxPage({
         <div className="c-slab c-one c-fillscreen -mt-s1">
           <ThreadView thread={open} messages={messages} onSend={send} />
         </div>
-        {dialog}
+        {dialogs}
       </>
     );
   }
 
   return (
     <>
-      <div className={desktop ? 'c-slab' : 'c-slab c-one'}>
+      {/* The list is a screen too: the control bar and the footer hold while the threads scroll. */}
+      <div className={desktop ? 'c-slab' : 'c-slab c-one c-fillscreen -mt-s1'}>
         {list}
         {desktop && open && <ThreadView thread={open} messages={messages} onSend={send} />}
       </div>
-      {dialog}
+      {dialogs}
     </>
   );
 }

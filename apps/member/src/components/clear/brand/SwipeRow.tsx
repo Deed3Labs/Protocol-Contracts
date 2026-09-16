@@ -1,16 +1,21 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-/** What a swipe can do to a row. `ink` is the heavier of the two grounds, for what removes the row. */
+/**
+ * What a swipe can do to a row.
+ *
+ * `lead` is what you would actually do, and it takes the ink; `dismiss` stays quiet; `danger` takes
+ * the red, which marks irreversible rather than disapproved.
+ */
 export interface SwipeAction {
   key: string;
   label: string;
-  tone?: 'plain' | 'ink';
+  tone?: 'lead' | 'dismiss' | 'danger';
   onSelect?: () => void;
 }
 
-/** Each action is 78px, and a row reveals as many as it has. */
-const ACTION_WIDTH = 78;
+/** Two actions are 78px each; three are 62, which is what lets a third fit. */
+const WIDTH = { two: 78, three: 62 };
 
 /**
  * A row that slides to show what can be done to it.
@@ -37,7 +42,7 @@ export default function SwipeRow({
   const start = useRef<number | null>(null);
   const moved = useRef(false);
 
-  const reveal = actions.length * ACTION_WIDTH;
+  const reveal = actions.length * (actions.length > 2 ? WIDTH.three : WIDTH.two);
   // How far open the row is right now: its resting state, moved by the finger.
   const shown = Math.min(reveal, Math.max(0, (open ? reveal : 0) - drag));
   const dragging = drag !== 0;
@@ -82,14 +87,14 @@ export default function SwipeRow({
         {children}
       </div>
       <div
-        className="c-sacts"
+        className={cn('c-sacts', actions.length > 2 && 'c-three')}
         style={dragging ? { transform: `translateX(${reveal - shown}px)`, transition: 'none' } : undefined}
       >
         {actions.map((action) => (
           <button
             key={action.key}
             type="button"
-            className={cn('c-sact', action.tone === 'ink' ? 'c-clear' : 'c-read')}
+            className={cn('c-sact', `c-${action.tone ?? 'dismiss'}`)}
             onClick={() => {
               setOpen(false);
               action.onSelect?.();

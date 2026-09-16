@@ -1,6 +1,7 @@
 import { Btn, CBar, CFoot, CHead, CMain, Cell, Line, Rows, SecHead } from '../brand/anatomy';
 import SwipeRow from '../brand/SwipeRow';
-import { ChevronIcon, SearchIcon, ShieldIcon, StorefrontIcon } from '../brand/icons';
+import { ArchiveIcon, ChevronIcon, ComposeIcon, SearchIcon, ShieldIcon, StorefrontIcon } from '../brand/icons';
+import { useIsDesktop } from '@/lib/useIsDesktop';
 import { unreadThreads, type Thread } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
@@ -41,7 +42,6 @@ export default function ThreadList({
   onRead,
   onArchive,
   onDelete,
-  archived = 0,
   showingArchived = false,
   onShowArchived,
 }: {
@@ -52,14 +52,13 @@ export default function ThreadList({
   onSelect: (thread: Thread) => void;
   onNew: () => void;
   onOpenNotifications: () => void;
-  onRead?: (thread: Thread) => void;
+  onRead?: (thread: Thread, read: boolean) => void;
   onArchive?: (thread: Thread, archived: boolean) => void;
   onDelete?: (thread: Thread) => void;
-  /** How many are put away, so the footer can offer them. */
-  archived?: number;
   showingArchived?: boolean;
   onShowArchived?: (show: boolean) => void;
 }) {
+  const desktop = useIsDesktop();
   const unread = unreadThreads(threads);
 
   return (
@@ -75,25 +74,39 @@ export default function ThreadList({
           </span>
         </SecHead>
       </CHead>
-      {threads.length > 0 && (
-        <CBar>
-          <div className="c-listctl c-nowrap">
-            <label className="c-searchfield">
-              <span className="c-ic">
-                <SearchIcon />
-              </span>
-              <input
-                className="c-field c-bare"
-                value={query}
-                onChange={(e) => onQuery(e.target.value)}
-                placeholder="Search messages"
-                aria-label="Search messages"
-              />
-            </label>
+      <CBar>
+        {/* One row at every width: the field, then New and Archived as glyphs. Desktop keeps the word
+            on New, because that is the thing you came to do. */}
+        <div className="c-listctl c-nowrap">
+          <label className="c-searchfield">
+            <span className="c-ic">
+              <SearchIcon />
+            </span>
+            <input
+              className="c-field c-bare"
+              value={query}
+              onChange={(e) => onQuery(e.target.value)}
+              placeholder="Search messages"
+              aria-label="Search messages"
+            />
+          </label>
+          {desktop ? (
             <Btn onClick={onNew}>New</Btn>
-          </div>
-        </CBar>
-      )}
+          ) : (
+            <Btn className="c-icon36" aria-label="New message" onClick={onNew}>
+              <ComposeIcon />
+            </Btn>
+          )}
+          <Btn
+            className={cn('c-icon36', showingArchived && 'border-ink!')}
+            aria-label={showingArchived ? 'Back to the inbox' : 'Archived'}
+            aria-pressed={showingArchived}
+            onClick={() => onShowArchived?.(!showingArchived)}
+          >
+            <ArchiveIcon />
+          </Btn>
+        </div>
+      </CBar>
       <CMain className={threads.length > 0 ? 'c-flush' : undefined}>
         {threads.length === 0 ? (
           <div className="py-s4 text-center">
@@ -116,15 +129,20 @@ export default function ThreadList({
                 key={thread.id}
                 className={cn(thread.id === activeId && 'c-on')}
                 actions={[
-                  // Read while it is unread, then the two ways to take it off the list: one you can
-                  // undo, one you cannot.
-                  ...(thread.unread ? [{ key: 'read', label: 'Read', onSelect: () => onRead?.(thread) }] : []),
+                  // What you would do takes the ink; archive is quiet and reversible; delete is red
+                  // and confirms.
+                  {
+                    key: 'read',
+                    label: thread.unread ? 'Read' : 'Unread',
+                    tone: 'lead' as const,
+                    onSelect: () => onRead?.(thread, Boolean(thread.unread)),
+                  },
                   {
                     key: 'archive',
                     label: showingArchived ? 'Restore' : 'Archive',
                     onSelect: () => onArchive?.(thread, !showingArchived),
                   },
-                  { key: 'delete', label: 'Delete', tone: 'ink' as const, onSelect: () => onDelete?.(thread) },
+                  { key: 'delete', label: 'Delete', tone: 'danger' as const, onSelect: () => onDelete?.(thread) },
                 ]}
               >
                 <button type="button" onClick={() => onSelect(thread)} className="block w-full text-left">
@@ -159,14 +177,7 @@ export default function ThreadList({
       </CMain>
       <CFoot>
         <Line className="items-center!">
-          {/* Archiving is only reversible if the archive can be opened, so the footer offers it. */}
-          {archived > 0 || showingArchived ? (
-            <button type="button" onClick={() => onShowArchived?.(!showingArchived)} className="c-det hover:text-ink">
-              {showingArchived ? 'Back to the inbox' : `${archived} archived`}
-            </button>
-          ) : (
-            <span className="c-det">Alerts live in Notifications</span>
-          )}
+          <span className="c-det">Alerts live in Notifications</span>
           <button type="button" onClick={onOpenNotifications} className="c-det inline-flex! items-center gap-1 hover:text-ink">
             Open notifications
             <ChevronIcon />

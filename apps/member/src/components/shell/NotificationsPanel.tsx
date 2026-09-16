@@ -80,12 +80,14 @@ export default function NotificationsPanel({
               <SwipeRow
                 key={n.id}
                 actions={[
-                  // Where it leads, if it leads anywhere; Read while it is unread; then Clear.
+                  // Where it leads takes the ink, because it is what you would do; then Read while it
+                  // is unread, then Clear.
                   ...(n.action
                     ? [
                         {
                           key: 'go',
                           label: n.action.label,
+                          tone: 'lead' as const,
                           onSelect: () => {
                             onRead?.(n.id);
                             onNavigate?.();
@@ -94,8 +96,10 @@ export default function NotificationsPanel({
                         },
                       ]
                     : []),
-                  ...(n.unread ? [{ key: 'read', label: 'Read', onSelect: () => onRead?.(n.id) }] : []),
-                  { key: 'clear', label: 'Clear', tone: 'ink' as const, onSelect: () => onClear?.(n.id) },
+                  ...(n.unread
+                    ? [{ key: 'read', label: 'Read', tone: n.action ? ('dismiss' as const) : ('lead' as const), onSelect: () => onRead?.(n.id) }]
+                    : []),
+                  { key: 'clear', label: 'Clear', onSelect: () => onClear?.(n.id) },
                 ]}
               >
                 <Line className="items-start!">
