@@ -1,6 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { AnimatePresence } from "framer-motion";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import SplashScreen from "@/components/SplashScreen";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -41,16 +40,40 @@ function App() {
   // Check if splash has been shown in this session
   const [splashShown] = useState(() => !!sessionStorage.getItem('splash_shown'));
   const [showSplash, setShowSplash] = useState(!splashShown);
+  /** Fading out: the screen holds its place for the 180ms fade, then goes. */
+  const [splashLeaving, setSplashLeaving] = useState(false);
 
+  /*
+   * The splash goes when the app is up, not when a timer says so.
+   *
+   * It was a flat four seconds, which is the one thing the spec rules out: a wait that finishes
+   * before or after the app does is a claim about progress nobody is measuring. Two frames is the
+   * app having painted; the short floor is so a warm start reads as an opening rather than a flash.
+   */
   useEffect(() => {
-    if (showSplash) {
-      // Show splash screen for 4 seconds
-      const timer = setTimeout(() => {
-        setShowSplash(false);
-        sessionStorage.setItem('splash_shown', 'true');
-      }, 4000);
-      return () => clearTimeout(timer);
-    }
+    if (!showSplash) return;
+    const started = performance.now();
+    let fade: ReturnType<typeof setTimeout>;
+    let gone: ReturnType<typeof setTimeout>;
+    const done = () => {
+      fade = setTimeout(
+        () => {
+          setSplashLeaving(true);
+          gone = setTimeout(() => {
+            setShowSplash(false);
+            setSplashLeaving(false);
+            sessionStorage.setItem('splash_shown', 'true');
+          }, 180);
+        },
+        Math.max(0, 450 - (performance.now() - started)),
+      );
+    };
+    const frame = requestAnimationFrame(() => requestAnimationFrame(done));
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(fade);
+      clearTimeout(gone);
+    };
   }, [showSplash]);
 
   // Listen for disconnect and connect events to show splash
@@ -87,9 +110,7 @@ function App() {
                 <ModalProvider>
                   <GlobalModalsProvider>
                   <ScrollToTop />
-                  <AnimatePresence>
-                    {showSplash && <SplashScreen />}
-                  </AnimatePresence>
+                  {showSplash && <SplashScreen leaving={splashLeaving} />}
                   
                   <OfflineIndicator />
                   <PWAInitializer />

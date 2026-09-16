@@ -370,6 +370,20 @@
 .c-cardface .c-wm{color:var(--paper)}
 .c-cardface.c-virtual{background:linear-gradient(160deg,#1E2C27 0%,#16211D 70%)}
 .c-cardface.c-frozen{background:var(--ink-70)}
+/* Five things are objects rather than page surfaces, so they stay dark on a dark ground: the card
+   face and its three states, the number and the wordmark on it, the chip, and the scan viewfinder.
+   The test is simple — if it would still be dark in the real world, it does not flip. */
+.dark .c-cardface,.dusk .c-cardface{background:#0E1714}
+.dark .c-cardface.c-virtual,.dusk .c-cardface.c-virtual{
+  background:linear-gradient(160deg,#1B2A24 0%,#0E1714 70%)}
+.dark .c-cardface.c-frozen,.dusk .c-cardface.c-frozen{background:#2C3A35}
+.dark .c-pan,.dusk .c-pan,
+.dark .c-cardface .c-wm,.dusk .c-cardface .c-wm,
+.dark .c-cstate,.dusk .c-cstate{color:#DFE3DE}
+.dark .c-cchip,.dusk .c-cchip{background:#5A635F}
+.dark .c-viewfinder,.dusk .c-viewfinder{background:#0E1714}
+.dark .c-vf,.dusk .c-vf{border-color:#DFE3DE}
+
 .c-cchip{width:36px;height:27px;border-radius:4px;background:var(--ink-28);display:block;position:relative}
 .c-cchip::after{content:'';position:absolute;inset:6px 4px;border-left:1px solid var(--ink-70);
               border-right:1px solid var(--ink-70)}
@@ -584,4 +598,38 @@
 /* The guide's mobile .home gap, keyed to the app's breakpoint instead of the .phone frame. */
 @media (max-width:1023px){
   .c-home{gap:var(--s2)}
+}
+
+/* ================= SPLASH ================= */
+/* One flat ground, the mark, the wordmark, and a hairline that fills. Everything the old gradient
+   was doing, the ground already does.
+   Ink always, never the theme: the OS paints its own splash from the manifest's background_color
+   first, and that value is static. If this one followed the theme, a light member would see ink,
+   then paper, then the app — two colour changes on a cold open, the first of which looks like a
+   fault. Both are #16211D, and the single change is the app arriving. */
+.c-splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;
+        justify-content:center;background:#16211D;color:#DFE3DE;overflow:hidden;
+        opacity:1;transition:opacity .18s ease}
+.c-splash.c-out{opacity:0}
+.c-splash .c-lock{display:flex;flex-direction:column;align-items:center;color:#DFE3DE}
+.c-splash .c-mk{width:96px;height:96px;display:block;animation:c-splash-in .28s ease-out both}
+.c-splash .c-swm{font-family:var(--font-display);font-weight:800;font-size:34px;letter-spacing:-.035em;
+             line-height:1;margin-top:18px;animation:c-splash-in .28s ease-out .08s both}
+/* known progress: the one thing that is current, which is what cobalt is for */
+.c-splash .c-load{position:absolute;left:0;right:0;bottom:0;height:1px;background:#3A4440}
+.c-splash .c-load i{display:block;height:100%;background:#7C8CC5;transition:width .2s linear}
+.c-splash .c-slow{position:absolute;bottom:var(--s5);left:0;right:0;text-align:center;padding:0 var(--s3)}
+.c-splash .c-slow p{color:#939995}
+/* unknown progress: the guide's dot, beside a word that says the same thing. The ping is the only
+   motion the brand defines, so an unknown wait reuses it rather than inventing a travelling bar. */
+.c-splash .c-waiting{position:absolute;bottom:var(--s5);display:flex;align-items:center;gap:10px;
+                 font-size:var(--t-sec);color:#939995}
+.c-splashdot{position:relative;display:inline-block;width:7px;height:7px;border-radius:50%;
+           background:#6FCB9F;box-shadow:0 0 6px 1px rgb(111 203 159 / .55);flex-shrink:0}
+.c-splashdot::after{content:'';position:absolute;inset:0;border-radius:inherit;background:inherit;
+                  animation:c-live-ping 2s cubic-bezier(0,0,.2,1) infinite}
+@keyframes c-splash-in{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){
+  .c-splash .c-mk,.c-splash .c-swm{animation:none}
+  .c-splashdot::after{animation:none;opacity:0}
 }

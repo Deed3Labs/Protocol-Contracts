@@ -151,18 +151,19 @@
   font-weight: 400;
 
   color-scheme: light;
-  color: #0A0A0A;
-  background-color: #F5F5F5;
+  color: var(--ink);
+  background-color: var(--paper);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Light mode — neutral */
+  /* Light mode — neutral. Background and foreground are the guide's paper and ink, so the page
+     grounds the same way whether a screen has been converted or not. */
   --radius: 0.5rem;
-  --background: 245 245 245;
-  --foreground: 10 10 10;
+  --background: 223 227 222;
+  --foreground: 22 33 29;
   --card: 255 255 255;
   --card-foreground: 10 10 10;
   --popover: 255 255 255;
@@ -231,13 +232,14 @@
 }
 
 .dark {
+  /* The ground is the guide's paper on ink, not the old near-black — see styles/clear-tokens. */
   color-scheme: dark;
-  color: #F5F5F5;
-  background-color: #0E0E0E;
+  color: var(--ink);
+  background-color: var(--paper);
 
-  /* Dark mode — neutral */
-  --background: 14 14 14;
-  --foreground: 245 245 245;
+  /* Dark mode — the guide's paper and ink on ink. */
+  --background: 22 33 29;
+  --foreground: 223 227 222;
   --card: 23 23 23;
   --card-foreground: 245 245 245;
   --popover: 23 23 23;
@@ -288,13 +290,14 @@
 }
 
 .dusk {
-  color-scheme: light;
-  color: #2e2012;
-  background-color: #f1e2ce;
+  /* Dusk is the ink palette one step up, not the old warm cream — see styles/clear-tokens. */
+  color-scheme: dark;
+  color: var(--ink);
+  background-color: var(--paper);
 
-  /* Dusk — golden hour (warm peach-cream), mapped from useclear.org */
-  --background: 241 226 206;
-  --foreground: 46 32 18;
+  /* Dusk — the guide's raised ink ground, not the site's golden hour. */
+  --background: 30 44 39;
+  --foreground: 207 214 207;
   --card: 247 238 220;
   --card-foreground: 46 32 18;
   --popover: 252 245 234;

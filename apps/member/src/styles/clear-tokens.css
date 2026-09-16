@@ -33,3 +33,31 @@
   --vest-cash: var(--ink); --vest-vested: var(--settled); --vest-vesting: var(--underway);
   --seam: var(--ink-28);
 }
+
+/* ============================================================
+   DARK and DUSK — clear-app-modes.css.
+
+   Every value here is the guide's own on-ink column, with one exception noted below. A dark theme
+   is a token swap rather than a redesign: two grounds, twelve variables, and no component rewritten,
+   because nothing under these tokens hard-codes a colour.
+
+   The app puts `dark` or `dusk` on <html> (see context/ThemeContext), where the guide's page uses
+   .theme-dark / .theme-dusk on a frame. Same declarations, our selector.
+   ============================================================ */
+.dark, .dusk {
+  --live: #7C8CC5; --settled: #6FCB9F; --underway: #E3B667; --absent: #E58C7F;
+  --ink-70: #ABB1AC; --ink-50: #939995; --ink-28: #5A635F; --ink-13: #3A4440;
+  /* The guide has no land on ink. This is lightened from #6B7F5C to clear 4.5:1 on both dark
+     grounds, because asset-backed is the biggest tier and cannot be the one with no colour. */
+  --land: #9CAE8B; --land-ink: #9CAE8B;
+  --tier-savings: var(--settled); --tier-asset: var(--land); --tier-asset-ink: var(--land-ink);
+  --tier-income: var(--underway); --tier-boost: var(--absent);
+  --vest-cash: var(--ink); --vest-vested: var(--settled); --vest-vesting: var(--underway);
+  --seam: var(--ink-28);
+}
+.dark { --paper: #16211D; --paper-2: #1E2C27; --ink: #DFE3DE; }
+.dusk { --paper: #1E2C27; --paper-2: #26332E; --ink: #CFD6CF; }
+
+/* The page's own ground, for the inch above and below what the shell paints. The legacy themes set
+   a near-black and a warm cream here; both are from before the guide. */
+.dark, .dusk { color-scheme: dark; background-color: var(--paper); color: var(--ink); }

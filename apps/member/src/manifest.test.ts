@@ -6,6 +6,7 @@ const manifest = JSON.parse(
 );
 const APP = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8');
 const INDEX = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const SPLASH_CSS = readFileSync(new URL('./styles/clear-components.css', import.meta.url), 'utf8');
 
 /**
  * The manifest is the only part of the app the browser reads before there is an app, and the last
@@ -37,16 +38,34 @@ describe('the manifest describes this app', () => {
     expect(manifest.launch_handler?.client_mode).toBe('navigate-existing');
   });
 
-  test('the splash matches the app it opens into, rather than flashing the wrong one', () => {
-    // App.tsx sets defaultTheme="light", whose --background is 245 245 245.
-    expect(APP).toContain('defaultTheme="light"');
-    expect(manifest.background_color).toBe('#f5f5f5');
-    expect(INDEX).toContain('<meta name="theme-color" content="#f5f5f5" />');
+  /*
+   * The OS paints its splash from background_color before any JavaScript runs, and that value is
+   * static. Our own splash is therefore ink in every theme: if it followed the theme, a light
+   * member would get ink, then paper, then the app — two colour changes on a cold open, the first
+   * of which looks like a fault. Change one of these and you have to change the other.
+   */
+  test('both splashes are the same ink, so a cold open changes colour once', () => {
+    expect(manifest.background_color).toBe('#16211D');
+    expect(SPLASH_CSS).toContain('background:#16211D');
+  });
+
+  test('browser chrome follows the theme, which the manifest cannot', () => {
+    expect(INDEX).toContain('content="#DFE3DE" media="(prefers-color-scheme: light)"');
+    expect(INDEX).toContain('content="#16211D" media="(prefers-color-scheme: dark)"');
   });
 
   test('icons declare the size they actually are', () => {
-    // One 500x500 source. Declaring it at eight sizes invited a browser to pick a blurry one.
-    for (const icon of manifest.icons) expect(icon.sizes).toBe('500x500');
+    // Read from the PNG itself rather than trusted: a declared size a browser then finds wrong is
+    // how it ends up picking the blurry one.
+    for (const icon of manifest.icons) {
+      const png = readFileSync(new URL(`../public${icon.src}`, import.meta.url));
+      const size = `${png.readUInt32BE(16)}x${png.readUInt32BE(20)}`;
+      expect(size).toBe(icon.sizes);
+    }
+  });
+
+  test('a maskable icon is declared, because a launcher will crop whatever it gets', () => {
+    expect(manifest.icons.some((i: { purpose?: string }) => i.purpose === 'maskable')).toBe(true);
   });
 
   test('nothing points at a file that is not shipped', () => {

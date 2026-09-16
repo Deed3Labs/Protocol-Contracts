@@ -31,11 +31,13 @@ function defaultByTime(fallback: Theme): Theme {
 }
 
 /**
- * Pinned to light during the brand guide conversion. The guide defines one appearance, and the
- * dusk and dark palettes below predate it; they come back in a dedicated pass once every page is
- * converted. Flip this to restore the picker and the time-of-day default untouched.
+ * Unpinned: the guide's dark and dusk grounds landed with clear-app-modes, so all three appearances
+ * are the guide's own values and the picker means something again.
+ *
+ * Set this to a theme to pin every member to it — which is what the conversion did while only the
+ * light palette had been converted.
  */
-export const THEME_PINNED: Theme | null = 'light';
+export const THEME_PINNED: Theme | null = null;
 
 export function ThemeProvider({ children, defaultTheme = 'light', storageKey = 'theme' }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {

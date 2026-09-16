@@ -14,6 +14,7 @@ import HomePage from '@/pages/app/HomePage';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
+import SplashScreen from '@/components/SplashScreen';
 import AssurancePage from '@/pages/app/AssurancePage';
 import InboxPage from '@/pages/app/InboxPage';
 import ScanPage from '@/pages/app/ScanPage';
@@ -476,6 +477,48 @@ function CounterOnboardingPreview() {
 }
 
 /**
+ * The splash, which the app itself only shows for a few hundred milliseconds.
+ *
+ * Both progress states are here because they are different screens: a real bar when there is
+ * something to measure, the dot and the word when there is not. The slow line appears on its own
+ * after three seconds, which is also how a member meets it.
+ */
+function SplashPreview() {
+  const [known, setKnown] = useState(false);
+  const [progress, setProgress] = useState(38);
+
+  return (
+    <>
+      <SplashScreen progress={known ? progress : undefined} />
+      <div className="fixed inset-x-0 bottom-0 z-[10000] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        <button
+          type="button"
+          onClick={() => setKnown((k) => !k)}
+          className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+            known ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+          }`}
+        >
+          {known ? 'known progress' : 'unknown progress'}
+        </button>
+        {known &&
+          [12, 38, 74, 100].map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setProgress(p)}
+              className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+                p === progress ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+              }`}
+            >
+              {p}%
+            </button>
+          ))}
+      </div>
+    </>
+  );
+}
+
+/**
  * Card, driven the way `CardRoute` drives it.
  *
  * New card is the reason: the button only appears when a container is handling it, and the sheet's
@@ -590,6 +633,7 @@ export default function PreviewApp() {
         <PreviewBalancesProvider>
           <PreviewIdentityProvider>
             <Routes>
+              <Route path="/splash" element={<SplashPreview />} />
               <Route path="/onboarding" element={<OnboardingPreview />} />
               <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
               <Route path="/charge" element={<ChargeApprovalPreview />} />

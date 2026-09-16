@@ -26,11 +26,23 @@ function base(size: number, strokeWidth: number, props: SVGProps<SVGSVGElement>)
 }
 
 /** The Clear mark. Drawn as given — never cut, rotated or redrawn. */
-export function ClearMark(props: SVGProps<SVGSVGElement>) {
+export function ClearMark({
+  /**
+   * The outline mark, which the guide uses from 96px up. The splash is the one screen in the app
+   * comfortably above that, so it is the only place it is correct. Same paths either way: the C
+   * keeps its stroke and loses its fill, and nothing else changes.
+   */
+  outline,
+  ...props
+}: SVGProps<SVGSVGElement> & { outline?: boolean }) {
   return (
     <svg viewBox="0 0 336 336" aria-hidden {...props}>
       <g transform="translate(168 168)" fill="none" stroke="currentColor">
-        <path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" strokeWidth="4" fill="currentColor" />
+        <path
+          d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z"
+          strokeWidth="4"
+          fill={outline ? 'none' : 'currentColor'}
+        />
         <path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none" />
         <circle cx="0" cy="0" r="34" fill="currentColor" stroke="none" />
         <circle cx="131.5" cy="0" r="25.25" strokeWidth="15.5" />

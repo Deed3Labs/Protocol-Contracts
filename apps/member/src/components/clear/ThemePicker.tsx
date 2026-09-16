@@ -1,5 +1,6 @@
 import { useTheme } from '@/context/ThemeContext';
 import { SunIcon, DuskIcon, MoonIcon } from '@/components/app-ui/ThemeIcons';
+import { Btn } from '@/components/clear/brand/anatomy';
 import { cn } from '@/lib/utils';
 
 const THEMES = [
@@ -9,33 +10,27 @@ const THEMES = [
 ] as const;
 
 /**
- * Appearance — a three-way segmented control, not a toggle.
+ * Appearance — a three-way chooser, not a toggle.
  *
- * The app has three themes, and dusk isn't a midpoint between the other two; a
- * two-state switch would make it unreachable. Wired to the real theme context,
- * so this actually changes the app rather than describing that it could.
+ * The app has three grounds, and dusk is not a midpoint between the other two: a two-state switch
+ * would make it unreachable. The guide's split chooser, the same one the plan lengths use, wired to
+ * the real theme context so it changes the app rather than describing that it could.
  */
 export default function ThemePicker({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div className={cn('flex gap-1 rounded-lg bg-secondary p-[3px]', className)}>
+    <div className={cn('c-qc c-split', className)}>
       {THEMES.map(({ id, label, Icon }) => (
-        <button
+        <Btn
           key={id}
-          type="button"
+          className={cn('c-chip-q', theme === id && 'c-on')}
           aria-pressed={theme === id}
           onClick={() => setTheme(id)}
-          className={cn(
-            'flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs transition-colors',
-            theme === id
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-foreground-secondary hover:text-foreground',
-          )}
         >
           <Icon className="h-[15px] w-[15px] shrink-0" />
           {label}
-        </button>
+        </Btn>
       ))}
     </div>
   );

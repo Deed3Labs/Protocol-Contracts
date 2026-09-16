@@ -1,58 +1,63 @@
-import { motion } from 'framer-motion';
-import ClearPathLogo from '../assets/ClearPath-Logo.png';
+import { useEffect, useState } from 'react';
+import { ClearMark } from '@/components/clear/brand/icons';
+import { cn } from '@/lib/utils';
 
-export default function SplashScreen() {
+/** How long a cold start can take before the screen says something about it. */
+const SLOW_AFTER_MS = 3000;
+
+/**
+ * The splash — a flat ground, the mark, the wordmark, and a hairline that fills.
+ *
+ * Ink always, never the theme. The OS paints its own splash first, from the manifest's
+ * `background_color`, which is a single static value baked in at install: if this one followed the
+ * theme, a light-theme member would see ink, then paper, then the app — two colour changes on every
+ * cold open, the first of which looks like a fault. Both are #16211D, and the one change left is
+ * the app arriving.
+ *
+ * No gradient and no dependency: the brand has no gradients, and an animated one is the opposite of
+ * a mineral page. Opacity is the only entrance, because the guide defines exactly one motion — the
+ * dot's ping — and inventing a second for the first screen a member sees sets the wrong expectation
+ * for everything after it.
+ */
+export default function SplashScreen({
+  /** Real load progress, 0–100. Omitted means unknown, which is a different screen, not a fake bar. */
+  progress,
+  /** The app is ready: fade out. The parent unmounts this after the fade. */
+  leaving = false,
+}: {
+  progress?: number;
+  leaving?: boolean;
+}) {
+  // A splash that sits silently for ten seconds reads as a broken app, and the fix is a sentence.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setSlow(true), SLOW_AFTER_MS);
+    return () => clearTimeout(id);
+  }, []);
+
   return (
-    <motion.div
-      initial={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.5, ease: "easeInOut" }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]"
-    >
-      {/* Unique Gradient Background */}
-      <motion.div 
-        className="absolute inset-0"
-        style={{
-          background: "linear-gradient(135deg, #ffffff 0%, #ffffff 50%, #141414 75%, #0e0e0e 100%)",
-          backgroundSize: "400% 400%"
-        }}
-        animate={{ 
-          backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"]
-        }}
-        transition={{ 
-          duration: 10, 
-          ease: "easeInOut", 
-          repeat: Infinity 
-        }}
-      />
+    <div className={cn('c-splash', leaving && 'c-out')} role="status" aria-label="Opening Clear">
+      <div className="c-lock">
+        <ClearMark outline className="c-mk" />
+        <span className="c-swm">Clear</span>
+      </div>
 
-      <motion.div
-        animate={{ 
-          scale: [1, 1.08, 1],
-        }}
-        transition={{ 
-          duration: 1.2,
-          ease: "easeInOut",
-          repeat: Infinity,
-        }}
-        className="relative z-10 w-20 h-20 md:w-28 md:h-28 -mt-26 md:-mt-12 md:mt-0 rounded-2xl border border-black/90 dark:border-white/10 flex items-center justify-center overflow-hidden bg-white dark:bg-[#0e0e0e]/50 shadow-sm"
-      >
-          <img 
-              src={ClearPathLogo} 
-              alt="ClearPath" 
-              className="w-full h-full object-cover" 
-          />
-      </motion.div>
-      
-      {/* Footer Text */}
-      <motion.p
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8, delay: 0.5 }}
-        className="absolute bottom-8 md:bottom-12 left-0 right-0 text-center text-black mb-3 md:mb-0 dark:text-white font-light text-lg md:text-xl"
-      >
-        ClearPath · Deed3Labs
-      </motion.p>
-    </motion.div>
+      {slow && (
+        <div className="c-slow">
+          <p className="c-det">Still going. A slow connection, not a problem with your account.</p>
+        </div>
+      )}
+
+      {progress == null ? (
+        <div className="c-waiting">
+          <span className="c-splashdot" aria-hidden />
+          Opening
+        </div>
+      ) : (
+        <div className="c-load">
+          <i style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
+        </div>
+      )}
+    </div>
   );
 }
