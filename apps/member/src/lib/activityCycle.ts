@@ -23,7 +23,9 @@ export interface SpendRow {
   spendCategory?: string;
 }
 
-const inCycle = (ms: number, startMs: number) => startMs > 0 && ms >= startMs;
+// No readable cycle means no window to measure against, so everything loaded counts: a member with
+// no credit line still moves money, and the page is about what moved.
+const inCycle = (ms: number, startMs: number) => startMs <= 0 || ms >= startMs;
 const cardAt = (tx: CardTransaction) => Date.parse(tx.at);
 
 /** Outflows that did not come from a card, which are cash by definition. */
@@ -34,16 +36,15 @@ function otherOutflow(rows: SpendRow[], startMs: number): SpendRow[] {
 /**
  * The hero: spent this cycle, split by what paid for it, with the carry alongside.
  *
- * Undefined when nothing has been spent — the page then leads with the list rather than a hero of
- * zeroes, which is the honest shape for a member who has not spent yet.
+ * Money out of every kind, not card spending alone — a card purchase, a send and a withdrawal are
+ * all money that left, and consolidating them is the point of this page. Zero is a real answer and
+ * is shown as one.
  */
 export function cycleSpendFrom(
   cards: CardTransaction[],
   rows: SpendRow[],
   { startMs, daysLeft, carryCost }: { startMs: number; daysLeft: number; carryCost: number },
-): CycleSpend | undefined {
-  if (startMs <= 0) return undefined;
-
+): CycleSpend {
   let fromCash = 0;
   let fromCredit = 0;
   for (const tx of cards) {
@@ -56,9 +57,7 @@ export function cycleSpendFrom(
   }
   for (const row of otherOutflow(rows, startMs)) fromCash += -row.amount;
 
-  const spent = fromCash + fromCredit;
-  if (spent <= 0) return undefined;
-  return { spent, daysLeft, fromCash, fromCredit, carryCost };
+  return { spent: fromCash + fromCredit, daysLeft, fromCash, fromCredit, carryCost };
 }
 
 /**
@@ -86,5 +85,5 @@ export function categoriesFrom(cards: CardTransaction[], rows: SpendRow[], start
 
   const groups: SpendCategory[] = named.slice(0, keep).map(([label, amount]) => ({ label, amount }));
   if (rest > 0) groups.push({ label: 'Everything else', amount: rest });
-  return groups.length > 1 ? groups : [];
+  return groups;
 }

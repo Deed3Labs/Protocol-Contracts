@@ -37,11 +37,12 @@ import type { PendingClaim } from '@/lib/clearModel';
  *
  * The hero and Where it went are derived rather than fetched: the credit line gives the cycle's
  * start and the carry, card authorizations give the cash-or-credit split and the merchant category,
- * and everything else that left the account is cash by definition. Both are absent until there is
- * spending to describe, which is the honest shape for a member who has not spent yet.
+ * and everything else that left the account — a send, a withdrawal — is cash by definition. Both
+ * count every kind of movement, which is what this page consolidates, and both show zero when
+ * nothing has moved rather than disappearing.
  *
- * Inside the co-op has no source: nothing records which payments stayed with members and partners,
- * and a figure assembled from what we do have would be a guess with a dollar sign on it.
+ * Inside the co-op has no source yet: nothing records which payments stayed with members and
+ * partners. The cell stands with an em dash rather than a figure assembled from what we do have.
  *
  * An empty list after loading is left empty rather than filled with placeholder rows. Activity is
  * the one page where nothing to show is a true and useful answer -- a new member has no history,
@@ -96,15 +97,15 @@ export default function ActivityRoute() {
     daysLeft,
     carryCost: (credit?.term?.carryOwedCents ?? 0) / 100,
   });
-  const categories = cycleSpend ? categoriesFrom(cards, items, startMs) : [];
+  const categories = categoriesFrom(cards, items, startMs);
 
   const data = loading
     ? ACTIVITY_DAY_ONE
     : {
         ...ACTIVITY_DAY_ONE,
         rows: items.map(toActivityRow),
-        ...(cycleSpend ? { cycleSpend } : {}),
-        ...(categories.length > 0 ? { categories } : {}),
+        cycleSpend,
+        categories,
         ...(pendingClaim ? { pendingClaim } : {}),
       };
 

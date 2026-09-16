@@ -72,7 +72,9 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
 
   useSetMobileAction({ label: 'Scan', icon: PlusIcon, onSelect: () => navigate('/scan') });
 
-  const cycle = data.cycleSpend;
+  // Zero is an answer: the hero and the two cells stand whether or not anything has moved, because
+  // this page is where a member looks to find out either way.
+  const cycle = data.cycleSpend ?? { spent: 0, daysLeft: 0, fromCash: 0, fromCredit: 0, carryCost: 0 };
   const matching = sortRows(filterRows(data.rows, filters, query), sort);
   const shown = matching.slice(0, limit);
   const narrowed = query.trim() !== '' || filters.direction !== 'all' || filters.paidFrom !== 'any';
@@ -81,7 +83,7 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
 
   // ---- Hero ---------------------------------------------------------------------------------------
 
-  const hero = cycle && (
+  const hero = (
     <div className="mb-s3">
       <p className="c-label mb-s1">Spent this cycle</p>
       <p className="c-fig text-hero-m leading-[1.05] lg:text-hero">{money(cycle.spent, { cents: true })}</p>
@@ -105,15 +107,18 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
 
   // ---- Standing cells -----------------------------------------------------------------------------
 
-  const shares = cycle && data.categories?.length ? categoryShares(data.categories, cycle.spent) : [];
-  const whereItWent = shares.length > 0 && (
+  const shares = data.categories?.length ? categoryShares(data.categories, cycle.spent) : [];
+  const whereItWent = (
     <Cell>
       <CHead>
         <SecHead label="Where it went">
-          <span className="c-det">{shares.length} groups</span>
+          <span className="c-det">{shares.length === 1 ? '1 group' : `${shares.length} groups`}</span>
         </SecHead>
       </CHead>
       <CMain>
+        {shares.length === 0 ? (
+          <p className="c-det">Nothing has gone out this cycle yet. Spending is grouped here as it arrives.</p>
+        ) : (
         <Rows>
           {shares.map((group) => (
             <div key={group.label}>
@@ -125,6 +130,7 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
             </div>
           ))}
         </Rows>
+        )}
       </CMain>
       <CFoot>
         <Line className="items-center!">
@@ -135,11 +141,13 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
     </Cell>
   );
 
-  const insideCoop = data.insideCoop !== undefined && cycle && (
+  // The figure has no source yet — nothing records which payments stayed in the network — so the
+  // cell states an em dash rather than a number assembled from what we happen to have.
+  const insideCoop = (
     <Cell>
       <CHead>
         <SecHead label="Inside the co-op">
-          <p className="c-fig c-fig-sec">{money(data.insideCoop, { cents: true })}</p>
+          <p className="c-fig c-fig-sec">{data.insideCoop === undefined ? '—' : money(data.insideCoop, { cents: true })}</p>
         </SecHead>
       </CHead>
       <CMain>
@@ -151,7 +159,9 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
       <CFoot>
         <Line className="items-center!">
           <span className="c-det">
-            {data.insideCoopPayments ?? 0} {data.insideCoopPayments === 1 ? 'payment' : 'payments'}
+            {data.insideCoopPayments === undefined
+              ? '— payments'
+              : `${data.insideCoopPayments} ${data.insideCoopPayments === 1 ? 'payment' : 'payments'}`}
           </span>
           <MoreLink to="/partners">Find partners</MoreLink>
         </Line>
@@ -325,7 +335,7 @@ export default function ActivityPage({ data = ACTIVITY_DAY_ONE, email }: { data?
       {hero}
       <div className="c-home">
         {data.pendingClaim && <PendingClaimBanner claim={data.pendingClaim} showSent />}
-        <div className={cn('c-slab', (!desktop || !whereItWent || !insideCoop) && 'c-one')}>
+        <div className={cn('c-slab', !desktop && 'c-one')}>
           {whereItWent}
           {insideCoop}
           {list}

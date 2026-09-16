@@ -206,8 +206,10 @@
 .c-navwrap{display:flex;gap:var(--s1);align-items:center}
 .c-navbar{flex:1;height:52px;display:flex;align-items:center;justify-content:space-around;
         background:var(--paper-2);border:1px solid var(--ink-28)}
+/* Each destination is a 44px target, not a stretched column: filled to the bar's width they ran
+   into each other on a large phone, and the gaps are what make five glyphs read as five buttons. */
 .c-navbar a{color:var(--ink-50);display:flex;align-items:center;justify-content:center;
-          flex:1;min-width:44px;height:44px}
+          flex:none;width:44px;height:44px}
 .c-navbar a.c-on{color:var(--ink)}
 .c-navfab.c-wide{width:auto;padding:0 var(--s2);gap:7px;font-size:var(--t-sec);font-weight:500}
 .c-navfab{height:52px;width:52px;border-radius:var(--radius-pill);background:var(--ink);color:var(--paper);

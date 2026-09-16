@@ -39,9 +39,19 @@ describe('what the cycle was made of', () => {
     expect(spend).toEqual({ spent: 210.54, daysLeft: 6, fromCash: 168.44, fromCredit: 42.1, carryCost: 17.4 });
   });
 
-  test('nothing spent, or no cycle to measure, means no hero at all', () => {
-    expect(cycleSpendFrom([], [], { startMs: START, daysLeft: 6, carryCost: 0 })).toBeUndefined();
-    expect(cycleSpendFrom(cards, rows, { startMs: 0, daysLeft: 0, carryCost: 0 })).toBeUndefined();
+  test('nothing spent is zero, not a missing hero', () => {
+    expect(cycleSpendFrom([], [], { startMs: START, daysLeft: 6, carryCost: 0 })).toEqual({
+      spent: 0,
+      daysLeft: 6,
+      fromCash: 0,
+      fromCredit: 0,
+      carryCost: 0,
+    });
+  });
+
+  test('with no cycle to measure against, everything loaded counts', () => {
+    // The 12 mo card purchase before the window and the older $99 row join the total.
+    expect(cycleSpendFrom(cards, rows, { startMs: 0, daysLeft: 0, carryCost: 0 })?.spent).toBe(509.54);
   });
 });
 
@@ -54,7 +64,7 @@ describe('where it went', () => {
     ]);
   });
 
-  test('one group is not a breakdown', () => {
-    expect(categoriesFrom([cards[0]], [], START)).toEqual([]);
+  test('a single group still stands, because the cell always does', () => {
+    expect(categoriesFrom([cards[0]], [], START)).toEqual([{ label: 'Groceries', amount: 118.44 }]);
   });
 });
