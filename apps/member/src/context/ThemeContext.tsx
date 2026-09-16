@@ -42,7 +42,7 @@ export const THEME_PINNED: Theme | null = null;
 /** The ground each theme stands on — the same values the token layer sets for --paper. */
 const CHROME: Record<Theme, string> = {
   light: '#DFE3DE',
-  dusk: '#1E2C27',
+  dusk: '#E6DBC6',
   dark: '#16211D',
 };
 
