@@ -555,18 +555,51 @@ function SplashPreview() {
  * last step needs a card to have been made. The harness makes one up so all three steps can be
  * looked at, with an address on file so the physical branch is not stuck on its first screen.
  */
-function CardPreview({ empty }: { empty: boolean }) {
+function CardPreview({ empty, many }: { empty: boolean; many: boolean }) {
   const [newCard, setNewCard] = useState<{ kind: 'virtual' | 'physical'; last4: string; label?: string } | null>(null);
+  const base = empty ? CARD_DAY_ONE : CARD_IN_USE;
+  const data = many
+    ? {
+        ...base,
+        cards: [
+          ...(base.cards ?? []),
+          { id: 'v2', variant: 'virtual' as const, last4: '5507', frozen: false, where: 'subscriptions' },
+          { id: 'v3', variant: 'virtual' as const, last4: '2291', frozen: false, where: 'online' },
+          { id: 'v4', variant: 'virtual' as const, last4: '8691', frozen: true, where: 'Apple Pay' },
+        ],
+      }
+    : base;
 
   return (
     <CardPage
-      key={String(empty)}
-      data={empty ? CARD_DAY_ONE : CARD_IN_USE}
+      key={String(empty) + String(many)}
+      data={data}
       onAddCard={(kind, label) => setNewCard({ kind, last4: kind === 'virtual' ? '5507' : '4102', label })}
       newCard={newCard}
       onNewCardDone={() => setNewCard(null)}
       address={{ name: 'Kai Moore', lines: '1420 Orange St, Redlands, CA 92374' }}
     />
+  );
+}
+
+/** A wallet of five, because a stack of two hides everything a stack of five gets wrong. */
+function CardPreviewFrame({ empty }: { empty: boolean }) {
+  const [many, setMany] = useState(false);
+  return (
+    <>
+      <CardPreview empty={empty} many={many} />
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        <button
+          type="button"
+          onClick={() => setMany((m) => !m)}
+          className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+            many ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+          }`}
+        >
+          5 cards
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -713,7 +746,7 @@ export default function PreviewApp() {
                         <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
                         <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
                         <Route path="/activity" element={<ActivityPage key={String(empty)} data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} email="kai@example.com" />} />
-                        <Route path="/card" element={<CardPreview empty={empty} />} />
+                        <Route path="/card" element={<CardPreviewFrame empty={empty} />} />
                         <Route path="/contacts" element={<Navigate to="/settings/contacts" replace />} />
                         <Route path="/partners" element={<PartnersPage />} />
                         <Route

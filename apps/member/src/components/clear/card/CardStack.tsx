@@ -26,12 +26,34 @@ export default function CardStack({
   label?: string;
 }) {
   const [drag, setDrag] = useState(0);
-  const start = useRef<number | null>(null);
+  /** Where the finger went down, and whether this gesture has been claimed as a swipe. */
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const swiping = useRef(false);
+  /*
+   * How far it has travelled, kept beside the state rather than read from it.
+   *
+   * A flick can put the move and the up in one frame, and state read at the end of that frame is
+   * still zero — the card springs back and the swipe does nothing, which reads as an unreliable
+   * gesture rather than a fast one.
+   */
+  const travelled = useRef(0);
 
   const go = (delta: number) => {
     const next = index + delta;
     if (next < 0 || next >= count) return;
     onIndexChange(next);
+  };
+
+  const end = () => {
+    // Forty pixels is far enough to mean it; less springs back.
+    if (swiping.current) {
+      if (travelled.current < -40) go(1);
+      else if (travelled.current > 40) go(-1);
+    }
+    start.current = null;
+    swiping.current = false;
+    travelled.current = 0;
+    setDrag(0);
   };
 
   return (
@@ -40,32 +62,46 @@ export default function CardStack({
         className="c-cardstack"
         onPointerDown={(e) => {
           if (e.pointerType === 'mouse') return;
-          start.current = e.clientX;
+          start.current = { x: e.clientX, y: e.clientY };
+          swiping.current = false;
         }}
         onPointerMove={(e) => {
-          if (start.current === null) return;
-          setDrag(e.clientX - start.current);
+          if (!start.current) return;
+          const dx = e.clientX - start.current.x;
+          const dy = e.clientY - start.current.y;
+          /*
+           * A gesture belongs to one axis. Until it is clear which, the card does not move: a
+           * finger heading down the page is scrolling, and a stack that grabbed it left the card
+           * translated with nothing to put it back — which is what "the swiping is broken" looked
+           * like. Sideways claims the pointer, so the up always arrives here.
+           */
+          if (!swiping.current) {
+            if (Math.abs(dx) < 8 || Math.abs(dx) <= Math.abs(dy)) return;
+            swiping.current = true;
+            try {
+              // Best effort: a browser that will not hand over the pointer still gets a swipe, it
+              // just relies on the up landing here rather than being guaranteed it.
+              e.currentTarget.setPointerCapture?.(e.pointerId);
+            } catch {
+              /* not capturable */
+            }
+          }
+          travelled.current = dx;
+          setDrag(dx);
         }}
-        onPointerUp={() => {
-          if (start.current === null) return;
-          // A third of the card's width is far enough to mean it; less springs back.
-          if (drag < -40) go(1);
-          else if (drag > 40) go(-1);
-          start.current = null;
-          setDrag(0);
-        }}
-        onPointerCancel={() => {
-          start.current = null;
-          setDrag(0);
-        }}
+        onPointerUp={end}
+        onPointerCancel={end}
+        onLostPointerCapture={end}
       >
-        {children.slice(0, 3).map((face, i) => (
+        {/* Front and one behind. The marker under the stack is what says how many there are, so
+            more layers cost height and say nothing the dots have not already said. */}
+        {children.slice(0, 2).map((face, i) => (
           <div
             key={i}
-            className={cn(i === 0 && 'c-sel', i === 1 && 'c-b1', i === 2 && 'c-b2')}
+            className={cn(i === 0 ? 'c-sel' : 'c-b1')}
             style={
-              // Only the card in front follows the finger: the ones behind it are not being moved,
-              // they are being revealed.
+              // Only the card in front follows the finger: the one behind it is not being moved,
+              // it is being revealed.
               i === 0 && drag !== 0
                 ? { transform: `translateX(${drag}px)`, transition: 'none' }
                 : undefined
