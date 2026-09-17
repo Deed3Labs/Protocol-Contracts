@@ -62,18 +62,23 @@ export function totalAvailable(availability: TierAvailability): number {
 }
 
 function availableIn(availability: TierAvailability, source: DrawSource): number {
-  switch (source) {
-    case 'cash':
-      return availability.cashCents;
-    case 'savings':
-      return availability.savingsCents;
-    case 'asset':
-      return availability.assetCents;
-    case 'income':
-      return availability.incomeCents;
-    case 'boost':
-      return availability.boostCents;
-  }
+  const raw = (() => {
+    switch (source) {
+      case 'cash':
+        return availability.cashCents;
+      case 'savings':
+        return availability.savingsCents;
+      case 'asset':
+        return availability.assetCents;
+      case 'income':
+        return availability.incomeCents;
+      case 'boost':
+        return availability.boostCents;
+    }
+  })();
+  // A NULL column arrives as NaN, and every comparison against NaN is false — a tier we cannot read
+  // is a tier with no room, never one with infinite room.
+  return Number.isFinite(raw) ? Math.max(0, raw) : 0;
 }
 
 export interface DecideInput {
@@ -115,21 +120,11 @@ export function decide({ amountCents, availability, cardPaused }: DecideInput): 
     return { result: 'INSUFFICIENT_FUNDS', draws: [], creditCents: 0, availableCents: available };
   }
 
-  const draws: Draw[] = [];
-  let remaining = amountCents;
+  const { draws, shortfallCents } = drawUpTo(availability, amountCents);
 
-  for (const source of TIER_ORDER) {
-    if (remaining <= 0) break;
-    const room = Math.max(0, availableIn(availability, source));
-    if (room <= 0) continue;
-    const take = Math.min(room, remaining);
-    draws.push({ source, amountCents: take });
-    remaining -= take;
-  }
-
-  // Defensive: `available` is the sum of the same numbers the loop walks, so this cannot be hit
+  // Defensive: `available` is the sum of the same numbers the waterfall walks, so this cannot be hit
   // without the two disagreeing. If they ever do, fail closed rather than approve unfunded spend.
-  if (remaining > 0) {
+  if (shortfallCents > 0) {
     return { result: 'INSUFFICIENT_FUNDS', draws: [], creditCents: 0, availableCents: available };
   }
 
@@ -138,6 +133,87 @@ export function decide({ amountCents, availability, cardPaused }: DecideInput): 
     .reduce((sum, d) => sum + d.amountCents, 0);
 
   return { result: 'APPROVED', draws, creditCents, availableCents: available };
+}
+
+/**
+ * The waterfall without the all-or-nothing rule: take as much as fits, cheapest first, and say what
+ * did not fit.
+ *
+ * `decide` refuses a purchase it cannot fund in full, which is right at a till — a card that pays
+ * some of a bill is a worse surprise than one that says no. But money that has *already moved* gets
+ * no such veto. When a clearing lands above its authorization (a tip added after the swipe, a fuel
+ * pump settling the real number), the charge is a fact and the only question is which tiers carry
+ * it. That is what the shortfall is for: it is recorded, not discarded.
+ */
+export function drawUpTo(
+  availability: TierAvailability,
+  amountCents: number,
+): { draws: Draw[]; shortfallCents: number } {
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    return { draws: [], shortfallCents: 0 };
+  }
+
+  const draws: Draw[] = [];
+  let remaining = amountCents;
+
+  for (const source of TIER_ORDER) {
+    if (remaining <= 0) break;
+    const room = availableIn(availability, source);
+    if (room <= 0) continue;
+    const take = Math.min(room, remaining);
+    draws.push({ source, amountCents: take });
+    remaining -= take;
+  }
+
+  return { draws, shortfallCents: remaining };
+}
+
+/**
+ * Give an amount back, and decide which tiers get it.
+ *
+ * Reverse cost order — the most expensive credit is retired first. A member who is handed back $20
+ * of a $50 charge should stop paying 3% boost interest before they stop paying 0.65% asset interest;
+ * releasing in draw order would leave the dearest borrowing outstanding and is simply worse for them.
+ *
+ * Never gives back more than a tier actually took, so a release cannot invent availability that was
+ * never drawn down.
+ */
+export function releaseDraws(drawn: Draw[], amountCents: number): Draw[] {
+  if (!Number.isFinite(amountCents) || amountCents <= 0) return [];
+
+  const back: Draw[] = [];
+  let remaining = amountCents;
+
+  for (const source of [...TIER_ORDER].reverse()) {
+    if (remaining <= 0) break;
+    const took = drawn
+      .filter((d) => d.source === source)
+      .reduce((sum, d) => sum + (Number.isFinite(d.amountCents) ? d.amountCents : 0), 0);
+    if (took <= 0) continue;
+    const give = Math.min(took, remaining);
+    back.push({ source, amountCents: give });
+    remaining -= give;
+  }
+
+  return back;
+}
+
+/**
+ * Combine draws into one per tier, in cost order. Dropping a tier whose amount reaches zero, because
+ * a draw of nothing is not a draw.
+ */
+export function mergeDraws(...groups: Draw[][]): Draw[] {
+  const totals = new Map<DrawSource, number>();
+  for (const group of groups) {
+    for (const draw of group) {
+      if (!Number.isFinite(draw.amountCents)) continue;
+      totals.set(draw.source, (totals.get(draw.source) ?? 0) + draw.amountCents);
+    }
+  }
+  return TIER_ORDER.filter((source) => (totals.get(source) ?? 0) > 0).map((source) => ({
+    source,
+    amountCents: totals.get(source) as number,
+  }));
 }
 
 /** Apply a decision to an availability snapshot, returning the new one. */
@@ -166,4 +242,12 @@ export function applyDraws(
     }
   }
   return next;
+}
+
+/** The inverse: put draws back on the snapshot they came off. */
+export function restoreDraws(availability: TierAvailability, draws: Draw[]): TierAvailability {
+  return applyDraws(
+    availability,
+    draws.map((draw) => ({ ...draw, amountCents: -draw.amountCents })),
+  );
 }

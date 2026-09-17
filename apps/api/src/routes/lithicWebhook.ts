@@ -4,6 +4,7 @@ import { lithicStore } from '../services/lithic/lithicStore.js';
 import { cardStore } from '../services/lithic/cardStore.js';
 import { recordDeposit } from '../services/deposits/depositReceiptService.js';
 import { handleReturn } from '../services/lithic/achOriginationService.js';
+import { handleCardTransaction } from '../services/lithic/cardTransactionEvents.js';
 
 const router = express.Router();
 
@@ -13,10 +14,13 @@ const router = express.Router();
  * Point Lithic at:  https://<backend-domain>/api/webhooks/lithic
  * Signature model:  standard-webhooks — webhook-id / webhook-timestamp / webhook-signature.
  *
- * Only inbound settlement is handled here. A `payment_transaction` moving INBOUND and reaching a
- * settled state is an ACH credit landing in the member's financial account: their paycheck. Card
- * transactions arrive on their own events and are already accounted for by the auth stream, so
- * replaying them here would double-count.
+ * A `payment_transaction` moving INBOUND and reaching a settled state is an ACH credit landing in
+ * the member's financial account: their paycheck.
+ *
+ * A `card_transaction` is the *aftermath* of a swipe the auth stream already decided. The charge
+ * itself is not replayed here — that would double-count — but a void, a reversal or a clearing for a
+ * different amount is reported nowhere else, and each one has to move the member's availability
+ * back. So these events reconcile the existing draw rather than creating one.
  *
  * Distinct from the auth stream, which is synchronous and answers a question. This is asynchronous
  * and reports a fact, so it can afford the database work the auth path cannot.
@@ -82,6 +86,25 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
           trackingNumber: (payload.tracking_number as string | null) ?? null,
           shippingMethod: (payload.shipping_method as string | null) ?? null,
         });
+      }
+      return res.json({ received: true });
+    }
+
+    /*
+     * What happened to a card charge after it was authorized.
+     *
+     * The auth stream decides and draws down; only this tells us the charge was voided, partly
+     * reversed, or cleared for a different figure. Without it the ledger moves one way forever and a
+     * member never gets a voided $5 back.
+     */
+    if (eventType.startsWith('card_transaction')) {
+      const result = await handleCardTransaction(payload);
+      if (result && result.deltaCents !== 0) {
+        console.log(
+          `[lithic/webhook] ${result.outcome} ${result.deltaCents}c on ${result.transactionToken}` +
+            ` → holding ${result.targetCents}c` +
+            (result.unfundedCents > 0 ? ` (${result.unfundedCents}c unfunded)` : ''),
+        );
       }
       return res.json({ received: true });
     }
