@@ -52,22 +52,48 @@ describe('a stated limit beats a carried one', () => {
  * both reverted.
  */
 describe('the yield pool is not the bridge pool', () => {
-  const contracts = readFileSync(new URL('../../config/contracts.ts', import.meta.url), 'utf8');
+  const earn = readFileSync(new URL('./earnReader.ts', import.meta.url), 'utf8');
 
-  test('collateral reads the vault key, not the CCIP one', () => {
-    expect(reader).toContain("getContractAddress(chainId, 'CLRUSDYieldPool')");
+  test('collateral reads LendingPool, not the CCIP token pool', () => {
+    /*
+     * Verified on Base Sepolia: LendingPool answers asset() = USDC, decimals() = 6, and
+     * convertToAssets on this member's shares = $320.00. CLRUSDTokenPool answers getToken() — which
+     * only a CCIP pool does — and reverts on everything an ERC-4626 needs.
+     */
+    expect(reader).toContain("getContractAddress(chainId, 'LendingPool')");
     expect(reader).not.toContain("getContractAddress(chainId, 'CLRUSDTokenPool')");
   });
 
-  test('the vault key exists and defaults to no contract', () => {
-    // No pool means no pool-backed credit — rule 3 — rather than credit against a contract that
-    // does not exist. It stays zero until a vault is actually deployed.
-    expect(contracts).toContain('CLRUSDYieldPool');
-    expect(contracts).toMatch(/CLRUSDYieldPool: process\.env\.CLRUSD_YIELD_POOL_84532 \|\| '0x0{40}'/);
+  test('both readers point at the same pool, so the two pages cannot disagree', () => {
+    // The Earn page and the card's credit line are the same holding seen from two sides.
+    expect(earn).toContain("getContractAddress(chainId, 'LendingPool')");
+  });
+});
+
+describe('bonds back credit, not just the Earn page', () => {
+  const earn = readFileSync(new URL('./earnReader.ts', import.meta.url), 'utf8');
+
+  test('the collateral reader reads the bond collection', () => {
+    // bondsWorthCents was hardcoded to 0 with a comment saying no bond contract was deployed.
+    // BurnerBond was deployed, and earnReader had been reading it the whole time.
+    expect(reader).toContain("getContractAddress(chainId, 'BurnerBond')");
+    expect(reader).toContain('readBondCents');
+    expect(reader).not.toMatch(/bondsWorthCents: 0,\s*\n\s*complete:/);
   });
 
-  test('the CCIP pool keeps its own key, still configured', () => {
-    // It has a real job; it just is not collateral. Nothing else that uses it should break.
-    expect(contracts).toContain('CLRUSDTokenPool: process.env.CLRUSD_POOL_84532');
+  test('it reads the same collection the Earn page does', () => {
+    expect(earn).toContain("getContractAddress(chainId, 'BurnerBond')");
+  });
+
+  test('present value, never face value', () => {
+    // A bond matures INTO its face value and is worth less until then. Lending against face lends
+    // against money that does not exist yet.
+    expect(reader).toContain('presentValueOf');
+    expect(reader).not.toContain('faceValue)');
+  });
+
+  test('created is not held, and redeemed backs nothing', () => {
+    expect(reader).toMatch(/balanceOf\(wallet, id\)[\s\S]{0,120}if \(balance === 0n\) continue/);
+    expect(reader).toContain('if (info.isRedeemed) continue');
   });
 });

@@ -37,6 +37,17 @@ const POOL_ABI = [
   'function decimals() external view returns (uint8)',
 ] as const;
 
+/** ERC-1155 bonds, priced by the collection rather than by a copy of its discount curve. */
+const BOND_ABI = [
+  'function getBondIdsByCreator(address creator) external view returns (uint256[])',
+  'function getBondInfo(uint256 bondId) external view returns (tuple(uint256 faceValue, uint256 maturityDate, uint256 discountPercentage, uint256 purchasePrice, bool isRedeemed, address creator, uint64 issuedAt))',
+  'function presentValueOf(uint256 bondId) external view returns (uint256)',
+  'function balanceOf(address account, uint256 id) external view returns (uint256)',
+] as const;
+
+/** The bond collection quotes in its settlement stablecoin — 6 decimals, same as CLRUSD and USDC. */
+const BOND_DECIMALS = 6;
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 export interface ChainCollateral {
@@ -47,10 +58,10 @@ export interface ChainCollateral {
   /**
    * Bonds at present value, in cents.
    *
-   * Always 0 today: bonds exist in the product model and on the Earn page, but there is no bond
-   * contract deployed to read. Reporting 0 rather than null is the correct answer to "what is
-   * on-chain right now", and it means no member gets asset-backed credit against a bond the chain
-   * has never heard of. When the contract lands, this is the one place that changes.
+   * This said "always 0 today — there is no bond contract deployed to read". There was: BurnerBond,
+   * which earnReader reads for the Earn page. So a member's bonds appeared on one page and backed
+   * no credit on another, off the same chain state. Read properly now, and 0 means no bonds rather
+   * than no reader.
    */
   bondsWorthCents: number;
   /** True when every read that could be attempted succeeded. */
@@ -177,9 +188,16 @@ export async function readChainCollateral(
   chainId = resolveChainId(),
 ): Promise<ChainCollateral> {
   const clrusd = getContractAddress(chainId, 'CLRUSD');
-  // The yield vault, not the CCIP bridge pool. Those are different contracts with different jobs,
-  // and reading the bridge one as a share balance is what reverted on every refresh.
-  const pool = getContractAddress(chainId, 'CLRUSDYieldPool');
+  /*
+   * The same contracts the Earn page reads, because they are the same holdings.
+   *
+   * This asked CLRUSDTokenPool for a share balance. That is a Chainlink CCIP token pool — it moves
+   * CLRUSD between chains and has no shares at all — so every call reverted, and the member's whole
+   * credit line read as unknown. The ERC-4626 that actually holds their position is LendingPool,
+   * which earnReader has been reading correctly the whole time. One address for one pool.
+   */
+  const pool = getContractAddress(chainId, 'LendingPool');
+  const bonds = getContractAddress(chainId, 'BurnerBond');
 
   let provider: ethers.JsonRpcProvider;
   try {
@@ -190,15 +208,59 @@ export async function readChainCollateral(
     return { savingsCents: null, poolPositionCents: null, bondsWorthCents: 0, complete: false };
   }
 
-  const [savingsCents, poolPositionCents] = await Promise.all([
+  const [savingsCents, poolPositionCents, bondsCents] = await Promise.all([
     isUnset(clrusd) ? Promise.resolve(0) : readTokenCents(provider, clrusd as string, wallet),
     isUnset(pool) ? Promise.resolve(0) : readPoolCents(provider, pool as string, wallet),
+    isUnset(bonds) ? Promise.resolve(0) : readBondCents(provider, bonds as string, wallet),
   ]);
 
   return {
     savingsCents,
     poolPositionCents,
-    bondsWorthCents: 0,
-    complete: savingsCents !== null && poolPositionCents !== null,
+    bondsWorthCents: bondsCents ?? 0,
+    complete: savingsCents !== null && poolPositionCents !== null && bondsCents !== null,
   };
+}
+
+/**
+ * Bonds the member holds, at present value.
+ *
+ * This returned a hardcoded zero, on the stated grounds that no bond contract was deployed to read.
+ * One is: BurnerBond, which earnReader has been reading for the Earn page all along. So a member's
+ * bonds showed on one page and backed no credit on another, from the same chain state.
+ *
+ * Present value, not face: a bond matures into its face value and is worth less until it does.
+ * Lending against face would lend against money that does not exist yet.
+ *
+ * Created is not held — a bond can be transferred or seized — so each id's balance is checked, and a
+ * redeemed bond backs nothing because it has already been paid out.
+ */
+async function readBondCents(
+  provider: ethers.JsonRpcProvider,
+  address: string,
+  wallet: string,
+): Promise<number | null> {
+  try {
+    const collection = new ethers.Contract(address, BOND_ABI, provider);
+    const ids = (await collection.getBondIdsByCreator(wallet)) as bigint[];
+
+    let total = 0;
+    for (const id of ids) {
+      const balance = (await collection.balanceOf(wallet, id)) as bigint;
+      if (balance === 0n) continue;
+      const info = (await collection.getBondInfo(id)) as { isRedeemed: boolean };
+      if (info.isRedeemed) continue;
+      // Bond values are quoted in the collection's settlement token, which is the 6-decimal
+      // stablecoin the pool and CLRUSD both use.
+      total += toCents((await collection.presentValueOf(id)) as bigint, BOND_DECIMALS);
+    }
+    return total;
+  } catch (error) {
+    if (isDeterministicRevert(error)) {
+      console.warn(`[collateral] bond collection at ${address} cannot be read — treating as zero`);
+      return 0;
+    }
+    console.error(`[collateral] bond read unreachable at ${address}:`, error);
+    return null;
+  }
 }

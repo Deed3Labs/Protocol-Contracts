@@ -18,19 +18,6 @@ export const DEPLOYED_CONTRACTS: Record<number, Record<string, string>> = {
     CLRUSD: process.env.CLRUSD_84532 || '0x2a116Bead17dd96DC5c560A0d76b02eb2D7aD6D1',
     ESADepositVault: process.env.ESA_VAULT_84532 || '0x836401Ed3e2bF7CAb5e2721188E74B834511413b',
     CLRUSDTokenPool: process.env.CLRUSD_POOL_84532 || '0x0000000000000000000000000000000000000000',
-    /*
-     * The yield pool that backs asset-backed credit — an ERC-4626 vault, and NOT CLRUSDTokenPool.
-     *
-     * CLRUSDTokenPool is a Chainlink CCIP token pool: it moves CLRUSD between chains, and has no
-     * shares, no convertToAssets and no balanceOf. The collateral reader was pointing at it, every
-     * call reverted, and that read as "we don't know" — which zeroed the member's entire credit
-     * line, card included. Confirmed by getToken() answering on that address, which only a CCIP
-     * pool does.
-     *
-     * Zero until a vault is actually deployed. No pool means no pool-backed credit, which is the
-     * honest answer and the one the reader's own rule 3 asks for.
-     */
-    CLRUSDYieldPool: process.env.CLRUSD_YIELD_POOL_84532 || '0x0000000000000000000000000000000000000000',
     // The credit core. Defaults are the deployed Base Sepolia addresses so the server works
     // without extra configuration; env still wins, which is what mainnet will use.
     ClearCredit: process.env.CLEAR_CREDIT_84532 || '0x1d9f1ECDc70b31256aFA75A73F991cfAa8bC928C',
