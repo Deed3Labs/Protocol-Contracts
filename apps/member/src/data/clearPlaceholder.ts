@@ -307,55 +307,72 @@ export const MILESTONES: Milestone[] = [
 ];
 
 /**
- * Two confirmed protections; the other three are still the product owner's to
- * name. Placeholders render as written — never invent a replacement.
+ * What saving unlocks, cheapest promise first.
  *
- * Order and thresholds are not settled either: which protection sits at which
- * credit figure is a product decision, and these are expected to move.
+ * The threshold tracks what the co-op stands to lose, which is why the order is what it is. Grace
+ * cycles forgive timing on a balance that keeps accruing, so they cost almost nothing and sit at
+ * zero, where the protection everyone actually uses belongs. A progress hold costs match funding
+ * against the redemption margin and no cash. The deposit bridge fronts real money but gets it back.
+ * Rent cover is pure outflow with nothing owed, and home repairs is an open annual cap — so those
+ * two sit at the top.
+ *
+ * None of these say "assurance". The cell is already headed Assurance; a row repeating it is the
+ * label stuttering, and the word does no work inside its own container.
  */
 const ASSURANCE: AssuranceItem[] = [
   {
-    id: 'a1',
-    name: 'Home repair assurance',
+    id: 'grace-cycles',
+    name: 'Grace cycles',
     description:
-      'Covers qualifying repairs on your unit once you move in, up to an annual cap.',
+      'Two cycles a year can close short. Your line does not decay, and nothing is settled from your savings to cover it.',
     unlocksAt: 0,
   },
   {
-    id: 'a2',
-    name: 'Rent protection',
+    id: 'progress-hold',
+    name: 'Progress hold',
+    /*
+     * The one place the design punished correct behaviour: a member who used their ESA exactly as
+     * intended had their housing progress paused for it.
+     */
+    description:
+      'A documented hardship draw does not restart the 30-day vesting clock, and one hard quarter does not move your on-track date.',
+    unlocksAt: 1000,
+  },
+  {
+    id: 'deposit-bridge',
+    name: 'Deposit bridge',
+    /*
+     * NOT a protection, and the odd one in this list: it is a 0% loan the member repays, where
+     * every other row is something the co-op absorbs with nothing owed back. Placed here for now —
+     * whether it belongs among protections at all is an open product question, since a member who
+     * assumes it works like rent cover has been taught the wrong thing by the list it sits in.
+     */
+    description:
+      'A 0% bridge for deposits and up-front costs, paid direct to the landlord or provider and cleared over six to twelve cycles.',
+    unlocksAt: 4000,
+  },
+  {
+    id: 'rent-cover',
+    name: 'Rent cover',
     /*
      * The co-op's own words: "up to 60 days of rent paid by the co-op if crisis strikes, zero
      * payback, zero premium."
      *
      * The wait is by TRACK, not by credits — immediate on Accelerated, ninety days on Standard —
-     * and `unlocksAt` only knows credits. So the threshold below is a placement, not the rule, and
-     * the description does not claim a timing the model cannot honour.
+     * and `unlocksAt` only knows credits. So the threshold is a placement, not the rule, and the
+     * description claims no timing the model cannot honour.
      */
     description:
       'Up to 60 days of rent paid by the co-op if a crisis hits. No premium, and nothing to pay back.',
-    unlocksAt: 1000,
-  },
-  {
-    id: 'a3',
-    name: '[PLACEHOLDER — replace]',
-    description: 'Real protection name and description needed.',
-    unlocksAt: 4000,
-    placeholder: true,
-  },
-  {
-    id: 'a4',
-    name: '[PLACEHOLDER — replace]',
-    description: 'Real protection name and description needed.',
     unlocksAt: 8000,
-    placeholder: true,
   },
   {
-    id: 'a5',
-    name: '[PLACEHOLDER — replace]',
-    description: 'Real protection name and description needed.',
+    id: 'home-repairs',
+    name: 'Home repairs',
+    // At move-in, which the milestones put at 15,000 credits. It read Active from day one for
+    // something that cannot pay out until the member has a home to repair.
+    description: 'Covers qualifying repairs on your unit once you move in, up to an annual cap.',
     unlocksAt: 15000,
-    placeholder: true,
   },
 ];
 
