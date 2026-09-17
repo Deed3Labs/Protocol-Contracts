@@ -300,7 +300,9 @@ export const HOME_DAY_ONE: HomeData = {
  */
 export const MILESTONES: Milestone[] = [
   { id: 'start', title: 'Start saving', credits: 1000 },
-  { id: 'assurance', title: 'Unlock full assurance', credits: 4000 },
+  // Not "full assurance": the top two protections are thousands of credits further on, so a
+  // milestone claiming the set is complete here would be promising what the list does not give.
+  { id: 'assurance', title: 'Unlock first protections', credits: 4000 },
   { id: 'community', title: 'Choose your community', credits: 8000 },
   { id: 'reserve', title: 'Reserve your home', credits: 12000 },
   { id: 'deed', title: 'Sign your ELPA & Clear Deed', credits: 15000, note: 'move in' },
@@ -350,9 +352,14 @@ const ASSURANCE: AssuranceItem[] = [
      * The co-op's own words: "up to 60 days of rent paid by the co-op if crisis strikes, zero
      * payback, zero premium."
      *
-     * The wait is by TRACK, not by credits — immediate on Accelerated, ninety days on Standard —
-     * and `unlocksAt` only knows credits. So the threshold is a placement, not the rule, and the
-     * description claims no timing the model cannot honour.
+     * No waiting period is modelled, and that is now correct rather than a gap. The old note here
+     * said the wait was by track — immediate on Accelerated, ninety days on Standard — which is not
+     * what the co-op is doing. Accelerated and Standard are membership plans that set the
+     * equity-credit multiplier; they do not gate protections.
+     *
+     * What is expected instead is paying to accelerate a particular protection. That is a purchase
+     * against one row, not a property of the member, so it will not live in `unlocksAt` when it
+     * arrives — and nothing here should imply a timing rule until it does.
      */
     description:
       'Up to 60 days of rent paid if a crisis hits. No premium, nothing to pay back.',
