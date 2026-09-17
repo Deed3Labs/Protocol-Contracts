@@ -307,13 +307,11 @@ export const MILESTONES: Milestone[] = [
 ];
 
 /**
- * Only "Home repair assurance" is a confirmed product name. The other four are
- * placeholders and MUST keep rendering as written until the real names arrive —
- * do not invent replacements.
- */
-/**
- * Four of the five names and descriptions are placeholders the product owner
- * still has to supply. They render as written — never invent a replacement.
+ * Two confirmed protections; the other three are still the product owner's to
+ * name. Placeholders render as written — never invent a replacement.
+ *
+ * Order and thresholds are not settled either: which protection sits at which
+ * credit figure is a product decision, and these are expected to move.
  */
 const ASSURANCE: AssuranceItem[] = [
   {
@@ -325,10 +323,18 @@ const ASSURANCE: AssuranceItem[] = [
   },
   {
     id: 'a2',
-    name: '[PLACEHOLDER — replace]',
-    description: 'Real protection name and description needed.',
+    name: 'Rent protection',
+    /*
+     * The co-op's own words: "up to 60 days of rent paid by the co-op if crisis strikes, zero
+     * payback, zero premium."
+     *
+     * The wait is by TRACK, not by credits — immediate on Accelerated, ninety days on Standard —
+     * and `unlocksAt` only knows credits. So the threshold below is a placement, not the rule, and
+     * the description does not claim a timing the model cannot honour.
+     */
+    description:
+      'Up to 60 days of rent paid by the co-op if a crisis hits. No premium, and nothing to pay back.',
     unlocksAt: 1000,
-    placeholder: true,
   },
   {
     id: 'a3',
