@@ -43,6 +43,13 @@ export default function CardDetailsDialog({
 }) {
   // A session that fails to mount falls back to the issuer's page rather than an empty sheet.
   const [mountFailed, setMountFailed] = useState(false);
+  /*
+   * The sheet has one action, and while there are numbers to reveal, revealing is it.
+   *
+   * A second button among the rows read as part of the list it sat under; the footer is where every
+   * other sheet in the app keeps what it does. Closing stays on the header's cross.
+   */
+  const [reveal, setReveal] = useState<{ shown: boolean; busy: boolean; toggle: () => void } | null>(null);
   const copy = (value: string) => navigator.clipboard?.writeText(value.replace(/\s/g, '')).catch(() => {});
   const field = (label: string, value: string) => (
     <div>
@@ -69,9 +76,15 @@ export default function CardDetailsDialog({
           <div className="c-footnote mt-0! border-t-0! pt-0!">
             <p>Hidden again when you close this. Clear never shows these to anyone else.</p>
           </div>
-          <Btn lg className="mt-s2" onClick={() => onOpenChange(false)}>
-            Hide details
-          </Btn>
+          {reveal ? (
+            <Btn lg className="mt-s2" disabled={reveal.busy} onClick={reveal.toggle}>
+              {reveal.busy ? 'One moment…' : reveal.shown ? 'Hide the numbers' : 'Show the numbers'}
+            </Btn>
+          ) : (
+            <Btn lg className="mt-s2" onClick={() => onOpenChange(false)}>
+              Hide details
+            </Btn>
+          )}
         </>
       }
     >
@@ -80,6 +93,7 @@ export default function CardDetailsDialog({
           session={embedSession.session}
           environment={embedSession.environment}
           onFailed={() => setMountFailed(true)}
+          onControls={setReveal}
         />
       ) : embedUrl ? (
         <iframe title="Card details" src={embedUrl} className="block h-[180px] w-full border-0" />
