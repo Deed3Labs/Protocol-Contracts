@@ -66,6 +66,51 @@ function asString(value: unknown): string | null {
   return null;
 }
 
+/** Held card draws per tier, in the page's own vocabulary. Zero for a tier nothing is drawn on. */
+export interface HeldDraws {
+  cash: number;
+  savings: number;
+  asset: number;
+  income: number;
+  boost: number;
+}
+
+/**
+ * What the member's card is currently holding against each tier.
+ *
+ * An authorization is a HOLD, not a settled borrow. The contracts are told about borrowings, and
+ * they are right not to know about this one yet — it can still be voided, and half of tonight's
+ * were. But the money is unavailable to the member the moment it is approved, and every figure they
+ * read said otherwise: a live $5 charge sat against a line reading "$0 used, not drawn".
+ *
+ * So this is the pending half, kept where it belongs — in our ledger, reported as pending, never
+ * confused with what the chain has settled. It is summed from `draws`, which reconcile rewrites as
+ * a transaction is voided or cleared, so a released charge stops counting without anything else
+ * having to remember to subtract it.
+ */
+export async function heldDrawsByTier(wallet: string): Promise<HeldDraws> {
+  const empty: HeldDraws = { cash: 0, savings: 0, asset: 0, income: 0, boost: 0 };
+  const pool = getPayPool();
+  if (!pool) return empty;
+
+  const { rows } = await pool.query<{ draws: unknown }>(
+    `SELECT draws FROM lithic_auth_decisions
+      WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0`,
+    [wallet.toLowerCase()],
+  );
+
+  const held = { ...empty };
+  for (const row of rows) {
+    if (!Array.isArray(row.draws)) continue;
+    for (const draw of row.draws as Array<{ source?: unknown; amountCents?: unknown }>) {
+      const source = String(draw?.source ?? '');
+      const cents = Number(draw?.amountCents ?? 0);
+      if (source in held && Number.isFinite(cents)) held[source as keyof HeldDraws] += cents;
+    }
+  }
+  return held;
+}
+
 export async function listCardTransactions(
   wallet: string,
   limit = 50,

@@ -3,6 +3,7 @@ import { requireWalletMatch } from '../middleware/auth.js';
 import { readChainCredit } from '../services/chain/creditReader.js';
 import { readChainEarn } from '../services/chain/earnReader.js';
 import { chargeStore } from '../services/chargeStore.js';
+import { heldDrawsByTier } from '../services/lithic/cardTransactionsService.js';
 
 /*
  * A member's credit line, assembled from the contracts that hold it.
@@ -62,8 +63,20 @@ creditRouter.get('/:wallet', async (req: Request, res: Response) => {
       // What of a member's savings cannot leave. Carried because it is not derivable from the
       // tiers: encumbrance follows what is drawn, not what is pledged.
       savingsEncumberedCents: credit.savingsEncumberedCents,
-      // Named rather than implied: everything here came from chain, and the tiers the chain does
-      // not know about are absent rather than zero. The caller decides what to do about that.
+      /*
+       * Card authorizations the member is holding right now, per tier — OFF CHAIN, deliberately.
+       *
+       * An authorization is a hold, not a settled borrow, and the contracts are right not to carry
+       * it: it can still be voided, and most of the ones made while testing this were. But it is
+       * unavailable to the member from the instant it is approved, and reading only the chain told
+       * them otherwise — a live $5 charge against a line reading "$0 used · not drawn".
+       *
+       * Kept separate from the chain's `usedCents` rather than folded into it. They are different
+       * facts, and the day they are merged is the day nobody can tell which is which.
+       */
+      pendingCardDraws: await heldDrawsByTier(wallet),
+      // Named rather than implied: the tiers came from chain, and the tiers the chain does not know
+      // about are absent rather than zero. `pendingCardDraws` above is the one field that did not.
       source: 'chain',
       complete: true,
     });

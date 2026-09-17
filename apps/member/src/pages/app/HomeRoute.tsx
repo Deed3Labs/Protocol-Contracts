@@ -154,7 +154,14 @@ export default function HomeRoute() {
     ...(txLoading ? {} : { recent: mergedActivityRows(items, cards).slice(0, 4) }),
     ...(credit?.complete
       ? {
-          credit: toCredit(credit.tiers, HOME_DAY_ONE.credit, credit.term?.carryOwedCents ?? 0),
+          // Pending card holds count as used: a live authorization is money this member cannot
+          // spend again, whatever the contracts have settled.
+          credit: toCredit(
+            credit.tiers,
+            HOME_DAY_ONE.credit,
+            credit.term?.carryOwedCents ?? 0,
+            credit.pendingCardDraws ?? {},
+          ),
           cycle: toCycle(credit.cycle, HOME_DAY_ONE.cycle),
           backing: toLimitBacking(credit.tiers, HOME_DAY_ONE.backing),
           // The last placeholder on this page, and the one that made day one's two arrivals
