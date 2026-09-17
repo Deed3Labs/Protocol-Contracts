@@ -99,12 +99,25 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
      */
     if (eventType.startsWith('card_transaction')) {
       const result = await handleCardTransaction(payload);
-      if (result && result.deltaCents !== 0) {
-        console.log(
-          `[lithic/webhook] ${result.outcome} ${result.deltaCents}c on ${result.transactionToken}` +
-            ` → holding ${result.targetCents}c` +
-            (result.unfundedCents > 0 ? ` (${result.unfundedCents}c unfunded)` : ''),
-        );
+      /*
+       * Every outcome is logged, including the ones that moved nothing.
+       *
+       * Logging only the adjustments was a mistake: `unknown` — no decision of ours matches this
+       * transaction — is the single most important thing this handler can report, and it was the one
+       * case that wrote nothing at all. From the outside it is indistinguishable from working, since
+       * the endpoint answers 200 either way. The token is here so it can be compared against the one
+       * the auth stream recorded; if those two differ, nothing will ever match and this line is the
+       * only place that shows it.
+       */
+      if (result) {
+        const detail =
+          result.outcome === 'unknown'
+            ? 'no approved decision of ours matches this transaction'
+            : `${result.deltaCents}c → holding ${result.targetCents}c` +
+              (result.unfundedCents > 0 ? ` (${result.unfundedCents}c unfunded)` : '');
+        const line = `[lithic:card_transaction] ${result.outcome} tx=${result.transactionToken} ${detail}`;
+        if (result.outcome === 'unknown') console.warn(line);
+        else console.log(line);
       }
       return res.json({ received: true });
     }
