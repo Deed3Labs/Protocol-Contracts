@@ -38,18 +38,6 @@ export default function CardStack({
    */
   const travelled = useRef(0);
   const box = useRef<HTMLDivElement>(null);
-  /*
-   * A readout for a phone, behind ?swipe=debug.
-   *
-   * This has now been fixed twice from a laptop and reported broken twice from a phone, which means
-   * the thing to do is stop guessing and let the device say what it saw. Off unless asked for, and
-   * it comes out once the answer is known.
-   */
-  const [log, setLog] = useState<string[]>([]);
-  const debug = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('swipe') === 'debug';
-  const note = (line: string) => {
-    if (debug) setLog((prev) => [...prev.slice(-5), line]);
-  };
 
   /*
    * Hold the gesture once it is ours.
@@ -65,13 +53,9 @@ export default function CardStack({
     if (!el) return;
     const hold = (e: TouchEvent) => {
       if (swiping.current && e.cancelable) e.preventDefault();
-      if (swiping.current && !e.cancelable) note('touchmove not cancelable');
     };
     el.addEventListener('touchmove', hold, { passive: false });
     return () => el.removeEventListener('touchmove', hold);
-    // `note` only writes to the debug readout, and rebinding this listener per render would be a
-    // real cost for a line of text nobody sees unless they asked for it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const go = (delta: number) => {
@@ -103,7 +87,6 @@ export default function CardStack({
           if (e.pointerType === 'mouse' && e.button !== 0) return;
           start.current = { x: e.clientX, y: e.clientY };
           swiping.current = false;
-          note(`down ${e.pointerType}`);
         }}
         onPointerMove={(e) => {
           if (!start.current) return;
@@ -116,7 +99,6 @@ export default function CardStack({
            * like. Sideways claims the pointer, so the up always arrives here.
            */
           if (!swiping.current) {
-            note(`move ${Math.round(dx)},${Math.round(dy)}`);
             // Four pixels rather than eight: a browser decides which way a gesture is going early,
             // and the later this claims it the more chances there are to lose it.
             if (Math.abs(dx) < 4 || Math.abs(dx) < Math.abs(dy)) return;
@@ -132,18 +114,9 @@ export default function CardStack({
           travelled.current = dx;
           setDrag(dx);
         }}
-        onPointerUp={() => {
-          note('up');
-          end();
-        }}
-        onPointerCancel={() => {
-          note('CANCEL');
-          end();
-        }}
-        onLostPointerCapture={() => {
-          note('lost capture');
-          end();
-        }}
+        onPointerUp={end}
+        onPointerCancel={end}
+        onLostPointerCapture={end}
       >
         {/* Front and one behind. The marker under the stack is what says how many there are, so
             more layers cost height and say nothing the dots have not already said. */}
@@ -163,11 +136,6 @@ export default function CardStack({
           </div>
         ))}
       </div>
-      {debug && (
-        <pre className="c-det mt-s1 whitespace-pre-wrap text-[10px]">
-          {`claim ≥4px · ${getComputedStyle(box.current ?? document.body).touchAction}\n${log.join('\n')}`}
-        </pre>
-      )}
       {count > 1 && (
         <div className="c-stackdots" role="tablist" aria-label={label}>
           {Array.from({ length: count }, (_, i) => (
