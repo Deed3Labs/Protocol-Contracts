@@ -16,6 +16,12 @@ import { getPayPool } from '../../config/postgres.js';
  * adds a tip, a fuel pump authorizes a round number and settles the real one — so what this shows
  * is what was approved. That is the honest label for it and it is what a member sees on the day,
  * before any settlement exists to show instead.
+ *
+ * A charge that was later voided stays on the list, marked, rather than vanishing. The money is back
+ * either way, but a row that silently disappears is how a member stops trusting the balance beside
+ * it: they remember the charge, and nothing on the screen agrees that it happened. `heldCents` is
+ * what they actually owe and `amountCents` is what the merchant asked for, which is why both are
+ * here rather than one figure that has to mean both things.
  */
 
 export type DrawSource = string;
@@ -26,7 +32,15 @@ export interface CardTransactionRow {
   name: string;
   /** ISO timestamp of the decision. */
   at: string;
+  /** What was authorized at the swipe. Stays put so the row keeps saying what happened. */
   amountCents: number;
+  /**
+   * What is still held against this transaction — 0 once it is voided, and a different figure from
+   * `amountCents` once it clears for one. This, not the authorization, is what a member owes.
+   */
+  heldCents: number;
+  /** Nothing is held any more. The charge stays on the list, marked, rather than disappearing. */
+  reversed: boolean;
   /** ISO 18245 merchant category code, as a string — leading zeros are meaningful. */
   mcc: string | null;
   city: string | null;
@@ -40,6 +54,7 @@ interface Row {
   transaction_token: string;
   card_token: string;
   amount_cents: string;
+  net_cents: string | null;
   draws: unknown;
   merchant: unknown;
   decided_at: Date;
@@ -59,7 +74,7 @@ export async function listCardTransactions(
   if (!pool) return [];
 
   const { rows } = await pool.query<Row>(
-    `SELECT transaction_token, card_token, amount_cents, draws, merchant, decided_at
+    `SELECT transaction_token, card_token, amount_cents, net_cents, draws, merchant, decided_at
        FROM lithic_auth_decisions
       WHERE wallet = $1 AND result = 'APPROVED'
       ORDER BY decided_at DESC
@@ -69,13 +84,18 @@ export async function listCardTransactions(
 
   return rows.map((row) => {
     const merchant = (row.merchant ?? {}) as Record<string, unknown>;
+    const amountCents = Number(row.amount_cents);
+    // Null means the transaction has never been reconciled, so the authorization still stands.
+    const heldCents = row.net_cents === null ? amountCents : Number(row.net_cents);
     return {
       id: row.transaction_token,
       // `descriptor` is the name on a statement; `acceptor_id` is a merchant number, which is not a
       // name and should never reach a member. An unnamed merchant is better blank than numeric.
       name: asString(merchant.descriptor) ?? 'Card purchase',
       at: row.decided_at.toISOString(),
-      amountCents: Number(row.amount_cents),
+      amountCents,
+      heldCents,
+      reversed: heldCents === 0 && amountCents > 0,
       mcc: asString(merchant.mcc),
       city: asString(merchant.city),
       state: asString(merchant.state),

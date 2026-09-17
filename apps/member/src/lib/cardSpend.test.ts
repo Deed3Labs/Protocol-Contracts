@@ -46,8 +46,19 @@ describe('the month bar is made of real categories', () => {
     expect(route).toContain("credited.length === 0 ? 'cash' : 'credit'");
   });
 
-  test('the month total is the rows, not a second figure that could disagree', () => {
-    expect(route).toMatch(/periodTotal: cardRows\.reduce/);
+  /*
+   * Still one figure derived from one source, but the source is what each transaction HOLDS rather
+   * than what it asked for. A voided charge keeps its row — the member remembers it — and must not
+   * keep its place in the month's total, or the page claims spending that came back.
+   */
+  test('the month total counts what is held, from the same transactions as the rows', () => {
+    expect(route).toMatch(/periodTotal: \(spend \?\? \[\]\)\.reduce/);
+    expect(route).toContain('tx.heldCents ?? tx.amountCents');
+  });
+
+  test('a reversed charge is marked on the row rather than dropped from it', () => {
+    expect(service).toContain('reversed: heldCents === 0 && amountCents > 0');
+    expect(route).toContain('reversed: tx.reversed');
   });
 
   // The category bar went with the brand-guide rebuild: the reference has none. When it returns it must

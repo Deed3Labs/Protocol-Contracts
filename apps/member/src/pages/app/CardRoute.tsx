@@ -368,7 +368,15 @@ export default function CardRoute() {
       // crossed into. Not 'card': every row on this page came from a card, so it would say nothing.
       source: credited.length === 0 ? 'cash' : 'credit',
       kind: 'spending',
+      /*
+       * What the merchant asked for, even once it has been given back.
+       *
+       * A voided charge keeps its figure and carries `reversed` instead, because a row that quietly
+       * rewrites itself to nothing is one a member cannot reconcile against what they remember. The
+       * month's total counts what is still held, below, so the two do not contradict each other.
+       */
       amount: -tx.amountCents / 100,
+      reversed: tx.reversed ?? false,
       category: categoryForMcc(tx.mcc),
       location: [tx.city, tx.state].filter(Boolean).join(', ') || undefined,
       paidFromLabel: credited.length === 0 ? 'Cash' : 'Credit',
@@ -419,8 +427,15 @@ export default function CardRoute() {
         ...(card
           ? {
               transactions: cardRows,
-              // The total is the rows, not a separate figure that could disagree with them.
-              periodTotal: cardRows.reduce((sum, row) => sum + (row.amount < 0 ? -row.amount : 0), 0),
+              /*
+               * The total is the rows, not a separate figure that could disagree with them — but it
+               * counts what is still held. A voided charge is money the member has back, so adding
+               * it to the month would overstate what they spent by exactly the amount they did not.
+               */
+              periodTotal: (spend ?? []).reduce(
+                (sum, tx) => sum + Math.max(0, tx.heldCents ?? tx.amountCents) / 100,
+                0,
+              ),
             }
           : { transactions: CARD_DAY_ONE.transactions, periodTotal: CARD_DAY_ONE.periodTotal }),
         /*

@@ -319,6 +319,14 @@ export interface ActivityRow {
   category?: MerchantCategory;
   /** Authorised but not settled. A state, not a source: a pending charge still came from somewhere. */
   pending?: boolean;
+  /**
+   * The charge was voided and the money is back.
+   *
+   * The row keeps `amount` at what the merchant asked for — that is what happened, and it is what a
+   * member remembers seeing — and is marked instead of removed. Totals count what is still held, so
+   * a reversed row shows its figure without adding to the month.
+   */
+  reversed?: boolean;
   /** The other member, for a payment sent or received. */
   counterpartyHandle?: string;
   /** This payment's place in a term plan. */
