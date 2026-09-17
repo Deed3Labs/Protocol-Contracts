@@ -187,3 +187,44 @@ describe('a reversed charge looks reversed on every list', () => {
   }
 });
 
+
+/*
+ * The card's own frames, on every ground.
+ *
+ * Chrome paints an opaque canvas behind an iframe whose element's colour scheme differs from the
+ * document inside it. The root says `dark` on the dark ground and Lithic's frames are light, so
+ * the digits sat on white boxes however transparent we told the inside to be. Reproduced side by
+ * side: inheriting dark gives a white box, `light` or `normal` on the element gives a clear one.
+ */
+describe("the issuer's frames match the document they hold", () => {
+  const details = read('components/clear/card/EmbeddedCardDetails.tsx');
+  const pin = read('components/clear/card/SetPinDialog.tsx');
+  const dialog = read('components/clear/CardDetailsDialog.tsx');
+
+  test('every place a Lithic frame renders sets its colour scheme to light', () => {
+    expect(details).toContain('[&_iframe]:[color-scheme:light]');
+    expect(pin).toContain('[&_iframe]:[color-scheme:light]');
+    expect(dialog).toMatch(/<iframe[^>]*\[color-scheme:light\]/);
+  });
+});
+
+/*
+ * "Show the numbers" did nothing. The dialog passed an inline `onFailed`, which was a dependency of
+ * the mount effect, so every render the reveal caused tore the frames down and remounted them
+ * masked — underneath the toggle that had just unmasked them.
+ */
+describe('revealing the numbers does not remount the frames', () => {
+  const details = read('components/clear/card/EmbeddedCardDetails.tsx');
+
+  test("the mount does not depend on the caller's callback identity", () => {
+    expect(details).toContain('}, [session, environment, ground]);');
+    expect(details).not.toMatch(/\[session, environment, onFailed/);
+    expect(details).toContain('failed.current()');
+  });
+
+  test('fresh frames reset the button to match them', () => {
+    // A remount on a theme change brings the digits back masked; the button must not keep saying
+    // "Hide" over dots.
+    expect(details).toMatch(/let live = true;[\s\S]{0,120}setShown\(false\)/);
+  });
+});

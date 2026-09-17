@@ -95,7 +95,7 @@ export default function SetPinDialog({
         For ATMs and chip-and-PIN terminals. Choose four digits you have not used elsewhere.
       </p>
       <div className="c-hosted">
-        <div ref={target} className="c-pinbox [&_iframe]:h-full [&_iframe]:w-full [&_iframe]:border-0" />
+        <div ref={target} className="c-pinbox [&_iframe]:h-full [&_iframe]:w-full [&_iframe]:border-0 [&_iframe]:[color-scheme:light]" />
         <p className="c-note-hosted">Handled by the card issuer</p>
       </div>
       <p className="c-det mt-s2">
