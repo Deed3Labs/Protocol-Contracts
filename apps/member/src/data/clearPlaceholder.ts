@@ -413,6 +413,8 @@ export const RESERVE_REPORTS: ReserveReports = {
    * last thing to invent.
    */
   reviewedBy: 'Prepared by Clear and reviewed by [PLACEHOLDER]. Not an independent audit.',
+  auditNote:
+    'A co-op this size is not required to be audited. Saying so is cheaper than letting a member assume otherwise.',
 };
 
 /** What happens after a claim is sent. Four steps, because that is how many there are. */

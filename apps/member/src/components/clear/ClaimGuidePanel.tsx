@@ -33,11 +33,22 @@ export default function ClaimGuidePanel({
   const locked = items.filter((i) => !isAssuranceActive(i, credits));
   const lockedAt = locked.map((i) => i.unlocksAt.toLocaleString());
 
+  /*
+   * The row figure, not the section figure.
+   *
+   * These started at `c-fig-sec` — 20px, the weight a balance gets — and "Under two days" wrapped
+   * onto two lines on a phone while shouting louder than the money above it. `c-fig-row` keeps the
+   * ink and the weight and drops to 15px, which is the size the guide gives a figure that sits in a
+   * list rather than heading one.
+   *
+   * The value never wraps; the label yields instead. A figure broken across two lines stops reading
+   * as one value, and "Under two days" is a single answer.
+   */
   const stat = (label: string, value: string) => (
     <div>
       <Line className="items-baseline!">
-        <span className="text-sec">{label}</span>
-        <span className="c-fig c-fig-sec">{value}</span>
+        <span className="text-sec min-w-0">{label}</span>
+        <span className="c-fig c-fig-row shrink-0 whitespace-nowrap">{value}</span>
       </Line>
     </div>
   );
@@ -92,11 +103,13 @@ export default function ClaimGuidePanel({
               </div>
             )}
           </Rows>
-          <p className="c-keyline">
+        </CMain>
+        <CFoot>
+          <p className="c-det">
             A protection you have not unlocked cannot be claimed on, even for something that happened
             after you joined.
           </p>
-        </CMain>
+        </CFoot>
       </Cell>
 
       <Cell>
@@ -130,7 +143,8 @@ export default function ClaimGuidePanel({
         </CFoot>
       </Cell>
 
-      <Cell>
+      {/* The published record runs under both columns — it is the page's evidence, not a side note. */}
+      <Cell full>
         <CHead>
           <SecHead label="The record">
             <span className="c-det">This year</span>
@@ -143,11 +157,13 @@ export default function ClaimGuidePanel({
             {stat('Claims declined', record.declinedOf)}
             {stat('Effect on your credits', record.creditsEffect)}
           </Rows>
-          <p className="c-det mt-s2">
+        </CMain>
+        <CFoot>
+          <p className="c-det">
             One in four is declined. We publish that because a reserve that never says no is not
             being managed.
           </p>
-        </CMain>
+        </CFoot>
       </Cell>
     </>
   );

@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import ReservePanel from '@/components/clear/ReservePanel';
 import { BackIcon } from '@/components/clear/brand/icons';
 import { ASSURANCE_RESERVE } from '@/data/clearPlaceholder';
+import { useIsDesktop } from '@/lib/useIsDesktop';
 
 /**
  * The assurance reserve — reached from the Assurance pane's footer.
@@ -12,9 +13,10 @@ import { ASSURANCE_RESERVE } from '@/data/clearPlaceholder';
  */
 export default function AssuranceReservePage() {
   const navigate = useNavigate();
+  const desktop = useIsDesktop();
 
   return (
-    <div className="max-w-[560px]">
+    <div>
       <div className="c-paneback mb-s2! hidden lg:flex">
         <button type="button" aria-label="Back" onClick={() => navigate(-1)} className="c-mclose">
           <BackIcon />
@@ -24,7 +26,12 @@ export default function AssuranceReservePage() {
       <p className="c-det mb-s3">
         The co-op&rsquo;s shared safety fund. It is what makes the protections real rather than a promise.
       </p>
-      <div className="c-slab c-one">
+      {/*
+        * Two columns on desktop, one on a phone — the reference's own shape. The reserve and where
+        * it comes from sit side by side; "Is it enough?" spans beneath, because it is the answer to
+        * both of them rather than a third topic.
+        */}
+      <div className={desktop ? 'c-slab' : 'c-slab c-one'}>
         <ReservePanel
           reserve={ASSURANCE_RESERVE}
           onReports={() => navigate('/assurance/reports')}
