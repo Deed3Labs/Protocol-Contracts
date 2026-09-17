@@ -128,8 +128,16 @@ router.post('/', async (req: Request, res: Response) => {
     });
 
     const latency = Date.now() - started;
+    /*
+     * `tx=` is the token this decision is filed under, and it is what a later void has to match.
+     *
+     * The transaction's aftermath arrives on a separate webhook carrying Lithic's transaction token.
+     * If the value below is not that same token, no reversal will ever find its decision and the
+     * money will not come back — silently, because both endpoints answer 200. Printing it here is
+     * what makes the two comparable in one log.
+     */
     console.log(
-      `[lithic:asa] ${outcome.decision.result} ${amountCents}c card=${cardToken}` +
+      `[lithic:asa] ${outcome.decision.result} ${amountCents}c tx=${transactionToken} card=${cardToken}` +
         ` credit=${outcome.decision.creditCents}c${outcome.replayed ? ' (replay)' : ''}` +
         ` ${latency}ms`,
       { draws: outcome.decision.draws, wallet: outcome.wallet },
