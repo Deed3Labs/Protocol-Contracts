@@ -34,19 +34,22 @@ export default function ClaimGuidePanel({
   const lockedAt = locked.map((i) => i.unlocksAt.toLocaleString());
 
   /*
-   * Key/value rows, not figures.
+   * The row figure, not the section figure.
    *
-   * These were `c-fig c-fig-sec` — 20px, the weight a balance gets — and "Under two days" wrapped
-   * onto two lines on a phone while shouting louder than the money above it. Three of the four are
-   * phrases rather than amounts, and the guide already has a row for a stated fact: `c-kv`, whose
-   * value is detail-sized, quiet, and nowrap.
+   * These started at `c-fig-sec` — 20px, the weight a balance gets — and "Under two days" wrapped
+   * onto two lines on a phone while shouting louder than the money above it. `c-fig-row` keeps the
+   * ink and the weight and drops to 15px, which is the size the guide gives a figure that sits in a
+   * list rather than heading one.
+   *
+   * The value never wraps; the label yields instead. A figure broken across two lines stops reading
+   * as one value, and "Under two days" is a single answer.
    */
   const stat = (label: string, value: string) => (
     <div>
-      <div className="c-kv">
-        <span>{label}</span>
-        <span className="c-v">{value}</span>
-      </div>
+      <Line className="items-baseline!">
+        <span className="text-sec min-w-0">{label}</span>
+        <span className="c-fig c-fig-row shrink-0 whitespace-nowrap">{value}</span>
+      </Line>
     </div>
   );
 

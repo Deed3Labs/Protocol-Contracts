@@ -2,6 +2,7 @@ import { Bar, CFoot, CHead, CMain, Cell, Line, Rows, SecHead } from './brand/ana
 import { ChevronIcon } from './brand/icons';
 import { money, count } from '@clear/domain';
 import type { AssuranceReserve } from '@/lib/clearModel';
+import { cn } from '@/lib/utils';
 
 /**
  * The assurance reserve — the co-op's shared safety fund, and what makes the protections real
@@ -29,14 +30,28 @@ export default function ReservePanel({
   const uncovered = Math.max(0, 100 - reserve.coveredPct);
   const exposure = reserve.membersCovered * reserve.perMemberCap;
 
-  const row = (label: string, detail: string, value: string) => (
+  /*
+   * `small` is the row figure rather than the section figure.
+   *
+   * The reserve's own three numbers are the headline of this page and keep their 20px. The cover
+   * ratio's rows are working — the balance restated, the exposure behind it, the percentage — so
+   * they take the same 15px the claim record uses. Same ink, same weight, one size down.
+   */
+  const row = (label: string, detail: string, value: string, small = false) => (
     <div>
       <Line className="items-baseline!">
         <div className="min-w-0">
           <p className="text-sec">{label}</p>
           <p className="c-det mt-[3px]">{detail}</p>
         </div>
-        <span className="c-fig c-fig-sec">{value}</span>
+        <span
+          className={cn(
+            'c-fig shrink-0 whitespace-nowrap',
+            small ? 'c-fig-row' : 'c-fig-sec',
+          )}
+        >
+          {value}
+        </span>
       </Line>
     </div>
   );
@@ -111,26 +126,45 @@ export default function ReservePanel({
           </SecHead>
         </CHead>
         <CMain>
+          {/*
+            * No margin under the bar: the keyline is its caption and carries its own 8px above it.
+            * With 16 under the bar and 16 under the keyline, the caption sat exactly between the
+            * thing it describes and the rule below, belonging to neither.
+            */}
           <Bar
-            className="mb-s2"
             label={`${reserve.coveredPct}% of the annual cap covered`}
             segments={[
               { pct: reserve.coveredPct, color: 'var(--settled)', label: 'Covered' },
               { pct: uncovered, color: 'var(--ink-13)', label: 'Uncovered' },
             ]}
           />
-          <p className="c-keyline mb-s3">
+          <p className="c-keyline">
             <span className="c-t-sav">Covered</span> <strong>{reserve.coveredPct}%</strong>
             <span className="c-sep">·</span>Policy floor <strong>{reserve.policyFloorPct}%</strong>
           </p>
+        </CMain>
+        {/*
+          * The bar and its key are their own section, so the rule under them runs edge to edge.
+          *
+          * A border inside a padded block stops short of the cell's sides and reads as a line drawn
+          * around content; the anatomy's own answer is two stacked mains, where the padding sits on
+          * the sections and the divider spans the whole cell.
+          */}
+        <CMain>
           <Rows>
-            {row('Reserve balance', 'Held in CLRUSD', money(reserve.balance))}
+            {row('Reserve balance', 'Held in CLRUSD', money(reserve.balance), true)}
             {row(
               'If every covered member claimed their cap',
               `${count(reserve.membersCovered)} members at ${money(reserve.perMemberCap)} a year`,
               money(exposure),
+              true,
             )}
-            {row('Covered', `Against a policy floor of ${reserve.policyFloorPct}%`, `${reserve.coveredPct}%`)}
+            {row(
+              'Covered',
+              `Against a policy floor of ${reserve.policyFloorPct}%`,
+              `${reserve.coveredPct}%`,
+              true,
+            )}
           </Rows>
         </CMain>
         {/* The closing note is a footer, like every closing note in the guide — it comments on the

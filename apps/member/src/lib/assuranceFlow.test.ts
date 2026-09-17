@@ -177,9 +177,16 @@ describe('the closing note is a footer', () => {
 describe('the record reads as facts, not figures', () => {
   const claim = read('components/clear/ClaimGuidePanel.tsx');
 
-  test('its rows are key/value, not hero figures', () => {
-    expect(claim).toContain('className="c-kv"');
-    expect(claim).not.toMatch(/stat[\s\S]{0,200}c-fig c-fig-sec/);
+  test('its values keep the ink and weight, one size down', () => {
+    // 20px is the weight a balance gets, and "Under two days" wrapped onto two lines shouting
+    // louder than the money above it. c-fig-row is the size for a figure inside a list.
+    expect(claim).toContain('c-fig c-fig-row');
+    expect(claim).not.toMatch(/stat[\s\S]{0,240}c-fig-sec/);
+  });
+
+  test('a stated value never wraps; the label yields instead', () => {
+    // A figure broken across two lines stops reading as one value.
+    expect(claim).toContain('shrink-0 whitespace-nowrap');
   });
 
   test('the reserve note fits three lines on a phone', () => {
@@ -188,5 +195,30 @@ describe('the record reads as facts, not figures', () => {
     const reserve = read('components/clear/ReservePanel.tsx');
     expect(reserve).toContain('idle money buys no homes');
     expect(reserve).toContain('the board must act if it breaks');
+  });
+});
+
+/*
+ * The cover ratio is working arithmetic, not a headline.
+ */
+describe('the cover ratio reads at row weight', () => {
+  const reserve = read('components/clear/ReservePanel.tsx');
+
+  test('the reserve keeps its three headline figures', () => {
+    // The balance, who it covers and what it paid are the page's own numbers.
+    expect(reserve).toContain("small ? 'c-fig-row' : 'c-fig-sec'");
+  });
+
+  test('and the ratio rows ask for the smaller one', () => {
+    expect(reserve).toMatch(/money\(reserve\.balance\), true\)/);
+    expect(reserve).toMatch(/money\(exposure\),\s*true,/);
+  });
+
+  test('the bar and its caption are one block, ruled off from the rows', () => {
+    // Two stacked mains: the padding sits on the sections, so the divider spans the whole cell.
+    expect(reserve).toMatch(/<\/CMain>[\s\S]{0,420}<CMain>\s*<Rows>/);
+    // No margin under the bar — the keyline's own 8px is the gap, so the caption hugs what it
+    // describes rather than floating between the bar and the rule.
+    expect(reserve).not.toContain('<Bar\n            className="mb-s2"');
   });
 });
