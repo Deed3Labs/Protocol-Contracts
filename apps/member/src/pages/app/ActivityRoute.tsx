@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import ActivityPage from './ActivityPage';
 import { ACTIVITY_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
-import { toActivityRow } from '@/lib/activityMapping';
+import { cardTransactionRow, toActivityRow } from '@/lib/activityMapping';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { onChainStale } from '@/lib/chainStale';
@@ -127,7 +127,23 @@ export default function ActivityRoute() {
     ? ACTIVITY_DAY_ONE
     : {
         ...ACTIVITY_DAY_ONE,
-        rows: items.map(toActivityRow),
+        /*
+         * Both halves of what the member spent, in one list, newest first.
+         *
+         * This was on-chain items alone, so a card purchase counted towards the cycle total, the
+         * category bar and the merchant list — and then appeared nowhere in the activity underneath
+         * them. This page is meant to be the one place everything shows up; a figure with no row
+         * behind it is the opposite of that.
+         *
+         * Sorted on real timestamps rather than the formatted `date`, which is a display string two
+         * rows on the same day cannot be ordered by.
+         */
+        rows: [
+          ...items.map((item) => ({ ts: item.ts, row: toActivityRow(item) })),
+          ...cards.map((tx) => ({ ts: Date.parse(tx.at), row: cardTransactionRow(tx) })),
+        ]
+          .sort((a, b) => b.ts - a.ts)
+          .map((entry) => entry.row),
         cycleSpend,
         categories,
         merchants,

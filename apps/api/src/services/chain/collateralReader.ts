@@ -246,18 +246,38 @@ async function readBondCents(
 
     let total = 0;
     for (const id of ids) {
-      const balance = (await collection.balanceOf(wallet, id)) as bigint;
-      if (balance === 0n) continue;
-      const info = (await collection.getBondInfo(id)) as { isRedeemed: boolean };
-      if (info.isRedeemed) continue;
-      // Bond values are quoted in the collection's settlement token, which is the 6-decimal
-      // stablecoin the pool and CLRUSD both use.
-      total += toCents((await collection.presentValueOf(id)) as bigint, BOND_DECIMALS);
+      /*
+       * Per bond, so one unreadable id costs only itself.
+       *
+       * Wrapping the whole loop meant a single bond failing anywhere in its three calls returned
+       * zero for every bond the member holds — collateral quietly deleted by an unrelated id. A
+       * bond we cannot price is one bond we do not count.
+       */
+      try {
+        const balance = (await collection.balanceOf(wallet, id)) as bigint;
+        if (balance === 0n) continue;
+        const info = (await collection.getBondInfo(id)) as { isRedeemed: boolean };
+        if (info.isRedeemed) continue;
+        // Bond values are quoted in the collection's settlement token, which is the 6-decimal
+        // stablecoin the pool and CLRUSD both use.
+        total += toCents((await collection.presentValueOf(id)) as bigint, BOND_DECIMALS);
+      } catch (error) {
+        console.warn(`[collateral] bond ${id} at ${address} could not be priced — skipped:`, error);
+      }
     }
     return total;
   } catch (error) {
+    /*
+     * The error goes in the log, always.
+     *
+     * The first version of this said "cannot be read — treating as zero" and threw the error away,
+     * which left no way to tell a contract that genuinely reverts from one call in the sequence
+     * failing for its own reason. Every read here works when called directly against Base Sepolia —
+     * ids [1, 2], present values $97.17 and $97.10 — so whatever fails in the deployed process is
+     * not visible from outside it, and a swallowed error is exactly what kept that hidden.
+     */
     if (isDeterministicRevert(error)) {
-      console.warn(`[collateral] bond collection at ${address} cannot be read — treating as zero`);
+      console.warn(`[collateral] bond read reverted at ${address} — treating as zero:`, error);
       return 0;
     }
     console.error(`[collateral] bond read unreachable at ${address}:`, error);
