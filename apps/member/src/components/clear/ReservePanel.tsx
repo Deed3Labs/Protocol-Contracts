@@ -138,7 +138,16 @@ export default function ReservePanel({
               { pct: uncovered, color: 'var(--ink-13)', label: 'Uncovered' },
             ]}
           />
-          <p className="c-keyline">
+          {/*
+            * The negative margin is a leading trim, not a nudge.
+            *
+            * The section's padding is symmetric, but the caption's line box carries ~4.5px of half
+            * leading under its glyphs while the bar above is a hard-edged block with none. So the
+            * ink sat 17px below the top rule and 19px above the bottom one, and the group read as
+            * riding high. Trimming the trailing leading puts the ink in the middle of the two rules,
+            * which is what the eye is measuring.
+            */}
+          <p className="c-keyline mb-[-2px]">
             <span className="c-t-sav">Covered</span> <strong>{reserve.coveredPct}%</strong>
             <span className="c-sep">·</span>Policy floor <strong>{reserve.policyFloorPct}%</strong>
           </p>
