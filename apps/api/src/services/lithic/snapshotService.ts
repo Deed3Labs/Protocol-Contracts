@@ -226,7 +226,17 @@ export async function refreshSnapshot(
   //
   // This is also what lets cards run on cash alone while StableCredit, bonds and the pool are still
   // being deployed. Each tier lights up as its contract goes live; nothing has to change here.
-  if (!chain.complete && collateral.savingsCents === undefined) {
+  /*
+   * `capacities.available` is the escape hatch, and it is the point of this condition.
+   *
+   * Carrying credit forward is the right answer when we could not read anything — stale credit is
+   * honest, zeroed credit is wrong. It is the WRONG answer when the limit calculator answered
+   * perfectly well and only some raw holding read failed: the contract has just stated the member's
+   * ceiling, and throwing that away to carry forward a zero written on the day the card was issued
+   * is how a member with a $431 limit gets declined for $5. Where the chain can state the limit,
+   * that statement wins over anything we would have carried.
+   */
+  if (!chain.complete && collateral.savingsCents === undefined && !capacities.available) {
     const cashCents = Math.max(0, Math.round(lithicCashCents));
     const previous = await authStore.getSnapshot(cardToken);
 

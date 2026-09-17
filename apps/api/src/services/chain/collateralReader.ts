@@ -122,9 +122,48 @@ async function readPoolCents(
     ]);
     return toCents(assets, Number(decimals));
   } catch (error) {
-    console.error(`[collateral] pool read failed at ${address}:`, error);
+    /*
+     * A revert is an answer. Unreachable is not.
+     *
+     * Rule 2 says a failed read is not a balance of zero, and that is right about an RPC that timed
+     * out or was rate-limited — we genuinely do not know, and reporting zero would cut a member's
+     * limit over a network blip. But a call that reverts *deterministically* is not an unknown: the
+     * chain answered, and the answer is that this address cannot tell us a share balance. Under
+     * rule 3 that is a pool backing nothing, which is zero.
+     *
+     * The distinction is not academic. `0xd8a171…` on Base Sepolia reverts on both `balanceOf` and
+     * `decimals` — it is not an ERC-4626 at all. Returning null for it made `complete` false, which
+     * sent refreshSnapshot down its carry-forward branch, which discarded a working credit capacity
+     * read of $431.44 and wrote zeros instead. Every card authorization then declined, for a member
+     * whose limit the contracts could state exactly.
+     */
+    if (isDeterministicRevert(error)) {
+      console.warn(
+        `[collateral] pool at ${address} is not a readable ERC-4626 — treating the position as zero`,
+      );
+      return 0;
+    }
+    console.error(`[collateral] pool read unreachable at ${address}:`, error);
     return null;
   }
+}
+
+/**
+ * Did the chain answer "no", or did we fail to ask?
+ *
+ * ethers reports both as CALL_EXCEPTION, so the discriminator is whether a revert actually came
+ * back. "missing revert data" is what a node sends when a call reverted without a reason string —
+ * the chain answered. A timeout, a rate limit or a transport failure carries a different code
+ * entirely and must stay unknown, because those are exactly the blips rule 2 exists to survive.
+ */
+function isDeterministicRevert(error: unknown): boolean {
+  if ((error as { code?: string })?.code !== 'CALL_EXCEPTION') return false;
+  const shortMessage = String((error as { shortMessage?: string })?.shortMessage ?? '');
+  return (
+    shortMessage.includes('missing revert data') ||
+    shortMessage.includes('execution reverted') ||
+    (error as { data?: unknown })?.data != null
+  );
 }
 
 /**
