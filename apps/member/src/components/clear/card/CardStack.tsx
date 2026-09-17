@@ -99,7 +99,9 @@ export default function CardStack({
            * like. Sideways claims the pointer, so the up always arrives here.
            */
           if (!swiping.current) {
-            if (Math.abs(dx) < 8 || Math.abs(dx) <= Math.abs(dy)) return;
+            // Four pixels rather than eight: a browser decides which way a gesture is going early,
+            // and the later this claims it the more chances there are to lose it.
+            if (Math.abs(dx) < 4 || Math.abs(dx) < Math.abs(dy)) return;
             swiping.current = true;
             try {
               // Best effort: a browser that will not hand over the pointer still gets a swipe, it

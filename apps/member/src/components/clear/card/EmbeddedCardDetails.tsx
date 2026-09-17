@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import LithicEmbed, { Environment, type CardEmbed } from 'lithic-embed';
-import { Btn, Line, Rows } from '../brand/anatomy';
+import { Rows } from '../brand/anatomy';
 
 /**
  * The card's own numbers, in the app's rows.
@@ -20,11 +20,17 @@ export default function EmbeddedCardDetails({
   session,
   environment,
   onFailed,
+  onControls,
 }: {
   session: string;
   environment: 'sandbox' | 'production';
   /** The frames never rendered, so the sheet can fall back to the issuer's own page. */
   onFailed: () => void;
+  /**
+   * Revealing belongs to the sheet's own action, not to a second button sitting among the rows —
+   * so the control is handed up rather than drawn here.
+   */
+  onControls?: (controls: { shown: boolean; busy: boolean; toggle: () => void }) => void;
 }) {
   const pan = useRef<HTMLSpanElement>(null);
   const month = useRef<HTMLSpanElement>(null);
@@ -84,6 +90,11 @@ export default function EmbeddedCardDetails({
     }
   };
 
+  useEffect(() => {
+    // `toggle` closes over refs and setters rather than render values, so it does not need watching.
+    onControls?.({ shown, busy, toggle: () => void toggle() });
+  }, [shown, busy, onControls]);
+
   /*
    * A row is a label and a value, and the value is a frame the size of its own line. The type is
    * set here rather than inside: the SDK copies the mount target's computed styles into the frame,
@@ -106,18 +117,24 @@ export default function EmbeddedCardDetails({
         {row('Card number', <span ref={pan} className="block h-[22px] overflow-hidden" />)}
         {row(
           'Expires',
-          <Line className="justify-start! gap-[6px]">
-            <span ref={month} className="block h-[22px] w-[32px] overflow-hidden" />
-            <span aria-hidden>/</span>
-            <span ref={year} className="block h-[22px] w-[34px] overflow-hidden" />
-          </Line>,
+          /*
+           * Month, slash, year as one line rather than three boxes.
+           *
+           * Each frame is the width of the two digits it holds — a box wider than its contents put
+           * air between the month and the slash — and the row centres rather than sitting on a
+           * baseline, which a frame does not have one of.
+           */
+          <span className="flex items-center gap-[3px]">
+            <span ref={month} className="block h-[22px] w-[22px] overflow-hidden" />
+            <span aria-hidden className="text-ink-50">
+              /
+            </span>
+            <span ref={year} className="block h-[22px] w-[22px] overflow-hidden" />
+          </span>,
         )}
-        {row('Security code', <span ref={cvv} className="block h-[22px] w-[56px] overflow-hidden" />)}
+        {row('Security code', <span ref={cvv} className="block h-[22px] w-[34px] overflow-hidden" />)}
       </Rows>
       {error && <p className="c-det c-errline mt-s2">{error}</p>}
-      <Btn className="mt-s2" disabled={busy} onClick={() => void toggle()}>
-        {busy ? 'One moment…' : shown ? 'Hide the numbers' : 'Show the numbers'}
-      </Btn>
     </>
   );
 }

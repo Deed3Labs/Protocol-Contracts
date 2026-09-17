@@ -422,7 +422,10 @@
    other direction belongs to the page.
    On the faces as well as the stack, because the finger lands on a face — Safari reads this from
    the element under it, and a swiped row works precisely because that is where its rule sits. */
-.c-cardstack,.c-cardstack > *,.c-cardstack .c-cardface{touch-action:pan-y}
+.c-cardstack,.c-cardstack > *,.c-cardstack .c-cardface{touch-action:pan-y;
+  /* A drag across a card is a drag, not a selection. iOS starts selecting text or offers its
+     callout on a sideways drag over text, and both take the pointer away mid-gesture. */
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-user-drag:none}
 .c-cardstack{position:relative;padding-bottom:9px}
 .c-cardstack > *{position:absolute;top:0;left:0;right:0}
 .c-cardstack > .c-sel{position:relative;z-index:3}
