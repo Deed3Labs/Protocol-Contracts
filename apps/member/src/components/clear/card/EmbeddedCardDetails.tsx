@@ -38,11 +38,39 @@ export default function EmbeddedCardDetails({
   const cvv = useRef<HTMLSpanElement>(null);
   const embed = useRef<CardEmbed | null>(null);
   const [shown, setShown] = useState(false);
+  /*
+   * The frames are told their colour once, at mount, so a ground that changes underneath them would
+   * leave the digits in the old one. Remounting is the whole fix, and a theme change is rare enough
+   * that it costs nothing.
+   */
+  const [ground, setGround] = useState(0);
+  useEffect(() => {
+    const again = () => setGround((n) => n + 1);
+    window.addEventListener('themechange', again);
+    return () => window.removeEventListener('themechange', again);
+  }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
+    /*
+     * The type the digits arrive in, said explicitly.
+     *
+     * The SDK copies the mount target's computed styles, and a computed `background-color` of
+     * transparent leaves the frame's own document showing — which is white. On paper nobody
+     * noticed; on ink it was three white boxes sitting in a dark sheet. A frame is a piece of the
+     * row, not a thing on top of it, so it is told to paint nothing and to take the row's ink.
+     */
+    const page = getComputedStyle(document.documentElement);
+    const styles = {
+      color: page.getPropertyValue('--ink').trim() || '#16211D',
+      'background-color': 'transparent',
+      'font-family': page.getPropertyValue('--font-mono').trim() || 'monospace',
+      'font-size': '13px',
+      'letter-spacing': '0.06em',
+      'line-height': '22px',
+    };
     const lithic = new LithicEmbed(environment === 'production' ? Environment.PRODUCTION : Environment.SANDBOX);
     const card = lithic.card(session, { syncStyles: true });
     embed.current = card;
@@ -57,10 +85,10 @@ export default function EmbeddedCardDetails({
          * document. A ref is the element itself and cannot collide.
          */
         await Promise.all([
-          card.mountPan(pan.current!),
-          card.mountExpMonth(month.current!),
-          card.mountExpYear(year.current!),
-          card.mountCvv(cvv.current!),
+          card.mountPan(pan.current!, styles),
+          card.mountExpMonth(month.current!, styles),
+          card.mountExpYear(year.current!, styles),
+          card.mountCvv(cvv.current!, styles),
         ]);
       } catch {
         // A frame that never rendered is not something a member can act on, so the sheet falls
@@ -74,7 +102,7 @@ export default function EmbeddedCardDetails({
       void card.unmount().catch(() => {});
       embed.current = null;
     };
-  }, [session, environment, onFailed]);
+  }, [session, environment, onFailed, ground]);
 
   const toggle = async () => {
     if (!embed.current) return;

@@ -41,8 +41,16 @@ export default function SetPinDialog({
     );
     const pin = lithic.pinSetting(session.session, {});
     embed.current = pin;
+    // Same as the card's frames: paint nothing, take the ground's ink. A hosted field is still
+    // part of the sheet it sits in.
+    const page = getComputedStyle(document.documentElement);
     void pin
-      .mount(target.current!)
+      .mount(target.current!, {
+        color: page.getPropertyValue('--ink').trim() || '#16211D',
+        'background-color': 'transparent',
+        'font-family': page.getPropertyValue('--font-text').trim() || 'system-ui',
+        'font-size': '22px',
+      })
       .then(() => live && setReady(true))
       .catch(() => live && setError("We couldn't open the PIN field. Try again in a moment."));
 
