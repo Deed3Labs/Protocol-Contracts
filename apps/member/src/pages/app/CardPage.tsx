@@ -20,7 +20,7 @@ import { TIER_TEXT_CLASS } from '@/components/clear/ClearCreditCard';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
 import { money, signedMoney } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
-import { CARD_DAILY_CEILING, sourceTag, type ActivityRow, type CardData } from '@/lib/clearModel';
+import { CARD_DAILY_CEILING, sourceTag, type ActivityRow, type CardData, REVERSED_ROW } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 type Sort = 'newest' | 'oldest' | 'largest';
@@ -387,27 +387,27 @@ export default function CardPage({
                   className={cn(
                     'c-fig c-fig-row',
                     row.amount > 0 && 'c-pos',
-                    row.reversed && 'text-ink-50 line-through',
+                    row.reversed && REVERSED_ROW.amount,
                     desktop && 'text-right',
                   )}
                 >
                   {signedMoney(row.amount)}
                 </span>
               );
-              const label = row.reversed ? 'Reversed' : tag.label;
-              const labelClass = row.reversed ? 'text-ink-50' : tagClass(row);
+              const label = row.reversed ? REVERSED_ROW.label : tag.label;
+              const labelClass = row.reversed ? REVERSED_ROW.text : tagClass(row);
               return (
                 <button key={row.id} type="button" onClick={() => setSelected(row)} className="block w-full text-left">
                   {desktop ? (
                     <div className="grid grid-cols-[1fr_150px_110px] items-center">
-                      <span className={cn('text-sec', row.reversed && 'text-ink-50')}>{row.name}</span>
+                      <span className={cn('text-sec', row.reversed && REVERSED_ROW.text)}>{row.name}</span>
                       <span className={cn('c-det', labelClass)}>{label}</span>
                       {amount}
                     </div>
                   ) : (
                     <Line>
                       <div>
-                        <p className={cn('text-sec', row.reversed && 'text-ink-50')}>{row.name}</p>
+                        <p className={cn('text-sec', row.reversed && REVERSED_ROW.text)}>{row.name}</p>
                         <p className={cn('c-det', labelClass)}>{label}</p>
                       </div>
                       {amount}

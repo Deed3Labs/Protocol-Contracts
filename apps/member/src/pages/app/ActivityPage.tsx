@@ -26,6 +26,7 @@ import {
   type ActivitySort,
 } from '@/lib/activityView';
 import { groupsFromMerchants, merchantKey } from '@/lib/activityCycle';
+import { REVERSED_ROW } from '@/lib/clearModel';
 import type { ActivityData, ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
@@ -266,7 +267,7 @@ export default function ActivityPage({
    * alone. The funding tag gives way to 'Reversed' because no tier is paying for it any more.
    */
   const tag = (row: ActivityRow) => {
-    if (row.reversed) return <span className="c-det text-ink-50">Reversed</span>;
+    if (row.reversed) return <span className={cn('c-det', REVERSED_ROW.text)}>{REVERSED_ROW.label}</span>;
     const t = rowTag(row);
     return <span className={cn('c-det', t.className)}>{t.label}</span>;
   };
@@ -274,11 +275,7 @@ export default function ActivityPage({
     <span
       className={cn(
         'c-fig c-fig-row',
-        row.reversed
-          ? 'text-ink-50 line-through'
-          : row.pending
-            ? 'c-muted'
-            : row.amount > 0 && 'c-pos',
+        row.reversed ? REVERSED_ROW.amount : row.pending ? 'c-muted' : row.amount > 0 && 'c-pos',
         desktop && 'text-right',
       )}
     >
@@ -354,7 +351,7 @@ export default function ActivityPage({
                   <button key={row.id} type="button" onClick={() => setSelected(row)} className="block w-full text-left">
                     {desktop ? (
                       <div className="grid grid-cols-[1fr_170px_130px] items-center">
-                        <span className={cn('text-sec', row.reversed && 'text-ink-50')}>{row.name}</span>
+                        <span className={cn('text-sec', row.reversed && REVERSED_ROW.text)}>{row.name}</span>
                         <span className="c-det">
                           {tag(row)}
                           {row.pending && <span className="ml-s1">{pendingChip}</span>}
@@ -364,7 +361,7 @@ export default function ActivityPage({
                     ) : (
                       <Line>
                         <div className="min-w-0">
-                          <p className={cn('text-sec', row.reversed && 'text-ink-50')}>{row.name}</p>
+                          <p className={cn('text-sec', row.reversed && REVERSED_ROW.text)}>{row.name}</p>
                           <p className="mt-[2px]">{tag(row)}</p>
                         </div>
                         <span className="flex shrink-0 items-center gap-s1">

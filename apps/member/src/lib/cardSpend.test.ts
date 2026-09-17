@@ -150,23 +150,40 @@ describe('a card purchase appears on the Activity page too', () => {
  * the kind of drift that returns the moment one page is edited without the other.
  */
 describe('a reversed charge looks reversed on every list', () => {
-  const cardPage = read('pages/app/CardPage.tsx');
-  const activityPage = read('pages/app/ActivityPage.tsx');
+  const model = read('lib/clearModel.ts');
+  const lists = [
+    ['the Card page', read('pages/app/CardPage.tsx')],
+    ['the Activity page', read('pages/app/ActivityPage.tsx')],
+    ["Home's recent activity", read('components/clear/RecentActivityCard.tsx')],
+  ] as const;
 
-  for (const [name, page] of [['the Card page', cardPage], ['the Activity page', activityPage]] as const) {
-    test(`${name} strikes the amount through`, () => {
-      expect(page).toContain('line-through');
-      expect(page).toMatch(/row\.reversed/);
+  /*
+   * Three lists show spending and each owns its row markup, so each was fixed separately — a
+   * screenshot at a time. The values live in one constant now, and this loop is what makes a fourth
+   * list, or a fourth edit, fail loudly instead of quietly looking different.
+   */
+  test('the treatment is defined once', () => {
+    expect(model).toContain('export const REVERSED_ROW');
+    expect(model).toContain("label: 'Reversed'");
+    expect(model).toContain('line-through');
+  });
+
+  for (const [name, page] of lists) {
+    test(`${name} uses the shared treatment rather than its own`, () => {
+      expect(page).toContain('REVERSED_ROW');
+      // No hand-rolled copies left behind to drift.
+      expect(page).not.toContain("'text-ink-50 line-through'");
     });
 
-    test(`${name} replaces the funding tag with Reversed`, () => {
+    test(`${name} strikes the amount and mutes the name`, () => {
+      expect(page).toMatch(/row\.reversed[\s\S]{0,80}REVERSED_ROW\.amount/);
+      expect(page).toMatch(/row\.reversed && REVERSED_ROW\.text/);
+    });
+
+    test(`${name} replaces the funding tag`, () => {
       // Saying "Cash" or "Credit" beside money that came back is the one wrong thing on the line.
-      // One page writes the word as a string, the other as JSX text; both must show it.
-      expect(page).toMatch(/row\.reversed[\s\S]{0,140}Reversed/);
-    });
-
-    test(`${name} mutes the merchant name to match`, () => {
-      expect(page).toMatch(/text-sec', row\.reversed && 'text-ink-50/);
+      expect(page).toContain('REVERSED_ROW.label');
     });
   }
 });
+

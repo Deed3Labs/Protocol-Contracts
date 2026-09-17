@@ -456,6 +456,24 @@ export function capitalise(text: string): string {
 }
 
 /**
+ * How a charge that was given back reads, wherever it is listed.
+ *
+ * Three lists show spending — the Card page, Activity, and Home's recent preview — and each was
+ * fixed separately, a screenshot at a time, because each owns its own row markup. The values live
+ * here so the fourth list inherits them, and so "muted" cannot mean two different greys.
+ *
+ * The tag is replaced rather than joined: no tier is paying for a reversed charge, so naming one is
+ * the single wrong thing on the line.
+ */
+export const REVERSED_ROW = {
+  label: 'Reversed',
+  /** The merchant name, and the tag that replaces the funding one. */
+  text: 'text-ink-50',
+  /** Struck, because the figure still happened — it is just no longer owed. */
+  amount: 'text-ink-50 line-through',
+} as const;
+
+/**
  * How a row is tagged in the source column. A credit draw names the tier that
  * funded it — "Asset-backed", not the generic "Credit" — because which tier paid
  * is what decides the rate, and it's the only place the member sees it.

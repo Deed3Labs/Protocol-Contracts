@@ -4,7 +4,7 @@ import { ChevronIcon } from './brand/icons';
 import { TIER_TEXT_CLASS } from './ClearCreditCard';
 import { signedMoney } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
-import { sourceTag, type ActivityRow } from '@/lib/clearModel';
+import { REVERSED_ROW, sourceTag, type ActivityRow } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /** The source tag's colour: the tier that paid, or savings, or nothing. */
@@ -48,8 +48,17 @@ export default function RecentActivityCard({
           <Rows>
             {shown.map((row) => {
               const tag = sourceTag(row);
+              // A charge that was given back reads the same here as on the Card and Activity pages.
+              const label = row.reversed ? REVERSED_ROW.label : tag.label;
+              const labelClass = row.reversed ? REVERSED_ROW.text : tagClass(row);
               const amount = (
-                <span className={cn('c-fig c-fig-row', row.amount > 0 && 'c-pos', desktop && 'text-right')}>
+                <span
+                  className={cn(
+                    'c-fig c-fig-row',
+                    row.reversed ? REVERSED_ROW.amount : row.amount > 0 && 'c-pos',
+                    desktop && 'text-right',
+                  )}
+                >
                   {signedMoney(row.amount)}
                 </span>
               );
@@ -62,15 +71,15 @@ export default function RecentActivityCard({
                 >
                   {desktop ? (
                     <div className="grid grid-cols-[1fr_150px_110px] items-center">
-                      <span className="text-sec">{row.name}</span>
-                      <span className={cn('c-det', tagClass(row))}>{tag.label}</span>
+                      <span className={cn('text-sec', row.reversed && REVERSED_ROW.text)}>{row.name}</span>
+                      <span className={cn('c-det', labelClass)}>{label}</span>
                       {amount}
                     </div>
                   ) : (
                     <Line>
                       <div>
-                        <p className="text-sec">{row.name}</p>
-                        <p className={cn('c-det', tagClass(row))}>{tag.label}</p>
+                        <p className={cn('text-sec', row.reversed && REVERSED_ROW.text)}>{row.name}</p>
+                        <p className={cn('c-det', labelClass)}>{label}</p>
                       </div>
                       {amount}
                     </Line>
