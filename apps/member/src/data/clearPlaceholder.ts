@@ -11,6 +11,9 @@ import type {
   SettingsData,
   Alert,
   AssuranceReserve,
+  ReserveReports,
+  ClaimStep,
+  ClaimRecord,
   InboxData,
   Thread,
   Contact,
@@ -300,56 +303,78 @@ export const HOME_DAY_ONE: HomeData = {
  */
 export const MILESTONES: Milestone[] = [
   { id: 'start', title: 'Start saving', credits: 1000 },
-  { id: 'assurance', title: 'Unlock full assurance', credits: 4000 },
+  // Not "full assurance": the top two protections are thousands of credits further on, so a
+  // milestone claiming the set is complete here would be promising what the list does not give.
+  { id: 'assurance', title: 'Unlock first protections', credits: 4000 },
   { id: 'community', title: 'Choose your community', credits: 8000 },
   { id: 'reserve', title: 'Reserve your home', credits: 12000 },
   { id: 'deed', title: 'Sign your ELPA & Clear Deed', credits: 15000, note: 'move in' },
 ];
 
 /**
- * Only "Home repair assurance" is a confirmed product name. The other four are
- * placeholders and MUST keep rendering as written until the real names arrive —
- * do not invent replacements.
- */
-/**
- * Four of the five names and descriptions are placeholders the product owner
- * still has to supply. They render as written — never invent a replacement.
+ * What saving unlocks, cheapest promise first.
+ *
+ * The threshold tracks what the co-op stands to lose, which is why the order is what it is. Grace
+ * cycles forgive timing on a balance that keeps accruing, so they cost almost nothing and sit at
+ * zero, where the protection everyone actually uses belongs. A progress hold costs match funding
+ * against the redemption margin and no cash. Rent protection is pure outflow with nothing owed, and
+ * home repairs is an open annual cap — so those two sit at the top.
+ *
+ * The gap at 4,000 is deliberate. A deposit bridge was drafted for it and pulled: it is a 0% loan
+ * the member repays, and every row here is something the co-op absorbs with nothing owed back. A
+ * member who assumed it worked like the rest would have been taught that by the list it sat in.
+ * Thresholds are product facts rather than slots to fill, so the gap stays until something belongs
+ * in it.
+ *
+ * None of these say "assurance". The cell is already headed Assurance; a row repeating it is the
+ * label stuttering, and the word does no work inside its own container.
  */
 const ASSURANCE: AssuranceItem[] = [
   {
-    id: 'a1',
-    name: 'Home repair assurance',
+    id: 'grace-cycles',
+    name: 'Grace cycles',
     description:
-      'Covers qualifying repairs on your unit once you move in, up to an annual cap.',
+      'Two cycles a year can close short. Your line holds and savings stay put.',
     unlocksAt: 0,
   },
   {
-    id: 'a2',
-    name: '[PLACEHOLDER — replace]',
-    description: 'Real protection name and description needed.',
+    id: 'progress-hold',
+    name: 'Progress hold',
+    /*
+     * The one place the design punished correct behaviour: a member who used their ESA exactly as
+     * intended had their housing progress paused for it.
+     */
+    description:
+      'A documented hardship draw does not restart vesting or move your on-track date.',
     unlocksAt: 1000,
-    placeholder: true,
   },
   {
-    id: 'a3',
-    name: '[PLACEHOLDER — replace]',
-    description: 'Real protection name and description needed.',
-    unlocksAt: 4000,
-    placeholder: true,
-  },
-  {
-    id: 'a4',
-    name: '[PLACEHOLDER — replace]',
-    description: 'Real protection name and description needed.',
+    id: 'rent-protection',
+    name: 'Rent protection',
+    /*
+     * The co-op's own words: "up to 60 days of rent paid by the co-op if crisis strikes, zero
+     * payback, zero premium."
+     *
+     * No waiting period is modelled, and that is now correct rather than a gap. The old note here
+     * said the wait was by track — immediate on Accelerated, ninety days on Standard — which is not
+     * what the co-op is doing. Accelerated and Standard are membership plans that set the
+     * equity-credit multiplier; they do not gate protections.
+     *
+     * What is expected instead is paying to accelerate a particular protection. That is a purchase
+     * against one row, not a property of the member, so it will not live in `unlocksAt` when it
+     * arrives — and nothing here should imply a timing rule until it does.
+     */
+    description:
+      'Up to 60 days of rent paid if a crisis hits. No premium, nothing to pay back.',
     unlocksAt: 8000,
-    placeholder: true,
   },
   {
-    id: 'a5',
-    name: '[PLACEHOLDER — replace]',
-    description: 'Real protection name and description needed.',
+    id: 'home-repairs',
+    name: 'Home repairs',
+    // At move-in, which the milestones put at 15,000 credits. It read Active from day one for
+    // something that cannot pay out until the member has a home to repair.
+    description: 'Covers qualifying repairs on your unit once you move in, up to an annual cap.',
     unlocksAt: 15000,
-    placeholder: true,
   },
 ];
 
@@ -357,7 +382,59 @@ export const ASSURANCE_RESERVE: AssuranceReserve = {
   balance: 412800,
   membersCovered: 184,
   claimsPaidThisYear: 8400,
+  claimsPaidCount: 3,
+  asOf: '1 Nov',
   reportCadence: 'Quarterly',
+  /*
+   * 184 members at a $10,000 cap is $1,840,000 of exposure against $412,800 held — 22.4%.
+   *
+   * Published rather than smoothed over. No reserve covers everyone claiming at once, and one that
+   * did would be money sitting idle instead of buying homes, so the honest answer to "is it enough"
+   * is the ratio and the floor the co-op commits to hold.
+   */
+  perMemberCap: 10000,
+  coveredPct: 22.4,
+  policyFloorPct: 15,
+};
+
+export const RESERVE_REPORTS: ReserveReports = {
+  statements: [
+    { id: 'q3-2026', period: 'Q3 2026', publishedOn: 'Published 15 October', note: 'Balance, claims, and the cover ratio' },
+    { id: 'q2-2026', period: 'Q2 2026', publishedOn: 'Published 14 July', note: 'Balance, claims, and the cover ratio' },
+    { id: 'q1-2026', period: 'Q1 2026', publishedOn: 'Published 12 April', note: 'First quarter the reserve held a floor' },
+    { id: 'q4-2025', period: 'Q4 2025', publishedOn: 'Published 18 January', note: 'Reserve opened' },
+  ],
+  cadence: 'Every quarter, within six weeks of the close',
+  contains:
+    'Each statement lists the balance, every claim paid, every claim declined, and the cover ratio at the close of the quarter.',
+  /*
+   * Still a placeholder, and a real one: nobody has been appointed. It renders as written rather
+   * than naming a reviewer the co-op has not engaged — a claim about who checks the money is the
+   * last thing to invent.
+   */
+  reviewedBy: 'Prepared by Clear and reviewed by [PLACEHOLDER]. Not an independent audit.',
+};
+
+/** What happens after a claim is sent. Four steps, because that is how many there are. */
+export const CLAIM_STEPS: ClaimStep[] = [
+  { id: 'tell', title: 'You tell us what happened', detail: 'A short form and any receipts or photos' },
+  { id: 'read', title: 'A member of the team reads it', detail: 'Usually the same day, always within two' },
+  { id: 'answer', title: 'We say yes, no, or what is missing', detail: 'In writing, with the reason' },
+  { id: 'paid', title: 'Paid from the reserve', detail: 'Into your cash account, not against your credits' },
+];
+
+/**
+ * The published claim record.
+ *
+ * One in four is declined, and it is stated before a member claims rather than discovered by one.
+ * A reserve that never says no is not being managed, and a member who reads that figure first is
+ * better prepared than one who does not.
+ */
+export const CLAIM_RECORD: ClaimRecord = {
+  paidThisYear: 8400,
+  decisionTime: 'Under two days',
+  declinedOf: '1 of 4',
+  creditsEffect: 'None',
 };
 
 export const ALERTS: Alert[] = [

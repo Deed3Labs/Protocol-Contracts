@@ -23,7 +23,12 @@ const MOVERS = [
   'components/clear/ConnectedBuyBond.tsx',
 ];
 
-const READERS = ['pages/app/HomeRoute.tsx', 'pages/app/EarnRoute.tsx', 'pages/app/SavingsRoute.tsx'];
+/*
+ * The savings read lives in a hook, not a route: Savings and Assurance both need it, and a pane
+ * fetching its own copy is a second place for the same member's credits to disagree. The invariant
+ * is about whoever makes the read, so the list follows it there.
+ */
+const READERS = ['pages/app/HomeRoute.tsx', 'pages/app/EarnRoute.tsx', 'hooks/useSavingsData.ts'];
 
 describe('everything that moves money says so', () => {
   for (const mover of MOVERS) {
@@ -44,7 +49,7 @@ describe('everything that moves money says so', () => {
 const CHAIN_READS: Record<string, string[]> = {
   'pages/app/HomeRoute.tsx': ['getCredit(address)', 'getPaySummary(address)'],
   'pages/app/EarnRoute.tsx': ['getEarn(address)', 'getPaySummary(address)'],
-  'pages/app/SavingsRoute.tsx': ['getPaySummary(address)'],
+  'hooks/useSavingsData.ts': ['getPaySummary(address)'],
 };
 
 describe('everything that reads chain state listens', () => {

@@ -16,6 +16,9 @@ import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
 import SplashScreen from '@/components/SplashScreen';
 import AssurancePage from '@/pages/app/AssurancePage';
+import AssuranceReservePage from '@/pages/app/AssuranceReservePage';
+import ReserveReportsPage from '@/pages/app/ReserveReportsPage';
+import ClaimPage from '@/pages/app/ClaimPage';
 import InboxPage from '@/pages/app/InboxPage';
 import ScanPage from '@/pages/app/ScanPage';
 import CodePage from '@/pages/app/CodePage';
@@ -800,6 +803,14 @@ export default function PreviewApp() {
                         <Route
                           path="/assurance"
                           element={<AssurancePage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />}
+                        />
+                        {/* The rest of the assurance flow: the reserve behind the protections, the
+                            statements behind the reserve, and the claim the whole page is for. */}
+                        <Route path="/assurance/reserve" element={<AssuranceReservePage />} />
+                        <Route path="/assurance/reports" element={<ReserveReportsPage />} />
+                        <Route
+                          path="/assurance/claim"
+                          element={<ClaimPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />}
                         />
                         <Route
                           path="/inbox"

@@ -2669,6 +2669,43 @@ export async function getPaySummary(wallet: string): Promise<PaySummary | null> 
   return r.error || !r.data ? null : r.data;
 }
 
+export interface AssuranceClaim {
+  token: string;
+  wallet: string;
+  protectionId: string;
+  protectionName: string;
+  detail: string;
+  status: 'open' | 'more_needed' | 'paid' | 'declined';
+  decision: string | null;
+  paidCents: number | null;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+/**
+ * File a claim.
+ *
+ * Returns the stored claim or an error message, and never a quiet success. The whole flow is built
+ * against a form that looked like it worked on the day somebody needed it to, so a failure has to
+ * reach the member in words — the server says "nothing was sent" for exactly this reason.
+ */
+export async function fileAssuranceClaim(
+  wallet: string,
+  input: { protectionId: string; protectionName: string; detail: string },
+): Promise<{ claim?: AssuranceClaim; error?: string }> {
+  const r = await apiRequest<{ claim: AssuranceClaim }>(
+    `/api/assurance/${wallet.toLowerCase()}/claims`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  if (r.error || !r.data) return { error: r.error || 'We could not file that just now. Nothing was sent.' };
+  return { claim: r.data.claim };
+}
+
+export async function listAssuranceClaims(wallet: string): Promise<AssuranceClaim[]> {
+  const r = await apiRequest<{ claims: AssuranceClaim[] }>(`/api/assurance/${wallet.toLowerCase()}/claims`);
+  return r.error || !r.data ? [] : r.data.claims;
+}
+
 export async function getPayBillers(wallet: string): Promise<PayBiller[]> {
   const r = await apiRequest<{ billers: PayBiller[] }>(`/api/pay/${wallet.toLowerCase()}/billers`);
   return r.error || !r.data ? [] : r.data.billers;

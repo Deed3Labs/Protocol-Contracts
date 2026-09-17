@@ -27,7 +27,10 @@ import SavingsRoute from "@/pages/app/SavingsRoute";
 import ActivityRoute from "@/pages/app/ActivityRoute";
 import CardRoute from "@/pages/app/CardRoute";
 import CodeRoute from "@/pages/app/CodeRoute";
-import AssurancePage from "@/pages/app/AssurancePage";
+import AssuranceRoute from "@/pages/app/AssuranceRoute";
+import AssuranceReservePage from "@/pages/app/AssuranceReservePage";
+import ReserveReportsPage from "@/pages/app/ReserveReportsPage";
+import ClaimRoute from "@/pages/app/ClaimRoute";
 import InboxRoute from "@/pages/app/InboxRoute";
 import ScanPage from "@/pages/app/ScanPage";
 import ExplainerPage from "@/pages/app/ExplainerPage";
@@ -175,7 +178,10 @@ function App() {
                       <Route path="/card" element={<CardRoute />} />
                       <Route path="/contacts" element={<Navigate to="/settings/contacts" replace />} />
                       <Route path="/partners" element={<PartnersPage />} />
-                      <Route path="/assurance" element={<AssurancePage />} />
+                      <Route path="/assurance" element={<AssuranceRoute />} />
+                      <Route path="/assurance/reserve" element={<AssuranceReservePage />} />
+                      <Route path="/assurance/reports" element={<ReserveReportsPage />} />
+                      <Route path="/assurance/claim" element={<ClaimRoute />} />
                       <Route path="/inbox" element={<InboxRoute />} />
                       <Route path="/inbox/:threadId" element={<InboxRoute />} />
                       {/* The standalone Alerts page became the Inbox's first tab */}

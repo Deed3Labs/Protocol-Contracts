@@ -1,64 +1,143 @@
-import Card from './Card';
-import SettingRows from './SettingRows';
+import { Bar, CFoot, CHead, CMain, Cell, Line, Rows, SecHead } from './brand/anatomy';
+import { ChevronIcon } from './brand/icons';
 import { money, count } from '@clear/domain';
 import type { AssuranceReserve } from '@/lib/clearModel';
 
 /**
- * The assurance reserve — design spec §5.
+ * The assurance reserve — the co-op's shared safety fund, and what makes the protections real
+ * rather than a promise.
  *
- * Published numbers are the whole point: a protection nobody can audit is a
- * promise, and the balance, the members covered and what's actually been paid out
- * are what turn it into a fund. "Where it comes from" answers the question every
- * member asks next — whether their savings are quietly insuring someone else.
- * They aren't, and that has to be said in the plainest words available.
+ * Three cells, and the third is the point. A member who reads that the reserve holds $412,800 for
+ * 184 people immediately wants to know whether that is a lot, and a page that states a balance
+ * without answering has invited the question and walked away. So: what it would owe if everyone
+ * claimed their cap in one year, what fraction of that it holds, and the floor the co-op commits
+ * to. One ratio, which is what earns it a bar.
+ *
+ * "Your savings are never used to cover someone else's claim" is a keyline rather than a sentence
+ * inside a paragraph. It is the line every member wants and the one they would otherwise have to
+ * infer, and keylines are for exactly that.
  */
 export default function ReservePanel({
   reserve,
+  onReports,
   onClaim,
 }: {
   reserve: AssuranceReserve;
+  onReports?: () => void;
   onClaim?: () => void;
 }) {
+  const uncovered = Math.max(0, 100 - reserve.coveredPct);
+  const exposure = reserve.membersCovered * reserve.perMemberCap;
+
+  const row = (label: string, detail: string, value: string) => (
+    <div>
+      <Line className="items-baseline!">
+        <div className="min-w-0">
+          <p className="text-sec">{label}</p>
+          <p className="c-det mt-[3px]">{detail}</p>
+        </div>
+        <span className="c-fig c-fig-sec">{value}</span>
+      </Line>
+    </div>
+  );
+
   return (
     <>
-      <p className="mb-3.5 text-xs leading-relaxed text-foreground-secondary">
-        The assurance reserve is the co-op&rsquo;s shared safety fund. It&rsquo;s what makes these
-        protections real rather than a promise.
-      </p>
+      <Cell>
+        <CHead>
+          <SecHead label="The reserve">
+            <span className="c-det">As of {reserve.asOf}</span>
+          </SecHead>
+        </CHead>
+        <CMain>
+          <Rows>
+            <div>
+              <Line className="items-baseline!">
+                <span className="text-sec">Reserve balance</span>
+                <span className="c-fig c-fig-sec">{money(reserve.balance)}</span>
+              </Line>
+            </div>
+            <div>
+              <Line className="items-baseline!">
+                <span className="text-sec">Members covered</span>
+                <span className="c-fig c-fig-sec">{count(reserve.membersCovered)}</span>
+              </Line>
+            </div>
+            {/* The count sits beside the total: a figure alone says nothing about how often. */}
+            {row(
+              'Claims paid this year',
+              `Across ${count(reserve.claimsPaidCount)} claim${reserve.claimsPaidCount === 1 ? '' : 's'}`,
+              money(reserve.claimsPaidThisYear),
+            )}
+          </Rows>
+        </CMain>
+        <CFoot>
+          <button type="button" onClick={onReports} className="c-line w-full items-center! text-left">
+            <span className="text-sec">Reserve reports</span>
+            <span className="c-det flex items-center gap-1">
+              {reserve.reportCadence}
+              <ChevronIcon />
+            </span>
+          </button>
+        </CFoot>
+      </Cell>
 
-      <Card className="mb-4">
-        <div className="text-xs leading-[2]">
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Reserve balance</span>
-            <span className="tabular-nums">{money(reserve.balance)}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Members covered</span>
-            <span className="tabular-nums">{count(reserve.membersCovered)}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-3">
-            <span className="text-foreground-secondary">Claims paid this year</span>
-            <span className="tabular-nums">{money(reserve.claimsPaidThisYear)}</span>
-          </div>
-        </div>
-      </Card>
+      <Cell>
+        <CHead>
+          <SecHead label="Where it comes from">
+            <span className="c-det">Not deposits</span>
+          </SecHead>
+        </CHead>
+        <CMain>
+          <p className="c-det">
+            Retained surplus from lending and card activity.{' '}
+            <strong className="font-medium text-ink">Not from member deposits.</strong>
+          </p>
+          <p className="c-keyline">Your savings are never used to cover someone else&rsquo;s claim.</p>
+        </CMain>
+        <CFoot>
+          <button type="button" onClick={onClaim} className="c-line w-full items-center! text-left">
+            <span className="text-sec">How to make a claim</span>
+            <ChevronIcon />
+          </button>
+        </CFoot>
+      </Cell>
 
-      <p className="mb-1.5 text-[11px] text-foreground-secondary">Where it comes from</p>
-      <p className="mb-2 text-xs leading-relaxed text-muted-foreground">
-        Retained surplus from lending and card activity — not from member deposits. Your savings are
-        never used to cover someone else&rsquo;s claim.
-      </p>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        When a member defaults, their own collateral covers it first.
-      </p>
-
-      <SettingRows
-        className="mt-3.5 border-t-[0.5px] border-border pt-1"
-        rows={[
-          { label: 'Reserve reports', value: reserve.reportCadence },
-          { label: 'How to make a claim', onSelect: onClaim },
-        ]}
-      />
+      <Cell>
+        <CHead>
+          <SecHead label="Is it enough?">
+            <span className="c-det">Cover ratio</span>
+          </SecHead>
+        </CHead>
+        <CMain>
+          <Bar
+            className="mb-s2"
+            label={`${reserve.coveredPct}% of the annual cap covered`}
+            segments={[
+              { pct: reserve.coveredPct, color: 'var(--settled)', label: 'Covered' },
+              { pct: uncovered, color: 'var(--ink-13)', label: 'Uncovered' },
+            ]}
+          />
+          <p className="c-keyline mb-s3">
+            <span className="c-t-sav">Covered</span> <strong>{reserve.coveredPct}%</strong>
+            <span className="c-sep">·</span>Policy floor <strong>{reserve.policyFloorPct}%</strong>
+          </p>
+          <Rows>
+            {row('Reserve balance', 'Held in CLRUSD', money(reserve.balance))}
+            {row(
+              'If every covered member claimed their cap',
+              `${count(reserve.membersCovered)} members at ${money(reserve.perMemberCap)} a year`,
+              money(exposure),
+            )}
+            {row('Covered', `Against a policy floor of ${reserve.policyFloorPct}%`, `${reserve.coveredPct}%`)}
+          </Rows>
+          <p className="c-det mt-s2">
+            No reserve covers everyone claiming at once, and one that did would be money sitting idle
+            instead of buying homes. The floor is what the co-op commits to hold; the board has to act
+            if it is breached.
+          </p>
+        </CMain>
+      </Cell>
     </>
   );
 }
