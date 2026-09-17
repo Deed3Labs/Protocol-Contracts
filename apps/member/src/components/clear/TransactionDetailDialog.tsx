@@ -24,11 +24,22 @@ export default function TransactionDetailDialog({
 }) {
   const details: { label: string; value: ReactNode; className?: string }[] = [];
   if (row.datetime) details.push({ label: 'Date', value: row.datetime });
-  details.push({
-    label: 'Paid from',
-    value: row.paidFromLabel ?? (row.paidFromTier ? `${TIER_SHORT_LABEL[row.paidFromTier]} credit` : capitalise(row.source)),
-    className: row.paidFromTier ? TIER_TEXT_CLASS[row.paidFromTier] : undefined,
-  });
+  /*
+   * A reversed charge is not paid from anywhere.
+   *
+   * Naming a tier beside money that came back is the one line here a member could act on wrongly —
+   * they would go looking for a draw against a limit that no longer carries it. It says what became
+   * of the charge instead.
+   */
+  if (row.reversed) {
+    details.push({ label: 'Status', value: 'Reversed' });
+  } else {
+    details.push({
+      label: 'Paid from',
+      value: row.paidFromLabel ?? (row.paidFromTier ? `${TIER_SHORT_LABEL[row.paidFromTier]} credit` : capitalise(row.source)),
+      className: row.paidFromTier ? TIER_TEXT_CLASS[row.paidFromTier] : undefined,
+    });
+  }
   if (row.rate) details.push({ label: 'Rate on this draw', value: row.rate });
   if (row.cardLast4) details.push({ label: 'Card', value: `•••• ${row.cardLast4}`, className: 'c-mono' });
   if (row.status) details.push({ label: 'Status', value: row.status });
@@ -40,17 +51,28 @@ export default function TransactionDetailDialog({
       title="Transaction"
       description={`${row.name}, ${signedMoney(row.amount)}.`}
       footer={
-        <div className="c-pair">
-          <Btn>Split this</Btn>
+        // Splitting a charge that was given back would be splitting nothing. Querying it still
+        // makes sense — a reversal the member did not expect is exactly worth asking about.
+        row.reversed ? (
           <Btn>Something wrong</Btn>
-        </div>
+        ) : (
+          <div className="c-pair">
+            <Btn>Split this</Btn>
+            <Btn>Something wrong</Btn>
+          </div>
+        )
       }
     >
-      <p className="c-bigamt text-hero-m">{signedMoney(row.amount)}</p>
+      <p className={cn('c-bigamt text-hero-m', row.reversed && 'text-ink-50 line-through')}>
+        {signedMoney(row.amount)}
+      </p>
       <p className="c-sub mt-[6px]">
         {row.name}
         {row.location && ` · ${row.location}`}
       </p>
+      {row.reversed && (
+        <p className="c-det mt-s1">This charge was reversed. The money is back on your limit.</p>
+      )}
       <Rows className="mt-s3">
         {details.map((d) => (
           <div key={d.label}>

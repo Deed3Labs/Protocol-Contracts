@@ -103,7 +103,6 @@ export function categoriesFrom(cards: CardTransaction[], rows: SpendRow[], start
 function groupOf(mcc: string | null): string {
   const category = categoryForMcc(mcc);
   // "Other" is the catch-all under another name; one bucket for the leftovers, not two.
-  // "Other" is the catch-all under another name; one bucket for the leftovers, not two.
   return category && category !== 'other' ? CATEGORY_LABEL[category] : REST;
 }
 
