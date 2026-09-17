@@ -555,9 +555,35 @@ function SplashPreview() {
  * last step needs a card to have been made. The harness makes one up so all three steps can be
  * looked at, with an address on file so the physical branch is not stuck on its first screen.
  */
-function CardPreview({ empty, many }: { empty: boolean; many: boolean }) {
+function CardPreview({
+  empty,
+  many,
+  stage,
+}: {
+  empty: boolean;
+  many: boolean;
+  stage: 'live' | 'ordered' | 'posted';
+}) {
   const [newCard, setNewCard] = useState<{ kind: 'virtual' | 'physical'; last4: string; label?: string } | null>(null);
-  const base = empty ? CARD_DAY_ONE : CARD_IN_USE;
+  const withStage = (d: typeof CARD_DAY_ONE) =>
+    stage === 'live'
+      ? d
+      : {
+          ...d,
+          cards: (d.cards ?? []).map((c) =>
+            c.variant === 'physical'
+              ? {
+                  ...c,
+                  stage,
+                  orderedAt: 'Oct 26',
+                  postedAt: stage === 'posted' ? 'Oct 28' : undefined,
+                  arrivesAbout: stage === 'posted' ? 'Nov 3' : undefined,
+                  tracking: stage === 'posted' ? '9400 1118 9876 5432 1098 76' : undefined,
+                }
+              : c,
+          ),
+        };
+  const base = withStage(empty ? CARD_DAY_ONE : CARD_IN_USE);
   const data = many
     ? {
         ...base,
@@ -572,7 +598,7 @@ function CardPreview({ empty, many }: { empty: boolean; many: boolean }) {
 
   return (
     <CardPage
-      key={String(empty) + String(many)}
+      key={String(empty) + String(many) + stage}
       data={data}
       onAddCard={(kind, label) => setNewCard({ kind, last4: kind === 'virtual' ? '5507' : '4102', label })}
       newCard={newCard}
@@ -589,12 +615,16 @@ function CardPreview({ empty, many }: { empty: boolean; many: boolean }) {
 }
 
 /** A wallet of five, because a stack of two hides everything a stack of five gets wrong. */
+const CARD_STAGES = ['live', 'ordered', 'posted'] as const;
+
 function CardPreviewFrame({ empty }: { empty: boolean }) {
   const [many, setMany] = useState(false);
+  // A posted card is a different screen, not a different badge, so the harness can stand in each.
+  const [stage, setStage] = useState<(typeof CARD_STAGES)[number]>('live');
   return (
     <>
-      <CardPreview empty={empty} many={many} />
-      <div className="fixed inset-x-0 bottom-0 z-[60] flex justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+      <CardPreview empty={empty} many={many} stage={stage} />
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
         <button
           type="button"
           onClick={() => setMany((m) => !m)}
@@ -604,6 +634,18 @@ function CardPreviewFrame({ empty }: { empty: boolean }) {
         >
           5 cards
         </button>
+        {CARD_STAGES.map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setStage(s)}
+            className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+              s === stage ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+            }`}
+          >
+            {s}
+          </button>
+        ))}
       </div>
     </>
   );

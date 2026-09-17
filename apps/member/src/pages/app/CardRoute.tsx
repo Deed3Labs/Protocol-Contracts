@@ -4,9 +4,9 @@ import { useTheme } from '@/context/ThemeContext';
 import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
-import { createCard, orderPhysicalCard, getCards, setCardFrozen, getCredit, getCardTransactions, getCardEmbedUrl, getCardEmbedSession, getBankIdentity, type BankIdentity, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
+import { createCard, orderPhysicalCard, activateCard, getCards, setCardFrozen, getCredit, getCardTransactions, getCardEmbedUrl, getCardEmbedSession, getBankIdentity, type BankIdentity, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
 import { categoryForMcc } from '@/lib/mccCategory';
-import type { ActivityRow } from '@/lib/clearModel';
+import type { ActivityRow, CardStage } from '@/lib/clearModel';
 import { onChainStale } from '@/lib/chainStale';
 import { toCreditTiers, toLimitBacking } from '@/lib/creditMapping';
 import { useAppKitAccount } from '@/lib/walletCompat';
@@ -38,6 +38,34 @@ import { keepLastGood } from '@/lib/keepLastGood';
  * So this page is deliberately half-live, and the halves are drawn along the line of what actually
  * works rather than what looks finished. The controls are real; the money is not there yet.
  */
+/** A short date the way the rest of the app writes one: "Oct 26". */
+const on = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : undefined;
+
+/**
+ * Where a card is, from what the issuer actually says.
+ *
+ * PENDING_FULFILLMENT is ordered and not yet sent to production; PENDING_ACTIVATION means it has
+ * gone to be made and posted; OPEN is live. Posting itself is an event rather than a state, so a
+ * card can be PENDING_ACTIVATION with no shipped date yet — it is still "ordered" to a member,
+ * because nothing has left the building.
+ *
+ * A virtual card is live the moment it exists and never has any of this.
+ */
+function stageOf(card: MemberCard): CardStage {
+  if (card.type !== 'PHYSICAL') return 'live';
+  if (card.state === 'OPEN' || card.state === 'PAUSED') return 'live';
+  return card.shippedAt ? 'posted' : 'ordered';
+}
+
+/** What a member is told to expect: an estimate, from the day it was posted. */
+function arrivesAbout(shippedAt: string | null): string | undefined {
+  if (!shippedAt) return undefined;
+  const eta = new Date(shippedAt);
+  eta.setDate(eta.getDate() + 6);
+  return on(eta.toISOString());
+}
+
 export default function CardRoute() {
   const [cards, setCards] = useState<MemberCard[]>([]);
   const card = cards[0] ?? null;
@@ -61,6 +89,8 @@ export default function CardRoute() {
    * filled one in but whose bank knows it. Neither means the sheet says so and cannot order.
    */
   const [identityAddress, setIdentityAddress] = useState<BankIdentity['address']>(null);
+  const [activateError, setActivateError] = useState<string | null>(null);
+  const [pinSession, setPinSession] = useState<{ session: string; environment: 'sandbox' | 'production' } | undefined>(undefined);
   const [spend, setSpend] = useState<CardTransaction[] | null>(null);
 
   /*
@@ -252,6 +282,30 @@ export default function CardRoute() {
     [shipping, member.legalName, member.name],
   );
 
+  /**
+   * The card that came in the post.
+   *
+   * The digits go to the server, which checks them against the card it posted: a member holding
+   * the card is the only evidence of delivery anybody has, since no carrier tells the issuer.
+   */
+  const activatePosted = useCallback(
+    async (cardId: string, lastFour: string) => {
+      setBusy(true);
+      setActivateError(null);
+      try {
+        const { value: updated, error } = await activateCard(cardId, lastFour);
+        if (!updated) {
+          setActivateError(error ?? "That didn't go through. Please try again.");
+          return;
+        }
+        setCards((prev) => prev.map((c) => (c.token === updated.token ? updated : c)));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
+
   /*
    * Freeze the card the member is looking at, not the first one.
    *
@@ -351,6 +405,11 @@ export default function CardRoute() {
           last4: c.lastFour ?? '',
           frozen: c.frozen,
           where: c.type === 'PHYSICAL' ? 'In your wallet' : 'Apple Pay, online',
+          stage: stageOf(c),
+          orderedAt: on(c.createdAt),
+          postedAt: on(c.shippedAt),
+          arrivesAbout: arrivesAbout(c.shippedAt),
+          tracking: c.trackingNumber ?? undefined,
         })),
         frozen: card?.frozen ?? false,
         last4: card?.lastFour ?? '',
@@ -395,6 +454,22 @@ export default function CardRoute() {
       // Passing the handler is what makes New card appear at all, so it cannot render as a dead
       // control.
       onAddCard={(kind, label) => void addCard(kind, label)}
+      onActivateCard={(cardId, lastFour) => void activatePosted(cardId, lastFour)}
+      activateError={activateError}
+      /*
+       * The issuer's PIN field, fetched when the sheet opens. It is a different kind of session
+       * from the one that shows the numbers, and just as short-lived.
+       */
+      onSetPin={(cardId) => {
+        setPinSession(undefined);
+        void getCardEmbedSession(cardId, 'pin').then((s) => setPinSession(s ?? undefined));
+      }}
+      pinSession={pinSession}
+      onTrack={(tracking) => {
+        // USPS is what Lithic posts with; a tracking number is worth nothing without somewhere to
+        // put it, and this is the one place a member can.
+        if (tracking) window.open(`https://tools.usps.com/go/TrackConfirmAction?tLabels=${encodeURIComponent(tracking)}`, '_blank', 'noopener');
+      }}
       newCard={newCard}
       onNewCardDone={() => {
         setNewCard(null);

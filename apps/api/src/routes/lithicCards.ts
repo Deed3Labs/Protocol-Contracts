@@ -119,6 +119,29 @@ router.post('/physical', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/lithic/cards/:token/activate — the card that came in the post.
+ *
+ * The last four is checked against the card we posted rather than taken on trust: it is the only
+ * evidence anyone has that the member is holding it, since no delivery event exists.
+ */
+router.post('/:token/activate', async (req: Request, res: Response) => {
+  const owned = await ownedCard(req);
+  if (!owned) return res.status(404).json({ error: 'Card not found' });
+
+  const lastFour = String(req.body?.lastFour ?? '').replace(/\D/g, '');
+  if (lastFour.length !== 4) return res.status(400).json({ error: 'Enter the last four digits' });
+
+  try {
+    const card = await cardService.activateCard(owned.token, lastFour);
+    if (!card) return res.status(404).json({ error: 'Card not found' });
+    return res.json({ card });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not activate the card';
+    return res.status(400).json({ error: message });
+  }
+});
+
 /** POST /api/lithic/cards/:token/freeze — freeze or unfreeze. */
 router.post('/:token/freeze', async (req: Request, res: Response) => {
   const owned = await ownedCard(req);
@@ -193,8 +216,11 @@ router.get('/:token/embed-session', async (req: Request, res: Response) => {
   const owned = await ownedCard(req);
   if (!owned) return res.status(404).json({ error: 'Card not found' });
 
+  // PIN setting is the issuer's own field in our frame; the numbers are the other kind.
+  const kind = String(req.query.type ?? '') === 'pin' ? 'PIN_SETTING_EMBED' : 'CARD_EMBED';
+
   try {
-    const session = await cardService.createCardEmbedSession(owned.token);
+    const session = await cardService.createCardEmbedSession(owned.token, kind);
     // no-store: a session that reveals card details must not sit in a shared cache.
     res.set('Cache-Control', 'no-store');
     return res.json(session);
