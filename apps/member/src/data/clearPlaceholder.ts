@@ -11,6 +11,9 @@ import type {
   SettingsData,
   Alert,
   AssuranceReserve,
+  ReserveReports,
+  ClaimStep,
+  ClaimRecord,
   InboxData,
   Thread,
   Contact,
@@ -379,7 +382,59 @@ export const ASSURANCE_RESERVE: AssuranceReserve = {
   balance: 412800,
   membersCovered: 184,
   claimsPaidThisYear: 8400,
+  claimsPaidCount: 3,
+  asOf: '1 Nov',
   reportCadence: 'Quarterly',
+  /*
+   * 184 members at a $10,000 cap is $1,840,000 of exposure against $412,800 held — 22.4%.
+   *
+   * Published rather than smoothed over. No reserve covers everyone claiming at once, and one that
+   * did would be money sitting idle instead of buying homes, so the honest answer to "is it enough"
+   * is the ratio and the floor the co-op commits to hold.
+   */
+  perMemberCap: 10000,
+  coveredPct: 22.4,
+  policyFloorPct: 15,
+};
+
+export const RESERVE_REPORTS: ReserveReports = {
+  statements: [
+    { id: 'q3-2026', period: 'Q3 2026', publishedOn: 'Published 15 October', note: 'Balance, claims, and the cover ratio' },
+    { id: 'q2-2026', period: 'Q2 2026', publishedOn: 'Published 14 July', note: 'Balance, claims, and the cover ratio' },
+    { id: 'q1-2026', period: 'Q1 2026', publishedOn: 'Published 12 April', note: 'First quarter the reserve held a floor' },
+    { id: 'q4-2025', period: 'Q4 2025', publishedOn: 'Published 18 January', note: 'Reserve opened' },
+  ],
+  cadence: 'Every quarter, within six weeks of the close',
+  contains:
+    'Each statement lists the balance, every claim paid, every claim declined, and the cover ratio at the close of the quarter.',
+  /*
+   * Still a placeholder, and a real one: nobody has been appointed. It renders as written rather
+   * than naming a reviewer the co-op has not engaged — a claim about who checks the money is the
+   * last thing to invent.
+   */
+  reviewedBy: 'Prepared by Clear and reviewed by [PLACEHOLDER]. Not an independent audit.',
+};
+
+/** What happens after a claim is sent. Four steps, because that is how many there are. */
+export const CLAIM_STEPS: ClaimStep[] = [
+  { id: 'tell', title: 'You tell us what happened', detail: 'A short form and any receipts or photos' },
+  { id: 'read', title: 'A member of the team reads it', detail: 'Usually the same day, always within two' },
+  { id: 'answer', title: 'We say yes, no, or what is missing', detail: 'In writing, with the reason' },
+  { id: 'paid', title: 'Paid from the reserve', detail: 'Into your cash account, not against your credits' },
+];
+
+/**
+ * The published claim record.
+ *
+ * One in four is declined, and it is stated before a member claims rather than discovered by one.
+ * A reserve that never says no is not being managed, and a member who reads that figure first is
+ * better prepared than one who does not.
+ */
+export const CLAIM_RECORD: ClaimRecord = {
+  paidThisYear: 8400,
+  decisionTime: 'Under two days',
+  declinedOf: '1 of 4',
+  creditsEffect: 'None',
 };
 
 export const ALERTS: Alert[] = [

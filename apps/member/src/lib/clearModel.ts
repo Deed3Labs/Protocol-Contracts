@@ -543,8 +543,68 @@ export interface AssuranceReserve {
   balance: number;
   membersCovered: number;
   claimsPaidThisYear: number;
+  /** How many claims that figure is spread across. A total alone says nothing about frequency. */
+  claimsPaidCount: number;
+  /** When these figures were struck, e.g. "1 Nov". Published numbers need a date or they are a mood. */
+  asOf: string;
   /** How often the co-op publishes its reserve report. */
   reportCadence: string;
+  /**
+   * What the reserve would owe if every covered member claimed their annual cap at once, and what
+   * fraction of that it holds.
+   *
+   * A member who reads that the reserve holds $412,800 for 184 people immediately wants to know
+   * whether that is a lot. No reserve covers everyone claiming at once, and one that did would be
+   * money sitting idle instead of buying homes — so the honest answer is the ratio and the floor
+   * the co-op commits to, not a reassurance.
+   */
+  perMemberCap: number;
+  coveredPct: number;
+  policyFloorPct: number;
+}
+
+/** One published statement. Prepared quarterly; see `ReserveReports.reviewedBy`. */
+export interface ReserveStatement {
+  id: string;
+  period: string;
+  publishedOn: string;
+  /** What that quarter's statement covers, or what was notable about it. */
+  note: string;
+}
+
+export interface ReserveReports {
+  statements: ReserveStatement[];
+  /** e.g. "Every quarter, within six weeks of the close". */
+  cadence: string;
+  /** What each statement contains. */
+  contains: string;
+  /**
+   * Who reviewed it — and the fact that a review is not an audit.
+   *
+   * A co-op this size is not required to be independently audited, and saying so is cheaper than
+   * letting a member assume otherwise and find out later.
+   */
+  reviewedBy: string;
+}
+
+/** What happens after a claim is sent, in order. */
+export interface ClaimStep {
+  id: string;
+  title: string;
+  detail: string;
+}
+
+/**
+ * The co-op's own claim figures, declines included.
+ *
+ * A reserve that never says no is not being managed, so the decline rate is published beside the
+ * payouts rather than left for a member to wonder about.
+ */
+export interface ClaimRecord {
+  paidThisYear: number;
+  decisionTime: string;
+  declinedOf: string;
+  creditsEffect: string;
 }
 
 /**

@@ -27,6 +27,7 @@ import avatarRouter from './routes/avatar.js';
 import portfolioRouter from './routes/portfolio.js';
 import payRouter from './routes/pay.js';
 import creditRouter from './routes/credit.js';
+import assuranceRouter from './routes/assurance.js';
 import chargesRouter from './routes/charges.js';
 import merchantRouter from './routes/merchant.js';
 import { startChargeReconciler } from './services/chargeReconciler.js';
@@ -242,6 +243,8 @@ async function startServer() {
     app.use('/api/portfolio', requireAuth, portfolioRouter);
     app.use('/api/pay', requireAuth, payRouter);
     app.use('/api/credit', requireAuth, creditRouter);
+    // A claim is money and a member's own account of a bad day; both halves need the member.
+    app.use('/api/assurance', requireAuth, assuranceRouter);
     // Deliberately not `requireAuth` at the mount: `POST /api/charges` is a merchant device
     // authenticating by signature, with no member session to check. The member-facing routes
     // inside attach `requireAuth` themselves — see the note in routes/charges.ts for why that

@@ -29,7 +29,7 @@ export default function AssurancePage({ data = SAVINGS_DAY_ONE }: { data?: Savin
         <AssurancePanel
           items={data.assurance}
           credits={data.savings.credits}
-          onExplainReserve={() => navigate('/learn/assurance-reserve')}
+          onExplainReserve={() => navigate('/assurance/reserve')}
         />
       </div>
     </div>
