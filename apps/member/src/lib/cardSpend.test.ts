@@ -128,3 +128,32 @@ describe('a card purchase appears on the Activity page too', () => {
     expect(mapping).toMatch(/cardTransactionRow[\s\S]{0,900}'cash' : 'credit'/);
   });
 });
+
+/*
+ * The same purchase, presented the same way, wherever it is listed.
+ *
+ * Harbor Freight showed struck through and marked Reversed on the Card page, and as an ordinary
+ * "Cash · −$5.00" on Activity. Two presentations of one fact is worse than either alone, and it is
+ * the kind of drift that returns the moment one page is edited without the other.
+ */
+describe('a reversed charge looks reversed on every list', () => {
+  const cardPage = read('pages/app/CardPage.tsx');
+  const activityPage = read('pages/app/ActivityPage.tsx');
+
+  for (const [name, page] of [['the Card page', cardPage], ['the Activity page', activityPage]] as const) {
+    test(`${name} strikes the amount through`, () => {
+      expect(page).toContain('line-through');
+      expect(page).toMatch(/row\.reversed/);
+    });
+
+    test(`${name} replaces the funding tag with Reversed`, () => {
+      // Saying "Cash" or "Credit" beside money that came back is the one wrong thing on the line.
+      // One page writes the word as a string, the other as JSX text; both must show it.
+      expect(page).toMatch(/row\.reversed[\s\S]{0,140}Reversed/);
+    });
+
+    test(`${name} mutes the merchant name to match`, () => {
+      expect(page).toMatch(/text-sec', row\.reversed && 'text-ink-50/);
+    });
+  }
+});

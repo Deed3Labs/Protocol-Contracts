@@ -258,12 +258,30 @@ export default function ActivityPage({
     </>
   );
 
+  /*
+   * A reversed charge reads the same here as on the Card page.
+   *
+   * It was struck through and marked there, and an ordinary "Cash · −$5.00" here — the same purchase
+   * presented two ways depending on which page you opened, which is worse than either presentation
+   * alone. The funding tag gives way to 'Reversed' because no tier is paying for it any more.
+   */
   const tag = (row: ActivityRow) => {
+    if (row.reversed) return <span className="c-det text-ink-50">Reversed</span>;
     const t = rowTag(row);
     return <span className={cn('c-det', t.className)}>{t.label}</span>;
   };
   const amount = (row: ActivityRow) => (
-    <span className={cn('c-fig c-fig-row', row.pending ? 'c-muted' : row.amount > 0 && 'c-pos', desktop && 'text-right')}>
+    <span
+      className={cn(
+        'c-fig c-fig-row',
+        row.reversed
+          ? 'text-ink-50 line-through'
+          : row.pending
+            ? 'c-muted'
+            : row.amount > 0 && 'c-pos',
+        desktop && 'text-right',
+      )}
+    >
       {signedMoney(row.amount)}
     </span>
   );
@@ -336,7 +354,7 @@ export default function ActivityPage({
                   <button key={row.id} type="button" onClick={() => setSelected(row)} className="block w-full text-left">
                     {desktop ? (
                       <div className="grid grid-cols-[1fr_170px_130px] items-center">
-                        <span className="text-sec">{row.name}</span>
+                        <span className={cn('text-sec', row.reversed && 'text-ink-50')}>{row.name}</span>
                         <span className="c-det">
                           {tag(row)}
                           {row.pending && <span className="ml-s1">{pendingChip}</span>}
@@ -346,7 +364,7 @@ export default function ActivityPage({
                     ) : (
                       <Line>
                         <div className="min-w-0">
-                          <p className="text-sec">{row.name}</p>
+                          <p className={cn('text-sec', row.reversed && 'text-ink-50')}>{row.name}</p>
                           <p className="mt-[2px]">{tag(row)}</p>
                         </div>
                         <span className="flex shrink-0 items-center gap-s1">
