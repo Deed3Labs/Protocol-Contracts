@@ -29,6 +29,15 @@ export interface SpendRow {
 const inCycle = (ms: number, startMs: number) => startMs <= 0 || ms >= startMs;
 const cardAt = (tx: CardTransaction) => Date.parse(tx.at);
 
+/**
+ * What a purchase actually cost, which is not always what it asked for.
+ *
+ * A voided charge holds nothing, so it contributes nothing to a category or a merchant total — the
+ * money is back, and counting it would tell a member they spent more on groceries than they did.
+ * The authorization figure stays on the row itself; it just does not add up into these.
+ */
+const cardSpend = (tx: CardTransaction) => Math.max(0, tx.heldCents ?? tx.amountCents) / 100;
+
 /** The catch-all group, named once. */
 export const REST = 'Everything else';
 
@@ -76,7 +85,7 @@ export function categoriesFrom(cards: CardTransaction[], rows: SpendRow[], start
 
   for (const tx of cards) {
     if (!inCycle(cardAt(tx), startMs)) continue;
-    add(groupOf(tx.mcc), tx.amountCents / 100);
+    add(groupOf(tx.mcc), cardSpend(tx));
   }
   for (const row of otherOutflow(rows, startMs)) add(REST, -row.amount);
 
@@ -115,7 +124,7 @@ export function merchantsFrom(cards: CardTransaction[], rows: SpendRow[], startM
 
   for (const tx of cards) {
     if (!inCycle(cardAt(tx), startMs)) continue;
-    add(tx.name, groupOf(tx.mcc), tx.amountCents / 100);
+    add(tx.name, groupOf(tx.mcc), cardSpend(tx));
   }
   for (const row of otherOutflow(rows, startMs)) add(row.name, REST, -row.amount);
 

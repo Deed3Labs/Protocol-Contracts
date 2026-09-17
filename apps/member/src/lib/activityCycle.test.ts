@@ -95,3 +95,41 @@ describe('changing the groups', () => {
     ]);
   });
 });
+
+/*
+ * A voided charge is money the member has back. The row keeps its figure so they can reconcile it
+ * against what they remember, but every total has to stop counting it — otherwise the page tells
+ * them they spent more on groceries than they did, and the category bar is the one place that is
+ * hard to argue with.
+ */
+describe('a charge that was given back', () => {
+  const voided: CardTransaction = {
+    ...card('refunded', 2, 9_000, [], '5411'),
+    heldCents: 0,
+    reversed: true,
+  };
+  const withVoid = [...cards, voided];
+
+  test('adds nothing to its category', () => {
+    const before = categoriesFrom(cards, rows, START).find((g) => g.label === 'Groceries');
+    const after = categoriesFrom(withVoid, rows, START).find((g) => g.label === 'Groceries');
+    expect(after?.amount).toBe(before?.amount as number);
+  });
+
+  test('adds nothing to the merchant it was made at', () => {
+    const merchant = merchantsFrom(withVoid, rows, START).find((m) => m.name === 'refunded');
+    expect(merchant?.amount).toBe(0);
+  });
+
+  test('adds nothing to the cycle, because reconciling emptied its draws', () => {
+    expect(cycleSpendFrom(withVoid, rows, { startMs: START, daysLeft: 6, carryCost: 17.4 })).toEqual(
+      cycleSpendFrom(cards, rows, { startMs: START, daysLeft: 6, carryCost: 17.4 }),
+    );
+  });
+
+  test('a partly cleared charge counts what it actually held', () => {
+    const tip: CardTransaction = { ...card('diner', 2, 5_000, [['cash', 5_800]], '5812'), heldCents: 5_800 };
+    const merchant = merchantsFrom([tip], rows, START).find((m) => m.name === 'diner');
+    expect(merchant?.amount).toBe(58);
+  });
+});

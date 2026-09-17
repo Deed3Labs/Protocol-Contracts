@@ -374,24 +374,41 @@ export default function CardPage({
           <Rows>
             {shown.map((row) => {
               const tag = sourceTag(row);
+              /*
+               * A voided charge keeps its figure and says what became of it.
+               *
+               * Struck rather than removed: the member remembers the charge, and a row that is not
+               * there is a row they cannot reconcile. The funding tag gives way to 'Reversed'
+               * because no tier is paying for it any more — saying 'Credit' beside money that came
+               * back would be the one wrong thing on the line.
+               */
               const amount = (
-                <span className={cn('c-fig c-fig-row', row.amount > 0 && 'c-pos', desktop && 'text-right')}>
+                <span
+                  className={cn(
+                    'c-fig c-fig-row',
+                    row.amount > 0 && 'c-pos',
+                    row.reversed && 'text-ink-50 line-through',
+                    desktop && 'text-right',
+                  )}
+                >
                   {signedMoney(row.amount)}
                 </span>
               );
+              const label = row.reversed ? 'Reversed' : tag.label;
+              const labelClass = row.reversed ? 'text-ink-50' : tagClass(row);
               return (
                 <button key={row.id} type="button" onClick={() => setSelected(row)} className="block w-full text-left">
                   {desktop ? (
                     <div className="grid grid-cols-[1fr_150px_110px] items-center">
-                      <span className="text-sec">{row.name}</span>
-                      <span className={cn('c-det', tagClass(row))}>{tag.label}</span>
+                      <span className={cn('text-sec', row.reversed && 'text-ink-50')}>{row.name}</span>
+                      <span className={cn('c-det', labelClass)}>{label}</span>
                       {amount}
                     </div>
                   ) : (
                     <Line>
                       <div>
-                        <p className="text-sec">{row.name}</p>
-                        <p className={cn('c-det', tagClass(row))}>{tag.label}</p>
+                        <p className={cn('text-sec', row.reversed && 'text-ink-50')}>{row.name}</p>
+                        <p className={cn('c-det', labelClass)}>{label}</p>
                       </div>
                       {amount}
                     </Line>

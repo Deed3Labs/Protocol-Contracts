@@ -666,6 +666,14 @@ export const CARD_IN_USE: CardData = {
   perTransactionLimit: 2000,
   perDayLimit: 3000,
   transactions: [
+    /*
+     * A charge that was voided, so the state has somewhere to be reviewed.
+     *
+     * It keeps its figure and adds nothing to `periodTotal` above, which is what makes the fixture
+     * honest: a reversed row that moved the month's total would be showing something the real page
+     * cannot produce.
+     */
+    { id: 'c7', name: 'Harbor Freight', date: 'Oct 26', source: 'cash', kind: 'spending', amount: -63.18, reversed: true },
     { id: 'c1', name: 'Shell', date: 'Oct 26', source: 'credit', kind: 'spending', amount: -52.1, paidFromTier: 'asset' },
     { id: 'c2', name: 'Stater Bros', date: 'Oct 25', source: 'credit', kind: 'spending', amount: -118.44, paidFromTier: 'asset' },
     { id: 'c3', name: 'Verizon', date: 'Oct 24', source: 'credit', kind: 'spending', amount: -85, paidFromTier: 'asset' },

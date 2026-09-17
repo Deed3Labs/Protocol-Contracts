@@ -2106,7 +2106,12 @@ export interface CardTransaction {
   id: string;
   name: string;
   at: string;
+  /** What the merchant asked for at the swipe. */
   amountCents: number;
+  /** What is still held — 0 once voided, a different figure once it clears for one. */
+  heldCents?: number;
+  /** Voided. The row stays, marked: a charge that vanishes is one the member still remembers. */
+  reversed?: boolean;
   mcc: string | null;
   city: string | null;
   state: string | null;
