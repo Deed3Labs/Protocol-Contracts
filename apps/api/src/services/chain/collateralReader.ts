@@ -177,7 +177,9 @@ export async function readChainCollateral(
   chainId = resolveChainId(),
 ): Promise<ChainCollateral> {
   const clrusd = getContractAddress(chainId, 'CLRUSD');
-  const pool = getContractAddress(chainId, 'CLRUSDTokenPool');
+  // The yield vault, not the CCIP bridge pool. Those are different contracts with different jobs,
+  // and reading the bridge one as a share balance is what reverted on every refresh.
+  const pool = getContractAddress(chainId, 'CLRUSDYieldPool');
 
   let provider: ethers.JsonRpcProvider;
   try {

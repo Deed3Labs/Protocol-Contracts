@@ -44,3 +44,30 @@ describe('a stated limit beats a carried one', () => {
     expect(snapshots).toContain('!capacities.available');
   });
 });
+
+/*
+ * The reverting contract was not a broken yield pool. It was a Chainlink CCIP token pool — the thing
+ * that moves CLRUSD between chains — read as if it held shares. Confirmed on Base Sepolia by
+ * getToken() answering on that address, which only a CCIP pool does, while balanceOf and decimals
+ * both reverted.
+ */
+describe('the yield pool is not the bridge pool', () => {
+  const contracts = readFileSync(new URL('../../config/contracts.ts', import.meta.url), 'utf8');
+
+  test('collateral reads the vault key, not the CCIP one', () => {
+    expect(reader).toContain("getContractAddress(chainId, 'CLRUSDYieldPool')");
+    expect(reader).not.toContain("getContractAddress(chainId, 'CLRUSDTokenPool')");
+  });
+
+  test('the vault key exists and defaults to no contract', () => {
+    // No pool means no pool-backed credit — rule 3 — rather than credit against a contract that
+    // does not exist. It stays zero until a vault is actually deployed.
+    expect(contracts).toContain('CLRUSDYieldPool');
+    expect(contracts).toMatch(/CLRUSDYieldPool: process\.env\.CLRUSD_YIELD_POOL_84532 \|\| '0x0{40}'/);
+  });
+
+  test('the CCIP pool keeps its own key, still configured', () => {
+    // It has a real job; it just is not collateral. Nothing else that uses it should break.
+    expect(contracts).toContain('CLRUSDTokenPool: process.env.CLRUSD_POOL_84532');
+  });
+});
