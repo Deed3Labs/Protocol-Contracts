@@ -27,9 +27,17 @@ const router = express.Router();
  * is read only as a fallback.
  */
 
-/** Signature headers are disabled until you fetch the secret from GET /v1/auth_stream/secret. */
+/**
+ * Auth Stream Access signs with its OWN secret, which is not the event subscription's.
+ *
+ * `GET /v1/auth_stream/secret` and a webhook subscription's secret are two different values, and
+ * this route was reading the subscription's. One of the two paths verifies and the other rejects
+ * everything, depending on which value the single variable holds — and the half that rejects here
+ * is card authorizations, which fail closed. LITHIC_WEBHOOK_SECRET stays as the fallback so a
+ * deployment that has only ever set one keeps working.
+ */
 function verifySignature(req: Request, rawBody: Buffer): boolean {
-  const secret = (process.env.LITHIC_WEBHOOK_SECRET || '').trim();
+  const secret = (process.env.LITHIC_ASA_SECRET || process.env.LITHIC_WEBHOOK_SECRET || '').trim();
   if (!secret) {
     // Refuse rather than trust. An unauthenticated endpoint that approves card spend is not a
     // configuration gap to work around; it is the whole vulnerability.
