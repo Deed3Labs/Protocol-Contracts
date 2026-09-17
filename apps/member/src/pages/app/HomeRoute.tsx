@@ -4,14 +4,16 @@ import { HOME_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useAppKitAccount } from '@/lib/walletCompat';
-import { toActivityRow } from '@/lib/activityMapping';
+import { mergedActivityRows } from '@/lib/activityMapping';
 import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
 import {
+  getCardTransactions,
   getCredit,
   getLithicAccount,
   getPaySummary,
+  type CardTransaction,
   type CreditState,
   type LithicAccountResponse,
   type PaySummary,
@@ -57,11 +59,17 @@ export default function HomeRoute() {
   const [lithic, setLithic] = useState<LithicAccountResponse | null>(null);
   const [pay, setPay] = useState<PaySummary | null>(null);
   const [credit, setCredit] = useState<CreditState | null>(null);
+  const [cards, setCards] = useState<CardTransaction[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     void getLithicAccount().then((result) => {
       if (!cancelled) setLithic(result);
+    });
+    // Recent activity is both halves of what a member spent, so this page needs the card's side of
+    // it too. Without this the preview showed sends and withdrawals and no purchases at all.
+    void getCardTransactions().then(({ value }) => {
+      if (!cancelled) setCards(value ?? []);
     });
     return () => {
       cancelled = true;
@@ -136,12 +144,24 @@ export default function HomeRoute() {
         ? { accountNumber: deposit.accountNumber, routingNumber: deposit.routingNumber }
         : {}),
     },
-    // Home shows a preview; Activity shows the list. Empty is the honest answer for a new member,
-    // and the page has a state for it.
-    ...(txLoading ? {} : { recent: items.slice(0, 4).map(toActivityRow) }),
+    /*
+     * Home shows a preview; Activity shows the list. Empty is the honest answer for a new member,
+     * and the page has a state for it.
+     *
+     * The newest four of EVERYTHING, not the newest four transfers. A member who paid for lunch on
+     * the card and then sent a friend $20 should see both, in the order they happened.
+     */
+    ...(txLoading ? {} : { recent: mergedActivityRows(items, cards).slice(0, 4) }),
     ...(credit?.complete
       ? {
-          credit: toCredit(credit.tiers, HOME_DAY_ONE.credit, credit.term?.carryOwedCents ?? 0),
+          // Pending card holds count as used: a live authorization is money this member cannot
+          // spend again, whatever the contracts have settled.
+          credit: toCredit(
+            credit.tiers,
+            HOME_DAY_ONE.credit,
+            credit.term?.carryOwedCents ?? 0,
+            credit.pendingCardDraws ?? {},
+          ),
           cycle: toCycle(credit.cycle, HOME_DAY_ONE.cycle),
           backing: toLimitBacking(credit.tiers, HOME_DAY_ONE.backing),
           // The last placeholder on this page, and the one that made day one's two arrivals

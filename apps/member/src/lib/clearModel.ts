@@ -22,6 +22,13 @@ export interface CreditTier {
   /** The same rate as a fraction, for working out what carrying a balance costs. */
   ratePerCycle?: number;
   used: number;
+  /**
+   * The part of `used` that is a card authorization still being held, not a settled borrowing.
+   *
+   * Included in `used` because the member cannot spend it twice, and named separately because it
+   * can still vanish: a voided charge releases it, and it never reached the contracts at all.
+   */
+  pending?: number;
   /** What this tier can back. The credit limit is the sum of these across added tiers. */
   limit: number;
   /** Boost is opt-in; a tier that hasn't been added lends nothing and isn't in the limit. */

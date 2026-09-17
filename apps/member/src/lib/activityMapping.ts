@@ -82,6 +82,29 @@ export function cardTransactionRow(tx: CardTransaction, cardLast4?: string): Act
   };
 }
 
+/**
+ * Everything the member spent, from both halves, newest first.
+ *
+ * Card purchases and on-chain movements are two feeds of one story, and every list that shows only
+ * one of them is lying by omission — Activity did it, then Home did it after Activity was fixed.
+ * Three copies of this merge would have been three chances to forget the next one, so it lives here.
+ *
+ * Sorted on real timestamps rather than the formatted `date`, which is a display string two rows on
+ * the same day cannot be ordered by.
+ */
+export function mergedActivityRows(
+  items: ActivityItem[],
+  cards: CardTransaction[],
+  cardLast4?: string,
+): ActivityRow[] {
+  return [
+    ...items.map((item) => ({ ts: item.ts, row: toActivityRow(item) })),
+    ...cards.map((tx) => ({ ts: Date.parse(tx.at), row: cardTransactionRow(tx, cardLast4) })),
+  ]
+    .sort((a, b) => b.ts - a.ts)
+    .map((entry) => entry.row);
+}
+
 function sourceOf(item: ActivityItem): ActivitySource {
   if (item.category === 'Deposit' && item.internal) return 'savings';
   if (item.source === 'bank') return 'cash account';

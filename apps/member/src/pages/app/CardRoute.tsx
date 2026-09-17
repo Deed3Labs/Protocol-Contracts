@@ -428,7 +428,8 @@ export default function CardRoute() {
          */
         ...(credit?.complete
           ? {
-              tiers: toCreditTiers(credit.tiers),
+              // Same holds as Home: a live authorization is drawn, wherever it is shown.
+              tiers: toCreditTiers(credit.tiers, credit.pendingCardDraws ?? {}),
               // The same breakdown Home links to, from the same rows — one surface, so the two
               // pages cannot describe the limit differently.
               backing: toLimitBacking(credit.tiers, CARD_DAY_ONE.backing ?? { assetBacked: [], unsecured: [] }),

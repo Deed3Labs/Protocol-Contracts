@@ -77,7 +77,11 @@ const fromCents = (cents: number) => cents / 100;
  * The rate shown is the highest of the collapsed set, which is the honest one: it is what the next
  * dollar drawn on that row will cost, and quoting the cheaper of two would understate it.
  */
-export function toCreditTiers(rows: CreditTierRow[]): CreditTier[] {
+export function toCreditTiers(
+  rows: CreditTierRow[],
+  /** Card authorizations held right now, per tier, in cents. See `toCredit`. */
+  pending: Partial<Record<TierKey, number>> = {},
+): CreditTier[] {
   const merged = new Map<TierKey, CreditTier>();
 
   for (const row of rows) {
@@ -114,6 +118,21 @@ export function toCreditTiers(rows: CreditTierRow[]): CreditTier[] {
     });
   }
 
+  /*
+   * Holds are added after the chain rows are collapsed, not during.
+   *
+   * A page tier can be several chain kinds — two asset kinds are one Assets row — and a card draw
+   * is recorded against the page tier the waterfall chose, not against a collateral kind. Adding it
+   * per row would either double-count it or force an arbitrary split between bonds and pool shares.
+   */
+  for (const [key, cents] of Object.entries(pending) as [TierKey, number][]) {
+    if (!cents || cents <= 0) continue;
+    const tier = merged.get(key);
+    if (!tier) continue;
+    tier.used += fromCents(cents);
+    tier.pending = fromCents(cents);
+  }
+
   return [...merged.values()];
 }
 
@@ -136,9 +155,21 @@ export function toCredit(
    * not list it, and this function summed only the tier rows, so the credit card did not either.
    */
   carryOwedCents = 0,
+  /**
+   * Card authorizations being held right now, per tier, in cents.
+   *
+   * Counted as used, because that is what it is to the member: money they cannot spend twice. It is
+   * not on-chain and not settled — an authorization can still be voided — but a live charge against
+   * a row reading "not drawn" is the page contradicting the card in the member's own pocket.
+   *
+   * Kept on the tier as `pending` as well as folded into `used`, so a screen can say which half is
+   * a settled borrowing and which is a hold that might vanish.
+   */
+  pending: Partial<Record<TierKey, number>> = {},
 ): Credit {
-  const tiers = toCreditTiers(rows);
-  if (tiers.length === 0 && carryOwedCents === 0) return fallback;
+  const tiers = toCreditTiers(rows, pending);
+  const pendingTotal = Object.values(pending).reduce((sum, cents) => sum + (cents ?? 0), 0);
+  if (tiers.length === 0 && carryOwedCents === 0 && pendingTotal === 0) return fallback;
   const carryCost =
     rows.reduce((sum, row) => sum + fromCents(row.carryCents), 0) + fromCents(carryOwedCents);
   return { ...fallback, tiers: tiers.length === 0 ? fallback.tiers : tiers, carryCost };

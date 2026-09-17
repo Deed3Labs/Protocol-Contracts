@@ -2564,6 +2564,15 @@ export interface CreditState {
    */
   savingsEncumberedCents: number | null;
   /**
+   * Card authorizations held right now, per tier, in cents — the one field here not from chain.
+   *
+   * An authorization is a hold rather than a settled borrow, so the contracts do not carry it and
+   * are right not to: it can still be voided. But the member cannot spend it twice from the moment
+   * it is approved, and a live charge against a line reading "not drawn" is this page contradicting
+   * the card in their pocket.
+   */
+  pendingCardDraws?: Partial<Record<'cash' | 'savings' | 'asset' | 'income' | 'boost', number>>;
+  /**
    * The ceiling a split plan draws on, read from TermIssuer — separate from the revolving tiers,
    * which are backed by pledged collateral. Null when that read failed, which is not a member with
    * no line.
