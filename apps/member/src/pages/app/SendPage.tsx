@@ -92,7 +92,14 @@ export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
         <ClearCode handle={data.handle} codeUrl={data.codeUrl} width={desktop ? 150 : 170} />
         <p className="mt-s2 text-center text-sec">Your Clear code</p>
         <p className="c-det mt-[3px] text-center">{data.handle}</p>
-        <p className="c-det mt-s2 leading-[1.6]!">
+        {/*
+          * Centred, where the reference leaves it ranged left.
+          *
+          * The two lines above it are centred under the code and this one was not, so it read as a
+          * paragraph that had come loose from the block it belongs to. A deliberate divergence,
+          * asked for; the reference's own markup has no text-align on this line.
+          */}
+        <p className="c-det mt-s2 text-center leading-[1.6]!">
           Says who you are, not an amount. The shop enters the figure and{' '}
           <strong className="font-medium text-ink">you approve it here</strong>.
         </p>
