@@ -97,3 +97,26 @@ describe('bonds back credit, not just the Earn page', () => {
     expect(reader).toContain('if (info.isRedeemed) continue');
   });
 });
+
+/*
+ * Verified against Base Sepolia while chasing why the deployed read failed: this member holds bond
+ * ids [1, 2], neither redeemed, present values $97.17 and $97.10. Every call in the sequence
+ * succeeds when made directly — sequential or batched, checksummed address or lowercased. So the
+ * failure lives in the deployed process, and the code has to say what it was rather than swallow it.
+ */
+describe('a bond read that fails says why', () => {
+  const reader = readFileSync(new URL('./collateralReader.ts', import.meta.url), 'utf8');
+
+  test('the error reaches the log in both branches', () => {
+    // The first version logged "cannot be read" with no error attached, which is what made the
+    // deployed failure undiagnosable from outside.
+    expect(reader).toMatch(/bond read reverted[\s\S]{0,60}, error\)/);
+    expect(reader).toMatch(/bond read unreachable[\s\S]{0,40}, error\)/);
+  });
+
+  test('one unreadable bond costs only itself', () => {
+    // Wrapping the loop meant a single bad id zeroed every bond the member holds.
+    expect(reader).toMatch(/for \(const id of ids\) \{[\s\S]{0,600}try \{/);
+    expect(reader).toContain('could not be priced — skipped');
+  });
+});
