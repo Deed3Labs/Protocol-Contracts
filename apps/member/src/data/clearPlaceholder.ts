@@ -312,9 +312,14 @@ export const MILESTONES: Milestone[] = [
  * The threshold tracks what the co-op stands to lose, which is why the order is what it is. Grace
  * cycles forgive timing on a balance that keeps accruing, so they cost almost nothing and sit at
  * zero, where the protection everyone actually uses belongs. A progress hold costs match funding
- * against the redemption margin and no cash. The deposit bridge fronts real money but gets it back.
- * Rent cover is pure outflow with nothing owed, and home repairs is an open annual cap — so those
- * two sit at the top.
+ * against the redemption margin and no cash. Rent protection is pure outflow with nothing owed, and
+ * home repairs is an open annual cap — so those two sit at the top.
+ *
+ * The gap at 4,000 is deliberate. A deposit bridge was drafted for it and pulled: it is a 0% loan
+ * the member repays, and every row here is something the co-op absorbs with nothing owed back. A
+ * member who assumed it worked like the rest would have been taught that by the list it sat in.
+ * Thresholds are product facts rather than slots to fill, so the gap stays until something belongs
+ * in it.
  *
  * None of these say "assurance". The cell is already headed Assurance; a row repeating it is the
  * label stuttering, and the word does no work inside its own container.
@@ -339,21 +344,8 @@ const ASSURANCE: AssuranceItem[] = [
     unlocksAt: 1000,
   },
   {
-    id: 'deposit-bridge',
-    name: 'Deposit bridge',
-    /*
-     * NOT a protection, and the odd one in this list: it is a 0% loan the member repays, where
-     * every other row is something the co-op absorbs with nothing owed back. Placed here for now —
-     * whether it belongs among protections at all is an open product question, since a member who
-     * assumes it works like rent cover has been taught the wrong thing by the list it sits in.
-     */
-    description:
-      'A 0% bridge for deposits and up-front costs, paid direct to the landlord or provider and cleared over six to twelve cycles.',
-    unlocksAt: 4000,
-  },
-  {
-    id: 'rent-cover',
-    name: 'Rent cover',
+    id: 'rent-protection',
+    name: 'Rent protection',
     /*
      * The co-op's own words: "up to 60 days of rent paid by the co-op if crisis strikes, zero
      * payback, zero premium."
