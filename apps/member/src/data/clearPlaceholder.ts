@@ -329,7 +329,7 @@ const ASSURANCE: AssuranceItem[] = [
     id: 'grace-cycles',
     name: 'Grace cycles',
     description:
-      'Two cycles a year can close short. Your line does not decay, and nothing is settled from your savings to cover it.',
+      'Two cycles a year can close short. Your line holds and savings stay put.',
     unlocksAt: 0,
   },
   {
@@ -340,7 +340,7 @@ const ASSURANCE: AssuranceItem[] = [
      * intended had their housing progress paused for it.
      */
     description:
-      'A documented hardship draw does not restart the 30-day vesting clock, and one hard quarter does not move your on-track date.',
+      'A documented hardship draw does not restart vesting or move your on-track date.',
     unlocksAt: 1000,
   },
   {
@@ -355,7 +355,7 @@ const ASSURANCE: AssuranceItem[] = [
      * description claims no timing the model cannot honour.
      */
     description:
-      'Up to 60 days of rent paid by the co-op if a crisis hits. No premium, and nothing to pay back.',
+      'Up to 60 days of rent paid if a crisis hits. No premium, nothing to pay back.',
     unlocksAt: 8000,
   },
   {
