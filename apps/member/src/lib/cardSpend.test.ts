@@ -101,16 +101,29 @@ describe('a card purchase appears on the Activity page too', () => {
   const mapping = read('lib/activityMapping.ts');
   const card = read('pages/app/CardRoute.tsx');
 
-  test('card transactions become rows, not just totals', () => {
-    expect(activity).toContain('cardTransactionRow(tx)');
+  const home = read('pages/app/HomeRoute.tsx');
+
+  test('every list that shows spending shows both halves of it', () => {
+    /*
+     * Activity was fixed first and Home still showed sends alone, which is how a member ends up
+     * looking at a recent-activity preview with no purchases in it. One merge, used by both.
+     */
+    expect(activity).toContain('mergedActivityRows(items, cards)');
+    expect(home).toContain('mergedActivityRows(items, cards)');
     expect(activity).not.toMatch(/rows: items\.map\(toActivityRow\),/);
+    expect(home).not.toMatch(/recent: items\.slice/);
+  });
+
+  test('Home fetches the card side at all', () => {
+    // It never asked for card transactions, so there was nothing to merge in the first place.
+    expect(home).toContain('getCardTransactions()');
   });
 
   test('the two sources are interleaved by time, newest first', () => {
     // `date` is a display string, so two rows on the same day have no order in it. Sort on the
     // timestamps the data actually carries.
-    expect(activity).toContain('Date.parse(tx.at)');
-    expect(activity).toMatch(/\.sort\(\(a, b\) => b\.ts - a\.ts\)/);
+    expect(mapping).toContain('Date.parse(tx.at)');
+    expect(mapping).toMatch(/\.sort\(\(a, b\) => b\.ts - a\.ts\)/);
   });
 
   test('both pages build a purchase with the same mapper', () => {
