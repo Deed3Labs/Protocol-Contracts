@@ -175,14 +175,65 @@ export async function refreshSnapshotsFor(
       ...cards.map((card) => card.cardToken),
     ]);
 
+    /*
+     * Read the member once, then write every card.
+     *
+     * Everything a snapshot is built from except the card's own row belongs to the WALLET: the
+     * Lithic cash balance, the deposit average, the pulled-funds hold, the chain collateral, the
+     * calculator's ceilings. A member with five cards was having all of it read five times to write
+     * five copies of the same numbers — seventy chain calls where fourteen would do.
+     *
+     * That was not merely wasteful, it was the bug: fired in a burst at the public Base Sepolia
+     * endpoint, roughly a fifth of those calls came back as "missing revert data". Reproduced
+     * exactly — 16 of 70 failing, sporadically, across different contracts. A throttled read is
+     * indistinguishable from a reverting contract, which is how a member's bonds quietly stopped
+     * backing their credit.
+     */
+    const shared = await readWalletSources(wallet, collateral);
+
     for (const token of tokens) {
-      await refreshSnapshot(wallet, token, collateral);
+      await refreshSnapshot(wallet, token, collateral, shared);
     }
     return tokens.size;
   } catch (error) {
     console.error('[snapshots] refresh failed for', wallet, error);
     return 0;
   }
+}
+
+/**
+ * Everything a snapshot is built from that belongs to the member rather than to one card.
+ *
+ * Split out so a member's cards can share one read of it. Nothing here varies by card, and reading
+ * it per card is how a five-card member turned one refresh into seventy chain calls.
+ */
+export interface WalletSources {
+  lithicCashCents: number;
+  monthlyDepositCents: number;
+  pendingCollateralCents: number;
+  chain: Awaited<ReturnType<typeof readChainCollateral>>;
+  capacities: Awaited<ReturnType<typeof readChainCapacities>>;
+}
+
+export async function readWalletSources(
+  wallet: string,
+  collateral: Partial<CollateralInputs> = {},
+): Promise<WalletSources> {
+  const [lithicCashCents, monthlyDepositCents, pendingCollateralCents, chain, capacities] =
+    await Promise.all([
+      readLithicCashCents(wallet),
+      collateral.monthlyDepositCents !== undefined
+        ? Promise.resolve(collateral.monthlyDepositCents)
+        : estimateMonthlyDeposit(wallet),
+      // Money pulled from an outside bank that could still be returned. Held out of collateral —
+      // see achOriginationService for why sixty days is the number that matters.
+      pulledFundsStore.pendingCollateralCents(wallet),
+      readChainCollateral(wallet),
+      // What the calculator says the member may borrow, when it is deployed. Unavailable is not a
+      // failure here -- it means the tiers below are computed the way they always were.
+      readChainCapacities(wallet),
+    ]);
+  return { lithicCashCents, monthlyDepositCents, pendingCollateralCents, chain, capacities };
 }
 
 /**
@@ -196,22 +247,15 @@ export async function refreshSnapshot(
   wallet: string,
   cardToken: string,
   collateral: Partial<CollateralInputs> = {},
+  /** Per-wallet sources already read by the caller — see refreshSnapshotsFor. */
+  shared?: WalletSources,
 ): Promise<SnapshotResult> {
-  const [lithicCashCents, monthlyDepositCents, pendingCollateralCents, chain, capacities, card] =
-    await Promise.all([
-      readLithicCashCents(wallet),
-      collateral.monthlyDepositCents !== undefined
-        ? Promise.resolve(collateral.monthlyDepositCents)
-        : estimateMonthlyDeposit(wallet),
-      // Money pulled from an outside bank that could still be returned. Held out of collateral —
-      // see achOriginationService for why sixty days is the number that matters.
-      pulledFundsStore.pendingCollateralCents(wallet),
-      readChainCollateral(wallet),
-      // What the calculator says the member may borrow, when it is deployed. Unavailable is not a
-      // failure here -- it means the tiers below are computed the way they always were.
-      readChainCapacities(wallet),
-      cardStore.get(cardToken),
-    ]);
+  const [sources, card] = await Promise.all([
+    shared ? Promise.resolve(shared) : readWalletSources(wallet, collateral),
+    // The only genuinely per-card read: whether THIS card is frozen.
+    cardStore.get(cardToken),
+  ]);
+  const { lithicCashCents, monthlyDepositCents, pendingCollateralCents, chain, capacities } = sources;
 
   // Resolved once and used by both write paths below. A frozen card must stay frozen across a
   // refresh — defaulting it to false let any rebuild, a deposit landing or the hourly job, quietly
