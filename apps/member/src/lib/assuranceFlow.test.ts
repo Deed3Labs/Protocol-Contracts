@@ -165,3 +165,28 @@ describe('the closing note is a footer', () => {
     expect(claim).not.toContain('<Chip');
   });
 });
+
+/*
+ * The record is a list of stated facts, not a row of figures.
+ *
+ * Built with `c-fig c-fig-sec` — 20px, the weight a balance gets — "Under two days" wrapped onto
+ * two lines on a phone and shouted louder than the money above it. Three of the four values are
+ * phrases rather than amounts. The guide already has a row for this: `c-kv`, whose value is
+ * detail-sized, quiet and nowrap.
+ */
+describe('the record reads as facts, not figures', () => {
+  const claim = read('components/clear/ClaimGuidePanel.tsx');
+
+  test('its rows are key/value, not hero figures', () => {
+    expect(claim).toContain('className="c-kv"');
+    expect(claim).not.toMatch(/stat[\s\S]{0,200}c-fig c-fig-sec/);
+  });
+
+  test('the reserve note fits three lines on a phone', () => {
+    // Measured at 340: 122 characters is three lines. The two ideas both survive — no reserve
+    // covers everyone, and the floor is a commitment with a consequence.
+    const reserve = read('components/clear/ReservePanel.tsx');
+    expect(reserve).toContain('idle money buys no homes');
+    expect(reserve).toContain('the board must act if it breaks');
+  });
+});

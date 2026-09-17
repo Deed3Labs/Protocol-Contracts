@@ -33,12 +33,20 @@ export default function ClaimGuidePanel({
   const locked = items.filter((i) => !isAssuranceActive(i, credits));
   const lockedAt = locked.map((i) => i.unlocksAt.toLocaleString());
 
+  /*
+   * Key/value rows, not figures.
+   *
+   * These were `c-fig c-fig-sec` — 20px, the weight a balance gets — and "Under two days" wrapped
+   * onto two lines on a phone while shouting louder than the money above it. Three of the four are
+   * phrases rather than amounts, and the guide already has a row for a stated fact: `c-kv`, whose
+   * value is detail-sized, quiet, and nowrap.
+   */
   const stat = (label: string, value: string) => (
     <div>
-      <Line className="items-baseline!">
-        <span className="text-sec">{label}</span>
-        <span className="c-fig c-fig-sec">{value}</span>
-      </Line>
+      <div className="c-kv">
+        <span>{label}</span>
+        <span className="c-v">{value}</span>
+      </div>
     </div>
   );
 
