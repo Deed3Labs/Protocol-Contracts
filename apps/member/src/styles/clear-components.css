@@ -639,3 +639,12 @@
   .c-splash .c-mk,.c-splash .c-swm{animation:none}
   .c-splashdot::after{animation:none;opacity:0}
 }
+
+/* A field we do not own: the issuer's SDK renders inside it. The frame is ours, the field is
+   theirs, and the label says so — pretending to style something we do not control would be the
+   worse choice. */
+.c-hosted{border:1px solid var(--ink-28);background:var(--paper-2);padding:var(--s3) var(--s2) var(--s2)}
+.c-hosted .c-pinbox{max-width:232px;margin:0 auto}
+.c-hosted .c-note-hosted{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;
+                     text-transform:uppercase;color:var(--ink-50);text-align:center;
+                     margin:var(--s2) 0 0}

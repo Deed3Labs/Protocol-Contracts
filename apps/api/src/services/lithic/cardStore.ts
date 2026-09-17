@@ -25,6 +25,17 @@ export interface CardRecord {
   memo: string | null;
   spendLimitCents: number;
   spendLimitDuration: string | null;
+  /*
+   * What the post did with it, which the card's own state cannot say.
+   *
+   * Lithic's states run PENDING_FULFILLMENT → PENDING_ACTIVATION → OPEN: ordered, on its way,
+   * activated. Posting is an event rather than a state, so it arrives on the card.shipped webhook
+   * and is kept here. There is no delivery event at all — a carrier knows, Lithic does not — so
+   * nothing in this record claims one.
+   */
+  shippedAt: string | null;
+  trackingNumber: string | null;
+  shippingMethod: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -49,6 +60,9 @@ async function ensureTable(): Promise<void> {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS ${TABLE}_wallet_idx ON ${TABLE} (wallet, created_at DESC);
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS tracking_number TEXT;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS shipping_method TEXT;
   `);
   ensured = true;
 }
@@ -63,6 +77,9 @@ interface Row {
   memo: string | null;
   spend_limit_cents: string;
   spend_limit_duration: string | null;
+  shipped_at: Date | null;
+  tracking_number: string | null;
+  shipping_method: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -78,6 +95,9 @@ function toRecord(row: Row): CardRecord {
     memo: row.memo,
     spendLimitCents: parseInt(row.spend_limit_cents, 10) || 0,
     spendLimitDuration: row.spend_limit_duration,
+    shippedAt: row.shipped_at ? row.shipped_at.toISOString() : null,
+    trackingNumber: row.tracking_number,
+    shippingMethod: row.shipping_method,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
   };
@@ -126,6 +146,36 @@ export const cardStore = {
         Math.max(0, Math.round(input.spendLimitCents ?? 0)),
         input.spendLimitDuration ?? null,
       ],
+    );
+    return rows[0] ? toRecord(rows[0]) : null;
+  },
+
+  /**
+   * What the post did with it, from `card.shipped`.
+   *
+   * Recorded rather than derived: a card in PENDING_ACTIVATION has been sent to production, which
+   * is not the same as having left the building, and only this event carries the date and the
+   * tracking number. Never overwritten once set — a second delivery of the same webhook must not
+   * move the date the member was told.
+   */
+  async recordShipped(input: {
+    cardToken: string;
+    shippedAt: string;
+    trackingNumber: string | null;
+    shippingMethod: string | null;
+  }): Promise<CardRecord | null> {
+    const pool = getPayPool();
+    if (!pool) return null;
+    await ensureTable();
+    const { rows } = await pool.query<Row>(
+      `UPDATE ${TABLE}
+          SET shipped_at = COALESCE(shipped_at, $2),
+              tracking_number = COALESCE($3, tracking_number),
+              shipping_method = COALESCE($4, shipping_method),
+              updated_at = now()
+        WHERE card_token = $1
+        RETURNING *`,
+      [input.cardToken, input.shippedAt, input.trackingNumber, input.shippingMethod],
     );
     return rows[0] ? toRecord(rows[0]) : null;
   },

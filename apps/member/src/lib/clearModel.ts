@@ -1153,6 +1153,17 @@ export interface CardControl {
  * so carrying their PAN into the component that draws them would be carrying something it must not
  * render — the honest reading of a wallet, and one less thing on screen in a coffee shop.
  */
+/**
+ * Where a posted card has got to.
+ *
+ * A shipment rather than a checklist: ordered and live are the card's own state at the issuer,
+ * posted is the one event it reports, and there is no delivered — a carrier knows that and the
+ * issuer does not, which is why activation asks for the last four instead of assuming.
+ *
+ * A virtual card is 'live' from the moment it exists and never holds any of the others.
+ */
+export type CardStage = 'ordered' | 'posted' | 'live';
+
 export interface CardSummary {
   id: string;
   variant: 'physical' | 'virtual';
@@ -1160,6 +1171,15 @@ export interface CardSummary {
   frozen: boolean;
   /** Where this card lives, e.g. "In your wallet", "Apple Pay, online". */
   where: string;
+  /** Live unless it is a physical card still on its way. */
+  stage?: CardStage;
+  /** The dates the rail shows. Each one is a thing that happened, not a plan. */
+  orderedAt?: string;
+  postedAt?: string;
+  /** What the post gave us to follow it with, when the method has tracking at all. */
+  tracking?: string;
+  /** What a member is told to expect, which is an estimate and says so. */
+  arrivesAbout?: string;
 }
 
 /** The co-op's daily ceiling on any one card — what Max means in Adjust limits. */

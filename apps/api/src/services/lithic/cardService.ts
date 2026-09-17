@@ -35,6 +35,14 @@ export interface CardView {
   spendLimitDuration: string | null;
   /** True when the member has frozen it — the state the card UI toggles. */
   frozen: boolean;
+  /*
+   * Where a posted card has got to. Ordered and activated are the card's own state; posted is the
+   * one event Lithic sends, and delivery is nobody's fact — a carrier knows and the issuer does
+   * not, so the screen asks the member for the last four instead of claiming it.
+   */
+  shippedAt: string | null;
+  trackingNumber: string | null;
+  shippingMethod: string | null;
   createdAt: string;
 }
 
@@ -48,6 +56,9 @@ function toView(record: CardRecord): CardView {
     spendLimitCents: record.spendLimitCents,
     spendLimitDuration: record.spendLimitDuration,
     frozen: record.state === PAUSED,
+    shippedAt: record.shippedAt,
+    trackingNumber: record.trackingNumber,
+    shippingMethod: record.shippingMethod,
     createdAt: record.createdAt,
   };
 }
@@ -76,6 +87,10 @@ function viewFromCreated(created: {
     spendLimitCents: created.spend_limit ?? 0,
     spendLimitDuration: created.spend_limit_duration ?? null,
     frozen: created.state === PAUSED,
+    // A card made a moment ago has not been posted, whatever the record says later.
+    shippedAt: null,
+    trackingNumber: null,
+    shippingMethod: null,
     createdAt: new Date().toISOString(),
   };
 }
@@ -215,6 +230,56 @@ export async function listCards(wallet: string): Promise<CardView[]> {
  * is still frozen at the network, which is the direction to be wrong in — a member who froze a card
  * they think is compromised needs it dead at the network, not consistent in our database.
  */
+export const PENDING_ACTIVATION = 'PENDING_ACTIVATION';
+export const PENDING_FULFILLMENT = 'PENDING_FULFILLMENT';
+
+/**
+ * Activating the card that came in the post.
+ *
+ * The last four is checked here as well as on the screen, because a check that only exists in the
+ * browser is not a check: it says the member is holding the card we posted rather than reading a
+ * number off a page. It is the only proof of delivery anyone has — Lithic reports posting and no
+ * carrier tells it what happened next.
+ *
+ * A virtual card is live from the moment it exists and has nothing to activate, so this refuses one
+ * rather than quietly succeeding.
+ */
+export async function activateCard(cardToken: string, lastFour: string): Promise<CardView | null> {
+  const lithic = getLithic();
+  if (!lithic) throw new Error('Lithic not configured');
+
+  const existing = await cardStore.get(cardToken);
+  if (!existing) return null;
+  if (existing.type !== 'PHYSICAL') throw new Error('Only a physical card is activated');
+  if (existing.state === OPEN) return toView(existing);
+  if (existing.lastFour && existing.lastFour !== lastFour) {
+    throw new Error('Those are not the last four digits on your card');
+  }
+
+  const updated = await lithic.cards.update(cardToken, { state: OPEN });
+  const record = await cardStore.upsert({
+    cardToken,
+    wallet: existing.wallet,
+    accountToken: existing.accountToken,
+    type: existing.type,
+    state: updated.state,
+    lastFour: existing.lastFour,
+    memo: existing.memo,
+    spendLimitCents: existing.spendLimitCents,
+    spendLimitDuration: existing.spendLimitDuration,
+  });
+
+  // A card that can be used needs a snapshot the auth stream can read, for the same reason a new
+  // one does: without it the first purchase declines.
+  try {
+    await refreshSnapshot(existing.wallet, cardToken);
+  } catch (error) {
+    console.warn('[lithic/cards] snapshot refresh after activation failed', error);
+  }
+
+  return record ? toView(record) : null;
+}
+
 export async function setFrozen(cardToken: string, frozen: boolean): Promise<CardView | null> {
   const lithic = getLithic();
   if (!lithic) throw new Error('Lithic not configured');
@@ -344,6 +409,8 @@ export async function getCardEmbedUrl(
  */
 export async function createCardEmbedSession(
   cardToken: string,
+  /** CARD_EMBED shows the numbers; PIN_SETTING_EMBED is the issuer's own PIN field. */
+  type: 'CARD_EMBED' | 'PIN_SETTING_EMBED' = 'CARD_EMBED',
   expirationSeconds = 600,
 ): Promise<{ session: string; environment: LithicEnvironment }> {
   const targetOrigin = (process.env.APP_ORIGIN || process.env.FRONTEND_URL || '').trim();
@@ -354,7 +421,7 @@ export async function createCardEmbedSession(
     {
       method: 'POST',
       body: {
-        type: 'CARD_EMBED',
+        type,
         target_origin: targetOrigin.replace(/\/$/, ''),
         expiration: Math.floor(Date.now() / 1000) + expirationSeconds,
       },
@@ -371,4 +438,5 @@ export const cardService = {
   setSpendLimit,
   getCardEmbedUrl,
   createCardEmbedSession,
+  activateCard,
 };

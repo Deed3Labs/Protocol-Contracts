@@ -2035,6 +2035,10 @@ export interface MemberCard {
   spendLimitCents: number;
   spendLimitDuration: string | null;
   frozen: boolean;
+  /** The post, from the issuer's shipped event. Null until it leaves, and always null for virtual. */
+  shippedAt: string | null;
+  trackingNumber: string | null;
+  shippingMethod: string | null;
   createdAt: string;
 }
 
@@ -2150,6 +2154,22 @@ export async function orderPhysicalCard(
   return { value: r.data?.card ?? null };
 }
 
+/**
+ * Activate the card that came in the post.
+ *
+ * The digits are checked against the card we posted, on the server as well as the screen: a check
+ * that only exists in the browser is not one, and this is the only evidence anybody has that the
+ * member is holding it.
+ */
+export async function activateCard(token: string, lastFour: string): Promise<CardResult<MemberCard>> {
+  const r = await apiRequest<{ card: MemberCard }>(
+    `/api/lithic/cards/${encodeURIComponent(token)}/activate`,
+    { method: 'POST', body: JSON.stringify({ lastFour }) },
+  );
+  if (r.error) return cardFailure(r.error);
+  return { value: r.data?.card ?? null };
+}
+
 /** Freeze or unfreeze. Reports why it failed — a toggle that springs back explains nothing. */
 export async function setCardFrozen(token: string, frozen: boolean): Promise<CardResult<MemberCard>> {
   const r = await apiRequest<{ card: MemberCard }>(
@@ -2181,9 +2201,11 @@ export async function setCardSpendLimit(
 /** A session for the modern embedded card UI: the SDK exchanges it for the card's own frames. */
 export async function getCardEmbedSession(
   token: string,
+  /** 'pin' asks for the issuer's PIN field instead of the card's numbers. */
+  kind: 'card' | 'pin' = 'card',
 ): Promise<{ session: string; environment: 'sandbox' | 'production' } | null> {
   const r = await apiRequest<{ session: string; environment: 'sandbox' | 'production' }>(
-    `/api/lithic/cards/${encodeURIComponent(token)}/embed-session`,
+    `/api/lithic/cards/${encodeURIComponent(token)}/embed-session${kind === 'pin' ? '?type=pin' : ''}`,
   );
   return r.error || !r.data?.session ? null : r.data;
 }

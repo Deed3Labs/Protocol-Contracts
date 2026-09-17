@@ -1,6 +1,7 @@
 import express, { type Request, type Response } from 'express';
 import { Webhook } from 'standardwebhooks';
 import { lithicStore } from '../services/lithic/lithicStore.js';
+import { cardStore } from '../services/lithic/cardStore.js';
 import { recordDeposit } from '../services/deposits/depositReceiptService.js';
 import { handleReturn } from '../services/lithic/achOriginationService.js';
 
@@ -64,6 +65,26 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
     const event = (req.body ?? {}) as LithicEvent;
     const eventType = String(event.event_type ?? '');
     const payload = (event.payload ?? event) as Record<string, unknown>;
+
+    /*
+     * The post, which a card's own state cannot tell us.
+     *
+     * PENDING_ACTIVATION means it went to card production, not that it left the building, and there
+     * is no delivery event at all. This is the one moment Lithic reports, and it carries the date
+     * and the tracking number the member is shown.
+     */
+    if (eventType === 'card.shipped') {
+      const cardToken = String(payload.card_token ?? '');
+      if (cardToken) {
+        await cardStore.recordShipped({
+          cardToken,
+          shippedAt: new Date().toISOString(),
+          trackingNumber: (payload.tracking_number as string | null) ?? null,
+          shippingMethod: (payload.shipping_method as string | null) ?? null,
+        });
+      }
+      return res.json({ received: true });
+    }
 
     if (eventType.startsWith('payment_transaction')) {
       const direction = String(payload.direction ?? payload.category ?? '').toUpperCase();

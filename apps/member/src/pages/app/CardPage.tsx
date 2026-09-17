@@ -8,7 +8,9 @@ import CardFace from '@/components/clear/card/CardFace';
 import CardStack from '@/components/clear/card/CardStack';
 import NewCardDialog, { type CardKind, type NewCardResult } from '@/components/clear/card/NewCardDialog';
 import SpendsFrom from '@/components/clear/card/SpendsFrom';
-import ActivateCard from '@/components/clear/card/ActivateCard';
+import PhysicalCardState from '@/components/clear/card/PhysicalCardState';
+import NoPhysicalCard from '@/components/clear/card/NoPhysicalCard';
+import SetPinDialog from '@/components/clear/card/SetPinDialog';
 import AdjustLimitsDialog from '@/components/clear/card/AdjustLimitsDialog';
 import ReplaceCardDialog from '@/components/clear/card/ReplaceCardDialog';
 import CardControlsCard from '@/components/clear/CardControlsCard';
@@ -49,6 +51,11 @@ export default function CardPage({
   busy = false,
   notice = null,
   onAddCard,
+  onActivateCard,
+  activateError = null,
+  onSetPin,
+  pinSession,
+  onTrack,
   newCard = null,
   onNewCardDone,
   addError = null,
@@ -64,6 +71,14 @@ export default function CardPage({
   notice?: string | null;
   /** Makes the card. The sheet asks which kind and what to call it; the container issues it. */
   onAddCard?: (kind: CardKind, label: string) => void;
+  /** Activating the card that came in the post; the digits are checked against it. */
+  onActivateCard?: (cardId: string, lastFour: string) => void;
+  activateError?: string | null;
+  /** Opens the issuer's PIN field. Absent where there is no session to open it with. */
+  onSetPin?: (cardId: string) => void;
+  pinSession?: { session: string; environment: 'sandbox' | 'production' };
+  /** Follows the shipment, where the post gave us something to follow. */
+  onTrack?: (tracking: string) => void;
   /** The card that was just made, which turns the sheet into its last step. */
   newCard?: NewCardResult | null;
   /** Cleared when the sheet closes, so the next New card starts at the first step. */
@@ -100,24 +115,55 @@ export default function CardPage({
   const [limitsOpen, setLimitsOpen] = useState(false);
   const [replaceOpen, setReplaceOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  /*
+   * Which kind the chooser is on.
+   *
+   * It follows the selected card, but it is not the same thing: a member with no physical card can
+   * still choose Physical, and what they get is the state that says they could order one — rather
+   * than a chooser that quietly hides the half of the product they do not have yet.
+   */
+  const [chosenKind, setChosenKind] = useState<'physical' | 'virtual'>(wallet[0].variant);
   const [limits, setLimits] = useState({ perTransaction: data.perTransactionLimit, perDay: data.perDayLimit });
   const [sort, setSort] = useState<Sort>('newest');
   const [selected, setSelected] = useState<ActivityRow | null>(null);
 
   useSetMobileAction({ label: 'Pay', icon: PlusIcon, onSelect: () => navigate('/scan') });
 
+  /*
+   * A card still on its way is a state of that card, not of the page.
+   *
+   * The controls, the limits and the transactions all belong to a card that can be spent on, so a
+   * physical card that has been ordered or posted takes the whole screen until it is live. Day one
+   * — nothing at all — is the other end of the same idea: there is nothing to control yet.
+   */
   if (!data.activated) {
+    return <NoPhysicalCard dayOne busy={busy} notice={notice} onOrder={onActivate} />;
+  }
+
+  if (active.stage && active.stage !== 'live') {
     return (
-      <ActivateCard
+      <PhysicalCardState
+        stage={active.stage}
         cardholder={data.cardholder}
         expiry={data.expiry}
         network={data.network}
+        last4={active.last4}
+        orderedAt={active.orderedAt}
+        postedAt={active.postedAt}
+        arrivesAbout={active.arrivesAbout}
+        tracking={active.tracking}
         busy={busy}
         notice={notice}
-        onActivate={onActivate}
+        error={activateError}
+        onActivate={(lastFour) => onActivateCard?.(active.id, lastFour)}
+        onSetPin={onSetPin ? () => setPinOpen(true) : undefined}
+        onTrack={onTrack ? () => onTrack(active.tracking ?? '') : undefined}
       />
     );
   }
+
+
 
   const variantLabel = active.variant === 'virtual' ? 'Virtual' : 'Physical';
   const creditLimit = (data.tiers ?? []).filter((t) => t.added).reduce((sum, t) => sum + t.limit, 0);
@@ -182,8 +228,8 @@ export default function CardPage({
    * so swiping ran through both kinds and the chip stopped describing what was in front of you. It
    * filters now: the stack holds the kind you picked, and the marker counts that kind.
    */
-  const variants = (['physical', 'virtual'] as const).filter((v) => wallet.some((c) => c.variant === v));
-  const kind = wallet.filter((c) => c.variant === active.variant);
+  const variants = ['physical', 'virtual'] as const;
+  const kind = wallet.filter((c) => c.variant === chosenKind);
   /*
    * The stack, read from the card you are on: the selected one in front, then the rest of its kind
    * in order after it, wrapping round. One behind is the whole depth — the marker underneath is
@@ -205,10 +251,18 @@ export default function CardPage({
         <div className="c-cardsel">
           <div className="c-qc c-split">
             {variants.map((variant) => {
-              const card = wallet.find((c) => c.variant === variant)!;
-              const on = active.variant === variant;
+              const first = wallet.find((c) => c.variant === variant);
+              const on = chosenKind === variant;
               return (
-                <Btn key={variant} className={cn('c-chip-q', on && 'c-on')} aria-pressed={on} onClick={() => setActiveId(card.id)}>
+                <Btn
+                  key={variant}
+                  className={cn('c-chip-q', on && 'c-on')}
+                  aria-pressed={on}
+                  onClick={() => {
+                    setChosenKind(variant);
+                    if (first) setActiveId(first.id);
+                  }}
+                >
                   {variant === 'physical' ? 'Physical' : 'Virtual'}
                 </Btn>
               );
@@ -222,6 +276,22 @@ export default function CardPage({
         </div>
       </CBar>
       <CMain>
+        {kind.length === 0 ? (
+          // Picking a kind you do not hold is how a member finds out they could: a state, not an
+          // empty stack, and it says what the plastic would add over what they already have.
+          <>
+            <p className="text-sec">No physical card</p>
+            <p className="c-det mt-[3px]">
+              Your virtual cards already spend from the same limit. A physical one adds tap, chip and
+              ATMs, and is posted to the address on your account.
+            </p>
+            {onAddCard && (
+              <Btn className="mt-s2" disabled={busy} onClick={() => setAddOpen(true)}>
+                Order a card
+              </Btn>
+            )}
+          </>
+        ) : (
         <CardStack
           count={kind.length}
           index={kind.indexOf(active)}
@@ -240,6 +310,7 @@ export default function CardPage({
             />
           ))}
         </CardStack>
+        )}
         {notice && (
           <p role="status" className="c-det mt-s2">
             {notice}
@@ -402,6 +473,14 @@ export default function CardPage({
         }}
       />
       <ReplaceCardDialog open={replaceOpen} onOpenChange={setReplaceOpen} onReplace={() => setReplaceOpen(false)} />
+      <SetPinDialog
+        open={pinOpen}
+        onOpenChange={(o) => {
+          setPinOpen(o);
+          if (o) onSetPin?.(active.id);
+        }}
+        session={pinSession}
+      />
       <NewCardDialog
         open={addOpen}
         onOpenChange={(o) => {
