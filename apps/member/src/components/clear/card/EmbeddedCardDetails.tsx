@@ -51,9 +51,23 @@ export default function EmbeddedCardDetails({
   }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * Held in a ref, not listed as a dependency.
+   *
+   * The dialog passed `() => setMountFailed(true)`, a new function on every render, and it sat in
+   * the mount effect's dependencies. So pressing Show set `busy`, the dialog re-rendered, and every
+   * frame was torn down and remounted — masked — underneath the toggle that had just unmasked it.
+   * Again when `busy` cleared, again when `shown` flipped. The button worked; the frames it worked
+   * on kept being replaced. A mount that belongs to a session must not depend on a caller's
+   * callback identity.
+   */
+  const failed = useRef(onFailed);
+  failed.current = onFailed;
 
   useEffect(() => {
     let live = true;
+    // Fresh frames are masked, whatever the button last said.
+    setShown(false);
     /*
      * The type the digits arrive in, said explicitly.
      *
@@ -93,7 +107,7 @@ export default function EmbeddedCardDetails({
       } catch {
         // A frame that never rendered is not something a member can act on, so the sheet falls
         // back to the issuer's own page rather than showing them an empty row.
-        if (live) onFailed();
+        if (live) failed.current();
       }
     })();
 
@@ -102,7 +116,7 @@ export default function EmbeddedCardDetails({
       void card.unmount().catch(() => {});
       embed.current = null;
     };
-  }, [session, environment, onFailed, ground]);
+  }, [session, environment, ground]);
 
   const toggle = async () => {
     if (!embed.current) return;
@@ -127,13 +141,21 @@ export default function EmbeddedCardDetails({
    * A row is a label and a value, and the value is a frame the size of its own line. The type is
    * set here rather than inside: the SDK copies the mount target's computed styles into the frame,
    * so what the row is dressed in is what the digits arrive in.
+   *
+   * `color-scheme: light` on the frame is what makes it see-through, and nothing sent INTO the
+   * frame can do it. Chrome paints an opaque canvas behind any iframe whose element's colour scheme
+   * differs from the document it holds — and the page root says `dark` on the dark ground, while
+   * Lithic's document is light. So `background-color: transparent` reached the frame, the ink
+   * reached the frame, and a white canvas still sat underneath both: light digits on white.
+   * Matching the element to the document it contains is the whole fix. Reproduced side by side
+   * before shipping, because the first attempt at this was shipped without being looked at on dark.
    */
   const row = (label: string, children: React.ReactNode) => (
     <div>
       <p className="c-label">{label}</p>
       {/* The frame fills the line it is given and cannot exceed it: a value sized by somebody
           else's stylesheet must not be able to land on the row underneath. */}
-      <div className="c-mono mt-[4px] text-sec! leading-[22px] text-ink [&_iframe]:block [&_iframe]:h-full [&_iframe]:w-full [&_iframe]:border-0">
+      <div className="c-mono mt-[4px] text-sec! leading-[22px] text-ink [&_iframe]:block [&_iframe]:h-full [&_iframe]:w-full [&_iframe]:border-0 [&_iframe]:[color-scheme:light]">
         {children}
       </div>
     </div>

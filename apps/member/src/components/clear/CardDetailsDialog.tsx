@@ -96,7 +96,7 @@ export default function CardDetailsDialog({
           onControls={setReveal}
         />
       ) : embedUrl ? (
-        <iframe title="Card details" src={embedUrl} className="block h-[180px] w-full border-0" />
+        <iframe title="Card details" src={embedUrl} className="block h-[180px] w-full border-0 [color-scheme:light]" />
       ) : pan ? (
         <Rows>
           {field('Card number', pan)}
