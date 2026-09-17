@@ -347,15 +347,24 @@ The credit **limit** mixes on-chain collateral with off-chain data, and card aut
 **The chain is authoritative for what is owed. An off-chain snapshot is authoritative for what can be spent right now.**
 
 - `available_by_tier` snapshot per member, precomputed, decremented **at approval**. That is what prevents double-spend, not the chain.
-- The chain lags the swipe by seconds. Acceptable.
+- The chain lags the swipe by **days, not seconds** — see the settlement timing below. That is acceptable *because* the hold is shown off-chain from the instant of approval; it was not acceptable before that existed.
 - Income-tier collateral and Boost underwriting exist only off-chain; they enter the chain as **attestations from a trusted signer**, not as raw data.
 - The snapshot is a cache and must be rebuildable from chain state plus attestations at any time.
 
 **Swipe → settlement:**
 1. Lithic ASA asks. Service reads snapshot, decrements, approves. Milliseconds.
-2. Lithic settles the merchant from the co-op fiat float.
-3. Async: transaction issues StableCredit on-chain, tagged with the funding tier.
-4. Reconciliation confirms snapshot, chain and float agree.
+2. The draw is a **hold**: recorded off-chain, shown to the member immediately as drawn, and reported per tier on `/api/credit` as `pendingCardDraws`. Nothing is written on-chain, because an authorization can still be voided or clear for a different figure.
+3. Lithic settles the merchant from the co-op fiat float at network clearing — **T+1 to T+3**, not instantly.
+4. On the `card_transaction` reaching `SETTLED`: the draw is final, and **StableCredit is issued on-chain**, tagged with the funding tier. **Carry accrues from here**, not from the swipe.
+5. Reconciliation confirms snapshot, chain and float agree.
+
+**Why issuance waits for clearing.** The amount is not final at authorization — a tip is added after the swipe, a fuel pump authorizes a round number and clears the real one, and a void makes the whole thing never have happened. Writing at authorization would mean a correction write for a meaningful share of transactions and a reversal for every void, each costing gas and leaving an on-chain history of things that did not occur. Writing once, at clearing, is one write for one fact.
+
+**Two money movements, often confused.**
+- **Float → merchant** happens per transaction, inside Lithic, at clearing. This is what debits the float.
+- **Treasury → float** is periodic and rare: an off-ramp from the multisig and pools, triggered by the float-adequacy metric below rather than by any individual swipe. No transfer happens per transaction.
+
+**The float is only needed for network spend.** A purchase at a *partner* merchant is the three-party mint of §1 and is capital-free. A swipe at any other Visa merchant is settled in fiat by Lithic to a merchant who holds no StableCredit balance, so real money must be in the issuing account at clearing. One card, two mechanisms.
 
 Repayment runs backward: deposit lands → negative settles → StableCredit burns → float replenishes.
 
