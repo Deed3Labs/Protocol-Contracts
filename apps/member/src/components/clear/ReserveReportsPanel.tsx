@@ -1,4 +1,4 @@
-import { CFoot, CHead, CMain, Cell, Line, Rows, SecHead } from './brand/anatomy';
+import { Btn, CFoot, CHead, CMain, Cell, Chip, Line, Rows, SecHead } from './brand/anatomy';
 import type { ReserveReports } from '@/lib/clearModel';
 
 /**
@@ -43,9 +43,9 @@ export default function ReserveReportsPanel({
         <CFoot>
           <Line className="items-center!">
             <span className="c-det">{reports.cadence}</span>
-            <button type="button" className="c-det hover:text-ink" onClick={onSubscribe}>
-              Get them by email
-            </button>
+            {/* A footer action is a button, not a text link — the same pair rule as every other
+                footer that offers something. */}
+            <Btn onClick={onSubscribe}>Get them by email</Btn>
           </Line>
         </CFoot>
       </Cell>
@@ -53,7 +53,8 @@ export default function ReserveReportsPanel({
       <Cell>
         <CHead>
           <SecHead label="What these are">
-            <span className="c-det">Not audited</span>
+            {/* The one header on these panes that earns a chip: it is a caveat, not a caption. */}
+            <Chip tone="underway">Not audited</Chip>
           </SecHead>
         </CHead>
         <CMain>
@@ -62,6 +63,9 @@ export default function ReserveReportsPanel({
               the money is the last thing to invent. */}
           <p className="c-keyline">{reports.reviewedBy}</p>
         </CMain>
+        <CFoot>
+          <p className="c-det">{reports.auditNote}</p>
+        </CFoot>
       </Cell>
     </>
   );

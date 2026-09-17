@@ -585,6 +585,13 @@ export interface ReserveReports {
    * letting a member assume otherwise and find out later.
    */
   reviewedBy: string;
+  /**
+   * Why that is not a failing. Sits in the cell's footer, commenting on the caveat above it.
+   *
+   * Left out at first, which made the reviewed-not-audited line read as an apology rather than a
+   * fact about co-ops of this size.
+   */
+  auditNote: string;
 }
 
 /** What happens after a claim is sent, in order. */

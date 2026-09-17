@@ -92,11 +92,13 @@ export default function ClaimGuidePanel({
               </div>
             )}
           </Rows>
-          <p className="c-keyline">
+        </CMain>
+        <CFoot>
+          <p className="c-det">
             A protection you have not unlocked cannot be claimed on, even for something that happened
             after you joined.
           </p>
-        </CMain>
+        </CFoot>
       </Cell>
 
       <Cell>
@@ -144,11 +146,13 @@ export default function ClaimGuidePanel({
             {stat('Claims declined', record.declinedOf)}
             {stat('Effect on your credits', record.creditsEffect)}
           </Rows>
-          <p className="c-det mt-s2">
+        </CMain>
+        <CFoot>
+          <p className="c-det">
             One in four is declined. We publish that because a reserve that never says no is not
             being managed.
           </p>
-        </CMain>
+        </CFoot>
       </Cell>
     </>
   );

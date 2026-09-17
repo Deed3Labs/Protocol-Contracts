@@ -132,12 +132,16 @@ export default function ReservePanel({
             )}
             {row('Covered', `Against a policy floor of ${reserve.policyFloorPct}%`, `${reserve.coveredPct}%`)}
           </Rows>
-          <p className="c-det mt-s2">
+        </CMain>
+        {/* The closing note is a footer, like every closing note in the guide — it comments on the
+            cell above it rather than being another row inside it. */}
+        <CFoot>
+          <p className="c-det">
             No reserve covers everyone claiming at once, and one that did would be money sitting idle
             instead of buying homes. The floor is what the co-op commits to hold; the board has to act
             if it is breached.
           </p>
-        </CMain>
+        </CFoot>
       </Cell>
     </>
   );
