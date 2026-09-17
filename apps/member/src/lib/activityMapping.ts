@@ -1,4 +1,6 @@
 import type { ActivityItem } from '@/hooks/useClearTransactions';
+import type { CardTransaction } from '@/utils/apiClient';
+import { categoryForMcc } from './mccCategory';
 import type { ActivityRow, ActivityKind, ActivitySource } from '@/lib/clearModel';
 
 /**
@@ -38,6 +40,45 @@ export function toActivityRow(item: ActivityItem): ActivityRow {
       hour: 'numeric',
       minute: '2-digit',
     }),
+  };
+}
+
+/**
+ * A card purchase as an activity row — the same mapping the Card page uses.
+ *
+ * Card spending reached the Activity page's totals, its category bar and its merchant list, and
+ * never its actual list of rows: `rows` was built from on-chain items alone. So a member saw $200
+ * spent this cycle and no purchase anywhere underneath it, which reads as the page having lost
+ * something. It had.
+ *
+ * Unlike the chain mapping above, the funding here is not a guess: a card authorization carries its
+ * draws, and the waterfall already decided which tiers paid. That is why this is the one path
+ * allowed to say `credit`.
+ */
+export function cardTransactionRow(tx: CardTransaction, cardLast4?: string): ActivityRow {
+  const credited = tx.draws.filter((draw) => draw.source !== 'cash');
+  const at = new Date(tx.at);
+  return {
+    id: tx.id,
+    name: tx.name,
+    date: at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+    datetime: at.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }),
+    source: credited.length === 0 ? 'cash' : 'credit',
+    kind: 'spending',
+    // What the merchant asked for. A reversed charge keeps its figure and is marked instead, so the
+    // member can reconcile it against what they remember; totals count `heldCents`.
+    amount: -tx.amountCents / 100,
+    reversed: tx.reversed ?? false,
+    category: categoryForMcc(tx.mcc),
+    location: [tx.city, tx.state].filter(Boolean).join(', ') || undefined,
+    paidFromLabel: credited.length === 0 ? 'Cash' : 'Credit',
+    cardLast4,
   };
 }
 

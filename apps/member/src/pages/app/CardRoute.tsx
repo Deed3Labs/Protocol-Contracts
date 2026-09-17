@@ -5,7 +5,7 @@ import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
 import { createCard, orderPhysicalCard, activateCard, getCards, setCardFrozen, getCredit, getCardTransactions, getCardEmbedUrl, getCardEmbedSession, getBankIdentity, type BankIdentity, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
-import { categoryForMcc } from '@/lib/mccCategory';
+import { cardTransactionRow } from '@/lib/activityMapping';
 import type { ActivityRow, CardStage } from '@/lib/clearModel';
 import { onChainStale } from '@/lib/chainStale';
 import { toCreditTiers, toLimitBacking } from '@/lib/creditMapping';
@@ -355,34 +355,14 @@ export default function CardRoute() {
    * purchase is the tier that paid it rather than a guess: one draw means one tier, several means
    * it crossed from cash into credit and the credit half is what a member needs to see.
    */
-  const cardRows: ActivityRow[] = (spend ?? []).map((tx) => {
-    const credited = tx.draws.filter((draw) => draw.source !== 'cash');
-    return {
-      id: tx.id,
-      name: tx.name,
-      date: new Date(tx.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      datetime: new Date(tx.at).toLocaleString(undefined, {
-        month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
-      }),
-      // The source IS the funding, which is what the row's chip reads — cash or the credit it
-      // crossed into. Not 'card': every row on this page came from a card, so it would say nothing.
-      source: credited.length === 0 ? 'cash' : 'credit',
-      kind: 'spending',
-      /*
-       * What the merchant asked for, even once it has been given back.
-       *
-       * A voided charge keeps its figure and carries `reversed` instead, because a row that quietly
-       * rewrites itself to nothing is one a member cannot reconcile against what they remember. The
-       * month's total counts what is still held, below, so the two do not contradict each other.
-       */
-      amount: -tx.amountCents / 100,
-      reversed: tx.reversed ?? false,
-      category: categoryForMcc(tx.mcc),
-      location: [tx.city, tx.state].filter(Boolean).join(', ') || undefined,
-      paidFromLabel: credited.length === 0 ? 'Cash' : 'Credit',
-      cardLast4: card?.lastFour ?? undefined,
-    };
-  });
+  /*
+   * The same mapper the Activity page uses, so one purchase cannot read as two different things
+   * depending on which page you opened. The funding chip, the reversed mark and the category all
+   * live in `cardTransactionRow` now.
+   */
+  const cardRows: ActivityRow[] = (spend ?? []).map((tx) =>
+    cardTransactionRow(tx, card?.lastFour ?? undefined),
+  );
 
   // Until the first load returns, show the placeholder rather than an un-activated card: flashing
   // "Activate card" at someone who already has one reads as their card having vanished.

@@ -12,6 +12,12 @@ const read = (p: string) => strip(readFileSync(join(import.meta.dirname, '..', p
 describe('the month bar is made of real categories', () => {
   const route = read('pages/app/CardRoute.tsx');
   const page = read('pages/app/CardPage.tsx');
+  /*
+   * The card-row mapping moved here so the Card page and the Activity page build a purchase the
+   * same way. One purchase reading as two different things depending on which page you opened is
+   * the drift this shares a mapper to prevent.
+   */
+  const mapping = read('lib/activityMapping.ts');
   const service = strip(
     readFileSync(
       join(import.meta.dirname, '..', '..', '..', 'api', 'src', 'services', 'lithic', 'cardTransactionsService.ts'),
@@ -33,7 +39,7 @@ describe('the month bar is made of real categories', () => {
 
   test('the category comes from the MCC the network sent', () => {
     expect(service).toContain('merchant.mcc');
-    expect(route).toContain('categoryForMcc(tx.mcc)');
+    expect(mapping).toContain('categoryForMcc(tx.mcc)');
   });
 
   test('a merchant number is never shown as a name', () => {
@@ -43,7 +49,7 @@ describe('the month bar is made of real categories', () => {
   });
 
   test('the source chip is the tier that actually paid', () => {
-    expect(route).toContain("credited.length === 0 ? 'cash' : 'credit'");
+    expect(mapping).toContain("credited.length === 0 ? 'cash' : 'credit'");
   });
 
   /*
@@ -58,7 +64,7 @@ describe('the month bar is made of real categories', () => {
 
   test('a reversed charge is marked on the row rather than dropped from it', () => {
     expect(service).toContain('reversed: heldCents === 0 && amountCents > 0');
-    expect(route).toContain('reversed: tx.reversed');
+    expect(mapping).toContain('reversed: tx.reversed');
   });
 
   // The category bar went with the brand-guide rebuild: the reference has none. When it returns it must
@@ -82,5 +88,43 @@ describe('the network mark is swappable', () => {
 
   test('an unknown network renders nothing rather than the wrong mark', () => {
     expect(face).toContain('if (!mark) return null;');
+  });
+});
+
+/*
+ * Card spending reached the Activity page's cycle total, its category bar and its merchant list, and
+ * never its list of rows — those were built from on-chain items alone. A member saw $200 spent this
+ * cycle with no purchase anywhere underneath it, which reads as the page having lost something.
+ */
+describe('a card purchase appears on the Activity page too', () => {
+  const activity = read('pages/app/ActivityRoute.tsx');
+  const mapping = read('lib/activityMapping.ts');
+  const card = read('pages/app/CardRoute.tsx');
+
+  test('card transactions become rows, not just totals', () => {
+    expect(activity).toContain('cardTransactionRow(tx)');
+    expect(activity).not.toMatch(/rows: items\.map\(toActivityRow\),/);
+  });
+
+  test('the two sources are interleaved by time, newest first', () => {
+    // `date` is a display string, so two rows on the same day have no order in it. Sort on the
+    // timestamps the data actually carries.
+    expect(activity).toContain('Date.parse(tx.at)');
+    expect(activity).toMatch(/\.sort\(\(a, b\) => b\.ts - a\.ts\)/);
+  });
+
+  test('both pages build a purchase with the same mapper', () => {
+    // One purchase reading as two different things depending on which page you opened is the drift
+    // a shared mapper exists to prevent.
+    expect(card).toContain('cardTransactionRow(tx,');
+    expect(mapping).toContain('export function cardTransactionRow');
+  });
+
+  test('the funding tag is not a guess on this path', () => {
+    /*
+     * The chain mapping deliberately never says `credit` — which tier funded a transfer is not
+     * knowable from the transfer. A card authorization carries its draws, so this path can.
+     */
+    expect(mapping).toMatch(/cardTransactionRow[\s\S]{0,900}'cash' : 'credit'/);
   });
 });
