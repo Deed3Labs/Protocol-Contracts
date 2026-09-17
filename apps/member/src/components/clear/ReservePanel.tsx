@@ -103,7 +103,8 @@ export default function ReservePanel({
         </CFoot>
       </Cell>
 
-      <Cell>
+      {/* The answer runs under both columns: it is about the two figures above it. */}
+      <Cell full>
         <CHead>
           <SecHead label="Is it enough?">
             <span className="c-det">Cover ratio</span>

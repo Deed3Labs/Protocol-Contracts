@@ -130,7 +130,8 @@ export default function ClaimGuidePanel({
         </CFoot>
       </Cell>
 
-      <Cell>
+      {/* The published record runs under both columns — it is the page's evidence, not a side note. */}
+      <Cell full>
         <CHead>
           <SecHead label="The record">
             <span className="c-det">This year</span>

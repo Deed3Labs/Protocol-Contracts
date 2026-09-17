@@ -5,6 +5,7 @@ import StartClaimDialog from '@/components/clear/StartClaimDialog';
 import { BackIcon } from '@/components/clear/brand/icons';
 import { CLAIM_RECORD, CLAIM_STEPS, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import type { SavingsData } from '@/lib/clearModel';
+import { useIsDesktop } from '@/lib/useIsDesktop';
 
 /**
  * How to make a claim — and, from its one button, the claim itself.
@@ -26,10 +27,11 @@ export default function ClaimPage({
   onFile?: (input: { protectionId: string; protectionName: string; detail: string }) => Promise<string | null>;
 }) {
   const navigate = useNavigate();
+  const desktop = useIsDesktop();
   const [claiming, setClaiming] = useState(false);
 
   return (
-    <div className="max-w-[560px]">
+    <div>
       <div className="c-paneback mb-s2! hidden lg:flex">
         <button type="button" aria-label="Back" onClick={() => navigate(-1)} className="c-mclose">
           <BackIcon />
@@ -39,7 +41,11 @@ export default function ClaimPage({
       <p className="c-det mb-s3">
         Claims are rare. This is what to do if you need one, and what happens after you send it.
       </p>
-      <div className="c-slab c-one">
+      {/*
+        * What you can claim on beside what happens next, with the record spanning under both. A
+        * member deciding whether to claim is holding those two against each other.
+        */}
+      <div className={desktop ? 'c-slab' : 'c-slab c-one'}>
         <ClaimGuidePanel
           items={data.assurance}
           credits={data.savings.credits}

@@ -93,3 +93,35 @@ describe('a claim reaches the server or says it did not', () => {
     expect(read('components/clear/ClaimGuidePanel.tsx')).toContain('isAssuranceActive');
   });
 });
+
+/*
+ * The reference builds three of the four panes as two-column slabs, with the cell that answers both
+ * columns spanning beneath. Built as one column they read as a single tall strip in a wide window —
+ * which is what the desktop screenshots showed.
+ */
+describe('the panes use the columns the reference gives them', () => {
+  const twoColumn = [
+    ['the reserve', 'pages/app/AssuranceReservePage.tsx'],
+    ['the reports', 'pages/app/ReserveReportsPage.tsx'],
+    ['the claim guide', 'pages/app/ClaimPage.tsx'],
+  ] as const;
+
+  for (const [name, file] of twoColumn) {
+    test(`${name} is two columns on desktop and one on a phone`, () => {
+      const page = read(file);
+      expect(page).toContain("desktop ? 'c-slab' : 'c-slab c-one'");
+      // A narrow column would defeat the point of having two of them.
+      expect(page).not.toContain('max-w-[560px]');
+    });
+  }
+
+  test('the protections pane stays one column, as the reference has it', () => {
+    // It holds a single cell; stretched across a wide window it would be one long row of nothing.
+    expect(read('pages/app/AssurancePage.tsx')).toContain('c-slab c-one');
+  });
+
+  test('the cells that answer both columns span them', () => {
+    expect(read('components/clear/ReservePanel.tsx')).toMatch(/<Cell full>[\s\S]{0,200}Is it enough\?/);
+    expect(read('components/clear/ClaimGuidePanel.tsx')).toMatch(/<Cell full>[\s\S]{0,200}The record/);
+  });
+});
