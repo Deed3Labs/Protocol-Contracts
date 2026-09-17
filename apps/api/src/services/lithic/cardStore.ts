@@ -191,6 +191,23 @@ export const cardStore = {
     return rows.map(toRecord);
   },
 
+  /**
+   * Every member who holds a card, for the scheduled snapshot refresh.
+   *
+   * Keyed off cards rather than snapshots on purpose: a card whose snapshot row was never written is
+   * exactly the one the refresh must reach, because the auth stream fails closed and would decline
+   * its first charge. Closed cards are left out — nothing can be authorized on them.
+   */
+  async walletsWithCards(): Promise<string[]> {
+    const pool = getPayPool();
+    if (!pool) return [];
+    await ensureTable();
+    const { rows } = await pool.query<{ wallet: string }>(
+      `SELECT DISTINCT wallet FROM ${TABLE} WHERE state <> 'CLOSED'`,
+    );
+    return rows.map((row) => row.wallet);
+  },
+
   /** Ownership check. Every card mutation goes through this before it touches Lithic. */
   async get(cardToken: string): Promise<CardRecord | null> {
     const pool = getPayPool();

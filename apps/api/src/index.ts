@@ -56,6 +56,7 @@ import { startSweepRunner } from './jobs/sweepRunner.js';
 import { startMemoryMonitor } from './jobs/memoryMonitor.js';
 import { startRelayerGasMonitor } from './jobs/relayerGas.js';
 import { startReconciler } from './jobs/reconciler.js';
+import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -350,6 +351,12 @@ async function startServer() {
 
     startReconciler().catch((error) => {
       console.error('Failed to start reconciler:', error);
+    });
+
+    // Collateral that changes on chain tells us nothing, so without this a snapshot keeps saying
+    // whatever was true when we last happened to write it — and the auth stream fails closed on it.
+    startSnapshotRefresher().catch((error) => {
+      console.error('Failed to start snapshot refresher:', error);
     });
 
     // Start HTTP server (Express + WebSocket)
