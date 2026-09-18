@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLoginWithEmail, useLoginWithOAuth, useLoginWithPasskey, useLoginWithSms } from '@privy-io/react-auth';
+import { rememberWantsFaceId } from '@/hooks/useFaceId';
 import { track } from '@/lib/analytics';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { forgetMember, rememberedMember } from '@/lib/rememberedMember';
@@ -159,9 +160,15 @@ export default function LoginRoute() {
   /**
    * The device itself, on the returning screen.
    *
-   * Passkeys have to be turned on for the Privy app before this can succeed, so a failure is not
-   * treated as a dead end: the screen keeps its code fallback right underneath, and the message
-   * points at it rather than explaining WebAuthn.
+   * A failure usually means no passkey was ever set up on this account — until now nothing in the
+   * app could create one. It cannot be created HERE: the member is not signed in, so there is no
+   * account to attach it to, and the only signed-out call that makes a passkey (`signupWithPasskey`)
+   * would create a second, empty account for somebody who already has one.
+   *
+   * So the failure becomes the start of setup rather than a dead end. We remember that they wanted
+   * Face ID, point them at the "Send me a code instead" button already underneath, and offer to turn it on the moment
+   * they are signed in. Browsers will not say whether a passkey exists before we ask, so the copy
+   * says "may not be set up" rather than claiming to know.
    */
   const signInWithPasskey = useCallback(async () => {
     setBusy(true);
@@ -169,7 +176,8 @@ export default function LoginRoute() {
     try {
       await passkey.loginWithPasskey();
     } catch {
-      setError('That did not work on this device. Send yourself a code instead.');
+      rememberWantsFaceId();
+      setError('Face ID may not be set up on this device yet. Send yourself a code and we will turn it on once you are in.');
     } finally {
       setBusy(false);
     }

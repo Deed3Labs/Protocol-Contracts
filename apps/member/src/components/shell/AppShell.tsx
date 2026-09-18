@@ -21,6 +21,7 @@ import { useNotifications } from '@/context/ClearNotificationsContext';
 import { destinationFor } from '@/lib/notificationsAdapter';
 import { SETTINGS } from '@/data/clearPlaceholder';
 import XMTPMessaging from '@/components/XMTPMessaging';
+import FaceIdOffer from './FaceIdOffer';
 
 /**
  * When a notification landed, the way the panel says it: a time today, "Yesterday", then days ago.
@@ -129,6 +130,7 @@ export default function AppShell() {
           </PullToRefresh>
         </AppChrome>
         <XmtpModalHost />
+        <FaceIdOffer />
       </MoneyActionsProvider>
       </CreditProvider>
       </IdentityProvider>
