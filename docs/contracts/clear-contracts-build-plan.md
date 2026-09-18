@@ -366,7 +366,16 @@ The credit **limit** mixes on-chain collateral with off-chain data, and card aut
 
 **The float is only needed for network spend.** A purchase at a *partner* merchant is the three-party mint of §1 and is capital-free. A swipe at any other Visa merchant is settled in fiat by Lithic to a merchant who holds no StableCredit balance, so real money must be in the issuing account at clearing. One card, two mechanisms.
 
-Repayment runs backward: deposit lands → negative settles → StableCredit burns → float replenishes.
+**Repayment ends up on chain whichever way it is paid.** A member who has repaid must not still owe it on chain. The rail decides how, not whether:
+
+| Member repays with | Off-chain | On-chain | Money movement |
+|---|---|---|---|
+| **Fiat** (ACH into the co-op account) | Deposit settles the ledger's credit accounts first | **`repayCardSpend`**: the float's claim is burned against the member's debt, tiers cleared dearest first — capital-free | None. The fiat refills the float directly, which is exactly the claim being satisfied. On-ramping it would move dollars on chain only to off-ramp them back. |
+| **USDC** (on chain) | Ledger synced from the repayment | `repayCreditBalance` with the member's USDC into the reserve | The periodic treasury → float off-ramp above, not one per repayment |
+
+Fiat netting is **reconciled to a target**, like the card holds: what should be on chain is what the member still owes (ignoring USDC repayments, which did not refill the float) less the part not yet on chain (pending holds, settled-but-unissued). Anything above that is cleared. That also covers a member who pays before a purchase has settled: it settles, then it is cleared on the next pass.
+
+**Carry is a separate claim and a separate step.** Materialised carry deepens the member's debt and mints its claim to the tier's carry recipient — the co-op treasury, or the LendingPool for tiers it funds. Deposits must collect on-chain carry as well as principal. Treasury-held carry clears by the same netting; **pool-held carry is the one case that needs an automatic on-ramp**, because the pool's depositors are owed on-chain money. Not built yet.
 
 **Later, Colossus inverts this.** Card-present transactions settle from on-chain collateral via an issuer hook, so the waterfall needs an on-chain implementation. When that ships, **the on-chain version becomes canonical and the off-chain path mirrors it** — not the reverse.
 
