@@ -70,6 +70,7 @@ export default function SettingsPage({
   savingAddress = false,
   addressError = null,
   phoneChange,
+  faceId,
 }: {
   data?: SettingsData;
   /** The address book, and Ready to allocate for sending from it. */
@@ -95,6 +96,18 @@ export default function SettingsPage({
     onSendCode: (phone: string) => void;
     onVerify: (code: string) => void;
     onClose: () => void;
+  };
+  /**
+   * Face ID, for real. Absent in the preview harness, where the switch stays local.
+   *
+   * `on` is whether a passkey is actually linked to the account, read from Privy. The switch used to
+   * be local state that linked nothing, so a member could turn it on and still have sign-in fail.
+   */
+  faceId?: {
+    on: boolean;
+    busy: boolean;
+    error: string | null;
+    onChange: (on: boolean) => void;
   };
 }) {
   const navigate = useNavigate();
@@ -214,7 +227,30 @@ export default function SettingsPage({
       >
         <CMain>
           {rows([
-            <TwoLineRow title={<label htmlFor="faceid">Face ID</label>} detail="Sign in without a code" trailing={toggle('faceid')} />,
+            <TwoLineRow
+              title={<label htmlFor="faceid">Face ID</label>}
+              detail={
+                faceId?.error ? (
+                  <span className="c-errline">{faceId.error}</span>
+                ) : faceId?.busy ? (
+                  'Waiting for Face ID…'
+                ) : (
+                  'Sign in without a code'
+                )
+              }
+              trailing={
+                faceId ? (
+                  <Switch
+                    id="faceid"
+                    checked={faceId.on}
+                    disabled={faceId.busy}
+                    onCheckedChange={(v) => faceId.onChange(v)}
+                  />
+                ) : (
+                  toggle('faceid')
+                )
+              }
+            />,
             <TwoLineRow
               title={<label htmlFor="faceid-payments">Require Face ID for payments</label>}
               detail={`Over ${money(data.paymentFaceIdOver)}`}

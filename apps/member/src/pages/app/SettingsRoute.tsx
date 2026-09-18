@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useUpdatePhone } from '@privy-io/react-auth';
 import SettingsPage from './SettingsPage';
 import { useMemberProfile, type MailingAddress } from '@/hooks/useMemberProfile';
+import { useFaceId } from '@/hooks/useFaceId';
 import { useLogout } from '@/hooks/useLogout';
 import { useContacts } from '@/context/ContactsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
@@ -26,6 +27,7 @@ export default function SettingsRoute() {
   const logout = useLogout();
   const { contacts } = useContacts();
   const { cash } = useClearBalances();
+  const faceId = useFaceId();
 
   const profile = {
     ...SETTINGS.profile,
@@ -52,6 +54,13 @@ export default function SettingsRoute() {
       data={{ ...SETTINGS, profile, accelerationActive: member.accelerated }}
       onSignOut={() => void logout()}
       phoneChange={phone}
+      // The switch shows whether a passkey is really on the account, and moves it.
+      faceId={{
+        on: faceId.on,
+        busy: faceId.busy,
+        error: faceId.error,
+        onChange: (on) => void (on ? faceId.turnOn() : faceId.turnOff()),
+      }}
       address={member.mailingAddress}
       savingAddress={savingAddress}
       addressError={addressError}
