@@ -92,3 +92,23 @@ describe('auto-save allocation', () => {
     expect(allocation).toEqual({ toSavingsCents: 0, toCashCents: 60_000 });
   });
 });
+
+describe('carry is paid first', () => {
+  test('a deposit settles carry before the dearest tier', () => {
+    const plan = planSettlement(10_000, { boost: 5_000, income: 0, asset: 0, savings: 20_000 }, 300);
+    expect(plan.settlements[0]).toEqual({ tier: 'carry', amountCents: 300 });
+    expect(plan.settlements[1]).toEqual({ tier: 'boost', amountCents: 5_000 });
+    expect(plan.settledCents).toBe(10_000);
+  });
+
+  test('a deposit smaller than the carry pays only carry', () => {
+    const plan = planSettlement(200, { boost: 0, income: 0, asset: 0, savings: 20_000 }, 300);
+    expect(plan.settlements).toEqual([{ tier: 'carry', amountCents: 200 }]);
+    expect(plan.remainingCents).toBe(0);
+  });
+
+  test('no carry changes nothing for existing callers', () => {
+    expect(planSettlement(1_000, { boost: 0, income: 0, asset: 0, savings: 500 }).settlements)
+      .toEqual([{ tier: 'savings', amountCents: 500 }]);
+  });
+});

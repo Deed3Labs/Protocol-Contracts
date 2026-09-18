@@ -608,6 +608,27 @@ describe("RevolvingIssuer", function () {
       ).to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardFloatCannotCover");
     });
 
+    it("clears carry too when the float is where the carry went, leaving nothing owed", async function () {
+      // Testnet's arrangement: carry goes to the treasury, and the treasury is the card float.
+      await issuer.connect(ctx.operator).setCarryTreasury(float.address);
+      await openLine([0n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
+      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+
+      await advance(CYCLE);
+      const drawn = await issuer.drawnOf(ctx.member.address, 1);
+      expect(drawn).to.be.greaterThan(175n * ONE_USDC); // carry has accrued
+
+      // The member repays principal and carry in fiat; all of it comes off the chain. Carry keeps
+      // accruing for the second between reading `drawn` and the repayment landing, so a few units --
+      // millionths of a dollar -- remain; that dust is below what the API repays in (whole cents).
+      const DUST = 10n;
+      await issuer.connect(settler).repayCardSpend(ethers.id("card-repay:member:1"), ctx.member.address, drawn);
+      expect(await issuer.drawnOf(ctx.member.address, 1)).to.be.lessThanOrEqual(DUST);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.be.lessThanOrEqual(DUST);
+      // Capital-free: the float's principal and carry claims were burned, nothing was paid in.
+      expect(await ctx.stableCredit.balanceOf(float.address)).to.be.lessThanOrEqual(DUST);
+    });
+
     it("only a card settler can clear a repayment", async function () {
       await openLine([500n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
       await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);

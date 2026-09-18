@@ -113,6 +113,23 @@ async function readOutstanding(client: PoolClient, wallet: string): Promise<Outs
   return outstanding;
 }
 
+/**
+ * Carry the member owes and has not paid, from the ledger's carry account.
+ *
+ * Carry accrues on chain, on the tiers, and is written into this account by the card settlement
+ * service as it accrues, so a deposit can pay it like any other debt. Separate from `Outstanding`
+ * because it is not a tier: nothing draws on it, it only accrues.
+ */
+async function readCarryOwed(client: PoolClient, wallet: string): Promise<number> {
+  const { rows } = await client.query<{ net: string | null }>(
+    `SELECT SUM(CASE WHEN direction = 'debit' THEN amount_cents ELSE -amount_cents END) AS net
+       FROM ${ENTRIES}
+      WHERE wallet = $1 AND account = 'member_credit_carry'`,
+    [wallet],
+  );
+  return Math.max(0, parseInt(rows[0]?.net ?? '0', 10) || 0);
+}
+
 /** The cash account this rail credits. Both are the member's money; they sit in different places. */
 function cashAccountFor(rail: DepositRail): string {
   return rail === 'lithic_ach' ? 'member_cash_fiat' : 'member_cash_usdc';
@@ -177,7 +194,7 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
 
     // 2. Settle what's owed, most expensive first. No pay button; this is the mechanism.
     const outstanding = await readOutstanding(client, wallet);
-    const plan = planSettlement(amount, outstanding);
+    const plan = planSettlement(amount, outstanding, await readCarryOwed(client, wallet));
 
     for (const settlement of plan.settlements) {
       await client.query(
