@@ -22,6 +22,7 @@ import type {
 } from '@/types/savings';
 import { getAccessToken } from '@privy-io/react-auth';
 import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
+import { stepUpDenied } from '@/lib/stepUp';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
@@ -2177,6 +2178,11 @@ export async function activateCard(token: string, lastFour: string): Promise<Car
 
 /** Freeze or unfreeze. Reports why it failed — a toggle that springs back explains nothing. */
 export async function setCardFrozen(token: string, frozen: boolean): Promise<CardResult<MemberCard>> {
+  // Freezing is always one tap — it is what you do when something is wrong. Unfreezing is not.
+  if (!frozen) {
+    const denied = await stepUpDenied();
+    if (denied) return cardFailure(denied);
+  }
   const r = await apiRequest<{ card: MemberCard }>(
     `/api/lithic/cards/${encodeURIComponent(token)}/freeze`,
     { method: 'POST', body: JSON.stringify({ frozen }) },
@@ -2190,6 +2196,9 @@ export async function setCardSpendLimit(
   spendLimitCents: number,
   duration = 'MONTHLY',
 ): Promise<MemberCard | null> {
+  // Changing what the card can spend: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return null;
   const r = await apiRequest<{ card: MemberCard }>(
     `/api/lithic/cards/${encodeURIComponent(token)}/spend-limit`,
     { method: 'POST', body: JSON.stringify({ spendLimitCents, duration }) },
@@ -2822,6 +2831,9 @@ export async function payBiller(
   wallet: string,
   p: { billerId: string; amount: number; source?: 'usdc' | 'bank'; email?: string },
 ): Promise<{ success: boolean; providerReference?: string; status?: string; message?: string }> {
+  // Paying a bill moves money: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { success: false, message: denied };
   const r = await apiRequest<{ success: boolean; providerReference?: string; status?: string }>(
     `/api/pay/${wallet.toLowerCase()}/pay`,
     { method: 'POST', body: JSON.stringify(p), timeout: 120000 },
@@ -2894,6 +2906,9 @@ export async function runAutopayRule(
   wallet: string,
   id: string,
 ): Promise<{ ok: boolean; txHash?: string; message?: string }> {
+  // Running a transfer now: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { ok: false, message: denied };
   const r = await apiRequest<{ ok: boolean; txHash?: string }>(`/api/autopay/${wallet.toLowerCase()}/${id}/run`, {
     method: 'POST',
     timeout: 120000,
@@ -2919,6 +2934,9 @@ export async function withdrawToBank(
   depositAddress?: string;
   depositAmount?: string;
 }> {
+  // Money leaving to a bank: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { success: false, message: denied };
   const r = await apiRequest<{
     success: boolean;
     providerReference?: string;
@@ -3034,10 +3052,18 @@ export async function activateClearCard(
   return { value: r.data ?? null };
 }
 export async function createCardEphemeralKey(input: { nonce: string; apiVersion: string }): Promise<{ secret: string; cardId: string } | null> {
+  // Showing card numbers: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return null;
   const r = await apiRequest<{ secret: string; cardId: string }>('/api/cards/ephemeral-key', { method: 'POST', body: JSON.stringify(input) });
   return r.error || !r.data ? null : r.data;
 }
 export async function freezeClearCard(active: boolean): Promise<CardResult<ClearCard>> {
+  // `active` true turns the card back on. Freezing stays one tap; unfreezing asks for Face ID.
+  if (active) {
+    const denied = await stepUpDenied();
+    if (denied) return cardFailure(denied);
+  }
   const r = await apiRequest<{ card: ClearCard }>('/api/cards/freeze', { method: 'POST', body: JSON.stringify({ active }) });
   if (r.error) return cardFailure(r.error);
   return { value: r.data?.card ?? null };
@@ -3182,6 +3208,9 @@ export async function createOnramperSellCheckout(p: {
   network?: string;
   country?: string;
 }): Promise<{ url: string | null }> {
+  // Cashing out: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { url: null };
   const r = await apiRequest<{ url: string | null }>(`/api/onramper/sell-checkout`, { method: 'POST', body: JSON.stringify(p) });
   return r.error || !r.data ? { url: null } : r.data;
 }
@@ -3228,6 +3257,9 @@ export interface RampSellStatus {
 
 /** Start an off-ramp cash-out → { url, partnerUserRef }. Poll getRampSellStatus after the user confirms. */
 export async function createRampSellSession(p: { walletAddress: string; redirectUrl?: string }): Promise<{ url: string | null; partnerUserRef: string | null }> {
+  // Cashing out: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { url: null, partnerUserRef: null };
   const r = await apiRequest<{ url: string | null; partnerUserRef: string | null }>(`/api/ramp/sell/session`, { method: 'POST', body: JSON.stringify(p) });
   return r.error || !r.data ? { url: null, partnerUserRef: null } : r.data;
 }
@@ -3342,6 +3374,9 @@ export interface ChargeActionResult {
  * that will not stretch — are all things they need told rather than a spinner that stops.
  */
 export async function approveCharge(code: string, installments: number): Promise<ChargeActionResult> {
+  // Approving a charge is spending: Face ID first (lib/stepUp).
+  const denied = await stepUpDenied();
+  if (denied) return { error: denied };
   const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}/approve`, {
     method: 'POST',
     body: JSON.stringify({ installments }),

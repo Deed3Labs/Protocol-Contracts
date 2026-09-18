@@ -2,6 +2,8 @@ import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useXMTP } from '@/context/XMTPContext';
+import { forgetActive } from '@/lib/appLock';
+import { clearStepUp } from '@/lib/stepUp';
 
 /**
  * Fully sign the user out: close the XMTP client, disconnect the Reown/AppKit wallet (smart
@@ -13,7 +15,11 @@ export function useLogout() {
   const { disconnect } = useAppKitAuth();
   const { disconnect: disconnectXmtp } = useXMTP();
 
-  return useCallback(async () => {
+  /**
+   * `sendCode` is the lock screen's fallback: the login screen sends a code to the member it
+   * remembers as soon as it opens, so "Send me a code" is one tap and not two.
+   */
+  return useCallback(async (options?: { sendCode?: boolean }) => {
     try {
       await disconnectXmtp();
     } catch (err) {
@@ -24,7 +30,10 @@ export function useLogout() {
     } catch (err) {
       console.error('Wallet disconnect failed:', err);
     }
+    // The session is over, so the lock's clock and any Face ID confirmation go with it.
+    forgetActive();
+    clearStepUp();
     window.dispatchEvent(new Event('wallet-disconnected'));
-    setTimeout(() => navigate('/login'), 300);
+    setTimeout(() => navigate('/login', options?.sendCode ? { state: { sendCode: true } } : undefined), 300);
   }, [disconnect, disconnectXmtp, navigate]);
 }

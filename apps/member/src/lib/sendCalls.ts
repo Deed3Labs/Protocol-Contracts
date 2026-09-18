@@ -3,6 +3,7 @@ import { sendCalls, waitForCallsStatus } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
 import { recordGaslessSavings, recordGaslessPool, recordGaslessBond } from '@/utils/apiClient';
+import { requireStepUp } from '@/lib/stepUp';
 
 /*
  * 3-TIER gasless money router (see [[clearpath-privy-migration]]).
@@ -68,6 +69,8 @@ async function run5792(owner: string, chainId: number, calls: Call[]): Promise<s
 
 /** Route: tier 1 if a Privy smart wallet client is given, else tier 2 (external EIP-5792). */
 async function runBatch(smartWalletClient: unknown, owner: string, chainId: number, calls: Call[]): Promise<string> {
+  // Every sponsored money move leaves through here — Face ID first, for members who have it.
+  await requireStepUp();
   if (smartWalletClient) return runSmartWallet(smartWalletClient as SmartWalletLike, calls);
   return run5792(owner, chainId, calls);
 }

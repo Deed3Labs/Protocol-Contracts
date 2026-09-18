@@ -49,6 +49,40 @@ function toMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Privy stores credential ids base64url-encoded; WebAuthn wants the raw bytes. */
+function fromBase64Url(value: string): Uint8Array {
+  const base64 = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  const binary = atob(base64);
+  return Uint8Array.from(binary, (c) => c.charCodeAt(0));
+}
+
+/**
+ * Face ID against a passkey already on the account, without signing in again.
+ *
+ * Privy's passkey calls all sign in or link; there is no "just check it is them" for a member who
+ * is already signed in, which is what the lock screen and a send both need. So this asks the device
+ * directly. Privy registers passkeys to this page's own domain (checked against its passkey config
+ * for demo.useclear.org), so the default relying party here finds the same credential.
+ *
+ * This proves presence on this device, and that is what it is for: the phone being in somebody
+ * else's hand. It is not a server-side check, and the session it protects is already on the phone.
+ */
+export async function confirmWithPasskey(credentialIds: string[]): Promise<void> {
+  if (!credentialIds.length) throw new Error('No Face ID on this account.');
+  if (typeof navigator === 'undefined' || !navigator.credentials?.get) {
+    throw new Error('Face ID is not available in this browser.');
+  }
+  const credential = await navigator.credentials.get({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: credentialIds.map((id) => ({ type: 'public-key' as const, id: fromBase64Url(id) })),
+      userVerification: 'required',
+      timeout: 60_000,
+    },
+  });
+  if (!credential) throw new Error('Face ID was not confirmed.');
+}
+
 export interface FaceId {
   /** A passkey is actually linked to the account — read from Privy, not from a switch. */
   on: boolean;
@@ -56,6 +90,8 @@ export interface FaceId {
   error: string | null;
   turnOn: () => Promise<boolean>;
   turnOff: () => Promise<boolean>;
+  /** Face ID on this device against the account's passkeys. Throws if declined or unavailable. */
+  confirm: () => Promise<void>;
 }
 
 export function useFaceId(): FaceId {
@@ -111,5 +147,8 @@ export function useFaceId(): FaceId {
     }
   }, [passkeys, unlink]);
 
-  return { on: passkeys.length > 0, busy, error, turnOn, turnOff };
+  const credentialIds = useMemo(() => passkeys.map((p) => p.credentialId), [passkeys]);
+  const confirm = useCallback(() => confirmWithPasskey(credentialIds), [credentialIds]);
+
+  return { on: passkeys.length > 0, busy, error, turnOn, turnOff, confirm };
 }

@@ -16,6 +16,7 @@ import {
   type Eip712TypedData,
 } from '@/utils/apiClient';
 import type { SendTransferSummary } from '@/types/send';
+import { requireStepUp } from '@/lib/stepUp';
 
 const MAX_UINT256 = (2n ** 256n - 1n).toString();
 
@@ -52,6 +53,8 @@ async function ensureChain(chainId: number): Promise<void> {
 }
 
 async function signTypedData(chainId: number, owner: string, typedData: Eip712TypedData): Promise<string> {
+  // Each of these signatures authorises moving the member's money, so each is a step-up point.
+  await requireStepUp();
   await ensureChain(chainId);
   const walletClient = await getWalletClient(wagmiAdapter.wagmiConfig, { chainId });
   if (!walletClient) throw new Error('Wallet not connected');
@@ -81,6 +84,8 @@ export async function gaslessDeposit(args: { ownerWallet: string; amount: string
 
 /** Savings (CLRUSD) → Cash (USDC): redeem from the vault. One-time CLRUSD approve, then gasless. */
 export async function gaslessRedeem(args: { ownerWallet: string; amount: string; chainId: number }): Promise<string> {
+  // Before the approve, not just before the signature: the approve is a real transaction too.
+  await requireStepUp();
   const prepared = await prepareGaslessSavings({ action: 'redeem', ...args });
 
   if (prepared.approve) {

@@ -1,6 +1,7 @@
 import { ethers } from 'ethers';
 import { SUPPORTED_NETWORKS, getNetworkByChainId, getContractAddressForNetwork } from '@/config/networks';
 import { getEthereumProvider } from './providerUtils';
+import { requireStepUp } from '@/lib/stepUp';
 
 // Type for ethereum provider request method
 type EthereumRequest = (args: { method: string; params?: any[] }) => Promise<any>;
@@ -109,6 +110,8 @@ export async function executeTransactionOnChain(
   chainId: number,
   transaction: ethers.TransactionRequest
 ): Promise<ethers.TransactionResponse> {
+  // Unused today, and gated anyway so it cannot become the one route around Face ID (lib/stepUp).
+  await requireStepUp();
   // Ensure we're on the correct chain
   const switched = await ensureChain(chainId);
   if (!switched) {
