@@ -41,6 +41,16 @@
     },
     {
       "type": "error",
+      "name": "RevolvingIssuerCardAlreadyRepaid",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "RevolvingIssuerCardAlreadySettled",
       "inputs": [
         {
@@ -53,6 +63,20 @@
       "type": "error",
       "name": "RevolvingIssuerCardAmountZero",
       "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardFloatCannotCover",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "held"
+        }
+      ]
     },
     {
       "type": "error",
@@ -79,6 +103,24 @@
         {
           "type": "bytes32",
           "name": "ref"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardRepaymentExceedsDrawn",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "principal"
         }
       ]
     },
@@ -212,6 +254,28 @@
         {
           "type": "bool",
           "name": "allowed",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardSpendRepaid",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
           "indexed": false
         }
       ]
@@ -666,6 +730,25 @@
         {
           "type": "uint256",
           "name": "tierId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cardRepaymentOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
         }
       ],
       "outputs": [
@@ -1411,6 +1494,27 @@
       "constant": false,
       "payable": false,
       "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "repayCardSpend",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        },
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
       "outputs": []
     },
     {
