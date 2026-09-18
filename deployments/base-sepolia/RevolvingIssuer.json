@@ -41,6 +41,67 @@
     },
     {
       "type": "error",
+      "name": "RevolvingIssuerCardAlreadySettled",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardAmountZero",
+      "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardHeadroom",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "headroom"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardNotSettled",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerCardReversalExceedsSettlement",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "settled"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "RevolvingIssuerCycleMismatch",
       "inputs": [
         {
@@ -55,8 +116,23 @@
     },
     {
       "type": "error",
+      "name": "RevolvingIssuerNoCardSettlementAccount",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "RevolvingIssuerNoCarryRecipient",
       "inputs": []
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerNotCardSettler",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
     },
     {
       "type": "error",
@@ -108,6 +184,79 @@
           "type": "address",
           "name": "beacon",
           "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardSettlementAccountUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardSettlerUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "settler",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "allowed",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardSpendReversed",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CardSpendSettled",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
         }
       ]
     },
@@ -523,6 +672,43 @@
         {
           "type": "uint256",
           "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cardSettlementAccount",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "cardSettlementOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
         }
       ]
     },
@@ -983,6 +1169,25 @@
     },
     {
       "type": "function",
+      "name": "isCardSettler",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "isFrozen",
       "constant": true,
       "stateMutability": "view",
@@ -1210,6 +1415,53 @@
     },
     {
       "type": "function",
+      "name": "reverseCardSpend",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setCardSettlementAccount",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "account"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setCardSettler",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "settler"
+        },
+        {
+          "type": "bool",
+          "name": "allowed"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "setCarryTreasury",
       "constant": false,
       "payable": false,
@@ -1336,6 +1588,27 @@
         {
           "type": "uint256",
           "name": "ratePerCycle"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "settleCardSpend",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        },
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
         }
       ],
       "outputs": []
