@@ -26,6 +26,13 @@ describe('Acceleration and patronage are Settings pages', () => {
     expect(page).toContain("onExplain={() => go('patronage-calculation')}");
     expect(page).not.toContain("navigate('/learn/patronage')");
   });
+
+  test('the old patronage explainer is gone, and its link lands on the Settings page', () => {
+    const explainer = read('pages/app/ExplainerPage.tsx');
+    expect(explainer).not.toContain('PatronageExplainer');
+    expect(explainer).toContain("if (topic === 'patronage') return <Navigate to=\"/settings/patronage-calculation\" replace />;");
+    expect(read('components/shell/AppChrome.tsx')).not.toContain("'/learn/patronage'");
+  });
 });
 
 describe('the figures agree with each other', () => {
