@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { getPayPool } from '../../config/postgres.js';
 import { getContractAddress } from '../../config/contracts.js';
 import { chainProvider } from './provider.js';
+import { recordPoolMovements } from './poolFunding.js';
 
 /*
  * A settled card purchase becomes debt on chain — build plan §4, step 4.
@@ -241,7 +242,7 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
           return { transactionToken: token, action: 'recovered' };
         }
         const tx = await issuer.settleCardSpend(ref, row.wallet, BigInt(target) * CENTS_TO_UNITS);
-        await tx.wait(1);
+        await recordPoolMovements(await tx.wait(1));
         await record(token, { status: 'issued', cents: target, tx: tx.hash, error: null, attempt: true });
         console.log(`[card-settlement] ${token} issued ${target}c on chain for ${row.wallet} (${tx.hash})`);
         return { transactionToken: token, action: 'settled', txHash: tx.hash };
@@ -249,7 +250,7 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
 
       if (target < issued) {
         const tx = await issuer.reverseCardSpend(ref, BigInt(issued - target) * CENTS_TO_UNITS);
-        await tx.wait(1);
+        await recordPoolMovements(await tx.wait(1));
         await record(token, { status: 'issued', cents: target, tx: tx.hash, error: null, attempt: true });
         console.log(`[card-settlement] ${token} gave back ${issued - target}c on chain (${tx.hash})`);
         return { transactionToken: token, action: 'reversed', txHash: tx.hash };
@@ -574,7 +575,7 @@ export async function syncCardRepayment(walletInput: string): Promise<RepaymentS
 
     try {
       const tx = await issuer.repayCardSpend(attempt.ref, wallet, BigInt(position.toClearCents) * CENTS_TO_UNITS);
-      await tx.wait(1);
+      await recordPoolMovements(await tx.wait(1));
       await pool.query(
         `UPDATE ${NETTING} SET status = 'done', tx = $3, error = NULL, attempts = attempts + 1, updated_at = now()
           WHERE wallet = $1 AND seq = $2`,
@@ -634,7 +635,7 @@ export async function reverseForDispute(transactionToken: string, cents: number)
   if (!row) return null;
   const issuer = await settlerIssuer();
   const tx = await issuer.reverseCardSpend(refFor(transactionToken, row.onchain_ref), BigInt(cents) * CENTS_TO_UNITS);
-  await tx.wait(1);
+  await recordPoolMovements(await tx.wait(1));
   const left = Math.max(0, Number(row.onchain_cents ?? 0) - cents);
   await record(transactionToken, { status: 'held', cents: left, tx: tx.hash, error: null, attempt: true });
   console.log(`[card-settlement] ${transactionToken} ${cents}c taken off chain for a dispute (${tx.hash})`);
@@ -661,7 +662,7 @@ export async function reissueAfterDispute(transactionToken: string, cents: numbe
   let hash: string | null = null;
   if (member === ethers.ZeroAddress) {
     const tx = await issuer.settleCardSpend(ref, row.wallet, BigInt(cents) * CENTS_TO_UNITS);
-    await tx.wait(1);
+    await recordPoolMovements(await tx.wait(1));
     hash = tx.hash;
   }
   await pool.query(

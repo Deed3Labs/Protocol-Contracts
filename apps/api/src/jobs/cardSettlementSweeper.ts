@@ -5,6 +5,7 @@ import {
   walletsWithCardDebtOnChain,
 } from '../services/chain/cardSettlementService.js';
 import { enforceDisputes } from '../services/disputes/disputeEnforcement.js';
+import { settlePoolMovements } from '../services/chain/poolFunding.js';
 
 /*
  * The backstop for card settlement on chain.
@@ -49,7 +50,13 @@ export async function tick(): Promise<number> {
       console.error('[dispute] enforcement pass failed:', error);
       return 0;
     });
-    return acted.length + cleared + disputes;
+    // Last: the pool's side of whatever the passes above drew or repaid on pool-funded tiers.
+    const pooled = await settlePoolMovements().catch((error) => {
+      console.error('[pool-funding] pass failed:', error);
+      return { settled: 0, waiting: [] };
+    });
+    for (const w of pooled.waiting) console.warn(`[pool-funding] waiting: ${w.direction} ${w.amountUnits} — ${w.reason}`);
+    return acted.length + cleared + disputes + pooled.settled;
   } catch (error) {
     console.error('[card-settlement] sweep failed:', error);
     return 0;
