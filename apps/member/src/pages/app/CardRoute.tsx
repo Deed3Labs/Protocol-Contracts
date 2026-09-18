@@ -4,6 +4,7 @@ import { useTheme } from '@/context/ThemeContext';
 import { useIdentity } from '@/context/IdentityContext';
 import CardPage from './CardPage';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
+import { stepUpDenied } from '@/lib/stepUp';
 import { createCard, orderPhysicalCard, activateCard, getCards, setCardFrozen, getCredit, getCardTransactions, getCardEmbedUrl, getCardEmbedSession, getBankIdentity, type BankIdentity, type CardTransaction, type CreditState, type MemberCard } from '@/utils/apiClient';
 import { cardTransactionRow } from '@/lib/activityMapping';
 import type { ActivityRow, CardStage } from '@/lib/clearModel';
@@ -458,7 +459,11 @@ export default function CardRoute() {
        */
       onSetPin={(cardId) => {
         setPinSession(undefined);
-        void getCardEmbedSession(cardId, 'pin').then((s) => setPinSession(s ?? undefined));
+        // A PIN is a card credential: Face ID first, for members who have it (lib/stepUp).
+        void stepUpDenied().then((denied) => {
+          if (denied) return;
+          void getCardEmbedSession(cardId, 'pin').then((s) => setPinSession(s ?? undefined));
+        });
       }}
       pinSession={pinSession}
       onTrack={(tracking) => {
@@ -492,6 +497,8 @@ export default function CardRoute() {
       onRevealDetails={async (cardId) => {
         const token = cardId ?? cards[0]?.token;
         if (!token) return undefined;
+        // The card's numbers are as good as the card. Face ID first, for members who have it.
+        if (await stepUpDenied()) return undefined;
         /*
          * The session first, because it is the one that puts the numbers in our own rows. The old
          * whole-page URL is the fallback, and it is deprecated at Lithic — a program that cannot

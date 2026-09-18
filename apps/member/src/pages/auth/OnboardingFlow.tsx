@@ -348,10 +348,20 @@ export default function OnboardingFlow({
   }
 
   if (step === 'welcome') {
+    /*
+     * Face ID is offered unless a container says the member has none. Sign-in cannot know (a browser
+     * will not say whether a passkey exists), so it always passes `onPasskey`; the lock screen does
+     * know, and a member without Face ID should not be shown a button that can only fail.
+     */
+    const faceIdOffered = !auth || Boolean(auth.onPasskey);
     return shell({
       children: (
         <>
-          <StepHead title="Look at your phone" lede="Face ID opens Clear. No password, nothing to forget." />
+          {faceIdOffered ? (
+            <StepHead title="Look at your phone" lede="Face ID opens Clear. No password, nothing to forget." />
+          ) : (
+            <StepHead title="Open Clear" lede="Send yourself a code to get back in." />
+          )}
           <div className="mt-s3">
             <div className="py-s3 text-center">
               <p className="c-fig c-fig-sec mt-s2">{member?.name}</p>
@@ -363,11 +373,13 @@ export default function OnboardingFlow({
       ),
       footer: (
         <div className="c-stack">
-          <Btn primary lg onClick={auth?.onPasskey} disabled={auth?.busy}>
-            Use Face ID
-          </Btn>
-          <Btn lg onClick={auth ? auth.onContinue : go('verify')} disabled={auth?.busy}>
-            Send me a code instead
+          {faceIdOffered && (
+            <Btn primary lg onClick={auth?.onPasskey} disabled={auth?.busy}>
+              Use Face ID
+            </Btn>
+          )}
+          <Btn primary={!faceIdOffered} lg onClick={auth ? auth.onContinue : go('verify')} disabled={auth?.busy}>
+            {faceIdOffered ? 'Send me a code instead' : 'Send me a code'}
           </Btn>
         </div>
       ),

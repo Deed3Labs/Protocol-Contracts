@@ -659,6 +659,8 @@ function OnboardingPreview() {
   const [step, setStep] = useState<OnboardingStep>('enter');
   // A code that failed is the same screen with a reason on it, so the harness can produce one.
   const [failed, setFailed] = useState(false);
+  // The welcome screen is also the app lock; a member without Face ID gets the code-only version.
+  const [noFaceId, setNoFaceId] = useState(false);
 
   return (
     <div className="min-h-screen bg-background">
@@ -674,7 +676,7 @@ function OnboardingPreview() {
           onOAuth: () => setStep('verify'),
           onSubmitCode: () => setStep('join'),
           onResend: () => setFailed(false),
-          onPasskey: () => setStep('join'),
+          onPasskey: noFaceId ? undefined : () => setStep('join'),
         }}
       />
 
@@ -687,6 +689,15 @@ function OnboardingPreview() {
           }`}
         >
           bad code
+        </button>
+        <button
+          type="button"
+          onClick={() => setNoFaceId((f) => !f)}
+          className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+            noFaceId ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+          }`}
+        >
+          no Face ID
         </button>
         {ONBOARDING_STEPS.map((s) => (
           <button

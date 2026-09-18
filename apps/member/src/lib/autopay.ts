@@ -4,6 +4,7 @@ import { wagmiAdapter } from '@/AppKitProvider';
 import { clearContracts } from '@/lib/clearNetwork';
 import { scApprove } from '@/lib/sendCalls';
 import { createAutopayRule } from '@/utils/apiClient';
+import { requireStepUp } from '@/lib/stepUp';
 
 /*
  * Autopay install — "sign once, then recurring gasless deposits." The user signs TWO EIP-712 messages
@@ -48,6 +49,8 @@ export async function installAutopaySession(args: {
   /** Privy smart wallet client (useSmartWallets().client) — required for the smart-account approve. */
   smartWalletClient?: unknown;
 }): Promise<void> {
+  // A standing instruction to move money every period — confirmed once, here, when it is set up.
+  await requireStepUp();
   const config = wagmiAdapter.wagmiConfig;
   const c = clearContracts(args.chainId);
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);

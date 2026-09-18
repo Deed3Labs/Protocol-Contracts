@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLoginWithEmail, useLoginWithOAuth, useLoginWithPasskey, useLoginWithSms } from '@privy-io/react-auth';
 import { rememberWantsFaceId } from '@/hooks/useFaceId';
+import { markActive } from '@/lib/appLock';
 import { track } from '@/lib/analytics';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { forgetMember, rememberedMember } from '@/lib/rememberedMember';
@@ -77,9 +78,18 @@ export default function LoginRoute() {
   useEffect(() => {
     if (!isAuthenticated || navigated.current) return;
     navigated.current = true;
+    // A sign-in starts the lock's clock, so a stale time from an earlier session cannot lock the
+    // app the moment they arrive.
+    markActive();
     window.dispatchEvent(new Event('wallet-connected'));
     navigate(destination, { replace: true });
   }, [isAuthenticated, destination, navigate]);
+
+  /*
+   * Arriving from the lock screen's "Send me a code": the member already asked for one, and we
+   * know where it goes, so it is sent now rather than after a second tap on the same screen.
+   */
+  const sendOnArrival = useRef(Boolean((location.state as { sendCode?: boolean } | undefined)?.sendCode));
 
   useEffect(() => {
     if (resendIn <= 0) return;
@@ -119,6 +129,12 @@ export default function LoginRoute() {
     },
     [email, sms],
   );
+
+  useEffect(() => {
+    if (!sendOnArrival.current || isAuthenticated) return;
+    sendOnArrival.current = false;
+    if (remembered?.contact) void send(remembered.contact);
+  }, [isAuthenticated, remembered, send]);
 
   const submitCode = useCallback(
     async (code: string) => {
