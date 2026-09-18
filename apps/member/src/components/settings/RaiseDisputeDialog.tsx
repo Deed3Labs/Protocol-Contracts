@@ -35,16 +35,22 @@ export default function RaiseDisputeDialog({
   open,
   onOpenChange,
   candidates,
+  preselect,
   onFile,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Null while loading. */
   candidates: DisputeCandidate[] | null;
+  /** The payment the member tapped "Something wrong" on. Shown in its kind's row, and chosen. */
+  preselect?: { kind: DisputeKind; ref: string };
   onFile: (input: { kind: DisputeKind; ref: string; detail: string; reason?: CardDisputeReason }) => Promise<FileDisputeResult>;
 }) {
-  const latest = (kind: DisputeKind) => candidates?.find((c) => c.kind === kind) ?? null;
-  const firstAvailable = DISPUTE_KINDS.find((k) => latest(k.kind))?.kind ?? 'card';
+  const picked = preselect ? (candidates?.find((c) => c.ref === preselect.ref) ?? null) : null;
+  // The tapped payment stands in for its kind's most recent one; the other kinds show their latest.
+  const latest = (kind: DisputeKind) =>
+    picked && picked.kind === kind ? picked : (candidates?.find((c) => c.kind === kind) ?? null);
+  const firstAvailable = picked?.kind ?? DISPUTE_KINDS.find((k) => latest(k.kind))?.kind ?? 'card';
 
   const [kind, setKind] = useState<DisputeKind>(firstAvailable);
   const [reason, setReason] = useState<CardDisputeReason | null>(null);
@@ -54,10 +60,12 @@ export default function RaiseDisputeDialog({
   const [sent, setSent] = useState<{ kind: DisputeKind; networkFiled: boolean | null } | null>(null);
 
   // Candidates arrive after the modal opens; start on the first kind that has something to dispute.
+  // The tapped payment wins; otherwise keep the choice if it still has something to dispute.
   useEffect(() => {
-    if (!latest(kind)) setKind(firstAvailable);
+    if (picked) setKind(picked.kind);
+    else if (!latest(kind)) setKind(firstAvailable);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [candidates]);
+  }, [candidates, preselect?.ref]);
 
   const info = DISPUTE_KINDS.find((k) => k.kind === kind) ?? DISPUTE_KINDS[0];
   const subject = latest(kind);

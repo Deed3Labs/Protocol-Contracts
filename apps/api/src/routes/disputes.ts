@@ -29,7 +29,10 @@ disputesRouter.get('/candidates', async (req: Request, res: Response) => {
   if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
   try {
     const exclude = await disputeStore.openSubjects(wallet);
-    return res.json({ candidates: await disputeCandidates(wallet, exclude) });
+    const includeKind = String(req.query.kind ?? '') as DisputeKind;
+    const includeRef = String(req.query.ref ?? '').trim();
+    const include = KINDS.includes(includeKind) && includeRef ? { kind: includeKind, ref: includeRef } : undefined;
+    return res.json({ candidates: await disputeCandidates(wallet, exclude, include) });
   } catch (error) {
     console.error('[disputes] candidates failed', error);
     return res.status(500).json({ error: 'Failed to read payments' });

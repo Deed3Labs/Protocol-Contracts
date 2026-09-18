@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useIdentity } from '@/context/IdentityContext';
 import { Btn, CMain, Rows } from '@/components/clear/brand/anatomy';
@@ -119,12 +119,12 @@ export default function SettingsPage({
    */
   disputes?: {
     candidates: DisputeCandidate[] | null;
-    load: () => void;
+    load: (include?: { kind: DisputeKind; ref: string }) => void;
     file: (input: { kind: DisputeKind; ref: string; detail: string; reason?: CardDisputeReason }) => Promise<FileDisputeResult>;
   };
 }) {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, state } = useLocation();
   const desktop = useIsDesktop();
   const verification = useIdentity();
   const { profile } = data;
@@ -141,7 +141,18 @@ export default function SettingsPage({
   const [photoOpen, setPhotoOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
-  const [disputeOpen, setDisputeOpen] = useState(false);
+  /*
+   * Arriving from "Something wrong" on a transaction: the payment comes with the navigation, and
+   * Raise a dispute opens with it already chosen rather than making the member find it again.
+   */
+  const arrivedWith = (state as { dispute?: { kind: DisputeKind; ref: string } } | null)?.dispute;
+  const [disputeOpen, setDisputeOpen] = useState(() => Boolean(arrivedWith));
+  const [disputeFor, setDisputeFor] = useState(arrivedWith);
+  useEffect(() => {
+    if (arrivedWith) disputes?.load(arrivedWith);
+    // Once, on arrival. A later visit to this page without the payment starts clean.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [toggles, setToggles] = useState<Record<string, boolean>>(() => ({
     faceid: data.faceIdOn,
     'faceid-payments': true,
@@ -352,6 +363,7 @@ export default function SettingsPage({
       <DisputesPanel
         intro={!desktop}
         onRaise={() => {
+          setDisputeFor(undefined);
           disputes?.load();
           setDisputeOpen(true);
         }}
@@ -444,6 +456,7 @@ export default function SettingsPage({
         open={disputeOpen}
         onOpenChange={setDisputeOpen}
         candidates={disputes ? disputes.candidates : DISPUTE_SAMPLE_CANDIDATES}
+        preselect={disputeFor}
         onFile={disputes?.file ?? (async () => ({ error: 'Sign in to file a dispute — nothing was sent.' }))}
       />
       {data.ballot && <BallotDialog ballot={data.ballot} open={ballotOpen} onOpenChange={setBallotOpen} />}

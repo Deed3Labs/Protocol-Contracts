@@ -194,9 +194,9 @@ function usePhoneChange(onChanged: () => void) {
 function useDisputes() {
   const [candidates, setCandidates] = useState<DisputeCandidate[] | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback((include?: { kind: DisputeCandidate['kind']; ref: string }) => {
     setCandidates(null);
-    void getDisputeCandidates().then((list) => setCandidates(list ?? []));
+    void getDisputeCandidates(include).then((list) => setCandidates(list ?? []));
   }, []);
 
   const file = useCallback(

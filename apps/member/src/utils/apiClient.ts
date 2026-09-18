@@ -2719,8 +2719,13 @@ export interface DisputeCandidateResponse {
   at: string;
 }
 
-export async function getDisputeCandidates(): Promise<DisputeCandidateResponse[] | null> {
-  const r = await apiRequest<{ candidates: DisputeCandidateResponse[] }>('/api/disputes/candidates');
+/** `include` is the payment a member tapped "Something wrong" on; the server puts it first. */
+export async function getDisputeCandidates(include?: {
+  kind: DisputeCandidateResponse['kind'];
+  ref: string;
+}): Promise<DisputeCandidateResponse[] | null> {
+  const query = include ? `?kind=${include.kind}&ref=${encodeURIComponent(include.ref)}` : '';
+  const r = await apiRequest<{ candidates: DisputeCandidateResponse[] }>(`/api/disputes/candidates${query}`);
   return r.error || !r.data ? null : r.data.candidates;
 }
 

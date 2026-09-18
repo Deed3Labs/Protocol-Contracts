@@ -79,6 +79,8 @@ export function cardTransactionRow(tx: CardTransaction, cardLast4?: string): Act
     location: [tx.city, tx.state].filter(Boolean).join(', ') || undefined,
     paidFromLabel: credited.length === 0 ? 'Cash' : 'Credit',
     cardLast4,
+    // A reversed charge has nothing held, so there is nothing to dispute at the network.
+    ...(tx.reversed ? {} : { dispute: { kind: 'card' as const, ref: tx.id } }),
   };
 }
 
