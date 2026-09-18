@@ -1,9 +1,10 @@
 import { type ReactNode } from 'react';
-import { Outlet, Navigate } from 'react-router-dom';
+import { Outlet, Navigate, useNavigate } from 'react-router-dom';
 import AppChrome from './AppChrome';
 import HeaderActions from './HeaderActions';
 import PullToRefresh from '@/components/app-ui/PullToRefresh';
 import { useRefreshOnResume } from '@/hooks/useRefreshOnResume';
+import { useLogout } from '@/hooks/useLogout';
 import { KycProvider } from '@/context/KycContext';
 import { BridgeProvider } from '@/context/BridgeContext';
 import { ClearBalancesProvider } from '@/hooks/useClearBalances';
@@ -49,6 +50,8 @@ function notificationTime(iso: string): string {
 function LiveHeaderActions() {
   const { notifications, unreadCount, markAllRead, markRead, dismiss } = useNotifications();
   const member = useMemberProfile();
+  const logout = useLogout();
+  const navigate = useNavigate();
 
   return (
     <HeaderActions
@@ -75,6 +78,10 @@ function LiveHeaderActions() {
         avatarUrl: member.avatarUrl,
       }}
       accelerationActive={member.accelerated}
+      // Explore opens the acceleration dialog where it lives, in Settings. Unwired, it did nothing.
+      onAcceleration={() => navigate('/settings', { state: { open: 'acceleration' } })}
+      // The same sign-out as Settings. Without it the menu's Sign out closed the menu and did nothing.
+      onSignOut={() => void logout()}
     />
   );
 }

@@ -134,3 +134,16 @@ describe('the lock screen', () => {
     expect(read('hooks/useLogout.ts')).toContain('forgetActive();');
   });
 });
+
+describe('signing out', () => {
+  test('the profile menu signs out, the same way Settings does', () => {
+    const shell = read('components/shell/AppShell.tsx');
+    expect(shell).toContain('onSignOut={() => void logout()}');
+    expect(read('pages/app/SettingsRoute.tsx')).toContain('onSignOut={() => void logout()}');
+  });
+
+  test('and its Acceleration Explore opens the dialog in Settings', () => {
+    expect(read('components/shell/AppShell.tsx')).toContain("navigate('/settings', { state: { open: 'acceleration' } })");
+    expect(read('pages/app/SettingsPage.tsx')).toContain("?.open === 'acceleration'");
+  });
+});
