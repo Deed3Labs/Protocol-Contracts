@@ -361,3 +361,26 @@ export async function scRepayFromSavings(args: { smartWalletClient?: unknown; ow
     },
   ]);
 }
+
+const AUTO_REPAY_ABI = [
+  { type: 'function', name: 'setAutoRepay', stateMutability: 'nonpayable', inputs: [{ name: 'enabled', type: 'bool' }], outputs: [] },
+  { type: 'function', name: 'autoRepayEnabled', stateMutability: 'view', inputs: [{ name: 'member', type: 'address' }], outputs: [{ type: 'bool' }] },
+] as const;
+export { AUTO_REPAY_ABI };
+
+const MAX_UINT256 = 2n ** 256n - 1n;
+
+/**
+ * Switch automatic repayment from USDC deposits on or off, in one sponsored batch.
+ *
+ * On: the ledger may take USDC to repay (approve) and the member's mandate is set. Off: the mandate
+ * is cleared and the approval withdrawn -- both, so neither half is left standing. Face ID first.
+ */
+export async function scSetAutoRepay(args: { smartWalletClient?: unknown; ownerWallet: string; enabled: boolean; chainId: number }): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.stableCredit || !c.revolvingIssuer) throw new Error('Automatic repayment is not available on this network yet.');
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.stableCredit, args.enabled ? MAX_UINT256 : 0n] }) },
+    { to: c.revolvingIssuer, data: encodeFunctionData({ abi: AUTO_REPAY_ABI, functionName: 'setAutoRepay', args: [args.enabled] }) },
+  ]);
+}

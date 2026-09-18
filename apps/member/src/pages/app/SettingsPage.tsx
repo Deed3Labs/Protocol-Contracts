@@ -75,6 +75,7 @@ export default function SettingsPage({
   phoneChange,
   faceId,
   disputes,
+  autoRepay,
 }: {
   data?: SettingsData;
   /** The address book, and Ready to allocate for sending from it. */
@@ -124,6 +125,8 @@ export default function SettingsPage({
     mine: MemberDispute[];
     withdraw: (token: string) => Promise<string | null>;
   };
+  /** Automatic repayment from USDC deposits. Absent in the preview harness. */
+  autoRepay?: { enabled: boolean; busy: boolean; error: string | null; onChange: (enabled: boolean) => void };
 }) {
   const navigate = useNavigate();
   const { pathname, state } = useLocation();
@@ -376,7 +379,7 @@ export default function SettingsPage({
       />
     ),
     bylaws: <BylawsPanel bylaws={data.bylaws} />,
-    permissions: <PermissionsPanel permissions={data.permissions} />,
+    permissions: <PermissionsPanel permissions={data.permissions} autoRepay={autoRepay} />,
     patronage: <PatronagePanel patronage={data.patronage} onExplain={() => go('patronage-calculation')} />,
     'patronage-calculation': <PatronageCalculationPanel patronage={data.patronage} desktop={desktop} />,
     acceleration: <AccelerationPanel data={data} intro={!desktop} />,

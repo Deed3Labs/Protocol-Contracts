@@ -86,7 +86,14 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// recorded twice -- a retry, or two processes deciding at once -- clears once.
     mapping(bytes32 => uint256) private cardRepayments;
 
-    uint256[37] private __gap;
+    /// @notice members who have asked for their USDC deposits to repay their card debt.
+    /// @dev Set by the member, never by anyone else. It is the mandate: the card settler can pull a
+    /// member's USDC to repay only while this is on, and the member turns it off the same way.
+    mapping(address => bool) public autoRepayEnabled;
+    /// @dev ref => amount repaid under the mandate. Once per ref, like every other card write.
+    mapping(bytes32 => uint256) private autoRepayments;
+
+    uint256[35] private __gap;
 
     /* ========== ERRORS ========== */
 
@@ -106,6 +113,8 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     error RevolvingIssuerCardAlreadyRepaid(bytes32 ref);
     error RevolvingIssuerCardRepaymentExceedsDrawn(address member, uint256 amount, uint256 principal);
     error RevolvingIssuerCardFloatCannotCover(uint256 amount, uint256 held);
+    error RevolvingIssuerAutoRepayNotEnabled(address member);
+    error RevolvingIssuerAutoRepayAlreadyUsed(bytes32 ref);
 
     /* ========== EVENTS ========== */
 
@@ -122,6 +131,8 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     event CardSpendSettled(bytes32 indexed ref, address indexed member, uint256 amount);
     event CardSpendReversed(bytes32 indexed ref, address indexed member, uint256 amount);
     event CardSpendRepaid(bytes32 indexed ref, address indexed member, uint256 amount);
+    event AutoRepaySet(address indexed member, bool enabled);
+    event AutoRepaid(bytes32 indexed ref, address indexed member, uint256 amount);
 
     /* ========== INITIALIZER ========== */
 
@@ -543,6 +554,47 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
             member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
         );
         emit CardSpendRepaid(ref, member, amount);
+    }
+
+    /// @notice the member turns automatic repayment from their USDC deposits on or off.
+    /// @dev Only for the caller. Turning it on is the whole mandate; the member also approves the
+    /// ledger to take their USDC, and revoking either stops it.
+    function setAutoRepay(bool enabled) external {
+        autoRepayEnabled[_msgSender()] = enabled;
+        emit AutoRepaySet(_msgSender(), enabled);
+    }
+
+    /// @notice repays a member's card debt from their own USDC, under the mandate they set.
+    /// @dev "There is no pay button": a deposit that lands as USDC in the member's wallet repays
+    /// what they owe before anything else touches it, the way a fiat deposit does. The USDC is pulled
+    /// from the member into the ledger (`repayCreditBalanceFor`, the member as payer), and the tiers
+    /// are cleared dearest first, as any repayment clears them.
+    ///
+    /// Bounded three ways: only for a member who switched it on, only up to what they owe on these
+    /// tiers, and only once per ref. It cannot move a member's money anywhere but against their own
+    /// debt.
+    /// @param ref idempotency key.
+    /// @param member address being repaid for.
+    /// @param amount amount to repay, in ledger units.
+    function repayForMember(bytes32 ref, address member, uint256 amount) external notNull(member) {
+        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
+        if (!autoRepayEnabled[member]) revert RevolvingIssuerAutoRepayNotEnabled(member);
+        if (amount == 0) revert RevolvingIssuerCardAmountZero();
+        if (autoRepayments[ref] != 0) revert RevolvingIssuerAutoRepayAlreadyUsed(ref);
+
+        _materialiseCarry(member);
+        uint256 principal = totalPrincipalOf(member);
+        if (amount > principal) revert RevolvingIssuerCardRepaymentExceedsDrawn(member, amount, principal);
+
+        autoRepayments[ref] = amount;
+        stableCredit.repayCreditBalanceFor(member, member, uint128(amount));
+        _repay(member, amount);
+        emit AutoRepaid(ref, member, amount);
+    }
+
+    /// @notice what an auto-repay ref repaid, zero if unused.
+    function autoRepaymentOf(bytes32 ref) external view returns (uint256) {
+        return autoRepayments[ref];
     }
 
     /* ========== INTERNAL ========== */

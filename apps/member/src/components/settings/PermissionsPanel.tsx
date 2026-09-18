@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Chip, CMain, Rows } from '@/components/clear/brand/anatomy';
 import { Pane, RowBtn, TwoLineRow } from './SettingsKit';
+import Switch from '@/components/clear/brand/Switch';
 import type { Permission } from '@/lib/clearModel';
 
 /**
@@ -20,7 +21,18 @@ import type { Permission } from '@/lib/clearModel';
  * Group labels sit above their cards, never inside them. Held is underway amber: it is held while
  * something is in progress, which is what that colour means elsewhere.
  */
-export default function PermissionsPanel({ permissions }: { permissions: Permission[] }) {
+export default function PermissionsPanel({
+  permissions,
+  autoRepay,
+}: {
+  permissions: Permission[];
+  /**
+   * Automatic repayment from USDC deposits, for real: the switch moves the on-chain mandate. Absent in
+   * the preview harness, where the row shows but the switch is local.
+   */
+  autoRepay?: { enabled: boolean; busy: boolean; error: string | null; onChange: (enabled: boolean) => void };
+}) {
+  const [localAuto, setLocalAuto] = useState(false);
   const [off, setOff] = useState<Set<string>>(new Set());
 
   const granted = permissions.filter((p) => !p.held);
@@ -29,6 +41,32 @@ export default function PermissionsPanel({ permissions }: { permissions: Permiss
   return (
     <>
       <p className="c-det mb-s3 lg:hidden">What Clear can do without asking each time.</p>
+
+      <p className="c-grouplabel">Repayment</p>
+      <Pane className="mb-s3">
+        <CMain>
+          <TwoLineRow
+            title={<label htmlFor="autorepay">Repay from USDC deposits</label>}
+            detail={
+              autoRepay?.error ? (
+                <span className="c-errline">{autoRepay.error}</span>
+              ) : autoRepay?.busy ? (
+                'Confirming in your wallet…'
+              ) : (
+                'What you owe is repaid first, the rest is yours'
+              )
+            }
+            trailing={
+              <Switch
+                id="autorepay"
+                checked={autoRepay ? autoRepay.enabled : localAuto}
+                disabled={autoRepay?.busy}
+                onCheckedChange={(v) => (autoRepay ? autoRepay.onChange(v) : setLocalAuto(v))}
+              />
+            }
+          />
+        </CMain>
+      </Pane>
 
       {granted.length > 0 && (
         <>

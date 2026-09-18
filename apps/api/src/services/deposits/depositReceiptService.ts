@@ -6,6 +6,7 @@ import { autoSaveCentsFor, autoSaveStore } from './autoSaveStore.js';
 import {
   allocate,
   planSettlement,
+  totalOutstanding,
   SETTLEMENT_ORDER,
   type Outstanding,
   type SettlementPlan,
@@ -130,6 +131,33 @@ async function readCarryOwed(client: PoolClient, wallet: string): Promise<number
   return Math.max(0, parseInt(rows[0]?.net ?? '0', 10) || 0);
 }
 
+/**
+ * Whether the member switched on automatic repayment from USDC deposits.
+ *
+ * Mirrors the on-chain mandate (`RevolvingIssuer.autoRepayEnabled`), which is the authority: this
+ * row only decides whether to earmark, and the chain refuses a repayment the member did not allow.
+ */
+async function autoRepayEnabledFor(client: PoolClient, wallet: string): Promise<boolean> {
+  await ensureAutoRepayTables(client);
+  const { rows } = await client.query<{ enabled: boolean }>(`SELECT enabled FROM member_auto_repay WHERE wallet = $1`, [wallet]);
+  return rows[0]?.enabled === true;
+}
+
+export async function ensureAutoRepayTables(client: { query: PoolClient['query'] }): Promise<void> {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS member_auto_repay (
+      wallet TEXT PRIMARY KEY,
+      enabled BOOLEAN NOT NULL,
+      verified_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE TABLE IF NOT EXISTS auto_repay_due (
+      wallet TEXT PRIMARY KEY,
+      due_cents BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+}
+
 /** The cash account this rail credits. Both are the member's money; they sit in different places. */
 function cashAccountFor(rail: DepositRail): string {
   return rail === 'lithic_ach' ? 'member_cash_fiat' : 'member_cash_usdc';
@@ -205,6 +233,26 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
       receipt.rail === 'lithic_ach'
         ? planSettlement(amount, outstanding, await readCarryOwed(client, wallet))
         : planSettlement(amount, { boost: 0, income: 0, asset: 0, savings: 0 });
+
+    /*
+     * A USDC deposit for a member who switched on automatic repayment: what they owe is set aside
+     * for it before auto-save sees the rest -- debt first, the same rule as a fiat deposit. It is
+     * not settled in the books here: it is repaid ON CHAIN from their wallet (the sweep), and the
+     * books are written from that transaction. The earmark is what auto-save must not touch.
+     */
+    let earmarkCents = 0;
+    if (receipt.rail !== 'lithic_ach' && (await autoRepayEnabledFor(client, wallet))) {
+      const owed = totalOutstanding(outstanding) + (await readCarryOwed(client, wallet));
+      earmarkCents = Math.min(amount, owed);
+      if (earmarkCents > 0) {
+        await client.query(
+          `INSERT INTO auto_repay_due (wallet, due_cents) VALUES ($1, $2)
+           ON CONFLICT (wallet) DO UPDATE SET due_cents = auto_repay_due.due_cents + EXCLUDED.due_cents, updated_at = now()`,
+          [wallet, earmarkCents],
+        );
+      }
+    }
+    if (earmarkCents > 0) plan.remainingCents = Math.max(0, plan.remainingCents - earmarkCents);
 
     for (const settlement of plan.settlements) {
       await client.query(

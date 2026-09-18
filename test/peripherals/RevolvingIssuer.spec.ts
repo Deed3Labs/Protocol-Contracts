@@ -653,4 +653,58 @@ describe("RevolvingIssuer", function () {
         .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardNotSettled");
     });
   });
+
+  describe("automatic repayment from USDC deposits, under the member's own mandate", function () {
+    let settler: any;
+    const PAY = ethers.id("auto-repay:member:1");
+
+    beforeEach(async function () {
+      settler = (await ethers.getSigners())[9];
+      await issuer.connect(ctx.operator).setCardSettler(settler.address, true);
+      await issuer.connect(ctx.operator).setCardSettlementAccount((await ethers.getSigners())[10].address);
+      await openLine([100n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
+      await spend(300n * ONE_USDC); // 100 savings, 200 asset
+      // The member's USDC deposit, and their approval for the ledger to take it.
+      await ctx.usdc.mint(ctx.member.address, 1_000n * ONE_USDC);
+      await ctx.usdc.connect(ctx.member).approve(await ctx.stableCredit.getAddress(), ethers.MaxUint256);
+    });
+
+    it("does nothing without the member's mandate", async function () {
+      await expect(issuer.connect(settler).repayForMember(PAY, ctx.member.address, 100n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerAutoRepayNotEnabled");
+    });
+
+    it("with it: pulls the member's own USDC and clears the dearest tier first", async function () {
+      await issuer.connect(ctx.member).setAutoRepay(true);
+      await issuer.connect(settler).repayForMember(PAY, ctx.member.address, 250n * ONE_USDC);
+
+      // The 65 bps asset tier accrues a few units of carry in the seconds between the spend and the
+      // repayment; it is cleared first, so a few units more stay on the free tier.
+      const DUST = 10n;
+      expect(await issuer.drawnOf(ctx.member.address, 1)).to.equal(0n); // asset (65 bps) cleared first
+      expect(await issuer.drawnOf(ctx.member.address, 0)).to.be.closeTo(50n * ONE_USDC, DUST);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.be.closeTo(50n * ONE_USDC, DUST);
+      expect(await ctx.usdc.balanceOf(ctx.member.address)).to.equal(750n * ONE_USDC);
+      expect(await issuer.totalPrincipalOf(ctx.member.address))
+        .to.equal(await ctx.stableCredit.creditBalanceOf(ctx.member.address));
+    });
+
+    it("never more than is owed, once per ref, and only by the card settler", async function () {
+      await issuer.connect(ctx.member).setAutoRepay(true);
+      await expect(issuer.connect(settler).repayForMember(PAY, ctx.member.address, 400n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardRepaymentExceedsDrawn");
+      await issuer.connect(settler).repayForMember(PAY, ctx.member.address, 100n * ONE_USDC);
+      await expect(issuer.connect(settler).repayForMember(PAY, ctx.member.address, 100n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerAutoRepayAlreadyUsed");
+      await expect(issuer.connect(ctx.operator).repayForMember(ethers.id("x"), ctx.member.address, ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerNotCardSettler");
+    });
+
+    it("the member turns it off the same way, and then it stops", async function () {
+      await issuer.connect(ctx.member).setAutoRepay(true);
+      await issuer.connect(ctx.member).setAutoRepay(false);
+      await expect(issuer.connect(settler).repayForMember(PAY, ctx.member.address, 100n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerAutoRepayNotEnabled");
+    });
+  });
 });
