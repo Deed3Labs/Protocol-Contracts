@@ -55,6 +55,14 @@ export function toActivityRow(item: ActivityItem): ActivityRow {
  * draws, and the waterfall already decided which tiers paid. That is why this is the one path
  * allowed to say `credit`.
  */
+/** Whether the credit this purchase drew has been repaid, in full or in part. Undefined when it has not, or never drew any. */
+function repaidState(tx: CardTransaction): 'full' | 'partial' | undefined {
+  const credit = tx.creditCents ?? 0;
+  const repaid = tx.creditRepaidCents ?? 0;
+  if (credit <= 0 || repaid <= 0) return undefined;
+  return repaid >= credit ? 'full' : 'partial';
+}
+
 export function cardTransactionRow(tx: CardTransaction, cardLast4?: string): ActivityRow {
   const credited = tx.draws.filter((draw) => draw.source !== 'cash');
   const at = new Date(tx.at);
@@ -77,7 +85,9 @@ export function cardTransactionRow(tx: CardTransaction, cardLast4?: string): Act
     reversed: tx.reversed ?? false,
     category: categoryForMcc(tx.mcc),
     location: [tx.city, tx.state].filter(Boolean).join(', ') || undefined,
-    paidFromLabel: credited.length === 0 ? 'Cash' : 'Credit',
+    paidFromLabel:
+      credited.length === 0 ? 'Cash' : repaidState(tx) === 'full' ? 'Credit · repaid' : repaidState(tx) === 'partial' ? 'Credit · part repaid' : 'Credit',
+    ...(repaidState(tx) ? { creditRepaid: repaidState(tx) } : {}),
     cardLast4,
     // A reversed charge has nothing held, so there is nothing to dispute at the network.
     ...(tx.reversed ? {} : { dispute: { kind: 'card' as const, ref: tx.id } }),

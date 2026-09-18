@@ -2118,6 +2118,9 @@ export interface CardTransaction {
   state: string | null;
   draws: Array<{ source: string; amountCents: number }>;
   cardToken: string;
+  /** What it drew on credit, and how much of that has been repaid (oldest purchase first). */
+  creditCents?: number;
+  creditRepaidCents?: number;
 }
 
 /**
