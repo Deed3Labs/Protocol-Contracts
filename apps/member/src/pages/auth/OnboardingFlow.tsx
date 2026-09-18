@@ -25,6 +25,14 @@ import { money } from '@clear/domain';
  * `LoginRoute` drives `welcome`, `enter` and `verify`; `OnboardingRoute` starts at `join`, because a
  * member reaching /onboarding has already signed in. ClaimFunds still owns the claim steps.
  */
+
+/**
+ * Apple sign-in waits on our Apple developer credentials (Services ID, key, team) being added to
+ * Privy. Until then the button is shown but disabled — the brand's faded state — rather than
+ * letting a member press it into an error. Flip this once Apple is configured in the Privy dashboard.
+ */
+const APPLE_SIGN_IN_READY = false;
+
 export type OnboardingStep =
   | 'enter'
   | 'verify'
@@ -268,7 +276,11 @@ export default function OnboardingFlow({
               <Btn onClick={auth ? () => auth.onOAuth('google') : go('verify')} disabled={auth?.busy}>
                 Continue with Google
               </Btn>
-              <Btn onClick={auth ? () => auth.onOAuth('apple') : go('verify')} disabled={auth?.busy}>
+              <Btn
+                onClick={auth ? () => auth.onOAuth('apple') : go('verify')}
+                disabled={!APPLE_SIGN_IN_READY || auth?.busy}
+                title={APPLE_SIGN_IN_READY ? undefined : 'Coming soon'}
+              >
                 Continue with Apple
               </Btn>
             </div>

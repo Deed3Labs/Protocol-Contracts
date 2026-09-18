@@ -55,3 +55,17 @@ describe('Face ID can actually be set up', () => {
     expect(page).toContain('checked={faceId.on}');
   });
 });
+
+describe('social sign-in', () => {
+  const flow = read('pages/auth/OnboardingFlow.tsx');
+
+  test('Google goes through Privy OAuth', () => {
+    expect(login).toContain('oauth.initOAuth({ provider })');
+    expect(flow).toContain("auth.onOAuth('google')");
+  });
+
+  test('Apple stays disabled until its credentials are in Privy', () => {
+    expect(flow).toContain('const APPLE_SIGN_IN_READY = false;');
+    expect(flow).toContain('disabled={!APPLE_SIGN_IN_READY || auth?.busy}');
+  });
+});
