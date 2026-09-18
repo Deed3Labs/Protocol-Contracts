@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { getPayPool, getPostgresPool } from '../../config/postgres.js';
 import { disputeStore, type DisputeRecord } from './disputeStore.js';
-import { ensureSettlementColumns, syncCardSettlement } from '../chain/cardSettlementService.js';
+import {
+  ensureSettlementColumns,
+  reissueAfterDispute,
+  reverseForDispute,
+  syncCardSettlement,
+} from '../chain/cardSettlementService.js';
 import { chargeStore } from '../chargeStore.js';
 import { closePlan } from '../refundSettlement.js';
 import { reopenPlanAfterDispute } from '../chargeService.js';
@@ -78,32 +83,70 @@ async function move(
 async function holdCard(dispute: DisputeRecord): Promise<void> {
   await ensureSettlementColumns();
   const pool = getPayPool()!;
-  const { rows } = await pool.query<{ draws: unknown }>(
-    `UPDATE lithic_auth_decisions SET dispute_token = $2 WHERE transaction_token = $1 RETURNING draws`,
+  const { rows } = await pool.query<{ draws: unknown; onchain_status: string | null; onchain_cents: string | null }>(
+    `UPDATE lithic_auth_decisions SET dispute_token = $2 WHERE transaction_token = $1
+     RETURNING draws, onchain_status, onchain_cents`,
     [dispute.subjectRef, dispute.token],
   );
-  const draws = (Array.isArray(rows[0]?.draws) ? rows[0]!.draws : []) as Array<{ source?: string; amountCents?: number }>;
+  const row = rows[0];
+  const draws = (Array.isArray(row?.draws) ? row!.draws : []) as Array<{ source?: string; amountCents?: number }>;
 
-  // Set aside exactly what this purchase still owes on each tier -- no more than the tier holds, so a
-  // part the member already paid is not held twice.
-  const parked: Record<string, number> = {};
+  // Set aside what this purchase still owes on each tier -- no more than the tier holds, so a part
+  // the member already paid is not held. Idempotent by id, and read back from the ledger rather than
+  // trusted from this pass, so a retry reports what was actually set aside the first time.
   for (const draw of draws) {
     const tier = String(draw.source ?? '') as Tier;
     if (!TIERS.includes(tier)) continue;
     const owed = await tierBalance(dispute.wallet, `member_credit_${tier}`);
     const cents = Math.min(Math.round(Number(draw.amountCents ?? 0)), owed);
-    if (cents <= 0) continue;
     await move(dispute.wallet, `member_credit_${tier}`, `member_credit_disputed_${tier}`, cents, 'dispute_hold', `dispute:${dispute.token}:hold:${tier}`, {
       dispute: dispute.token,
       tier,
     });
-    parked[tier] = (parked[tier] ?? 0) + cents;
   }
-  await disputeStore.setHold(dispute.token, 'held', { parked });
+  const parked = await parkedFor(dispute);
+  const parkedTotal = Object.values(parked).reduce((a, b) => a + b, 0);
 
-  // Off the chain, if it is on it. The settlement service is the one writer of card positions.
-  void syncCardSettlement(dispute.subjectRef).catch((e) => console.error('[dispute] card sync failed', e));
+  /*
+   * Off the chain by exactly the unpaid part. A part the member already paid was cleared on chain by
+   * repayment netting, so it is not there to take off -- reversing the whole purchase would reverse
+   * money that is no longer owed. Already reversed on an earlier pass: not reversed twice.
+   */
+  const already = Number((dispute.heldDetail as { reversedCents?: number } | null)?.reversedCents ?? 0);
+  let reversedCents = already;
+  if (!already && row?.onchain_status === 'issued') {
+    const reverse = Math.min(parkedTotal, Number(row.onchain_cents ?? 0));
+    if (reverse > 0) {
+      try {
+        await reverseForDispute(dispute.subjectRef, reverse);
+        reversedCents = reverse;
+      } catch (error) {
+        console.error(`[dispute] ${dispute.token} could not come off chain:`, error instanceof Error ? error.message : error);
+        await disputeStore.setHold(dispute.token, 'held', { parked, reversedCents: 0, pending: true });
+        return;
+      }
+    }
+  }
+  await disputeStore.setHold(dispute.token, 'held', { parked, reversedCents, pending: false });
+
+  // Not yet on chain: the settlement service marks it held, so it is not issued while this is open.
+  if (row?.onchain_status !== 'issued' && row?.onchain_status !== 'held') {
+    void syncCardSettlement(dispute.subjectRef).catch((e) => console.error('[dispute] card sync failed', e));
+  }
   await refreshSnapshotsFor(dispute.wallet).catch(() => 0);
+}
+
+/** What this dispute actually set aside, per tier, read from the ledger. */
+async function parkedFor(dispute: DisputeRecord): Promise<Record<string, number>> {
+  const { rows } = await getPayPool()!.query<{ account: string; total: string }>(
+    `SELECT account, SUM(amount_cents) AS total FROM ${LEDGER}
+      WHERE wallet = $1 AND event_type = 'dispute_hold' AND external_id LIKE $2 AND direction = 'debit'
+      GROUP BY account`,
+    [dispute.wallet, `dispute:${dispute.token}:hold:%`],
+  );
+  const parked: Record<string, number> = {};
+  for (const r of rows) parked[r.account.replace('member_credit_disputed_', '')] = Number(r.total);
+  return parked;
 }
 
 async function holdPartner(dispute: DisputeRecord): Promise<void> {
@@ -168,7 +211,7 @@ export async function holdDispute(dispute: DisputeRecord): Promise<void> {
 
 async function releaseCard(dispute: DisputeRecord, memberWon: boolean): Promise<void> {
   await ensureSettlementColumns();
-  const parked = ((dispute.heldDetail as { parked?: Record<string, number> } | null)?.parked ?? {}) as Record<string, number>;
+  const parked = await parkedFor(dispute);
   for (const [tier, cents] of Object.entries(parked)) {
     if (memberWon) {
       // Given back: the member no longer owes it. The co-op absorbs it, as with any chargeback won.
@@ -186,24 +229,34 @@ async function releaseCard(dispute: DisputeRecord, memberWon: boolean): Promise<
   }
 
   const pool = getPayPool()!;
+  const reversed = Number((dispute.heldDetail as { reversedCents?: number } | null)?.reversedCents ?? 0);
   if (memberWon) {
-    // Never to be issued, and nothing left held against it -- so a later event on the purchase
-    // cannot release the same money a second time.
+    // Nothing more is ever issued for it, and nothing is left held against it -- so a later event on
+    // the purchase cannot release the same money a second time. What is on chain for it stays counted
+    // (onchain_cents): that part was paid, and the books have to keep saying so.
     await pool.query(
       `UPDATE lithic_auth_decisions SET dispute_token = NULL, onchain_status = 'waived', net_cents = 0, draws = '[]'::jsonb
         WHERE transaction_token = $1`,
       [dispute.subjectRef],
     );
   } else {
-    // Settled again under a fresh ref, now, so carry starts from the decision.
-    await pool.query(
-      `UPDATE lithic_auth_decisions
-          SET dispute_token = NULL, onchain_status = NULL, onchain_cents = NULL, onchain_attempts = 0,
-              onchain_ref = $2
-        WHERE transaction_token = $1`,
-      [dispute.subjectRef, `${dispute.subjectRef}:after-dispute:${dispute.token}`],
+    const { rows } = await pool.query<{ onchain_status: string | null; onchain_cents: string | null }>(
+      `UPDATE lithic_auth_decisions SET dispute_token = NULL WHERE transaction_token = $1 RETURNING onchain_status, onchain_cents`,
+      [dispute.subjectRef],
     );
-    void syncCardSettlement(dispute.subjectRef).catch((e) => console.error('[dispute] card re-issue failed', e));
+    const row = rows[0];
+    if (reversed > 0) {
+      // Back on chain, fresh: carry starts from the decision.
+      await reissueAfterDispute(dispute.subjectRef, reversed, `${dispute.subjectRef}:after-dispute:${dispute.token}`).catch((e) =>
+        console.error(`[dispute] ${dispute.token} re-issue failed; the sweep cannot redo this, needs a person:`, e),
+      );
+    } else if (row?.onchain_status === 'held' && Number(row.onchain_cents ?? 0) === 0) {
+      // Never reached the chain: it settles now, as any purchase would, and carry starts now.
+      await pool.query(`UPDATE lithic_auth_decisions SET onchain_status = NULL WHERE transaction_token = $1`, [dispute.subjectRef]);
+      void syncCardSettlement(dispute.subjectRef).catch((e) => console.error('[dispute] card issue failed', e));
+    } else if (row?.onchain_status === 'held') {
+      await pool.query(`UPDATE lithic_auth_decisions SET onchain_status = 'issued' WHERE transaction_token = $1`, [dispute.subjectRef]);
+    }
   }
   await refreshSnapshotsFor(dispute.wallet).catch(() => 0);
 }

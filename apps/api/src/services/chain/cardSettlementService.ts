@@ -204,15 +204,19 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
       return { transactionToken: token, action: row.onchain_status === 'waived' ? 'none' : 'needs_review' };
     }
 
-    // A disputed purchase belongs off the chain: no carry is charged on it while it is disputed.
-    const disputed = Boolean(row.dispute_token);
-    const target = disputed ? 0 : creditCentsOf(row.draws);
-    const issued = row.onchain_status === 'issued' ? Number(row.onchain_cents ?? 0) : 0;
-
-    if (disputed && issued === 0) {
-      if (row.onchain_status !== 'held') await record(token, { status: 'held', cents: 0, error: null });
+    /*
+     * A disputed purchase is not issued while the dispute is open, so no carry can start on it. One
+     * already on chain is taken off by dispute enforcement -- by exactly what is still owed on it,
+     * which only enforcement knows -- so this leaves it alone rather than guessing.
+     */
+    if (row.dispute_token) {
+      if (row.onchain_status !== 'issued' && row.onchain_status !== 'held') {
+        await record(token, { status: 'held', cents: 0, error: null });
+      }
       return { transactionToken: token, action: 'none' };
     }
+    const target = creditCentsOf(row.draws);
+    const issued = row.onchain_status === 'issued' ? Number(row.onchain_cents ?? 0) : 0;
 
     if (target === issued) {
       if (target === 0 && row.onchain_status !== 'not_needed' && row.onchain_status !== 'issued') {
@@ -246,14 +250,7 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
       if (target < issued) {
         const tx = await issuer.reverseCardSpend(ref, BigInt(issued - target) * CENTS_TO_UNITS);
         await tx.wait(1);
-        // Taken off for a dispute: recorded as held, so nothing issues it again until it is decided.
-        await record(token, {
-          status: disputed ? 'held' : 'issued',
-          cents: target,
-          tx: tx.hash,
-          error: null,
-          attempt: true,
-        });
+        await record(token, { status: 'issued', cents: target, tx: tx.hash, error: null, attempt: true });
         console.log(`[card-settlement] ${token} gave back ${issued - target}c on chain (${tx.hash})`);
         return { transactionToken: token, action: 'reversed', txHash: tx.hash };
       }
@@ -424,20 +421,30 @@ async function recordCarry(wallet: string, accruedCents: number): Promise<number
 async function readCardDebt(wallet: string, issuer: ethers.Contract): Promise<CardDebtPosition & { carryHeldElsewhere: boolean }> {
   const pool = getPayPool()!;
 
-  // Disputed purchases are set aside in their own ledger accounts and kept off the chain, so they
-  // are left out of both sides here: neither owed for this purpose nor waiting to reach the chain.
-  const { rows } = await pool.query<{ draws: unknown; onchain_status: string | null; onchain_cents: string | null }>(
-    `SELECT draws, onchain_status, onchain_cents FROM ${DECISIONS}
-      WHERE wallet = $1 AND result = 'APPROVED' AND dispute_token IS NULL
-        AND COALESCE(onchain_status, '') NOT IN ('held', 'waived')
-        AND (COALESCE(net_cents, amount_cents) > 0 OR onchain_status = 'issued')`,
+  /*
+   * Per purchase: what is on chain for it (`onchain_cents`, whatever its status -- a disputed or won
+   * purchase can still have a part on chain that the member had already paid), and what of its
+   * credit has not reached the chain yet. A disputed purchase's unpaid part is set aside in its own
+   * ledger accounts and taken off the chain, so it is left out of both.
+   */
+  const { rows } = await pool.query<{
+    draws: unknown;
+    onchain_status: string | null;
+    onchain_cents: string | null;
+    dispute_token: string | null;
+  }>(
+    `SELECT draws, onchain_status, onchain_cents, dispute_token FROM ${DECISIONS}
+      WHERE wallet = $1 AND result = 'APPROVED'
+        AND (COALESCE(net_cents, amount_cents) > 0 OR COALESCE(onchain_cents, 0) > 0)`,
     [wallet],
   );
   let notOnChain = 0;
   let issued = 0;
   for (const row of rows) {
-    if (row.onchain_status === 'issued') issued += Number(row.onchain_cents ?? 0);
-    else notOnChain += creditCentsOf(row.draws);
+    const onChainForRow = Number(row.onchain_cents ?? 0);
+    issued += onChainForRow;
+    if (row.dispute_token || row.onchain_status === 'waived' || row.onchain_status === 'held') continue;
+    notOnChain += Math.max(0, creditCentsOf(row.draws) - (row.onchain_status === 'issued' ? onChainForRow : 0));
   }
 
   const cleared = await pool
@@ -591,4 +598,70 @@ export async function walletsWithCardDebtOnChain(): Promise<string[]> {
     `SELECT DISTINCT wallet FROM ${DECISIONS} WHERE onchain_status = 'issued' AND wallet IS NOT NULL`,
   );
   return rows.map((r) => r.wallet);
+}
+
+// ---- Dispute enforcement's on-chain steps ----------------------------------------------------------
+
+async function settlerIssuer(): Promise<ethers.Contract> {
+  const signer = new ethers.Wallet(settlerKey(), chainProvider(resolveChainId()));
+  const issuer = issuerFor(signer);
+  if (!issuer) throw new Error('No RevolvingIssuer address');
+  return issuer;
+}
+
+/**
+ * Take a disputed purchase's unpaid part off the chain, so no carry accrues on it while it is open.
+ * By an exact amount, which enforcement works out from what is still owed on the purchase: a part
+ * the member already paid has been cleared on chain and is not there to take off.
+ */
+export async function reverseForDispute(transactionToken: string, cents: number): Promise<string | null> {
+  if (cents <= 0 || !isCardSettlementConfigured()) return null;
+  await ensureColumns();
+  const pool = getPayPool()!;
+  const { rows } = await pool.query<{ onchain_ref: string | null; onchain_cents: string | null }>(
+    `SELECT onchain_ref, onchain_cents FROM ${DECISIONS} WHERE transaction_token = $1`,
+    [transactionToken],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const issuer = await settlerIssuer();
+  const tx = await issuer.reverseCardSpend(refFor(transactionToken, row.onchain_ref), BigInt(cents) * CENTS_TO_UNITS);
+  await tx.wait(1);
+  const left = Math.max(0, Number(row.onchain_cents ?? 0) - cents);
+  await record(transactionToken, { status: 'held', cents: left, tx: tx.hash, error: null, attempt: true });
+  console.log(`[card-settlement] ${transactionToken} ${cents}c taken off chain for a dispute (${tx.hash})`);
+  return tx.hash;
+}
+
+/**
+ * Put a disputed purchase's part back on chain after the member lost or withdrew, under a fresh ref
+ * so it is issued NOW: carry starts from the decision, and the time in dispute costs nothing.
+ */
+export async function reissueAfterDispute(transactionToken: string, cents: number, freshRef: string): Promise<string | null> {
+  if (cents <= 0 || !isCardSettlementConfigured()) return null;
+  await ensureColumns();
+  const pool = getPayPool()!;
+  const { rows } = await pool.query<{ wallet: string; onchain_cents: string | null }>(
+    `SELECT wallet, onchain_cents FROM ${DECISIONS} WHERE transaction_token = $1`,
+    [transactionToken],
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const issuer = await settlerIssuer();
+  const ref = ethers.id(freshRef);
+  const [member] = (await issuer.cardSettlementOf(ref)) as [string, bigint];
+  let hash: string | null = null;
+  if (member === ethers.ZeroAddress) {
+    const tx = await issuer.settleCardSpend(ref, row.wallet, BigInt(cents) * CENTS_TO_UNITS);
+    await tx.wait(1);
+    hash = tx.hash;
+  }
+  await pool.query(
+    `UPDATE ${DECISIONS} SET onchain_status = 'issued', onchain_cents = COALESCE(onchain_cents, 0) + $2,
+            onchain_ref = $3, onchain_tx = COALESCE($4, onchain_tx), onchain_error = NULL, onchain_at = now()
+      WHERE transaction_token = $1`,
+    [transactionToken, cents, freshRef, hash],
+  );
+  console.log(`[card-settlement] ${transactionToken} ${cents}c back on chain after a dispute (${hash ?? 'already there'})`);
+  return hash;
 }

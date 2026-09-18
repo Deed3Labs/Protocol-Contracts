@@ -28,15 +28,25 @@ describe('"The amount: held, not spent" and "not counted late"', () => {
 });
 
 describe('"You are not charged carry on a disputed amount"', () => {
-  test('a disputed card purchase belongs off the chain: taken off if on it, not issued if not', () => {
-    expect(settle).toContain('const target = disputed ? 0 : creditCentsOf(row.draws);');
-    expect(settle).toContain("status: disputed ? 'held' : 'issued',");
-    expect(settle).toContain("OR dispute_token IS NOT NULL");
+  test('not yet on chain: it is not issued while the dispute is open', () => {
+    expect(settle).toMatch(/if \(row\.dispute_token\) \{[\s\S]{0,200}status: 'held', cents: 0/);
   });
 
-  test('disputed purchases are left out of repayment netting on both sides', () => {
-    expect(settle).toContain("AND dispute_token IS NULL");
+  test('on chain: taken off by exactly the unpaid part, never money already repaid', () => {
+    expect(enforce).toContain('const reverse = Math.min(parkedTotal, Number(row.onchain_cents ?? 0));');
+    expect(enforce).toContain('await reverseForDispute(dispute.subjectRef, reverse)');
+    // Not reversed twice on a retry.
+    expect(enforce).toContain("if (!already && row?.onchain_status === 'issued')");
+  });
+
+  test('the books stay whole: what is on chain for a purchase is counted whatever its status', () => {
+    expect(settle).toContain('issued += onChainForRow;');
+    expect(settle).toContain("if (row.dispute_token || row.onchain_status === 'waived' || row.onchain_status === 'held') continue;");
     expect(settle).toContain("account NOT LIKE 'member_credit_disputed_%'");
+  });
+
+  test('what was set aside is read back from the ledger, not trusted from the pass that did it', () => {
+    expect(enforce).toContain('const parked = await parkedFor(dispute);');
   });
 
   test('a partner plan is unwound while disputed, and the merchant is not paid for it', () => {
@@ -46,9 +56,11 @@ describe('"You are not charged carry on a disputed amount"', () => {
 });
 
 describe('"If it goes against you, it returns with the time added back"', () => {
-  test('a card purchase is settled again under a fresh ref, so carry starts from the decision', () => {
-    expect(enforce).toContain('`${dispute.subjectRef}:after-dispute:${dispute.token}`');
+  test('a card purchase is put back by exactly what came off, under a fresh ref, so carry starts from the decision', () => {
+    expect(enforce).toContain('await reissueAfterDispute(dispute.subjectRef, reversed, `${dispute.subjectRef}:after-dispute:${dispute.token}`)');
     expect(settle).toContain('return ethers.id(onchainRef || transactionToken);');
+    // Asks the chain first, so a retry cannot issue it twice.
+    expect(settle.indexOf('await issuer.cardSettlementOf(ref)', settle.indexOf('export async function reissueAfterDispute'))).toBeGreaterThan(0);
   });
 
   test('a partner purchase goes onto a new plan opened now', () => {
