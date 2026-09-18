@@ -24,10 +24,13 @@ export default function TransactionDetailDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const navigate = useNavigate();
-  // "Something wrong" is a dispute, and the disputes page says who decides it before anything is filed.
+  /*
+   * "Something wrong" is a dispute. The disputes page says who decides it before anything is filed,
+   * and when this payment is one the disputes API can name, it arrives with the payment chosen.
+   */
   const somethingWrong = () => {
     onOpenChange(false);
-    navigate('/settings/disputes');
+    navigate('/settings/disputes', row.dispute ? { state: { dispute: row.dispute } } : undefined);
   };
   const details: { label: string; value: ReactNode; className?: string }[] = [];
   if (row.datetime) details.push({ label: 'Date', value: row.datetime });
@@ -58,16 +61,13 @@ export default function TransactionDetailDialog({
       title="Transaction"
       description={`${row.name}, ${signedMoney(row.amount)}.`}
       footer={
-        // Splitting a charge that was given back would be splitting nothing. Querying it still
-        // makes sense — a reversal the member did not expect is exactly worth asking about.
-        row.reversed ? (
-          <Btn onClick={somethingWrong}>Something wrong</Btn>
-        ) : (
-          <div className="c-pair">
-            <Btn>Split this</Btn>
-            <Btn onClick={somethingWrong}>Something wrong</Btn>
-          </div>
-        )
+        /*
+         * Split is hidden for now. It belongs on Clear Partner charges, not on every card swipe, and
+         * until partner charges are told apart here the button would offer something it cannot do.
+         */
+        <Btn lg onClick={somethingWrong}>
+          Something wrong
+        </Btn>
       }
     >
       <p className={cn('c-bigamt text-hero-m', row.reversed && 'text-ink-50 line-through')}>

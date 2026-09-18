@@ -58,3 +58,17 @@ describe('card reasons map to the network’s codes', () => {
     expect(route).toMatch(/kind === 'card' && !isCardReason\(reason\)[\s\S]{0,120}400/);
   });
 });
+
+describe('any of the member’s payments can be disputed, not only the newest few', () => {
+  test('filing looks the payment up directly by its reference', () => {
+    expect(candidates).toContain("AND ($3::text IS NULL OR transaction_token = $3)");
+    expect(candidates).toContain("AND ($3::text IS NULL OR code = $3)");
+    expect(candidates).toContain("AND ($3::text IS NULL OR transfer_id = $3)");
+    expect(candidates).toMatch(/findCandidate[\s\S]{0,400}cardCandidates\(w, ref\)/);
+  });
+
+  test('the payment a member tapped is offered first', () => {
+    expect(route).toMatch(/req\.query\.ref[\s\S]{0,300}disputeCandidates\(wallet, exclude, include\)/);
+    expect(candidates).toContain('...(picked ? [picked] : [])');
+  });
+});

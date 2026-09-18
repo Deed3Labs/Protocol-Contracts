@@ -33,7 +33,7 @@ describe('who decides changes with what went wrong', () => {
 describe('filing is real, and never pretends', () => {
   test('the live route files through the API; the harness files nothing', () => {
     expect(route).toContain('fileDispute(input)');
-    expect(route).toContain('getDisputeCandidates()');
+    expect(route).toContain('getDisputeCandidates(include)');
     expect(page).toContain("error: 'Sign in to file a dispute — nothing was sent.'");
   });
 
@@ -47,9 +47,25 @@ describe('filing is real, and never pretends', () => {
 });
 
 describe('"Something wrong" on a transaction leads to disputes', () => {
-  test('both buttons in the shared transaction modal go to the disputes page', () => {
-    const dialog = read('components/clear/TransactionDetailDialog.tsx');
-    expect(dialog).toContain("navigate('/settings/disputes')");
-    expect(dialog.match(/<Btn onClick=\{somethingWrong\}>Something wrong<\/Btn>/g)).toHaveLength(2);
+  const dialog = read('components/clear/TransactionDetailDialog.tsx');
+
+  test('one full-width button, and Split is hidden for now', () => {
+    expect(dialog).toMatch(/<Btn lg onClick=\{somethingWrong\}>\s*Something wrong\s*<\/Btn>/);
+    expect(dialog).not.toContain('>Split this<');
+  });
+
+  test('it carries the payment when the disputes API can name it', () => {
+    expect(dialog).toContain("navigate('/settings/disputes', row.dispute ? { state: { dispute: row.dispute } } : undefined)");
+    // Card charges are named by Lithic's transaction token; a reversed one has nothing to dispute.
+    const mapping = read('lib/activityMapping.ts');
+    expect(mapping).toContain("...(tx.reversed ? {} : { dispute: { kind: 'card' as const, ref: tx.id } })");
+  });
+
+  test('the disputes page opens Raise a dispute with that payment chosen', () => {
+    expect(page).toContain('useState(() => Boolean(arrivedWith))');
+    expect(page).toContain('disputes?.load(arrivedWith)');
+    const raise = read('components/settings/RaiseDisputeDialog.tsx');
+    expect(raise).toContain('picked && picked.kind === kind ? picked');
+    expect(raise).toContain('if (picked) setKind(picked.kind);');
   });
 });

@@ -338,6 +338,11 @@ export interface ActivityRow {
   counterpartyHandle?: string;
   /** This payment's place in a term plan. */
   termPayment?: { index: number; count: number };
+  /**
+   * How this payment is known to the disputes API, when it can be. Card charges only for now: their
+   * id is Lithic's transaction token. Chain rows carry hashes, which are not what a dispute names.
+   */
+  dispute?: { kind: DisputeKind; ref: string };
 }
 
 /** Where a flow draws the money from, and what's in it. */

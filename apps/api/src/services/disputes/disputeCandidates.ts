@@ -27,7 +27,7 @@ export interface DisputeCandidate {
 /** Newest first, per kind. The modal shows the most recent of each, as the reference does. */
 const PER_KIND = 5;
 
-async function cardCandidates(wallet: string): Promise<DisputeCandidate[]> {
+async function cardCandidates(wallet: string, ref?: string): Promise<DisputeCandidate[]> {
   const pool = getPayPool();
   if (!pool) return [];
   const { rows } = await pool.query<{
@@ -40,9 +40,10 @@ async function cardCandidates(wallet: string): Promise<DisputeCandidate[]> {
     `SELECT transaction_token, amount_cents, net_cents, merchant, decided_at
        FROM lithic_auth_decisions
       WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0
+        AND ($3::text IS NULL OR transaction_token = $3)
       ORDER BY decided_at DESC
       LIMIT $2`,
-    [wallet, PER_KIND],
+    [wallet, PER_KIND, ref ?? null],
   ).catch(() => ({ rows: [] }));
   return rows.map((row) => {
     const merchant = (row.merchant ?? {}) as Record<string, unknown>;
@@ -58,16 +59,17 @@ async function cardCandidates(wallet: string): Promise<DisputeCandidate[]> {
   });
 }
 
-async function partnerCandidates(wallet: string): Promise<DisputeCandidate[]> {
+async function partnerCandidates(wallet: string, ref?: string): Promise<DisputeCandidate[]> {
   const pool = getPostgresPool();
   if (!pool) return [];
   const { rows } = await pool.query<{ code: string; merchant_name: string; amount_cents: string; created_at: Date }>(
     `SELECT code, merchant_name, amount_cents, created_at
        FROM charge_requests
       WHERE member_wallet = $1 AND status = 'approved'
+        AND ($3::text IS NULL OR code = $3)
       ORDER BY created_at DESC
       LIMIT $2`,
-    [wallet, PER_KIND],
+    [wallet, PER_KIND, ref ?? null],
   ).catch(() => ({ rows: [] }));
   return rows.map((row) => ({
     kind: 'partner' as const,
@@ -78,7 +80,7 @@ async function partnerCandidates(wallet: string): Promise<DisputeCandidate[]> {
   }));
 }
 
-async function memberCandidates(wallet: string): Promise<DisputeCandidate[]> {
+async function memberCandidates(wallet: string, ref?: string): Promise<DisputeCandidate[]> {
   const pool = getPostgresPool();
   if (!pool) return [];
   // principal_usdc is in USDC base units (6 decimals); cents are 4 of those places fewer.
@@ -86,9 +88,10 @@ async function memberCandidates(wallet: string): Promise<DisputeCandidate[]> {
     `SELECT transfer_id, principal_usdc, memo, created_at
        FROM send_transfers
       WHERE LOWER(sender_wallet) = $1
+        AND ($3::text IS NULL OR transfer_id = $3)
       ORDER BY created_at DESC
       LIMIT $2`,
-    [wallet, PER_KIND],
+    [wallet, PER_KIND, ref ?? null],
   ).catch(() => ({ rows: [] }));
   return rows.map((row) => ({
     kind: 'member' as const,
@@ -100,19 +103,43 @@ async function memberCandidates(wallet: string): Promise<DisputeCandidate[]> {
   }));
 }
 
-export async function disputeCandidates(wallet: string, exclude: Set<string>): Promise<DisputeCandidate[]> {
+/**
+ * `include` is a payment the member opened a dispute from ("Something wrong" on that transaction).
+ * It is looked up directly and put first, so it is offered even when it is older than the newest few.
+ */
+export async function disputeCandidates(
+  wallet: string,
+  exclude: Set<string>,
+  include?: { kind: DisputeKind; ref: string },
+): Promise<DisputeCandidate[]> {
   const w = wallet.trim().toLowerCase();
-  const [card, partner, member] = await Promise.all([cardCandidates(w), partnerCandidates(w), memberCandidates(w)]);
-  return [...card, ...partner, ...member].filter((c) => !exclude.has(c.ref) && c.amountCents > 0);
+  const [card, partner, member, picked] = await Promise.all([
+    cardCandidates(w),
+    partnerCandidates(w),
+    memberCandidates(w),
+    include ? findCandidate(w, include.kind, include.ref) : Promise.resolve(null),
+  ]);
+  const all = [...(picked ? [picked] : []), ...card, ...partner, ...member];
+  const seen = new Set<string>();
+  return all.filter((c) => {
+    if (seen.has(c.ref) || exclude.has(c.ref) || c.amountCents <= 0) return false;
+    seen.add(c.ref);
+    return true;
+  });
 }
 
-/** One candidate, re-read from source — what a filing is checked against, never the client's copy. */
+/**
+ * One candidate, re-read from source by its reference — what a filing is checked against, never the
+ * client's copy. A direct lookup, not a search of the newest few: an older payment is just as
+ * disputable, and checking only the latest five refused it.
+ */
 export async function findCandidate(
   wallet: string,
   kind: DisputeKind,
   ref: string,
 ): Promise<DisputeCandidate | null> {
   const w = wallet.trim().toLowerCase();
-  const list = kind === 'card' ? await cardCandidates(w) : kind === 'partner' ? await partnerCandidates(w) : await memberCandidates(w);
-  return list.find((c) => c.ref === ref) ?? null;
+  const list =
+    kind === 'card' ? await cardCandidates(w, ref) : kind === 'partner' ? await partnerCandidates(w, ref) : await memberCandidates(w, ref);
+  return list[0] ?? null;
 }
