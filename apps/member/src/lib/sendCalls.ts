@@ -299,3 +299,32 @@ export async function scTransferToken(args: {
     { to: args.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [args.to, amt] }) },
   ]);
 }
+
+const STABLE_CREDIT_ABI = [
+  { type: 'function', name: 'repayCreditBalance', stateMutability: 'nonpayable',
+    inputs: [{ name: 'member', type: 'address' }, { name: 'amount', type: 'uint128' }], outputs: [] },
+  { type: 'function', name: 'creditBalanceOf', stateMutability: 'view',
+    inputs: [{ name: 'member', type: 'address' }], outputs: [{ type: 'uint256' }] },
+] as const;
+
+export { STABLE_CREDIT_ABI };
+
+/**
+ * Repay card debt in USDC: [approve, repayCreditBalance] in ONE sponsored batch.
+ *
+ * StableCredit pulls the reserve token (USDC, 1:1) from the caller, burns the member's obligation and
+ * tells the issuers, which clear the dearest tier first. Face ID first, like every money move
+ * (runBatch). The server then records it in the books from this transaction's own events.
+ */
+export async function scRepayCredit(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.stableCredit) throw new Error('Repaying on chain is not available on this network yet.');
+  const amt = parseUnits(args.amount, 6);
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.stableCredit, amt] }) },
+    {
+      to: c.stableCredit,
+      data: encodeFunctionData({ abi: STABLE_CREDIT_ABI, functionName: 'repayCreditBalance', args: [args.ownerWallet as `0x${string}`, amt] }),
+    },
+  ]);
+}

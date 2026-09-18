@@ -36,6 +36,8 @@ export interface ClearContracts {
   burnerBond?: `0x${string}`;
   /** Holds the face-value and maturity limits every mint is checked against. */
   burnerBondFactory?: `0x${string}`;
+  /** The credit ledger. Repaying card debt in USDC is `repayCreditBalance` here. Testnet only so far. */
+  stableCredit?: `0x${string}`;
 }
 const CONTRACTS: Record<number, ClearContracts> = {
   8453: {
@@ -49,6 +51,7 @@ const CONTRACTS: Record<number, ClearContracts> = {
     burnerBondDeposit: '0x1933aC0BDd58C1a6D48c19f8A7fD96c5Ec27c6C3',
     burnerBond: '0x4d96904EA80aae8cAC34826f8Fd0aF52Ae85c148',
     burnerBondFactory: '0x77e261F967491100906a607b8E46eD670684edDb',
+    stableCredit: '0x1d9f1ECDc70b31256aFA75A73F991cfAa8bC928C',
     // Replacement pair. The vault and token these succeed are still deployed and still
     // mutually redeemable -- ESADepositVaultLegacy holds the USDC behind the CLRUSD that was
     // outstanding when the swap happened, so nobody who held the old token is stranded.

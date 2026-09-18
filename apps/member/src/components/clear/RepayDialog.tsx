@@ -52,6 +52,7 @@ export default function RepayDialog({
   account,
   open,
   onOpenChange,
+  onRepay,
 }: {
   credit: Credit;
   /** Source is Ready to allocate; destination is the account. Both live here. */
@@ -60,7 +61,14 @@ export default function RepayDialog({
   cycle?: Cycle;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Repays on chain from the member's USDC. Absent in the preview harness, where the button stays
+   * inert. `Move to cash` (nothing carried) is not wired here.
+   */
+  onRepay?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
 }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
   const source = account.readyToAllocate;
   const outstanding = creditUsed(credit);
   const carrying = outstanding > 0;
@@ -77,9 +85,31 @@ export default function RepayDialog({
     if (!open) return;
     setAmount(carrying ? clearCycle : source);
     setCustom(false);
+    setNote(null);
   }, [open, carrying, clearCycle, source]);
 
-  const capped = Math.min(Math.max(0, amount), source);
+  /*
+   * Carrying a balance, a repayment is capped at what is owed. The spill line used to promise that
+   * anything over would land in Spendable, and nothing moves USDC onto the card -- so the amount
+   * simply cannot go past the debt.
+   */
+  const capped = Math.min(Math.max(0, amount), source, carrying ? outstanding : Infinity);
+
+  const repay = async () => {
+    if (!onRepay || capped <= 0) return;
+    setBusy(true);
+    setNote(null);
+    const result = await onRepay(capped);
+    setBusy(false);
+    if (result.repaid && result.repaid > 0) {
+      const pending = result.pendingLeft && result.pendingLeft > 0
+        ? ` ${money(result.pendingLeft, { cents: true })} is still pending and can be repaid once it settles.`
+        : '';
+      setNote({ text: `Repaid ${money(result.repaid, { cents: true })}.${pending}${result.error ? ` ${result.error}` : ''}`, bad: false });
+    } else {
+      setNote({ text: result.error ?? 'That did not go through. Nothing was repaid.', bad: true });
+    }
+  };
   const lines = repayAllocation(credit, capped).filter((line) => line.applied > 0);
   const towardCycle = repaidUnsecured(credit, capped);
   // The repayment behaves exactly like more deposit arriving, so the cycle reads it the same way and
@@ -146,8 +176,19 @@ export default function RepayDialog({
           <p>Money only spills once everything you carry is cleared, not once the cycle is covered.</p>
         </div>
       )}
-      <Btn primary lg className="mt-s2" disabled={capped <= 0}>
-        {carrying ? `Repay ${money(capped, { cents: true })}` : `Move ${money(capped, { cents: true })} to cash`}
+      {note && <p className={cn('c-det mt-s2', note.bad && 'c-errline')}>{note.text}</p>}
+      <Btn
+        primary
+        lg
+        className="mt-s2"
+        disabled={capped <= 0 || busy}
+        onClick={carrying ? () => void repay() : undefined}
+      >
+        {busy
+          ? 'Repaying…'
+          : carrying
+            ? `Repay ${money(capped, { cents: true })}`
+            : `Move ${money(capped, { cents: true })} to cash`}
       </Btn>
     </>
   );

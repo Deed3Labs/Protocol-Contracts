@@ -8,6 +8,7 @@ import { mergedActivityRows } from '@/lib/activityMapping';
 import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
+import { useCreditRepay } from '@/hooks/useCreditRepay';
 import {
   getCardTransactions,
   getCredit,
@@ -60,6 +61,7 @@ export default function HomeRoute() {
   const [pay, setPay] = useState<PaySummary | null>(null);
   const [credit, setCredit] = useState<CreditState | null>(null);
   const [cards, setCards] = useState<CardTransaction[]>([]);
+  const repay = useCreditRepay();
 
   useEffect(() => {
     let cancelled = false;
@@ -178,5 +180,5 @@ export default function HomeRoute() {
       : {}),
   };
 
-  return <HomePage data={data} />;
+  return <HomePage data={data} onRepay={repay} />;
 }
