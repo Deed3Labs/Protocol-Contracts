@@ -36,7 +36,9 @@ export type ChargeStatus =
   /** The shop withdrew it before the member acted. */
   | 'cancelled'
   /** A refund settled against it. The in-flight refund states live in merchant.refunds. */
-  | 'refunded';
+  | 'refunded'
+  /** The member raised a dispute, and the plan is unwound while it is open. */
+  | 'disputed';
 
 export interface ChargeRow {
   code: string;
@@ -431,6 +433,42 @@ export const chargeStore = {
     await pool.query(`UPDATE ${TABLE} SET raised_by = $2 WHERE code = $1`, [
       code.trim().toUpperCase(),
       staffId,
+    ]);
+  },
+
+  /**
+   * A dispute was raised on an approved charge. `disputed` drops it out of every payout query --
+   * they all ask for `approved` -- so the merchant is not paid for a purchase in dispute.
+   */
+  async markDisputed(code: string): Promise<boolean> {
+    const pool = getPostgresPool();
+    if (!pool) return false;
+    await ensureTables();
+    const r = await pool.query(`UPDATE ${TABLE} SET status = 'disputed' WHERE code = $1 AND status = 'approved'`, [
+      code.trim().toUpperCase(),
+    ]);
+    return (r.rowCount ?? 0) > 0;
+  },
+
+  /** The dispute went against the member, or they withdrew it: the purchase stands, on a new plan. */
+  async restoreAfterDispute(code: string, planId: number | null, txHash: string | null): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTables();
+    await pool.query(
+      `UPDATE ${TABLE} SET status = 'approved', plan_id = COALESCE($2, plan_id), tx_hash = COALESCE($3, tx_hash)
+        WHERE code = $1 AND status = 'disputed'`,
+      [code.trim().toUpperCase(), planId, txHash],
+    );
+  },
+
+  /** The member won the dispute: the purchase is given back, as a refund would. */
+  async refundAfterDispute(code: string): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTables();
+    await pool.query(`UPDATE ${TABLE} SET status = 'refunded' WHERE code = $1 AND status = 'disputed'`, [
+      code.trim().toUpperCase(),
     ]);
   },
 

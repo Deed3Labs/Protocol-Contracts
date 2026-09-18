@@ -56,7 +56,11 @@ const ISSUER_ABI = [
   'function cardSettlementAccount() view returns (address)',
 ];
 
-export type OnchainStatus = 'issued' | 'failed' | 'needs_review' | 'not_needed';
+/**
+ * `held`: a dispute is open, so the purchase is kept off the chain (or taken off it) and no carry
+ * accrues on it. `waived`: the member won the dispute; it will never be issued.
+ */
+export type OnchainStatus = 'issued' | 'failed' | 'needs_review' | 'not_needed' | 'held' | 'waived';
 
 export interface SettlementSync {
   transactionToken: string;
@@ -84,6 +88,22 @@ export function refOf(transactionToken: string): string {
   return ethers.id(transactionToken);
 }
 
+/**
+ * The ref for a row: its own token, or the token with a suffix once a dispute has put it back.
+ *
+ * Settlement is once per ref, for good reason, and a purchase taken off the chain for a dispute and
+ * then put back after the member lost it is a second settlement. A fresh ref is what lets it be
+ * issued again -- and issued NOW, so carry starts from the decision, not from the original swipe.
+ */
+export function refFor(transactionToken: string, onchainRef: string | null): string {
+  return ethers.id(onchainRef || transactionToken);
+}
+
+/** Exported so dispute enforcement can make the first pass straight away. */
+export async function ensureSettlementColumns(): Promise<void> {
+  await ensureColumns();
+}
+
 /** The credit part of a hold — everything not drawn from the member's own cash. */
 export function creditCentsOf(draws: unknown): number {
   if (!Array.isArray(draws)) return 0;
@@ -106,6 +126,8 @@ async function ensureColumns(): Promise<void> {
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_error TEXT;
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_attempts INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_at TIMESTAMPTZ;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS onchain_ref TEXT;
+    ALTER TABLE ${DECISIONS} ADD COLUMN IF NOT EXISTS dispute_token TEXT;
   `);
   ensured = true;
 }
@@ -166,8 +188,10 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
       onchain_status: string | null;
       onchain_cents: string | null;
       onchain_attempts: number;
+      onchain_ref: string | null;
+      dispute_token: string | null;
     }>(
-      `SELECT wallet, result, status, draws, onchain_status, onchain_cents, onchain_attempts
+      `SELECT wallet, result, status, draws, onchain_status, onchain_cents, onchain_attempts, onchain_ref, dispute_token
          FROM ${DECISIONS} WHERE transaction_token = $1`,
       [token],
     );
@@ -176,10 +200,19 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
     if (!row || row.result !== 'APPROVED' || row.status !== 'SETTLED' || !row.wallet) {
       return { transactionToken: token, action: 'none' };
     }
-    if (row.onchain_status === 'needs_review') return { transactionToken: token, action: 'needs_review' };
+    if (row.onchain_status === 'needs_review' || row.onchain_status === 'waived') {
+      return { transactionToken: token, action: row.onchain_status === 'waived' ? 'none' : 'needs_review' };
+    }
 
-    const target = creditCentsOf(row.draws);
+    // A disputed purchase belongs off the chain: no carry is charged on it while it is disputed.
+    const disputed = Boolean(row.dispute_token);
+    const target = disputed ? 0 : creditCentsOf(row.draws);
     const issued = row.onchain_status === 'issued' ? Number(row.onchain_cents ?? 0) : 0;
+
+    if (disputed && issued === 0) {
+      if (row.onchain_status !== 'held') await record(token, { status: 'held', cents: 0, error: null });
+      return { transactionToken: token, action: 'none' };
+    }
 
     if (target === issued) {
       if (target === 0 && row.onchain_status !== 'not_needed' && row.onchain_status !== 'issued') {
@@ -192,7 +225,7 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
     const signer = new ethers.Wallet(settlerKey(), chainProvider(resolveChainId()));
     const issuer = issuerFor(signer);
     if (!issuer) return { transactionToken: token, action: 'skipped', error: 'No RevolvingIssuer address' };
-    const ref = refOf(token);
+    const ref = refFor(token, row.onchain_ref);
 
     try {
       if (issued === 0) {
@@ -213,7 +246,14 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
       if (target < issued) {
         const tx = await issuer.reverseCardSpend(ref, BigInt(issued - target) * CENTS_TO_UNITS);
         await tx.wait(1);
-        await record(token, { status: 'issued', cents: target, tx: tx.hash, error: null, attempt: true });
+        // Taken off for a dispute: recorded as held, so nothing issues it again until it is decided.
+        await record(token, {
+          status: disputed ? 'held' : 'issued',
+          cents: target,
+          tx: tx.hash,
+          error: null,
+          attempt: true,
+        });
         console.log(`[card-settlement] ${token} gave back ${issued - target}c on chain (${tx.hash})`);
         return { transactionToken: token, action: 'reversed', txHash: tx.hash };
       }
@@ -250,7 +290,7 @@ export async function sweepCardSettlements(limit = 25): Promise<SettlementSync[]
     `SELECT transaction_token FROM ${DECISIONS}
       WHERE result = 'APPROVED' AND status = 'SETTLED'
         AND (onchain_status IS NULL OR onchain_status IN ('failed', 'issued'))
-        AND (onchain_status IS DISTINCT FROM 'issued' OR reconciled_at > onchain_at)
+        AND (onchain_status IS DISTINCT FROM 'issued' OR reconciled_at > onchain_at OR dispute_token IS NOT NULL)
       ORDER BY decided_at ASC
       LIMIT $1`,
     [limit],
@@ -384,9 +424,12 @@ async function recordCarry(wallet: string, accruedCents: number): Promise<number
 async function readCardDebt(wallet: string, issuer: ethers.Contract): Promise<CardDebtPosition & { carryHeldElsewhere: boolean }> {
   const pool = getPayPool()!;
 
+  // Disputed purchases are set aside in their own ledger accounts and kept off the chain, so they
+  // are left out of both sides here: neither owed for this purpose nor waiting to reach the chain.
   const { rows } = await pool.query<{ draws: unknown; onchain_status: string | null; onchain_cents: string | null }>(
     `SELECT draws, onchain_status, onchain_cents FROM ${DECISIONS}
-      WHERE wallet = $1 AND result = 'APPROVED'
+      WHERE wallet = $1 AND result = 'APPROVED' AND dispute_token IS NULL
+        AND COALESCE(onchain_status, '') NOT IN ('held', 'waived')
         AND (COALESCE(net_cents, amount_cents) > 0 OR onchain_status = 'issued')`,
     [wallet],
   );
@@ -433,7 +476,7 @@ async function readCardDebt(wallet: string, issuer: ethers.Contract): Promise<Ca
       `SELECT COALESCE(SUM(GREATEST(net, 0)), 0) AS net FROM (
          SELECT SUM(CASE WHEN direction = 'debit' THEN amount_cents ELSE -amount_cents END) AS net
            FROM ${LEDGER}
-          WHERE wallet = $1 AND account LIKE 'member_credit_%'
+          WHERE wallet = $1 AND account LIKE 'member_credit_%' AND account NOT LIKE 'member_credit_disputed_%'
             AND NOT (direction = 'credit' AND event_type = 'credit_settlement' AND rail = 'chain')
           GROUP BY account) t`,
       [wallet],

@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { disputeStore, type DisputeKind } from '../services/disputes/disputeStore.js';
 import { disputeCandidates, findCandidate } from '../services/disputes/disputeCandidates.js';
 import { isCardReason, openCardDispute } from '../services/disputes/networkDispute.js';
+import { holdDispute, withdrawDispute } from '../services/disputes/disputeEnforcement.js';
 
 /*
  * Disputes — the member says a payment went wrong.
@@ -98,8 +99,14 @@ disputesRouter.post('/', async (req: Request, res: Response) => {
     });
     if (!dispute) return res.status(503).json({ error: 'Disputes unavailable', message: UNAVAILABLE });
 
+    // What the page promises while it is open starts now. Not awaited -- a partner plan is unwound
+    // on chain -- and the sweep retries until it lands.
+    const enforce = (record: typeof dispute) =>
+      void holdDispute(record).catch((e) => console.error(`[disputes] hold for ${record.token} failed`, e));
+
     if (kind !== 'card' || !isCardReason(reason)) {
       console.log(`[disputes] ${dispute.token} (${kind}) filed by ${wallet}`);
+      enforce(dispute);
       return res.status(201).json({ dispute, network: null });
     }
 
@@ -111,6 +118,7 @@ disputesRouter.post('/', async (req: Request, res: Response) => {
       note: detail,
     });
     const updated = (await disputeStore.recordNetwork(dispute.token, outcome)) ?? dispute;
+    enforce(updated);
     console.log(
       `[disputes] ${dispute.token} (card) filed by ${wallet}; network ${'error' in outcome ? 'refused' : 'accepted'}`,
     );
@@ -121,6 +129,23 @@ disputesRouter.post('/', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[disputes] file failed', error);
     return res.status(500).json({ error: 'Failed to file dispute', message: UNAVAILABLE });
+  }
+});
+
+/** POST /api/disputes/:token/withdraw — the member takes it back, before a decision. */
+disputesRouter.post('/:token/withdraw', async (req: Request, res: Response) => {
+  const wallet = sessionWallet(req);
+  if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
+  try {
+    const result = await withdrawDispute(String(req.params.token), wallet);
+    if (!result.ok) {
+      const status = result.reason === 'not found' ? 404 : 409;
+      return res.status(status).json({ error: 'Not withdrawn', message: result.reason });
+    }
+    return res.json({ withdrawn: true });
+  } catch (error) {
+    console.error('[disputes] withdraw failed', error);
+    return res.status(500).json({ error: 'Failed to withdraw', message: 'We could not withdraw that just now. Please try again.' });
   }
 });
 

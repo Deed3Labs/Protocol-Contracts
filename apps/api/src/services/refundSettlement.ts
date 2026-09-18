@@ -35,6 +35,8 @@ export interface SettleResult {
   reason?: string;
   /** Set when a plan was paid down. Absent when there was nothing left to close. */
   txHash?: string;
+  /** Principal actually unwound, in cents -- what a dispute has to put back if the member loses. */
+  unwoundCents?: number;
 }
 
 /**
@@ -48,7 +50,8 @@ export interface SettleResult {
  * asserts they net. Rounding is given to the discount rather than the payout: the co-op absorbing a
  * cent is better than a merchant being clawed back one they were never paid.
  */
-async function closePlan(charge: ChargeRow, amountCents: number): Promise<SettleResult> {
+/** Exported for disputes, which unwind a plan provisionally while a dispute is open. */
+export async function closePlan(charge: ChargeRow, amountCents: number): Promise<SettleResult> {
   if (charge.planId == null) {
     // Nothing was opened, so there is nothing to close. Not a failure: a charge can be refunded
     // before it ever became a plan.
@@ -88,7 +91,7 @@ async function closePlan(charge: ChargeRow, amountCents: number): Promise<Settle
       payoutShare,
     );
     const receipt = await tx.wait();
-    return { ok: true, txHash: receipt?.hash ?? tx.hash };
+    return { ok: true, txHash: receipt?.hash ?? tx.hash, unwoundCents: Number(giving / 10_000n) };
   } catch (error) {
     console.error('[refund] closePlanForRefund failed for charge', charge.code, error);
     return { ok: false, reason: explainRefundFailure(error) };

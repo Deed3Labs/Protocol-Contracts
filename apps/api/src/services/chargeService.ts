@@ -695,3 +695,62 @@ export async function reconcileCharges(olderThanSeconds = 120): Promise<Reconcil
 
   return summary;
 }
+
+/**
+ * Put a disputed purchase back on a plan, after the member lost the dispute or withdrew it.
+ *
+ * A NEW plan, opened now, for what was unwound. That is how "the time it spent in dispute is added
+ * back" is kept: carry and the schedule start from today, so the weeks it spent in dispute cost the
+ * member nothing. Same terms as the original -- rate, cycle, and the split the member chose.
+ */
+export async function reopenPlanAfterDispute(
+  charge: ChargeRow,
+  principalCents: number,
+): Promise<{ ok: boolean; planId?: number; txHash?: string; reason?: string }> {
+  if (principalCents <= 0) return { ok: true };
+  const termIssuerAddress = getContractAddress(chainId(), 'TermIssuer');
+  const revolvingAddress = getContractAddress(chainId(), 'RevolvingIssuer');
+  if (!termIssuerAddress) return { ok: false, reason: 'no term issuer on this chain' };
+  const key = operatorKey();
+  if (!key) return { ok: false, reason: 'no credit operator configured' };
+
+  try {
+    const issuer = new ethers.Contract(termIssuerAddress, TERM_ISSUER_ABI, new ethers.Wallet(key, provider()));
+    let cycle = 30n * 24n * 60n * 60n;
+    if (revolvingAddress) {
+      try {
+        cycle = await new ethers.Contract(revolvingAddress, ISSUER_ABI, provider()).cycleLength();
+      } catch {
+        /* network default */
+      }
+    }
+    const purchase = BigInt(principalCents) * 10_000n;
+    // The merchant's share in the sale's own proportion, floored like the refund path.
+    const payout =
+      charge.amountCents > 0 ? (BigInt(charge.payoutCents) * purchase) / BigInt(charge.amountCents) : 0n;
+    const tx = await issuer.openPlan(
+      charge.memberWallet,
+      charge.merchantAddress,
+      purchase,
+      payout,
+      BigInt(DEFAULT_RATE_BPS),
+      cycle,
+      charge.splitInto ?? 1,
+      cycle,
+    );
+    const receipt = await tx.wait();
+    let planId: number | undefined;
+    for (const log of receipt?.logs ?? []) {
+      try {
+        const parsed = issuer.interface.parseLog({ topics: [...log.topics], data: log.data });
+        if (parsed?.name === 'PlanOpened') planId = Number(parsed.args.planId);
+      } catch {
+        /* not our event */
+      }
+    }
+    return { ok: true, planId, txHash: receipt?.hash ?? tx.hash };
+  } catch (error) {
+    console.error('[dispute] reopening plan failed for', charge.code, error);
+    return { ok: false, reason: explainChainError(error) };
+  }
+}
