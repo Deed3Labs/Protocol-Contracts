@@ -142,8 +142,8 @@ describe('signing out', () => {
     expect(read('pages/app/SettingsRoute.tsx')).toContain('onSignOut={() => void logout()}');
   });
 
-  test('and its Acceleration Explore opens the dialog in Settings', () => {
-    expect(read('components/shell/AppShell.tsx')).toContain("navigate('/settings', { state: { open: 'acceleration' } })");
-    expect(read('pages/app/SettingsPage.tsx')).toContain("?.open === 'acceleration'");
+  test('and its Acceleration Explore opens the Acceleration page in Settings', () => {
+    expect(read('components/shell/AppShell.tsx')).toContain("navigate('/settings/acceleration')");
+    expect(read('pages/app/settingsPages.ts')).toContain("acceleration: { title: 'Acceleration'");
   });
 });
