@@ -23,6 +23,26 @@
     },
     {
       "type": "error",
+      "name": "RevolvingIssuerAutoRepayAlreadyUsed",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "RevolvingIssuerAutoRepayNotEnabled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "RevolvingIssuerCapacityBelowDrawn",
       "inputs": [
         {
@@ -213,6 +233,45 @@
         {
           "type": "address",
           "name": "newAdmin",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AutoRepaid",
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "AutoRepaySet",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "enabled",
           "indexed": false
         }
       ]
@@ -694,6 +753,44 @@
         {
           "type": "uint256",
           "name": "tierId"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "autoRepayEnabled",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "autoRepaymentOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
         }
       ]
     },
@@ -1519,6 +1616,27 @@
     },
     {
       "type": "function",
+      "name": "repayForMember",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bytes32",
+          "name": "ref"
+        },
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "reverseCardSpend",
       "constant": false,
       "payable": false,
@@ -1530,6 +1648,19 @@
         {
           "type": "uint256",
           "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setAutoRepay",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "bool",
+          "name": "enabled"
         }
       ],
       "outputs": []
