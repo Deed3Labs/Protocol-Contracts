@@ -569,6 +569,53 @@ describe("RevolvingIssuer", function () {
         .to.be.revertedWith("CreditIssuer: Unauthorized caller");
     });
 
+    it("a fiat repayment clears the debt against the float's claim, dearest tier first", async function () {
+      await openLine([100n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
+      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+
+      const PAY = ethers.id("card-repay:member:1");
+      await issuer.connect(settler).repayCardSpend(PAY, ctx.member.address, 100n * ONE_USDC);
+
+      // Dearest first: the 65 bps tier clears before the free one.
+      expect(await issuer.drawnOf(ctx.member.address, 1)).to.equal(0n);
+      expect(await issuer.drawnOf(ctx.member.address, 0)).to.equal(75n * ONE_USDC);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(75n * ONE_USDC);
+      // Capital-free: the float's claim is burned, nothing is paid in.
+      expect(await ctx.stableCredit.balanceOf(float.address)).to.equal(75n * ONE_USDC);
+      expect(await issuer.totalPrincipalOf(ctx.member.address))
+        .to.equal(await ctx.stableCredit.creditBalanceOf(ctx.member.address));
+      expect(await issuer.cardRepaymentOf(PAY)).to.equal(100n * ONE_USDC);
+    });
+
+    it("clears a repayment once, and refuses more than is drawn or than the float holds", async function () {
+      await openLine([500n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
+      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      const PAY = ethers.id("card-repay:member:1");
+
+      await issuer.connect(settler).repayCardSpend(PAY, ctx.member.address, 50n * ONE_USDC);
+      await expect(issuer.connect(settler).repayCardSpend(PAY, ctx.member.address, 50n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardAlreadyRepaid");
+      await expect(
+        issuer.connect(settler).repayCardSpend(ethers.id("card-repay:member:2"), ctx.member.address, 200n * ONE_USDC)
+      ).to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardRepaymentExceedsDrawn");
+
+      // The float has spent part of its claim elsewhere: clearing more than it holds would hand the
+      // co-op an obligation instead of burning a claim.
+      await ctx.access.connect(ctx.operator).grantMember(float.address);
+      await ctx.stableCredit.connect(float).transfer(ctx.counterparty.address, 100n * ONE_USDC);
+      await expect(
+        issuer.connect(settler).repayCardSpend(ethers.id("card-repay:member:3"), ctx.member.address, 100n * ONE_USDC)
+      ).to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardFloatCannotCover");
+    });
+
+    it("only a card settler can clear a repayment", async function () {
+      await openLine([500n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
+      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      await expect(
+        issuer.connect(ctx.member).repayCardSpend(ethers.id("x"), ctx.member.address, ONE_USDC)
+      ).to.be.revertedWithCustomError(issuer, "RevolvingIssuerNotCardSettler");
+    });
+
     it("a refund after clearing gives the purchase back, dearest tier first", async function () {
       await openLine([100n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
       await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);

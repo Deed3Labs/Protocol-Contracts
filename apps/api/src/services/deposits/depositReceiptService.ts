@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import { getPayPool } from '../../config/postgres.js';
 import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
+import { syncCardRepayment } from '../chain/cardSettlementService.js';
 import { autoSaveCentsFor, autoSaveStore } from './autoSaveStore.js';
 import {
   allocate,
@@ -246,6 +247,14 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
     // holds is now authorizing against a stale snapshot. Rewriting it is the point of step 3's
     // "precomputed lookup" — a snapshot nothing maintains is just a slower wrong answer.
     const snapshotsUpdated = await refreshSnapshotsFor(wallet);
+
+    // Fiat that paid down card debt here has to come off the chain too, or the member would still
+    // owe it there. Not awaited: an on-chain write takes seconds; the sweep catches what this misses.
+    if (plan && receipt.rail === 'lithic_ach') {
+      void syncCardRepayment(wallet).catch((error) =>
+        console.error(`[card-repayment] ${wallet} could not start:`, error),
+      );
+    }
 
     return {
       recorded: true,
