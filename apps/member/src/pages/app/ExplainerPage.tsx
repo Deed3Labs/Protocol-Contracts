@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
-import Card, { CardRule } from '@/components/clear/Card';
-import InfoBlock from '@/components/clear/InfoBlock';
+import Card from '@/components/clear/Card';
 import SettingRows from '@/components/clear/SettingRows';
 import ReservePanel from '@/components/clear/ReservePanel';
-import { ASSURANCE_RESERVE, SETTINGS } from '@/data/clearPlaceholder';
-import { money } from '@clear/domain';
-import { patronageBasis } from '@/lib/clearModel';
+import { ASSURANCE_RESERVE } from '@/data/clearPlaceholder';
 
 /**
  * Numbered steps — the shape every explainer on this app uses.
@@ -24,52 +21,6 @@ function Steps({ steps }: { steps: string[] }) {
         </p>
       ))}
     </div>
-  );
-}
-
-/** How patronage works — the explainer behind the Patronage settings page. */
-function PatronageExplainer() {
-  const rows = SETTINGS.patronage.basisRows;
-
-  return (
-    <>
-      <p className="mb-3.5 text-xs leading-relaxed text-foreground-secondary">
-        Patronage is your share of the co-op&rsquo;s surplus, based on how much you used it — not
-        how much you saved.
-      </p>
-
-      <Card className="mb-4">
-        <p className="mb-1 text-xs text-foreground-secondary">What counts as activity</p>
-        <div className="text-xs leading-[2]">
-          {rows.map((row) => (
-            <div key={row.label} className="flex items-baseline justify-between gap-3">
-              <span className="text-foreground-secondary">{row.label}</span>
-              <span className="tabular-nums">{money(row.amount, { cents: true })}</span>
-            </div>
-          ))}
-        </div>
-        <CardRule className="flex items-baseline justify-between gap-3 text-xs">
-          <span className="text-foreground-secondary">Your patronage basis</span>
-          <span className="font-medium tabular-nums">
-            {money(patronageBasis(rows), { cents: true })}
-          </span>
-        </CardRule>
-      </Card>
-
-      <Steps
-        steps={[
-          'At year end the co-op totals its surplus after costs and reserves.',
-          'Members vote on how much is distributed versus reinvested.',
-          "The distributed portion is split in proportion to each member's patronage basis.",
-          'Your share lands in your cash account.',
-        ]}
-      />
-
-      <InfoBlock tone="neutral" className="mt-4 text-[11px]">
-        Saving more doesn&rsquo;t increase your patronage — it increases your credit limit and your
-        progress toward a home. Different mechanisms.
-      </InfoBlock>
-    </>
   );
 }
 
@@ -104,7 +55,6 @@ function DisputesExplainer() {
 }
 
 const EXPLAINERS: Record<string, { title: string; body: ReactNode }> = {
-  patronage: { title: 'How patronage works', body: <PatronageExplainer /> },
   'assurance-reserve': {
     title: 'The assurance reserve',
     body: <ReservePanel reserve={ASSURANCE_RESERVE} />,
@@ -122,6 +72,9 @@ const EXPLAINERS: Record<string, { title: string; body: ReactNode }> = {
 export default function ExplainerPage() {
   const { topic } = useParams();
   const explainer = topic ? EXPLAINERS[topic] : undefined;
+
+  // Patronage moved into Settings. An old link lands on the page that replaced it, not on Home.
+  if (topic === 'patronage') return <Navigate to="/settings/patronage-calculation" replace />;
 
   if (!explainer) return <Navigate to="/" replace />;
 

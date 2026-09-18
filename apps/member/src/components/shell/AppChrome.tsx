@@ -54,7 +54,6 @@ function Chrome({
     '/inbox': 'Inbox',
     '/scan': 'Scan to pay',
     '/code': 'Your code',
-    '/learn/patronage': 'How patronage works',
     '/learn/assurance-reserve': 'The assurance reserve',
     '/assurance/reserve': 'The assurance reserve',
     '/assurance/reports': 'Reserve reports',
