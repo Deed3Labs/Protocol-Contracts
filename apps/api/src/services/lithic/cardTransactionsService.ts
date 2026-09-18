@@ -48,6 +48,14 @@ export interface CardTransactionRow {
   /** Which tiers paid, cheapest first. `cash` means it never became credit. */
   draws: Array<{ source: DrawSource; amountCents: number }>;
   cardToken: string;
+  /** What this purchase drew on credit (not cash), in cents. */
+  creditCents: number;
+  /**
+   * How much of that credit has been repaid, oldest purchase first. Repayments are not tied to a
+   * purchase -- a deposit pays down the balance -- so they are allocated to the oldest credit first,
+   * the way a statement reads. When nothing is owed, every credit purchase is fully repaid.
+   */
+  creditRepaidCents: number;
 }
 
 interface Row {
@@ -125,12 +133,84 @@ export async function heldDrawsByTier(wallet: string): Promise<HeldDraws> {
   return held;
 }
 
+const CREDIT_TIERS = ['savings', 'asset', 'income', 'boost'];
+
+function creditOf(draws: unknown): number {
+  if (!Array.isArray(draws)) return 0;
+  return (draws as Array<{ source?: unknown; amountCents?: unknown }>).reduce((sum, d) => {
+    const cents = Number(d?.amountCents ?? 0);
+    return String(d?.source ?? 'cash') !== 'cash' && Number.isFinite(cents) && cents > 0 ? sum + cents : sum;
+  }, 0);
+}
+
+/**
+ * Credit repaid per purchase, allocated oldest first.
+ *
+ * Total repaid = everything drawn on credit, less what is still owed on the credit tiers. A
+ * disputed purchase is set aside, not repaid, so it is left out of both sides.
+ */
+export async function creditRepaidByTransaction(wallet: string): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const pool = getPayPool();
+  if (!pool) return out;
+  const w = wallet.toLowerCase();
+  const { rows } = await pool
+    .query<{ transaction_token: string; draws: unknown }>(
+      `SELECT transaction_token, draws FROM lithic_auth_decisions
+        WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0
+          AND dispute_token IS NULL AND COALESCE(onchain_status, '') <> 'waived'
+        ORDER BY decided_at ASC`,
+      [w],
+    )
+    .catch(() =>
+      pool.query<{ transaction_token: string; draws: unknown }>(
+        `SELECT transaction_token, draws FROM lithic_auth_decisions
+          WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0
+          ORDER BY decided_at ASC`,
+        [w],
+      ),
+    );
+  const drawn = rows.reduce((sum, r) => sum + creditOf(r.draws), 0);
+  const owed = await pool
+    .query<{ net: string }>(
+      `SELECT COALESCE(SUM(GREATEST(net, 0)), 0) AS net FROM (
+         SELECT SUM(CASE WHEN direction = 'debit' THEN amount_cents ELSE -amount_cents END) AS net
+           FROM lithic_ledger_entries WHERE wallet = $1 AND account = ANY($2::text[])
+          GROUP BY account) t`,
+      [w, CREDIT_TIERS.map((t) => `member_credit_${t}`)],
+    )
+    .then((r) => Number(r.rows[0]?.net ?? 0))
+    .catch(() => drawn);
+  const allocated = allocateRepaidOldestFirst(
+    rows.map((r) => ({ id: r.transaction_token, creditCents: creditOf(r.draws) })),
+    Math.max(0, drawn - owed),
+  );
+  for (const [id, cents] of allocated) out.set(id, cents);
+  return out;
+}
+
+/** Spread a repaid total over purchases, oldest first. Pure; `purchases` must be oldest first. */
+export function allocateRepaidOldestFirst(
+  purchases: Array<{ id: string; creditCents: number }>,
+  repaidCents: number,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  let left = Math.max(0, repaidCents);
+  for (const p of purchases) {
+    const applied = Math.min(Math.max(0, p.creditCents), left);
+    out.set(p.id, applied);
+    left -= applied;
+  }
+  return out;
+}
+
 export async function listCardTransactions(
   wallet: string,
   limit = 50,
 ): Promise<CardTransactionRow[]> {
   const pool = getPayPool();
   if (!pool) return [];
+  const repaidBy = await creditRepaidByTransaction(wallet).catch(() => new Map<string, number>());
 
   const { rows } = await pool.query<Row>(
     `SELECT transaction_token, card_token, amount_cents, net_cents, draws, merchant, decided_at
@@ -165,6 +245,8 @@ export async function listCardTransactions(
           }))
         : [],
       cardToken: row.card_token,
+      creditCents: creditOf(row.draws),
+      creditRepaidCents: repaidBy.get(row.transaction_token) ?? 0,
     };
   });
 }

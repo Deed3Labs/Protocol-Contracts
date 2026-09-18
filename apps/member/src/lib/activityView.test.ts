@@ -43,3 +43,28 @@ describe('the list', () => {
     expect(byName("Mike's Tire")).toBe('Term plan · 2 of 4');
   });
 });
+
+import { cardTransactionRow } from './activityMapping';
+import { sourceTag } from './clearModel';
+
+describe('a credit purchase that has been repaid says so', () => {
+  const base = {
+    id: 't', name: 'MIKES TIRES', at: '2026-09-17T23:41:03Z', amountCents: 17500, heldCents: 17500,
+    reversed: false, mcc: '7538', city: null, state: null, cardToken: 'c',
+    draws: [{ source: 'savings', amountCents: 17500 }],
+  };
+
+  test('fully repaid: the row reads "Credit · repaid"', () => {
+    const row = cardTransactionRow({ ...base, creditCents: 17500, creditRepaidCents: 17500 });
+    expect(row.creditRepaid).toBe('full');
+    expect(row.paidFromLabel).toBe('Credit · repaid');
+    expect(sourceTag(row).label).toBe('Credit · repaid');
+  });
+
+  test('part repaid, and not repaid', () => {
+    expect(cardTransactionRow({ ...base, creditCents: 17500, creditRepaidCents: 500 }).paidFromLabel).toBe('Credit · part repaid');
+    const owed = cardTransactionRow({ ...base, creditCents: 17500, creditRepaidCents: 0 });
+    expect(owed.paidFromLabel).toBe('Credit');
+    expect(owed.creditRepaid).toBeUndefined();
+  });
+});

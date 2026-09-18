@@ -343,6 +343,11 @@ export interface ActivityRow {
    * id is Lithic's transaction token. Chain rows carry hashes, which are not what a dispute names.
    */
   dispute?: { kind: DisputeKind; ref: string };
+  /**
+   * Paid from credit, and that credit has since been repaid -- in full or in part. The purchase still
+   * happened on credit; this is what stops it reading as though the limit were wrong.
+   */
+  creditRepaid?: 'full' | 'partial';
 }
 
 /** Where a flow draws the money from, and what's in it. */
@@ -489,6 +494,9 @@ export function sourceTag(row: ActivityRow): { label: string; dot?: string } {
   }
   if (row.source === 'savings') return { label: 'Savings', dot: 'bg-vest-vested' };
   if (row.source === 'cash') return { label: 'Cash', dot: 'bg-vest-cash' };
+  if (row.source === 'credit' && row.creditRepaid) {
+    return { label: row.creditRepaid === 'full' ? 'Credit · repaid' : 'Credit · part repaid' };
+  }
   return { label: capitalise(row.source) };
 }
 
