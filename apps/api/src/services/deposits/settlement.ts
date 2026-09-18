@@ -20,7 +20,8 @@ export type CreditTier = (typeof SETTLEMENT_ORDER)[number];
 export type Outstanding = Record<CreditTier, number>;
 
 export interface Settlement {
-  tier: CreditTier;
+  /** A credit tier, or `carry` — the cost that has accrued on the tiers, which is paid first. */
+  tier: CreditTier | 'carry';
   amountCents: number;
 }
 
@@ -44,11 +45,28 @@ export function totalOutstanding(outstanding: Outstanding): number {
  * A deposit smaller than the debt settles what it can and leaves the rest owed — it never goes
  * negative, and it never leaves the member with cash while an expensive balance runs.
  */
-export function planSettlement(depositCents: number, outstanding: Outstanding): SettlementPlan {
+export function planSettlement(
+  depositCents: number,
+  outstanding: Outstanding,
+  /**
+   * Carry accrued on the tiers and not yet paid. Paid before any principal: it is what the
+   * borrowing has already cost, and leaving it while principal is paid down would keep it owed
+   * with nothing reducing it. Optional so every existing caller keeps its meaning.
+   */
+  carryCents = 0,
+): SettlementPlan {
   const settlements: Settlement[] = [];
   const after: Outstanding = { ...outstanding };
   let remaining = Math.max(0, depositCents);
   let settled = 0;
+
+  const carry = Math.max(0, Math.round(carryCents));
+  if (carry > 0 && remaining > 0) {
+    const pay = Math.min(carry, remaining);
+    settlements.push({ tier: 'carry', amountCents: pay });
+    remaining -= pay;
+    settled += pay;
+  }
 
   for (const tier of SETTLEMENT_ORDER) {
     if (remaining <= 0) break;

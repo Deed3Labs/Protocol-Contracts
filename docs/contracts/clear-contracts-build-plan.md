@@ -375,7 +375,14 @@ The credit **limit** mixes on-chain collateral with off-chain data, and card aut
 
 Fiat netting is **reconciled to a target**, like the card holds: what should be on chain is what the member still owes (ignoring USDC repayments, which did not refill the float) less the part not yet on chain (pending holds, settled-but-unissued). Anything above that is cleared. That also covers a member who pays before a purchase has settled: it settles, then it is cleared on the next pass.
 
-**Carry is a separate claim and a separate step.** Materialised carry deepens the member's debt and mints its claim to the tier's carry recipient — the co-op treasury, or the LendingPool for tiers it funds. Deposits must collect on-chain carry as well as principal. Treasury-held carry clears by the same netting; **pool-held carry is the one case that needs an automatic on-ramp**, because the pool's depositors are owed on-chain money. Not built yet.
+**Carry is owed, paid and cleared too.** Materialised carry deepens the member's debt and mints its claim to the tier's carry recipient — the co-op treasury, or the LendingPool for tiers it funds.
+
+- **Measured from the chain.** What the tiers hold is everything issued, less everything cleared, plus the carry accrued since; so carry accrued = drawn − issued + cleared (read through the index, so unmaterialised carry counts).
+- **Recorded off-chain as it accrues**, in `member_credit_carry`, reconciled to the lifetime total so a re-run writes nothing twice.
+- **Paid first.** A deposit settles carry before any principal.
+- **Cleared by the same netting** when the carry recipient is the card settlement account (true on testnet: every tier's carry goes to the treasury, which is the float). The target compares against what is actually drawn, carry included.
+- **Pool-held carry is left on chain and flagged.** The pool's depositors are owed on-chain money, so that carry must be paid in USDC — the one case that needs an automatic on-ramp. Not built: no tier is pool-funded yet.
+- **Assumption:** the revolving tiers hold card debt only. A member spending StableCredit directly would draw there too and be read as carry; when that path is live, carry needs the issuer's own events.
 
 **Later, Colossus inverts this.** Card-present transactions settle from on-chain collateral via an issuer hook, so the waterfall needs an on-chain implementation. When that ships, **the on-chain version becomes canonical and the off-chain path mirrors it** — not the reverse.
 

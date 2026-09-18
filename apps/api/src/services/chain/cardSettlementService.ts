@@ -49,6 +49,11 @@ const ISSUER_ABI = [
   'function isCardSettler(address) view returns (bool)',
   'function repayCardSpend(bytes32 ref, address member, uint256 amount)',
   'function cardRepaymentOf(bytes32 ref) view returns (uint256)',
+  'function totalDrawnOf(address member) view returns (uint256)',
+  'function tierCount() view returns (uint256)',
+  'function drawnOf(address member, uint256 tierId) view returns (uint256)',
+  'function carryRecipientOf(uint256 tierId) view returns (address)',
+  'function cardSettlementAccount() view returns (address)',
 ];
 
 export type OnchainStatus = 'issued' | 'failed' | 'needs_review' | 'not_needed';
@@ -273,8 +278,9 @@ export async function sweepCardSettlements(limit = 25): Promise<SettlementSync[]
  * covers the common case of a member paying before a purchase has even settled: it settles, then it
  * is cleared on the next pass.
  *
- * Principal only. Carry is owed to whoever funded the tier and is not settled by this — see the
- * carry follow-up in the build plan.
+ * Carry included. Carry accrued on the tiers is written into our ledger as it accrues (so a deposit
+ * pays it, first) and measured on chain through the tiers' own figures, so a repayment that covers
+ * carry clears carry too. The one exception is carry owed to a pool — see readCardDebt.
  */
 
 const NETTING = 'card_repayment_netting';
@@ -302,11 +308,11 @@ async function ensureNetting(): Promise<void> {
 }
 
 export interface CardDebtPosition {
-  /** What our ledger says the member owes across the credit tiers. */
+  /** What our ledger says the member owes: every credit tier, and carry. */
   offchainOwedCents: number;
   /** The part of that which has not reached the chain: pending holds, and settled-but-unissued. */
   notOnChainCents: number;
-  /** Card debt we have put on chain, less what has been cleared there. */
+  /** What the member's tiers hold on chain right now, carry included. */
   onChainCents: number;
   /** How much to clear now. Zero when the chain is already right. */
   toClearCents: number;
@@ -316,10 +322,9 @@ export interface CardDebtPosition {
 export function cardDebtToClear(input: {
   offchainOwedCents: number;
   notOnChainCents: number;
-  issuedCents: number;
-  clearedCents: number;
+  onChainCents: number;
 }): CardDebtPosition {
-  const onChainCents = Math.max(0, input.issuedCents - input.clearedCents);
+  const onChainCents = Math.max(0, input.onChainCents);
   const shouldBeOnChain = Math.max(0, input.offchainOwedCents - input.notOnChainCents);
   return {
     offchainOwedCents: input.offchainOwedCents,
@@ -329,28 +334,55 @@ export function cardDebtToClear(input: {
   };
 }
 
-async function readCardDebt(wallet: string): Promise<CardDebtPosition> {
+/*
+ * Carry, from the chain's own figures.
+ *
+ * What the member's tiers hold is everything issued, less everything cleared, plus whatever carry
+ * has accrued since. We know the first two, so the third falls out — and it includes carry that has
+ * accrued but not yet been written onto the ledger, because `totalDrawnOf` reads through the index.
+ *
+ * This assumes the revolving tiers hold card debt only, which is true while the card is the only
+ * thing that draws on them. A member spending StableCredit directly would draw here too, and that
+ * draw would be read as carry; the day that path is live, this needs the issuer's own carry events.
+ */
+export function carryAccruedCents(input: { drawnCents: number; issuedCents: number; clearedCents: number }): number {
+  return Math.max(0, input.drawnCents - input.issuedCents + input.clearedCents);
+}
+
+const LEDGER = 'lithic_ledger_entries';
+
+/**
+ * Write carry that has accrued on chain into our ledger, so a deposit can pay it.
+ *
+ * Reconciled to a lifetime total: the ledger's carry debits should add up to all the carry that has
+ * ever accrued. The external id is that total, so running this twice at the same figure writes
+ * nothing the second time.
+ */
+async function recordCarry(wallet: string, accruedCents: number): Promise<number> {
   const pool = getPayPool()!;
-  /*
-   * What the member owes across the credit tiers in our ledger, ignoring repayments made in USDC.
-   *
-   * Only FIAT repayments are netted against the float's claim, because only fiat refills the float.
-   * A deposit on the Bridge rail lands as USDC in the member's own wallet; our ledger counts it as
-   * paying the card debt, but the float got nothing, so burning the float's claim for it would be
-   * wrong. That debt stays on chain until it is repaid there in USDC — the separate USDC path.
-   * Card draws and deposit settlements are the only writers of these accounts.
-   */
-  const owed = await pool
-    .query<{ net: string }>(
-      `SELECT COALESCE(SUM(GREATEST(net, 0)), 0) AS net FROM (
-         SELECT SUM(CASE WHEN direction = 'debit' THEN amount_cents ELSE -amount_cents END) AS net
-           FROM lithic_ledger_entries
-          WHERE wallet = $1 AND account LIKE 'member_credit_%'
-            AND NOT (direction = 'credit' AND event_type = 'credit_settlement' AND rail = 'chain')
-          GROUP BY account) t`,
+  const recorded = await pool
+    .query<{ total: string }>(
+      `SELECT COALESCE(SUM(amount_cents), 0) AS total FROM ${LEDGER}
+        WHERE wallet = $1 AND account = 'member_credit_carry' AND direction = 'debit'`,
       [wallet],
     )
-    .then((r) => Number(r.rows[0]?.net ?? 0));
+    .then((r) => Number(r.rows[0]?.total ?? 0));
+  const add = accruedCents - recorded;
+  if (add <= 0) return 0;
+  const group = `carry:${wallet}:${accruedCents}`;
+  await pool.query(
+    `INSERT INTO ${LEDGER} (entry_group, wallet, account, direction, amount_cents, rail, event_type, external_id, metadata)
+     VALUES ($1, $2, 'member_credit_carry', 'debit', $3, 'chain', 'carry_accrual', $1, $4::jsonb),
+            ($1, $2, 'coop_carry_receivable', 'credit', $3, 'chain', 'carry_accrual', $1, $4::jsonb)
+     ON CONFLICT DO NOTHING`,
+    [group, wallet, add, JSON.stringify({ accruedTotalCents: accruedCents })],
+  );
+  console.log(`[card-carry] ${wallet} recorded ${add}c of carry (lifetime ${accruedCents}c)`);
+  return add;
+}
+
+async function readCardDebt(wallet: string, issuer: ethers.Contract): Promise<CardDebtPosition & { carryHeldElsewhere: boolean }> {
+  const pool = getPayPool()!;
 
   const { rows } = await pool.query<{ draws: unknown; onchain_status: string | null; onchain_cents: string | null }>(
     `SELECT draws, onchain_status, onchain_cents FROM ${DECISIONS}
@@ -369,7 +401,48 @@ async function readCardDebt(wallet: string): Promise<CardDebtPosition> {
     .query<{ total: string }>(`SELECT COALESCE(SUM(amount_cents), 0) AS total FROM ${NETTING} WHERE wallet = $1 AND status = 'done'`, [wallet])
     .then((r) => Number(r.rows[0]?.total ?? 0));
 
-  return cardDebtToClear({ offchainOwedCents: owed, notOnChainCents: notOnChain, issuedCents: issued, clearedCents: cleared });
+  const drawnCents = Number(((await issuer.totalDrawnOf(wallet)) as bigint) / CENTS_TO_UNITS);
+
+  /*
+   * Carry is cleared against the settlement account's claim, so it can only be cleared here when
+   * that account is where the carry went. A tier funded by the LendingPool sends its carry to the
+   * pool's depositors, who are owed on-chain money; that carry has to be paid in USDC, not netted.
+   */
+  const account = String(await issuer.cardSettlementAccount()).toLowerCase();
+  let carryHeldElsewhere = false;
+  const tiers = Number(await issuer.tierCount());
+  for (let t = 0; t < tiers; t++) {
+    const drawn = (await issuer.drawnOf(wallet, t)) as bigint;
+    if (drawn === 0n) continue;
+    if (String(await issuer.carryRecipientOf(t)).toLowerCase() !== account) carryHeldElsewhere = true;
+  }
+
+  const accrued = carryAccruedCents({ drawnCents, issuedCents: issued, clearedCents: cleared });
+  if (!carryHeldElsewhere) await recordCarry(wallet, accrued);
+
+  /*
+   * What the member owes in our ledger, carry included, ignoring repayments made in USDC.
+   *
+   * Only FIAT repayments are netted against the float's claim, because only fiat refills the float.
+   * A deposit on the Bridge rail lands as USDC in the member's own wallet; our ledger counts it as
+   * paying the card debt, but the float got nothing, so burning the float's claim for it would be
+   * wrong. That debt stays on chain until it is repaid there in USDC — the separate USDC path.
+   */
+  const owed = await pool
+    .query<{ net: string }>(
+      `SELECT COALESCE(SUM(GREATEST(net, 0)), 0) AS net FROM (
+         SELECT SUM(CASE WHEN direction = 'debit' THEN amount_cents ELSE -amount_cents END) AS net
+           FROM ${LEDGER}
+          WHERE wallet = $1 AND account LIKE 'member_credit_%'
+            AND NOT (direction = 'credit' AND event_type = 'credit_settlement' AND rail = 'chain')
+          GROUP BY account) t`,
+      [wallet],
+    )
+    .then((r) => Number(r.rows[0]?.net ?? 0));
+
+  // Carry that belongs to the pool is left on chain rather than counted as clearable.
+  const onChain = carryHeldElsewhere ? Math.max(0, issued - cleared) : drawnCents;
+  return { ...cardDebtToClear({ offchainOwedCents: owed, notOnChainCents: notOnChain, onChainCents: onChain }), carryHeldElsewhere };
 }
 
 const walletsInFlight = new Set<string>();
@@ -393,12 +466,15 @@ export async function syncCardRepayment(walletInput: string): Promise<RepaymentS
     await ensureColumns();
     await ensureNetting();
     const pool = getPayPool()!;
-    const position = await readCardDebt(wallet);
-    if (position.toClearCents <= 0) return { wallet, action: 'none' };
-
     const signer = new ethers.Wallet(settlerKey(), chainProvider(resolveChainId()));
     const issuer = issuerFor(signer);
     if (!issuer) return { wallet, action: 'skipped', error: 'No RevolvingIssuer address' };
+
+    const position = await readCardDebt(wallet, issuer);
+    if (position.carryHeldElsewhere) {
+      console.warn(`[card-carry] ${wallet} has carry owed to a pool — left on chain, needs a USDC repayment`);
+    }
+    if (position.toClearCents <= 0) return { wallet, action: 'none' };
 
     // Resume an unfinished attempt under its own ref, so a retry can never clear twice.
     const open = await pool.query<{ seq: number; ref: string; attempts: number; status: string }>(
