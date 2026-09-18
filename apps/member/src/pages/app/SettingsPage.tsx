@@ -111,7 +111,7 @@ export default function SettingsPage({
   };
 }) {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, state } = useLocation();
   const desktop = useIsDesktop();
   const verification = useIdentity();
   const { profile } = data;
@@ -119,7 +119,10 @@ export default function SettingsPage({
   // The bare /settings is the index on a phone and Account beside the rail on desktop.
   const page: SettingsPageId | null = settingsPageOf(pathname) ?? (desktop ? 'account' : null);
 
-  const [accelerationOpen, setAccelerationOpen] = useState(false);
+  // The profile menu's Acceleration "Explore" lands here with the dialog already open.
+  const [accelerationOpen, setAccelerationOpen] = useState(
+    () => (state as { open?: string } | null)?.open === 'acceleration',
+  );
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [addressOpen, setAddressOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
