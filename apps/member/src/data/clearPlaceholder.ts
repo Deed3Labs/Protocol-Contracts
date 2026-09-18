@@ -1,4 +1,7 @@
 import type {
+  CardDisputeReason,
+  DisputeCandidate,
+  DisputeKindInfo,
   HomeData,
   SavingsData,
   Milestone,
@@ -1093,3 +1096,65 @@ export const SETTINGS: SettingsData = {
     creditsPerDeed: 15000,
   },
 };
+
+// ---- Disputes ------------------------------------------------------------------------------------
+
+/**
+ * The three kinds, who decides each, and how long it takes. Policy, not member data — kept here so
+ * the page and the modal state it the same way.
+ */
+export const DISPUTE_KINDS: DisputeKindInfo[] = [
+  {
+    kind: 'card',
+    title: 'A card payment',
+    detail: 'A shop charged you wrong, twice, or for something you did not get',
+    whoDecides: 'Visa’s rules',
+    whoDecidesLine: 'Visa’s rules, not Clear',
+    takes: '45 to 90 days',
+  },
+  {
+    kind: 'partner',
+    title: 'A Clear Partner',
+    detail: 'You paid a partner through Clear and something went wrong',
+    whoDecides: 'Clear mediates',
+    whoDecidesLine: 'Clear mediates',
+    takes: 'About 5 days',
+  },
+  {
+    kind: 'member',
+    title: 'Another member',
+    detail: 'A send, a split or an escrow between the two of you',
+    whoDecides: 'Independent third party',
+    whoDecidesLine: 'An independent third party',
+    takes: '10 to 21 days',
+  },
+];
+
+export const DISPUTE_WHILE_OPEN: { label: string; value: string }[] = [
+  { label: 'The amount', value: 'Held, not spent' },
+  { label: 'Your cycle', value: 'Not counted late' },
+  { label: 'Your credits', value: 'Untouched, either way' },
+  { label: 'The other side', value: 'Told what you filed and asked to reply' },
+];
+
+export const DISPUTE_INDEPENDENCE: { label: string; value: string }[] = [
+  { label: 'Administered by', value: 'The Deed & Title Co.' },
+  { label: 'Cost to you', value: 'None' },
+  { label: 'Outcome', value: 'Binding on both members' },
+  { label: 'Appeal', value: '[PLACEHOLDER — confirm]' },
+];
+
+/** What a card dispute can be about, in the member's words. The server maps these to network codes. */
+export const CARD_DISPUTE_REASONS: { id: CardDisputeReason; label: string }[] = [
+  { id: 'charged_twice', label: 'Charged twice' },
+  { id: 'wrong_amount', label: 'Wrong amount' },
+  { id: 'not_received', label: 'Did not get it' },
+  { id: 'other', label: 'Something else' },
+];
+
+/** The preview harness's payments to dispute. The live app reads the member's own from the API. */
+export const DISPUTE_SAMPLE_CANDIDATES: DisputeCandidate[] = [
+  { kind: 'card', ref: 'sample-card', label: 'Mike’s Tire', amountCents: 24675, at: '2026-11-02T12:00:00Z' },
+  { kind: 'partner', ref: 'sample-partner', label: 'TinyBox Systems', amountCents: 120000, at: '2026-10-28T12:00:00Z' },
+  { kind: 'member', ref: 'sample-member', label: 'Maria C.', amountCents: 4000, at: '2026-10-26T12:00:00Z' },
+];

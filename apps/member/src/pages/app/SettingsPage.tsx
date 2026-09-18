@@ -13,6 +13,8 @@ import LoginHistoryPanel from '@/components/settings/LoginHistoryPanel';
 import PermissionsPanel from '@/components/settings/PermissionsPanel';
 import LegalPanel from '@/components/settings/LegalPanel';
 import HelpPanel from '@/components/settings/HelpPanel';
+import DisputesPanel from '@/components/settings/DisputesPanel';
+import RaiseDisputeDialog, { type FileDisputeResult } from '@/components/settings/RaiseDisputeDialog';
 import BylawsPanel from '@/components/settings/BylawsPanel';
 import PatronagePanel from '@/components/settings/PatronagePanel';
 import VotingPanel from '@/components/settings/VotingPanel';
@@ -29,9 +31,9 @@ import { EMPTY_ADDRESS, formatAddress, type MailingAddress } from '@/hooks/useMe
 import TrustedDevicesDialog from '@/components/settings/TrustedDevicesDialog';
 import CloseAccountDialog from '@/components/settings/CloseAccountDialog';
 import ContactsPane from '@/components/settings/ContactsPane';
-import { SETTINGS, CONTACTS } from '@/data/clearPlaceholder';
+import { SETTINGS, CONTACTS, DISPUTE_SAMPLE_CANDIDATES } from '@/data/clearPlaceholder';
 import { useIsDesktop } from '@/lib/useIsDesktop';
-import type { Contact, SettingsData } from '@/lib/clearModel';
+import type { CardDisputeReason, Contact, DisputeCandidate, DisputeKind, SettingsData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 import { SETTINGS_PAGES, settingsPageOf, type SettingsPageId, type SettingsSection } from './settingsPages';
 
@@ -72,6 +74,7 @@ export default function SettingsPage({
   addressError = null,
   phoneChange,
   faceId,
+  disputes,
 }: {
   data?: SettingsData;
   /** The address book, and Ready to allocate for sending from it. */
@@ -110,6 +113,15 @@ export default function SettingsPage({
     error: string | null;
     onChange: (on: boolean) => void;
   };
+  /**
+   * Disputes, for real: the member's own payments and a filing that reaches the API (and Lithic, for
+   * a card). Absent in the preview harness, which shows sample payments and files nothing.
+   */
+  disputes?: {
+    candidates: DisputeCandidate[] | null;
+    load: () => void;
+    file: (input: { kind: DisputeKind; ref: string; detail: string; reason?: CardDisputeReason }) => Promise<FileDisputeResult>;
+  };
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -129,6 +141,7 @@ export default function SettingsPage({
   const [photoOpen, setPhotoOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [disputeOpen, setDisputeOpen] = useState(false);
   const [toggles, setToggles] = useState<Record<string, boolean>>(() => ({
     faceid: data.faceIdOn,
     'faceid-payments': true,
@@ -334,7 +347,18 @@ export default function SettingsPage({
       </Pane>
     ),
 
-    help: <HelpPanel topics={data.helpTopics} onDispute={() => navigate('/learn/disputes')} />,
+    help: <HelpPanel topics={data.helpTopics} onDispute={() => go('disputes')} />,
+    disputes: (
+      <DisputesPanel
+        intro={!desktop}
+        onRaise={() => {
+          disputes?.load();
+          setDisputeOpen(true);
+        }}
+        // There is no dispute policy document yet; the agreements it will sit among are here.
+        onPolicy={() => go('legal')}
+      />
+    ),
     bylaws: <BylawsPanel bylaws={data.bylaws} />,
     permissions: <PermissionsPanel permissions={data.permissions} />,
     patronage: <PatronagePanel patronage={data.patronage} onExplain={() => go('patronage-calculation')} />,
@@ -415,6 +439,12 @@ export default function SettingsPage({
           setCloseOpen(false);
           go('help');
         }}
+      />
+      <RaiseDisputeDialog
+        open={disputeOpen}
+        onOpenChange={setDisputeOpen}
+        candidates={disputes ? disputes.candidates : DISPUTE_SAMPLE_CANDIDATES}
+        onFile={disputes?.file ?? (async () => ({ error: 'Sign in to file a dispute — nothing was sent.' }))}
       />
       {data.ballot && <BallotDialog ballot={data.ballot} open={ballotOpen} onOpenChange={setBallotOpen} />}
     </>

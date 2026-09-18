@@ -58,7 +58,6 @@ function Chrome({
     '/assurance/reserve': 'The assurance reserve',
     '/assurance/reports': 'Reserve reports',
     '/assurance/claim': 'How to make a claim',
-    '/learn/disputes': 'Dispute resolution',
   };
   const fallbackTitle = pathname.replace(/^\//, '').split('/')[0];
   const settingsPage = settingsPageOf(pathname);

@@ -10,6 +10,7 @@ export type SettingsSub =
   | 'voting'
   | 'legal'
   | 'acceleration'
+  | 'disputes'
   | 'logins'
   | 'permissions';
 export type SettingsPageId = SettingsSection | SettingsSub;
@@ -32,6 +33,7 @@ export const SETTINGS_PAGES: Record<SettingsPageId, { title: string; rail: Setti
   // A page, not a modal: it is a comparison to read, and only actions are modals.
   acceleration: { title: 'Acceleration', rail: 'membership', up: '/settings/membership' },
   logins: { title: 'Login history', rail: 'security', up: '/settings/security' },
+  disputes: { title: 'Dispute resolution', rail: 'help', up: '/settings/help' },
   permissions: { title: 'Permissions', rail: 'advanced', up: '/settings' },
 };
 

@@ -25,7 +25,7 @@ const DOES_NOT_COUNT = [
  * plainly: a member who borrows and spends builds more basis than one who only saves. A member who
  * worked that out for themselves after a distribution would trust the next explanation less.
  *
- * Two columns and a full-width row on desktop; one column on a phone.
+ * One column on both, as the reference now draws it: three cells read top to bottom.
  */
 export default function PatronageCalculationPanel({
   patronage,
@@ -41,11 +41,13 @@ export default function PatronageCalculationPanel({
       {!desktop && (
         <p className="c-det mb-s3">Surplus the co-op does not reinvest is returned in proportion to use.</p>
       )}
-      <div className={desktop ? 'c-slab' : 'c-slab c-one'}>
+      <div className="c-slab c-one">
         <Cell>
           <CHead>
-            <SecHead label="What counts">
-              <span className="c-det">{patronage.year}</span>
+            <SecHead label="What counts as activity">
+              <span className="c-det">
+                {patronage.year}, {patronage.status.toLowerCase()}
+              </span>
             </SecHead>
           </CHead>
           <CMain>
@@ -71,7 +73,7 @@ export default function PatronageCalculationPanel({
 
         <Cell>
           <CHead>
-            <SecHead label="How it works">
+            <SecHead label="How it is worked out">
               <span className="c-det">At year close</span>
             </SecHead>
           </CHead>
@@ -96,7 +98,7 @@ export default function PatronageCalculationPanel({
                 <KvRow label="Declared to date" value={patronage.declared === undefined ? '—' : money(patronage.declared)} />
               </div>
               <div>
-                <KvRow label="First possible" value={`After the ${patronage.year} close`} />
+                <KvRow label="First possible distribution" value={`After the ${patronage.year} close`} />
               </div>
             </Rows>
           </CFoot>

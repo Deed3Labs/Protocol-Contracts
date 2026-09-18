@@ -1659,3 +1659,30 @@ export function planPerCycle(plan: TermPlan): number | undefined {
   }
   return plan.perCycle;
 }
+
+// ---- Disputes ------------------------------------------------------------------------------------
+
+export type DisputeKind = 'card' | 'partner' | 'member';
+
+/** One kind of dispute, and who decides it — the page's argument is that this changes by kind. */
+export interface DisputeKindInfo {
+  kind: DisputeKind;
+  title: string;
+  detail: string;
+  whoDecides: string;
+  /** Who decides, as the modal's consequence line says it. */
+  whoDecidesLine: string;
+  takes: string;
+}
+
+/** A payment the member can dispute, as the server read it. */
+export interface DisputeCandidate {
+  kind: DisputeKind;
+  ref: string;
+  label: string;
+  amountCents: number;
+  at: string;
+}
+
+/** Card disputes carry a network reason; these are the plain words for them. */
+export type CardDisputeReason = 'wrong_amount' | 'charged_twice' | 'not_received' | 'not_as_described' | 'other';
