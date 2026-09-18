@@ -42,11 +42,35 @@
     },
     {
       "type": "error",
+      "name": "LiquidatorNotSavingsTier",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "tierId"
+        },
+        {
+          "type": "bytes32",
+          "name": "kind"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "LiquidatorNothingToSeize",
       "inputs": [
         {
           "type": "address",
           "name": "member"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "LiquidatorUntrustedIssuer",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "issuer"
         }
       ]
     },
@@ -192,6 +216,33 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "SettledFromSavings",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "issuer",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "seized",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "repaid",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "SharesSeized",
       "inputs": [
         {
@@ -217,6 +268,23 @@
         {
           "type": "bool",
           "name": "queued",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "TrustedSavingsIssuerUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "issuer",
+          "indexed": true
+        },
+        {
+          "type": "bool",
+          "name": "trusted",
           "indexed": false
         }
       ]
@@ -513,6 +581,49 @@
     },
     {
       "type": "function",
+      "name": "setTrustedSavingsIssuer",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "issuer"
+        },
+        {
+          "type": "bool",
+          "name": "trusted"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "settleFromSavings",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "issuer"
+        },
+        {
+          "type": "uint256",
+          "name": "tierId"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "repaid"
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "settleRealized",
       "constant": false,
       "payable": false,
@@ -560,6 +671,25 @@
         {
           "type": "bytes4",
           "name": "interfaceId"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "trustedSavingsIssuer",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
         }
       ],
       "outputs": [

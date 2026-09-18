@@ -38,15 +38,34 @@ async function main() {
     console.log("RevolvingIssuer already trusted");
   }
 
-  // The move needs three rights the Liquidator already had for liquidation. Say so, not assume so.
+  // The move needs three rights -- the same ones liquidation needs. Testnet had only one of them,
+  // which means liquidation could not have run there either. Granted here, idempotently.
   const issuer = await ethers.getContractAt("RevolvingIssuer", rev.address);
   const sc = await ethers.getContractAt("StableCredit", await issuer.stableCredit());
   const access = await ethers.getContractAt("AccessManager", await sc.access());
   const clrusd = await ethers.getContractAt("ClearUSDUpgradeable", await liquidator.clrusd());
   const registry = await ethers.getContractAt("CollateralRegistry", await liquidator.collateralRegistry());
+
+  if (!(await access.isOperator(liq.address))) {
+    const tx = await access.grantOperator(liq.address);
+    await tx.wait();
+    console.log("Granted operator on the credit system (settleFromCollateral)", tx.hash);
+  }
+  const LIQ = await clrusd.LIQUIDATOR_ROLE();
+  if (!(await clrusd.hasRole(LIQ, liq.address))) {
+    const tx = await clrusd.grantRole(LIQ, liq.address);
+    await tx.wait();
+    console.log("Granted LIQUIDATOR_ROLE on CLRUSD (seize past the lock)", tx.hash);
+  }
+  const OP = await registry.OPERATOR_ROLE();
+  if (!(await registry.hasRole(OP, liq.address))) {
+    const tx = await registry.grantRole(OP, liq.address);
+    await tx.wait();
+    console.log("Granted OPERATOR_ROLE on the collateral registry (record seizures)", tx.hash);
+  }
   console.log("operator on the issuer:", await access.isOperator(liq.address));
-  console.log("may seize CLRUSD:", await clrusd.hasRole(await clrusd.LIQUIDATOR_ROLE(), liq.address));
-  console.log("may record seizures:", await registry.hasRole(await registry.OPERATOR_ROLE(), liq.address));
+  console.log("may seize CLRUSD:", await clrusd.hasRole(LIQ, liq.address));
+  console.log("may record seizures:", await registry.hasRole(OP, liq.address));
 }
 
 main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
