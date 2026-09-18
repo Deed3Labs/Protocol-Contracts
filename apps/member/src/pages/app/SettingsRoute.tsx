@@ -3,6 +3,7 @@ import { useUpdatePhone } from '@privy-io/react-auth';
 import SettingsPage from './SettingsPage';
 import { useMemberProfile, type MailingAddress } from '@/hooks/useMemberProfile';
 import { useFaceId } from '@/hooks/useFaceId';
+import { useAutoRepay } from '@/hooks/useAutoRepay';
 import { useLogout } from '@/hooks/useLogout';
 import { useContacts } from '@/context/ContactsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
@@ -30,6 +31,7 @@ export default function SettingsRoute() {
   const { cash } = useClearBalances();
   const faceId = useFaceId();
   const disputes = useDisputes();
+  const autoRepay = useAutoRepay();
 
   const profile = {
     ...SETTINGS.profile,
@@ -64,6 +66,7 @@ export default function SettingsRoute() {
         onChange: (on) => void (on ? faceId.turnOn() : faceId.turnOff()),
       }}
       disputes={disputes}
+      autoRepay={autoRepay}
       address={member.mailingAddress}
       savingAddress={savingAddress}
       addressError={addressError}

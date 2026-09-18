@@ -27,10 +27,11 @@ async function main() {
   if (!ethers.isAddress(settler)) throw new Error("Set CARD_SETTLER_ADDRESS to the API's settler address.");
 
   let issuer = await ethers.getContractAt("RevolvingIssuer", existing.address);
-  // Probe for the newest function this script ships (fiat repayment netting). An implementation
-  // without it is upgraded; one with it is left alone, so the script stays safe to re-run.
+  // Probe for the newest function this script ships (automatic repayment under the member's
+  // mandate). An implementation without it is upgraded; one with it is left alone, so the script
+  // stays safe to re-run.
   const isCurrent = await issuer
-    .cardRepaymentOf(ethers.ZeroHash)
+    .autoRepaymentOf(ethers.ZeroHash)
     .then(() => true)
     .catch(() => false);
 
@@ -47,7 +48,7 @@ async function main() {
     saveDeployment(network, "RevolvingIssuer", existing.address, JSON.parse(upgraded.interface.formatJson()));
     issuer = await ethers.getContractAt("RevolvingIssuer", existing.address);
   } else {
-    console.log("RevolvingIssuer already has card settlement and repayment; skipping the upgrade.");
+    console.log("RevolvingIssuer is current (card settlement, repayment netting, auto-repay); skipping the upgrade.");
   }
 
   if (!(await issuer.isCardSettler(settler))) {

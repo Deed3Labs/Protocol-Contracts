@@ -6,6 +6,7 @@ import {
 } from '../services/chain/cardSettlementService.js';
 import { enforceDisputes } from '../services/disputes/disputeEnforcement.js';
 import { settlePoolMovements } from '../services/chain/poolFunding.js';
+import { sweepAutoRepay } from '../services/chain/autoRepayService.js';
 
 /*
  * The backstop for card settlement on chain.
@@ -50,6 +51,13 @@ export async function tick(): Promise<number> {
       console.error('[dispute] enforcement pass failed:', error);
       return 0;
     });
+    // USDC deposits earmarked for repayment, repaid on chain under the member's mandate.
+    const autoRepaid = await sweepAutoRepay().catch((error) => {
+      console.error('[auto-repay] pass failed:', error);
+      return [];
+    });
+    for (const r of autoRepaid) if (r.action !== 'waiting') console.log(`[auto-repay] sweep: ${r.wallet}=${r.action}${r.cents ? ` ${r.cents}c` : ''}`);
+
     // Last: the pool's side of whatever the passes above drew or repaid on pool-funded tiers.
     const pooled = await settlePoolMovements().catch((error) => {
       console.error('[pool-funding] pass failed:', error);

@@ -2759,6 +2759,21 @@ export async function recordCreditRepayment(
   return r.error || !r.data ? { ok: false, error: r.error || 'Repaid on chain, but not yet recorded.' } : r.data;
 }
 
+/** Whether USDC deposits repay card debt automatically, and what is waiting to be repaid. */
+export async function getAutoRepay(wallet: string): Promise<{ enabled: boolean; dueCents: number } | null> {
+  const r = await apiRequest<{ enabled: boolean; dueCents: number }>(`/api/credit/${wallet.toLowerCase()}/auto-repay`);
+  return r.error || !r.data ? null : r.data;
+}
+
+/** Tell the server the member's wallet set it on chain. The server checks the chain before recording. */
+export async function recordAutoRepay(wallet: string, enabled: boolean): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ ok: boolean }>(`/api/credit/${wallet.toLowerCase()}/auto-repay`, {
+    method: 'POST',
+    body: JSON.stringify({ enabled }),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'Could not save that just now.' } : { ok: true };
+}
+
 /** The member's own disputes, newest first. */
 export async function getMyDisputes(): Promise<import('@/lib/clearModel').MemberDispute[] | null> {
   const r = await apiRequest<{ disputes: import('@/lib/clearModel').MemberDispute[] }>('/api/disputes');

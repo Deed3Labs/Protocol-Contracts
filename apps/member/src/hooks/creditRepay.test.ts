@@ -45,3 +45,19 @@ describe('repay savings-backed credit from savings', () => {
     expect(hook.match(/await recordCreditRepayment\(address, hash\)/g)).toHaveLength(2);
   });
 });
+
+describe('automatic repayment from USDC deposits', () => {
+  const autoHook = read('hooks/useAutoRepay.ts');
+  const panel = read('components/settings/PermissionsPanel.tsx');
+
+  test('one sponsored batch: approve the ledger and set the mandate — or clear both', () => {
+    expect(calls).toContain('args: [c.stableCredit, args.enabled ? MAX_UINT256 : 0n]');
+    expect(calls).toContain("functionName: 'setAutoRepay', args: [args.enabled]");
+  });
+
+  test('the switch is real and lives on Permissions; it is recorded only after the wallet set it', () => {
+    expect(panel).toContain('Repay from USDC deposits');
+    expect(panel).toContain('autoRepay ? autoRepay.onChange(v) : setLocalAuto(v)');
+    expect(autoHook.indexOf('await scSetAutoRepay(')).toBeLessThan(autoHook.indexOf('await recordAutoRepay('));
+  });
+});

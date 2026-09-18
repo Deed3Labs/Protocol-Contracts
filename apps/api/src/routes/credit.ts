@@ -5,6 +5,7 @@ import { readChainEarn } from '../services/chain/earnReader.js';
 import { chargeStore } from '../services/chargeStore.js';
 import { heldDrawsByTier } from '../services/lithic/cardTransactionsService.js';
 import { recordUsdcRepayment } from '../services/chain/usdcRepaymentService.js';
+import { autoRepayStatus, setAutoRepayChoice } from '../services/chain/autoRepayService.js';
 
 /*
  * A member's credit line, assembled from the contracts that hold it.
@@ -147,6 +148,32 @@ creditRouter.post('/:wallet/repayments', async (req: Request, res: Response) => 
   } catch (error) {
     console.error('[credit] repayment record failed', error);
     return res.status(500).json({ error: 'Failed to record repayment' });
+  }
+});
+
+/** GET/POST /api/credit/:wallet/auto-repay — automatic repayment from USDC deposits. */
+creditRouter.get('/:wallet/auto-repay', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  try {
+    return res.json(await autoRepayStatus(wallet));
+  } catch (error) {
+    console.error('[credit] auto-repay status failed', error);
+    return res.status(500).json({ error: 'Failed to read' });
+  }
+});
+
+creditRouter.post('/:wallet/auto-repay', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  try {
+    // Recorded only once the member's own wallet has set it on chain -- never on the request's word.
+    const result = await setAutoRepayChoice(wallet, req.body?.enabled === true);
+    if (!result.ok) return res.status(409).json({ error: 'Not set', message: result.reason });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error('[credit] auto-repay set failed', error);
+    return res.status(500).json({ error: 'Failed to set' });
   }
 });
 
