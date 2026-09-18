@@ -41,10 +41,12 @@ import { activePlans, addableTier, creditLimit, savingsTotal, type ActivityRow, 
 export default function HomePage({
   data = HOME_DAY_ONE,
   onRepay,
+  onRepayFromSavings,
 }: {
   data?: HomeData;
   /** Repays card debt on chain. Absent in the preview harness. */
   onRepay?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
+  onRepayFromSavings?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
 }) {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
@@ -283,6 +285,7 @@ export default function HomePage({
         open={repayOpen}
         onOpenChange={setRepayOpen}
         onRepay={onRepay}
+        onRepayFromSavings={onRepayFromSavings}
       />
       {selected && (
         <TransactionDetailDialog row={selected} open={selected !== null} onOpenChange={(o) => !o && setSelected(null)} />

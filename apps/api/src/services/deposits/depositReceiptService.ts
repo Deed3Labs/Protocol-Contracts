@@ -364,6 +364,11 @@ export async function recordOnchainRepayment(input: {
   txHash: string;
   totalCents: number;
   revolvingCents: number;
+  /**
+   * A repayment made out of the member's own savings settles the SAVINGS tier on chain, not the
+   * dearest one, so the books have to settle savings too. Absent for an ordinary repayment.
+   */
+  savingsCents?: number;
 }): Promise<{ recorded: boolean; duplicate: boolean; plan: SettlementPlan | null }> {
   const pool = getPayPool();
   if (!pool) return { recorded: false, duplicate: false, plan: null };
@@ -391,7 +396,18 @@ export async function recordOnchainRepayment(input: {
     }
 
     const outstanding = await readOutstanding(client, wallet);
-    const plan = planSettlement(input.revolvingCents, outstanding, await readCarryOwed(client, wallet));
+    // Out of savings: straight to the savings tier, as the chain did. Anything beyond it (there should
+    // be none) falls through to the ordinary order.
+    const toSavings = Math.min(Math.max(0, Math.round(input.savingsCents ?? 0)), outstanding.savings, input.revolvingCents);
+    const rest = planSettlement(
+      input.revolvingCents - toSavings,
+      { ...outstanding, savings: outstanding.savings - toSavings },
+      toSavings > 0 ? 0 : await readCarryOwed(client, wallet),
+    );
+    const plan: SettlementPlan =
+      toSavings > 0
+        ? { ...rest, settlements: [{ tier: 'savings', amountCents: toSavings }, ...rest.settlements], settledCents: rest.settledCents + toSavings }
+        : rest;
     const group = `onchain-repay:${input.txHash.toLowerCase()}`;
     for (const settlement of plan.settlements) {
       await client.query(

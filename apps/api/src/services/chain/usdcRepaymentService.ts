@@ -18,6 +18,9 @@ import { recordOnchainRepayment } from '../deposits/depositReceiptService.js';
 
 const STABLE_CREDIT_EVENTS = new ethers.Interface(['event CreditBalanceRepaid(address member, uint128 amount)']);
 const ISSUER_EVENTS = new ethers.Interface(['event TierRepaid(address indexed member, uint256 indexed tierId, uint256 amount)']);
+const LIQUIDATOR_EVENTS = new ethers.Interface([
+  'event SettledFromSavings(address indexed member, address indexed issuer, uint256 seized, uint256 repaid)',
+]);
 const CENTS = 10n ** 4n;
 
 function chainId(): number {
@@ -49,6 +52,8 @@ export async function recordUsdcRepayment(walletInput: string, txHash: string): 
 
   let total = 0n;
   let revolving = 0n;
+  let fromSavings = 0n;
+  const liquidatorAddress = (getContractAddress(chainId(), 'Liquidator') || '').toLowerCase();
   for (const log of receipt.logs) {
     const from = log.address.toLowerCase();
     try {
@@ -56,6 +61,12 @@ export async function recordUsdcRepayment(walletInput: string, txHash: string): 
         const parsed = STABLE_CREDIT_EVENTS.parseLog({ topics: [...log.topics], data: log.data });
         if (parsed?.name === 'CreditBalanceRepaid' && String(parsed.args.member).toLowerCase() === wallet) {
           total += BigInt(parsed.args.amount);
+        }
+      } else if (liquidatorAddress && from === liquidatorAddress) {
+        // The member settled out of their own savings: the savings tier, specifically.
+        const parsed = LIQUIDATOR_EVENTS.parseLog({ topics: [...log.topics], data: log.data });
+        if (parsed?.name === 'SettledFromSavings' && String(parsed.args.member).toLowerCase() === wallet) {
+          fromSavings += BigInt(parsed.args.repaid);
         }
       } else if (from === issuerAddress.toLowerCase()) {
         const parsed = ISSUER_EVENTS.parseLog({ topics: [...log.topics], data: log.data });
@@ -72,7 +83,13 @@ export async function recordUsdcRepayment(walletInput: string, txHash: string): 
 
   const totalCents = Number(total / CENTS);
   const revolvingCents = Number(revolving / CENTS);
-  const recorded = await recordOnchainRepayment({ wallet, txHash, totalCents, revolvingCents });
+  const recorded = await recordOnchainRepayment({
+    wallet,
+    txHash,
+    totalCents,
+    revolvingCents,
+    savingsCents: Number(fromSavings / CENTS),
+  });
   console.log(`[usdc-repayment] ${wallet} repaid ${totalCents}c on chain (${revolvingCents}c card) ${txHash}${recorded.duplicate ? ' (already recorded)' : ''}`);
   return { ok: true, duplicate: recorded.duplicate, totalCents, revolvingCents };
 }
