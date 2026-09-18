@@ -147,9 +147,12 @@ export const pulledFundsStore = {
       `UPDATE ${TABLE}
        SET status = 'cleared', updated_at = now()
        WHERE status = 'pending' AND collateral_eligible_at <= now()
-       RETURNING DISTINCT wallet`,
+       RETURNING wallet`,
     );
-    return rows.map((r) => r.wallet);
+    // Deduplicated here. `RETURNING DISTINCT` is not Postgres, and that syntax error is why this
+    // never released a single hold: every elapsed return window stayed pending, and the collateral
+    // it held back never counted toward the member's limit.
+    return [...new Set(rows.map((r) => r.wallet))];
   },
 
   /** A return arrived. The money is going back; it must never become collateral. */
