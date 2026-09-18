@@ -64,7 +64,25 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// nothing was pledged.
     IExposureSource public exposureSource;
 
-    uint256[41] private __gap;
+    /// @notice where a card purchase's claim is minted when it settles: the co-op's card float.
+    /// @dev A swipe at a merchant outside the network is paid by the card issuer in fiat, from the
+    /// co-op's float, at clearing. The member's obligation is created then, and the matching claim
+    /// belongs to the float that paid -- one fixed address, set by an operator, so a settler key
+    /// cannot mint claims to anyone it likes.
+    address public cardSettlementAccount;
+    /// @notice keys allowed to record a card purchase as settled.
+    mapping(address => bool) public isCardSettler;
+
+    /// @dev What a settled card purchase put on a member's line, by the issuer's transaction ref.
+    struct CardSettlement {
+        address member;
+        uint256 amount;
+    }
+    /// @dev ref => settlement. The ref makes settling idempotent: a retried or redelivered
+    /// settlement cannot draw twice for one purchase.
+    mapping(bytes32 => CardSettlement) private cardSettlements;
+
+    uint256[38] private __gap;
 
     /* ========== ERRORS ========== */
 
@@ -74,6 +92,13 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     error RevolvingIssuerUnknownTier(uint256 tierId);
     error RevolvingIssuerCapacityBelowDrawn(uint256 tierId, uint256 capacity, uint256 drawn);
     error RevolvingIssuerNoCarryRecipient();
+    error RevolvingIssuerNotCardSettler(address caller);
+    error RevolvingIssuerNoCardSettlementAccount();
+    error RevolvingIssuerCardAmountZero();
+    error RevolvingIssuerCardAlreadySettled(bytes32 ref);
+    error RevolvingIssuerCardNotSettled(bytes32 ref);
+    error RevolvingIssuerCardHeadroom(address member, uint256 amount, uint256 headroom);
+    error RevolvingIssuerCardReversalExceedsSettlement(bytes32 ref, uint256 amount, uint256 settled);
 
     /* ========== EVENTS ========== */
 
@@ -85,6 +110,10 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     event CarryRecipientUpdated(uint256 indexed tierId, address recipient);
     event CarryTreasuryUpdated(address treasury);
     event TierCarryMaterialised(address indexed member, uint256 indexed tierId, uint256 amount);
+    event CardSettlerUpdated(address indexed settler, bool allowed);
+    event CardSettlementAccountUpdated(address account);
+    event CardSpendSettled(bytes32 indexed ref, address indexed member, uint256 amount);
+    event CardSpendReversed(bytes32 indexed ref, address indexed member, uint256 amount);
 
     /* ========== INITIALIZER ========== */
 
@@ -372,6 +401,96 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
         // at all.
         uint256 period = periodLength == 0 ? cycleLength() : periodLength;
         _updateCreditPeriod(member, block.timestamp + period, graceLength);
+    }
+
+    /* ========== CARD SETTLEMENT ========== */
+
+    /// @notice what a settled card purchase put on a member's line.
+    /// @param ref the card issuer's transaction reference, hashed.
+    function cardSettlementOf(bytes32 ref) external view returns (address member, uint256 amount) {
+        CardSettlement memory settlement = cardSettlements[ref];
+        return (settlement.member, settlement.amount);
+    }
+
+    /// @notice allows or revokes a key that records card purchases as settled.
+    function setCardSettler(address settler, bool allowed) external onlyOperator notNull(settler) {
+        isCardSettler[settler] = allowed;
+        emit CardSettlerUpdated(settler, allowed);
+    }
+
+    /// @notice sets the account a settled card purchase's claim is minted to.
+    function setCardSettlementAccount(address account) external onlyOperator notNull(account) {
+        cardSettlementAccount = account;
+        emit CardSettlementAccountUpdated(account);
+    }
+
+    /// @notice records a card purchase outside the network as settled: the draw becomes debt.
+    /// @dev Called once the card network has cleared the purchase, not at authorization. The
+    /// amount is final then -- a tip added, a fuel pump's round number replaced, a void never
+    /// reaching here at all -- so this is one write for one fact rather than a write and its
+    /// corrections.
+    ///
+    /// The tiers are drawn here, cheapest first, the same as a spend on the ledger would draw them.
+    /// That is what starts carry: carry accrues on a tier's position, so a purchase recorded on the
+    /// ledger alone would be owed and never cost anything. Then the ledger records it the way it
+    /// records a partner purchase, with the claim going to the float that paid the merchant.
+    ///
+    /// All or nothing. A purchase the line cannot hold reverts rather than drawing part of it,
+    /// because the settlement is the member's whole purchase and a partial draw would record a
+    /// different fact from the one that happened.
+    /// @param ref the card issuer's transaction reference, hashed.
+    /// @param member address whose line the purchase is drawn on.
+    /// @param amount the settled amount, in ledger units.
+    function settleCardSpend(bytes32 ref, address member, uint256 amount)
+        external
+        notNull(member)
+    {
+        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
+        if (cardSettlementAccount == address(0)) revert RevolvingIssuerNoCardSettlementAccount();
+        if (amount == 0) revert RevolvingIssuerCardAmountZero();
+        // Once settled, always settled -- even after a full refund, which leaves the amount at zero
+        // but must not let the same purchase be drawn again.
+        if (cardSettlements[ref].member != address(0)) revert RevolvingIssuerCardAlreadySettled(ref);
+
+        // Carry accrued since the last touch is part of what is owed; bring it on before measuring.
+        _materialiseCarry(member);
+
+        uint256 headroom;
+        for (uint256 i = 0; i < tiers.length; i++) {
+            if (tiers[i].active) headroom += headroomOf(member, i);
+        }
+        if (headroom < amount) revert RevolvingIssuerCardHeadroom(member, amount, headroom);
+
+        _draw(member, amount);
+        cardSettlements[ref] = CardSettlement({member: member, amount: amount});
+        stableCredit.originatePurchase(
+            member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
+        );
+        emit CardSpendSettled(ref, member, amount);
+    }
+
+    /// @notice gives back a settled card purchase, in whole or in part: a refund after clearing.
+    /// @dev The inverse of `settleCardSpend`, and capital-free for the same reason a partner
+    /// reversal is. The tiers are cleared dearest first, which is what any repayment does, and
+    /// the ledger takes the claim back from the float.
+    /// @param ref the card issuer's transaction reference, hashed.
+    /// @param amount the amount given back, in ledger units.
+    function reverseCardSpend(bytes32 ref, uint256 amount) external {
+        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
+        if (amount == 0) revert RevolvingIssuerCardAmountZero();
+        CardSettlement memory settlement = cardSettlements[ref];
+        if (settlement.member == address(0)) revert RevolvingIssuerCardNotSettled(ref);
+        if (amount > settlement.amount) {
+            revert RevolvingIssuerCardReversalExceedsSettlement(ref, amount, settlement.amount);
+        }
+
+        _materialiseCarry(settlement.member);
+        _repay(settlement.member, amount);
+        cardSettlements[ref].amount = settlement.amount - amount;
+        stableCredit.reversePurchase(
+            settlement.member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
+        );
+        emit CardSpendReversed(ref, settlement.member, amount);
     }
 
     /* ========== INTERNAL ========== */

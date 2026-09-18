@@ -501,4 +501,88 @@ describe("RevolvingIssuer", function () {
       expect(await issuer.totalCapacityOf(ctx.member.address)).to.equal(0n);
     });
   });
+
+  describe("card spend settles onto the line", function () {
+    let settler: any;
+    let float: any;
+    const REF = ethers.id("lithic-tx-13d8cfa7");
+
+    beforeEach(async function () {
+      const signers = await ethers.getSigners();
+      settler = signers[9];
+      float = signers[10];
+      await issuer.connect(ctx.operator).setCardSettler(settler.address, true);
+      await issuer.connect(ctx.operator).setCardSettlementAccount(float.address);
+    });
+
+    it("draws the tiers cheapest first and records the debt, with the claim to the float", async function () {
+      await openLine([100n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
+      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+
+      expect(await issuer.drawnOf(ctx.member.address, 0)).to.equal(100n * ONE_USDC);
+      expect(await issuer.drawnOf(ctx.member.address, 1)).to.equal(75n * ONE_USDC);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(175n * ONE_USDC);
+      expect(await ctx.stableCredit.balanceOf(float.address)).to.equal(175n * ONE_USDC);
+      // The tiers and the ledger agree, which is what every other draw guarantees too.
+      expect(await issuer.totalPrincipalOf(ctx.member.address))
+        .to.equal(await ctx.stableCredit.creditBalanceOf(ctx.member.address));
+      const [member, amount] = await issuer.cardSettlementOf(REF);
+      expect(member).to.equal(ctx.member.address);
+      expect(amount).to.equal(175n * ONE_USDC);
+    });
+
+    it("starts carry from settlement", async function () {
+      await openLine([0n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
+      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      expect(await issuer.carryOf(ctx.member.address, 1)).to.equal(0n);
+
+      await advance(CYCLE);
+      expect(await issuer.carryOf(ctx.member.address, 1)).to.be.greaterThan(0n);
+    });
+
+    it("settles a purchase once, even after it has been fully refunded", async function () {
+      await openLine([500n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
+      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+      await expect(issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardAlreadySettled");
+
+      await issuer.connect(settler).reverseCardSpend(REF, 175n * ONE_USDC);
+      await expect(issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardAlreadySettled");
+    });
+
+    it("is all or nothing when the line cannot hold it", async function () {
+      await openLine([100n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
+      await expect(issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardHeadroom");
+      expect(await issuer.drawnOf(ctx.member.address, 0)).to.equal(0n);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+    });
+
+    it("only a card settler can settle, and only to the configured float", async function () {
+      await openLine([500n, 0n, 0n, 0n].map((n) => n * ONE_USDC));
+      await expect(issuer.connect(ctx.member).settleCardSpend(REF, ctx.member.address, ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerNotCardSettler");
+      await expect(issuer.connect(ctx.operator).settleCardSpend(REF, ctx.member.address, ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerNotCardSettler");
+      await expect(issuer.connect(settler).setCardSettlementAccount(settler.address))
+        .to.be.revertedWith("CreditIssuer: Unauthorized caller");
+    });
+
+    it("a refund after clearing gives the purchase back, dearest tier first", async function () {
+      await openLine([100n, 500n, 0n, 0n].map((n) => n * ONE_USDC));
+      await issuer.connect(settler).settleCardSpend(REF, ctx.member.address, 175n * ONE_USDC);
+
+      await issuer.connect(settler).reverseCardSpend(REF, 50n * ONE_USDC);
+      expect(await issuer.drawnOf(ctx.member.address, 1)).to.equal(25n * ONE_USDC);
+      expect(await issuer.drawnOf(ctx.member.address, 0)).to.equal(100n * ONE_USDC);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(125n * ONE_USDC);
+      expect(await ctx.stableCredit.balanceOf(float.address)).to.equal(125n * ONE_USDC);
+
+      await expect(issuer.connect(settler).reverseCardSpend(REF, 200n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardReversalExceedsSettlement");
+      await expect(issuer.connect(settler).reverseCardSpend(ethers.id("never"), ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "RevolvingIssuerCardNotSettled");
+    });
+  });
 });

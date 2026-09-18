@@ -93,17 +93,31 @@ export async function heldDrawsByTier(wallet: string): Promise<HeldDraws> {
   const pool = getPayPool();
   if (!pool) return empty;
 
-  const { rows } = await pool.query<{ draws: unknown }>(
-    `SELECT draws FROM lithic_auth_decisions
-      WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0`,
-    [wallet.toLowerCase()],
-  );
+  // `onchain_status` is added by the card settlement service; read it defensively so this keeps
+  // working on a database that has never settled anything.
+  const { rows } = await pool
+    .query<{ draws: unknown; onchain_status: string | null }>(
+      `SELECT draws, onchain_status FROM lithic_auth_decisions
+        WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0`,
+      [wallet.toLowerCase()],
+    )
+    .catch(() =>
+      pool.query<{ draws: unknown; onchain_status: string | null }>(
+        `SELECT draws, NULL::text AS onchain_status FROM lithic_auth_decisions
+          WHERE wallet = $1 AND result = 'APPROVED' AND COALESCE(net_cents, amount_cents) > 0`,
+        [wallet.toLowerCase()],
+      ),
+    );
 
   const held = { ...empty };
   for (const row of rows) {
     if (!Array.isArray(row.draws)) continue;
+    // Settled and issued: the credit part is on chain now, in the tiers' own figures. Counting it
+    // here as well would show the member the same purchase twice.
+    const onChain = row.onchain_status === 'issued';
     for (const draw of row.draws as Array<{ source?: unknown; amountCents?: unknown }>) {
       const source = String(draw?.source ?? '');
+      if (onChain && source !== 'cash') continue;
       const cents = Number(draw?.amountCents ?? 0);
       if (source in held && Number.isFinite(cents)) held[source as keyof HeldDraws] += cents;
     }

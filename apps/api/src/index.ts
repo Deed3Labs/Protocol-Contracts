@@ -59,6 +59,7 @@ import { startMemoryMonitor } from './jobs/memoryMonitor.js';
 import { startRelayerGasMonitor } from './jobs/relayerGas.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
+import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 
@@ -362,6 +363,11 @@ async function startServer() {
     // whatever was true when we last happened to write it — and the auth stream fails closed on it.
     startSnapshotRefresher().catch((error) => {
       console.error('Failed to start snapshot refresher:', error);
+    });
+
+    // A settled card purchase becomes debt on chain; this retries what the webhook could not land.
+    startCardSettlementSweeper().catch((error) => {
+      console.error('Failed to start card settlement sweeper:', error);
     });
 
     // Start HTTP server (Express + WebSocket)

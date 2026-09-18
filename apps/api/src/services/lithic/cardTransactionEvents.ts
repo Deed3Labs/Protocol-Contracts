@@ -1,4 +1,5 @@
 import { reconcile, type ReconcileOutcome } from './authStore.js';
+import { syncCardSettlement } from '../chain/cardSettlementService.js';
 
 /*
  * What a card transaction currently holds, and putting our ledger back in step with it.
@@ -88,6 +89,17 @@ export async function handleCardTransaction(
 
   const status = String(payload.status ?? '') || undefined;
   const outcome = await reconcile({ transactionToken, targetCents, status });
+
+  /*
+   * Settled means final, and final is when the credit part becomes debt on chain (build plan §4).
+   * Not awaited: an on-chain write takes seconds and the webhook has to answer Lithic now. Anything
+   * this misses, the sweeper picks up.
+   */
+  if (status === 'SETTLED') {
+    void syncCardSettlement(transactionToken).catch((error) =>
+      console.error(`[card-settlement] ${transactionToken} could not start:`, error),
+    );
+  }
 
   return { ...outcome, transactionToken, targetCents };
 }
