@@ -53,6 +53,7 @@ export default function RepayDialog({
   open,
   onOpenChange,
   onRepay,
+  onRepayFromSavings,
 }: {
   credit: Credit;
   /** Source is Ready to allocate; destination is the account. Both live here. */
@@ -66,11 +67,20 @@ export default function RepayDialog({
    * inert. `Move to cash` (nothing carried) is not wired here.
    */
   onRepay?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
+  /** Repays savings-backed credit out of the member's own savings. Offered only when some is used. */
+  onRepayFromSavings?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
 }) {
+  /*
+   * Savings-backed credit can be repaid out of the savings that back it. It never has to be -- it is
+   * 0% and deposits clear it -- but the savings stay locked until it is, and a member who would
+   * rather have the rest of their savings free can choose to spend the locked part.
+   */
+  const savingsUsed = credit.tiers.find((t) => t.key === 'savings')?.used ?? 0;
+  const [fromSavings, setFromSavings] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
-  const source = account.readyToAllocate;
   const outstanding = creditUsed(credit);
+  const source = fromSavings ? savingsUsed : account.readyToAllocate;
   const carrying = outstanding > 0;
   const toClear = unsecuredUsed(credit);
 
@@ -86,7 +96,15 @@ export default function RepayDialog({
     setAmount(carrying ? clearCycle : source);
     setCustom(false);
     setNote(null);
-  }, [open, carrying, clearCycle, source]);
+    // Reopening starts from cash again; savings is a deliberate choice each time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    setAmount(fromSavings ? savingsUsed : carrying ? clearCycle : source);
+    setCustom(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromSavings]);
 
   /*
    * Carrying a balance, a repayment is capped at what is owed. The spill line used to promise that
@@ -96,10 +114,12 @@ export default function RepayDialog({
   const capped = Math.min(Math.max(0, amount), source, carrying ? outstanding : Infinity);
 
   const repay = async () => {
-    if (!onRepay || capped <= 0) return;
+    if (capped <= 0) return;
     setBusy(true);
     setNote(null);
-    const result = await onRepay(capped);
+    const pay = fromSavings ? onRepayFromSavings : onRepay;
+    if (!pay) return;
+    const result = await pay(capped);
     setBusy(false);
     if (result.repaid && result.repaid > 0) {
       const pending = result.pendingLeft && result.pendingLeft > 0
@@ -110,7 +130,10 @@ export default function RepayDialog({
       setNote({ text: result.error ?? 'That did not go through. Nothing was repaid.', bad: true });
     }
   };
-  const lines = repayAllocation(credit, capped).filter((line) => line.applied > 0);
+  // Out of savings it settles the savings tier and nothing else, so that is the only line.
+  const lines = fromSavings
+    ? credit.tiers.filter((t) => t.key === 'savings').map((tier) => ({ tier, applied: capped }))
+    : repayAllocation(credit, capped).filter((line) => line.applied > 0);
   const towardCycle = repaidUnsecured(credit, capped);
   // The repayment behaves exactly like more deposit arriving, so the cycle reads it the same way and
   // this surface can't disagree with Home about whether the cycle clears.
@@ -128,7 +151,7 @@ export default function RepayDialog({
       <div className="c-conseq">
         <div>
           <span>From</span>
-          <span>Ready to allocate</span>
+          <span>{fromSavings ? 'Savings' : 'Ready to allocate'}</span>
         </div>
         {carrying ? (
           <>
@@ -205,10 +228,25 @@ export default function RepayDialog({
       }
       footer={footer}
     >
+      {carrying && savingsUsed > 0 && (
+        <>
+          <p className="c-label">From</p>
+          <div className="c-qc mb-s3 mt-s1!">
+            <Pick label="Cash" selected={!fromSavings} onSelect={() => setFromSavings(false)} />
+            <Pick label="Savings" selected={fromSavings} onSelect={() => setFromSavings(true)} />
+          </div>
+        </>
+      )}
       <p className="c-label">Amount</p>
       <BigAmount amount={capped} onChange={setAmount} editable={custom} />
       <div className="c-qc">
-        {carrying ? (
+        {carrying && fromSavings ? (
+          <Pick
+            label="Clear savings-backed"
+            selected={!custom && capped === savingsUsed}
+            onSelect={() => select(savingsUsed)}
+          />
+        ) : carrying ? (
           <>
             {toClear > 0 && (
               <Pick

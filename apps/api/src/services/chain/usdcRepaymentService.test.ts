@@ -20,7 +20,9 @@ describe('a USDC repayment is recorded from the chain, never from the request', 
   });
 
   test('only what the card tiers absorbed reaches the card books, carry first', () => {
-    expect(deposits).toContain('planSettlement(input.revolvingCents, outstanding, await readCarryOwed(client, wallet))');
+    // An ordinary repayment (nothing from savings) is carry first, then the dearest tier.
+    expect(deposits).toContain('input.revolvingCents - toSavings,');
+    expect(deposits).toContain('toSavings > 0 ? 0 : await readCarryOwed(client, wallet),');
   });
 
   test('once per transaction', () => {
@@ -36,5 +38,12 @@ describe('a USDC repayment is recorded from the chain, never from the request', 
 describe('only fiat pays card debt on arrival', () => {
   test('an ACH deposit settles card debt; a Bridge USDC deposit stays the member’s cash', () => {
     expect(deposits).toContain("receipt.rail === 'lithic_ach'\n        ? planSettlement(amount, outstanding, await readCarryOwed(client, wallet))");
+  });
+});
+
+describe('a repayment out of savings settles the savings tier in the books, as it did on chain', () => {
+  test('SettledFromSavings from the Liquidator, for this member, goes straight to savings', () => {
+    expect(service).toContain("parsed?.name === 'SettledFromSavings' && String(parsed.args.member).toLowerCase() === wallet");
+    expect(deposits).toContain("[{ tier: 'savings', amountCents: toSavings }, ...rest.settlements]");
   });
 });

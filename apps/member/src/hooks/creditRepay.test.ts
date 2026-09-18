@@ -28,3 +28,20 @@ describe('Repay repays on chain, in USDC, from the member’s wallet', () => {
     expect(dialog).toContain('onClick={carrying ? () => void repay() : undefined}');
   });
 });
+
+describe('repay savings-backed credit from savings', () => {
+  test('offered only when savings-backed credit is used; settles the savings tier and nothing else', () => {
+    expect(dialog).toContain("{carrying && savingsUsed > 0 && (");
+    expect(dialog).toContain("credit.tiers.filter((t) => t.key === 'savings').map((tier) => ({ tier, applied: capped }))");
+  });
+
+  test('one sponsored call to the Liquidator, against the savings tier, through the revolving issuer', () => {
+    expect(calls).toContain("functionName: 'settleFromSavings', args: [c.revolvingIssuer, SAVINGS_TIER_ID, amt]");
+    expect(calls).toContain('export const SAVINGS_TIER_ID = 0n;');
+  });
+
+  test('capped at what the savings tier owes on chain, and recorded by the server', () => {
+    expect(hook).toContain("functionName: 'principalOf',");
+    expect(hook.match(/await recordCreditRepayment\(address, hash\)/g)).toHaveLength(2);
+  });
+});

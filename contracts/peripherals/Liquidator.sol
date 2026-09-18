@@ -31,6 +31,7 @@ interface ISeizableShares {
 interface ITierSettler {
     function settleFromCollateral(address member, uint256 tierId, uint256 amount) external;
     function principalOf(address member, uint256 tierId) external view returns (uint256);
+    function tierAt(uint256 tierId) external view returns (bytes32 kind, uint256 ratePerCycle, bool active);
 }
 
 /// @title Liquidator
@@ -54,6 +55,8 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
 
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
+    /// @dev The savings collateral kind, as the registry and the issuer both name it.
+    bytes32 private constant SAVINGS_KIND = "SAVINGS";
 
     IStableCredit public stableCredit;
     IClearUSDSeizable public clrusd;
@@ -61,12 +64,20 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     IERC20Upgradeable public reserveToken;
     ICollateralSeizureSink public collateralRegistry;
 
-    uint256[43] private __gap;
+    /// @notice issuers a member may settle against with their own savings. Operator-set.
+    /// @dev A member names the issuer in `settleFromSavings`, and the redeemed USDC is approved to
+    /// it -- so an untrusted issuer would be a way to walk locked collateral out of the lock. Only
+    /// issuers on this list are ever handed the member's savings.
+    mapping(address => bool) public trustedSavingsIssuer;
+
+    uint256[42] private __gap;
 
     error LiquidatorInvalidAddress();
     error LiquidatorNotInDefault(address member, address issuer);
     error LiquidatorNothingToSeize(address member);
     error LiquidatorNotRealizable(address collateral, uint256 seized);
+    error LiquidatorUntrustedIssuer(address issuer);
+    error LiquidatorNotSavingsTier(uint256 tierId, bytes32 kind);
 
     event SharesSeized(
         address indexed member, address indexed pool, uint256 shares, uint256 realized, bool queued
@@ -79,6 +90,9 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
         uint256 redeemed,
         uint256 repaid
     );
+
+    event TrustedSavingsIssuerUpdated(address indexed issuer, bool trusted);
+    event SettledFromSavings(address indexed member, address indexed issuer, uint256 seized, uint256 repaid);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -110,6 +124,53 @@ contract Liquidator is AccessControlUpgradeable, UUPSUpgradeable {
     }
 
     function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    /// @notice allows or revokes an issuer members may settle against with their own savings.
+    function setTrustedSavingsIssuer(address issuer, bool trusted) external onlyRole(OPERATOR_ROLE) {
+        if (issuer == address(0)) revert LiquidatorInvalidAddress();
+        trustedSavingsIssuer[issuer] = trusted;
+        emit TrustedSavingsIssuerUpdated(issuer, trusted);
+    }
+
+    /// @notice the member settles their savings-backed credit out of the savings that back it.
+    /// @dev The same move as a liquidation, chosen instead of suffered: the member's locked CLRUSD is
+    /// seized past the lock, redeemed one-for-one, and settled against the savings tier. Their savings
+    /// and their debt shrink by the same amount, and the lock lifts with it.
+    ///
+    /// Only ever the caller's own savings against the caller's own SAVINGS tier:
+    ///  - the issuer must be trusted, because it is handed the redeemed USDC;
+    ///  - the tier must be the savings tier, or collateral pledged against it could settle a dearer
+    ///    tier and leave the savings tier drawn against a pledge that no longer exists;
+    ///  - the seizure is recorded as SAVINGS, so it reduces the pledge it actually came from;
+    ///  - it is capped at what the tier owes, what the member holds, and (in the token) what is
+    ///    encumbered -- collateral beyond the debt stays theirs.
+    /// @param issuer address of the issuer holding the savings tier.
+    /// @param tierId the savings tier.
+    /// @param amount the most to settle, in ledger units.
+    /// @return repaid amount settled against the member's debt.
+    function settleFromSavings(address issuer, uint256 tierId, uint256 amount) external returns (uint256 repaid) {
+        if (!trustedSavingsIssuer[issuer]) revert LiquidatorUntrustedIssuer(issuer);
+        (bytes32 kind, , ) = ITierSettler(issuer).tierAt(tierId);
+        if (kind != SAVINGS_KIND) revert LiquidatorNotSavingsTier(tierId, kind);
+
+        address member = _msgSender();
+        uint256 owed = ITierSettler(issuer).principalOf(member, tierId);
+        uint256 available = clrusd.balanceOf(member);
+        uint256 seizing = amount;
+        if (owed < seizing) seizing = owed;
+        if (available < seizing) seizing = available;
+        if (seizing == 0) revert LiquidatorNothingToSeize(member);
+
+        clrusd.seize(member, address(this), seizing);
+        collateralRegistry.recordSeizure(member, SAVINGS_KIND, seizing);
+        clrusd.approve(address(vault), seizing);
+        uint256 redeemed = vault.redeem(address(reserveToken), seizing, address(this));
+        reserveToken.forceApprove(issuer, redeemed);
+        ITierSettler(issuer).settleFromCollateral(member, tierId, redeemed);
+        repaid = redeemed;
+
+        emit SettledFromSavings(member, issuer, seizing, repaid);
+    }
 
     /// @notice covers a defaulted member's debt out of the collateral they pledged.
     /// @dev The default is checked against the issuer that holds the position rather than taken

@@ -328,3 +328,36 @@ export async function scRepayCredit(args: { smartWalletClient?: unknown; ownerWa
     },
   ]);
 }
+
+/** The savings tier's position on the revolving line: the cheapest tier, first in draw order. */
+export const SAVINGS_TIER_ID = 0n;
+
+const SAVINGS_SETTLE_ABI = [
+  { type: 'function', name: 'settleFromSavings', stateMutability: 'nonpayable',
+    inputs: [{ name: 'issuer', type: 'address' }, { name: 'tierId', type: 'uint256' }, { name: 'amount', type: 'uint256' }],
+    outputs: [{ name: 'repaid', type: 'uint256' }] },
+] as const;
+
+export const TIER_PRINCIPAL_ABI = [
+  { type: 'function', name: 'principalOf', stateMutability: 'view',
+    inputs: [{ name: 'member', type: 'address' }, { name: 'tierId', type: 'uint256' }], outputs: [{ type: 'uint256' }] },
+] as const;
+
+/**
+ * Settle savings-backed credit out of the member's own savings, in one sponsored call.
+ *
+ * The Liquidator seizes the locked CLRUSD, redeems it one-for-one and settles the savings tier --
+ * the same move as a liquidation, chosen instead of suffered. Only the caller's own savings, only
+ * against the savings tier, only through a trusted issuer: the contract enforces all three.
+ */
+export async function scRepayFromSavings(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.liquidator || !c.revolvingIssuer) throw new Error('Repaying from savings is not available on this network yet.');
+  const amt = parseUnits(args.amount, 6);
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    {
+      to: c.liquidator,
+      data: encodeFunctionData({ abi: SAVINGS_SETTLE_ABI, functionName: 'settleFromSavings', args: [c.revolvingIssuer, SAVINGS_TIER_ID, amt] }),
+    },
+  ]);
+}

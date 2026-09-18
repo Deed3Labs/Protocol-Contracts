@@ -246,4 +246,74 @@ describe("Liquidator", function () {
         .liquidate(ctx.member.address, await issuer.getAddress(), 0, SAVINGS)
     ).to.be.reverted;
   });
+
+  describe("the member settles savings-backed credit out of their own savings", function () {
+    beforeEach(async function () {
+      await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), true);
+    });
+
+    it("settles the savings tier, shrinks savings by the same amount, and lifts the lock — no default needed", async function () {
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
+      await spend(400n * ONE_USDC);
+      await registry.refresh(ctx.member.address);
+      expect(await issuer.inDefault(ctx.member.address)).to.equal(false);
+
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 400n * ONE_USDC);
+
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+      expect(await issuer.principalOf(ctx.member.address, 0)).to.equal(0n);
+      expect(await clrusd.balanceOf(ctx.member.address)).to.equal(600n * ONE_USDC);
+      // Nothing is drawn, so nothing is locked: the rest of their savings moves freely.
+      await clrusd.connect(ctx.member).transfer(ctx.counterparty.address, 600n * ONE_USDC);
+      expect(await ctx.stableCredit.lostDebt()).to.equal(0n);
+    });
+
+    it("never takes more than the savings tier owes", async function () {
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
+      await spend(250n * ONE_USDC);
+      await registry.refresh(ctx.member.address);
+
+      await liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 900n * ONE_USDC);
+      expect(await clrusd.balanceOf(ctx.member.address)).to.equal(750n * ONE_USDC);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+    });
+
+    it("refuses an issuer nobody trusted — it would be handed the member's locked savings", async function () {
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
+      await spend(400n * ONE_USDC);
+      await liquidator.setTrustedSavingsIssuer(await issuer.getAddress(), false);
+      await expect(
+        liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 0, 400n * ONE_USDC)
+      ).to.be.revertedWithCustomError(liquidator, "LiquidatorUntrustedIssuer");
+    });
+
+    it("refuses any tier but savings — savings may not settle a dearer tier", async function () {
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 500n * ONE_USDC, 365 * ONE_DAY);
+      await spend(1_200n * ONE_USDC);
+      await expect(
+        liquidator.connect(ctx.member).settleFromSavings(await issuer.getAddress(), 1, 200n * ONE_USDC)
+      ).to.be.revertedWithCustomError(liquidator, "LiquidatorNotSavingsTier");
+    });
+
+    it("only the member's own savings: nobody can settle someone else's", async function () {
+      await save(1_000n * ONE_USDC);
+      await openLine(1_000n * ONE_USDC, 0n, 365 * ONE_DAY);
+      await spend(400n * ONE_USDC);
+      // The outsider has no savings and no debt; there is nothing of theirs to settle.
+      await expect(
+        liquidator.connect(ctx.outsider).settleFromSavings(await issuer.getAddress(), 0, 400n * ONE_USDC)
+      ).to.be.revertedWithCustomError(liquidator, "LiquidatorNothingToSeize");
+      expect(await clrusd.balanceOf(ctx.member.address)).to.equal(1_000n * ONE_USDC);
+    });
+
+    it("only an operator decides which issuers are trusted", async function () {
+      await expect(
+        liquidator.connect(ctx.member).setTrustedSavingsIssuer(await issuer.getAddress(), true)
+      ).to.be.reverted;
+    });
+  });
 });
