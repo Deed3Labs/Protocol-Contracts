@@ -2,6 +2,7 @@ import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
 import { chainProvider } from './provider.js';
 import { recordOnchainRepayment } from '../deposits/depositReceiptService.js';
+import { recordPoolMovements } from './poolFunding.js';
 
 /*
  * A member repaid card debt on chain, in USDC. Verify it from the chain and record it.
@@ -80,6 +81,9 @@ export async function recordUsdcRepayment(walletInput: string, txHash: string): 
   }
   // A repayment for somebody else, or no repayment at all, is not recorded against this member.
   if (total === 0n) return { ok: false, reason: 'That transaction did not repay your balance.' };
+
+  // The pool's share of this repayment, if any of it cleared a pool-funded tier.
+  await recordPoolMovements(receipt);
 
   const totalCents = Number(total / CENTS);
   const revolvingCents = Number(revolving / CENTS);
