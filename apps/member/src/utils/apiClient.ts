@@ -2747,6 +2747,18 @@ export async function fileDispute(input: {
   return { token: r.data.dispute.token, networkFiled: r.data.network ? r.data.network.filed : null };
 }
 
+/** Record a repayment the member made on chain. The server reads the amount from the transaction. */
+export async function recordCreditRepayment(
+  wallet: string,
+  txHash: string,
+): Promise<{ ok: boolean; revolvingCents?: number; error?: string }> {
+  const r = await apiRequest<{ ok: boolean; revolvingCents?: number }>(`/api/credit/${wallet.toLowerCase()}/repayments`, {
+    method: 'POST',
+    body: JSON.stringify({ txHash }),
+  });
+  return r.error || !r.data ? { ok: false, error: r.error || 'Repaid on chain, but not yet recorded.' } : r.data;
+}
+
 /** The member's own disputes, newest first. */
 export async function getMyDisputes(): Promise<import('@/lib/clearModel').MemberDispute[] | null> {
   const r = await apiRequest<{ disputes: import('@/lib/clearModel').MemberDispute[] }>('/api/disputes');

@@ -193,8 +193,18 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
     );
 
     // 2. Settle what's owed, most expensive first. No pay button; this is the mechanism.
+    /*
+     * Only FIAT pays card debt on arrival. An ACH deposit lands in the co-op's account, refills the
+     * float that paid the merchant, and the chain is brought into line by netting. A Bridge deposit
+     * lands as USDC in the member's OWN wallet: counting it as paying card debt made our books say
+     * paid while the chain still said owed and the USDC had not moved. It stays the member's cash,
+     * and card debt is repaid with it on chain (Repay), which the books then record from the chain.
+     */
     const outstanding = await readOutstanding(client, wallet);
-    const plan = planSettlement(amount, outstanding, await readCarryOwed(client, wallet));
+    const plan =
+      receipt.rail === 'lithic_ach'
+        ? planSettlement(amount, outstanding, await readCarryOwed(client, wallet))
+        : planSettlement(amount, { boost: 0, income: 0, asset: 0, savings: 0 });
 
     for (const settlement of plan.settlements) {
       await client.query(
@@ -334,6 +344,76 @@ export async function outstandingForSpend(wallet: string): Promise<Outstanding |
       if (tier in owed) owed[tier] += Math.max(0, parseInt(row.net, 10) || 0);
     }
     return owed;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * A repayment the member made ON CHAIN, in USDC, recorded in our books from the chain's own figures.
+ *
+ * `revolvingCents` is what the card tiers absorbed (the issuer's TierRepaid events), not the whole
+ * payment: an undirected repayment can also reach a term plan, which these books do not carry. It
+ * is applied the way a deposit settles debt -- carry first, then the dearest tier -- so the books
+ * and the chain agree on what is left.
+ *
+ * Idempotent by transaction: the same repayment reported twice is recorded once.
+ */
+export async function recordOnchainRepayment(input: {
+  wallet: string;
+  txHash: string;
+  totalCents: number;
+  revolvingCents: number;
+}): Promise<{ recorded: boolean; duplicate: boolean; plan: SettlementPlan | null }> {
+  const pool = getPayPool();
+  if (!pool) return { recorded: false, duplicate: false, plan: null };
+  await ensureTables();
+  const wallet = input.wallet.trim().toLowerCase();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS card_onchain_repayments (
+        tx_hash TEXT PRIMARY KEY,
+        wallet TEXT NOT NULL,
+        total_cents BIGINT NOT NULL,
+        revolving_cents BIGINT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`);
+    const inserted = await client.query(
+      `INSERT INTO card_onchain_repayments (tx_hash, wallet, total_cents, revolving_cents)
+       VALUES ($1, $2, $3, $4) ON CONFLICT (tx_hash) DO NOTHING`,
+      [input.txHash.toLowerCase(), wallet, input.totalCents, input.revolvingCents],
+    );
+    if (!inserted.rowCount) {
+      await client.query('COMMIT');
+      return { recorded: false, duplicate: true, plan: null };
+    }
+
+    const outstanding = await readOutstanding(client, wallet);
+    const plan = planSettlement(input.revolvingCents, outstanding, await readCarryOwed(client, wallet));
+    const group = `onchain-repay:${input.txHash.toLowerCase()}`;
+    for (const settlement of plan.settlements) {
+      await client.query(
+        `INSERT INTO ${ENTRIES} (entry_group, wallet, account, direction, amount_cents, rail, event_type, external_id, metadata)
+         VALUES ($1, $2, $3, 'credit', $4, 'chain', 'onchain_repayment', $5, $6::jsonb),
+                ($1, $2, 'member_cash_usdc', 'debit', $4, 'chain', 'onchain_repayment', $5, $6::jsonb)`,
+        [
+          group,
+          wallet,
+          `member_credit_${settlement.tier}`,
+          settlement.amountCents,
+          `${input.txHash.toLowerCase()}:${settlement.tier}`,
+          JSON.stringify({ tier: settlement.tier, txHash: input.txHash }),
+        ],
+      );
+    }
+    await client.query('COMMIT');
+    await refreshSnapshotsFor(wallet);
+    return { recorded: true, duplicate: false, plan };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
   } finally {
     client.release();
   }

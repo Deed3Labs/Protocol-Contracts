@@ -447,9 +447,17 @@ async function readCardDebt(wallet: string, issuer: ethers.Contract): Promise<Ca
     notOnChain += Math.max(0, creditCentsOf(row.draws) - (row.onchain_status === 'issued' ? onChainForRow : 0));
   }
 
-  const cleared = await pool
+  // Everything that came off the card tiers on chain: fiat netting, and repayments the member made
+  // in USDC (what the tiers absorbed). Both lowered `drawn`, so both belong in `cleared`, or the
+  // difference would read as carry.
+  const netted = await pool
     .query<{ total: string }>(`SELECT COALESCE(SUM(amount_cents), 0) AS total FROM ${NETTING} WHERE wallet = $1 AND status = 'done'`, [wallet])
     .then((r) => Number(r.rows[0]?.total ?? 0));
+  const repaidInUsdc = await pool
+    .query<{ total: string }>(`SELECT COALESCE(SUM(revolving_cents), 0) AS total FROM card_onchain_repayments WHERE wallet = $1`, [wallet])
+    .then((r) => Number(r.rows[0]?.total ?? 0))
+    .catch(() => 0);
+  const cleared = netted + repaidInUsdc;
 
   const drawnCents = Number(((await issuer.totalDrawnOf(wallet)) as bigint) / CENTS_TO_UNITS);
 

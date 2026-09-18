@@ -38,7 +38,14 @@ import { activePlans, addableTier, creditLimit, savingsTotal, type ActivityRow, 
  *
  * Day one has no cycle and nothing on the slab: the hero, Getting set up, and Savings.
  */
-export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
+export default function HomePage({
+  data = HOME_DAY_ONE,
+  onRepay,
+}: {
+  data?: HomeData;
+  /** Repays card debt on chain. Absent in the preview harness. */
+  onRepay?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
+}) {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
   const [params, setParams] = useSearchParams();
@@ -275,6 +282,7 @@ export default function HomePage({ data = HOME_DAY_ONE }: { data?: HomeData }) {
         cycle={data.cycle}
         open={repayOpen}
         onOpenChange={setRepayOpen}
+        onRepay={onRepay}
       />
       {selected && (
         <TransactionDetailDialog row={selected} open={selected !== null} onOpenChange={(o) => !o && setSelected(null)} />

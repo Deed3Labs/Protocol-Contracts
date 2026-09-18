@@ -4,6 +4,7 @@ import { readChainCredit } from '../services/chain/creditReader.js';
 import { readChainEarn } from '../services/chain/earnReader.js';
 import { chargeStore } from '../services/chargeStore.js';
 import { heldDrawsByTier } from '../services/lithic/cardTransactionsService.js';
+import { recordUsdcRepayment } from '../services/chain/usdcRepaymentService.js';
 
 /*
  * A member's credit line, assembled from the contracts that hold it.
@@ -129,6 +130,23 @@ creditRouter.get('/:wallet/earn', async (req: Request, res: Response) => {
       error: 'Failed to read earn state',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+  }
+});
+
+/**
+ * POST /api/credit/:wallet/repayments { txHash } — the member repaid on chain; record it.
+ * The amount comes from the transaction's own events, never from the request.
+ */
+creditRouter.post('/:wallet/repayments', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  try {
+    const result = await recordUsdcRepayment(wallet, String(req.body?.txHash ?? ''));
+    if (!result.ok) return res.status(400).json({ error: 'Not recorded', message: result.reason });
+    return res.json(result);
+  } catch (error) {
+    console.error('[credit] repayment record failed', error);
+    return res.status(500).json({ error: 'Failed to record repayment' });
   }
 });
 
