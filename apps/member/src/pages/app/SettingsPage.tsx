@@ -21,7 +21,8 @@ import AdvancedDialog from '@/components/settings/AdvancedDialog';
 import { money } from '@clear/domain';
 import ThemePicker from '@/components/clear/ThemePicker';
 import { THEME_PINNED } from '@/context/ThemeContext';
-import AccelerationDialog from '@/components/settings/AccelerationDialog';
+import AccelerationPanel from '@/components/settings/AccelerationPanel';
+import PatronageCalculationPanel from '@/components/settings/PatronageCalculationPanel';
 import ChangePhoneDialog from '@/components/settings/ChangePhoneDialog';
 import ChangeAddressDialog from '@/components/settings/ChangeAddressDialog';
 import { EMPTY_ADDRESS, formatAddress, type MailingAddress } from '@/hooks/useMemberProfile';
@@ -111,7 +112,7 @@ export default function SettingsPage({
   };
 }) {
   const navigate = useNavigate();
-  const { pathname, state } = useLocation();
+  const { pathname } = useLocation();
   const desktop = useIsDesktop();
   const verification = useIdentity();
   const { profile } = data;
@@ -119,10 +120,6 @@ export default function SettingsPage({
   // The bare /settings is the index on a phone and Account beside the rail on desktop.
   const page: SettingsPageId | null = settingsPageOf(pathname) ?? (desktop ? 'account' : null);
 
-  // The profile menu's Acceleration "Explore" lands here with the dialog already open.
-  const [accelerationOpen, setAccelerationOpen] = useState(
-    () => (state as { open?: string } | null)?.open === 'acceleration',
-  );
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [addressOpen, setAddressOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
@@ -216,7 +213,7 @@ export default function SettingsPage({
             <KvRow
               label="Acceleration"
               value={data.accelerationActive ? 'Active' : 'Not active'}
-              onSelect={() => setAccelerationOpen(true)}
+              onSelect={() => go('acceleration')}
             />,
           ])}
         </CMain>
@@ -340,7 +337,9 @@ export default function SettingsPage({
     help: <HelpPanel topics={data.helpTopics} onDispute={() => navigate('/learn/disputes')} />,
     bylaws: <BylawsPanel bylaws={data.bylaws} />,
     permissions: <PermissionsPanel permissions={data.permissions} />,
-    patronage: <PatronagePanel patronage={data.patronage} onExplain={() => navigate('/learn/patronage')} />,
+    patronage: <PatronagePanel patronage={data.patronage} onExplain={() => go('patronage-calculation')} />,
+    'patronage-calculation': <PatronageCalculationPanel patronage={data.patronage} desktop={desktop} />,
+    acceleration: <AccelerationPanel data={data} intro={!desktop} />,
     voting: <VotingPanel ballot={data.ballot} pastVotes={data.pastVotes} onVote={() => setBallotOpen(true)} />,
     legal: <LegalPanel docs={data.legalDocs} />,
     logins: <LoginHistoryPanel logins={data.logins} />,
@@ -362,7 +361,6 @@ export default function SettingsPage({
 
   const modals = (
     <>
-      <AccelerationDialog data={data} open={accelerationOpen} onOpenChange={setAccelerationOpen} />
       <ChangePhoneDialog
         current={profile.phone}
         open={phoneOpen}

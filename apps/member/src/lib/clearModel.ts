@@ -972,13 +972,22 @@ export interface AccelerationBenefit {
   label: string;
   standard: string;
   accelerated: string;
-  /** Accelerated-only, shown as a check rather than a value. */
-  acceleratedOnly?: boolean;
 }
 
 export interface AccelerationPlan {
-  id: string;
-  label: string;
+  id: 'monthly' | 'annual';
+  price: number;
+  per: 'month' | 'year';
+}
+
+/**
+ * The free route to the same place. Clean cycles reach the Clear Boost increase without paying, and
+ * the acceleration page says how far along that route the member already is.
+ */
+export interface AccelerationCycles {
+  cleared: number;
+  /** Clean cycles that reach the Boost increase. */
+  needed: number;
 }
 
 /** What leaving would actually cost, spelled out before anyone commits. */
@@ -1041,6 +1050,8 @@ export interface Bylaws {
  */
 export interface Patronage {
   fiscalYear: string;
+  /** The year alone, for the places that say "2026" or "after the 2026 close". */
+  year: string;
   status: string;
   /** The activity the share is calculated from; the basis is their sum. */
   basisRows: PatronageBasisRow[];
@@ -1104,7 +1115,7 @@ export interface SettingsData {
   accelerationActive: boolean;
   accelerationBenefits: AccelerationBenefit[];
   accelerationPlans: AccelerationPlan[];
-  accelerationCyclesToBoost: number;
+  accelerationCycles: AccelerationCycles;
   faceIdOn: boolean;
   /** Payments above this amount ask for biometrics again. */
   paymentFaceIdOver: number;

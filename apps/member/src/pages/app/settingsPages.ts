@@ -3,7 +3,15 @@
  * title it and its back arrow knows where up is — one level, not wherever the browser was before.
  */
 export type SettingsSection = 'account' | 'membership' | 'security' | 'notifications' | 'contacts' | 'linked' | 'appearance' | 'help';
-export type SettingsSub = 'bylaws' | 'patronage' | 'voting' | 'legal' | 'logins' | 'permissions';
+export type SettingsSub =
+  | 'bylaws'
+  | 'patronage'
+  | 'patronage-calculation'
+  | 'voting'
+  | 'legal'
+  | 'acceleration'
+  | 'logins'
+  | 'permissions';
 export type SettingsPageId = SettingsSection | SettingsSub;
 
 /** Title, and the rail item it sits under. Advanced is a modal, so Permissions sits under it by name. */
@@ -18,13 +26,16 @@ export const SETTINGS_PAGES: Record<SettingsPageId, { title: string; rail: Setti
   help: { title: 'Help', rail: 'help', up: '/settings' },
   bylaws: { title: 'Bylaws', rail: 'membership', up: '/settings/membership' },
   patronage: { title: 'Patronage & distributions', rail: 'membership', up: '/settings/membership' },
+  'patronage-calculation': { title: 'How patronage is calculated', rail: 'membership', up: '/settings/patronage' },
   voting: { title: 'Voting', rail: 'membership', up: '/settings/membership' },
   legal: { title: 'Legal & agreements', rail: 'membership', up: '/settings/membership' },
+  // A page, not a modal: it is a comparison to read, and only actions are modals.
+  acceleration: { title: 'Acceleration', rail: 'membership', up: '/settings/membership' },
   logins: { title: 'Login history', rail: 'security', up: '/settings/security' },
   permissions: { title: 'Permissions', rail: 'advanced', up: '/settings' },
 };
 
 export function settingsPageOf(pathname: string): SettingsPageId | null {
-  const id = pathname.match(/^\/settings\/([a-z]+)\/?$/)?.[1];
+  const id = pathname.match(/^\/settings\/([a-z-]+)\/?$/)?.[1];
   return id && id in SETTINGS_PAGES ? (id as SettingsPageId) : null;
 }

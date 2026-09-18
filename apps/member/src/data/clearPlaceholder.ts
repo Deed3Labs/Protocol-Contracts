@@ -914,16 +914,16 @@ export const SETTINGS: SettingsData = {
   },
   accelerationActive: false,
   accelerationBenefits: [
-    { label: 'Clear Boost™', standard: '$500', accelerated: '$750' },
+    { label: 'Clear Boost', standard: '$500.00', accelerated: '$750.00' },
     { label: 'Credits vest in', standard: '30 days', accelerated: '15 days' },
     { label: 'Income-backed rate', standard: '1.5%', accelerated: '1.25%' },
-    { label: 'Priority on new communities', standard: '—', accelerated: '', acceleratedOnly: true },
+    { label: 'Priority on new communities', standard: '—', accelerated: 'Yes' },
   ],
   accelerationPlans: [
-    { id: 'monthly', label: '$25 / month' },
-    { id: 'annual', label: '$250 / year' },
+    { id: 'monthly', price: 25, per: 'month' },
+    { id: 'annual', price: 250, per: 'year' },
   ],
-  accelerationCyclesToBoost: 4,
+  accelerationCycles: { cleared: 8, needed: 12 },
   faceIdOn: true,
   paymentFaceIdOver: 200,
   lastLogin: 'today, 8:02 AM',
@@ -1022,6 +1022,7 @@ export const SETTINGS: SettingsData = {
   },
   patronage: {
     fiscalYear: '2026 fiscal year',
+    year: '2026',
     status: 'In progress',
     basisRows: [
       { label: 'Carry cost you paid on credit', amount: 18.4 },

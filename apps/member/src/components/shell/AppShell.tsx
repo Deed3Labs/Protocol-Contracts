@@ -78,8 +78,8 @@ function LiveHeaderActions() {
         avatarUrl: member.avatarUrl,
       }}
       accelerationActive={member.accelerated}
-      // Explore opens the acceleration dialog where it lives, in Settings. Unwired, it did nothing.
-      onAcceleration={() => navigate('/settings', { state: { open: 'acceleration' } })}
+      // Explore opens the Acceleration page in Settings. Unwired, it did nothing.
+      onAcceleration={() => navigate('/settings/acceleration')}
       // The same sign-out as Settings. Without it the menu's Sign out closed the menu and did nothing.
       onSignOut={() => void logout()}
     />
