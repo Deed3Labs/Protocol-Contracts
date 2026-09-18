@@ -45,3 +45,11 @@ describe('filing is real, and never pretends', () => {
     expect(dialog).toContain('the card network did not accept it yet');
   });
 });
+
+describe('"Something wrong" on a transaction leads to disputes', () => {
+  test('both buttons in the shared transaction modal go to the disputes page', () => {
+    const dialog = read('components/clear/TransactionDetailDialog.tsx');
+    expect(dialog).toContain("navigate('/settings/disputes')");
+    expect(dialog.match(/<Btn onClick=\{somethingWrong\}>Something wrong<\/Btn>/g)).toHaveLength(2);
+  });
+});

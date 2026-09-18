@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Modal from './Modal';
 import { Btn, Rows } from './brand/anatomy';
 import { TIER_TEXT_CLASS } from './ClearCreditCard';
@@ -22,6 +23,12 @@ export default function TransactionDetailDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const navigate = useNavigate();
+  // "Something wrong" is a dispute, and the disputes page says who decides it before anything is filed.
+  const somethingWrong = () => {
+    onOpenChange(false);
+    navigate('/settings/disputes');
+  };
   const details: { label: string; value: ReactNode; className?: string }[] = [];
   if (row.datetime) details.push({ label: 'Date', value: row.datetime });
   /*
@@ -54,11 +61,11 @@ export default function TransactionDetailDialog({
         // Splitting a charge that was given back would be splitting nothing. Querying it still
         // makes sense — a reversal the member did not expect is exactly worth asking about.
         row.reversed ? (
-          <Btn>Something wrong</Btn>
+          <Btn onClick={somethingWrong}>Something wrong</Btn>
         ) : (
           <div className="c-pair">
             <Btn>Split this</Btn>
-            <Btn>Something wrong</Btn>
+            <Btn onClick={somethingWrong}>Something wrong</Btn>
           </div>
         )
       }
