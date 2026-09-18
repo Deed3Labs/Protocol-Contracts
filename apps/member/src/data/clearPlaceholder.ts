@@ -1,4 +1,5 @@
 import type {
+  MemberDispute,
   CardDisputeReason,
   DisputeCandidate,
   DisputeKindInfo,
@@ -1111,6 +1112,7 @@ export const DISPUTE_KINDS: DisputeKindInfo[] = [
     whoDecides: 'Visa’s rules',
     whoDecidesLine: 'Visa’s rules, not Clear',
     takes: '45 to 90 days',
+    heldLine: 'Held from today',
   },
   {
     kind: 'partner',
@@ -1119,6 +1121,7 @@ export const DISPUTE_KINDS: DisputeKindInfo[] = [
     whoDecides: 'Clear mediates',
     whoDecidesLine: 'Clear mediates',
     takes: 'About 5 days',
+    heldLine: 'Held from today',
   },
   {
     kind: 'member',
@@ -1127,6 +1130,7 @@ export const DISPUTE_KINDS: DisputeKindInfo[] = [
     whoDecides: 'Independent third party',
     whoDecidesLine: 'An independent third party',
     takes: '10 to 21 days',
+    heldLine: 'Held if not yet claimed',
   },
 ];
 
@@ -1157,4 +1161,10 @@ export const DISPUTE_SAMPLE_CANDIDATES: DisputeCandidate[] = [
   { kind: 'card', ref: 'sample-card', label: 'Mike’s Tire', amountCents: 24675, at: '2026-11-02T12:00:00Z' },
   { kind: 'partner', ref: 'sample-partner', label: 'TinyBox Systems', amountCents: 120000, at: '2026-10-28T12:00:00Z' },
   { kind: 'member', ref: 'sample-member', label: 'Maria C.', amountCents: 4000, at: '2026-10-26T12:00:00Z' },
+];
+
+/** The preview harness's own disputes, one of each state worth seeing. */
+export const DISPUTE_SAMPLE_MINE: MemberDispute[] = [
+  { token: 'sample-open', kind: 'card', subjectLabel: 'Mike’s Tire', amountCents: 24675, status: 'with_network', holdState: 'held', resolution: null, createdAt: '2026-11-03T12:00:00Z' },
+  { token: 'sample-won', kind: 'partner', subjectLabel: 'TinyBox Systems', amountCents: 120000, status: 'decided', holdState: 'released', resolution: 'member', createdAt: '2026-10-29T12:00:00Z' },
 ];

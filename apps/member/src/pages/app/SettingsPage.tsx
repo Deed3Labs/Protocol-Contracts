@@ -31,9 +31,9 @@ import { EMPTY_ADDRESS, formatAddress, type MailingAddress } from '@/hooks/useMe
 import TrustedDevicesDialog from '@/components/settings/TrustedDevicesDialog';
 import CloseAccountDialog from '@/components/settings/CloseAccountDialog';
 import ContactsPane from '@/components/settings/ContactsPane';
-import { SETTINGS, CONTACTS, DISPUTE_SAMPLE_CANDIDATES } from '@/data/clearPlaceholder';
+import { SETTINGS, CONTACTS, DISPUTE_SAMPLE_CANDIDATES, DISPUTE_SAMPLE_MINE } from '@/data/clearPlaceholder';
 import { useIsDesktop } from '@/lib/useIsDesktop';
-import type { CardDisputeReason, Contact, DisputeCandidate, DisputeKind, SettingsData } from '@/lib/clearModel';
+import type { CardDisputeReason, Contact, DisputeCandidate, DisputeKind, MemberDispute, SettingsData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 import { SETTINGS_PAGES, settingsPageOf, type SettingsPageId, type SettingsSection } from './settingsPages';
 
@@ -121,6 +121,8 @@ export default function SettingsPage({
     candidates: DisputeCandidate[] | null;
     load: (include?: { kind: DisputeKind; ref: string }) => void;
     file: (input: { kind: DisputeKind; ref: string; detail: string; reason?: CardDisputeReason }) => Promise<FileDisputeResult>;
+    mine: MemberDispute[];
+    withdraw: (token: string) => Promise<string | null>;
   };
 }) {
   const navigate = useNavigate();
@@ -369,6 +371,8 @@ export default function SettingsPage({
         }}
         // There is no dispute policy document yet; the agreements it will sit among are here.
         onPolicy={() => go('legal')}
+        mine={disputes ? disputes.mine : DISPUTE_SAMPLE_MINE}
+        onWithdraw={disputes?.withdraw ?? (async () => 'Sign in to withdraw a dispute — nothing was changed.')}
       />
     ),
     bylaws: <BylawsPanel bylaws={data.bylaws} />,
