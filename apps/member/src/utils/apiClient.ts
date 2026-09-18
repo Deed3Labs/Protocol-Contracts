@@ -2710,6 +2710,38 @@ export async function fileAssuranceClaim(
   return { claim: r.data.claim };
 }
 
+/** A payment this member can dispute, read by the server from its own records. */
+export interface DisputeCandidateResponse {
+  kind: 'card' | 'partner' | 'member';
+  ref: string;
+  label: string;
+  amountCents: number;
+  at: string;
+}
+
+export async function getDisputeCandidates(): Promise<DisputeCandidateResponse[] | null> {
+  const r = await apiRequest<{ candidates: DisputeCandidateResponse[] }>('/api/disputes/candidates');
+  return r.error || !r.data ? null : r.data.candidates;
+}
+
+/**
+ * File a dispute. `network` says whether a card dispute reached Lithic; the dispute is ours either
+ * way, and a refusal there is reported rather than hidden.
+ */
+export async function fileDispute(input: {
+  kind: 'card' | 'partner' | 'member';
+  ref: string;
+  detail: string;
+  reason?: string;
+}): Promise<{ token?: string; networkFiled?: boolean | null; error?: string }> {
+  const r = await apiRequest<{ dispute: { token: string }; network: { filed: boolean } | null }>('/api/disputes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not file that just now. Nothing was sent.' };
+  return { token: r.data.dispute.token, networkFiled: r.data.network ? r.data.network.filed : null };
+}
+
 export async function listAssuranceClaims(wallet: string): Promise<AssuranceClaim[]> {
   const r = await apiRequest<{ claims: AssuranceClaim[] }>(`/api/assurance/${wallet.toLowerCase()}/claims`);
   return r.error || !r.data ? [] : r.data.claims;

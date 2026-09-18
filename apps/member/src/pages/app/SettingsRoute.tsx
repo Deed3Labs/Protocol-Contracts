@@ -8,7 +8,8 @@ import { useContacts } from '@/context/ContactsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { toSendContact } from './SendRoute';
 import { SETTINGS } from '@/data/clearPlaceholder';
-import { uploadMemberAvatar, deleteMemberAvatar, updateMemberProfile } from '@/utils/apiClient';
+import { uploadMemberAvatar, deleteMemberAvatar, updateMemberProfile, getDisputeCandidates, fileDispute } from '@/utils/apiClient';
+import type { DisputeCandidate } from '@/lib/clearModel';
 
 /**
  * Live Settings — the presentational page with the member's real identity behind
@@ -28,6 +29,7 @@ export default function SettingsRoute() {
   const { contacts } = useContacts();
   const { cash } = useClearBalances();
   const faceId = useFaceId();
+  const disputes = useDisputes();
 
   const profile = {
     ...SETTINGS.profile,
@@ -61,6 +63,7 @@ export default function SettingsRoute() {
         error: faceId.error,
         onChange: (on) => void (on ? faceId.turnOn() : faceId.turnOff()),
       }}
+      disputes={disputes}
       address={member.mailingAddress}
       savingAddress={savingAddress}
       addressError={addressError}
@@ -182,4 +185,28 @@ function usePhoneChange(onChanged: () => void) {
   }, []);
 
   return { stage, busy, error, onSendCode, onVerify, onClose };
+}
+
+/**
+ * The member's own payments to dispute, read when the modal opens — never earlier, because most
+ * visits to Settings are not about a dispute and this reads three tables.
+ */
+function useDisputes() {
+  const [candidates, setCandidates] = useState<DisputeCandidate[] | null>(null);
+
+  const load = useCallback(() => {
+    setCandidates(null);
+    void getDisputeCandidates().then((list) => setCandidates(list ?? []));
+  }, []);
+
+  const file = useCallback(
+    async (input: { kind: DisputeCandidate['kind']; ref: string; detail: string; reason?: string }) => {
+      const result = await fileDispute(input);
+      if (result.error) return { error: result.error };
+      return { networkFiled: result.networkFiled ?? null };
+    },
+    [],
+  );
+
+  return { candidates, load, file };
 }

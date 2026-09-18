@@ -1,0 +1,47 @@
+import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { SETTINGS_PAGES, settingsPageOf } from '@/pages/app/settingsPages';
+import { DISPUTE_KINDS } from '@/data/clearPlaceholder';
+
+const read = (p: string) => readFileSync(join(import.meta.dirname, '..', '..', p), 'utf8');
+const page = read('pages/app/SettingsPage.tsx');
+const route = read('pages/app/SettingsRoute.tsx');
+const dialog = read('components/settings/RaiseDisputeDialog.tsx');
+
+describe('Dispute resolution is a Settings page under Help', () => {
+  test('routed, titled, and up goes to Help', () => {
+    expect(settingsPageOf('/settings/disputes')).toBe('disputes');
+    expect(SETTINGS_PAGES.disputes).toEqual({ title: 'Dispute resolution', rail: 'help', up: '/settings/help' });
+    expect(page).toContain("onDispute={() => go('disputes')}");
+  });
+
+  test('the old explainer is gone and its link lands on the page', () => {
+    const explainer = read('pages/app/ExplainerPage.tsx');
+    expect(explainer).not.toContain('DisputesExplainer');
+    expect(explainer).toContain('<Navigate to="/settings/disputes" replace />');
+  });
+});
+
+describe('who decides changes with what went wrong', () => {
+  test('three kinds, and two of them are not Clear', () => {
+    expect(DISPUTE_KINDS.map((k) => k.kind)).toEqual(['card', 'partner', 'member']);
+    expect(DISPUTE_KINDS.filter((k) => !/Clear mediates/.test(k.whoDecides))).toHaveLength(2);
+  });
+});
+
+describe('filing is real, and never pretends', () => {
+  test('the live route files through the API; the harness files nothing', () => {
+    expect(route).toContain('fileDispute(input)');
+    expect(route).toContain('getDisputeCandidates()');
+    expect(page).toContain("error: 'Sign in to file a dispute — nothing was sent.'");
+  });
+
+  test('a card dispute needs a reason before it can be filed', () => {
+    expect(dialog).toContain("(kind !== 'card' || reason)");
+  });
+
+  test('a card dispute the network refused is not reported as filed with Visa', () => {
+    expect(dialog).toContain('the card network did not accept it yet');
+  });
+});
