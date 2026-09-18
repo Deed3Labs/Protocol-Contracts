@@ -2,7 +2,8 @@ import hre from "hardhat";
 import { getDeployment, saveDeployment } from "../deploy/helpers";
 
 /*
- * Card spend settles on chain: upgrade RevolvingIssuer and wire the settler.
+ * Card spend settles on chain, and fiat repayment clears it: upgrade RevolvingIssuer and wire the
+ * settler.
  *
  * 1. UUPS upgrade, same proxy address, WITH the storage check. The new fields come out of __gap
  *    (41 -> 38), so there is nothing to excuse -- unlike the previous upgrade, which had to skip the
@@ -26,12 +27,14 @@ async function main() {
   if (!ethers.isAddress(settler)) throw new Error("Set CARD_SETTLER_ADDRESS to the API's settler address.");
 
   let issuer = await ethers.getContractAt("RevolvingIssuer", existing.address);
-  const hasCardSettlement = await issuer
-    .cardSettlementAccount()
+  // Probe for the newest function this script ships (fiat repayment netting). An implementation
+  // without it is upgraded; one with it is left alone, so the script stays safe to re-run.
+  const isCurrent = await issuer
+    .cardRepaymentOf(ethers.ZeroHash)
     .then(() => true)
     .catch(() => false);
 
-  if (!hasCardSettlement) {
+  if (!isCurrent) {
     console.log("Upgrading RevolvingIssuer at", existing.address);
     console.log("  from implementation", await upgrades.erc1967.getImplementationAddress(existing.address));
     const RevolvingIssuer = await ethers.getContractFactory("RevolvingIssuer");
@@ -44,7 +47,7 @@ async function main() {
     saveDeployment(network, "RevolvingIssuer", existing.address, JSON.parse(upgraded.interface.formatJson()));
     issuer = await ethers.getContractAt("RevolvingIssuer", existing.address);
   } else {
-    console.log("RevolvingIssuer already has card settlement; skipping the upgrade.");
+    console.log("RevolvingIssuer already has card settlement and repayment; skipping the upgrade.");
   }
 
   if (!(await issuer.isCardSettler(settler))) {

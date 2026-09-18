@@ -1,4 +1,9 @@
-import { isCardSettlementConfigured, sweepCardSettlements } from '../services/chain/cardSettlementService.js';
+import {
+  isCardSettlementConfigured,
+  sweepCardSettlements,
+  syncCardRepayment,
+  walletsWithCardDebtOnChain,
+} from '../services/chain/cardSettlementService.js';
 
 /*
  * The backstop for card settlement on chain.
@@ -22,12 +27,23 @@ export async function tick(): Promise<number> {
   if (running) return 0;
   running = true;
   try {
+    // Settlements first: a purchase repaid before it settled has to reach the chain before the
+    // repayment against it can be cleared there.
     const results = await sweepCardSettlements();
     const acted = results.filter((r) => r.action !== 'none' && r.action !== 'skipped');
     if (acted.length) {
       console.log(`[card-settlement] sweep: ${acted.map((r) => `${r.transactionToken}=${r.action}`).join(', ')}`);
     }
-    return acted.length;
+
+    let cleared = 0;
+    for (const wallet of await walletsWithCardDebtOnChain()) {
+      const repaid = await syncCardRepayment(wallet);
+      if (repaid.action !== 'none' && repaid.action !== 'skipped') {
+        cleared += 1;
+        console.log(`[card-repayment] sweep: ${wallet}=${repaid.action}${repaid.cents ? ` ${repaid.cents}c` : ''}`);
+      }
+    }
+    return acted.length + cleared;
   } catch (error) {
     console.error('[card-settlement] sweep failed:', error);
     return 0;

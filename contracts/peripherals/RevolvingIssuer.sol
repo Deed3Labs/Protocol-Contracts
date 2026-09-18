@@ -82,7 +82,11 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     /// settlement cannot draw twice for one purchase.
     mapping(bytes32 => CardSettlement) private cardSettlements;
 
-    uint256[38] private __gap;
+    /// @dev ref => amount cleared by a fiat repayment. Keyed like settlements, so a repayment
+    /// recorded twice -- a retry, or two processes deciding at once -- clears once.
+    mapping(bytes32 => uint256) private cardRepayments;
+
+    uint256[37] private __gap;
 
     /* ========== ERRORS ========== */
 
@@ -99,6 +103,9 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     error RevolvingIssuerCardNotSettled(bytes32 ref);
     error RevolvingIssuerCardHeadroom(address member, uint256 amount, uint256 headroom);
     error RevolvingIssuerCardReversalExceedsSettlement(bytes32 ref, uint256 amount, uint256 settled);
+    error RevolvingIssuerCardAlreadyRepaid(bytes32 ref);
+    error RevolvingIssuerCardRepaymentExceedsDrawn(address member, uint256 amount, uint256 principal);
+    error RevolvingIssuerCardFloatCannotCover(uint256 amount, uint256 held);
 
     /* ========== EVENTS ========== */
 
@@ -114,6 +121,7 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
     event CardSettlementAccountUpdated(address account);
     event CardSpendSettled(bytes32 indexed ref, address indexed member, uint256 amount);
     event CardSpendReversed(bytes32 indexed ref, address indexed member, uint256 amount);
+    event CardSpendRepaid(bytes32 indexed ref, address indexed member, uint256 amount);
 
     /* ========== INITIALIZER ========== */
 
@@ -491,6 +499,50 @@ contract RevolvingIssuer is CreditIssuer, ICreditPositionSource {
             settlement.member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
         );
         emit CardSpendReversed(ref, settlement.member, amount);
+    }
+
+    /// @notice what a fiat repayment ref cleared, zero if it has not been recorded.
+    function cardRepaymentOf(bytes32 ref) external view returns (uint256) {
+        return cardRepayments[ref];
+    }
+
+    /// @notice clears card debt a member has repaid in fiat.
+    /// @dev A card purchase was paid to the merchant in fiat, out of the co-op's float, and the
+    /// matching claim was minted to that float at settlement. When the member repays in fiat the
+    /// dollars go straight back into the float -- which is exactly the claim being satisfied. So
+    /// nothing needs to move on chain to settle it: the float's claim is burned against the
+    /// member's obligation, the same capital-free unwind a reversal is. The tiers are cleared
+    /// dearest first, as any repayment clears them, and the carry that stops is the most it can be.
+    ///
+    /// On-ramping the fiat to pay this in reserve tokens would move money onto the chain only for
+    /// it to be moved back off again to refill the float.
+    ///
+    /// Refuses rather than doing part: more than the member has drawn here would be clearing
+    /// debt that lives somewhere else, and more than the float holds would hand the co-op an
+    /// obligation instead of burning a claim.
+    /// @param ref idempotency key for this repayment.
+    /// @param member address whose card debt is cleared.
+    /// @param amount the amount repaid, in ledger units.
+    function repayCardSpend(bytes32 ref, address member, uint256 amount)
+        external
+        notNull(member)
+    {
+        if (!isCardSettler[_msgSender()]) revert RevolvingIssuerNotCardSettler(_msgSender());
+        if (amount == 0) revert RevolvingIssuerCardAmountZero();
+        if (cardRepayments[ref] != 0) revert RevolvingIssuerCardAlreadyRepaid(ref);
+
+        _materialiseCarry(member);
+        uint256 principal = totalPrincipalOf(member);
+        if (amount > principal) revert RevolvingIssuerCardRepaymentExceedsDrawn(member, amount, principal);
+        uint256 held = IERC20Upgradeable(address(stableCredit)).balanceOf(cardSettlementAccount);
+        if (held < amount) revert RevolvingIssuerCardFloatCannotCover(amount, held);
+
+        _repay(member, amount);
+        cardRepayments[ref] = amount;
+        stableCredit.reversePurchase(
+            member, amount, cardSettlementAccount, amount, cardSettlementAccount, 0
+        );
+        emit CardSpendRepaid(ref, member, amount);
     }
 
     /* ========== INTERNAL ========== */

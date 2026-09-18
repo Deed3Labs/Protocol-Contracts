@@ -47,6 +47,8 @@ const ISSUER_ABI = [
   'function reverseCardSpend(bytes32 ref, uint256 amount)',
   'function cardSettlementOf(bytes32 ref) view returns (address member, uint256 amount)',
   'function isCardSettler(address) view returns (bool)',
+  'function repayCardSpend(bytes32 ref, address member, uint256 amount)',
+  'function cardRepaymentOf(bytes32 ref) view returns (uint256)',
 ];
 
 export type OnchainStatus = 'issued' | 'failed' | 'needs_review' | 'not_needed';
@@ -251,4 +253,223 @@ export async function sweepCardSettlements(limit = 25): Promise<SettlementSync[]
   const results: SettlementSync[] = [];
   for (const row of rows) results.push(await syncCardSettlement(row.transaction_token));
   return results;
+}
+
+// ---- Fiat repayment, netted on chain -------------------------------------------------------------
+
+/*
+ * A member who repays in fiat must not still owe it on chain.
+ *
+ * The card purchase was paid to the merchant in fiat from the co-op's float, and the matching claim
+ * was minted to that float when it settled. A fiat repayment refills the float — the claim is
+ * satisfied in dollars — so on chain the float's claim is burned against the member's debt with
+ * `repayCardSpend`. Nothing is on-ramped: moving the dollars onto the chain only to move them back
+ * off to refill the float would be two conversions for no change.
+ *
+ * Reconciled to a target rather than per deposit, the same way card holds are. Our ledger knows what
+ * the member still owes; the chain knows what we settled there. What should remain on chain is what
+ * they owe, less the part of it that has not reached the chain yet (holds still pending, and settled
+ * purchases not yet issued). If the chain holds more than that, the difference is cleared. That
+ * covers the common case of a member paying before a purchase has even settled: it settles, then it
+ * is cleared on the next pass.
+ *
+ * Principal only. Carry is owed to whoever funded the tier and is not settled by this — see the
+ * carry follow-up in the build plan.
+ */
+
+const NETTING = 'card_repayment_netting';
+
+let nettingEnsured = false;
+async function ensureNetting(): Promise<void> {
+  const pool = getPayPool();
+  if (!pool || nettingEnsured) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${NETTING} (
+      wallet TEXT NOT NULL,
+      seq INTEGER NOT NULL,
+      ref TEXT NOT NULL,
+      amount_cents BIGINT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      tx TEXT,
+      error TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (wallet, seq)
+    );
+  `);
+  nettingEnsured = true;
+}
+
+export interface CardDebtPosition {
+  /** What our ledger says the member owes across the credit tiers. */
+  offchainOwedCents: number;
+  /** The part of that which has not reached the chain: pending holds, and settled-but-unissued. */
+  notOnChainCents: number;
+  /** Card debt we have put on chain, less what has been cleared there. */
+  onChainCents: number;
+  /** How much to clear now. Zero when the chain is already right. */
+  toClearCents: number;
+}
+
+/** The target, as a pure function so it can be tested without a database or a chain. */
+export function cardDebtToClear(input: {
+  offchainOwedCents: number;
+  notOnChainCents: number;
+  issuedCents: number;
+  clearedCents: number;
+}): CardDebtPosition {
+  const onChainCents = Math.max(0, input.issuedCents - input.clearedCents);
+  const shouldBeOnChain = Math.max(0, input.offchainOwedCents - input.notOnChainCents);
+  return {
+    offchainOwedCents: input.offchainOwedCents,
+    notOnChainCents: input.notOnChainCents,
+    onChainCents,
+    toClearCents: Math.max(0, onChainCents - shouldBeOnChain),
+  };
+}
+
+async function readCardDebt(wallet: string): Promise<CardDebtPosition> {
+  const pool = getPayPool()!;
+  /*
+   * What the member owes across the credit tiers in our ledger, ignoring repayments made in USDC.
+   *
+   * Only FIAT repayments are netted against the float's claim, because only fiat refills the float.
+   * A deposit on the Bridge rail lands as USDC in the member's own wallet; our ledger counts it as
+   * paying the card debt, but the float got nothing, so burning the float's claim for it would be
+   * wrong. That debt stays on chain until it is repaid there in USDC — the separate USDC path.
+   * Card draws and deposit settlements are the only writers of these accounts.
+   */
+  const owed = await pool
+    .query<{ net: string }>(
+      `SELECT COALESCE(SUM(GREATEST(net, 0)), 0) AS net FROM (
+         SELECT SUM(CASE WHEN direction = 'debit' THEN amount_cents ELSE -amount_cents END) AS net
+           FROM lithic_ledger_entries
+          WHERE wallet = $1 AND account LIKE 'member_credit_%'
+            AND NOT (direction = 'credit' AND event_type = 'credit_settlement' AND rail = 'chain')
+          GROUP BY account) t`,
+      [wallet],
+    )
+    .then((r) => Number(r.rows[0]?.net ?? 0));
+
+  const { rows } = await pool.query<{ draws: unknown; onchain_status: string | null; onchain_cents: string | null }>(
+    `SELECT draws, onchain_status, onchain_cents FROM ${DECISIONS}
+      WHERE wallet = $1 AND result = 'APPROVED'
+        AND (COALESCE(net_cents, amount_cents) > 0 OR onchain_status = 'issued')`,
+    [wallet],
+  );
+  let notOnChain = 0;
+  let issued = 0;
+  for (const row of rows) {
+    if (row.onchain_status === 'issued') issued += Number(row.onchain_cents ?? 0);
+    else notOnChain += creditCentsOf(row.draws);
+  }
+
+  const cleared = await pool
+    .query<{ total: string }>(`SELECT COALESCE(SUM(amount_cents), 0) AS total FROM ${NETTING} WHERE wallet = $1 AND status = 'done'`, [wallet])
+    .then((r) => Number(r.rows[0]?.total ?? 0));
+
+  return cardDebtToClear({ offchainOwedCents: owed, notOnChainCents: notOnChain, issuedCents: issued, clearedCents: cleared });
+}
+
+const walletsInFlight = new Set<string>();
+
+export interface RepaymentSync {
+  wallet: string;
+  action: 'none' | 'cleared' | 'recovered' | 'failed' | 'needs_review' | 'skipped';
+  cents?: number;
+  txHash?: string;
+  error?: string;
+}
+
+/** Bring a member's on-chain card debt down to what they still owe. Safe to call any time. */
+export async function syncCardRepayment(walletInput: string): Promise<RepaymentSync> {
+  const wallet = walletInput.trim().toLowerCase();
+  if (!wallet || !isCardSettlementConfigured()) return { wallet, action: 'skipped' };
+  if (walletsInFlight.has(wallet)) return { wallet, action: 'skipped' };
+  walletsInFlight.add(wallet);
+
+  try {
+    await ensureColumns();
+    await ensureNetting();
+    const pool = getPayPool()!;
+    const position = await readCardDebt(wallet);
+    if (position.toClearCents <= 0) return { wallet, action: 'none' };
+
+    const signer = new ethers.Wallet(settlerKey(), chainProvider(resolveChainId()));
+    const issuer = issuerFor(signer);
+    if (!issuer) return { wallet, action: 'skipped', error: 'No RevolvingIssuer address' };
+
+    // Resume an unfinished attempt under its own ref, so a retry can never clear twice.
+    const open = await pool.query<{ seq: number; ref: string; attempts: number; status: string }>(
+      `SELECT seq, ref, attempts, status FROM ${NETTING}
+        WHERE wallet = $1 AND status IN ('pending', 'failed', 'needs_review')
+        ORDER BY seq DESC LIMIT 1`,
+      [wallet],
+    );
+    let attempt = open.rows[0];
+    if (attempt?.status === 'needs_review') return { wallet, action: 'needs_review' };
+
+    if (attempt) {
+      const already = (await issuer.cardRepaymentOf(attempt.ref)) as bigint;
+      if (already > 0n) {
+        const cents = Number(already / CENTS_TO_UNITS);
+        await pool.query(
+          `UPDATE ${NETTING} SET status = 'done', amount_cents = $3, error = NULL, updated_at = now() WHERE wallet = $1 AND seq = $2`,
+          [wallet, attempt.seq, cents],
+        );
+        return { wallet, action: 'recovered', cents };
+      }
+      await pool.query(`UPDATE ${NETTING} SET amount_cents = $3, updated_at = now() WHERE wallet = $1 AND seq = $2`, [
+        wallet,
+        attempt.seq,
+        position.toClearCents,
+      ]);
+    } else {
+      const next = await pool.query<{ seq: number }>(`SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM ${NETTING} WHERE wallet = $1`, [wallet]);
+      const seq = Number(next.rows[0].seq);
+      const ref = ethers.id(`card-repay:${wallet}:${seq}`);
+      await pool.query(`INSERT INTO ${NETTING} (wallet, seq, ref, amount_cents) VALUES ($1, $2, $3, $4)`, [
+        wallet,
+        seq,
+        ref,
+        position.toClearCents,
+      ]);
+      attempt = { seq, ref, attempts: 0, status: 'pending' };
+    }
+
+    try {
+      const tx = await issuer.repayCardSpend(attempt.ref, wallet, BigInt(position.toClearCents) * CENTS_TO_UNITS);
+      await tx.wait(1);
+      await pool.query(
+        `UPDATE ${NETTING} SET status = 'done', tx = $3, error = NULL, attempts = attempts + 1, updated_at = now()
+          WHERE wallet = $1 AND seq = $2`,
+        [wallet, attempt.seq, tx.hash],
+      );
+      console.log(`[card-repayment] ${wallet} cleared ${position.toClearCents}c on chain (${tx.hash})`);
+      return { wallet, action: 'cleared', cents: position.toClearCents, txHash: tx.hash };
+    } catch (error) {
+      const reason = reasonOf(error);
+      const attempts = (attempt.attempts ?? 0) + 1;
+      const status = attempts >= MAX_ATTEMPTS ? 'needs_review' : 'failed';
+      await pool.query(
+        `UPDATE ${NETTING} SET status = $3, error = $4, attempts = $5, updated_at = now() WHERE wallet = $1 AND seq = $2`,
+        [wallet, attempt.seq, status, reason, attempts],
+      );
+      console.error(`[card-repayment] ${wallet} ${status} (attempt ${attempts}): ${reason}`);
+      return { wallet, action: status, error: reason };
+    }
+  } finally {
+    walletsInFlight.delete(wallet);
+  }
+}
+
+/** Every member with card debt on chain — the sweep's list for repayment netting. */
+export async function walletsWithCardDebtOnChain(): Promise<string[]> {
+  if (!isCardSettlementConfigured()) return [];
+  await ensureColumns();
+  const { rows } = await getPayPool()!.query<{ wallet: string }>(
+    `SELECT DISTINCT wallet FROM ${DECISIONS} WHERE onchain_status = 'issued' AND wallet IS NOT NULL`,
+  );
+  return rows.map((r) => r.wallet);
 }

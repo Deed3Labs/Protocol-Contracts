@@ -57,3 +57,41 @@ describe('a settled purchase is not shown twice', () => {
     expect(held).toContain("if (onChain && source !== 'cash') continue;");
   });
 });
+
+import { cardDebtToClear } from './cardSettlementService.js';
+const deposits = readFileSync(new URL('../deposits/depositReceiptService.ts', import.meta.url), 'utf8');
+
+describe('a fiat repayment comes off the chain too', () => {
+  test('repaid in full after settlement: all of it is cleared', () => {
+    expect(cardDebtToClear({ offchainOwedCents: 0, notOnChainCents: 0, issuedCents: 17500, clearedCents: 0 }).toClearCents).toBe(17500);
+  });
+
+  test('part repaid: only what was paid is cleared', () => {
+    expect(cardDebtToClear({ offchainOwedCents: 7500, notOnChainCents: 0, issuedCents: 17500, clearedCents: 0 }).toClearCents).toBe(10000);
+  });
+
+  test('money still on a pending hold is not mistaken for a repayment', () => {
+    // Owes 175 settled + 50 pending; nothing repaid, so nothing comes off the chain.
+    expect(cardDebtToClear({ offchainOwedCents: 22500, notOnChainCents: 5000, issuedCents: 17500, clearedCents: 0 }).toClearCents).toBe(0);
+  });
+
+  test('already cleared is not cleared again', () => {
+    expect(cardDebtToClear({ offchainOwedCents: 0, notOnChainCents: 0, issuedCents: 17500, clearedCents: 17500 }).toClearCents).toBe(0);
+  });
+
+  test('repaid before it settled: cleared once it reaches the chain', () => {
+    // Before settlement: nothing issued, nothing to clear. After: issued, and the repayment clears it.
+    expect(cardDebtToClear({ offchainOwedCents: 0, notOnChainCents: 0, issuedCents: 0, clearedCents: 0 }).toClearCents).toBe(0);
+    expect(cardDebtToClear({ offchainOwedCents: 0, notOnChainCents: 0, issuedCents: 17500, clearedCents: 0 }).toClearCents).toBe(17500);
+  });
+
+  test('only fiat repayments count — USDC did not refill the float', () => {
+    expect(service).toContain("AND NOT (direction = 'credit' AND event_type = 'credit_settlement' AND rail = 'chain')");
+    expect(deposits).toMatch(/if \(plan && receipt\.rail === 'lithic_ach'\) \{\s*void syncCardRepayment\(wallet\)/);
+  });
+
+  test('a retry resumes under its own ref and asks the chain first', () => {
+    expect(service).toContain('issuer.cardRepaymentOf(attempt.ref)');
+    expect(service).toContain('ethers.id(`card-repay:${wallet}:${seq}`)');
+  });
+});
