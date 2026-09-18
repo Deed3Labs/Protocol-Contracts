@@ -69,3 +69,19 @@ describe('"Something wrong" on a transaction leads to disputes', () => {
     expect(raise).toContain('if (picked) setKind(picked.kind);');
   });
 });
+
+describe('a dispute can be withdrawn, and says where it stands', () => {
+  const panel = read('components/settings/DisputesPanel.tsx');
+
+  test('the member sees their own disputes, and can withdraw an open one with a second tap', () => {
+    expect(panel).toContain('label="Your disputes"');
+    expect(panel).toContain("confirming === d.token ? 'Confirm withdraw' : 'Withdraw'");
+    expect(route).toContain('withdrawMyDispute(token)');
+  });
+
+  test('a send already claimed is not claimed to be held', () => {
+    expect(panel).toContain("'Open · already claimed, so not held'");
+    expect(DISPUTE_KINDS.find((k) => k.kind === 'member')?.heldLine).toBe('Held if not yet claimed');
+    expect(dialog).toContain('<span>{info.heldLine}</span>');
+  });
+});

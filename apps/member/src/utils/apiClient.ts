@@ -2747,6 +2747,18 @@ export async function fileDispute(input: {
   return { token: r.data.dispute.token, networkFiled: r.data.network ? r.data.network.filed : null };
 }
 
+/** The member's own disputes, newest first. */
+export async function getMyDisputes(): Promise<import('@/lib/clearModel').MemberDispute[] | null> {
+  const r = await apiRequest<{ disputes: import('@/lib/clearModel').MemberDispute[] }>('/api/disputes');
+  return r.error || !r.data ? null : r.data.disputes;
+}
+
+/** Take a dispute back before it is decided. */
+export async function withdrawMyDispute(token: string): Promise<{ ok: boolean; error?: string }> {
+  const r = await apiRequest<{ withdrawn: boolean }>(`/api/disputes/${encodeURIComponent(token)}/withdraw`, { method: 'POST' });
+  return r.error || !r.data ? { ok: false, error: r.error || 'We could not withdraw that just now.' } : { ok: true };
+}
+
 export async function listAssuranceClaims(wallet: string): Promise<AssuranceClaim[]> {
   const r = await apiRequest<{ claims: AssuranceClaim[] }>(`/api/assurance/${wallet.toLowerCase()}/claims`);
   return r.error || !r.data ? [] : r.data.claims;

@@ -44,6 +44,17 @@ export interface DisputeRecord {
   lithicStatus: string | null;
   /** Why the network filing failed, when it did. The dispute itself still stands. */
   lithicError: string | null;
+  /**
+   * What holding the disputed amount actually did. `held` when the amount was taken out of what the
+   * member owes (card, partner) or the send was stopped from being claimed (member). `not_held` when
+   * there was nothing that could be held -- a send the other member had already claimed.
+   */
+  holdState: 'held' | 'not_held' | 'released' | null;
+  /** Exactly what was set aside, so it can be put back to the cent. */
+  heldDetail: Record<string, unknown> | null;
+  /** Who the decision went to, or `withdrawn`. */
+  resolution: 'member' | 'merchant' | 'withdrawn' | null;
+  resolvedAt: string | null;
   createdAt: string;
 }
 
@@ -60,6 +71,10 @@ interface Row {
   lithic_dispute_token: string | null;
   lithic_status: string | null;
   lithic_error: string | null;
+  hold_state: string | null;
+  held_detail: Record<string, unknown> | null;
+  resolution: string | null;
+  resolved_at: Date | null;
   created_at: Date;
 }
 
@@ -87,6 +102,11 @@ async function ensureTable(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS ${TABLE}_wallet_idx ON ${TABLE} (wallet, created_at DESC);
     CREATE INDEX IF NOT EXISTS ${TABLE}_subject_idx ON ${TABLE} (subject_ref);
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS hold_state TEXT;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS held_detail JSONB;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS resolution TEXT;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS resolution_note TEXT;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ;
   `);
   ensured = true;
 }
@@ -105,6 +125,10 @@ function toRecord(row: Row): DisputeRecord {
     lithicDisputeToken: row.lithic_dispute_token,
     lithicStatus: row.lithic_status,
     lithicError: row.lithic_error,
+    holdState: (row.hold_state as DisputeRecord['holdState']) ?? null,
+    heldDetail: row.held_detail ?? null,
+    resolution: (row.resolution as DisputeRecord['resolution']) ?? null,
+    resolvedAt: row.resolved_at ? row.resolved_at.toISOString() : null,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -188,5 +212,69 @@ export const disputeStore = {
       [wallet.trim().toLowerCase()],
     );
     return new Set(rows.map((r) => r.subject_ref));
+  },
+
+  async get(token: string): Promise<DisputeRecord | null> {
+    const pool = getPayPool();
+    if (!pool) return null;
+    await ensureTable();
+    const { rows } = await pool.query<Row>(`SELECT * FROM ${TABLE} WHERE token = $1`, [token]);
+    return rows[0] ? toRecord(rows[0]) : null;
+  },
+
+  /** The live dispute on a payment, if there is one. */
+  async openFor(subjectRef: string): Promise<DisputeRecord | null> {
+    const pool = getPayPool();
+    if (!pool) return null;
+    await ensureTable();
+    const { rows } = await pool.query<Row>(
+      `SELECT * FROM ${TABLE} WHERE subject_ref = $1 AND status IN ('open', 'with_network') ORDER BY created_at DESC LIMIT 1`,
+      [subjectRef],
+    );
+    return rows[0] ? toRecord(rows[0]) : null;
+  },
+
+  async setHold(token: string, state: 'held' | 'not_held' | 'released', detail: Record<string, unknown> | null): Promise<void> {
+    const pool = getPayPool();
+    if (!pool) return;
+    await ensureTable();
+    await pool.query(`UPDATE ${TABLE} SET hold_state = $2, held_detail = COALESCE($3::jsonb, held_detail) WHERE token = $1`, [
+      token,
+      state,
+      detail ? JSON.stringify(detail) : null,
+    ]);
+  },
+
+  /**
+   * Close a live dispute. Only from a live state, and only once: two decisions racing -- a person
+   * and the card network, say -- must not both unwind the hold.
+   */
+  async resolve(
+    token: string,
+    resolution: 'member' | 'merchant' | 'withdrawn',
+    note: string | null,
+  ): Promise<DisputeRecord | null> {
+    const pool = getPayPool();
+    if (!pool) return null;
+    await ensureTable();
+    const { rows } = await pool.query<Row>(
+      `UPDATE ${TABLE}
+          SET status = $2, resolution = $3, resolution_note = $4, resolved_at = now(), decided_at = now()
+        WHERE token = $1 AND status IN ('open', 'with_network')
+        RETURNING *`,
+      [token, resolution === 'withdrawn' ? 'withdrawn' : 'decided', resolution, note],
+    );
+    return rows[0] ? toRecord(rows[0]) : null;
+  },
+
+  /** Card disputes Lithic is deciding, for the sweep to ask about. */
+  async openAtNetwork(): Promise<DisputeRecord[]> {
+    const pool = getPayPool();
+    if (!pool) return [];
+    await ensureTable();
+    const { rows } = await pool.query<Row>(
+      `SELECT * FROM ${TABLE} WHERE status = 'with_network' AND lithic_dispute_token IS NOT NULL ORDER BY created_at LIMIT 50`,
+    );
+    return rows.map(toRecord);
   },
 };

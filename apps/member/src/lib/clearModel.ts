@@ -1678,6 +1678,20 @@ export interface DisputeKindInfo {
   /** Who decides, as the modal's consequence line says it. */
   whoDecidesLine: string;
   takes: string;
+  /** What happens to the amount while it is open, for this kind. A claimed send cannot be held. */
+  heldLine: string;
+}
+
+/** One of the member's own disputes, as the API reports it. */
+export interface MemberDispute {
+  token: string;
+  kind: DisputeKind;
+  subjectLabel: string;
+  amountCents: number;
+  status: 'open' | 'with_network' | 'decided' | 'withdrawn';
+  holdState: 'held' | 'not_held' | 'released' | null;
+  resolution: 'member' | 'merchant' | 'withdrawn' | null;
+  createdAt: string;
 }
 
 /** A payment the member can dispute, as the server read it. */

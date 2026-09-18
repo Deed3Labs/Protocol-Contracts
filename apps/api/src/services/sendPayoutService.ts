@@ -4,8 +4,24 @@ import { sendStripePayoutService } from './sendStripePayoutService.js';
 import type { SendTransferRecord } from './sendTransferStore.js';
 import type { StripeRecipientContext } from './sendStripePayoutService.js';
 import type { BridgeRecipientContext } from './sendBridgePayoutService.js';
+import { disputeStore } from './disputes/disputeStore.js';
 
 type ClaimRecipientContext = StripeRecipientContext & BridgeRecipientContext;
+
+/**
+ * A send under an open dispute is held: nobody can claim it until the dispute is decided. That is
+ * what "the amount is held" means for a send between members -- the only moment it can be held is
+ * before the other member has it.
+ */
+async function disputeHold(transferId: string): Promise<{ status: 'FAILED'; failureCode: string; failureReason: string } | null> {
+  const open = await disputeStore.openFor(transferId).catch(() => null);
+  if (!open || open.holdState !== 'held') return null;
+  return {
+    status: 'FAILED',
+    failureCode: 'DISPUTED',
+    failureReason: 'This payment is in dispute and cannot be claimed until the dispute is decided.',
+  };
+}
 
 export interface DebitPayoutResult {
   status: 'SUCCESS' | 'PROCESSING' | 'FALLBACK_REQUIRED' | 'FAILED' | 'ACTION_REQUIRED';
@@ -93,6 +109,8 @@ class SendPayoutService {
     transfer: SendTransferRecord,
     recipientContext?: ClaimRecipientContext
   ): Promise<DebitPayoutResult> {
+    const held = await disputeHold(transfer.transferId);
+    if (held) return { ...held, provider: this.debitProvider };
     const debitEnabledRegions = (process.env.SEND_DEBIT_ENABLED_REGIONS || 'US')
       .split(',')
       .map((region) => region.trim().toUpperCase())
@@ -181,6 +199,8 @@ class SendPayoutService {
     transfer: SendTransferRecord,
     recipientContext?: ClaimRecipientContext
   ): Promise<BankPayoutResult> {
+    const held = await disputeHold(transfer.transferId);
+    if (held) return { ...held, provider: this.bankProvider };
     let bridgeEligibility:
       | {
           bridgeCustomerId?: string;
@@ -349,6 +369,8 @@ class SendPayoutService {
   }
 
   async executeWalletPayout(transfer: SendTransferRecord, recipientWallet: string): Promise<WalletPayoutResult> {
+    const held = await disputeHold(transfer.transferId);
+    if (held) return { ...held, provider: 'send-relayer' };
     try {
       const walletTx = await sendRelayerService.claimToWallet(transfer.transferId, recipientWallet, transfer.chainId);
       if (walletTx.mode !== 'onchain') {

@@ -305,4 +305,38 @@ export async function outstandingFor(wallet: string): Promise<Outstanding | null
   }
 }
 
+/**
+ * What the member owes for the purpose of SPENDING, per tier: what a deposit would pay, plus
+ * anything set aside for an open dispute.
+ *
+ * A disputed amount is "held, not spent". It is moved out of the tier accounts so a deposit does not
+ * pay it and the cycle does not count it -- but it is still money the member has used, so it keeps
+ * using up the tier until the dispute is decided. Counting it here is what stops the card lending the
+ * same room twice.
+ */
+export async function outstandingForSpend(wallet: string): Promise<Outstanding | null> {
+  const pool = getPayPool();
+  if (!pool) return null;
+  await ensureTables();
+  const client = await pool.connect();
+  try {
+    const w = wallet.trim().toLowerCase();
+    const owed = await readOutstanding(client, w);
+    const { rows } = await client.query<{ account: string; net: string }>(
+      `SELECT account, SUM(CASE WHEN direction = 'debit' THEN amount_cents ELSE -amount_cents END) AS net
+         FROM ${ENTRIES}
+        WHERE wallet = $1 AND account LIKE 'member_credit_disputed_%'
+        GROUP BY account`,
+      [w],
+    );
+    for (const row of rows) {
+      const tier = row.account.replace('member_credit_disputed_', '') as keyof Outstanding;
+      if (tier in owed) owed[tier] += Math.max(0, parseInt(row.net, 10) || 0);
+    }
+    return owed;
+  } finally {
+    client.release();
+  }
+}
+
 export { SETTLEMENT_ORDER };

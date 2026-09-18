@@ -132,7 +132,7 @@ export default function RaiseDisputeDialog({
           <div className="c-conseq">
             <div className="c-earn">
               <span>The amount</span>
-              <span>Held from today</span>
+              <span>{info.heldLine}</span>
             </div>
             <div>
               <span>Who decides</span>

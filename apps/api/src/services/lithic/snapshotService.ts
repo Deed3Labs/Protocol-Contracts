@@ -3,7 +3,7 @@ import { authStore } from './authStore.js';
 import { lithicStore } from './lithicStore.js';
 import { getLithic } from './lithicClient.js';
 import { tierAvailability, tierLimits, type CollateralInputs } from './tierLimits.js';
-import { outstandingFor } from '../deposits/depositReceiptService.js';
+import { outstandingForSpend } from '../deposits/depositReceiptService.js';
 import { pulledFundsStore } from './pulledFundsStore.js';
 import { readChainCollateral } from '../chain/collateralReader.js';
 import { readChainCapacities } from '../chain/creditReader.js';
@@ -109,7 +109,7 @@ export async function writeSnapshot(
   cardToken: string,
   sources: SnapshotSources,
 ): Promise<SnapshotResult> {
-  const outstanding = (await outstandingFor(wallet)) ?? {
+  const outstanding = (await outstandingForSpend(wallet)) ?? {
     boost: 0,
     income: 0,
     asset: 0,

@@ -4,6 +4,7 @@ import {
   syncCardRepayment,
   walletsWithCardDebtOnChain,
 } from '../services/chain/cardSettlementService.js';
+import { enforceDisputes } from '../services/disputes/disputeEnforcement.js';
 
 /*
  * The backstop for card settlement on chain.
@@ -43,7 +44,12 @@ export async function tick(): Promise<number> {
         console.log(`[card-repayment] sweep: ${wallet}=${repaid.action}${repaid.cents ? ` ${repaid.cents}c` : ''}`);
       }
     }
-    return acted.length + cleared;
+    // Disputes: hold what is not yet held, and follow the card network's decisions.
+    const disputes = await enforceDisputes().catch((error) => {
+      console.error('[dispute] enforcement pass failed:', error);
+      return 0;
+    });
+    return acted.length + cleared + disputes;
   } catch (error) {
     console.error('[card-settlement] sweep failed:', error);
     return 0;

@@ -51,7 +51,14 @@ export type ChargeState =
   /** An owner declined the refund. This tells the writer, not the customer; the charge stands. */
   | 'refund_declined'
   /** The refund settled. The plan is closed and the member's principal has returned. */
-  | 'refunded';
+  | 'refunded'
+  /**
+   * The member has raised a dispute. The plan is unwound while it is open -- provisional credit,
+   * the way a card dispute works -- so the member is not charged carry on it and the merchant is
+   * not paid for it. It goes back to `approved` if the member loses or withdraws, and to `refunded`
+   * if they win.
+   */
+  | 'disputed';
 
 /**
  * What each state may become.
@@ -64,7 +71,7 @@ export const CHARGE_TRANSITIONS: Readonly<Record<ChargeState, readonly ChargeSta
   waiting: ['resolving', 'declined', 'expired', 'cancelled'],
   // Back to `waiting` only on an explicit release, when the chain call is known not to have landed.
   resolving: ['approved', 'declined', 'waiting'],
-  approved: ['refund_requested'],
+  approved: ['refund_requested', 'disputed'],
   declined: [],
   expired: [],
   cancelled: [],
@@ -72,6 +79,7 @@ export const CHARGE_TRANSITIONS: Readonly<Record<ChargeState, readonly ChargeSta
   refund_requested: ['refunded', 'refund_declined', 'approved'],
   refund_declined: ['approved'],
   refunded: [],
+  disputed: ['approved', 'refunded'],
 } as const;
 
 export function canTransition(from: ChargeState, to: ChargeState): boolean {
@@ -128,6 +136,7 @@ export const CHARGE_LABEL: Readonly<Record<ChargeState, string>> = {
   refund_requested: 'Refund needs an owner',
   refund_declined: 'Refund declined',
   refunded: 'Refunded',
+  disputed: 'Disputed',
 } as const;
 
 /**

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useUpdatePhone } from '@privy-io/react-auth';
 import SettingsPage from './SettingsPage';
 import { useMemberProfile, type MailingAddress } from '@/hooks/useMemberProfile';
@@ -8,8 +8,8 @@ import { useContacts } from '@/context/ContactsContext';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { toSendContact } from './SendRoute';
 import { SETTINGS } from '@/data/clearPlaceholder';
-import { uploadMemberAvatar, deleteMemberAvatar, updateMemberProfile, getDisputeCandidates, fileDispute } from '@/utils/apiClient';
-import type { DisputeCandidate } from '@/lib/clearModel';
+import { uploadMemberAvatar, deleteMemberAvatar, updateMemberProfile, getDisputeCandidates, fileDispute, getMyDisputes, withdrawMyDispute } from '@/utils/apiClient';
+import type { DisputeCandidate, MemberDispute } from '@/lib/clearModel';
 
 /**
  * Live Settings — the presentational page with the member's real identity behind
@@ -193,6 +193,11 @@ function usePhoneChange(onChanged: () => void) {
  */
 function useDisputes() {
   const [candidates, setCandidates] = useState<DisputeCandidate[] | null>(null);
+  const [mine, setMine] = useState<MemberDispute[]>([]);
+  const loadMine = useCallback(() => {
+    void getMyDisputes().then((list) => setMine(list ?? []));
+  }, []);
+  useEffect(() => loadMine(), [loadMine]);
 
   const load = useCallback((include?: { kind: DisputeCandidate['kind']; ref: string }) => {
     setCandidates(null);
@@ -203,10 +208,20 @@ function useDisputes() {
     async (input: { kind: DisputeCandidate['kind']; ref: string; detail: string; reason?: string }) => {
       const result = await fileDispute(input);
       if (result.error) return { error: result.error };
+      loadMine();
       return { networkFiled: result.networkFiled ?? null };
     },
-    [],
+    [loadMine],
   );
 
-  return { candidates, load, file };
+  const withdraw = useCallback(
+    async (token: string) => {
+      const result = await withdrawMyDispute(token);
+      loadMine();
+      return result.ok ? null : (result.error ?? 'We could not withdraw that just now.');
+    },
+    [loadMine],
+  );
+
+  return { candidates, load, file, mine, withdraw };
 }
