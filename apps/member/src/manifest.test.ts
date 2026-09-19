@@ -22,6 +22,8 @@ describe('the manifest describes this app', () => {
 
   test('the share target goes somewhere that exists', () => {
     if (manifest.share_target) expect(APP).toContain(`path="${manifest.share_target.action}"`);
+    // Chrome warns when a share target leaves enctype to its default; state the default.
+    if (manifest.share_target) expect(manifest.share_target.enctype).toBe('application/x-www-form-urlencoded');
   });
 
   test('start_url and scope are relative, so preview and production each get their own', () => {
