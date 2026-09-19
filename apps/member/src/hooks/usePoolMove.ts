@@ -1,3 +1,4 @@
+import { stepPacer } from '@/lib/moveSteps';
 import { useCallback, useState } from 'react';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import { scPoolDeposit, scPoolWithdraw } from '@/lib/sendCalls';
@@ -74,6 +75,7 @@ export function usePoolMove(onMoved?: (direction: MoveDirection, amount: number)
       setBusy(true);
       setError(null);
       setProgress({ status: 'processing', step: 0 });
+      const pace = stepPacer((step) => setProgress({ status: 'processing', step }));
       try {
         const chainClient = getClientForChain
           ? await getClientForChain({ id: chainId }).catch(() => undefined)
@@ -102,6 +104,8 @@ export function usePoolMove(onMoved?: (direction: MoveDirection, amount: number)
           hash = await scPoolWithdraw({ smartWalletClient: chainClient, ownerWallet: address, sharesNow, sharesQueued, chainId });
         }
 
+        // One transaction did all three; walk the dots so they can be seen to (lib/moveSteps).
+        await pace.to(2);
         setTxHash(hash);
         setProgress({ status: 'done', step: 3 });
         onMoved?.(direction, Math.min(amount, direction === 'withdraw' ? freeNow || amount : amount));

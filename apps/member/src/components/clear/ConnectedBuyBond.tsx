@@ -1,3 +1,4 @@
+import { stepPacer } from '@/lib/moveSteps';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { readContract } from '@wagmi/core';
 import { parseUnits } from 'viem';
@@ -169,6 +170,7 @@ export default function ConnectedBuyBond({
       setBusy(true);
       setError(null);
       setProgress({ status: 'processing', step: 0 });
+      const pace = stepPacer((step) => setProgress({ status: 'processing', step }));
       try {
         const faceValue = purchase.face.toFixed(2);
         const maturityDate = Math.floor(purchase.maturity.date.getTime() / 1000);
@@ -204,6 +206,8 @@ export default function ConnectedBuyBond({
 
         // Ready to allocate falls by what the bond actually cost, not by its face.
         balances.applyOptimistic(-Number(priceUnits) / 1e6, 0);
+        // One transaction did all three; walk the dots so they can be seen to (lib/moveSteps).
+        await pace.to(2);
         setProgress({ status: 'done', step: 3 });
         track('bond_bought', {}); // that it happened, never the amount or the term
         // A new bond is a new pledged item, so the shelf, the limit and the bond list are all out
