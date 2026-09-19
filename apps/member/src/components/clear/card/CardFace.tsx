@@ -6,8 +6,8 @@ import { cn } from '@/lib/utils';
  * The card face — one component, three grounds.
  *
  * Hardware is rounded, software is square: this is a picture of a physical object, so it takes the
- * object's radius. Physical is ink with the chip; virtual has no chip and says Online only on the
- * face itself; frozen is ink 70 and says Frozen. The number stays in mono — a PAN is an identifier,
+ * object's radius. Physical is ink with the chip; virtual has no chip and a lighter ground (no pill:
+ * the chooser already says which kind it is); frozen is ink 70 and says Frozen. The number stays in mono — a PAN is an identifier,
  * not a figure, and mono is what it is embossed in.
  *
  * The last four sits in the top strip as well as in the number, because a card standing behind the
@@ -48,11 +48,9 @@ export default function CardFace({
             <ClearMark className="c-cmk" />
             <span className="c-wm">Clear</span>
           </span>
-          {frozen ? (
-            <span className="c-cstate ml-s1">Frozen</span>
-          ) : (
-            virtual && <span className="c-cstate ml-s1">Online only</span>
-          )}
+          {/* Frozen is a state the member needs to see on the card. Virtual is not: the chooser
+              above and the list already say which kind it is. */}
+          {frozen && <span className="c-cstate ml-s1">Frozen</span>}
         </span>
         <span className="c-ctag">···· {last4 || '••••'}</span>
       </div>
