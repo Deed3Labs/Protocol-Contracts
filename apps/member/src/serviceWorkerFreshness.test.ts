@@ -86,3 +86,16 @@ describe('the reserve cover bar', () => {
     expect(css).toContain('.c-keyline .c-sep,.c-sub .c-sep{color:var(--ink-50);margin:0 4px}');
   });
 });
+
+describe('the app lock survives a refresh', () => {
+  const login = readFileSync(join(import.meta.dirname, 'pages', 'auth', 'LoginRoute.tsx'), 'utf8');
+  test('arriving authenticated only restarts the lock clock after a sign-in made on the login screen', () => {
+    expect(login).toContain('if (consumeSigningIn()) markActive();');
+    expect(login).not.toMatch(/navigated\.current = true;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*markActive\(\);/);
+  });
+  test('every way of signing in there sets the mark first: code, Google, passkey', () => {
+    expect(login).toMatch(/markSigningIn\(\);\s*if \(channel\.current === 'sms'\) await sms\.loginWithCode/);
+    expect(login).toMatch(/markSigningIn\(\);\s*await oauth\.initOAuth/);
+    expect(login).toMatch(/markSigningIn\(\);\s*await passkey\.loginWithPasskey/);
+  });
+});

@@ -27,6 +27,30 @@ import OnboardingFlow, { type OnboardingStep, type OnboardingValues } from './On
  * somewhere else must land back there rather than on the home screen.
  */
 
+/*
+ * "A sign-in is under way from this screen" -- set when the member submits a code, starts Google or
+ * uses a passkey, and read once when they arrive authenticated. sessionStorage, so it lasts the
+ * OAuth redirect and dies with the tab.
+ */
+const SIGNING_IN = 'clear:signing-in';
+function markSigningIn(): void {
+  try {
+    sessionStorage.setItem(SIGNING_IN, String(Date.now()));
+  } catch {
+    /* storage blocked: the sign-in still works, the clock simply is not restarted here */
+  }
+}
+function consumeSigningIn(): boolean {
+  try {
+    const at = Number(sessionStorage.getItem(SIGNING_IN));
+    sessionStorage.removeItem(SIGNING_IN);
+    // Ten minutes is ample for a code or a Google round trip; an abandoned mark never counts later.
+    return Number.isFinite(at) && at > 0 && Date.now() - at < 10 * 60 * 1000;
+  } catch {
+    return false;
+  }
+}
+
 /** A contact is a phone if it is mostly digits. Anything else is treated as an email. */
 export function looksLikePhone(contact: string): boolean {
   const trimmed = contact.trim();
@@ -78,9 +102,16 @@ export default function LoginRoute() {
   useEffect(() => {
     if (!isAuthenticated || navigated.current) return;
     navigated.current = true;
-    // A sign-in starts the lock's clock, so a stale time from an earlier session cannot lock the
-    // app the moment they arrive.
-    markActive();
+    /*
+     * A sign-in made HERE starts the lock's clock, so a stale time from an earlier session cannot
+     * lock the app the moment they arrive.
+     *
+     * Only a sign-in made here. A reload lands on this screen too -- the gate sends a session that
+     * is still restoring to /login -- and it arrives already authenticated. Stamping then reset the
+     * clock on every refresh, so a locked app reloaded straight into Home: the lock was one F5 deep.
+     * A restored session keeps its clock, and AppLock decides.
+     */
+    if (consumeSigningIn()) markActive();
     window.dispatchEvent(new Event('wallet-connected'));
     navigate(destination, { replace: true });
   }, [isAuthenticated, destination, navigate]);
@@ -141,6 +172,7 @@ export default function LoginRoute() {
       setBusy(true);
       setError(null);
       try {
+        markSigningIn();
         if (channel.current === 'sms') await sms.loginWithCode({ code });
         else await email.loginWithCode({ code });
         // No navigation here. The effect above owns it, so signing in through any route — this
@@ -162,6 +194,9 @@ export default function LoginRoute() {
       setBusy(true);
       setError(null);
       try {
+        // Google leaves the page and comes back through a redirect; the mark is in sessionStorage
+        // so it survives the trip.
+        markSigningIn();
         await oauth.initOAuth({ provider });
       } catch (e) {
         setError(e instanceof Error ? e.message : "We couldn't reach that sign-in.");
@@ -190,6 +225,7 @@ export default function LoginRoute() {
     setBusy(true);
     setError(null);
     try {
+      markSigningIn();
       await passkey.loginWithPasskey();
     } catch {
       rememberWantsFaceId();
