@@ -2750,6 +2750,20 @@ export async function fileDispute(input: {
   return { token: r.data.dispute.token, networkFiled: r.data.network ? r.data.network.filed : null };
 }
 
+/** A repayment against the member's credit, whichever way it was made. */
+export interface CreditRepaymentEntry {
+  id: string;
+  at: string;
+  amountCents: number;
+  method: 'manual' | 'auto' | 'savings' | 'bank';
+  txHash: string | null;
+}
+
+export async function getCreditRepayments(wallet: string): Promise<CreditRepaymentEntry[]> {
+  const r = await apiRequest<{ repayments: CreditRepaymentEntry[] }>(`/api/credit/${wallet.toLowerCase()}/repayments`);
+  return r.error || !r.data ? [] : r.data.repayments;
+}
+
 /** Record a repayment the member made on chain. The server reads the amount from the transaction. */
 export async function recordCreditRepayment(
   wallet: string,

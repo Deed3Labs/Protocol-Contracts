@@ -58,16 +58,19 @@ export default function TransactionDetailDialog({
     <Modal
       open={open}
       onOpenChange={onOpenChange}
-      title="Transaction"
+      title={row.kind === 'repayment' ? 'Repayment' : 'Transaction'}
       description={`${row.name}, ${signedMoney(row.amount)}.`}
       footer={
         /*
          * Split is hidden for now. It belongs on Clear Partner charges, not on every card swipe, and
          * until partner charges are told apart here the button would offer something it cannot do.
          */
-        <Btn lg onClick={somethingWrong}>
-          Something wrong
-        </Btn>
+        // A repayment is the member's own payment against their balance; there is nothing to dispute.
+        row.kind === 'repayment' ? undefined : (
+          <Btn lg onClick={somethingWrong}>
+            Something wrong
+          </Btn>
+        )
       }
     >
       <p className={cn('c-bigamt text-hero-m', row.reversed && 'text-ink-50 line-through')}>

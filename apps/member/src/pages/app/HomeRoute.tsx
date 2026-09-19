@@ -5,6 +5,7 @@ import { useClearBalances } from '@/hooks/useClearBalances';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { mergedActivityRows } from '@/lib/activityMapping';
+import { useCreditRepayments } from '@/hooks/useCreditRepayments';
 import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
@@ -61,6 +62,8 @@ export default function HomeRoute() {
   const [pay, setPay] = useState<PaySummary | null>(null);
   const [credit, setCredit] = useState<CreditState | null>(null);
   const [cards, setCards] = useState<CardTransaction[]>([]);
+  // Every repayment, whichever way it was made, listed alongside what it paid for.
+  const repayments = useCreditRepayments(address);
   const repay = useCreditRepay();
   const repayFromSavings = useRepayFromSavings();
 
@@ -154,7 +157,7 @@ export default function HomeRoute() {
      * The newest four of EVERYTHING, not the newest four transfers. A member who paid for lunch on
      * the card and then sent a friend $20 should see both, in the order they happened.
      */
-    ...(txLoading ? {} : { recent: mergedActivityRows(items, cards).slice(0, 4) }),
+    ...(txLoading ? {} : { recent: mergedActivityRows(items, cards, undefined, repayments).slice(0, 4) }),
     ...(credit?.complete
       ? {
           // Pending card holds count as used: a live authorization is money this member cannot

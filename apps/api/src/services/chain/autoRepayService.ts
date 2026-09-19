@@ -140,7 +140,7 @@ export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
         [wallet, cents],
       );
       // The books, and the pool's side, from the transaction itself -- as for a Repay tap.
-      await recordUsdcRepayment(wallet, tx.hash);
+      await recordUsdcRepayment(wallet, tx.hash, 'auto');
       console.log(`[auto-repay] ${wallet} repaid ${cents}c from their USDC (${tx.hash})`);
       results.push({ wallet, action: 'repaid', cents, txHash: tx.hash });
     } catch (error) {

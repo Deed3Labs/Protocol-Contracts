@@ -29,7 +29,7 @@ describe('repaid on chain under the member’s mandate, bounded by the chain', (
   });
 
   test('books and the pool’s side are written from the transaction, like a Repay tap', () => {
-    expect(service).toContain('await recordUsdcRepayment(wallet, tx.hash);');
+    expect(service).toContain("await recordUsdcRepayment(wallet, tx.hash, 'auto');");
   });
 
   test('the repayment token comes from the chain, not a hardcoded address', () => {

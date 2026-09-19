@@ -6,6 +6,7 @@ import { chargeStore } from '../services/chargeStore.js';
 import { heldDrawsByTier } from '../services/lithic/cardTransactionsService.js';
 import { recordUsdcRepayment } from '../services/chain/usdcRepaymentService.js';
 import { autoRepayStatus, setAutoRepayChoice } from '../services/chain/autoRepayService.js';
+import { repaymentHistory } from '../services/credit/repaymentHistory.js';
 
 /*
  * A member's credit line, assembled from the contracts that hold it.
@@ -131,6 +132,18 @@ creditRouter.get('/:wallet/earn', async (req: Request, res: Response) => {
       error: 'Failed to read earn state',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
+  }
+});
+
+/** GET /api/credit/:wallet/repayments — every repayment, whichever way it was made. */
+creditRouter.get('/:wallet/repayments', async (req: Request, res: Response) => {
+  const wallet = req.params.wallet;
+  if (!requireWalletMatch(req, res, wallet, 'wallet')) return;
+  try {
+    return res.json({ repayments: await repaymentHistory(wallet) });
+  } catch (error) {
+    console.error('[credit] repayment history failed', error);
+    return res.status(500).json({ error: 'Failed to read repayments' });
   }
 });
 
