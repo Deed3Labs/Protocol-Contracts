@@ -149,7 +149,11 @@ describe("TermIssuer", function () {
 
     it("charges a later plan only for the time it has run", async function () {
       await setLimit(4_000n * ONE_USDC);
-      await openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC);
+      // One installment a year, so the first plan is still on time when the second opens -- a
+      // member behind on a plan cannot open another.
+      await issuer
+        .connect(ctx.operator)
+        .openPlan(ctx.member.address, merchant.address, 1_000n * ONE_USDC, 1_000n * ONE_USDC, 150n, CYCLE, 1, 12 * CYCLE);
       await advance(6 * CYCLE);
       await openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC);
       await advance(6 * CYCLE);
@@ -357,7 +361,11 @@ describe("TermIssuer", function () {
       await advance(3 * MONTH + ONE_DAY);
       expect(await issuer.arrearsOf(0)).to.equal(300n * ONE_USDC);
 
-      await issuer.connect(ctx.member).setSplit(0, 12);
+      // The member cannot re-split while behind; the co-op can, for hardship, and the arrears
+      // come with it.
+      await expect(issuer.connect(ctx.member).setSplit(0, 12))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerBehindSchedule");
+      await issuer.connect(ctx.operator).setSplit(0, 12);
       expect(await issuer.arrearsOf(0)).to.equal(300n * ONE_USDC);
       expect(await issuer.inCompliance(ctx.member.address)).to.equal(false);
     });
@@ -366,7 +374,7 @@ describe("TermIssuer", function () {
       await setLimit(2_000n * ONE_USDC);
       await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 0n, 12);
       await advance(3 * MONTH + ONE_DAY);
-      await issuer.connect(ctx.member).setSplit(0, 6);
+      await issuer.connect(ctx.operator).setSplit(0, 6);
 
       await issuer.connect(payer).payPlan(0, 300n * ONE_USDC);
       expect(await issuer.arrearsOf(0)).to.equal(0n);
@@ -676,6 +684,193 @@ describe("TermIssuer", function () {
       await expect(
         issuer.connect(payer).closePlanForRefund(0, PURCHASE, merchant.address, PAYOUT)
       ).to.be.reverted;
+    });
+  });
+
+  describe("late handling", function () {
+    const PLAN = 1_200n * ONE_USDC; // twelve installments of 100, no carry
+
+    async function openFlat(installments = 12) {
+      await setLimit(4_000n * ONE_USDC);
+      await openPlan(PLAN, PLAN, 0n, installments);
+    }
+
+    it("falling behind freezes new plans, and catching up lifts it", async function () {
+      await openFlat();
+      await advance(MONTH + ONE_DAY);
+      expect(await issuer.arrearsOf(0)).to.equal(100n * ONE_USDC);
+      await expect(openPlan(100n * ONE_USDC, 100n * ONE_USDC, 0n, 1))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerBehindSchedule");
+
+      await issuer.connect(payer).payPlan(0, 100n * ONE_USDC);
+      await openPlan(100n * ONE_USDC, 100n * ONE_USDC, 0n, 1);
+    });
+
+    it("knows when a plan fell behind, and when it can default: two installments later", async function () {
+      await openFlat();
+      const openedAt = (await issuer.planAt(0))[4];
+      expect(await issuer.delinquentSince(0)).to.equal(0n);
+
+      await advance(MONTH + ONE_DAY);
+      expect(await issuer.delinquentSince(0)).to.equal(openedAt + BigInt(MONTH));
+      expect(await issuer.defaultableAt(0)).to.equal(openedAt + BigInt(3 * MONTH));
+      expect(await issuer.memberDefaultableAt(ctx.member.address)).to.equal(openedAt + BigInt(3 * MONTH));
+
+      // Paying the first installment moves it on to the second.
+      await advance(MONTH);
+      await issuer.connect(payer).payPlan(0, 100n * ONE_USDC);
+      expect(await issuer.delinquentSince(0)).to.equal(openedAt + BigInt(2 * MONTH));
+    });
+
+    it("defaults only once two installments overdue, and writes off term credit alone", async function () {
+      await openFlat();
+      await advance(MONTH + ONE_DAY);
+      await expect(issuer.connect(payer).declareDefault(ctx.member.address))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerNotDefaultable");
+
+      await advance(2 * MONTH);
+      // Anyone may call it: the schedule decides.
+      await issuer.connect(payer).declareDefault(ctx.member.address);
+
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+      expect(await issuer.writtenOffOf(ctx.member.address)).to.equal(PLAN);
+      expect(await issuer.termSuspended(ctx.member.address)).to.equal(true);
+      expect(await issuer.hasDefaulted(ctx.member.address)).to.equal(true);
+      expect((await issuer.planAt(0))[8]).to.equal(true);
+      // Still a member: a missed plan ends term credit, not their place in the co-op.
+      expect(await ctx.access.isMember(ctx.member.address)).to.equal(true);
+      await expect(setLimit(1_000n * ONE_USDC)).to.be.revertedWithCustomError(issuer, "TermIssuerSuspended");
+    });
+
+    it("paying back what was written off funds the reserve, and reinstates", async function () {
+      await openFlat();
+      await advance(3 * MONTH + ONE_DAY);
+      await issuer.declareDefault(ctx.member.address);
+
+      await expect(issuer.connect(payer).reinstate(ctx.member.address))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerNotReinstatable");
+
+      await ctx.usdc.connect(payer).approve(await issuer.getAddress(), PLAN);
+      // The pool tops its primary reserve up to target and keeps the rest as excess.
+      const held = async () => (await ctx.assurancePool.reserveBalance()) + (await ctx.assurancePool.excessBalance());
+      const before = await held();
+      await issuer.connect(payer).repayWrittenOff(ctx.member.address, PLAN + 1n);
+      expect(await held()).to.equal(before + PLAN);
+      expect(await issuer.recoveredOf(ctx.member.address)).to.equal(PLAN);
+
+      await issuer.connect(payer).reinstate(ctx.member.address);
+      expect(await issuer.termSuspended(ctx.member.address)).to.equal(false);
+      await setLimit(1_000n * ONE_USDC);
+    });
+
+    it("the co-op can reinstate without repayment, after clean cycles it vouches for", async function () {
+      await openFlat();
+      await advance(3 * MONTH + ONE_DAY);
+      await issuer.declareDefault(ctx.member.address);
+      await issuer.connect(ctx.operator).reinstate(ctx.member.address);
+      expect(await issuer.termSuspended(ctx.member.address)).to.equal(false);
+    });
+  });
+
+  describe("re-split limits", function () {
+    it("three re-splits a plan, one a period, never while behind", async function () {
+      await setLimit(4_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 0n, 12);
+
+      await issuer.connect(ctx.member).setSplit(0, 6);
+      await expect(issuer.connect(ctx.member).setSplit(0, 4))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerSplitTooSoon");
+
+      await advance(MONTH + ONE_DAY);
+      await expect(issuer.connect(ctx.member).setSplit(0, 4))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerBehindSchedule");
+      await issuer.connect(payer).payPlan(0, await issuer.arrearsOf(0));
+      await issuer.connect(ctx.member).setSplit(0, 4);
+
+      await advance(MONTH + ONE_DAY);
+      await issuer.connect(payer).payPlan(0, await issuer.arrearsOf(0));
+      await issuer.connect(ctx.member).setSplit(0, 2);
+      const [remaining] = await issuer.splitAllowance(0);
+      expect(remaining).to.equal(0);
+
+      await advance(MONTH + ONE_DAY);
+      await issuer.connect(payer).payPlan(0, await issuer.arrearsOf(0));
+      await expect(issuer.connect(ctx.member).setSplit(0, 1))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerSplitLimitReached");
+      // Hardship is the co-op's call, and not counted against the member.
+      await issuer.connect(ctx.operator).setSplit(0, 1);
+    });
+  });
+
+  describe("collecting under the mandate, and residual carry", function () {
+    let mandate: any;
+
+    beforeEach(async function () {
+      const Mock = await ethers.getContractFactory("MockRevolvingMandate");
+      mandate = await Mock.deploy();
+      await ctx.usdc.mint(ctx.member.address, 10_000n * ONE_USDC);
+      await ctx.usdc.connect(ctx.member).approve(await ctx.stableCredit.getAddress(), 10_000n * ONE_USDC);
+    });
+
+    it("takes only what is due, from the member, once per ref, for a settler under a mandate", async function () {
+      await setLimit(4_000n * ONE_USDC);
+      await openPlan(1_200n * ONE_USDC, 1_200n * ONE_USDC, 0n, 12);
+      await advance(MONTH + ONE_DAY);
+      const ref = ethers.id("collect-1");
+
+      await expect(issuer.connect(payer).collectForMember(ref, ctx.member.address, 500n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerNotCollector");
+      await issuer.connect(ctx.operator).setMandateSource(await mandate.getAddress());
+      await mandate.setCardSettler(payer.address, true);
+      await expect(issuer.connect(payer).collectForMember(ref, ctx.member.address, 500n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerMandateOff");
+
+      await mandate.setAutoRepay(ctx.member.address, true);
+      const usdcBefore = await ctx.usdc.balanceOf(ctx.member.address);
+      await issuer.connect(payer).collectForMember(ref, ctx.member.address, 500n * ONE_USDC);
+      // What was due, not what was offered: never an installment early.
+      expect(await ctx.usdc.balanceOf(ctx.member.address)).to.equal(usdcBefore - 100n * ONE_USDC);
+      expect(await issuer.arrearsOf(0)).to.equal(0n);
+      expect(await issuer.mandateCollectionOf(ref)).to.equal(100n * ONE_USDC);
+      await expect(issuer.connect(payer).collectForMember(ref, ctx.member.address, 500n * ONE_USDC))
+        .to.be.revertedWithCustomError(issuer, "TermIssuerCollectionUsed");
+    });
+
+    async function refundLeavingCarry() {
+      await setLimit(4_000n * ONE_USDC);
+      await openPlan(1_000n * ONE_USDC, 1_000n * ONE_USDC, 150n, 12);
+      await advance(2 * CYCLE);
+      await issuer.connect(ctx.operator).closePlanForRefund(0, 1_000n * ONE_USDC, merchant.address, 1_000n * ONE_USDC);
+    }
+
+    it("reads carry a refund left on nothing, and pays it directed so nothing absorbs it", async function () {
+      await refundLeavingCarry();
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      expect(owed).to.be.greaterThan(0n);
+      // Unknowable without the revolving line: its balance would read as residual.
+      expect(await issuer.residualCarryOf(ctx.member.address)).to.equal(0n);
+
+      await issuer.connect(ctx.operator).setMandateSource(await mandate.getAddress());
+      expect(await issuer.residualCarryOf(ctx.member.address)).to.equal(owed);
+      await issuer.connect(payer).payResidualCarry(ctx.member.address, owed * 2n);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+    });
+
+    it("a mandated collection clears residual carry too", async function () {
+      await refundLeavingCarry();
+      await issuer.connect(ctx.operator).setMandateSource(await mandate.getAddress());
+      await mandate.setCardSettler(payer.address, true);
+      await mandate.setAutoRepay(ctx.member.address, true);
+      await issuer.connect(payer).collectForMember(ethers.id("collect-carry"), ctx.member.address, 100n * ONE_USDC);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+    });
+
+    it("leaves revolving balance alone: only what exceeds both lines is residual", async function () {
+      await refundLeavingCarry();
+      await issuer.connect(ctx.operator).setMandateSource(await mandate.getAddress());
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      await mandate.setPrincipal(ctx.member.address, owed);
+      expect(await issuer.residualCarryOf(ctx.member.address)).to.equal(0n);
     });
   });
 });
