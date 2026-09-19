@@ -63,6 +63,7 @@ import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
 import stepUpRouter from './routes/stepUp.js';
+import sessionRouter from './routes/session.js';
 
 dotenv.config();
 
@@ -252,6 +253,7 @@ async function startServer() {
     app.use('/api/assurance', requireAuth, assuranceRouter);
     app.use('/api/disputes', requireAuth, disputesRouter);
     app.use('/api/step-up', requireAuth, stepUpRouter);
+    app.use('/api/session', requireAuth, sessionRouter);
     // Deliberately not `requireAuth` at the mount: `POST /api/charges` is a merchant device
     // authenticating by signature, with no member session to check. The member-facing routes
     // inside attach `requireAuth` themselves — see the note in routes/charges.ts for why that

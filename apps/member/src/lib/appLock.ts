@@ -49,3 +49,18 @@ export function forgetActive(): void {
 export function isStale(at: number | null, now = Date.now()): boolean {
   return at !== null && now - at >= LOCK_AFTER_MS;
 }
+
+/*
+ * The server keeps its own lock (api middleware/sessionLock): a session idle past it answers every
+ * request with 423 APP_LOCKED. Whatever the app's clock says, that shows the lock screen.
+ */
+const SERVER_LOCKED = 'clear:server-locked';
+
+export function notifyServerLocked(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(SERVER_LOCKED));
+}
+
+export function onServerLocked(listener: () => void): () => void {
+  window.addEventListener(SERVER_LOCKED, listener);
+  return () => window.removeEventListener(SERVER_LOCKED, listener);
+}
