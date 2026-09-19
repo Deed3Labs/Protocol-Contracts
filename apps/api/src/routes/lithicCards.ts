@@ -3,6 +3,7 @@ import { listCardTransactions } from '../services/lithic/cardTransactionsService
 import { isConfigured } from '../services/lithic/lithicClient.js';
 import { cardStore } from '../services/lithic/cardStore.js';
 import { cardService } from '../services/lithic/cardService.js';
+import { requireStepUp, requireStepUpWhen } from '../middleware/stepUp.js';
 
 const router = express.Router();
 
@@ -143,7 +144,8 @@ router.post('/:token/activate', async (req: Request, res: Response) => {
 });
 
 /** POST /api/lithic/cards/:token/freeze — freeze or unfreeze. */
-router.post('/:token/freeze', async (req: Request, res: Response) => {
+// Freezing is one tap; unfreezing is Face ID (middleware/stepUp).
+router.post('/:token/freeze', requireStepUpWhen((req) => req.body?.frozen === false), async (req: Request, res: Response) => {
   const owned = await ownedCard(req);
   if (!owned) return res.status(404).json({ error: 'Card not found' });
 
@@ -157,7 +159,7 @@ router.post('/:token/freeze', async (req: Request, res: Response) => {
 });
 
 /** POST /api/lithic/cards/:token/spend-limit — the member's own guardrail. */
-router.post('/:token/spend-limit', async (req: Request, res: Response) => {
+router.post('/:token/spend-limit', requireStepUp, async (req: Request, res: Response) => {
   const owned = await ownedCard(req);
   if (!owned) return res.status(404).json({ error: 'Card not found' });
 
@@ -185,7 +187,7 @@ router.post('/:token/spend-limit', async (req: Request, res: Response) => {
  * Returns a URL, never card data. The member's browser calls Lithic directly, so the PAN and CVV
  * never pass through this server and cannot end up in its logs.
  */
-router.get('/:token/embed', async (req: Request, res: Response) => {
+router.get('/:token/embed', requireStepUp, async (req: Request, res: Response) => {
   const owned = await ownedCard(req);
   if (!owned) return res.status(404).json({ error: 'Card not found' });
 
@@ -212,7 +214,7 @@ router.get('/:token/embed', async (req: Request, res: Response) => {
  * directly, so the PAN and CVV never pass through this server. The deprecated URL above stays as
  * the fallback for a program that cannot mint one.
  */
-router.get('/:token/embed-session', async (req: Request, res: Response) => {
+router.get('/:token/embed-session', requireStepUp, async (req: Request, res: Response) => {
   const owned = await ownedCard(req);
   if (!owned) return res.status(404).json({ error: 'Card not found' });
 

@@ -22,7 +22,7 @@ import type {
 } from '@/types/savings';
 import { getAccessToken } from '@privy-io/react-auth';
 import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
-import { stepUpDenied } from '@/lib/stepUp';
+import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
 import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
@@ -49,10 +49,26 @@ interface RequestInitWithTimeout extends RequestInit {
  * Handles errors gracefully, including HTML responses (server down, wrong endpoint, etc.)
  * Includes timeout and abort handling to prevent resource exhaustion
  */
-async function apiRequest<T>(
+/**
+ * A request, and -- when the server wants a fresh Face ID first (middleware/stepUp) -- that check and
+ * one retry. So every guarded call gets the server's answer, not the app's guess about it.
+ */
+async function apiRequest<T>(endpoint: string, options: RequestInitWithTimeout = {}): Promise<ApiResponse<T>> {
+  const first = await apiRequestOnce<T>(endpoint, options);
+  if (!first.stepUpRequired) return first;
+  try {
+    await confirmForServer();
+  } catch {
+    return { error: STEP_UP_DECLINED };
+  }
+  const second = await apiRequestOnce<T>(endpoint, options);
+  return second.stepUpRequired ? { error: second.error } : second;
+}
+
+async function apiRequestOnce<T>(
   endpoint: string,
   options: RequestInitWithTimeout = {}
-): Promise<ApiResponse<T>> {
+): Promise<ApiResponse<T> & { stepUpRequired?: boolean }> {
   // Create abort controller for timeout
   const timeoutController = new AbortController();
   const timeoutMs = options.timeout || 30000; // Default 30 seconds, longer for NFT requests
@@ -62,6 +78,7 @@ async function apiRequest<T>(
     const { timeout: _, ...fetchOptions } = options; // Remove timeout from fetch options
     const authToken = await getAccessToken().catch(() => null);
     const activeWallet = getActiveWallet();
+    const stepUpToken = currentStepUpToken();
     const method = (fetchOptions.method ?? 'GET').toUpperCase();
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       // Just after an action, reads skip the service worker's cache (see lib/freshReads).
@@ -72,6 +89,7 @@ async function apiRequest<T>(
         'Content-Type': 'application/json',
         ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         ...(activeWallet ? { 'X-Wallet-Address': activeWallet } : {}),
+        ...(stepUpToken ? { 'X-Step-Up': stepUpToken } : {}),
         ...(REOWN_PROJECT_ID
           ? { 'X-Reown-Project-Id': REOWN_PROJECT_ID }
           : {}),
@@ -97,6 +115,9 @@ async function apiRequest<T>(
       // Try to parse error as JSON, but handle HTML/other responses
       if (isJson) {
         const errorData = await response.json().catch(() => null);
+        if (response.status === 403 && (errorData as { code?: unknown } | null)?.code === 'STEP_UP_REQUIRED') {
+          return { error: STEP_UP_DECLINED, stepUpRequired: true };
+        }
         if (errorData && typeof errorData === 'object') {
           // Routes in this codebase are inconsistent: some return { message }, many return { error }.
           // Reading only `message` silently dropped every `error`-shaped body, so real server
@@ -2815,6 +2836,42 @@ export async function recordAutoRepay(wallet: string, enabled: boolean): Promise
     body: JSON.stringify({ enabled }),
   });
   return r.error || !r.data ? { ok: false, error: r.error || 'Could not save that just now.' } : { ok: true };
+}
+
+// --- Server-verified Face ID (lib/serverStepUp; api routes/stepUp) ---
+
+export type StepUpGrant = { token: string; expiresAt: number };
+
+export async function getStepUpStatus(): Promise<{ enrolled: boolean; available: boolean } | null> {
+  const r = await apiRequest<{ enrolled: boolean; available: boolean }>('/api/step-up/status', { cache: 'no-store' });
+  return r.error || !r.data ? null : r.data;
+}
+
+export async function getStepUpRegisterOptions(): Promise<{ options?: unknown; error?: string }> {
+  const r = await apiRequest<{ options: unknown }>('/api/step-up/register/options', { method: 'POST' });
+  return r.error || !r.data ? { error: r.error || 'Face ID could not start.' } : { options: r.data.options };
+}
+
+export async function verifyStepUpRegistration(response: unknown): Promise<StepUpGrant | null> {
+  const r = await apiRequest<StepUpGrant>('/api/step-up/register/verify', { method: 'POST', body: JSON.stringify({ response }) });
+  return r.error || !r.data ? null : r.data;
+}
+
+export async function getStepUpOptions(): Promise<{ options?: unknown; notEnrolled?: boolean; error?: string }> {
+  const r = await apiRequest<{ options: unknown }>('/api/step-up/options', { method: 'POST' });
+  if (r.error || !r.data) return { error: r.error || 'Face ID could not start.', notEnrolled: /No Face ID set up/.test(r.error ?? '') };
+  return { options: r.data.options };
+}
+
+export async function verifyStepUp(response: unknown): Promise<StepUpGrant | null> {
+  const r = await apiRequest<StepUpGrant>('/api/step-up/verify', { method: 'POST', body: JSON.stringify({ response }) });
+  return r.error || !r.data ? null : r.data;
+}
+
+/** Face ID off: the server stops asking. Takes a Face ID check itself (the retry in apiRequest). */
+export async function removeStepUp(): Promise<boolean> {
+  const r = await apiRequest<{ removed: number }>('/api/step-up', { method: 'DELETE' });
+  return !r.error;
 }
 
 /** The member's own disputes, newest first. */

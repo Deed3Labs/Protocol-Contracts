@@ -3,6 +3,7 @@ import { disputeStore, type DisputeKind } from '../services/disputes/disputeStor
 import { disputeCandidates, findCandidate } from '../services/disputes/disputeCandidates.js';
 import { isCardReason, openCardDispute } from '../services/disputes/networkDispute.js';
 import { holdDispute, withdrawDispute } from '../services/disputes/disputeEnforcement.js';
+import { requireStepUp } from '../middleware/stepUp.js';
 
 /*
  * Disputes — the member says a payment went wrong.
@@ -53,7 +54,7 @@ disputesRouter.get('/', async (req: Request, res: Response) => {
 });
 
 /** POST /api/disputes — { kind, ref, detail, reason? } */
-disputesRouter.post('/', async (req: Request, res: Response) => {
+disputesRouter.post('/', requireStepUp, async (req: Request, res: Response) => {
   const wallet = sessionWallet(req);
   if (!wallet) return res.status(400).json({ error: 'No wallet on session' });
 
