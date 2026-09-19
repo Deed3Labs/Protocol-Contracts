@@ -4,6 +4,14 @@ pragma solidity ^0.8.29;
 import "./CreditIssuer.sol";
 import "../libraries/CarryIndex.sol";
 import "../core/interfaces/stable-credit/ICreditPositionSource.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
+
+/// @dev The parts of the revolving line a mandated collection reads.
+interface IRevolvingMandate {
+    function autoRepayEnabled(address member) external view returns (bool);
+    function isCardSettler(address account) external view returns (bool);
+    function totalPrincipalOf(address member) external view returns (uint256);
+}
 
 /// @title TermIssuer
 /// @notice Term plans: partner credit, Clear Cash, and the ELPA that buys a home.
@@ -68,7 +76,34 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// what a member earns rather than against what they have pledged.
     mapping(address => uint256) public termLimitOf;
 
-    uint256[42] private __gap;
+    /// @dev How often a plan has been re-split, and when last. Kept beside the plan rather than in
+    /// it: appending to a struct inside a dynamic array would move every element after it.
+    struct SplitLog {
+        uint8 changes;
+        uint64 lastChangedAt;
+    }
+    mapping(uint256 => SplitLog) private splitLogs;
+
+    /// @notice What a term default wrote off for a member, and what they have paid back since.
+    mapping(address => uint256) public writtenOffOf;
+    mapping(address => uint256) public recoveredOf;
+    /// @notice A member whose term credit ended in default. No new plans, and no term limit, until
+    /// they are reinstated.
+    mapping(address => bool) public termSuspended;
+
+    /// @notice The revolving line: its automatic-repayment mandate, and its card settlers, are the
+    /// ones a mandated collection here honours. One switch for the member, one key for the co-op.
+    address public mandateSource;
+    /// @dev ref => amount collected under the mandate. Once per ref.
+    mapping(bytes32 => uint256) private mandateCollections;
+
+    uint256[36] private __gap;
+
+    /// @notice A plan defaults once its oldest missed installment is this many installments overdue.
+    uint256 public constant DEFAULT_AFTER_INSTALLMENTS = 2;
+    /// @notice A plan may be re-split this many times in its life, and no more than once an
+    /// installment period.
+    uint8 public constant MAX_SPLIT_CHANGES = 3;
 
     /* ========== ERRORS ========== */
 
@@ -82,6 +117,16 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     error TermIssuerNothingToPay(uint256 planId);
     error TermIssuerSplitNotOffered(uint32 installments);
     error TermIssuerNotPlanHolder(address caller);
+    /// @notice behind on a plan: no new plans, and no re-split, until caught up.
+    error TermIssuerBehindSchedule(address member);
+    error TermIssuerSuspended(address member);
+    error TermIssuerSplitLimitReached(uint256 planId);
+    error TermIssuerSplitTooSoon(uint256 planId, uint256 availableAt);
+    error TermIssuerNotDefaultable(address member);
+    error TermIssuerNotReinstatable(address member);
+    error TermIssuerNotCollector(address caller);
+    error TermIssuerMandateOff(address member);
+    error TermIssuerCollectionUsed(bytes32 ref);
 
     /* ========== EVENTS ========== */
 
@@ -100,6 +145,12 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     event PlanSplitChanged(
         uint256 indexed planId, uint32 installments, uint256 spread, uint256 carriedArrears
     );
+    event TermDefaulted(address indexed member, uint256 writtenOff);
+    event WrittenOffRepaid(address indexed member, address indexed payer, uint256 amount);
+    event TermReinstated(address indexed member);
+    event MandateSourceUpdated(address source);
+    event CollectedForMember(bytes32 indexed ref, address indexed member, uint256 amount);
+    event ResidualCarryPaid(address indexed member, address indexed payer, uint256 amount);
 
     /// @notice The splits a member may choose: pay in one cycle, or spread over 2, 4, 6 or 12.
     /// @dev A fixed set rather than any number. The split is a product choice the member makes
@@ -260,6 +311,54 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         }
     }
 
+    /// @notice when a plan fell behind: the due date of its oldest installment not yet covered.
+    /// Zero for a plan that is on time.
+    /// @dev Anything a re-split carried in (the floor above what was repaid) was due the moment the
+    /// schedule began. Past that, installment k is covered once `repaid` reaches
+    /// `floor + installmentAmount * k`, so the first uncovered one is the next whole installment.
+    function delinquentSince(uint256 planId) public view returns (uint256) {
+        if (arrearsOf(planId) == 0) return 0;
+        Plan storage plan = plans[planId];
+        if (plan.repaid < plan.scheduleFloor || plan.installmentAmount == 0) return plan.scheduleStart;
+        uint256 k = (plan.repaid - plan.scheduleFloor) / plan.installmentAmount + 1;
+        if (k > plan.installments) k = plan.installments;
+        return plan.scheduleStart + k * plan.installmentLength;
+    }
+
+    /// @notice when a plan that is behind becomes defaultable. Zero for a plan that is on time.
+    function defaultableAt(uint256 planId) public view returns (uint256) {
+        uint256 since = delinquentSince(planId);
+        if (since == 0) return 0;
+        return since + DEFAULT_AFTER_INSTALLMENTS * plans[planId].installmentLength;
+    }
+
+    /// @notice the soonest any of a member's plans becomes defaultable. Zero when none is behind.
+    function memberDefaultableAt(address member) public view returns (uint256 soonest) {
+        uint256[] storage ids = memberPlans[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            uint256 at = defaultableAt(ids[i]);
+            if (at != 0 && (soonest == 0 || at < soonest)) soonest = at;
+        }
+    }
+
+    /// @notice how many re-splits a plan has left, and the earliest the next is allowed.
+    function splitAllowance(uint256 planId) external view returns (uint8 remaining, uint256 availableAt) {
+        _requirePlan(planId);
+        SplitLog storage log = splitLogs[planId];
+        remaining = log.changes >= MAX_SPLIT_CHANGES ? 0 : MAX_SPLIT_CHANGES - log.changes;
+        availableAt = log.lastChangedAt == 0 ? 0 : log.lastChangedAt + plans[planId].installmentLength;
+    }
+
+    /// @notice carry owed on no open plan and no revolving tier: what a refunded plan leaves.
+    /// @dev Everything the member owes, less what each issuer's positions account for. Needs the
+    /// revolving line to be known; without it the revolving balance would read as residual.
+    function residualCarryOf(address member) public view returns (uint256) {
+        if (mandateSource == address(0)) return 0;
+        uint256 owed = stableCredit.creditBalanceOf(member);
+        uint256 held = totalPrincipalOf(member) + IRevolvingMandate(mandateSource).totalPrincipalOf(member);
+        return owed > held ? owed - held : 0;
+    }
+
     /// @notice a member's total owed across every open plan, carry included.
     function totalOwedOf(address member) public view returns (uint256 total) {
         uint256[] storage ids = memberPlans[member];
@@ -317,6 +416,8 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// @dev Underwritten off-chain against attested income and entered here as an attestation,
     /// not as raw data. Separate from the revolving tiers, which are backed by pledged collateral.
     function setTermLimit(address member, uint256 limit) external onlyOperator notNull(member) {
+        // A default is not undone by writing a new number over it; reinstatement is its own step.
+        if (termSuspended[member] && limit > 0) revert TermIssuerSuspended(member);
         termLimitOf[member] = limit;
         emit TermLimitUpdated(member, limit);
         // The first allocation is what enrols the member with this issuer; after that the
@@ -441,6 +542,9 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         if (installmentLength == 0 || purchase == 0) revert TermIssuerInvalidSchedule();
         if (!isOfferedSplit(installments)) revert TermIssuerSplitNotOffered(installments);
         if (payout > purchase) revert TermIssuerInvalidSchedule();
+        // Behind on one plan freezes new ones: term credit, not the card, and only until caught up.
+        if (termSuspended[member]) revert TermIssuerSuspended(member);
+        if (totalArrearsOf(member) > 0) revert TermIssuerBehindSchedule(member);
 
         uint256 wouldOwe = totalPrincipalOf(member) + purchase;
         if (wouldOwe > termLimitOf[member]) {
@@ -494,6 +598,23 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         }
         if (!isOfferedSplit(installments)) revert TermIssuerSplitNotOffered(installments);
 
+        /*
+         * The member's own re-splits are bounded: not while behind (catch up first -- a re-split
+         * is how a plan is reshaped, not how a missed installment is put off), at most
+         * MAX_SPLIT_CHANGES in a plan's life, and at most one an installment period. An operator
+         * re-splitting for hardship is not held to these.
+         */
+        if (msg.sender == plan.member) {
+            if (arrearsOf(planId) > 0) revert TermIssuerBehindSchedule(plan.member);
+            SplitLog storage log = splitLogs[planId];
+            if (log.changes >= MAX_SPLIT_CHANGES) revert TermIssuerSplitLimitReached(planId);
+            if (log.lastChangedAt != 0 && block.timestamp < log.lastChangedAt + plan.installmentLength) {
+                revert TermIssuerSplitTooSoon(planId, log.lastChangedAt + plan.installmentLength);
+            }
+            log.changes += 1;
+            log.lastChangedAt = uint64(block.timestamp);
+        }
+
         // Bring the plan current first, so the remainder being re-split is what is really owed.
         _materialiseCarry(planId);
 
@@ -537,11 +658,141 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         // the ledger does not also announce it to the revolving line as an undirected payment.
         // The payer approves StableCredit for the reserve token, not this contract.
         stableCredit.repayCreditBalanceFor(msg.sender, plan.member, uint128(pay));
+        _applyPlanPayment(planId, pay);
+    }
 
+    /// @notice pays carry a refunded plan left owed on nothing, for a member, from the caller.
+    /// @dev Directed, so no issuer absorbs it: it clears the residual and only the residual. The
+    /// co-op calls it from its float when a bank deposit paid the carry; anyone may, since it only
+    /// ever reduces what a member owes.
+    function payResidualCarry(address member, uint256 amount) external notNull(member) {
+        uint256 residual = residualCarryOf(member);
+        uint256 pay = amount < residual ? amount : residual;
+        if (pay == 0) revert TermIssuerNothingToPay(type(uint256).max);
+        stableCredit.repayCreditBalanceFor(msg.sender, member, uint128(pay));
+        emit ResidualCarryPaid(member, msg.sender, pay);
+    }
+
+    /// @notice collects what is due on a member's plans from their own USDC, under the mandate they
+    /// set on the revolving line.
+    /// @dev The term half of "there is no pay button". Bounded like the revolving half: only a
+    /// card settler, only for a member who switched automatic repayment on, only once per ref, and
+    /// only toward what is DUE -- each plan's arrears, oldest first, then residual carry. Never an
+    /// installment early: that would be lending the member their own money.
+    /// @param ref idempotency key.
+    /// @param member address being collected for; also the payer.
+    /// @param amount the most to collect.
+    /// @return collected what was actually taken.
+    function collectForMember(bytes32 ref, address member, uint256 amount)
+        external
+        notNull(member)
+        returns (uint256 collected)
+    {
+        if (mandateSource == address(0) || !IRevolvingMandate(mandateSource).isCardSettler(msg.sender)) {
+            revert TermIssuerNotCollector(msg.sender);
+        }
+        if (!IRevolvingMandate(mandateSource).autoRepayEnabled(member)) revert TermIssuerMandateOff(member);
+        if (mandateCollections[ref] != 0) revert TermIssuerCollectionUsed(ref);
+
+        uint256 remaining = amount;
+        uint256[] storage ids = memberPlans[member];
+        for (uint256 i = 0; i < ids.length && remaining > 0; i++) {
+            uint256 planId = ids[i];
+            if (plans[planId].closed) continue;
+            uint256 behind = arrearsOf(planId);
+            if (behind == 0) continue;
+            _materialiseCarry(planId);
+            uint256 owed = plans[planId].principalOutstanding;
+            uint256 pay = behind < remaining ? behind : remaining;
+            if (pay > owed) pay = owed;
+            if (pay == 0) continue;
+            stableCredit.repayCreditBalanceFor(member, member, uint128(pay));
+            _applyPlanPayment(planId, pay);
+            remaining -= pay;
+            collected += pay;
+        }
+        uint256 residual = residualCarryOf(member);
+        if (remaining > 0 && residual > 0) {
+            uint256 pay = residual < remaining ? residual : remaining;
+            stableCredit.repayCreditBalanceFor(member, member, uint128(pay));
+            emit ResidualCarryPaid(member, member, pay);
+            collected += pay;
+        }
+        if (collected == 0) revert TermIssuerNothingToPay(type(uint256).max);
+        mandateCollections[ref] = collected;
+        emit CollectedForMember(ref, member, collected);
+    }
+
+    /// @notice what a mandated collection ref took, zero if unused.
+    function mandateCollectionOf(bytes32 ref) external view returns (uint256) {
+        return mandateCollections[ref];
+    }
+
+    /// @notice ends a member's term credit when a plan is too far behind.
+    /// @dev Anyone may call it; the schedule decides, not the caller. A plan defaults once its
+    /// oldest missed installment is DEFAULT_AFTER_INSTALLMENTS installments overdue. What is
+    /// written off is this issuer's plans and nothing else: the member keeps their card, their
+    /// savings and their membership. Nothing is seized -- term plans are underwritten on income,
+    /// not on pledged savings -- and the loss is the network's lost debt, which the assurance
+    /// reserve covers.
+    function declareDefault(address member) external notNull(member) returns (uint256 writtenOff) {
+        uint256 at = memberDefaultableAt(member);
+        if (at == 0 || block.timestamp < at) revert TermIssuerNotDefaultable(member);
+
+        uint256[] storage ids = memberPlans[member];
+        for (uint256 i = 0; i < ids.length; i++) {
+            _materialiseCarry(ids[i]);
+        }
+        writtenOff = totalPrincipalOf(member);
+        defaultedAt[member] = uint64(block.timestamp);
+        stableCredit.writeOffCreditLine(member, writtenOff);
+        writtenOffOf[member] += writtenOff;
+        _onDefault(member);
+        emit TermDefaulted(member, writtenOff);
+    }
+
+    /// @notice pays back what a term default wrote off, into the assurance reserve that covered it.
+    /// @dev Anyone may pay for a member. Paying it all back is one way to term credit again.
+    function repayWrittenOff(address member, uint256 amount) external notNull(member) returns (uint256 pay) {
+        uint256 outstanding = writtenOffOf[member] - recoveredOf[member];
+        pay = amount < outstanding ? amount : outstanding;
+        if (pay == 0) revert TermIssuerNothingToPay(type(uint256).max);
+        IAssurancePool pool = stableCredit.assurancePool();
+        IERC20Upgradeable token = pool.reserveToken();
+        SafeERC20Upgradeable.safeTransferFrom(token, msg.sender, address(this), pay);
+        SafeERC20Upgradeable.safeApprove(token, address(pool), 0);
+        SafeERC20Upgradeable.safeApprove(token, address(pool), pay);
+        pool.deposit(pay);
+        recoveredOf[member] += pay;
+        emit WrittenOffRepaid(member, msg.sender, pay);
+    }
+
+    /// @notice lifts a term suspension.
+    /// @dev Two ways back. Paying back everything written off lets anyone reinstate the member.
+    /// Otherwise it is the co-op's call -- after a run of clean card cycles, which this issuer
+    /// cannot see. Either way a new term limit is still an underwriting decision (setTermLimit).
+    function reinstate(address member) external notNull(member) {
+        if (!termSuspended[member]) revert TermIssuerNotReinstatable(member);
+        bool repaid = recoveredOf[member] >= writtenOffOf[member];
+        if (!repaid && !stableCredit.access().isOperator(msg.sender)) revert TermIssuerNotReinstatable(member);
+        termSuspended[member] = false;
+        emit TermReinstated(member);
+    }
+
+    /// @notice names the revolving line whose mandate and settlers a mandated collection honours.
+    function setMandateSource(address source) external onlyOperator {
+        mandateSource = source;
+        emit MandateSourceUpdated(source);
+    }
+
+    /// @dev What a payment does to a plan, however it arrived: carry-aware reduction, the repaid
+    /// figure the schedule is measured against, and closing it at zero.
+    function _applyPlanPayment(uint256 planId, uint256 pay) private {
+        Plan storage plan = plans[planId];
         uint256 index = plan.index.currentIndex(block.timestamp);
         uint256 reduction = CarryIndex.normalizeUp(pay, index);
         plan.normalized = reduction >= plan.normalized ? 0 : plan.normalized - reduction;
-        plan.principalOutstanding = owed - pay;
+        plan.principalOutstanding -= pay;
         plan.repaid += pay;
 
         emit PlanPaid(planId, pay, pay);
@@ -640,17 +891,22 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         return totalPrincipalOf(member);
     }
 
-    /// @notice clears the member's plans on default.
+    /// @notice clears the member's plans on default, and suspends their term credit.
+    /// @dev Narrowed to this issuer, as the base contract asks of an issuer that shares a member:
+    /// no revoking membership. A missed plan ends term credit; it does not take away the card, the
+    /// savings, or the co-op.
     function _onDefault(address member) internal override {
         uint256[] storage ids = memberPlans[member];
         for (uint256 i = 0; i < ids.length; i++) {
             Plan storage plan = plans[ids[i]];
+            if (plan.closed) continue;
             plan.normalized = 0;
             plan.principalOutstanding = 0;
             plan.closed = true;
+            emit PlanClosed(ids[i]);
         }
         termLimitOf[member] = 0;
-        super._onDefault(member);
+        termSuspended[member] = true;
     }
 
     /// @dev Carry deepens the member's negative balance and mints the matching claim to the
