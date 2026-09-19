@@ -132,19 +132,6 @@ export default function TermPlanDialog({
         </>
       }
     >
-      {savingsFree > 0 && (
-        <>
-          <p className="c-label">From</p>
-          <div className="c-qc mb-s3 mt-s1!">
-            <Btn className={cn('c-chip-q', !fromSavings && 'c-on')} aria-pressed={!fromSavings} onClick={() => setFromSavings(false)}>
-              Cash
-            </Btn>
-            <Btn className={cn('c-chip-q', fromSavings && 'c-on')} aria-pressed={fromSavings} onClick={() => setFromSavings(true)}>
-              Savings
-            </Btn>
-          </div>
-        </>
-      )}
       <p className="c-label">Amount</p>
       <BigAmount amount={capped} onChange={setAmount} editable={custom} />
       <div className="c-qc">
@@ -160,7 +147,20 @@ export default function TermPlanDialog({
           Custom
         </Btn>
       </div>
-      {/* The decision first -- source, amount, picks -- as on Repay; where the plan stands follows it. */}
+      {savingsFree > 0 && (
+        <>
+          <p className="c-label mt-s3">From</p>
+          <div className="c-qc mt-s1!">
+            <Btn className={cn('c-chip-q', !fromSavings && 'c-on')} aria-pressed={!fromSavings} onClick={() => setFromSavings(false)}>
+              Cash
+            </Btn>
+            <Btn className={cn('c-chip-q', fromSavings && 'c-on')} aria-pressed={fromSavings} onClick={() => setFromSavings(true)}>
+              Savings
+            </Btn>
+          </div>
+        </>
+      )}
+      {/* The amount first, then where it comes from, as on Repay; where the plan stands follows. */}
       <p className="c-label mt-s3">This plan</p>
       <Rows className="mt-s1">
         <div>

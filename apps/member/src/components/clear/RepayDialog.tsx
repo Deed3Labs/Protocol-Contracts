@@ -236,15 +236,6 @@ export default function RepayDialog({
       }
       footer={footer}
     >
-      {carrying && savingsUsed > 0 && (
-        <>
-          <p className="c-label">From</p>
-          <div className="c-qc mb-s3 mt-s1!">
-            <Pick label="Cash" selected={!fromSavings} onSelect={() => setFromSavings(false)} />
-            <Pick label="Savings" selected={fromSavings} onSelect={() => setFromSavings(true)} />
-          </div>
-        </>
-      )}
       <p className="c-label">Amount</p>
       <BigAmount amount={capped} onChange={setAmount} editable={custom} />
       <div className="c-qc">
@@ -276,6 +267,16 @@ export default function RepayDialog({
         )}
         <Pick label="Custom" selected={custom} onSelect={() => setCustom(true)} />
       </div>
+
+      {carrying && savingsUsed > 0 && (
+        <>
+          <p className="c-label mt-s3">From</p>
+          <div className="c-qc mt-s1!">
+            <Pick label="Cash" selected={!fromSavings} onSelect={() => setFromSavings(false)} />
+            <Pick label="Savings" selected={fromSavings} onSelect={() => setFromSavings(true)} />
+          </div>
+        </>
+      )}
 
       {carrying && (lines.length > 0 || carryApplied > 0) && (
         <>
