@@ -9,12 +9,25 @@ import type { AddressInfo } from 'node:net';
  */
 
 const table = new Map<string, number>();
+const lastSeen = new Map<string, number>();
 const fakePool = {
   query: async (sql: string, params: unknown[] = []) => {
     if (sql.includes('CREATE TABLE')) return { rows: [] };
     const id = String(params[0]);
+    if (sql.includes('DELETE FROM')) {
+      const cutoff = Number(params[0]);
+      let n = 0;
+      for (const [sid, at] of [...table]) {
+        if (at < cutoff && (lastSeen.get(sid) ?? 0) < cutoff) {
+          table.delete(sid);
+          n++;
+        }
+      }
+      return { rows: [], rowCount: n };
+    }
     if (sql.includes('RETURNING last_active')) {
       if (!table.has(id)) table.set(id, Date.now());
+      lastSeen.set(id, Date.now());
       return { rows: [{ last_active: new Date(table.get(id)!) }] };
     }
     if (sql.includes('GREATEST')) {
@@ -112,6 +125,42 @@ describe('the lock, kept by the server', () => {
     expect(openWhileLocked(req('POST', '/api/step-up/register/options'))).toBe(false);
     expect(openWhileLocked(req('DELETE', '/api/step-up'))).toBe(false);
     expect(openWhileLocked(req('GET', '/api/lithic/cards/abc/embed'))).toBe(false);
+  });
+});
+
+describe('housekeeping', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  test('memory drops sessions that made no request for an hour, and they read back locked from the table', async () => {
+    await idle('s5', SESSION_LOCK_AFTER_MS + 1000);
+    expect(await sessionLock.locked('s5', 'did:alice')).toBe(true);
+    const before = sessionLock.heldInMemory();
+    expect(sessionLock.forgetIdle(Date.now() + 2 * 60 * 60 * 1000)).toBeGreaterThan(0);
+    expect(sessionLock.heldInMemory()).toBeLessThan(before);
+    expect(await sessionLock.locked('s5', 'did:alice')).toBe(true);
+  });
+
+  test('a session still asked about in the last hour stays in memory', async () => {
+    await sessionLock.locked('s6', 'did:alice');
+    sessionLock.forgetIdle(Date.now() + 30 * 60 * 1000);
+    expect(sessionLock.forgetIdle(Date.now() + 30 * 60 * 1000)).toBe(0);
+  });
+
+  test('the table deletes only sessions quiet for 30 days in both senses', async () => {
+    const old = Date.now() - 31 * DAY;
+    table.set('gone', old);
+    lastSeen.set('gone', old);
+    // Untouched for 31 days but still making requests (a device left open): kept, and still locked.
+    table.set('left-open', old);
+    lastSeen.set('left-open', Date.now() - DAY);
+    await sessionLock.deleteStale();
+    expect(table.has('gone')).toBe(false);
+    expect(table.has('left-open')).toBe(true);
+  });
+
+  test('the cleanup job is started with the server', () => {
+    const read = (p: string) => require('node:fs').readFileSync(require('node:path').join(import.meta.dirname, p), 'utf8');
+    expect(read('../../index.ts')).toMatch(/startRelayerGasMonitor\(\);\s*startSessionCleanup\(\);/);
   });
 });
 

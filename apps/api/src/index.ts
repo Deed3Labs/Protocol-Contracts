@@ -57,6 +57,7 @@ import { startPulledFundsReleaser } from './jobs/pulledFundsReleaser.js';
 import { startSweepRunner } from './jobs/sweepRunner.js';
 import { startMemoryMonitor } from './jobs/memoryMonitor.js';
 import { startRelayerGasMonitor } from './jobs/relayerGas.js';
+import { startSessionCleanup } from './jobs/sessionCleanup.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
 import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
@@ -360,6 +361,7 @@ async function startServer() {
     // A signer with no gas fails silently — the pledge does not happen and every figure downstream
     // is quietly stale. This is the only thing that would have said so.
     startRelayerGasMonitor();
+    startSessionCleanup();
 
     startReconciler().catch((error) => {
       console.error('Failed to start reconciler:', error);
