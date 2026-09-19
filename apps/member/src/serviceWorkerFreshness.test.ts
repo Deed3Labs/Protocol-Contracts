@@ -60,4 +60,9 @@ describe('the service worker stays installed, and forgets what it should', () =>
   test('activating deletes our old cache versions, and leaves other caches alone', () => {
     expect(sw).toMatch(/cacheName\.startsWith\('protocol-'\) &&\s*cacheName !== STATIC_CACHE &&\s*cacheName !== API_CACHE &&\s*cacheName !== IMAGE_CACHE/);
   });
+
+  test('no AppKit leftovers: nothing preloads Reown icons, which answer 403 without a project id', () => {
+    expect(html).not.toContain('api.web3modal.com');
+    expect(html).not.toContain('appKitModal');
+  });
 });

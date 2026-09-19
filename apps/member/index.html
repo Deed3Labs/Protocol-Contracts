@@ -45,59 +45,6 @@
             });
         });
       }
-
-      // Ensure AppKit modal icons load properly
-      window.addEventListener('load', () => {
-        // Preload critical icon resources for AppKit modal
-        const iconUrls = [
-          // Chain icons
-          'https://api.web3modal.com/v2/chain/1/icon',
-          'https://api.web3modal.com/v2/chain/8453/icon',
-          'https://api.web3modal.com/v2/chain/11155111/icon',
-          'https://api.web3modal.com/v2/chain/84532/icon',
-          // Wallet icons
-          'https://api.web3modal.com/v2/connector/metamask/icon',
-          'https://api.web3modal.com/v2/connector/trust/icon',
-          'https://api.web3modal.com/v2/connector/coinbase/icon',
-          'https://api.web3modal.com/v2/connector/rainbow/icon',
-          'https://api.web3modal.com/v2/connector/walletconnect/icon',
-          // Social icons
-          'https://api.web3modal.com/v2/connector/google/icon',
-          'https://api.web3modal.com/v2/connector/apple/icon',
-          'https://api.web3modal.com/v2/connector/facebook/icon',
-          'https://api.web3modal.com/v2/connector/x/icon',
-          'https://api.web3modal.com/v2/connector/github/icon',
-          'https://api.web3modal.com/v2/connector/discord/icon',
-          'https://api.web3modal.com/v2/connector/farcaster/icon',
-          // Action icons
-          'https://api.web3modal.com/v2/connector/buy/icon',
-          'https://api.web3modal.com/v2/connector/swap/icon',
-          'https://api.web3modal.com/v2/connector/send/icon',
-          'https://api.web3modal.com/v2/connector/activity/icon',
-          'https://api.web3modal.com/v2/connector/disconnect/icon'
-        ];
-
-        iconUrls.forEach(url => {
-          const link = document.createElement('link');
-          link.rel = 'preload';
-          link.as = 'image';
-          link.href = url;
-          document.head.appendChild(link);
-        });
-
-        // Monitor for icon loading issues
-        setTimeout(() => {
-          const modal = window.appKitModal;
-          if (modal) {
-            console.log('AppKit modal loaded successfully');
-          } else {
-            console.warn('AppKit modal not found, icons may not load properly');
-          }
-        }, 1000);
-
-        // Do not auto-open the modal here. On iOS deep-link flows this can
-        // retrigger connect/sign prompts before WalletConnect state restores.
-      });
     </script>
   </body>
 </html>
