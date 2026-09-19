@@ -447,6 +447,7 @@ export async function recordOnchainRepayment(input: {
     // Out of savings: straight to the savings tier, as the chain did. Anything beyond it (there should
     // be none) falls through to the ordinary order.
     const toSavings = Math.min(Math.max(0, Math.round(input.savingsCents ?? 0)), outstanding.savings, input.revolvingCents);
+    const fundedFromSavings = toSavings;
     const rest = planSettlement(
       input.revolvingCents - toSavings,
       { ...outstanding, savings: outstanding.savings - toSavings },
@@ -461,7 +462,7 @@ export async function recordOnchainRepayment(input: {
       await client.query(
         `INSERT INTO ${ENTRIES} (entry_group, wallet, account, direction, amount_cents, rail, event_type, external_id, metadata)
          VALUES ($1, $2, $3, 'credit', $4, 'chain', 'onchain_repayment', $5, $6::jsonb),
-                ($1, $2, 'member_cash_usdc', 'debit', $4, 'chain', 'onchain_repayment', $5, $6::jsonb)`,
+                ($1, $2, $7, 'debit', $4, 'chain', 'onchain_repayment', $5, $6::jsonb)`,
         [
           group,
           wallet,
@@ -469,6 +470,9 @@ export async function recordOnchainRepayment(input: {
           settlement.amountCents,
           `${input.txHash.toLowerCase()}:${settlement.tier}`,
           JSON.stringify({ tier: settlement.tier, txHash: input.txHash }),
+          // Where the money came from. Out of savings it was the member's CLRUSD, not their USDC
+          // cash -- charging cash for it would show them $X less cash than they hold.
+          fundedFromSavings > 0 && settlement.tier === 'savings' ? 'member_savings' : 'member_cash_usdc',
         ],
       );
     }
