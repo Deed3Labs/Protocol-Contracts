@@ -54,3 +54,16 @@ describe('paying from savings and paying back', () => {
     expect(calls).toMatch(/functionName: 'repayWrittenOff'[\s\S]{0,120}\.\.\.\(args\.clearsIt[\s\S]{0,160}functionName: 'reinstate'/);
   });
 });
+
+describe('paying a plan shows its progress, as moving money does', () => {
+  const sheet = readFileSync(new URL('../components/clear/TermPlanDialog.tsx', import.meta.url), 'utf8');
+  const hook = readFileSync(new URL('../hooks/useCreditRepay.ts', import.meta.url), 'utf8');
+  test('three named steps, then done or nothing paid', () => {
+    expect(sheet).toContain("import { AlertMark, Steps, Tick } from './MoveProgress';");
+    expect(sheet).toContain("`Paid to ${plan.name}`");
+    expect(sheet).toContain("'Nothing paid'");
+  });
+  test('the hook reports the payment on chain before it records it', () => {
+    expect(hook).toMatch(/onStep\?\.\(2\);\s*markChainStale\(\);\s*const recorded = await recordCreditRepayment/);
+  });
+});
