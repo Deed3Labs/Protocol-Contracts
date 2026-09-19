@@ -132,7 +132,37 @@ export default function TermPlanDialog({
         </>
       }
     >
-      <Rows className="mb-s3">
+      <p className="c-label">Amount</p>
+      <BigAmount amount={capped} onChange={setAmount} editable={custom} />
+      <div className="c-qc">
+        {next > 0 && next < owed && (
+          <Btn className={cn('c-chip-q', !custom && capped === next && 'c-on')} aria-pressed={!custom && capped === next} onClick={() => select(next)}>
+            {behind > 0 ? 'Catch up' : 'Next payment'}
+          </Btn>
+        )}
+        <Btn className={cn('c-chip-q', !custom && payoff && 'c-on')} aria-pressed={!custom && payoff} onClick={() => select(owed)}>
+          Pay it off
+        </Btn>
+        <Btn className={cn('c-chip-q', custom && 'c-on')} aria-pressed={custom} onClick={() => setCustom(true)}>
+          Custom
+        </Btn>
+      </div>
+      {savingsFree > 0 && (
+        <>
+          <p className="c-label mt-s3">From</p>
+          <div className="c-qc mt-s1!">
+            <Btn className={cn('c-chip-q', !fromSavings && 'c-on')} aria-pressed={!fromSavings} onClick={() => setFromSavings(false)}>
+              Cash
+            </Btn>
+            <Btn className={cn('c-chip-q', fromSavings && 'c-on')} aria-pressed={fromSavings} onClick={() => setFromSavings(true)}>
+              Savings
+            </Btn>
+          </div>
+        </>
+      )}
+      {/* The amount first, then where it comes from, as on Repay; where the plan stands follows. */}
+      <p className="c-label mt-s3">This plan</p>
+      <Rows className="mt-s1">
         <div>
           <Line>
             <span>Owed today</span>
@@ -162,34 +192,6 @@ export default function TermPlanDialog({
           </div>
         )}
       </Rows>
-      {savingsFree > 0 && (
-        <>
-          <p className="c-label">From</p>
-          <div className="c-qc mb-s3 mt-s1!">
-            <Btn className={cn('c-chip-q', !fromSavings && 'c-on')} aria-pressed={!fromSavings} onClick={() => setFromSavings(false)}>
-              Cash
-            </Btn>
-            <Btn className={cn('c-chip-q', fromSavings && 'c-on')} aria-pressed={fromSavings} onClick={() => setFromSavings(true)}>
-              Savings
-            </Btn>
-          </div>
-        </>
-      )}
-      <p className="c-label">Amount</p>
-      <BigAmount amount={capped} onChange={setAmount} editable={custom} />
-      <div className="c-qc">
-        {next > 0 && next < owed && (
-          <Btn className={cn('c-chip-q', !custom && capped === next && 'c-on')} aria-pressed={!custom && capped === next} onClick={() => select(next)}>
-            {behind > 0 ? 'Catch up' : 'Next payment'}
-          </Btn>
-        )}
-        <Btn className={cn('c-chip-q', !custom && payoff && 'c-on')} aria-pressed={!custom && payoff} onClick={() => select(owed)}>
-          Pay it off
-        </Btn>
-        <Btn className={cn('c-chip-q', custom && 'c-on')} aria-pressed={custom} onClick={() => setCustom(true)}>
-          Custom
-        </Btn>
-      </div>
     </Modal>
   );
 }
