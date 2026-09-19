@@ -1523,6 +1523,8 @@ export interface TermPlan {
   lockedNote?: string;
   /** What clears it today, carry included. Only on a live plan. */
   owed?: number;
+  /** Paid against it so far, carry included, as the chain records it. Only on a live plan. */
+  paid?: number;
   /** Anything behind plus the next installment: what keeps the plan on schedule. */
   nextPayment?: number;
   /** When the next installment falls due, e.g. "Oct 2". Absent once every one has. */
@@ -1587,6 +1589,9 @@ export interface TermPlans {
  * contradicts. Amortising plans state their balance directly — there's no even split to count down.
  */
 export function planRemaining(plan: TermPlan): number {
+  // A plan read from chain knows what it owes; the cycle count is an estimate that a payment made
+  // ahead of schedule leaves behind.
+  if (plan.owed !== undefined) return plan.owed;
   if (plan.balance === undefined) return 0;
   if (!plan.splitInto || plan.cyclesLeft === undefined) return plan.balance;
   return (plan.balance / plan.splitInto) * plan.cyclesLeft;
@@ -1603,12 +1608,18 @@ export function planRemaining(plan: TermPlan): number {
  * same paid and remaining. The day-one case is the one that tells them apart.
  */
 export function planPaid(plan: TermPlan): number {
+  if (plan.paid !== undefined) return plan.paid;
   if (plan.balance === undefined) return 0;
   return plan.balance - planRemaining(plan);
 }
 
 /** How far through a plan is, 0–1 — the same fact as the cleared amount, as a share. */
 export function planClearedShare(plan: TermPlan): number {
+  // Live: paid against everything the plan has cost so far, so carry neither inflates nor hides it.
+  if (plan.paid !== undefined && plan.owed !== undefined) {
+    const whole = plan.paid + plan.owed;
+    return whole > 0 ? Math.max(0, Math.min(1, plan.paid / whole)) : 0;
+  }
   if (!plan.balance) return 0;
   return Math.max(0, Math.min(1, planPaid(plan) / plan.balance));
 }
@@ -1688,6 +1699,8 @@ export { splitQuote };
  * even split to compute one from.
  */
 export function planPerCycle(plan: TermPlan): number | undefined {
+  // The contract fixes the installment; quoting an estimate beside it would disagree by cents.
+  if (plan.owed !== undefined && plan.perCycle !== undefined) return plan.perCycle;
   if (plan.balance !== undefined && plan.splitInto && plan.ratePerCycle !== undefined) {
     return splitQuote(plan.balance, plan.splitInto, plan.ratePerCycle).perCycle;
   }

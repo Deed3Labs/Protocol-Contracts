@@ -406,12 +406,21 @@ export function nextPayment(p: {
   // Every installment has come due: whatever is left is due now.
   if (p.due >= p.installments) return { amount: p.owed, dueAt: null };
   const floor = p.scheduledDue - p.installmentAmount * p.due;
-  const target = p.due + 1n >= p.installments ? floor + p.scheduleTotal : floor + p.installmentAmount * (p.due + 1n);
-  const short = target > p.repaid ? target - p.repaid : 0n;
-  return {
-    amount: short < p.owed ? short : p.owed,
-    dueAt: Number(p.scheduleStart + p.installmentLength * (p.due + 1n)),
-  };
+  const target = (k: bigint) => (k >= p.installments ? floor + p.scheduleTotal : floor + p.installmentAmount * k);
+  const cap = (x: bigint) => (x < p.owed ? x : p.owed);
+  /*
+   * The first installment not yet covered, not merely the next date. A member who paid ahead has
+   * already met the next one or more; what they are asked for is what is left on the first they
+   * have not, and when that falls due. Anything behind is inside it, because every target counts
+   * from the start of the schedule.
+   */
+  for (let k = p.due + 1n; k <= p.installments; k++) {
+    if (target(k) > p.repaid) {
+      return { amount: cap(target(k) - p.repaid), dueAt: Number(p.scheduleStart + p.installmentLength * k) };
+    }
+  }
+  // The whole schedule is paid and carry is all that is left: due with the last installment.
+  return { amount: p.owed, dueAt: Number(p.scheduleStart + p.installmentLength * p.installments) };
 }
 
 /** Rounded up: a figure a member is asked to pay must clear what it names, never fall a unit short. */

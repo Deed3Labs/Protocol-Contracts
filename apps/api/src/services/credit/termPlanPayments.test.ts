@@ -36,6 +36,16 @@ describe('next payment on a plan', () => {
     expect(nextPayment({ ...base, owed: 50n * U, repaid: 358n * U, due: 4n, scheduledDue: 408n * U })).toEqual({ amount: 50n * U, dueAt: null });
   });
 
+  test('paid ahead: the next installment not yet covered, and only what is left on it', () => {
+    // $146 paid on a $400 schedule of four $102 installments: the first met, $58 left on the second.
+    const r = nextPayment({ ...base, owed: 354n * U, repaid: 146n * U, due: 0n, scheduledDue: 0n });
+    expect(r).toEqual({ amount: 58n * U, dueAt: 1_200 });
+  });
+
+  test('schedule fully paid with carry left: that carry, with the last installment', () => {
+    expect(nextPayment({ ...base, owed: 1n * U, repaid: 408n * U, due: 1n, scheduledDue: 102n * U })).toEqual({ amount: 1n * U, dueAt: 1_400 });
+  });
+
   test('a re-split floor is recovered, not ignored', () => {
     // $50 carried in as behind; one installment of the new schedule due.
     const r = nextPayment({ ...base, owed: 300n * U, repaid: 0n, due: 1n, scheduledDue: 50n * U + 102n * U });

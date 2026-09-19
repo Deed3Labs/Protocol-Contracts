@@ -67,3 +67,23 @@ describe('paying a plan shows its progress, as moving money does', () => {
     expect(hook).toMatch(/onStep\?\.\(2\);\s*markChainStale\(\);\s*const recorded = await recordCreditRepayment/);
   });
 });
+
+import { planClearedShare, planPerCycle } from './clearModel';
+
+describe('a plan paid ahead of schedule', () => {
+  // The demo's plan 4: $100 split in 4, $46.27 paid, $53.73 owed, $6.25 left on the second installment.
+  const [plan] = toTermPlans(
+    [row({ repaidCents: 4_627, owedCents: 5_373, outstandingCents: 5_373, installmentCents: 2_627, nextPaymentCents: 625, nextDueAt: 1_795_000_000 })],
+    HOME_DAY_ONE.termPlans,
+  ).plans;
+
+  test('cleared is what was paid, not whole installments left', () => {
+    expect(Math.round(planClearedShare(plan) * 100)).toBe(46);
+  });
+  test('the installment is the contract’s, not an estimate', () => {
+    expect(planPerCycle(plan)).toBe(26.27);
+  });
+  test('the next payment is what is left on the first installment not yet covered', () => {
+    expect(plan.nextPayment).toBe(6.25);
+  });
+});

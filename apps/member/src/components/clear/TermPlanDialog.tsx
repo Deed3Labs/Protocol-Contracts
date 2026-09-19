@@ -273,14 +273,20 @@ export default function TermPlanDialog({
             <span className="c-fig c-fig-row">{money(owed, { cents: true })}</span>
           </Line>
         </div>
-        {plan.nextDueOn && (
+        {plan.nextDueOn && next > 0 && (
           <div>
             <Line>
-              <span>Next installment</span>
+              <span>Next payment</span>
               <span className="c-fig c-fig-row">
-                {money(plan.perCycle ?? 0, { cents: true })} <span className="c-muted">· {plan.nextDueOn}</span>
+                {money(next, { cents: true })} <span className="c-muted">· {plan.nextDueOn}</span>
               </span>
             </Line>
+            {/* Paid ahead: say so, or a figure smaller than the installment reads as a mistake. */}
+            {behind === 0 && plan.perCycle !== undefined && next < plan.perCycle - 0.005 && (
+              <p className="c-det mt-[3px]">
+                The rest of this {money(plan.perCycle, { cents: true })} installment is already paid.
+              </p>
+            )}
           </div>
         )}
         {behind > 0 && (
