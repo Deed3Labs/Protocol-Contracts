@@ -106,10 +106,11 @@ describe('surviving the public RPC rate limit', () => {
     expect(reader).toMatch(/for \(const delay of RETRY_DELAYS_MS\) \{\s*if \(result\.complete\) return result;/);
   });
   test('closed plans cost one call, not eight', () => {
-    expect(reader).toMatch(/if \(closed\) \{[\s\S]{0,500}continue;\s*\}/);
+    expect(reader).toMatch(/if \(closed\) \{\s*return \{[\s\S]{0,500}closed: true/);
   });
-  test('batches stay under the limit the public node enforces', () => {
-    expect(provider).toContain('batchMaxCount: 10');
+  test('plain reads in a batch travel as one multicall', () => {
+    expect(provider).toContain('const pack = packCalls(packable, this.nextPackId++);');
+    expect(provider).toContain("process.env.RPC_MULTICALL?.trim() !== 'off'");
   });
 });
 
@@ -120,10 +121,11 @@ describe('the free node first, the paid one for its overflow', () => {
     expect(provider).toContain('this.backup._send(payloads.filter((p) => limited.has(p.id)))');
   });
   test('a whole-request 429 goes to the backup; any other error does not', () => {
-    expect(provider).toMatch(/if \(isRateLimited\([^)]*\)\)\) return this\.backup\._send\(payloads\);\s*throw error;/);
+    expect(provider).toMatch(/if \(this\.backup && isRateLimited\([^)]*\)\)\) \{[\s\S]{0,80}return this\.backup\._send\(payloads\);\s*\}\s*throw error;/);
   });
   test('no backup configured: the primary stands alone', () => {
-    expect(provider).toMatch(/backupUrl && backupUrl !== primary\s*\?\s*new OverflowRpcProvider/);
+    expect(provider).toMatch(/backupUrl && backupUrl !== primary \? new ethers\.JsonRpcProvider\(backupUrl, chainId, OPTIONS\) : null/);
+    expect(provider).toContain('if (!this.backup) return results;');
   });
 });
 
@@ -144,5 +146,33 @@ describe('what counts as a rate limit', () => {
     process.env.RPC_FALLBACK_URL_84532 = 'https://other.example';
     expect(backupRpcUrl(84532)).toBe('https://other.example');
     process.env = was;
+  });
+});
+
+import { ethers as E } from 'ethers';
+import { isPackable, packCalls, unpackCalls, MULTICALL3 } from './provider.js';
+describe('packing reads into one multicall', () => {
+  const call = (id: number, tx: Record<string, string>, tag: unknown = 'latest') => ({ id, jsonrpc: '2.0' as const, method: 'eth_call', params: [tx, tag] });
+  test('only plain reads at latest, with no sender, value or gas', () => {
+    expect(isPackable(call(1, { to: '0x01', data: '0xab' }))).toBe(true);
+    expect(isPackable(call(1, { to: '0x01', data: '0xab', from: '0x02' }))).toBe(false);
+    expect(isPackable(call(1, { to: '0x01', data: '0xab' }, '0x10'))).toBe(false);
+    expect(isPackable({ id: 1, jsonrpc: '2.0', method: 'eth_getTransactionReceipt', params: ['0x'] })).toBe(false);
+  });
+  test('packs to Multicall3 and gives each read its own answer, a revert as a revert', () => {
+    const calls = [call(7, { to: '0x0000000000000000000000000000000000000001', data: '0xab' }), call(8, { to: '0x0000000000000000000000000000000000000002', data: '0xcd' })];
+    const pack = packCalls(calls, 99);
+    expect((pack.params as Array<{ to: string }>)[0].to).toBe(MULTICALL3);
+    const iface = new E.Interface(['function aggregate3((address,bool,bytes)[]) returns ((bool success, bytes returnData)[])']);
+    const result = iface.encodeFunctionResult('aggregate3', [[[true, '0x1234'], [false, '0x08c379a0']]]);
+    expect(unpackCalls(calls, { id: 99, result })).toEqual([
+      { id: 7, result: '0x1234' },
+      { id: 8, error: { code: 3, message: 'execution reverted', data: '0x08c379a0' } },
+    ]);
+  });
+  test('a failed multicall fails every read in it the same way, so a rate limit still overflows each', () => {
+    const calls = [call(1, { to: '0x01', data: '0xab' }), call(2, { to: '0x02', data: '0xcd' })];
+    const error = { code: -32016, message: 'over rate limit' };
+    expect(unpackCalls(calls, { id: 99, error } as never)).toEqual([{ id: 1, error }, { id: 2, error }]);
   });
 });

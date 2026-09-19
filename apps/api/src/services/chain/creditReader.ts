@@ -234,8 +234,9 @@ async function readTiers(
       ? new ethers.Contract(calculatorAddress, LIMITS_ABI, provider)
       : null;
     const count = Number(await issuer.tierCount());
-    const tiers: ChainTier[] = [];
-    for (let id = 0; id < count; id++) {
+    // Every tier at once rather than one after another: reads issued together travel together,
+    // and the provider packs them into a single multicall. Order is kept by index.
+    const readTier = async (id: number): Promise<ChainTier> => {
       const [kind, ratePerCycle, active] = await issuer.tierAt(id);
       // Carry is read rather than derived from `used - principal`. The issuer computes it against
       // the tier's index, and subtracting two rounded figures produces a third with both errors in
@@ -258,14 +259,21 @@ async function readTiers(
        * arriving and the push landing. That is the right way round: a limit that grows a few
        * seconds late is a wait, and a limit that shrinks late is an unsecured loan.
        */
-      let live: bigint | null = null;
-      if (calculator) {
-        try {
-          live = await calculator.capacityOf(wallet, kind);
-        } catch {
-          // A kind the calculator does not know is not a drift; the issuer's figure stands.
-        }
-      }
+      // Issued alongside each other for the same reason; each keeps its own failure handling.
+      const [live, backing] = await Promise.all([
+        calculator
+          ? (calculator.capacityOf(wallet, kind) as Promise<bigint>).catch(
+              // A kind the calculator does not know is not a drift; the issuer's figure stands.
+              () => null,
+            )
+          : Promise.resolve(null),
+        registry
+          ? Promise.all([registry.collateralTypes(kind), registry.collateralValueOf(wallet, kind)]).catch(
+              // An unregistered kind backs nothing, which is the correct answer rather than an error.
+              () => null,
+            )
+          : Promise.resolve(null),
+      ]);
       const limit = live !== null && live < written ? live : written;
       /*
        * Only drift big enough to mean something.
@@ -293,19 +301,10 @@ async function readTiers(
 
       // What backs the tier, before the haircut the calculator then applies. Shown so a member can
       // see the two figures that produce their limit rather than only the product of them.
-      let collateralValue = 0n;
-      let haircutBps = 0;
-      if (registry) {
-        try {
-          const [, bps] = await registry.collateralTypes(kind);
-          haircutBps = Number(bps);
-          collateralValue = await registry.collateralValueOf(wallet, kind);
-        } catch {
-          // An unregistered kind backs nothing, which is the correct answer rather than an error.
-        }
-      }
+      const collateralValue: bigint = backing ? backing[1] : 0n;
+      const haircutBps = backing ? Number(backing[0][1]) : 0;
 
-      tiers.push({
+      return {
         kind: ethers.decodeBytes32String(kind),
         limitCents: toCents(limit),
         // What the issuer holds, so a caller can tell a stale limit from a small one.
@@ -317,9 +316,9 @@ async function readTiers(
         haircutBps,
         rateBps: Number(ratePerCycle),
         active,
-      });
-    }
-    return tiers;
+      };
+    };
+    return await Promise.all(Array.from({ length: count }, (_, id) => readTier(id)));
   } catch (error) {
     console.error('[credit] tier read failed', address, error);
     return null;
@@ -434,8 +433,8 @@ async function readPlans(
   try {
     const term = new ethers.Contract(address, TERM_ABI, provider);
     const ids: bigint[] = await term.plansOf(wallet);
-    const plans: ChainTermPlan[] = [];
-    for (const id of ids) {
+    // Every plan at once, in the order the member holds them, so their reads share a multicall.
+    const readPlan = async (id: bigint): Promise<ChainTermPlan> => {
       const plan = await term.planAt(id);
       const [, principal, outstanding, repaid, openedAt, installments, installmentLength, ratePerCycle, closed] = plan;
       /*
@@ -444,32 +443,32 @@ async function readPlans(
        * -- which is what was failing the whole read on first load.
        */
       if (closed) {
-        plans.push({
+        return {
           planId: Number(id), principalCents: toCents(principal), outstandingCents: 0, repaidCents: toCents(repaid),
           installments: Number(installments), installmentCents: 0, scheduleTotalCents: 0, openedAt: Number(openedAt),
           rateBps: Number(ratePerCycle), closed: true, owedCents: 0, arrearsCents: 0, installmentsDue: 0,
           nextPaymentCents: 0, nextDueAt: null, defaultsAt: null, splitChangesLeft: 0, nextSplitAt: null,
-        });
-        continue;
+        };
       }
-      const [installmentAmount, scheduleTotal, , scheduleStart] = await term.scheduleOf(id);
-      const [owed, arrears, due, scheduledDue]: bigint[] = closed
-        ? [0n, 0n, 0n, 0n]
-        : await Promise.all([term.owedOn(id), term.arrearsOf(id), term.installmentsDue(id), term.scheduledPrincipalDue(id)]);
+      // The plan is open: everything else about it in one round.
       // Late-handling views arrived with an upgrade; a chain without them reads as on time, no limits.
-      const [defaultsAt, allowance]: [bigint, [bigint, bigint]] = closed
-        ? [0n, [0n, 0n]]
-        : await Promise.all([
-            term.defaultableAt(id).catch(() => 0n),
-            term.splitAllowance(id).catch(() => [3n, 0n]),
-          ]);
+      const [schedule, owed, arrears, due, scheduledDue, defaultsAt, allowance] = (await Promise.all([
+        term.scheduleOf(id),
+        term.owedOn(id),
+        term.arrearsOf(id),
+        term.installmentsDue(id),
+        term.scheduledPrincipalDue(id),
+        term.defaultableAt(id).catch(() => 0n),
+        term.splitAllowance(id).catch(() => [3n, 0n]),
+      ])) as [bigint[], bigint, bigint, bigint, bigint, bigint, [bigint, bigint]];
+      const [installmentAmount, scheduleTotal, , scheduleStart] = schedule;
       const next = nextPayment({
         owed, repaid, due, scheduledDue,
         installments: BigInt(installments),
         installmentAmount, scheduleTotal,
         scheduleStart: BigInt(scheduleStart), installmentLength: BigInt(installmentLength),
       });
-      plans.push({
+      return {
         planId: Number(id),
         principalCents: toCents(principal),
         outstandingCents: toCents(outstanding),
@@ -490,8 +489,9 @@ async function readPlans(
         defaultsAt: defaultsAt > 0n ? Number(defaultsAt) : null,
         splitChangesLeft: Number(allowance[0]),
         nextSplitAt: allowance[1] > 0n ? Number(allowance[1]) : null,
-      });
-    }
+      };
+    };
+    const plans = await Promise.all(ids.map(readPlan));
     return plans;
   } catch (error) {
     console.error('[credit] plan read failed', address, error);

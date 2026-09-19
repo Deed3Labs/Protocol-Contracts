@@ -38,9 +38,8 @@ describe('a limit is never more than the collateral supports', () => {
 
   test('a kind the calculator does not know is not treated as a drift', () => {
     // An unregistered kind returns nothing; the issuer's figure stands rather than collapsing to 0.
-    const block = reader.slice(reader.indexOf('let live: bigint | null = null;'), reader.indexOf('const limit ='));
-    expect(block).toContain('catch');
-    expect(block).toContain('live: bigint | null');
+    const block = reader.slice(reader.indexOf('const [live, backing] = await Promise.all(['), reader.indexOf('const limit ='));
+    expect(block).toMatch(/calculator\.capacityOf\(wallet, kind\) as Promise<bigint>\)\.catch\([\s\S]{0,160}\(\) => null/);
   });
 
   test('the calculator address is actually passed in, not silently null', () => {
