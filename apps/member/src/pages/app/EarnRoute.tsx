@@ -7,6 +7,7 @@ import { useAppKitAccount } from '@/lib/walletCompat';
 import { getEarn, getPaySummary, type EarnState, type PaySummary } from '@/utils/apiClient';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
+import { useRemembered } from '@/lib/rememberedState';
 
 /*
  * Day-one, not in-use.
@@ -40,8 +41,8 @@ import { keepLastGood } from '@/lib/keepLastGood';
  */
 export default function EarnRoute() {
   const { address } = useAppKitAccount();
-  const [earn, setEarn] = useState<EarnState | null>(null);
-  const [pay, setPay] = useState<PaySummary | null>(null);
+  const [earn, setEarn] = useRemembered<EarnState | null>(`earn:${address ?? ''}`, null);
+  const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${address ?? ''}`, null);
 
   useEffect(() => {
     if (!address) return;

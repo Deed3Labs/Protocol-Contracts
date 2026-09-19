@@ -12,6 +12,7 @@ import { onChainStale } from '@/lib/chainStale';
 import { toCreditTiers, toLimitBacking } from '@/lib/creditMapping';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { keepLastGood } from '@/lib/keepLastGood';
+import { useRemembered } from '@/lib/rememberedState';
 
 /*
  * Day-one, not in-use.
@@ -68,16 +69,17 @@ function arrivesAbout(shippedAt: string | null): string | undefined {
 }
 
 export default function CardRoute() {
-  const [cards, setCards] = useState<MemberCard[]>([]);
+  const { address } = useAppKitAccount();
+  // Remembered for the session: returning to Card draws the card and its spend, then refreshes.
+  const [cards, setCards] = useRemembered<MemberCard[]>(`cards:${address ?? ''}`, []);
   const card = cards[0] ?? null;
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useRemembered(`cards:loaded:${address ?? ''}`, false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const identity = useIdentity();
-  const { address } = useAppKitAccount();
   const member = useMemberProfile();
   const { theme } = useTheme();
-  const [credit, setCredit] = useState<CreditState | null>(null);
+  const [credit, setCredit] = useRemembered<CreditState | null>(`credit:${address ?? ''}`, null);
   /** The card the New card sheet just made, so its last step can show what happened. */
   const [newCard, setNewCard] = useState<{ kind: 'virtual' | 'physical'; last4: string; label?: string } | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export default function CardRoute() {
   const [identityAddress, setIdentityAddress] = useState<BankIdentity['address']>(null);
   const [activateError, setActivateError] = useState<string | null>(null);
   const [pinSession, setPinSession] = useState<{ session: string; environment: 'sandbox' | 'production' } | undefined>(undefined);
-  const [spend, setSpend] = useState<CardTransaction[] | null>(null);
+  const [spend, setSpend] = useRemembered<CardTransaction[] | null>(`cardspend:${address ?? ''}`, null);
 
   /*
    * What the card spent, from our own approved authorizations.
