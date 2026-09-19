@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { getPayPool } from '../../config/postgres.js';
 import { getContractAddress } from '../../config/contracts.js';
-import { chainProvider } from './provider.js';
+import { chainProvider, writesAs } from './provider.js';
 import { recordPoolMovements } from './poolFunding.js';
 
 /*
@@ -133,7 +133,7 @@ async function ensureColumns(): Promise<void> {
   ensured = true;
 }
 
-function issuerFor(signerOrProvider: ethers.Signer | ethers.Provider): ethers.Contract | null {
+function issuerFor(signerOrProvider: ethers.ContractRunner): ethers.Contract | null {
   const address = getContractAddress(resolveChainId(), 'RevolvingIssuer');
   return address ? new ethers.Contract(address, ISSUER_ABI, signerOrProvider) : null;
 }
@@ -228,7 +228,7 @@ export async function syncCardSettlement(transactionToken: string): Promise<Sett
     }
 
     const signer = new ethers.Wallet(settlerKey(), chainProvider(resolveChainId()));
-    const issuer = issuerFor(signer);
+    const issuer = issuerFor(writesAs(signer));
     if (!issuer) return { transactionToken: token, action: 'skipped', error: 'No RevolvingIssuer address' };
     const ref = refFor(token, row.onchain_ref);
 
@@ -460,21 +460,27 @@ async function readCardDebt(wallet: string, issuer: ethers.Contract): Promise<Ca
     .catch(() => 0);
   const cleared = netted + repaidInUsdc;
 
-  const drawnCents = Number(((await issuer.totalDrawnOf(wallet)) as bigint) / CENTS_TO_UNITS);
+  // Independent reads, issued together so they share one multicall.
+  const [totalDrawn, accountRaw, tierCountRaw] = (await Promise.all([
+    issuer.totalDrawnOf(wallet),
+    issuer.cardSettlementAccount(),
+    issuer.tierCount(),
+  ])) as [bigint, string, bigint];
+  const drawnCents = Number(totalDrawn / CENTS_TO_UNITS);
 
   /*
    * Carry is cleared against the settlement account's claim, so it can only be cleared here when
    * that account is where the carry went. A tier funded by the LendingPool sends its carry to the
    * pool's depositors, who are owed on-chain money; that carry has to be paid in USDC, not netted.
    */
-  const account = String(await issuer.cardSettlementAccount()).toLowerCase();
-  let carryHeldElsewhere = false;
-  const tiers = Number(await issuer.tierCount());
-  for (let t = 0; t < tiers; t++) {
-    const drawn = (await issuer.drawnOf(wallet, t)) as bigint;
-    if (drawn === 0n) continue;
-    if (String(await issuer.carryRecipientOf(t)).toLowerCase() !== account) carryHeldElsewhere = true;
-  }
+  const account = String(accountRaw).toLowerCase();
+  const tierIds = Array.from({ length: Number(tierCountRaw) }, (_, t) => t);
+  const byTier = (await Promise.all(
+    tierIds.map((t) => Promise.all([issuer.drawnOf(wallet, t), issuer.carryRecipientOf(t)])),
+  )) as Array<[bigint, string]>;
+  const carryHeldElsewhere = byTier.some(
+    ([drawn, recipient]) => drawn !== 0n && String(recipient).toLowerCase() !== account,
+  );
 
   const accrued = carryAccruedCents({ drawnCents, issuedCents: issued, clearedCents: cleared });
   if (!carryHeldElsewhere) await recordCarry(wallet, accrued);
@@ -526,7 +532,7 @@ export async function syncCardRepayment(walletInput: string): Promise<RepaymentS
     await ensureNetting();
     const pool = getPayPool()!;
     const signer = new ethers.Wallet(settlerKey(), chainProvider(resolveChainId()));
-    const issuer = issuerFor(signer);
+    const issuer = issuerFor(writesAs(signer));
     if (!issuer) return { wallet, action: 'skipped', error: 'No RevolvingIssuer address' };
 
     const position = await readCardDebt(wallet, issuer);
@@ -613,7 +619,7 @@ export async function walletsWithCardDebtOnChain(): Promise<string[]> {
 
 async function settlerIssuer(): Promise<ethers.Contract> {
   const signer = new ethers.Wallet(settlerKey(), chainProvider(resolveChainId()));
-  const issuer = issuerFor(signer);
+  const issuer = issuerFor(writesAs(signer));
   if (!issuer) throw new Error('No RevolvingIssuer address');
   return issuer;
 }

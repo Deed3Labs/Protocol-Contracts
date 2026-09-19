@@ -190,6 +190,26 @@ export function chainProvider(chainId: number): ethers.JsonRpcProvider {
   return provider;
 }
 
+/**
+ * A contract runner that writes as `signer` and reads as nobody.
+ *
+ * A contract connected straight to a Wallet sends its reads with `from` set, and a read with a
+ * sender cannot ride in a multicall (inside one, msg.sender would be Multicall3). The background
+ * sweeps read far more than they write, all through the settler's wallet, so each of those reads
+ * went out on its own. This keeps writes exactly as they were -- signed, sent, gas estimated by the
+ * signer -- and sends plain reads through the provider, where they pack.
+ */
+export function writesAs(signer: ethers.Wallet): ethers.ContractRunner {
+  const provider = signer.provider!;
+  return {
+    provider,
+    call: (tx) => provider.call({ to: tx.to, data: tx.data, blockTag: tx.blockTag }),
+    estimateGas: (tx) => signer.estimateGas(tx),
+    sendTransaction: (tx) => signer.sendTransaction(tx),
+    resolveName: (name) => signer.resolveName(name),
+  };
+}
+
 /** Drop cached providers. Tests only -- a long-lived process wants the connection kept. */
 export function resetChainProviders(): void {
   providers.clear();

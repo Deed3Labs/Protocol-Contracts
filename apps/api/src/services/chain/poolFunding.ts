@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { getPayPool } from '../../config/postgres.js';
 import { getContractAddress } from '../../config/contracts.js';
-import { chainProvider } from './provider.js';
+import { chainProvider, writesAs } from './provider.js';
 
 /*
  * Credit the LendingPool funds, accounted for on chain.
@@ -189,8 +189,8 @@ export async function settlePoolMovements(limit = 25): Promise<PoolSettlement> {
   const provider = chainProvider(chainId());
   const signer = new ethers.Wallet(settlerKey(), provider);
   const poolAddress = getContractAddress(chainId(), 'LendingPool')!;
-  const pool = new ethers.Contract(poolAddress, POOL_ABI, signer);
-  const usdc = new ethers.Contract(String(await pool.asset()), ERC20_ABI, signer);
+  const pool = new ethers.Contract(poolAddress, POOL_ABI, writesAs(signer));
+  const usdc = new ethers.Contract(String(await pool.asset()), ERC20_ABI, writesAs(signer));
 
   const mark = (row: { tx_hash: string; log_index: number }, status: string, fields: { poolTx?: string; reason?: string | null; attempt?: boolean }) =>
     db.query(

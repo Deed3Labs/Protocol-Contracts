@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import type { PoolClient } from 'pg';
 import { getPayPool } from '../../config/postgres.js';
 import { getContractAddress } from '../../config/contracts.js';
-import { chainProvider } from './provider.js';
+import { chainProvider, writesAs } from './provider.js';
 import { recordPlanPayments } from '../credit/termPlanPayments.js';
 
 /*
@@ -200,9 +200,9 @@ export async function sweepTermCollections(): Promise<CollectionResult[]> {
 
   const provider = chainProvider(chainId());
   const signer = new ethers.Wallet(settlerKey(), provider);
-  const term = new ethers.Contract(termAddress, TERM_ABI, signer);
+  const term = new ethers.Contract(termAddress, TERM_ABI, writesAs(signer));
   const revolving = new ethers.Contract(revolvingAddress, REVOLVING_ABI, provider);
-  const ledger = new ethers.Contract(String(await revolving.stableCredit()), LEDGER_ABI, signer);
+  const ledger = new ethers.Contract(String(await revolving.stableCredit()), LEDGER_ABI, writesAs(signer));
 
   const results: CollectionResult[] = [];
   for (const row of rows) {
@@ -356,7 +356,7 @@ async function fail(row: Row, error: unknown, reverted: boolean): Promise<Collec
 
 /** The settler pays from its float, pulled by StableCredit, so StableCredit needs the allowance. */
 async function ensureAllowance(signer: ethers.Wallet, ledger: ethers.Contract, units: bigint): Promise<void> {
-  const usdc = new ethers.Contract(String(await ledger.reserveToken()), ERC20_ABI, signer);
+  const usdc = new ethers.Contract(String(await ledger.reserveToken()), ERC20_ABI, writesAs(signer));
   const current: bigint = await usdc.allowance(signer.address, ledger.target);
   if (current >= units) return;
   const tx = await usdc.approve(ledger.target, ethers.MaxUint256);
