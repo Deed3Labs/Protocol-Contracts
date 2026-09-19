@@ -1,3 +1,4 @@
+import ConfirmIdentitySheet from './ConfirmIdentitySheet';
 import { type ReactNode } from 'react';
 import { Outlet, Navigate, useNavigate } from 'react-router-dom';
 import AppChrome from './AppChrome';
@@ -140,6 +141,8 @@ export default function AppShell() {
           </AppChrome>
           <XmtpModalHost />
           <FaceIdOffer />
+          {/* Our sheet in front of Privy's wallet MFA: it asks, Privy verifies and signs. */}
+          <ConfirmIdentitySheet />
         </AppLock>
       </MoneyActionsProvider>
       </CreditProvider>
