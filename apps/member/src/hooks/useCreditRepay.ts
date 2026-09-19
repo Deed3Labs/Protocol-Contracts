@@ -3,7 +3,7 @@ import { readContract } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { useOptionalAddress, useOptionalSmartWalletClient } from './useOptionalWallet';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
-import { SAVINGS_TIER_ID, scPayPlan, scSetSplit, scRepayCredit, scRepayFromSavings, STABLE_CREDIT_ABI, TERM_PLAN_ABI, TIER_PRINCIPAL_ABI } from '@/lib/sendCalls';
+import { SAVINGS_TIER_ID, scPayPlan, scPayPlanFromSavings, scRepayWrittenOff, scSetSplit, scRepayCredit, scRepayFromSavings, STABLE_CREDIT_ABI, TERM_PLAN_ABI, TIER_PRINCIPAL_ABI } from '@/lib/sendCalls';
 import { recordCreditRepayment } from '@/utils/apiClient';
 import { markChainStale } from '@/lib/chainStale';
 
@@ -125,12 +125,12 @@ export function useRepayFromSavings(): (amount: number) => Promise<RepayOutcome>
  * figure on screen is a moment old by the time it lands; paying off reads what is owed on chain and
  * approves a cent over, and `payPlan` takes only what is owed. A part payment pays what was asked.
  */
-export function usePayPlan(): (planId: number, amount: number, payoff?: boolean) => Promise<RepayOutcome> {
+export function usePayPlan(): (planId: number, amount: number, payoff?: boolean, fromSavings?: boolean) => Promise<RepayOutcome> {
   const address = useOptionalAddress();
   const getClientForChain = useOptionalSmartWalletClient();
 
   return useCallback(
-    async (planId: number, amount: number, payoff = false) => {
+    async (planId: number, amount: number, payoff = false, fromSavings = false) => {
       if (!address) return { error: 'Connect a wallet first.' };
       const chainId = ACTIVE_CHAIN_ID;
       const c = clearContracts(chainId);
@@ -149,7 +149,9 @@ export function usePayPlan(): (planId: number, amount: number, payoff?: boolean)
         const paying = Number(units < owedUnits ? units : owedUnits) / 1_000_000;
 
         const client = getClientForChain ? await getClientForChain({ id: chainId }).catch(() => undefined) : undefined;
-        const hash = await scPayPlan({ smartWalletClient: client, ownerWallet: address, planId, units, chainId });
+        const hash = fromSavings
+          ? await scPayPlanFromSavings({ smartWalletClient: client, ownerWallet: address, planId, units, chainId })
+          : await scPayPlan({ smartWalletClient: client, ownerWallet: address, planId, units, chainId });
         markChainStale();
         const recorded = await recordCreditRepayment(address, hash);
         return {
@@ -183,6 +185,33 @@ export function useSetPlanSplit(): (planId: number, installments: number) => Pro
         return { ok: true };
       } catch (e) {
         return { error: e instanceof Error ? e.message : 'That did not go through. The split is unchanged.' };
+      }
+    },
+    [address, getClientForChain],
+  );
+}
+
+/**
+ * Pay back what a term default wrote off, from the member's USDC. Clearing the rest of it also
+ * reinstates them in the same batch, so term plans come back without waiting for anyone.
+ */
+export function useRepayWrittenOff(): (amount: number, remaining: number) => Promise<RepayOutcome> {
+  const address = useOptionalAddress();
+  const getClientForChain = useOptionalSmartWalletClient();
+
+  return useCallback(
+    async (amount: number, remaining: number) => {
+      if (!address) return { error: 'Connect a wallet first.' };
+      const chainId = ACTIVE_CHAIN_ID;
+      try {
+        const pay = Math.min(amount, remaining);
+        const units = BigInt(Math.round(pay * 100)) * 10_000n;
+        const client = getClientForChain ? await getClientForChain({ id: chainId }).catch(() => undefined) : undefined;
+        await scRepayWrittenOff({ smartWalletClient: client, ownerWallet: address, units, clearsIt: pay >= remaining, chainId });
+        markChainStale();
+        return { repaid: pay };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'That did not go through. Nothing was paid.' };
       }
     },
     [address, getClientForChain],

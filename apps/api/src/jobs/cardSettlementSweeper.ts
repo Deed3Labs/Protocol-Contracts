@@ -8,6 +8,7 @@ import { enforceDisputes } from '../services/disputes/disputeEnforcement.js';
 import { settlePoolMovements } from '../services/chain/poolFunding.js';
 import { sweepAutoRepay } from '../services/chain/autoRepayService.js';
 import { sweepTermCollections } from '../services/chain/termCollection.js';
+import { sweepTermLifecycle } from '../services/chain/termLifecycle.js';
 
 /*
  * The backstop for card settlement on chain.
@@ -65,6 +66,14 @@ export async function tick(): Promise<number> {
       return [];
     });
     for (const r of collected) if (r.action !== 'waiting') console.log(`[term-collection] sweep: ${r.wallet}=${r.action}${r.cents ? ` ${r.cents}c` : ''}`);
+
+    // Term plans from here on: collect what is due under the mandate, default what is two
+    // installments overdue, and reinstate who has earned it.
+    const lifecycle = await sweepTermLifecycle().catch((error) => {
+      console.error('[term-lifecycle] pass failed:', error);
+      return [];
+    });
+    for (const r of lifecycle) console.log(`[term-lifecycle] sweep: ${r.wallet}=${r.action}${r.cents ? ` ${r.cents}c` : ''}`);
 
     // Last: the pool's side of whatever the passes above drew or repaid on pool-funded tiers.
     const pooled = await settlePoolMovements().catch((error) => {

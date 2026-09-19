@@ -1529,6 +1529,10 @@ export interface TermPlan {
   nextDueOn?: string;
   /** How far behind schedule. Zero or absent when on time. */
   behind?: number;
+  /** When a plan that is behind defaults if not caught up, e.g. "Nov 3". */
+  defaultsOn?: string;
+  /** Why the split cannot be changed right now, when it cannot. */
+  splitBlocked?: string;
 }
 
 export interface LinkedAccount {
@@ -1569,6 +1573,11 @@ export interface TermPlans {
   clearsFromId?: string;
   /** The splits offered at checkout, e.g. [1, 2, 4, 12]. */
   splitOptions: number[];
+  /**
+   * Term credit paused by a missed plan: what is left to pay back of what was written off. Paying
+   * it restores term plans; so do six clean cycles.
+   */
+  paused?: { toPayBack: number };
 }
 
 /**

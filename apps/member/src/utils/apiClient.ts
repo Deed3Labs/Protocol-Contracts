@@ -2570,6 +2570,11 @@ export interface CreditTermPlanRow {
   nextPaymentCents: number;
   /** Unix seconds. Null once every installment has come due. */
   nextDueAt: number | null;
+  /** Unix seconds the plan can be declared in default, if behind. Null when on time. */
+  defaultsAt?: number | null;
+  /** Re-splits left (of three), and the earliest the next is allowed. */
+  splitChangesLeft?: number;
+  nextSplitAt?: number | null;
 }
 
 export interface CreditState {
@@ -2613,6 +2618,10 @@ export interface CreditTermCeiling {
    * being charged, because that is what it is.
    */
   carryOwedCents: number;
+  /** Term credit paused by a default, and what it wrote off and has been paid back of it. */
+  suspended?: boolean;
+  writtenOffCents?: number;
+  recoveredCents?: number;
 }
 
 /**

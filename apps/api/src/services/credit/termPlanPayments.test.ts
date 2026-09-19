@@ -55,7 +55,7 @@ describe('installments a payment covers', () => {
 
 describe('where plan payments are written and read', () => {
   test('the recorder reads PlanPaid from the receipt, with the same method as the card share', () => {
-    expect(RECORDER).toMatch(/recordPlanPayments\(\{[\s\S]{0,200}method: fromSavings > 0n \? 'savings' : method/);
+    expect(RECORDER).toMatch(/recordPlanPayments\(\{[\s\S]{0,200}method: fromSavings > 0n \|\| redeemedSavings\(receipt, wallet\) \? 'savings' : method/);
   });
   test('the card row keeps only what did not go to a plan', () => {
     expect(HISTORY).toMatch(/Number\(r\.total_cents\) - \(toPlans\.get/);

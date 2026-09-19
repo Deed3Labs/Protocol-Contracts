@@ -23,6 +23,7 @@ export default function TermPlanDialog({
   onOpenChange,
   onPay,
   onChangeSplit,
+  savingsFree = 0,
 }: {
   plan: TermPlan;
   /** Paid from Ready to allocate, the member's USDC. */
@@ -30,13 +31,19 @@ export default function TermPlanDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Pays on chain. Absent in the preview harness, where the button stays inert. */
-  onPay?: (amount: number, payoff: boolean) => Promise<PayResult>;
+  onPay?: (amount: number, payoff: boolean, fromSavings: boolean) => Promise<PayResult>;
   onChangeSplit: () => void;
+  /**
+   * Savings free to move -- not pledged against drawn credit. Offered as a source so a member can
+   * keep a plan out of default with money they have; never taken without them choosing it.
+   */
+  savingsFree?: number;
 }) {
   const owed = plan.owed ?? 0;
   const next = Math.min(plan.nextPayment ?? 0, owed);
   const behind = plan.behind ?? 0;
-  const source = account.readyToAllocate;
+  const [fromSavings, setFromSavings] = useState(false);
+  const source = fromSavings ? savingsFree : account.readyToAllocate;
 
   const opening = next > 0 ? next : owed;
   const [amount, setAmount] = useState(opening);
@@ -50,6 +57,7 @@ export default function TermPlanDialog({
     setAmount(opening);
     setCustom(false);
     setNote(null);
+    setFromSavings(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -62,7 +70,7 @@ export default function TermPlanDialog({
     if (!onPay || capped <= 0) return;
     setBusy(true);
     setNote(null);
-    const result = await onPay(capped, payoff);
+    const result = await onPay(capped, payoff, fromSavings);
     setBusy(false);
     if (result.repaid && result.repaid > 0) {
       setNote({ text: `Paid ${money(result.repaid, { cents: true })}.${result.error ? ` ${result.error}` : ''}`, bad: false });
@@ -87,7 +95,7 @@ export default function TermPlanDialog({
           <div className="c-conseq">
             <div>
               <span>From</span>
-              <span>Ready to allocate</span>
+              <span>{fromSavings ? 'Savings' : 'Ready to allocate'}</span>
             </div>
             <div>
               <span>Still owed</span>
@@ -107,11 +115,16 @@ export default function TermPlanDialog({
             </div>
           </div>
           {capped > source && (
-            <p className="c-det mt-s2 c-errline">That is more than you have ready to allocate.</p>
+            <p className="c-det mt-s2 c-errline">
+              {fromSavings ? 'That is more than your free savings.' : 'That is more than you have ready to allocate.'}
+            </p>
           )}
           {note && <p className={cn('c-det mt-s2', note.bad && 'c-errline')}>{note.text}</p>}
+          {plan.splitBlocked && <p className="c-det mt-s2">{plan.splitBlocked}</p>}
           <div className="c-pair mt-s2">
-            <Btn onClick={onChangeSplit}>Change split</Btn>
+            <Btn disabled={Boolean(plan.splitBlocked)} onClick={onChangeSplit}>
+              Change split
+            </Btn>
             <Btn primary disabled={capped <= 0 || capped > source || busy || !onPay} onClick={() => void pay()}>
               {busy ? 'Paying…' : `Pay ${money(capped, { cents: true })}`}
             </Btn>
@@ -142,9 +155,26 @@ export default function TermPlanDialog({
               <span className="c-errline">Behind schedule</span>
               <span className="c-fig c-fig-row c-errline">{money(behind, { cents: true })}</span>
             </Line>
+            <p className="c-det mt-[3px]">
+              {plan.defaultsOn ? `Catch up by ${plan.defaultsOn} or this plan defaults. ` : ''}
+              New plans are paused until you are caught up.
+            </p>
           </div>
         )}
       </Rows>
+      {savingsFree > 0 && (
+        <>
+          <p className="c-label">From</p>
+          <div className="c-qc mb-s3 mt-s1!">
+            <Btn className={cn('c-chip-q', !fromSavings && 'c-on')} aria-pressed={!fromSavings} onClick={() => setFromSavings(false)}>
+              Cash
+            </Btn>
+            <Btn className={cn('c-chip-q', fromSavings && 'c-on')} aria-pressed={fromSavings} onClick={() => setFromSavings(true)}>
+              Savings
+            </Btn>
+          </div>
+        </>
+      )}
       <p className="c-label">Amount</p>
       <BigAmount amount={capped} onChange={setAmount} editable={custom} />
       <div className="c-qc">

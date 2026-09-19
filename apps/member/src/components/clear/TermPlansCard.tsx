@@ -125,13 +125,17 @@ export default function TermPlansCard({
         </Rows>
       </CMain>
       <CFoot>
-        {scheduled || data.perCycleLimit !== undefined ? (
+        {scheduled || data.perCycleLimit !== undefined || data.paused ? (
           <div className="c-foot2 max-lg:[--fp:12px]">
             <button type="button" onClick={onLimit}>
               <p className="c-det">
                 <span className="c-muted">Limit</span>{' '}
                 <span className="text-ink">
-                  {data.perCycleLimit !== undefined ? `${money(data.perCycleLimit, { cents: true })}/cycle` : 'Not set'}
+                  {data.paused
+                    ? 'Paused'
+                    : data.perCycleLimit !== undefined
+                      ? `${money(data.perCycleLimit, { cents: true })}/cycle`
+                      : 'Not set'}
                 </span>
               </p>
               <ChevronIcon className="shrink-0 text-ink-50" />

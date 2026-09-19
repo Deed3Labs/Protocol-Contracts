@@ -45,13 +45,19 @@ export default function HomePage({
   onRepayFromSavings,
   onPayPlan,
   onSetSplit,
+  onPayBack,
+  savingsFree,
 }: {
   data?: HomeData;
   /** Repays card debt on chain. Absent in the preview harness. */
   onRepay?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
   onRepayFromSavings?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
   /** Pays one term plan on chain. Absent in the preview harness. */
-  onPayPlan?: (planId: number, amount: number, payoff: boolean) => Promise<{ repaid?: number; error?: string }>;
+  onPayPlan?: (planId: number, amount: number, payoff: boolean, fromSavings?: boolean) => Promise<{ repaid?: number; error?: string }>;
+  /** Pays back what a term default wrote off; clearing it restores term plans. */
+  onPayBack?: (amount: number, remaining: number) => Promise<{ repaid?: number; error?: string }>;
+  /** Savings not pledged against drawn credit: what a plan may be paid from. */
+  savingsFree?: number;
   /** Re-splits a plan on chain. Absent in the preview harness, where a split is only held here. */
   onSetSplit?: (planId: number, installments: number) => Promise<{ ok?: boolean; error?: string }>;
 }) {
@@ -158,7 +164,7 @@ export default function HomePage({
 
   const modals = (
     <>
-      <TermLimitDialog data={termPlansData} open={termLimitOpen} onOpenChange={setTermLimitOpen} />
+      <TermLimitDialog data={termPlansData} open={termLimitOpen} onOpenChange={setTermLimitOpen} onPayBack={onPayBack} />
       <PaymentAccountDialog
         accounts={termPlansData.accounts}
         selectedId={clearsFromId}
@@ -179,7 +185,8 @@ export default function HomePage({
           account={data.cashAccount}
           open={plan !== null && !splitOpen}
           onOpenChange={(o) => !o && setPlanId(null)}
-          onPay={onPayPlan && livePlan ? (amount, payoff) => onPayPlan(Number(sheetPlan.id), amount, payoff) : undefined}
+          onPay={onPayPlan && livePlan ? (amount, payoff, fromSavings) => onPayPlan(Number(sheetPlan.id), amount, payoff, fromSavings) : undefined}
+          savingsFree={livePlan ? savingsFree : 0}
           onChangeSplit={() => setSplitOpen(true)}
         />
       )}
