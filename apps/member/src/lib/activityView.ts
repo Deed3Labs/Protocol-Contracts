@@ -93,12 +93,15 @@ export function rowTag(row: ActivityRow): { label: string; className?: string } 
   }
   if (row.kind === 'sent') return { label: row.counterpartyHandle ? `Sent · ${row.counterpartyHandle}` : 'Sent' };
   if (row.kind === 'repayment') return { label: `Repaid · ${row.repaymentMethod ?? 'Credit'}`, className: 'c-pos' };
+  // A credit purchase says when it has been paid back -- the same on every list that shows it.
+  const repaid =
+    row.source === 'credit' && row.creditRepaid ? (row.creditRepaid === 'full' ? ' · repaid' : ' · part repaid') : '';
   if (row.paidFromTier) {
     const className = { savings: 'c-t-sav', asset: 'c-t-ast', income: 'c-t-inc', boost: undefined }[row.paidFromTier];
-    return { label: TIER_SHORT_LABEL[row.paidFromTier], className };
+    return { label: TIER_SHORT_LABEL[row.paidFromTier] + repaid, className };
   }
   if (row.source === 'savings') return { label: 'Savings', className: 'c-t-sav' };
-  return { label: capitalise(row.source) };
+  return { label: capitalise(row.source) + repaid };
 }
 
 /**

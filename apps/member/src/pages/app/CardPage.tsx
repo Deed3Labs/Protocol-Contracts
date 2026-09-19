@@ -16,11 +16,11 @@ import ReplaceCardDialog from '@/components/clear/card/ReplaceCardDialog';
 import CardControlsCard from '@/components/clear/CardControlsCard';
 import CardDetailsDialog from '@/components/clear/CardDetailsDialog';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
-import { TIER_TEXT_CLASS } from '@/components/clear/ClearCreditCard';
 import { CARD_DAY_ONE } from '@/data/clearPlaceholder';
 import { money, signedMoney } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
-import { CARD_DAILY_CEILING, sourceTag, type ActivityRow, type CardData, REVERSED_ROW } from '@/lib/clearModel';
+import { CARD_DAILY_CEILING, type ActivityRow, type CardData, REVERSED_ROW } from '@/lib/clearModel';
+import { rowTag } from '@/lib/activityView';
 import { cn } from '@/lib/utils';
 
 type Sort = 'newest' | 'oldest' | 'largest';
@@ -31,7 +31,6 @@ const SORTS: { id: Sort; label: string }[] = [
 ];
 
 /** The source tag's colour: the tier that paid, or nothing for cash. */
-const tagClass = (row: ActivityRow) => (row.paidFromTier && row.paidFromTier !== 'boost' ? TIER_TEXT_CLASS[row.paidFromTier] : undefined);
 
 /**
  * Card — the same shape as Savings and Earn.
@@ -127,6 +126,22 @@ export default function CardPage({
    * than a chooser that quietly hides the half of the product they do not have yet.
    */
   const [chosenKind, setChosenKind] = useState<'physical' | 'virtual'>(wallet[0].variant);
+  /*
+   * Follow the cards when they arrive.
+   *
+   * Both of the above are seeded on the first draw. On a first load that draw is the placeholder,
+   * whose card is physical -- so when the member's real cards landed, the selection stayed on a
+   * card that is not theirs and the chooser on Physical: "0 cards · No physical card" for someone
+   * holding five virtual ones, which reads as the order screen. When the selected card is not in
+   * the wallet any more, start again from the member's newest card and its kind.
+   */
+  const walletIds = wallet.map((c) => c.id).join(',');
+  useEffect(() => {
+    if (wallet.some((c) => c.id === activeId)) return;
+    setActiveId(wallet[0].id);
+    setChosenKind(wallet[0].variant);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletIds]);
   const [limits, setLimits] = useState({ perTransaction: data.perTransactionLimit, perDay: data.perDayLimit });
   const [sort, setSort] = useState<Sort>('newest');
   const [selected, setSelected] = useState<ActivityRow | null>(null);
@@ -389,7 +404,7 @@ export default function CardPage({
         ) : (
           <Rows>
             {shown.map((row) => {
-              const tag = sourceTag(row);
+              const tag = rowTag(row);
               /*
                * A voided charge keeps its figure and says what became of it.
                *
@@ -411,7 +426,7 @@ export default function CardPage({
                 </span>
               );
               const label = row.reversed ? REVERSED_ROW.label : tag.label;
-              const labelClass = row.reversed ? REVERSED_ROW.text : tagClass(row);
+              const labelClass = row.reversed ? REVERSED_ROW.text : tag.className;
               return (
                 <button key={row.id} type="button" onClick={() => setSelected(row)} className="block w-full text-left">
                   {desktop ? (

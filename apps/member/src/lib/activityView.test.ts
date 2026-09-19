@@ -109,3 +109,40 @@ describe('repayments show in Activity, named by how they were paid', () => {
     expect(row.amount).toBe(-102);
   });
 });
+
+describe('one tag for a row on every list', () => {
+  const { readFileSync: rf } = require('node:fs');
+  const { join: j } = require('node:path');
+  const src = (p: string) => rf(j(import.meta.dirname, '..', p), 'utf8');
+
+  test('a repaid credit purchase says so in the shared tag, with its colour kept', () => {
+    const base = { id: 'x', name: 'DISPUTE TEST GARAGE', date: 'Sep 18', kind: 'card', source: 'credit', amount: -25 } as never;
+    expect(rowTag({ ...(base as object), creditRepaid: 'full' } as never).label).toBe('Credit · repaid');
+    expect(rowTag({ ...(base as object), creditRepaid: 'part', paidFromTier: 'income' } as never)).toEqual({
+      label: 'Income-backed · part repaid',
+      className: 'c-t-inc',
+    });
+  });
+
+  test('Home recent activity and the Card page use it, as Activity does', () => {
+    expect(src('components/clear/RecentActivityCard.tsx')).toContain('const tag = rowTag(row);');
+    expect(src('pages/app/CardPage.tsx')).toContain('const tag = rowTag(row);');
+    expect(src('pages/app/ActivityPage.tsx')).toContain('const t = rowTag(row);');
+  });
+});
+
+describe('the card page', () => {
+  const { readFileSync: rf } = require('node:fs');
+  const { join: j } = require('node:path');
+  const src = (p: string) => rf(j(import.meta.dirname, '..', p), 'utf8');
+
+  test('the stack swipes on a phone: no pointer capture to lose mid-gesture, as in SwipeRow', () => {
+    const stack = src('components/clear/card/CardStack.tsx');
+    expect(stack).not.toContain('setPointerCapture?.(');
+    expect(stack).not.toContain('onLostPointerCapture');
+  });
+
+  test('the selection follows the real cards when they replace the placeholder', () => {
+    expect(src('pages/app/CardPage.tsx')).toMatch(/if \(wallet\.some\(\(c\) => c\.id === activeId\)\) return;\s*setActiveId\(wallet\[0\]\.id\);\s*setChosenKind\(wallet\[0\]\.variant\);/);
+  });
+});

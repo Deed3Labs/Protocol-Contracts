@@ -1,19 +1,13 @@
 import { Link } from 'react-router-dom';
 import { CHead, CMain, Cell, Line, Rows, SecHead } from './brand/anatomy';
 import { ChevronIcon } from './brand/icons';
-import { TIER_TEXT_CLASS } from './ClearCreditCard';
 import { signedMoney } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
-import { REVERSED_ROW, sourceTag, type ActivityRow } from '@/lib/clearModel';
+import { REVERSED_ROW, type ActivityRow } from '@/lib/clearModel';
+import { rowTag } from '@/lib/activityView';
 import { cn } from '@/lib/utils';
 
 /** The source tag's colour: the tier that paid, or savings, or nothing. */
-function tagClass(row: ActivityRow) {
-  if (row.paidFromTier) return TIER_TEXT_CLASS[row.paidFromTier];
-  if (row.source === 'savings') return 'c-t-sav';
-  return undefined;
-}
-
 /**
  * Recent activity — the full-width cell at the bottom of Home's slab. A growing list always goes full
  * width at the bottom, never in a column beside something short.
@@ -47,10 +41,10 @@ export default function RecentActivityCard({
         ) : (
           <Rows>
             {shown.map((row) => {
-              const tag = sourceTag(row);
+              const tag = rowTag(row);
               // A charge that was given back reads the same here as on the Card and Activity pages.
               const label = row.reversed ? REVERSED_ROW.label : tag.label;
-              const labelClass = row.reversed ? REVERSED_ROW.text : tagClass(row);
+              const labelClass = row.reversed ? REVERSED_ROW.text : tag.className;
               const amount = (
                 <span
                   className={cn(

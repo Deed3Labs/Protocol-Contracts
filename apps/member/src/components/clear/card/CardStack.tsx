@@ -103,20 +103,23 @@ export default function CardStack({
             // and the later this claims it the more chances there are to lose it.
             if (Math.abs(dx) < 4 || Math.abs(dx) < Math.abs(dy)) return;
             swiping.current = true;
-            try {
-              // Best effort: a browser that will not hand over the pointer still gets a swipe, it
-              // just relies on the up landing here rather than being guaranteed it.
-              e.currentTarget.setPointerCapture?.(e.pointerId);
-            } catch {
-              /* not capturable */
-            }
+            /*
+             * No setPointerCapture, as in SwipeRow. A touch is already captured by the element the
+             * finger landed on (the face), and taking it for the stack made that face fire
+             * lostpointercapture -- which bubbles, and ended the swipe the instant it was claimed.
+             * That is why the stack swiped with a mouse and never on a phone. The implicit capture
+             * already sends the rest of the gesture, and the up, through here.
+             */
           }
           travelled.current = dx;
           setDrag(dx);
         }}
         onPointerUp={end}
         onPointerCancel={end}
-        onLostPointerCapture={end}
+        // A mouse has no implicit capture: released outside the stack, the up never arrives here.
+        onPointerLeave={(e) => {
+          if (e.pointerType === 'mouse') end();
+        }}
       >
         {/* Front and one behind. The marker under the stack is what says how many there are, so
             more layers cost height and say nothing the dots have not already said. */}
