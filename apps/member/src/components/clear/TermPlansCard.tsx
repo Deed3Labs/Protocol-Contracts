@@ -61,6 +61,7 @@ export default function TermPlansCard({
   onPlan,
   onLimit,
   onClearsFrom,
+  clearsFromNote,
 }: {
   data: TermPlans;
   /** Draw as a standalone bordered panel instead of a slab cell. */
@@ -68,6 +69,8 @@ export default function TermPlansCard({
   onPlan?: (plan: TermPlan) => void;
   onLimit?: () => void;
   onClearsFrom?: () => void;
+  /** Where plans are paid from when there is nothing to choose; shown as a fact, not a picker. */
+  clearsFromNote?: string;
 }) {
   const total = termPlansTotal(data);
   const scheduled = activePlans(data).length > 0;
@@ -133,12 +136,20 @@ export default function TermPlansCard({
               </p>
               <ChevronIcon className="shrink-0 text-ink-50" />
             </button>
-            <button type="button" onClick={onClearsFrom}>
-              <p className="c-det">
-                <span className="c-muted">Clears from</span> <span className="text-ink">{clearsFromLabel(data)}</span>
-              </p>
-              <ChevronIcon className="shrink-0 text-ink-50" />
-            </button>
+            {clearsFromNote !== undefined ? (
+              <div style={{ cursor: 'default' }}>
+                <p className="c-det">
+                  <span className="c-muted">Clears from</span> <span className="text-ink">{clearsFromNote}</span>
+                </p>
+              </div>
+            ) : (
+              <button type="button" onClick={onClearsFrom}>
+                <p className="c-det">
+                  <span className="c-muted">Clears from</span> <span className="text-ink">{clearsFromLabel(data)}</span>
+                </p>
+                <ChevronIcon className="shrink-0 text-ink-50" />
+              </button>
+            )}
           </div>
         ) : (
           <p className="c-det">Nothing scheduled yet</p>

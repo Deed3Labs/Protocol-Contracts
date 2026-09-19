@@ -44,6 +44,7 @@ export default function HomePage({
   onRepay,
   onRepayFromSavings,
   onPayPlan,
+  onSetSplit,
 }: {
   data?: HomeData;
   /** Repays card debt on chain. Absent in the preview harness. */
@@ -51,6 +52,8 @@ export default function HomePage({
   onRepayFromSavings?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
   /** Pays one term plan on chain. Absent in the preview harness. */
   onPayPlan?: (planId: number, amount: number, payoff: boolean) => Promise<{ repaid?: number; error?: string }>;
+  /** Re-splits a plan on chain. Absent in the preview harness, where a split is only held here. */
+  onSetSplit?: (planId: number, installments: number) => Promise<{ ok?: boolean; error?: string }>;
 }) {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
@@ -120,7 +123,10 @@ export default function HomePage({
         setSplitOpen(p.owed === undefined);
       }}
       onLimit={() => setTermLimitOpen(true)}
-      onClearsFrom={() => setPayAccountOpen(true)}
+      // Live, there is no account to pick: plans are paid from bank deposits as they arrive, and
+      // nothing yet pulls from a linked account. The preview keeps the picker the design shows.
+      onClearsFrom={onPayPlan ? undefined : () => setPayAccountOpen(true)}
+      clearsFromNote={onPayPlan ? 'Bank deposits' : undefined}
     />
   );
 
@@ -180,9 +186,17 @@ export default function HomePage({
           options={termPlansData.splitOptions}
           ratePerCycle={plan.ratePerCycle ?? 0.02}
           doneBy={(splitInto) => `${splitInto} cycle${splitInto === 1 ? '' : 's'} from now`}
-          onSave={(splitInto) => {
-            setSplits((s) => ({ ...s, [plan.id]: splitInto }));
+          onSave={async (splitInto) => {
+            // On chain for a live plan; the chain read that follows is the new schedule.
+            if (onSetSplit && plan.owed !== undefined) {
+              const result = await onSetSplit(Number(plan.id), splitInto);
+              if (result.error) return result;
+            } else {
+              setSplits((s) => ({ ...s, [plan.id]: splitInto }));
+            }
+            setSplitOpen(false);
             setPlanId(null);
+            return { ok: true };
           }}
           open={plan !== null && splitOpen}
           onOpenChange={(o) => {

@@ -3,7 +3,7 @@ import { readContract } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { useOptionalAddress, useOptionalSmartWalletClient } from './useOptionalWallet';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
-import { SAVINGS_TIER_ID, scPayPlan, scRepayCredit, scRepayFromSavings, STABLE_CREDIT_ABI, TERM_PLAN_ABI, TIER_PRINCIPAL_ABI } from '@/lib/sendCalls';
+import { SAVINGS_TIER_ID, scPayPlan, scSetSplit, scRepayCredit, scRepayFromSavings, STABLE_CREDIT_ABI, TERM_PLAN_ABI, TIER_PRINCIPAL_ABI } from '@/lib/sendCalls';
 import { recordCreditRepayment } from '@/utils/apiClient';
 import { markChainStale } from '@/lib/chainStale';
 
@@ -158,6 +158,31 @@ export function usePayPlan(): (planId: number, amount: number, payoff?: boolean)
         };
       } catch (e) {
         return { error: e instanceof Error ? e.message : 'That did not go through. Nothing was paid.' };
+      }
+    },
+    [address, getClientForChain],
+  );
+}
+
+/**
+ * Re-split what is left of a plan, on chain. The member signs it; `setSplit` carries anything they
+ * are behind into the new schedule as due now, so a re-split never clears arrears.
+ */
+export function useSetPlanSplit(): (planId: number, installments: number) => Promise<{ ok?: boolean; error?: string }> {
+  const address = useOptionalAddress();
+  const getClientForChain = useOptionalSmartWalletClient();
+
+  return useCallback(
+    async (planId: number, installments: number) => {
+      if (!address) return { error: 'Connect a wallet first.' };
+      const chainId = ACTIVE_CHAIN_ID;
+      try {
+        const client = getClientForChain ? await getClientForChain({ id: chainId }).catch(() => undefined) : undefined;
+        await scSetSplit({ smartWalletClient: client, ownerWallet: address, planId, installments, chainId });
+        markChainStale();
+        return { ok: true };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'That did not go through. The split is unchanged.' };
       }
     },
     [address, getClientForChain],
