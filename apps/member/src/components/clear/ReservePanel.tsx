@@ -127,10 +127,15 @@ export default function ReservePanel({
         </CHead>
         <CMain>
           {/*
-            * No margin under the bar: the keyline is its caption and carries its own 8px above it.
-            * With 16 under the bar and 16 under the keyline, the caption sat exactly between the
-            * thing it describes and the rule below, belonging to neither.
+            * The figure first, then the bar it describes -- the order Home's savings cell uses for
+            * its credits line, so a progress bar reads the same way wherever it appears.
             */}
+          <Line className="mb-s1">
+            <span className="c-sub">
+              <span className="c-t-sav">Covered</span> <strong>{reserve.coveredPct}%</strong>
+              <span className="c-sep">·</span>Policy floor <strong>{reserve.policyFloorPct}%</strong>
+            </span>
+          </Line>
           <Bar
             label={`${reserve.coveredPct}% of the annual cap covered`}
             segments={[
@@ -138,19 +143,6 @@ export default function ReservePanel({
               { pct: uncovered, color: 'var(--ink-13)', label: 'Uncovered' },
             ]}
           />
-          {/*
-            * The negative margin is a leading trim, not a nudge.
-            *
-            * The section's padding is symmetric, but the caption's line box carries ~4.5px of half
-            * leading under its glyphs while the bar above is a hard-edged block with none. So the
-            * ink sat 17px below the top rule and 19px above the bottom one, and the group read as
-            * riding high. Trimming the trailing leading puts the ink in the middle of the two rules,
-            * which is what the eye is measuring.
-            */}
-          <p className="c-keyline mb-[-2px]">
-            <span className="c-t-sav">Covered</span> <strong>{reserve.coveredPct}%</strong>
-            <span className="c-sep">·</span>Policy floor <strong>{reserve.policyFloorPct}%</strong>
-          </p>
         </CMain>
         {/*
           * The bar and its key are their own section, so the rule under them runs edge to edge.
