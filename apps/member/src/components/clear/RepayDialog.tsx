@@ -79,7 +79,13 @@ export default function RepayDialog({
   const [fromSavings, setFromSavings] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
-  const outstanding = creditUsed(credit);
+  /*
+   * What is owed includes carry. Carry that has been written onto the ledger -- including carry left
+   * behind when a term plan was refunded -- is debt like any other and is paid FIRST, before any
+   * tier. Leaving it out of the total meant "Clear all" cleared everything but the carry.
+   */
+  const carry = Math.max(0, credit.carryCost ?? 0);
+  const outstanding = creditUsed(credit) + carry;
   const source = fromSavings ? savingsUsed : account.readyToAllocate;
   const carrying = outstanding > 0;
   const toClear = unsecuredUsed(credit);
@@ -131,9 +137,11 @@ export default function RepayDialog({
     }
   };
   // Out of savings it settles the savings tier and nothing else, so that is the only line.
+  // Carry first, then the dearest tier -- the order every repayment clears in, on chain and off.
+  const carryApplied = fromSavings ? 0 : Math.min(carry, capped);
   const lines = fromSavings
     ? credit.tiers.filter((t) => t.key === 'savings').map((tier) => ({ tier, applied: capped }))
-    : repayAllocation(credit, capped).filter((line) => line.applied > 0);
+    : repayAllocation(credit, capped - carryApplied).filter((line) => line.applied > 0);
   const towardCycle = repaidUnsecured(credit, capped);
   // The repayment behaves exactly like more deposit arriving, so the cycle reads it the same way and
   // this surface can't disagree with Home about whether the cycle clears.
@@ -269,10 +277,18 @@ export default function RepayDialog({
         <Pick label="Custom" selected={custom} onSelect={() => setCustom(true)} />
       </div>
 
-      {carrying && lines.length > 0 && (
+      {carrying && (lines.length > 0 || carryApplied > 0) && (
         <>
           <p className="c-label mt-s3">This clears</p>
           <Rows className="mt-s1">
+            {carryApplied > 0 && (
+              <div>
+                <Line>
+                  <span>Carry</span>
+                  <span className="c-fig c-fig-row">{money(carryApplied, { cents: true })}</span>
+                </Line>
+              </div>
+            )}
             {lines.map((line) => (
               <div key={line.tier.key}>
                 <Line>

@@ -61,3 +61,17 @@ describe('automatic repayment from USDC deposits', () => {
     expect(autoHook.indexOf('await scSetAutoRepay(')).toBeLessThan(autoHook.indexOf('await recordAutoRepay('));
   });
 });
+
+describe('carry is repaid too, first', () => {
+  test('what is owed includes carry, and "This clears" lists it first', () => {
+    expect(dialog).toContain('const outstanding = creditUsed(credit) + carry;');
+    expect(dialog).toContain('repayAllocation(credit, capped - carryApplied)');
+    expect(dialog).toContain('<span>Carry</span>');
+  });
+
+  test('clearing everything clears it to the unit — no fraction of a cent of carry left behind', () => {
+    expect(hook).toContain('const owed = Math.ceil(Number(owedUnits) / 10_000) / 100;');
+    expect(hook).toContain('...(clearsAll ? { units: owedUnits } : {}),');
+    expect(calls).toContain('const amt = args.units ?? parseUnits(args.amount, 6);');
+  });
+});

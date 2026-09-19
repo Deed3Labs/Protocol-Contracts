@@ -316,10 +316,17 @@ export { STABLE_CREDIT_ABI };
  * tells the issuers, which clear the dearest tier first. Face ID first, like every money move
  * (runBatch). The server then records it in the books from this transaction's own events.
  */
-export async function scRepayCredit(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
+export async function scRepayCredit(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  amount: string;
+  chainId: number;
+  /** Exact ledger units, for clearing everything -- so no fraction of a cent of carry is left behind. */
+  units?: bigint;
+}): Promise<string> {
   const c = clearContracts(args.chainId);
   if (!c?.stableCredit) throw new Error('Repaying on chain is not available on this network yet.');
-  const amt = parseUnits(args.amount, 6);
+  const amt = args.units ?? parseUnits(args.amount, 6);
   return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.stableCredit, amt] }) },
     {
