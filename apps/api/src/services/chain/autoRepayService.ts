@@ -1,7 +1,7 @@
 import { ethers } from 'ethers';
 import { getPayPool } from '../../config/postgres.js';
 import { getContractAddress } from '../../config/contracts.js';
-import { chainProvider } from './provider.js';
+import { chainProvider, writesAs } from './provider.js';
 import { ensureAutoRepayTables } from '../deposits/depositReceiptService.js';
 import { recordUsdcRepayment } from './usdcRepaymentService.js';
 
@@ -94,13 +94,13 @@ export async function sweepAutoRepay(limit = 25): Promise<AutoRepayResult[]> {
   if (!rows.length) return [];
 
   const signer = new ethers.Wallet(settlerKey(), chainProvider(chainId()));
-  const issuer = issuerAt(signer);
+  const issuer = issuerAt(writesAs(signer));
   if (!issuer) return [];
   const stableCredit = String(await issuer.stableCredit());
   // The token repayments are made in, as the chain defines it -- never an address typed in here.
-  const ledger = new ethers.Contract(stableCredit, ['function assurancePool() view returns (address)'], signer);
-  const assurance = new ethers.Contract(String(await ledger.assurancePool()), ['function reserveToken() view returns (address)'], signer);
-  const usdc = new ethers.Contract(String(await assurance.reserveToken()), ERC20_ABI, signer);
+  const ledger = new ethers.Contract(stableCredit, ['function assurancePool() view returns (address)'], signer.provider);
+  const assurance = new ethers.Contract(String(await ledger.assurancePool()), ['function reserveToken() view returns (address)'], signer.provider);
+  const usdc = new ethers.Contract(String(await assurance.reserveToken()), ERC20_ABI, signer.provider);
   const results: AutoRepayResult[] = [];
 
   for (const row of rows) {

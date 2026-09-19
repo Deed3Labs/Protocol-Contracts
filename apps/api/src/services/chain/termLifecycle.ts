@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 import { getContractAddress } from '../../config/contracts.js';
-import { chainProvider } from './provider.js';
+import { chainProvider, writesAs } from './provider.js';
 import { recordUsdcRepayment } from './usdcRepaymentService.js';
 
 /*
@@ -91,7 +91,7 @@ export async function sweepTermLifecycle(): Promise<LifecycleResult[]> {
 
   const provider = chainProvider(chainId());
   const settler = new ethers.Wallet(settlerKey(), provider);
-  const term = new ethers.Contract(termAddress, TERM_ABI, settler);
+  const term = new ethers.Contract(termAddress, TERM_ABI, writesAs(settler));
   const revolving = new ethers.Contract(revolvingAddress, REVOLVING_ABI, provider);
   // A chain without the late-handling upgrade has nothing for this pass to call.
   if (!(await term.memberDefaultableAt(ethers.ZeroAddress).then(() => true).catch(() => false))) return [];
@@ -188,7 +188,7 @@ async function maybeReinstate(
   ]);
   const cleanSince = Number(defaultedAt) + CLEAN_CYCLES * Number(cycle);
   if (cardDefaulted || frozen || Date.now() / 1000 < cleanSince) return null;
-  const operatorTerm = term.connect(new ethers.Wallet(operatorKey(), provider)) as ethers.Contract;
+  const operatorTerm = term.connect(writesAs(new ethers.Wallet(operatorKey(), provider))) as ethers.Contract;
   const tx = await operatorTerm.reinstate(wallet);
   await tx.wait(1);
   console.log(`[term-lifecycle] ${wallet} reinstated after ${CLEAN_CYCLES} clean cycles (${tx.hash})`);

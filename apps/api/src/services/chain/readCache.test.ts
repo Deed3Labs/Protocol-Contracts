@@ -176,3 +176,22 @@ describe('packing reads into one multicall', () => {
     expect(unpackCalls(calls, { id: 99, error } as never)).toEqual([{ id: 1, error }, { id: 2, error }]);
   });
 });
+
+describe('the sweeps read as nobody and write as the settler', () => {
+  const fs = require('node:fs');
+  const read = (f: string) => fs.readFileSync(new URL(f, import.meta.url), 'utf8');
+  test('reads go through the provider without a sender, so they pack', () => {
+    expect(read('./provider.ts')).toContain('call: (tx) => provider.call({ to: tx.to, data: tx.data, blockTag: tx.blockTag }),');
+  });
+  test('writes are still signed and sent by the signer', () => {
+    const p = read('./provider.ts');
+    expect(p).toContain('sendTransaction: (tx) => signer.sendTransaction(tx),');
+    expect(p).toContain('estimateGas: (tx) => signer.estimateGas(tx),');
+  });
+  test('every background pass that reads through the settler uses it', () => {
+    expect(read('./cardSettlementService.ts').match(/issuerFor\(writesAs\(signer\)\)/g)?.length).toBe(3);
+    for (const f of ['./poolFunding.ts', './termCollection.ts', './autoRepayService.ts', './termLifecycle.ts']) {
+      expect(read(f)).toContain('writesAs(');
+    }
+  });
+});
