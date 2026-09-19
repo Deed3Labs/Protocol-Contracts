@@ -47,3 +47,9 @@ describe('a repayment out of savings settles the savings tier in the books, as i
     expect(deposits).toContain("[{ tier: 'savings', amountCents: toSavings }, ...rest.settlements]");
   });
 });
+
+describe('a savings-funded repayment is paid from savings in the books, not from cash', () => {
+  test('the counter account is member_savings when the savings tier was settled from savings', () => {
+    expect(deposits).toContain("fundedFromSavings > 0 && settlement.tier === 'savings' ? 'member_savings' : 'member_cash_usdc'");
+  });
+});
