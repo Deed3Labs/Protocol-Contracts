@@ -1,3 +1,4 @@
+import { stepPacer } from '@/lib/moveSteps';
 import { useCallback, useState } from 'react';
 import { useOptionalAddress, useOptionalSmartWalletClient } from './useOptionalWallet';
 import { shortMoveReason } from './usePoolMove';
@@ -81,6 +82,10 @@ export function useSavingsMove(
         const sponsored = direction === 'deposit' ? scDeposit : scRedeem;
         const relayed = direction === 'deposit' ? gaslessDeposit : gaslessRedeem;
 
+        // The dots: the first in flight while the wallet signs and the chain confirms, then walked on.
+        const pace = stepPacer((step) => setProgress({ status: 'processing', step }));
+        const onConfirmed = () => void pace.to(stepLabelsLength - 1);
+
         let hash: string;
         try {
           // Bind the client to this chain — the default one sits on Privy's defaultChain, which is
@@ -88,11 +93,12 @@ export function useSavingsMove(
           const chainClient = getClientForChain
             ? await getClientForChain({ id: chainId }).catch(() => undefined)
             : undefined;
-          hash = await sponsored({ smartWalletClient: chainClient, ownerWallet: address, amount: amountStr, chainId });
+          hash = await sponsored({ smartWalletClient: chainClient, ownerWallet: address, amount: amountStr, chainId, onConfirmed });
         } catch {
           hash = await relayed({ ownerWallet: address, amount: amountStr, chainId });
         }
 
+        await pace.to(stepLabelsLength - 1);
         setTxHash(hash);
         setProgress({ status: 'done', step: stepLabelsLength });
         onMoved?.(direction, amount);

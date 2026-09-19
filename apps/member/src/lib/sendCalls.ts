@@ -113,7 +113,7 @@ export async function scApproveMany(args: {
 }
 
 /** Cash (USDC) → Savings (CLRUSD): [approve, deposit] in ONE sponsored batch. */
-export async function scDeposit(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
+export async function scDeposit(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number; onConfirmed?: () => void }): Promise<string> {
   const c = clearContracts(args.chainId);
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
   const amt = parseUnits(args.amount, 6);
@@ -122,12 +122,14 @@ export async function scDeposit(args: { smartWalletClient?: unknown; ownerWallet
     { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, amt] }) },
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'deposit', args: [c.usdc, amt, receiver] }) },
   ]);
+  // The money has moved; what is left is recording the credits (the progress dots follow this).
+  args.onConfirmed?.();
   await recordGaslessSavings({ action: 'deposit', amount: amt.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
   return hash;
 }
 
 /** Savings (CLRUSD) → Cash (USDC): [approve, redeem] in ONE sponsored batch. */
-export async function scRedeem(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number }): Promise<string> {
+export async function scRedeem(args: { smartWalletClient?: unknown; ownerWallet: string; amount: string; chainId: number; onConfirmed?: () => void }): Promise<string> {
   const c = clearContracts(args.chainId);
   if (!c) throw new Error(`No contracts for chain ${args.chainId}.`);
   const amt = parseUnits(args.amount, 6);
@@ -136,6 +138,7 @@ export async function scRedeem(args: { smartWalletClient?: unknown; ownerWallet:
     { to: c.clrusd, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, amt] }) },
     { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'redeem', args: [c.usdc, amt, receiver] }) },
   ]);
+  args.onConfirmed?.();
   await recordGaslessSavings({ action: 'redeem', amount: amt.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
   return hash;
 }
