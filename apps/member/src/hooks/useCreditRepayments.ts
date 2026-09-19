@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { getCreditRepayments, type CreditRepaymentEntry } from '@/utils/apiClient';
 import { onChainStale } from '@/lib/chainStale';
-import { useRemembered } from '@/lib/rememberedState';
+import { useRemembered, walletKey } from '@/lib/rememberedState';
 
 /**
  * The member's repayments, for Activity and Home's recent list.
@@ -10,7 +10,7 @@ import { useRemembered } from '@/lib/rememberedState';
  * repayment that appears only after a manual refresh reads as one that did not happen.
  */
 export function useCreditRepayments(address: string | undefined): CreditRepaymentEntry[] {
-  const [repayments, setRepayments] = useRemembered<CreditRepaymentEntry[]>(`repayments:${address ?? ''}`, []);
+  const [repayments, setRepayments] = useRemembered<CreditRepaymentEntry[]>(`repayments:${walletKey(address)}`, []);
   useEffect(() => {
     if (!address) return;
     let cancelled = false;

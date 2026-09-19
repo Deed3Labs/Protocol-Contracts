@@ -41,6 +41,7 @@ import { activePlans, addableTier, creditLimit, savingsTotal, type ActivityRow, 
  */
 export default function HomePage({
   data = HOME_DAY_ONE,
+  pending = false,
   onRepay,
   onRepayFromSavings,
   onPayPlan,
@@ -49,6 +50,8 @@ export default function HomePage({
   savingsFree,
 }: {
   data?: HomeData;
+  /** Nothing known yet: the populated layout with placeholder figures, never the day-one layout. */
+  pending?: boolean;
   /** Repays card debt on chain. Absent in the preview harness. */
   onRepay?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
   onRepayFromSavings?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
@@ -89,7 +92,10 @@ export default function HomePage({
   const [selected, setSelected] = useState<ActivityRow | null>(null);
 
   // Nothing has ever landed in the account: no cycle running, no savings, no cash.
-  const dayOne = creditLimit(data.credit) === 0 && savingsTotal(data.savings) === 0 && data.cash === 0;
+  // Pending is not day one: a member whose figures have not arrived is shown the page they will get,
+  // with placeholders, not the brand-new-account layout it would then jump away from.
+  const dayOne =
+    !pending && creditLimit(data.credit) === 0 && savingsTotal(data.savings) === 0 && data.cash === 0;
   const boost = addableTier(data.credit);
 
   // Deep links: add money from the nav's quick actions, the limit breakdown from a bond on Earn, and
@@ -296,7 +302,8 @@ export default function HomePage({
       {hero}
       <div className="c-home">
         {cycle}
-        <TaskStrip tasks={data.tasks} onAction={onTask} limit={desktop ? undefined : 1} />
+        {/* Setup steps come from the day-one fixture until real figures say otherwise: not while pending. */}
+        {!pending && <TaskStrip tasks={data.tasks} onAction={onTask} limit={desktop ? undefined : 1} />}
         {desktop ? (
           /* Both columns hold two cells, so they go straight into the shared grid: one grid row per
              pair means every divider meets its neighbour. Nest only when the cell counts differ. */

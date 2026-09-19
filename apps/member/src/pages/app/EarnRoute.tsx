@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import PendingFigures from '@/components/clear/PendingFigures';
+import { useEffect, useState } from 'react';
 import EarnPage from './EarnPage';
 import { EARN_DAY_ONE, MILESTONES } from '@/data/clearPlaceholder';
 import { toEarnData } from '@/lib/earnMapping';
@@ -7,7 +8,7 @@ import { useAppKitAccount } from '@/lib/walletCompat';
 import { getEarn, getPaySummary, type EarnState, type PaySummary } from '@/utils/apiClient';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
-import { useRemembered } from '@/lib/rememberedState';
+import { useRemembered, walletKey } from '@/lib/rememberedState';
 
 /*
  * Day-one, not in-use.
@@ -41,8 +42,9 @@ import { useRemembered } from '@/lib/rememberedState';
  */
 export default function EarnRoute() {
   const { address } = useAppKitAccount();
-  const [earn, setEarn] = useRemembered<EarnState | null>(`earn:${address ?? ''}`, null);
-  const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${address ?? ''}`, null);
+  const [earn, setEarn] = useRemembered<EarnState | null>(`earn:${walletKey(address)}`, null);
+  const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${walletKey(address)}`, null);
+  const [earnTried, setEarnTried] = useState(false);
 
   useEffect(() => {
     if (!address) return;
@@ -53,6 +55,7 @@ export default function EarnRoute() {
         // Pool and bond figures blank the same way credit did when a read errors; same rule.
         setEarn((prev) => keepLastGood(prev, e));
         setPay(p);
+        setEarnTried(true);
       });
     };
     read();
@@ -80,5 +83,9 @@ export default function EarnRoute() {
     ? toEarnData(earn.pool, earn.bonds, earn.terms, earn.earnedToDateCents, reserveDate, EARN_DAY_ONE)
     : EARN_DAY_ONE;
 
-  return <EarnPage data={data} />;
+  return (
+    <PendingFigures pending={earn === null && !earnTried}>
+      <EarnPage data={data} />
+    </PendingFigures>
+  );
 }

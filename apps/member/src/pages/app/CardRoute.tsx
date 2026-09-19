@@ -1,3 +1,4 @@
+import PendingFigures from '@/components/clear/PendingFigures';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useTheme } from '@/context/ThemeContext';
@@ -12,7 +13,7 @@ import { onChainStale } from '@/lib/chainStale';
 import { toCreditTiers, toLimitBacking } from '@/lib/creditMapping';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { keepLastGood } from '@/lib/keepLastGood';
-import { useRemembered } from '@/lib/rememberedState';
+import { useRemembered, walletKey } from '@/lib/rememberedState';
 
 /*
  * Day-one, not in-use.
@@ -71,15 +72,16 @@ function arrivesAbout(shippedAt: string | null): string | undefined {
 export default function CardRoute() {
   const { address } = useAppKitAccount();
   // Remembered for the session: returning to Card draws the card and its spend, then refreshes.
-  const [cards, setCards] = useRemembered<MemberCard[]>(`cards:${address ?? ''}`, []);
+  const [cards, setCards] = useRemembered<MemberCard[]>(`cards:${walletKey(address)}`, []);
   const card = cards[0] ?? null;
-  const [loaded, setLoaded] = useRemembered(`cards:loaded:${address ?? ''}`, false);
+  const [loaded, setLoaded] = useRemembered(`cards:loaded:${walletKey(address)}`, false);
+  const [cardsTried, setCardsTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const identity = useIdentity();
   const member = useMemberProfile();
   const { theme } = useTheme();
-  const [credit, setCredit] = useRemembered<CreditState | null>(`credit:${address ?? ''}`, null);
+  const [credit, setCredit] = useRemembered<CreditState | null>(`credit:${walletKey(address)}`, null);
   /** The card the New card sheet just made, so its last step can show what happened. */
   const [newCard, setNewCard] = useState<{ kind: 'virtual' | 'physical'; last4: string; label?: string } | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export default function CardRoute() {
   const [identityAddress, setIdentityAddress] = useState<BankIdentity['address']>(null);
   const [activateError, setActivateError] = useState<string | null>(null);
   const [pinSession, setPinSession] = useState<{ session: string; environment: 'sandbox' | 'production' } | undefined>(undefined);
-  const [spend, setSpend] = useRemembered<CardTransaction[] | null>(`cardspend:${address ?? ''}`, null);
+  const [spend, setSpend] = useRemembered<CardTransaction[] | null>(`cardspend:${walletKey(address)}`, null);
 
   /*
    * What the card spent, from our own approved authorizations.
@@ -137,6 +139,7 @@ export default function CardRoute() {
     let cancelled = false;
     void getCards().then(({ value, error, unavailable }) => {
       if (cancelled) return;
+      setCardsTried(true);
       /*
        * A failed read is not an empty account.
        *
@@ -443,8 +446,14 @@ export default function CardRoute() {
           : {}),
       };
 
+  // Nothing remembered and the first read still out: the card and its figures as placeholders,
+  // rather than the "order a card" screen flashing at someone who has one.
+  const pending = !loaded && !cardsTried;
+
   return (
+    <PendingFigures pending={pending}>
     <CardPage
+      pending={pending}
       data={data}
       onActivate={activate}
       onToggleFreeze={toggleFreeze}
@@ -511,5 +520,6 @@ export default function CardRoute() {
         return { url: (await getCardEmbedUrl(token, theme)) ?? undefined };
       }}
     />
+    </PendingFigures>
   );
 }

@@ -1,4 +1,4 @@
-import { useRemembered } from '@/lib/rememberedState';
+import { useRemembered, walletKey } from '@/lib/rememberedState';
 import { useCallback, useEffect, useState } from 'react';
 import { useOptionalAddress, useOptionalSmartWalletClient } from './useOptionalWallet';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
@@ -24,7 +24,7 @@ export function useAutoRepay(): AutoRepay {
   const address = useOptionalAddress();
   const getClientForChain = useOptionalSmartWalletClient();
   // Remembered, so the switch does not show off and then flip on each time Settings opens.
-  const [enabled, setEnabled] = useRemembered(`autorepay:${address ?? ''}`, false);
+  const [enabled, setEnabled] = useRemembered(`autorepay:${walletKey(address)}`, false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

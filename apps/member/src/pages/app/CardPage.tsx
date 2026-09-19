@@ -45,6 +45,7 @@ const tagClass = (row: ActivityRow) => (row.paidFromTier && row.paidFromTier !==
  * card is activated the page is the activation screen.
  */
 export default function CardPage({
+  pending = false,
   data = CARD_DAY_ONE,
   onActivate,
   onToggleFreeze,
@@ -66,6 +67,8 @@ export default function CardPage({
   /** Issues the card. Absent in the preview harness, where the page stands alone. */
   onActivate?: () => void;
   onToggleFreeze?: (frozen: boolean, cardId?: string) => void;
+  /** Nothing known yet: draw the card and its rows as placeholders, not the order-a-card screen. */
+  pending?: boolean;
   busy?: boolean;
   /** Why the last action did not do what it looked like it would. Absent when nothing went wrong. */
   notice?: string | null;
@@ -137,6 +140,19 @@ export default function CardPage({
    * physical card that has been ordered or posted takes the whole screen until it is live. Day one
    * — nothing at all — is the other end of the same idea: there is nothing to control yet.
    */
+  if (pending) {
+    return (
+      <div className="c-skel-page" aria-hidden>
+        <div className="c-cardface c-skel" />
+        <div className="c-skel-rows">
+          <span className="c-skel c-skel-line" />
+          <span className="c-skel c-skel-line c-skel-short" />
+          <span className="c-skel c-skel-line" />
+        </div>
+      </div>
+    );
+  }
+
   if (!data.activated) {
     return <NoPhysicalCard dayOne busy={busy} notice={notice} onOrder={onActivate} />;
   }

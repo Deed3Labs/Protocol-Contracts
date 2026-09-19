@@ -1,4 +1,5 @@
 import SavingsPage from './SavingsPage';
+import PendingFigures from '@/components/clear/PendingFigures';
 import { useSavingsData } from '@/hooks/useSavingsData';
 
 /**
@@ -11,5 +12,10 @@ import { useSavingsData } from '@/hooks/useSavingsData';
  * empty page has been told something false about their savings.
  */
 export default function SavingsRoute() {
-  return <SavingsPage data={useSavingsData()} />;
+  const { pending, ...data } = useSavingsData();
+  return (
+    <PendingFigures pending={pending}>
+      <SavingsPage data={data} />
+    </PendingFigures>
+  );
 }
