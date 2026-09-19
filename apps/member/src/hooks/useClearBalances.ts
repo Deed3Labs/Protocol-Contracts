@@ -1,5 +1,7 @@
 import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMultichainBalances } from '@/hooks/useMultichainBalances';
+import { useAppKitAccount } from '@/lib/walletCompat';
+import { useRemembered, walletKey } from '@/lib/rememberedState';
 import { COMMON_TOKENS } from '@/config/tokens';
 import { includeChainBalance, ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 
@@ -104,6 +106,12 @@ interface Pending {
 export function ClearBalancesProvider({ children }: { children: ReactNode }) {
   const { tokens, tokensLoading, refreshTokens } = useMultichainBalances({ chainIds: CLEAR_CHAIN_IDS });
   const [pending, setPending] = useState<Pending | null>(null);
+  const { address } = useAppKitAccount();
+  // The last balances this wallet was shown, kept on the device: a reopened app opens on them.
+  const [lastKnown, setLastKnown] = useRemembered<{ cash: number; savings: number } | null>(
+    `balances:${walletKey(address)}`,
+    null,
+  );
 
   // `tokensLoading` flips true on every background poll, but `tokens` (and the derived balance) are
   // retained across polls — so treating every poll as "loading" made consumers blank the value to a
@@ -200,18 +208,29 @@ export function ClearBalancesProvider({ children }: { children: ReactNode }) {
     [fetched, refreshTokens],
   );
 
+  // Every real read replaces what is remembered, so the next open starts from the latest figure.
+  useEffect(() => {
+    if (everLoaded) setLastKnown({ cash: fetched.cash, savings: fetched.savings });
+  }, [everLoaded, fetched.cash, fetched.savings, setLastKnown]);
+
   const value = useMemo<ClearBalances>(() => {
-    const cash = pending ? pending.cash : fetched.cash;
-    const savings = pending ? pending.savings : fetched.savings;
+    /*
+     * Until the first read lands: the remembered balances if there are any, and `loading` only when
+     * there are none. It used to report not-loading with zeros in the moment before the first fetch
+     * even began -- "$0.00" for a beat on every cold start.
+     */
+    const base = everLoaded || !lastKnown ? fetched : lastKnown;
+    const cash = pending ? pending.cash : base.cash;
+    const savings = pending ? pending.savings : base.savings;
     return {
       cash,
       savings,
       total: cash + savings,
-      loading: tokensLoading && !everLoaded,
+      loading: !everLoaded && !lastKnown,
       refresh: () => void refreshTokens(true),
       applyOptimistic,
     };
-  }, [pending, fetched, tokensLoading, everLoaded, refreshTokens, applyOptimistic]);
+  }, [pending, fetched, everLoaded, lastKnown, refreshTokens, applyOptimistic]);
 
   return createElement(Ctx.Provider, { value }, children);
 }

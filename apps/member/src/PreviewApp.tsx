@@ -9,6 +9,7 @@ import RepayDialog from '@/components/clear/RepayDialog';
 import TermPlansCard from '@/components/clear/TermPlansCard';
 import TermPlanDialog from '@/components/clear/TermPlanDialog';
 import TermLimitDialog from '@/components/clear/TermLimitDialog';
+import PendingFigures from '@/components/clear/PendingFigures';
 import { Button } from '@/components/ui/button';
 import HeaderActions from '@/components/shell/HeaderActions';
 import { unreadThreads } from '@/lib/clearModel';
@@ -256,6 +257,26 @@ function TermPlanPayPreview() {
           savingsFree={500}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * A page that has nothing yet: figures as placeholders, then the real ones, on a toggle -- so the
+ * two can be compared for any shift. Home's figures, then the Card page's placeholder card.
+ */
+function PendingPreview() {
+  const [pending, setPending] = useState(true);
+  return (
+    <div className="flex flex-col gap-5">
+      <Button variant="outline" onClick={() => setPending((p) => !p)}>{pending ? 'Show figures' : 'Show placeholders'}</Button>
+      {/* What a cold start really has: the day-one fixture, until the reads land. */}
+      <PendingFigures pending={pending}>
+        <HomePage pending={pending} data={pending ? HOME_DAY_ONE : HOME_IN_USE} />
+      </PendingFigures>
+      <PendingFigures pending={pending}>
+        <CardPage pending={pending} />
+      </PendingFigures>
     </div>
   );
 }
@@ -900,6 +921,7 @@ export default function PreviewApp() {
                         <Route path="/repay" element={<RepayPreview />} />
                         <Route path="/term-plans" element={<TermPlansPreview />} />
                         <Route path="/term-plan-pay" element={<TermPlanPayPreview />} />
+                        <Route path="/pending" element={<PendingPreview />} />
                         <Route path="/learn/:topic" element={<ExplainerPage />} />
                         <Route path="/settings" element={<SettingsPreview empty={empty} />} />
                         <Route path="/settings/:page" element={<SettingsPreview empty={empty} />} />

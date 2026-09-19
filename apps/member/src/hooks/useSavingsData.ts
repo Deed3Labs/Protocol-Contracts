@@ -1,5 +1,5 @@
-import { useRemembered } from '@/lib/rememberedState';
-import { useEffect } from 'react';
+import { useRemembered, walletKey } from '@/lib/rememberedState';
+import { useEffect, useState } from 'react';
 import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useAppKitAccount } from '@/lib/walletCompat';
@@ -36,18 +36,22 @@ import type { SavingsData } from '@/lib/clearModel';
  * "2 of 4 active" and then a pane telling them the second protection was 1,000 credits away. Two
  * screens in one flow, disagreeing about the same member, because each fetched for itself.
  */
-export function useSavingsData(): SavingsData {
+export function useSavingsData(): SavingsData & { pending: boolean } {
   const { address } = useAppKitAccount();
   const { savings: savingsBalance, loading } = useClearBalances();
   // Same key as Home and Earn: the pay summary is one read, remembered for the session.
-  const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${address ?? ''}`, null);
+  const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${walletKey(address)}`, null);
+  const [payTried, setPayTried] = useState(false);
 
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
     const read = () => {
       void getPaySummary(address).then((result) => {
-        if (!cancelled) setPay(result);
+        if (!cancelled) {
+          setPay(result);
+          setPayTried(true);
+        }
       });
     };
     read();
@@ -67,6 +71,8 @@ export function useSavingsData(): SavingsData {
   const haveBalance = Boolean(address) && !loading;
 
   return {
+    // Nothing to show yet: no remembered balance or credits, and the first reads still out.
+    pending: loading || (pay === null && !payTried),
     ...SAVINGS_DAY_ONE,
     savings: {
       ...SAVINGS_DAY_ONE.savings,

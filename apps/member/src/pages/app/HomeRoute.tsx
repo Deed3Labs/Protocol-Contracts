@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import PendingFigures from '@/components/clear/PendingFigures';
+import { useEffect, useState } from 'react';
 import HomePage from './HomePage';
 import { HOME_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
@@ -10,7 +11,7 @@ import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapp
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
 import { useCreditRepay, usePayPlan, useRepayFromSavings, useRepayWrittenOff, useSetPlanSplit } from '@/hooks/useCreditRepay';
-import { useRemembered } from '@/lib/rememberedState';
+import { useRemembered, walletKey } from '@/lib/rememberedState';
 import {
   getCardTransactions,
   getCredit,
@@ -60,10 +61,16 @@ export default function HomeRoute() {
   const { cash, savings, loading: balancesLoading } = useClearBalances();
   const { items, loading: txLoading } = useClearTransactions();
   // Remembered for the session: returning to Home draws what it showed, then refreshes.
-  const [lithic, setLithic] = useRemembered<LithicAccountResponse | null>(`home:lithic:${address ?? ''}`, null);
-  const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${address ?? ''}`, null);
-  const [credit, setCredit] = useRemembered<CreditState | null>(`credit:${address ?? ''}`, null);
-  const [cards, setCards] = useRemembered<CardTransaction[]>(`cardtx:${address ?? ''}`, []);
+  const [lithic, setLithic] = useRemembered<LithicAccountResponse | null>(
+    `home:lithic:${walletKey(address)}`,
+    null,
+    // Carries the direct-deposit account and routing numbers: this session only, never the device.
+    { device: false },
+  );
+  const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${walletKey(address)}`, null);
+  const [credit, setCredit] = useRemembered<CreditState | null>(`credit:${walletKey(address)}`, null);
+  const [creditTried, setCreditTried] = useState(false);
+  const [cards, setCards] = useRemembered<CardTransaction[]>(`cardtx:${walletKey(address)}`, []);
   // Every repayment, whichever way it was made, listed alongside what it paid for.
   const repayments = useCreditRepayments(address);
   const repay = useCreditRepay();
@@ -105,6 +112,7 @@ export default function HomeRoute() {
     const read = () => {
       void getCredit(address).then((result) => {
         if (!cancelled) setCredit((prev) => keepLastGood(prev, result));
+        if (!cancelled) setCreditTried(true);
       });
       void getPaySummary(address).then((result) => {
         if (!cancelled) setPay(result);
@@ -196,8 +204,13 @@ export default function HomeRoute() {
       ? Math.max(0, savings - credit.savingsEncumberedCents / 100)
       : 0;
 
+  // Nothing to show yet: no remembered figures and the first reads still out. Placeholders, not zeros.
+  const pending = balancesLoading || (credit === null && !creditTried);
+
   return (
+    <PendingFigures pending={pending}>
     <HomePage
+      pending={pending}
       data={data}
       onRepay={repay}
       onRepayFromSavings={repayFromSavings}
@@ -206,5 +219,6 @@ export default function HomeRoute() {
       onPayBack={payBack}
       savingsFree={savingsFree}
     />
+    </PendingFigures>
   );
 }
