@@ -3,6 +3,7 @@ import { useUpdatePhone } from '@privy-io/react-auth';
 import SettingsPage from './SettingsPage';
 import { useMemberProfile, type MailingAddress } from '@/hooks/useMemberProfile';
 import { useFaceId } from '@/hooks/useFaceId';
+import { usePaymentProtection } from '@/hooks/usePaymentProtection';
 import { useAutoRepay } from '@/hooks/useAutoRepay';
 import { useLogout } from '@/hooks/useLogout';
 import { useContacts } from '@/context/ContactsContext';
@@ -30,6 +31,7 @@ export default function SettingsRoute() {
   const { contacts } = useContacts();
   const { cash } = useClearBalances();
   const faceId = useFaceId();
+  const protection = usePaymentProtection();
   const disputes = useDisputes();
   const autoRepay = useAutoRepay();
 
@@ -67,6 +69,17 @@ export default function SettingsRoute() {
       }}
       disputes={disputes}
       autoRepay={autoRepay}
+      // What the wallet asks for before it signs a payment (Privy MFA), and the ways to set it up.
+      payments={{
+        factors: protection.factors,
+        faceIdNotEnrolled: protection.faceIdNotEnrolled,
+        busy: protection.busy,
+        error: protection.error,
+        onEnrollFaceId: () => void protection.enrollFaceId(),
+        onStartAuthenticator: protection.startAuthenticator,
+        onConfirmAuthenticator: protection.confirmAuthenticator,
+        onRemoveAuthenticator: () => void protection.removeAuthenticator(),
+      }}
       address={member.mailingAddress}
       savingAddress={savingAddress}
       addressError={addressError}

@@ -20,7 +20,6 @@ import PatronagePanel from '@/components/settings/PatronagePanel';
 import VotingPanel from '@/components/settings/VotingPanel';
 import BallotDialog from '@/components/settings/BallotDialog';
 import AdvancedDialog from '@/components/settings/AdvancedDialog';
-import { money } from '@clear/domain';
 import ThemePicker from '@/components/clear/ThemePicker';
 import { THEME_PINNED } from '@/context/ThemeContext';
 import AccelerationPanel from '@/components/settings/AccelerationPanel';
@@ -29,6 +28,7 @@ import ChangePhoneDialog from '@/components/settings/ChangePhoneDialog';
 import ChangeAddressDialog from '@/components/settings/ChangeAddressDialog';
 import { EMPTY_ADDRESS, formatAddress, type MailingAddress } from '@/hooks/useMemberProfile';
 import TrustedDevicesDialog from '@/components/settings/TrustedDevicesDialog';
+import AuthenticatorDialog from '@/components/settings/AuthenticatorDialog';
 import CloseAccountDialog from '@/components/settings/CloseAccountDialog';
 import ContactsPane from '@/components/settings/ContactsPane';
 import { SETTINGS, CONTACTS, DISPUTE_SAMPLE_CANDIDATES, DISPUTE_SAMPLE_MINE } from '@/data/clearPlaceholder';
@@ -76,6 +76,7 @@ export default function SettingsPage({
   faceId,
   disputes,
   autoRepay,
+  payments,
 }: {
   data?: SettingsData;
   /** The address book, and Ready to allocate for sending from it. */
@@ -127,6 +128,20 @@ export default function SettingsPage({
   };
   /** Automatic repayment from USDC deposits. Absent in the preview harness. */
   autoRepay?: { enabled: boolean; busy: boolean; error: string | null; onChange: (enabled: boolean) => void };
+  /**
+   * What guards payments at the wallet (Privy MFA): Face ID, an authenticator app, or nothing yet.
+   * Absent in the preview harness, which shows the rows without acting on them.
+   */
+  payments?: {
+    factors: ('passkey' | 'totp')[];
+    faceIdNotEnrolled: boolean;
+    busy: boolean;
+    error: string | null;
+    onEnrollFaceId: () => void;
+    onStartAuthenticator: () => Promise<{ secret: string; authUrl: string } | null>;
+    onConfirmAuthenticator: (code: string) => Promise<boolean>;
+    onRemoveAuthenticator: () => void;
+  };
 }) {
   const navigate = useNavigate();
   const { pathname, state } = useLocation();
@@ -140,6 +155,8 @@ export default function SettingsPage({
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [addressOpen, setAddressOpen] = useState(false);
   const [devicesOpen, setDevicesOpen] = useState(false);
+  const [authenticatorOpen, setAuthenticatorOpen] = useState(false);
+  const paidWith = payments?.factors ?? [];
   const [linkOpen, setLinkOpen] = useState(false);
   const [ballotOpen, setBallotOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -160,7 +177,6 @@ export default function SettingsPage({
   }, []);
   const [toggles, setToggles] = useState<Record<string, boolean>>(() => ({
     faceid: data.faceIdOn,
-    'faceid-payments': true,
     ...Object.fromEntries(data.notificationGroups.flatMap((g) => g.prefs.map((p) => [`notify-${p.id}`, true] as const))),
   }));
 
@@ -280,10 +296,45 @@ export default function SettingsPage({
                 )
               }
             />,
+            /*
+             * What the wallet itself asks for before it signs a payment. Not a switch: it is on
+             * whenever a factor is enrolled, and the way to change it is the rows that enrol them.
+             */
             <TwoLineRow
-              title={<label htmlFor="faceid-payments">Require Face ID for payments</label>}
-              detail={`Over ${money(data.paymentFaceIdOver)}`}
-              trailing={toggle('faceid-payments')}
+              title="Payments"
+              detail={
+                payments?.error ? (
+                  <span className="c-errline">{payments.error}</span>
+                ) : paidWith.includes('passkey') ? (
+                  'Face ID confirms every payment'
+                ) : paidWith.includes('totp') ? (
+                  'Your authenticator app confirms every payment'
+                ) : payments?.faceIdNotEnrolled ? (
+                  'Face ID is on for sign-in, not yet for payments'
+                ) : (
+                  'Not protected yet: turn on Face ID or an authenticator app'
+                )
+              }
+              trailing={
+                payments?.faceIdNotEnrolled ? (
+                  <Btn className="h-[30px] px-[12px] text-detail" disabled={payments.busy} onClick={payments.onEnrollFaceId}>
+                    Use Face ID
+                  </Btn>
+                ) : undefined
+              }
+            />,
+            <TwoLineRow
+              title="Authenticator app"
+              detail={paidWith.includes('totp') ? 'On' : 'For a device without Face ID'}
+              trailing={
+                <Btn
+                  className="h-[30px] px-[12px] text-detail"
+                  disabled={!payments || payments.busy}
+                  onClick={() => (paidWith.includes('totp') ? payments?.onRemoveAuthenticator() : setAuthenticatorOpen(true))}
+                >
+                  {paidWith.includes('totp') ? 'Remove' : 'Set up'}
+                </Btn>
+              }
             />,
           ])}
         </CMain>
@@ -426,6 +477,16 @@ export default function SettingsPage({
         error={addressError}
       />
       <TrustedDevicesDialog devices={data.devices} open={devicesOpen} onOpenChange={setDevicesOpen} />
+      {payments && (
+        <AuthenticatorDialog
+          open={authenticatorOpen}
+          onOpenChange={setAuthenticatorOpen}
+          onStart={payments.onStartAuthenticator}
+          onConfirm={payments.onConfirmAuthenticator}
+          busy={payments.busy}
+          error={payments.error}
+        />
+      )}
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
       <ProfilePhotoDialog
         profile={profile}

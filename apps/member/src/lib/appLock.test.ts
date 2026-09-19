@@ -86,7 +86,7 @@ describe('every way money leaves passes the gate', () => {
   };
 
   test('on-chain: the sponsored batch, the gasless signature, autopay', () => {
-    expect(read('lib/sendCalls.ts')).toMatch(/async function runBatch[\s\S]{0,200}await requireStepUp\(\)/);
+    expect(read('lib/sendCalls.ts')).toMatch(/async function runBatch[\s\S]{0,400}if \(!walletEnforcesMfa\(\)\) await requireStepUp\(\)/);
     expect(read('lib/gaslessMoney.ts')).toMatch(/async function signTypedData[\s\S]{0,200}await requireStepUp\(\)/);
     expect(read('lib/gaslessMoney.ts')).toMatch(/export async function gaslessRedeem[\s\S]{0,200}await requireStepUp\(\)/);
     expect(read('lib/autopay.ts')).toMatch(/installAutopaySession[\s\S]{0,700}await requireStepUp\(\)/);
