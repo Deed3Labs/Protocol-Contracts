@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import EarnPage from './EarnPage';
 import { EARN_DAY_ONE, MILESTONES } from '@/data/clearPlaceholder';
 import { toEarnData } from '@/lib/earnMapping';
