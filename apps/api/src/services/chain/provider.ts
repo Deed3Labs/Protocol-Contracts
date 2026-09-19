@@ -26,7 +26,9 @@ export function chainProvider(chainId: number): ethers.JsonRpcProvider {
     savingsIntentService.resolveRpcUrl(chainId),
     chainId,
     // The chain id came from our own config, so there is nothing to discover and nothing to re-check.
-    { staticNetwork: true },
+    // Batches capped at 10: the public Base Sepolia RPC answers "over rate limit" to every call past
+    // roughly a dozen in one burst, and ethers otherwise packs up to 100 into a single request.
+    { staticNetwork: true, batchMaxCount: 10 },
   );
   providers.set(chainId, provider);
   return provider;

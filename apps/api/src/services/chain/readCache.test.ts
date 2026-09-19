@@ -97,3 +97,18 @@ describe('one provider per chain', () => {
     expect(code('provider.ts')).toContain('staticNetwork: true');
   });
 });
+
+describe('surviving the public RPC rate limit', () => {
+  const reader = require('node:fs').readFileSync(new URL('./creditReader.ts', import.meta.url), 'utf8');
+  const provider = require('node:fs').readFileSync(new URL('./provider.ts', import.meta.url), 'utf8');
+  test('an incomplete credit read is asked again before it becomes a 503', () => {
+    expect(reader).toContain('() => readWithRetry(wallet, chainId)');
+    expect(reader).toMatch(/for \(const delay of RETRY_DELAYS_MS\) \{\s*if \(result\.complete\) return result;/);
+  });
+  test('closed plans cost one call, not eight', () => {
+    expect(reader).toMatch(/if \(closed\) \{[\s\S]{0,500}continue;\s*\}/);
+  });
+  test('batches stay under the limit the public node enforces', () => {
+    expect(provider).toContain('batchMaxCount: 10');
+  });
+});

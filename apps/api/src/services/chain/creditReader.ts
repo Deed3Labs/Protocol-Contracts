@@ -436,9 +436,23 @@ async function readPlans(
     const ids: bigint[] = await term.plansOf(wallet);
     const plans: ChainTermPlan[] = [];
     for (const id of ids) {
-      const [plan, schedule] = await Promise.all([term.planAt(id), term.scheduleOf(id)]);
+      const plan = await term.planAt(id);
       const [, principal, outstanding, repaid, openedAt, installments, installmentLength, ratePerCycle, closed] = plan;
-      const [installmentAmount, scheduleTotal, , scheduleStart] = schedule;
+      /*
+       * A closed plan is reported and nothing more is asked of it. Plans never reopen, the route
+       * drops closed ones, and every call spent on them counts against the public RPC's rate limit
+       * -- which is what was failing the whole read on first load.
+       */
+      if (closed) {
+        plans.push({
+          planId: Number(id), principalCents: toCents(principal), outstandingCents: 0, repaidCents: toCents(repaid),
+          installments: Number(installments), installmentCents: 0, scheduleTotalCents: 0, openedAt: Number(openedAt),
+          rateBps: Number(ratePerCycle), closed: true, owedCents: 0, arrearsCents: 0, installmentsDue: 0,
+          nextPaymentCents: 0, nextDueAt: null, defaultsAt: null, splitChangesLeft: 0, nextSplitAt: null,
+        });
+        continue;
+      }
+      const [installmentAmount, scheduleTotal, , scheduleStart] = await term.scheduleOf(id);
       const [owed, arrears, due, scheduledDue]: bigint[] = closed
         ? [0n, 0n, 0n, 0n]
         : await Promise.all([term.owedOn(id), term.arrearsOf(id), term.installmentsDue(id), term.scheduledPrincipalDue(id)]);
@@ -604,7 +618,28 @@ async function readEncumbered(
  * never sees a figure from before it.
  */
 export function readChainCredit(wallet: string, chainId = resolveChainId()): Promise<ChainCredit> {
-  return coalesce(`credit:${wallet.toLowerCase()}:${chainId}`, () => readChainCreditUncached(wallet, chainId));
+  return coalesce(`credit:${wallet.toLowerCase()}:${chainId}`, () => readWithRetry(wallet, chainId));
+}
+
+/** How long to wait before asking again, and how many times. */
+const RETRY_DELAYS_MS = [1_000, 2_500];
+
+/*
+ * A read that came back incomplete is asked again before anyone is told the chain is unreadable.
+ *
+ * The public Base Sepolia RPC rate-limits bursts, and a page load is a burst. It answers a limited
+ * call with an error ethers reads as "missing revert data", so every sub-read in that burst fails
+ * together and the route says 503 -- then the member's next read, a second later, succeeds. Waiting
+ * out the limit here means the 503 is left for a chain that is actually down.
+ */
+async function readWithRetry(wallet: string, chainId: number): Promise<ChainCredit> {
+  let result = await readChainCreditUncached(wallet, chainId);
+  for (const delay of RETRY_DELAYS_MS) {
+    if (result.complete) return result;
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    result = await readChainCreditUncached(wallet, chainId);
+  }
+  return result;
 }
 
 async function readChainCreditUncached(
