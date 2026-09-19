@@ -76,10 +76,11 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
         // Our own Review screen is the confirmation; smart-wallet sendTransaction defaults to this flag.
         embeddedWallets: { ethereum: { createOnLogin: 'users-without-wallets' }, showWalletUIs: false },
         // Wallet MFA (enabled in the Privy dashboard): a member with Face ID or an authenticator app
-        // enrolled cannot have a transaction signed until it is verified -- Privy's own prompt, which
-        // nothing in this page can skip. Turning Face ID off also takes it off payments, but a
-        // passkey dropped from payments stays for sign-in.
-        mfa: { noPromptOnMfaRequired: false },
+        // enrolled cannot have a transaction signed until it is verified, and nothing in this page
+        // can skip that. The prompt is ours (components/shell/ConfirmIdentitySheet), the check is
+        // Privy's. Turning Face ID off also takes it off payments, but a passkey dropped from
+        // payments stays for sign-in.
+        mfa: { noPromptOnMfaRequired: true },
         passkeys: { shouldUnenrollMfaOnUnlink: true, shouldUnlinkOnUnenrollMfa: false },
         defaultChain: base,
         supportedChains: [...supportedChains],

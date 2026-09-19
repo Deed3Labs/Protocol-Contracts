@@ -6,9 +6,15 @@ import { requireStepUp, setStepUpVerifier, setWalletMfa, walletEnforcesMfa, clea
 const read = (p: string) => readFileSync(join(import.meta.dirname, '..', p), 'utf8');
 
 describe('payments are guarded at the wallet (Privy MFA)', () => {
-  test('Privy prompts for MFA itself, and Face ID off also takes it off payments', () => {
+  test('our sheet prompts, Privy verifies; Face ID off also takes it off payments', () => {
     const cfg = read('AppKitProvider.tsx');
-    expect(cfg).toContain('mfa: { noPromptOnMfaRequired: false },');
+    expect(cfg).toContain('mfa: { noPromptOnMfaRequired: true },');
+    expect(read('components/shell/AppShell.tsx')).toContain('<ConfirmIdentitySheet />');
+    const sheet = read('components/shell/ConfirmIdentitySheet.tsx');
+    expect(sheet).toContain('useRegisterMfaListener({');
+    expect(sheet).toMatch(/const options = await init\('passkey'\);[\s\S]{0,80}await submit\('passkey', options\);/);
+    expect(sheet).toMatch(/await init\('totp'\);\s*await submit\('totp', code\);/);
+    expect(sheet).toContain('cancel();');
     expect(cfg).toContain('passkeys: { shouldUnenrollMfaOnUnlink: true, shouldUnlinkOnUnenrollMfa: false },');
   });
 
