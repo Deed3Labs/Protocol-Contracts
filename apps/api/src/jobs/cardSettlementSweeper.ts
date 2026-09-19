@@ -9,6 +9,7 @@ import { settlePoolMovements } from '../services/chain/poolFunding.js';
 import { sweepAutoRepay } from '../services/chain/autoRepayService.js';
 import { sweepTermCollections } from '../services/chain/termCollection.js';
 import { sweepTermLifecycle } from '../services/chain/termLifecycle.js';
+import { overflowCallCount } from '../services/chain/provider.js';
 
 /*
  * The backstop for card settlement on chain.
@@ -27,6 +28,7 @@ function intervalMs(): number {
 }
 
 let running = false;
+let overflowLogged = 0;
 
 export async function tick(): Promise<number> {
   if (running) return 0;
@@ -74,6 +76,13 @@ export async function tick(): Promise<number> {
       return [];
     });
     for (const r of lifecycle) console.log(`[term-lifecycle] sweep: ${r.wallet}=${r.action}${r.cents ? ` ${r.cents}c` : ''}`);
+
+    // What the free RPC refused and the backup (Alchemy) answered since the last pass -- its cost.
+    const overflow = overflowCallCount();
+    if (overflow > overflowLogged) {
+      console.log(`[rpc] ${overflow - overflowLogged} calls went to the backup RPC in the last pass window (${overflow} since start)`);
+      overflowLogged = overflow;
+    }
 
     // Last: the pool's side of whatever the passes above drew or repaid on pool-funded tiers.
     const pooled = await settlePoolMovements().catch((error) => {

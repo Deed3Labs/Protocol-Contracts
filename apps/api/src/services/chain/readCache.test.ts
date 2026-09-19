@@ -112,3 +112,37 @@ describe('surviving the public RPC rate limit', () => {
     expect(provider).toContain('batchMaxCount: 10');
   });
 });
+
+describe('the free node first, the paid one for its overflow', () => {
+  const provider = require('node:fs').readFileSync(new URL('./provider.ts', import.meta.url), 'utf8');
+  test('only rate-limited calls are re-sent, and only those', () => {
+    expect(provider).toMatch(/\.filter\(\(r\) => isRateLimited\(/);
+    expect(provider).toContain('this.backup._send(payloads.filter((p) => limited.has(p.id)))');
+  });
+  test('a whole-request 429 goes to the backup; any other error does not', () => {
+    expect(provider).toMatch(/if \(isRateLimited\([^)]*\)\)\) return this\.backup\._send\(payloads\);\s*throw error;/);
+  });
+  test('no backup configured: the primary stands alone', () => {
+    expect(provider).toMatch(/backupUrl && backupUrl !== primary\s*\?\s*new OverflowRpcProvider/);
+  });
+});
+
+import { isRateLimited, backupRpcUrl } from './provider.js';
+describe('what counts as a rate limit', () => {
+  test('the public node\'s phrasing, and the common ones', () => {
+    for (const m of ['over rate limit', 'Too Many Requests', 'HTTP 429', 'exceeded its compute units capacity']) expect(isRateLimited(m)).toBe(true);
+  });
+  test('a revert is an answer, not a limit', () => {
+    expect(isRateLimited('execution reverted')).toBe(false);
+    expect(isRateLimited('missing revert data')).toBe(false);
+  });
+  test('Alchemy is the backup when its key is set; an explicit URL wins', () => {
+    const was = { ...process.env };
+    process.env.ALCHEMY_API_KEY = 'k';
+    delete process.env.RPC_FALLBACK_URL_84532;
+    expect(backupRpcUrl(84532)).toBe('https://base-sepolia.g.alchemy.com/v2/k');
+    process.env.RPC_FALLBACK_URL_84532 = 'https://other.example';
+    expect(backupRpcUrl(84532)).toBe('https://other.example');
+    process.env = was;
+  });
+});
