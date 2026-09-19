@@ -42,12 +42,21 @@ export function useCreditRepay(): (amount: number) => Promise<RepayOutcome> {
           args: [address as `0x${string}`],
           chainId,
         })) as bigint;
-        const owed = Math.floor(Number(owedUnits / 10_000n)) / 100; // to cents, then dollars
+        // Rounded UP to the cent for comparing: asking to clear $0.03 when $0.026197 is owed means
+        // "clear it", and it is cleared to the unit rather than leaving $0.006197 of carry behind.
+        const owed = Math.ceil(Number(owedUnits) / 10_000) / 100;
+        const clearsAll = amount >= owed;
         const repay = Math.min(amount, owed);
-        if (repay <= 0) return { error: 'Nothing has settled yet. Card purchases can be repaid once they clear.', pendingLeft: amount };
+        if (owedUnits === 0n) return { error: 'Nothing has settled yet. Card purchases can be repaid once they clear.', pendingLeft: amount };
 
         const client = getClientForChain ? await getClientForChain({ id: chainId }).catch(() => undefined) : undefined;
-        const hash = await scRepayCredit({ smartWalletClient: client, ownerWallet: address, amount: repay.toFixed(2), chainId });
+        const hash = await scRepayCredit({
+          smartWalletClient: client,
+          ownerWallet: address,
+          amount: repay.toFixed(2),
+          chainId,
+          ...(clearsAll ? { units: owedUnits } : {}),
+        });
         markChainStale();
         const recorded = await recordCreditRepayment(address, hash);
         return {
