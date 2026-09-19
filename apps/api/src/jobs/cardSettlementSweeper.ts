@@ -7,6 +7,7 @@ import {
 import { enforceDisputes } from '../services/disputes/disputeEnforcement.js';
 import { settlePoolMovements } from '../services/chain/poolFunding.js';
 import { sweepAutoRepay } from '../services/chain/autoRepayService.js';
+import { sweepTermCollections } from '../services/chain/termCollection.js';
 
 /*
  * The backstop for card settlement on chain.
@@ -57,6 +58,13 @@ export async function tick(): Promise<number> {
       return [];
     });
     for (const r of autoRepaid) if (r.action !== 'waiting') console.log(`[auto-repay] sweep: ${r.wallet}=${r.action}${r.cents ? ` ${r.cents}c` : ''}`);
+
+    // Term plans a bank deposit paid, paid on chain from the float.
+    const collected = await sweepTermCollections().catch((error) => {
+      console.error('[term-collection] pass failed:', error);
+      return [];
+    });
+    for (const r of collected) if (r.action !== 'waiting') console.log(`[term-collection] sweep: ${r.wallet}=${r.action}${r.cents ? ` ${r.cents}c` : ''}`);
 
     // Last: the pool's side of whatever the passes above drew or repaid on pool-funded tiers.
     const pooled = await settlePoolMovements().catch((error) => {

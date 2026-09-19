@@ -13,7 +13,8 @@ describe('every repayment shows, whichever way it was made', () => {
   });
 
   test('bank deposits that paid down credit are listed as bank repayments', () => {
-    expect(history).toContain("event_type = 'credit_settlement' AND rail = 'fiat'");
+    expect(history).toContain("event_type = 'credit_settlement' AND account LIKE 'member_credit_%'");
+    expect(history).toContain("rail = 'fiat' AND direction = 'credit'");
     expect(history).toContain("method: 'bank' as const");
   });
 

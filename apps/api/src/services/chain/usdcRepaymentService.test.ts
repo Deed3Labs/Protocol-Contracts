@@ -37,7 +37,7 @@ describe('a USDC repayment is recorded from the chain, never from the request', 
 
 describe('only fiat pays card debt on arrival', () => {
   test('an ACH deposit settles card debt; a Bridge USDC deposit stays the member’s cash', () => {
-    expect(deposits).toContain("receipt.rail === 'lithic_ach'\n        ? planSettlement(amount, outstanding, await readCarryOwed(client, wallet))");
+    expect(deposits).toContain("receipt.rail === 'lithic_ach'\n        ? planSettlement(term.remainingCents, outstanding, await readCarryOwed(client, wallet))");
   });
 });
 

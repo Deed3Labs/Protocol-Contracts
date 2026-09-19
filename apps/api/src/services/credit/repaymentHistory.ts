@@ -77,8 +77,11 @@ export async function repaymentHistory(walletInput: string, limit = 50): Promise
     .query<{ entry_group: string; cents: string; at: Date }>(
       `SELECT entry_group, SUM(amount_cents) AS cents, MIN(created_at) AS at
          FROM lithic_ledger_entries
-        WHERE wallet = $1 AND event_type = 'credit_settlement' AND rail = 'fiat'
-          AND direction = 'credit' AND account LIKE 'member_credit_%'
+        WHERE wallet = $1 AND rail = 'fiat' AND direction = 'credit'
+          AND ((event_type = 'credit_settlement' AND account LIKE 'member_credit_%')
+            -- Carry a refunded plan left behind, paid by the same deposit. A plan's own share is
+            -- listed as that plan's payment once the co-op has paid it on chain.
+            OR (event_type = 'term_settlement' AND account = 'member_term_carry'))
         GROUP BY entry_group ORDER BY MIN(created_at) DESC LIMIT $2`,
       [wallet, limit],
     )
