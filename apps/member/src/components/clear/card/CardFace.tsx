@@ -1,3 +1,4 @@
+import NetworkMark from './NetworkMark';
 import { cn } from '@/lib/utils';
 
 /**
@@ -61,7 +62,7 @@ export default function CardFace({
               </>
             )}
           </span>
-          <span className="c-cmeta">{network}</span>
+          <NetworkMark network={network} className="c-cnet" />
         </div>
       </div>
     </div>

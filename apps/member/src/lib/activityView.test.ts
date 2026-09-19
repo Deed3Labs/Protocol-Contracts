@@ -146,3 +146,18 @@ describe('the card page', () => {
     expect(src('pages/app/CardPage.tsx')).toMatch(/if \(wallet\.some\(\(c\) => c\.id === activeId\)\) return;\s*setActiveId\(wallet\[0\]\.id\);\s*setChosenKind\(wallet\[0\]\.variant\);/);
   });
 });
+
+describe('the card shows the network logo, not its name', () => {
+  const { readFileSync: rf } = require('node:fs');
+  const { join: j } = require('node:path');
+  const src = (p: string) => rf(j(import.meta.dirname, '..', p), 'utf8');
+  test('the live card face draws the mark from the one asset file', () => {
+    expect(src('components/clear/card/CardFace.tsx')).toContain('<NetworkMark network={network} className="c-cnet" />');
+    expect(src('components/clear/card/NetworkMark.tsx')).toContain("from '@/assets/brand/networkMarks'");
+  });
+  test('it takes the card\'s own light ink in both themes', () => {
+    const css = src('styles/clear-components.css');
+    expect(css).toContain('.c-cnet{height:13px;width:auto;flex-shrink:0;color:var(--paper);opacity:.95}');
+    expect(css).toMatch(/\.dark \.c-pan,\.dark \.c-cardface \.c-wm,\.dark \.c-cstate,\.dark \.c-cnet\{color:#DFE3DE\}/);
+  });
+});

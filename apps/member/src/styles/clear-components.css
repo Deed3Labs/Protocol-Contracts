@@ -377,7 +377,7 @@
 .dark .c-cardface{background:#0E1714}
 .dark .c-cardface.c-virtual{background:linear-gradient(160deg,#1B2A24 0%,#0E1714 70%)}
 .dark .c-cardface.c-frozen{background:#2C3A35}
-.dark .c-pan,.dark .c-cardface .c-wm,.dark .c-cstate{color:#DFE3DE}
+.dark .c-pan,.dark .c-cardface .c-wm,.dark .c-cstate,.dark .c-cnet{color:#DFE3DE}
 .dark .c-cchip{background:#5A635F}
 .dark .c-viewfinder{background:#0E1714}
 .dark .c-vf{border-color:#DFE3DE}
@@ -387,6 +387,8 @@
               border-right:1px solid var(--ink-70)}
 .c-pan{font-family:var(--font-mono);font-size:15px;letter-spacing:.06em;color:var(--paper);margin:0}
 .c-cmeta{font-size:11px;color:var(--ink-28);font-family:var(--font-text)}
+/* The network mark: the card's own ink, sized to sit on the meta line's baseline. */
+.c-cnet{height:13px;width:auto;flex-shrink:0;color:var(--paper);opacity:.95}
 .c-cstate{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
         color:var(--paper);border:1px solid var(--ink-28);padding:2px 8px;border-radius:var(--radius-pill)}
 
