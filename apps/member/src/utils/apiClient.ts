@@ -24,6 +24,7 @@ import { getAccessToken } from '@privy-io/react-auth';
 import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
 import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
 import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
+import { notifyServerLocked } from '@/lib/appLock';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
@@ -115,6 +116,11 @@ async function apiRequestOnce<T>(
       // Try to parse error as JSON, but handle HTML/other responses
       if (isJson) {
         const errorData = await response.json().catch(() => null);
+        // Locked by the server (idle too long): not signed out, so no 401 handling -- show the lock.
+        if (response.status === 423 && (errorData as { code?: unknown } | null)?.code === 'APP_LOCKED') {
+          notifyServerLocked();
+          return { error: 'Clear is locked. Open it with Face ID.' };
+        }
         if (response.status === 403 && (errorData as { code?: unknown } | null)?.code === 'STEP_UP_REQUIRED') {
           return { error: STEP_UP_DECLINED, stepUpRequired: true };
         }
@@ -2836,6 +2842,19 @@ export async function recordAutoRepay(wallet: string, enabled: boolean): Promise
     body: JSON.stringify({ enabled }),
   });
   return r.error || !r.data ? { ok: false, error: r.error || 'Could not save that just now.' } : { ok: true };
+}
+
+// --- The server-side lock (api middleware/sessionLock) ---
+
+/** Whether the server has locked this session. Null if it could not say. */
+export async function getSessionLock(): Promise<boolean | null> {
+  const r = await apiRequest<{ locked: boolean }>('/api/session', { cache: 'no-store' });
+  return r.error || !r.data ? null : r.data.locked;
+}
+
+/** The member used the app. Sent at most once a minute; survives the page being hidden. */
+export async function reportActive(): Promise<void> {
+  await apiRequest('/api/session/active', { method: 'POST', keepalive: true });
 }
 
 // --- Server-verified Face ID (lib/serverStepUp; api routes/stepUp) ---

@@ -9,6 +9,7 @@ import {
 import { stepUpStore } from '../services/stepUp/stepUpStore.js';
 import { issueChallenge, issueStepUpToken, redeemChallenge, stepUpTokenValid } from '../services/stepUp/stepUpToken.js';
 import { STEP_UP_HEADER, stepUpRequired } from '../middleware/stepUp.js';
+import { sessionLock } from '../services/session/sessionLock.js';
 
 /*
  * Server-verified Face ID (see middleware/stepUp for where it is required).
@@ -20,6 +21,8 @@ import { STEP_UP_HEADER, stepUpRequired } from '../middleware/stepUp.js';
  *   POST   /options            start a check
  *   POST   /verify             finish a check -> a two-minute step-up token
  *   DELETE /                   remove them all (Face ID off), behind a Face ID check itself
+ *
+ * A verified check also opens a session the server-side lock closed (middleware/sessionLock).
  *
  * The relying party is the page's own domain, read from its Origin, and only for Clear's domains:
  * a credential made on demo.useclear.org answers only there.
@@ -48,6 +51,13 @@ function relyingParty(req: Request): { rpID: string; origin: string } | null {
 }
 
 const userOf = (req: Request) => req.auth?.profileUuid || '';
+
+async function openSession(req: Request): Promise<void> {
+  const sessionId = req.auth?.sessionId;
+  const userId = userOf(req);
+  if (sessionId && userId && sessionLock.available()) await sessionLock.touch(sessionId, userId, true);
+}
+
 const transportsOf = (t: string[]) => t as AuthenticatorTransportFuture[];
 const challengeBytes = (c: string) => new Uint8Array(Buffer.from(c, 'base64url'));
 
@@ -166,6 +176,8 @@ stepUpRouter.post('/verify', async (req: Request, res: Response) => {
     });
     if (!result.verified) return res.status(400).json({ error: 'Face ID did not match.' });
     await stepUpStore.markUsed(credential.credentialId, result.authenticationInfo.newCounter);
+    // Face ID the server checked is also what opens a locked session (middleware/sessionLock).
+    await openSession(req);
     return res.json(issueStepUpToken(userId));
   } catch (error) {
     console.warn('[step-up] check rejected', (error as Error)?.message);

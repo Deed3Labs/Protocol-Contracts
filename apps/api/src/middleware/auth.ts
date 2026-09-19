@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import { PrivyClient } from '@privy-io/server-auth';
+import { sessionOpen } from './sessionLock.js';
 
 /*
  * Privy JWT auth (replaces the old Reown api.web3modal.org session fetch). The frontend sends the
@@ -18,6 +19,8 @@ type AuthenticatedWallet = {
   smartWallet?: string; // the Privy smart wallet — the CANONICAL primary (where funds live)
   addresses?: string[]; // ALL verified addresses for this user (primary + smart + linked), normalized
   phone?: string; // the Privy account phone (login identity), if any
+  /** The Privy sign-in session this token belongs to: what the server-side lock is kept per. */
+  sessionId?: string;
   token: string;
 };
 
@@ -191,9 +194,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   // Privy hiccup, and the client responds to 401 by clearing the session — so a brief upstream blip
   // signed people out mid-flow. A cold cache right after a deploy is exactly when that bites.
   let userId: string;
+  let sessionId: string | undefined;
   try {
     const claims = await privy.verifyAuthToken(token);
     userId = claims.userId;
+    sessionId = claims.sessionId;
   } catch (error) {
     console.error('Authentication error (token):', error);
     return sendUnauthorized(res, 'Invalid or expired authentication token', 'AUTH_TOKEN_INVALID');
@@ -212,7 +217,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return sendUnauthorized(res, 'No wallet linked to this account', 'AUTH_NO_WALLET');
     }
 
-    req.auth = { walletAddress, profileUuid: userId, email, emails: [...emails], phone, smartWallet, addresses: [...addresses], token };
+    req.auth = { walletAddress, profileUuid: userId, email, emails: [...emails], phone, smartWallet, addresses: [...addresses], sessionId, token };
+    // Idle past the lock: refused until Face ID or a fresh sign-in opens it (middleware/sessionLock).
+    if (!(await sessionOpen(req, res))) return;
     return next();
   } catch (error) {
     // The token was valid — we just couldn't reach Privy to resolve their wallets. 503, not 401, so

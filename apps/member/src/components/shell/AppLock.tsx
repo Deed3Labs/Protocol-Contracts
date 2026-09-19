@@ -5,7 +5,8 @@ import { useFaceId } from '@/hooks/useFaceId';
 import { useLogout } from '@/hooks/useLogout';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { forgetMember, rememberedMember } from '@/lib/rememberedMember';
-import { isStale, lastActive, markActive } from '@/lib/appLock';
+import { isStale, lastActive, markActive, onServerLocked } from '@/lib/appLock';
+import { getSessionLock, reportActive } from '@/utils/apiClient';
 import { markStepUpVerified, serverStepUpEnrolled, setStepUpVerifier } from '@/lib/stepUp';
 import { proveWithServer } from '@/lib/serverStepUp';
 
@@ -13,6 +14,8 @@ import { proveWithServer } from '@/lib/serverStepUp';
 const WRITE_EVERY_MS = 15 * 1000;
 const CHECK_EVERY_MS = 30 * 1000;
 const ACTIVITY = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const;
+/** How often the server hears the member is using the app (api middleware/sessionLock allows a minute's slack). */
+const REPORT_EVERY_MS = 60 * 1000;
 
 /**
  * The lock — what a banking app shows when you come back to it.
@@ -49,6 +52,17 @@ export default function AppLock({ children }: { children: ReactNode }) {
     // A session this device has not timed yet starts its clock now.
     if (lastActive() === null) markActive();
     let lastWrite = 0;
+    let lastReport = 0;
+
+    /*
+     * The server keeps its own lock, which the app's clock cannot talk round. It hears that the
+     * member is here only from real use, once a minute at most -- never from the page's own reads.
+     */
+    const report = (now: number) => {
+      if (now - lastReport < REPORT_EVERY_MS) return;
+      lastReport = now;
+      void reportActive();
+    };
 
     const onActivity = () => {
       if (lockedRef.current) return;
@@ -56,6 +70,7 @@ export default function AppLock({ children }: { children: ReactNode }) {
       if (now - lastWrite < WRITE_EVERY_MS) return;
       lastWrite = now;
       markActive(now);
+      report(now);
     };
     const check = () => {
       if (!lockedRef.current && isStale(lastActive())) setLocked(true);
@@ -63,11 +78,28 @@ export default function AppLock({ children }: { children: ReactNode }) {
     // Leaving stamps the time, so "away for five minutes" is measured from when they left.
     const onVisibility = () => {
       if (document.hidden) {
-        if (!lockedRef.current) markActive();
+        if (!lockedRef.current) {
+          markActive();
+          report(Date.now());
+        }
       } else {
         check();
+        if (!lockedRef.current) {
+          // Back within the app's five minutes, but the server's may have run out: ask it.
+          void getSessionLock().then((serverLocked) => {
+            if (serverLocked) setLocked(true);
+            else if (serverLocked === false) report(Date.now());
+          });
+        }
       }
     };
+    const offServer = onServerLocked(() => setLocked(true));
+    // Opening the app: the server's lock counts even when this device's clock says otherwise.
+    if (!lockedRef.current) {
+      void getSessionLock().then((serverLocked) => {
+        if (serverLocked) setLocked(true);
+      });
+    }
 
     ACTIVITY.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
     document.addEventListener('visibilitychange', onVisibility);
@@ -75,6 +107,7 @@ export default function AppLock({ children }: { children: ReactNode }) {
     return () => {
       ACTIVITY.forEach((e) => window.removeEventListener(e, onActivity));
       document.removeEventListener('visibilitychange', onVisibility);
+      offServer();
       window.clearInterval(id);
     };
   }, []);
@@ -94,9 +127,19 @@ export default function AppLock({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(null);
     try {
-      // Unlocking with the server's Face ID also leaves a token, so the next guarded tap goes straight through.
+      // The server's Face ID opens the server's lock too, and leaves a token for the next guarded tap.
       if (serverStepUpEnrolled()) await proveWithServer();
-      else await faceIdRef.current.confirm();
+      else {
+        await faceIdRef.current.confirm();
+        /*
+         * Face ID the server cannot check does not open the server's lock. Only a new sign-in does,
+         * until this member sets up Face ID for payments (Settings), which the server can check.
+         */
+        if ((await getSessionLock()) === true) {
+          setError('Clear locked this session. Send yourself a code to sign in again.');
+          return;
+        }
+      }
       markActive();
       // Unlocking was a Face ID check, so a send straight afterwards does not ask again.
       markStepUpVerified();
