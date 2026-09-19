@@ -1,4 +1,6 @@
 import { getPayPool } from '../../config/postgres.js';
+import { chargeStore } from '../chargeStore.js';
+import { planPaymentHistory } from './termPlanPayments.js';
 
 /*
  * Every repayment a member has made, whichever way they made it — for Activity.
@@ -11,6 +13,10 @@ import { getPayPool } from '../../config/postgres.js';
  * On-chain repayments are read from `card_onchain_repayments`, which is written from each
  * transaction's own events; bank repayments from the deposit's settlement entries in the ledger.
  * Amounts are what was repaid, carry included.
+ *
+ * A payment against a term plan is its own row, named for the plan, because a plan is a schedule
+ * the member is working through. One transaction can pay both -- an undirected Repay reaches the
+ * card tiers and the plans in rate order -- so the card row keeps only what did not go to a plan.
  */
 
 export type RepaymentMethod = 'manual' | 'auto' | 'savings' | 'bank';
@@ -22,6 +28,8 @@ export interface RepaymentEntry {
   method: RepaymentMethod;
   /** The on-chain transaction, when there is one — so Activity can fold the token transfer into this row. */
   txHash: string | null;
+  /** Set when this paid a term plan: which one, and how far through its schedule it now is. */
+  plan?: { planId: number; name: string | null; index: number; count: number };
 }
 
 export async function repaymentHistory(walletInput: string, limit = 50): Promise<RepaymentEntry[]> {
@@ -77,11 +85,19 @@ export async function repaymentHistory(walletInput: string, limit = 50): Promise
     .then((r) => r.rows)
     .catch(() => []);
 
+  const planPayments = await planPaymentHistory(wallet, limit);
+  const toPlans = new Map<string, number>();
+  for (const p of planPayments) toPlans.set(p.txHash, (toPlans.get(p.txHash) ?? 0) + p.amountCents);
+  const names = await chargeStore
+    .merchantNamesByPlanId([...new Set(planPayments.map((p) => p.planId))])
+    .catch(() => ({}) as Record<number, string>);
+
   const entries: RepaymentEntry[] = [
     ...onChain.map((r) => ({
       id: `repay:${r.tx_hash}`,
       at: r.created_at.toISOString(),
-      amountCents: Number(r.total_cents),
+      // Only the card's share; what went to a plan is listed as that plan's payment below.
+      amountCents: Number(r.total_cents) - (toPlans.get(r.tx_hash.toLowerCase()) ?? 0),
       method: ((r.method as RepaymentMethod | null) ?? (paidFromSavings(r.tx_hash) ? 'savings' : 'manual')) as RepaymentMethod,
       txHash: r.tx_hash,
     })),
@@ -91,6 +107,14 @@ export async function repaymentHistory(walletInput: string, limit = 50): Promise
       amountCents: Number(r.cents),
       method: 'bank' as const,
       txHash: null,
+    })),
+    ...planPayments.map((p) => ({
+      id: `plan:${p.txHash}:${p.planId}`,
+      at: p.at,
+      amountCents: p.amountCents,
+      method: p.method as RepaymentMethod,
+      txHash: p.txHash,
+      plan: { planId: p.planId, name: names[p.planId] ?? null, index: p.index, count: p.count },
     })),
   ];
   return entries.filter((e) => e.amountCents > 0).sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);

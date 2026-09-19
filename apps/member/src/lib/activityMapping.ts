@@ -122,7 +122,9 @@ export function repaymentRow(entry: CreditRepaymentEntry): ActivityRow {
   const at = new Date(entry.at);
   return {
     id: entry.id,
-    name: 'Credit repayment',
+    // A plan payment is named for the plan and tagged with how far through it the member is.
+    name: entry.plan ? `${entry.plan.name ?? 'Term plan'} payment` : 'Credit repayment',
+    ...(entry.plan ? { termPayment: { index: entry.plan.index, count: entry.plan.count } } : {}),
     date: at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
     datetime: at.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }),
     kind: 'repayment',

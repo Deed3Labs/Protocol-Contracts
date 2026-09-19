@@ -9,7 +9,7 @@ import { useCreditRepayments } from '@/hooks/useCreditRepayments';
 import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
-import { useCreditRepay, useRepayFromSavings } from '@/hooks/useCreditRepay';
+import { useCreditRepay, usePayPlan, useRepayFromSavings } from '@/hooks/useCreditRepay';
 import {
   getCardTransactions,
   getCredit,
@@ -65,6 +65,7 @@ export default function HomeRoute() {
   // Every repayment, whichever way it was made, listed alongside what it paid for.
   const repayments = useCreditRepayments(address);
   const repay = useCreditRepay();
+  const payPlan = usePayPlan();
   const repayFromSavings = useRepayFromSavings();
 
   useEffect(() => {
@@ -184,5 +185,5 @@ export default function HomeRoute() {
       : {}),
   };
 
-  return <HomePage data={data} onRepay={repay} onRepayFromSavings={repayFromSavings} />;
+  return <HomePage data={data} onRepay={repay} onRepayFromSavings={repayFromSavings} onPayPlan={payPlan} />;
 }
