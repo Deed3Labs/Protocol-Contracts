@@ -336,6 +336,41 @@ export async function scRepayCredit(args: {
   ]);
 }
 
+const TERM_PLAN_ABI = [
+  { type: 'function', name: 'payPlan', stateMutability: 'nonpayable',
+    inputs: [{ name: 'planId', type: 'uint256' }, { name: 'amount', type: 'uint256' }], outputs: [] },
+  { type: 'function', name: 'setSplit', stateMutability: 'nonpayable',
+    inputs: [{ name: 'planId', type: 'uint256' }, { name: 'installments', type: 'uint32' }], outputs: [] },
+  { type: 'function', name: 'owedOn', stateMutability: 'view',
+    inputs: [{ name: 'planId', type: 'uint256' }], outputs: [{ type: 'uint256' }] },
+] as const;
+export { TERM_PLAN_ABI };
+
+/**
+ * Pay a term plan in USDC: [approve, payPlan] in ONE sponsored batch.
+ *
+ * Directed at the plan, so it services that plan's schedule rather than whichever balance is dearest.
+ * The approval is to StableCredit, which pulls the USDC; TermIssuer only names the plan. `payPlan`
+ * caps at what is owed, so approving a little over (carry accrues by the second) never overpays.
+ */
+export async function scPayPlan(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  planId: number;
+  units: bigint;
+  chainId: number;
+}): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.stableCredit || !c.termIssuer) throw new Error('Paying plans on chain is not available on this network yet.');
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.stableCredit, args.units] }) },
+    {
+      to: c.termIssuer,
+      data: encodeFunctionData({ abi: TERM_PLAN_ABI, functionName: 'payPlan', args: [BigInt(args.planId), args.units] }),
+    },
+  ]);
+}
+
 /** The savings tier's position on the revolving line: the cheapest tier, first in draw order. */
 export const SAVINGS_TIER_ID = 0n;
 

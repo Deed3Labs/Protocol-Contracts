@@ -42,7 +42,8 @@ describe('repay savings-backed credit from savings', () => {
 
   test('capped at what the savings tier owes on chain, and recorded by the server', () => {
     expect(hook).toContain("functionName: 'principalOf',");
-    expect(hook.match(/await recordCreditRepayment\(address, hash\)/g)).toHaveLength(2);
+    // Repay, repay from savings, and pay a plan: every on-chain repayment is recorded by the server.
+    expect(hook.match(/await recordCreditRepayment\(address, hash\)/g)).toHaveLength(3);
   });
 });
 
@@ -73,5 +74,19 @@ describe('carry is repaid too, first', () => {
     expect(hook).toContain('const owed = Math.ceil(Number(owedUnits) / 10_000) / 100;');
     expect(hook).toContain('...(clearsAll ? { units: owedUnits } : {}),');
     expect(calls).toContain('const amt = args.units ?? parseUnits(args.amount, 6);');
+  });
+});
+
+describe('pay a term plan', () => {
+  const hook = readFileSync(new URL('./useCreditRepay.ts', import.meta.url), 'utf8');
+  const calls = readFileSync(new URL('../lib/sendCalls.ts', import.meta.url), 'utf8');
+
+  test('names the plan, and approves StableCredit (which pulls the USDC), not TermIssuer', () => {
+    expect(calls).toMatch(/export async function scPayPlan[\s\S]{0,900}approve', args: \[c\.stableCredit, args\.units\][\s\S]{0,300}functionName: 'payPlan'/);
+  });
+
+  test('paying off reads what is owed on chain and approves a cent over; payPlan caps it', () => {
+    expect(hook).toContain("functionName: 'owedOn',");
+    expect(hook).toContain('payoff || asked >= owedUnits ? owedUnits + 10_000n : asked');
   });
 });

@@ -3,7 +3,7 @@ import { readContract } from '@wagmi/core';
 import { wagmiAdapter } from '@/AppKitProvider';
 import { useOptionalAddress, useOptionalSmartWalletClient } from './useOptionalWallet';
 import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
-import { SAVINGS_TIER_ID, scRepayCredit, scRepayFromSavings, STABLE_CREDIT_ABI, TIER_PRINCIPAL_ABI } from '@/lib/sendCalls';
+import { SAVINGS_TIER_ID, scPayPlan, scRepayCredit, scRepayFromSavings, STABLE_CREDIT_ABI, TERM_PLAN_ABI, TIER_PRINCIPAL_ABI } from '@/lib/sendCalls';
 import { recordCreditRepayment } from '@/utils/apiClient';
 import { markChainStale } from '@/lib/chainStale';
 
@@ -112,6 +112,52 @@ export function useRepayFromSavings(): (amount: number) => Promise<RepayOutcome>
         };
       } catch (e) {
         return { error: e instanceof Error ? e.message : 'That did not go through. Nothing was repaid.' };
+      }
+    },
+    [address, getClientForChain],
+  );
+}
+
+/**
+ * Pay a term plan in USDC from the member's own wallet, by naming it.
+ *
+ * `payoff` clears the plan outright. What a plan owes grows by the second as carry accrues, so the
+ * figure on screen is a moment old by the time it lands; paying off reads what is owed on chain and
+ * approves a cent over, and `payPlan` takes only what is owed. A part payment pays what was asked.
+ */
+export function usePayPlan(): (planId: number, amount: number, payoff?: boolean) => Promise<RepayOutcome> {
+  const address = useOptionalAddress();
+  const getClientForChain = useOptionalSmartWalletClient();
+
+  return useCallback(
+    async (planId: number, amount: number, payoff = false) => {
+      if (!address) return { error: 'Connect a wallet first.' };
+      const chainId = ACTIVE_CHAIN_ID;
+      const c = clearContracts(chainId);
+      if (!c?.termIssuer) return { error: 'Paying plans on chain is not available on this network yet.' };
+      try {
+        const owedUnits = (await readContract(wagmiAdapter.wagmiConfig, {
+          address: c.termIssuer,
+          abi: TERM_PLAN_ABI,
+          functionName: 'owedOn',
+          args: [BigInt(planId)],
+          chainId,
+        })) as bigint;
+        if (owedUnits === 0n) return { error: 'This plan is already paid.' };
+        const asked = BigInt(Math.round(amount * 100)) * 10_000n;
+        const units = payoff || asked >= owedUnits ? owedUnits + 10_000n : asked;
+        const paying = Number(units < owedUnits ? units : owedUnits) / 1_000_000;
+
+        const client = getClientForChain ? await getClientForChain({ id: chainId }).catch(() => undefined) : undefined;
+        const hash = await scPayPlan({ smartWalletClient: client, ownerWallet: address, planId, units, chainId });
+        markChainStale();
+        const recorded = await recordCreditRepayment(address, hash);
+        return {
+          repaid: Math.round(paying * 100) / 100,
+          ...(recorded.ok ? {} : { error: 'Paid. It may take a moment to show here.' }),
+        };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'That did not go through. Nothing was paid.' };
       }
     },
     [address, getClientForChain],

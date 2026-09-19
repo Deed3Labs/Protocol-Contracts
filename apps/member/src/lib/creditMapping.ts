@@ -334,6 +334,12 @@ export function toTermPlans(
       cyclesLeft,
       rate: rateLabel(row.rateBps),
       ratePerCycle: row.rateBps / 10_000,
+      owed: fromCents(row.owedCents ?? row.outstandingCents),
+      nextPayment: fromCents(row.nextPaymentCents ?? 0),
+      nextDueOn: row.nextDueAt
+        ? new Date(row.nextDueAt * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : undefined,
+      behind: fromCents(row.arrearsCents ?? 0),
     };
   });
 

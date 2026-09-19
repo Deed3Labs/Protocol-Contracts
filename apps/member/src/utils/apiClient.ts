@@ -2561,6 +2561,15 @@ export interface CreditTermPlanRow {
    */
   merchantName: string | null;
   closed: boolean;
+  /** What clears the plan today, carry included. */
+  owedCents: number;
+  /** How far behind its schedule the plan is. */
+  arrearsCents: number;
+  installmentsDue: number;
+  /** Anything behind plus the next installment — what squares the plan through its next due date. */
+  nextPaymentCents: number;
+  /** Unix seconds. Null once every installment has come due. */
+  nextDueAt: number | null;
 }
 
 export interface CreditState {
@@ -2757,6 +2766,8 @@ export interface CreditRepaymentEntry {
   amountCents: number;
   method: 'manual' | 'auto' | 'savings' | 'bank';
   txHash: string | null;
+  /** Set when this paid a term plan. */
+  plan?: { planId: number; name: string | null; index: number; count: number };
 }
 
 export async function getCreditRepayments(wallet: string): Promise<CreditRepaymentEntry[]> {

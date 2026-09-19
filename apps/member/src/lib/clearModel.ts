@@ -1521,6 +1521,14 @@ export interface TermPlan {
   progressNote?: string;
   /** What it takes to unlock, e.g. "Unlocks after six clean cycles · 2.5% / cycle". */
   lockedNote?: string;
+  /** What clears it today, carry included. Only on a live plan. */
+  owed?: number;
+  /** Anything behind plus the next installment: what keeps the plan on schedule. */
+  nextPayment?: number;
+  /** When the next installment falls due, e.g. "Oct 2". Absent once every one has. */
+  nextDueOn?: string;
+  /** How far behind schedule. Zero or absent when on time. */
+  behind?: number;
 }
 
 export interface LinkedAccount {

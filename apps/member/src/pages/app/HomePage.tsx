@@ -13,6 +13,7 @@ import AccountDetailsDialog from '@/components/clear/AccountDetailsDialog';
 import RepayDialog from '@/components/clear/RepayDialog';
 import TermPlansCard from '@/components/clear/TermPlansCard';
 import SplitPlanDialog from '@/components/clear/SplitPlanDialog';
+import TermPlanDialog from '@/components/clear/TermPlanDialog';
 import PaymentAccountDialog from '@/components/clear/PaymentAccountDialog';
 import TermLimitDialog from '@/components/clear/TermLimitDialog';
 import AddBoostDialog from '@/components/clear/AddBoostDialog';
@@ -42,11 +43,14 @@ export default function HomePage({
   data = HOME_DAY_ONE,
   onRepay,
   onRepayFromSavings,
+  onPayPlan,
 }: {
   data?: HomeData;
   /** Repays card debt on chain. Absent in the preview harness. */
   onRepay?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
   onRepayFromSavings?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
+  /** Pays one term plan on chain. Absent in the preview harness. */
+  onPayPlan?: (planId: number, amount: number, payoff: boolean) => Promise<{ repaid?: number; error?: string }>;
 }) {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
@@ -63,6 +67,8 @@ export default function HomePage({
   // Edits made in the term-plan modals, held here so Save has something to change. The placeholder
   // data is static; these are what a backend would persist.
   const [planId, setPlanId] = useState<string | null>(null);
+  // A live plan opens on paying it; Change split goes one step further in.
+  const [splitOpen, setSplitOpen] = useState(false);
   const [splits, setSplits] = useState<Record<string, number>>({});
   const [clearsFromId, setClearsFromId] = useState(data.termPlans.clearsFromId);
   const [selected, setSelected] = useState<ActivityRow | null>(null);
@@ -107,7 +113,12 @@ export default function HomePage({
     <TermPlansCard
       data={termPlansData}
       panel={panel}
-      onPlan={(p) => setPlanId(p.id)}
+      onPlan={(p) => {
+        setPlanId(p.id);
+        // A plan read from chain knows what it owes and opens on paying it; one without (the preview
+        // harness) has nothing to pay and goes straight to its split.
+        setSplitOpen(p.owed === undefined);
+      }}
       onLimit={() => setTermLimitOpen(true)}
       onClearsFrom={() => setPayAccountOpen(true)}
     />
@@ -153,6 +164,16 @@ export default function HomePage({
           setLinkOpen(true);
         }}
       />
+      {plan && plan.owed !== undefined && (
+        <TermPlanDialog
+          plan={plan}
+          account={data.cashAccount}
+          open={plan !== null && !splitOpen}
+          onOpenChange={(o) => !o && setPlanId(null)}
+          onPay={onPayPlan ? (amount, payoff) => onPayPlan(Number(plan.id), amount, payoff) : undefined}
+          onChangeSplit={() => setSplitOpen(true)}
+        />
+      )}
       {plan && (
         <SplitPlanDialog
           plan={plan}
@@ -163,8 +184,13 @@ export default function HomePage({
             setSplits((s) => ({ ...s, [plan.id]: splitInto }));
             setPlanId(null);
           }}
-          open={plan !== null}
-          onOpenChange={(o) => !o && setPlanId(null)}
+          open={plan !== null && splitOpen}
+          onOpenChange={(o) => {
+            if (o) return;
+            setSplitOpen(false);
+            // Back to the plan it was opened from; a preview plan has nothing behind it to go back to.
+            if (plan.owed === undefined) setPlanId(null);
+          }}
         />
       )}
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />

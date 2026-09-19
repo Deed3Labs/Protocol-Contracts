@@ -98,4 +98,14 @@ describe('repayments show in Activity, named by how they were paid', () => {
     const rows = mergedActivityRows([transfer], [], undefined, entries);
     expect(rows.map((r) => r.name)).toEqual(['Credit repayment', 'Credit repayment']);
   });
+
+  test('a plan payment is named for the plan and tagged with where the schedule stands', () => {
+    const row = repaymentRow({
+      ...entries[0], id: 'plan:0xab:3', method: 'manual', amountCents: 10200,
+      plan: { planId: 3, name: "Mike's Tire", index: 2, count: 4 },
+    });
+    expect(row.name).toBe("Mike's Tire payment");
+    expect(rowTag(row).label).toBe('Term plan · 2 of 4');
+    expect(row.amount).toBe(-102);
+  });
 });

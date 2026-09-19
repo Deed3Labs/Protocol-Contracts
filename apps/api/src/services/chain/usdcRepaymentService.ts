@@ -3,6 +3,7 @@ import { getContractAddress } from '../../config/contracts.js';
 import { chainProvider } from './provider.js';
 import { recordOnchainRepayment } from '../deposits/depositReceiptService.js';
 import { recordPoolMovements } from './poolFunding.js';
+import { recordPlanPayments } from '../credit/termPlanPayments.js';
 
 /*
  * A member repaid card debt on chain, in USDC. Verify it from the chain and record it.
@@ -14,7 +15,10 @@ import { recordPoolMovements } from './poolFunding.js';
  *   CreditBalanceRepaid(member, amount)   emitted by StableCredit: the whole payment
  *   TierRepaid(member, tierId, amount)    emitted by RevolvingIssuer: what the card tiers absorbed
  *
- * Only the second reaches the card books; a part that went to a term plan is not card debt.
+ *   PlanPaid(planId, amount, …)            emitted by TermIssuer: what went to a term plan
+ *
+ * Only TierRepaid reaches the card books; a part that went to a term plan is not card debt. Plan
+ * payments are remembered separately, for Activity -- a Pay on a plan (`payPlan`) lands here too.
  */
 
 const STABLE_CREDIT_EVENTS = new ethers.Interface(['event CreditBalanceRepaid(address member, uint128 amount)']);
@@ -34,6 +38,8 @@ export interface RepaymentRecord {
   duplicate?: boolean;
   totalCents?: number;
   revolvingCents?: number;
+  /** What went to term plans. */
+  planCents?: number;
   reason?: string;
 }
 
@@ -90,6 +96,21 @@ export async function recordUsdcRepayment(
   // The pool's share of this repayment, if any of it cleared a pool-funded tier.
   await recordPoolMovements(receipt);
 
+  const termIssuer = getContractAddress(chainId(), 'TermIssuer');
+  const planCents = termIssuer
+    ? await recordPlanPayments({
+        wallet,
+        txHash,
+        receipt,
+        termIssuer,
+        provider,
+        method: fromSavings > 0n ? 'savings' : method,
+      }).catch((error) => {
+        console.error('[usdc-repayment] plan payment record failed', txHash, error);
+        return 0;
+      })
+    : 0;
+
   const totalCents = Number(total / CENTS);
   const revolvingCents = Number(revolving / CENTS);
   const recorded = await recordOnchainRepayment({
@@ -100,6 +121,6 @@ export async function recordUsdcRepayment(
     savingsCents: Number(fromSavings / CENTS),
     method,
   });
-  console.log(`[usdc-repayment] ${wallet} repaid ${totalCents}c on chain (${revolvingCents}c card) ${txHash}${recorded.duplicate ? ' (already recorded)' : ''}`);
-  return { ok: true, duplicate: recorded.duplicate, totalCents, revolvingCents };
+  console.log(`[usdc-repayment] ${wallet} repaid ${totalCents}c on chain (${revolvingCents}c card, ${planCents}c plans) ${txHash}${recorded.duplicate ? ' (already recorded)' : ''}`);
+  return { ok: true, duplicate: recorded.duplicate, totalCents, revolvingCents, planCents };
 }

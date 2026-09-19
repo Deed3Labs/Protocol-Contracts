@@ -56,6 +56,10 @@ const TERM_ABI = [
   'function scheduleOf(uint256 planId) external view returns (uint256 installmentAmount, uint256 scheduleTotal, uint32 installments, uint64 scheduleStart)',
   'function termLimitOf(address) external view returns (uint256)',
   'function totalPrincipalOf(address member) external view returns (uint256)',
+  'function owedOn(uint256 planId) external view returns (uint256)',
+  'function arrearsOf(uint256 planId) external view returns (uint256)',
+  'function installmentsDue(uint256 planId) external view returns (uint256)',
+  'function scheduledPrincipalDue(uint256 planId) external view returns (uint256)',
 ];
 
 const LEDGER_ABI = ['function creditBalanceOf(address) view returns (uint256)'];
@@ -118,6 +122,19 @@ export interface ChainTermPlan {
   /** Carry in basis points per cycle — the rate the plan was written at, not today's. */
   rateBps: number;
   closed: boolean;
+  /** What clears the plan today, carry accrued to this second included. */
+  owedCents: number;
+  /** How far behind the schedule it is. Zero for a plan on time. */
+  arrearsCents: number;
+  /** Installments that have come due so far, of `installments`. */
+  installmentsDue: number;
+  /**
+   * What to pay now to be square through the next due date: anything behind, plus the next
+   * installment. Capped at what is owed, so on the last installment it is the payoff.
+   */
+  nextPaymentCents: number;
+  /** Unix seconds the next installment falls due. Null once every installment has. */
+  nextDueAt: number | null;
 }
 
 export interface ChainCredit {
@@ -338,6 +355,40 @@ async function readTermCeiling(
   }
 }
 
+/**
+ * What a member pays now to be square through a plan's next due date, and when that date is.
+ *
+ * The schedule's own arithmetic, read back rather than restated: `scheduledPrincipalDue` is
+ * `floor + installmentAmount × due` until the last installment, where it becomes `floor + total`.
+ * The floor (what a re-split carried in) is not exposed, so it is recovered from that figure.
+ * Paying `target − repaid` is exactly what brings `arrearsOf` to zero through the next date.
+ */
+export function nextPayment(p: {
+  owed: bigint;
+  repaid: bigint;
+  due: bigint;
+  scheduledDue: bigint;
+  installments: bigint;
+  installmentAmount: bigint;
+  scheduleTotal: bigint;
+  scheduleStart: bigint;
+  installmentLength: bigint;
+}): { amount: bigint; dueAt: number | null } {
+  if (p.owed === 0n) return { amount: 0n, dueAt: null };
+  // Every installment has come due: whatever is left is due now.
+  if (p.due >= p.installments) return { amount: p.owed, dueAt: null };
+  const floor = p.scheduledDue - p.installmentAmount * p.due;
+  const target = p.due + 1n >= p.installments ? floor + p.scheduleTotal : floor + p.installmentAmount * (p.due + 1n);
+  const short = target > p.repaid ? target - p.repaid : 0n;
+  return {
+    amount: short < p.owed ? short : p.owed,
+    dueAt: Number(p.scheduleStart + p.installmentLength * (p.due + 1n)),
+  };
+}
+
+/** Rounded up: a figure a member is asked to pay must clear what it names, never fall a unit short. */
+const toCentsUp = (units: bigint): number => Number((units + 9_999n) / 10_000n);
+
 async function readPlans(
   provider: ethers.JsonRpcProvider,
   address: string,
@@ -349,8 +400,17 @@ async function readPlans(
     const plans: ChainTermPlan[] = [];
     for (const id of ids) {
       const [plan, schedule] = await Promise.all([term.planAt(id), term.scheduleOf(id)]);
-      const [, principal, outstanding, repaid, openedAt, installments, , ratePerCycle, closed] = plan;
-      const [installmentAmount, scheduleTotal] = schedule;
+      const [, principal, outstanding, repaid, openedAt, installments, installmentLength, ratePerCycle, closed] = plan;
+      const [installmentAmount, scheduleTotal, , scheduleStart] = schedule;
+      const [owed, arrears, due, scheduledDue]: bigint[] = closed
+        ? [0n, 0n, 0n, 0n]
+        : await Promise.all([term.owedOn(id), term.arrearsOf(id), term.installmentsDue(id), term.scheduledPrincipalDue(id)]);
+      const next = nextPayment({
+        owed, repaid, due, scheduledDue,
+        installments: BigInt(installments),
+        installmentAmount, scheduleTotal,
+        scheduleStart: BigInt(scheduleStart), installmentLength: BigInt(installmentLength),
+      });
       plans.push({
         planId: Number(id),
         principalCents: toCents(principal),
@@ -362,6 +422,11 @@ async function readPlans(
         openedAt: Number(openedAt),
         rateBps: Number(ratePerCycle),
         closed,
+        owedCents: toCentsUp(owed),
+        arrearsCents: toCentsUp(arrears),
+        installmentsDue: Number(due),
+        nextPaymentCents: toCentsUp(next.amount),
+        nextDueAt: next.dueAt,
       });
     }
     return plans;
