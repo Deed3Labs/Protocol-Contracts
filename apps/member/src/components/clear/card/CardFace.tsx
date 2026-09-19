@@ -1,3 +1,4 @@
+import { ClearMark } from '@/components/clear/brand/icons';
 import NetworkMark from './NetworkMark';
 import { cn } from '@/lib/utils';
 
@@ -41,7 +42,12 @@ export default function CardFace({
     >
       <div className="c-line items-center!">
         <span className="flex items-center">
-          <span className="c-wm text-[15px]!">Clear</span>
+          {/* The lockup, as in the header: the mark as given, then the word, at the phone's
+              proportions (18px mark, 17px word). */}
+          <span className="c-cbrand">
+            <ClearMark className="c-cmk" />
+            <span className="c-wm">Clear</span>
+          </span>
           {frozen ? (
             <span className="c-cstate ml-s1">Frozen</span>
           ) : (

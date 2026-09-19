@@ -160,4 +160,10 @@ describe('the card shows the network logo, not its name', () => {
     expect(css).toContain('.c-cnet{height:13px;width:auto;flex-shrink:0;color:var(--paper);opacity:.95}');
     expect(css).toMatch(/\.dark \.c-pan,\.dark \.c-cardface \.c-wm,\.dark \.c-cstate,\.dark \.c-cnet\{color:#DFE3DE\}/);
   });
+  test('the Clear lockup sits on the card: the mark as given, beside a slightly larger word', () => {
+    expect(src('components/clear/card/CardFace.tsx')).toMatch(/<span className="c-cbrand">\s*<ClearMark className="c-cmk" \/>\s*<span className="c-wm">Clear<\/span>/);
+    const css = src('styles/clear-components.css');
+    expect(css).toContain('.c-cbrand .c-cmk{display:block;flex-shrink:0;width:18px;height:18px;color:var(--paper)}');
+    expect(css).toContain('.c-cbrand .c-wm{font-size:17px;line-height:1;margin-left:9px}');
+  });
 });
