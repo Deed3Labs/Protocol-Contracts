@@ -8,6 +8,7 @@ import {
   type ReconciliationReport,
 } from './invariants.js';
 import { readEsaBacking } from './esaBacking.js';
+import { cardCreditBooksVsChain } from '../chain/cardSettlementService.js';
 
 /*
  * Gathering the figures the four invariants compare — spec §3.
@@ -103,32 +104,15 @@ async function mintedCents(): Promise<number | null> {
   );
 }
 
-/**
- * Credit outstanding across every tier, from our double-entry ledger.
+/*
+ * Credit issuance: card credit our books say should be on chain, against what is.
  *
- * Signed by direction rather than summed raw: every amount in the table is positive and `direction`
- * carries the sign, so a repayment only reduces the position if the query respects that. Tiers live
- * in the account name — `member_credit_savings` and friends — not in a column.
+ * Not the raw ledger total against StableCredit supply. The ledger carries things the chain never
+ * will -- purchases still pending, disputed amounts set aside, USDC-rail repayments the member has
+ * yet to make on chain -- and StableCredit carries term plans the card ledger never sees. The netting
+ * job already knows how to line the two up per member; this sums that, read only. (Before the card
+ * settlement contracts were live this read nothing and reported "could not check".)
  */
-async function ledgerCreditCents(): Promise<number | null> {
-  return scalar(
-    `SELECT COALESCE(SUM(CASE WHEN direction = 'debit' THEN amount_cents ELSE -amount_cents END), 0)
-       AS total
-     FROM lithic_ledger_entries
-     WHERE account LIKE 'member_credit_%'`,
-  );
-}
-
-/**
- * StableCredit outstanding on chain.
- *
- * Null until the contract is deployed, which correctly reports this invariant as unavailable. The
- * alternative — comparing our ledger against a hardcoded zero — would report drift equal to every
- * dollar of credit ever issued, and a check that always screams is a check nobody reads.
- */
-async function chainCreditCents(): Promise<number | null> {
-  return null;
-}
 
 /** Savings-backed credit drawn — what the settlement float has to be able to cover. */
 async function savingsBackedDrawnCents(): Promise<number | null> {
@@ -167,8 +151,7 @@ export async function reconcile(): Promise<ReconciliationReport> {
     lithicHeld,
     sweptFiat,
     minted,
-    ledgerCredit,
-    chainCredit,
+    cardCredit,
     savingsDrawn,
     float,
     backing,
@@ -177,8 +160,7 @@ export async function reconcile(): Promise<ReconciliationReport> {
     lithicHeldCents(),
     sweptFiatCents(),
     mintedCents(),
-    ledgerCreditCents(),
-    chainCreditCents(),
+    cardCreditBooksVsChain(),
     savingsBackedDrawnCents(),
     settlementFloatCents(),
     readEsaBacking(),
@@ -213,9 +195,11 @@ export async function reconcile(): Promise<ReconciliationReport> {
     compare(
       'credit_issuance',
       'Credit issuance',
-      ledgerCredit,
-      chainCredit,
-      'On-chain StableCredit outstanding should equal the sum of tier draws in our ledger.',
+      cardCredit?.expectedCents ?? null,
+      cardCredit?.onChainCents ?? null,
+      'Card credit drawn on chain should equal what our ledger says is owed and settled on chain' +
+        ' (plus carry accrued since the last sweep). Drift that outlasts a sweep means netting or' +
+        ' settlement is stuck.',
     ),
     compareAtLeast(
       'float_adequacy',

@@ -396,15 +396,20 @@ const LEDGER = 'lithic_ledger_entries';
  * ever accrued. The external id is that total, so running this twice at the same figure writes
  * nothing the second time.
  */
-async function recordCarry(wallet: string, accruedCents: number): Promise<number> {
-  const pool = getPayPool()!;
-  const recorded = await pool
+/** Lifetime carry the ledger has recorded for a member. */
+async function recordedCarryCents(wallet: string): Promise<number> {
+  return getPayPool()!
     .query<{ total: string }>(
       `SELECT COALESCE(SUM(amount_cents), 0) AS total FROM ${LEDGER}
         WHERE wallet = $1 AND account = 'member_credit_carry' AND direction = 'debit'`,
       [wallet],
     )
     .then((r) => Number(r.rows[0]?.total ?? 0));
+}
+
+async function recordCarry(wallet: string, accruedCents: number): Promise<number> {
+  const pool = getPayPool()!;
+  const recorded = await recordedCarryCents(wallet);
   const add = accruedCents - recorded;
   if (add <= 0) return 0;
   const group = `carry:${wallet}:${accruedCents}`;
@@ -419,7 +424,12 @@ async function recordCarry(wallet: string, accruedCents: number): Promise<number
   return add;
 }
 
-async function readCardDebt(wallet: string, issuer: ethers.Contract): Promise<CardDebtPosition & { carryHeldElsewhere: boolean }> {
+async function readCardDebt(
+  wallet: string,
+  issuer: ethers.Contract,
+  /** False reads only: carry accrued since the last sweep is reported, not written. */
+  record = true,
+): Promise<CardDebtPosition & { carryHeldElsewhere: boolean; unrecordedCarryCents: number }> {
   const pool = getPayPool()!;
 
   /*
@@ -477,7 +487,11 @@ async function readCardDebt(wallet: string, issuer: ethers.Contract): Promise<Ca
   }
 
   const accrued = carryAccruedCents({ drawnCents, issuedCents: issued, clearedCents: cleared });
-  if (!carryHeldElsewhere) await recordCarry(wallet, accrued);
+  let unrecordedCarryCents = 0;
+  if (!carryHeldElsewhere) {
+    if (record) await recordCarry(wallet, accrued);
+    else unrecordedCarryCents = Math.max(0, accrued - (await recordedCarryCents(wallet)));
+  }
 
   /*
    * What the member owes in our ledger, carry included, ignoring repayments made in USDC.
@@ -501,7 +515,43 @@ async function readCardDebt(wallet: string, issuer: ethers.Contract): Promise<Ca
 
   // Carry that belongs to the pool is left on chain rather than counted as clearable.
   const onChain = carryHeldElsewhere ? Math.max(0, issued - cleared) : drawnCents;
-  return { ...cardDebtToClear({ offchainOwedCents: owed, notOnChainCents: notOnChain, onChainCents: onChain }), carryHeldElsewhere };
+  return {
+    ...cardDebtToClear({ offchainOwedCents: owed, notOnChainCents: notOnChain, onChainCents: onChain }),
+    carryHeldElsewhere,
+    unrecordedCarryCents,
+  };
+}
+
+/**
+ * Card credit across every member: what our books say should be on chain, and what is. Read only.
+ *
+ * The reconciler's credit-issuance check. Per member it is the same reading the netting job acts
+ * on -- ledger owed, less purchases not yet settled on chain -- plus carry that has accrued on chain
+ * since the sweep last wrote it into the ledger, which is the chain being ahead of the books by a
+ * known amount rather than drift. Nothing is written. Null if any member cannot be read: a partial
+ * sum would report drift that is only a failed read.
+ */
+export async function cardCreditBooksVsChain(): Promise<{ expectedCents: number; onChainCents: number } | null> {
+  const pool = getPayPool();
+  const issuer = issuerFor(chainProvider(resolveChainId()));
+  if (!pool || !issuer) return null;
+  try {
+    await ensureColumns();
+    const { rows } = await pool.query<{ wallet: string }>(
+      `SELECT DISTINCT wallet FROM ${DECISIONS} WHERE result = 'APPROVED' AND wallet IS NOT NULL`,
+    );
+    let expectedCents = 0;
+    let onChainCents = 0;
+    for (const { wallet } of rows) {
+      const position = await readCardDebt(wallet, issuer, false);
+      expectedCents += Math.max(0, position.offchainOwedCents - position.notOnChainCents) + position.unrecordedCarryCents;
+      onChainCents += position.onChainCents;
+    }
+    return { expectedCents, onChainCents };
+  } catch (error) {
+    console.error('[reconcile] card credit read failed:', error);
+    return null;
+  }
 }
 
 const walletsInFlight = new Set<string>();

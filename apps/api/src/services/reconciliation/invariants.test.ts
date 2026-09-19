@@ -104,3 +104,20 @@ describe('the report', () => {
     expect(report.unavailableCount).toBe(1);
   });
 });
+
+describe('credit issuance is checked against the chain, read only', () => {
+  const { readFileSync } = require('node:fs');
+  const service = readFileSync(new URL('./reconcileService.ts', import.meta.url), 'utf8');
+  const settlement = readFileSync(new URL('../chain/cardSettlementService.ts', import.meta.url), 'utf8');
+  test('no longer a stub that always reports unavailable', () => {
+    expect(service).not.toContain('async function chainCreditCents(): Promise<number | null> {\n  return null;');
+    expect(service).toContain('cardCredit?.expectedCents ?? null');
+  });
+  test('reads the same per-member position the netting job acts on, without writing carry', () => {
+    expect(settlement).toContain('const position = await readCardDebt(wallet, issuer, false);');
+    expect(settlement).toMatch(/if \(record\) await recordCarry\(wallet, accrued\);\s*else unrecordedCarryCents =/);
+  });
+  test('carry accrued since the last sweep counts as expected, not as drift', () => {
+    expect(settlement).toContain('Math.max(0, position.offchainOwedCents - position.notOnChainCents) + position.unrecordedCarryCents');
+  });
+});
