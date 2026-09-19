@@ -146,3 +146,29 @@ describe('the card page', () => {
     expect(src('pages/app/CardPage.tsx')).toMatch(/if \(wallet\.some\(\(c\) => c\.id === activeId\)\) return;\s*setActiveId\(wallet\[0\]\.id\);\s*setChosenKind\(wallet\[0\]\.variant\);/);
   });
 });
+
+describe('the card shows the network logo, not its name', () => {
+  const { readFileSync: rf } = require('node:fs');
+  const { join: j } = require('node:path');
+  const src = (p: string) => rf(j(import.meta.dirname, '..', p), 'utf8');
+  test('the live card face draws the mark from the one asset file', () => {
+    expect(src('components/clear/card/CardFace.tsx')).toContain('<NetworkMark network={network} className="c-cnet" />');
+    expect(src('components/clear/card/NetworkMark.tsx')).toContain("from '@/assets/brand/networkMarks'");
+  });
+  test('it takes the card\'s own light ink in both themes', () => {
+    const css = src('styles/clear-components.css');
+    expect(css).toContain('.c-cnet{height:13px;width:auto;flex-shrink:0;color:var(--paper);opacity:.95}');
+    expect(css).toMatch(/\.dark \.c-pan,\.dark \.c-cardface \.c-wm,\.dark \.c-cstate,\.dark \.c-cnet,\.dark \.c-cbrand \.c-cmk\{color:#DFE3DE\}/);
+  });
+  test('the Clear lockup sits on the card: the mark as given, beside a slightly larger word', () => {
+    expect(src('components/clear/card/CardFace.tsx')).toMatch(/<span className="c-cbrand">\s*<ClearMark className="c-cmk" \/>\s*<span className="c-wm">Clear<\/span>/);
+    const css = src('styles/clear-components.css');
+    expect(css).toContain('.c-cbrand .c-cmk{display:block;flex-shrink:0;width:18px;height:18px;color:var(--paper)}');
+    expect(css).toContain('.c-cbrand .c-wm{font-size:17px;line-height:1;margin-left:9px}');
+  });
+  test('no "Online only" pill on a virtual card; a frozen card still says so', () => {
+    const face = src('components/clear/card/CardFace.tsx');
+    expect(face).not.toContain('Online only');
+    expect(face).toContain('Frozen</span>');
+  });
+});

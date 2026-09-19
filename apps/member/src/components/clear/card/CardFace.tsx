@@ -1,11 +1,13 @@
+import { ClearMark } from '@/components/clear/brand/icons';
+import NetworkMark from './NetworkMark';
 import { cn } from '@/lib/utils';
 
 /**
  * The card face — one component, three grounds.
  *
  * Hardware is rounded, software is square: this is a picture of a physical object, so it takes the
- * object's radius. Physical is ink with the chip; virtual has no chip and says Online only on the
- * face itself; frozen is ink 70 and says Frozen. The number stays in mono — a PAN is an identifier,
+ * object's radius. Physical is ink with the chip; virtual has no chip and a lighter ground (no pill:
+ * the chooser already says which kind it is); frozen is ink 70 and says Frozen. The number stays in mono — a PAN is an identifier,
  * not a figure, and mono is what it is embossed in.
  *
  * The last four sits in the top strip as well as in the number, because a card standing behind the
@@ -40,12 +42,15 @@ export default function CardFace({
     >
       <div className="c-line items-center!">
         <span className="flex items-center">
-          <span className="c-wm text-[15px]!">Clear</span>
-          {frozen ? (
-            <span className="c-cstate ml-s1">Frozen</span>
-          ) : (
-            virtual && <span className="c-cstate ml-s1">Online only</span>
-          )}
+          {/* The lockup, as in the header: the mark as given, then the word, at the phone's
+              proportions (18px mark, 17px word). */}
+          <span className="c-cbrand">
+            <ClearMark className="c-cmk" />
+            <span className="c-wm">Clear</span>
+          </span>
+          {/* Frozen is a state the member needs to see on the card. Virtual is not: the chooser
+              above and the list already say which kind it is. */}
+          {frozen && <span className="c-cstate ml-s1">Frozen</span>}
         </span>
         <span className="c-ctag">···· {last4 || '••••'}</span>
       </div>
@@ -61,7 +66,7 @@ export default function CardFace({
               </>
             )}
           </span>
-          <span className="c-cmeta">{network}</span>
+          <NetworkMark network={network} className="c-cnet" />
         </div>
       </div>
     </div>

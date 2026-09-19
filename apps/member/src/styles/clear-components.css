@@ -368,6 +368,10 @@
 .c-cardface{background:var(--ink);color:var(--paper);aspect-ratio:1.586;border-radius:12px;
           padding:var(--s2);display:flex;flex-direction:column;justify-content:space-between}
 .c-cardface .c-wm{color:var(--paper)}
+/* The Clear lockup on the card: the header's phone proportions, in the card's ink. */
+.c-cbrand{display:inline-flex;align-items:center}
+.c-cbrand .c-cmk{display:block;flex-shrink:0;width:18px;height:18px;color:var(--paper)}
+.c-cbrand .c-wm{font-size:17px;line-height:1;margin-left:9px}
 .c-cardface.c-virtual{background:linear-gradient(160deg,#1E2C27 0%,#16211D 70%)}
 .c-cardface.c-frozen{background:var(--ink-70)}
 /* Five things are objects rather than page surfaces, so they stay dark on a dark ground: the card
@@ -377,7 +381,7 @@
 .dark .c-cardface{background:#0E1714}
 .dark .c-cardface.c-virtual{background:linear-gradient(160deg,#1B2A24 0%,#0E1714 70%)}
 .dark .c-cardface.c-frozen{background:#2C3A35}
-.dark .c-pan,.dark .c-cardface .c-wm,.dark .c-cstate{color:#DFE3DE}
+.dark .c-pan,.dark .c-cardface .c-wm,.dark .c-cstate,.dark .c-cnet,.dark .c-cbrand .c-cmk{color:#DFE3DE}
 .dark .c-cchip{background:#5A635F}
 .dark .c-viewfinder{background:#0E1714}
 .dark .c-vf{border-color:#DFE3DE}
@@ -387,6 +391,8 @@
               border-right:1px solid var(--ink-70)}
 .c-pan{font-family:var(--font-mono);font-size:15px;letter-spacing:.06em;color:var(--paper);margin:0}
 .c-cmeta{font-size:11px;color:var(--ink-28);font-family:var(--font-text)}
+/* The network mark: the card's own ink, sized to sit on the meta line's baseline. */
+.c-cnet{height:13px;width:auto;flex-shrink:0;color:var(--paper);opacity:.95}
 .c-cstate{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;
         color:var(--paper);border:1px solid var(--ink-28);padding:2px 8px;border-radius:var(--radius-pill)}
 
