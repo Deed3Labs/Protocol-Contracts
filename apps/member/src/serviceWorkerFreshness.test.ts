@@ -66,3 +66,11 @@ describe('the service worker stays installed, and forgets what it should', () =>
     expect(html).not.toContain('appKitModal');
   });
 });
+
+describe('the opening screen', () => {
+  const css = readFileSync(join(import.meta.dirname, 'styles', 'clear-components.css'), 'utf8');
+  test('the slow-connection note sits above "Opening", not on top of it', () => {
+    expect(css).toContain('.c-splash .c-waiting{position:absolute;bottom:var(--s5);');
+    expect(css).toContain('.c-splash .c-slow{position:absolute;bottom:calc(var(--s5) + var(--s4));');
+  });
+});
