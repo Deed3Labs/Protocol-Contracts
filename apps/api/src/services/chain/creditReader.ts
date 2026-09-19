@@ -452,7 +452,9 @@ async function readPlans(
         outstandingCents: toCents(outstanding),
         repaidCents: toCents(repaid),
         installments: Number(installments),
-        installmentCents: toCents(installmentAmount),
+        // Up, as the payment it asks for is: $26.262376 is $26.27 to cover, and the sheet quoting
+        // $26.26 beside a Pay $26.27 button reads as a mistake.
+        installmentCents: toCentsUp(installmentAmount),
         scheduleTotalCents: toCents(scheduleTotal),
         openedAt: Number(openedAt),
         rateBps: Number(ratePerCycle),

@@ -5,6 +5,9 @@ import { Btn, Line, Rows } from './brand/anatomy';
 import { money } from '@clear/domain';
 import type { CashAccount, TermPlan } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
+import { AlertMark, Steps, Tick } from './MoveProgress';
+import { stepsFor, type MoveStatus } from '@/lib/moveSteps';
+import { shortMoveReason } from '@/hooks/usePoolMove';
 
 type PayResult = { repaid?: number; error?: string };
 
@@ -31,7 +34,7 @@ export default function TermPlanDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Pays on chain. Absent in the preview harness, where the button stays inert. */
-  onPay?: (amount: number, payoff: boolean, fromSavings: boolean) => Promise<PayResult>;
+  onPay?: (amount: number, payoff: boolean, fromSavings: boolean, onStep?: (step: number) => void) => Promise<PayResult>;
   onChangeSplit: () => void;
   /**
    * Savings free to move -- not pledged against drawn credit. Offered as a source so a member can
@@ -50,6 +53,19 @@ export default function TermPlanDialog({
   const [custom, setCustom] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
+  /*
+   * Paying replaces the sheet's content, as moving money and buying a bond do: three named steps
+   * while it happens, then what happened. The amount and source are held so the done screen and a
+   * retry describe the payment that was made, not whatever the form now says.
+   */
+  const [progress, setProgress] = useState<{
+    status: MoveStatus;
+    step: number;
+    paid: number;
+    fromSavings: boolean;
+    stillOwed: number;
+    failureNote?: string;
+  } | null>(null);
 
   // Reopening after the numbers moved should not show last time's amount or result.
   useEffect(() => {
@@ -58,6 +74,7 @@ export default function TermPlanDialog({
     setCustom(false);
     setNote(null);
     setFromSavings(false);
+    setProgress(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -70,14 +87,101 @@ export default function TermPlanDialog({
     if (!onPay || capped <= 0) return;
     setBusy(true);
     setNote(null);
-    const result = await onPay(capped, payoff, fromSavings);
+    const base = { paid: capped, fromSavings, stillOwed };
+    setProgress({ status: 'processing', step: 0, ...base });
+    const result = await onPay(capped, payoff, fromSavings, (step) =>
+      setProgress((p) => (p && p.status === 'processing' ? { ...p, step } : p)),
+    );
     setBusy(false);
     if (result.repaid && result.repaid > 0) {
-      setNote({ text: `Paid ${money(result.repaid, { cents: true })}.${result.error ? ` ${result.error}` : ''}`, bad: false });
+      // Paid on chain. A recording that lagged is not a failed payment; the books catch up on read.
+      setProgress({ status: 'done', step: 3, ...base, paid: result.repaid });
     } else {
-      setNote({ text: result.error ?? 'That did not go through. Nothing was paid.', bad: true });
+      setProgress({
+        status: 'failed',
+        step: 1,
+        ...base,
+        failureNote: shortMoveReason(result.error ?? 'it did not go through'),
+      });
     }
   };
+
+  if (progress) {
+    const labels = [
+      progress.fromSavings ? 'Taken from your savings' : 'Taken from your cash account',
+      `Paid to ${plan.name}`,
+      'Added to your activity',
+    ];
+    const from = progress.fromSavings ? 'savings' : 'cash account';
+    return (
+      <Modal
+        open={open}
+        onOpenChange={onOpenChange}
+        title={plan.name}
+        // Done clears the title: the hero says what happened.
+        titleHidden={progress.status === 'done'}
+        description="Paying this plan."
+        footer={
+          progress.status === 'processing' ? (
+            <p className="c-det">
+              Usually a few seconds. <strong className="font-semibold text-ink">You can close this</strong> — it finishes on
+              its own and lands in your activity either way.
+            </p>
+          ) : progress.status === 'done' ? (
+            <>
+              <div className="c-conseq">
+                <div>
+                  <span>From</span>
+                  <span>{progress.fromSavings ? 'Savings' : 'Ready to allocate'}</span>
+                </div>
+                <div className="c-limit">
+                  <span>Still owed</span>
+                  <span>{progress.stillOwed === 0 ? 'Nothing. Paid off' : money(progress.stillOwed, { cents: true })}</span>
+                </div>
+              </div>
+              <Btn primary lg className="mt-s2" onClick={() => onOpenChange(false)}>
+                Done
+              </Btn>
+            </>
+          ) : (
+            <div className="c-pair">
+              <Btn primary onClick={() => setProgress(null)}>
+                Try again
+              </Btn>
+              <Btn onClick={() => onOpenChange(false)}>Not now</Btn>
+            </div>
+          )
+        }
+      >
+        <div className="c-mhero">
+          {progress.status === 'done' ? <Tick /> : progress.status === 'failed' ? <AlertMark /> : null}
+          <p className={cn('c-fig text-fig', progress.status !== 'processing' && 'mt-s2')}>
+            {progress.status === 'processing'
+              ? `Paying ${money(progress.paid, { cents: true })}`
+              : progress.status === 'done'
+                ? `${money(progress.paid, { cents: true })} paid`
+                : 'Nothing paid'}
+          </p>
+          <p className="c-sub mt-s1">
+            {progress.status === 'processing'
+              ? `${progress.fromSavings ? 'Savings' : 'Cash account'} to ${plan.name}`
+              : progress.status === 'done'
+                ? `${plan.name} · just now`
+                : `Your ${money(progress.paid, { cents: true })} is still in your ${from}`}
+          </p>
+        </div>
+        {progress.status !== 'done' && (
+          <Steps
+            steps={
+              progress.status === 'failed'
+                ? [{ label: `Not paid, ${progress.failureNote ?? 'it did not go through'}`, state: 'done' as const }]
+                : stepsFor(labels, progress.step, progress.status)
+            }
+          />
+        )}
+      </Modal>
+    );
+  }
 
   const select = (value: number) => {
     setCustom(false);

@@ -125,12 +125,19 @@ export function useRepayFromSavings(): (amount: number) => Promise<RepayOutcome>
  * figure on screen is a moment old by the time it lands; paying off reads what is owed on chain and
  * approves a cent over, and `payPlan` takes only what is owed. A part payment pays what was asked.
  */
-export function usePayPlan(): (planId: number, amount: number, payoff?: boolean, fromSavings?: boolean) => Promise<RepayOutcome> {
+export function usePayPlan(): (
+  planId: number,
+  amount: number,
+  payoff?: boolean,
+  fromSavings?: boolean,
+  /** 1 once the payment is sent, 2 once it is on chain and being recorded. */
+  onStep?: (step: number) => void,
+) => Promise<RepayOutcome> {
   const address = useOptionalAddress();
   const getClientForChain = useOptionalSmartWalletClient();
 
   return useCallback(
-    async (planId: number, amount: number, payoff = false, fromSavings = false) => {
+    async (planId: number, amount: number, payoff = false, fromSavings = false, onStep?: (step: number) => void) => {
       if (!address) return { error: 'Connect a wallet first.' };
       const chainId = ACTIVE_CHAIN_ID;
       const c = clearContracts(chainId);
@@ -152,6 +159,8 @@ export function usePayPlan(): (planId: number, amount: number, payoff?: boolean,
         const hash = fromSavings
           ? await scPayPlanFromSavings({ smartWalletClient: client, ownerWallet: address, planId, units, chainId })
           : await scPayPlan({ smartWalletClient: client, ownerWallet: address, planId, units, chainId });
+        // The batch resolves once it is on chain: taken and paid. What is left is our record of it.
+        onStep?.(2);
         markChainStale();
         const recorded = await recordCreditRepayment(address, hash);
         return {

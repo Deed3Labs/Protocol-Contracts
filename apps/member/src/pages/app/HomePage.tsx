@@ -53,7 +53,13 @@ export default function HomePage({
   onRepay?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
   onRepayFromSavings?: (amount: number) => Promise<{ repaid?: number; pendingLeft?: number; error?: string }>;
   /** Pays one term plan on chain. Absent in the preview harness. */
-  onPayPlan?: (planId: number, amount: number, payoff: boolean, fromSavings?: boolean) => Promise<{ repaid?: number; error?: string }>;
+  onPayPlan?: (
+    planId: number,
+    amount: number,
+    payoff: boolean,
+    fromSavings?: boolean,
+    onStep?: (step: number) => void,
+  ) => Promise<{ repaid?: number; error?: string }>;
   /** Pays back what a term default wrote off; clearing it restores term plans. */
   onPayBack?: (amount: number, remaining: number) => Promise<{ repaid?: number; error?: string }>;
   /** Savings not pledged against drawn credit: what a plan may be paid from. */
@@ -185,7 +191,7 @@ export default function HomePage({
           account={data.cashAccount}
           open={plan !== null && !splitOpen}
           onOpenChange={(o) => !o && setPlanId(null)}
-          onPay={onPayPlan && livePlan ? (amount, payoff, fromSavings) => onPayPlan(Number(sheetPlan.id), amount, payoff, fromSavings) : undefined}
+          onPay={onPayPlan && livePlan ? (amount, payoff, fromSavings, onStep) => onPayPlan(Number(sheetPlan.id), amount, payoff, fromSavings, onStep) : undefined}
           savingsFree={livePlan ? savingsFree : 0}
           onChangeSplit={() => setSplitOpen(true)}
         />

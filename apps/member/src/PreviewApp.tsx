@@ -246,7 +246,12 @@ function TermPlanPayPreview() {
           account={HOME_IN_USE.cashAccount}
           open
           onOpenChange={(o) => !o && setOpen(null)}
-          onPay={async (amount) => new Promise((r) => setTimeout(() => r({ repaid: amount }), 600))}
+          onPay={async (amount, _payoff, _fromSavings, onStep) =>
+            new Promise((r) => {
+              setTimeout(() => onStep?.(2), 1200);
+              setTimeout(() => r({ repaid: amount }), 2400);
+            })
+          }
           onChangeSplit={() => undefined}
           savingsFree={500}
         />
