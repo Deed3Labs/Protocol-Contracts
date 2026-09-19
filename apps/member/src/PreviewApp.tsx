@@ -7,6 +7,7 @@ import AppChrome from '@/components/shell/AppChrome';
 import CycleCard from '@/components/clear/CycleCard';
 import RepayDialog from '@/components/clear/RepayDialog';
 import TermPlansCard from '@/components/clear/TermPlansCard';
+import TermPlanDialog from '@/components/clear/TermPlanDialog';
 import { Button } from '@/components/ui/button';
 import HeaderActions from '@/components/shell/HeaderActions';
 import { unreadThreads } from '@/lib/clearModel';
@@ -206,6 +207,37 @@ function TermPlansPreview() {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * A live plan's sheet: paying it by name. Two plans -- one on time, one behind -- so both the
+ * Next payment and the Catch up states can be looked at. Paying resolves after a beat, not on chain.
+ */
+function TermPlanPayPreview() {
+  const base = { splitInto: 4, rate: '2% / cycle', ratePerCycle: 0.02, balance: 400, perCycle: 102 };
+  const plans = [
+    { ...base, id: '0', name: "Mike's Tire", owed: 301.4, nextPayment: 102, nextDueOn: 'Oct 2', behind: 0 },
+    { ...base, id: '1', name: 'Valley Dental', owed: 402.6, nextPayment: 204, nextDueOn: 'Oct 9', behind: 102 },
+  ];
+  const [open, setOpen] = useState<string | null>('0');
+  const plan = plans.find((p) => p.id === open);
+  return (
+    <div className="flex gap-3">
+      {plans.map((p) => (
+        <Button key={p.id} variant="outline" onClick={() => setOpen(p.id)}>{p.name}</Button>
+      ))}
+      {plan && (
+        <TermPlanDialog
+          plan={plan}
+          account={HOME_IN_USE.cashAccount}
+          open
+          onOpenChange={(o) => !o && setOpen(null)}
+          onPay={async (amount) => new Promise((r) => setTimeout(() => r({ repaid: amount }), 600))}
+          onChangeSplit={() => undefined}
+        />
+      )}
     </div>
   );
 }
@@ -849,6 +881,7 @@ export default function PreviewApp() {
                         <Route path="/cycle" element={<CyclePreview />} />
                         <Route path="/repay" element={<RepayPreview />} />
                         <Route path="/term-plans" element={<TermPlansPreview />} />
+                        <Route path="/term-plan-pay" element={<TermPlanPayPreview />} />
                         <Route path="/learn/:topic" element={<ExplainerPage />} />
                         <Route path="/settings" element={<SettingsPreview empty={empty} />} />
                         <Route path="/settings/:page" element={<SettingsPreview empty={empty} />} />

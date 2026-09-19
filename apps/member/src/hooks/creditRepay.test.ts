@@ -90,3 +90,22 @@ describe('pay a term plan', () => {
     expect(hook).toContain('payoff || asked >= owedUnits ? owedUnits + 10_000n : asked');
   });
 });
+
+describe('re-split a term plan', () => {
+  const hook = readFileSync(new URL('./useCreditRepay.ts', import.meta.url), 'utf8');
+  const calls = readFileSync(new URL('../lib/sendCalls.ts', import.meta.url), 'utf8');
+  const home = readFileSync(new URL('../pages/app/HomePage.tsx', import.meta.url), 'utf8');
+
+  test('signed by the member, on chain, through the step-up batch', () => {
+    expect(calls).toMatch(/export async function scSetSplit[\s\S]{0,500}runBatch\([\s\S]{0,200}functionName: 'setSplit'/);
+    expect(hook).toContain('await scSetSplit({');
+  });
+
+  test('a live plan saves to chain; only the preview holds a split locally', () => {
+    expect(home).toMatch(/if \(onSetSplit && plan\.owed !== undefined\) \{[\s\S]{0,160}if \(result\.error\) return result;[\s\S]{0,40}\} else \{\s*setSplits/);
+  });
+
+  test('live, Clears from is a fact, not a picker with nothing behind it', () => {
+    expect(home).toContain("clearsFromNote={onPayPlan ? 'Bank deposits' : undefined}");
+  });
+});

@@ -371,6 +371,24 @@ export async function scPayPlan(args: {
   ]);
 }
 
+/** Re-split what is left of a plan over 1, 2, 4, 6 or 12 cycles. The member signs it themselves. */
+export async function scSetSplit(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  planId: number;
+  installments: number;
+  chainId: number;
+}): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.termIssuer) throw new Error('Changing a split on chain is not available on this network yet.');
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    {
+      to: c.termIssuer,
+      data: encodeFunctionData({ abi: TERM_PLAN_ABI, functionName: 'setSplit', args: [BigInt(args.planId), args.installments] }),
+    },
+  ]);
+}
+
 /** The savings tier's position on the revolving line: the cheapest tier, first in draw order. */
 export const SAVINGS_TIER_ID = 0n;
 
