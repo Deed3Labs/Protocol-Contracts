@@ -46,7 +46,7 @@ function cbor(v: unknown): Buffer {
   if (typeof v === 'string') return Buffer.concat([head(3, Buffer.byteLength(v)), Buffer.from(v)]);
   if (v instanceof Uint8Array) return Buffer.concat([head(2, v.length), Buffer.from(v)]);
   if (v instanceof Map) {
-    const parts = [head(5, v.size)];
+    const parts: Buffer[] = [head(5, v.size)];
     for (const [k, val] of v) parts.push(cbor(k), cbor(val));
     return Buffer.concat(parts);
   }
