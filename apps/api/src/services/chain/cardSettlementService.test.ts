@@ -128,6 +128,6 @@ describe('carry is owed, paid, and cleared too', () => {
 
   test('a deposit pays carry before any principal', () => {
     expect(settlement).toMatch(/const carry = Math\.max\(0, Math\.round\(carryCents\)\);[\s\S]{0,120}settlements\.push\(\{ tier: 'carry'/);
-    expect(deposits).toContain('planSettlement(amount, outstanding, await readCarryOwed(client, wallet))');
+    expect(deposits).toContain('planSettlement(term.remainingCents, outstanding, await readCarryOwed(client, wallet))');
   });
 });

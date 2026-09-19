@@ -12,7 +12,8 @@ import { getPayPool } from '../../config/postgres.js';
  * One row per plan per transaction: an undirected Repay can pay several plans at once.
  */
 
-export type PlanPaymentMethod = 'manual' | 'auto' | 'savings';
+/** `bank`: a bank deposit paid it, and the co-op paid the plan on chain from its float. */
+export type PlanPaymentMethod = 'manual' | 'auto' | 'savings' | 'bank';
 
 const TERM_EVENTS = new ethers.Interface([
   'event PlanPaid(uint256 indexed planId, uint256 amount, uint256 principalPortion)',

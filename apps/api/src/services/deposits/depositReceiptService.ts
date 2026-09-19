@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { getPayPool } from '../../config/postgres.js';
 import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
 import { syncCardRepayment } from '../chain/cardSettlementService.js';
+import { allocateTermDue, bookTermPayments, readTermDue } from '../chain/termCollection.js';
 import { autoSaveCentsFor, autoSaveStore } from './autoSaveStore.js';
 import {
   allocate,
@@ -183,6 +184,10 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
     return { recorded: false, duplicate: false, plan: null, toSavingsCents: 0, toCashCents: 0, snapshotsUpdated: 0 };
   }
 
+  // What is due on term plans, read from chain before the DB transaction opens. Only a fiat deposit
+  // pays it here; USDC in the member's own wallet cannot be taken without their mandate.
+  const termDue = receipt.rail === 'lithic_ach' ? await readTermDue(wallet) : [];
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -228,10 +233,23 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
      * paid while the chain still said owed and the USDC had not moved. It stays the member's cash,
      * and card debt is repaid with it on chain (Repay), which the books then record from the chain.
      */
+    /*
+     * Term plans first: what is due on them (arrears, then carry a refunded plan left behind). A
+     * plan falls into default by falling behind, so overdue installments outrank card debt even
+     * where a card tier costs more. The co-op pays them on chain from its float (the sweep).
+     */
+    const term = allocateTermDue(amount, termDue);
+    const termCents = await bookTermPayments(client, {
+      wallet,
+      group,
+      externalId: `${receipt.rail}:${receipt.externalId}`,
+      paid: term.paid,
+    });
+
     const outstanding = await readOutstanding(client, wallet);
     const plan =
       receipt.rail === 'lithic_ach'
-        ? planSettlement(amount, outstanding, await readCarryOwed(client, wallet))
+        ? planSettlement(term.remainingCents, outstanding, await readCarryOwed(client, wallet))
         : planSettlement(amount, { boost: 0, income: 0, asset: 0, savings: 0 });
 
     /*
@@ -310,7 +328,7 @@ export async function recordDeposit(receipt: DepositReceipt): Promise<DepositOut
       [
         receipt.rail,
         receipt.externalId,
-        plan.settledCents,
+        plan.settledCents + termCents,
         allocation.toSavingsCents,
         allocation.toCashCents,
       ],
