@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useRemembered } from '@/lib/rememberedState';
+import { useEffect } from 'react';
 import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useAppKitAccount } from '@/lib/walletCompat';
@@ -38,7 +39,8 @@ import type { SavingsData } from '@/lib/clearModel';
 export function useSavingsData(): SavingsData {
   const { address } = useAppKitAccount();
   const { savings: savingsBalance, loading } = useClearBalances();
-  const [pay, setPay] = useState<PaySummary | null>(null);
+  // Same key as Home and Earn: the pay summary is one read, remembered for the session.
+  const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${address ?? ''}`, null);
 
   useEffect(() => {
     if (!address) return;

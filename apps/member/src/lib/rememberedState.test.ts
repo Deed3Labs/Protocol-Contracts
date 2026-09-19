@@ -22,4 +22,9 @@ describe('pages start from what they showed last, not from zeros', () => {
     expect(hook).toContain('useState<T>(() => (memory.has(key) ? (memory.get(key) as T) : initial))');
     expect(hook).toContain('memory.set(key, resolved);');
   });
+
+  test('Savings figures and the auto-repay switch are remembered too', () => {
+    expect(read('hooks/useSavingsData.ts')).toContain("useRemembered<PaySummary | null>(`pay:${address ?? ''}`, null)");
+    expect(read('hooks/useAutoRepay.ts')).toContain("useRemembered(`autorepay:${address ?? ''}`, false)");
+  });
 });
