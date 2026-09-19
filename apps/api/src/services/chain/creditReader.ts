@@ -60,6 +60,11 @@ const TERM_ABI = [
   'function arrearsOf(uint256 planId) external view returns (uint256)',
   'function installmentsDue(uint256 planId) external view returns (uint256)',
   'function scheduledPrincipalDue(uint256 planId) external view returns (uint256)',
+  'function defaultableAt(uint256 planId) external view returns (uint256)',
+  'function splitAllowance(uint256 planId) external view returns (uint8 remaining, uint256 availableAt)',
+  'function termSuspended(address member) external view returns (bool)',
+  'function writtenOffOf(address member) external view returns (uint256)',
+  'function recoveredOf(address member) external view returns (uint256)',
 ];
 
 const LEDGER_ABI = ['function creditBalanceOf(address) view returns (uint256)'];
@@ -135,6 +140,11 @@ export interface ChainTermPlan {
   nextPaymentCents: number;
   /** Unix seconds the next installment falls due. Null once every installment has. */
   nextDueAt: number | null;
+  /** Unix seconds the plan can be declared in default, if it is behind. Null when on time. */
+  defaultsAt: number | null;
+  /** Re-splits the member has left on this plan (of three), and the earliest the next is allowed. */
+  splitChangesLeft: number;
+  nextSplitAt: number | null;
 }
 
 export interface ChainCredit {
@@ -178,6 +188,11 @@ export interface ChainTermCeiling {
    * at all — a member owing money nothing tells them about.
    */
   carryOwedCents: number;
+  /** Term credit paused by a default, until paid back or reinstated after clean cycles. */
+  suspended: boolean;
+  /** What that default wrote off, and how much of it has been paid back. */
+  writtenOffCents: number;
+  recoveredCents: number;
 }
 
 function toCents(amount: bigint): number {
@@ -311,6 +326,18 @@ async function readTiers(
   }
 }
 
+async function readSuspension(
+  term: ethers.Contract,
+  wallet: string,
+): Promise<{ suspended: boolean; writtenOffCents: number; recoveredCents: number }> {
+  const [suspended, writtenOff, recovered] = await Promise.all([
+    term.termSuspended(wallet).catch(() => false),
+    term.writtenOffOf(wallet).catch(() => 0n),
+    term.recoveredOf(wallet).catch(() => 0n),
+  ]);
+  return { suspended: Boolean(suspended), writtenOffCents: toCentsUp(writtenOff), recoveredCents: toCents(recovered) };
+}
+
 /**
  * The ceiling a new plan is checked against, read from the contract that does the checking.
  *
@@ -347,6 +374,7 @@ async function readTermCeiling(
       usedCents,
       availableCents: Math.max(0, limitCents - usedCents),
       carryOwedCents,
+      ...(await readSuspension(term, wallet)),
     };
   } catch (error) {
     // Null, never zero. A member whose RPC blipped has not had their line withdrawn.
@@ -405,6 +433,13 @@ async function readPlans(
       const [owed, arrears, due, scheduledDue]: bigint[] = closed
         ? [0n, 0n, 0n, 0n]
         : await Promise.all([term.owedOn(id), term.arrearsOf(id), term.installmentsDue(id), term.scheduledPrincipalDue(id)]);
+      // Late-handling views arrived with an upgrade; a chain without them reads as on time, no limits.
+      const [defaultsAt, allowance]: [bigint, [bigint, bigint]] = closed
+        ? [0n, [0n, 0n]]
+        : await Promise.all([
+            term.defaultableAt(id).catch(() => 0n),
+            term.splitAllowance(id).catch(() => [3n, 0n]),
+          ]);
       const next = nextPayment({
         owed, repaid, due, scheduledDue,
         installments: BigInt(installments),
@@ -427,6 +462,9 @@ async function readPlans(
         installmentsDue: Number(due),
         nextPaymentCents: toCentsUp(next.amount),
         nextDueAt: next.dueAt,
+        defaultsAt: defaultsAt > 0n ? Number(defaultsAt) : null,
+        splitChangesLeft: Number(allowance[0]),
+        nextSplitAt: allowance[1] > 0n ? Number(allowance[1]) : null,
       });
     }
     return plans;

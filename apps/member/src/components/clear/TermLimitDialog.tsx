@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import Modal from './Modal';
 import BigAmount from './brand/BigAmount';
-import { Line, Rows, Track } from './brand/anatomy';
+import { Btn, Line, Rows, Track } from './brand/anatomy';
+import { cn } from '@/lib/utils';
 import { money } from '@clear/domain';
 import { activePlans, planPerCycle, termPlansPerCycle, type TermPlans } from '@/lib/clearModel';
 
@@ -15,8 +17,11 @@ export default function TermLimitDialog({
   data,
   open,
   onOpenChange,
+  onPayBack,
 }: {
   data: TermPlans;
+  /** Pays back what a default wrote off. Absent in the preview harness. */
+  onPayBack?: (amount: number, remaining: number) => Promise<{ repaid?: number; error?: string }>;
   /** No longer offered: the sheet is a disclosure, and linked accounts are managed from Clears from. */
   onManageAccounts?: () => void;
   open: boolean;
@@ -25,6 +30,63 @@ export default function TermLimitDialog({
   const limit = data.perCycleLimit;
   const committed = termPlansPerCycle(data);
   const free = limit !== undefined ? Math.max(0, limit - committed) : undefined;
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
+
+  /*
+   * Paused by a default: the sheet is about getting term plans back, not about a limit that is
+   * zero until then. Two ways back, both stated -- paying back what was written off (now), or six
+   * clean cycles (the co-op restores it). A new limit is set from income once it is lifted.
+   */
+  if (data.paused) {
+    const owed = data.paused.toPayBack;
+    const payBack = async () => {
+      if (!onPayBack || owed <= 0) return;
+      setBusy(true);
+      setNote(null);
+      const result = await onPayBack(owed, owed);
+      setBusy(false);
+      setNote(
+        result.repaid
+          ? { text: `Paid back ${money(result.repaid, { cents: true })}. Term plans are back once your limit is set again.`, bad: false }
+          : { text: result.error ?? 'That did not go through. Nothing was paid.', bad: true },
+      );
+    };
+    return (
+      <Modal
+        open={open}
+        onOpenChange={onOpenChange}
+        title="Term plans are paused"
+        description="A plan fell two installments behind and was written off. Your card, savings and membership are untouched."
+        footer={
+          <>
+            {note && <p className={cn('c-det', note.bad && 'c-errline')}>{note.text}</p>}
+            <Btn primary lg className="mt-s2" disabled={!onPayBack || owed <= 0 || busy} onClick={() => void payBack()}>
+              {busy ? 'Paying…' : `Pay back ${money(owed, { cents: true })}`}
+            </Btn>
+          </>
+        }
+      >
+        <p className="c-label">Left to pay back</p>
+        <BigAmount amount={owed} />
+        <Rows className="mt-s2">
+          <div>
+            <Line>
+              <span className="c-sub">Pay it back</span>
+              <span className="c-det">Term plans return straight away</span>
+            </Line>
+          </div>
+          <div>
+            <Line>
+              <span className="c-sub">Or six clean cycles</span>
+              <span className="c-det">The co-op restores them</span>
+            </Line>
+          </div>
+        </Rows>
+      </Modal>
+    );
+  }
+
   const parts = activePlans(data)
     .map((p) => ({ name: p.name, perCycle: planPerCycle(p) }))
     .filter((p): p is { name: string; perCycle: number } => p.perCycle !== undefined && p.perCycle > 0);

@@ -8,6 +8,7 @@ import CycleCard from '@/components/clear/CycleCard';
 import RepayDialog from '@/components/clear/RepayDialog';
 import TermPlansCard from '@/components/clear/TermPlansCard';
 import TermPlanDialog from '@/components/clear/TermPlanDialog';
+import TermLimitDialog from '@/components/clear/TermLimitDialog';
 import { Button } from '@/components/ui/button';
 import HeaderActions from '@/components/shell/HeaderActions';
 import { unreadThreads } from '@/lib/clearModel';
@@ -219,15 +220,26 @@ function TermPlanPayPreview() {
   const base = { splitInto: 4, rate: '2% / cycle', ratePerCycle: 0.02, balance: 400, perCycle: 102 };
   const plans = [
     { ...base, id: '0', name: "Mike's Tire", owed: 301.4, nextPayment: 102, nextDueOn: 'Oct 2', behind: 0 },
-    { ...base, id: '1', name: 'Valley Dental', owed: 402.6, nextPayment: 204, nextDueOn: 'Oct 9', behind: 102 },
+    {
+      ...base, id: '1', name: 'Valley Dental', owed: 402.6, nextPayment: 204, nextDueOn: 'Oct 9', behind: 102,
+      defaultsOn: 'Nov 8', splitBlocked: 'Catch up first. A plan that is behind cannot be re-split.',
+    },
   ];
   const [open, setOpen] = useState<string | null>('0');
+  const [paused, setPaused] = useState(false);
   const plan = plans.find((p) => p.id === open);
   return (
     <div className="flex gap-3">
       {plans.map((p) => (
         <Button key={p.id} variant="outline" onClick={() => setOpen(p.id)}>{p.name}</Button>
       ))}
+      <Button variant="outline" onClick={() => setPaused(true)}>Paused</Button>
+      <TermLimitDialog
+        data={{ ...HOME_IN_USE.termPlans, paused: { toPayBack: 75 } }}
+        open={paused}
+        onOpenChange={setPaused}
+        onPayBack={async (amount) => new Promise((r) => setTimeout(() => r({ repaid: amount }), 600))}
+      />
       {plan && (
         <TermPlanDialog
           plan={plan}
@@ -236,6 +248,7 @@ function TermPlanPayPreview() {
           onOpenChange={(o) => !o && setOpen(null)}
           onPay={async (amount) => new Promise((r) => setTimeout(() => r({ repaid: amount }), 600))}
           onChangeSplit={() => undefined}
+          savingsFree={500}
         />
       )}
     </div>

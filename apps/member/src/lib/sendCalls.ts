@@ -343,6 +343,10 @@ const TERM_PLAN_ABI = [
     inputs: [{ name: 'planId', type: 'uint256' }, { name: 'installments', type: 'uint32' }], outputs: [] },
   { type: 'function', name: 'owedOn', stateMutability: 'view',
     inputs: [{ name: 'planId', type: 'uint256' }], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'repayWrittenOff', stateMutability: 'nonpayable',
+    inputs: [{ name: 'member', type: 'address' }, { name: 'amount', type: 'uint256' }], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'reinstate', stateMutability: 'nonpayable',
+    inputs: [{ name: 'member', type: 'address' }], outputs: [] },
 ] as const;
 export { TERM_PLAN_ABI };
 
@@ -368,6 +372,60 @@ export async function scPayPlan(args: {
       to: c.termIssuer,
       data: encodeFunctionData({ abi: TERM_PLAN_ABI, functionName: 'payPlan', args: [BigInt(args.planId), args.units] }),
     },
+  ]);
+}
+
+/**
+ * Pay a term plan out of savings: [approve, redeem, approve, payPlan] in ONE sponsored batch.
+ *
+ * The member's own choice, offered before a plan defaults -- never taken. Only free savings can
+ * move: CLRUSD refuses to transfer what is pledged against drawn credit, so the batch fails whole
+ * rather than touching a pledge. Redeemed one-for-one into USDC, then paid like any plan payment.
+ */
+export async function scPayPlanFromSavings(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  planId: number;
+  units: bigint;
+  chainId: number;
+}): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.stableCredit || !c.termIssuer) throw new Error('Paying plans on chain is not available on this network yet.');
+  const receiver = args.ownerWallet as `0x${string}`;
+  const hash = await runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    { to: c.clrusd, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.esaVault, args.units] }) },
+    { to: c.esaVault, data: encodeFunctionData({ abi: VAULT_ABI, functionName: 'redeem', args: [c.usdc, args.units, receiver] }) },
+    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.stableCredit, args.units] }) },
+    {
+      to: c.termIssuer,
+      data: encodeFunctionData({ abi: TERM_PLAN_ABI, functionName: 'payPlan', args: [BigInt(args.planId), args.units] }),
+    },
+  ]);
+  // The savings books follow the redeem, as for any move out of savings.
+  await recordGaslessSavings({ action: 'redeem', amount: args.units.toString(), txHash: hash, chainId: args.chainId }).catch(() => {});
+  return hash;
+}
+
+/**
+ * Pay back what a term default wrote off: [approve, repayWrittenOff(, reinstate)] in ONE batch.
+ * Reinstating rides along when this clears the rest of it, so term plans come back in the same tap.
+ */
+export async function scRepayWrittenOff(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  units: bigint;
+  clearsIt: boolean;
+  chainId: number;
+}): Promise<string> {
+  const c = clearContracts(args.chainId);
+  if (!c?.termIssuer) throw new Error('Not available on this network yet.');
+  const member = args.ownerWallet as `0x${string}`;
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, [
+    { to: c.usdc, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [c.termIssuer, args.units] }) },
+    { to: c.termIssuer, data: encodeFunctionData({ abi: TERM_PLAN_ABI, functionName: 'repayWrittenOff', args: [member, args.units] }) },
+    ...(args.clearsIt
+      ? [{ to: c.termIssuer, data: encodeFunctionData({ abi: TERM_PLAN_ABI, functionName: 'reinstate', args: [member] }) }]
+      : []),
   ]);
 }
 

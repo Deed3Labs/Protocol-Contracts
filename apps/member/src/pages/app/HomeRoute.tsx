@@ -9,7 +9,7 @@ import { useCreditRepayments } from '@/hooks/useCreditRepayments';
 import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
-import { useCreditRepay, usePayPlan, useRepayFromSavings, useSetPlanSplit } from '@/hooks/useCreditRepay';
+import { useCreditRepay, usePayPlan, useRepayFromSavings, useRepayWrittenOff, useSetPlanSplit } from '@/hooks/useCreditRepay';
 import {
   getCardTransactions,
   getCredit,
@@ -67,6 +67,7 @@ export default function HomeRoute() {
   const repay = useCreditRepay();
   const payPlan = usePayPlan();
   const setSplit = useSetPlanSplit();
+  const payBack = useRepayWrittenOff();
   const repayFromSavings = useRepayFromSavings();
 
   useEffect(() => {
@@ -181,10 +182,27 @@ export default function HomeRoute() {
             credit.plans,
             HOME_DAY_ONE.termPlans,
             pay ? { credits: pay.totalEquity, goal: HOME_DAY_ONE.savings.creditsGoal } : undefined,
+            credit.term,
           ),
         }
       : {}),
   };
 
-  return <HomePage data={data} onRepay={repay} onRepayFromSavings={repayFromSavings} onPayPlan={payPlan} onSetSplit={setSplit} />;
+  // What of their savings a member can move: CLRUSD refuses to transfer what backs drawn credit.
+  const savingsFree =
+    haveBalances && credit?.savingsEncumberedCents != null
+      ? Math.max(0, savings - credit.savingsEncumberedCents / 100)
+      : 0;
+
+  return (
+    <HomePage
+      data={data}
+      onRepay={repay}
+      onRepayFromSavings={repayFromSavings}
+      onPayPlan={payPlan}
+      onSetSplit={setSplit}
+      onPayBack={payBack}
+      savingsFree={savingsFree}
+    />
+  );
 }

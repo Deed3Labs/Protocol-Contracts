@@ -33,6 +33,22 @@ function chainId(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 84532;
 }
 
+const TRANSFER = ethers.id('Transfer(address,address,uint256)');
+
+/**
+ * Whether the member's own savings (CLRUSD) left their wallet in this transaction -- a plan paid
+ * out of savings redeems first. Read from the receipt, so Activity names the source correctly
+ * without taking the app's word for it. Only the label depends on it; no books do.
+ */
+function redeemedSavings(receipt: ethers.TransactionReceipt, wallet: string): boolean {
+  const clrusd = (getContractAddress(chainId(), 'CLRUSD') || '').toLowerCase();
+  if (!clrusd) return false;
+  const from = ethers.zeroPadValue(wallet, 32).toLowerCase();
+  return receipt.logs.some(
+    (log) => log.address.toLowerCase() === clrusd && log.topics[0] === TRANSFER && log.topics[1]?.toLowerCase() === from,
+  );
+}
+
 export interface RepaymentRecord {
   ok: boolean;
   duplicate?: boolean;
@@ -104,7 +120,7 @@ export async function recordUsdcRepayment(
         receipt,
         termIssuer,
         provider,
-        method: fromSavings > 0n ? 'savings' : method,
+        method: fromSavings > 0n || redeemedSavings(receipt, wallet) ? 'savings' : method,
       }).catch((error) => {
         console.error('[usdc-repayment] plan payment record failed', txHash, error);
         return 0;

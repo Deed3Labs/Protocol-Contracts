@@ -9,7 +9,7 @@ import type {
   LimitBackingRow,
 } from '@/lib/clearModel';
 import { money, count } from '@clear/domain';
-import type { CreditTierRow, CreditCycleRow, CreditTermPlanRow } from '@/utils/apiClient';
+import type { CreditTierRow, CreditCycleRow, CreditTermCeiling, CreditTermPlanRow } from '@/utils/apiClient';
 
 /**
  * Turning the contracts' tiers into the ones a member reads.
@@ -300,11 +300,23 @@ function withElpaProgress(plan: TermPlan, equity?: { credits: number; goal: numb
  * spec is explicit that they are visible from the first minute with their own unlock conditions.
  * Dropping them because the chain returned one plan would delete the point of the component.
  */
+const shortDate = (unix: number) => new Date(unix * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+/** The contract's re-split rules, in the member's words, checked in the order the contract checks. */
+export function splitBlockedReason(row: CreditTermPlanRow, now = Date.now() / 1000): string | undefined {
+  if ((row.arrearsCents ?? 0) > 0) return 'Catch up first. A plan that is behind cannot be re-split.';
+  if (row.splitChangesLeft === 0) return 'This plan has been re-split three times, the most allowed.';
+  if (row.nextSplitAt && now < row.nextSplitAt) return `Once a cycle. You can change it again on ${shortDate(row.nextSplitAt)}.`;
+  return undefined;
+}
+
 export function toTermPlans(
   rows: CreditTermPlanRow[],
   fallback: TermPlans,
   /** The member's equity credits, and what an ELPA needs. Omitted before they have been read. */
   equity?: { credits: number; goal: number },
+  /** The term ceiling as read, for whether term credit is paused by a default. */
+  ceiling?: CreditTermCeiling | null,
 ): TermPlans {
   const locked = fallback.plans
     .filter((plan) => plan.lockedNote)
@@ -340,6 +352,8 @@ export function toTermPlans(
         ? new Date(row.nextDueAt * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         : undefined,
       behind: fromCents(row.arrearsCents ?? 0),
+      defaultsOn: row.defaultsAt ? shortDate(row.defaultsAt) : undefined,
+      splitBlocked: splitBlockedReason(row),
     };
   });
 
@@ -347,5 +361,10 @@ export function toTermPlans(
   // member with no plans, and that is exactly what day one looks like — so it is kept, not
   // treated as a failed read. The route reports an unreadable chain as 503 and the caller never
   // gets here.
-  return { ...fallback, plans: [...live, ...locked] };
+  const toPayBack = ceiling?.suspended ? Math.max(0, (ceiling.writtenOffCents ?? 0) - (ceiling.recoveredCents ?? 0)) : 0;
+  return {
+    ...fallback,
+    plans: [...live, ...locked],
+    ...(ceiling?.suspended ? { paused: { toPayBack: fromCents(toPayBack) } } : {}),
+  };
 }
