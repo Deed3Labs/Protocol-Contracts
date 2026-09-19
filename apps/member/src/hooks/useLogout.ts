@@ -4,6 +4,7 @@ import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useXMTP } from '@/context/XMTPContext';
 import { forgetActive } from '@/lib/appLock';
 import { clearStepUp } from '@/lib/stepUp';
+import { forgetRemembered } from '@/lib/rememberedState';
 
 /**
  * Fully sign the user out: close the XMTP client, disconnect the Reown/AppKit wallet (smart
@@ -33,6 +34,8 @@ export function useLogout() {
     // The session is over, so the lock's clock and any Face ID confirmation go with it.
     forgetActive();
     clearStepUp();
+    // What pages remembered belongs to this member; the next one starts clean.
+    forgetRemembered();
     window.dispatchEvent(new Event('wallet-disconnected'));
     setTimeout(() => navigate('/login', options?.sendCode ? { state: { sendCode: true } } : undefined), 300);
   }, [disconnect, disconnectXmtp, navigate]);

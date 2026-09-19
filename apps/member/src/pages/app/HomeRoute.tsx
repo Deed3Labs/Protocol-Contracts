@@ -11,6 +11,7 @@ import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
 import { useCreditRepay, usePayPlan, useRepayFromSavings, useRepayWrittenOff, useSetPlanSplit } from '@/hooks/useCreditRepay';
 import {
+import { useRemembered } from '@/lib/rememberedState';
   getCardTransactions,
   getCredit,
   getLithicAccount,
@@ -58,10 +59,11 @@ export default function HomeRoute() {
   const { address } = useAppKitAccount();
   const { cash, savings, loading: balancesLoading } = useClearBalances();
   const { items, loading: txLoading } = useClearTransactions();
-  const [lithic, setLithic] = useState<LithicAccountResponse | null>(null);
-  const [pay, setPay] = useState<PaySummary | null>(null);
-  const [credit, setCredit] = useState<CreditState | null>(null);
-  const [cards, setCards] = useState<CardTransaction[]>([]);
+  // Remembered for the session: returning to Home draws what it showed, then refreshes.
+  const [lithic, setLithic] = useRemembered<LithicAccountResponse | null>(`home:lithic:${address ?? ''}`, null);
+  const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${address ?? ''}`, null);
+  const [credit, setCredit] = useRemembered<CreditState | null>(`credit:${address ?? ''}`, null);
+  const [cards, setCards] = useRemembered<CardTransaction[]>(`cardtx:${address ?? ''}`, []);
   // Every repayment, whichever way it was made, listed alongside what it paid for.
   const repayments = useCreditRepayments(address);
   const repay = useCreditRepay();

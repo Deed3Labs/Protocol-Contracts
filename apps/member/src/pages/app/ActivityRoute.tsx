@@ -21,6 +21,7 @@ import {
 } from '@/utils/apiClient';
 import { merchantKey } from '@/lib/activityCycle';
 import type { PendingClaim } from '@/lib/clearModel';
+import { useRemembered } from '@/lib/rememberedState';
 
 /*
  * Day-one, not in-use.
@@ -59,8 +60,9 @@ export default function ActivityRoute() {
   const { items, loading } = useClearTransactions();
   const member = useMemberProfile();
   const { address } = useAppKitAccount();
-  const [credit, setCredit] = useState<CreditState | null>(null);
-  const [cards, setCards] = useState<CardTransaction[]>([]);
+  // Shared with Home by key: the same reads, so either page starts from the other's last answer.
+  const [credit, setCredit] = useRemembered<CreditState | null>(`credit:${address ?? ''}`, null);
+  const [cards, setCards] = useRemembered<CardTransaction[]>(`cardtx:${address ?? ''}`, []);
   // Every repayment, whichever way it was made, listed alongside what it paid for.
   const repayments = useCreditRepayments(address);
   const [pendingClaim, setPendingClaim] = useState<PendingClaim | undefined>(undefined);
