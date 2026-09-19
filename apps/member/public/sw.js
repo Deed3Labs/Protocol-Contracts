@@ -2,7 +2,7 @@
 // Combines offline support, caching, and WebSocket integration
 // Bumped when a strategy changes, so installed apps drop what the old one cached. v3: API reads
 // went network-first, and the stale balances v2 cached must not survive the update.
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const STATIC_CACHE = `protocol-static-${CACHE_VERSION}`;
 const API_CACHE = `protocol-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `protocol-images-${CACHE_VERSION}`;
@@ -37,11 +37,14 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
+          // Every one of ours that is not the current version. This used to spare anything named
+          // `protocol-`, which is every cache this worker makes, so old versions -- including API
+          // answers cached under a strategy since replaced -- were never deleted.
           if (
+            cacheName.startsWith('protocol-') &&
             cacheName !== STATIC_CACHE &&
             cacheName !== API_CACHE &&
-            cacheName !== IMAGE_CACHE &&
-            !cacheName.startsWith('protocol-')
+            cacheName !== IMAGE_CACHE
           ) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
@@ -69,14 +72,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Strategy 1: Static assets - Cache First
-  if (isStaticAsset(url)) {
+  // Strategy 1: Static assets - Cache First. Our own only: the build names them by content hash, so
+  // a cached copy can never be stale. Another origin's script (Stripe's, a wallet SDK) keeps its
+  // name across releases, and caching it forever would pin whatever version it was on first load.
+  if (url.origin === self.location.origin && isStaticAsset(url)) {
     event.respondWith(cacheFirst(request, STATIC_CACHE));
     return;
   }
 
-  // Strategy 2: Images - Cache First with network fallback
-  if (isImage(url)) {
+  // Strategy 2: Images - Cache First with network fallback. Our own only, for the same reason.
+  if (url.origin === self.location.origin && isImage(url)) {
     event.respondWith(cacheFirst(request, IMAGE_CACHE));
     return;
   }
