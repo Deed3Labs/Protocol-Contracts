@@ -68,3 +68,34 @@ describe('a credit purchase that has been repaid says so', () => {
     expect(owed.creditRepaid).toBeUndefined();
   });
 });
+
+import { mergedActivityRows, repaymentRow } from './activityMapping';
+import { rowTag } from './activityView';
+
+describe('repayments show in Activity, named by how they were paid', () => {
+  const entries = [
+    { id: 'repay:0xb2f1', at: '2026-09-19T00:00:07Z', amountCents: 2500, method: 'savings' as const, txHash: '0xb2f1b716' },
+    { id: 'repay:grp', at: '2026-09-18T20:55:23Z', amountCents: 17500, method: 'bank' as const, txHash: null },
+  ];
+
+  test('each method is labelled', () => {
+    expect(rowTag(repaymentRow(entries[0])).label).toBe('Repaid · Savings');
+    expect(sourceTag(repaymentRow(entries[1])).label).toBe('Repaid · Bank deposit');
+    expect(repaymentRow({ ...entries[0], method: 'auto' }).paidFromLabel).toBe('USDC · automatic');
+    expect(repaymentRow({ ...entries[0], method: 'manual' }).paidFromLabel).toBe('USDC');
+  });
+
+  test('negative: it left whatever paid it', () => {
+    expect(repaymentRow(entries[1]).amount).toBe(-175);
+    expect(repaymentRow(entries[1]).kind).toBe('repayment');
+  });
+
+  test('the token transfer behind an on-chain repayment is folded in, not listed twice', () => {
+    const transfer = {
+      id: '0xwallet:0xb2f1b716', name: 'USDC transfer', category: 'Transfer', date: 'Sep 19', ts: Date.parse('2026-09-19T00:00:07Z'),
+      amount: -25, status: 'completed', source: '0xwallet', internal: false, spendCategory: 'Misc',
+    } as never;
+    const rows = mergedActivityRows([transfer], [], undefined, entries);
+    expect(rows.map((r) => r.name)).toEqual(['Credit repayment', 'Credit repayment']);
+  });
+});

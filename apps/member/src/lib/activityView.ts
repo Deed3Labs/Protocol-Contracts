@@ -92,6 +92,7 @@ export function rowTag(row: ActivityRow): { label: string; className?: string } 
     return { label: `Term plan · ${row.termPayment.index} of ${row.termPayment.count}`, className: 'c-t-inc' };
   }
   if (row.kind === 'sent') return { label: row.counterpartyHandle ? `Sent · ${row.counterpartyHandle}` : 'Sent' };
+  if (row.kind === 'repayment') return { label: `Repaid · ${row.repaymentMethod ?? 'Credit'}`, className: 'c-pos' };
   if (row.paidFromTier) {
     const className = { savings: 'c-t-sav', asset: 'c-t-ast', income: 'c-t-inc', boost: undefined }[row.paidFromTier];
     return { label: TIER_SHORT_LABEL[row.paidFromTier], className };

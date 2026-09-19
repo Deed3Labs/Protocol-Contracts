@@ -417,6 +417,8 @@ export async function recordOnchainRepayment(input: {
    * dearest one, so the books have to settle savings too. Absent for an ordinary repayment.
    */
   savingsCents?: number;
+  /** How the member paid: a Repay tap, automatic repayment, or out of savings. Shown in Activity. */
+  method?: 'manual' | 'auto' | 'savings';
 }): Promise<{ recorded: boolean; duplicate: boolean; plan: SettlementPlan | null }> {
   const pool = getPayPool();
   if (!pool) return { recorded: false, duplicate: false, plan: null };
@@ -433,10 +435,17 @@ export async function recordOnchainRepayment(input: {
         revolving_cents BIGINT NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )`);
+    await client.query(`ALTER TABLE card_onchain_repayments ADD COLUMN IF NOT EXISTS method TEXT`);
     const inserted = await client.query(
-      `INSERT INTO card_onchain_repayments (tx_hash, wallet, total_cents, revolving_cents)
-       VALUES ($1, $2, $3, $4) ON CONFLICT (tx_hash) DO NOTHING`,
-      [input.txHash.toLowerCase(), wallet, input.totalCents, input.revolvingCents],
+      `INSERT INTO card_onchain_repayments (tx_hash, wallet, total_cents, revolving_cents, method)
+       VALUES ($1, $2, $3, $4, $5) ON CONFLICT (tx_hash) DO NOTHING`,
+      [
+        input.txHash.toLowerCase(),
+        wallet,
+        input.totalCents,
+        input.revolvingCents,
+        (input.savingsCents ?? 0) > 0 ? 'savings' : (input.method ?? 'manual'),
+      ],
     );
     if (!inserted.rowCount) {
       await client.query('COMMIT');

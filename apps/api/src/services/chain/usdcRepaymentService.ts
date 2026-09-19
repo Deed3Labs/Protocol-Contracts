@@ -37,7 +37,12 @@ export interface RepaymentRecord {
   reason?: string;
 }
 
-export async function recordUsdcRepayment(walletInput: string, txHash: string): Promise<RepaymentRecord> {
+export async function recordUsdcRepayment(
+  walletInput: string,
+  txHash: string,
+  /** Set by automatic repayment; a Repay tap is `manual`; out of savings is detected from the tx. */
+  method: 'manual' | 'auto' = 'manual',
+): Promise<RepaymentRecord> {
   const wallet = walletInput.trim().toLowerCase();
   if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) return { ok: false, reason: 'That is not a transaction.' };
 
@@ -93,6 +98,7 @@ export async function recordUsdcRepayment(walletInput: string, txHash: string): 
     totalCents,
     revolvingCents,
     savingsCents: Number(fromSavings / CENTS),
+    method,
   });
   console.log(`[usdc-repayment] ${wallet} repaid ${totalCents}c on chain (${revolvingCents}c card) ${txHash}${recorded.duplicate ? ' (already recorded)' : ''}`);
   return { ok: true, duplicate: recorded.duplicate, totalCents, revolvingCents };

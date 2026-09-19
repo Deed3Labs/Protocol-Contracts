@@ -1,5 +1,5 @@
 import type { ActivityItem } from '@/hooks/useClearTransactions';
-import type { CardTransaction } from '@/utils/apiClient';
+import type { CardTransaction, CreditRepaymentEntry } from '@/utils/apiClient';
 import { categoryForMcc } from './mccCategory';
 import type { ActivityRow, ActivityKind, ActivitySource } from '@/lib/clearModel';
 
@@ -104,14 +104,52 @@ export function cardTransactionRow(tx: CardTransaction, cardLast4?: string): Act
  * Sorted on real timestamps rather than the formatted `date`, which is a display string two rows on
  * the same day cannot be ordered by.
  */
+/** How a repayment was made, in the member's words. */
+export const REPAYMENT_METHOD_LABEL: Record<CreditRepaymentEntry['method'], string> = {
+  manual: 'USDC',
+  auto: 'USDC · automatic',
+  savings: 'Savings',
+  bank: 'Bank deposit',
+};
+
+/**
+ * A repayment as an Activity row.
+ *
+ * Money put against the credit balance: out of the member's cash, their savings, or a bank deposit
+ * that paid it down on arrival. Negative, because it left whatever it was paid from.
+ */
+export function repaymentRow(entry: CreditRepaymentEntry): ActivityRow {
+  const at = new Date(entry.at);
+  return {
+    id: entry.id,
+    name: 'Credit repayment',
+    date: at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+    datetime: at.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }),
+    kind: 'repayment',
+    source: entry.method === 'savings' ? 'savings' : entry.method === 'bank' ? 'cash account' : 'cash',
+    amount: -entry.amountCents / 100,
+    paidFromLabel: REPAYMENT_METHOD_LABEL[entry.method],
+    repaymentMethod: REPAYMENT_METHOD_LABEL[entry.method],
+  };
+}
+
 export function mergedActivityRows(
   items: ActivityItem[],
   cards: CardTransaction[],
   cardLast4?: string,
+  repayments: CreditRepaymentEntry[] = [],
 ): ActivityRow[] {
+  /*
+   * An on-chain repayment is also a token transfer, and the chain feed shows it as one. The
+   * repayment row says what it actually was, so the transfer with the same hash is folded into it
+   * rather than listed twice.
+   */
+  const repaidTx = repayments.map((r) => r.txHash?.toLowerCase()).filter((h): h is string => Boolean(h));
+  const isRepaymentTransfer = (item: ActivityItem) => repaidTx.some((hash) => item.id.toLowerCase().includes(hash));
   return [
-    ...items.map((item) => ({ ts: item.ts, row: toActivityRow(item) })),
+    ...items.filter((item) => !isRepaymentTransfer(item)).map((item) => ({ ts: item.ts, row: toActivityRow(item) })),
     ...cards.map((tx) => ({ ts: Date.parse(tx.at), row: cardTransactionRow(tx, cardLast4) })),
+    ...repayments.map((entry) => ({ ts: Date.parse(entry.at), row: repaymentRow(entry) })),
   ]
     .sort((a, b) => b.ts - a.ts)
     .map((entry) => entry.row);

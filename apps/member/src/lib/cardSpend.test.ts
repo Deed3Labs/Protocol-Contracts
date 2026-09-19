@@ -108,8 +108,8 @@ describe('a card purchase appears on the Activity page too', () => {
      * Activity was fixed first and Home still showed sends alone, which is how a member ends up
      * looking at a recent-activity preview with no purchases in it. One merge, used by both.
      */
-    expect(activity).toContain('mergedActivityRows(items, cards)');
-    expect(home).toContain('mergedActivityRows(items, cards)');
+    expect(activity).toContain('mergedActivityRows(items, cards, undefined, repayments)');
+    expect(home).toContain('mergedActivityRows(items, cards, undefined, repayments)');
     expect(activity).not.toMatch(/rows: items\.map\(toActivityRow\),/);
     expect(home).not.toMatch(/recent: items\.slice/);
   });

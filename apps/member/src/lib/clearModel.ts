@@ -295,7 +295,8 @@ export type ActivitySource =
   | 'received';
 
 /** What the row is, which is what the Activity filter chips select on. */
-export type ActivityKind = 'spending' | 'deposit' | 'savings' | 'sent';
+/** `repayment`: money put against the member's credit balance, by whichever method. */
+export type ActivityKind = 'spending' | 'deposit' | 'savings' | 'sent' | 'repayment';
 
 export interface ActivityRow {
   id: string;
@@ -348,6 +349,8 @@ export interface ActivityRow {
    * happened on credit; this is what stops it reading as though the limit were wrong.
    */
   creditRepaid?: 'full' | 'partial';
+  /** For a repayment row: how it was paid, in the member's words ("Bank deposit", "Savings"…). */
+  repaymentMethod?: string;
 }
 
 /** Where a flow draws the money from, and what's in it. */
@@ -494,6 +497,7 @@ export function sourceTag(row: ActivityRow): { label: string; dot?: string } {
   }
   if (row.source === 'savings') return { label: 'Savings', dot: 'bg-vest-vested' };
   if (row.source === 'cash') return { label: 'Cash', dot: 'bg-vest-cash' };
+  if (row.kind === 'repayment') return { label: `Repaid · ${row.repaymentMethod ?? 'Credit'}` };
   if (row.source === 'credit' && row.creditRepaid) {
     return { label: row.creditRepaid === 'full' ? 'Credit · repaid' : 'Credit · part repaid' };
   }
