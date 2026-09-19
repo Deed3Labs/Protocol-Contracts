@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import HomePage from './HomePage';
 import { HOME_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
@@ -10,8 +10,8 @@ import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapp
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
 import { useCreditRepay, usePayPlan, useRepayFromSavings, useRepayWrittenOff, useSetPlanSplit } from '@/hooks/useCreditRepay';
-import {
 import { useRemembered } from '@/lib/rememberedState';
+import {
   getCardTransactions,
   getCredit,
   getLithicAccount,

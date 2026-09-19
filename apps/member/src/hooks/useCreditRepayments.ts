@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { getCreditRepayments, type CreditRepaymentEntry } from '@/utils/apiClient';
 import { onChainStale } from '@/lib/chainStale';
 import { useRemembered } from '@/lib/rememberedState';
