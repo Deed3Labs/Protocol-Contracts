@@ -74,3 +74,15 @@ describe('the opening screen', () => {
     expect(css).toContain('.c-splash .c-slow{position:absolute;bottom:calc(var(--s5) + var(--s4));');
   });
 });
+
+describe('the reserve cover bar', () => {
+  const panel = readFileSync(join(import.meta.dirname, 'components', 'clear', 'ReservePanel.tsx'), 'utf8');
+  const css = readFileSync(join(import.meta.dirname, 'styles', 'clear-components.css'), 'utf8');
+  test('its legend sits above the bar, as the credits line does on Home', () => {
+    expect(panel.indexOf('Policy floor')).toBeLessThan(panel.indexOf('<Bar'));
+    expect(panel).toContain('<Line className="mb-s1">');
+  });
+  test('the separator keeps its spacing outside the old keyline', () => {
+    expect(css).toContain('.c-keyline .c-sep,.c-sub .c-sep{color:var(--ink-50);margin:0 4px}');
+  });
+});

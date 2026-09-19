@@ -127,7 +127,7 @@
    Nothing tries to sit under its own segment of the bar. */
 .c-keyline{font-size:var(--t-sec);color:var(--ink-70);margin:var(--s1) 0 0;line-height:1.7}
 .c-keyline strong{font-weight:500;color:var(--ink)}
-.c-keyline .c-sep{color:var(--ink-50);margin:0 4px}
+.c-keyline .c-sep,.c-sub .c-sep{color:var(--ink-50);margin:0 4px}
 
 /* ================= MILESTONE RAIL ================= */
 .c-rail{position:relative}
