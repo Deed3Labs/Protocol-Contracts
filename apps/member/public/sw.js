@@ -2,7 +2,7 @@
 // Combines offline support, caching, and WebSocket integration
 // Bumped when a strategy changes, so installed apps drop what the old one cached. v3: API reads
 // went network-first, and the stale balances v2 cached must not survive the update.
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const STATIC_CACHE = `protocol-static-${CACHE_VERSION}`;
 const API_CACHE = `protocol-api-${CACHE_VERSION}`;
 const IMAGE_CACHE = `protocol-images-${CACHE_VERSION}`;
@@ -82,13 +82,13 @@ self.addEventListener('fetch', (event) => {
   }
 
   /*
-   * Strategy 3: API calls — network first. The cache is an offline fallback, never the answer.
+   * Strategy 3: API calls — the last answer at once, refreshed behind, EXCEPT just after an action.
    *
-   * These were stale-while-revalidate, which answers from the cache instantly and refreshes behind
-   * it. For a money app that is backwards: after a withdrawal, a repayment or a send, the screen
-   * re-reads its state and was handed the state from BEFORE the action -- the dispute still open,
-   * the balance still owed -- until the next load. Only slow-moving reference data (prices, NFT
-   * metadata) keeps the instant path, because a price a minute old misleads nobody.
+   * Network-first everywhere (v3) fixed screens showing the state from before a withdrawal or a
+   * repayment, but made every page switch wait on the server and draw zeros meanwhile. So: cached
+   * and refreshed behind by default, and network-first when the app says a read must be fresh --
+   * which it does for a minute after any action. Reference data (prices, NFT metadata) always
+   * takes the instant path.
    */
   if (isAPI(url)) {
     // Plaid endpoints are highly stateful and should always hit network to avoid stale OAuth/transaction data on mobile/PWA.
@@ -100,7 +100,14 @@ self.addEventListener('fetch', (event) => {
       event.respondWith(staleWhileRevalidate(request, API_CACHE));
       return;
     }
-    event.respondWith(networkFirst(request, API_CACHE));
+    // The app asks for the network when it needs it -- in the minute after an action, when the
+    // cache still holds the state from before (lib/freshReads.ts). Otherwise a page switch draws the
+    // last answer at once and refreshes it behind, instead of drawing zeros while it waits.
+    if (request.cache === 'no-cache' || request.cache === 'no-store' || request.cache === 'reload') {
+      event.respondWith(networkFirst(request, API_CACHE));
+      return;
+    }
+    event.respondWith(staleWhileRevalidate(request, API_CACHE));
     return;
   }
 

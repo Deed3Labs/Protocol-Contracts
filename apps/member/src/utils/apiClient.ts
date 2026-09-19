@@ -23,6 +23,7 @@ import type {
 import { getAccessToken } from '@privy-io/react-auth';
 import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSession';
 import { stepUpDenied } from '@/lib/stepUp';
+import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
@@ -61,7 +62,10 @@ async function apiRequest<T>(
     const { timeout: _, ...fetchOptions } = options; // Remove timeout from fetch options
     const authToken = await getAccessToken().catch(() => null);
     const activeWallet = getActiveWallet();
+    const method = (fetchOptions.method ?? 'GET').toUpperCase();
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      // Just after an action, reads skip the service worker's cache (see lib/freshReads).
+      ...(method === 'GET' && readsMustBeFresh() ? { cache: 'no-cache' as RequestCache } : {}),
       ...fetchOptions,
       signal: timeoutController.signal, // Use timeout signal (user signal will be ignored if provided)
       headers: {
@@ -76,6 +80,8 @@ async function apiRequest<T>(
     });
 
     clearTimeout(timeoutId);
+    // Anything that is not a read is an action: what the screens show next must be after it.
+    if (method !== 'GET') wantFreshReads();
 
     // Check if response is actually JSON before trying to parse
     const contentType = response.headers.get('content-type');
