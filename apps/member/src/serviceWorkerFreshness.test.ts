@@ -15,7 +15,7 @@ describe('a page switch draws the last answer at once', () => {
   });
 
   test('the cache version moved, so installed apps pick up the new strategy', () => {
-    expect(sw).toContain("const CACHE_VERSION = 'v4';");
+    expect(sw).toContain("const CACHE_VERSION = 'v5';");
   });
 });
 
@@ -35,5 +35,29 @@ describe('after an action, the screen shows the state after it', () => {
     expect(readsMustBeFresh()).toBe(true);
     wantFreshReads(-1);
     expect(readsMustBeFresh()).toBe(true);
+  });
+});
+
+describe('the service worker stays installed, and forgets what it should', () => {
+  const html = readFileSync(join(import.meta.dirname, '..', 'index.html'), 'utf8');
+  const logout = readFileSync(join(import.meta.dirname, 'hooks', 'useLogout.ts'), 'utf8');
+
+  test('no AppKit check unregisters it -- there has been no appkit-button since Privy', () => {
+    expect(html).toContain("navigator.serviceWorker.register('/sw.js')");
+    expect(html).not.toContain('registration.unregister()');
+  });
+
+  test('only our own hashed files are cached forever, never another origin\'s scripts', () => {
+    expect(sw).toContain('if (url.origin === self.location.origin && isStaticAsset(url)) {');
+    expect(sw).toContain('if (url.origin === self.location.origin && isImage(url)) {');
+  });
+
+  test('signing out drops the cached API answers', () => {
+    expect(logout).toMatch(/forgetRemembered\(\);[\s\S]{0,260}await clearApiCache\(\);/);
+    expect(logout).toContain("n.startsWith('protocol-api-')");
+  });
+
+  test('activating deletes our old cache versions, and leaves other caches alone', () => {
+    expect(sw).toMatch(/cacheName\.startsWith\('protocol-'\) &&\s*cacheName !== STATIC_CACHE &&\s*cacheName !== API_CACHE &&\s*cacheName !== IMAGE_CACHE/);
   });
 });
