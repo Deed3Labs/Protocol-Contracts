@@ -123,7 +123,7 @@ describe('carry is owed, paid, and cleared too', () => {
 
   test('carry owed to a pool is left on chain, not netted against the float', () => {
     expect(service).toContain('const onChain = carryHeldElsewhere ? Math.max(0, issued - cleared) : drawnCents;');
-    expect(service).toMatch(/if \(!carryHeldElsewhere\) await recordCarry/);
+    expect(service).toMatch(/if \(!carryHeldElsewhere\) \{\s*if \(record\) await recordCarry/);
   });
 
   test('a deposit pays carry before any principal', () => {
