@@ -104,6 +104,10 @@ export default function HomePage({
     }),
   };
   const plan = termPlansData.plans.find((p) => p.id === planId) ?? null;
+  // Read from chain: it knows what it owes, and its split and payments go on chain. A placeholder
+  // plan (the preview harness) is shown the same sheet with its balance standing in for what's owed.
+  const livePlan = plan?.owed !== undefined;
+  const sheetPlan = plan && !livePlan ? { ...plan, owed: plan.balance ?? 0, nextPayment: plan.perCycle } : plan;
 
   // A setup step opens the surface that completes it.
   const onTask = (id: string) => {
@@ -117,10 +121,9 @@ export default function HomePage({
       data={termPlansData}
       panel={panel}
       onPlan={(p) => {
+        // Every plan opens on paying it; Change split is one step further in.
         setPlanId(p.id);
-        // A plan read from chain knows what it owes and opens on paying it; one without (the preview
-        // harness) has nothing to pay and goes straight to its split.
-        setSplitOpen(p.owed === undefined);
+        setSplitOpen(false);
       }}
       onLimit={() => setTermLimitOpen(true)}
       // Live, there is no account to pick: plans are paid from bank deposits as they arrive, and
@@ -170,13 +173,13 @@ export default function HomePage({
           setLinkOpen(true);
         }}
       />
-      {plan && plan.owed !== undefined && (
+      {sheetPlan && (
         <TermPlanDialog
-          plan={plan}
+          plan={sheetPlan}
           account={data.cashAccount}
           open={plan !== null && !splitOpen}
           onOpenChange={(o) => !o && setPlanId(null)}
-          onPay={onPayPlan ? (amount, payoff) => onPayPlan(Number(plan.id), amount, payoff) : undefined}
+          onPay={onPayPlan && livePlan ? (amount, payoff) => onPayPlan(Number(sheetPlan.id), amount, payoff) : undefined}
           onChangeSplit={() => setSplitOpen(true)}
         />
       )}
@@ -188,7 +191,7 @@ export default function HomePage({
           doneBy={(splitInto) => `${splitInto} cycle${splitInto === 1 ? '' : 's'} from now`}
           onSave={async (splitInto) => {
             // On chain for a live plan; the chain read that follows is the new schedule.
-            if (onSetSplit && plan.owed !== undefined) {
+            if (onSetSplit && livePlan) {
               const result = await onSetSplit(Number(plan.id), splitInto);
               if (result.error) return result;
             } else {
@@ -199,12 +202,9 @@ export default function HomePage({
             return { ok: true };
           }}
           open={plan !== null && splitOpen}
-          onOpenChange={(o) => {
-            if (o) return;
-            setSplitOpen(false);
-            // Back to the plan it was opened from; a preview plan has nothing behind it to go back to.
-            if (plan.owed === undefined) setPlanId(null);
-          }}
+          // Closing it, or Back, returns to the plan's sheet it was opened from.
+          onOpenChange={(o) => !o && setSplitOpen(false)}
+          onBack={() => setSplitOpen(false)}
         />
       )}
       <LinkAccountDialog open={linkOpen} onOpenChange={setLinkOpen} />
