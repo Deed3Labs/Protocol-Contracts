@@ -19,6 +19,7 @@ export default function SplitPlanDialog({
   ratePerCycle,
   doneBy,
   onSave,
+  onBack,
   open,
   onOpenChange,
 }: {
@@ -33,6 +34,8 @@ export default function SplitPlanDialog({
    * return a promise with an error to show; the dialog stays open until it lands.
    */
   onSave?: (splitInto: number) => void | Promise<{ ok?: boolean; error?: string } | void>;
+  /** Back to where it was opened from, without changing anything. */
+  onBack?: () => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -75,9 +78,14 @@ export default function SplitPlanDialog({
             {(plan.behind ?? 0) > 0 && <p>What you are behind stays due now; only the rest is re-spread.</p>}
           </div>
           {error && <p className="c-det mt-s2 c-errline">{error}</p>}
-          <Btn primary lg className="mt-s2" disabled={splitInto === plan.splitInto || busy} onClick={() => void save()}>
-            {busy ? 'Saving…' : 'Use this split'}
-          </Btn>
+          <div className="c-pair mt-s2">
+            <Btn disabled={busy} onClick={() => (onBack ? onBack() : onOpenChange(false))}>
+              Back
+            </Btn>
+            <Btn primary disabled={splitInto === plan.splitInto || busy} onClick={() => void save()}>
+              {busy ? 'Saving…' : 'Use this split'}
+            </Btn>
+          </div>
         </>
       }
     >

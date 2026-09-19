@@ -102,7 +102,7 @@ describe('re-split a term plan', () => {
   });
 
   test('a live plan saves to chain; only the preview holds a split locally', () => {
-    expect(home).toMatch(/if \(onSetSplit && plan\.owed !== undefined\) \{[\s\S]{0,160}if \(result\.error\) return result;[\s\S]{0,40}\} else \{\s*setSplits/);
+    expect(home).toMatch(/if \(onSetSplit && livePlan\) \{[\s\S]{0,160}if \(result\.error\) return result;[\s\S]{0,40}\} else \{\s*setSplits/);
   });
 
   test('live, Clears from is a fact, not a picker with nothing behind it', () => {
