@@ -630,7 +630,9 @@
 /* known progress: the one thing that is current, which is what cobalt is for */
 .c-splash .c-load{position:absolute;left:0;right:0;bottom:0;height:1px;background:#3A4440}
 .c-splash .c-load i{display:block;height:100%;background:#7C8CC5;transition:width .2s linear}
-.c-splash .c-slow{position:absolute;bottom:var(--s5);left:0;right:0;text-align:center;padding:0 var(--s3)}
+/* Above the "Opening" line, not on it: both used to sit at the same bottom offset, so the note drew
+   over the word the moment it appeared. The Opening line is --s5 up; this clears it by --s4, room for the note wrapping to two lines. */
+.c-splash .c-slow{position:absolute;bottom:calc(var(--s5) + var(--s4));left:0;right:0;text-align:center;padding:0 var(--s3)}
 .c-splash .c-slow p{color:#939995}
 /* unknown progress: the guide's dot, beside a word that says the same thing. The ping is the only
    motion the brand defines, so an unknown wait reuses it rather than inventing a travelling bar. */
