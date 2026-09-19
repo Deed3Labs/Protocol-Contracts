@@ -1,3 +1,4 @@
+import { usePaymentProtection } from '@/hooks/usePaymentProtection';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import OnboardingFlow from '@/pages/auth/OnboardingFlow';
 import { useFaceId } from '@/hooks/useFaceId';
@@ -37,6 +38,9 @@ export default function AppLock({ children }: { children: ReactNode }) {
 
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
+  // Mounted with the shell, so the wallet-MFA flag stays current and a just-linked Face ID passkey is
+  // enrolled for payments wherever the member happens to be.
+  usePaymentProtection();
   const faceIdRef = useRef(faceId);
   faceIdRef.current = faceId;
 

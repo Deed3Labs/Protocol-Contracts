@@ -11,7 +11,7 @@ describe('Repay repays on chain, in USDC, from the member’s wallet', () => {
   test('one sponsored batch: approve USDC to StableCredit, then repayCreditBalance — Face ID first', () => {
     expect(calls).toContain("functionName: 'repayCreditBalance', args: [args.ownerWallet as `0x${string}`, amt]");
     expect(calls).toMatch(/export async function scRepayCredit[\s\S]{0,700}return runBatch\(/);
-    expect(calls).toMatch(/async function runBatch[\s\S]{0,200}await requireStepUp\(\)/);
+    expect(calls).toMatch(/async function runBatch[\s\S]{0,400}if \(!walletEnforcesMfa\(\)\) await requireStepUp\(\)/);
   });
 
   test('never more than has settled on chain; the pending rest is named, not dropped', () => {

@@ -75,6 +75,12 @@ export function AppKitProvider({ children }: { children: React.ReactNode }) {
         // showWalletUIs:false → the embedded signer signs SILENTLY (no Privy confirm/approve popups).
         // Our own Review screen is the confirmation; smart-wallet sendTransaction defaults to this flag.
         embeddedWallets: { ethereum: { createOnLogin: 'users-without-wallets' }, showWalletUIs: false },
+        // Wallet MFA (enabled in the Privy dashboard): a member with Face ID or an authenticator app
+        // enrolled cannot have a transaction signed until it is verified -- Privy's own prompt, which
+        // nothing in this page can skip. Turning Face ID off also takes it off payments, but a
+        // passkey dropped from payments stays for sign-in.
+        mfa: { noPromptOnMfaRequired: false },
+        passkeys: { shouldUnenrollMfaOnUnlink: true, shouldUnlinkOnUnenrollMfa: false },
         defaultChain: base,
         supportedChains: [...supportedChains],
         appearance: {

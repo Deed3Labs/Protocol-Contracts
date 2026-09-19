@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useLinkWithPasskey, usePrivy, useUnlinkPasskey } from '@privy-io/react-auth';
+import { enrollFaceIdWhenLinked } from './usePaymentProtection';
 
 /*
  * Face ID is a passkey on the member's Privy account — and until now nothing could make one.
@@ -113,6 +114,8 @@ export function useFaceId(): FaceId {
     setBusy(true);
     setError(null);
     try {
+      // Its passkey also guards payments at the wallet, as soon as Privy reports it (usePaymentProtection).
+      enrollFaceIdWhenLinked();
       // Named so a member looking at their devices can tell which one this was.
       await linkWithPasskey({ name: 'Clear' });
       forgetWantsFaceId();

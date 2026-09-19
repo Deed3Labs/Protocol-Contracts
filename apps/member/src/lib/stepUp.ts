@@ -37,6 +37,19 @@ let declinedAt = 0;
 const DECLINE_HOLDS_MS = 5 * 1000;
 let inFlight: Promise<void> | null = null;
 
+/*
+ * Whether the wallet itself demands a verified factor before it signs (Privy MFA). When it does,
+ * the app's own prompt before a signature would only be a second Face ID for the same payment, and
+ * the wallet's is the one that cannot be stepped round -- so the app skips its own there.
+ */
+let walletMfa = false;
+export function setWalletMfa(on: boolean): void {
+  walletMfa = on;
+}
+export function walletEnforcesMfa(): boolean {
+  return walletMfa;
+}
+
 export function setStepUpVerifier(next: StepUpVerifier | null): void {
   verifier = next;
 }
