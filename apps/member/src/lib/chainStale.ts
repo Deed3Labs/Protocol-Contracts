@@ -19,6 +19,8 @@
  * A module rather than a bare event name, because as a bare name it drifted: one dispatcher, one
  * listener, and nothing to show that four other places needed it.
  */
+import { wantFreshReads } from './freshReads';
+
 const STALE = 'clear:chain-stale';
 const SETTLED = 'clear:chain-settled';
 
@@ -45,6 +47,7 @@ function trace(what: string): void {
 export function markChainStale(): void {
   if (typeof window === 'undefined') return;
   trace('stale — guessing on a backoff');
+  wantFreshReads();
   window.dispatchEvent(new Event(STALE));
 }
 
@@ -52,6 +55,7 @@ export function markChainStale(): void {
 export function markChainSettled(): void {
   if (typeof window === 'undefined') return;
   trace('settled — server says the writes are done');
+  wantFreshReads();
   window.dispatchEvent(new Event(SETTLED));
 }
 
