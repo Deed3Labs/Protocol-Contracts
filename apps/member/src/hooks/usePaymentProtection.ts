@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMfaEnrollment, usePrivy } from '@privy-io/react-auth';
 import { setWalletMfa } from '@/lib/stepUp';
+import { enrollWithServer, useServerStepUp } from '@/lib/serverStepUp';
 
 /*
  * What protects a member's payments at the wallet itself.
@@ -13,6 +14,10 @@ import { setWalletMfa } from '@/lib/stepUp';
  * Two factors, in the order we offer them:
  *   passkey  Face ID -- the passkey the member already signs in with, enrolled for MFA too
  *   totp     an authenticator app, for a device without Face ID
+ *
+ * Face ID also guards what the server does without a wallet signature -- card numbers, disputes,
+ * bills (lib/serverStepUp). That needs its own passkey registered with our API, so "Face ID for
+ * payments" means both: Privy's MFA enrolment and the server's credential.
  */
 
 export type PaymentFactor = 'passkey' | 'totp';
@@ -43,7 +48,8 @@ export interface PaymentProtection {
 }
 
 export function usePaymentProtection(): PaymentProtection {
-  const { user } = usePrivy();
+  const { user, authenticated } = usePrivy();
+  const serverEnrolled = useServerStepUp(authenticated);
   const {
     initEnrollmentWithPasskey,
     submitEnrollmentWithPasskey,
@@ -67,18 +73,25 @@ export function usePaymentProtection(): PaymentProtection {
     [user],
   );
 
+  const faceIdOn = (user?.linkedAccounts ?? []).some((a) => a.type === 'passkey');
+
   // The wallet now asks for itself, so the app does not ask a second time before a signature.
   useEffect(() => {
     setWalletMfa(factors.length > 0);
   }, [factors.length]);
 
   const enrollFaceId = useCallback(async () => {
-    if (!unenrolledPasskeys.length) return true;
+    const privyMissing = unenrolledPasskeys.length > 0 && !factors.includes('passkey');
+    if (!privyMissing && serverEnrolled !== false) return true;
     setBusy(true);
     setError(null);
     try {
-      await initEnrollmentWithPasskey();
-      await submitEnrollmentWithPasskey({ credentialIds: unenrolledPasskeys });
+      // The server's first, while the tap that started this still counts as one: a new passkey needs it.
+      if (serverEnrolled === false) await enrollWithServer();
+      if (privyMissing) {
+        await initEnrollmentWithPasskey();
+        await submitEnrollmentWithPasskey({ credentialIds: unenrolledPasskeys });
+      }
       return true;
     } catch {
       setError('We could not use Face ID for payments. Please try again.');
@@ -86,7 +99,7 @@ export function usePaymentProtection(): PaymentProtection {
     } finally {
       setBusy(false);
     }
-  }, [initEnrollmentWithPasskey, submitEnrollmentWithPasskey, unenrolledPasskeys]);
+  }, [initEnrollmentWithPasskey, submitEnrollmentWithPasskey, unenrolledPasskeys, factors, serverEnrolled]);
 
   // Face ID was just turned on: enrol its passkey for payments as soon as Privy reports it.
   useEffect(() => {
@@ -96,14 +109,14 @@ export function usePaymentProtection(): PaymentProtection {
     } catch {
       /* no storage */
     }
-    if (!pending || !unenrolledPasskeys.length) return;
+    if (!pending || !unenrolledPasskeys.length || factors.includes('passkey')) return;
     try {
       sessionStorage.removeItem(ENROLL_AFTER_LINK);
     } catch {
       /* no storage */
     }
     void enrollFaceId();
-  }, [unenrolledPasskeys, enrollFaceId]);
+  }, [unenrolledPasskeys, enrollFaceId, factors]);
 
   const startAuthenticator = useCallback(async () => {
     setBusy(true);
@@ -151,7 +164,7 @@ export function usePaymentProtection(): PaymentProtection {
 
   return {
     factors,
-    faceIdNotEnrolled: unenrolledPasskeys.length > 0 && !factors.includes('passkey'),
+    faceIdNotEnrolled: faceIdOn && ((unenrolledPasskeys.length > 0 && !factors.includes('passkey')) || serverEnrolled === false),
     busy,
     error,
     enrollFaceId,

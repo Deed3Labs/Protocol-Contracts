@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { requireWalletMatch } from '../middleware/auth.js';
 import { withdrawToBank } from '../services/withdrawService.js';
+import { requireStepUp } from '../middleware/stepUp.js';
 
 /*
  * Withdraw (cash-out) — USDC on Base → a Plaid-linked bank via Bridge off-ramp. Wallet-scoped
@@ -11,7 +12,7 @@ const router = Router();
 const wallet = (req: Request) => String(req.params.wallet || '').toLowerCase();
 
 // POST /api/withdraw/:wallet  { amount, plaidAccountId, email }
-router.post('/:wallet', async (req: Request, res: Response) => {
+router.post('/:wallet', requireStepUp, async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
 

@@ -4,6 +4,7 @@ import { autopayStore, type AutopayCadence } from '../services/autopayStore.js';
 import { executeAutopayRule, isAutopayExecutorConfigured, type DepositMandate } from '../services/autopayService.js';
 import { savingsGaslessService } from '../services/savingsGaslessService.js';
 import { savingsRelayerService } from '../services/savingsRelayerService.js';
+import { requireStepUp } from '../middleware/stepUp.js';
 
 /*
  * Autopay rules — recurring gasless savings deposits via a ZeroDev session. Wallet-scoped
@@ -37,7 +38,7 @@ router.get('/:wallet', async (req: Request, res: Response) => {
 });
 
 // POST /api/autopay/:wallet  { chainId, amountUsdc, cadence, approval, runs? }
-router.post('/:wallet', async (req: Request, res: Response) => {
+router.post('/:wallet', requireStepUp, async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
   if (!ensureReady(res)) return;
@@ -111,7 +112,7 @@ router.post('/:wallet', async (req: Request, res: Response) => {
 });
 
 // POST /api/autopay/:wallet/:id/run — execute one deposit immediately (verification / "run now").
-router.post('/:wallet/:id/run', async (req: Request, res: Response) => {
+router.post('/:wallet/:id/run', requireStepUp, async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
   if (!ensureReady(res)) return;

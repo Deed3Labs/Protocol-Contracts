@@ -1,3 +1,6 @@
+import { enrollWithServer } from '@/lib/serverStepUp';
+import { serverStepUpEnrolled, setServerStepUpEnrolled } from '@/lib/stepUp';
+import { removeStepUp } from '@/utils/apiClient';
 import { useCallback, useMemo, useState } from 'react';
 import { useLinkWithPasskey, usePrivy, useUnlinkPasskey } from '@privy-io/react-auth';
 import { enrollFaceIdWhenLinked } from './usePaymentProtection';
@@ -119,6 +122,11 @@ export function useFaceId(): FaceId {
       // Named so a member looking at their devices can tell which one this was.
       await linkWithPasskey({ name: 'Clear' });
       forgetWantsFaceId();
+      /*
+       * And the one the server can check (lib/serverStepUp). A second system sheet straight after the
+       * first; if the browser refuses it that soon, Settings offers it as "Use Face ID".
+       */
+      await enrollWithServer().catch(() => undefined);
       return true;
     } catch (e) {
       setError(toMessage(e, 'We could not turn on Face ID on this device. Please try again.'));
@@ -132,6 +140,12 @@ export function useFaceId(): FaceId {
     setBusy(true);
     setError(null);
     try {
+      // The server stops asking first -- that takes Face ID itself, so a stolen session cannot do it.
+      if (serverStepUpEnrolled() && !(await removeStepUp())) {
+        setError('Face ID stays on: it was not confirmed.');
+        return false;
+      }
+      setServerStepUpEnrolled(false);
       /*
        * Every passkey on the account, not just this device's.
        *

@@ -4,6 +4,7 @@ import { payLedgerStore, type BillerType, type EarnSource } from '../services/pa
 import { getPlaidClient } from './plaid.js';
 import { plaidTokenStore } from '../services/plaidTokenStore.js';
 import { payBillerViaUsdc } from '../services/billerPayoutService.js';
+import { requireStepUp } from '../middleware/stepUp.js';
 
 /*
  * Clear Pay endpoints — billers (manual + Plaid-detected), payments, and the equity summary.
@@ -354,7 +355,7 @@ router.post('/:wallet/reconcile', async (req: Request, res: Response) => {
 });
 
 // POST /api/pay/:wallet/billers/:id/payout  { accountNumber, routingNumber, bankName? }  (ACH destination)
-router.post('/:wallet/billers/:id/payout', async (req: Request, res: Response) => {
+router.post('/:wallet/billers/:id/payout', requireStepUp, async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
   if (!ensureReady(res)) return;
@@ -383,7 +384,7 @@ router.post('/:wallet/billers/:id/payout', async (req: Request, res: Response) =
 });
 
 // POST /api/pay/:wallet/pay  { billerId, amount, source, email }  (real ACH bill pay; USDC funding for now)
-router.post('/:wallet/pay', async (req: Request, res: Response) => {
+router.post('/:wallet/pay', requireStepUp, async (req: Request, res: Response) => {
   const w = wallet(req);
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
   if (!ensureReady(res)) return;

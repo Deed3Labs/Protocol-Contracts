@@ -62,6 +62,7 @@ import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
 import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
 import { websocketService } from './services/websocketService.js';
 import { eventListenerService } from './services/eventListenerService.js';
+import stepUpRouter from './routes/stepUp.js';
 
 dotenv.config();
 
@@ -148,6 +149,8 @@ const corsOptions = {
     'X-Reown-Project-Id',
     'X-Appkit-Project-Id',
     'X-Clear-Device',
+    // A fresh server-verified Face ID (routes/stepUp), on the requests that need one.
+    'X-Step-Up',
   ],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   maxAge: 86400, // 24 hours
@@ -248,6 +251,7 @@ async function startServer() {
     // A claim is money and a member's own account of a bad day; both halves need the member.
     app.use('/api/assurance', requireAuth, assuranceRouter);
     app.use('/api/disputes', requireAuth, disputesRouter);
+    app.use('/api/step-up', requireAuth, stepUpRouter);
     // Deliberately not `requireAuth` at the mount: `POST /api/charges` is a merchant device
     // authenticating by signature, with no member session to check. The member-facing routes
     // inside attach `requireAuth` themselves — see the note in routes/charges.ts for why that

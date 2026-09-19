@@ -6,7 +6,8 @@ import { useLogout } from '@/hooks/useLogout';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { forgetMember, rememberedMember } from '@/lib/rememberedMember';
 import { isStale, lastActive, markActive } from '@/lib/appLock';
-import { markStepUpVerified, setStepUpVerifier } from '@/lib/stepUp';
+import { markStepUpVerified, serverStepUpEnrolled, setStepUpVerifier } from '@/lib/stepUp';
+import { proveWithServer } from '@/lib/serverStepUp';
 
 /** Activity is written at most this often; the lock only needs to know roughly when. */
 const WRITE_EVERY_MS = 15 * 1000;
@@ -81,6 +82,8 @@ export default function AppLock({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Members without Face ID pass: their protection is the code that got them past the lock.
     setStepUpVerifier(async () => {
+      // Face ID the server can check, where the member has it: that is what the API asks for.
+      if (serverStepUpEnrolled()) return proveWithServer();
       if (!faceIdRef.current.on) return;
       await faceIdRef.current.confirm();
     });
@@ -91,7 +94,9 @@ export default function AppLock({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(null);
     try {
-      await faceIdRef.current.confirm();
+      // Unlocking with the server's Face ID also leaves a token, so the next guarded tap goes straight through.
+      if (serverStepUpEnrolled()) await proveWithServer();
+      else await faceIdRef.current.confirm();
       markActive();
       // Unlocking was a Face ID check, so a send straight afterwards does not ask again.
       markStepUpVerified();

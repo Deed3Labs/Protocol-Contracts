@@ -4,6 +4,7 @@ import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useXMTP } from '@/context/XMTPContext';
 import { forgetActive } from '@/lib/appLock';
 import { clearStepUp } from '@/lib/stepUp';
+import { forgetServerStepUp } from '@/lib/serverStepUp';
 import { forgetRemembered } from '@/lib/rememberedState';
 
 /**
@@ -45,6 +46,7 @@ export function useLogout() {
     // The session is over, so the lock's clock and any Face ID confirmation go with it.
     forgetActive();
     clearStepUp();
+    forgetServerStepUp();
     // What pages remembered belongs to this member; the next one starts clean.
     forgetRemembered();
     // So do the API answers the service worker cached: some URLs carry no wallet, and on a shared
