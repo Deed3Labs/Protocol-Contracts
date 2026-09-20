@@ -58,10 +58,10 @@ describe('getting Face ID back when the passkey is gone', () => {
     expect(read('pages/app/SettingsRoute.tsx')).toContain('onSetUpThisDevice: () => void protection.setUpThisDevice(),');
   });
 
-  test('it says how to get past a refusal: sign in again with a code', () => {
-    expect(read('hooks/usePaymentProtection.ts')).toContain(
-      "setError('We could not set up Face ID on this device. Sign out and back in with a code, then try again.');",
-    );
+  test('it says how to get past a refusal: sign in again with a code, and why where the server said', () => {
+    const hook = read('hooks/usePaymentProtection.ts');
+    expect(hook).toContain("'We could not set up Face ID on this device. Sign out and back in with a code, then try again.',");
+    expect(hook).toContain('`${said} Or sign out, sign in with a code, and try again within ten minutes.`');
   });
 });
 

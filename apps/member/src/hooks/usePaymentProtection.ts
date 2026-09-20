@@ -106,8 +106,17 @@ export function usePaymentProtection(): PaymentProtection {
     try {
       await enrollWithServer();
       return true;
-    } catch {
-      setError('We could not set up Face ID on this device. Sign out and back in with a code, then try again.');
+    } catch (e) {
+      /*
+       * The server's own words where it gave any -- "Confirm with Face ID to continue" means a
+       * credential is already on record, which is a different problem from the phone refusing.
+       */
+      const said = e instanceof Error ? e.message : '';
+      setError(
+        said && !/failed|error/i.test(said)
+          ? `${said} Or sign out, sign in with a code, and try again within ten minutes.`
+          : 'We could not set up Face ID on this device. Sign out and back in with a code, then try again.',
+      );
       return false;
     } finally {
       setBusy(false);
