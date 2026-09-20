@@ -10,6 +10,7 @@ import { stepUpStore, type StepUpCredential } from '../services/stepUp/stepUpSto
 import { issueChallenge, issueStepUpToken, redeemChallenge, stepUpTokenValid } from '../services/stepUp/stepUpToken.js';
 import { STEP_UP_HEADER, stepUpRequired } from '../middleware/stepUp.js';
 import { sessionLock } from '../services/session/sessionLock.js';
+import { passkeysOf, unlinkPasskeys } from '../services/stepUp/privyPasskeys.js';
 
 /*
  * Server-verified Face ID (see middleware/stepUp for where it is required).
@@ -22,6 +23,8 @@ import { sessionLock } from '../services/session/sessionLock.js';
  *   POST   /options            start a check
  *   POST   /verify             finish a check -> a two-minute step-up token
  *   DELETE /                   remove them all (Face ID off), behind a Face ID check itself
+ *   POST   /face-id/reset      Face ID off for the whole account when the passkey is gone: ours, and
+ *                              the Privy passkey the app cannot remove without the passkey itself
  *
  * A verified check also opens a session the server-side lock closed (middleware/sessionLock).
  *
@@ -224,6 +227,39 @@ stepUpRouter.delete('/', async (req: Request, res: Response) => {
   if (credentials.length && !(await allowedWithoutFaceId(req, userId))) return stepUpRequired(req, res);
   const removed = await stepUpStore.removeAll(userId);
   return res.json({ removed });
+});
+
+/*
+ * POST /face-id/reset -- Face ID off when there is no Face ID left to ask.
+ *
+ * Deleting the passkey from the phone leaves the account holding one that can never answer again,
+ * and every way to remove it asks it to. This removes both halves: ours, and the Privy passkey,
+ * through the member's own token (services/stepUp/privyPasskeys).
+ *
+ * Behind the same check as registering a replacement -- Face ID from a device still registered, or a
+ * sign-in made minutes ago, which takes a code to the member's own email or phone.
+ */
+stepUpRouter.post('/face-id/reset', async (req: Request, res: Response) => {
+  const userId = userOf(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  if (!(await allowedWithoutFaceId(req, userId))) return stepUpRequired(req, res);
+
+  const removed = await stepUpStore.removeAll(userId).catch(() => 0);
+  const token = req.auth?.token || '';
+  const result = await unlinkPasskeys(userId, token);
+  const left = await passkeysOf(userId).catch(() => []);
+  console.log(`[face-id] reset for a member: ${removed} of ours, ${result.unlinked.length} at Privy, ${left.length} left`);
+
+  // Half-done is worth saying: ours is off, and the sign-in passkey is what Privy would not drop.
+  if (left.length) {
+    return res.status(502).json({
+      error: 'Face ID for payments is off, but the sign-in passkey could not be removed. Please try again, or sign in with a code.',
+      code: 'PASSKEY_UNLINK_FAILED',
+      removed,
+      failures: result.failures.map((f) => f.reason),
+    });
+  }
+  return res.json({ removed, unlinked: result.unlinked.length });
 });
 
 export default stepUpRouter;

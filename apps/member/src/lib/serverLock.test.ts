@@ -64,3 +64,17 @@ describe('getting Face ID back when the passkey is gone', () => {
     );
   });
 });
+
+describe('turning Face ID off when the passkey is gone', () => {
+  test('the app falls back to the server, which Privy will let through with the member\'s own token', () => {
+    const faceId = read('hooks/useFaceId.ts');
+    // Privy refuses to unenrol an MFA passkey without that passkey, so the client path cannot win.
+    expect(faceId).toMatch(/\} catch \{[\s\S]{0,420}return forceOff\(\);/);
+    expect(faceId).toContain('const result = await resetFaceId();');
+    expect(read('utils/apiClient.ts')).toContain("apiRequest<{ removed: number }>('/api/step-up/face-id/reset', { method: 'POST' })");
+  });
+
+  test('a refusal says what to do about it', () => {
+    expect(read('hooks/useFaceId.ts')).toContain('Sign out, sign in with a code, then try again.');
+  });
+});
