@@ -78,23 +78,48 @@ if (!unlink) {
   process.exit(0);
 }
 
-let after = user;
-for (const passkey of before.passkeys) {
-  console.log(`\nUnlinking ${passkey.credentialId}…`);
-  after = await users.unlinkLinkedAccount(user.id, { type: 'passkey', handle: passkey.credentialId }).catch((e) => {
-    console.error('  refused:', e?.message ?? e);
-    return after;
+/*
+ * An MFA-enrolled passkey has its own endpoint, which the SDK does not expose: the ordinary unlink
+ * refuses with "MFA-enrolled passkeys must be unlinked via POST /users/{userId}/passkeys/unlink".
+ * So that one is called directly. Basic auth is the app id and secret, as everywhere in Privy's API.
+ */
+async function unlinkPasskey(userId, credentialId) {
+  const response = await fetch(`https://api.privy.io/v1/users/${userId}/passkeys/unlink`, {
+    method: 'POST',
+    headers: {
+      authorization: `Basic ${Buffer.from(`${appID}:${appSecret}`).toString('base64')}`,
+      'privy-app-id': appID,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ credential_id: credentialId }),
   });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`${response.status} ${JSON.stringify(body)}`);
+  return body;
 }
 
-const now = describe(after);
+let failed = false;
+for (const passkey of before.passkeys) {
+  console.log(`\nUnlinking ${passkey.credentialId}…`);
+  try {
+    await unlinkPasskey(user.id, passkey.credentialId);
+    console.log('  gone');
+  } catch (e) {
+    failed = true;
+    console.error('  refused:', e?.message ?? e);
+  }
+}
+
+const now = describe(await users.getByEmailAddress({ address: email }));
 console.log('\nAfter:', JSON.stringify(now, null, 2));
 
-if (now.mfaMethods.includes('passkey')) {
+if (!now.passkeys.length && !now.mfaMethods.includes('passkey')) {
+  console.log('\nDone: no passkey, and none enrolled for MFA. Turn Face ID on again in Settings to set up a new one.');
+} else if (now.mfaMethods.includes('passkey')) {
   console.log(
-    '\nThe passkey is unlinked but still enrolled for MFA, so the wallet will keep asking for it.\n' +
+    `\nPasskey MFA is still enrolled${failed ? '' : ' even though the passkey is gone'}, so the wallet will keep asking for it.\n` +
       `Ask Privy support to clear MFA for ${now.did}. Signing in with a code still works meanwhile.`,
   );
 } else {
-  console.log('\nDone: no passkey, and none enrolled for MFA. Turn Face ID on again in Settings to set up a new one.');
+  console.log('\nSome passkeys are still linked; read the refusals above.');
 }
