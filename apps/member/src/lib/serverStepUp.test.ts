@@ -81,7 +81,7 @@ describe('wired through', () => {
 
   test('turning Face ID on registers with the server; off removes it first, behind Face ID', () => {
     const faceId = read('hooks/useFaceId.ts');
-    expect(faceId).toContain('await enrollWithServer().catch(() => undefined);');
+    expect(faceId).toContain('await enrollWithServer(prepared).catch(() => undefined);');
     expect(faceId).toMatch(/if \(serverStepUpEnrolled\(\) && !\(await removeStepUp\(\)\)\) \{/);
   });
 

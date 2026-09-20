@@ -78,3 +78,20 @@ describe('turning Face ID off when the passkey is gone', () => {
     expect(read('hooks/useFaceId.ts')).toContain('Sign out, sign in with a code, then try again.');
   });
 });
+
+describe('one switch turns Face ID on for both', () => {
+  const faceId = read('hooks/useFaceId.ts');
+
+  test('the server challenge is fetched before either sheet, so the second follows the first at once', () => {
+    expect(faceId).toMatch(
+      /const prepared = await prepareServerEnrollment\(\)[\s\S]{0,240}await linkWithPasskey\(\{ name: 'Clear' \}\);[\s\S]{0,140}await enrollWithServer\(prepared\)/,
+    );
+  });
+
+  test('the payments half failing does not fail the switch: Settings offers it on a tap of its own', () => {
+    expect(faceId).toContain('await enrollWithServer(prepared).catch(() => undefined);');
+    // faceIdNotEnrolled covers "linked, but the server holds none", which is what draws that button.
+    expect(read('hooks/usePaymentProtection.ts')).toContain('|| serverEnrolled === false),');
+    expect(read('pages/app/SettingsPage.tsx')).toContain('Use Face ID');
+  });
+});

@@ -19,7 +19,7 @@ describe('payments are guarded at the wallet (Privy MFA)', () => {
   });
 
   test('turning Face ID on enrols its passkey for payments, wherever the member is', () => {
-    expect(read('hooks/useFaceId.ts')).toMatch(/enrollFaceIdWhenLinked\(\);[\s\S]{0,160}await linkWithPasskey/);
+    expect(read('hooks/useFaceId.ts')).toMatch(/enrollFaceIdWhenLinked\(\);[\s\S]{0,600}await linkWithPasskey/);
     expect(read('components/shell/AppLock.tsx')).toContain('usePaymentProtection();');
     expect(read('hooks/usePaymentProtection.ts')).toContain('await submitEnrollmentWithPasskey({ credentialIds: unenrolledPasskeys });');
   });

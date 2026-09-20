@@ -1,4 +1,4 @@
-import { enrollWithServer } from '@/lib/serverStepUp';
+import { enrollWithServer, prepareServerEnrollment } from '@/lib/serverStepUp';
 import { serverStepUpEnrolled, setServerStepUpEnrolled } from '@/lib/stepUp';
 import { removeStepUp, resetFaceId } from '@/utils/apiClient';
 import { useCallback, useMemo, useState } from 'react';
@@ -128,14 +128,17 @@ export function useFaceId(): FaceId {
     try {
       // Its passkey also guards payments at the wallet, as soon as Privy reports it (usePaymentProtection).
       enrollFaceIdWhenLinked();
+      /*
+       * One switch, both passkeys: signing in and paying should not be two chores. The server's
+       * challenge is fetched before either sheet, so the second follows the first with nothing in
+       * between -- a browser is likelier to allow it then. If it refuses anyway, the Payments row
+       * says so and its button asks again on a tap of its own.
+       */
+      const prepared = await prepareServerEnrollment().catch(() => undefined);
       // Named so a member looking at their devices can tell which one this was.
       await linkWithPasskey({ name: 'Clear' });
       forgetWantsFaceId();
-      /*
-       * And the one the server can check (lib/serverStepUp). A second system sheet straight after the
-       * first; if the browser refuses it that soon, Settings offers it as "Use Face ID".
-       */
-      await enrollWithServer().catch(() => undefined);
+      await enrollWithServer(prepared).catch(() => undefined);
       return true;
     } catch (e) {
       setError(toMessage(e, 'We could not turn on Face ID on this device. Please try again.'));
