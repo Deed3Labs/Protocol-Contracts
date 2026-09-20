@@ -6,7 +6,7 @@ import {
   verifyRegistrationResponse,
   type AuthenticatorTransportFuture,
 } from '@simplewebauthn/server';
-import { stepUpStore } from '../services/stepUp/stepUpStore.js';
+import { stepUpStore, type StepUpCredential } from '../services/stepUp/stepUpStore.js';
 import { issueChallenge, issueStepUpToken, redeemChallenge, stepUpTokenValid } from '../services/stepUp/stepUpToken.js';
 import { STEP_UP_HEADER, stepUpRequired } from '../middleware/stepUp.js';
 import { sessionLock } from '../services/session/sessionLock.js';
@@ -29,7 +29,15 @@ import { sessionLock } from '../services/session/sessionLock.js';
  */
 const stepUpRouter = Router();
 
-function relyingParty(req: Request): { rpID: string; origin: string } | null {
+/*
+ * The site our credentials belong to.
+ *
+ * Deliberately the registrable domain (useclear.org) rather than the page's host
+ * (demo.useclear.org), which is where Privy registers its sign-in passkeys. A passkey is offered only
+ * for its own site, so this keeps the two apart: the sign-in prompt shows only the passkey that signs
+ * in, and ours shows only ours. Both work on every Clear subdomain.
+ */
+function relyingParty(req: Request): { rpID: string; hostRpID: string; origin: string } | null {
   const origin = String(req.headers.origin || '').trim();
   if (!origin) return null;
   let url: URL;
@@ -47,7 +55,21 @@ function relyingParty(req: Request): { rpID: string; origin: string } | null {
     extra.includes(origin) ||
     (url.protocol === 'https:' && (host === 'useclear.org' || host.endsWith('.useclear.org'))) ||
     (url.protocol === 'http:' && host === 'localhost');
-  return ours ? { rpID: host, origin } : null;
+  if (!ours) return null;
+  const apex = host === 'useclear.org' || host.endsWith('.useclear.org') ? 'useclear.org' : host;
+  return { rpID: apex, hostRpID: host, origin };
+}
+
+/**
+ * The member's credentials for this request, and the site they answer for.
+ *
+ * Credentials registered before the move to the registrable domain still carry the page's host, and
+ * they must keep working -- a member cannot register a replacement without Face ID from one of these.
+ */
+function credentialsFor(all: StepUpCredential[], rp: { rpID: string; hostRpID: string }): { rpId: string; credentials: StepUpCredential[] } {
+  const preferred = all.filter((c) => c.rpId === rp.rpID);
+  if (preferred.length) return { rpId: rp.rpID, credentials: preferred };
+  return { rpId: rp.hostRpID, credentials: all.filter((c) => c.rpId === rp.hostRpID) };
 }
 
 const userOf = (req: Request) => req.auth?.profileUuid || '';
@@ -140,10 +162,10 @@ stepUpRouter.post('/options', async (req: Request, res: Response) => {
   const rp = relyingParty(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   if (!rp) return res.status(400).json({ error: 'Face ID is not available on this site.' });
-  const credentials = (await stepUpStore.listFor(userId)).filter((c) => c.rpId === rp.rpID);
+  const { rpId, credentials } = credentialsFor(await stepUpStore.listFor(userId), rp);
   if (!credentials.length) return res.status(409).json({ error: 'No Face ID set up here.', code: 'STEP_UP_NOT_ENROLLED' });
   const options = await generateAuthenticationOptions({
-    rpID: rp.rpID,
+    rpID: rpId,
     challenge: challengeBytes(issueChallenge(userId, 'prove')),
     allowCredentials: credentials.map((c) => ({ id: c.credentialId, transports: transportsOf(c.transports) })),
     userVerification: 'required',
@@ -157,7 +179,8 @@ stepUpRouter.post('/verify', async (req: Request, res: Response) => {
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   if (!rp) return res.status(400).json({ error: 'Face ID is not available on this site.' });
   const response = req.body?.response;
-  const credential = (await stepUpStore.listFor(userId)).find((c) => c.credentialId === response?.id && c.rpId === rp.rpID);
+  const { rpId, credentials } = credentialsFor(await stepUpStore.listFor(userId), rp);
+  const credential = credentials.find((c) => c.credentialId === response?.id);
   // Only the member's own credentials are looked at, so another member's cannot answer for them.
   if (!credential) return res.status(400).json({ error: 'Face ID did not match.' });
   try {
@@ -165,7 +188,7 @@ stepUpRouter.post('/verify', async (req: Request, res: Response) => {
       response,
       expectedChallenge: (c: string) => redeemChallenge(c, userId, 'prove'),
       expectedOrigin: rp.origin,
-      expectedRPID: rp.rpID,
+      expectedRPID: rpId,
       credential: {
         id: credential.credentialId,
         publicKey: credential.publicKey,
