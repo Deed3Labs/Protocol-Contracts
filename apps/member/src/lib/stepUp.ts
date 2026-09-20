@@ -10,9 +10,15 @@
  * the verifier; with nothing registered — the preview harness, tests, signed-out pages — the gate
  * is open, because there is nobody to ask.
  *
- * Members WITHOUT Face ID are never blocked here. The verifier lets them through: their protection
- * is the code they entered to get past the lock, and asking for a code on every send would make
- * the app unusable for them. Turning on Face ID is what adds this check.
+ * Only members who turned Face ID on FOR PAYMENTS are asked. Face ID for signing in is a separate
+ * switch and does not add this check: somebody may want the app to open with a look and still move
+ * money without one, and that is theirs to choose. Everyone else passes, as they always did -- their
+ * protection is the code they entered to get past the lock, and asking for a code on every send
+ * would make the app unusable.
+ *
+ * What makes the check worth anything is the server (lib/serverStepUp): it verifies the signature
+ * and refuses the requests that matter without a fresh one. The browser's own answer proves nothing
+ * to anybody, so the app no longer asks for one it cannot check.
  *
  * One verification covers the next couple of minutes. Some moves are two signatures (an approve and
  * then a deposit), and unlocking the app is itself a Face ID check — asking again seconds later is

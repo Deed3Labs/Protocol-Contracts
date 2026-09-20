@@ -115,12 +115,17 @@ export default function AppLock({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Members without Face ID pass: their protection is the code that got them past the lock.
+    /*
+     * Only members who turned Face ID on FOR PAYMENTS are asked before money moves.
+     *
+     * This used to fall back to the sign-in passkey for anyone who had one, from before payments had
+     * a switch of its own. That asked members who had deliberately left payments unprotected, and
+     * asked them with a check nothing verifies -- the browser's own answer, which devtools can step
+     * round. The server refuses the requests that matter for enrolled members either way, so what
+     * that fallback added was friction rather than protection.
+     */
     setStepUpVerifier(async () => {
-      // Face ID the server can check, where the member has it: that is what the API asks for.
       if (serverStepUpEnrolled()) return proveWithServer();
-      if (!faceIdRef.current.on) return;
-      await faceIdRef.current.confirm();
     });
     return () => setStepUpVerifier(null);
   }, []);
