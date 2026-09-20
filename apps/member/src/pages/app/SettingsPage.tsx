@@ -138,6 +138,7 @@ export default function SettingsPage({
     busy: boolean;
     error: string | null;
     onEnrollFaceId: () => void;
+    onSetUpThisDevice: () => void;
     onStartAuthenticator: () => Promise<{ secret: string; authUrl: string } | null>;
     onConfirmAuthenticator: (code: string) => Promise<boolean>;
     onRemoveAuthenticator: () => void;
@@ -315,10 +316,20 @@ export default function SettingsPage({
                   'Not protected yet: turn on Face ID or an authenticator app'
                 )
               }
+              /*
+               * "This device" rather than nothing once it is on: a passkey deleted from the phone,
+               * or a new phone, leaves payments asking for something the member cannot give, and
+               * this is the way back. It needs Face ID from a device still registered, or a sign-in
+               * made in the last ten minutes.
+               */
               trailing={
                 payments?.faceIdNotEnrolled ? (
                   <Btn className="h-[30px] px-[12px] text-detail" disabled={payments.busy} onClick={payments.onEnrollFaceId}>
                     Use Face ID
+                  </Btn>
+                ) : payments && paidWith.includes('passkey') ? (
+                  <Btn className="h-[30px] px-[12px] text-detail" disabled={payments.busy} onClick={payments.onSetUpThisDevice}>
+                    This device
                   </Btn>
                 ) : undefined
               }

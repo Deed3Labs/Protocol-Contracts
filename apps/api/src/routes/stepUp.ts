@@ -15,8 +15,9 @@ import { sessionLock } from '../services/session/sessionLock.js';
  * Server-verified Face ID (see middleware/stepUp for where it is required).
  *
  *   GET    /status             whether this member has a credential here
- *   POST   /register/options   start adding one (the first needs only the session; any after it,
- *                              a fresh Face ID from one already registered)
+ *   POST   /register/options   start adding one (the first needs only the session; any after it, a
+ *                              fresh Face ID from one already registered -- or a sign-in made in the
+ *                              last ten minutes, which is the way back when the passkey is gone)
  *   POST   /register/verify    finish adding one; also counts as a Face ID check
  *   POST   /options            start a check
  *   POST   /verify             finish a check -> a two-minute step-up token
@@ -74,6 +75,13 @@ function credentialsFor(all: StepUpCredential[], rp: { rpID: string; hostRpID: s
 
 const userOf = (req: Request) => req.auth?.profileUuid || '';
 
+/** Face ID from a credential already registered, or a sign-in made in the last ten minutes. */
+async function allowedWithoutFaceId(req: Request, userId: string): Promise<boolean> {
+  if (stepUpTokenValid(req.header(STEP_UP_HEADER) || undefined, userId)) return true;
+  const sessionId = req.auth?.sessionId;
+  return Boolean(sessionId && sessionLock.available() && (await sessionLock.freshSignIn(sessionId)));
+}
+
 async function openSession(req: Request): Promise<void> {
   const sessionId = req.auth?.sessionId;
   const userId = userOf(req);
@@ -105,10 +113,9 @@ stepUpRouter.post('/register/options', async (req: Request, res: Response) => {
 
   const existing = await stepUpStore.listFor(userId);
   // Adding a device is how someone holding only a stolen session would get past Face ID -- so it
-  // takes Face ID from a device already on the account.
-  if (existing.length && !stepUpTokenValid(req.header(STEP_UP_HEADER) || undefined, userId)) {
-    return stepUpRequired(req, res);
-  }
+  // takes Face ID from a device already on the account, or a sign-in just made, which a stolen
+  // session cannot produce: it needs the code sent to the member's own email or phone.
+  if (existing.length && !(await allowedWithoutFaceId(req, userId))) return stepUpRequired(req, res);
 
   const options = await generateRegistrationOptions({
     rpName: 'Clear',
@@ -212,10 +219,9 @@ stepUpRouter.delete('/', async (req: Request, res: Response) => {
   const userId = userOf(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   const credentials = await stepUpStore.listFor(userId);
-  // Turning Face ID off is the other way round it, so it asks for Face ID too.
-  if (credentials.length && !stepUpTokenValid(req.header(STEP_UP_HEADER) || undefined, userId)) {
-    return stepUpRequired(req, res);
-  }
+  // Turning Face ID off is the other way round it, so it asks for Face ID too -- or a fresh sign-in,
+  // so a member whose passkey is gone can still turn it off.
+  if (credentials.length && !(await allowedWithoutFaceId(req, userId))) return stepUpRequired(req, res);
   const removed = await stepUpStore.removeAll(userId);
   return res.json({ removed });
 });

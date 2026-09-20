@@ -41,6 +41,12 @@ export interface PaymentProtection {
   busy: boolean;
   error: string | null;
   enrollFaceId: () => Promise<boolean>;
+  /**
+   * Register this device's Face ID for payments again -- for a passkey deleted from the phone, or a
+   * phone replaced. Takes Face ID from a device still registered, or a sign-in made in the last ten
+   * minutes, which is why the message says to sign in again when it cannot.
+   */
+  setUpThisDevice: () => Promise<boolean>;
   /** Starts authenticator setup: the otpauth URL for the QR, and the secret for typing in by hand. */
   startAuthenticator: () => Promise<{ secret: string; authUrl: string } | null>;
   confirmAuthenticator: (code: string) => Promise<boolean>;
@@ -118,6 +124,20 @@ export function usePaymentProtection(): PaymentProtection {
     void enrollFaceId();
   }, [unenrolledPasskeys, enrollFaceId, factors]);
 
+  const setUpThisDevice = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await enrollWithServer();
+      return true;
+    } catch {
+      setError('We could not set up Face ID on this device. Sign out and back in with a code, then try again.');
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const startAuthenticator = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -168,6 +188,7 @@ export function usePaymentProtection(): PaymentProtection {
     busy,
     error,
     enrollFaceId,
+    setUpThisDevice,
     startAuthenticator,
     confirmAuthenticator,
     removeAuthenticator,
