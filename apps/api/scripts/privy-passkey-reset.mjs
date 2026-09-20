@@ -45,7 +45,9 @@ if (!appID || !appSecret) {
   process.exit(1);
 }
 
-const privy = new PrivyClient({ appID, appSecret });
+// Resources are call-and-then-use here ('privy.users()'), as the merchant code notes.
+const privy = new PrivyClient({ appId: appID, appSecret });
+const users = privy.users();
 
 const describe = (user) => ({
   did: user.id,
@@ -55,7 +57,7 @@ const describe = (user) => ({
   mfaMethods: (user.mfa_methods ?? []).map((m) => m.type ?? m),
 });
 
-const user = await privy.users.getByEmailAddress({ address: email }).catch((e) => {
+const user = await users.getByEmailAddress({ address: email }).catch((e) => {
   console.error('Could not read that member:', e?.message ?? e);
   process.exit(1);
 });
@@ -79,7 +81,7 @@ if (!unlink) {
 let after = user;
 for (const passkey of before.passkeys) {
   console.log(`\nUnlinking ${passkey.credentialId}…`);
-  after = await privy.users.unlinkLinkedAccount(user.id, { type: 'passkey', handle: passkey.credentialId }).catch((e) => {
+  after = await users.unlinkLinkedAccount(user.id, { type: 'passkey', handle: passkey.credentialId }).catch((e) => {
     console.error('  refused:', e?.message ?? e);
     return after;
   });
