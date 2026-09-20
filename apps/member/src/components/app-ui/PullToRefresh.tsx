@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, ArrowDown } from 'lucide-react';
+import { ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { refreshAllNow } from '@/lib/refreshAll';
 import { pullDistance } from '@/lib/pullGesture';
@@ -17,10 +17,17 @@ import { pullDistance } from '@/lib/pullGesture';
  * chain-stale signal instead. Pulling refreshed balances and left the limit alone.
  *
  * Touch only: it attaches nothing on pointer devices, where the browser's own reload exists.
+ *
+ * Letting go springs the page straight back, and the figures themselves draw as placeholders while
+ * the reads are out -- the same ones a cold start shows. A spinner held under a page pinned down is
+ * a second thing to watch; the numbers going soft says "these are being fetched" where the member is
+ * already looking.
  */
 
 const THRESHOLD = 68; // px of pull (after resistance) that commits to a refresh
-const MIN_SPIN_MS = 550; // keep the spinner up long enough to read as deliberate, not a flicker
+/* Long enough for the placeholders to read as deliberate rather than a flicker, and about as long as
+   the reads take. Whenever a figure lands, it lands in place. */
+const MIN_PENDING_MS = 900;
 
 
 export default function PullToRefresh({ children }: { children: React.ReactNode }) {
@@ -40,12 +47,12 @@ export default function PullToRefresh({ children }: { children: React.ReactNode 
   const runRefresh = useCallback(async () => {
     refreshingRef.current = true;
     setRefreshing(true);
-    setPullBoth(THRESHOLD);
+    // Back up at once: the page is not held down waiting -- its figures are.
+    setPullBoth(0);
     refreshAllNow();
-    await new Promise((r) => setTimeout(r, MIN_SPIN_MS));
+    await new Promise((r) => setTimeout(r, MIN_PENDING_MS));
     refreshingRef.current = false;
     setRefreshing(false);
-    setPullBoth(0);
   }, [setPullBoth]);
 
   useEffect(() => {
@@ -122,20 +129,19 @@ export default function PullToRefresh({ children }: { children: React.ReactNode 
             armed && 'border-foreground/30',
           )}
         >
-          {refreshing ? (
-            <Loader2 className="h-4 w-4 animate-spin text-foreground" />
-          ) : (
-            <ArrowDown
-              className={cn('h-4 w-4 text-muted-foreground transition-transform', armed && 'rotate-180 text-foreground')}
-            />
-          )}
+          <ArrowDown
+            className={cn('h-4 w-4 text-muted-foreground transition-transform', armed && 'rotate-180 text-foreground')}
+          />
         </span>
       </div>
 
-      {/* Content follows the finger, then springs back once the gesture ends. */}
+      {/* Content follows the finger, then springs back once the gesture ends. While the reads are
+          out, the figures inside draw as placeholders (styles: [data-pending]). */}
       <div
         style={{ transform: pull > 0 ? `translateY(${pull}px)` : undefined }}
         className={cn(startY.current == null && 'transition-transform duration-200')}
+        data-pending={refreshing ? '' : undefined}
+        aria-busy={refreshing || undefined}
       >
         {children}
       </div>
