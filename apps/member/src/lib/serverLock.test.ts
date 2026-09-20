@@ -51,17 +51,25 @@ describe('the returning screen while locked', () => {
 });
 
 describe('getting Face ID back when the passkey is gone', () => {
-  test('Settings offers this device once payments are protected, so a deleted passkey is recoverable', () => {
+  test('nothing offers to set up what is already set up: the phone refuses a passkey it holds', () => {
     const page = read('pages/app/SettingsPage.tsx');
-    expect(page).toContain('onClick={payments.onSetUpThisDevice}');
-    expect(page).toContain('This device');
-    expect(read('pages/app/SettingsRoute.tsx')).toContain('onSetUpThisDevice: () => void protection.setUpThisDevice(),');
+    expect(page).not.toContain('This device');
+    // The only action on the row, and only while payments are unprotected.
+    expect(page).toMatch(/payments\?\.faceIdNotEnrolled \? \([\s\S]{0,240}Use Face ID[\s\S]{0,80}\) : undefined/);
+    expect(read('hooks/usePaymentProtection.ts')).not.toContain('setUpThisDevice');
   });
 
-  test('it says how to get past a refusal: sign in again with a code, and why where the server said', () => {
+  test('a device that lost its passkey goes through the switch above, which registers both again', () => {
+    const faceId = read('hooks/useFaceId.ts');
+    expect(faceId).toMatch(/if \(serverStepUpEnrolled\(\) && !\(await removeStepUp\(\)\)\) \{/);
+    // Off clears the server credential, so the row offers "Use Face ID" again straight afterwards.
+    expect(read('hooks/usePaymentProtection.ts')).toContain('|| serverEnrolled === false),');
+  });
+
+  test('a refusal is said in our words, never the browser\'s', () => {
     const hook = read('hooks/usePaymentProtection.ts');
-    expect(hook).toContain("'We could not set up Face ID on this device. Sign out and back in with a code, then try again.',");
-    expect(hook).toContain('`${said} Or sign out, sign in with a code, and try again within ten minutes.`');
+    expect(hook).toContain("setError('We could not use Face ID for payments. Please try again.');");
+    expect(hook).not.toContain('${said}');
   });
 });
 
