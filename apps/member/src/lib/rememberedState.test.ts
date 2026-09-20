@@ -85,6 +85,18 @@ describe('pages start from what they showed last, not from zeros', () => {
 });
 
 describe('placeholders only while nothing is known', () => {
+  test('pulling to refresh springs back and turns the figures into placeholders, with no spinner', () => {
+    const pull = read('components/app-ui/PullToRefresh.tsx');
+    expect(pull).toMatch(/setPullBoth\(0\);\s*refreshAllNow\(\);/);
+    expect(pull).toContain("data-pending={refreshing ? '' : undefined}");
+    expect(pull).not.toContain('Loader2');
+  });
+
+  test('the pool rate is a figure too, so it gets a placeholder', () => {
+    expect(read('components/clear/YieldPoolCard.tsx')).toContain('<p className="c-apy">');
+    expect(read('styles/clear-components.css')).toContain('[data-pending] .c-fig,[data-pending] .c-apy{width:fit-content;opacity:.55}');
+  });
+
   test('each page marks itself pending until it has a figure or its first read has answered', () => {
     expect(read('pages/app/HomeRoute.tsx')).toContain('const pending = balancesLoading || (credit === null && !creditTried);');
     expect(read('pages/app/EarnRoute.tsx')).toContain('<PendingFigures pending={earn === null && !earnTried}>');
@@ -99,8 +111,8 @@ describe('placeholders only while nothing is known', () => {
 
   test('figures keep their size as placeholders, and hold still for reduced motion', () => {
     const css = read('styles/clear-components.css');
-    expect(css).toContain('[data-pending] .c-fig,.c-skel{');
-    expect(css).toContain('@media (prefers-reduced-motion:reduce){[data-pending] .c-fig,.c-skel{animation:none}[data-pending] .c-det,[data-pending] .c-sub{animation:none}}');
+    expect(css).toContain('[data-pending] .c-fig,[data-pending] .c-apy,.c-skel{');
+    expect(css).toContain('@media (prefers-reduced-motion:reduce){[data-pending] .c-fig,[data-pending] .c-apy,.c-skel{animation:none}[data-pending] .c-det,[data-pending] .c-sub{animation:none}}');
   });
 
   test('Home while pending is the populated layout with placeholders, never day one or its setup steps', () => {

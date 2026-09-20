@@ -662,13 +662,13 @@
  * the number it stands for and nothing shifts when the number lands. One soft sweep, no spinner;
  * still, not swept, for members who asked for less motion. */
 @keyframes c-skel-sweep{0%{background-position:100% 0}100%{background-position:-100% 0}}
-[data-pending] .c-fig,.c-skel{
+[data-pending] .c-fig,[data-pending] .c-apy,.c-skel{
   color:transparent!important;border-radius:6px;
   background:linear-gradient(90deg,var(--ink-13) 0%,var(--ink-28) 50%,var(--ink-13) 100%);
   background-size:200% 100%;animation:c-skel-sweep 1.4s ease-in-out infinite;
 }
-[data-pending] .c-fig{width:fit-content;opacity:.55}
-[data-pending] .c-fig *{color:transparent!important;background:none!important}
+[data-pending] .c-fig,[data-pending] .c-apy{width:fit-content;opacity:.55}
+[data-pending] .c-fig *,[data-pending] .c-apy *{color:transparent!important;background:none!important}
 /* Secondary lines carry figures too ("$0.00 cash · …", "Carrying $700.00"): placeholders as well.
    Section labels and buttons stay, so the page keeps its shape and is still usable. */
 [data-pending] .c-det,[data-pending] .c-sub{
@@ -682,4 +682,4 @@
 .c-skel-rows{display:flex;flex-direction:column;gap:var(--s2)}
 .c-skel-line{display:block;height:14px;opacity:.55}
 .c-skel-short{width:60%}
-@media (prefers-reduced-motion:reduce){[data-pending] .c-fig,.c-skel{animation:none}[data-pending] .c-det,[data-pending] .c-sub{animation:none}}
+@media (prefers-reduced-motion:reduce){[data-pending] .c-fig,[data-pending] .c-apy,.c-skel{animation:none}[data-pending] .c-det,[data-pending] .c-sub{animation:none}}
