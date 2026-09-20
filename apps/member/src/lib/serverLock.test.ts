@@ -31,3 +31,21 @@ describe('the server keeps its own lock, and the app follows it', () => {
     expect(lock).toMatch(/await faceIdRef\.current\.confirm\(\);[\s\S]{0,400}if \(\(await getSessionLock\(\)\) === true\) \{\s*setError\('Clear locked this session\. Send yourself a code to sign in again\.'\);\s*return;/);
   });
 });
+
+describe('the returning screen while locked', () => {
+  const lock = read('components/shell/AppLock.tsx');
+
+  test('it says the remembered name, never the wallet address the profile falls back to', () => {
+    expect(lock).toContain('const name = member.displayName || remembered?.name || ');
+    expect(lock).toContain('const handle = member.contactHandle || remembered?.handle || ');
+    const profile = read('hooks/useMemberProfile.ts');
+    // displayName is the member's own name or nothing; `name` is the one that falls back.
+    expect(profile).toContain('displayName: display,');
+    expect(profile).toContain("const display = pub?.displayName || pub?.username || '';");
+    expect(profile).toContain("name = pub?.displayName || pub?.username || short(addr) || 'Member'");
+  });
+
+  test('unlocking reads the profile again, since the lock refused it', () => {
+    expect(lock).toMatch(/setLocked\(false\);[\s\S]{0,300}refreshProfile\.current\(\);/);
+  });
+});
