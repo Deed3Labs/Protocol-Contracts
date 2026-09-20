@@ -34,12 +34,6 @@ export interface PaymentProtection {
   busy: boolean;
   error: string | null;
   enrollFaceId: () => Promise<boolean>;
-  /**
-   * Register this device's Face ID for payments again -- for a passkey deleted from the phone, or a
-   * phone replaced. Takes Face ID from a device still registered, or a sign-in made in the last ten
-   * minutes, which is why the message says to sign in again when it cannot.
-   */
-  setUpThisDevice: () => Promise<boolean>;
   /** Starts authenticator setup: the otpauth URL for the QR, and the secret for typing in by hand. */
   startAuthenticator: () => Promise<{ secret: string; authUrl: string } | null>;
   confirmAuthenticator: (code: string) => Promise<boolean>;
@@ -100,29 +94,6 @@ export function usePaymentProtection(): PaymentProtection {
     }
   }, [initEnrollmentWithPasskey, submitEnrollmentWithPasskey, unenrolledPasskeys, factors, serverEnrolled]);
 
-  const setUpThisDevice = useCallback(async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      await enrollWithServer();
-      return true;
-    } catch (e) {
-      /*
-       * The server's own words where it gave any -- "Confirm with Face ID to continue" means a
-       * credential is already on record, which is a different problem from the phone refusing.
-       */
-      const said = e instanceof Error ? e.message : '';
-      setError(
-        said && !/failed|error/i.test(said)
-          ? `${said} Or sign out, sign in with a code, and try again within ten minutes.`
-          : 'We could not set up Face ID on this device. Sign out and back in with a code, then try again.',
-      );
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
   const startAuthenticator = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -173,7 +144,6 @@ export function usePaymentProtection(): PaymentProtection {
     busy,
     error,
     enrollFaceId,
-    setUpThisDevice,
     startAuthenticator,
     confirmAuthenticator,
     removeAuthenticator,

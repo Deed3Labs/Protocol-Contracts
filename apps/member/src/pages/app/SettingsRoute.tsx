@@ -76,7 +76,6 @@ export default function SettingsRoute() {
         busy: protection.busy,
         error: protection.error,
         onEnrollFaceId: () => void protection.enrollFaceId(),
-        onSetUpThisDevice: () => void protection.setUpThisDevice(),
         onStartAuthenticator: protection.startAuthenticator,
         onConfirmAuthenticator: protection.confirmAuthenticator,
         onRemoveAuthenticator: () => void protection.removeAuthenticator(),

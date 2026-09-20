@@ -138,7 +138,6 @@ export default function SettingsPage({
     busy: boolean;
     error: string | null;
     onEnrollFaceId: () => void;
-    onSetUpThisDevice: () => void;
     onStartAuthenticator: () => Promise<{ secret: string; authUrl: string } | null>;
     onConfirmAuthenticator: (code: string) => Promise<boolean>;
     onRemoveAuthenticator: () => void;
@@ -317,19 +316,15 @@ export default function SettingsPage({
                 )
               }
               /*
-               * "This device" rather than nothing once it is on: a passkey deleted from the phone,
-               * or a new phone, leaves payments asking for something the member cannot give, and
-               * this is the way back. It needs Face ID from a device still registered, or a sign-in
-               * made in the last ten minutes.
+               * Nothing to press once it is on. Offering "set this up again" to a member who already
+               * has it asks the phone to make a passkey it is holding, which it refuses -- and the
+               * refusal reads as a fault. A device that has lost its passkey turns the switch above
+               * off and on, which registers both again.
                */
               trailing={
                 payments?.faceIdNotEnrolled ? (
                   <Btn className="h-[30px] px-[12px] text-detail" disabled={payments.busy} onClick={payments.onEnrollFaceId}>
                     Use Face ID
-                  </Btn>
-                ) : payments && paidWith.includes('passkey') ? (
-                  <Btn className="h-[30px] px-[12px] text-detail" disabled={payments.busy} onClick={payments.onSetUpThisDevice}>
-                    This device
                   </Btn>
                 ) : undefined
               }
