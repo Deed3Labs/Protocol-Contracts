@@ -1,9 +1,7 @@
-import { enrollWithServer } from '@/lib/serverStepUp';
 import { serverStepUpEnrolled, setServerStepUpEnrolled } from '@/lib/stepUp';
 import { removeStepUp, resetFaceId } from '@/utils/apiClient';
 import { useCallback, useMemo, useState } from 'react';
 import { useLinkWithPasskey, usePrivy, useUnlinkPasskey } from '@privy-io/react-auth';
-import { enrollFaceIdWhenLinked } from './usePaymentProtection';
 
 /*
  * Face ID is a passkey on the member's Privy account — and until now nothing could make one.
@@ -88,6 +86,18 @@ export async function confirmWithPasskey(credentialIds: string[]): Promise<void>
 }
 
 /**
+ * This switch is Face ID for SIGNING IN, and only that.
+ *
+ * Face ID for payments is its own row in Settings, for two reasons. A member may well want the app
+ * to open with a look and still be asked deliberately before money moves -- that is a real choice,
+ * not an oversight. And doing both here meant two system sheets back to back, which browsers are
+ * readiest to refuse: the second one failed quietly and left payments unguarded while the switch
+ * said Face ID was on.
+ *
+ * Off still takes both: a passkey that has been unlinked cannot confirm a payment either.
+ */
+
+/**
  * Face ID off when the passkey is gone from the phone.
  *
  * Privy will not unlink an MFA-enrolled passkey without verifying it, which a deleted passkey can
@@ -126,16 +136,9 @@ export function useFaceId(): FaceId {
     setBusy(true);
     setError(null);
     try {
-      // Its passkey also guards payments at the wallet, as soon as Privy reports it (usePaymentProtection).
-      enrollFaceIdWhenLinked();
       // Named so a member looking at their devices can tell which one this was.
       await linkWithPasskey({ name: 'Clear' });
       forgetWantsFaceId();
-      /*
-       * And the one the server can check (lib/serverStepUp). A second system sheet straight after the
-       * first; if the browser refuses it that soon, Settings offers it as "Use Face ID".
-       */
-      await enrollWithServer().catch(() => undefined);
       return true;
     } catch (e) {
       setError(toMessage(e, 'We could not turn on Face ID on this device. Please try again.'));

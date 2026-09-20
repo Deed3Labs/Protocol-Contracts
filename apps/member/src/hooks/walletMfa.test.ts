@@ -18,8 +18,10 @@ describe('payments are guarded at the wallet (Privy MFA)', () => {
     expect(cfg).toContain('passkeys: { shouldUnenrollMfaOnUnlink: true, shouldUnlinkOnUnenrollMfa: false },');
   });
 
-  test('turning Face ID on enrols its passkey for payments, wherever the member is', () => {
-    expect(read('hooks/useFaceId.ts')).toMatch(/enrollFaceIdWhenLinked\(\);[\s\S]{0,160}await linkWithPasskey/);
+  test('payments are turned on in their own row, not as a second sheet chasing the sign-in one', () => {
+    const faceId = read('hooks/useFaceId.ts');
+    expect(faceId).not.toContain('enrollFaceIdWhenLinked');
+    expect(faceId).not.toContain('enrollWithServer');
     expect(read('components/shell/AppLock.tsx')).toContain('usePaymentProtection();');
     expect(read('hooks/usePaymentProtection.ts')).toContain('await submitEnrollmentWithPasskey({ credentialIds: unenrolledPasskeys });');
   });

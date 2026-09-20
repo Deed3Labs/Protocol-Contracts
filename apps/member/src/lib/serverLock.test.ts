@@ -78,3 +78,24 @@ describe('turning Face ID off when the passkey is gone', () => {
     expect(read('hooks/useFaceId.ts')).toContain('Sign out, sign in with a code, then try again.');
   });
 });
+
+describe('signing in and paying are separate switches', () => {
+  const faceId = read('hooks/useFaceId.ts');
+
+  test('turning Face ID on links the sign-in passkey and stops there', () => {
+    expect(faceId).toMatch(/await linkWithPasskey\(\{ name: 'Clear' \}\);\s*forgetWantsFaceId\(\);\s*return true;/);
+    expect(faceId).not.toContain('prepareServerEnrollment');
+  });
+
+  test('payments are turned on from their own row, which asks for both halves on one tap', () => {
+    const p = read('hooks/usePaymentProtection.ts');
+    expect(p).toContain('if (serverEnrolled === false) await enrollWithServer();');
+    expect(p).toContain('await initEnrollmentWithPasskey();');
+    // And nothing enrols behind the member's back when a passkey appears.
+    expect(p).not.toContain('clear:enroll-faceid-mfa');
+  });
+
+  test('turning Face ID off still takes payments with it: an unlinked passkey cannot confirm one', () => {
+    expect(faceId).toMatch(/if \(serverStepUpEnrolled\(\) && !\(await removeStepUp\(\)\)\) \{/);
+  });
+});

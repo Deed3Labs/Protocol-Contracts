@@ -79,10 +79,11 @@ describe('wired through', () => {
     expect(lock).toContain('if (serverStepUpEnrolled()) await proveWithServer();');
   });
 
-  test('turning Face ID on registers with the server; off removes it first, behind Face ID', () => {
+  test('turning Face ID off removes the server credential first, behind Face ID', () => {
     const faceId = read('hooks/useFaceId.ts');
-    expect(faceId).toContain('await enrollWithServer().catch(() => undefined);');
     expect(faceId).toMatch(/if \(serverStepUpEnrolled\(\) && !\(await removeStepUp\(\)\)\) \{/);
+    // On does not: payments are their own row, so one system sheet never chases another.
+    expect(faceId).not.toContain('enrollWithServer');
   });
 
   test('"Use Face ID" in Settings covers the server credential too', () => {

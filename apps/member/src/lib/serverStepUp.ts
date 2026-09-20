@@ -38,11 +38,23 @@ export async function proveWithServer(): Promise<void> {
   setServerStepUpToken(grant);
 }
 
-/** Register this device's Face ID with the server. Also counts as a check. Throws if it did not happen. */
-export async function enrollWithServer(): Promise<void> {
+/**
+ * What the server needs before it can register a Face ID here, fetched ahead of asking for one.
+ *
+ * Turning Face ID on makes two passkeys, one after the other, and a browser is readier to show the
+ * second system sheet the sooner it follows the first. Asking the server for the challenge first
+ * takes the network out of the gap between them; it needs no tap of its own.
+ */
+export async function prepareServerEnrollment(): Promise<unknown> {
   const start = await getStepUpRegisterOptions();
   if (!start.options) throw new Error(start.error || 'Face ID could not start.');
-  const response = await startRegistration({ optionsJSON: start.options as RegisterJSON });
+  return start.options;
+}
+
+/** Register this device's Face ID with the server. Also counts as a check. Throws if it did not happen. */
+export async function enrollWithServer(prepared?: unknown): Promise<void> {
+  const options = prepared ?? (await prepareServerEnrollment());
+  const response = await startRegistration({ optionsJSON: options as RegisterJSON });
   const grant = await verifyStepUpRegistration(response);
   if (!grant) throw new Error('Face ID was not set up.');
   setServerStepUpToken(grant);
