@@ -125,8 +125,9 @@ describe('the lock screen', () => {
     expect(read('components/shell/AppShell.tsx')).toMatch(/<AppLock>[\s\S]*<Outlet \/>[\s\S]*<\/AppLock>/);
     expect(lock).toContain('if (!locked) return <>{children}</>;');
   });
-  test('members without Face ID are not blocked from moving money', () => {
-    expect(lock).toContain('if (!faceIdRef.current.on) return;');
+  test('members who have not turned Face ID on for payments are not blocked from moving money', () => {
+    // Face ID for signing in does not gate money: that is the Payments switch, which the server checks.
+    expect(lock).toMatch(/setStepUpVerifier\(async \(\) => \{\s*if \(serverStepUpEnrolled\(\)\) return proveWithServer\(\);\s*\}\);/);
   });
   test('the code fallback is a real sign-in, and signing in starts the clock', () => {
     expect(lock).toContain('logout({ sendCode: true })');
