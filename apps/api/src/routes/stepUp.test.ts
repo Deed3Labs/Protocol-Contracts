@@ -35,7 +35,9 @@ const { default: stepUpRouter } = await import('./stepUp');
 const { requireStepUp, requireStepUpWhen } = await import('../middleware/stepUp');
 
 const ORIGIN = 'https://demo.useclear.org';
-const RP_ID = 'demo.useclear.org';
+/** Ours live on the registrable domain, apart from Privy's sign-in passkeys on the page's host. */
+const RP_ID = 'useclear.org';
+const HOST_RP_ID = 'demo.useclear.org';
 const b64u = (b: Uint8Array | Buffer) => Buffer.from(b).toString('base64url');
 
 // --- a minimal CBOR encoder: enough for a 'none' attestation and an EC2 COSE key -------------------
@@ -58,7 +60,7 @@ class SoftAuthenticator {
   private key: KeyObject;
   private pub: KeyObject;
   private count = 0;
-  constructor() {
+  constructor(private rpId = RP_ID) {
     const pair = generateKeyPairSync('ec', { namedCurve: 'P-256' });
     this.key = pair.privateKey;
     this.pub = pair.publicKey;
@@ -66,11 +68,17 @@ class SoftAuthenticator {
   private authData(flags: number, attested?: Buffer): Buffer {
     const counter = Buffer.alloc(4);
     counter.writeUInt32BE(++this.count);
-    return Buffer.concat([createHash('sha256').update(RP_ID).digest(), Buffer.from([flags]), counter, attested ?? Buffer.alloc(0)]);
+    return Buffer.concat([createHash('sha256').update(this.rpId).digest(), Buffer.from([flags]), counter, attested ?? Buffer.alloc(0)]);
+  }
+  /** The public key as the authenticator hands it over, for standing a credential up directly. */
+  coseKey(): Uint8Array<ArrayBuffer> {
+    const jwk = this.pub.export({ format: 'jwk' }) as { x: string; y: string };
+    return Uint8Array.from(
+      cbor(new Map<number, unknown>([[1, 2], [3, -7], [-1, 1], [-2, Buffer.from(jwk.x, 'base64url')], [-3, Buffer.from(jwk.y, 'base64url')]])),
+    );
   }
   register(challenge: string, origin = ORIGIN) {
-    const jwk = this.pub.export({ format: 'jwk' }) as { x: string; y: string };
-    const cose = cbor(new Map<number, unknown>([[1, 2], [3, -7], [-1, 1], [-2, Buffer.from(jwk.x, 'base64url')], [-3, Buffer.from(jwk.y, 'base64url')]]));
+    const cose = Buffer.from(this.coseKey());
     const idLen = Buffer.from([0, this.id.length]);
     const attested = Buffer.concat([Buffer.alloc(16), idLen, this.id, cose]);
     // UP | UV | AT
@@ -211,6 +219,27 @@ describe('server-verified Face ID', () => {
     expect((await register('did:alice', laptop)).status).toBe(403);
     const token = (await prove('did:alice', phone)).body.token;
     expect((await register('did:alice', laptop, token)).status).toBe(200);
+  });
+
+  test('a credential registered here belongs to the registrable domain, not the page\'s host', () => {
+    expect(rows.every((r) => r.rpId === RP_ID)).toBe(true);
+  });
+
+  test('a credential from before that move, on the page\'s host, still opens it', async () => {
+    const older = new SoftAuthenticator(HOST_RP_ID);
+    rows.push({
+      credentialId: b64u(older.id),
+      userId: 'did:carol',
+      rpId: HOST_RP_ID,
+      publicKey: older.coseKey(),
+      counter: 0,
+      transports: ['internal'],
+    });
+    const opts = await call('/api/step-up/options', 'did:carol', { method: 'POST' });
+    expect(opts.body.options.rpId).toBe(HOST_RP_ID);
+    const proved = await call('/api/step-up/verify', 'did:carol', { body: { response: older.prove(opts.body.options.challenge) } });
+    expect(proved.status).toBe(200);
+    expect((await call('/guarded', 'did:carol', { token: proved.body.token })).status).toBe(200);
   });
 
   test('freezing is one tap; unfreezing needs the token', async () => {
