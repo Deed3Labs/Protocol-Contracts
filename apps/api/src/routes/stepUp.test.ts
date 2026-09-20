@@ -13,6 +13,16 @@ process.env.STEP_UP_SECRET = 'test-step-up-secret';
 
 type Cred = { credentialId: string; userId: string; rpId: string; publicKey: Uint8Array<ArrayBuffer>; counter: number; transports: string[] };
 const rows: Cred[] = [];
+/*
+ * Whether the member has just signed in, which is the way back when their passkey is gone. The real
+ * lock otherwise: only this one answer is stood in for, so its own tests keep testing it.
+ */
+let freshSignIn = false;
+const realLock = await import('../services/session/sessionLock.js');
+mock.module('../services/session/sessionLock.js', () => ({
+  ...realLock,
+  sessionLock: { ...realLock.sessionLock, available: () => true, freshSignIn: async () => freshSignIn },
+}));
 mock.module('../services/stepUp/stepUpStore.js', () => ({
   stepUpStore: {
     available: () => true,
@@ -114,7 +124,7 @@ beforeAll(() => {
   app.use(express.json());
   app.use((req, _res, next) => {
     const user = req.header('x-test-user');
-    if (user) req.auth = { walletAddress: '0xabc', profileUuid: user, token: 't' };
+    if (user) req.auth = { walletAddress: '0xabc', profileUuid: user, sessionId: `session:${user}`, token: 't' };
     next();
   });
   app.use('/api/step-up', stepUpRouter);
@@ -212,6 +222,27 @@ describe('server-verified Face ID', () => {
     const opts = await call('/api/step-up/options', 'did:alice', { method: 'POST' });
     const r = await call('/api/step-up/verify', 'did:alice', { body: { response: phone.prove(opts.body.options.challenge, 'https://evil.example') } });
     expect(r.status).toBe(400);
+  });
+
+  test('a member whose passkey is gone can register again just after signing in, and not before', async () => {
+    const newPhone = new SoftAuthenticator();
+    // The old passkey is gone, so there is no Face ID to give: refused on an ordinary session.
+    freshSignIn = false;
+    expect((await register('did:alice', newPhone)).status).toBe(403);
+    // Signing in again takes a code to their own email or phone, which a stolen session cannot get.
+    freshSignIn = true;
+    expect((await register('did:alice', newPhone)).status).toBe(200);
+    expect((await call('/guarded', 'did:alice', { token: (await prove('did:alice', newPhone)).body.token })).status).toBe(200);
+    freshSignIn = false;
+  });
+
+  test('turning it off is open to a fresh sign-in too, so a lost passkey is not permanent', async () => {
+    freshSignIn = true;
+    const r = await call('/api/step-up', 'did:alice', { method: 'DELETE' });
+    expect(r.status).toBe(200);
+    freshSignIn = false;
+    // Registered afresh for the tests that follow.
+    expect((await register('did:alice', phone)).status).toBe(200);
   });
 
   test('adding a second device takes Face ID from the first', async () => {

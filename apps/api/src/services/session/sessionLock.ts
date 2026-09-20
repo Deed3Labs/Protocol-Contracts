@@ -17,6 +17,15 @@ import { getPayPool } from '../../config/postgres.js';
  * A session the server has not seen is new, and starts active: signing in is how one begins.
  */
 
+/**
+ * How long after signing in a member can set up Face ID for payments without Face ID.
+ *
+ * Signing in takes a code to their own email or phone, which is why this is safe where an ordinary
+ * session is not: a stolen session cannot make a new one. It is also the only way back for somebody
+ * whose passkey is gone -- deleted from the phone, or the phone itself.
+ */
+export const FRESH_SIGN_IN_MS = 10 * 60 * 1000;
+
 /** The app locks at five; a minute more here covers its once-a-minute report. */
 export const SESSION_LOCK_AFTER_MS = 6 * 60 * 1000;
 /** A report inside this of the last one written is not written again. */
@@ -36,6 +45,10 @@ async function ensureTable(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS ${TABLE}_active_idx ON ${TABLE} (last_active);
     ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    /* Sessions that already existed did not begin now, and a session that looks newly signed in can
+       register Face ID. Dated a day back, which is older than the window either way. */
+    UPDATE ${TABLE} SET created_at = NOW() - INTERVAL '1 day' WHERE created_at > last_active;
   `);
   ensured = true;
 }
@@ -117,6 +130,16 @@ export const sessionLock = {
   /** How many sessions this process is holding in memory (for tests and the memory monitor). */
   heldInMemory(): number {
     return seen.size;
+  },
+
+  /** Whether this session began in the last FRESH_SIGN_IN_MS -- that is, they just signed in. */
+  async freshSignIn(sessionId: string, now = Date.now()): Promise<boolean> {
+    const pool = getPayPool();
+    if (!pool) return false;
+    await ensureTable();
+    const { rows } = await pool.query<{ created_at: Date }>(`SELECT created_at FROM ${TABLE} WHERE session_id = $1`, [sessionId]);
+    const at = rows[0]?.created_at?.getTime();
+    return at !== undefined && now - at < FRESH_SIGN_IN_MS;
   },
 
   /** The member used the app (or proved it was them). Written at most once a minute unless `force`. */

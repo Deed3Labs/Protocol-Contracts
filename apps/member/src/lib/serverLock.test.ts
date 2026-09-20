@@ -49,3 +49,18 @@ describe('the returning screen while locked', () => {
     expect(lock).toMatch(/setLocked\(false\);[\s\S]{0,300}refreshProfile\.current\(\);/);
   });
 });
+
+describe('getting Face ID back when the passkey is gone', () => {
+  test('Settings offers this device once payments are protected, so a deleted passkey is recoverable', () => {
+    const page = read('pages/app/SettingsPage.tsx');
+    expect(page).toContain('onClick={payments.onSetUpThisDevice}');
+    expect(page).toContain('This device');
+    expect(read('pages/app/SettingsRoute.tsx')).toContain('onSetUpThisDevice: () => void protection.setUpThisDevice(),');
+  });
+
+  test('it says how to get past a refusal: sign in again with a code', () => {
+    expect(read('hooks/usePaymentProtection.ts')).toContain(
+      "setError('We could not set up Face ID on this device. Sign out and back in with a code, then try again.');",
+    );
+  });
+});
