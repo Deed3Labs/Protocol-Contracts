@@ -79,19 +79,23 @@ describe('turning Face ID off when the passkey is gone', () => {
   });
 });
 
-describe('one switch turns Face ID on for both', () => {
+describe('signing in and paying are separate switches', () => {
   const faceId = read('hooks/useFaceId.ts');
 
-  test('the server challenge is fetched before either sheet, so the second follows the first at once', () => {
-    expect(faceId).toMatch(
-      /const prepared = await prepareServerEnrollment\(\)[\s\S]{0,240}await linkWithPasskey\(\{ name: 'Clear' \}\);[\s\S]{0,140}await enrollWithServer\(prepared\)/,
-    );
+  test('turning Face ID on links the sign-in passkey and stops there', () => {
+    expect(faceId).toMatch(/await linkWithPasskey\(\{ name: 'Clear' \}\);\s*forgetWantsFaceId\(\);\s*return true;/);
+    expect(faceId).not.toContain('prepareServerEnrollment');
   });
 
-  test('the payments half failing does not fail the switch: Settings offers it on a tap of its own', () => {
-    expect(faceId).toContain('await enrollWithServer(prepared).catch(() => undefined);');
-    // faceIdNotEnrolled covers "linked, but the server holds none", which is what draws that button.
-    expect(read('hooks/usePaymentProtection.ts')).toContain('|| serverEnrolled === false),');
-    expect(read('pages/app/SettingsPage.tsx')).toContain('Use Face ID');
+  test('payments are turned on from their own row, which asks for both halves on one tap', () => {
+    const p = read('hooks/usePaymentProtection.ts');
+    expect(p).toContain('if (serverEnrolled === false) await enrollWithServer();');
+    expect(p).toContain('await initEnrollmentWithPasskey();');
+    // And nothing enrols behind the member's back when a passkey appears.
+    expect(p).not.toContain('clear:enroll-faceid-mfa');
+  });
+
+  test('turning Face ID off still takes payments with it: an unlinked passkey cannot confirm one', () => {
+    expect(faceId).toMatch(/if \(serverStepUpEnrolled\(\) && !\(await removeStepUp\(\)\)\) \{/);
   });
 });

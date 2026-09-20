@@ -18,20 +18,13 @@ import { enrollWithServer, useServerStepUp } from '@/lib/serverStepUp';
  * Face ID also guards what the server does without a wallet signature -- card numbers, disputes,
  * bills (lib/serverStepUp). That needs its own passkey registered with our API, so "Face ID for
  * payments" means both: Privy's MFA enrolment and the server's credential.
+ *
+ * Turned on here and nowhere else. The Face ID switch above it is for signing in, and a member who
+ * wants the app to open with a look but to be asked before money moves should be able to have that
+ * -- so this is its own row, its own tap, and its own system sheet rather than one chasing another.
  */
 
 export type PaymentFactor = 'passkey' | 'totp';
-
-/** Set when Face ID was just turned on, so its new passkey is enrolled for payments as it appears. */
-const ENROLL_AFTER_LINK = 'clear:enroll-faceid-mfa';
-
-export function enrollFaceIdWhenLinked(): void {
-  try {
-    sessionStorage.setItem(ENROLL_AFTER_LINK, '1');
-  } catch {
-    /* Settings still offers the button */
-  }
-}
 
 export interface PaymentProtection {
   /** The factors Privy will ask for before signing. Empty: payments are not protected at the wallet. */
@@ -106,23 +99,6 @@ export function usePaymentProtection(): PaymentProtection {
       setBusy(false);
     }
   }, [initEnrollmentWithPasskey, submitEnrollmentWithPasskey, unenrolledPasskeys, factors, serverEnrolled]);
-
-  // Face ID was just turned on: enrol its passkey for payments as soon as Privy reports it.
-  useEffect(() => {
-    let pending = false;
-    try {
-      pending = sessionStorage.getItem(ENROLL_AFTER_LINK) === '1';
-    } catch {
-      /* no storage */
-    }
-    if (!pending || !unenrolledPasskeys.length || factors.includes('passkey')) return;
-    try {
-      sessionStorage.removeItem(ENROLL_AFTER_LINK);
-    } catch {
-      /* no storage */
-    }
-    void enrollFaceId();
-  }, [unenrolledPasskeys, enrollFaceId, factors]);
 
   const setUpThisDevice = useCallback(async () => {
     setBusy(true);
