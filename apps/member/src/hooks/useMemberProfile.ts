@@ -39,6 +39,9 @@ export function formatAddress(a: MailingAddress): string {
 
 export interface MemberProfile {
   name: string; // display name, or short address
+  /** The member's own name and contact -- empty when the read has not answered. Never the address. */
+  displayName: string;
+  contactHandle: string;
   /** The name on legal documents. Empty until identity verification supplies one. */
   legalName: string;
   firstName: string; // for greetings ("there" when no name)
@@ -65,7 +68,7 @@ export interface MemberProfile {
 }
 
 const EMPTY: MemberProfile = {
-  name: '', legalName: '', firstName: 'there', handle: '', email: '', phone: '',
+  name: '', displayName: '', contactHandle: '', legalName: '', firstName: 'there', handle: '', email: '', phone: '',
   mailingAddress: EMPTY_ADDRESS, avatarUrl: null,
   username: '', address: '', initials: 'CL', loading: false, loaded: false, memberStatus: null, accelerated: false, refresh: () => {}, setAvatar: () => {}, raw: null,
 };
@@ -165,8 +168,16 @@ export function MemberProfileProvider({ children }: { children: ReactNode }) {
   const priv = raw?.privateProfile;
   const name = pub?.displayName || pub?.username || short(addr) || 'Member';
   const email = priv?.email || '';
+  const display = pub?.displayName || pub?.username || '';
   const value: MemberProfile = {
     name,
+    /*
+     * Their own name, or nothing. `name` falls back to the wallet address so a screen always has
+     * something to draw; a screen that would rather say nothing than "0x7ec1...86cF" -- the lock,
+     * which cannot read the profile while it is locked -- needs to be able to tell the difference.
+     */
+    displayName: display,
+    contactHandle: email || (pub?.username ? `@${pub.username}` : ''),
     /*
      * The name on legal documents, which is not the name on the profile.
      *

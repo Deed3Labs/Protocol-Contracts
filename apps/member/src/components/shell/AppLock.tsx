@@ -47,6 +47,8 @@ export default function AppLock({ children }: { children: ReactNode }) {
   usePaymentProtection();
   const faceIdRef = useRef(faceId);
   faceIdRef.current = faceId;
+  const refreshProfile = useRef(member.refresh);
+  refreshProfile.current = member.refresh;
 
   useEffect(() => {
     // A session this device has not timed yet starts its clock now.
@@ -144,6 +146,9 @@ export default function AppLock({ children }: { children: ReactNode }) {
       // Unlocking was a Face ID check, so a send straight afterwards does not ask again.
       markStepUpVerified();
       setLocked(false);
+      // The profile read was refused while locked, and this provider sits above the pages that
+      // remount -- so nothing else would ask again, and the app would wear the address as a name.
+      refreshProfile.current();
     } catch {
       setError('Face ID did not open Clear. Try again, or send yourself a code.');
     } finally {
@@ -153,9 +158,14 @@ export default function AppLock({ children }: { children: ReactNode }) {
 
   if (!locked) return <>{children}</>;
 
+  /*
+   * The name this device remembers, not the profile's fallback. While locked the server refuses the
+   * profile read, so `member.name` is the wallet address -- which is exactly what the returning
+   * screen exists not to say.
+   */
   const remembered = rememberedMember();
-  const name = member.name || remembered?.name || '';
-  const handle = member.handle || remembered?.handle || '';
+  const name = member.displayName || remembered?.name || '';
+  const handle = member.contactHandle || remembered?.handle || '';
 
   return (
     <OnboardingFlow
