@@ -1,6 +1,6 @@
 import { enrollWithServer } from '@/lib/serverStepUp';
 import { serverStepUpEnrolled, setServerStepUpEnrolled } from '@/lib/stepUp';
-import { removeStepUp } from '@/utils/apiClient';
+import { removeStepUp, resetFaceId } from '@/utils/apiClient';
 import { useCallback, useMemo, useState } from 'react';
 import { useLinkWithPasskey, usePrivy, useUnlinkPasskey } from '@privy-io/react-auth';
 import { enrollFaceIdWhenLinked } from './usePaymentProtection';
@@ -87,6 +87,13 @@ export async function confirmWithPasskey(credentialIds: string[]): Promise<void>
   if (!credential) throw new Error('Face ID was not confirmed.');
 }
 
+/**
+ * Face ID off when the passkey is gone from the phone.
+ *
+ * Privy will not unlink an MFA-enrolled passkey without verifying it, which a deleted passkey can
+ * never do -- so the server does it with the member's own token instead (api routes/stepUp). Only
+ * for that case: the ordinary switch stays the member's own device answering for itself.
+ */
 export interface FaceId {
   /** A passkey is actually linked to the account — read from Privy, not from a switch. */
   on: boolean;
@@ -94,6 +101,8 @@ export interface FaceId {
   error: string | null;
   turnOn: () => Promise<boolean>;
   turnOff: () => Promise<boolean>;
+  /** Off for the whole account, without asking the missing passkey. Needs a sign-in made minutes ago. */
+  forceOff: () => Promise<boolean>;
   /** Face ID on this device against the account's passkeys. Throws if declined or unavailable. */
   confirm: () => Promise<void>;
 }
@@ -136,13 +145,30 @@ export function useFaceId(): FaceId {
     }
   }, [linkWithPasskey]);
 
+  const forceOff = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await resetFaceId();
+      if (!result.ok) {
+        setError(result.message || 'We could not turn Face ID off. Sign out, sign in with a code, then try again.');
+        return false;
+      }
+      setServerStepUpEnrolled(false);
+      return true;
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const turnOff = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
       // The server stops asking first -- that takes Face ID itself, so a stolen session cannot do it.
       if (serverStepUpEnrolled() && !(await removeStepUp())) {
-        setError('Face ID stays on: it was not confirmed.');
+        // No Face ID to give, and no recent sign-in either: say which, since both are fixable.
+        setError('Face ID stays on: it was not confirmed. Sign out, sign in with a code, then try again.');
         return false;
       }
       setServerStepUpEnrolled(false);
@@ -157,15 +183,19 @@ export function useFaceId(): FaceId {
       }
       return true;
     } catch {
-      setError('We could not turn off Face ID. Please try again.');
-      return false;
+      /*
+       * Privy refused, which for an MFA-enrolled passkey means it wants that passkey to confirm --
+       * and the usual reason somebody is turning Face ID off is that they no longer have it. The
+       * server can, with their own token, if they signed in minutes ago.
+       */
+      return forceOff();
     } finally {
       setBusy(false);
     }
-  }, [passkeys, unlink]);
+  }, [passkeys, unlink, forceOff]);
 
   const credentialIds = useMemo(() => passkeys.map((p) => p.credentialId), [passkeys]);
   const confirm = useCallback(() => confirmWithPasskey(credentialIds), [credentialIds]);
 
-  return { on: passkeys.length > 0, busy, error, turnOn, turnOff, confirm };
+  return { on: passkeys.length > 0, busy, error, turnOn, turnOff, forceOff, confirm };
 }

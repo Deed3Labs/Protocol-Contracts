@@ -2887,6 +2887,15 @@ export async function verifyStepUp(response: unknown): Promise<StepUpGrant | nul
   return r.error || !r.data ? null : r.data;
 }
 
+/**
+ * Face ID off for the whole account, for a passkey that is gone from the phone: ours, and the Privy
+ * one the app cannot unlink without the passkey itself. Needs a sign-in made minutes ago.
+ */
+export async function resetFaceId(): Promise<{ ok: boolean; message?: string }> {
+  const r = await apiRequest<{ removed: number }>('/api/step-up/face-id/reset', { method: 'POST' });
+  return r.error ? { ok: false, message: r.error } : { ok: true };
+}
+
 /** Face ID off: the server stops asking. Takes a Face ID check itself (the retry in apiRequest). */
 export async function removeStepUp(): Promise<boolean> {
   const r = await apiRequest<{ removed: number }>('/api/step-up', { method: 'DELETE' });
