@@ -246,11 +246,16 @@ is uncovered rather than against everything.
 supply stayed inflated and the reserve held cover against obligations that had already been settled.
 On Base Sepolia today the ledger says 125.03 of exposure where members owe 0.026197.
 
-> **Open, and the reason this is its own step:** which reserve tier may meet a due claim, and up to
-> what. Paying one is not a loss — the position comes back, with carry — but the cash cannot absorb
-> a default while it is out. Excess is free to lend and usually empty; the buffer is first-loss
-> money; the primary reserve is what the RTD is measured against, so paying out of it lowers the
-> ratio on paper with nothing lost. The answer wants a tier and a cap, not just a permission.
+**Which tier, and how much: excess first, then buffer, never primary.** Excess is spare by
+definition. The buffer is first-loss money, but meeting a due claim is not a loss — the position
+comes back, with carry — so lending it for a timing gap is what it is there for. The primary reserve
+is what the RTD is measured against, and drawing on it would report the co-op as under-reserved when
+nothing had been lost.
+
+**Capped at whatever keeps RTD at or above target.** The constraint enforces itself: the reserve
+covers due claims until covering one more would put the network below its own policy, and then it
+stops and reports the shortfall — which is what `shortfall()` already does for the pool. Nobody sets
+a number, and the number cannot drift out of date.
 
 **The carry split is built, and cannot be switched on yet.** The pool splits carry by each funder's
 share of every claim outstanding — three fifths of the carry for three fifths of the float — and what
@@ -375,8 +380,8 @@ $46 payment will otherwise ask where the difference went — and the answer shou
 6. **A fee recipient of its own on TermIssuer**, so carry can reach the pool without the co-op's
    income following it. Nothing built above can be switched on until this lands.
 7. **The draw**: pool, then yield pool, then reserve — for a merchant payout that has come due and
-   for a refund the pool cannot cover, which are the same mechanism. Once the tier and cap above are
-   decided.
+   for a refund the pool cannot cover, which are the same mechanism. Within the reserve: excess,
+   then buffer, never primary, capped by the target RTD.
 6. **Upgrade** the deployed proxies on Base Sepolia, then refund a part-paid plan end to end and
    check every balance in the table above.
 
