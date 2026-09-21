@@ -172,7 +172,17 @@ export function toCredit(
   if (tiers.length === 0 && carryOwedCents === 0 && pendingTotal === 0) return fallback;
   const carryCost =
     rows.reduce((sum, row) => sum + fromCents(row.carryCents), 0) + fromCents(carryOwedCents);
-  return { ...fallback, tiers: tiers.length === 0 ? fallback.tiers : tiers, carryCost };
+  /*
+   * Kept as a figure of its own as well as folded into the cost. The member is charged one carry
+   * figure and should read one -- but this part is also OWED, and the chain holds their line
+   * uncleared until it is paid, so the cycle has to be able to say so and offer to clear it.
+   */
+  return {
+    ...fallback,
+    tiers: tiers.length === 0 ? fallback.tiers : tiers,
+    carryCost,
+    ledgerCarry: fromCents(carryOwedCents),
+  };
 }
 
 const DAY_SECONDS = 86_400;

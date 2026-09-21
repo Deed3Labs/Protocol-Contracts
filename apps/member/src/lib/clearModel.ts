@@ -41,6 +41,16 @@ export interface Credit {
   carryCost: number;
   /** Carry cost drops to zero back under this figure. */
   carryFreeUnder: number;
+  /**
+   * Owed on the ledger against no tier: carry a closed plan left behind, which a refund does over
+   * whatever carry had accrued by then -- the member held the money for that time and owes for it.
+   *
+   * Counted as owed, not merely as a cost. It is the member's credit balance, and the chain reads
+   * that balance to decide whether their line is clear: while it stands, the cycle cannot renew and
+   * the line freezes at the end of its grace. A few cents of it has that power, so it cannot sit on
+   * no screen -- which it did, because the plan that carried it is closed and no tier holds it.
+   */
+  ledgerCarry?: number;
 }
 
 export interface Cycle {
@@ -93,7 +103,7 @@ export function unsecuredUsed(credit: Credit): number {
  * they need to see, because nothing else in the app will tell them before the cycle closes.
  */
 export function cycleShortfall(credit: Credit, expectedDeposit = 0): number {
-  return Math.max(0, unsecuredUsed(credit) - Math.max(0, expectedDeposit));
+  return Math.max(0, mustClear(credit) - Math.max(0, expectedDeposit));
 }
 
 /**
@@ -109,8 +119,9 @@ export function cycleShortfall(credit: Credit, expectedDeposit = 0): number {
 export type CycleStatus = 'short' | 'covered' | 'secured' | 'clear';
 
 export function cycleStatus(credit: Credit | undefined, expectedDeposit = 0): CycleStatus {
-  if (!credit || creditUsed(credit) === 0) return 'clear';
-  if (unsecuredUsed(credit) === 0) return 'secured';
+  if (!credit || (creditUsed(credit) === 0 && !credit.ledgerCarry)) return 'clear';
+  // Carry a closed plan left is owed like anything else, so a line holding only that is not clear.
+  if (unsecuredUsed(credit) === 0 && !credit.ledgerCarry) return 'secured';
   return cycleShortfall(credit, expectedDeposit) > 0 ? 'short' : 'covered';
 }
 
@@ -1385,6 +1396,15 @@ export function orderedTiers(tiers: CreditTier[]): CreditTier[] {
 /** Total credit drawn across every tier. */
 export function creditUsed(credit: Credit): number {
   return credit.tiers.reduce((sum, t) => sum + t.used, 0);
+}
+
+/**
+ * Everything that has to clear for the line to read as clear on chain: what is drawn unsecured, and
+ * carry left on the ledger by a closed plan. Secured draws are covered by what the co-op holds and
+ * are not what a cycle asks the member to return.
+ */
+export function mustClear(credit: Credit): number {
+  return unsecuredUsed(credit) + (credit.ledgerCarry ?? 0);
 }
 
 /**
