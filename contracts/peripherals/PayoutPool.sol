@@ -100,8 +100,24 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// money that has been waiting longest is the money that gets used.
     address[] private funders;
 
-    /// @dev Four slots from the gap: memberFunded, coopIncomeRecipient, capitalOf, funders.
-    uint256[39] private __gap;
+    /// @notice position principal each funder is currently carrying, having paid a claim for it.
+    /// @dev What the carry is split by. A funder bearing the float between a merchant being paid
+    /// and a member repaying earns the carry on what they are bearing, in proportion -- the rule
+    /// the unsecured tiers already follow, applied where the issuer cannot see who funded what.
+    mapping(address => uint256) public advancedOf;
+    uint256 public advancedTotal;
+    /// @dev Funders carrying a position, for the split to walk.
+    address[] private carriers;
+
+    /// @notice credits held between a merchant redeeming and their claim being paid.
+    /// @dev Tracked rather than inferred from the balance, because carry arrives as credits too:
+    /// without this the pool could not tell a position in transit from carry to be split, and
+    /// would settle one as the other.
+    uint256 public inFlight;
+
+    /// @dev Eight slots from the gap: memberFunded, coopIncomeRecipient, capitalOf, funders,
+    /// advancedOf, advancedTotal, carriers, inFlight.
+    uint256[35] private __gap;
 
 
     error PayoutPoolInvalidAddress();
@@ -118,6 +134,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     event CoopIncomeWithdrawn(address indexed paidTo, uint256 amount);
     event CoopIncomeRecipientUpdated(address indexed recipient);
     event CapitalWithdrawn(address indexed funder, address indexed to, uint256 amount);
+    event CarryPaid(address indexed to, uint256 amount);
     event PositionSettled(uint256 amount);
     event PositionAdvanced(address indexed funder, uint256 amount);
 
@@ -221,6 +238,14 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         // whose money will pay it -- the member's, and it is settled, or somebody's capital, and
         // they own it. Deciding at redemption is what forced the old guess.
         stableCredit.transferFrom(merchant, address(this), redeeming);
+        inFlight += redeeming;
+        // A funder redeeming is taking back what they advanced, so they stop carrying it.
+        uint256 carrying = advancedOf[merchant];
+        if (carrying > 0) {
+            uint256 returned = carrying < redeeming ? carrying : redeeming;
+            advancedOf[merchant] = carrying - returned;
+            advancedTotal -= returned;
+        }
 
         uint32 window = merchantRegistry.payoutWindowOf(merchant);
         claimId = claims.length;
@@ -285,10 +310,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// the credits are burned and supply comes back into step with what is owed. Sold where
     /// capital paid it: the member still owes, and the funder holds the claim until they do.
     function _placePosition(uint256 amount) private {
-        // Bounded by what this pool actually holds: a claim queued before this existed left its
-        // credits with the co-op, and there is nothing here to settle or hand on for those.
-        uint256 position = stableCredit.balanceOf(address(this));
-        if (position < amount) amount = position;
+        // Bounded by what came in with a redemption, never by the balance: carry sits here too,
+        // and settling that as if it were a position would burn somebody's earnings.
+        if (inFlight < amount) amount = inFlight;
+        inFlight -= amount;
         uint256 settled = amount < memberFunded ? amount : memberFunded;
         if (settled > 0) {
             memberFunded -= settled;
@@ -308,6 +333,9 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
             uint256 take = capital < advanced ? capital : advanced;
             capitalOf[funder] = capital - take;
             advanced -= take;
+            if (advancedOf[funder] == 0) carriers.push(funder);
+            advancedOf[funder] += take;
+            advancedTotal += take;
             stableCredit.transfer(funder, take);
             emit PositionAdvanced(funder, take);
         }
@@ -318,6 +346,76 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         if (advanced > 0) {
             stableCredit.transfer(coopTreasury, advanced);
             emit PositionAdvanced(coopTreasury, advanced);
+        }
+    }
+
+    /// @notice carry sitting here waiting to be split.
+    /// @dev Everything the pool holds that is not a position in transit. Carry reaches the pool
+    /// because the issuers name it as their recipient; it is credits, like any other claim, and it
+    /// belongs to whoever bore the float it was charged for.
+    function distributableCarry() public view returns (uint256) {
+        uint256 balance = stableCredit.balanceOf(address(this));
+        return balance > inFlight ? balance - inFlight : 0;
+    }
+
+    /// @notice hands carry to whoever bore the float it was charged for.
+    /// @dev Each funder's share is what they are carrying measured against EVERY claim outstanding,
+    /// not against what funders carry between them. A funder bearing 600 of a 1,000 float earns
+    /// three fifths of the carry; dividing by the funders alone would hand them all of it for
+    /// bearing part of it, which is not what "split by who funded the payout" means.
+    ///
+    /// What is left goes to the co-op: the float nobody else funded, plus the truncation on each
+    /// share. That is the right answer at both ends -- with nobody funding anything the co-op takes
+    /// all of it, exactly as it did before any of this existed, and with the yield pool bearing
+    /// half the float its depositors earn half.
+    ///
+    /// Permissionless, because it moves nobody's money anywhere but where it is owed, and a split
+    /// that needed an operator would quietly stop happening.
+    ///
+    /// In proportion to positions held now rather than to how long each was held. A distribution
+    /// run often enough is the same thing, and integrating over time on chain is not worth what it
+    /// would cost -- the sweep calls this on its pass.
+    function distributeCarry() external returns (uint256 distributed) {
+        distributed = distributableCarry();
+        if (distributed == 0) return 0;
+
+        // Every claim outstanding, less the carry being handed out and the positions in transit:
+        // what is being measured is the float the carry was charged for, not this pool's holdings.
+        uint256 float_ = stableCredit.totalSupply();
+        float_ = float_ > distributed ? float_ - distributed : 0;
+        float_ = float_ > inFlight ? float_ - inFlight : 0;
+
+        uint256 left = distributed;
+        if (float_ > 0) {
+            for (uint256 i = 0; i < carriers.length; i++) {
+                address carrier = carriers[i];
+                uint256 carrying = advancedOf[carrier];
+                if (carrying == 0) continue;
+                uint256 share = (distributed * carrying) / float_;
+                if (share == 0) continue;
+                left -= share;
+                stableCredit.transfer(carrier, share);
+                emit CarryPaid(carrier, share);
+            }
+            _forgetSettledCarriers();
+        }
+        // The rest: the float the co-op bore itself, and the truncation on every share above.
+        if (left > 0) {
+            stableCredit.transfer(coopTreasury, left);
+            emit CarryPaid(coopTreasury, left);
+        }
+    }
+
+    /// @dev Keeps the carrier list to funders still carrying something.
+    function _forgetSettledCarriers() private {
+        uint256 i = 0;
+        while (i < carriers.length) {
+            if (advancedOf[carriers[i]] == 0) {
+                carriers[i] = carriers[carriers.length - 1];
+                carriers.pop();
+            } else {
+                i++;
+            }
         }
     }
 

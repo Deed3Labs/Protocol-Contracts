@@ -203,6 +203,84 @@ describe("repayment routing", function () {
         expect(await ctx.stableCredit.balanceOf(ctx.admin.address)).to.equal(1_000n * ONE_USDC);
       });
 
+      it("splits carry by what each funder is carrying", async function () {
+        // Carry reaches the pool because the issuers name it as their recipient. It belongs to
+        // whoever bore the float it was charged for: half the float, half the carry.
+        const other = (await ethers.getSigners())[9];
+        await ctx.access.connect(ctx.operator).grantMember(other.address);
+        await pool.connect(ctx.admin).grantRole(await pool.FUNDER_ROLE(), other.address);
+
+        for (const who of [ctx.admin, other]) {
+          await ctx.usdc.mint(who.address, 500n * ONE_USDC);
+          await ctx.usdc.connect(who).approve(await pool.getAddress(), 500n * ONE_USDC);
+          await pool.connect(who).fund(500n * ONE_USDC);
+        }
+        await pool.connect(merchant).redeem(1_000n * ONE_USDC);
+        expect(await pool.advancedOf(ctx.admin.address)).to.equal(500n * ONE_USDC);
+        expect(await pool.advancedOf(other.address)).to.equal(500n * ONE_USDC);
+
+        // Carry arriving, as an issuer naming the pool would deliver it.
+        await ctx.creditIssuer.accrueCarryTo(
+          ctx.member.address, await pool.getAddress(), 20n * ONE_USDC
+        );
+        expect(await pool.distributableCarry()).to.equal(20n * ONE_USDC);
+
+        // Between them they bear the whole 1,000 float, so they take the whole 20 of carry.
+        await pool.distributeCarry();
+        expect(await ctx.stableCredit.balanceOf(ctx.admin.address)).to.equal(510n * ONE_USDC);
+        expect(await ctx.stableCredit.balanceOf(other.address)).to.equal(510n * ONE_USDC);
+      });
+
+      it("pays a funder for the part of the float they bear, not for all of it", async function () {
+        // 600 of a 1,000 float funded, so three fifths of the carry -- and the co-op keeps the
+        // rest, because it bore the rest. Dividing among funders alone would hand them the lot.
+        await repay(400n * ONE_USDC);
+        await ctx.usdc.mint(ctx.admin.address, 200n * ONE_USDC);
+        await ctx.usdc.approve(await pool.getAddress(), 200n * ONE_USDC);
+        await pool.connect(ctx.admin).fund(200n * ONE_USDC);
+
+        // The merchant takes 600 and leaves 400 on the shelf: 400 of it settled by the member's
+        // own money, 200 bought by the funder.
+        await pool.connect(merchant).redeem(600n * ONE_USDC);
+        expect(await pool.advancedOf(ctx.admin.address)).to.equal(200n * ONE_USDC);
+        // 600 outstanding: 400 the merchant is still owed, 200 the funder now carries.
+        expect(await ctx.stableCredit.totalSupply()).to.equal(600n * ONE_USDC);
+
+        await ctx.creditIssuer.accrueCarryTo(
+          ctx.member.address, await pool.getAddress(), 90n * ONE_USDC
+        );
+        const before = await ctx.stableCredit.balanceOf(ctx.admin.address);
+
+        await pool.distributeCarry();
+
+        // A third of the float, so a third of the carry. The co-op keeps the other two thirds.
+        expect((await ctx.stableCredit.balanceOf(ctx.admin.address)) - before).to.equal(30n * ONE_USDC);
+        expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(60n * ONE_USDC);
+      });
+
+      it("gives carry to the co-op when nobody else bore the float", async function () {
+        // Which is every case until somebody funds a payout, and is what happens today.
+        await repay(1_000n * ONE_USDC);
+        await pool.connect(merchant).redeem(1_000n * ONE_USDC);
+
+        await ctx.creditIssuer.accrueCarryTo(
+          ctx.member.address, await pool.getAddress(), 7n * ONE_USDC
+        );
+        await pool.distributeCarry();
+
+        expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(7n * ONE_USDC);
+      });
+
+      it("never hands out a position in transit as if it were carry", async function () {
+        await ctx.usdc.mint(ctx.admin.address, 1_000n * ONE_USDC);
+        await ctx.usdc.approve(await pool.getAddress(), 1_000n * ONE_USDC);
+        await pool.connect(ctx.admin).fund(1_000n * ONE_USDC);
+        await pool.connect(merchant).redeem(1_000n * ONE_USDC);
+
+        // Everything it holds is a position it has just handed on, so there is no carry to split.
+        expect(await pool.distributableCarry()).to.equal(0n);
+      });
+
       it("lets nobody else call a claim settled", async function () {
         await expect(
           ctx.stableCredit.connect(ctx.outsider).settleClaim(merchant.address, 1n)
