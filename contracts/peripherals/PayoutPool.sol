@@ -58,7 +58,24 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// for the position, so the co-op holds it, and the ledger still nets to zero.
     address public coopTreasury;
 
-    /// @notice cash here that came from members clearing their balances.
+    Claim[] private claims;
+    /// @dev merchant => claim ids
+    mapping(address => uint256[]) private claimsOf;
+    /// @dev The next claim in age order that has not been paid.
+    uint256 public nextUnpaid;
+    /// @notice Total still owed on queued claims.
+    uint256 public queuedTotal;
+
+    /* ========== ADDED AFTER DEPLOYMENT ==========
+     *
+     * Everything below this line came later, and its order is fixed by what is already on chain:
+     * new storage goes after every variable the deployed implementation knows about, never among
+     * them. Inserting `memberFunded` and `coopIncomeRecipient` further up compiled perfectly well
+     * and would have shifted `claims`, `nextUnpaid` and `queuedTotal` underneath a live pool --
+     * the upgrade validator refused it, which is what that check is for.
+     */
+
+    /// @notice cash here that came from members paying down their balances.
     /// @dev The position follows the cash, and this is what tells them apart.
     ///
     /// A claim paid with a member's own repayment is SETTLED, to the extent they have paid: the
@@ -68,7 +85,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// Moving them instead left the co-op holding a claim on nobody, which is what accumulated
     /// and what made "already paid for" impossible to tell from "still owed".
     ///
-    /// A claim paid before the member has repaid is ADVANCED: somebody's capital went out and the
+    /// A claim paid before the member has repaid is bought: somebody's capital went out and the
     /// member still owes it, so the credits move to whoever put the money in. That party now holds
     /// the position, exactly as the LendingPool does on the unsecured tiers it funds.
     uint256 public memberFunded;
@@ -80,14 +97,6 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// an account that pays the co-op's own bills. Unset means it lands with the holder of the
     /// claim, which is the ordinary case.
     address public coopIncomeRecipient;
-
-    Claim[] private claims;
-    /// @dev merchant => claim ids
-    mapping(address => uint256[]) private claimsOf;
-    /// @dev The next claim in age order that has not been paid.
-    uint256 public nextUnpaid;
-    /// @notice Total still owed on queued claims.
-    uint256 public queuedTotal;
 
     /// @notice capital each funder has here that has not bought a position yet.
     /// @dev Positions land with whoever actually paid for them, so more than one party can fund
