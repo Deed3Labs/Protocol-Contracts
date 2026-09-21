@@ -5,8 +5,20 @@
  *   node scripts/configure-carry-recipients.mjs                 # report only
  *   node scripts/configure-carry-recipients.mjs --apply
  *
- * RUN THIS AFTER THE UPGRADE, NOT BEFORE. Carry reaches the pool as credits, and only a pool that
- * can split them should be named: point the issuers here while the deployed pool is the old one
+ * DO NOT RUN THIS YET. It was run on Base Sepolia on 2026-09-21 and reverted the same day.
+ *
+ * `carryTreasury` is not only the carry recipient. `TermIssuer.openPlan` mints the CO-OP'S FEE to
+ * it as well -- `originatePurchase(member, purchase, merchant, payout, carryTreasury, discount)` --
+ * so pointing it at the pool sends every new purchase's 2.5% there, where `distributeCarry` would
+ * split it among funders as though it were compensation for bearing float. Funders would take a
+ * share of the co-op's income.
+ *
+ * Nothing was lost on the day: no purchase happened in the window. The fix is a contract change --
+ * the fee wants a recipient of its own, so that carry alone reaches the pool -- and until that
+ * lands, carry cannot be routed here and the split cannot be switched on.
+ *
+ * AFTER THAT CHANGE, and after the upgrade: carry reaches the pool as credits, and only a pool that
+ * can split them should be named -- point the issuers here while the deployed pool is the old one
  * and the carry simply piles up in a contract with no way to hand it on.
  *
  * What it changes, and what it deliberately does not:
@@ -24,6 +36,9 @@ import 'dotenv/config';
 import { ethers } from 'ethers';
 
 const APPLY = process.argv.includes('--apply');
+// Deliberate: see the note above. The fee and the carry share one recipient today, so naming the
+// pool would hand funders a share of the co-op's income.
+const UNSAFE = process.argv.includes('--i-know-the-fee-is-separate');
 const CHAIN = Number(process.env.SAVINGS_DEFAULT_CHAIN_ID || 84532);
 
 const ADDRESSES = {
@@ -39,6 +54,15 @@ const ISSUER_ABI = [
   'function carryTreasury() view returns (address)',
   'function setCarryTreasury(address treasury) external',
 ];
+
+if (APPLY && !UNSAFE) {
+  console.error(
+    'Refusing: TermIssuer.openPlan mints the co-op fee to carryTreasury, so pointing it at the\n' +
+      'pool would split the fee among funders. Separate the fee recipient first. Read the note at\n' +
+      'the top of this file.',
+  );
+  process.exit(1);
+}
 
 const where = ADDRESSES[CHAIN];
 if (!where) {

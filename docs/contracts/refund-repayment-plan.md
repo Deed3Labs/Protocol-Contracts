@@ -231,11 +231,23 @@ On Base Sepolia today the ledger says 125.03 of exposure where members owe 0.026
 > money; the primary reserve is what the RTD is measured against, so paying out of it lowers the
 > ratio on paper with nothing lost. The answer wants a tier and a cap, not just a permission.
 
-**The carry split is built.** Carry reaches the pool because the issuers name it as their recipient
-(`scripts/configure-carry-recipients.mjs`, to be run after the upgrade, not before). The pool splits
-it by each funder's share of every claim outstanding — three fifths of the carry for three fifths of
-the float — and what no funder bore goes to the co-op, which is all of it until somebody funds a
-payout. `tierCarryRecipient` is left alone: a tier the LendingPool funds already names it.
+**The carry split is built, and cannot be switched on yet.** The pool splits carry by each funder's
+share of every claim outstanding — three fifths of the carry for three fifths of the float — and what
+no funder bore goes to the co-op, which is all of it until somebody funds a payout.
+
+> **The fee and the carry share one recipient, and must not.** `TermIssuer.openPlan` mints the
+> co-op's 2.5% to `carryTreasury`:
+> `originatePurchase(member, purchase, merchant, payout, carryTreasury, discount)`. So pointing that
+> at the pool — which is the only way carry reaches it — also sends every new purchase's fee there,
+> and `distributeCarry` would split the co-op's own income among funders.
+>
+> Done and undone on Base Sepolia on 2026-09-21; nothing was lost, because no purchase happened in
+> the window. `scripts/configure-carry-recipients.mjs` now refuses to run.
+>
+> **The fix is a recipient of its own for the fee**, so that `carryTreasury` means carry alone. It
+> is a small change to `TermIssuer` — a `feeRecipient` address, defaulting to the carry treasury so
+> nothing moves until it is set — and it is the first thing to build before any of the carry work
+> can be used. `tierCarryRecipient` is unaffected: a tier the LendingPool funds already names it.
 
 > **Watch:** `receiveRepayment` (once `donate`) means "a member paid down their balance", and that
 > is what makes claims burn. Capital must never arrive that way, whoever sends it — burning a claim
@@ -339,7 +351,9 @@ $46 payment will otherwise ask where the difference went — and the answer shou
 3. **TermIssuer.closePlanForRefund** extended, with the proportional paid share.
 4. **API** split and call, with the figures returned.
 5. **App**: notification and activity copy.
-6. **The reserve as funder of last resort**, once the tier and cap above are decided.
+6. **A fee recipient of its own on TermIssuer**, so carry can reach the pool without the co-op's
+   income following it. Nothing built above can be switched on until this lands.
+7. **The reserve as funder of last resort**, once the tier and cap above are decided.
 6. **Upgrade** the deployed proxies on Base Sepolia, then refund a part-paid plan end to end and
    check every balance in the table above.
 
