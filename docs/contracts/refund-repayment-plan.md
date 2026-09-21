@@ -156,12 +156,32 @@ target = totalSupply() − balanceOf(receivablesHolder)
 ```
 
 The co-op's income is then funded in the pool like anyone else's and **withdrawn by role to a
-treasury address**, with the address settable only by that role. The co-op queues for its own money
-on the same terms as a merchant rather than being paid at origination in credits nobody funded.
+treasury address**, with the address settable only by that role.
 
-> **Verify at build time:** whether `carryTreasury` (the discount recipient in `StableCredit`) and
-> `coopTreasury` (where `PayoutPool.redeem` sends credits) are configured to the same address today.
-> If they are, splitting them is step zero — the target is wrong until they are apart.
+**It does not queue.** The 2.5% was never the merchant's money: on a $100 purchase the merchant is
+owed $97.50 and the co-op $2.50, and a $100 repayment covers both. So the fee is not a claim and
+takes no place in the queue — it is withdrawable from cash **not already earmarked for queued
+claims**:
+
+```
+withdrawable = held() − queuedTotal
+```
+
+The co-op takes its fee as soon as the money is there, and can never take cash already promised to a
+merchant who is waiting. Both halves of that matter: it is owed its fee, and it is the one party here
+that must not be able to pay itself first.
+
+> **Checked on Base Sepolia, 2026-09-21: they are the same address.**
+>
+> ```
+> coopTreasury  (PayoutPool)  0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+> carryTreasury (TermIssuer)  0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+> holding 27.533081 credits · totalSupply 125.033081 · pool holds 0 USDC, nothing queued
+> ```
+>
+> So the funding target is wrong until they are apart, and the split is step zero. Nothing has been
+> settled in cash yet on this chain, so the balance is fee and carry income only — the two kinds have
+> not yet been mixed in that address, and separating them now costs nothing.
 
 ### StableCredit — a refund path that moves money
 
