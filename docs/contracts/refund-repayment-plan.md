@@ -177,13 +177,18 @@ nothing to exclude, and the funding target is simply `totalSupply() − held()`.
 
 Three sources, and the order is the whole design rather than a policy anyone sets:
 
-1. **The member's own repayments.** A merchant redeeming at or after net 30 is normally paid out of
-   what members have paid in the meantime. These claims settle; nothing is bought.
-2. **Cash the co-op has put in the pool.** Smoothing money, so a merchant redeeming *before* net 30
-   can be paid rather than waiting for the next repayment to land. The co-op holds what it funds.
-3. **The yield pool, for a shortfall.** A merchant at or past net 30 with nothing in the pool to pay
-   them is the case capital exists for. It draws on the pool's unlent cash, and the yield pool holds
-   what it funds.
+1. **The member's own repayments.** What is normally in the pool by the time a merchant's turn
+   comes. These claims settle; nothing is bought.
+2. **Cash the co-op has put in the pool.** Smoothing money, so the pool is funded between
+   repayments. The co-op holds the positions it pays for.
+3. **The yield pool, for a shortfall.** A claim whose turn has come and whose net 30 has elapsed,
+   with nothing in the pool to pay it, is the obligation that has to be met. It draws on the pool's
+   unlent cash, and the yield pool holds what it funds.
+
+**There is no "early payment" path, and nothing decides to advance.** A merchant is paid when it is
+their turn and the money is there, and queued when it is not — a claim before its net 30 with a
+funded pool is simply paid, and an empty pool means waiting however early or late it is. The only
+thing anyone has to fund deliberately is a claim that is due and unpayable.
 
 So `fund` is not one party's door. Whoever puts capital in holds the positions their money paid for
 (`capitalOf`, drawn down oldest first), and takes back what it never spent (`withdrawCapital`). The
@@ -198,10 +203,12 @@ wrong.
 ### Next step: the reserve as funder of last resort
 
 The order above has three sources. A fourth exists and is not wired: **the AssurancePool**, for a
-merchant at or past net 30 when the payout pool is empty and the yield pool has nothing unlent. That
-is one of the things a reserve is for, and the machinery is already here — whoever's capital pays a
-claim holds the position and earns carry on the float they bore, so the reserve would simply be
-another funder in `capitalOf`, with positions and the carry split following on their own.
+claim whose turn has come and whose net 30 has elapsed when the payout pool is empty and the yield
+pool has nothing unlent. Not for paying anybody early — that needs no decision and no reserve, only
+a funded pool — but for the obligation that is due and that somebody must meet. That is one of the
+things a reserve is for, and the machinery is already here: whoever's capital pays a claim holds the
+position and earns carry on the float they bore, so the reserve would be another funder in
+`capitalOf`, with positions and the carry split following on their own.
 
 The order to draw in, each only when the one before is exhausted:
 
@@ -218,11 +225,11 @@ is uncovered rather than against everything.
 supply stayed inflated and the reserve held cover against obligations that had already been settled.
 On Base Sepolia today the ledger says 125.03 of exposure where members owe 0.026197.
 
-> **Open, and the reason this is its own step:** which reserve tier may fund an advance. An advance
-> is not a loss — the position comes back, with carry — but the cash cannot absorb a default while
-> it is out. Excess is free to lend and usually empty; the buffer is first-loss money; the primary
-> reserve is what the RTD is measured against, so advancing from it lowers the ratio on paper with
-> nothing lost. The answer wants a cap and a tier, not just a permission.
+> **Open, and the reason this is its own step:** which reserve tier may meet a due claim, and up to
+> what. Paying one is not a loss — the position comes back, with carry — but the cash cannot absorb
+> a default while it is out. Excess is free to lend and usually empty; the buffer is first-loss
+> money; the primary reserve is what the RTD is measured against, so paying out of it lowers the
+> ratio on paper with nothing lost. The answer wants a tier and a cap, not just a permission.
 
 **The carry split is built.** Carry reaches the pool because the issuers name it as their recipient
 (`scripts/configure-carry-recipients.mjs`, to be run after the upgrade, not before). The pool splits
