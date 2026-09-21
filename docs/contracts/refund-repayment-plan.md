@@ -173,30 +173,39 @@ whose money will pay it, and deciding at redemption is what forced the old guess
 **This is why the earlier draft's `receivablesHolder` is gone.** Nothing accumulates, so there is
 nothing to exclude, and the funding target is simply `totalSupply() − held()`.
 
-### Capital reaches payouts through the yield pool
+### Who funds a payout, and in what order
 
-Bond proceeds land in the co-op's treasury and are discretionary. When the co-op wants them backing
-payouts, they go into the **yield pool**, and the yield pool funds the payout pool — not the co-op
-funding it directly. A step longer, and right for three reasons:
+Three sources, and the order is the whole design rather than a policy anyone sets:
 
-- The payout pool then holds two kinds of money and no third: members' repayments, which settle
-  claims, and yield-pool advances, which buy them.
-- The co-op earns the pool's return on proceeds that would otherwise sit idle, and takes them back
-  as a depositor rather than needing a path of its own.
-- The carry on an advance goes to the depositors whose money was lent — the co-op among them, in
-  proportion — which is the rule the unsecured tiers already follow (`tierCarryRecipient`).
+1. **The member's own repayments.** A merchant redeeming at or after net 30 is normally paid out of
+   what members have paid in the meantime. These claims settle; nothing is bought.
+2. **Cash the co-op has put in the pool.** Smoothing money, so a merchant redeeming *before* net 30
+   can be paid rather than waiting for the next repayment to land. The co-op holds what it funds.
+3. **The yield pool, for a shortfall.** A merchant at or past net 30 with nothing in the pool to pay
+   them is the case capital exists for. It draws on the pool's unlent cash, and the yield pool holds
+   what it funds.
 
-So `capitalFunder` is the yield pool. `fund` and `withdrawCapital` are its door, with the multisig
-as a backstop rather than the ordinary route.
+So `fund` is not one party's door. Whoever puts capital in holds the positions their money paid for
+(`capitalOf`, drawn down oldest first), and takes back what it never spent (`withdrawCapital`). The
+co-op would ordinarily leave idle capital in the yield pool and earn the return on it; funding the
+payout pool directly is for smoothing and emergencies, which is why it stays open rather than being
+routed through the pool.
 
-> **Open, for the step that funds early payouts:** what triggers the advance — the pool drawing on
-> the yield pool when a merchant redeems into an empty pool (it would need `BORROWER_ROLE`), or a
-> sweep — and how carry on an advance reaches the pool's depositors. `tierCarryRecipient` is the
-> shape to copy; a purchase advance is not a tier, so it needs its own answer.
+**Carry splits the same way as the positions: by who funded the payout.** That is what the
+per-funder tracking is for, and it is the reason `capitalFunder` — a single named party — was
+wrong.
 
-> **Watch:** `donate` means "a member cleared their balance", and that is what makes claims burn.
-> Capital must never arrive that way, whoever sends it — burning a claim whose member still owes
-> leaves an obligation with nothing holding it. The contract now refuses anyone but the ledger.
+> **Open:** the carry split is not wired yet. Carry accrues to whoever the ISSUER names
+> (`carryTreasury`, or `tierCarryRecipient` for a tier), and the issuer does not know who funded a
+> given payout. Today that recipient is the co-op, which is also the direct funder, so the co-op
+> case is already right. The piece to build is routing a pool-funded payout's carry to the pool:
+> the shape is the pool tracking what each funder still holds and carry arriving there to be split,
+> rather than the issuer learning about funders.
+
+> **Watch:** `receiveRepayment` (once `donate`) means "a member paid down their balance", and that
+> is what makes claims burn. Capital must never arrive that way, whoever sends it — burning a claim
+> whose member still owes leaves an obligation with nothing holding it. The contract now refuses
+> anyone but the ledger.
 
 ### The co-op's income
 

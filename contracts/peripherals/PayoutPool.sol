@@ -61,8 +61,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice cash here that came from members clearing their balances.
     /// @dev The position follows the cash, and this is what tells them apart.
     ///
-    /// A claim paid with a member's own repayment is SETTLED: the member's obligation went when
-    /// they paid, so the credits are burned and supply comes back into step with what is owed.
+    /// A claim paid with a member's own repayment is SETTLED, to the extent they have paid: the
+    /// obligation went as they paid it, so those credits are burned and supply comes back into step
+    /// with what is owed. A member clearing the lot after one cycle and a member three instalments
+    /// into a twelve settle their share of it alike -- the rest stays a claim until they pay it.
     /// Moving them instead left the co-op holding a claim on nobody, which is what accumulated
     /// and what made "already paid for" impossible to tell from "still owed".
     ///
@@ -87,15 +89,19 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice Total still owed on queued claims.
     uint256 public queuedTotal;
 
-    /// @notice who gets the position when capital, not a member, pays a claim.
-    /// @dev The funder. The LendingPool advancing cash so a merchant is paid on time owns what it
-    /// funded and earns the carry on it, exactly as it does on the unsecured tiers it funds; the
-    /// co-op funding it owns it on the same terms. Unset falls back to the co-op, which is where
-    /// capital came from before anything else could fund a payout.
-    address public capitalFunder;
+    /// @notice capital each funder has here that has not bought a position yet.
+    /// @dev Positions land with whoever actually paid for them, so more than one party can fund
+    /// payouts without anybody having to work out afterwards whose money went where. The yield pool
+    /// advancing cash so a merchant is paid on time holds what it funded; the co-op funding
+    /// directly holds what it funded, on the same terms.
+    mapping(address => uint256) public capitalOf;
 
-    /// @dev Three slots taken from the gap: memberFunded, coopIncomeRecipient, capitalFunder.
-    uint256[40] private __gap;
+    /// @dev Funders with capital still unspent, oldest first. Drawn down in that order, so the
+    /// money that has been waiting longest is the money that gets used.
+    address[] private funders;
+
+    /// @dev Four slots from the gap: memberFunded, coopIncomeRecipient, capitalOf, funders.
+    uint256[39] private __gap;
 
 
     error PayoutPoolInvalidAddress();
@@ -111,8 +117,7 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     event ShortfallReported(uint256 shortfall);
     event CoopIncomeWithdrawn(address indexed paidTo, uint256 amount);
     event CoopIncomeRecipientUpdated(address indexed recipient);
-    event CapitalFunderUpdated(address indexed funder);
-    event CapitalWithdrawn(address indexed to, uint256 amount);
+    event CapitalWithdrawn(address indexed funder, address indexed to, uint256 amount);
     event PositionSettled(uint256 amount);
     event PositionAdvanced(address indexed funder, uint256 amount);
 
@@ -291,10 +296,41 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
             emit PositionSettled(settled);
         }
         uint256 advanced = amount - settled;
+        if (advanced == 0) return;
+
+        // Each funder gets the position their own cash paid for, oldest capital first. Nobody has
+        // to reconstruct afterwards whose money went where, and a funder's return is exactly what
+        // it funded.
+        for (uint256 i = 0; i < funders.length && advanced > 0; i++) {
+            address funder = funders[i];
+            uint256 capital = capitalOf[funder];
+            if (capital == 0) continue;
+            uint256 take = capital < advanced ? capital : advanced;
+            capitalOf[funder] = capital - take;
+            advanced -= take;
+            stableCredit.transfer(funder, take);
+            emit PositionAdvanced(funder, take);
+        }
+        _forgetSpentFunders();
+
+        // Cash from before any of this was tracked, or a top-up the ledger never saw. The co-op
+        // holds it rather than the position vanishing.
         if (advanced > 0) {
-            address funder = capitalFunder == address(0) ? coopTreasury : capitalFunder;
-            stableCredit.transfer(funder, advanced);
-            emit PositionAdvanced(funder, advanced);
+            stableCredit.transfer(coopTreasury, advanced);
+            emit PositionAdvanced(coopTreasury, advanced);
+        }
+    }
+
+    /// @dev Keeps the list to funders who still have something in it, so the loop above stays short.
+    function _forgetSpentFunders() private {
+        uint256 i = 0;
+        while (i < funders.length) {
+            if (capitalOf[funders[i]] == 0) {
+                funders[i] = funders[funders.length - 1];
+                funders.pop();
+            } else {
+                i++;
+            }
         }
     }
 
@@ -307,13 +343,14 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// a multisig action and this only reports how much of one is needed.
     function fund(uint256 amount) external onlyRole(FUNDER_ROLE) {
         reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
+        if (capitalOf[_msgSender()] == 0) funders.push(_msgSender());
+        capitalOf[_msgSender()] += amount;
         emit Funded(_msgSender(), amount);
     }
 
-    function setCapitalFunder(address funder) external onlyRole(OPERATOR_ROLE) {
-        if (funder == address(0)) revert PayoutPoolInvalidAddress();
-        capitalFunder = funder;
-        emit CapitalFunderUpdated(funder);
+    /// @notice funders with capital here that has not been spent.
+    function fundersWithCapital() external view returns (address[] memory) {
+        return funders;
     }
 
     /// @notice where the co-op's income is paid, which need not be where it accrues.
@@ -323,27 +360,30 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         emit CoopIncomeRecipientUpdated(recipient);
     }
 
-    /// @notice capital sitting here that has not bought a position and nobody is waiting on.
-    /// @dev A treasury holding a reserve here should be able to take back what it has not spent.
-    /// Two things are off limits: cash a queued claim is waiting on, and members' own repayments,
-    /// which are not the funder's money at all. What is left is idle capital.
-    function idleCapital() public view returns (uint256) {
+    /// @notice what a funder could take back right now.
+    /// @dev Their own unspent capital, and never more cash than is actually free: a queued claim's
+    /// money is somebody else's, and members' repayments were never the funder's at all.
+    function idleCapitalOf(address funder) public view returns (uint256) {
         uint256 free = unencumbered();
-        uint256 capital = held() > memberFunded ? held() - memberFunded : 0;
-        return free < capital ? free : capital;
+        uint256 notMembers = held() > memberFunded ? held() - memberFunded : 0;
+        if (notMembers < free) free = notMembers;
+        uint256 own = capitalOf[funder];
+        return own < free ? own : free;
     }
 
-    /// @notice takes idle capital back out.
-    /// @dev Only what was never spent. Capital that has already paid a claim is not here to be
+    /// @notice takes a funder's own idle capital back out.
+    /// @dev Only what they never spent. Capital that has already paid a claim is not here to be
     /// withdrawn -- it bought the position, and the funder recovers it by redeeming that position
     /// as the member repays, which for a plan split over cycles is exactly as those arrive.
-    function withdrawCapital(uint256 amount, address to) external onlyRole(FUNDER_ROLE) returns (uint256 taken) {
+    function withdrawCapital(uint256 amount, address to) external returns (uint256 taken) {
         if (to == address(0)) revert PayoutPoolInvalidAddress();
-        uint256 idle = idleCapital();
+        uint256 idle = idleCapitalOf(_msgSender());
         taken = amount < idle ? amount : idle;
-        if (taken == 0) revert PayoutPoolNothingToRedeem(to);
+        if (taken == 0) revert PayoutPoolNothingToRedeem(_msgSender());
+        capitalOf[_msgSender()] -= taken;
+        _forgetSpentFunders();
         reserveToken.safeTransfer(to, taken);
-        emit CapitalWithdrawn(to, taken);
+        emit CapitalWithdrawn(_msgSender(), to, taken);
     }
 
     /// @notice cash the pool holds that no queued claim is waiting on.
@@ -389,11 +429,13 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice takes value in from anybody willing to send it.
     /// @dev The multisig top-up path, and deliberately open: refusing money because the sender
     /// lacks a role would be a strange way to run a pool that reports being short.
+    /// @notice a member paid down their balance, and this is that money.
     /// @dev Only the ledger may call it, because what arrives here decides whether a claim is
-    /// settled or sold. Anyone could donate cash before; now that would burn claims whose
-    /// obligations nobody had paid, leaving members owing with nothing holding the debt. A gift of
-    /// working capital is `fund`, which buys the position like any other capital.
-    function donate(uint256 amount) external {
+    /// settled or sold. It was once `donate`, open to anybody, which is the wrong name for the only
+    /// thing it now means: cash from anyone else would burn claims whose obligations nobody had
+    /// paid, leaving members owing with nothing holding the debt. Putting working capital in is
+    /// `fund`, which buys positions rather than settling them.
+    function receiveRepayment(uint256 amount) external {
         if (_msgSender() != address(stableCredit)) revert PayoutPoolInvalidAddress();
         reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
         // Members' own money, which settles positions rather than buying them.

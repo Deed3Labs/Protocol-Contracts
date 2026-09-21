@@ -466,7 +466,7 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
             toPayout = owedToMerchants < amount ? owedToMerchants : amount;
             if (toPayout > 0) {
                 reserve.approve(address(payoutPool), toPayout);
-                payoutPool.donate(toPayout);
+                payoutPool.receiveRepayment(toPayout);
                 emit RepaymentRouted(address(payoutPool), toPayout);
             }
         }

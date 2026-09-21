@@ -68,20 +68,22 @@ describe("PayoutPool", function () {
       expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(1_000n * ONE_USDC);
     });
 
-    it("moves the position to the co-op rather than destroying it", async function () {
-      // Burning would leave the member still owing and nobody holding the matching claim, which
-      // is the shape of lost debt even though nothing was lost.
+    it("moves the position to whoever funded it rather than destroying it", async function () {
+      // Paid with capital, so the member still owes it: burning would leave an obligation with
+      // nobody holding the matching claim, which is the shape of lost debt even though nothing
+      // was lost. The funder holds it until the member repays.
+      await ctx.access.connect(ctx.operator).grantMember(funder.address);
       await fund(1_000n * ONE_USDC);
       const supplyBefore = await ctx.stableCredit.totalSupply();
 
       await pool.connect(merchant).redeem(1_000n * ONE_USDC);
 
       expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(1_000n * ONE_USDC);
+      expect(await ctx.stableCredit.balanceOf(funder.address)).to.equal(1_000n * ONE_USDC);
       expect(await ctx.stableCredit.totalSupply()).to.equal(supplyBefore);
-      // Still nets: what the member owes is what the co-op now holds.
+      // Still nets: what the member owes is what the funder now holds.
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address))
-        .to.equal(await ctx.stableCredit.balanceOf(coop.address));
+        .to.equal(await ctx.stableCredit.balanceOf(funder.address));
     });
 
     it("pays a merchant by drawdown first, leaving only the surplus redeemable", async function () {
@@ -239,7 +241,7 @@ describe("PayoutPool", function () {
       await ctx.usdc.connect(second).approve(await pool.getAddress(), 1_000n * ONE_USDC);
 
       await expect(
-        pool.connect(second).donate(1_000n * ONE_USDC)
+        pool.connect(second).receiveRepayment(1_000n * ONE_USDC)
       ).to.be.revertedWithCustomError(pool, "PayoutPoolInvalidAddress");
 
       await pool.grantRole(await pool.FUNDER_ROLE(), second.address);

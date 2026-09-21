@@ -138,15 +138,16 @@ describe("repayment routing", function () {
         // member still owes it. The funder holds the position, as the LendingPool does on the
         // unsecured tiers it funds.
         const funder = (await ethers.getSigners())[9];
-        await pool.connect(ctx.admin).setCapitalFunder(funder.address);
         await ctx.access.connect(ctx.operator).grantMember(funder.address);
+        await pool.connect(ctx.admin).grantRole(await pool.FUNDER_ROLE(), funder.address);
 
-        await ctx.usdc.mint(ctx.admin.address, 1_000n * ONE_USDC);
-        await ctx.usdc.approve(await pool.getAddress(), 1_000n * ONE_USDC);
-        await pool.connect(ctx.admin).fund(1_000n * ONE_USDC);
+        await ctx.usdc.mint(funder.address, 1_000n * ONE_USDC);
+        await ctx.usdc.connect(funder).approve(await pool.getAddress(), 1_000n * ONE_USDC);
+        await pool.connect(funder).fund(1_000n * ONE_USDC);
 
         await pool.connect(merchant).redeem(1_000n * ONE_USDC);
 
+        // The position lands with whoever's cash paid for it, without anybody naming them first.
         expect(await ctx.stableCredit.balanceOf(funder.address)).to.equal(1_000n * ONE_USDC);
         expect(await ctx.stableCredit.totalSupply()).to.equal(1_000n * ONE_USDC);
         expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(1_000n * ONE_USDC);
@@ -161,9 +162,9 @@ describe("repayment routing", function () {
         // Funded beats queued, so this pays on the spot rather than queueing.
         await pool.connect(merchant).redeem(1_000n * ONE_USDC);
 
-        // 400 settled and burned, 600 advanced and held by the co-op, which is the fallback funder.
+        // 400 settled and burned, 600 bought by the funder whose capital paid for it.
         expect(await ctx.stableCredit.totalSupply()).to.equal(600n * ONE_USDC);
-        expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(600n * ONE_USDC);
+        expect(await ctx.stableCredit.balanceOf(ctx.admin.address)).to.equal(600n * ONE_USDC);
       });
 
       it("gives back capital that never bought anything", async function () {
@@ -171,7 +172,7 @@ describe("repayment routing", function () {
         await ctx.usdc.mint(ctx.admin.address, 500n * ONE_USDC);
         await ctx.usdc.approve(await pool.getAddress(), 500n * ONE_USDC);
         await pool.connect(ctx.admin).fund(500n * ONE_USDC);
-        expect(await pool.idleCapital()).to.equal(500n * ONE_USDC);
+        expect(await pool.idleCapitalOf(ctx.admin.address)).to.equal(500n * ONE_USDC);
 
         await pool.connect(ctx.admin).withdrawCapital(500n * ONE_USDC, ctx.admin.address);
         expect(await pool.held()).to.equal(0n);
@@ -180,30 +181,26 @@ describe("repayment routing", function () {
       it("will not give back what a member repaid, nor what a queue is waiting on", async function () {
         await repay(1_000n * ONE_USDC);
         // Members' money is not the funder's to take, however much cash is sitting here.
-        expect(await pool.idleCapital()).to.equal(0n);
+        expect(await pool.idleCapitalOf(ctx.admin.address)).to.equal(0n);
 
         await ctx.usdc.mint(ctx.admin.address, 200n * ONE_USDC);
         await ctx.usdc.approve(await pool.getAddress(), 200n * ONE_USDC);
         await pool.connect(ctx.admin).fund(200n * ONE_USDC);
         await pool.connect(merchant).redeem(1_000n * ONE_USDC);
         // Paid on the spot from the member's own money; 200 of capital is still idle.
-        expect(await pool.idleCapital()).to.equal(200n * ONE_USDC);
+        expect(await pool.idleCapitalOf(ctx.admin.address)).to.equal(200n * ONE_USDC);
       });
 
       it("keeps capital that has already bought a position", async function () {
         // Spent capital is recovered by redeeming the position as the member repays, not by
         // withdrawing cash that is no longer there.
-        const funder = (await ethers.getSigners())[9];
-        await pool.connect(ctx.admin).setCapitalFunder(funder.address);
-        await ctx.access.connect(ctx.operator).grantMember(funder.address);
-
         await ctx.usdc.mint(ctx.admin.address, 1_000n * ONE_USDC);
         await ctx.usdc.approve(await pool.getAddress(), 1_000n * ONE_USDC);
         await pool.connect(ctx.admin).fund(1_000n * ONE_USDC);
         await pool.connect(merchant).redeem(1_000n * ONE_USDC);
 
-        expect(await pool.idleCapital()).to.equal(0n);
-        expect(await ctx.stableCredit.balanceOf(funder.address)).to.equal(1_000n * ONE_USDC);
+        expect(await pool.idleCapitalOf(ctx.admin.address)).to.equal(0n);
+        expect(await ctx.stableCredit.balanceOf(ctx.admin.address)).to.equal(1_000n * ONE_USDC);
       });
 
       it("lets nobody else call a claim settled", async function () {
@@ -280,14 +277,14 @@ describe("repayment routing", function () {
         await ctx.usdc.mint(ctx.outsider.address, 10n * ONE_USDC);
         await ctx.usdc.connect(ctx.outsider).approve(await pool.getAddress(), 10n * ONE_USDC);
         await expect(
-          pool.connect(ctx.outsider).donate(10n * ONE_USDC)
+          pool.connect(ctx.outsider).receiveRepayment(10n * ONE_USDC)
         ).to.be.revertedWithCustomError(pool, "PayoutPoolInvalidAddress");
       });
 
       it("is an operator's call, not anyone's", async function () {
         await expect(pool.connect(ctx.outsider).withdrawCoopIncome(1n)).to.be.reverted;
         await expect(pool.connect(ctx.outsider).setCoopIncomeRecipient(ctx.outsider.address)).to.be.reverted;
-        await expect(pool.connect(ctx.outsider).setCapitalFunder(ctx.outsider.address)).to.be.reverted;
+        await expect(pool.connect(ctx.outsider).withdrawCapital(1n, ctx.outsider.address)).to.be.reverted;
       });
     });
 
