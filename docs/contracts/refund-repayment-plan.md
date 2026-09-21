@@ -195,12 +195,40 @@ routed through the pool.
 per-funder tracking is for, and it is the reason `capitalFunder` — a single named party — was
 wrong.
 
-> **Open:** the carry split is not wired yet. Carry accrues to whoever the ISSUER names
-> (`carryTreasury`, or `tierCarryRecipient` for a tier), and the issuer does not know who funded a
-> given payout. Today that recipient is the co-op, which is also the direct funder, so the co-op
-> case is already right. The piece to build is routing a pool-funded payout's carry to the pool:
-> the shape is the pool tracking what each funder still holds and carry arriving there to be split,
-> rather than the issuer learning about funders.
+### Next step: the reserve as funder of last resort
+
+The order above has three sources. A fourth exists and is not wired: **the AssurancePool**, for a
+merchant at or past net 30 when the payout pool is empty and the yield pool has nothing unlent. That
+is one of the things a reserve is for, and the machinery is already here — whoever's capital pays a
+claim holds the position and earns carry on the float they bore, so the reserve would simply be
+another funder in `capitalOf`, with positions and the carry split following on their own.
+
+The order to draw in, each only when the one before is exhausted:
+
+1. cash the pool holds (members' repayments, then co-op smoothing capital)
+2. the yield pool's unlent cash
+3. the assurance reserve
+
+**What it already does right.** `poolExposure()` is `stableCredit.totalSupply()` — every outstanding
+claim, what merchants are owed included — narrowed by an `exposureSource` where one is set (the
+CollateralRegistry, reporting uncollateralised exposure). So it already measures itself against what
+is uncovered rather than against everything.
+
+**And burning settled claims makes that honest.** While a claim paid in cash stayed on the ledger,
+supply stayed inflated and the reserve held cover against obligations that had already been settled.
+On Base Sepolia today the ledger says 125.03 of exposure where members owe 0.026197.
+
+> **Open, and the reason this is its own step:** which reserve tier may fund an advance. An advance
+> is not a loss — the position comes back, with carry — but the cash cannot absorb a default while
+> it is out. Excess is free to lend and usually empty; the buffer is first-loss money; the primary
+> reserve is what the RTD is measured against, so advancing from it lowers the ratio on paper with
+> nothing lost. The answer wants a cap and a tier, not just a permission.
+
+**The carry split is built.** Carry reaches the pool because the issuers name it as their recipient
+(`scripts/configure-carry-recipients.mjs`, to be run after the upgrade, not before). The pool splits
+it by each funder's share of every claim outstanding — three fifths of the carry for three fifths of
+the float — and what no funder bore goes to the co-op, which is all of it until somebody funds a
+payout. `tierCarryRecipient` is left alone: a tier the LendingPool funds already names it.
 
 > **Watch:** `receiveRepayment` (once `donate`) means "a member paid down their balance", and that
 > is what makes claims burn. Capital must never arrive that way, whoever sends it — burning a claim
@@ -304,6 +332,7 @@ $46 payment will otherwise ask where the difference went — and the answer shou
 3. **TermIssuer.closePlanForRefund** extended, with the proportional paid share.
 4. **API** split and call, with the figures returned.
 5. **App**: notification and activity copy.
+6. **The reserve as funder of last resort**, once the tier and cap above are decided.
 6. **Upgrade** the deployed proxies on Base Sepolia, then refund a part-paid plan end to end and
    check every balance in the table above.
 
