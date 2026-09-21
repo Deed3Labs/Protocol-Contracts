@@ -40,6 +40,11 @@
     },
     {
       "type": "error",
+      "name": "StableCreditNoPayoutPool",
+      "inputs": []
+    },
+    {
+      "type": "error",
       "name": "StableCreditNotAnIssuer",
       "inputs": [
         {
@@ -63,6 +68,20 @@
         {
           "type": "uint256",
           "name": "discount"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "StableCreditRefundExceedsPayment",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "withheld"
+        },
+        {
+          "type": "uint256",
+          "name": "paid"
         }
       ]
     },
@@ -477,6 +496,23 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "RefundCarryWithheld",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "RefundOwedByMerchant",
       "inputs": [
         {
@@ -487,6 +523,28 @@
         {
           "type": "uint256",
           "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RefundRepaid",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "returned",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "carryWithheld",
           "indexed": false
         }
       ]
@@ -1062,6 +1120,43 @@
         {
           "type": "uint128",
           "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "repayRefund",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "member"
+        },
+        {
+          "type": "uint256",
+          "name": "paid"
+        },
+        {
+          "type": "address",
+          "name": "merchant"
+        },
+        {
+          "type": "uint256",
+          "name": "merchantShare"
+        },
+        {
+          "type": "address",
+          "name": "coop"
+        },
+        {
+          "type": "uint256",
+          "name": "coopShare"
+        },
+        {
+          "type": "uint256",
+          "name": "carryWithheld"
         }
       ],
       "outputs": []
