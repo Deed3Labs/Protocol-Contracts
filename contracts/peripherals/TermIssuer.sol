@@ -97,7 +97,19 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// @dev ref => amount collected under the mandate. Once per ref.
     mapping(bytes32 => uint256) private mandateCollections;
 
-    uint256[36] private __gap;
+    /// @notice where the co-op's share of a purchase is minted, when that is not the carry treasury.
+    /// @dev The fee and the carry were one address, and they are not one thing. `openPlan` mints
+    /// the co-op's share of every purchase to `carryTreasury`, so moving carry somewhere else --
+    /// to the payout pool, to be split among whoever bore the float -- took the fee with it, and
+    /// the split would have handed funders a share of the co-op's income.
+    ///
+    /// Unset means the carry treasury, which is where the fee has always gone: adding this changes
+    /// nothing until somebody sets it, and the migration is to name the co-op here FIRST and only
+    /// then point `carryTreasury` elsewhere. A refund burns the fee from here too, so a plan opened
+    /// before the split and refunded after it still unwinds against the address that holds it.
+    address public feeRecipient;
+
+    uint256[35] private __gap;
 
     /// @notice A plan defaults once its oldest missed installment is this many installments overdue.
     uint256 public constant DEFAULT_AFTER_INSTALLMENTS = 2;
@@ -132,6 +144,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
 
     event TermLimitUpdated(address indexed member, uint256 limit);
     event CarryTreasuryUpdated(address treasury);
+    event FeeRecipientUpdated(address recipient);
     event PlanOpened(
         uint256 indexed planId,
         address indexed member,
@@ -474,7 +487,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         if (payout > refunded) revert TermIssuerInvalidSchedule();
 
         stableCredit.reversePurchase(
-            plan.member, refunded, merchant, payout, carryTreasury, refunded - payout
+            plan.member, refunded, merchant, payout, _feeRecipient(), refunded - payout
         );
 
         uint256 index = plan.index.currentIndex(block.timestamp);
@@ -507,6 +520,20 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
             plan.closed = true;
             emit PlanClosed(planId);
         }
+    }
+
+    /// @notice where the co-op's share of a purchase is minted.
+    /// @dev Name this before moving `carryTreasury`, never after: between the two the fee would be
+    /// minted wherever carry had gone.
+    function setFeeRecipient(address recipient) external onlyOperator {
+        if (recipient == address(0)) revert TermIssuerNoCarryRecipient();
+        feeRecipient = recipient;
+        emit FeeRecipientUpdated(recipient);
+    }
+
+    /// @dev The fee's home, falling back to the carry treasury while nobody has named one.
+    function _feeRecipient() private view returns (address) {
+        return feeRecipient == address(0) ? carryTreasury : feeRecipient;
     }
 
     /// @notice moves the co-op treasury.
@@ -569,7 +596,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
         memberPlans[member].push(planId);
 
         stableCredit.originatePurchase(
-            member, purchase, merchant, payout, carryTreasury, purchase - payout
+            member, purchase, merchant, payout, _feeRecipient(), purchase - payout
         );
         emit PlanOpened(planId, member, purchase, ratePerCycle, installments);
     }

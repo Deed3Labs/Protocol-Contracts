@@ -219,6 +219,63 @@ describe("a purchase, from the shop to the money", function () {
     console.log(`        carry ${u(carry)} -> yield pool ${u(earned)}, co-op ${u(carry - earned)}`);
   });
 
+  // What the fee and the carry sharing one address cost, and what having two fixes. Pointing
+  // carryTreasury at the pool -- the only way carry reaches the split -- used to take the co-op's
+  // 2.5% with it, and the split would have handed funders a share of the co-op's income.
+  describe("the fee and the carry are not one thing", function () {
+    it("keeps minting the fee where it always went, until somebody says otherwise", async function () {
+      const { discount } = await buy();
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(discount);
+    });
+
+    it("leaves the fee with the co-op when carry moves to the pool", async function () {
+      await term.connect(ctx.operator).setFeeRecipient(coop.address);
+      await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
+
+      const { purchase, payout, discount } = await buy();
+
+      // The sale's fee is the co-op's, wherever carry now goes.
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(discount);
+      expect(await pool.distributableCarry()).to.equal(0n);
+
+      // And carry alone arrives at the pool to be split.
+      await fundPool(yieldPool, payout);
+      await pool.connect(merchant).redeem(payout);
+      await elapse(CYCLE);
+      await term.materialiseCarry(0);
+
+      const carry = await pool.distributableCarry();
+      expect(carry).to.be.greaterThan(0n);
+      const before = await ctx.stableCredit.balanceOf(yieldPool.address);
+      await pool.distributeCarry();
+      // Its share of the float it bore, and not a cent of the fee.
+      expect((await ctx.stableCredit.balanceOf(yieldPool.address)) - before).to.equal(
+        (carry * payout) / purchase,
+      );
+    });
+
+    it("unwinds a refund against the address that holds the fee", async function () {
+      // A plan opened before the split and refunded after it: the fee is burned from where it was
+      // minted, because the recipient did not move -- only carry did.
+      const { purchase, payout, discount } = await buy();
+      await term.connect(ctx.operator).setFeeRecipient(coop.address);
+      await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
+
+      await term.connect(ctx.operator).closePlanForRefund(0, purchase, merchant.address, payout);
+
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
+      expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
+      expect(discount).to.be.greaterThan(0n);
+    });
+
+    it("is an operator's call, and never nobody", async function () {
+      await expect(term.connect(ctx.outsider).setFeeRecipient(ctx.outsider.address)).to.be.reverted;
+      await expect(
+        term.connect(ctx.operator).setFeeRecipient(ethers.ZeroAddress)
+      ).to.be.revertedWithCustomError(term, "TermIssuerNoCarryRecipient");
+    });
+  });
+
   it("gives the funder their money back as the member pays, not before", async function () {
     const { payout } = await buy();
     await fundPool(coop, payout);
