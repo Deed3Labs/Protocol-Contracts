@@ -97,12 +97,6 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// @dev ref => amount collected under the mandate. Once per ref.
     mapping(bytes32 => uint256) private mandateCollections;
 
-    /// @notice cash already given back on a plan, so nothing is given back twice.
-    /// @dev A plan the member paid off is closed, and refunding it is the ordinary case -- so the
-    /// closed flag cannot be what stops a second refund. What a member paid is what can come back,
-    /// once.
-    mapping(uint256 => uint256) public refundedOf;
-
     /// @notice where the co-op's share of a purchase is minted, when that is not the carry treasury.
     /// @dev The fee and the carry were one address, and they are not one thing. `openPlan` mints
     /// the co-op's share of every purchase to `carryTreasury`, so moving carry somewhere else --
@@ -114,6 +108,15 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// then point `carryTreasury` elsewhere. A refund burns the fee from here too, so a plan opened
     /// before the split and refunded after it still unwinds against the address that holds it.
     address public feeRecipient;
+
+    /// @notice cash already given back on a plan, so nothing is given back twice.
+    /// @dev A plan the member paid off is closed, and refunding it is the ordinary case -- so the
+    /// closed flag cannot be what stops a second refund. What a member paid is what can come back,
+    /// once.
+    ///
+    /// After `feeRecipient`, which is already deployed: new storage goes after every variable the
+    /// live implementation knows about, never among them.
+    mapping(uint256 => uint256) public refundedOf;
 
     uint256[34] private __gap;
 
