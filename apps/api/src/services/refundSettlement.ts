@@ -22,6 +22,8 @@ import { savingsIntentService } from './savingsIntentService.js';
 const TERM_ABI = [
   'function planAt(uint256 planId) view returns (address member, uint256 principal, uint256 principalOutstanding, uint256 repaid, uint64 openedAt, uint32 installments, uint64 installmentLength, uint256 ratePerCycle, bool closed)',
   'function closePlanForRefund(uint256 planId, uint256 amount, address merchant, uint256 payout) returns (uint256)',
+  'function refundedOf(uint256 planId) view returns (uint256)',
+  'event PlanRefundPaid(uint256 indexed planId, uint256 returned, uint256 carryWithheld)',
 ];
 
 function operatorKey(): string | null {
@@ -37,6 +39,15 @@ export interface SettleResult {
   txHash?: string;
   /** Principal actually unwound, in cents -- what a dispute has to put back if the member loses. */
   unwoundCents?: number;
+  /**
+   * Cash actually returned to the member, in cents, and the carry kept out of it.
+   *
+   * A refund is two halves: what the member still owed is cancelled, and what they had already paid
+   * comes back. The second half used not to happen at all. The member is told both figures, because
+   * somebody who paid $46 and gets $45.60 will otherwise ask where the difference went.
+   */
+  returnedCents?: number;
+  carryWithheldCents?: number;
 }
 
 /**
@@ -69,29 +80,64 @@ export async function closePlan(charge: ChargeRow, amountCents: number): Promise
 
     const plan = await issuer.planAt(charge.planId);
     const [, , principalOutstanding, , , , , , closed] = plan;
-    // Already settled — by an earlier attempt at this same refund, or by the member paying it off.
-    // Either way the member owes nothing on it, which is where this was trying to get to.
-    if (closed || principalOutstanding === 0n) return { ok: true };
+    /*
+     * A closed plan is no longer the end of it. A member who PAID the plan off has a closed plan and
+     * money of their own in the network, and giving that purchase back has to give the money back
+     * too -- which is the commonest refund there is. The issuer caps what can come back at what
+     * they paid, and will not pay it twice, so a repeated attempt at the same refund is safe.
+     */
+    const [, principal, , repaid] = plan;
+    const alreadyReturned: bigint = await issuer.refundedOf(charge.planId).catch(() => 0n);
+    const returnable = repaid > alreadyReturned ? repaid - alreadyReturned : 0n;
+    if (closed && returnable === 0n) return { ok: true };
 
     const owed: bigint = principalOutstanding;
     const asked = BigInt(amountCents) * 10_000n;
-    const giving = asked < owed ? asked : owed;
+    // Capped at the purchase: what is not still owed comes back as cash, up to what they paid.
+    const capped = asked < principal ? asked : principal;
+    const giving = capped < owed ? capped : owed;
 
     // The merchant's share of what is being given back, in the same proportion as the sale. Floor
     // division, so the remainder falls to the co-op's discount.
     const payoutShare =
       charge.amountCents > 0
-        ? (BigInt(charge.payoutCents) * giving) / BigInt(charge.amountCents)
+        ? (BigInt(charge.payoutCents) * capped) / BigInt(charge.amountCents)
         : 0n;
 
     const tx = await issuer.closePlanForRefund(
       charge.planId,
-      giving,
+      capped,
       charge.merchantAddress,
       payoutShare,
     );
     const receipt = await tx.wait();
-    return { ok: true, txHash: receipt?.hash ?? tx.hash, unwoundCents: Number(giving / 10_000n) };
+
+    /*
+     * What actually went back, read from the event rather than worked out here. The issuer decides
+     * the split -- what was still owed is cancelled, the rest is cash, and the carry the member
+     * incurred is kept out of it -- and telling the member our own arithmetic instead would drift
+     * from the chain the first time either changes.
+     */
+    let returnedCents = 0;
+    let carryWithheldCents = 0;
+    for (const log of receipt?.logs ?? []) {
+      try {
+        const parsed = issuer.interface.parseLog({ topics: [...log.topics], data: log.data });
+        if (parsed?.name !== 'PlanRefundPaid') continue;
+        returnedCents = Number(BigInt(parsed.args[1]) / 10_000n);
+        carryWithheldCents = Number(BigInt(parsed.args[2]) / 10_000n);
+      } catch {
+        // Somebody else's log in the same receipt.
+      }
+    }
+
+    return {
+      ok: true,
+      txHash: receipt?.hash ?? tx.hash,
+      unwoundCents: Number(giving / 10_000n),
+      returnedCents,
+      carryWithheldCents,
+    };
   } catch (error) {
     console.error('[refund] closePlanForRefund failed for charge', charge.code, error);
     return { ok: false, reason: explainRefundFailure(error) };
@@ -104,19 +150,33 @@ function explainRefundFailure(error: unknown): string {
 }
 
 /** Told on every channel the charge alert uses, because it is the same member and the same shop. */
-async function notifyMember(charge: ChargeRow, amountCents: number): Promise<void> {
+async function notifyMember(charge: ChargeRow, amountCents: number, settled: SettleResult = { ok: true }): Promise<void> {
   if (!charge.memberWallet) return;
-  const amount = (amountCents / 100).toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD',
-  });
+  const money = (cents: number) =>
+    (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+  const amount = money(amountCents);
+  const returned = settled.returnedCents ?? 0;
+  const withheld = settled.carryWithheldCents ?? 0;
+
+  /*
+   * What happened to it, which is not one sentence any more. Money the member had already paid
+   * comes back to them; what they still owed is cancelled; and carry they incurred while they held
+   * the money is kept out of the cash rather than chased afterwards. A member who paid $46 and
+   * receives $45.60 should not have to ask where the difference went.
+   */
+  const body =
+    returned > 0
+      ? withheld > 0
+        ? `${money(returned)} is back in your account. ${money(withheld)} was kept for the time you had it, and nothing more is due.`
+        : `${money(returned)} is back in your account, and nothing more is due.`
+      : 'It has been taken off what you owe. Nothing more is due on it.';
 
   await notificationStore.emit({
     wallet: charge.memberWallet,
     kind: 'received',
     title: `${charge.merchantName} refunded ${amount}`,
-    body: 'It has been taken off what you owe. Nothing more is due on it.',
-    data: { chargeCode: charge.code, amountCents },
+    body,
+    data: { chargeCode: charge.code, amountCents, returnedCents: returned, carryWithheldCents: withheld },
     // Keyed on the charge, so a retried settlement cannot tell somebody twice.
     dedupeKey: `refund:${charge.code}`,
   });
@@ -155,6 +215,6 @@ export async function settleRefund(
   if (!closed.ok) return closed;
 
   await chargeStore.markRefunded(chargeCode);
-  await notifyMember(charge, amountCents);
+  await notifyMember(charge, amountCents, closed);
   return closed;
 }

@@ -44,6 +44,20 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     /// @param amount amount settled.
     function repayCreditBalanceFor(address payer, address member, uint128 amount) external;
 
+    /// @notice gives a member back money they paid, for a purchase that has been given back.
+    /// @dev The half `reversePurchase` does not do: it cancels what is still owed, this returns
+    /// what was already paid. The legs net, the carry the member incurred is withheld from the
+    /// cash and settled, and the money comes from the payout pool where their repayments landed.
+    function repayRefund(
+        address member,
+        uint256 paid,
+        address merchant,
+        uint256 merchantShare,
+        address coop,
+        uint256 coopShare,
+        uint256 carryWithheld
+    ) external;
+
     /// @notice burns a claim that has been paid in cash out of a member's own repayment.
     /// @dev Only the payout pool may call it: only the pool knows whether a claim was paid with a
     /// member's money (settled, so the claim is burned) or with capital (advanced, so the funder

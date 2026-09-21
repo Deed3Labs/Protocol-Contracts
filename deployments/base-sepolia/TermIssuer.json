@@ -329,6 +329,18 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "FeeRecipientUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "recipient",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "GraceLengthUpdated",
       "inputs": [
         {
@@ -970,6 +982,20 @@
       "outputs": [
         {
           "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "feeRecipient",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
           "name": ""
         }
       ]
@@ -1829,6 +1855,19 @@
         {
           "type": "address",
           "name": "treasury"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setFeeRecipient",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "recipient"
         }
       ],
       "outputs": []

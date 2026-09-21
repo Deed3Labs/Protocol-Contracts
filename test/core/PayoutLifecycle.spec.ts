@@ -219,6 +219,125 @@ describe("a purchase, from the shop to the money", function () {
     console.log(`        carry ${u(carry)} -> yield pool ${u(earned)}, co-op ${u(carry - earned)}`);
   });
 
+  /*
+   * The half a refund never did: giving back what a member had already paid.
+   *
+   * A refund used to cancel what was still owed and stop there, which left a member who had paid
+   * into a plan out of pocket by that much on a purchase they no longer had -- level on the ledger
+   * and short in cash, with the value sitting where they had paid it.
+   */
+  describe("a refund gives back what was paid", function () {
+    it("cancels what is owed and returns the rest, less the carry they incurred", async function () {
+      const { purchase, payout } = await buy();
+      // Four cycles in, they have paid 46 of the 100 and still owe 54.
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, 46n * ONE_USDC);
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      expect(owed).to.equal(54n * ONE_USDC);
+      expect(await pool.held()).to.equal(46n * ONE_USDC);
+
+      const before = await ctx.usdc.balanceOf(ctx.member.address);
+      await term.connect(ctx.operator).closePlanForRefund(0, purchase, merchant.address, payout);
+
+      // Owes nothing, and has their money back: 46 less whatever the carry came to.
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+      const back = (await ctx.usdc.balanceOf(ctx.member.address)) - before;
+      expect(back).to.be.greaterThan(45n * ONE_USDC);
+      expect(back).to.be.lessThanOrEqual(46n * ONE_USDC);
+      // And nothing is left on the ledger for anybody to chase.
+      expect(await term.residualCarryOf(ctx.member.address)).to.equal(0n);
+      console.log(`        paid 46.00 -> returned ${u(back)}, carry withheld ${u(46n * ONE_USDC - back)}`);
+    });
+
+    it("moves no money when the refund is smaller than what is still owed", async function () {
+      const { payout } = await buy();
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, 46n * ONE_USDC);
+
+      const before = await ctx.usdc.balanceOf(ctx.member.address);
+      await term
+        .connect(ctx.operator)
+        .closePlanForRefund(0, 40n * ONE_USDC, merchant.address, (payout * 40n) / 100n);
+
+      // 40 off a 54 debt: they owe 14 on what is now a 60 purchase, having paid 46. No cash needed.
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(14n * ONE_USDC);
+      expect(await ctx.usdc.balanceOf(ctx.member.address)).to.equal(before);
+    });
+
+    it("returns only the overpayment when the refund is partly owed", async function () {
+      const { payout } = await buy();
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, 46n * ONE_USDC);
+
+      const before = await ctx.usdc.balanceOf(ctx.member.address);
+      await term
+        .connect(ctx.operator)
+        .closePlanForRefund(0, 60n * ONE_USDC, merchant.address, (payout * 60n) / 100n);
+
+      // 54 of it cancels the debt; 6 is theirs back, less the carry withheld from it.
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+      const back = (await ctx.usdc.balanceOf(ctx.member.address)) - before;
+      expect(back).to.be.greaterThan(5n * ONE_USDC);
+      expect(back).to.be.lessThanOrEqual(6n * ONE_USDC);
+    });
+
+    it("takes it back off the merchant and the co-op, so the legs still net", async function () {
+      const { purchase, payout, discount } = await buy();
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, purchase);
+      // Paid in full, so the whole refund is cash and nothing is left to cancel.
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+
+      const before = await ctx.usdc.balanceOf(ctx.member.address);
+      await term.connect(ctx.operator).closePlanForRefund(0, purchase, merchant.address, payout);
+
+      expect((await ctx.usdc.balanceOf(ctx.member.address)) - before).to.equal(purchase);
+      // Both gave back what they were paid for the sale.
+      expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(0n);
+      expect(discount).to.be.greaterThan(0n);
+      expect(await ctx.stableCredit.totalSupply()).to.equal(0n);
+    });
+
+    it("makes the merchant carry it when they have already been paid out", async function () {
+      const { purchase, payout } = await buy();
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, purchase);
+      // The merchant took their money before the refund came.
+      await pool.connect(merchant).redeem(payout);
+      expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
+
+      await term.connect(ctx.operator).closePlanForRefund(0, purchase, merchant.address, payout);
+
+      // Nothing to burn, so it comes off what they are paid next -- the drawn-line case.
+      expect(await ctx.stableCredit.creditBalanceOf(merchant.address)).to.equal(payout);
+      expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address)).to.equal(0n);
+    });
+
+    it("owes the member the rest when the pool is short, and pays it when money arrives", async function () {
+      const { purchase, payout } = await buy();
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, purchase);
+      // The merchant drew most of it out, so the cash is not here when the refund lands.
+      await pool.connect(merchant).redeem(payout);
+
+      const before = await ctx.usdc.balanceOf(ctx.member.address);
+      await term.connect(ctx.operator).closePlanForRefund(0, purchase, merchant.address, payout);
+
+      const paidNow = (await ctx.usdc.balanceOf(ctx.member.address)) - before;
+      expect(paidNow).to.be.lessThan(purchase);
+      expect(await pool.refundOwedOf(ctx.member.address)).to.equal(purchase - paidNow);
+      // It is their money, so it is not free for the co-op's fee or anyone's capital either.
+      expect(await pool.unencumbered()).to.equal(0n);
+
+      // The merchant's next payout funds it, which is the obligation they took on.
+      await fundPool(coop, purchase);
+      await pool.payRefundsOwed();
+      expect(await pool.refundOwedOf(ctx.member.address)).to.equal(0n);
+      expect((await ctx.usdc.balanceOf(ctx.member.address)) - before).to.equal(purchase);
+    });
+
+    it("is the ledger's call alone", async function () {
+      await expect(
+        pool.connect(ctx.outsider).payRefund(ctx.member.address, 1n)
+      ).to.be.revertedWithCustomError(pool, "PayoutPoolInvalidAddress");
+    });
+  });
+
   // What the fee and the carry sharing one address cost, and what having two fixes. Pointing
   // carryTreasury at the pool -- the only way carry reaches the split -- used to take the co-op's
   // 2.5% with it, and the split would have handed funders a share of the co-op's income.

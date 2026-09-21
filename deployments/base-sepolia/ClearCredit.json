@@ -117,6 +117,16 @@
       ]
     },
     {
+      "type": "error",
+      "name": "StableCreditUnauthorizedSettler",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "caller"
+        }
+      ]
+    },
+    {
       "type": "event",
       "anonymous": false,
       "name": "AccessManagerUpdated",
@@ -204,6 +214,23 @@
         {
           "type": "address",
           "name": "recipient",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "ClaimSettled",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder",
           "indexed": true
         },
         {
@@ -1120,6 +1147,23 @@
         {
           "type": "address",
           "name": "_payoutPool"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "settleClaim",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "holder"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
         }
       ],
       "outputs": []

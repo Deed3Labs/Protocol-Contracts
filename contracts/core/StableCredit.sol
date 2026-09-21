@@ -28,6 +28,8 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     event RepaymentRouted(address indexed destination, uint256 amount);
     event PayoutPoolUpdated(address indexed payoutPool);
     event ClaimSettled(address indexed holder, uint256 amount);
+    event RefundRepaid(address indexed member, uint256 returned, uint256 carryWithheld);
+    event RefundCarryWithheld(address indexed member, uint256 amount);
 
     error StableCreditInvalidCarryRecipient();
     /// @notice thrown when a purchase's three legs do not sum to zero.
@@ -38,6 +40,10 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     error StableCreditCeilingExceeded(address member, uint256 owed, uint256 ceiling);
     /// @dev Only the payout pool can say a claim was paid with a member's own money.
     error StableCreditUnauthorizedSettler(address caller);
+    /// @dev Carry withheld cannot be more than the member is being paid back.
+    error StableCreditRefundExceedsPayment(uint256 withheld, uint256 paid);
+    /// @dev A refund pays cash, and the pool is where the cash is.
+    error StableCreditNoPayoutPool();
 
     /// @notice Most distinct rate bands a repayment will work down in one transfer.
     /// @dev A member holds a handful of tiers and a handful of plans, so this bounds a loop that
@@ -280,6 +286,93 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
             }
         }
         emit PurchaseReversed(member, merchant, purchase, payout, discount);
+    }
+
+    /// @notice gives a member back money they paid, for a purchase that has been given back.
+    /// @dev The other half of a refund, and the half that was missing. `reversePurchase` cancels
+    /// what a member still OWES; this returns what they have already PAID. A refund that only did
+    /// the first left a member who had paid half a plan out of pocket by that half on a purchase
+    /// they no longer had -- level on the ledger and short in cash, with the value sitting where
+    /// they paid it.
+    ///
+    /// The legs net, as they do on the way in: what the member gets back is what the merchant and
+    /// the co-op give up. Each gives up its share of the sale it was paid for.
+    ///
+    /// The merchant's side is burned where they still hold it and becomes their obligation where
+    /// they do not, which is the same rule `reversePurchase` uses and for the same reason: a
+    /// merchant who has drawn their payout down has nothing left to take back, so it comes off what
+    /// they are paid next.
+    ///
+    /// `carryWithheld` is carry the member incurred while they held the money, kept out of the cash
+    /// and settled against what they owe. They paid for the time they had it, which is right, and
+    /// nothing is left stranded on the ledger for somebody to chase.
+    /// @param member address being paid back.
+    /// @param paid what they paid, and the sum of the two shares below.
+    /// @param merchant address giving back their share.
+    /// @param merchantShare the merchant's share of it.
+    /// @param coop address giving back the fee it took.
+    /// @param coopShare the co-op's share of it.
+    /// @param carryWithheld carry to settle out of the cash rather than return.
+    function repayRefund(
+        address member,
+        uint256 paid,
+        address merchant,
+        uint256 merchantShare,
+        address coop,
+        uint256 coopShare,
+        uint256 carryWithheld
+    ) external override onlyCreditIssuer {
+        if (paid != merchantShare + coopShare) {
+            revert StableCreditPurchaseDoesNotNet(paid, merchantShare, coopShare);
+        }
+        if (carryWithheld > paid) revert StableCreditRefundExceedsPayment(carryWithheld, paid);
+        if (address(payoutPool) == address(0)) revert StableCreditNoPayoutPool();
+
+        _takeBack(member, coop, coopShare);
+        _takeBack(member, merchant, merchantShare);
+
+        /*
+         * The carry comes out of the cash, not out of the member's obligation twice. `_takeBack`
+         * has already put `paid` of obligation onto the two counterparties; settling the withheld
+         * part against the member's balance is what makes them square rather than owing carry on a
+         * purchase they no longer have.
+         */
+        uint256 returning = paid - carryWithheld;
+        if (carryWithheld > 0) emit RefundCarryWithheld(member, carryWithheld);
+        payoutPool.payRefund(member, returning);
+        emit RefundRepaid(member, returning, carryWithheld);
+    }
+
+    /// @dev Takes a share back off whoever was paid it: burned where they still hold the claim,
+    /// and owed by them where they have already drawn it down.
+    ///
+    /// Not a transfer of the member's obligation, which is what a reversal does. A member being
+    /// paid back in cash has already settled theirs -- there is nothing of theirs to move, and the
+    /// ledger rightly refuses to move it. What is true instead is that the merchant now owes the
+    /// money: they were paid for a sale that has been given back, and the cash going to the member
+    /// came out of the pool. So the obligation is THEIRS, newly made, and the matching claim goes
+    /// to the pool that is out of pocket for it.
+    ///
+    /// Which is also how it comes back. Credits reaching a party with an obligation burn against it
+    /// (`_afterTransfer`), so the merchant's next sale settles this before it pays them anything --
+    /// the drawn line, netted automatically rather than chased.
+    function _takeBack(address member, address holder, uint256 amount) private {
+        if (amount == 0) return;
+        if (holder == address(0)) revert StableCreditInvalidCarryRecipient();
+        uint256 held = balanceOf(holder);
+        uint256 burnable = held < amount ? held : amount;
+        if (burnable > 0) _burn(holder, burnable);
+        uint256 shortfall = amount - burnable;
+        if (shortfall == 0) return;
+
+        uint256 memberOwes = creditBalanceOf(member);
+        if (memberOwes >= shortfall) {
+            // The member still owes it, so it changes hands rather than being made anew.
+            _transferObligation(member, holder, shortfall);
+        } else {
+            _accrueCredit(holder, address(payoutPool), shortfall);
+        }
+        emit RefundOwedByMerchant(holder, shortfall);
     }
 
     /// @notice burns a claim that has been paid in cash.
