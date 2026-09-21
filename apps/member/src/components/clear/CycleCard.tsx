@@ -3,6 +3,7 @@ import { money } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
 import {
   cycleStatus,
+  mustClear,
   orderedTiers,
   SECURED_TIERS,
   securedUsed,
@@ -51,7 +52,13 @@ export default function CycleCard({
 }) {
   const isDesktop = useIsDesktop();
   const status = cycleStatus(credit, expectedDeposit);
-  const toClear = credit ? unsecuredUsed(credit) : 0;
+  const toClear = credit ? mustClear(credit) : 0;
+  /*
+   * Carry a closed plan left on the ledger, when that is all there is to clear. It reads differently
+   * from a draw -- nothing was spent this cycle -- and a member looking at "carrying $0.03" with no
+   * purchase behind it deserves to be told where it came from.
+   */
+  const onlyLedgerCarry = Boolean(credit?.ledgerCarry) && credit !== undefined && unsecuredUsed(credit) === 0;
 
   // The rate that applies to what's carried unsecured: the dearest unsecured tier with a draw on it,
   // since that is the one clearing it pays down first.
@@ -67,14 +74,26 @@ export default function CycleCard({
 
   switch (status) {
     case 'short':
-      lead = 'Nothing scheduled to cover it';
-      detail = `Carrying ${money(toClear, { cents: true })} unsecured${carriedRate ? ` · ${carriedRate}` : ''}`;
+      lead = onlyLedgerCarry ? 'Carry from a plan you closed' : 'Nothing scheduled to cover it';
+      detail = onlyLedgerCarry
+        ? `${money(toClear, { cents: true })} left on your line · clear it to keep the line open`
+        : `Carrying ${money(toClear, { cents: true })} unsecured${carriedRate ? ` · ${carriedRate}` : ''}`;
       action = { label: 'Repay', primary: true, onSelect: onRepay };
       break;
     case 'covered':
-      lead = depositOn ? `Your ${depositOn} deposit covers this` : 'Your deposit covers this';
-      detail = `Carrying ${money(toClear, { cents: true })} unsecured · nothing due`;
-      action = { label: 'Repay early', primary: false, onSelect: onRepay };
+      lead = onlyLedgerCarry
+        ? 'Carry from a plan you closed'
+        : depositOn
+          ? `Your ${depositOn} deposit covers this`
+          : 'Your deposit covers this';
+      // Never "nothing due" over something owed: this is the figure that holds the line uncleared.
+      detail = onlyLedgerCarry
+        ? `${money(toClear, { cents: true })} left on your line · clear it to keep the line open`
+        : `Carrying ${money(toClear, { cents: true })} unsecured · nothing due`;
+      // Not "early": a deposit covers a draw, and this is owed now whatever is coming in.
+      action = onlyLedgerCarry
+        ? { label: 'Repay', primary: true, onSelect: onRepay }
+        : { label: 'Repay early', primary: false, onSelect: onRepay };
       break;
     case 'secured': {
       const carry = money(credit?.carryCost ?? 0, { cents: true });
