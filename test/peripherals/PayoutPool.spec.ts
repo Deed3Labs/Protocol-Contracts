@@ -44,6 +44,10 @@ describe("PayoutPool", function () {
     }
     await registry.registerMerchant(merchant.address, NET_30, 50_000n * ONE_USDC, 200n);
 
+    // The ledger has to know this pool: it is where repayments are routed, and it is the one
+    // contract allowed to say a claim was settled rather than bought.
+    await ctx.stableCredit.connect(ctx.admin).setPayoutPool(await pool.getAddress());
+
     // A member spends, so the merchant holds a real positive balance.
     await drawCredit(ctx, 1_000n * ONE_USDC);
     await ctx.stableCredit.connect(merchant).approve(await pool.getAddress(), ethers.MaxUint256);
@@ -225,12 +229,21 @@ describe("PayoutPool", function () {
       expect(await pool.shortfall()).to.equal(0n);
     });
 
-    it("takes a top-up from anybody, since refusing money would be strange", async function () {
+    it("takes a top-up from anybody, through the door meant for capital", async function () {
+      // `donate` used to be open to anyone, on the grounds that refusing money is strange. It is
+      // now the ledger's alone, because what arrives there decides whether a claim is settled or
+      // bought: cash from anyone else would burn claims whose obligations nobody had paid. Giving
+      // the pool money still works, through `fund`, which buys the position like any capital.
       await pool.connect(merchant).redeem(1_000n * ONE_USDC);
       await ctx.usdc.mint(second.address, 1_000n * ONE_USDC);
       await ctx.usdc.connect(second).approve(await pool.getAddress(), 1_000n * ONE_USDC);
 
-      await pool.connect(second).donate(1_000n * ONE_USDC);
+      await expect(
+        pool.connect(second).donate(1_000n * ONE_USDC)
+      ).to.be.revertedWithCustomError(pool, "PayoutPoolInvalidAddress");
+
+      await pool.grantRole(await pool.FUNDER_ROLE(), second.address);
+      await pool.connect(second).fund(1_000n * ONE_USDC);
       expect(await pool.shortfall()).to.equal(0n);
     });
   });

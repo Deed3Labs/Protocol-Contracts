@@ -13,4 +13,10 @@ interface IPayoutSink {
 
     /// @notice takes value in.
     function donate(uint256 amount) external;
+
+    /// @notice reserve tokens the pool is holding.
+    function held() external view returns (uint256);
+
+    /// @notice cash here that came from members clearing their balances.
+    function memberFunded() external view returns (uint256);
 }

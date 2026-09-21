@@ -44,6 +44,12 @@ interface IStableCredit is IMutualCredit, IERC20Upgradeable {
     /// @param amount amount settled.
     function repayCreditBalanceFor(address payer, address member, uint128 amount) external;
 
+    /// @notice burns a claim that has been paid in cash out of a member's own repayment.
+    /// @dev Only the payout pool may call it: only the pool knows whether a claim was paid with a
+    /// member's money (settled, so the claim is burned) or with capital (advanced, so the funder
+    /// keeps the position).
+    function settleClaim(address holder, uint256 amount) external;
+
     /// @notice unwinds a partner purchase. The inverse of originatePurchase, and capital-free.
     /// @param member address released of the obligation.
     /// @param purchase the amount to take off what the member owes.
