@@ -57,3 +57,23 @@ describe('rules that hold across every formatter', () => {
     expect(compactMoney(1_000_000)).toBe('$1.0M');
   });
 });
+
+describe('something is never nothing', () => {
+  test('dust says so rather than printing as zero', () => {
+    // The ledger holds a line uncleared for a fifth of a cent; "$0.00" beside "nothing due" is how a
+    // member ends up frozen by a figure the screen told them was not there.
+    expect(money(0.0026)).toBe('under $0.01');
+    expect(money(0.0026, { cents: true })).toBe('under $0.01');
+    expect(money(-0.001)).toBe('under $0.01');
+    expect(money(0)).toBe('$0');
+    expect(money(0, { cents: true })).toBe('$0.00');
+  });
+
+  test('a small amount keeps its cents even among round figures', () => {
+    expect(money(0.03, { cents: false })).toBe('$0.03');
+    expect(money(0.5)).toBe('$0.50');
+    // Whole figures are unchanged: rounding only ever hid something under a cent.
+    expect(money(3200, { cents: false })).toBe('$3,200');
+    expect(money(52.1, { cents: false })).toBe('$52');
+  });
+});
