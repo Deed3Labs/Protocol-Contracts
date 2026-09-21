@@ -119,6 +119,25 @@ nothing reserves cash against it. So when no claim happens to be queued, a membe
 straight past the pool into the assurance buffer, and the pool was never funded for the obligation
 that money belongs to.
 
+**What that has already done, on Base Sepolia, 2026-09-21.** Every test repayment is in the buffer:
+
+```
+AssurancePool  125.033081 USDC   (buffer 125.033081 · primary 0 · excess 0)
+PayoutPool       0.0      USDC
+credit totalSupply 125.033081    (merchant 97.50 · co-op 27.53)
+```
+
+The cash and the claims match to the cent, and the cash is in the wrong contract. If that merchant
+redeemed today their claim would queue against an empty pool while 125 sat one contract away — and
+the buffer cannot send it: it leaves only through `reimburse` (a loss), a rebalance into the primary
+reserve, or `withdraw`, which takes from *excess* alone. **There is no path from the buffer to the
+payout pool.**
+
+That is the routing's real shape, not a testnet artefact: `shortfall()` is non-zero only while claims
+are already queued and unfunded, so unless a merchant redeemed *before* a member repaid, the money
+goes to the buffer. Merchants would redeem, find nothing, queue, and wait for a manual top-up while
+the buffer accumulated what should have paid them.
+
 The fix is in the routing:
 
 ```
@@ -156,12 +175,32 @@ target = totalSupply() − balanceOf(receivablesHolder)
 ```
 
 The co-op's income is then funded in the pool like anyone else's and **withdrawn by role to a
-treasury address**, with the address settable only by that role. The co-op queues for its own money
-on the same terms as a merchant rather than being paid at origination in credits nobody funded.
+treasury address**, with the address settable only by that role.
 
-> **Verify at build time:** whether `carryTreasury` (the discount recipient in `StableCredit`) and
-> `coopTreasury` (where `PayoutPool.redeem` sends credits) are configured to the same address today.
-> If they are, splitting them is step zero — the target is wrong until they are apart.
+**It does not queue.** The 2.5% was never the merchant's money: on a $100 purchase the merchant is
+owed $97.50 and the co-op $2.50, and a $100 repayment covers both. So the fee is not a claim and
+takes no place in the queue — it is withdrawable from cash **not already earmarked for queued
+claims**:
+
+```
+withdrawable = held() − queuedTotal
+```
+
+The co-op takes its fee as soon as the money is there, and can never take cash already promised to a
+merchant who is waiting. Both halves of that matter: it is owed its fee, and it is the one party here
+that must not be able to pay itself first.
+
+> **Checked on Base Sepolia, 2026-09-21: they are the same address.**
+>
+> ```
+> coopTreasury  (PayoutPool)  0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+> carryTreasury (TermIssuer)  0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
+> holding 27.533081 credits · totalSupply 125.033081 · pool holds 0 USDC, nothing queued
+> ```
+>
+> So the funding target is wrong until they are apart, and the split is step zero. Nothing has been
+> settled in cash yet on this chain, so the balance is fee and carry income only — the two kinds have
+> not yet been mixed in that address, and separating them now costs nothing.
 
 ### StableCredit — a refund path that moves money
 
@@ -219,7 +258,9 @@ $46 payment will otherwise ask where the difference went — and the answer shou
 
 0. **Split the two co-op addresses**, and change `_routeRepayment` to fund against payables. Without
    this the pool is not funded for refunds at all, and everything below it is untested in the case
-   that matters.
+   that matters. On Base Sepolia the pool also needs funding directly, since the 125 already in the
+   buffer cannot be moved to it — test USDC, so no loss, but on a live chain this is the difference
+   between member repayments paying merchants and a treasury paying them by hand.
 1. **PayoutPool.payRefund** — pay from `held()`, and the role-gated withdrawal of the co-op's income
    to its treasury address.
 2. **StableCredit.repayRefund**, including the redeemed-merchant path, and its tests.
