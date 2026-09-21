@@ -5,21 +5,25 @@
  *   node scripts/configure-carry-recipients.mjs                 # report only
  *   node scripts/configure-carry-recipients.mjs --apply
  *
- * DO NOT RUN THIS YET. It was run on Base Sepolia on 2026-09-21 and reverted the same day.
+ * THE ORDER MATTERS, and this script enforces it.
  *
- * `carryTreasury` is not only the carry recipient. `TermIssuer.openPlan` mints the CO-OP'S FEE to
- * it as well -- `originatePurchase(member, purchase, merchant, payout, carryTreasury, discount)` --
- * so pointing it at the pool sends every new purchase's 2.5% there, where `distributeCarry` would
- * split it among funders as though it were compensation for bearing float. Funders would take a
- * share of the co-op's income.
+ * `carryTreasury` used to be two things at once: `TermIssuer.openPlan` mints the CO-OP'S FEE to it
+ * as well -- `originatePurchase(member, purchase, merchant, payout, carryTreasury, discount)`. This
+ * was run on Base Sepolia on 2026-09-21 and reverted the same day, because pointing it at the pool
+ * sent every new purchase's 2.5% there too, where `distributeCarry` would have split the co-op's
+ * own income among funders. Nothing was lost: no purchase happened in the window.
  *
- * Nothing was lost on the day: no purchase happened in the window. The fix is a contract change --
- * the fee wants a recipient of its own, so that carry alone reaches the pool -- and until that
- * lands, carry cannot be routed here and the split cannot be switched on.
+ * TermIssuer now has `feeRecipient`, unset meaning the carry treasury. So:
  *
- * AFTER THAT CHANGE, and after the upgrade: carry reaches the pool as credits, and only a pool that
- * can split them should be named -- point the issuers here while the deployed pool is the old one
- * and the carry simply piles up in a contract with no way to hand it on.
+ *   1. name the co-op as feeRecipient      the fee stops depending on where carry goes
+ *   2. point carryTreasury at the pool     carry alone, to be split by who bore the float
+ *
+ * Never the other way round, and never the second without the first: in between, the fee would be
+ * minted wherever carry had gone. The script refuses to do step 2 for an issuer that has not had
+ * step 1, and TermIssuer is the only issuer with a fee -- RevolvingIssuer uses `carryTreasury` as
+ * the fallback for carry alone.
+ *
+ * Run it after the upgrade, not before: carry reaching a pool that cannot split it just piles up.
  *
  * What it changes, and what it deliberately does not:
  *
@@ -36,9 +40,6 @@ import 'dotenv/config';
 import { ethers } from 'ethers';
 
 const APPLY = process.argv.includes('--apply');
-// Deliberate: see the note above. The fee and the carry share one recipient today, so naming the
-// pool would hand funders a share of the co-op's income.
-const UNSAFE = process.argv.includes('--i-know-the-fee-is-separate');
 const CHAIN = Number(process.env.SAVINGS_DEFAULT_CHAIN_ID || 84532);
 
 const ADDRESSES = {
@@ -54,15 +55,10 @@ const ISSUER_ABI = [
   'function carryTreasury() view returns (address)',
   'function setCarryTreasury(address treasury) external',
 ];
-
-if (APPLY && !UNSAFE) {
-  console.error(
-    'Refusing: TermIssuer.openPlan mints the co-op fee to carryTreasury, so pointing it at the\n' +
-      'pool would split the fee among funders. Separate the fee recipient first. Read the note at\n' +
-      'the top of this file.',
-  );
-  process.exit(1);
-}
+const FEE_ABI = [
+  'function feeRecipient() view returns (address)',
+  'function setFeeRecipient(address recipient) external',
+];
 
 const where = ADDRESSES[CHAIN];
 if (!where) {
@@ -78,6 +74,28 @@ if (APPLY && !key) {
 
 const provider = new ethers.JsonRpcProvider(where.rpc);
 const signer = key ? new ethers.Wallet(key, provider) : null;
+
+/*
+ * Step 1, and only TermIssuer has a fee to move. Done first so that step 2 cannot take it along.
+ */
+const term = new ethers.Contract(where.termIssuer, FEE_ABI, provider);
+const fee = await term.feeRecipient().catch(() => null);
+if (fee === null) {
+  console.error('TermIssuer has no feeRecipient: it has not been upgraded. Nothing is safe to point yet.');
+  process.exit(1);
+}
+const coop = where.coopTreasury || (await new ethers.Contract(where.termIssuer, ISSUER_ABI, provider).carryTreasury());
+if (fee === ethers.ZeroAddress) {
+  console.log(`TermIssuer feeRecipient: unset -> ${coop}`);
+  if (APPLY) {
+    const tx = await term.connect(signer).setFeeRecipient(coop);
+    await tx.wait(1);
+    console.log(`  done (${tx.hash})`);
+  }
+} else {
+  console.log(`TermIssuer feeRecipient: already ${fee}`);
+}
+if (!APPLY) console.log('');
 
 for (const [name, address] of [
   ['TermIssuer', where.termIssuer],
