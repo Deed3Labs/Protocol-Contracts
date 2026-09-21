@@ -19,6 +19,20 @@
     },
     {
       "type": "error",
+      "name": "PayoutPoolClaimNotDue",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "claimId"
+        },
+        {
+          "type": "uint64",
+          "name": "dueBy"
+        }
+      ]
+    },
+    {
+      "type": "error",
       "name": "PayoutPoolInsufficientFunds",
       "inputs": [
         {
@@ -192,6 +206,30 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "DrewFromReserve",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "DrewFromYieldPool",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "Funded",
       "inputs": [
         {
@@ -215,6 +253,40 @@
           "type": "uint8",
           "name": "version",
           "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "InterestPaid",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "lender",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "LendersUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "yieldPool",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "reserve",
+          "indexed": true
         }
       ]
     },
@@ -301,6 +373,30 @@
           "name": "member",
           "indexed": true
         },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RepaidReserve",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RepaidYieldPool",
+      "inputs": [
         {
           "type": "uint256",
           "name": "amount",
@@ -475,6 +571,48 @@
     },
     {
       "type": "function",
+      "name": "borrowed",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "borrowedFromReserve",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "borrowedFromYield",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "canPayNext",
       "constant": true,
       "stateMutability": "view",
@@ -499,6 +637,20 @@
           "name": ""
         }
       ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "carryEarned",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
       "outputs": [
         {
           "type": "uint256",
@@ -626,6 +778,19 @@
         {
           "type": "uint256",
           "name": "distributed"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "drawForDueClaim",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "drawn"
         }
       ]
     },
@@ -1033,6 +1198,20 @@
     },
     {
       "type": "function",
+      "name": "reserve",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "reserveToken",
       "constant": true,
       "stateMutability": "view",
@@ -1084,6 +1263,23 @@
         {
           "type": "address",
           "name": "treasury"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setLenders",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "yieldPool_"
+        },
+        {
+          "type": "address",
+          "name": "reserve_"
         }
       ],
       "outputs": []
@@ -1217,6 +1413,20 @@
         {
           "type": "uint256",
           "name": "paid"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "yieldPool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
         }
       ]
     }

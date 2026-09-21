@@ -125,6 +125,14 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// would settle one as the other.
     uint256 public inFlight;
 
+    /// @notice refunds owed to members the pool could not cover when they were given back.
+    /// @dev Their own money, waiting on the pool to have it again. Settled ahead of claims: a
+    /// merchant queueing for a payout is waiting to be paid, and a member here is waiting for
+    /// money they already handed over for something they gave back.
+    mapping(address => uint256) private refundOwedTo;
+    address[] private refundees;
+    uint256 public refundsOwed;
+
     /// @notice where the pool draws when a claim has come due and there is nothing to pay it with.
     /// @dev The yield pool's unlent cash first, then the reserve. Both are REPAID rather than
     /// handed the position: the yield pool's share price is cash plus what is out on loan, and the
@@ -143,13 +151,14 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// nor mistaken for a position.
     uint256 public carryEarned;
 
-    /// @notice refunds owed to members the pool could not cover when they were given back.
-    /// @dev Their own money, waiting on the pool to have it again. Settled ahead of claims: a
-    /// merchant queueing for a payout is waiting to be paid, and a member here is waiting for
-    /// money they already handed over for something they gave back.
-    mapping(address => uint256) private refundOwedTo;
-    address[] private refundees;
-    uint256 public refundsOwed;
+    /* ========== APPEND BELOW THIS LINE ==========
+     *
+     * New storage goes HERE, under everything above it, and nowhere else. Slots are assigned in
+     * declaration order, so a variable added among the ones already deployed shifts every variable
+     * beneath it on a live proxy -- the queue reads as somebody else's number and nothing says so.
+     * It compiles, and every test passes, because a fresh deployment lays them out consistently.
+     * Only `upgrades.validateUpgrade` catches it, which it has done three times here.
+     */
 
     /// @dev Sixteen slots from the gap: memberFunded, coopIncomeRecipient, capitalOf, funders,
     /// advancedOf, advancedTotal, carriers, inFlight, yieldPool, reserve, borrowedFromYield,

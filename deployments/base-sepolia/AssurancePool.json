@@ -188,6 +188,23 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "LentToPayoutPool",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "outstanding",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "OwnershipTransferred",
       "inputs": [
         {
@@ -198,6 +215,18 @@
         {
           "type": "address",
           "name": "newOwner",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PayoutPoolUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "pool",
           "indexed": true
         }
       ]
@@ -232,6 +261,23 @@
         {
           "type": "uint256",
           "name": "newRTD",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "RepaidFromPayoutPool",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        },
+        {
+          "type": "uint256",
+          "name": "outstanding",
           "indexed": false
         }
       ]
@@ -364,6 +410,20 @@
     {
       "type": "function",
       "name": "bufferBalance",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "bufferOwed",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -738,6 +798,38 @@
     },
     {
       "type": "function",
+      "name": "lendToPayoutPool",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "lent"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "lentToPayoutPool",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "neededReserves",
       "constant": true,
       "stateMutability": "view",
@@ -753,6 +845,20 @@
     {
       "type": "function",
       "name": "owner",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "payoutPool",
       "constant": true,
       "stateMutability": "view",
       "payable": false,
@@ -881,6 +987,19 @@
     },
     {
       "type": "function",
+      "name": "repayFromPayoutPool",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "reserveBalance",
       "constant": true,
       "stateMutability": "view",
@@ -929,6 +1048,19 @@
         {
           "type": "address",
           "name": "_exposureSource"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "setPayoutPool",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "pool"
         }
       ],
       "outputs": []
