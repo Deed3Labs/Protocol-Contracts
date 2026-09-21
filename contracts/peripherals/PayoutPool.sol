@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import "../core/interfaces/stable-credit/IStableCredit.sol";
 import "./MerchantRegistry.sol";
+import "./interfaces/IPayoutLenders.sol";
 
 /// @title PayoutPool
 /// @notice Turns a merchant's positive balance into money, on a schedule they were promised.
@@ -124,6 +125,24 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// would settle one as the other.
     uint256 public inFlight;
 
+    /// @notice where the pool draws when a claim has come due and there is nothing to pay it with.
+    /// @dev The yield pool's unlent cash first, then the reserve. Both are REPAID rather than
+    /// handed the position: the yield pool's share price is cash plus what is out on loan, and the
+    /// reserve's cover is denominated in reserve tokens, so a credit claim sitting in either would
+    /// read as a hole in their books until somebody redeemed it. The co-op funding directly is
+    /// different and still holds what it pays for -- it has no such books to hold straight.
+    address public yieldPool;
+    address public reserve;
+    /// @notice what the pool owes each of them, and in total.
+    uint256 public borrowedFromYield;
+    uint256 public borrowedFromReserve;
+    /// @notice carry this pool has earned on positions it bought with borrowed money.
+    /// @dev The lenders' return, held as credits until the member's repayment arrives -- and it
+    /// arrives with it, because carry is added to what the member owes and paid in the same cash.
+    /// Tracked rather than inferred, so it is neither handed out again as somebody else's carry
+    /// nor mistaken for a position.
+    uint256 public carryEarned;
+
     /// @notice refunds owed to members the pool could not cover when they were given back.
     /// @dev Their own money, waiting on the pool to have it again. Settled ahead of claims: a
     /// merchant queueing for a payout is waiting to be paid, and a member here is waiting for
@@ -132,14 +151,17 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     address[] private refundees;
     uint256 public refundsOwed;
 
-    /// @dev Eleven slots from the gap: memberFunded, coopIncomeRecipient, capitalOf, funders,
-    /// advancedOf, advancedTotal, carriers, inFlight, refundOwedTo, refundees, refundsOwed.
-    uint256[32] private __gap;
+    /// @dev Sixteen slots from the gap: memberFunded, coopIncomeRecipient, capitalOf, funders,
+    /// advancedOf, advancedTotal, carriers, inFlight, yieldPool, reserve, borrowedFromYield,
+    /// borrowedFromReserve, carryEarned, refundOwedTo, refundees, refundsOwed.
+    uint256[27] private __gap;
 
 
     error PayoutPoolInvalidAddress();
     error PayoutPoolNothingToRedeem(address merchant);
     error PayoutPoolMerchantInactive(address merchant);
+    /// @dev Drawing on anybody is for a claim past its terms, never for paying one early.
+    error PayoutPoolClaimNotDue(uint256 claimId, uint64 dueBy);
     error PayoutPoolClaimAlreadyPaid(uint256 claimId);
     error PayoutPoolOutOfOrder(uint256 claimId, uint256 expected);
     error PayoutPoolInsufficientFunds(uint256 held, uint256 required);
@@ -154,6 +176,12 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     event CarryPaid(address indexed to, uint256 amount);
     event RefundPaid(address indexed member, uint256 amount);
     event RefundQueued(address indexed member, uint256 amount);
+    event LendersUpdated(address indexed yieldPool, address indexed reserve);
+    event DrewFromYieldPool(uint256 amount);
+    event DrewFromReserve(uint256 amount);
+    event RepaidYieldPool(uint256 amount);
+    event RepaidReserve(uint256 amount);
+    event InterestPaid(address indexed lender, uint256 amount);
     event PositionSettled(uint256 amount);
     event PositionAdvanced(address indexed funder, uint256 amount);
 
@@ -290,6 +318,123 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         emit Redeemed(merchant, redeeming, paidNow, claimId);
     }
 
+    /// @notice names where the pool draws when a claim has come due.
+    function setLenders(address yieldPool_, address reserve_) external onlyRole(OPERATOR_ROLE) {
+        yieldPool = yieldPool_;
+        reserve = reserve_;
+        emit LendersUpdated(yieldPool_, reserve_);
+    }
+
+    /// @notice what the pool owes the two of them.
+    function borrowed() public view returns (uint256) {
+        return borrowedFromYield + borrowedFromReserve;
+    }
+
+    /// @notice finds the money for a claim whose turn has come and whose terms have run out.
+    /// @dev Nothing decides to pay anybody early: this is only ever for a claim already past its
+    /// window with nothing here to pay it. The yield pool first, because lending is what its
+    /// depositors are here for and they are paid for it; the reserve second, because covering this
+    /// is one of the things a reserve is for but not the first thing.
+    ///
+    /// Permissionless. A merchant owed money and past their terms should not also be waiting on
+    /// somebody remembering to run this.
+    function drawForDueClaim() external returns (uint256 drawn) {
+        if (nextUnpaid >= claims.length) revert PayoutPoolNothingToRedeem(address(0));
+        Claim storage claim = claims[nextUnpaid];
+        if (claim.paid) revert PayoutPoolClaimAlreadyPaid(nextUnpaid);
+        if (block.timestamp < claim.dueBy) revert PayoutPoolClaimNotDue(nextUnpaid, claim.dueBy);
+
+        uint256 balance = held();
+        uint256 spoken = refundsOwed;
+        uint256 usable = balance > spoken ? balance - spoken : 0;
+        if (usable >= claim.amount) return 0;
+        uint256 short = claim.amount - usable;
+
+        if (yieldPool != address(0)) {
+            uint256 cash = ILendingPool(yieldPool).availableCash();
+            uint256 take = cash < short ? cash : short;
+            if (take > 0) {
+                ILendingPool(yieldPool).borrow(take, address(this));
+                borrowedFromYield += take;
+                drawn += take;
+                short -= take;
+                emit DrewFromYieldPool(take);
+            }
+        }
+        if (short > 0 && reserve != address(0)) {
+            uint256 lent = IAssuranceLender(reserve).lendToPayoutPool(short);
+            if (lent > 0) {
+                borrowedFromReserve += lent;
+                drawn += lent;
+                emit DrewFromReserve(lent);
+            }
+        }
+        if (drawn == 0) revert PayoutPoolInsufficientFunds(held(), claim.amount);
+        // Funded beats queued, and it is their turn: pay it rather than making them come back.
+        if (held() >= claim.amount + refundsOwed) _pay(nextUnpaid);
+    }
+
+    /// @dev Members' money goes back to whoever fronted it before it does anything else. They put
+    /// cash up for a claim this member's debt stood behind, and this is that debt being paid --
+    /// principal first, and then what they earned for the time it was out.
+    ///
+    /// The return needs no converting. Carry is added to what a member owes, so the repayment that
+    /// settles the principal carries the interest in the same cash; all this does is hand it on and
+    /// burn the claim it stood for.
+    function _repayLenders(uint256 available) private returns (uint256 left) {
+        left = _repayPrincipal(available);
+        if (left == 0 || carryEarned == 0) return left;
+
+        uint256 interest = carryEarned < left ? carryEarned : left;
+        // Split between them as the principal was, so each is paid for what it actually bore.
+        uint256 owed = borrowed();
+        uint256 toYield = owed == 0 ? interest : (interest * borrowedFromYield) / owed;
+        uint256 toReserve = interest - toYield;
+
+        if (toYield > 0 && yieldPool != address(0)) {
+            reserveToken.approve(yieldPool, toYield);
+            ILendingPool(yieldPool).repay(toYield);
+            emit InterestPaid(yieldPool, toYield);
+        }
+        if (toReserve > 0 && reserve != address(0)) {
+            reserveToken.approve(reserve, toReserve);
+            IAssuranceLender(reserve).repayFromPayoutPool(toReserve);
+            emit InterestPaid(reserve, toReserve);
+        }
+        uint256 handed = toYield + toReserve;
+        if (handed > 0) {
+            carryEarned -= handed;
+            left -= handed;
+            // The claim it stood for goes with it: the member has paid that carry.
+            stableCredit.settleClaim(address(this), handed);
+        }
+    }
+
+    /// @dev What they put up, before what they earned on it.
+    function _repayPrincipal(uint256 available) private returns (uint256 left) {
+        left = available;
+        if (borrowedFromYield > 0 && yieldPool != address(0)) {
+            uint256 pay = borrowedFromYield < left ? borrowedFromYield : left;
+            if (pay > 0) {
+                borrowedFromYield -= pay;
+                left -= pay;
+                reserveToken.approve(yieldPool, pay);
+                ILendingPool(yieldPool).repay(pay);
+                emit RepaidYieldPool(pay);
+            }
+        }
+        if (borrowedFromReserve > 0 && reserve != address(0) && left > 0) {
+            uint256 pay = borrowedFromReserve < left ? borrowedFromReserve : left;
+            if (pay > 0) {
+                borrowedFromReserve -= pay;
+                left -= pay;
+                reserveToken.approve(reserve, pay);
+                IAssuranceLender(reserve).repayFromPayoutPool(pay);
+                emit RepaidReserve(pay);
+            }
+        }
+    }
+
     /// @notice pays the oldest unpaid claim.
     /// @dev Permissionless, and strictly in order. Anybody may push the queue along; nobody may
     /// choose whose claim moves, which is the same thing as saying there is no priority to set.
@@ -360,6 +505,26 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         }
         _forgetSpentFunders();
 
+        /*
+         * Bought with borrowed money, so the pool keeps it.
+         *
+         * A lender is repaid in cash rather than handed the position, which means somebody has to
+         * hold it in the meantime -- and it must not be the co-op, which would collect the carry on
+         * a float the yield pool or the reserve was bearing. The pool holds it, and the carry it
+         * earns on it is the lenders' return to pass on.
+         */
+        uint256 owed = borrowed();
+        uint256 mine = advancedOf[address(this)];
+        uint256 unbacked = owed > mine ? owed - mine : 0;
+        if (advanced > 0 && unbacked > 0) {
+            uint256 keep = advanced < unbacked ? advanced : unbacked;
+            if (mine == 0) carriers.push(address(this));
+            advancedOf[address(this)] += keep;
+            advancedTotal += keep;
+            advanced -= keep;
+            emit PositionAdvanced(address(this), keep);
+        }
+
         // Cash from before any of this was tracked, or a top-up the ledger never saw. The co-op
         // holds it rather than the position vanishing.
         if (advanced > 0) {
@@ -374,7 +539,10 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// belongs to whoever bore the float it was charged for.
     function distributableCarry() public view returns (uint256) {
         uint256 balance = stableCredit.balanceOf(address(this));
-        return balance > inFlight ? balance - inFlight : 0;
+        // Positions in transit are not carry, and neither are the ones this pool is holding
+        // because it bought them with borrowed money.
+        uint256 notCarry = inFlight + advancedOf[address(this)] + carryEarned;
+        return balance > notCarry ? balance - notCarry : 0;
     }
 
     /// @notice hands carry to whoever bore the float it was charged for.
@@ -413,7 +581,12 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
                 uint256 share = (distributed * carrying) / float_;
                 if (share == 0) continue;
                 left -= share;
-                stableCredit.transfer(carrier, share);
+                if (carrier == address(this)) {
+                    // Earned on what borrowed money bought, so it belongs to whoever lent it.
+                    carryEarned += share;
+                } else {
+                    stableCredit.transfer(carrier, share);
+                }
                 emit CarryPaid(carrier, share);
             }
             _forgetSettledCarriers();
@@ -629,8 +802,34 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     function _receiveRepayment(uint256 amount) private {
         if (_msgSender() != address(stableCredit)) revert PayoutPoolInvalidAddress();
         reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
-        // Members' own money, which settles positions rather than buying them.
-        memberFunded += amount;
+        /*
+         * Whoever fronted the cash gets it back first. They put money up for a claim that this
+         * member's debt stood behind, and this is that debt being paid -- leaving it here to settle
+         * claims instead would keep the pool borrowing against money it already had.
+         */
+        uint256 owedBefore = borrowed();
+        uint256 left = _repayLenders(amount);
+        /*
+         * What the lenders took back was paid for by a position this pool is holding, and the
+         * member has just settled the debt behind it -- so that much of it is burned. Leaving it
+         * standing would have the pool holding a claim on somebody who owes nothing, which is the
+         * thing this whole settlement model exists to avoid.
+         *
+         * The PRINCIPAL they took back, not what they were handed in total: the interest settled
+         * its own claim on the way out, and burning against it again would take a claim nobody
+         * still holds.
+         */
+        uint256 repaid = owedBefore - borrowed();
+        uint256 mine = advancedOf[address(this)];
+        if (repaid > 0 && mine > 0) {
+            uint256 settling = repaid < mine ? repaid : mine;
+            advancedOf[address(this)] = mine - settling;
+            advancedTotal -= settling;
+            stableCredit.settleClaim(address(this), settling);
+            emit PositionSettled(settling);
+        }
+        // What is left is members' own money, which settles positions rather than buying them.
+        memberFunded += left;
         emit Funded(_msgSender(), amount);
     }
 }

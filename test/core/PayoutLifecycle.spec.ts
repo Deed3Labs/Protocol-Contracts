@@ -220,6 +220,125 @@ describe("a purchase, from the shop to the money", function () {
   });
 
   /*
+   * A claim past its terms with nothing to pay it: who finds the money.
+   *
+   * Nothing here pays anybody early. A merchant is paid when it is their turn and the money is
+   * there; this is the case where their turn came, their terms ran out, and it is not.
+   */
+  describe("a claim that has come due", function () {
+    let yieldLender: any, reserve: any;
+
+    beforeEach(async function () {
+      const LendingPool = await ethers.getContractFactory("LendingPool");
+      yieldLender = await upgrades.deployProxy(
+        LendingPool,
+        [ctx.admin.address, await ctx.usdc.getAddress(), "Clear Yield", "cYLD"],
+        { kind: "uups" }
+      );
+      await yieldLender.grantRole(await yieldLender.BORROWER_ROLE(), await pool.getAddress());
+      reserve = ctx.assurancePool;
+      await reserve.connect(ctx.operator).setPayoutPool(await pool.getAddress());
+      await pool.connect(ctx.admin).setLenders(await yieldLender.getAddress(), await reserve.getAddress());
+    });
+
+    async function depositIntoYieldPool(amount: bigint) {
+      await ctx.usdc.mint(ctx.admin.address, amount);
+      await ctx.usdc.approve(await yieldLender.getAddress(), amount);
+      await yieldLender.deposit(amount, ctx.admin.address);
+    }
+
+    it("will not draw on anybody for a claim that is not due yet", async function () {
+      const { payout } = await buy();
+      await pool.connect(merchant).redeem(payout);
+
+      await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolClaimNotDue");
+    });
+
+    it("draws the yield pool's unlent cash, and pays the merchant", async function () {
+      const { payout } = await buy();
+      await pool.connect(merchant).redeem(payout);
+      await depositIntoYieldPool(500n * ONE_USDC);
+      await elapse(NET_30 + DAY);
+
+      await pool.drawForDueClaim();
+
+      expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
+      expect(await pool.borrowedFromYield()).to.equal(payout);
+      // Lent, not given: the yield pool's books are cash plus what is out on loan.
+      expect(await yieldLender.totalAssets()).to.equal(500n * ONE_USDC);
+      // And the pool holds what that money bought, NOT the co-op -- which never bore this float
+      // and must not collect the carry on it.
+      expect(await pool.advancedOf(await pool.getAddress())).to.equal(payout);
+      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(100n * ONE_USDC - payout);
+    });
+
+    it("falls back to the reserve, out of excess and never the primary cover", async function () {
+      const { payout } = await buy();
+      await pool.connect(merchant).redeem(payout);
+
+      // Primary cover first, which this must not touch, then spare on top.
+      await ctx.usdc.mint(ctx.admin.address, 1_000n * ONE_USDC);
+      await ctx.usdc.approve(await reserve.getAddress(), 1_000n * ONE_USDC);
+      await reserve.depositIntoPrimaryReserve(400n * ONE_USDC);
+      await reserve.depositIntoExcessReserve(300n * ONE_USDC);
+      const primaryBefore = await reserve.primaryBalance();
+      await elapse(NET_30 + DAY);
+
+      await pool.drawForDueClaim();
+
+      expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(payout);
+      expect(await pool.borrowedFromReserve()).to.equal(payout);
+      expect(await reserve.primaryBalance()).to.equal(primaryBefore);
+      expect(await reserve.excessBalance()).to.equal(300n * ONE_USDC - payout);
+    });
+
+    it("pays the lender what it earned, out of the same repayment that carries it", async function () {
+      const { payout } = await buy();
+      await pool.connect(merchant).redeem(payout);
+      await depositIntoYieldPool(500n * ONE_USDC);
+      await elapse(NET_30 + DAY);
+      await pool.drawForDueClaim();
+
+      // A cycle of carry on what the yield pool's money bought, charged to the member and
+      // delivered here to be split.
+      await term.connect(ctx.operator).setCarryTreasury(await pool.getAddress());
+      await term.materialiseCarry(0);
+      await pool.distributeCarry();
+      const earned = await pool.carryEarned();
+      expect(earned).to.be.greaterThan(0n);
+
+      // The member pays what they owe, which is the purchase AND the carry on it.
+      const owed = await ctx.stableCredit.creditBalanceOf(ctx.member.address);
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, owed);
+
+      // Principal back, and the return on top -- no converting, it arrived in the same cash.
+      expect(await pool.borrowed()).to.equal(0n);
+      expect(await pool.carryEarned()).to.equal(0n);
+      expect(await yieldLender.totalAssets()).to.equal(500n * ONE_USDC + earned);
+      console.log(`        lent ${u(payout)} -> back ${u(payout)} + ${u(earned)} earned`);
+    });
+
+    it("gives the lenders their money back before anything else, as the member pays", async function () {
+      const { purchase, payout } = await buy();
+      await pool.connect(merchant).redeem(payout);
+      await depositIntoYieldPool(500n * ONE_USDC);
+      await elapse(NET_30 + DAY);
+      await pool.drawForDueClaim();
+      expect(await pool.borrowed()).to.equal(payout);
+
+      // The member pays, and that money goes back to whoever fronted it rather than sitting here.
+      await ctx.stableCredit.connect(ctx.member).repayCreditBalance(ctx.member.address, purchase);
+
+      expect(await pool.borrowed()).to.equal(0n);
+      expect(await yieldLender.availableCash()).to.equal(500n * ONE_USDC);
+      // The debt behind the position is settled, so the position goes with it.
+      expect(await pool.advancedOf(await pool.getAddress())).to.equal(0n);
+      // Only what is left over is members' money for settling claims.
+      expect(await pool.memberFunded()).to.equal(purchase - payout);
+    });
+  });
+
+  /*
    * The half a refund never did: giving back what a member had already paid.
    *
    * A refund used to cancel what was still owed and stop there, which left a member who had paid
