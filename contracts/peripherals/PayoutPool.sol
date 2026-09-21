@@ -533,7 +533,20 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// thing it now means: cash from anyone else would burn claims whose obligations nobody had
     /// paid, leaving members owing with nothing holding the debt. Putting working capital in is
     /// `fund`, which buys positions rather than settling them.
+    /// @notice what `receiveRepayment` was called before, kept for the upgrade.
+    /// @dev The ledger and this pool are separate proxies and cannot be upgraded in one
+    /// transaction, so for the moment between them one of the two is old. The old ledger calls
+    /// `donate`; without this, every repayment in that window would revert. Upgrade this pool
+    /// first, then the ledger, then delete this.
+    function donate(uint256 amount) external {
+        _receiveRepayment(amount);
+    }
+
     function receiveRepayment(uint256 amount) external {
+        _receiveRepayment(amount);
+    }
+
+    function _receiveRepayment(uint256 amount) private {
         if (_msgSender() != address(stableCredit)) revert PayoutPoolInvalidAddress();
         reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
         // Members' own money, which settles positions rather than buying them.
