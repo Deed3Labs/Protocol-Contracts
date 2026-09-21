@@ -200,6 +200,17 @@ function toCents(amount: bigint): number {
   return Number(amount / 10n ** BigInt(CREDIT_DECIMALS - 2));
 }
 
+/*
+ * What a member OWES rounds up; what they can spend rounds down.
+ *
+ * Sub-cent dust is not nothing: the ledger's own compliance check is `credit balance == 0`, so a
+ * fifth of a cent left on a line is enough to freeze it at the end of a cycle. Flooring it reported
+ * zero owed to a member whose line the chain considered unpaid -- the screen said "nothing due"
+ * beside a figure that was the reason they could not spend. A cent that is not owed is a rounding
+ * error; a debt that reads as zero is a member who cannot act on it.
+ */
+const toCentsOwed = (units: bigint): number => Number((units + 9_999n) / 10_000n);
+
 function resolveChainId(): number {
   const raw = (process.env.SAVINGS_DEFAULT_CHAIN_ID || process.env.SEND_DEFAULT_CHAIN_ID || '').trim();
   const parsed = Number(raw);
@@ -309,9 +320,9 @@ async function readTiers(
         limitCents: toCents(limit),
         // What the issuer holds, so a caller can tell a stale limit from a small one.
         writtenLimitCents: toCents(written),
-        usedCents: toCents(used),
+        usedCents: toCentsOwed(used),
         principalCents: toCents(principal),
-        carryCents: toCents(carry),
+        carryCents: toCentsOwed(carry),
         collateralValueCents: toCents(collateralValue),
         haircutBps,
         rateBps: Number(ratePerCycle),
@@ -357,14 +368,14 @@ async function readTermCeiling(
       term.totalPrincipalOf(wallet),
     ]);
     const limitCents = toCents(limit);
-    const usedCents = toCents(used);
+    const usedCents = toCentsOwed(used);
 
     // Everything the member owes, minus everything a screen already accounts for. Zero for almost
     // everybody; non-zero once a plan has been closed with carry still on it.
     let carryOwedCents = 0;
     if (ledgerAddress) {
       const ledger = new ethers.Contract(ledgerAddress, LEDGER_ABI, provider);
-      const owed = toCents(await ledger.creditBalanceOf(wallet));
+      const owed = toCentsOwed(await ledger.creditBalanceOf(wallet));
       carryOwedCents = Math.max(0, owed - usedCents - tiersUsedCents);
     }
 
@@ -423,7 +434,7 @@ export function nextPayment(p: {
 }
 
 /** Rounded up: a figure a member is asked to pay must clear what it names, never fall a unit short. */
-const toCentsUp = (units: bigint): number => Number((units + 9_999n) / 10_000n);
+const toCentsUp = toCentsOwed;
 
 async function readPlans(
   provider: ethers.JsonRpcProvider,
