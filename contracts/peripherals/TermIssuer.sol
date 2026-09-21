@@ -97,6 +97,12 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// @dev ref => amount collected under the mandate. Once per ref.
     mapping(bytes32 => uint256) private mandateCollections;
 
+    /// @notice cash already given back on a plan, so nothing is given back twice.
+    /// @dev A plan the member paid off is closed, and refunding it is the ordinary case -- so the
+    /// closed flag cannot be what stops a second refund. What a member paid is what can come back,
+    /// once.
+    mapping(uint256 => uint256) public refundedOf;
+
     /// @notice where the co-op's share of a purchase is minted, when that is not the carry treasury.
     /// @dev The fee and the carry were one address, and they are not one thing. `openPlan` mints
     /// the co-op's share of every purchase to `carryTreasury`, so moving carry somewhere else --
@@ -109,7 +115,7 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     /// before the split and refunded after it still unwinds against the address that holds it.
     address public feeRecipient;
 
-    uint256[35] private __gap;
+    uint256[34] private __gap;
 
     /// @notice A plan defaults once its oldest missed installment is this many installments overdue.
     uint256 public constant DEFAULT_AFTER_INSTALLMENTS = 2;
@@ -126,6 +132,8 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     error TermIssuerExceedsTermLimit(address member, uint256 requested, uint256 limit);
     /// @notice principal given back on a plan. Not a repayment -- see closePlanForRefund.
     event PlanRefunded(uint256 indexed planId, uint256 amount);
+    /// @notice cash given back to a member for a plan they had already paid into.
+    event PlanRefundPaid(uint256 indexed planId, uint256 returned, uint256 carryWithheld);
     error TermIssuerNothingToPay(uint256 planId);
     error TermIssuerSplitNotOffered(uint32 installments);
     error TermIssuerNotPlanHolder(address caller);
@@ -471,24 +479,73 @@ contract TermIssuer is CreditIssuer, ICreditPositionSource {
     {
         _requirePlan(planId);
         Plan storage plan = plans[planId];
-        if (plan.closed) revert TermIssuerPlanClosed(planId);
 
-        // Read before materialising: afterwards `principalOutstanding` is principal AND carry,
-        // and the difference between the two readings is exactly the carry. That difference is
-        // what must survive this call.
+        /*
+         * A plan a member has PAID OFF is closed, and giving that purchase back is the commonest
+         * refund there is -- they bought it, paid for it, and returned it. So a closed plan is not
+         * turned away; what it cannot do is give anything back twice, which `refundedOf` is for.
+         * A closed plan has nothing left to reverse, so all that is left is cash.
+         */
         uint256 principalOnly = plan.principalOutstanding;
-        _materialiseCarry(planId);
-        uint256 carry = plan.principalOutstanding - principalOnly;
+        uint256 carry;
+        if (!plan.closed) {
+            // Read before materialising: afterwards `principalOutstanding` is principal AND carry,
+            // and the difference between the two readings is exactly the carry. That difference is
+            // what must survive this call.
+            _materialiseCarry(planId);
+            carry = plan.principalOutstanding - principalOnly;
+        }
 
-        if (principalOnly == 0) revert TermIssuerNothingToPay(planId);
-        // Capped at principal, never at what is owed. A refund that reached into the carry would
-        // mean the co-op paid a member for the time they held the balance.
-        refunded = amount < principalOnly ? amount : principalOnly;
-        if (payout > refunded) revert TermIssuerInvalidSchedule();
+        /*
+         * Reverse what is still owed; repay what has already been paid.
+         *
+         * Money a member has paid is fungible against the purchase, so the split is arithmetic
+         * rather than proportional: a refund is met first out of what they still owe, and only what
+         * is left over is cash going back to them. A $40 refund against $54 outstanding moves no
+         * money at all -- the member simply owes $14 on what is now a $60 purchase -- while a full
+         * refund of a plan they had half paid returns that half.
+         *
+         * Capped at what the purchase was, never at what is owed with carry on top: a refund that
+         * reached into the carry would mean the co-op paid a member for the time they held the
+         * balance.
+         */
+        uint256 refundable = plan.principal < amount ? plan.principal : amount;
+        if (refundable == 0) revert TermIssuerNothingToPay(planId);
+        refunded = refundable < principalOnly ? refundable : principalOnly;
+        uint256 cash = refundable - refunded;
+        // Never more than they put in, and never the same money twice.
+        uint256 returnable = plan.repaid > refundedOf[planId] ? plan.repaid - refundedOf[planId] : 0;
+        if (cash > returnable) cash = returnable;
+        if (refunded == 0 && cash == 0) revert TermIssuerPlanClosed(planId);
+        if (payout > refundable) revert TermIssuerInvalidSchedule();
 
-        stableCredit.reversePurchase(
-            plan.member, refunded, merchant, payout, _feeRecipient(), refunded - payout
-        );
+        // The merchant's share of the whole refund, split between the two legs in the same
+        // proportion, with the remainder falling to the co-op rather than clawing a cent from a
+        // merchant they were never paid.
+        uint256 payoutReversed = refundable == 0 ? 0 : (payout * refunded) / refundable;
+
+        if (refunded > 0) {
+            stableCredit.reversePurchase(
+                plan.member, refunded, merchant, payoutReversed, _feeRecipient(), refunded - payoutReversed
+            );
+        }
+
+        if (cash > 0) {
+            /*
+             * Carry withheld from the cash rather than forgiven. They held the money for the time
+             * they held it and owe for that, which is why a refund does not unmake the carry -- but
+             * taking it out of what goes back leaves nothing stranded on the ledger afterwards for
+             * anybody to chase. Capped at the cash: no cash, no netting, and the member clears what
+             * is left the ordinary way.
+             */
+            uint256 withheld = carry < cash ? carry : cash;
+            refundedOf[planId] += cash;
+            uint256 merchantCash = (payout * cash) / refundable;
+            stableCredit.repayRefund(
+                plan.member, cash, merchant, merchantCash, _feeRecipient(), cash - merchantCash, withheld
+            );
+            emit PlanRefundPaid(planId, cash, withheld);
+        }
 
         uint256 index = plan.index.currentIndex(block.timestamp);
         uint256 reduction = CarryIndex.normalizeUp(refunded, index);

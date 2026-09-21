@@ -124,9 +124,17 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// would settle one as the other.
     uint256 public inFlight;
 
-    /// @dev Eight slots from the gap: memberFunded, coopIncomeRecipient, capitalOf, funders,
-    /// advancedOf, advancedTotal, carriers, inFlight.
-    uint256[35] private __gap;
+    /// @notice refunds owed to members the pool could not cover when they were given back.
+    /// @dev Their own money, waiting on the pool to have it again. Settled ahead of claims: a
+    /// merchant queueing for a payout is waiting to be paid, and a member here is waiting for
+    /// money they already handed over for something they gave back.
+    mapping(address => uint256) private refundOwedTo;
+    address[] private refundees;
+    uint256 public refundsOwed;
+
+    /// @dev Eleven slots from the gap: memberFunded, coopIncomeRecipient, capitalOf, funders,
+    /// advancedOf, advancedTotal, carriers, inFlight, refundOwedTo, refundees, refundsOwed.
+    uint256[32] private __gap;
 
 
     error PayoutPoolInvalidAddress();
@@ -144,6 +152,8 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     event CoopIncomeRecipientUpdated(address indexed recipient);
     event CapitalWithdrawn(address indexed funder, address indexed to, uint256 amount);
     event CarryPaid(address indexed to, uint256 amount);
+    event RefundPaid(address indexed member, uint256 amount);
+    event RefundQueued(address indexed member, uint256 amount);
     event PositionSettled(uint256 amount);
     event PositionAdvanced(address indexed funder, uint256 amount);
 
@@ -493,12 +503,82 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         emit CapitalWithdrawn(_msgSender(), to, taken);
     }
 
+    /// @notice gives a member back money they paid in, for a purchase that was given back.
+    /// @dev A withdrawal, not a claim. What a member paid is sitting here because the routing put
+    /// it here; handing it back takes nothing from the merchants in the queue, because the merchant
+    /// whose sale it was gives it back on the ledger at the same moment (StableCredit.repayRefund).
+    /// So it does not queue and has no priority field: it is their own money going home.
+    ///
+    /// Only the ledger may call it, and the ledger only does so as one leg of a refund that nets.
+    ///
+    /// Paid from what is here. A pool short of it pays what it can and the rest is owed: the
+    /// merchant's balance has already fallen by the whole amount, so the money reaches the member
+    /// as repayments arrive rather than being lost. `refundsOwed` is what has not reached them yet,
+    /// and it is settled before any claim, because money already belonging to a member is not the
+    /// pool's to pay somebody else with.
+    function payRefund(address member, uint256 amount) external returns (uint256 paid) {
+        if (_msgSender() != address(stableCredit)) revert PayoutPoolInvalidAddress();
+        if (member == address(0)) revert PayoutPoolInvalidAddress();
+
+        uint256 available = held() > refundsOwed ? held() - refundsOwed : 0;
+        paid = amount < available ? amount : available;
+        uint256 short = amount - paid;
+        if (short > 0) {
+            if (refundOwedTo[member] == 0) refundees.push(member);
+            refundOwedTo[member] += short;
+            refundsOwed += short;
+            emit RefundQueued(member, short);
+        }
+        if (paid > 0) {
+            // Their own money, so it stops being anybody's working capital on the way out.
+            uint256 fromMembers = paid < memberFunded ? paid : memberFunded;
+            memberFunded -= fromMembers;
+            reserveToken.safeTransfer(member, paid);
+            emit RefundPaid(member, paid);
+        }
+    }
+
+    /// @notice pays what is still owed to members whose refunds outran the cash.
+    /// @dev Before claims, and permissionless for the same reason `distributeCarry` is: a member
+    /// waiting on their own money should not also be waiting on somebody remembering to run this.
+    function payRefundsOwed() external returns (uint256 paid) {
+        for (uint256 i = 0; i < refundees.length && held() > 0; i++) {
+            address member = refundees[i];
+            uint256 owed = refundOwedTo[member];
+            if (owed == 0) continue;
+            uint256 available = held();
+            uint256 take = owed < available ? owed : available;
+            refundOwedTo[member] = owed - take;
+            refundsOwed -= take;
+            paid += take;
+            uint256 fromMembers = take < memberFunded ? take : memberFunded;
+            memberFunded -= fromMembers;
+            reserveToken.safeTransfer(member, take);
+            emit RefundPaid(member, take);
+        }
+        uint256 i2 = 0;
+        while (i2 < refundees.length) {
+            if (refundOwedTo[refundees[i2]] == 0) {
+                refundees[i2] = refundees[refundees.length - 1];
+                refundees.pop();
+            } else {
+                i2++;
+            }
+        }
+    }
+
+    /// @notice what members are still owed on refunds the pool could not cover.
+    function refundOwedOf(address member) external view returns (uint256) {
+        return refundOwedTo[member];
+    }
+
     /// @notice cash the pool holds that no queued claim is waiting on.
     /// @dev What the co-op may take its fee from. A claim already in the queue is somebody's money
     /// and is never part of this, whatever the co-op is owed.
     function unencumbered() public view returns (uint256) {
+        uint256 spoken = queuedTotal + refundsOwed;
         uint256 balance = held();
-        return balance > queuedTotal ? balance - queuedTotal : 0;
+        return balance > spoken ? balance - spoken : 0;
     }
 
     /// @notice pays the co-op what it is owed, without queueing for it.
@@ -542,15 +622,6 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// thing it now means: cash from anyone else would burn claims whose obligations nobody had
     /// paid, leaving members owing with nothing holding the debt. Putting working capital in is
     /// `fund`, which buys positions rather than settling them.
-    /// @notice what `receiveRepayment` was called before, kept for the upgrade.
-    /// @dev The ledger and this pool are separate proxies and cannot be upgraded in one
-    /// transaction, so for the moment between them one of the two is old. The old ledger calls
-    /// `donate`; without this, every repayment in that window would revert. Upgrade this pool
-    /// first, then the ledger, then delete this.
-    function donate(uint256 amount) external {
-        _receiveRepayment(amount);
-    }
-
     function receiveRepayment(uint256 amount) external {
         _receiveRepayment(amount);
     }

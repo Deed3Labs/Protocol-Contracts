@@ -102,6 +102,45 @@
     {
       "type": "event",
       "anonymous": false,
+      "name": "CapitalWithdrawn",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "funder",
+          "indexed": true
+        },
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CarryPaid",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "to",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
       "name": "ClaimPaid",
       "inputs": [
         {
@@ -112,6 +151,35 @@
         {
           "type": "address",
           "name": "merchant",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CoopIncomeRecipientUpdated",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "recipient",
+          "indexed": true
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "CoopIncomeWithdrawn",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "paidTo",
           "indexed": true
         },
         {
@@ -146,6 +214,35 @@
         {
           "type": "uint8",
           "name": "version",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PositionAdvanced",
+      "inputs": [
+        {
+          "type": "address",
+          "name": "funder",
+          "indexed": true
+        },
+        {
+          "type": "uint256",
+          "name": "amount",
+          "indexed": false
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "anonymous": false,
+      "name": "PositionSettled",
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount",
           "indexed": false
         }
       ]
@@ -311,6 +408,39 @@
     },
     {
       "type": "function",
+      "name": "advancedOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "advancedTotal",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "canPayNext",
       "constant": true,
       "stateMutability": "view",
@@ -319,6 +449,25 @@
       "outputs": [
         {
           "type": "bool",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "capitalOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
           "name": ""
         }
       ]
@@ -393,6 +542,20 @@
     },
     {
       "type": "function",
+      "name": "coopIncomeRecipient",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "coopTreasury",
       "constant": true,
       "stateMutability": "view",
@@ -402,6 +565,33 @@
         {
           "type": "address",
           "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "distributableCarry",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "distributeCarry",
+      "constant": false,
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "distributed"
         }
       ]
     },
@@ -430,6 +620,20 @@
         }
       ],
       "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "fundersWithCapital",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "address[]",
+          "name": ""
+        }
+      ]
     },
     {
       "type": "function",
@@ -506,6 +710,39 @@
     },
     {
       "type": "function",
+      "name": "idleCapitalOf",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "funder"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "inFlight",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "initialize",
       "constant": false,
       "payable": false,
@@ -532,6 +769,20 @@
         }
       ],
       "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "memberFunded",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
     },
     {
       "type": "function",
@@ -619,6 +870,19 @@
           "name": ""
         }
       ]
+    },
+    {
+      "type": "function",
+      "name": "receiveRepayment",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": []
     },
     {
       "type": "function",
@@ -711,6 +975,19 @@
     },
     {
       "type": "function",
+      "name": "setCoopIncomeRecipient",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "address",
+          "name": "recipient"
+        }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
       "name": "setCoopTreasury",
       "constant": false,
       "payable": false,
@@ -771,6 +1048,20 @@
     },
     {
       "type": "function",
+      "name": "unencumbered",
+      "constant": true,
+      "stateMutability": "view",
+      "payable": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": ""
+        }
+      ]
+    },
+    {
+      "type": "function",
       "name": "upgradeTo",
       "constant": false,
       "payable": false,
@@ -799,6 +1090,46 @@
         }
       ],
       "outputs": []
+    },
+    {
+      "type": "function",
+      "name": "withdrawCapital",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "address",
+          "name": "to"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "taken"
+        }
+      ]
+    },
+    {
+      "type": "function",
+      "name": "withdrawCoopIncome",
+      "constant": false,
+      "payable": false,
+      "inputs": [
+        {
+          "type": "uint256",
+          "name": "amount"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "uint256",
+          "name": "paid"
+        }
+      ]
     }
   ],
   "blockNumber": 0

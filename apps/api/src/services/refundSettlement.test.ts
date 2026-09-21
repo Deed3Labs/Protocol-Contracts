@@ -47,10 +47,32 @@ describe('the refund unwinds rather than pays', () => {
     expect(SETTLE.slice(SETTLE.indexOf('TERM_ABI'), SETTLE.indexOf('];'))).not.toContain('payPlan');
   });
 
-  test('the merchant leg is proportional, and rounding falls to the co-op', () => {
+  test('the merchant leg is proportional to the whole refund, and rounding falls to the co-op', () => {
     // Floor division: the discount absorbs the remainder, so a merchant is never clawed back a
-    // cent they were not paid.
-    expect(SETTLE).toContain('(BigInt(charge.payoutCents) * giving) / BigInt(charge.amountCents)');
+    // cent they were not paid. Against the whole refund, not the reversed part -- the merchant
+    // gives back their share of the sale whether it is cancelled or paid back in cash.
+    expect(SETTLE).toContain('(BigInt(charge.payoutCents) * capped) / BigInt(charge.amountCents)');
+  });
+
+  test('a plan the member paid off can still be refunded, and only once', () => {
+    // Closed used to end it, which left the commonest refund of all impossible: bought it, paid
+    // it, returned it. The issuer caps what comes back at what they paid and will not pay twice.
+    expect(SETTLE).toContain('if (closed && returnable === 0n) return { ok: true };');
+    expect(SETTLE).toContain('await issuer.refundedOf(charge.planId)');
+  });
+
+  test('what went back is read from the chain, not worked out here', () => {
+    expect(SETTLE).toContain("if (parsed?.name !== 'PlanRefundPaid') continue;");
+    expect(SETTLE).toContain('returnedCents,');
+    expect(SETTLE).toContain('carryWithheldCents,');
+  });
+
+  test('the member is told what came back and what was kept', () => {
+    // Somebody who paid $46 and receives $45.60 should not have to ask where the difference went.
+    expect(SETTLE).toContain('is back in your account.');
+    expect(SETTLE).toContain('was kept for the time you had it');
+    // And the old sentence still serves a refund that only cancelled a debt.
+    expect(SETTLE).toContain("'It has been taken off what you owe. Nothing more is due on it.'");
   });
 
   test('nothing needs funding, so no funding message survives', () => {

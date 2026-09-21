@@ -200,6 +200,27 @@ routed through the pool.
 per-funder tracking is for, and it is the reason `capitalFunder` — a single named party — was
 wrong.
 
+### A refund short of cash draws the same way a payout does
+
+A refund can outrun the pool: the merchant may have taken their money out before the purchase came
+back. The pool pays what it holds and records the rest (`refundsOwed`), settled ahead of any claim,
+because money already belonging to a member is not the pool's to pay somebody else with.
+
+**That gap is funded in the same order as a merchant payout** — pool cash, then the yield pool's
+unlent cash, then the reserve — and whoever funds it holds the claim, exactly as they do there. The
+only difference is whose claim it is:
+
+| funding | the funder ends up holding |
+|---|---|
+| a merchant payout | a claim on the **member**, who still owes it |
+| a refund | a claim on the **merchant**, who owes it back |
+
+Both come back the same way: credits reaching a party with an obligation burn against it, so the
+next sale settles it before it pays them anything.
+
+So the draw is one piece of work serving both, and until it exists a member can be left waiting for
+their own money — which is the same timing gap as the payout queue, pointed the other way.
+
 ### Next step: the reserve as funder of last resort
 
 The order above has three sources. A fourth exists and is not wired: **the AssurancePool**, for a
@@ -353,7 +374,9 @@ $46 payment will otherwise ask where the difference went — and the answer shou
 5. **App**: notification and activity copy.
 6. **A fee recipient of its own on TermIssuer**, so carry can reach the pool without the co-op's
    income following it. Nothing built above can be switched on until this lands.
-7. **The reserve as funder of last resort**, once the tier and cap above are decided.
+7. **The draw**: pool, then yield pool, then reserve — for a merchant payout that has come due and
+   for a refund the pool cannot cover, which are the same mechanism. Once the tier and cap above are
+   decided.
 6. **Upgrade** the deployed proxies on Base Sepolia, then refund a part-paid plan end to end and
    check every balance in the table above.
 
