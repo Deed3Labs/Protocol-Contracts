@@ -27,6 +27,7 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     /// @notice thrown when carry would be minted to nobody.
     event RepaymentRouted(address indexed destination, uint256 amount);
     event PayoutPoolUpdated(address indexed payoutPool);
+    event ClaimSettled(address indexed holder, uint256 amount);
 
     error StableCreditInvalidCarryRecipient();
     /// @notice thrown when a purchase's three legs do not sum to zero.
@@ -35,6 +36,8 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
     error StableCreditTreasuryCannotCoverDiscount(uint256 discount, uint256 held);
     /// @notice thrown when an origination would put a member past their ceiling.
     error StableCreditCeilingExceeded(address member, uint256 owed, uint256 ceiling);
+    /// @dev Only the payout pool can say a claim was paid with a member's own money.
+    error StableCreditUnauthorizedSettler(address caller);
 
     /// @notice Most distinct rate bands a repayment will work down in one transfer.
     /// @dev A member holds a handful of tiers and a handful of plans, so this bounds a loop that
@@ -279,6 +282,22 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         emit PurchaseReversed(member, merchant, purchase, payout, discount);
     }
 
+    /// @notice burns a claim that has been paid in cash.
+    /// @dev Called by the payout pool when a member's own repayment is what pays a claim. Their
+    /// obligation went when they paid, and the cash that settled it is leaving now — so the claim
+    /// is burned rather than moved, and supply comes back into step with what members owe.
+    ///
+    /// Deliberately not a burn anybody may call: a claim paid with CAPITAL is not settled at all.
+    /// The member still owes it, so the funder keeps the position and the pool transfers it there
+    /// instead. Only the pool knows which cash paid, so only the pool may say a claim is settled.
+    /// @param holder address whose claim is being extinguished.
+    /// @param amount amount paid.
+    function settleClaim(address holder, uint256 amount) external override {
+        if (_msgSender() != address(payoutPool)) revert StableCreditUnauthorizedSettler(_msgSender());
+        _burn(holder, amount);
+        emit ClaimSettled(holder, amount);
+    }
+
     /// @notice deepens a member's negative balance by carry their issuer has accrued.
     /// @dev The member did not spend anything, so nothing leaves their balance: the obligation
     /// grows and the matching claim is minted to whoever is owed it. Net zero, like every other
@@ -443,11 +462,11 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         uint256 toPayout;
 
         if (address(payoutPool) != address(0)) {
-            uint256 owedToMerchants = payoutPool.shortfall();
+            uint256 owedToMerchants = _payoutPoolNeeds();
             toPayout = owedToMerchants < amount ? owedToMerchants : amount;
             if (toPayout > 0) {
                 reserve.approve(address(payoutPool), toPayout);
-                payoutPool.donate(toPayout);
+                payoutPool.receiveRepayment(toPayout);
                 emit RepaymentRouted(address(payoutPool), toPayout);
             }
         }
@@ -458,6 +477,26 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
             assurancePool.depositIntoBufferReserve(remainder);
             emit RepaymentRouted(address(assurancePool), remainder);
         }
+    }
+
+    /// @notice cash the payout pool is short of what it owes.
+    /// @dev Measured against PAYABLES, not against the queue. A merchant's positive balance is
+    /// already what the co-op owes them -- the payables ledger, kept on chain rather than beside
+    /// it -- and a claim is only that payable asking to be paid. Reserving against the queue alone
+    /// meant that unless a merchant happened to redeem BEFORE a member repaid, the repayment went
+    /// past the pool into loss absorption, where it cannot fund a payout. Merchants then redeemed
+    /// against an empty pool and waited for a manual top-up while the buffer held their money.
+    ///
+    /// Every outstanding claim is `totalSupply()`, because the positive side of this ledger is the
+    /// token itself — and a claim paid in cash is burned rather than moved (`settleClaim`), so the
+    /// total is what is still owed rather than everything ever minted.
+    ///
+    /// Payables before provisions is the intended order. A payable is a present liability; the
+    /// buffer is a provision against future losses, and it still takes everything above them.
+    function _payoutPoolNeeds() private view returns (uint256) {
+        uint256 payables = totalSupply();
+        uint256 funded = payoutPool.held();
+        return payables > funded ? payables - funded : 0;
     }
 
     /// @notice sets the pool repayment value is offered to first.
@@ -611,9 +650,14 @@ contract StableCredit is MutualCredit, UUPSUpgradeable, IStableCredit {
         _;
     }
 
+    /// @dev The payout pool passes as well, and is not made a member to do it. It holds a position
+    /// between a merchant redeeming and the claim being paid -- it has to, because until the cash
+    /// goes out nobody knows whether the claim is settled or bought -- and it is a system contract
+    /// rather than somebody with a credit line. Granting it membership instead would work, and
+    /// would also mean an upgrade that forgot to do so left nobody able to redeem at all.
     modifier senderIsMember(address sender) {
         require(
-            access.isMember(sender) || access.isOperator(sender),
+            access.isMember(sender) || access.isOperator(sender) || sender == address(payoutPool),
             "StableCredit: Sender is not network member"
         );
         _;

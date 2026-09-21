@@ -154,25 +154,95 @@ With this, the money a member repays sits in the pool against the merchant's pay
 exactly the money a refund gives back. **The assurance buffer never enters the refund path**, and
 "we remove the USDC the member paid from the payout pool" is literally what happens.
 
-### Two co-op addresses, so nothing is counted twice
+### The position follows the cash
 
-The positive side of the ledger is the ERC20 itself (`_accrueCredit` mints, `_reverseCredit` burns),
-so `totalSupply()` is every outstanding claim. It is not the target as it stands, because `_pay`
-transfers cash **without burning credits**: at `redeem` the merchant's credits move to
-`coopTreasury`, and at payment the cash leaves while those credits stay. That is correct — the co-op
-bought the receivable and the member still owes it — but it leaves one address holding two unlike
-things:
+A claim paid in cash used to MOVE to the co-op rather than burn, on the grounds that burning would
+leave a member owing with nobody holding the matching claim. That is true of one case and one only.
 
-| | what it is | fund cash against it? |
+| Cash that paid the claim | What happens to the credits | Why |
 |---|---|---|
-| The co-op's 2.5% at origination | income it is owed, a payable like any merchant's | **yes** |
-| Credits bought by paying claims | receivables already settled in cash | **no** — that is the double count |
+| A member's own repayment (`donate`) | **Burned** (`settleClaim`) | Their obligation went when they paid. The claim was backed by that cash, and burning it puts supply back in step with what members owe. |
+| The yield pool (`fund`) | **Transferred to the pool** | It advanced the money and the member still owes it, so it holds the position and earns the carry — exactly as it does on the unsecured tiers it funds (`tierCarryRecipient`). |
+| Co-op capital (`fund`) | **Transferred to the co-op** | Same rule, different funder. The fallback when no funder is named. |
 
-So they get separate addresses, and the target is exact with no new bookkeeping:
+Only the pool knows which cash paid a claim, so only the pool may call a claim settled — hence
+`settleClaim` being restricted to it rather than being a burn anyone can call. The pool holds the
+position between redemption and payment for the same reason: until the claim is paid, nobody knows
+whose money will pay it, and deciding at redemption is what forced the old guess.
 
-```
-target = totalSupply() − balanceOf(receivablesHolder)
-```
+**This is why the earlier draft's `receivablesHolder` is gone.** Nothing accumulates, so there is
+nothing to exclude, and the funding target is simply `totalSupply() − held()`.
+
+### Who funds a payout, and in what order
+
+Three sources, and the order is the whole design rather than a policy anyone sets:
+
+1. **The member's own repayments.** What is normally in the pool by the time a merchant's turn
+   comes. These claims settle; nothing is bought.
+2. **Cash the co-op has put in the pool.** Smoothing money, so the pool is funded between
+   repayments. The co-op holds the positions it pays for.
+3. **The yield pool, for a shortfall.** A claim whose turn has come and whose net 30 has elapsed,
+   with nothing in the pool to pay it, is the obligation that has to be met. It draws on the pool's
+   unlent cash, and the yield pool holds what it funds.
+
+**There is no "early payment" path, and nothing decides to advance.** A merchant is paid when it is
+their turn and the money is there, and queued when it is not — a claim before its net 30 with a
+funded pool is simply paid, and an empty pool means waiting however early or late it is. The only
+thing anyone has to fund deliberately is a claim that is due and unpayable.
+
+So `fund` is not one party's door. Whoever puts capital in holds the positions their money paid for
+(`capitalOf`, drawn down oldest first), and takes back what it never spent (`withdrawCapital`). The
+co-op would ordinarily leave idle capital in the yield pool and earn the return on it; funding the
+payout pool directly is for smoothing and emergencies, which is why it stays open rather than being
+routed through the pool.
+
+**Carry splits the same way as the positions: by who funded the payout.** That is what the
+per-funder tracking is for, and it is the reason `capitalFunder` — a single named party — was
+wrong.
+
+### Next step: the reserve as funder of last resort
+
+The order above has three sources. A fourth exists and is not wired: **the AssurancePool**, for a
+claim whose turn has come and whose net 30 has elapsed when the payout pool is empty and the yield
+pool has nothing unlent. Not for paying anybody early — that needs no decision and no reserve, only
+a funded pool — but for the obligation that is due and that somebody must meet. That is one of the
+things a reserve is for, and the machinery is already here: whoever's capital pays a claim holds the
+position and earns carry on the float they bore, so the reserve would be another funder in
+`capitalOf`, with positions and the carry split following on their own.
+
+The order to draw in, each only when the one before is exhausted:
+
+1. cash the pool holds (members' repayments, then co-op smoothing capital)
+2. the yield pool's unlent cash
+3. the assurance reserve
+
+**What it already does right.** `poolExposure()` is `stableCredit.totalSupply()` — every outstanding
+claim, what merchants are owed included — narrowed by an `exposureSource` where one is set (the
+CollateralRegistry, reporting uncollateralised exposure). So it already measures itself against what
+is uncovered rather than against everything.
+
+**And burning settled claims makes that honest.** While a claim paid in cash stayed on the ledger,
+supply stayed inflated and the reserve held cover against obligations that had already been settled.
+On Base Sepolia today the ledger says 125.03 of exposure where members owe 0.026197.
+
+> **Open, and the reason this is its own step:** which reserve tier may meet a due claim, and up to
+> what. Paying one is not a loss — the position comes back, with carry — but the cash cannot absorb
+> a default while it is out. Excess is free to lend and usually empty; the buffer is first-loss
+> money; the primary reserve is what the RTD is measured against, so paying out of it lowers the
+> ratio on paper with nothing lost. The answer wants a tier and a cap, not just a permission.
+
+**The carry split is built.** Carry reaches the pool because the issuers name it as their recipient
+(`scripts/configure-carry-recipients.mjs`, to be run after the upgrade, not before). The pool splits
+it by each funder's share of every claim outstanding — three fifths of the carry for three fifths of
+the float — and what no funder bore goes to the co-op, which is all of it until somebody funds a
+payout. `tierCarryRecipient` is left alone: a tier the LendingPool funds already names it.
+
+> **Watch:** `receiveRepayment` (once `donate`) means "a member paid down their balance", and that
+> is what makes claims burn. Capital must never arrive that way, whoever sends it — burning a claim
+> whose member still owes leaves an obligation with nothing holding it. The contract now refuses
+> anyone but the ledger.
+
+### The co-op's income
 
 The co-op's income is then funded in the pool like anyone else's and **withdrawn by role to a
 treasury address**, with the address settable only by that role.
@@ -190,17 +260,16 @@ The co-op takes its fee as soon as the money is there, and can never take cash a
 merchant who is waiting. Both halves of that matter: it is owed its fee, and it is the one party here
 that must not be able to pay itself first.
 
-> **Checked on Base Sepolia, 2026-09-21: they are the same address.**
->
-> ```
-> coopTreasury  (PayoutPool)  0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
-> carryTreasury (TermIssuer)  0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA
-> holding 27.533081 credits · totalSupply 125.033081 · pool holds 0 USDC, nothing queued
-> ```
->
-> So the funding target is wrong until they are apart, and the split is step zero. Nothing has been
-> settled in cash yet on this chain, so the balance is fee and carry income only — the two kinds have
-> not yet been mixed in that address, and separating them now costs nothing.
+Where the money LANDS is a separate question from who holds the claim, and separately settable
+(`coopIncomeRecipient`). The co-op's multisig holds the position and its balance falls when it is
+paid; the cash can go to an on-ramp account, another custodian, or whatever pays the co-op's bills.
+Unset, it goes to the holder.
+
+> **On Base Sepolia, 2026-09-21**, `coopTreasury` (PayoutPool) and `carryTreasury` (TermIssuer) are
+> the same address, `0x895d44d10d1b7B4F5f38E2ae2322539Cf93F7AAA`, holding 27.533081 credits against
+> a totalSupply of 125.033081. An earlier draft made splitting them step zero, to keep the co-op's
+> income apart from positions it had bought. Burning settled claims removes that need: nothing
+> accumulates, so one address can hold both and the two may stay as they are.
 
 ### StableCredit — a refund path that moves money
 
@@ -256,17 +325,21 @@ $46 payment will otherwise ask where the difference went — and the answer shou
 
 ## 4. Order to build
 
-0. **Split the two co-op addresses**, and change `_routeRepayment` to fund against payables. Without
-   this the pool is not funded for refunds at all, and everything below it is untested in the case
-   that matters. On Base Sepolia the pool also needs funding directly, since the 125 already in the
-   buffer cannot be moved to it — test USDC, so no loss, but on a live chain this is the difference
-   between member repayments paying merchants and a treasury paying them by hand.
+0. **Route against payables, and settle claims paid with members' money.** Without this the pool is
+   not funded for refunds at all, and everything below it is untested in the case that matters.
+   Deploying it needs three things beyond the upgrade: the pool must be granted **network
+   membership** (it holds a position between redemption and payment, and cannot pay a claim
+   without it), `capitalFunder` should name the yield pool once it funds payouts, and on Base
+   Sepolia the pool needs funding directly, since the 125 already in the buffer cannot be moved to
+   it. Test USDC, so no loss — but on a live chain this is the difference between member repayments
+   paying merchants and a treasury paying them by hand.
 1. **PayoutPool.payRefund** — pay from `held()`, and the role-gated withdrawal of the co-op's income
    to its treasury address.
 2. **StableCredit.repayRefund**, including the redeemed-merchant path, and its tests.
 3. **TermIssuer.closePlanForRefund** extended, with the proportional paid share.
 4. **API** split and call, with the figures returned.
 5. **App**: notification and activity copy.
+6. **The reserve as funder of last resort**, once the tier and cap above are decided.
 6. **Upgrade** the deployed proxies on Base Sepolia, then refund a part-paid plan end to end and
    check every balance in the table above.
 

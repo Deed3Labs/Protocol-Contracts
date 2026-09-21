@@ -11,6 +11,14 @@ contract CreditIssuerHarness is CreditIssuer {
     function initialize(address _stableCredit) external initializer {
         __CreditIssuer_init(_stableCredit);
     }
+
+    /// @notice charges a member carry and names who is owed it.
+    /// @dev What an issuer does every cycle, reduced to the one call. Tests of who ends up holding
+    /// carry need it charged from an issuer, because the ledger will not mint a claim for anyone
+    /// else.
+    function accrueCarryTo(address member, address recipient, uint256 amount) external {
+        stableCredit.accrueCarry(member, recipient, amount);
+    }
 }
 
 /// @notice Test-only issuer that owns a stated share of a member's debt.

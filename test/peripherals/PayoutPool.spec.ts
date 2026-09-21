@@ -44,6 +44,10 @@ describe("PayoutPool", function () {
     }
     await registry.registerMerchant(merchant.address, NET_30, 50_000n * ONE_USDC, 200n);
 
+    // The ledger has to know this pool: it is where repayments are routed, and it is the one
+    // contract allowed to say a claim was settled rather than bought.
+    await ctx.stableCredit.connect(ctx.admin).setPayoutPool(await pool.getAddress());
+
     // A member spends, so the merchant holds a real positive balance.
     await drawCredit(ctx, 1_000n * ONE_USDC);
     await ctx.stableCredit.connect(merchant).approve(await pool.getAddress(), ethers.MaxUint256);
@@ -64,20 +68,22 @@ describe("PayoutPool", function () {
       expect(await ctx.usdc.balanceOf(merchant.address)).to.equal(1_000n * ONE_USDC);
     });
 
-    it("moves the position to the co-op rather than destroying it", async function () {
-      // Burning would leave the member still owing and nobody holding the matching claim, which
-      // is the shape of lost debt even though nothing was lost.
+    it("moves the position to whoever funded it rather than destroying it", async function () {
+      // Paid with capital, so the member still owes it: burning would leave an obligation with
+      // nobody holding the matching claim, which is the shape of lost debt even though nothing
+      // was lost. The funder holds it until the member repays.
+      await ctx.access.connect(ctx.operator).grantMember(funder.address);
       await fund(1_000n * ONE_USDC);
       const supplyBefore = await ctx.stableCredit.totalSupply();
 
       await pool.connect(merchant).redeem(1_000n * ONE_USDC);
 
       expect(await ctx.stableCredit.balanceOf(merchant.address)).to.equal(0n);
-      expect(await ctx.stableCredit.balanceOf(coop.address)).to.equal(1_000n * ONE_USDC);
+      expect(await ctx.stableCredit.balanceOf(funder.address)).to.equal(1_000n * ONE_USDC);
       expect(await ctx.stableCredit.totalSupply()).to.equal(supplyBefore);
-      // Still nets: what the member owes is what the co-op now holds.
+      // Still nets: what the member owes is what the funder now holds.
       expect(await ctx.stableCredit.creditBalanceOf(ctx.member.address))
-        .to.equal(await ctx.stableCredit.balanceOf(coop.address));
+        .to.equal(await ctx.stableCredit.balanceOf(funder.address));
     });
 
     it("pays a merchant by drawdown first, leaving only the surplus redeemable", async function () {
@@ -225,12 +231,21 @@ describe("PayoutPool", function () {
       expect(await pool.shortfall()).to.equal(0n);
     });
 
-    it("takes a top-up from anybody, since refusing money would be strange", async function () {
+    it("takes a top-up from anybody, through the door meant for capital", async function () {
+      // `donate` used to be open to anyone, on the grounds that refusing money is strange. It is
+      // now the ledger's alone, because what arrives there decides whether a claim is settled or
+      // bought: cash from anyone else would burn claims whose obligations nobody had paid. Giving
+      // the pool money still works, through `fund`, which buys the position like any capital.
       await pool.connect(merchant).redeem(1_000n * ONE_USDC);
       await ctx.usdc.mint(second.address, 1_000n * ONE_USDC);
       await ctx.usdc.connect(second).approve(await pool.getAddress(), 1_000n * ONE_USDC);
 
-      await pool.connect(second).donate(1_000n * ONE_USDC);
+      await expect(
+        pool.connect(second).receiveRepayment(1_000n * ONE_USDC)
+      ).to.be.revertedWithCustomError(pool, "PayoutPoolInvalidAddress");
+
+      await pool.grantRole(await pool.FUNDER_ROLE(), second.address);
+      await pool.connect(second).fund(1_000n * ONE_USDC);
       expect(await pool.shortfall()).to.equal(0n);
     });
   });

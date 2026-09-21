@@ -66,7 +66,68 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice Total still owed on queued claims.
     uint256 public queuedTotal;
 
-    uint256[43] private __gap;
+    /* ========== ADDED AFTER DEPLOYMENT ==========
+     *
+     * Everything below this line came later, and its order is fixed by what is already on chain:
+     * new storage goes after every variable the deployed implementation knows about, never among
+     * them. Inserting `memberFunded` and `coopIncomeRecipient` further up compiled perfectly well
+     * and would have shifted `claims`, `nextUnpaid` and `queuedTotal` underneath a live pool --
+     * the upgrade validator refused it, which is what that check is for.
+     */
+
+    /// @notice cash here that came from members paying down their balances.
+    /// @dev The position follows the cash, and this is what tells them apart.
+    ///
+    /// A claim paid with a member's own repayment is SETTLED, to the extent they have paid: the
+    /// obligation went as they paid it, so those credits are burned and supply comes back into step
+    /// with what is owed. A member clearing the lot after one cycle and a member three instalments
+    /// into a twelve settle their share of it alike -- the rest stays a claim until they pay it.
+    /// Moving them instead left the co-op holding a claim on nobody, which is what accumulated
+    /// and what made "already paid for" impossible to tell from "still owed".
+    ///
+    /// A claim paid before the member has repaid is bought: somebody's capital went out and the
+    /// member still owes it, so the credits move to whoever put the money in. That party now holds
+    /// the position, exactly as the LendingPool does on the unsecured tiers it funds.
+    uint256 public memberFunded;
+
+    /// @notice where the co-op's income is PAID, when that is not where it accrues.
+    /// @dev Two questions, two addresses. `coopTreasury` is who holds the claim -- the co-op's
+    /// multisig, whose balance falls when it is paid. This is where the money lands, which an
+    /// operator may well want somewhere else entirely: an on-ramp account, a different custodian,
+    /// an account that pays the co-op's own bills. Unset means it lands with the holder of the
+    /// claim, which is the ordinary case.
+    address public coopIncomeRecipient;
+
+    /// @notice capital each funder has here that has not bought a position yet.
+    /// @dev Positions land with whoever actually paid for them, so more than one party can fund
+    /// payouts without anybody having to work out afterwards whose money went where. The yield pool
+    /// advancing cash so a merchant is paid on time holds what it funded; the co-op funding
+    /// directly holds what it funded, on the same terms.
+    mapping(address => uint256) public capitalOf;
+
+    /// @dev Funders with capital still unspent, oldest first. Drawn down in that order, so the
+    /// money that has been waiting longest is the money that gets used.
+    address[] private funders;
+
+    /// @notice position principal each funder is currently carrying, having paid a claim for it.
+    /// @dev What the carry is split by. A funder bearing the float between a merchant being paid
+    /// and a member repaying earns the carry on what they are bearing, in proportion -- the rule
+    /// the unsecured tiers already follow, applied where the issuer cannot see who funded what.
+    mapping(address => uint256) public advancedOf;
+    uint256 public advancedTotal;
+    /// @dev Funders carrying a position, for the split to walk.
+    address[] private carriers;
+
+    /// @notice credits held between a merchant redeeming and their claim being paid.
+    /// @dev Tracked rather than inferred from the balance, because carry arrives as credits too:
+    /// without this the pool could not tell a position in transit from carry to be split, and
+    /// would settle one as the other.
+    uint256 public inFlight;
+
+    /// @dev Eight slots from the gap: memberFunded, coopIncomeRecipient, capitalOf, funders,
+    /// advancedOf, advancedTotal, carriers, inFlight.
+    uint256[35] private __gap;
+
 
     error PayoutPoolInvalidAddress();
     error PayoutPoolNothingToRedeem(address merchant);
@@ -79,6 +140,12 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     event ClaimPaid(uint256 indexed claimId, address indexed merchant, uint256 amount);
     event Funded(address indexed from, uint256 amount);
     event ShortfallReported(uint256 shortfall);
+    event CoopIncomeWithdrawn(address indexed paidTo, uint256 amount);
+    event CoopIncomeRecipientUpdated(address indexed recipient);
+    event CapitalWithdrawn(address indexed funder, address indexed to, uint256 amount);
+    event CarryPaid(address indexed to, uint256 amount);
+    event PositionSettled(uint256 amount);
+    event PositionAdvanced(address indexed funder, uint256 amount);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -176,7 +243,18 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         // The position changes hands here rather than at payout, so a queued merchant is owed by
         // this pool and no longer by the network. The merchant approves this contract for the
         // credits, the same way any transfer on their behalf works.
-        stableCredit.transferFrom(merchant, coopTreasury, redeeming);
+        // The pool holds the position until the claim is paid, because until then nobody knows
+        // whose money will pay it -- the member's, and it is settled, or somebody's capital, and
+        // they own it. Deciding at redemption is what forced the old guess.
+        stableCredit.transferFrom(merchant, address(this), redeeming);
+        inFlight += redeeming;
+        // A funder redeeming is taking back what they advanced, so they stop carrying it.
+        uint256 carrying = advancedOf[merchant];
+        if (carrying > 0) {
+            uint256 returned = carrying < redeeming ? carrying : redeeming;
+            advancedOf[merchant] = carrying - returned;
+            advancedTotal -= returned;
+        }
 
         uint32 window = merchantRegistry.payoutWindowOf(merchant);
         claimId = claims.length;
@@ -232,7 +310,135 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
         queuedTotal -= claim.amount;
         nextUnpaid = claimId + 1;
         reserveToken.safeTransfer(claim.merchant, claim.amount);
+        _placePosition(claim.amount);
         emit ClaimPaid(claimId, claim.merchant, claim.amount);
+    }
+
+    /// @notice the position follows the cash that paid for it.
+    /// @dev Settled where a member's repayment paid it: their obligation went when they paid, so
+    /// the credits are burned and supply comes back into step with what is owed. Sold where
+    /// capital paid it: the member still owes, and the funder holds the claim until they do.
+    function _placePosition(uint256 amount) private {
+        // Bounded by what came in with a redemption, never by the balance: carry sits here too,
+        // and settling that as if it were a position would burn somebody's earnings.
+        if (inFlight < amount) amount = inFlight;
+        inFlight -= amount;
+        uint256 settled = amount < memberFunded ? amount : memberFunded;
+        if (settled > 0) {
+            memberFunded -= settled;
+            stableCredit.settleClaim(address(this), settled);
+            emit PositionSettled(settled);
+        }
+        uint256 advanced = amount - settled;
+        if (advanced == 0) return;
+
+        // Each funder gets the position their own cash paid for, oldest capital first. Nobody has
+        // to reconstruct afterwards whose money went where, and a funder's return is exactly what
+        // it funded.
+        for (uint256 i = 0; i < funders.length && advanced > 0; i++) {
+            address funder = funders[i];
+            uint256 capital = capitalOf[funder];
+            if (capital == 0) continue;
+            uint256 take = capital < advanced ? capital : advanced;
+            capitalOf[funder] = capital - take;
+            advanced -= take;
+            if (advancedOf[funder] == 0) carriers.push(funder);
+            advancedOf[funder] += take;
+            advancedTotal += take;
+            stableCredit.transfer(funder, take);
+            emit PositionAdvanced(funder, take);
+        }
+        _forgetSpentFunders();
+
+        // Cash from before any of this was tracked, or a top-up the ledger never saw. The co-op
+        // holds it rather than the position vanishing.
+        if (advanced > 0) {
+            stableCredit.transfer(coopTreasury, advanced);
+            emit PositionAdvanced(coopTreasury, advanced);
+        }
+    }
+
+    /// @notice carry sitting here waiting to be split.
+    /// @dev Everything the pool holds that is not a position in transit. Carry reaches the pool
+    /// because the issuers name it as their recipient; it is credits, like any other claim, and it
+    /// belongs to whoever bore the float it was charged for.
+    function distributableCarry() public view returns (uint256) {
+        uint256 balance = stableCredit.balanceOf(address(this));
+        return balance > inFlight ? balance - inFlight : 0;
+    }
+
+    /// @notice hands carry to whoever bore the float it was charged for.
+    /// @dev Each funder's share is what they are carrying measured against EVERY claim outstanding,
+    /// not against what funders carry between them. A funder bearing 600 of a 1,000 float earns
+    /// three fifths of the carry; dividing by the funders alone would hand them all of it for
+    /// bearing part of it, which is not what "split by who funded the payout" means.
+    ///
+    /// What is left goes to the co-op: the float nobody else funded, plus the truncation on each
+    /// share. That is the right answer at both ends -- with nobody funding anything the co-op takes
+    /// all of it, exactly as it did before any of this existed, and with the yield pool bearing
+    /// half the float its depositors earn half.
+    ///
+    /// Permissionless, because it moves nobody's money anywhere but where it is owed, and a split
+    /// that needed an operator would quietly stop happening.
+    ///
+    /// In proportion to positions held now rather than to how long each was held. A distribution
+    /// run often enough is the same thing, and integrating over time on chain is not worth what it
+    /// would cost -- the sweep calls this on its pass.
+    function distributeCarry() external returns (uint256 distributed) {
+        distributed = distributableCarry();
+        if (distributed == 0) return 0;
+
+        // Every claim outstanding, less the carry being handed out and the positions in transit:
+        // what is being measured is the float the carry was charged for, not this pool's holdings.
+        uint256 float_ = stableCredit.totalSupply();
+        float_ = float_ > distributed ? float_ - distributed : 0;
+        float_ = float_ > inFlight ? float_ - inFlight : 0;
+
+        uint256 left = distributed;
+        if (float_ > 0) {
+            for (uint256 i = 0; i < carriers.length; i++) {
+                address carrier = carriers[i];
+                uint256 carrying = advancedOf[carrier];
+                if (carrying == 0) continue;
+                uint256 share = (distributed * carrying) / float_;
+                if (share == 0) continue;
+                left -= share;
+                stableCredit.transfer(carrier, share);
+                emit CarryPaid(carrier, share);
+            }
+            _forgetSettledCarriers();
+        }
+        // The rest: the float the co-op bore itself, and the truncation on every share above.
+        if (left > 0) {
+            stableCredit.transfer(coopTreasury, left);
+            emit CarryPaid(coopTreasury, left);
+        }
+    }
+
+    /// @dev Keeps the carrier list to funders still carrying something.
+    function _forgetSettledCarriers() private {
+        uint256 i = 0;
+        while (i < carriers.length) {
+            if (advancedOf[carriers[i]] == 0) {
+                carriers[i] = carriers[carriers.length - 1];
+                carriers.pop();
+            } else {
+                i++;
+            }
+        }
+    }
+
+    /// @dev Keeps the list to funders who still have something in it, so the loop above stays short.
+    function _forgetSpentFunders() private {
+        uint256 i = 0;
+        while (i < funders.length) {
+            if (capitalOf[funders[i]] == 0) {
+                funders[i] = funders[funders.length - 1];
+                funders.pop();
+            } else {
+                i++;
+            }
+        }
     }
 
     /* ========== FUNDING ========== */
@@ -244,7 +450,81 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// a multisig action and this only reports how much of one is needed.
     function fund(uint256 amount) external onlyRole(FUNDER_ROLE) {
         reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
+        if (capitalOf[_msgSender()] == 0) funders.push(_msgSender());
+        capitalOf[_msgSender()] += amount;
         emit Funded(_msgSender(), amount);
+    }
+
+    /// @notice funders with capital here that has not been spent.
+    function fundersWithCapital() external view returns (address[] memory) {
+        return funders;
+    }
+
+    /// @notice where the co-op's income is paid, which need not be where it accrues.
+    function setCoopIncomeRecipient(address recipient) external onlyRole(OPERATOR_ROLE) {
+        if (recipient == address(0)) revert PayoutPoolInvalidAddress();
+        coopIncomeRecipient = recipient;
+        emit CoopIncomeRecipientUpdated(recipient);
+    }
+
+    /// @notice what a funder could take back right now.
+    /// @dev Their own unspent capital, and never more cash than is actually free: a queued claim's
+    /// money is somebody else's, and members' repayments were never the funder's at all.
+    function idleCapitalOf(address funder) public view returns (uint256) {
+        uint256 free = unencumbered();
+        uint256 notMembers = held() > memberFunded ? held() - memberFunded : 0;
+        if (notMembers < free) free = notMembers;
+        uint256 own = capitalOf[funder];
+        return own < free ? own : free;
+    }
+
+    /// @notice takes a funder's own idle capital back out.
+    /// @dev Only what they never spent. Capital that has already paid a claim is not here to be
+    /// withdrawn -- it bought the position, and the funder recovers it by redeeming that position
+    /// as the member repays, which for a plan split over cycles is exactly as those arrive.
+    function withdrawCapital(uint256 amount, address to) external returns (uint256 taken) {
+        if (to == address(0)) revert PayoutPoolInvalidAddress();
+        uint256 idle = idleCapitalOf(_msgSender());
+        taken = amount < idle ? amount : idle;
+        if (taken == 0) revert PayoutPoolNothingToRedeem(_msgSender());
+        capitalOf[_msgSender()] -= taken;
+        _forgetSpentFunders();
+        reserveToken.safeTransfer(to, taken);
+        emit CapitalWithdrawn(_msgSender(), to, taken);
+    }
+
+    /// @notice cash the pool holds that no queued claim is waiting on.
+    /// @dev What the co-op may take its fee from. A claim already in the queue is somebody's money
+    /// and is never part of this, whatever the co-op is owed.
+    function unencumbered() public view returns (uint256) {
+        uint256 balance = held();
+        return balance > queuedTotal ? balance - queuedTotal : 0;
+    }
+
+    /// @notice pays the co-op what it is owed, without queueing for it.
+    /// @dev The 2.5% was never the merchant's money: on a $100 purchase the merchant is owed
+    /// $97.50 and the co-op $2.50, and a $100 repayment covers both. So the fee is not a claim and
+    /// takes no place in the queue -- but it comes only out of cash no queued claim is waiting on,
+    /// because the co-op is the one party here that must not be able to pay itself first.
+    ///
+    /// The credits are burned: the co-op's fee is paid out of members' own repayments, so the
+    /// position is settled rather than sold to anybody.
+    function withdrawCoopIncome(uint256 amount) external onlyRole(OPERATOR_ROLE) returns (uint256 paid) {
+        uint256 owed = stableCredit.balanceOf(coopTreasury);
+        paid = amount < owed ? amount : owed;
+        uint256 available = unencumbered();
+        if (paid > available) paid = available;
+        // Only out of members' own money: capital advanced to pay merchants early is not the fee.
+        if (paid > memberFunded) paid = memberFunded;
+        if (paid == 0) revert PayoutPoolNothingToRedeem(coopTreasury);
+
+        // The claim comes off the holder's balance; the money goes where the co-op wants it. A
+        // multisig holding the position does not have to be the account that receives the cash.
+        address recipient = coopIncomeRecipient == address(0) ? coopTreasury : coopIncomeRecipient;
+        memberFunded -= paid;
+        stableCredit.settleClaim(coopTreasury, paid);
+        reserveToken.safeTransfer(recipient, paid);
+        emit CoopIncomeWithdrawn(recipient, paid);
     }
 
     /// @notice moves the co-op's side of the position.
@@ -256,8 +536,30 @@ contract PayoutPool is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice takes value in from anybody willing to send it.
     /// @dev The multisig top-up path, and deliberately open: refusing money because the sender
     /// lacks a role would be a strange way to run a pool that reports being short.
+    /// @notice a member paid down their balance, and this is that money.
+    /// @dev Only the ledger may call it, because what arrives here decides whether a claim is
+    /// settled or sold. It was once `donate`, open to anybody, which is the wrong name for the only
+    /// thing it now means: cash from anyone else would burn claims whose obligations nobody had
+    /// paid, leaving members owing with nothing holding the debt. Putting working capital in is
+    /// `fund`, which buys positions rather than settling them.
+    /// @notice what `receiveRepayment` was called before, kept for the upgrade.
+    /// @dev The ledger and this pool are separate proxies and cannot be upgraded in one
+    /// transaction, so for the moment between them one of the two is old. The old ledger calls
+    /// `donate`; without this, every repayment in that window would revert. Upgrade this pool
+    /// first, then the ledger, then delete this.
     function donate(uint256 amount) external {
+        _receiveRepayment(amount);
+    }
+
+    function receiveRepayment(uint256 amount) external {
+        _receiveRepayment(amount);
+    }
+
+    function _receiveRepayment(uint256 amount) private {
+        if (_msgSender() != address(stableCredit)) revert PayoutPoolInvalidAddress();
         reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
+        // Members' own money, which settles positions rather than buying them.
+        memberFunded += amount;
         emit Funded(_msgSender(), amount);
     }
 }
