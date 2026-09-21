@@ -34,7 +34,12 @@ export const TIER_COLOR: Record<TierKey, string> = {
  * and pushes the legend onto two lines at phone width. Floored rather than rounded so a limit is
  * never overstated.
  */
-const whole = (v: number) => money(Math.floor(v));
+/*
+ * Round figures, except where rounding would say nothing is drawn when something is. A line with
+ * dust on it is a line the ledger holds uncleared, and the member cannot repay what the page says
+ * is not there.
+ */
+const whole = (v: number) => (v > 0 && v < 1 ? money(v) : money(Math.floor(v)));
 
 /** Legend label. The phone drops "(CLRUSD)" from savings and "/ cycle" from every rate. */
 function tierName(tier: CreditTier, desktop: boolean) {
