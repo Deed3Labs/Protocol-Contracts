@@ -29,6 +29,9 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
 
     /// @notice emitted the first time the pool takes in a given token.
     event HeldTokenRegistered(address indexed token);
+    event PayoutPoolUpdated(address indexed pool);
+    event LentToPayoutPool(uint256 amount, uint256 outstanding);
+    event RepaidFromPayoutPool(uint256 amount, uint256 outstanding);
 
     /* ========== ERRORS ========== */
 
@@ -99,6 +102,18 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
     address[] private heldTokenList;
     /// @dev token => already recorded
     mapping(address => bool) private heldTokenKnown;
+
+    /* ========== ADDED AFTER DEPLOYMENT ==========
+     *
+     * After every variable the live implementation knows about, never among them.
+     */
+
+    /// @notice the payout pool this reserve will lend to when a claim has come due.
+    address public payoutPool;
+    /// @notice reserve tokens out with the payout pool, waiting on members to pay.
+    uint256 public lentToPayoutPool;
+    /// @dev How much of that came out of the buffer, so repayment restores the cushion first.
+    uint256 public bufferOwed;
 
     /* ========== INITIALIZER ========== */
 
@@ -527,6 +542,74 @@ contract AssurancePool is IAssurancePool, OwnableUpgradeable, ReentrancyGuardUpg
         reserveToken.safeTransfer(account, amount);
         emit AccountReimbursed(account, amount);
         return amount;
+    }
+
+    /// @notice lends reserve tokens to the payout pool so a claim that has come due can be paid.
+    /// @dev The last resort, and one of the things a reserve is for: a merchant whose turn has come
+    /// and whose terms have run out is owed money, and somebody must find it.
+    ///
+    /// Excess first, then the buffer, never the primary reserve. Excess is spare by definition. The
+    /// buffer is first-loss money and this is not a loss -- the position comes back, with carry --
+    /// so covering a timing gap is what it is for; but only while the primary reserve is where
+    /// policy says it should be, because a network already short of cover has no business lending
+    /// its cushion out. The primary reserve is never touched: the ratio is measured against it, and
+    /// draining it would report the co-op as under-reserved with nothing lost.
+    ///
+    /// Repaid in reserve tokens rather than held as a position. This pool's books are denominated
+    /// in the reserve token, so a credit claim sitting here would read as a hole in the cover until
+    /// somebody redeemed it.
+    /// @param amount what the pool is short.
+    /// @return lent what this pool could actually put up, which may be nothing.
+    function lendToPayoutPool(uint256 amount) external nonReentrant returns (uint256 lent) {
+        require(payoutPool != address(0) && _msgSender() == payoutPool, "AssurancePool: not the payout pool");
+
+        uint256 fromExcess = excessBalance() < amount ? excessBalance() : amount;
+        if (fromExcess > 0) {
+            excessReserve[address(reserveToken)] -= fromExcess;
+            lent = fromExcess;
+        }
+
+        uint256 short = amount - lent;
+        // The buffer only while the primary reserve is at target: cushion for a timing gap, yes;
+        // cushion for a timing gap while the cover itself is short, no.
+        if (short > 0 && hasValidRTD()) {
+            uint256 fromBuffer = bufferBalance() < short ? bufferBalance() : short;
+            if (fromBuffer > 0) {
+                bufferReserve[address(reserveToken)] -= fromBuffer;
+                bufferOwed += fromBuffer;
+                lent += fromBuffer;
+            }
+        }
+
+        if (lent > 0) {
+            lentToPayoutPool += lent;
+            reserveToken.safeTransfer(payoutPool, lent);
+            emit LentToPayoutPool(lent, lentToPayoutPool);
+        }
+    }
+
+    /// @notice takes back what was lent, into the reserve it came from.
+    /// @dev Buffer first on the way home, mirroring the way out: the cushion is restored before
+    /// anything is called spare again.
+    function repayFromPayoutPool(uint256 amount) external nonReentrant {
+        reserveToken.safeTransferFrom(_msgSender(), address(this), amount);
+        uint256 owed = lentToPayoutPool < amount ? lentToPayoutPool : amount;
+        lentToPayoutPool -= owed;
+
+        uint256 toBuffer = amount < bufferOwed ? amount : bufferOwed;
+        if (toBuffer > 0) {
+            bufferOwed -= toBuffer;
+            bufferReserve[address(reserveToken)] += toBuffer;
+        }
+        uint256 rest = amount - toBuffer;
+        if (rest > 0) excessReserve[address(reserveToken)] += rest;
+        emit RepaidFromPayoutPool(amount, lentToPayoutPool);
+    }
+
+    /// @notice names the payout pool this reserve will lend to.
+    function setPayoutPool(address pool) external onlyOperator {
+        payoutPool = pool;
+        emit PayoutPoolUpdated(pool);
     }
 
     /// @notice this function reallocates needed reserves from the excess reserve to the

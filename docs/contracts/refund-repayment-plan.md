@@ -221,7 +221,35 @@ next sale settles it before it pays them anything.
 So the draw is one piece of work serving both, and until it exists a member can be left waiting for
 their own money — which is the same timing gap as the payout queue, pointed the other way.
 
-### Next step: the reserve as funder of last resort
+### Built: the draw, and what it is not
+
+`PayoutPool.drawForDueClaim()` finds the money for a claim whose turn has come **and** whose terms
+have run out. It refuses a claim that is not due (`PayoutPoolClaimNotDue`), so nothing in it can be
+used to pay anybody early — a funded pool already does that, and an unfunded one is a wait.
+
+The yield pool's unlent cash first, then `AssurancePool.lendToPayoutPool`: excess, then buffer while
+`hasValidRTD()` holds, never the primary reserve. Repayment restores the cushion before anything is
+called spare again.
+
+**Both are repaid rather than handed the position**, which is where this departs from the co-op
+funding directly. The yield pool's share price is cash plus what is out on loan; the reserve's cover
+is counted in reserve tokens. A credit claim sitting in either reads as a hole in their books until
+somebody redeems it, so what they put up comes back as what they put up. Members' repayments
+therefore go to the lenders before they settle anything — otherwise the pool would borrow against
+money it already had.
+
+**The pool holds what it buys with borrowed money.** It has to be somebody, and it must not be the
+co-op: that would have it holding a claim it never paid for and collecting the carry on a float the
+yield pool was bearing. The holding is excluded from `distributableCarry`, so it cannot be paid out
+as anybody else's earnings, and it is burned when the member's repayment reaches the lender.
+
+**And they are paid for lending.** Carry is added to what a member owes, so the repayment that
+settles the principal carries the interest in the same cash — nothing has to be converted, which is
+what an earlier draft of this section got wrong. The pool's share of the carry is held as
+`carryEarned`, handed to the lenders in the same proportion as the principal they put up, and the
+claim it stood for is burned with it. Lending to the pool is a business rather than a favour.
+
+### Superseded: the reserve as funder of last resort
 
 The order above has three sources. A fourth exists and is not wired: **the AssurancePool**, for a
 claim whose turn has come and whose net 30 has elapsed when the payout pool is empty and the yield
@@ -379,9 +407,10 @@ $46 payment will otherwise ask where the difference went — and the answer shou
 5. **App**: notification and activity copy.
 6. **A fee recipient of its own on TermIssuer**, so carry can reach the pool without the co-op's
    income following it. Nothing built above can be switched on until this lands.
-7. **The draw**: pool, then yield pool, then reserve — for a merchant payout that has come due and
-   for a refund the pool cannot cover, which are the same mechanism. Within the reserve: excess,
-   then buffer, never primary, capped by the target RTD.
+7. ~~**The draw**: pool, then yield pool, then reserve.~~ **Built.** Within the reserve: excess,
+   then buffer while the primary cover is at target, never primary.
+8. ~~**Interest for the lenders.**~~ **Built** — it comes out of the member's own repayment, which
+   carries principal and carry together.
 6. **Upgrade** the deployed proxies on Base Sepolia, then refund a part-paid plan end to end and
    check every balance in the table above.
 
