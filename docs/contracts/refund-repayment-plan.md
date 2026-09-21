@@ -95,19 +95,30 @@ merchant and co-op giving back what they were paid, and nothing left on the ledg
 
 ## 3. What has to change
 
-### PayoutPool — it can only pay merchants
+### PayoutPool — a withdrawal, not a claim
 
-The gap. `redeem` pays the caller against their own credit balance, and claims are queued per
-merchant in age order. A member refund is not a merchant claim and must not jump that queue.
+**Settled: the queue does not change.** A merchant redeeming is a *claim* on the pool and waits its
+turn by age. A member's refund is not — it is the withdrawal of money that member paid in, which is
+sitting there because `_routeRepayment` put it there. Nothing is being taken from the merchants in
+the queue in aggregate; the merchant whose sale it was gives it back.
 
-Proposed: `payRefund(address member, uint256 amount)`, callable only by StableCredit, paying from
-`held()` and **queuing behind existing claims when the pool is short** — a refund is a claim on the
-same money, and merchants who have been waiting are not subordinated to it. The queue already
-orders by claim age; a member refund joins it as a claim of its own kind.
+This is how a card refund works, and the reasoning is the same: the sale was the merchant's, so the
+merchant bears it. If they have already redeemed, their balance goes negative and their next payout
+settles it — a drawn line, exactly as `_transferObligation` already does.
 
-> **Open:** should a member's refund outrank a merchant's queued claim? The member is out of pocket
-> on a purchase that was given back, which is a worse place to be than waiting for a payout. Argues
-> for a separate, shorter queue. Decide before building §3.1.
+`payRefund(address member, uint256 amount)`, callable only by StableCredit, paying from `held()`.
+No priority field, no second queue.
+
+> **Residual, for §3.1:** the pool can still be short, because a member's repayments only go to it
+> up to what merchants are owed and the remainder goes to the assurance buffer — and the buffer is
+> not freely drawable (`AssurancePool.withdraw` takes from *excess* reserve, not the buffer, which
+> exists to absorb losses).
+>
+> The arithmetic resolves it without a queue: the refund reduces the merchant's balance, which
+> reduces the pool's `shortfall()`, so the cash that would have gone to that merchant funds the
+> member instead as repayments arrive. The pool therefore tracks refunds owed as their own small
+> obligation and settles them from cash as it lands, **before** funding claims — money already
+> belonging to a member is not the pool's to pay someone else with.
 
 ### StableCredit — a refund path that moves money
 
@@ -123,13 +134,29 @@ orders by claim age; a member refund joins it as a claim of its own kind.
 
 ### TermIssuer — one entry point, both halves
 
-`closePlanForRefund` currently caps at outstanding principal. It gains the paid half: what the member
-paid on this plan, the carry materialised at close, and the call into `repayRefund`. The plan closes
-as it does now.
+`closePlanForRefund` currently caps at outstanding principal. It gains the paid half: the carry
+materialised at close, and the call into `repayRefund`.
 
-> **Open:** `plan.repaid` is what the member paid on the plan, but a refund of *part* of a purchase
-> needs a proportional share of it. Same proportional rule as `payoutShare` today, rounding to the
-> co-op rather than the merchant.
+**Settled: the split is arithmetic, not proportion.** Money paid is fungible against the purchase, so:
+
+```
+reverse = min(refund, still owed)
+cash    = refund − reverse
+```
+
+| refund | owed | paid | reverse | cash | the member afterwards |
+|---|---|---|---|---|---|
+| $100 | $54 | $46 | $54 | $46 | owes nothing, is paid back what they paid |
+| $40 | $54 | $46 | $40 | — | owes $14 on a $60 purchase, having paid $46 |
+| $60 | $54 | $46 | $54 | $6 | purchase is $40, they paid $46, $6 comes back |
+
+A proportional share of `plan.repaid` would have taken cash out of the pool in the middle row, where
+nothing needs to move at all. Proportion applies only to splitting the **cash** leg between the
+merchant and the co-op, at the sale's own fee ratio, rounding to the co-op rather than clawing a cent
+from a merchant.
+
+The carry is withheld from the cash leg and capped at it: no cash, no netting, and the member clears
+it with Repay (#550).
 
 ### API — no decisions, just arithmetic
 
@@ -147,7 +174,7 @@ $46 payment will otherwise ask where the difference went — and the answer shou
 
 ## 4. Order to build
 
-1. **PayoutPool.payRefund** with the queue decision settled, and its tests.
+1. **PayoutPool.payRefund** — pay from `held()`, track refunds owed, settle them before claims.
 2. **StableCredit.repayRefund**, including the redeemed-merchant path, and its tests.
 3. **TermIssuer.closePlanForRefund** extended, with the proportional paid share.
 4. **API** split and call, with the figures returned.
