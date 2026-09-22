@@ -173,6 +173,33 @@ export async function redeemForMerchant(input: {
   if (amount <= 0n) return { ok: false, reason: 'There is nothing to withdraw from what you are owed.' };
 
   const caip2 = `eip155:${chain.id}` as const;
+
+  /*
+   * A sponsored send is a user operation, not a transaction, and it comes back saying so:
+   *
+   *   { hash: "", user_operation_hash: "0x…", sponsorship_provider: "alchemy", transaction_id: "…" }
+   *
+   * There is no transaction hash yet because a bundler has not yet included it. So this follows
+   * the `transaction_id` until Privy reports one, rather than reading `hash` and finding an empty
+   * string — which an earlier version of this did, and would have failed on every sponsored send
+   * while looking like a chain problem.
+   *
+   * What the receipt shows afterwards is worth recording: the wallet is EIP-7702 delegated by
+   * Privy, and the user operation's sender is the merchant's own address. So `redeem` sees the
+   * merchant as msg.sender, which is the entire reason this address can be the shop everywhere.
+   */
+  const settle = async (transactionId: string): Promise<`0x${string}`> => {
+    for (let i = 0; i < 40; i++) {
+      const tx = await p.transactions().get(transactionId);
+      if (tx.transaction_hash) return tx.transaction_hash as `0x${string}`;
+      if (tx.status === 'failed' || tx.status === 'execution_reverted' || tx.status === 'provider_error') {
+        throw new Error(`Privy reported the transaction ${tx.status}.`);
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    throw new Error('The transaction was accepted but has not been included yet.');
+  };
+
   const send = async (to: Address, data: `0x${string}`) => {
     const result = (await p.wallets().ethereum().sendTransaction(wallet.id, {
       caip2,
@@ -182,8 +209,9 @@ export async function redeemForMerchant(input: {
       sponsor: true,
       authorization_context: { authorization_private_keys: [AUTHORIZATION_PRIVATE_KEY] },
     } as never)) as { hash?: string; transaction_id?: string };
-    if (!result.hash) throw new Error('Privy accepted the transaction but returned no hash.');
-    return result.hash as `0x${string}`;
+    if (result.hash) return result.hash as `0x${string}`;
+    if (!result.transaction_id) throw new Error('Privy returned neither a hash nor a transaction to follow.');
+    return settle(result.transaction_id);
   };
 
   try {
