@@ -1,47 +1,50 @@
+import { PrivyClient } from '@privy-io/node';
 import { createPublicClient, encodeFunctionData, http, parseEventLogs, type Address, type Chain } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
-import { createZeroDevPaymasterClient } from '@zerodev/sdk';
-import { getEntryPoint, KERNEL_V3_3 } from '@zerodev/sdk/constants';
-import { create7702KernelAccount, create7702KernelAccountClient } from '@zerodev/ecdsa-validator';
 import { getContractAddress } from '../../config/contracts.js';
 import { chainId } from '../chargeService.js';
 import { merchantOrgFor } from './privyOrg.js';
-import { orgWalletAccount, orgWalletSigningConfigured, orgWalletSigningGap } from './orgWalletAccount.js';
 
 /*
  * Turning what a shop is owed into money, without the shop paying for gas.
  *
  * A merchant's positive balance on the ledger IS the payables ledger; `PayoutPool.redeem` is where
- * it becomes USDC in their own account. Until this existed, nothing anywhere called it: the
- * withdraw route recorded a request and said so honestly, and the pool's address appeared in the
- * server's config and nowhere else. A merchant could be paid and could not collect.
+ * it becomes USDC in their own account. Nothing anywhere called it until this existed: the withdraw
+ * route recorded a request and said so honestly, and the pool's address appeared in the server's
+ * config and nowhere else. A merchant could be paid and could not collect.
  *
- * Two calls, one sponsored operation:
+ * **Privy sponsors the gas.** `sponsor: true` on the wallet's own RPC — no paymaster of ours, no
+ * bundler, no EIP-7702 delegation, no smart account at another address. This file previously built
+ * all of that on ZeroDev before anybody read Privy's own docs, and it was a great deal of machinery
+ * for a boolean. What remains is: Clear is an authorized signer on the shop's wallet, so Clear can
+ * send from it, and Privy pays.
  *
- *   ClearCredit.approve(pool, amount)   the pool pulls the credits with transferFrom, so it needs
- *                                       an allowance -- and a first-ever redemption would
- *                                       otherwise need its own transaction, with its own gas, from
- *                                       a wallet holding no ETH. Batching is exactly why the
- *                                       member app reaches for account abstraction too.
+ * Two transactions rather than a batch, deliberately. `wallet_sendCalls` would do both at once, but
+ * the policy that bounds Clear's signer names `eth_sendTransaction` — a batch would be a method the
+ * ceiling does not cover, and widening a policy to save one sponsored transaction is a bad trade.
+ *
+ *   ClearCredit.approve(pool, amount)   only when the allowance is short. The pool pulls the
+ *                                       credits with transferFrom, and a first-ever redemption
+ *                                       would otherwise fail on a wallet that has never approved.
  *   PayoutPool.redeem(amount)           pays now if the pool is funded, queues at the merchant's
- *                                       agreed window if it is not. Both are success.
+ *                                       agreed window if it is not. Both are the thing working.
  *
- * **The merchant address never changes.** 7702 delegates the org wallet to a Kernel account at the
- * same address, so the registry entry, the credits, the claim and the cash account all stay where
- * they are. A separate smart wallet would be a new address and would need every one of those moved.
- *
- * Unconfigured is reported, never faked. A server without a ZeroDev project or Clear's signing key
- * says so, and the caller records a request the old way rather than claiming money moved.
+ * Unconfigured is reported, never faked. A server without sponsorship or without Clear's signing
+ * key says so, and the caller records a request the old way rather than claiming money moved.
  */
 
-const PROJECT_ID = (process.env.ZERODEV_PROJECT_ID || '').trim();
-const SELF_FUNDED = (process.env.ZERODEV_SELF_FUNDED ?? 'true') !== 'false';
+const APP_ID = (process.env.PRIVY_APP_ID || '').trim();
+const APP_SECRET = (process.env.PRIVY_APP_SECRET || '').trim();
+const AUTHORIZATION_PRIVATE_KEY = (process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY || '').trim();
 
 const CHAINS: Record<number, Chain> = { 8453: base, 84532: baseSepolia };
 
-const bundlerRpc = (chain: number) => `https://rpc.zerodev.app/api/v3/${PROJECT_ID}/chain/${chain}`;
-const paymasterRpc = (chain: number, managed: boolean) =>
-  managed ? bundlerRpc(chain) : `${bundlerRpc(chain)}?selfFunded=true`;
+let client: PrivyClient | null = null;
+function privy(): PrivyClient | null {
+  if (!APP_ID || !APP_SECRET) return null;
+  if (!client) client = new PrivyClient({ appId: APP_ID, appSecret: APP_SECRET });
+  return client;
+}
 
 const CREDIT_ABI = [
   {
@@ -109,28 +112,26 @@ export type RedemptionResult =
 
 /** Whether a redemption can be attempted at all on this server. */
 export function redemptionConfigured(): boolean {
-  return (
-    orgWalletSigningConfigured() && PROJECT_ID.length > 0 && !!CHAINS[chainId()] && !!getContractAddress(chainId(), 'PayoutPool')
-  );
+  return redemptionGap() === null;
 }
 
 /** Why it cannot be, in the words a shop should be told. */
 export function redemptionGap(): string | null {
-  const signing = orgWalletSigningGap();
-  if (signing) return signing;
-  if (!PROJECT_ID) return 'Gas sponsorship is not configured on this server.';
-  if (!CHAINS[chainId()]) return `No sponsorship configuration for chain ${chainId()}.`;
+  if (!privy()) return 'Privy is not configured on this server.';
+  if (!AUTHORIZATION_PRIVATE_KEY) return "Clear's signing key is not configured on this server.";
+  if (!CHAINS[chainId()]) return `No chain configuration for ${chainId()}.`;
   if (!getContractAddress(chainId(), 'PayoutPool')) return 'No payout pool on this chain.';
+  if (!getContractAddress(chainId(), 'ClearCredit')) return 'No credit ledger on this chain.';
   return null;
 }
 
 /**
- * Redeem for a merchant, sponsored.
+ * Redeem for a merchant, with Privy paying the gas.
  *
  * `amountMicros` is capped at what the merchant actually holds rather than refused, because a
  * balance can move between a screen being drawn and a button being pressed, and the honest answer
- * to "send me everything" is everything there is. Zero is refused: an empty operation still costs
- * somebody gas.
+ * to "send me everything" is everything there is. Zero is refused: an empty transaction still costs
+ * somebody gas, even when that somebody is us.
  */
 export async function redeemForMerchant(input: {
   merchant: string;
@@ -139,16 +140,24 @@ export async function redeemForMerchant(input: {
   const gap = redemptionGap();
   if (gap) return { ok: false, reason: gap };
 
+  const p = privy()!;
   const chain = CHAINS[chainId()]!;
   const poolAddress = getContractAddress(chainId(), 'PayoutPool') as Address;
-  const creditAddress = getContractAddress(chainId(), 'ClearCredit') as Address | null;
-  if (!creditAddress) return { ok: false, reason: 'No credit ledger on this chain.' };
+  const creditAddress = getContractAddress(chainId(), 'ClearCredit') as Address;
 
   const org = await merchantOrgFor(input.merchant);
   if (!org) return { ok: false, reason: 'This shop has no wallet on file.' };
 
+  // By address, not by the id we stored: a stale `privy_wallet_id` is a 404 that would read as a
+  // shop with no wallet at all.
+  const wallet = await p
+    .wallets()
+    .getWalletByAddress({ address: org.walletAddress })
+    .catch(() => null);
+  if (!wallet) return { ok: false, reason: 'Privy has no wallet at this shop’s address.' };
+
   const publicClient = createPublicClient({ chain, transport: http() });
-  const merchant = org.walletAddress as Address;
+  const merchant = wallet.address as Address;
 
   const [held, allowance] = await Promise.all([
     publicClient.readContract({ address: creditAddress, abi: CREDIT_ABI, functionName: 'balanceOf', args: [merchant] }),
@@ -163,18 +172,38 @@ export async function redeemForMerchant(input: {
   const amount = input.amountMicros < held ? input.amountMicros : held;
   if (amount <= 0n) return { ok: false, reason: 'There is nothing to withdraw from what you are owed.' };
 
-  const calls: { to: Address; data: `0x${string}` }[] = [];
-  if (allowance < amount) {
-    calls.push({
-      to: creditAddress,
-      data: encodeFunctionData({ abi: CREDIT_ABI, functionName: 'approve', args: [poolAddress, amount] }),
-    });
-  }
-  calls.push({ to: poolAddress, data: encodeFunctionData({ abi: POOL_ABI, functionName: 'redeem', args: [amount] }) });
+  const caip2 = `eip155:${chain.id}` as const;
+  const send = async (to: Address, data: `0x${string}`) => {
+    const result = (await p.wallets().ethereum().sendTransaction(wallet.id, {
+      caip2,
+      params: { transaction: { to, data, chain_id: chain.id } },
+      // The whole of the gasless story. Privy's own sponsorship, configured in their dashboard,
+      // rather than a paymaster of ours to keep funded.
+      sponsor: true,
+      authorization_context: { authorization_private_keys: [AUTHORIZATION_PRIVATE_KEY] },
+    } as never)) as { hash?: string; transaction_id?: string };
+    if (!result.hash) throw new Error('Privy accepted the transaction but returned no hash.');
+    return result.hash as `0x${string}`;
+  };
 
   try {
-    const receipt = await send(chain, { walletId: org.walletId, address: merchant }, calls);
+    if (allowance < amount) {
+      const approveHash = await send(
+        creditAddress,
+        encodeFunctionData({ abi: CREDIT_ABI, functionName: 'approve', args: [poolAddress, amount] }),
+      );
+      // Waited for, not fired and forgotten: the redemption that follows depends on this allowance
+      // existing, and a pending approve would make it revert for a reason nobody could see.
+      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+    }
+
+    const redeemHash = await send(
+      poolAddress,
+      encodeFunctionData({ abi: POOL_ABI, functionName: 'redeem', args: [amount] }),
+    );
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: redeemHash });
     const [redeemed] = parseEventLogs({ abi: POOL_ABI, eventName: 'Redeemed', logs: receipt.logs });
+
     return {
       ok: true,
       txHash: receipt.transactionHash,
@@ -188,62 +217,4 @@ export async function redeemForMerchant(input: {
     // Never the raw chain error: a shop reads this. What it must not say is that money moved.
     return { ok: false, reason: 'We could not move that just now. Nothing has left your balance.' };
   }
-}
-
-/** Sponsored send, self-funded paymaster first and the managed one if its inventory is empty. */
-async function send(
-  chain: Chain,
-  wallet: { walletId: string; address: string },
-  calls: { to: Address; data: `0x${string}` }[],
-) {
-  if (!SELF_FUNDED) return sendWith(chain, wallet, calls, true);
-  try {
-    return await sendWith(chain, wallet, calls, false);
-  } catch (error) {
-    if (!isPaymasterError(error)) throw error;
-    console.warn('[merchant] self-funded paymaster failed; falling back to the managed one.');
-    return sendWith(chain, wallet, calls, true);
-  }
-}
-
-async function sendWith(
-  chain: Chain,
-  wallet: { walletId: string; address: string },
-  calls: { to: Address; data: `0x${string}` }[],
-  managed: boolean,
-) {
-  const publicClient = createPublicClient({ chain, transport: http() });
-  const entryPoint = getEntryPoint('0.7');
-  const account = await create7702KernelAccount(publicClient, {
-    signer: orgWalletAccount(wallet) as never,
-    entryPoint,
-    kernelVersion: KERNEL_V3_3,
-  });
-  const paymaster = createZeroDevPaymasterClient({
-    chain,
-    transport: http(paymasterRpc(chain.id, managed)),
-  });
-  const client = create7702KernelAccountClient({
-    account,
-    chain,
-    bundlerTransport: http(bundlerRpc(chain.id)),
-    paymaster,
-    client: publicClient,
-  });
-
-  const hash = await client.sendUserOperation({ calls });
-  const { receipt } = await client.waitForUserOperationReceipt({ hash });
-  return receipt;
-}
-
-/** A sponsorship failure worth retrying elsewhere, as opposed to a refusal by the chain. */
-function isPaymasterError(error: unknown): boolean {
-  const m = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return (
-    m.includes('paymaster') ||
-    m.includes('sponsor') ||
-    m.includes('insufficient') ||
-    m.includes('not deployed') ||
-    m.includes('could not check')
-  );
 }

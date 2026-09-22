@@ -20,6 +20,7 @@
 import { ethers } from 'ethers';
 import { PrivyClient } from '@privy-io/node';
 import { createMerchantOrg, saveMerchantOrg } from '../src/services/merchant/privyOrg.js';
+import { clearSignerConfigured, provisionClearSigner } from '../src/services/merchant/privySigner.js';
 import { merchantProfileStore } from '../src/services/merchant/profileStore.js';
 import { staffStore } from '../src/services/merchant/staffStore.js';
 
@@ -78,7 +79,22 @@ async function main() {
           walletAddress: process.env.SEED_WALLET_ADDRESS,
           keyQuorumId: process.env.SEED_QUORUM_ID ?? '',
         }
-      : await createMerchantOrg({ displayName: SHOP_NAME, ownerPrivyUserId: user.id });
+      : await createMerchantOrg({
+          displayName: SHOP_NAME,
+          ownerPrivyUserId: user.id,
+          /*
+           * Clear's signer, named on the wallet as it is created.
+           *
+           * This script calls `createMerchantOrg` directly rather than going through
+           * `onboardMerchant`, so it did not inherit this when onboarding gained it — and a shop
+           * seeded without it is a shop whose owner has to authorize a signer afterwards, which is
+           * the whole problem that change exists to remove. Seeding must produce the same wallet
+           * the product produces.
+           */
+          clearSigner: clearSignerConfigured()
+            ? await provisionClearSigner({ merchantName: SHOP_NAME })
+            : null,
+        });
   if (!org) throw new Error('could not create the organization at Privy');
   const merchant = org.walletAddress.trim().toLowerCase();
   console.log(`organization ${org.organizationId}`);
