@@ -476,6 +476,31 @@ export const api = {
     return request('/api/merchant/payouts');
   },
 
+  /**
+   * Whether Clear can act on this shop's wallet.
+   *
+   * A shop set up before this existed has a wallet only its owner can sign for, so withdrawing
+   * what is owed cannot settle however well everything else is configured. Asked so the screen can
+   * offer the one-time grant instead of a button that would fail.
+   */
+  async signerStatus(): Promise<{ attached: boolean; canRedeem: boolean; gap: string | null }> {
+    return request('/api/merchant/signer');
+  },
+
+  /**
+   * Let Clear settle payouts for this shop — once, with the owner's own sign-in.
+   *
+   * The token comes from the owner signing in there and then. Privy will not widen who may act on
+   * a wallet without authorization from whoever owns it, which is why this cannot be done from a
+   * settings toggle and should not be: it is the owner agreeing, not a preference.
+   */
+  async grantSigner(privyToken: string): Promise<{ attached: boolean; canRedeem: boolean; gap: string | null }> {
+    return request('/api/merchant/signer', {
+      method: 'POST',
+      body: JSON.stringify({ privyToken }),
+    });
+  },
+
   async staff(): Promise<StaffMember[]> {
     const res = await request<{ staff: StaffMember[] }>('/api/merchant/staff');
     return res.staff;

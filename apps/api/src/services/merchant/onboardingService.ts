@@ -120,7 +120,12 @@ export async function onboardMerchant(input: {
   let signerReady = false;
   if (clearSignerConfigured()) {
     const signer = await provisionClearSigner({ merchantName: input.shopName.trim() });
-    if (signer && (await attachClearSigner({ walletId: org.walletId, signer }))) {
+    // The owner's own token. Privy refuses to widen who may act on a wallet without authorization
+    // from whoever owns it, and the owner signed in at the start of this same flow — so the
+    // consent is a thing that happened rather than a thing assumed.
+    const attached =
+      signer && (await attachClearSigner({ walletId: org.walletId, signer, ownerJwt: input.privyToken }));
+    if (signer && attached && attached.ok) {
       await merchantProfileStore.setClearSigner(merchant, signer.signerQuorumId, signer.policyId);
       signerReady = true;
     }

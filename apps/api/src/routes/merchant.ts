@@ -18,6 +18,7 @@ import { raiseChargeFromDevice, readMerchantTerms } from '../services/chargeServ
 import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
 import { onboardMerchant } from '../services/merchant/onboardingService.js';
 import { redeemForMerchant, redemptionConfigured } from '../services/merchant/payoutRedemption.js';
+import { clearSignerStatus, grantClearSigner } from '../services/merchant/clearSignerGrant.js';
 
 /**
  * The merchant surface.
@@ -742,6 +743,47 @@ merchantRouter.post(
     });
   },
 );
+
+/**
+ * Whether Clear can act on this shop's wallet yet.
+ *
+ * A shop onboarded before this existed — or onboarded while the authorization key was missing —
+ * has a wallet nobody but the owner can sign for, so redemption cannot work however well the rest
+ * of it is configured. The Payouts screen asks this to know whether to offer the one-time grant
+ * rather than a button that would fail.
+ */
+merchantRouter.get('/signer', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+  const { merchant } = req.merchant!;
+  res.json(await clearSignerStatus(merchant));
+});
+
+/**
+ * The owner lets Clear settle their payouts — onboarding step six, for a shop that skipped it.
+ *
+ * **It takes the owner's own Privy token, and cannot be done without one.** Privy refuses to widen
+ * who may act on a wallet unless whoever owns it authorizes the change, which is exactly right:
+ * Clear adding itself as a signer on a shop's money is a thing an owner agrees to, not a thing
+ * they discover. The token is used for this one call and kept nowhere.
+ *
+ * `requireOwner` guards who may ask; the Privy token proves who is asking. Both, because the first
+ * is Clear's own record of the roster and the second is the wallet's own idea of its owner, and
+ * this is precisely the call where those two must agree.
+ */
+merchantRouter.post('/signer', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+  const { merchant } = req.merchant!;
+  const privyToken = String(req.body?.privyToken ?? '').trim();
+  if (!privyToken) {
+    res.status(400).json({ error: 'Invalid request', message: 'token is required' });
+    return;
+  }
+
+  const result = await grantClearSigner({ merchant, ownerJwt: privyToken });
+  if (!result.ok) {
+    res.status(409).json({ error: 'Cannot grant', message: result.reason });
+    return;
+  }
+  res.status(201).json(await clearSignerStatus(merchant));
+});
 
 merchantRouter.get('/payouts', requireMerchant, requireManager, async (req: Request, res: Response) => {
   const { merchant } = req.merchant!;
