@@ -79,9 +79,26 @@ export async function onboardMerchant(input: {
     }
   }
 
+  /*
+   * Clear's signer FIRST, so the wallet can be created with it already named.
+   *
+   * The order is the fix. A wallet owned by the owner's quorum is non-custodial, and adding a
+   * signer to one that already exists needs the owner's authorization — which is right, and which
+   * is why the demo shop needed a whole grant flow to catch up. Creating the wallet with the
+   * signer present skips that entirely for every shop after it, and takes nothing away from the
+   * owner: they still own the wallet, and Clear still acts only under the policy ceiling.
+   *
+   * Null when Clear has no key configured. The shop is still created; it simply cannot be paid out
+   * of until somebody grants the signer from the Payouts screen.
+   */
+  const clearSigner = clearSignerConfigured()
+    ? await provisionClearSigner({ merchantName: input.shopName.trim() })
+    : null;
+
   const org = await createMerchantOrg({
     displayName: input.shopName.trim(),
     ownerPrivyUserId: privyUserId,
+    clearSigner,
   });
   if (!org) return { ok: false, reason: 'privy_unavailable' };
 
@@ -110,20 +127,10 @@ export async function onboardMerchant(input: {
   if (!owner) return { ok: false, reason: 'not_configured' };
   await staffStore.linkPrivyUser(owner.id, privyUserId);
 
-  /**
-   * Clear's own signer, prepared but not granted.
-   *
-   * The server cannot attach it: Privy requires authorization from whoever owns the wallet, and
-   * that is the owner's browser session rather than anything here. What onboarding can do is have
-   * the quorum and the ceiling ready, so the grant the owner makes is one press against something
-   * that already exists.
-   *
-   * `signerReady: false` is therefore the honest answer at this point for every shop, and the
-   * Payouts screen carries the grant until onboarding grows a step that does it inline.
-   */
-  if (clearSignerConfigured()) {
-    const signer = await provisionClearSigner({ merchantName: input.shopName.trim() });
-    if (signer) await merchantProfileStore.setClearSigner(merchant, signer.signerQuorumId, signer.policyId);
+  // Recorded, not re-created: the wallet above was created naming this quorum, so the shop's row
+  // and the wallet agree by construction rather than by a later reconciliation.
+  if (clearSigner) {
+    await merchantProfileStore.setClearSigner(merchant, clearSigner.signerQuorumId, clearSigner.policyId);
   }
 
   return {
@@ -132,7 +139,8 @@ export async function onboardMerchant(input: {
     merchant,
     walletAddress: org.walletAddress,
     organizationId: org.organizationId,
-    // Prepared, never granted from here — see above.
-    signerReady: false,
+    // True when the wallet was created with Clear named on it, which is the only way this can be
+    // true at onboarding — see `createMerchantOrg`.
+    signerReady: Boolean(clearSigner),
   };
 }

@@ -65,6 +65,20 @@ export interface MerchantOrg {
 export async function createMerchantOrg(input: {
   displayName: string;
   ownerPrivyUserId: string;
+  /**
+   * Clear's signer, attached AT CREATION.
+   *
+   * This is the whole difference between a shop that can be paid out and one that cannot. A wallet
+   * owned by the owner's key quorum is non-custodial — the dashboard says so in as many words —
+   * and adding a signer to it afterwards takes the owner's own authorization, which three separate
+   * mechanisms failed to obtain (the server alone, the server holding their token, their browser
+   * calling addSigners on a wallet that is the shop's rather than theirs).
+   *
+   * At creation there is no such problem: the wallet does not exist yet, so there is nobody whose
+   * authorization is being bypassed. The owner still owns it; Clear is simply named alongside them
+   * from the first moment, under a policy ceiling, which is what every shop after this one gets.
+   */
+  clearSigner?: { signerQuorumId: string; policyId: string } | null;
 }): Promise<MerchantOrg | null> {
   const p = privy();
   if (!p) return null;
@@ -89,6 +103,16 @@ export async function createMerchantOrg(input: {
     const wallet = await p.wallets().create({
       chain_type: 'ethereum',
       entity: { id: organization.id, type: 'organization' },
+      ...(input.clearSigner
+        ? {
+            additional_signers: [
+              {
+                signer_id: input.clearSigner.signerQuorumId,
+                override_policy_ids: [input.clearSigner.policyId],
+              },
+            ],
+          }
+        : {}),
     });
 
     return {
