@@ -5,6 +5,7 @@ import { getPostgresPool } from '../../config/postgres.js';
 import { readMerchantTerms } from '../chargeService.js';
 import { CHARGE_TABLE_NAME } from '../chargeStore.js';
 import { cashAccountCents } from './cashAccount.js';
+import { merchantPayoutPosition, microsToCents } from '../chain/payoutReader.js';
 
 /**
  * The shop's own record, and what it is owed.
@@ -184,6 +185,32 @@ export const merchantProfileStore = {
     return { ok: true, id };
   },
 
+  /**
+   * What the chain did with a request that was recorded a moment ago.
+   *
+   * Paid means the money is in the shop's own account and the row is closed. Queued means the
+   * redemption went through, the pool was short, and a claim is waiting its turn — the request
+   * stays open, because it is still true that nobody has settled it. Either way the transaction is
+   * recorded, so a figure on a screen can be traced to something that happened.
+   */
+  async recordRedemption(
+    id: string,
+    result: { txHash: string; claimId: string | null; paidNow: boolean },
+  ): Promise<void> {
+    const pool = getMerchantPool();
+    if (!pool) return;
+    await ensureMerchantSchema();
+    await pool.query(
+      `UPDATE ${MERCHANT_SCHEMA}.payouts
+          SET tx_hash = $2,
+              claim_id = $3,
+              status = CASE WHEN $4 THEN 'paid' ELSE status END,
+              paid_at = CASE WHEN $4 THEN now() ELSE paid_at END
+        WHERE id = $1`,
+      [id, result.txHash, result.claimId, result.paidNow],
+    );
+  },
+
   async payoutPosition(merchant: string) {
     const pool = getPostgresPool();
     // Same shape as the real return, which it was not: this said `owed`/`clearsBalance`/`toBank`
@@ -296,9 +323,15 @@ export const merchantProfileStore = {
      */
     /**
      * How much of what is OWED the pool can free today. Null means unknown, which is not zero —
-     * the credit side answers this and nothing here should guess a cap it cannot verify.
+     * the credit side answers this and nothing here guesses a cap it cannot verify.
+     *
+     * Now asked rather than left null: the pool knows what it holds, what refunds it owes members
+     * and what is queued in front of this shop, and `merchantPayoutPosition` puts those together
+     * the way the pool itself would. Still null when the chain cannot be read.
      */
-    const availableTodayCents: number | null = null;
+    const chainPosition = await merchantPayoutPosition(normalize(merchant));
+    const availableTodayCents: number | null =
+      chainPosition === null ? null : microsToCents(chainPosition.freeNowMicros);
 
     const cash = await cashAccountCents(normalize(merchant));
     const releasedReady = availableTodayCents === null ? null : Math.min(availableTodayCents, net);

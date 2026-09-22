@@ -456,7 +456,15 @@ export const api = {
     nextPayoutOn: string | null;
     cashAccountCents: number | null;
     owedCents: number;
+    /** 'paid' once the redemption has settled into the cash account; 'requested' otherwise. */
     status: string;
+    /** The redemption itself, when the server has the chain leg configured. */
+    txHash?: string;
+    claimId?: string | null;
+    /** The redemption worked and the pool was short, so a claim is waiting its turn. */
+    queued?: boolean;
+    /** Why this is still only a request. Present only when the chain leg was tried and refused. */
+    settlementNote?: string;
   }> {
     return request('/api/merchant/payouts/withdraw', {
       method: 'POST',

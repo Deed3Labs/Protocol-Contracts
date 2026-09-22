@@ -17,6 +17,7 @@ import { canAddRole, type StaffRole } from '@clear/domain';
 import { raiseChargeFromDevice, readMerchantTerms } from '../services/chargeService.js';
 import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
 import { onboardMerchant } from '../services/merchant/onboardingService.js';
+import { redeemForMerchant, redemptionConfigured } from '../services/merchant/payoutRedemption.js';
 
 /**
  * The merchant surface.
@@ -599,9 +600,17 @@ merchantRouter.get('/charges/:code/refund', requireMerchant, async (req: Request
  * That split is the whole point of the role: the damage from a wrong withdrawal is bounded by what
  * the shop is owed, and it lands somewhere the owner chose.
  *
- * This records the request and answers with what was recorded. It does not claim the money has
- * moved, because it has not — settlement is a separate act, and the row sits at `requested` until
- * then.
+ * Owed money now moves on the chain as part of this, when the server is configured to do it:
+ * `PayoutPool.redeem` turns the shop's balance into USDC in the shop's own account, with a
+ * paymaster paying the gas, so the counter neither signs nor holds ETH. What comes back decides
+ * what this answers with, and the three outcomes are genuinely different:
+ *
+ *   paid      the money is in their account now, and the row is closed
+ *   queued    the pool was short, so a claim is waiting its turn within their window
+ *   recorded  the chain leg is not configured here, so this is a request as it always was
+ *
+ * It never claims money moved when it did not, which is the rule the old version was written to
+ * keep when the chain leg did not exist at all.
  */
 merchantRouter.post(
   '/payouts/withdraw',
@@ -635,6 +644,31 @@ merchantRouter.post(
       return;
     }
 
+    /*
+     * The chain leg, for money that is owed rather than already held.
+     *
+     * Cash-account money is already theirs and has nothing to redeem. The request row is written
+     * first because that is where the caps live — a shop cannot redeem more than they are owed,
+     * and that check should not be duplicated here to be got wrong twice.
+     *
+     * A failed redemption leaves the row exactly as the old code left every row: requested, and
+     * arriving on the scheduled payout. Nothing is claimed and nothing is lost.
+     */
+    let redemption: Awaited<ReturnType<typeof redeemForMerchant>> | null = null;
+    if (source === 'owed' && redemptionConfigured()) {
+      redemption = await redeemForMerchant({
+        merchant,
+        amountMicros: BigInt(Math.round(amountCents)) * 10_000n,
+      });
+      if (redemption.ok) {
+        await merchantProfileStore.recordRedemption(result.id!, {
+          txHash: redemption.txHash,
+          claimId: redemption.claimId,
+          paidNow: redemption.paidNow,
+        });
+      }
+    }
+
     const position = await merchantProfileStore.payoutPosition(merchant);
     res.status(201).json({
       id: result.id,
@@ -647,7 +681,64 @@ merchantRouter.post(
       nextPayoutOn: position.nextPayoutOn,
       cashAccountCents: position.cashAccountCents,
       owedCents: position.owedCents,
-      status: 'requested',
+      status: redemption?.ok && redemption.paidNow ? 'paid' : 'requested',
+      ...(redemption?.ok
+        ? {
+            txHash: redemption.txHash,
+            claimId: redemption.claimId,
+            queued: !redemption.paidNow,
+          }
+        : {}),
+      // Why it is still only a request, when a shop expected the money. Absent when nothing was
+      // attempted, so a server without the chain leg reads exactly as it did before.
+      ...(redemption && !redemption.ok ? { settlementNote: redemption.reason } : {}),
+    });
+  },
+);
+
+/**
+ * Take what is owed, on chain, without the shop paying for gas.
+ *
+ * The narrow version of the withdrawal above: no bank leg, no destination, no request row to
+ * settle later — it redeems and says what happened. It exists because the two are different acts.
+ * A withdrawal is "send me my money, by whatever route"; this is "turn what I am owed into money
+ * in my account", which is the only part the protocol can actually do by itself.
+ *
+ * Manager and above, matching the withdrawal: the damage from a wrong call is bounded by what the
+ * shop is owed, and it lands in the shop's own account.
+ */
+merchantRouter.post(
+  '/payouts/redeem',
+  requireMerchant,
+  requireManager,
+  async (req: Request, res: Response) => {
+    const { merchant } = req.merchant!;
+    const amountCents = Number(req.body?.amountCents);
+    if (!Number.isInteger(amountCents) || amountCents <= 0) {
+      res.status(400).json({ error: 'Invalid request', message: 'That is not an amount.' });
+      return;
+    }
+
+    const result = await redeemForMerchant({
+      merchant,
+      amountMicros: BigInt(Math.round(amountCents)) * 10_000n,
+    });
+    if (!result.ok) {
+      res.status(409).json({ error: 'Cannot redeem', message: result.reason });
+      return;
+    }
+
+    const position = await merchantProfileStore.payoutPosition(merchant);
+    res.status(201).json({
+      txHash: result.txHash,
+      claimId: result.claimId,
+      amountCents: Number(BigInt(result.amountMicros) / 10_000n),
+      // Paid means it is in the shop's account; queued means the pool was short and a claim is
+      // waiting its turn. Both are the redemption working.
+      status: result.paidNow ? 'paid' : 'queued',
+      cashAccountCents: position.cashAccountCents,
+      owedCents: position.owedCents,
+      availableTodayCents: position.availableTodayCents,
     });
   },
 );

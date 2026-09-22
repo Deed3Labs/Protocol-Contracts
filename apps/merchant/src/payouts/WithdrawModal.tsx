@@ -74,6 +74,15 @@ export function WithdrawModal({
   const [entry, setEntry] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * What actually happened, rather than what was asked for.
+   *
+   * Owed money is now redeemed on chain as part of the request, and there are three endings: it
+   * landed in the cash account, it queued behind other claims because the pool was short, or the
+   * server could not do the chain leg and it is a request as before. The closing screen used to
+   * say "On its way" for all of them, which was true of only one.
+   */
+  const [outcome, setOutcome] = useState<Awaited<ReturnType<typeof api.requestWithdrawal>> | null>(null);
 
   const cap = source === 'cash' ? position.cashAccountCents : position.releasedReadyCents;
   const cents = entry ? toCents(Number(entry) || 0) : 0;
@@ -90,7 +99,7 @@ export function WithdrawModal({
     setBusy(true);
     setError(null);
     try {
-      await api.requestWithdrawal({ amountCents: cents, source, destination });
+      setOutcome(await api.requestWithdrawal({ amountCents: cents, source, destination }));
       setStage('sending');
       // The hops are visible here and only here. Long enough to read, then the outcome.
       window.setTimeout(() => setStage('done'), 2200);
@@ -131,6 +140,7 @@ export function WithdrawModal({
             destination={destination}
             bank={bank}
             position={position}
+            outcome={outcome}
             onDone={() => {
               onDone();
               onClose();
@@ -484,23 +494,34 @@ function Sending({
  *
  * A merchant who has just moved money from one pot wants to see where both stand, and the
  * remaining owed figure is the next question either way.
+ *
+ * **And it says which of three things happened.** Owed money is redeemed on chain as part of the
+ * request: it either landed, or queued behind claims ahead of it because the pool was short, or
+ * the chain leg was not available and this is a request somebody settles later. "On its way" was
+ * written when only the third existed, and it is the wrong sentence for the other two -- it
+ * understates the first and overstates the second.
  */
 function Done({
   amount,
   destination,
   bank,
   position,
+  outcome,
   onDone,
 }: {
   amount: number;
   destination: Destination;
   bank: string;
   position: PayoutPosition;
+  outcome: Awaited<ReturnType<typeof api.requestWithdrawal>> | null;
   onDone: () => void;
 }) {
+  const paid = outcome?.status === 'paid';
+  const queued = outcome?.queued === true;
+  const heading = paid ? 'Paid' : queued ? 'Queued' : 'On its way';
   return (
     <div className="py-2">
-      <Cap>On its way</Cap>
+      <Cap>{heading}</Cap>
       <p className="m-0 mb-[3px] text-[24px] font-medium tabular-nums">
         {dollars(fromCents(amount))}
       </p>
@@ -508,7 +529,12 @@ function Done({
         to {destination === 'cash' ? 'your cash account' : destination === 'bank' ? bank : 'your card'}
       </p>
       <div className="mb-4 rounded-[10px] border-[0.5px] border-[var(--clear-border)] px-3.5 py-3">
-        <Line label="Arrives" value={arrivalLabel(destination)} />
+        {/* Paid is already here, so a date is the wrong answer; queued is waiting on the pool
+            rather than on a rail, so the rail's timing would be a fiction. */}
+        <Line
+          label="Arrives"
+          value={paid ? 'In your account' : queued ? 'Within your payout terms' : arrivalLabel(destination)}
+        />
         <Line
           label="Still owed to you"
           value={dollars(fromCents(Math.max(0, position.owedCents - amount)))}
@@ -521,6 +547,15 @@ function Done({
           <Line label="Next payout" value={formatCalendarDate(position.nextPayoutOn)} />
         )}
       </div>
+      {queued && (
+        <p className="m-0 mb-4 text-[12.5px] text-[var(--clear-text-muted)]">
+          Claims are paid in the order they were made. Yours is in the queue and is paid as the pool
+          is funded, at the latest by the end of your terms.
+        </p>
+      )}
+      {outcome?.settlementNote && (
+        <p className="m-0 mb-4 text-[12.5px] text-[var(--clear-text-muted)]">{outcome.settlementNote}</p>
+      )}
       <Button onClick={onDone} className="w-full">
         Done
       </Button>
