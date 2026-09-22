@@ -32,18 +32,26 @@ describe('what the code promises in its own text', function () {
   const service = source('payoutRedemption.ts');
   const route = source('../../routes/merchant.ts');
 
-  test('approves and redeems in one operation', function () {
-    // A first-ever redemption needs an allowance the merchant has never given. Sending that as its
-    // own transaction would need gas in a wallet that holds none -- batching is the point.
+  test('approves only when the allowance is short, then redeems', function () {
+    // Both are sponsored, so two transactions cost the shop nothing — and staying on
+    // `eth_sendTransaction` keeps them inside the policy that bounds Clear's signer, which a
+    // batched `wallet_sendCalls` would fall outside.
     expect(service).toContain("functionName: 'approve'");
     expect(service).toContain("functionName: 'redeem'");
-    expect(service).toMatch(/calls\.push\(\{ to: poolAddress/);
+    expect(service).toContain('if (allowance < amount)');
+  });
+
+  test('lets Privy pay the gas rather than a paymaster of ours', function () {
+    // The whole of the gasless story is this flag. An earlier version built 7702 delegation, a
+    // Kernel account and a paymaster to achieve what it does.
+    expect(service).toContain('sponsor: true');
+    expect(service).not.toContain('zerodev');
   });
 
   test('redeems at the merchant address rather than a new one', function () {
-    // 7702 delegates the org wallet to Kernel at its own address. A separate smart wallet would be
-    // a different address, and the registry entry, the credits and the claim all live at this one.
-    expect(service).toContain('create7702KernelAccount');
+    // The shop's own wallet sends it. The registry entry, the credits, the claim and the cash
+    // account are one address by construction, and nothing here introduces a second.
+    expect(service).toContain('getWalletByAddress');
     expect(service).toContain('org.walletAddress');
   });
 
