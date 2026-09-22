@@ -24,6 +24,11 @@ import { getDeployment } from "../deploy/helpers";
  *
  * APPROVAL_CAP is in dollars for the sake of whoever runs this; it is converted to the 6dp units
  * the contract holds. Run by an operator.
+ *
+ * It also grants the merchant network membership, without which they can be paid but cannot
+ * redeem -- see `grantMembership` below. Re-running it on a merchant who is already registered
+ * does nothing except that check, which is how the two merchants registered before this existed
+ * get fixed.
  */
 const { ethers } = hre as typeof hre & {
   ethers: typeof import("hardhat").ethers;
@@ -55,6 +60,7 @@ async function main() {
     console.log("  approvalCap  ", ethers.formatUnits(terms.approvalCap, 6));
     console.log("  payoutWindow ", terms.payoutWindow.toString(), "seconds");
     console.log("\nUse updateTerms to change these; this script only registers.");
+    await grantMembership(merchant);
     return;
   }
 
@@ -65,6 +71,62 @@ async function main() {
   console.log("  approvalCap ", approvalCap === 0n ? "none" : `$${capDollars}`);
   console.log("  payoutWindow", payoutWindow === 0 ? "registry default" : `${payoutWindow}s`);
   console.log("\nMerchants now registered:", (await registry.merchantCount()).toString());
+
+  await grantMembership(merchant);
+}
+
+/*
+ * The half of onboarding that is not in the registry at all.
+ *
+ * `StableCredit.senderIsMember` gates every outbound transfer, and a merchant redeeming has the
+ * pool pull their credits with `transferFrom` -- so a merchant who is registered but not a member
+ * takes payment perfectly well and then cannot redeem a cent of it. The revert carries no reason
+ * string, because deployed builds strip them.
+ *
+ * Both merchants on Base Sepolia were in exactly that state, undetected, because the test fixtures
+ * grant membership and nothing in onboarding did. It belongs here: registration is already an
+ * operator's job, and this is the same operator in the same run.
+ *
+ * Buying on credit grants membership by itself (`StableCredit._accrueCredit`), so this is only
+ * ever ahead of that, never instead of it.
+ */
+async function grantMembership(merchant: string) {
+  const network = (await ethers.provider.getNetwork()).name;
+  const credit = getDeployment(network, "ClearCredit");
+  if (!credit) {
+    console.log("\nNo ClearCredit recorded here, so membership was not checked. Check it by hand:");
+    console.log("a merchant who is not a network member cannot redeem.");
+    return;
+  }
+
+  const accessAddress: string = await (
+    await ethers.getContractAt(["function access() view returns (address)"], credit.address)
+  ).access();
+  const access = await ethers.getContractAt(
+    [
+      "function isMember(address) view returns (bool)",
+      "function isOperator(address) view returns (bool)",
+      "function grantMember(address) external",
+    ],
+    accessAddress,
+  );
+
+  if (await access.isMember(merchant)) {
+    console.log("network member: already");
+    return;
+  }
+
+  const [signer] = await ethers.getSigners();
+  if (!(await access.isOperator(signer.address))) {
+    console.log(`\n${merchant} IS NOT A NETWORK MEMBER AND CANNOT REDEEM.`);
+    console.log(`${signer.address} is not an operator, so this run could not fix it.`);
+    console.log(`Have an operator call grantMember(${merchant}) on ${accessAddress}.`);
+    return;
+  }
+
+  const tx = await access.grantMember(merchant);
+  await tx.wait();
+  console.log("network member: granted in", tx.hash);
 }
 
 main().catch((error) => {
