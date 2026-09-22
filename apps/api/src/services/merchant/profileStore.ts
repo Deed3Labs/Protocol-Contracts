@@ -257,42 +257,40 @@ export const merchantProfileStore = {
 
     const m = normalize(merchant);
 
-    // Everything approved and not yet paid out. `payout_cents` is what the shop actually receives,
-    // already net of the co-op's fee at the rate that applied when the charge was raised.
-    const owedRes = await pool.query<{ owed: string; n: string }>(
-      `SELECT COALESCE(SUM(payout_cents),0) AS owed, COUNT(*) AS n
-         FROM ${CHARGES_TABLE}
-        WHERE merchant_address = $1 AND status = 'approved'`,
-      [m],
-    );
-    const owedCents = Number(owedRes.rows[0]?.owed ?? 0);
-
-    // Settled refunds come straight off what is owed.
-    const merchantPool = getMerchantPool();
-    let clawbackCents = 0;
-    if (merchantPool) {
-      await ensureMerchantSchema();
-      const r = await merchantPool.query<{ total: string }>(
-        `SELECT COALESCE(SUM(clawback_cents),0) AS total FROM ${MERCHANT_SCHEMA}.refunds
-          WHERE merchant = $1 AND state = 'settled'`,
-        [m],
-      );
-      clawbackCents = Number(r.rows[0]?.total ?? 0);
-    }
+    /*
+     * What the shop is owed comes from the CHAIN, not from a sum of charge rows.
+     *
+     * `PayoutPool` says it plainly: a merchant's positive StableCredit balance IS the payables
+     * ledger, on-chain, with no parallel record to reconcile against. This kept a parallel record
+     * anyway — approved charges, summed — and the two disagreed the first time anything minted
+     * credits by a route other than a charge. The demo shop held 92.50 on chain and this screen
+     * showed nothing, which then capped withdrawals at zero for a reason no log would have named.
+     *
+     * The rows stay, and do what they are actually for: history, attribution, the count beside a
+     * payout. What a merchant is OWED is one number, and the ledger holds it.
+     *
+     * Null when the chain cannot be read — never a zero, which would read as a quiet day.
+     */
+    const chainPosition = await merchantPayoutPosition(m);
+    const owedCents = chainPosition === null ? 0 : microsToCents(chainPosition.redeemableMicros);
 
     /*
-     * A refund can outrun what a merchant is currently owed — they were already paid for the sale
-     * being given back. `Math.max(0, ...)` used to swallow that difference: the co-op absorbed it
-     * and no record of it existed anywhere, which is the off-chain twin of the same missing
-     * negative position the ledger had.
+     * Refunds are already netted, and an overdraw is already recorded — by the ledger.
      *
-     * It is carried instead. `owedCents` stays at zero because a payout cannot be negative, and
-     * the overdraw is reported beside it as what it is — a debt that comes off the next sales,
-     * which happens on its own, since both sides of this subtraction span all time.
+     * `StableCredit.repayRefund` takes a settled refund off the merchant's balance, and when the
+     * refund outruns that balance the difference becomes an obligation the merchant carries. That
+     * is the same rule this used to implement in SQL over the refunds table, except the ledger's
+     * version covers every route to owing rather than only the rows we happened to write.
+     *
+     * So: what they hold is what they are owed, what they owe is reported beside it, and neither
+     * is computed twice.
      */
-    const gross = owedCents - clawbackCents;
-    const net = Math.max(0, gross);
-    const clawbackOwedCents = Math.max(0, -gross);
+    const net = owedCents;
+    const clawbackOwedCents = chainPosition === null ? 0 : microsToCents(chainPosition.owedByMicros);
+
+    // Clear's own rows, for the history below rather than for any figure above.
+    const merchantPool = getMerchantPool();
+    if (merchantPool) await ensureMerchantSchema();
 
     // The shop's own Clear balance clears out of the payout first — it costs them no carry there.
     // Not yet read from the credit contracts; zero until that is wired, which reads as "all of it
@@ -351,7 +349,8 @@ export const merchantProfileStore = {
      * and what is queued in front of this shop, and `merchantPayoutPosition` puts those together
      * the way the pool itself would. Still null when the chain cannot be read.
      */
-    const chainPosition = await merchantPayoutPosition(normalize(merchant));
+    // The same read as above, reused: one call answers both what they are owed and how much of it
+    // the pool can free today, and asking twice would be two figures from two moments.
     const availableTodayCents: number | null =
       chainPosition === null ? null : microsToCents(chainPosition.freeNowMicros);
 
@@ -378,7 +377,7 @@ export const merchantProfileStore = {
       // The early-withdrawal cap is a pool question the credit side answers. Stated as null rather
       // than guessed: a made-up cap is worse than none.
       availableTodayCents,
-      paid: paidRes.rows.map((p) => ({
+      paid: paidRes.rows.map((p: { id: string; amount_cents: string; charge_count: number; scheduled_for: string; paid_at: string | null }) => ({
         id: p.id,
         amountCents: Number(p.amount_cents),
         charges: p.charge_count,
