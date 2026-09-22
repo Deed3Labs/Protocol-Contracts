@@ -530,4 +530,66 @@ describe("a purchase, from the shop to the money", function () {
     expect(await ctx.usdc.balanceOf(coop.address)).to.equal(25n * ONE_USDC);
     expect(await pool.advancedOf(coop.address)).to.equal(payout - 25n * ONE_USDC);
   });
+  /*
+   * The two things onboarding has to do, found by running a redemption against Base Sepolia
+   * rather than against a fixture: both merchants there were registered and neither could redeem
+   * a cent, because registration is only half of it.
+   */
+  describe("what onboarding has to do before a merchant can be paid", function () {
+    let newcomer: any;
+
+    beforeEach(async function () {
+      newcomer = (await ethers.getSigners())[11];
+      await ctx.stableCredit.connect(newcomer).approve(await pool.getAddress(), ethers.MaxUint256);
+    });
+
+    /** A purchase at the newcomer's counter, so they have a balance to try to redeem. */
+    async function buyFrom(who: any, purchase = 100n * ONE_USDC) {
+      const payout = (purchase * 975n) / 1000n;
+      await term
+        .connect(ctx.operator)
+        .openPlan(ctx.member.address, who.address, purchase, payout, 150n, CYCLE, 4, CYCLE);
+      return payout;
+    }
+
+    it("makes them a network member, or they can take payment and never redeem it", async function () {
+      await registry.registerMerchant(newcomer.address, NET_30, 50_000n * ONE_USDC, 250n);
+      const payout = await buyFrom(newcomer);
+      await fundPool(coop, payout);
+
+      // Registered, active, holding a balance, and stopped at the ledger: `senderIsMember` gates
+      // the transferFrom that redemption pulls the credits with.
+      expect(await registry.isActive(newcomer.address)).to.equal(true);
+      expect(await ctx.stableCredit.balanceOf(newcomer.address)).to.equal(payout);
+      await expect(pool.connect(newcomer).redeem(payout)).to.be.revertedWith(
+        "StableCredit: Sender is not network member"
+      );
+
+      await ctx.access.connect(ctx.operator).grantMember(newcomer.address);
+      await pool.connect(newcomer).redeem(payout);
+      expect(await ctx.usdc.balanceOf(newcomer.address)).to.equal(payout);
+    });
+
+    it("owes a merchant on the standard schedule when no window was agreed", async function () {
+      // Zero is what everything that enters a window writes for "the standard one".
+      await registry.registerMerchant(newcomer.address, 0, 50_000n * ONE_USDC, 250n);
+      await ctx.access.connect(ctx.operator).grantMember(newcomer.address);
+      expect(await registry.payoutWindowOf(newcomer.address)).to.equal(BigInt(NET_30));
+
+      const payout = await buyFrom(newcomer);
+      const [, claimId] = await pool.connect(newcomer).redeem.staticCall(payout);
+      await pool.connect(newcomer).redeem(payout);
+
+      // Not due on the spot, so nothing can borrow against the yield pool to pay it today.
+      const claim = await pool.claimAt(claimId);
+      expect(claim.dueBy - claim.claimedAt).to.equal(BigInt(NET_30));
+      await expect(pool.drawForDueClaim()).to.be.revertedWithCustomError(pool, "PayoutPoolClaimNotDue");
+    });
+
+    it("keeps a window that was actually agreed", async function () {
+      const NET_14 = 14 * DAY;
+      await registry.registerMerchant(newcomer.address, NET_14, 50_000n * ONE_USDC, 250n);
+      expect(await registry.payoutWindowOf(newcomer.address)).to.equal(BigInt(NET_14));
+    });
+  });
 });

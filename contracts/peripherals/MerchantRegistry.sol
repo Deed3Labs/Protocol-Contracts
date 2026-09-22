@@ -89,9 +89,18 @@ contract MerchantRegistry is AccessControlUpgradeable, UUPSUpgradeable {
     /// @notice how long the co-op has to pay this merchant.
     /// @dev Falls back to the default for anyone without agreed terms, so an unregistered
     /// merchant is owed on the standard schedule rather than owed nothing.
+    ///
+    /// A registered merchant whose window is zero gets the default as well, because zero is how
+    /// "the standard schedule" is written everywhere it is entered -- the `registerMerchant`
+    /// parameter, the ops script's help, the agreement itself. Read literally it means a claim is
+    /// due the instant it is made: both merchants on Base Sepolia were registered that way, and
+    /// `PayoutPool.drawForDueClaim` would have borrowed against the yield pool the moment either
+    /// of them redeemed, with no window for members' repayments to cover it first. Net-30 is the
+    /// floor, so it has to survive being left blank.
     function payoutWindowOf(address merchant) external view returns (uint32) {
         Terms storage merchantTerms = terms[merchant];
-        return merchantTerms.registered ? merchantTerms.payoutWindow : defaultPayoutWindow;
+        if (!merchantTerms.registered || merchantTerms.payoutWindow == 0) return defaultPayoutWindow;
+        return merchantTerms.payoutWindow;
     }
 
     function approvalCapOf(address merchant) external view returns (uint256) {
