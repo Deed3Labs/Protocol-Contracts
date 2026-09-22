@@ -251,6 +251,11 @@ export async function ensureMerchantSchema(): Promise<void> {
       CHECK (status IN ('scheduled','available','requested','paid'));
     ALTER TABLE ${MERCHANT_SCHEMA}.payouts ADD COLUMN IF NOT EXISTS requested_by TEXT;
     ALTER TABLE ${MERCHANT_SCHEMA}.payouts ADD COLUMN IF NOT EXISTS requested_at TIMESTAMPTZ;
+    -- The chain leg of an early withdrawal: the redemption that turned credits into money, and the
+    -- claim it queued when the pool was short. Both null on a payout that simply came due, which is
+    -- the difference between a schedule being kept and a merchant having asked.
+    ALTER TABLE ${MERCHANT_SCHEMA}.payouts ADD COLUMN IF NOT EXISTS tx_hash TEXT;
+    ALTER TABLE ${MERCHANT_SCHEMA}.payouts ADD COLUMN IF NOT EXISTS claim_id TEXT;
 
     CREATE INDEX IF NOT EXISTS payouts_merchant_idx ON ${MERCHANT_SCHEMA}.payouts (merchant, scheduled_for DESC);
   `);
