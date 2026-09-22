@@ -52,6 +52,40 @@ export function clearSignerConfigured(): boolean {
   return privy() !== null && CLEAR_SIGNER_PUBLIC_KEY.length > 0;
 }
 
+/**
+ * Is Clear's key actually on this wallet?
+ *
+ * Asked of Privy rather than of our own `clear_signer_quorum_id` column, because that column
+ * records what onboarding *tried* to do. A shop whose attach failed, or whose wallet was created
+ * before the signer existed, has a row that says nothing and a wallet that refuses to sign — and
+ * the difference only shows up when a merchant asks for money.
+ *
+ * A quorum holding a different key is a different deployment's, and counts as not ours: the
+ * fingerprint comparison is what makes that distinction rather than the mere presence of a signer.
+ */
+export async function clearSignerOnWallet(walletId: string): Promise<boolean> {
+  const p = privy();
+  if (!p || !CLEAR_SIGNER_PUBLIC_KEY) return false;
+  try {
+    const wallet = await p.wallets().get(walletId);
+    const signers = (wallet as { additional_signers?: { signer_id?: string }[] }).additional_signers ?? [];
+    for (const signer of signers) {
+      if (!signer.signer_id) continue;
+      const quorum = await p.keyQuorums().get(signer.signer_id).catch(() => null);
+      const keys = (quorum?.authorization_keys ?? []) as Array<{ public_key?: string } | string>;
+      const has = keys.some((k) => (typeof k === 'string' ? k : k.public_key) === CLEAR_SIGNER_PUBLIC_KEY);
+      if (has) return true;
+    }
+    return false;
+  } catch (error) {
+    console.error(
+      '[merchant] could not read the wallet’s signers',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+    return false;
+  }
+}
+
 export interface ClearSigner {
   /** The quorum wrapping Clear's authorization key. This is what the wallet lists as a signer. */
   signerQuorumId: string;
@@ -120,25 +154,37 @@ export async function provisionClearSigner(input: {
  * created when the agreement is signed at step three, and the signer is added at step six once the
  * owner has been shown what it can do. Provisioning infrastructure before consent is the thing
  * this ordering exists to avoid.
+ *
+ * **The owner's own authorization is required, and that is the wallet working correctly.** Privy
+ * refuses this call from the app secret alone:
+ *
+ *   401 Missing `privy-authorization-signature` header or no signatures provided
+ *
+ * The wallet is owned by the owner's key quorum, so only the owner can widen who may act on it.
+ * Clear cannot quietly add itself as a signer to a shop's money — which is the property that makes
+ * "Clear's backend holds a key on your wallet" a sentence an owner can be told rather than one
+ * that would be discovered. `ownerJwt` is that consent: a Privy access token from the owner's own
+ * session, taken at the moment they agree, and used for nothing else.
  */
 export async function attachClearSigner(input: {
   walletId: string;
   signer: ClearSigner;
-}): Promise<boolean> {
+  /** The owner's Privy access token. Without it Privy refuses, and should. */
+  ownerJwt: string;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
   const p = privy();
-  if (!p) return false;
+  if (!p) return { ok: false, reason: 'Privy is not configured on this server.' };
   try {
     await p.wallets().update(input.walletId, {
       additional_signers: [
         { signer_id: input.signer.signerQuorumId, override_policy_ids: [input.signer.policyId] },
       ],
+      authorization_context: { user_jwts: [input.ownerJwt] },
     });
-    return true;
+    return { ok: true };
   } catch (error) {
-    console.error(
-      '[merchant] could not attach the Clear signer',
-      error instanceof Error ? error.message : 'unknown error',
-    );
-    return false;
+    const reason = error instanceof Error ? error.message : 'unknown error';
+    console.error('[merchant] could not attach the Clear signer', reason);
+    return { ok: false, reason };
   }
 }

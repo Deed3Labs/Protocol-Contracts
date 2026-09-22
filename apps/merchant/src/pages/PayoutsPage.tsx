@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { dollars, formatCalendarDate, payoutSettlement } from '@clear/domain';
-import { Cap, Card, Inset, PrimaryButton } from '@/shell/ui';
+import { Button, Cap, Card, Inset, PrimaryButton } from '@/shell/ui';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 import { WithdrawModal } from '@/payouts/WithdrawModal';
+import { OwnerSignIn } from '@/auth/OwnerSignIn';
 
 /**
  * Payouts — reference section 07, with the withdraw flow from section 18.
@@ -85,6 +86,16 @@ export default function PayoutsPage() {
 
   const { data: position, reload } = useApi(() => api.payouts(), []);
   const { data: profile } = useApi(() => api.profile(), []);
+  /*
+   * Can Clear settle for this shop at all?
+   *
+   * A shop set up before Clear's signer existed has a wallet only its owner can sign for, so
+   * "Withdraw" would take the request and never settle it. Asked here so the screen can offer the
+   * one-time grant instead — a better answer than a button that quietly does half of what it says.
+   */
+  const { data: signer, reload: reloadSigner } = useApi(() => api.signerStatus(), []);
+  const [granting, setGranting] = useState(false);
+  const [grantError, setGrantError] = useState<string | null>(null);
 
   const owed = (position?.owedCents ?? 0) / 100;
   // Nulls stay null all the way to the screen: an unreadable balance rendered as $0.00 looks like
@@ -183,6 +194,56 @@ export default function PayoutsPage() {
           <p className="m-0 mt-2.5 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
             Net-30, and sooner when the pool allows
           </p>
+
+          {/*
+            The one-time grant, shown only while it is missing.
+
+            It sits under Withdraw rather than in settings because this is where an owner finds out
+            it matters, and it names what Clear gets: the ability to settle payouts, bounded by the
+            same ceiling as everything else. Nothing here can grant it on its own — the owner signs
+            in, and Privy checks that signature against the wallet's own owner.
+          */}
+          {signer && !signer.attached && (
+            <div className="mt-4 rounded-[10px] border-[0.5px] border-[var(--clear-border)] px-3.5 py-3">
+              <p className="m-0 mb-1 text-[13px] font-medium">Let Clear settle your payouts</p>
+              <p className="m-0 mb-3 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
+                Withdrawals are recorded but cannot settle until you allow it. You sign in once;
+                Clear can then pay you out from the pool, up to your agreed ceiling, and never move
+                money anywhere else.
+              </p>
+              {granting ? (
+                <OwnerSignIn
+                  embedded
+                  title="Allow Clear to settle payouts"
+                  blurb="Signing in is the permission. Nothing else changes."
+                  onDone={() => {
+                    setGranting(false);
+                    reloadSigner();
+                  }}
+                  onBack={() => setGranting(false)}
+                  onToken={async (token) => {
+                    setGrantError(null);
+                    try {
+                      await api.grantSigner(token);
+                      reloadSigner();
+                      setGranting(false);
+                    } catch (e) {
+                      setGrantError(e instanceof Error ? e.message : 'That could not be allowed just now.');
+                    }
+                  }}
+                />
+              ) : (
+                <Button onClick={() => setGranting(true)} className="w-full">
+                  Allow
+                </Button>
+              )}
+              {grantError && (
+                <p role="alert" className="m-0 mt-2 text-[11.5px]">
+                  {grantError}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <Inset className="mb-[14px] !px-4 !py-[15px]">
