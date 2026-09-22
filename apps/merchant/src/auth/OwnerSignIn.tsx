@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { PrivyProvider, useLoginWithEmail, usePrivy, useSigners } from '@privy-io/react-auth';
+import { PrivyProvider, useAuthorizationSignature, useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
 import { Button, PrimaryButton } from '@/shell/ui';
 
@@ -52,11 +52,13 @@ export function OwnerSignIn(props: {
   /**
    * Work that can only be done while signed in, run inside Privy's provider.
    *
-   * `addSigners` grants a key quorum access to one of this user's wallets. It is the owner's act
-   * by construction — which is exactly why the server cannot do it — so anything that needs it
+   * `signRequest` signs one API request with the owner's own authorization key. It is their act by
+   * construction — which is exactly why the server cannot do it — so anything that needs it
    * arrives here rather than leaving with a token.
    */
-  onAuthorized?: (act: { addSigners: ReturnType<typeof useSigners>['addSigners'] }) => Promise<void>;
+  onAuthorized?: (act: {
+    signRequest: ReturnType<typeof useAuthorizationSignature>['generateAuthorizationSignature'];
+  }) => Promise<void>;
   title?: string;
   blurb?: ReactNode;
   /**
@@ -124,11 +126,13 @@ function OwnerSignInForm({
   /**
    * Work that can only be done while signed in, run inside Privy's provider.
    *
-   * `addSigners` grants a key quorum access to one of this user's wallets. It is the owner's act
-   * by construction — which is exactly why the server cannot do it — so anything that needs it
+   * `signRequest` signs one API request with the owner's own authorization key. It is their act by
+   * construction — which is exactly why the server cannot do it — so anything that needs it
    * arrives here rather than leaving with a token.
    */
-  onAuthorized?: (act: { addSigners: ReturnType<typeof useSigners>['addSigners'] }) => Promise<void>;
+  onAuthorized?: (act: {
+    signRequest: ReturnType<typeof useAuthorizationSignature>['generateAuthorizationSignature'];
+  }) => Promise<void>;
   title?: string;
   blurb?: ReactNode;
   /**
@@ -142,14 +146,18 @@ function OwnerSignInForm({
 }) {
   const { ready, authenticated, getAccessToken, login } = usePrivy();
   /*
-   * Granting a wallet signer has to happen HERE, inside the provider.
+   * Authorizing a wallet change has to happen HERE, inside the provider.
    *
    * Privy will not widen who may act on a wallet without authorization from whoever owns it, and
-   * the owner's authority lives in this session — not in a token a server can present. Two server
-   * attempts proved it (401 missing authorization signature, then 400 invalid JWT). So the caller
-   * hands us work to do while authenticated, rather than a token to take away.
+   * that authority is this session — not a token a server can present. Three refusals mapped the
+   * shape of it: the server alone (401), the server holding the owner's access token (400), and
+   * this browser calling `addSigners` on a wallet that belongs to the SHOP rather than the person
+   * ("not associated with current user").
+   *
+   * What is left is the narrowest thing and the right one: the owner signs one specific request.
+   * So the caller hands us work to do while authenticated rather than a token to take away.
    */
-  const { addSigners } = useSigners();
+  const { generateAuthorizationSignature } = useAuthorizationSignature();
   const { sendCode, loginWithCode } = useLoginWithEmail();
 
   const [email, setEmail] = useState('');
@@ -198,7 +206,8 @@ function OwnerSignInForm({
         if (cbRef.current.onToken) await cbRef.current.onToken(token);
         else await api.signInAsOwner(token);
         // After the session exists, because the work usually needs one to call the server with.
-        if (cbRef.current.onAuthorized) await cbRef.current.onAuthorized({ addSigners });
+        if (cbRef.current.onAuthorized)
+          await cbRef.current.onAuthorized({ signRequest: generateAuthorizationSignature });
         cbRef.current.onDone();
       } catch (e) {
         // A failed adoption has to be retryable: the emailed code is spent, so the way back is a
@@ -210,7 +219,7 @@ function OwnerSignInForm({
         setBusy(false);
       }
     })();
-  }, [adopting, authenticated, getAccessToken, addSigners]);
+  }, [adopting, authenticated, getAccessToken, generateAuthorizationSignature]);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);

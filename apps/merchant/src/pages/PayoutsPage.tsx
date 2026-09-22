@@ -225,17 +225,15 @@ export default function PayoutsPage() {
                     // The shift session already identifies this owner to Clear; the Privy sign-in
                     // here is for Privy's benefit, not ours. Nothing to exchange.
                   }}
-                  onAuthorized={async ({ addSigners }) => {
+                  onAuthorized={async ({ signRequest }) => {
                     setGrantError(null);
                     try {
                       const prepared = await api.prepareSigner();
-                      // The owner's own act, in the owner's own session. A server presenting a
-                      // token in their place is exactly what Privy refuses, twice over.
-                      await addSigners({
-                        address: prepared.walletAddress,
-                        signers: [{ signerId: prepared.signerId, policyIds: [prepared.policyId] }],
-                      });
-                      await api.confirmSigner();
+                      // Signed exactly as it arrived. The signature covers the URL, the body and
+                      // the expiry, so this authorizes one sentence — add this quorum, under this
+                      // policy, to this wallet — and nothing the server could substitute for it.
+                      const { signature } = await signRequest(prepared.authorization as never);
+                      await api.confirmSigner({ signature, requestExpiry: prepared.requestExpiry });
                       reloadSigner();
                       setGranting(false);
                     } catch (e) {
