@@ -786,17 +786,27 @@ merchantRouter.post('/signer/prepare', requireMerchant, requireOwner, async (req
 });
 
 /**
- * Whether the grant took — step two of two.
+ * The owner's signature, sent on — step two of two.
  *
- * The owner's browser does the granting, because Privy requires authorization from whoever owns
- * the wallet and that is the owner's session rather than anything this server holds. What is left
- * for the server is the part a browser should not be believed about: it asks Privy whether the key
- * is really on the wallet now.
+ * They signed one request: add this quorum, under this policy, to this wallet. Clear cannot have
+ * composed a different one and had it accepted, because the signature covers the URL, the body and
+ * the expiry. All this does is post it and then ask Privy what actually changed.
  */
 merchantRouter.post('/signer/confirm', requireMerchant, requireOwner, async (req: Request, res: Response) => {
   const { merchant } = req.merchant!;
-  const status = await confirmClearSigner(merchant);
-  res.status(status.attached ? 201 : 409).json(status);
+  const signature = String(req.body?.signature ?? '').trim();
+  const requestExpiry = Number(req.body?.requestExpiry);
+  if (!signature || !Number.isFinite(requestExpiry)) {
+    res.status(400).json({ error: 'Invalid request', message: 'That grant was not signed.' });
+    return;
+  }
+
+  const result = await confirmClearSigner({ merchant, signature, requestExpiry });
+  if (!result.ok) {
+    res.status(409).json({ error: 'Cannot grant', message: result.reason });
+    return;
+  }
+  res.status(201).json(result.status);
 });
 
 merchantRouter.get('/payouts', requireMerchant, requireManager, async (req: Request, res: Response) => {

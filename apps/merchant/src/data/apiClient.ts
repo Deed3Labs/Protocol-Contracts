@@ -500,7 +500,20 @@ export const api = {
    * Nothing is widened by asking. The offer is inert until `addSigners` grants it from the owner's
    * own session, which is the only place that authorization can come from.
    */
-  async prepareSigner(): Promise<{ walletAddress: string; signerId: string; policyId: string }> {
+  async prepareSigner(): Promise<{
+    walletAddress: string;
+    signerId: string;
+    policyId: string;
+    /** The exact request for the owner to sign — reordering or rebuilding it invalidates it. */
+    authorization: {
+      version: 1;
+      method: 'PATCH';
+      url: string;
+      body: unknown;
+      headers: { 'privy-app-id': string; 'privy-request-expiry': string };
+    };
+    requestExpiry: number;
+  }> {
     return request('/api/merchant/signer/prepare', { method: 'POST', body: '{}' });
   },
 
@@ -510,8 +523,14 @@ export const api = {
    * The browser resolving `addSigners` and the wallet carrying the key are different facts, and
    * the second is the one that decides whether a withdrawal can settle.
    */
-  async confirmSigner(): Promise<{ attached: boolean; canRedeem: boolean; gap: string | null }> {
-    return request('/api/merchant/signer/confirm', { method: 'POST', body: '{}' });
+  async confirmSigner(input: {
+    signature: string;
+    requestExpiry: number;
+  }): Promise<{ attached: boolean; canRedeem: boolean; gap: string | null }> {
+    return request('/api/merchant/signer/confirm', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
   },
 
   async staff(): Promise<StaffMember[]> {
