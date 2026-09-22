@@ -682,12 +682,23 @@ merchantRouter.post(
       nextPayoutOn: position.nextPayoutOn,
       cashAccountCents: position.cashAccountCents,
       owedCents: position.owedCents,
-      status: redemption?.ok && redemption.paidNow ? 'paid' : 'requested',
+      /*
+       * Paid means the money has arrived where they asked for it, and only the cash account is
+       * somewhere this can put it.
+       *
+       * Redemption turns credits into USDC in the shop's OWN wallet — which IS the cash account,
+       * the same address by construction. Getting from there to a bank is an off-ramp, and there
+       * is no code here that does it. So a bank-bound withdrawal whose redemption settled is a
+       * first hop done and a second hop still owed: `inCashAccount` says the money moved, `status`
+       * keeps saying `requested` because what they asked for has not finished.
+       */
+      status: redemption?.ok && redemption.paidNow && destination === 'cash' ? 'paid' : 'requested',
       ...(redemption?.ok
         ? {
             txHash: redemption.txHash,
             claimId: redemption.claimId,
             queued: !redemption.paidNow,
+            inCashAccount: redemption.paidNow,
           }
         : {}),
       // Why it is still only a request, when a shop expected the money. Absent when nothing was
@@ -777,7 +788,13 @@ merchantRouter.post('/signer', requireMerchant, requireOwner, async (req: Reques
     return;
   }
 
-  const result = await grantClearSigner({ merchant, ownerJwt: privyToken });
+  const result = await grantClearSigner({
+    merchant,
+    ownerJwt: privyToken,
+    // Privy issues two tokens and they do different jobs: this one is what its wallet exchange
+    // takes, and sending only the access token is what "Invalid JWT token provided" meant.
+    identityJwt: typeof req.body?.identityToken === 'string' ? req.body.identityToken : null,
+  });
   if (!result.ok) {
     res.status(409).json({ error: 'Cannot grant', message: result.reason });
     return;

@@ -518,7 +518,16 @@ function Done({
 }) {
   const paid = outcome?.status === 'paid';
   const queued = outcome?.queued === true;
-  const heading = paid ? 'Paid' : queued ? 'Queued' : 'On its way';
+  /*
+   * Redeemed, but bound for a bank.
+   *
+   * Redemption puts USDC in the shop's own cash account — that is all it can do, because the same
+   * address is the wallet, the cash account and what the registry knows. Getting from there to a
+   * bank is an off-ramp nothing performs yet, so this is a first hop that landed and a second that
+   * has not: "Paid" would be a lie and "On its way" would understate what actually happened.
+   */
+  const firstHopDone = outcome?.inCashAccount === true && !paid;
+  const heading = paid ? 'Paid' : queued ? 'Queued' : firstHopDone ? 'In your cash account' : 'On its way';
   return (
     <div className="py-2">
       <Cap>{heading}</Cap>
@@ -533,7 +542,15 @@ function Done({
             rather than on a rail, so the rail's timing would be a fiction. */}
         <Line
           label="Arrives"
-          value={paid ? 'In your account' : queued ? 'Within your payout terms' : arrivalLabel(destination)}
+          value={
+            paid
+              ? 'In your account'
+              : queued
+                ? 'Within your payout terms'
+                : firstHopDone
+                  ? `Released — ${arrivalLabel(destination)} to ${destination === 'bank' ? bank : 'your card'}`
+                  : arrivalLabel(destination)
+          }
         />
         <Line
           label="Still owed to you"

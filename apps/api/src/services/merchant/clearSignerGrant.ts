@@ -61,7 +61,10 @@ export async function clearSignerStatus(merchant: string): Promise<ClearSignerSt
  */
 export async function grantClearSigner(input: {
   merchant: string;
+  /** The access token: what we verify to learn who is asking. */
   ownerJwt: string;
+  /** The identity token: what Privy exchanges for the right to act on their wallets. */
+  identityJwt?: string | null;
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   const org = await merchantOrgFor(input.merchant);
   if (!org) return { ok: false, reason: 'This shop has no wallet on file.' };
@@ -81,7 +84,13 @@ export async function grantClearSigner(input: {
   const signer = await provisionClearSigner({ merchantName: input.merchant.slice(0, 10) });
   if (!signer) return { ok: false, reason: 'Clear could not prepare its signer just now.' };
 
-  const attached = await attachClearSigner({ walletId: org.walletId, signer, ownerJwt: input.ownerJwt });
+  // Identity token first: it is the one Privy's exchange takes. The access token follows as a
+  // fallback rather than an assumption — see `attachClearSigner`.
+  const attached = await attachClearSigner({
+    walletId: org.walletId,
+    signer,
+    ownerJwts: [input.identityJwt ?? '', input.ownerJwt],
+  });
   if (!attached.ok) return { ok: false, reason: attached.reason };
 
   await merchantProfileStore.setClearSigner(input.merchant, signer.signerQuorumId, signer.policyId);

@@ -221,10 +221,10 @@ export default function PayoutsPage() {
                     reloadSigner();
                   }}
                   onBack={() => setGranting(false)}
-                  onToken={async (token) => {
+                  onToken={async (token, identityToken) => {
                     setGrantError(null);
                     try {
-                      await api.grantSigner(token);
+                      await api.grantSigner(token, identityToken);
                       reloadSigner();
                       setGranting(false);
                     } catch (e) {

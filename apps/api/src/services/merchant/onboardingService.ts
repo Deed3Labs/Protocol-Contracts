@@ -47,6 +47,8 @@ export type OnboardingFailure =
 
 export async function onboardMerchant(input: {
   privyToken: string;
+  /** Privy's other token, which is the one its wallet exchange takes. See `attachClearSigner`. */
+  identityToken?: string | null;
   shopName: string;
   ownerName: string;
   ownerPin: string;
@@ -124,7 +126,12 @@ export async function onboardMerchant(input: {
     // from whoever owns it, and the owner signed in at the start of this same flow — so the
     // consent is a thing that happened rather than a thing assumed.
     const attached =
-      signer && (await attachClearSigner({ walletId: org.walletId, signer, ownerJwt: input.privyToken }));
+      signer &&
+      (await attachClearSigner({
+        walletId: org.walletId,
+        signer,
+        ownerJwts: [input.identityToken ?? '', input.privyToken],
+      }));
     if (signer && attached && attached.ok) {
       await merchantProfileStore.setClearSigner(merchant, signer.signerQuorumId, signer.policyId);
       signerReady = true;
