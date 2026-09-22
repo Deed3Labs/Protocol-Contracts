@@ -18,7 +18,7 @@ import { raiseChargeFromDevice, readMerchantTerms } from '../services/chargeServ
 import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
 import { onboardMerchant } from '../services/merchant/onboardingService.js';
 import { redeemForMerchant, redemptionConfigured } from '../services/merchant/payoutRedemption.js';
-import { clearSignerStatus, grantClearSigner } from '../services/merchant/clearSignerGrant.js';
+import { clearSignerStatus, confirmClearSigner, prepareClearSigner } from '../services/merchant/clearSignerGrant.js';
 
 /**
  * The merchant surface.
@@ -769,37 +769,34 @@ merchantRouter.get('/signer', requireMerchant, requireOwner, async (req: Request
 });
 
 /**
- * The owner lets Clear settle their payouts — onboarding step six, for a shop that skipped it.
+ * What the owner is about to grant — step one of two.
  *
- * **It takes the owner's own Privy token, and cannot be done without one.** Privy refuses to widen
- * who may act on a wallet unless whoever owns it authorizes the change, which is exactly right:
- * Clear adding itself as a signer on a shop's money is a thing an owner agrees to, not a thing
- * they discover. The token is used for this one call and kept nowhere.
- *
- * `requireOwner` guards who may ask; the Privy token proves who is asking. Both, because the first
- * is Clear's own record of the roster and the second is the wallet's own idea of its owner, and
- * this is precisely the call where those two must agree.
+ * Returns the key quorum holding Clear's public key and the ceiling it acts under, creating them
+ * on first ask and reusing them afterwards. Nothing here widens anything: the offer is inert until
+ * the owner's own browser grants it.
  */
-merchantRouter.post('/signer', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+merchantRouter.post('/signer/prepare', requireMerchant, requireOwner, async (req: Request, res: Response) => {
   const { merchant } = req.merchant!;
-  const privyToken = String(req.body?.privyToken ?? '').trim();
-  if (!privyToken) {
-    res.status(400).json({ error: 'Invalid request', message: 'token is required' });
-    return;
-  }
-
-  const result = await grantClearSigner({
-    merchant,
-    ownerJwt: privyToken,
-    // Privy issues two tokens and they do different jobs: this one is what its wallet exchange
-    // takes, and sending only the access token is what "Invalid JWT token provided" meant.
-    identityJwt: typeof req.body?.identityToken === 'string' ? req.body.identityToken : null,
-  });
+  const result = await prepareClearSigner(merchant);
   if (!result.ok) {
-    res.status(409).json({ error: 'Cannot grant', message: result.reason });
+    res.status(409).json({ error: 'Cannot prepare', message: result.reason });
     return;
   }
-  res.status(201).json(await clearSignerStatus(merchant));
+  res.json(result.prepared);
+});
+
+/**
+ * Whether the grant took — step two of two.
+ *
+ * The owner's browser does the granting, because Privy requires authorization from whoever owns
+ * the wallet and that is the owner's session rather than anything this server holds. What is left
+ * for the server is the part a browser should not be believed about: it asks Privy whether the key
+ * is really on the wallet now.
+ */
+merchantRouter.post('/signer/confirm', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+  const { merchant } = req.merchant!;
+  const status = await confirmClearSigner(merchant);
+  res.status(status.attached ? 201 : 409).json(status);
 });
 
 merchantRouter.get('/payouts', requireMerchant, requireManager, async (req: Request, res: Response) => {

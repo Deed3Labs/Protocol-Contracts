@@ -110,6 +110,28 @@ export const merchantProfileStore = {
     return (rowCount ?? 0) > 0;
   },
 
+  /**
+   * The quorum and policy this shop was offered, if it has been offered one.
+   *
+   * Recorded at prepare rather than at grant, because the offer is what has to be stable: the
+   * owner grants in their own browser and may take two goes at it, and a second press must hand
+   * them the same quorum rather than mint another one holding the same live key.
+   */
+  async clearSignerIds(
+    merchant: string,
+  ): Promise<{ signerQuorumId: string | null; policyId: string | null } | null> {
+    const pool = getMerchantPool();
+    if (!pool) return null;
+    await ensureMerchantSchema();
+    const { rows } = await pool.query<{ clear_signer_quorum_id: string | null; clear_policy_id: string | null }>(
+      `SELECT clear_signer_quorum_id, clear_policy_id FROM ${MERCHANT_SCHEMA}.profiles WHERE merchant = $1`,
+      [normalize(merchant)],
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return { signerQuorumId: row.clear_signer_quorum_id, policyId: row.clear_policy_id };
+  },
+
   /** Record Clear's signer on this shop, once the wallet has accepted it. */
   async setClearSigner(merchant: string, quorumId: string, policyId: string): Promise<void> {
     const pool = getMerchantPool();

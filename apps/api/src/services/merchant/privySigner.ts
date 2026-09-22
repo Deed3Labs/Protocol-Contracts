@@ -53,22 +53,47 @@ export function clearSignerConfigured(): boolean {
 }
 
 /**
+ * The shop's wallet at Privy, found by ADDRESS.
+ *
+ * Not by the `privy_wallet_id` we stored: the demo shop's row holds an id Privy answers 404 to,
+ * and a lookup that fails silently reads as "no signer attached" — which is the same shape as the
+ * real problem it was meant to detect. The address cannot drift, because the address IS the shop:
+ * the registry, the cash account and this record all name it by construction.
+ */
+export async function merchantWallet(address: string): Promise<{ id: string; address: string } | null> {
+  const p = privy();
+  if (!p) return null;
+  try {
+    const wallet = await p.wallets().getWalletByAddress({ address });
+    return { id: wallet.id, address: wallet.address };
+  } catch (error) {
+    console.error(
+      '[merchant] no Privy wallet at that address',
+      error instanceof Error ? error.message : 'unknown error',
+    );
+    return null;
+  }
+}
+
+/**
  * Is Clear's key actually on this wallet?
  *
  * Asked of Privy rather than of our own `clear_signer_quorum_id` column, because that column
- * records what onboarding *tried* to do. A shop whose attach failed, or whose wallet was created
- * before the signer existed, has a row that says nothing and a wallet that refuses to sign — and
- * the difference only shows up when a merchant asks for money.
+ * records what onboarding *tried* to do. A shop whose grant never happened, or whose wallet was
+ * created before the signer existed, has a row that says nothing and a wallet that refuses to
+ * sign — and the difference only shows up when a merchant asks for money.
  *
  * A quorum holding a different key is a different deployment's, and counts as not ours: the
  * fingerprint comparison is what makes that distinction rather than the mere presence of a signer.
  */
-export async function clearSignerOnWallet(walletId: string): Promise<boolean> {
+export async function clearSignerOnWallet(address: string): Promise<boolean> {
   const p = privy();
   if (!p || !CLEAR_SIGNER_PUBLIC_KEY) return false;
+  const wallet = await merchantWallet(address);
+  if (!wallet) return false;
   try {
-    const wallet = await p.wallets().get(walletId);
-    const signers = (wallet as { additional_signers?: { signer_id?: string }[] }).additional_signers ?? [];
+    const full = await p.wallets().get(wallet.id);
+    const signers = (full as { additional_signers?: { signer_id?: string }[] }).additional_signers ?? [];
     for (const signer of signers) {
       if (!signer.signer_id) continue;
       const quorum = await p.keyQuorums().get(signer.signer_id).catch(() => null);
@@ -147,65 +172,17 @@ export async function provisionClearSigner(input: {
   }
 }
 
-/**
- * Attach Clear's signer to the shop's wallet.
+/*
+ * There is no `attachClearSigner` here, and that is the finding rather than an omission.
  *
- * Separate from creating it because the wallet may already exist: the organization and wallet are
- * created when the agreement is signed at step three, and the signer is added at step six once the
- * owner has been shown what it can do. Provisioning infrastructure before consent is the thing
- * this ordering exists to avoid.
- *
- * **The owner's own authorization is required, and that is the wallet working correctly.** Privy
- * refuses this call from the app secret alone:
+ * Adding a signer to a wallet requires authorization from whoever OWNS that wallet, and the owner
+ * is a Privy user with a browser session — not something a server holds. Two attempts proved it:
  *
  *   401 Missing `privy-authorization-signature` header or no signatures provided
+ *   400 Invalid JWT token provided        (the access token, sent to the wallet JWT exchange)
  *
- * The wallet is owned by the owner's key quorum, so only the owner can widen who may act on it.
- * Clear cannot quietly add itself as a signer to a shop's money — which is the property that makes
- * "Clear's backend holds a key on your wallet" a sentence an owner can be told rather than one
- * that would be discovered. `ownerJwt` is that consent: a Privy access token from the owner's own
- * session, taken at the moment they agree, and used for nothing else.
+ * So the grant happens in the owner's browser, with `useSigners().addSigners`, and the server's
+ * part is to prepare what they are granting — a key quorum holding Clear's public key, under a
+ * policy ceiling — and to check afterwards that it took. `clearSignerGrant` is that pair.
  */
-export async function attachClearSigner(input: {
-  walletId: string;
-  signer: ClearSigner;
-  /**
-   * The owner's Privy tokens, best first.
-   *
-   * Two of them, because Privy issues two and they do different jobs. The ACCESS token is what a
-   * server verifies to learn who signed in. The IDENTITY token is what Privy will exchange, via
-   * `authenticateWithJwt`, for the right to act on that user's wallets — and that exchange is what
-   * `user_jwts` triggers underneath. Sending only the access token is what
-   *
-   *   400 Invalid JWT token provided
-   *
-   * means: a real, valid token that the exchange will not take. They are tried in order rather
-   * than one being assumed, because the failure is indistinguishable from a wrong app id until you
-   * see which one the exchange accepts, and an owner should not have to press Allow twice to find
-   * out.
-   */
-  ownerJwts: string[];
-}): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const p = privy();
-  if (!p) return { ok: false, reason: 'Privy is not configured on this server.' };
 
-  const candidates = input.ownerJwts.map((t) => t?.trim()).filter((t): t is string => Boolean(t));
-  if (candidates.length === 0) return { ok: false, reason: 'That sign-in carried no token.' };
-
-  let last = 'unknown error';
-  for (const jwt of candidates) {
-    try {
-      await p.wallets().update(input.walletId, {
-        additional_signers: [
-          { signer_id: input.signer.signerQuorumId, override_policy_ids: [input.signer.policyId] },
-        ],
-        authorization_context: { user_jwts: [jwt] },
-      });
-      return { ok: true };
-    } catch (error) {
-      last = error instanceof Error ? error.message : 'unknown error';
-      console.error('[merchant] attach attempt rejected', last);
-    }
-  }
-  return { ok: false, reason: last };
-}
