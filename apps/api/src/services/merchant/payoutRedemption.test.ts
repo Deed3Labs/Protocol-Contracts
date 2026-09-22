@@ -53,7 +53,21 @@ describe('what the code promises in its own text', function () {
     const withdraw = route.slice(route.indexOf("'/payouts/withdraw'"), route.indexOf("'/payouts/redeem'"));
     expect(withdraw).toContain('if (redemption.ok)');
     expect(withdraw).toContain('recordRedemption');
-    expect(withdraw).toContain("status: redemption?.ok && redemption.paidNow ? 'paid' : 'requested'");
+    expect(withdraw).toContain(
+      "status: redemption?.ok && redemption.paidNow && destination === 'cash' ? 'paid' : 'requested'",
+    );
+  });
+
+  test('calls a bank-bound withdrawal paid only when the bank leg exists, which it does not', function () {
+    /*
+     * Redemption puts USDC in the shop's own wallet, which IS the cash account — the same address
+     * by construction. The hop from there to a bank is an off-ramp nothing here performs, so a
+     * bank-bound withdrawal that redeemed is one hop done out of two. Saying "paid" would be the
+     * exact overclaim the old request-only code was careful never to make.
+     */
+    const withdraw = route.slice(route.indexOf("'/payouts/withdraw'"), route.indexOf("'/payouts/redeem'"));
+    expect(withdraw).toContain("destination === 'cash' ? 'paid' : 'requested'");
+    expect(withdraw).toContain('inCashAccount: redemption.paidNow');
   });
 
   test('only redeems money that is owed, never the cash account', function () {

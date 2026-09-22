@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { PrivyProvider, useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
+import { PrivyProvider, useIdentityToken, useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
 import { Button, PrimaryButton } from '@/shell/ui';
 
@@ -41,8 +41,14 @@ export function OwnerSignIn(props: {
    * A shop being created has no staff row to sign in as — that row is what onboarding produces —
    * so `signInAsOwner` would refuse. When this is given, the screen hands back the verified token
    * and lets the caller decide what it means. Same UI either way, because it is the same act.
+   *
+   * The identity token comes with it, because the two Privy tokens do different jobs: the access
+   * token is what a server verifies to learn who signed in, and the identity token is what Privy
+   * itself will exchange for the right to act on that user's wallets. Granting Clear a signer on
+   * a shop's wallet needs the second, and having only the first is what "Invalid JWT token
+   * provided" means.
    */
-  onToken?: (token: string) => Promise<void>;
+  onToken?: (token: string, identityToken: string | null) => Promise<void>;
   title?: string;
   blurb?: ReactNode;
   /**
@@ -105,7 +111,7 @@ function OwnerSignInForm({
 }: {
   onDone: () => void;
   onBack?: () => void;
-  onToken?: (token: string) => Promise<void>;
+  onToken?: (token: string, identityToken: string | null) => Promise<void>;
   title?: string;
   blurb?: ReactNode;
   /**
@@ -118,6 +124,9 @@ function OwnerSignInForm({
   embedded?: boolean;
 }) {
   const { ready, authenticated, getAccessToken, login } = usePrivy();
+  // Privy's other token. `usePrivy` does not carry it, and the server cannot obtain it — it is
+  // minted for the browser session, so it has to travel with the access token or not at all.
+  const { identityToken } = useIdentityToken();
   const { sendCode, loginWithCode } = useLoginWithEmail();
 
   const [email, setEmail] = useState('');
@@ -163,7 +172,7 @@ function OwnerSignInForm({
       try {
         const token = await getAccessToken();
         if (!token) throw new Error('That sign-in could not be verified.');
-        if (cbRef.current.onToken) await cbRef.current.onToken(token);
+        if (cbRef.current.onToken) await cbRef.current.onToken(token, identityToken);
         else await api.signInAsOwner(token);
         cbRef.current.onDone();
       } catch (e) {
@@ -176,7 +185,7 @@ function OwnerSignInForm({
         setBusy(false);
       }
     })();
-  }, [adopting, authenticated, getAccessToken]);
+  }, [adopting, authenticated, getAccessToken, identityToken]);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);

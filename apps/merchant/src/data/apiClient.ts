@@ -463,6 +463,13 @@ export const api = {
     claimId?: string | null;
     /** The redemption worked and the pool was short, so a claim is waiting its turn. */
     queued?: boolean;
+    /**
+     * The redemption settled into the shop's own cash account.
+     *
+     * Not the same as arriving: a bank-bound withdrawal is two hops, and this is the first. The
+     * off-ramp from the cash account to a bank is a separate act that nothing here performs yet.
+     */
+    inCashAccount?: boolean;
     /** Why this is still only a request. Present only when the chain leg was tried and refused. */
     settlementNote?: string;
   }> {
@@ -494,10 +501,16 @@ export const api = {
    * a wallet without authorization from whoever owns it, which is why this cannot be done from a
    * settings toggle and should not be: it is the owner agreeing, not a preference.
    */
-  async grantSigner(privyToken: string): Promise<{ attached: boolean; canRedeem: boolean; gap: string | null }> {
+  async grantSigner(
+    privyToken: string,
+    identityToken: string | null,
+  ): Promise<{ attached: boolean; canRedeem: boolean; gap: string | null }> {
+    // Both tokens, because they do different jobs. The access token is what the server verifies to
+    // learn who signed in; the identity token is what Privy exchanges for the right to act on that
+    // user's wallets. Sending only the first is what "Invalid JWT token provided" means.
     return request('/api/merchant/signer', {
       method: 'POST',
-      body: JSON.stringify({ privyToken }),
+      body: JSON.stringify({ privyToken, identityToken }),
     });
   },
 

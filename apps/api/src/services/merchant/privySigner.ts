@@ -169,22 +169,43 @@ export async function provisionClearSigner(input: {
 export async function attachClearSigner(input: {
   walletId: string;
   signer: ClearSigner;
-  /** The owner's Privy access token. Without it Privy refuses, and should. */
-  ownerJwt: string;
+  /**
+   * The owner's Privy tokens, best first.
+   *
+   * Two of them, because Privy issues two and they do different jobs. The ACCESS token is what a
+   * server verifies to learn who signed in. The IDENTITY token is what Privy will exchange, via
+   * `authenticateWithJwt`, for the right to act on that user's wallets — and that exchange is what
+   * `user_jwts` triggers underneath. Sending only the access token is what
+   *
+   *   400 Invalid JWT token provided
+   *
+   * means: a real, valid token that the exchange will not take. They are tried in order rather
+   * than one being assumed, because the failure is indistinguishable from a wrong app id until you
+   * see which one the exchange accepts, and an owner should not have to press Allow twice to find
+   * out.
+   */
+  ownerJwts: string[];
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   const p = privy();
   if (!p) return { ok: false, reason: 'Privy is not configured on this server.' };
-  try {
-    await p.wallets().update(input.walletId, {
-      additional_signers: [
-        { signer_id: input.signer.signerQuorumId, override_policy_ids: [input.signer.policyId] },
-      ],
-      authorization_context: { user_jwts: [input.ownerJwt] },
-    });
-    return { ok: true };
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : 'unknown error';
-    console.error('[merchant] could not attach the Clear signer', reason);
-    return { ok: false, reason };
+
+  const candidates = input.ownerJwts.map((t) => t?.trim()).filter((t): t is string => Boolean(t));
+  if (candidates.length === 0) return { ok: false, reason: 'That sign-in carried no token.' };
+
+  let last = 'unknown error';
+  for (const jwt of candidates) {
+    try {
+      await p.wallets().update(input.walletId, {
+        additional_signers: [
+          { signer_id: input.signer.signerQuorumId, override_policy_ids: [input.signer.policyId] },
+        ],
+        authorization_context: { user_jwts: [jwt] },
+      });
+      return { ok: true };
+    } catch (error) {
+      last = error instanceof Error ? error.message : 'unknown error';
+      console.error('[merchant] attach attempt rejected', last);
+    }
   }
+  return { ok: false, reason: last };
 }
