@@ -6,7 +6,7 @@ import {
   saveMerchantOrg,
   verifyPrivyToken,
 } from './privyOrg.js';
-import { attachClearSigner, clearSignerConfigured, provisionClearSigner } from './privySigner.js';
+import { clearSignerConfigured, provisionClearSigner } from './privySigner.js';
 
 /**
  * Bringing a shop into existence — reference section 13.
@@ -47,8 +47,6 @@ export type OnboardingFailure =
 
 export async function onboardMerchant(input: {
   privyToken: string;
-  /** Privy's other token, which is the one its wallet exchange takes. See `attachClearSigner`. */
-  identityToken?: string | null;
   shopName: string;
   ownerName: string;
   ownerPin: string;
@@ -113,29 +111,19 @@ export async function onboardMerchant(input: {
   await staffStore.linkPrivyUser(owner.id, privyUserId);
 
   /**
-   * Clear's own signer, last and optional.
+   * Clear's own signer, prepared but not granted.
    *
-   * A shop whose organization and wallet exist is a shop that can be signed into and set up, even
-   * if Clear cannot yet sign on its behalf — so a missing authorization key must not fail
-   * onboarding six steps in. It reports `signerReady: false` and the shop is completed later.
+   * The server cannot attach it: Privy requires authorization from whoever owns the wallet, and
+   * that is the owner's browser session rather than anything here. What onboarding can do is have
+   * the quorum and the ceiling ready, so the grant the owner makes is one press against something
+   * that already exists.
+   *
+   * `signerReady: false` is therefore the honest answer at this point for every shop, and the
+   * Payouts screen carries the grant until onboarding grows a step that does it inline.
    */
-  let signerReady = false;
   if (clearSignerConfigured()) {
     const signer = await provisionClearSigner({ merchantName: input.shopName.trim() });
-    // The owner's own token. Privy refuses to widen who may act on a wallet without authorization
-    // from whoever owns it, and the owner signed in at the start of this same flow — so the
-    // consent is a thing that happened rather than a thing assumed.
-    const attached =
-      signer &&
-      (await attachClearSigner({
-        walletId: org.walletId,
-        signer,
-        ownerJwts: [input.identityToken ?? '', input.privyToken],
-      }));
-    if (signer && attached && attached.ok) {
-      await merchantProfileStore.setClearSigner(merchant, signer.signerQuorumId, signer.policyId);
-      signerReady = true;
-    }
+    if (signer) await merchantProfileStore.setClearSigner(merchant, signer.signerQuorumId, signer.policyId);
   }
 
   return {
@@ -144,6 +132,7 @@ export async function onboardMerchant(input: {
     merchant,
     walletAddress: org.walletAddress,
     organizationId: org.organizationId,
-    signerReady,
+    // Prepared, never granted from here — see above.
+    signerReady: false,
   };
 }

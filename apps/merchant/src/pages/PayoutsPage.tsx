@@ -221,10 +221,21 @@ export default function PayoutsPage() {
                     reloadSigner();
                   }}
                   onBack={() => setGranting(false)}
-                  onToken={async (token, identityToken) => {
+                  onToken={async () => {
+                    // The shift session already identifies this owner to Clear; the Privy sign-in
+                    // here is for Privy's benefit, not ours. Nothing to exchange.
+                  }}
+                  onAuthorized={async ({ addSigners }) => {
                     setGrantError(null);
                     try {
-                      await api.grantSigner(token, identityToken);
+                      const prepared = await api.prepareSigner();
+                      // The owner's own act, in the owner's own session. A server presenting a
+                      // token in their place is exactly what Privy refuses, twice over.
+                      await addSigners({
+                        address: prepared.walletAddress,
+                        signers: [{ signerId: prepared.signerId, policyIds: [prepared.policyId] }],
+                      });
+                      await api.confirmSigner();
                       reloadSigner();
                       setGranting(false);
                     } catch (e) {

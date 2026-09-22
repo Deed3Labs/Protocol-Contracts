@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { PrivyProvider, useIdentityToken, useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
+import { PrivyProvider, useLoginWithEmail, usePrivy, useSigners } from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
 import { Button, PrimaryButton } from '@/shell/ui';
 
@@ -48,7 +48,15 @@ export function OwnerSignIn(props: {
    * a shop's wallet needs the second, and having only the first is what "Invalid JWT token
    * provided" means.
    */
-  onToken?: (token: string, identityToken: string | null) => Promise<void>;
+  onToken?: (token: string) => Promise<void>;
+  /**
+   * Work that can only be done while signed in, run inside Privy's provider.
+   *
+   * `addSigners` grants a key quorum access to one of this user's wallets. It is the owner's act
+   * by construction — which is exactly why the server cannot do it — so anything that needs it
+   * arrives here rather than leaving with a token.
+   */
+  onAuthorized?: (act: { addSigners: ReturnType<typeof useSigners>['addSigners'] }) => Promise<void>;
   title?: string;
   blurb?: ReactNode;
   /**
@@ -105,13 +113,22 @@ function OwnerSignInForm({
   onDone,
   onBack,
   onToken,
+  onAuthorized,
   title,
   blurb,
   embedded,
 }: {
   onDone: () => void;
   onBack?: () => void;
-  onToken?: (token: string, identityToken: string | null) => Promise<void>;
+  onToken?: (token: string) => Promise<void>;
+  /**
+   * Work that can only be done while signed in, run inside Privy's provider.
+   *
+   * `addSigners` grants a key quorum access to one of this user's wallets. It is the owner's act
+   * by construction — which is exactly why the server cannot do it — so anything that needs it
+   * arrives here rather than leaving with a token.
+   */
+  onAuthorized?: (act: { addSigners: ReturnType<typeof useSigners>['addSigners'] }) => Promise<void>;
   title?: string;
   blurb?: ReactNode;
   /**
@@ -124,9 +141,15 @@ function OwnerSignInForm({
   embedded?: boolean;
 }) {
   const { ready, authenticated, getAccessToken, login } = usePrivy();
-  // Privy's other token. `usePrivy` does not carry it, and the server cannot obtain it — it is
-  // minted for the browser session, so it has to travel with the access token or not at all.
-  const { identityToken } = useIdentityToken();
+  /*
+   * Granting a wallet signer has to happen HERE, inside the provider.
+   *
+   * Privy will not widen who may act on a wallet without authorization from whoever owns it, and
+   * the owner's authority lives in this session — not in a token a server can present. Two server
+   * attempts proved it (401 missing authorization signature, then 400 invalid JWT). So the caller
+   * hands us work to do while authenticated, rather than a token to take away.
+   */
+  const { addSigners } = useSigners();
   const { sendCode, loginWithCode } = useLoginWithEmail();
 
   const [email, setEmail] = useState('');
@@ -160,8 +183,8 @@ function OwnerSignInForm({
    * The ref keeps the latest callback without making it a trigger, and `startedRef` means a
    * re-render cannot start a second adoption.
    */
-  const cbRef = useRef({ onDone, onToken });
-  cbRef.current = { onDone, onToken };
+  const cbRef = useRef({ onDone, onToken, onAuthorized });
+  cbRef.current = { onDone, onToken, onAuthorized };
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -172,8 +195,10 @@ function OwnerSignInForm({
       try {
         const token = await getAccessToken();
         if (!token) throw new Error('That sign-in could not be verified.');
-        if (cbRef.current.onToken) await cbRef.current.onToken(token, identityToken);
+        if (cbRef.current.onToken) await cbRef.current.onToken(token);
         else await api.signInAsOwner(token);
+        // After the session exists, because the work usually needs one to call the server with.
+        if (cbRef.current.onAuthorized) await cbRef.current.onAuthorized({ addSigners });
         cbRef.current.onDone();
       } catch (e) {
         // A failed adoption has to be retryable: the emailed code is spent, so the way back is a
@@ -185,7 +210,7 @@ function OwnerSignInForm({
         setBusy(false);
       }
     })();
-  }, [adopting, authenticated, getAccessToken, identityToken]);
+  }, [adopting, authenticated, getAccessToken, addSigners]);
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);

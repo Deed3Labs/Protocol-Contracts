@@ -495,23 +495,23 @@ export const api = {
   },
 
   /**
-   * Let Clear settle payouts for this shop — once, with the owner's own sign-in.
+   * What the owner is about to grant — the quorum and the ceiling, ready to be added.
    *
-   * The token comes from the owner signing in there and then. Privy will not widen who may act on
-   * a wallet without authorization from whoever owns it, which is why this cannot be done from a
-   * settings toggle and should not be: it is the owner agreeing, not a preference.
+   * Nothing is widened by asking. The offer is inert until `addSigners` grants it from the owner's
+   * own session, which is the only place that authorization can come from.
    */
-  async grantSigner(
-    privyToken: string,
-    identityToken: string | null,
-  ): Promise<{ attached: boolean; canRedeem: boolean; gap: string | null }> {
-    // Both tokens, because they do different jobs. The access token is what the server verifies to
-    // learn who signed in; the identity token is what Privy exchanges for the right to act on that
-    // user's wallets. Sending only the first is what "Invalid JWT token provided" means.
-    return request('/api/merchant/signer', {
-      method: 'POST',
-      body: JSON.stringify({ privyToken, identityToken }),
-    });
+  async prepareSigner(): Promise<{ walletAddress: string; signerId: string; policyId: string }> {
+    return request('/api/merchant/signer/prepare', { method: 'POST', body: '{}' });
+  },
+
+  /**
+   * Did the grant take? Asked of the server, which asks Privy.
+   *
+   * The browser resolving `addSigners` and the wallet carrying the key are different facts, and
+   * the second is the one that decides whether a withdrawal can settle.
+   */
+  async confirmSigner(): Promise<{ attached: boolean; canRedeem: boolean; gap: string | null }> {
+    return request('/api/merchant/signer/confirm', { method: 'POST', body: '{}' });
   },
 
   async staff(): Promise<StaffMember[]> {
