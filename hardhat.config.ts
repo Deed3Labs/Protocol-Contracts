@@ -32,6 +32,10 @@ const baseMainnetRpcUrl =
   process.env.BASE_MAINNET_RPC_URL ||
   process.env.VITE_ALCHEMY_BASE_MAINNET ||
   "https://mainnet.base.org";
+// Rehearsing against a live deployment: set FORK_RPC_URL (and optionally FORK_BLOCK) and the
+// in-process `hardhat` network becomes a fork of it. Deliberately opt-in — the test suite must
+// keep running with no network at all.
+const forkRpcUrl = process.env.FORK_RPC_URL?.trim();
 // If not set, it uses the hardhat account 0 private key.
 function normalizePrivateKey(rawValue: string | undefined): string {
   const trimmed = (rawValue || "").trim();
@@ -161,6 +165,14 @@ const config: HardhatUserConfig = {
       // larger contracts (DeedNFT et al). Lift the limit only in that mode, so
       // production builds are still held to the real deployable size.
       allowUnlimitedContractSize: keepRevertStrings,
+      ...(forkRpcUrl
+        ? {
+            forking: {
+              url: forkRpcUrl,
+              ...(process.env.FORK_BLOCK ? { blockNumber: Number(process.env.FORK_BLOCK) } : {}),
+            },
+          }
+        : {}),
     },
     // View the networks that are pre-configured.
     // If the network you are looking for is not here you can add new network settings
