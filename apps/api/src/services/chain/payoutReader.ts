@@ -27,6 +27,12 @@ import { coalesce } from './readCache.js';
  * would act on it.
  */
 
+const CREDIT_ABI = [
+  // What a merchant OWES, as opposed to what they hold. A refund larger than the balance it came
+  // out of leaves them owing, and the ledger records that rather than dropping the difference.
+  'function creditBalanceOf(address member) view returns (uint256)',
+];
+
 const POOL_ABI = [
   'function held() view returns (uint256)',
   'function queuedTotal() view returns (uint256)',
@@ -47,6 +53,14 @@ export interface MerchantPayoutPosition {
   queuedAheadMicros: bigint;
   /** Their agreed payout window in seconds, which is what queuing costs them. */
   windowSeconds: number;
+  /**
+   * What the merchant owes, in micros. Zero in the ordinary case.
+   *
+   * A refund can outrun what a shop is currently owed — they were already paid for the sale being
+   * given back — and the ledger carries that as an obligation rather than letting the co-op absorb
+   * it silently. Reported beside what they are owed, because it comes off the next sales.
+   */
+  owedByMicros: bigint;
 }
 
 export async function merchantPayoutPosition(
@@ -63,12 +77,15 @@ export async function merchantPayoutPosition(
       const pool = new ethers.Contract(poolAddress, POOL_ABI, provider);
       const registryAddress = getContractAddress(chain, 'MerchantRegistry');
 
-      const [held, queued, refundsOwed, redeemable] = (await Promise.all([
+      const creditAddress = getContractAddress(chain, 'ClearCredit');
+      const credit = creditAddress ? new ethers.Contract(creditAddress, CREDIT_ABI, provider) : null;
+      const [held, queued, refundsOwed, redeemable, owedBy] = (await Promise.all([
         pool.held(),
         pool.queuedTotal(),
         pool.refundsOwed(),
         pool.redeemableOf(merchant),
-      ])) as [bigint, bigint, bigint, bigint];
+        credit ? credit.creditBalanceOf(merchant) : Promise.resolve(0n),
+      ])) as [bigint, bigint, bigint, bigint, bigint];
 
       let windowSeconds = 30 * 24 * 60 * 60;
       if (registryAddress) {
@@ -82,6 +99,7 @@ export async function merchantPayoutPosition(
         heldMicros: held,
         queuedAheadMicros: queued,
         windowSeconds,
+        owedByMicros: owedBy,
       };
     } catch (error) {
       console.error(
