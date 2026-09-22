@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { PrivyProvider, useAuthorizationSignature, useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
+import {
+  PrivyProvider,
+  useAuthorizationSignature,
+  useLinkWithPasskey,
+  useLoginWithEmail,
+  usePrivy,
+} from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
 import { Button, PrimaryButton } from '@/shell/ui';
 
@@ -59,6 +65,18 @@ export function OwnerSignIn(props: {
   onAuthorized?: (act: {
     signRequest: ReturnType<typeof useAuthorizationSignature>['generateAuthorizationSignature'];
   }) => Promise<void>;
+  /**
+   * What to show once they are signed in, rendered INSIDE Privy's provider.
+   *
+   * Some work needs both the owner's session and a fresh user gesture — creating a passkey is the
+   * example, because a browser will not mint a credential on the back of an emailed code that was
+   * submitted a moment ago. A callback cannot supply the gesture; a button the owner presses can.
+   * So the caller hands us buttons rather than instructions.
+   */
+  authorizedContent?: (act: {
+    signRequest: ReturnType<typeof useAuthorizationSignature>['generateAuthorizationSignature'];
+    linkPasskey: ReturnType<typeof useLinkWithPasskey>['linkWithPasskey'];
+  }) => ReactNode;
   title?: string;
   blurb?: ReactNode;
   /**
@@ -116,6 +134,7 @@ function OwnerSignInForm({
   onBack,
   onToken,
   onAuthorized,
+  authorizedContent,
   title,
   blurb,
   embedded,
@@ -133,6 +152,18 @@ function OwnerSignInForm({
   onAuthorized?: (act: {
     signRequest: ReturnType<typeof useAuthorizationSignature>['generateAuthorizationSignature'];
   }) => Promise<void>;
+  /**
+   * What to show once they are signed in, rendered INSIDE Privy's provider.
+   *
+   * Some work needs both the owner's session and a fresh user gesture — creating a passkey is the
+   * example, because a browser will not mint a credential on the back of an emailed code that was
+   * submitted a moment ago. A callback cannot supply the gesture; a button the owner presses can.
+   * So the caller hands us buttons rather than instructions.
+   */
+  authorizedContent?: (act: {
+    signRequest: ReturnType<typeof useAuthorizationSignature>['generateAuthorizationSignature'];
+    linkPasskey: ReturnType<typeof useLinkWithPasskey>['linkWithPasskey'];
+  }) => ReactNode;
   title?: string;
   blurb?: ReactNode;
   /**
@@ -158,6 +189,7 @@ function OwnerSignInForm({
    * So the caller hands us work to do while authenticated rather than a token to take away.
    */
   const { generateAuthorizationSignature } = useAuthorizationSignature();
+  const { linkWithPasskey } = useLinkWithPasskey();
   const { sendCode, loginWithCode } = useLoginWithEmail();
 
   const [email, setEmail] = useState('');
@@ -196,6 +228,9 @@ function OwnerSignInForm({
   const startedRef = useRef(false);
 
   useEffect(() => {
+    // Nothing to adopt when the caller renders its own signed-in UI: the shift session already
+    // exists, and the work there needs presses rather than an effect.
+    if (authorizedContent) return;
     if (!adopting || !authenticated || startedRef.current) return;
     startedRef.current = true;
 
@@ -262,7 +297,16 @@ function OwnerSignInForm({
           )}
         </div>
 
-        {!sent ? (
+        {/*
+          Signed in, and the caller has its own UI for what comes next.
+
+          Rendered here rather than by the caller so it sits inside Privy's provider, where the
+          hooks it needs exist — and so the owner's press on ITS buttons is the gesture the browser
+          requires before it will create a passkey.
+        */}
+        {authorizedContent && authenticated ? (
+          authorizedContent({ signRequest: generateAuthorizationSignature, linkPasskey: linkWithPasskey })
+        ) : !sent ? (
           /*
            * A form, so Return submits.
            *

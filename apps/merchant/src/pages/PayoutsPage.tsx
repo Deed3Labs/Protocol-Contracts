@@ -7,6 +7,7 @@ import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 import { WithdrawModal } from '@/payouts/WithdrawModal';
 import { OwnerSignIn } from '@/auth/OwnerSignIn';
+import { GrantSignerPanel } from '@/payouts/GrantSignerPanel';
 
 /**
  * Payouts — reference section 07, with the withdraw flow from section 18.
@@ -95,7 +96,6 @@ export default function PayoutsPage() {
    */
   const { data: signer, reload: reloadSigner } = useApi(() => api.signerStatus(), []);
   const [granting, setGranting] = useState(false);
-  const [grantError, setGrantError] = useState<string | null>(null);
 
   const owed = (position?.owedCents ?? 0) / 100;
   // Nulls stay null all the way to the screen: an unreadable balance rendered as $0.00 looks like
@@ -215,41 +215,27 @@ export default function PayoutsPage() {
                 <OwnerSignIn
                   embedded
                   title="Allow Clear to settle payouts"
-                  blurb="Signing in is the permission. Nothing else changes."
+                  blurb="Sign in as the owner. The permission is yours to give, and only yours — your shop's wallet is not Clear's to change."
                   onDone={() => {
                     setGranting(false);
                     reloadSigner();
                   }}
                   onBack={() => setGranting(false)}
-                  onToken={async () => {
-                    // The shift session already identifies this owner to Clear; the Privy sign-in
-                    // here is for Privy's benefit, not ours. Nothing to exchange.
-                  }}
-                  onAuthorized={async ({ signRequest }) => {
-                    setGrantError(null);
-                    try {
-                      const prepared = await api.prepareSigner();
-                      // Signed exactly as it arrived. The signature covers the URL, the body and
-                      // the expiry, so this authorizes one sentence — add this quorum, under this
-                      // policy, to this wallet — and nothing the server could substitute for it.
-                      const { signature } = await signRequest(prepared.authorization as never);
-                      await api.confirmSigner({ signature, requestExpiry: prepared.requestExpiry });
-                      reloadSigner();
-                      setGranting(false);
-                    } catch (e) {
-                      setGrantError(e instanceof Error ? e.message : 'That could not be allowed just now.');
-                    }
-                  }}
+                  authorizedContent={({ signRequest, linkPasskey }) => (
+                    <GrantSignerPanel
+                      signRequest={signRequest as never}
+                      linkPasskey={linkPasskey}
+                      onGranted={() => {
+                        setGranting(false);
+                        reloadSigner();
+                      }}
+                    />
+                  )}
                 />
               ) : (
                 <Button onClick={() => setGranting(true)} className="w-full">
                   Allow
                 </Button>
-              )}
-              {grantError && (
-                <p role="alert" className="m-0 mt-2 text-[11.5px]">
-                  {grantError}
-                </p>
               )}
             </div>
           )}
