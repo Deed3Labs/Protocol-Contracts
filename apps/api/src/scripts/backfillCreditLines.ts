@@ -1,4 +1,4 @@
-import { getPayPool } from '../config/postgres.js';
+import { getPostgresPool } from '../config/postgres.js';
 import { openCreditLine, hasCreditLine } from '../services/chain/creditLineService.js';
 
 /*
@@ -18,7 +18,9 @@ import { openCreditLine, hasCreditLine } from '../services/chain/creditLineServi
 const APPLY = process.env.BACKFILL_APPLY === '1';
 
 async function main() {
-  const pool = getPayPool();
+  // The members database, not the Pay one. The same mistake in the renewer meant it never read a
+  // wallet on the deployed server; this script would have failed the same way for the same reason.
+  const pool = getPostgresPool();
   if (!pool) throw new Error('No database configured.');
 
   const { rows } = await pool.query<{ primary_wallet: string }>(
