@@ -20,11 +20,19 @@ const chain = new Map<string, Member>();
 const sent: { wallet: string; expiration: number; graceLength: number }[] = [];
 
 const wallets: string[] = [];
+/*
+ * Only the members database answers, and that is the assertion.
+ *
+ * The job read `getPayPool` at first, which is a different database whenever PAY_DATABASE_URL is
+ * set -- so on the deployed server it never saw a wallet and renewed nobody. Wiring the rows to
+ * `getPostgresPool` alone means a regression cannot pass: the wrong pool returns null, the sweep
+ * finds no members, and every test below fails on an empty `sent`.
+ */
 mock.module('../../config/postgres.js', () => ({
-  getPayPool: () => ({
+  getPostgresPool: () => ({
     query: async () => ({ rows: wallets.map((primary_wallet) => ({ primary_wallet })) }),
   }),
-  getPostgresPool: () => null,
+  getPayPool: () => null,
 }));
 mock.module('../../config/contracts.js', () => ({
   getContractAddress: (_chain: number, name: string) => (name === 'RevolvingIssuer' ? '0x7f15E45aB5eAF0307200274211a90FcbD6716070' : ''),

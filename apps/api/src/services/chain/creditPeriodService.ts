@@ -1,5 +1,5 @@
 import { ethers } from 'ethers';
-import { getPayPool } from '../../config/postgres.js';
+import { getPostgresPool } from '../../config/postgres.js';
 import { getContractAddress } from '../../config/contracts.js';
 import { chainProvider, writesAs } from './provider.js';
 
@@ -47,11 +47,23 @@ function chainId(): number {
 const operatorKey = () => (process.env.CREDIT_OPERATOR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY || '').trim();
 
 export function isRenewalConfigured(): boolean {
-  return Boolean(getContractAddress(chainId(), 'RevolvingIssuer') && operatorKey() && getPayPool());
+  return Boolean(getContractAddress(chainId(), 'RevolvingIssuer') && operatorKey() && getPostgresPool());
 }
 
+/*
+ * Every member wallet on record -- from the members database, which is not the Pay one.
+ *
+ * `getPayPool` was the obvious-looking call and the wrong one. It returns the Pay ledger's
+ * database whenever PAY_DATABASE_URL is set, and `members` lives in the main one, so on the
+ * deployed server every sweep died on `relation "members" does not exist` before it read a single
+ * period. The job logged that hourly and renewed nobody: the first cycles to come due simply
+ * expired, and every member's card has read "0 days left" since.
+ *
+ * It looked right locally because the Pay pool falls back to the shared one when the variable is
+ * unset -- which is the development setup exactly, and production's exactly not.
+ */
 async function memberWallets(): Promise<string[]> {
-  const pool = getPayPool();
+  const pool = getPostgresPool();
   if (!pool) return [];
   const { rows } = await pool.query<{ primary_wallet: string }>(
     `SELECT DISTINCT primary_wallet FROM members
