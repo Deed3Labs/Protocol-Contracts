@@ -45,7 +45,18 @@ export interface SaleTender {
  * person's tips.
  */
 export function sale(
-  input: Base & { orderId: string; subtotalCents: number; discountCents: number; taxCents: number; tenders: SaleTender[] },
+  input: Base & {
+    orderId: string;
+    subtotalCents: number;
+    discountCents: number;
+    taxCents: number;
+    tenders: SaleTender[];
+    /**
+     * How many sales this order has had before. An order that's paid, un-paid (a card voided) and
+     * paid again books a second sale after reversing the first; each needs its own key.
+     */
+    attempt?: number;
+  },
 ): EntryInput {
   const total = input.subtotalCents - input.discountCents + input.taxCents;
   const paid = input.tenders.reduce((s, t) => s + t.amountCents, 0);
@@ -67,7 +78,7 @@ export function sale(
   return {
     merchant: input.merchant,
     kind: methods.size === 1 ? `${[...methods][0]}_sale` : 'split_sale',
-    idempotencyKey: `sale:${input.orderId}`,
+    idempotencyKey: input.attempt ? `sale:${input.orderId}:${input.attempt}` : `sale:${input.orderId}`,
     ref: { type: 'order', id: input.orderId },
     occurredAt: input.occurredAt,
     createdBy: input.createdBy,

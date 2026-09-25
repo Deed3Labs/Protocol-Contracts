@@ -60,6 +60,7 @@ import { startMemoryMonitor } from './jobs/memoryMonitor.js';
 import { startRelayerGasMonitor } from './jobs/relayerGas.js';
 import { startSessionCleanup } from './jobs/sessionCleanup.js';
 import { startStripeEventProcessor } from './jobs/stripeEventProcessor.js';
+import { startCardCaptureSafety } from './jobs/cardCaptureSafety.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
@@ -395,6 +396,8 @@ async function startServer() {
     // Acts on the Stripe webhooks the merchant back office stored. After the migrations, which
     // create the inbox it reads.
     startStripeEventProcessor();
+    // Captures card holds nobody closed, well inside Stripe's 2-day window.
+    startCardCaptureSafety();
 
     // Start HTTP server (Express + WebSocket)
     // Bind to 0.0.0.0 to accept connections from Railway/external hosts
