@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { IconBackChevron } from '@/brand/chargeIcons';
 import { IconChevron, IconClose, IconLock } from '@/brand/icons';
 import { Sheet } from '@/brand/ui';
@@ -481,11 +481,13 @@ export function StatementsSheet({ months, onOpen, onClose }: { months: { t: stri
   );
 }
 
-/** One month's statement, as it prints: Save as PDF is the print dialog's own choice. */
+/** One month's statement, as it prints: Save as PDF is the print dialog's own choice, or it's emailed. */
 export function MonthStatementSheet({
   s,
   error,
   onPdf,
+  onSend,
+  lastEmail = '',
   onBack,
   onClose,
 }: {
@@ -493,9 +495,32 @@ export function MonthStatementSheet({
   s: Statement | null;
   error?: string | null;
   onPdf: () => void;
+  /** Email it; resolves with where it went. Absent: sending isn't offered. */
+  onSend?: (email: string) => Promise<string>;
+  /** The address it went to last time, filled in. */
+  lastEmail?: string;
   onBack: () => void;
   onClose: () => void;
 }) {
+  const [sending, setSending] = useState(false);
+  const [email, setEmail] = useState(lastEmail);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; t: string } | null>(null);
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const send = async () => {
+    if (!onSend) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      const to = await onSend(email.trim());
+      setNote({ ok: true, t: `Sent to ${to}` });
+      setSending(false);
+    } catch (e) {
+      setNote({ ok: false, t: e instanceof Error ? e.message : 'That didn’t send. Try again.' });
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Sheet
       label={s ? `${s.month} statement` : 'Statement'}
@@ -513,15 +538,47 @@ export function MonthStatementSheet({
       }
       foot={
         <>
-          <div className="c-pair" style={{ marginBottom: 'var(--s2)' }}>
-            <button type="button" className="c-btn c-btn-primary" disabled={!s} onClick={onPdf}>
-              Save as PDF
-            </button>
-            <button type="button" className="c-btn" disabled>
-              Send to my accountant
-            </button>
-          </div>
-          <p className="c-det">Save as PDF opens the print dialog, where it is one of the choices. Sending needs email, which isn’t set up yet.</p>
+          {sending ? (
+            <div style={{ marginBottom: 'var(--s2)' }}>
+              <p className="c-label" style={{ margin: '0 0 6px' }}>
+                Your accountant’s email
+              </p>
+              <input
+                className="c-field"
+                type="email"
+                inputMode="email"
+                autoFocus
+                aria-label="Your accountant’s email"
+                placeholder="books@youraccountant.com"
+                value={email}
+                style={{ width: '100%', height: 44, padding: '0 12px' }}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              <div className="c-pair" style={{ marginTop: 'var(--s1)' }}>
+                <button type="button" className="c-btn" onClick={() => setSending(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="c-btn c-btn-primary" disabled={!valid || busy || !s} onClick={() => void send()}>
+                  {busy ? 'Sending…' : 'Send the statement'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="c-pair" style={{ marginBottom: 'var(--s2)' }}>
+              <button type="button" className="c-btn c-btn-primary" disabled={!s} onClick={onPdf}>
+                Save as PDF
+              </button>
+              <button type="button" className="c-btn" disabled={!onSend || !s} onClick={() => (setNote(null), setSending(true))}>
+                Send to my accountant
+              </button>
+            </div>
+          )}
+          {note && (
+            <p className="c-det" role={note.ok ? 'status' : 'alert'} style={{ margin: '0 0 var(--s1)', color: note.ok ? undefined : 'var(--absent)' }}>
+              {note.t}
+            </p>
+          )}
+          <p className="c-det">Save as PDF opens the print dialog, where it is one of the choices. Sending emails the statement as text, the same figures.</p>
         </>
       }
     >

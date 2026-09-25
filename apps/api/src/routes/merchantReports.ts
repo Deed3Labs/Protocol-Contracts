@@ -4,6 +4,8 @@ import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireManager, requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
 import { feeBills } from '../services/merchant/fees/feeBilling.js';
 import { overview } from '../services/merchant/overview.js';
+import { sendStatement, StatementError } from '../services/merchant/statements.js';
+import { sendNotificationService } from '../services/sendNotificationService.js';
 import { auditTrail } from '../services/merchant/security/audit.js';
 import { cardDeposits } from '../services/merchant/payouts/payoutSync.js';
 import { openFlags } from '../services/merchant/payouts/reconcile.js';
@@ -16,6 +18,7 @@ import { openFlags } from '../services/merchant/payouts/reconcile.js';
  *   GET /overview?from&to           sales by method, discounts, tips, tax, refunds, top items, day reports
  *   GET /reconciliation             where our books and the processor's disagree, open flags
  *   GET /clear-fee-bills            Clear's monthly fee bills (only a processor without a platform fee)
+ *   POST /statements/send           owners and managers: a month's statement, emailed (to an accountant)
  *   GET /audit?from&to              who did what to the money, and when (owners only: it names
  *                                   everyone's actions and shows blind drawer counts)
  */
@@ -37,6 +40,24 @@ router.get('/card-deposits', requireMerchant, requireManager, (req, res) =>
 );
 router.get('/overview', requireMerchant, requireManager, (req, res) => run(res, (db) => overview(db, { merchant: m(req), from: date(req.query.from, monthAgo()), to: date(req.query.to, today()) })));
 router.get('/reconciliation', requireMerchant, requireManager, (req, res) => run(res, (db) => openFlags(db, m(req))));
+router.post('/statements/send', requireMerchant, requireManager, async (req, res) => {
+  const db = await merchantDb();
+  if (!db) return res.status(503).json({ error: 'Unavailable', message: 'merchant database is not configured' });
+  try {
+    res.json(
+      await sendStatement(
+        db,
+        { configured: () => sendNotificationService.emailConfigured(), send: (e) => sendNotificationService.sendStatement(e) },
+        { merchant: m(req), staffId: req.merchant!.staff.id, body: req.body },
+      ),
+    );
+  } catch (error) {
+    if (error instanceof StatementError) {
+      return res.status(error.code === 'invalid' ? 422 : error.code === 'not_configured' ? 503 : 502).json({ error: error.code, message: error.message });
+    }
+    throw error;
+  }
+});
 router.get('/audit', requireMerchant, requireOwner, (req, res) =>
   run(res, (db) => auditTrail(db, { merchant: m(req), from: date(req.query.from, monthAgo()), to: date(req.query.to, today()) })),
 );

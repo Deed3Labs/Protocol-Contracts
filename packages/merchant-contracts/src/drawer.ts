@@ -171,3 +171,9 @@ export const AuditEntry = z.object({
   detail: z.record(z.string(), z.unknown()),
 });
 export type AuditEntry = z.infer<typeof AuditEntry>;
+
+/** Overview › Statements: a month's statement, emailed to the shop's accountant. Owners and managers. */
+export const SendStatement = z
+  .object({ from: BusinessDate, to: BusinessDate, email: z.string().trim().email('That isn’t an email address') })
+  .refine((s) => s.to >= s.from, 'The statement ends after it starts');
+

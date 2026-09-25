@@ -46,6 +46,23 @@ import { useShiftActions } from '@/shell/shiftActions';
  * prints (Save as PDF is the print dialog's). Sending to an accountant waits on email.
  * The preview: `?preview=1&screen=counter|statements|terms`; `?preview=1&live=1` runs it on the mock.
  */
+/** The accountant's address, remembered on this tablet so the next month's statement is one tap. */
+const ACCOUNTANT = 'clear.merchant.accountant';
+function lastAccountant(): string {
+  try {
+    return window.localStorage.getItem(ACCOUNTANT) ?? '';
+  } catch {
+    return '';
+  }
+}
+function rememberAccountant(email: string) {
+  try {
+    window.localStorage.setItem(ACCOUNTANT, email);
+  } catch {
+    // Remembered for this visit only.
+  }
+}
+
 export default function OverviewPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -80,7 +97,7 @@ export default function OverviewPage() {
   const roster = useApi(() => (preview ? Promise.resolve(null) : merchant.staff()), [preview]);
   const [open, setOpen] = useState<'statements' | 'terms' | null>(screen === 'statements' || screen === 'terms' ? screen : null);
   // A month's statement, opened from Statements: loading (null) and then read.
-  const [statement, setStatement] = useState<{ s: Statement | null; error: string | null } | null>(null);
+  const [statement, setStatement] = useState<{ s: Statement | null; error: string | null; from: string; to: string } | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
 
   const m: OverviewModel | null = useMemo(() => {
@@ -138,12 +155,12 @@ export default function OverviewPage() {
     const inProgress = last >= new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const to = inProgress ? today : ymd(last);
     const monthName = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    setStatement({ s: null, error: null });
+    setStatement({ s: null, error: null, from, to });
     try {
       const [overview, deps] = await Promise.all([merchant.overview({ from, to }), merchant.cardDeposits({ from, to })]);
-      setStatement({ s: statementOf({ shop: shopName, month: monthName, from, to, inProgress, overview, deposits: deps }), error: null });
+      setStatement({ s: statementOf({ shop: shopName, month: monthName, from, to, inProgress, overview, deposits: deps }), error: null, from, to });
     } catch (e) {
-      setStatement({ s: null, error: errorSentence(e) });
+      setStatement({ s: null, error: errorSentence(e), from, to });
     }
   };
   const statements = [...m.months].reverse().map((x, i) => ({
@@ -213,6 +230,20 @@ export default function OverviewPage() {
           s={statement.s}
           error={statement.error}
           onPdf={() => statement.s && printStatement(statement.s)}
+          lastEmail={lastAccountant()}
+          onSend={
+            preview
+              ? undefined
+              : async (email) => {
+                  try {
+                    const r = await merchant.sendStatement({ from: statement.from, to: statement.to, email });
+                    rememberAccountant(r.sentTo);
+                    return r.sentTo;
+                  } catch (e) {
+                    throw new Error(errorSentence(e));
+                  }
+                }
+          }
           onBack={() => setStatement(null)}
           onClose={() => (setStatement(null), setOpen(null))}
         />

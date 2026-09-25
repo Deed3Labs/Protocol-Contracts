@@ -223,6 +223,7 @@ try {
   await check('overview', C.Overview, () => manager.overview(range));
   await check('clearFeeBills', C.ClearFeeBill.array(), () => manager.clearFeeBills());
   await check('audit', C.AuditEntry.array(), () => owner.audit(range));
+  await check('sendStatement', null, () => manager.sendStatement({ from: range.from, to: range.to, email: 'books@example.com' }));
   await check('archiveItem', C.CatalogItem, () => manager.archiveItem(tire.id));
 } finally {
   server.stop();

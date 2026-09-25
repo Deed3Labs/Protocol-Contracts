@@ -12,7 +12,7 @@ import type {
   RegisterSmartReader,
 } from './cards';
 import type { CatalogItem, DiscountCode, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
-import type { AuditEntry, BankDeposit, CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
+import type { AuditEntry, BankDeposit, SendStatement, CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
   ClearChargeSent,
@@ -168,4 +168,6 @@ export interface MerchantApi {
   clearFeeBills(): Promise<ClearFeeBill[]>;
   /** Owners only: who did what to the money, newest first. */
   audit(range: Range): Promise<AuditEntry[]>;
+  /** Owners and managers: a month's statement, emailed (to an accountant). */
+  sendStatement(input: In<typeof SendStatement>): Promise<{ sentTo: string }>;
 }

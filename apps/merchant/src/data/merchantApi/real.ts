@@ -118,5 +118,6 @@ export function realMerchantApi(request: Transport): MerchantApi {
     overview: (r) => get(`/overview?${range(r)}`),
     clearFeeBills: () => get('/clear-fee-bills'),
     audit: (r) => get(`/audit?${range(r)}`),
+    sendStatement: (input) => post('/statements/send', input),
   };
 }

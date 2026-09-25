@@ -4,7 +4,7 @@ import { REFERENCE_NOW, settle } from './capture';
 
 /**
  * Overview on a live shop (the mock), as the owner: Export saves the month's sales as a spreadsheet,
- * and a month's statement opens from Statements and prints (Save as PDF is the print dialog's).
+ * and a month's statement opens from Statements, prints (Save as PDF is the print dialog's) and emails.
  */
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== 'landscape', 'one walk-through is enough'));
@@ -42,12 +42,21 @@ test('Statements: a month opens, and prints', async ({ page }) => {
   await expect(sheet.getByText('Sales', { exact: true })).toBeVisible();
   await expect(sheet.getByText(/Taken · \d+ sales?/)).toBeVisible();
   await expect(sheet.getByText(/, in progress/)).toBeVisible();
-  await expect(sheet.getByRole('button', { name: 'Send to my accountant' })).toBeDisabled();
   await sheet.getByRole('button', { name: 'Save as PDF' }).click();
   const printed = await page.evaluate(() => (window as unknown as { printed: string[] }).printed);
   expect(printed).toHaveLength(1);
   expect(printed[0]).toContain('September 2026');
   expect(printed[0]).toContain('Taken');
+
+  // Email it to the accountant; the address is remembered for next month.
+  await sheet.getByRole('button', { name: 'Send to my accountant' }).click();
+  const send = sheet.getByRole('button', { name: 'Send the statement' });
+  await sheet.getByRole('textbox', { name: 'Your accountant’s email' }).fill('books');
+  await expect(send).toBeDisabled();
+  await sheet.getByRole('textbox', { name: 'Your accountant’s email' }).fill('books@acme-accounting.com');
+  await send.click();
+  await expect(sheet.getByRole('status')).toHaveText('Sent to books@acme-accounting.com');
+  expect(await page.evaluate(() => localStorage.getItem('clear.merchant.accountant'))).toBe('books@acme-accounting.com');
 
   // Back to the months.
   await sheet.locator('.c-mc-back').click();

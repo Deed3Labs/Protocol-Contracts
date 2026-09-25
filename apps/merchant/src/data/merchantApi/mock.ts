@@ -900,6 +900,11 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
     clearFeeBills: async () => [],
     audit: async () => audit,
+    sendStatement: async (input) => {
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) refuse('That isn’t an email address', 422, 'invalid');
+      return { sentTo: input.email.trim() };
+    },
   };
 
   // ---- The Clear side (the older client's calls) ----------------------------------------------------

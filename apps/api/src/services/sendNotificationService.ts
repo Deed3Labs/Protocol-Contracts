@@ -9,7 +9,7 @@ export interface SendNotificationResult {
 }
 
 type NotificationChannel = 'email' | 'sms';
-type NotificationKind = 'claim_link' | 'otp' | 'charge_alert' | 'refund_alert' | 'receipt';
+type NotificationKind = 'claim_link' | 'otp' | 'charge_alert' | 'refund_alert' | 'receipt' | 'statement';
 
 type GenericWebhookResponse = {
   provider?: string;
@@ -176,6 +176,20 @@ class SendNotificationService {
     }
   }
 
+  /** Whether email can go out at all: Resend's key, or a webhook that takes email. */
+  emailConfigured(): boolean {
+    return Boolean((process.env.RESEND_API_KEY || '').trim() || (process.env.SEND_NOTIFICATION_WEBHOOK_URL || '').trim() || this.providerMode === 'mock');
+  }
+
+  /**
+   * A month's statement, to an accountant: the subject and the statement as plain text. Throws when
+   * it can't go, so the one sending it is told (unlike an alert, nothing else carries it).
+   */
+  async sendStatement(params: { to: string; subject: string; body: string }): Promise<SendNotificationResult> {
+    const r = await this.dispatchNotification({ channel: 'email', kind: 'statement', destination: params.to, payload: { subject: params.subject, body: params.body } });
+    return { provider: r.provider, providerMessageId: r.providerMessageId, destinationHash: hashDestination(params.to.trim().toLowerCase()), status: r.status };
+  }
+
   /** A shop's receipt, by text or email: who, how much, and the link to the whole of it. */
   async sendReceipt(params: {
     recipientType: RecipientType;
@@ -210,6 +224,10 @@ class SendNotificationService {
     destination: string;
     payload: Record<string, string>;
   }): Promise<{ provider: string; providerMessageId: string; status: string }> {
+    // Email goes by Resend whenever its key is set, whatever carries the texts.
+    if (params.channel === 'email' && (process.env.RESEND_API_KEY || '').trim()) {
+      return this.dispatchResend(params);
+    }
     if (this.providerMode === 'twilio') {
       return this.dispatchTwilio(params);
     }
@@ -219,6 +237,53 @@ class SendNotificationService {
     }
 
     return this.dispatchMock(params);
+  }
+
+  /** An email's subject and plain-text body: the text message's words, with a subject line. */
+  buildEmail(params: { kind: NotificationKind; payload: Record<string, string> }): { subject: string; text: string } {
+    const p = params.payload;
+    if (params.kind === 'statement') return { subject: p.subject || 'Your statement', text: p.body || '' };
+    const subject =
+      params.kind === 'receipt'
+        ? `Your receipt from ${p.merchantName || 'the shop'}`
+        : params.kind === 'charge_alert'
+          ? `${p.merchantName || 'A shop'} is charging ${p.amount || ''} to your Clear account`
+          : params.kind === 'refund_alert'
+            ? `${p.merchantName || 'A shop'} refunded ${p.amount || ''}`
+            : params.kind === 'otp'
+              ? 'Your Clear verification code'
+              : 'You received funds on Clear';
+    return { subject, text: this.buildSmsMessage(params) };
+  }
+
+  /**
+   * Email by Resend (https://resend.com/docs/api-reference/emails/send-email). The sender is
+   * RESEND_FROM, on a domain verified in Resend; plain text, which every mail client reads.
+   */
+  private async dispatchResend(params: {
+    channel: NotificationChannel;
+    kind: NotificationKind;
+    destination: string;
+    payload: Record<string, string>;
+  }): Promise<{ provider: string; providerMessageId: string; status: string }> {
+    const key = (process.env.RESEND_API_KEY || '').trim();
+    const from = (process.env.RESEND_FROM || 'Clear <receipts@useclear.org>').trim();
+    const { subject, text } = this.buildEmail(params);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), parseIntEnv('RESEND_TIMEOUT_MS', 12000));
+    try {
+      const response = await fetch((process.env.RESEND_API_BASE_URL || 'https://api.resend.com').replace(/\/+$/, '') + '/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to: [params.destination.trim()], subject, text }),
+        signal: controller.signal,
+      });
+      const body = (await response.json().catch(() => ({}))) as { id?: string; message?: string };
+      if (!response.ok) throw new Error(`Resend refused the email (${response.status}${body.message ? `: ${body.message}` : ''})`);
+      return { provider: 'resend', providerMessageId: body.id || providerMessageId(params.channel), status: 'sent' };
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   private buildSmsMessage(params: {

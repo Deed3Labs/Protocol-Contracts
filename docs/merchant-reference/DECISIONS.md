@@ -73,7 +73,7 @@ Decided 2026-09-24.
 - **What a live shop sees.** The shop's catalogue or a typed amount; Checkout raises the order on
   the server, which works out tax, discounts and the total; the tip from the shop's settings; then
   Clear (its code shown, the member's answer followed), card through the reader, cash into the open
-  drawer, or a split; then the receipt, texted or printed (email waits on a provider). A Clear
+  drawer, or a split; then the receipt, texted, emailed or printed. A Clear
   charge can also be sent: by scanning the member's own code, or as a text to a number (below).
   Every frame is reachable in development at
   `/new?preview=1&screen=<frame>` (see `SCREENS` in `NewChargePage.tsx`); add `&as=jen` for a
@@ -131,7 +131,7 @@ Decided 2026-09-24.
 - **What a live shop sees.** The month, its trend and the writer line, recent charges, what is
   owed, fees by plan, the months so far, the terms and the roster, and the second slab (how it was
   paid, top items, discounts, tips and tax, the end-of-day reports), all from the API, plus Export
-  and each month's statement (below). Sending to an accountant waits on email. Preview:
+  and each month's statement (below), which can be emailed to an accountant. Preview:
   `/overview?preview=1&screen=counter|statements|terms`; `&live=1` for the live path.
 
 ## Payouts
@@ -452,9 +452,8 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **Text and Email ask where.** On a real shop, picking Text or Email after a sale opens the send
   sheet for a number or address. The receipt goes out by the API's send route, and the screen
   then says where it went ("To (909) 555-0177 · Change"). With nowhere yet, it reads "Asks where
-  to send it · Add". The cash screen has the same links. A text goes by Twilio once the API's
-  notification variables are set (the pilot checklist lists them). An email needs a provider,
-  which isn't wired.
+  to send it · Add". The cash screen has the same links. A text goes by Twilio, an email by Resend
+  (below), once the API's notification variables are set (the pilot checklist lists them).
 - **Printing uses the device's own print dialog:** AirPrint on an iPad, the Android print service,
   or a browser's. A counter printer shows up there if the tablet can reach it. The sheet says
   "This tablet's printer" instead of a Ready status the app can't know. The paper is the order's
@@ -566,7 +565,8 @@ reason for any difference, is written to `e2e/.report/index.html`.
   `cardDeposits` for that month.
 - **"Save as PDF", not "Download PDF".** It opens the device's print dialog with the statement laid
   out for letter paper, where Save as PDF (or Save to Files) is a choice. No PDF library is added.
-- **Send to my accountant is off** until email is wired (Resend, a provider item).
+- **Send to my accountant** emails the month's statement as plain text, the same figures, to the
+  address typed (remembered on the tablet for next month). See "Email by Resend".
 
 ## New charge: scan their code, text a link, offline
 
@@ -587,4 +587,17 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **Offline**: a line above New charge while the tablet has no connection: cash still works; card
   and Clear wait. Offline cards aren't built (`OFFLINE_BUILT` in `reader/platform.ts`).
 - Walk-through: `e2e/new-charge-extras.spec.ts`, with the camera replaced by a canvas showing a QR.
+
+## Email by Resend
+
+- **Every email the API sends goes by Resend** when `RESEND_API_KEY` is set, whatever carries the
+  texts: receipts, a member's charge and refund alerts when their contact is an email, and
+  statements. From `RESEND_FROM` (default `Clear <receipts@useclear.org>`), whose domain has to be
+  verified in Resend. Plain text, the text message's words with a subject line.
+- **A statement to an accountant** (`POST /statements/send`, owners and managers) is built on the
+  server from the same month figures the tablet's statement shows, and audited as `statement.sent`
+  with the address's domain only. Without email set up it says so ("Save it as a PDF instead");
+  a refused send says why.
+- A receipt that can't be emailed is recorded as not delivered, as a failed text is; nothing else
+  about the sale changes.
 
