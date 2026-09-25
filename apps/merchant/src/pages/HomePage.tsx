@@ -67,6 +67,12 @@ export default function HomePage() {
   const roster = useApi(() => (seeded || !session ? Promise.resolve(null) : merchant.staff()), [seeded, !!session]);
   // The preview's settings ride along to Close the day.
   const keep = params.get('preview') === '1' ? `?${params.toString()}` : '';
+  // Today's sales, every way they were paid (the confirmed list, the total, who raised what).
+  const todayIso = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+  const ordersToday = useApi(() => (seeded || !session ? Promise.resolve(null) : merchant.orders({ date: todayIso })), [seeded, !!session, todayIso]);
   const [drawerSheet, setDrawerSheet] = useState<null | { k: 'open' } | { k: 'count'; which: 'first' | 'second' } | { k: 'result' } | { k: 'signoff' }>(null);
   const [drawerError, setDrawerError] = useState<string | null>(null);
   const [note, setNote] = useState('');
@@ -99,9 +105,12 @@ export default function HomePage() {
       staffId: session.staff.id,
       charges: charges ?? [],
       position,
-      staff,
+      staff: staff ?? (roster.data ? roster.data.map((x) => ({ ...x, chargesThisMonth: 0 })) : null),
+      orders: ordersToday.data,
+      nameOf: (id) => names.get(id) ?? '—',
     });
-  }, [seeded, session, charges, position, staff]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seeded, session, charges, position, staff, ordersToday.data, roster.data, names]);
 
   if (!model) return null;
   const view = countsNow.data;
