@@ -116,6 +116,8 @@ export interface MerchantApi {
   /** Blind: returns only the viewer's own count until both are saved. */
   saveCount(sessionId: string, input: In<typeof SaveCount>): Promise<CountsView>;
   counts(sessionId: string): Promise<CountsView>;
+  /** The two counts disagree: one of the two counters counts again, replacing their own count. */
+  recount(sessionId: string, input: { which: 'first' | 'second' }): Promise<CountsView>;
   signOff(sessionId: string, input: In<typeof SignOff>): Promise<CountsView>;
   /** Captures the day's card authorisations and locks the day report. Blocked while a difference is unsigned. */
   closeDay(sessionId: string): Promise<DayReport>;
