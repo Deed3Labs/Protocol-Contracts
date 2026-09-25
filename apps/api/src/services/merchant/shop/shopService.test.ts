@@ -147,7 +147,7 @@ describe('the listing and the hours', () => {
   test('breaks are a setting, defaulting to 30 minutes after five hours', async () => {
     const { merchant, staff } = await seedShop(db);
     expect((await getSettings(db, merchant)).breaks).toEqual({ minutes: 30, afterMinutes: 300 });
-    const s = await updateSettings(db, { merchant, staffId: staff.owner.id, patch: { breaks: { minutes: 20, afterMinutes: 240 } } });
+    const s = await updateSettings(db, { merchant, staffId: staff.owner, patch: { breaks: { minutes: 20, afterMinutes: 240 } } });
     expect(s.breaks).toEqual({ minutes: 20, afterMinutes: 240 });
   });
 });
