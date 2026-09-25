@@ -132,6 +132,8 @@ export function stripeConnector(stripe: Stripe): CardConnectorProvider {
   const connector: CardConnectorProvider = {
     provider: 'stripe',
     supportsPlatformFee: true,
+    // Stripe releases an uncaptured in-person authorisation after 2 days.
+    authorisationHoldMs: 2 * 24 * 60 * 60 * 1000,
 
     async createAccount({ merchant, businessName, email, idempotencyKey }) {
       const account = await stripe.accounts.create(

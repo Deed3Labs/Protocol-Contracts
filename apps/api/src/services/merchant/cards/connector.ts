@@ -1,11 +1,19 @@
 /**
- * The card-connector interface (card-processing prompt, "Other card providers"): what the rest of
- * the merchant back office needs from a card processor, with nothing Stripe-shaped in it. Stripe is
- * the first implementation (stripeConnector.ts); a Square one would sit beside it. Only the
- * connector files import a processor's SDK.
+ * The card-connector interface (card-processing prompt, Phase 9): what the rest of the merchant
+ * back office needs from a card processor, with nothing Stripe-shaped in it.
+ *
+ *   connect      createAccount, onboardingLink, dashboardUrl, accountStatus (availability reads it)
+ *   readers      createLocation, updateLocation, connectionToken, registerReader, presentOnReader, clearReader
+ *   payments     createPayment, getPayment, raiseAuthorisation, capture, cancel, refund
+ *   deposits     getPayout, listPayouts, payoutItems, balanceItems (payouts and fee data)
+ *   Clear's fee  supportsPlatformFee: taken off each sale, or billed monthly (fees/feeBilling.ts)
+ *
+ * Stripe is the first implementation (stripeConnector.ts, with its webhooks in stripeEvents/).
+ * Square has a stub and a note (squareConnector.ts, SQUARE.md). Only connector files import a
+ * processor's SDK, and only registry.ts picks a connector.
  */
 
-export type CardProviderName = 'stripe';
+export type CardProviderName = 'stripe' | 'square';
 
 export interface ConnectorAccountStatus {
   chargesEnabled: boolean;
@@ -93,6 +101,11 @@ export interface CardConnectorProvider {
   readonly provider: CardProviderName;
   /** Whether the processor can take Clear's fee off each sale. Stripe can; a provider that can't is billed monthly (Phase 9). */
   readonly supportsPlatformFee: boolean;
+  /**
+   * How long an uncaptured in-person authorisation holds before the processor lets it go: Stripe
+   * 2 days, Square 36 hours. The safety capture takes anything nobody closed well inside it.
+   */
+  readonly authorisationHoldMs: number;
   /**
    * Opens the shop's own processor account. `idempotencyKey` makes a retried request return the
    * account the first one opened rather than a second account.

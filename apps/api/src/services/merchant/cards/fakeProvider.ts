@@ -1,4 +1,4 @@
-import { type BalanceItem, CardDeclined, type CardConnectorProvider, type ConnectorAccountStatus, type Payout, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
+import { type BalanceItem, CardDeclined, type CardConnectorProvider, type CardProviderName, type ConnectorAccountStatus, type Payout, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
 
 /**
  * A card processor for tests: behaves like Stripe where the merchant code depends on it (manual
@@ -23,7 +23,15 @@ interface FakePayment {
   refunded: number;
 }
 
-export function fakeProvider() {
+/**
+ * `platformFee: false` plays a processor that can't take Clear's fee off a sale: it refuses any
+ * payment, raise or capture that asks it to, so a test proves the fee went to the monthly bill.
+ */
+export function fakeProvider(opts: { provider?: CardProviderName; platformFee?: boolean } = {}) {
+  const platformFee = opts.platformFee ?? true;
+  const noFee = (cents: number) => {
+    if (!platformFee && cents !== 0) throw new Error('This processor can’t take a platform fee');
+  };
   let seq = 0;
   const id = (p: string) => `${p}_fake_${++seq}_${Math.random().toString(36).slice(2, 6)}`;
   const payments = new Map<string, FakePayment>();
@@ -70,8 +78,9 @@ export function fakeProvider() {
   };
 
   const provider: CardConnectorProvider = {
-    provider: 'stripe',
-    supportsPlatformFee: true,
+    provider: opts.provider ?? 'stripe',
+    supportsPlatformFee: platformFee,
+    authorisationHoldMs: 2 * 24 * 60 * 60 * 1000,
     async createAccount({ idempotencyKey }) {
       calls.create.push(idempotencyKey);
       return { externalAccountId: id('acct') };
@@ -101,6 +110,7 @@ export function fakeProvider() {
       return { externalReaderId: id('tmr'), label };
     },
     async createPayment(account, { amountCents, applicationFeeCents, metadata, idempotencyKey }) {
+      noFee(applicationFeeCents);
       const existing = byKey.get(idempotencyKey);
       if (existing) return { snapshot: snap(get(existing)), clientSecret: `${existing}_secret` };
       const p: FakePayment = { id: id('pi'), account, amount: amountCents, capturable: 0, fee: applicationFeeCents, state: 'waiting', declineCode: null, card: null, incremental: false, metadata, captured: 0, refunded: 0 };
@@ -112,6 +122,7 @@ export function fakeProvider() {
       return snap(get(paymentId));
     },
     async raiseAuthorisation(_account, paymentId, input) {
+      noFee(input.applicationFeeCents);
       calls.raises.push({ paymentId, ...input });
       const p = get(paymentId);
       if (knobs.raiseDeclines) throw new CardDeclined('insufficient_funds');
@@ -121,6 +132,7 @@ export function fakeProvider() {
       return snap(p);
     },
     async capture(_account, paymentId, input) {
+      noFee(input.applicationFeeCents);
       const p = get(paymentId);
       if (p.state === 'captured') return snap(p);
       calls.captures.push({ paymentId, ...input });

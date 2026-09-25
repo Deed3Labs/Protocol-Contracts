@@ -3,6 +3,7 @@ import type { BusinessDate } from './common';
 import type {
   CardAvailability,
   CardDeposit,
+  ClearFeeBill,
   CardTenderStart,
   ConnectionToken,
   CreateCardTender,
@@ -129,4 +130,6 @@ export interface MerchantApi {
   cardDeposits(range: Range): Promise<CardDeposit[]>;
   /** Owners and managers. */
   overview(range: Range): Promise<Overview>;
+  /** Clear's monthly fee bills, newest first; empty unless the shop's processor can't take the fee per sale. */
+  clearFeeBills(): Promise<ClearFeeBill[]>;
 }

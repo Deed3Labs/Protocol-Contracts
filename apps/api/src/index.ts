@@ -64,6 +64,7 @@ import { startCardCaptureSafety } from './jobs/cardCaptureSafety.js';
 import { startClearTenderSync } from './jobs/clearTenderSync.js';
 import { startOutboxProcessor } from './jobs/outboxProcessor.js';
 import { startCardReconciliation } from './jobs/cardReconciliation.js';
+import { startClearFeeBilling } from './jobs/clearFeeBilling.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
@@ -407,6 +408,8 @@ async function startServer() {
     startOutboxProcessor();
     // Nightly: card payouts brought up to date, then our books checked against the processor's.
     startCardReconciliation();
+    // Daily: Clear's fee billed and collected for any shop whose processor can't take it per sale.
+    startClearFeeBilling();
 
     // Start HTTP server (Express + WebSocket)
     // Bind to 0.0.0.0 to accept connections from Railway/external hosts

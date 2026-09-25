@@ -15,8 +15,10 @@ import type { EntryInput, LineInput } from './ledgerService.js';
  * amount changed (a tip adjusted before capture posts its own entry). A void before capture
  * reverses the sale.
  *
- * Processor fees aren't known at the tap. Stripe's fee and Clear's are recorded when payout data
- * arrives (cardPayout), from Stripe's own figures, never from our fee rule.
+ * Processor fees aren't known at the tap. The processor's fee and Clear's are recorded when payout
+ * data arrives (cardPayout), from the processor's own figures, never from our fee rule. The one
+ * exception is a processor that can't take Clear's fee off the sale: then Clear's fee is ours to
+ * work out, accrued at capture (clearFeeAccrued) and collected by a monthly bill (clearFeeCollected).
  */
 
 type Base = { merchant: string; occurredAt?: Date | string; createdBy?: string | null };
@@ -250,10 +252,10 @@ export function refund(
  * marked in the memo, until disputes get their own accounts.
  */
 export function cardPayout(
-  input: Base & { payoutId: string; grossCents: number; stripeFeeCents: number; clearFeeCents: number; otherCents?: number },
+  input: Base & { payoutId: string; grossCents: number; processorFeeCents: number; clearFeeCents: number; otherCents?: number },
 ): EntryInput {
   const other = input.otherCents ?? 0;
-  const net = input.grossCents - input.stripeFeeCents - input.clearFeeCents + other;
+  const net = input.grossCents - input.processorFeeCents - input.clearFeeCents + other;
   if (net < 0) throw new Error('Fees are more than the payout');
   const receivable = input.grossCents;
   return {
@@ -266,12 +268,70 @@ export function cardPayout(
     memo: other !== 0 ? 'Card processing: processor fee, Clear fee, and disputes or adjustments' : 'Card processing: processor fee, then Clear fee',
     lines: lines(
       { account: 'bank', debit: net },
-      { account: 'card_processing_expense', debit: input.stripeFeeCents },
+      { account: 'card_processing_expense', debit: input.processorFeeCents },
       { account: 'card_processing_expense', debit: input.clearFeeCents },
       { account: 'card_processing_expense', debit: other < 0 ? -other : 0 },
       { account: 'card_processing_expense', credit: other > 0 ? other : 0 },
       { account: 'card_receivable', credit: receivable > 0 ? receivable : 0 },
       { account: 'card_receivable', debit: receivable < 0 ? -receivable : 0 },
     ),
+  };
+}
+
+/**
+ * Clear's fee on a captured card sale whose processor couldn't take it (card-processing prompt,
+ * Phase 9): card processing now, owed to Clear until the month's bill is collected. The same
+ * expense the processor path books at payout, so a shop's card processing reads the same either way.
+ */
+export function clearFeeAccrued(input: Base & { tenderId: string; feeCents: number }): EntryInput | null {
+  if (input.feeCents <= 0) return null;
+  return {
+    merchant: input.merchant,
+    kind: 'clear_fee_accrued',
+    idempotencyKey: `clear-fee:${input.tenderId}`,
+    ref: { type: 'tender', id: input.tenderId },
+    occurredAt: input.occurredAt,
+    createdBy: input.createdBy,
+    memo: 'Clear fee, billed monthly',
+    lines: [
+      { account: 'card_processing_expense', debit: input.feeCents },
+      { account: 'clear_fees_payable', credit: input.feeCents },
+    ],
+  };
+}
+
+/** A refund that gives back Clear's share of the fee (the shop's refund setting), off what's owed. */
+export function clearFeeReturned(input: Base & { refundId: string; feeCents: number }): EntryInput | null {
+  if (input.feeCents <= 0) return null;
+  return {
+    merchant: input.merchant,
+    kind: 'clear_fee_returned',
+    idempotencyKey: `clear-fee-returned:${input.refundId}`,
+    ref: { type: 'refund', id: input.refundId },
+    occurredAt: input.occurredAt,
+    createdBy: input.createdBy,
+    memo: 'Clear fee given back with the refund',
+    lines: [
+      { account: 'clear_fees_payable', debit: input.feeCents },
+      { account: 'card_processing_expense', credit: input.feeCents },
+    ],
+  };
+}
+
+/** A month's bill for Clear's fee, taken from the shop's cash account. */
+export function clearFeeCollected(input: Base & { billId: string; amountCents: number; txHash: string }): EntryInput {
+  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) throw new Error('A bill collects a positive amount');
+  return {
+    merchant: input.merchant,
+    kind: 'clear_fee_collected',
+    idempotencyKey: `clear-fee-bill:${input.billId}`,
+    ref: { type: 'fee_bill', id: input.billId },
+    occurredAt: input.occurredAt,
+    createdBy: input.createdBy,
+    memo: `Clear fee bill, transaction ${input.txHash}`,
+    lines: [
+      { account: 'clear_fees_payable', debit: input.amountCents },
+      { account: 'cash_account', credit: input.amountCents },
+    ],
   };
 }

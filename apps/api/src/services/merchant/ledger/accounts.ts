@@ -12,8 +12,13 @@ export const ACCOUNTS = {
   bank: { type: 'asset', normal: 'debit' },
   card_receivable: { type: 'asset', normal: 'debit' },
   clear_receivable: { type: 'asset', normal: 'debit' },
+  // The shop's USDC account (its organization wallet). Only what the books move through it is here
+  // so far: Clear's monthly fee bill, collected from it.
+  cash_account: { type: 'asset', normal: 'debit' },
   sales: { type: 'income', normal: 'credit' },
   tax_payable: { type: 'liability', normal: 'credit' },
+  // Clear's card fee on sales whose processor couldn't take it, until the month's bill is collected.
+  clear_fees_payable: { type: 'liability', normal: 'credit' },
   // Contra-revenue: income accounts that a debit increases.
   discounts: { type: 'income', normal: 'debit' },
   refunds: { type: 'income', normal: 'debit' },

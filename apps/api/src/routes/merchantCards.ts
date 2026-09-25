@@ -5,7 +5,7 @@ import { requireManager, requireMerchant, requireOwner } from '../middleware/mer
 import { RecordReader, RegisterSmartReader } from '@clear/merchant-contracts';
 import { connectionToken, listReaders, recordReader, registerSmartReader, TerminalError } from '../services/merchant/cards/terminal.js';
 import { availabilityFor, CardsError, connectCards } from '../services/merchant/cards/cardsService.js';
-import { defaultCardConnector } from '../services/merchant/cards/stripeConnector.js';
+import { connectorForShop } from '../services/merchant/cards/registry.js';
 
 /**
  * Cards for a shop (card-processing prompt, Phase 3), mounted at /api/merchant/cards.
@@ -38,12 +38,12 @@ const router = forwardAsyncErrors(Router());
 router.get('/availability', requireMerchant, async (req: Request, res: Response) => {
   const db = await merchantDb();
   if (!db) return res.status(503).json({ error: 'Unavailable', message: 'merchant database is not configured' });
-  res.json(await availabilityFor(db, defaultCardConnector(), req.merchant!.merchant));
+  res.json(await availabilityFor(db, await connectorForShop(db, req.merchant!.merchant), req.merchant!.merchant));
 });
 
 router.post('/connect', requireMerchant, requireOwner, async (req: Request, res: Response) => {
   const db = await merchantDb();
-  const connector = defaultCardConnector();
+  const connector = db && (await connectorForShop(db, req.merchant!.merchant));
   if (!db || !connector) {
     return res.status(503).json({ error: 'Unavailable', message: 'card processing is not set up here' });
   }
@@ -66,7 +66,7 @@ router.post('/connect', requireMerchant, requireOwner, async (req: Request, res:
 
 router.post('/connection-token', requireMerchant, async (req: Request, res: Response) => {
   const db = await merchantDb();
-  const connector = defaultCardConnector();
+  const connector = db && (await connectorForShop(db, req.merchant!.merchant));
   if (!db || !connector) return res.status(503).json({ error: 'Unavailable', message: 'card processing is not set up here' });
   try {
     res.json(await connectionToken(db, connector, req.merchant!.merchant));
@@ -83,7 +83,7 @@ router.get('/readers', requireMerchant, async (req: Request, res: Response) => {
 
 router.post('/readers/smart', requireMerchant, requireManager, async (req: Request, res: Response) => {
   const db = await merchantDb();
-  const connector = defaultCardConnector();
+  const connector = db && (await connectorForShop(db, req.merchant!.merchant));
   if (!db || !connector) return res.status(503).json({ error: 'Unavailable', message: 'card processing is not set up here' });
   const body = RegisterSmartReader.safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: 'Invalid request', message: 'a registration code and a label' });

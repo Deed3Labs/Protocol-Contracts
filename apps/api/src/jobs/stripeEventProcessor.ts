@@ -1,12 +1,13 @@
 import { merchantDb } from '../config/merchantDb.js';
+import { cardConnector } from '../services/merchant/cards/registry.js';
 import { stripeLivemode } from '../services/merchant/cards/stripeConnector.js';
 import { cardConnectorHandlers } from '../services/merchant/stripeEvents/cardConnectorHandlers.js';
 import { cardPaymentHandlers } from '../services/merchant/stripeEvents/cardPaymentHandlers.js';
-import { defaultCardConnector } from '../services/merchant/cards/stripeConnector.js';
 import { type Handlers, processPending } from '../services/merchant/stripeEvents/inbox.js';
 
 /*
- * Drains the Stripe webhook inbox (payments.stripe_events).
+ * Drains the Stripe webhook inbox (payments.stripe_events): the Stripe connector's own webhooks, so
+ * Stripe by name. Another processor brings its own inbox and handlers beside it.
  *
  *   on arrival   the webhook route kicks it, so a stored event is usually handled within the second
  *   every 30s    a sweep, for anything a kick missed: a crash between storing and handling, a
@@ -21,7 +22,7 @@ const SWEEP_MS = 30_000;
 /** Every event type the merchant back office acts on. Later phases add theirs here. */
 export const MERCHANT_STRIPE_HANDLERS: Handlers = {
   ...cardConnectorHandlers,
-  ...cardPaymentHandlers(defaultCardConnector),
+  ...cardPaymentHandlers(() => cardConnector('stripe')),
 };
 
 let running = false;

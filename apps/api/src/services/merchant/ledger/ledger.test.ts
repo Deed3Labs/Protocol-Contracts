@@ -71,7 +71,7 @@ describe('example postings', () => {
     expect(await bal(merchant, 'card_receivable')).toBe(10775);
     // Capture changes the tender's status and posts nothing: the receivable is already right.
     // Two days later Stripe pays out, with its own figures for the fees.
-    await postIt(postings.cardPayout({ merchant, payoutId: 'po_1', grossCents: 10775, stripeFeeCents: 292, clearFeeCents: 30 }));
+    await postIt(postings.cardPayout({ merchant, payoutId: 'po_1', grossCents: 10775, processorFeeCents: 292, clearFeeCents: 30 }));
     expect(await bal(merchant, 'card_receivable')).toBe(0);
     expect(await bal(merchant, 'bank')).toBe(10453);
     expect(await bal(merchant, 'card_processing_expense')).toBe(322);
