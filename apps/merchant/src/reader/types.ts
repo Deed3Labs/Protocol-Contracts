@@ -56,7 +56,7 @@ export interface TenderOrder {
  * The server's side of a card payment: the merchant API's card endpoints (backend prompt, Phases
  * 4 and 5; typed in `packages/merchant-contracts`). The server creates, sends to smart readers,
  * voids and captures (at Close the day); the app only collects the card on the M2 and Tap to Pay.
- * `unavailableBackend` stands in until the app's data layer wires the real client.
+ * `merchantTerminalBackend` (./backend.ts) is it, over the data layer's MerchantApi.
  */
 export interface TerminalBackend {
   /** For the native SDK: a token on the shop's account, and the shop's reader location. */

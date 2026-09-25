@@ -1,10 +1,28 @@
+import type { MerchantApi } from '@clear/merchant-contracts';
 import { type TerminalBackend, ReaderUnavailable } from './types';
 
 /**
- * The server's half of a card payment, until the app's data layer wires the real client (merchant
- * UI prompt, Phase 3). The endpoints exist (/api/merchant/cards/…, /api/merchant/tenders/…); this
- * stand-in keeps a live shop's card screen saying cards aren't ready rather than pretending.
+ * The server's half of a card payment: the merchant API's card endpoints (UI Phase 6, step 5).
+ * The reader layer calls these and nothing else; which API (the real one, or the mock in the
+ * preview) is the data layer's choice (data/merchantApi).
  */
+export function merchantTerminalBackend(api: MerchantApi): TerminalBackend {
+  return {
+    connectionToken: () => api.connectionToken(),
+    readers: () => api.readers(),
+    recordReader: (input) => api.recordReader(input),
+    startCardTender: (orderId, input) => api.createCardTender(orderId, input),
+    present: async (tenderId) => {
+      await api.presentTender(tenderId);
+    },
+    sync: (tenderId) => api.syncTender(tenderId),
+    cancelTender: async (tenderId) => {
+      await api.cancelTender(tenderId);
+    },
+  };
+}
+
+/** For tests and a build without the data layer: every call says cards aren't ready. */
 const notYet = (): never => {
   throw new ReaderUnavailable('Card payments aren’t switched on for this shop yet.');
 };

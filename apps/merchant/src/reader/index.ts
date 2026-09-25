@@ -1,4 +1,5 @@
-import { unavailableBackend } from './backend';
+import { merchantApi } from '@/data/merchantApi';
+import { merchantTerminalBackend } from './backend';
 import { mockReader } from './mock';
 import { currentPlatform } from './platform';
 import type { Platform, ReaderService, TerminalBackend } from './types';
@@ -6,6 +7,7 @@ import type { Platform, ReaderService, TerminalBackend } from './types';
 export * from './types';
 export { currentPlatform, kindsFor, offlineFor, OFFLINE_BUILT, previewPlatform, thisDevice } from './platform';
 export { mockReader, mockReaders } from './mock';
+export { merchantTerminalBackend, unavailableBackend } from './backend';
 
 /**
  * The one way a screen reaches a card reader. The installed app gets the native plugin, a browser
@@ -21,7 +23,7 @@ export function readerService(opts: { preview?: { platform: Platform; decline?: 
     if (!previews.has(key)) previews.set(key, mockReader(opts.preview.platform, { decline: opts.preview.decline }));
     return Promise.resolve(previews.get(key)!);
   }
-  const backend = opts.backend ?? unavailableBackend;
+  const backend = opts.backend ?? merchantTerminalBackend(merchantApi());
   if (!live) {
     const platform = currentPlatform();
     live =
