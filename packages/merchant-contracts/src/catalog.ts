@@ -75,15 +75,36 @@ export const STOCK_MOVEMENT_KINDS = ['receive', 'count', 'damage', 'hold', 'rele
 export const StockMovementKind = z.enum(STOCK_MOVEMENT_KINDS);
 export type StockMovementKind = z.infer<typeof StockMovementKind>;
 
-/** A movement made by hand: receiving, counting, damage. Holds and sales come from orders. */
-export const StockAdjustment = z.object({
-  itemId: Id,
-  kind: z.enum(['receive', 'count', 'damage', 'return']),
-  /** Signed: +8 received, −1 damaged; a count is the difference it finds. */
-  quantity: z.number().int().refine((n) => n !== 0, 'A movement moves something'),
-  reason: z.string().max(200).nullable(),
-});
+/**
+ * A movement made by hand; holds and sales come from orders. Owners and managers only.
+ *
+ * Signs are the server's: `receive` and `return` add, `damage` takes away, and a `count` says what
+ * was found on the shelf. The server works out a count's difference under a lock, so a sale made
+ * while someone was counting can't make the count wrong.
+ */
+export const StockAdjustment = z.discriminatedUnion('kind', [
+  z.object({ itemId: Id, kind: z.literal('receive'), quantity: z.number().int().min(1), reason: z.string().max(200).nullable() }),
+  z.object({ itemId: Id, kind: z.literal('return'), quantity: z.number().int().min(1), reason: z.string().max(200).nullable() }),
+  z.object({ itemId: Id, kind: z.literal('damage'), quantity: z.number().int().min(1), reason: z.string().max(200).nullable() }),
+  z.object({ itemId: Id, kind: z.literal('count'), found: z.number().int().min(0), reason: z.string().max(200).nullable() }),
+]);
 export type StockAdjustment = z.infer<typeof StockAdjustment>;
+
+/** One line of an item's stock history: "Received · 8 from the distributor +8", "Sold · Ray C. · Luis −4". */
+export const StockMovement = z.object({
+  id: Id,
+  kind: StockMovementKind,
+  /** Signed, as it moved on hand (holds and releases move held). */
+  quantity: z.number().int(),
+  reason: z.string().nullable(),
+  /** Who, by staff id; null for the system (a sale's release, say). */
+  actor: Id.nullable(),
+  /** The order it came from, for holds, releases, sales and returns. */
+  orderId: Id.nullable(),
+  reorderId: Id.nullable(),
+  at: Timestamp,
+});
+export type StockMovement = z.infer<typeof StockMovement>;
 
 export const Reorder = z.object({
   id: Id,

@@ -22,6 +22,7 @@ import { clearSignerStatus, confirmClearSigner, prepareClearSigner } from '../se
 import merchantCardsRouter from './merchantCards.js';
 import merchantTendersRouter from './merchantTenders.js';
 import merchantShopRouter from './merchantShop.js';
+import merchantCatalogRouter from './merchantCatalog.js';
 
 /**
  * The merchant surface.
@@ -47,6 +48,8 @@ merchantRouter.use('/cards', merchantCardsRouter);
 merchantRouter.use(merchantTendersRouter);
 // The shop and its settings (routes/merchantShop.ts).
 merchantRouter.use(merchantShopRouter);
+// Inventory: items, stock, reorders, discount codes (routes/merchantCatalog.ts).
+merchantRouter.use(merchantCatalogRouter);
 
 /** Sign-in is scoped to one shop: a four-digit PIN only means anything against a merchant. */
 function merchantOf(req: Request): string {
