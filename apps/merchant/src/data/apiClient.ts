@@ -276,6 +276,11 @@ export const api = {
     });
   },
 
+  /** How long this tablet sits idle before it asks for a PIN again (60 to 3600 seconds). */
+  async setIdleLock(id: string, idleLockSeconds: number): Promise<void> {
+    await request(`/api/merchant/devices/${id}`, { method: 'PATCH', body: JSON.stringify({ idleLockSeconds }) });
+  },
+
   /** Called on load: the server decides what this device is, not localStorage. */
   async currentSession(): Promise<SessionResponse | null> {
     if (!readToken()) return null;

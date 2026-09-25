@@ -6,7 +6,7 @@ import { createCardTender } from '../cards/cardTenders.js';
 import { connectorStore } from '../cards/connectorStore.js';
 import { fakeProvider } from '../cards/fakeProvider.js';
 import { connectionToken } from '../cards/terminal.js';
-import { getSettings, getShop, ShopError, updateSettings, updateShop } from './shopService.js';
+import { getHours, getSettings, getShop, saveHours, ShopError, updateSettings, updateShop } from './shopService.js';
 
 let db: Db;
 beforeAll(async () => {
@@ -107,5 +107,47 @@ describe('settings', () => {
     expect((await start(await order())).offlineLimitCents).toBe(25000);
     await updateSettings(db, { merchant, staffId: staff.owner, patch: { paymentMethods: { card: false, cash: true, split: false } } });
     await expect(start(await order())).rejects.toMatchObject({ code: 'method_off' });
+  });
+});
+
+describe('the listing and the hours', () => {
+  test('the owner sets the name and the listing; a field left out stays, null clears it', async () => {
+    const { merchant } = await seedShop(db);
+    let shop = await updateShop(db, null, { merchant, patch: { name: 'Mike’s Tire & Brake', listing: { oneLine: 'Tires, brakes and alignment', phone: '(909) 555-0180', email: 'Hello@MikesTire.com' } } });
+    expect(shop.name).toBe('Mike’s Tire & Brake');
+    expect(shop.listing).toMatchObject({ oneLine: 'Tires, brakes and alignment', phone: '(909) 555-0180', email: 'hello@mikestire.com' });
+    shop = await updateShop(db, null, { merchant, patch: { listing: { phone: null } } });
+    expect(shop.listing).toMatchObject({ oneLine: 'Tires, brakes and alignment', phone: null, email: 'hello@mikestire.com' });
+    await expect(updateShop(db, null, { merchant, patch: { listing: { email: 'not an email' } } })).rejects.toThrow('email');
+    await expect(updateShop(db, null, { merchant, patch: { name: '' } })).rejects.toBeInstanceOf(ShopError);
+  });
+
+  test('hours: a new shop is closed every day; the week and the dates are saved together', async () => {
+    const { merchant } = await seedShop(db);
+    expect((await getHours(db, merchant)).week.every((d) => d.open === null)).toBe(true);
+    const open = { from: '08:00', to: '18:00' };
+    const week = [open, open, open, open, { from: '08:00', to: '16:00' }, { from: '09:00', to: '14:00' }, null].map((o, day) => ({ day, open: o }));
+    const future = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    const saved = await saveHours(db, { merchant, hours: { week, dates: [{ date: future, label: 'Thanksgiving', open: null }] } });
+    expect(saved.week[5]!.open).toEqual({ from: '09:00', to: '14:00' });
+    expect(saved.week[6]!.open).toBeNull();
+    expect(saved.dates).toEqual([{ date: future, label: 'Thanksgiving', open: null }]);
+    // Replaced, not added to.
+    const again = await saveHours(db, { merchant, hours: { week: week.map((w) => ({ ...w, open: null })), dates: [] } });
+    expect(again.week.every((d) => d.open === null) && again.dates.length === 0).toBe(true);
+  });
+
+  test('hours that close before they open, or a week without seven days, are refused', async () => {
+    const { merchant } = await seedShop(db);
+    const week = Array.from({ length: 7 }, (_, day) => ({ day, open: null as null | { from: string; to: string } }));
+    await expect(saveHours(db, { merchant, hours: { week: [{ day: 0, open: { from: '18:00', to: '08:00' } }, ...week.slice(1)], dates: [] } })).rejects.toThrow('closes after it opens');
+    await expect(saveHours(db, { merchant, hours: { week: week.slice(1), dates: [] } })).rejects.toBeInstanceOf(ShopError);
+  });
+
+  test('breaks are a setting, defaulting to 30 minutes after five hours', async () => {
+    const { merchant, staff } = await seedShop(db);
+    expect((await getSettings(db, merchant)).breaks).toEqual({ minutes: 30, afterMinutes: 300 });
+    const s = await updateSettings(db, { merchant, staffId: staff.owner.id, patch: { breaks: { minutes: 20, afterMinutes: 240 } } });
+    expect(s.breaks).toEqual({ minutes: 20, afterMinutes: 240 });
   });
 });

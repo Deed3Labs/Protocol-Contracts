@@ -24,7 +24,7 @@ import type {
   RequestRefund,
   Tender,
 } from './orders';
-import type { Shop, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
+import type { Shop, ShopHours, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
 
 type In<T extends z.ZodType> = z.input<T>;
 type Range = { from: z.infer<typeof BusinessDate>; to: z.infer<typeof BusinessDate> };
@@ -44,6 +44,10 @@ export interface MerchantApi {
   shop(): Promise<Shop>;
   /** Owners only. The address sets sales tax and the card reader location. */
   updateShop(patch: In<typeof ShopPatch>): Promise<Shop>;
+  /** When the shop is open: the usual week and the dates that differ. */
+  hours(): Promise<ShopHours>;
+  /** Owners only: replaces the week and the dates. */
+  saveHours(hours: In<typeof ShopHours>): Promise<ShopHours>;
   settings(): Promise<ShopSettings>;
   /** Owners only. */
   updateSettings(patch: In<typeof ShopSettingsPatch>): Promise<ShopSettings>;

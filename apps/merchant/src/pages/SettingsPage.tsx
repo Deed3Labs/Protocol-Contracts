@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
-import type { Reader } from '@clear/merchant-contracts';
+import type { MerchantApi, Reader, Shop, ShopHours, ShopSettings } from '@clear/merchant-contracts';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { seesMoney } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
@@ -13,8 +13,8 @@ import { useLayout } from '@/lib/useBreakpoint';
 import { roleLabel } from '@/shell/chrome';
 import { currentPlatform, previewPlatform } from '@/reader';
 import { useShiftActions } from '@/shell/shiftActions';
-import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type ReaderRow, type Section, type SettingsData } from '@/settings/panes';
-import { AddDeviceSheet, AddReaderSheet, ChangeAccountSheet, ConfirmLeaveSheet, IndexCell, LeaveSheet, NewCodeSheet, PaneHead, Rail, Who } from '@/settings/views';
+import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type ReaderRow, type Section, type SettingsData, type ShopField } from '@/settings/panes';
+import { AddDeviceSheet, AddReaderSheet, Btn, Cell, ChangeAccountSheet, clock12, ConfirmLeaveSheet, DateHoursSheet, FootLine, IndexCell, Kv, LeaveSheet, Main, NewCodeSheet, Pair, PaneHead, Rail, Rows, TextSheet, WeekHoursEdit, Who } from '@/settings/views';
 
 /**
  * Settings — docs/merchant-reference/clear-merchant-settings.html.
@@ -103,6 +103,29 @@ export default function SettingsPage() {
   const { data: readers, reload: reloadReaders } = useApi(() => (preview || !owner ? Promise.resolve(null) : merchant.readers()), [preview, owner]);
   const { data: shopSettings, reload: reloadSettings } = useApi(() => (preview || !owner ? Promise.resolve(null) : merchant.settings()), [preview, owner]);
   const [payError, setPayError] = useState<string | null>(null);
+  // Shop, hours, Counter and Devices: the shop's own, for an owner.
+  const liveOwner = !preview && owner;
+  const shopRecord = useApi(() => (liveOwner ? merchant.shop() : Promise.resolve(null)), [liveOwner]);
+  const shopHours = useApi(() => (liveOwner ? merchant.hours() : Promise.resolve(null)), [liveOwner]);
+  const { refresh } = useAuth();
+  const [textEdit, setTextEdit] = useState<ShopField | 'breaks' | 'device' | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  /** Run a change, then read the shop again: what shows is what the server holds. */
+  const change = async (fn: () => Promise<unknown>, after?: () => void) => {
+    setEditBusy(true);
+    setEditError(null);
+    try {
+      await fn();
+      after?.();
+      shopRecord.reload();
+      reloadSettings();
+    } catch (e) {
+      setEditError(errorSentence(e));
+    } finally {
+      setEditBusy(false);
+    }
+  };
 
   const me = { name: session?.staff.name ?? '', role: roleLabel(role) };
   // The preview is the installed app, as the reference draws it; `&platform=web` shows a browser's list.
@@ -118,6 +141,14 @@ export default function SettingsPage() {
         cards: cards ?? { available: false, reason: 'not_connected' },
         readers: (readers ?? []).map(readerRow),
         ways: shopSettings?.paymentMethods ?? null,
+        ...liveShopFields(shopRecord.data, shopHours.data),
+        liveShop: liveOwner
+          ? {
+              settings: shopSettings ?? null,
+              readers: readers ?? null,
+              device: device ? { label: device.label, enrolledAt: devices?.find((x) => x.id === device.id)?.enrolledAt ?? '', idleLockSeconds: device.idleLockSeconds } : null,
+            }
+          : null,
       };
 
   const connectStripe = async () => {
@@ -178,6 +209,10 @@ export default function SettingsPage() {
         },
     onConnectStripe: preview ? undefined : () => void connectStripe(),
     onAddReader: () => setOpen('reader'),
+    onEditShop: liveOwner ? (f: ShopField) => (setEditError(null), setTextEdit(f)) : undefined,
+    onBreaks: liveOwner ? () => (setEditError(null), setTextEdit('breaks')) : undefined,
+    onIdle: liveOwner && device ? (seconds: number) => void change(() => api.setIdleLock(device.id, seconds), () => void refresh()) : undefined,
+    onRenameDevice: liveOwner && device ? () => (setEditError(null), setTextEdit('device')) : undefined,
     onWay:
       preview || !shopSettings
         ? undefined
@@ -199,7 +234,11 @@ export default function SettingsPage() {
     </p>
   ) : null;
   const body = hours ? (
-    hoursBody(d)
+    preview ? (
+      hoursBody(d)
+    ) : shopHours.data ? (
+      <LiveHours initial={shopHours.data} onSave={(h) => merchant.saveHours(h).then(() => shopHours.reload())} />
+    ) : null
   ) : current ? (
     <>
       {paneError}
@@ -221,6 +260,20 @@ export default function SettingsPage() {
         <ConfirmLeaveSheet payout={['Paid to Chase ••4417 on Oct 14', '$4,218.91']} waiting="2 · $1,350.00" names="Nina P. and Dana R." onStay={close} />
       )}
       {open === 'code' && <NewCodeSheet onCreate={preview ? close : undefined} onClose={close} />}
+      {textEdit && (
+        <ShopTextSheet
+          what={textEdit}
+          shop={shopRecord.data}
+          settings={shopSettings ?? null}
+          deviceLabel={device?.label ?? ''}
+          deviceId={device?.id ?? ''}
+          busy={editBusy}
+          error={editError}
+          onClose={() => setTextEdit(null)}
+          onSave={(fn) => void change(fn, () => (setTextEdit(null), textEdit === 'device' ? void refresh() : undefined))}
+          merchant={merchant}
+        />
+      )}
       {open === 'reader' && (
         <AddReaderSheet
           app={platform !== 'web'}
@@ -278,5 +331,188 @@ export default function SettingsPage() {
       </div>
       {sheets}
     </>
+  );
+}
+
+/** The Shop pane's listing, contact and hours, from a live shop's record. */
+function liveShopFields(shop: Shop | null, hours: ShopHours | null): Partial<SettingsData> {
+  const out: Partial<SettingsData> = {};
+  if (shop) {
+    out.shop = shop.name;
+    out.category = shop.listing.category ?? '—';
+    out.oneLine = shop.listing.oneLine ?? '—';
+    out.address = shop.address ? `${shop.address.line1}, ${shop.address.city}, ${shop.address.region} ${shop.address.postalCode}` : 'Not set yet';
+    out.phone = shop.listing.phone ?? '—';
+    out.email = shop.listing.email ?? '—';
+  }
+  if (hours) {
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    out.hours = hours.week.map((w) => ({ dn: names[w.day]!, open: w.open ? [clock12(w.open.from), clock12(w.open.to)] : null }));
+    out.closedDates = hours.dates.map((d) => [
+      d.label,
+      `${new Date(`${d.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${d.open ? `${clock12(d.open.from)} – ${clock12(d.open.to)}` : 'closed'}`,
+    ]);
+  }
+  return out;
+}
+
+/** Settings › Shop › Shop hours on a live shop: the week and the dates, saved together. */
+function LiveHours({ initial, onSave }: { initial: ShopHours; onSave: (h: ShopHours) => Promise<unknown> }) {
+  const [h, setH] = useState(initial);
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const dirty = JSON.stringify(h) !== JSON.stringify(initial);
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await onSave(h);
+      setMsg('Saved.');
+    } catch (e) {
+      setMsg(errorSentence(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <Cell label="Each week" det="">
+        <Main>
+          <WeekHoursEdit week={h.week} onChange={(week) => (setMsg(null), setH({ ...h, week }))} />
+        </Main>
+      </Cell>
+      <Cell
+        label="Closed on a date"
+        det="A week’s notice"
+        foot={
+          <FootLine det={msg ?? 'Shifts booked on Staff sit inside these hours.'}>
+            <Pair>
+              <Btn onClick={() => setAdding(true)}>Add a date</Btn>
+              <Btn primary onClick={() => void save()} disabled={!dirty || busy}>
+                {busy ? 'Saving…' : 'Save hours'}
+              </Btn>
+            </Pair>
+          </FootLine>
+        }
+      >
+        <Main>
+          {h.dates.length ? (
+            <Rows>
+              {h.dates.map((d) => (
+                <Kv
+                  key={d.date}
+                  k={d.label}
+                  v={
+                    <>
+                      {new Date(`${d.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {d.open ? `${clock12(d.open.from)} – ${clock12(d.open.to)}` : 'closed'}{' '}
+                      <button type="button" className="c-ci-link" aria-label={`Remove ${d.label}`} onClick={() => (setMsg(null), setH({ ...h, dates: h.dates.filter((x) => x.date !== d.date) }))}>
+                        Remove
+                      </button>
+                    </>
+                  }
+                  ink
+                />
+              ))}
+            </Rows>
+          ) : (
+            <p className="c-det">No dates yet.</p>
+          )}
+        </Main>
+      </Cell>
+      {adding && (
+        <DateHoursSheet
+          onClose={() => setAdding(false)}
+          onAdd={(d) => {
+            setH({ ...h, dates: [...h.dates.filter((x) => x.date !== d.date), d].sort((a, b) => a.date.localeCompare(b.date)) });
+            setAdding(false);
+            setMsg(null);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+/** The sheet for a field of the shop, the breaks, or this tablet's name. */
+function ShopTextSheet({
+  what,
+  shop,
+  settings,
+  deviceLabel,
+  deviceId,
+  busy,
+  error,
+  onSave,
+  onClose,
+  merchant,
+}: {
+  what: ShopField | 'breaks' | 'device';
+  shop: Shop | null;
+  settings: ShopSettings | null;
+  deviceLabel: string;
+  deviceId: string;
+  busy: boolean;
+  error: string | null;
+  onSave: (fn: () => Promise<unknown>) => void;
+  onClose: () => void;
+  merchant: MerchantApi;
+}) {
+  const common = { busy, error, onClose };
+  if (what === 'breaks') {
+    const b = settings?.breaks ?? { minutes: 30, afterMinutes: 300 };
+    return (
+      <TextSheet
+        {...common}
+        title="Breaks"
+        det="How long a break is, and after how many hours on shift one is due. Home shows who is due one."
+        fields={[
+          { key: 'minutes', label: 'Break, in minutes', value: String(b.minutes), max: 3, required: true, inputMode: 'tel' },
+          { key: 'after', label: 'Due after, in hours', value: String(b.afterMinutes / 60), max: 4, required: true, inputMode: 'tel' },
+        ]}
+        onSave={(v) => onSave(() => merchant.updateSettings({ breaks: { minutes: Math.round(Number(v.minutes)), afterMinutes: Math.round(Number(v.after) * 60) } }))}
+      />
+    );
+  }
+  if (what === 'device')
+    return <TextSheet {...common} title="This tablet’s name" fields={[{ key: 'label', label: 'Name', value: deviceLabel, max: 40, required: true }]} onSave={(v) => onSave(() => api.renameDevice(deviceId, v.label!.trim()))} />;
+  if (what === 'address') {
+    const a = shop?.address;
+    return (
+      <TextSheet
+        {...common}
+        title="Address"
+        det="Where the shop is. It sets the sales tax, and where the card readers are registered."
+        fields={[
+          { key: 'line1', label: 'Street', value: a?.line1 ?? '', max: 120, required: true },
+          { key: 'line2', label: 'Unit or suite', value: a?.line2 ?? '', max: 60 },
+          { key: 'city', label: 'City', value: a?.city ?? '', max: 60, required: true },
+          { key: 'region', label: 'State', value: a?.region ?? '', max: 2, required: true },
+          { key: 'postalCode', label: 'ZIP', value: a?.postalCode ?? '', max: 10, required: true, inputMode: 'tel' },
+        ]}
+        onSave={(v) =>
+          onSave(() =>
+            merchant.updateShop({ address: { line1: v.line1!.trim(), line2: v.line2!.trim() || null, city: v.city!.trim(), region: v.region!.trim().toUpperCase(), postalCode: v.postalCode!.trim(), country: 'US' } }),
+          )
+        }
+      />
+    );
+  }
+  const FIELD: Record<Exclude<ShopField, 'address'>, { title: string; label: string; max: number; inputMode?: 'tel' | 'email'; value: string | null; required?: boolean }> = {
+    name: { title: 'Name', label: 'The shop’s name', max: 60, value: shop?.name ?? '', required: true },
+    category: { title: 'What you do', label: 'What you do', max: 60, value: shop?.listing.category ?? null },
+    oneLine: { title: 'One line', label: 'A line about the shop', max: 140, value: shop?.listing.oneLine ?? null },
+    phone: { title: 'Phone', label: 'Phone', max: 40, inputMode: 'tel', value: shop?.listing.phone ?? null },
+    email: { title: 'Email', label: 'Email', max: 200, inputMode: 'email', value: shop?.listing.email ?? null },
+  };
+  const f = FIELD[what];
+  return (
+    <TextSheet
+      {...common}
+      title={f.title}
+      det={what === 'name' ? undefined : 'On your listing in Clear Partners. Leave it empty to leave it off.'}
+      fields={[{ key: 'v', label: f.label, value: f.value ?? '', max: f.max, inputMode: f.inputMode, required: f.required }]}
+      onSave={(v) => onSave(() => merchant.updateShop(what === 'name' ? { name: v.v!.trim() } : { listing: { [what]: v.v!.trim() || null } }))}
+    />
   );
 }

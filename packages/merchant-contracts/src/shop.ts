@@ -48,14 +48,44 @@ export const Shop = z.object({
   currency: z.literal('usd'),
   cardPlan: CardPlan,
   clearTier: ClearTier,
+  /** What members see in Clear Partners: what the shop does, a line about it, and how to reach it. */
+  listing: z.object({
+    category: z.string().nullable(),
+    oneLine: z.string().nullable(),
+    phone: z.string().nullable(),
+    email: z.string().nullable(),
+  }),
 });
 export type Shop = z.infer<typeof Shop>;
+
+/** "08:00" to "18:00", in the shop's timezone. */
+export const OpenSpan = z.object({ from: z.string().regex(/^\d{2}:\d{2}$/), to: z.string().regex(/^\d{2}:\d{2}$/) }).refine((s) => s.to > s.from, 'It closes after it opens');
+
+/**
+ * When the shop is open: the usual week (seven days, Monday first; null is closed) and the dates
+ * that differ (closed all day, or other hours). Staff hours sit inside these, and members' "open
+ * now" reads them.
+ */
+export const ShopHours = z.object({
+  week: z.array(z.object({ day: z.number().int().min(0).max(6), open: OpenSpan.nullable() })).length(7),
+  dates: z.array(z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), label: z.string().trim().min(1).max(60), open: OpenSpan.nullable() })).max(60),
+});
+export type ShopHours = z.infer<typeof ShopHours>;
 
 /** What an owner can change about the shop: where it is (which sets sales tax and the reader location) and its timezone. */
 export const ShopPatch = z
   .object({
     address: Address,
     timezone: z.string().min(1),
+    name: z.string().trim().min(1).max(60),
+    listing: z
+      .object({
+        category: z.string().trim().max(60).nullable(),
+        oneLine: z.string().trim().max(140).nullable(),
+        phone: z.string().trim().max(40).nullable(),
+        email: z.string().trim().max(200).nullable(),
+      })
+      .partial(),
   })
   .partial();
 export type ShopPatch = z.infer<typeof ShopPatch>;
@@ -94,6 +124,8 @@ export const ShopSettings = z.object({
   }),
   startingCashCents: NonNegativeCents,
   twoCounts: z.boolean(),
+  /** A break: how long, and after how long on shift. Home shows who is due one. */
+  breaks: z.object({ minutes: z.number().int().min(0).max(240), afterMinutes: z.number().int().min(60).max(960) }),
   /** When only one person is on at close. */
   onePersonClose: z.enum(['owner_next_morning', 'wait_for_second']),
   /** Store-and-forward on the M2 only; Tap to Pay is always online. */
@@ -118,6 +150,7 @@ export const DEFAULT_SETTINGS: Omit<ShopSettings, 'updatedAt'> = {
   paymentMethods: { card: true, cash: true, split: true },
   tips: { enabled: true, mode: 'amounts', presets: [500, 1000, 2000], goTo: 'raiser' },
   startingCashCents: 15000,
+  breaks: { minutes: 30, afterMinutes: 300 },
   twoCounts: true,
   onePersonClose: 'owner_next_morning',
   offlineCards: { enabled: false, limitCents: 50000 },

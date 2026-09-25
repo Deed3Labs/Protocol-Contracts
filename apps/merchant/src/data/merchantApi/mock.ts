@@ -26,7 +26,7 @@ import type {
   TenderEvent,
 } from '@clear/merchant-contracts';
 import { refundQuote, seesMoney, type ChargeState } from '@clear/domain';
-import type { api as ApiClient, MerchantCharge, MerchantProfile, PayoutPosition, Refund as ClearRefund, StaffMember } from '../apiClient';
+import type { api as ApiClient, EnrolledDevice, MerchantCharge, MerchantProfile, PayoutPosition, Refund as ClearRefund, StaffMember } from '../apiClient';
 import { price } from './pricing';
 import * as seed from './seed';
 
@@ -51,6 +51,10 @@ export type ClearSide = Pick<
   | 'staff'
   | 'roster'
   | 'profile'
+  | 'devices'
+  | 'currentDevice'
+  | 'renameDevice'
+  | 'setIdleLock'
 >;
 
 /**
@@ -111,6 +115,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   // ---- State -------------------------------------------------------------------------------------
   let settings: ShopSettings = { ...seed.SETTINGS };
   let shop = { ...seed.SHOP };
+  let hours = structuredClone(seed.HOURS);
   const items = new Map<string, CatalogItem>(seed.catalog().map((i) => [i.id, i]));
   const movements: Array<StockMovement & { itemId: string }> = [];
   const reorders = new Map<string, Reorder>(seed.REORDERS.map((r) => [r.id, { ...r }]));
@@ -379,8 +384,16 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     shop: async () => shop,
     updateShop: async (patch) => {
       if (who(viewer)?.role !== 'owner') refuse('Only the owner changes the shop', 403);
-      shop = { ...shop, ...(patch as Partial<typeof shop>) };
+      const { listing, ...rest } = patch as Partial<typeof shop> & { listing?: Partial<typeof shop.listing> };
+      shop = { ...shop, ...rest, listing: { ...shop.listing, ...(listing ?? {}) } };
       return shop;
+    },
+    hours: async () => hours,
+    saveHours: async (h) => {
+      if (who(viewer)?.role !== 'owner') refuse('Only the owner changes the hours', 403);
+      if (h.week.some((w) => w.open && w.open.to <= w.open.from)) refuse('It closes after it opens', 422, 'invalid');
+      hours = { week: h.week.map((w) => ({ ...w })), dates: h.dates.map((d) => ({ ...d, label: d.label.trim() })) };
+      return hours;
     },
     settings: async () => settings,
     updateSettings: async (patch) => {
@@ -812,6 +825,10 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   const refund = (refundId: string) => clearRefunds.get(refundId) ?? refuse('No such refund', 404, 'not_found');
   const owedCents = seed.POSITION.owedCents;
 
+  const devices: EnrolledDevice[] = [
+    { id: 'preview', label: 'Counter tablet', idleLockSeconds: 300, enrolledAt: '2026-08-04T16:20:00.000Z', revokedAt: null, enrolledByName: 'Mike R.' },
+  ];
+  const device = (deviceId: string) => devices.find((x) => x.id === deviceId) ?? refuse('That tablet is not enrolled here', 404, 'not_found');
   const clear: ClearSide = {
     charges: async (opts = {}) =>
       [...tenders.values()]
@@ -890,6 +907,21 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     profile: async (): Promise<MerchantProfile> => {
       const owner = who(viewer)?.role === 'owner';
       return { ...seed.PROFILE, name: shop.name, ...(owner ? seed.PROFILE_OWNER : {}) };
+    },
+    // The shop's tablets: this one is the preview's "Counter tablet" (auth/AuthProvider.tsx).
+    devices: async () => {
+      if (who(viewer)?.role !== 'owner') refuse('Only the owner sees the tablets', 403, 'forbidden');
+      return devices.map((x) => ({ ...x }));
+    },
+    currentDevice: async () => ({ merchant: '0x0000000000000000000000000000000000000000', device: { ...device('preview') } }),
+    renameDevice: async (deviceId, label) => {
+      if (who(viewer)?.role !== 'owner') refuse('Only the owner renames a tablet', 403, 'forbidden');
+      device(deviceId).label = label;
+    },
+    setIdleLock: async (deviceId, seconds) => {
+      if (who(viewer)?.role !== 'owner') refuse('Only the owner sets the lock', 403, 'forbidden');
+      if (seconds < 60 || seconds > 3600) refuse('Between a minute and an hour', 400, 'validation');
+      device(deviceId).idleLockSeconds = seconds;
     },
   };
 

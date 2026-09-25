@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, type Shop, ShopPatch, ShopSettings, ShopSettingsPatch } from '@clear/merchant-contracts';
+import { DEFAULT_SETTINGS, type Shop, ShopHours, ShopPatch, ShopSettings, ShopSettingsPatch } from '@clear/merchant-contracts';
 import type { Db, Queryable } from '../../../db/db.js';
 import type { CardConnectorProvider } from '../cards/connector.js';
 import { connectorStore } from '../cards/connectorStore.js';
@@ -36,6 +36,10 @@ interface ProfileRow {
   clear_tier: 'founding' | 'standard';
   paid_now_bps: number;
   over_time_bps: number;
+  category: string | null;
+  listing_line: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
 }
 
 export async function getShop(q: Queryable, merchant: string): Promise<Shop> {
@@ -58,6 +62,7 @@ export async function getShop(q: Queryable, merchant: string): Promise<Shop> {
     currency: p.currency,
     cardPlan: p.card_plan === 'paid' ? { kind: 'paid', feeCents: Number(p.card_plan_fee_cents) } : { kind: 'payg' },
     clearTier: { tier: p.clear_tier, paidNowBps: Number(p.paid_now_bps), overTimeBps: Number(p.over_time_bps) },
+    listing: { category: p.category, oneLine: p.listing_line, phone: p.contact_phone, email: p.contact_email },
   };
 }
 
@@ -77,8 +82,9 @@ function validTimezone(tz: string): boolean {
  */
 export async function updateShop(db: Db, provider: CardConnectorProvider | null, input: { merchant: string; patch: unknown }): Promise<Shop> {
   const parsed = ShopPatch.safeParse(input.patch);
-  if (!parsed.success) throw new ShopError('That isn’t a valid address or timezone', 'invalid');
-  const { address, timezone } = parsed.data;
+  if (!parsed.success) throw new ShopError(parsed.error.issues[0]?.message ?? 'That isn’t a valid change to the shop', 'invalid');
+  const { address, timezone, name, listing } = parsed.data;
+  if (listing?.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(listing.email)) throw new ShopError('That isn’t an email address', 'invalid');
   if (timezone !== undefined && !validTimezone(timezone)) throw new ShopError(`${timezone} isn’t a timezone`, 'invalid');
   if (address && address.country !== 'US') throw new ShopError('Clear shops are in the US for now', 'invalid');
 
@@ -90,7 +96,12 @@ export async function updateShop(db: Db, provider: CardConnectorProvider | null,
         address_region = COALESCE($5, address_region),
         address_postal_code = COALESCE($6, address_postal_code),
         address_country = COALESCE($7, address_country),
-        timezone = COALESCE($8, timezone)
+        timezone = COALESCE($8, timezone),
+        name = COALESCE($9, name),
+        category = CASE WHEN $10 THEN $11 ELSE category END,
+        listing_line = CASE WHEN $12 THEN $13 ELSE listing_line END,
+        contact_phone = CASE WHEN $14 THEN $15 ELSE contact_phone END,
+        contact_email = CASE WHEN $16 THEN $17 ELSE contact_email END
       WHERE merchant = $1`,
     [
       input.merchant,
@@ -101,6 +112,16 @@ export async function updateShop(db: Db, provider: CardConnectorProvider | null,
       address?.postalCode ?? null,
       address?.country ?? null,
       timezone ?? null,
+      name ?? null,
+      // A listing field is changed only when it's in the patch; null clears it.
+      listing ? 'category' in listing : false,
+      listing?.category || null,
+      listing ? 'oneLine' in listing : false,
+      listing?.oneLine || null,
+      listing ? 'phone' in listing : false,
+      listing?.phone || null,
+      listing ? 'email' in listing : false,
+      listing?.email?.toLowerCase() || null,
     ],
   );
   const shop = await getShop(db, input.merchant);
@@ -127,6 +148,8 @@ interface SettingsRow {
   tips_presets: number[];
   tips_go_to: 'raiser' | 'hours';
   starting_cash_cents: string | number;
+  break_minutes: number;
+  break_after_minutes: number;
   two_counts: boolean;
   one_person_close: 'owner_next_morning' | 'wait_for_second';
   offline_cards_enabled: boolean;
@@ -142,6 +165,7 @@ const fromRow = (r: SettingsRow): ShopSettings => ({
   paymentMethods: { card: r.accept_card, cash: r.accept_cash, split: r.accept_split },
   tips: { enabled: r.tips_enabled, mode: r.tips_mode, presets: r.tips_presets.map(Number), goTo: r.tips_go_to },
   startingCashCents: Number(r.starting_cash_cents),
+  breaks: { minutes: Number(r.break_minutes), afterMinutes: Number(r.break_after_minutes) },
   twoCounts: r.two_counts,
   onePersonClose: r.one_person_close,
   offlineCards: { enabled: r.offline_cards_enabled, limitCents: Number(r.offline_cards_limit_cents) },
@@ -189,8 +213,8 @@ export async function updateSettings(db: Db, input: { merchant: string; staffId:
   const { rows } = await db.query<SettingsRow>(
     `INSERT INTO merchant.shop_settings (merchant, accept_card, accept_cash, accept_split, tips_enabled, tips_mode, tips_presets, tips_go_to,
        starting_cash_cents, two_counts, one_person_close, offline_cards_enabled, offline_cards_limit_cents,
-       discount_limit_counter, discount_limit_manager, discount_limit_owner, updated_by, prices_include_tax, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, now())
+       discount_limit_counter, discount_limit_manager, discount_limit_owner, updated_by, prices_include_tax, break_minutes, break_after_minutes, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20, now())
      ON CONFLICT (merchant) DO UPDATE SET
        accept_card = EXCLUDED.accept_card, accept_cash = EXCLUDED.accept_cash, accept_split = EXCLUDED.accept_split,
        tips_enabled = EXCLUDED.tips_enabled, tips_mode = EXCLUDED.tips_mode, tips_presets = EXCLUDED.tips_presets, tips_go_to = EXCLUDED.tips_go_to,
@@ -198,7 +222,8 @@ export async function updateSettings(db: Db, input: { merchant: string; staffId:
        offline_cards_enabled = EXCLUDED.offline_cards_enabled, offline_cards_limit_cents = EXCLUDED.offline_cards_limit_cents,
        discount_limit_counter = EXCLUDED.discount_limit_counter, discount_limit_manager = EXCLUDED.discount_limit_manager,
        discount_limit_owner = EXCLUDED.discount_limit_owner, updated_by = EXCLUDED.updated_by,
-       prices_include_tax = EXCLUDED.prices_include_tax, updated_at = now()
+       prices_include_tax = EXCLUDED.prices_include_tax, break_minutes = EXCLUDED.break_minutes,
+       break_after_minutes = EXCLUDED.break_after_minutes, updated_at = now()
      RETURNING *`,
     [
       input.merchant,
@@ -219,7 +244,53 @@ export async function updateSettings(db: Db, input: { merchant: string; staffId:
       s.discountLimits.owner,
       input.staffId,
       s.tax.pricesIncludeTax,
+      s.breaks.minutes,
+      s.breaks.afterMinutes,
     ],
   );
   return fromRow(rows[0]!);
+}
+
+// ---- Hours ----------------------------------------------------------------------------------------
+
+const hhmm = (t: string) => t.slice(0, 5);
+const isoDay = (d: Date | string) => (typeof d === 'string' ? d.slice(0, 10) : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+
+/** The shop's week (Monday first; a day with no row is closed) and the dates that differ, from today on. */
+export async function getHours(q: Queryable, merchant: string): Promise<ShopHours> {
+  const { rows: week } = await q.query<{ weekday: number; opens: string; closes: string }>(
+    'SELECT weekday, opens::text, closes::text FROM merchant.shop_hours WHERE merchant = $1',
+    [merchant],
+  );
+  const { rows: dates } = await q.query<{ on_date: Date | string; label: string; opens: string | null; closes: string | null }>(
+    'SELECT on_date, label, opens::text, closes::text FROM merchant.shop_closures WHERE merchant = $1 AND on_date >= CURRENT_DATE - 1 ORDER BY on_date',
+    [merchant],
+  );
+  return {
+    week: Array.from({ length: 7 }, (_, day) => {
+      const r = week.find((w) => Number(w.weekday) === day);
+      return { day, open: r ? { from: hhmm(r.opens), to: hhmm(r.closes) } : null };
+    }),
+    dates: dates.map((d) => ({ date: isoDay(d.on_date), label: d.label, open: d.opens && d.closes ? { from: hhmm(d.opens), to: hhmm(d.closes) } : null })),
+  };
+}
+
+/** Owners only (checked by the route): the whole week and the dates, replaced together. */
+export async function saveHours(db: Db, input: { merchant: string; hours: unknown }): Promise<ShopHours> {
+  const parsed = ShopHours.safeParse(input.hours);
+  if (!parsed.success) throw new ShopError(parsed.error.issues[0]?.message ?? 'Those hours aren’t valid', 'invalid');
+  const h = parsed.data;
+  if (new Set(h.week.map((w) => w.day)).size !== 7) throw new ShopError('One row for each day of the week', 'invalid');
+  if (new Set(h.dates.map((d) => d.date)).size !== h.dates.length) throw new ShopError('Each date once', 'invalid');
+  await db.transaction(async (tx) => {
+    await tx.query('DELETE FROM merchant.shop_hours WHERE merchant = $1', [input.merchant]);
+    for (const w of h.week) {
+      if (w.open) await tx.query('INSERT INTO merchant.shop_hours (merchant, weekday, opens, closes) VALUES ($1,$2,$3,$4)', [input.merchant, w.day, w.open.from, w.open.to]);
+    }
+    await tx.query('DELETE FROM merchant.shop_closures WHERE merchant = $1', [input.merchant]);
+    for (const d of h.dates) {
+      await tx.query('INSERT INTO merchant.shop_closures (merchant, on_date, label, opens, closes) VALUES ($1,$2,$3,$4,$5)', [input.merchant, d.date, d.label, d.open?.from ?? null, d.open?.to ?? null]);
+    }
+  });
+  return getHours(db, input.merchant);
 }

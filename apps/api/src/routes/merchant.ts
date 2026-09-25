@@ -1032,8 +1032,15 @@ merchantRouter.delete('/devices/:id', requireMerchant, requireOwner, async (req:
 
 /** Renaming, so "Counter tablet" can become "Front desk" without re-enrolling. */
 merchantRouter.patch('/devices/:id', requireMerchant, requireOwner, async (req: Request, res: Response) => {
-  const label = String(req.body?.label ?? '');
-  const ok = await deviceStore.rename(req.params.id, req.merchant!.merchant, label);
+  // A new name, or a new idle lock (Settings › Counter, "Ask for a PIN after"), or both.
+  const { label, idleLockSeconds } = req.body ?? {};
+  if (label === undefined && idleLockSeconds === undefined) {
+    res.status(400).json({ error: 'Invalid', message: 'Send a label or idleLockSeconds' });
+    return;
+  }
+  const renamed = label === undefined || (await deviceStore.rename(req.params.id, req.merchant!.merchant, String(label)));
+  const locked = idleLockSeconds === undefined || (await deviceStore.setIdleLock(req.params.id, req.merchant!.merchant, Number(idleLockSeconds)));
+  const ok = renamed && locked;
   if (!ok) {
     res.status(404).json({ error: 'Not found', message: 'that device is not set up here' });
     return;
