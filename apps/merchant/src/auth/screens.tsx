@@ -3,6 +3,7 @@ import type { StaffRole } from '@clear/domain';
 import { IconMail, IconPasskey, IconTablet } from '@/brand/icons';
 import { CodeBoxes, Lockup, PinDots, PinKeys, Sheet, Wordmark, cx, initials } from '@/brand/ui';
 import { ForgotLine, roleLabel } from '@/shell/chrome';
+import { usePage } from '@/lib/usePage';
 
 /**
  * Signing in, drawn from docs/merchant-reference/clear-merchant-sign-in.html.
@@ -29,6 +30,7 @@ export function SignInFrame({
   right?: ReactNode;
   children: ReactNode;
 }) {
+  usePage('sign-in');
   return (
     <div className="c-app c-mc-tablet c-si-lock">
       <div className="c-si-top">
@@ -594,6 +596,7 @@ export function OwnerSignInScreen({ phone, onSetUpShop, ...form }: OwnerFormProp
       Set up your shop
     </button>
   );
+  usePage('sign-in');
   if (phone) {
     return (
       <div className="c-app c-mc-tablet c-si-ph">

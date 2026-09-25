@@ -169,3 +169,8 @@ input.c-si-in2 {
     padding: var(--s2);
   }
 }
+
+/* Close the day is a whole screen in the app; the reference's gap above it is document spacing. */
+.c-mc-tablet.c-dr-close {
+  margin-top: 0;
+}

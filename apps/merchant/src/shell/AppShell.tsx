@@ -9,6 +9,7 @@ import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 import { useLayout } from '@/lib/useBreakpoint';
 import { rememberShop } from '@/lib/shopName';
+import { usePage, type ReferencePage } from '@/lib/usePage';
 import { applyAppearance, readAppearance, type Appearance } from '@/shell/appearance';
 import {
   PhoneNav,
@@ -37,6 +38,9 @@ import {
  * shift change behind the pill, and the lock after the tablet's idle minutes.
  */
 
+/** Routes that are flows rather than pages. */
+const FLOWS = ['/close'];
+
 type Open = 'profile' | 'who' | 'pin' | 'owner' | 'plus' | null;
 
 const SECTION: [string, NavKey][] = [
@@ -46,6 +50,15 @@ const SECTION: [string, NavKey][] = [
   ['/staff', 'staff'],
   ['/overview', 'overview'],
 ];
+
+/** Which reference file a route is drawn from. */
+function pageOf(path: string): ReferencePage | null {
+  if (path === '/' || path.startsWith('/close')) return 'home';
+  if (path.startsWith('/new')) return 'new-charge';
+  for (const p of ['charges', 'inventory', 'payouts', 'staff', 'overview', 'settings', 'onboarding'] as const)
+    if (path === `/${p}` || path.startsWith(`/${p}/`)) return p;
+  return null;
+}
 
 function sectionOf(path: string): NavKey | null {
   if (path === '/') return 'home';
@@ -59,6 +72,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState<Open>(null);
   const [appearance, setAppearance] = useState<Appearance>(readAppearance);
+  usePage(pageOf(pathname));
 
   // The shop's name, in the one place it appears on every screen. Remembered on the tablet too, so
   // the shift screen can show it before anyone is on.
@@ -200,6 +214,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
+  // Inside a flow the nav gives way to the flow's own header (close or back, what this is, who is
+  // on shift), which the flow draws itself. The lock above still applies.
+  if (FLOWS.some((f) => pathname === f || pathname.startsWith(`${f}/`))) return <>{children}</>;
+
   const header = {
     shop,
     current,
@@ -208,6 +226,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     avatarName: staff.name,
     onChangeShift: () => setOpen('who'),
     onProfile: () => setOpen('profile'),
+    onLocked: () => setOpen('owner'),
   };
 
   // What the profile sheet lists. The owner's rows (terms, the cash account) appear only for
@@ -229,13 +248,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     : [tablet, { label: 'Help' }];
 
   return (
-    <div className="c-app c-mc-tablet c-mc-page">
+    // `@container`: the pages not yet converted size themselves with container queries.
+    <div className="c-app c-mc-tablet c-mc-page @container">
       {layout === 'phone' ? <PhoneTop {...header} /> : <TopBar {...header} />}
 
-      {/* A container, because the pages not yet converted size themselves with container queries. */}
-      <main className="@container">{children}</main>
+      {/* No wrapper around the page: the reference's rules reach its blocks as direct children of
+          the tablet (`.mc-tablet > .slab`), so the page's blocks sit right here. */}
+      {children}
 
-      {layout === 'phone' && <PhoneNav current={current} role={role} onPlus={() => setOpen('plus')} />}
+      {layout === 'phone' && <PhoneNav current={current} role={role} onPlus={() => setOpen('plus')} onLocked={() => setOpen('owner')} />}
 
       {open === 'plus' && (
         <PlusSheet onClose={closeSheets} onAmount={go('/new')} onCart={go('/new?items=1')} />

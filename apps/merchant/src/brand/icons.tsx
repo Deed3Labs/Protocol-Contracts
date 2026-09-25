@@ -200,3 +200,63 @@ export const IconBack = () => (
     <path d="m12 19-7-7 7-7" />
   </Svg>
 );
+
+// ---- The drawer and Close the day ---------------------------------------------------------------
+
+/** Backspace on the drawer's pad, a size down from sign-in's. */
+export const IconDeleteSm = () => (
+  <Svg size={18} stroke={1.8}>
+    <path d="M20 5H9l-6 7 6 7h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z" />
+    <path d="m16 9-5 6M11 9l5 6" />
+  </Svg>
+);
+export const IconMinus = () => (
+  <Svg size={14} stroke={2}>
+    <path d="M5 12h14" />
+  </Svg>
+);
+export const IconPlusSm = () => (
+  <Svg size={14} stroke={2}>
+    <path d="M12 5v14M5 12h14" />
+  </Svg>
+);
+/** A figure kept hidden: the expected total during a blind count. */
+export const IconHidden = () => (
+  <Svg size={14} stroke={1.8}>
+    <path d="M3 3l18 18" />
+    <path d="M10.6 5.1A9.8 9.8 0 0 1 12 5c5 0 9 4.5 10 7-.4 1-1.2 2.3-2.4 3.5M6.1 6.2C4 7.6 2.6 9.8 2 12c1 2.5 5 7 10 7 1.6 0 3.1-.5 4.4-1.2" />
+    <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+  </Svg>
+);
+/** Signed off. */
+export const IconCheck = () => (
+  <Svg size={14} stroke={2.2}>
+    <path d="M20 6 9 17l-5-5" />
+  </Svg>
+);
+/** How it was paid, at 16px for Close the day's rows. */
+export function IconMethod({ method }: { method: 'clear' | 'card' | 'cash' }) {
+  if (method === 'clear')
+    return (
+      <svg width="16" height="16" viewBox="0 0 336 336" aria-hidden="true">
+        <g transform="translate(168 168)" fill="none" stroke="currentColor">
+          <path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" strokeWidth="4" fill="currentColor" />
+          <path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none" />
+          <circle cx="0" cy="0" r="34" fill="currentColor" stroke="none" />
+          <circle cx="131.5" cy="0" r="25.25" strokeWidth="15.5" />
+        </g>
+      </svg>
+    );
+  return method === 'card' ? (
+    <Svg size={16} stroke={1.8}>
+      <rect x="3" y="5.5" width="18" height="13" rx="1.5" />
+      <path d="M3 10h18M7 15h3" />
+    </Svg>
+  ) : (
+    <Svg size={16} stroke={1.8}>
+      <rect x="2.5" y="6" width="19" height="12" rx="1" />
+      <circle cx="12" cy="12" r="2.6" />
+      <path d="M6 9.5v5M18 9.5v5" />
+    </Svg>
+  );
+}

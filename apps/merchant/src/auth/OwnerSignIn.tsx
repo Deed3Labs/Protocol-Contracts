@@ -8,6 +8,7 @@ import {
 } from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
 import { Button, PrimaryButton } from '@/shell/ui';
+import { Sheet } from '@/brand/ui';
 import {
   CheckEmailScreen,
   CheckEmailSheet,
@@ -103,6 +104,16 @@ export function OwnerSignIn(props: {
   phone?: boolean;
   onSetUpShop?: () => void;
 }) {
+  if (!PRIVY_APP_ID && props.variant === 'sheet') {
+    return (
+      <Sheet className="c-si-sheet" title="Sign in as the owner" closeSize="lg" onClose={props.onBack}>
+        <p className="c-det" style={{ margin: 0, lineHeight: 1.5 }}>
+          This tablet has no Privy app configured, so there is no way to verify an owner. The counter still works —
+          staff can start a shift and raise charges.
+        </p>
+      </Sheet>
+    );
+  }
   if (!PRIVY_APP_ID) {
     return (
       <div
