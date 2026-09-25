@@ -232,3 +232,14 @@ input.c-field.c-si-in {
     line-height: 1.5;
   }
 }
+
+/* Charges on a phone. The reference's phone rule for a row's chip comes before the list's own
+   chip rule, so the list's wins there; the generated stylesheet gathers phone rules at its end,
+   which reverses them. Restore the reference's order for the list. */
+@media (max-width: 519.98px) {
+  :root:where(.c-page-charges) .c-ch-list .c-rows .c-line .c-chip {
+    min-width: 84px;
+    height: 20px;
+    padding: 0 8px;
+  }
+}

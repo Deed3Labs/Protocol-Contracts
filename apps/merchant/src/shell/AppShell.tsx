@@ -217,6 +217,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
+  const shiftActions = {
+    changeShift: () => setOpen('who'),
+    endShift: () => {
+      closeSheets();
+      void signOut();
+    },
+  };
+
   // Inside a flow the nav gives way to the flow's own header (close or back, what this is, who is
   // on shift), which the flow draws itself. The lock above still applies.
   // Below 900px every slab is one column (the reference's `.slab.one`); pages read it from here.
@@ -226,14 +234,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   // An item in Inventory is a flow on a tablet (back, what it is, who is on shift); on a phone it
   // keeps the phone's own header and bar, with a back row above it.
   if (layout !== 'phone' && /^\/inventory\/[^/]+/.test(pathname)) return <OneColumn.Provider value={one}>{children}</OneColumn.Provider>;
-
-  const shiftActions = {
-    changeShift: () => setOpen('who'),
-    endShift: () => {
-      closeSheets();
-      void signOut();
-    },
-  };
+  // A charge opened is a flow at every size: the reference draws it with its own back row on a phone.
+  if (/^\/charges\/[^/]+/.test(pathname))
+    return (
+      <ShiftActionsContext.Provider value={shiftActions}>
+        <OneColumn.Provider value={one}>{children}</OneColumn.Provider>
+        {pickSheets}
+      </ShiftActionsContext.Provider>
+    );
 
   const header = {
     shop,

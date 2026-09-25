@@ -13,6 +13,8 @@ Decided 2026-09-24.
 |---|---|---|---|
 | Home, Overview: sales tax collected | $60.45 | **$62.31** | Overview's top items include 4 sets of valve stems ($48). Tax is (756 + 48) × 7.75%. |
 | Charges: the valve-stem cash sale | $39.00 | **$38.79** | 3 × $12.00 plus 7.75% tax. |
+| Charges and Home: cash, paid and taken today | $62.00, $1,899.52 | **$61.79, $1,899.31** | Follow from the valve stems; the drawer expects $211.79, so Close the day's short count is $3.79. |
+| Charges: the split sale's card part | settled Saturday | **settled Sunday** | Follows from Sun, Sep 20. |
 | Charges: the split sale | Sat, Sep 20 | **Sun, Sep 20** | The Staff calendar has Mon 21 to Sun 27, so Sep 20 is a Sunday. |
 | Inventory: on order | due Fri, Sep 26 | **due Sat, Sep 26** | Same calendar. |
 | Onboarding vs Settings: tax ID | ••-•••4829 / ••-•••4821 | **••-•••4829** | The onboarding file was edited later. |
@@ -93,6 +95,32 @@ Decided 2026-09-24.
 - **Running low sits on Home** for owners and managers, as the Inventory reference asks
   (preview: `/?preview=1&home=lowStock`).
 
+## Charges
+
+- **Neutral pronouns** in the Clear refund: "His plan closes", "He gets back", "Carry he already
+  paid" and "His plan is closed" take their and they; "Mike gets this on his phone, or types his
+  code here" and "Luis can clear this with his PIN" take their.
+- **Seven rows to a page**, as the owner's list draws it ("1–7 of 31"). The late-day frame draws
+  eight rows under a date instead of the tools and the pager; the app keeps the tools and the
+  pager, so its eighth row is on page two. A group's figure counts the whole group, whatever page
+  it's on. "Pick dates" is listed but does nothing yet.
+- **A charge opened is a flow at every size**: back, what it is, who is on shift. The reference
+  draws the phone with only a back row, so the phone's header and bar give way too.
+- **A charge still waiting**, which the reference doesn't open, shows This charge and "What they
+  chose: Not yet", with Cancel charge where Start a refund would be.
+- **The refund is sheets over the charge**, as drawn; `/charges/:id/refund` opens them, which is
+  where an owner's phone lands. An owner signed in on the tablet goes straight to "Approve this
+  refund?". "Cancel the request" withdraws the refund. A declined refund, which isn't drawn, says
+  the charge stands and nobody has told the customer.
+- **Today's card sale opened** isn't drawn. It takes the split sale's layout, with Adjust the tip
+  and Void in the footer, which is how the void and tip sheets are reached.
+- **What a live shop sees.** Its Clear charges from the API: the list, Raised today and How it
+  was paid, a charge opened, cancelling one, and the whole refund. Card, cash and split sales, the
+  goods refund, void and tip have no backend yet. Preview: `/charges?preview=1&screen=owner|late|
+  counter|menu-filter|menu-sort`, `/charges/marcus?preview=1&screen=counter|refund|waiting|approve|
+  refunded|declined`, `/charges/split?preview=1&screen=refund-goods`,
+  `/charges/card?preview=1&screen=void|tip`; `&live=1` for the live path.
+
 ## Staff
 
 - **Neutral pronouns.** "Remind her" is "Remind them"; "she sets her PIN the first time she does"
@@ -140,3 +168,5 @@ Decided 2026-09-24.
   converted. The profile sheet still stores the choice.
 - **Staff's slab footers on a phone** drop the tablet frame's footer layout (flex, full-width
   children), which the reference applies to its tablet frame only.
+- **A Charges row's chip on a phone** keeps the list's size (84 × 20): the stylesheet gathers phone
+  rules at its end, which would otherwise let the general phone rule win.

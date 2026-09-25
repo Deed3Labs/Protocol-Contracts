@@ -130,3 +130,22 @@ export const IconBackChevron = () => (
 export const IconX14 = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
 );
+
+// ---- Charges -----------------------------------------------------------------------------------
+
+/** How a row was paid, at the list's size. */
+export const IconClear15 = () => (
+  <svg width="15" height="15" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" strokeWidth="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" strokeWidth="15.5"/></g></svg>
+);
+export const IconCard15 = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="1.5"/><path d="M3 10h18M7 15h3"/></svg>
+);
+export const IconCash15 = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="1"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg>
+);
+export const IconSplit15 = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 3v18"/><path d="M4 7h5M4 12h5M4 17h5M15 7h5M15 12h5M15 17h5"/></svg>
+);
+export const IconLock11 = () => (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+);
