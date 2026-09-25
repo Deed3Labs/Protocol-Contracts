@@ -288,6 +288,8 @@ export default function NewChargePage() {
   const liveCatalog = useApi(() => (preview ? Promise.resolve(null) : merchant.catalog()), [preview]);
   const liveCodes = useApi(() => (preview ? Promise.resolve(null) : merchant.discountCodes()), [preview]);
   const liveSettings = useApi(() => (preview ? Promise.resolve(null) : merchant.settings()), [preview]);
+  const liveCards = useApi(() => (preview ? Promise.resolve(null) : merchant.cardAvailability()), [preview]);
+  const cardsOn = liveCards.data?.available === true && liveSettings.data?.paymentMethods.card !== false;
   const [order, setOrder] = useState<Order | null>(null);
   const [tenders, setTenders] = useState<Tender[]>([]);
   const [tender, setTender] = useState<Tender | null>(null);
@@ -469,11 +471,32 @@ export default function NewChargePage() {
       .then(async (service) => {
         if (!on) return;
         svc = service;
-        setReaderLabel(service.connected()?.label);
-        await service.collect(dueCents, (e) => {
+        // Live, a reader to collect on: the one connected, else the shop's only (or, in a browser,
+        // first) smart reader; with nothing to choose between, the reader list opens instead.
+        if (!preview && !service.connected()) {
+          const found = (await Promise.all(service.kinds.map((k) => service.discover(k).catch(() => [])))).flat();
           if (!on) return;
-          set(e.state === 'approved' || e.state === 'declined' ? { reader: e.state, card: 'card' in e ? e.card : undefined } : { reader: e.state });
-        });
+          if (found.length === 1 || (found.length > 0 && service.platform === 'web')) await service.connect(found[0]!);
+          else {
+            set({ sheet: { k: 'readers' } });
+            if (!found.length) setReaderError('No reader this device can use. Add a smart reader in Settings › Payments.');
+            return;
+          }
+        }
+        setReaderLabel(service.connected()?.label);
+        const result = await service.collect(
+          preview ? dueCents : partCents,
+          (e) => {
+            if (!on) return;
+            set(e.state === 'approved' || e.state === 'declined' ? { reader: e.state, card: 'card' in e ? e.card : undefined } : { reader: e.state });
+          },
+          preview || !order ? undefined : { orderId: order.id, tipCents },
+        );
+        // A card that went through on part of a split: back to the split for the rest.
+        if (!preview && order && on && result.outcome === 'approved') {
+          const o = await refresh(order.id);
+          if (on && o.remainingCents > 0 && f.method === 'split') set({ screen: 'split', part: '' });
+        }
       })
       .catch((e) => on && setReaderError(e instanceof Error ? e.message : 'The reader isn’t responding.'));
     return () => {
@@ -546,8 +569,8 @@ export default function NewChargePage() {
     if (method === 'clear') void raise();
     else if (method === 'card') setF((cur) => ({ ...cur, screen: 'card', reader: 'ready', run: cur.run + 1 }));
     else if (method === 'cash') set({ screen: 'cash', given: '' });
-    // The preview's split starts on card, as the reference draws it; live, cards come with step 5.
-    else set({ screen: 'split', legs: [], legMethod: preview ? 'card' : 'cash' });
+    // The split starts on card, as the reference draws it, where the shop takes cards.
+    else set({ screen: 'split', legs: [], legMethod: preview || cardsOn ? 'card' : 'cash' });
   };
 
   // Tires usually go with mount and balance: suggested once, the count matched.
@@ -687,9 +710,8 @@ export default function NewChargePage() {
       <CheckoutView
         body={body}
         server={order ? totalsFromOrder(order) : null}
-        // Live, the card reader is step 5; until then the card tile is locked as the reference
-        // draws it before Stripe is connected.
-        cardLocked={!preview || params.get('screen') === 'checkout-nostripe'}
+        // Live, cards open once Stripe is connected and cards are on in Settings › Payments.
+        cardLocked={preview ? params.get('screen') === 'checkout-nostripe' : !cardsOn}
         unavailable={
           preview
             ? []
@@ -832,23 +854,35 @@ export default function NewChargePage() {
       );
     }
   } else if (f.screen === 'card') {
-    top = flowTop(`${usd(dueCents)} · card`, false);
+    // Live, once the card has gone through nothing may be owed: show the payment itself.
+    const paidCard = !preview ? [...tenders].reverse().find((t) => t.method === 'card' && (t.status === 'authorised' || t.status === 'captured')) : undefined;
+    const cardCents = f.reader === 'approved' && paidCard ? paidCard.amountCents + paidCard.tipCents : dueCents;
+    top = flowTop(`${usd(cardCents)} · card`, false);
     const t = totals(body.lines);
     main = (
       <div className={one ? 'c-slab c-one' : 'c-slab'}>
-        <CardChargeCell lines={body.lines} amountCents={f.reader === 'approved' && !tipCents ? baseCents : body.lines.length ? t.totalCents : dueCents} />
+        <CardChargeCell
+          lines={body.lines}
+          amountCents={preview ? (f.reader === 'approved' && !tipCents ? baseCents : body.lines.length ? t.totalCents : dueCents) : paidCard ? paidCard.amountCents : partCents}
+        />
         <ReaderCell
           state={f.reader}
-          amountCents={dueCents}
-          at="4:41pm"
-          receipt={<ReceiptGroups by={f.sendBy} onBy={(sendBy) => set({ sendBy })} to="(909) 555-0177" onChange={() => set({ sheet: { k: 'send', by: 'text', to: '(909) 555-0177' } })} onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />}
+          amountCents={cardCents}
+          at={preview ? '4:41pm' : nowTime()}
+          receipt={
+            preview ? (
+              <ReceiptGroups by={f.sendBy} onBy={(sendBy) => set({ sendBy })} to="(909) 555-0177" onChange={() => set({ sheet: { k: 'send', by: 'text', to: '(909) 555-0177' } })} onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />
+            ) : (
+              <ReceiptGroups by={f.sendBy} onBy={(sendBy) => set({ sendBy })} onChange={() => set({ sheet: { k: 'send', by: 'text', to: '' } })} onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />
+            )
+          }
           reader={readerLabel}
           card={f.card}
           error={readerError}
           onCancel={() => set({ screen: 'checkout' })}
           onOtherReader={() => set({ sheet: { k: 'readers' } })}
           onTryAnother={() => setF((cur) => ({ ...cur, reader: 'ready', run: cur.run + 1 }))}
-          onOfferClear={() => set({ method: 'clear', screen: 'code', code: '8QK2' })}
+          onOfferClear={() => (preview ? set({ method: 'clear', screen: 'code', code: '8QK2' }) : void raise())}
           onDone={exit}
           onNew={again}
         />
@@ -896,7 +930,8 @@ export default function NewChargePage() {
       if (preview) return set({ screen: f.legMethod === 'card' ? 'card' : f.legMethod === 'cash' ? 'cash' : 'code', code: '8QK2' });
       if (f.legMethod === 'cash') return set({ screen: 'cash', given: '' });
       if (f.legMethod === 'clear') return void raise();
-      setPayError('Cards aren’t switched on in the app yet. Take this part by Clear or cash.');
+      if (!cardsOn) return setPayError('Cards aren’t available for this shop yet. Take this part by Clear or cash.');
+      setF((cur) => ({ ...cur, screen: 'card', reader: 'ready', run: cur.run + 1 }));
     };
     main = declined ? (
       <div className="c-slab c-one">
