@@ -275,3 +275,94 @@ input.c-field.c-si-in {
 .c-rcpt-line small{display:block;color:var(--ink-50);font-size:12px;margin-top:1px}
 .c-rcpt-refund{color:var(--ink)}
 .c-rcpt-note{width:100%;max-width:420px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+
+/* ---- Accessibility (UI Phase 7) ---------------------------------------------------------------- */
+
+/* Read by a screen reader, never seen: the word a masked figure is heard as ("Hidden"). */
+.c-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * Focus, where a keyboard (or a switch, or a Bluetooth keyboard on the counter tablet) has put it.
+ * The reference draws no focus state, so this is ours: an ink ring clear of the control, which
+ * reads on paper and around the ink buttons alike. :focus-visible, so a tap never leaves one.
+ */
+.c-app :focus-visible,
+.c-sheet :focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+/* A sheet takes focus when it opens so the next Tab lands inside it; the sheet isn't a control. */
+.c-sheet:focus,
+.c-sheet:focus-visible {
+  outline: none;
+}
+
+/*
+ * Reduced motion, everywhere. The reference stills its pings; this stills the rest (the typing
+ * caret, the PIN dots growing, the reader's wave, the crew strip's marks) by letting each finish at
+ * once, so every one of them lands on its resting state rather than being cut mid-way.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+ * Contrast on every text colour. Every token passes WCAG AA on paper except ink-28 (1.8:1), but the
+ * reference dims things with opacity, which takes even ink-50 (4.8:1) under 4.5:1. Where what is
+ * dimmed is still live (a step still to come, the next leg of a split, a line not yet ticked, a
+ * closed day that still opens, a nav item that opens the owner's sign-in) it keeps full opacity
+ * and reads in ink-50, which is as light as text goes and still passes. What is genuinely
+ * unavailable (an item out of stock, labour that can't come back) keeps the reference's dim and is
+ * marked aria-disabled, which WCAG exempts.
+ */
+.c-mstone.c-later,
+.c-ck-leg.c-dim,
+.c-ch-ret:not(.c-on):not([aria-disabled]) {
+  opacity: 1;
+}
+.c-mstone.c-later :is(p, span, b),
+.c-ck-leg.c-dim :is(.c-t, .c-v, .c-ic),
+.c-ch-ret:not(.c-on):not([aria-disabled]) :is(.c-t, .c-v) {
+  color: var(--ink-50);
+}
+.c-dv-days .c-btn.c-shut small,
+.c-dv-days .c-btn.c-shut .c-oh {
+  opacity: 1;
+}
+.c-mc-top nav .c-mc-lock,
+.c-mc-lockg {
+  color: var(--ink-50);
+}
+
+/* A row's name made a real button, because the row holds another button (Resend, a day's ×) and so
+   can't be one itself. It looks like the text it was; the row still opens on a click anywhere. */
+.c-mc-open {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}

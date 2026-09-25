@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { formatCalendarDate, toCents } from '@clear/domain';
 import { IconKeyDelete, IconRoute } from '@/brand/chargeIcons';
-import { cx, Sheet, useDigitKeys } from '@/brand/ui';
+import { cx, Sheet, useDigitKeys, clickOnKey } from '@/brand/ui';
 import { api, type PayoutPosition } from '@/data/apiClient';
 import { usd } from '@/home/model';
 import { PickRow } from '@/payouts/views';
@@ -156,6 +156,7 @@ export function WithdrawModal({
             <div
               key={k}
               role="button"
+              onKeyDown={clickOnKey}
               tabIndex={ok ? 0 : -1}
               aria-disabled={!ok}
               aria-pressed={destination === k}
@@ -364,12 +365,12 @@ export function WithdrawModal({
         ))}
       </div>
       <div className="c-route">
-        <div className="c-leg" role="button" tabIndex={0} onClick={() => setStage('from')}>
+        <div className="c-leg" role="button" onKeyDown={clickOnKey} tabIndex={0} onClick={() => setStage('from')}>
           <p className="c-label">From</p>
           <p className="c-nm">{from.nm}</p>
           <p className="c-bal">{from.bal}</p>
         </div>
-        <div className="c-leg" role="button" tabIndex={0} onClick={() => setStage('to')}>
+        <div className="c-leg" role="button" onKeyDown={clickOnKey} tabIndex={0} onClick={() => setStage('to')}>
           <p className="c-label">To</p>
           <p className="c-nm">{dest.nm}</p>
           <p className="c-bal">{dest.bal}</p>
@@ -384,6 +385,7 @@ export function WithdrawModal({
             key={k}
             className={k === '.' || k === 'del' ? 'c-fn' : ''}
             role="button"
+            onKeyDown={clickOnKey}
             tabIndex={0}
             aria-label={k === 'del' ? 'Delete' : k}
             onClick={() => setEntry((e) => press(e, k))}

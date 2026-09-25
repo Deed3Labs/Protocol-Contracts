@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ClearMark, IconClose, IconCloseLg, IconDelete } from '@/brand/icons';
 
@@ -9,6 +9,16 @@ import { ClearMark, IconClose, IconCloseLg, IconDelete } from '@/brand/icons';
  * scripts/reference-css.mjs). The markup is transcribed from the reference, so a component should
  * read like the frame it came from; when the two disagree, the reference is right.
  */
+
+/**
+ * The keyboard for a control drawn as an element other than a <button> (a row, a leg, a chip):
+ * Enter and Space press it, as they do a button, by clicking it, so its onClick is the one path.
+ */
+export function clickOnKey(e: ReactKeyboardEvent<HTMLElement>) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  e.currentTarget.click();
+}
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ');
@@ -277,7 +287,12 @@ export function MenuButton({
   width,
   align = 'right',
   defaultOpen = false,
+  role = 'menu',
+  label,
 }: {
+  /** A sort is a menu of menuitemradios; a filter mixes options and chips, so it's a dialog. */
+  role?: 'menu' | 'dialog';
+  label?: string;
   /** Open on first draw: the dev preview shows a menu as the reference draws it. */
   defaultOpen?: boolean;
   button: (open: boolean, toggle: () => void) => ReactNode;
@@ -324,7 +339,8 @@ export function MenuButton({
             <div
               ref={menu}
               className={cx('c-sheet c-menu', className)}
-              role="menu"
+              role={role}
+              aria-label={label}
               style={{
                 position: 'fixed',
                 top: at.top,

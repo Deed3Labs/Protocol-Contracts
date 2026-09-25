@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { IconBackChevron, IconBank, IconLock14, IconMonitor, IconTabletSm } from '@/brand/chargeIcons';
 import { IconChevron } from '@/brand/icons';
-import { cx, initials, Sheet } from '@/brand/ui';
+import { cx, initials, Sheet, clickOnKey } from '@/brand/ui';
 
 /**
  * Settings' pieces — docs/merchant-reference/clear-merchant-settings.html. The member app's
@@ -126,7 +126,7 @@ export function Kv({ k, v, ink, go, onTap }: { k: ReactNode; v?: ReactNode; ink?
 }
 
 export function Tg({ on, onChange, label }: { on: boolean; onChange?: (on: boolean) => void; label?: string }) {
-  return <span className={cx('c-tg', on && 'c-on')} role="switch" aria-checked={on} aria-label={label} tabIndex={0} {...(onChange ? { onClick: () => onChange(!on) } : {})} />;
+  return <span className={cx('c-tg', on && 'c-on')} role="switch" onKeyDown={clickOnKey} aria-checked={on} aria-label={label} tabIndex={0} {...(onChange ? { onClick: () => onChange(!on) } : {})} />;
 }
 
 /**
@@ -276,7 +276,7 @@ export function CounterCard({ shop, url }: { shop: string; url: string }) {
     <div className="c-st-card">
       <p className="c-t">Pay over time at {shop}</p>
       <div className="c-qr">
-        <QRCodeSVG value={url} size={104} bgColor="var(--paper)" fgColor="var(--ink)" level="M" style={{ width: '100%', height: '100%' }} />
+        <QRCodeSVG value={url} size={104} bgColor="var(--paper)" fgColor="var(--ink)" level="M" style={{ width: '100%', height: '100%' }} role="img" aria-label="The counter card's code" />
       </div>
       <p className="c-det">Scan with your camera</p>
     </div>

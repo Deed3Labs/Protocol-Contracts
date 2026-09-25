@@ -19,7 +19,7 @@ import {
   IconPlus,
   IconStaff,
 } from '@/brand/icons';
-import { Lockup, PinDots, PinKeys, Sheet, cx, initials } from '@/brand/ui';
+import { Lockup, PinDots, PinKeys, Sheet, cx, initials, clickOnKey } from '@/brand/ui';
 
 /**
  * The shell's parts, drawn from docs/merchant-reference/: the header lockup and nav, the shift
@@ -197,7 +197,9 @@ export function PhoneNav({
           const locked = isLocked(role, n.key);
           const Icon = n.icon;
           const cls = current === n.key ? 'c-on' : undefined;
-          const style = locked ? { color: 'var(--ink-28)' } : undefined;
+          // ink-50, not the reference's ink-28: a locked item still opens the owner's sign-in, so it has to
+          // read (4.8:1 on paper). The padlock is what says it's locked.
+          const style = locked ? { color: 'var(--ink-50)' } : undefined;
           if (locked || still) {
             return (
               <a
@@ -205,6 +207,7 @@ export function PhoneNav({
                 className={cls}
                 aria-label={locked ? `${n.label}, needs the owner` : n.label}
                 role={locked ? 'button' : undefined}
+                onKeyDown={locked ? clickOnKey : undefined}
                 tabIndex={locked ? 0 : undefined}
                 style={style}
                 onClick={locked ? onLocked : undefined}
@@ -416,7 +419,7 @@ export function ProfileSheet({
       <div className="c-rows" style={{ marginTop: 'var(--s3)' }}>
         {rows.map((r) => (
           <div key={r.label}>
-            <div className="c-kv" style={{ cursor: 'pointer' }} role="button" tabIndex={0} onClick={r.onClick}>
+            <div className="c-kv" style={{ cursor: 'pointer' }} role="button" onKeyDown={clickOnKey} tabIndex={0} onClick={r.onClick}>
               <span>{r.label}</span>
               <span className="c-v">
                 {r.value}

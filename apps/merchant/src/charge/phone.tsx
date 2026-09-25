@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Chip } from '@/brand/controls';
 import { IconBack, IconCloseLg } from '@/brand/icons';
+import { IconText } from '@/brand/chargeIcons';
 import { Sheet, cx, initials } from '@/brand/ui';
 import { chargeLink, type ChargeState } from '@/charge/clear';
 import { BigLines, Breakdown, ItemList, Keypad, SearchItems, type ItemsProps, type FeeTerms } from '@/charge/start';
@@ -220,7 +221,10 @@ export function PhoneStatus({
                   <div key={r.how}>
                     <div className="c-kv">
                       <span>{r.how}</span>
-                      <span className={cx('c-v', r.how === 'App' && 'c-live')}>{r.status}</span>
+                      <span className={cx('c-v', r.how === 'App' && 'c-live')}>
+                        {r.how !== 'App' && <IconText />}
+                        {r.status}
+                      </span>
                     </div>
                   </div>
                 ))}

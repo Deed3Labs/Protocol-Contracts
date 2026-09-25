@@ -10,7 +10,7 @@ import {
 } from '@/brand/chargeIcons';
 import { Chip } from '@/brand/controls';
 import { IconMinus, IconPlusSm } from '@/brand/icons';
-import { Sheet, cx } from '@/brand/ui';
+import { Sheet, cx, clickOnKey } from '@/brand/ui';
 import { Breakdown, lineLabel } from '@/charge/start';
 import { itemCount, totals, usd, type CartLine } from '@/charge/model';
 import { PickRow } from '@/payouts/views';
@@ -257,7 +257,7 @@ export function ReceiptGroups({
   onPrint?: () => void;
 }) {
   const seg = (k: SendBy, label: ReactNode) => (
-    <b className={by === k ? 'c-on' : undefined} role="radio" aria-checked={by === k} tabIndex={0} onClick={() => onBy?.(k)}>
+    <b className={by === k ? 'c-on' : undefined} role="radio" onKeyDown={clickOnKey} aria-checked={by === k} tabIndex={0} onClick={() => onBy?.(k)}>
       {label}
     </b>
   );
@@ -348,11 +348,11 @@ export function SendReceiptSheet({
       }
     >
       <div className="c-cc-seg c-wide" role="radiogroup" aria-label="Send by">
-        <b className={by === 'text' ? 'c-on' : undefined} role="radio" aria-checked={by === 'text'} tabIndex={0} onClick={() => setBy('text')}>
+        <b className={by === 'text' ? 'c-on' : undefined} role="radio" onKeyDown={clickOnKey} aria-checked={by === 'text'} tabIndex={0} onClick={() => setBy('text')}>
           <IconReceiptText />
           Text
         </b>
-        <b className={by === 'email' ? 'c-on' : undefined} role="radio" aria-checked={by === 'email'} tabIndex={0} onClick={() => setBy('email')}>
+        <b className={by === 'email' ? 'c-on' : undefined} role="radio" onKeyDown={clickOnKey} aria-checked={by === 'email'} tabIndex={0} onClick={() => setBy('email')}>
           <IconReceiptEmail />
           Email
         </b>

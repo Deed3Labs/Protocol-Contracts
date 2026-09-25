@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Chip } from '@/brand/controls';
 import { IconCart } from '@/brand/icons';
-import { cx, initials } from '@/brand/ui';
+import { cx, initials, clickOnKey } from '@/brand/ui';
 import type { Layout } from '@/lib/useBreakpoint';
 import { RunningLowPanel } from '@/inventory/views';
 import { TillCell } from '@/onboarding/views';
@@ -156,14 +156,16 @@ function WaitingPanel({ waiting, a }: { waiting: WaitingCharge[]; a: HomeActions
           <div className="c-rows">
             {waiting.map((w) => (
               <div key={w.id}>
-                <div className="c-mc-g2" role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => a.onOpenWaiting?.(w)}>
+                {/* The whole row opens the charge for a pointer; its name is the button a keyboard or a
+                    screen reader reaches, since a button can't hold the Resend button inside it. */}
+                <div className="c-mc-g2" style={{ cursor: 'pointer' }} onClick={() => a.onOpenWaiting?.(w)}>
                   <span className="c-mc-faces">
                     <span className="c-avatarbtn c-sm">{initials(w.name)}</span>
                   </span>
                   <span className="c-txt">
-                    <span style={{ display: 'block', fontSize: 'var(--t-sec)' }}>
+                    <button type="button" className="c-mc-open" style={{ display: 'block', fontSize: 'var(--t-sec)' }}>
                       {w.name} {w.opened ? 'has seen it' : 'has not opened it'}
-                    </span>
+                    </button>
                     <span className="c-det" style={{ display: 'block', marginTop: 3 }}>
                       {usd(w.amountCents)} &middot; {w.opened ? `opened ${w.ago}` : `sent ${w.ago}${w.by ? ` by ${w.by}` : ''}`}
                     </span>
@@ -324,17 +326,18 @@ function Cell({
 
 /** A footer that is one link: "Every charge, with who raised it · All charges ›". */
 const LinkFoot = ({ left, right, onClick }: { left: string; right: string; onClick?: () => void }) => (
-  <div className="c-line" style={{ alignItems: 'center', cursor: 'pointer' }} role="link" tabIndex={0} onClick={onClick}>
+  <div className="c-line" style={{ alignItems: 'center', cursor: 'pointer' }} role="link" onKeyDown={clickOnKey} tabIndex={0} onClick={onClick}>
     <span className="c-det">{left}</span>
     <span className="c-det">{right} &rsaquo;</span>
   </div>
 );
 
-function ConfirmedCell({ rows, total, a }: { rows: ConfirmedCharge[]; total: number; a: HomeActions }) {
+function ConfirmedCell({ rows, total, phone, a }: { rows: ConfirmedCharge[]; total: number; phone: boolean; a: HomeActions }) {
   return (
     <Cell
       label="Confirmed today"
-      det={`${rows.length} · ${usd(total)}`}
+      // The phone's head is the count alone: the total is the figure right above it.
+      det={phone ? String(rows.length) : `${rows.length} · ${usd(total)}`}
       foot={<LinkFoot left="Every charge, with who raised it" right="All charges" onClick={a.onAllCharges} />}
     >
       <div className="c-rows">
@@ -586,7 +589,7 @@ export function HomeView({ m, layout, a = {} }: { m: HomeModel; layout: Layout; 
     });
 
   const left =
-    m.stage === 'dayOne' ? <HowItGoesCell key="how" /> : <ConfirmedCell key="confirmed" rows={m.confirmed} total={m.confirmedCents} a={a} />;
+    m.stage === 'dayOne' ? <HowItGoesCell key="how" /> : <ConfirmedCell key="confirmed" rows={m.confirmed} total={m.confirmedCents} phone={phone} a={a} />;
 
   let right: ReactNode[] = [];
   if (money) {

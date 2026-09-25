@@ -15,7 +15,7 @@ import {
 import { Chip, Stepper } from '@/brand/controls';
 import { IconPlusSm } from '@/brand/icons';
 import { SaPanel } from '@/brand/sa';
-import { MenuButton, Sheet, Slab, cx } from '@/brand/ui';
+import { MenuButton, Sheet, Slab, cx, clickOnKey } from '@/brand/ui';
 import { OptionsSheet } from '@/charge/start';
 import { usd, type Item, type TaxKind } from '@/charge/model';
 import { TAX_LABEL, free, level, type InvItem, type ItemKind } from '@/inventory/model';
@@ -144,6 +144,8 @@ export function InventoryList({
     <MenuButton
       defaultOpen={menuOpen === 'filter'}
       className="c-ch-menu"
+      role="dialog"
+      label="Filter items"
       button={(_, toggle) =>
         phone ? (
           <button type="button" className="c-ch-tool" onClick={toggle}>
@@ -162,10 +164,10 @@ export function InventoryList({
     >
       {(close) => (
         <>
-          <div className="c-grp">
+          <div className="c-grp" role="radiogroup" aria-label="Show">
             <p className="c-label">Show</p>
             {SHOW.map(([k, label]) => (
-              <div key={k} className={cx('c-ch-opt', show === k && 'c-on')} role="menuitemradio" aria-checked={show === k} tabIndex={0} onClick={() => (onShow?.(k), close())}>
+              <div key={k} className={cx('c-ch-opt', show === k && 'c-on')} role="radio" aria-checked={show === k} tabIndex={0} onKeyDown={clickOnKey} onClick={() => (onShow?.(k), close())}>
                 <span>{label}</span>
                 <span className="c-det">{count[k]}</span>
                 {show === k ? <IconTick /> : <span />}
@@ -191,6 +193,7 @@ export function InventoryList({
       defaultOpen={menuOpen === 'sort'}
       className="c-ch-menu"
       width={240}
+      label="Sort items"
       button={(_, toggle) => (
         <button type="button" className="c-ch-tool c-sort" onClick={toggle}>
           <IconSort />
@@ -200,10 +203,10 @@ export function InventoryList({
       )}
     >
       {(close) => (
-        <div className="c-grp">
+        <div className="c-grp" role="group" aria-label="Sort by">
           <p className="c-label">Sort by</p>
           {SORT.map(([k, label]) => (
-            <div key={k} className={cx('c-ch-opt', sort === k && 'c-on')} role="menuitemradio" aria-checked={sort === k} tabIndex={0} onClick={() => (onSort?.(k), close())}>
+            <div key={k} className={cx('c-ch-opt', sort === k && 'c-on')} role="menuitemradio" aria-checked={sort === k} tabIndex={0} onKeyDown={clickOnKey} onClick={() => (onSort?.(k), close())}>
               <span>{label}</span>
               {sort === k ? <IconTick /> : <span />}
             </div>
@@ -1270,7 +1273,7 @@ export function OptionsPage({
           {groups.map((g) => (
             <div key={g.id} className="c-iv-grp">
               <div className="c-gh">
-                <span className="c-drag" aria-label="Drag to reorder">
+                <span className="c-drag" role="img" aria-label="Drag to reorder">
                   <IconDrag />
                 </span>
                 <div>

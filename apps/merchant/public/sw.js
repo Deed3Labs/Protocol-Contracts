@@ -12,8 +12,11 @@
  * without a connection is useful; a charge that "succeeds" without one is a liability.
  */
 
-const SHELL = 'clear-merchant-shell-v1';
-const SHELL_URLS = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
+// One cache per build: the build writes its id here (vite.config.ts), so a deploy is a new worker,
+// and activating it clears the last build's shell and assets. `dev` only in a dev server, where
+// the worker isn't registered.
+const SHELL = 'clear-merchant-shell-__BUILD__';
+const SHELL_URLS = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg', '/icon-192.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_URLS)).then(() => self.skipWaiting()));
@@ -41,8 +44,19 @@ self.addEventListener('fetch', (event) => {
 
   // Navigations: network first so a deploy is picked up, falling back to the cached shell so the
   // app still opens on a flaky shop connection.
+  // Each good navigation refreshes that fallback, so offline opens the build last seen online.
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).catch(() => caches.match('/index.html').then((r) => r ?? Response.error())));
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(SHELL).then((c) => c.put('/index.html', copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match('/index.html').then((r) => r ?? Response.error())),
+    );
     return;
   }
 

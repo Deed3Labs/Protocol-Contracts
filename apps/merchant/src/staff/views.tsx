@@ -13,7 +13,7 @@ import {
   IconX14,
 } from '@/brand/chargeIcons';
 import { IconChevron, IconClose, IconLock } from '@/brand/icons';
-import { cx, initials, Sheet } from '@/brand/ui';
+import { cx, initials, Sheet, clickOnKey } from '@/brand/ui';
 import { Keypad, typeAmount } from '@/charge/start';
 import { usd } from '@/home/model';
 import { roleLabel } from '@/shell/chrome';
@@ -146,7 +146,9 @@ export function CrewPanel({
     };
   }, [crew.length]);
 
-  const by = (dir: number) => ref.current?.scrollBy({ left: dir * step(), behavior: 'smooth' });
+  // Glides to the next page of the crew, unless the device asks for less motion.
+  const by = (dir: number) =>
+    ref.current?.scrollBy({ left: dir * step(), behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   const others = crew.some((m) => !m.holds);
   const empties = Math.max(0, 3 - crew.length);
 
@@ -985,8 +987,10 @@ export function HoursSheet({
       {ownDays.length > 0 && (
         <div className="c-mc-own">
           {ownDays.map((d) => (
-            <div key={d} {...press(() => setOwn(d))}>
-              <span>{dayName(d)}</span>
+            <div key={d} style={{ cursor: 'pointer' }} onClick={() => setOwn(d)}>
+              <button type="button" className="c-mc-open">
+                {dayName(d)}
+              </button>
               <span className="c-v">
                 <span>
                   {time(h.own[d][0])} – {time(h.own[d][1])}
@@ -994,6 +998,7 @@ export function HoursSheet({
                 <span
                   className="c-rm"
                   role="button"
+                  onKeyDown={clickOnKey}
                   tabIndex={0}
                   aria-label={`Remove ${dayName(d)}’s own hours`}
                   onClick={(e) => {

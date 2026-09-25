@@ -12,7 +12,7 @@ import {
 } from '@/brand/chargeIcons';
 import { Segmented } from '@/brand/controls';
 import { IconMinus, IconPlusSm } from '@/brand/icons';
-import { Sheet, cx, Slab } from '@/brand/ui';
+import { Sheet, cx, Slab, clickOnKey } from '@/brand/ui';
 import { FlowTop } from '@/shell/chrome';
 import {
   itemCount,
@@ -325,10 +325,10 @@ export interface ItemsProps {
 function ViewSwitch({ view, onView }: { view: 'list' | 'tiles'; onView?: (v: 'list' | 'tiles') => void }) {
   return (
     <span className="c-iv-view" role="radiogroup" aria-label="Show items as">
-      <b className={view === 'list' ? 'c-on' : undefined} role="radio" aria-checked={view === 'list'} aria-label="List" tabIndex={0} onClick={() => onView?.('list')}>
+      <b className={view === 'list' ? 'c-on' : undefined} role="radio" onKeyDown={clickOnKey} aria-checked={view === 'list'} aria-label="List" tabIndex={0} onClick={() => onView?.('list')}>
         <IconViewList />
       </b>
-      <b className={view === 'tiles' ? 'c-on' : undefined} role="radio" aria-checked={view === 'tiles'} aria-label="Tiles" tabIndex={0} onClick={() => onView?.('tiles')}>
+      <b className={view === 'tiles' ? 'c-on' : undefined} role="radio" onKeyDown={clickOnKey} aria-checked={view === 'tiles'} aria-label="Tiles" tabIndex={0} onClick={() => onView?.('tiles')}>
         <IconViewTiles />
       </b>
     </span>
@@ -392,7 +392,7 @@ export function ItemList({ catalog, inCart, onAdd, onQty, onQuickSale, onOptions
                   </button>,
                 );
               return (
-                <div key={it.id} className={cx('c-ci-row', n > 0 && 'c-on', out && 'c-off')}>
+                <div key={it.id} className={cx('c-ci-row', n > 0 && 'c-on', out && 'c-off')} aria-disabled={out || undefined}>
                   <span className="c-ci-th" aria-hidden="true">
                     <Thumbnail kind={it.thumb} />
                   </span>
@@ -589,7 +589,8 @@ export function CartCell({
           <span className="c-det">{headingDet ?? (empty ? 'Empty' : itemCount(t.count))}</span>
         </div>
       </div>
-      <div className="c-cmain c-ci-sum">
+      {/* It scrolls inside the cell, and an empty cart has nothing to Tab to, so it takes focus itself. */}
+      <div className="c-cmain c-ci-sum" tabIndex={0} role="region" aria-label="Cart">
         <div className="c-ci-hero">
           <p className="c-label">{heroLabel}</p>
           <p className={cx('c-f', empty && 'c-muted')}>{usd(t.totalCents)}</p>
