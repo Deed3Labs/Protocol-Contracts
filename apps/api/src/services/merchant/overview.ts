@@ -26,8 +26,9 @@ export async function overview(q: Queryable, input: { merchant: string; from: st
        FROM commerce.orders o WHERE ${paid}`,
     args,
   );
-  const { rows: tips } = await q.query<{ staff_id: string; name: string | null; cents: string | number }>(
-    `SELECT COALESCE(t.tip_staff_id, t.created_by) AS staff_id, s.name, sum(t.tip_cents) AS cents
+  const { rows: tips } = await q.query<{ staff_id: string; name: string | null; cents: string | number; cash_cents: string | number }>(
+    `SELECT COALESCE(t.tip_staff_id, t.created_by) AS staff_id, s.name, sum(t.tip_cents) AS cents,
+            COALESCE(sum(t.tip_cents) FILTER (WHERE t.method = 'cash'), 0) AS cash_cents
        FROM payments.tenders t JOIN commerce.orders o ON o.id = t.order_id LEFT JOIN merchant.staff s ON s.id = COALESCE(t.tip_staff_id, t.created_by)
       WHERE ${paid} AND t.tip_cents > 0 AND t.status IN ('authorised','approved','captured','partly_refunded','refunded')
       GROUP BY 1, 2 ORDER BY 3 DESC`,
@@ -53,7 +54,7 @@ export async function overview(q: Queryable, input: { merchant: string; from: st
     orderCount: Number(totals[0]!.orders),
     byMethod,
     discounts: { count: Number(totals[0]!.discounted), cents: Number(totals[0]!.discounts) },
-    tips: { cents: tips.reduce((s, t) => s + Number(t.cents), 0), byStaff: tips.map((t) => ({ staffId: t.staff_id, name: t.name ?? '—', cents: Number(t.cents) })) },
+    tips: { cents: tips.reduce((s, t) => s + Number(t.cents), 0), byStaff: tips.map((t) => ({ staffId: t.staff_id, name: t.name ?? '—', cents: Number(t.cents), cashCents: Number(t.cash_cents) })) },
     taxCents: Number(totals[0]!.tax),
     refundsCents: Number(refunds[0]!.cents),
     topItems: items.map((i) => ({ itemId: i.item_id, name: i.name, quantity: Number(i.qty), cents: Number(i.cents) })),
