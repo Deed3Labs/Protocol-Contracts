@@ -1,5 +1,6 @@
 import { countsAsVolume, dollars, type StaffRole } from '@clear/domain';
 import type { MerchantCharge, PayoutPosition, StaffMember } from '@/data/apiClient';
+import type { Order } from '@clear/merchant-contracts';
 
 /**
  * What Home shows, as data.
@@ -186,6 +187,13 @@ export function fromApi(input: {
   charges: MerchantCharge[];
   position: PayoutPosition | null;
   staff: StaffMember[] | null;
+  /**
+   * A live shop's orders today (UI Phase 6): every sale, however it was paid. When given, what's
+   * confirmed, the day's total and who raised what come from them; the waiting Clear charges still
+   * come from the charges, which follow the member opening and approving.
+   */
+  orders?: Order[] | null;
+  nameOf?: (staffId: string) => string;
 }): HomeModel {
   const { role, staffId, position, staff } = input;
   const today = input.charges.filter((c) => isToday(c.createdAt));
@@ -256,6 +264,41 @@ export function fromApi(input: {
         other: firstName(idle[0].name),
       };
     }
+  }
+
+  if (input.orders) {
+    const nameOf = input.nameOf ?? ((id: string) => staff?.find((x) => x.id === id)?.name ?? '—');
+    const sold = input.orders.filter((o) => o.status !== 'voided' && o.status !== 'open');
+    const paid = sold.filter((o) => ['paid', 'partly_refunded', 'refunded'].includes(o.status)).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    model.confirmed = paid.map((o) => ({
+      id: o.id,
+      name: o.customer ?? (o.number ? `Order ${o.number}` : 'A walk-in'),
+      time: clockTime(o.createdAt),
+      by: firstName(nameOf(o.raisedBy)),
+      amountCents: o.totalCents + o.tipCents,
+    }));
+    model.confirmedCents = model.confirmed.reduce((t, c) => t + c.amountCents, 0);
+    model.confirmedCount = model.confirmed.length;
+    model.stage = sold.length === 0 && waiting.length === 0 ? 'dayOne' : waiting.length ? 'running' : 'early';
+    if (sees(role) && staff) {
+      model.byPerson = staff
+        .filter((x) => x.active)
+        .map((x) => {
+          const mine = sold.filter((o) => o.raisedBy === x.id);
+          const done = mine.filter((o) => paid.includes(o));
+          return { name: x.name, confirmed: done.length, waiting: mine.length - done.length, amountCents: done.reduce((t, o) => t + o.totalCents + o.tipCents, 0) };
+        });
+    }
+    if (!sees(role)) {
+      const mine = sold.filter((o) => o.raisedBy === staffId);
+      const job = waitingRaw.find((c) => c.raisedByStaffId === staffId && !c.openedAt);
+      model.shift = {
+        raised: mine.length,
+        shopRaised: sold.length,
+        job: job ? { name: job.memberName ?? 'A customer', amountCents: cents(job), ago: ago(job.createdAt), opened: false } : undefined,
+      };
+    }
+    return model;
   }
 
   if (!sees(role)) {

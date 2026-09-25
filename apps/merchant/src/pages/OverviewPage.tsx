@@ -3,7 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/auth/authContext';
 import { OneColumn } from '@/brand/ui';
 import { api } from '@/data/apiClient';
+import { useMerchantApi } from '@/data/merchantApi';
 import { useApi } from '@/data/useApi';
+import { liveMonth } from '@/overview/live';
 import { fromApi, REFERENCE, type OverviewModel } from '@/overview/model';
 import {
   EodCell,
@@ -33,9 +35,10 @@ import { useShiftActions } from '@/shell/shiftActions';
  * blocks as Home: the month as the figure, the month as the live component, one insight as the
  * slot, then the slab. It answers and does not manage: every cell links to the page that does.
  *
- * A live shop's figures come from its charges, payout position, profile and roster. How it was
- * paid, top items, discounts, tips, tax and the end-of-day reports need card, cash, the catalogue
- * and the drawer, so that second slab is the preview's: `?preview=1&screen=counter|statements|terms`.
+ * A live shop's month, how it was paid, top items, discounts, tips, tax and the end-of-day reports
+ * come from the merchant API (every way it was paid, not Clear alone); card processing from the
+ * processor's deposits; Clear's fees, the payout position, terms and roster from the Clear API.
+ * The preview: `?preview=1&screen=counter|statements|terms`; `?preview=1&live=1` runs it on the mock.
  */
 export default function OverviewPage() {
   const navigate = useNavigate();
@@ -53,12 +56,41 @@ export default function OverviewPage() {
   const { data: position } = useApi(() => (preview ? Promise.resolve(null) : api.payouts()), [preview]);
   const { data: profile } = useApi(() => (preview ? Promise.resolve(null) : api.profile()), [preview]);
   const { data: staff } = useApi(() => (preview ? Promise.resolve(null) : api.staff()), [preview]);
+  // The month, and the one before, across Clear, card and cash.
+  const merchant = useMerchantApi();
+  const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const now = new Date();
+  const today = ymd(now);
+  const yesterday = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+  const monthRange = { from: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to: today };
+  const prevRange = { from: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), to: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
+  const month = useApi(() => (preview ? Promise.resolve(null) : merchant.overview(monthRange)), [preview]);
+  const prevMonth = useApi(() => (preview ? Promise.resolve(null) : merchant.overview(prevRange)), [preview]);
+  const deposits = useApi(() => (preview ? Promise.resolve(null) : merchant.cardDeposits(monthRange)), [preview]);
+  const recentOrders = useApi(
+    () => (preview ? Promise.resolve(null) : Promise.all([merchant.orders({ date: today }), merchant.orders({ date: yesterday })]).then(([a, b]) => [...a, ...b])),
+    [preview],
+  );
+  const roster = useApi(() => (preview ? Promise.resolve(null) : merchant.staff()), [preview]);
   const [open, setOpen] = useState<'statements' | 'terms' | null>(screen === 'statements' || screen === 'terms' ? screen : null);
 
-  const m: OverviewModel | null = useMemo(
-    () => (preview ? REFERENCE : loading ? null : fromApi({ charges: charges ?? [], position, profile, staff })),
-    [preview, loading, charges, position, profile, staff],
-  );
+  const m: OverviewModel | null = useMemo(() => {
+    if (preview) return REFERENCE;
+    if (loading || month.loading) return null;
+    const base = fromApi({ charges: charges ?? [], position, profile, staff });
+    if (!month.data) return base;
+    const names = new Map([...(staff ?? []), ...(roster.data ?? [])].map((x) => [x.id, x.name]));
+    return liveMonth(base, {
+      month: month.data,
+      prev: prevMonth.data,
+      deposits: deposits.data ?? [],
+      orders: recentOrders.data ?? [],
+      nameOf: (id) => names.get(id) ?? '—',
+      today,
+      monthName: now.toLocaleDateString('en-US', { month: 'long' }),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, loading, charges, position, profile, staff, month.data, month.loading, prevMonth.data, deposits.data, recentOrders.data, roster.data]);
 
   if (screen === 'counter') return <OverviewLocked name="Jen" onOwner={shift.ownerSignIn} />;
   if (!m || !session) return null;

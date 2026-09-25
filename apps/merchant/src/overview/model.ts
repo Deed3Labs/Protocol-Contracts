@@ -38,8 +38,14 @@ export interface OverviewModel {
   months: { t: string; det: string; cents: number }[];
   terms: { rate: string; payout: string; cap: string; since: string; founding: boolean };
   people: { name: string; role: StaffRole }[];
-  /** The second slab: the preview's until card, cash, items and the drawer have backends. */
+  /** The second slab: the merchant API's month (UI Phase 6, step 9), or the reference's in the preview. */
   more?: {
+    /** "Since Tuesday" in the reference; "This month" for a live shop. */
+    since?: string;
+    /** A first-month note under the reports ("The drawer, and so the close, began on Tuesday"). */
+    firstNote?: string;
+    /** Under the tax line. */
+    taxNote?: string;
     paid: { clear: [number, number]; card: [number, number]; cash: [number, number]; note: string };
     items: [string, number, number][];
     discounts: string;
@@ -210,6 +216,9 @@ export const REFERENCE: OverviewModel = {
       ['Valve stems, set of 4', 4, 4800],
       ['Quick sales', 1, 1800],
     ],
+    since: 'Since Tuesday',
+    firstNote: 'The drawer, and so the close, began on Tuesday. Each night adds a row.',
+    taxNote: 'Tax is for card and cash sales only',
     discounts: '4 · −$214.60',
     tips: '$15.00 · Jen $10.00, Luis $5.00',
     taxCents: 6231,

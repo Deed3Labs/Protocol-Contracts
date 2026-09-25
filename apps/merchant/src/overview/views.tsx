@@ -353,7 +353,7 @@ export function PaidByCell({ more, onCharges }: { more: NonNullable<OverviewMode
 
 export function ItemsCell({ more, onInventory }: { more: NonNullable<OverviewModel['more']>; onInventory: () => void }) {
   return (
-    <Cell label="Top items" right={<Det>Since Tuesday</Det>} foot={<LinkFoot det="From items picked at the counter" to="Inventory" onGo={onInventory} />}>
+    <Cell label="Top items" right={<Det>{more.since ?? 'This month'}</Det>} foot={<LinkFoot det="From items picked at the counter" to="Inventory" onGo={onInventory} />}>
       <div className="c-rows">
         {more.items.map(([k, n, c]) => (
           <Kv key={k} k={k} v={`${n} · ${usd(c)}`} ink />
@@ -365,7 +365,7 @@ export function ItemsCell({ more, onInventory }: { more: NonNullable<OverviewMod
 
 export function ExtrasCell({ more, onTax }: { more: NonNullable<OverviewModel['more']>; onTax: () => void }) {
   return (
-    <Cell label="Discounts, tips and tax" right={<Det>This month</Det>} foot={<LinkFoot det="Tax is for card and cash sales only" to="Tax" onGo={onTax} />}>
+    <Cell label="Discounts, tips and tax" right={<Det>This month</Det>} foot={<LinkFoot det={more.taxNote ?? 'Worked out per line at each sale'} to="Tax" onGo={onTax} />}>
       <div className="c-rows">
         <Kv k="Discounts given" v={more.discounts} ink />
         <Kv k="Tips" v={more.tips} ink />
@@ -378,7 +378,7 @@ export function ExtrasCell({ more, onTax }: { more: NonNullable<OverviewModel['m
 
 export function EodCell({ more, onAll }: { more: NonNullable<OverviewModel['more']>; onAll: () => void }) {
   return (
-    <Cell label="End-of-day reports" right={<Det>Since Tuesday</Det>} foot={<LinkFoot det="A close locks the day’s figures" to="All reports" onGo={onAll} />}>
+    <Cell label="End-of-day reports" right={<Det>{more.since ?? 'This month'}</Det>} foot={<LinkFoot det="A close locks the day’s figures" to="All reports" onGo={onAll} />}>
       <div className="c-rows c-ov-eod">
         {more.eod.map((e) => (
           <div key={e.date}>
@@ -395,7 +395,7 @@ export function EodCell({ more, onAll }: { more: NonNullable<OverviewModel['more
           </div>
         ))}
       </div>
-      <p className="c-det c-ov-first">The drawer, and so the close, began on Tuesday. Each night adds a row.</p>
+      {more.firstNote ? <p className="c-det c-ov-first">{more.firstNote}</p> : !more.eod.length ? <p className="c-det c-ov-first">No day closed yet this month. Each close adds a row.</p> : null}
     </Cell>
   );
 }
