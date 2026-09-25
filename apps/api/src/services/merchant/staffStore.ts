@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { MERCHANT_SCHEMA, ensureMerchantSchema, getMerchantPool } from '../../config/merchantDb.js';
+import { poolDb } from '../../db/db.js';
+import { PinLocked, pinGate, recordPinFailure } from './security/pinGuard.js';
 
 const scrypt = promisify(scryptCb) as (
   secret: string,
@@ -17,7 +19,7 @@ const scrypt = promisify(scryptCb) as (
  *
  * **A four-digit PIN is a weak secret and is treated like one.** There are only ten thousand of
  * them, so the defence cannot be the secret's strength — it has to be the cost of each guess and a
- * cap on how many guesses are possible. scrypt supplies the first; `attemptLimiter` below supplies
+ * cap on how many guesses are possible. scrypt supplies the first; security/pinGuard.ts supplies
  * the second. A PIN is also scoped to one merchant, so an attacker must know which shop they are
  * attacking before a guess means anything.
  */
@@ -71,38 +73,19 @@ async function verifySecret(secret: string, stored: string): Promise<boolean> {
 }
 
 /**
- * How many failed attempts a shop gets before its sign-in closes for a while.
- *
- * Keyed by merchant rather than by staff member, because the attacker guessing PINs does not know
- * whose PIN they are guessing — they are guessing at the shop. In-process and therefore per-
- * instance; it is a speed bump for the obvious attack, not a distributed rate limiter, and it
- * should become one if the API ever runs more than one instance.
+ * The shop's PIN gate: throws PinLocked while it's shut. Every PIN checked here counts against the
+ * same shop-wide limit (security/pinGuard.ts), whatever it's for.
  */
-const attempts = new Map<string, { count: number; until: number }>();
-const MAX_ATTEMPTS = 10;
-const LOCKOUT_MS = 5 * 60 * 1000;
-
-export function attemptLimiter(merchant: string): { allowed: boolean; retryInSeconds?: number } {
-  const key = normalizeMerchant(merchant);
-  const entry = attempts.get(key);
-  if (!entry) return { allowed: true };
-  if (Date.now() > entry.until) {
-    attempts.delete(key);
-    return { allowed: true };
-  }
-  if (entry.count < MAX_ATTEMPTS) return { allowed: true };
-  return { allowed: false, retryInSeconds: Math.ceil((entry.until - Date.now()) / 1000) };
+async function gate(merchant: string): Promise<void> {
+  const pool = getMerchantPool();
+  if (!pool) return;
+  const g = await pinGate(poolDb(pool), normalizeMerchant(merchant));
+  if (!g.allowed) throw new PinLocked(g.retryInSeconds);
 }
 
-function recordFailure(merchant: string): void {
-  const key = normalizeMerchant(merchant);
-  const entry = attempts.get(key);
-  const next = entry && Date.now() <= entry.until ? entry.count + 1 : 1;
-  attempts.set(key, { count: next, until: Date.now() + LOCKOUT_MS });
-}
-
-function clearFailures(merchant: string): void {
-  attempts.delete(normalizeMerchant(merchant));
+async function recordFailure(merchant: string, source: 'session' | 'approval', staffId?: string): Promise<void> {
+  const pool = getMerchantPool();
+  if (pool) await recordPinFailure(poolDb(pool), { merchant: normalizeMerchant(merchant), source, staffId });
 }
 
 interface DbStaff {
@@ -205,13 +188,16 @@ export const staffStore = {
    * no username. **Every candidate is verified even after one matches**, so the time taken does not
    * reveal how many staff a shop has or where in the list a PIN sits.
    */
-  async signInWithPin(merchant: string, pin: string, staffId?: string): Promise<StaffRow | null> {
+  async signInWithPin(merchant: string, pin: string, staffId?: string, source: 'session' | 'approval' = 'approval'): Promise<StaffRow | null> {
     const pool = getMerchantPool();
-    if (!pool || !/^\d{4}$/.test(pin)) return null;
+    if (!pool) return null;
     await ensureMerchantSchema();
-
-    const gate = attemptLimiter(merchant);
-    if (!gate.allowed) return null;
+    // Throws PinLocked while the shop is shut; the routes answer 429 with when to try again.
+    await gate(merchant);
+    if (!/^\d{4}$/.test(pin)) {
+      await recordFailure(merchant, source, staffId);
+      return null;
+    }
 
     // A name is picked first, so the PIN is checked against that person. A bare PIN field asks a
     // writer to remember which of four codes is theirs, which is the most common reason somebody
@@ -233,10 +219,9 @@ export const staffStore = {
     }
 
     if (!found) {
-      recordFailure(merchant);
+      await recordFailure(merchant, source, staffId);
       return null;
     }
-    clearFailures(merchant);
     return toRow(found);
   },
 
@@ -266,8 +251,7 @@ export const staffStore = {
     if (!pool) return null;
     await ensureMerchantSchema();
 
-    const gate = attemptLimiter(merchant);
-    if (!gate.allowed) return null;
+    await gate(merchant);
 
     const { rows } = await pool.query<DbStaff>(
       `SELECT * FROM ${MERCHANT_SCHEMA}.staff
@@ -281,10 +265,9 @@ export const staffStore = {
       if (ok && !found) found = row;
     }
     if (!found) {
-      recordFailure(merchant);
+      await recordFailure(merchant, 'approval');
       return null;
     }
-    clearFailures(merchant);
     return toRow(found);
   },
 

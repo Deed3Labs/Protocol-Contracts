@@ -11,7 +11,8 @@ import { ownerCodeLimitFor, refundStore } from '../services/merchant/refundStore
 import { settleRefund } from '../services/refundSettlement.js';
 import { DEFAULT_IDLE_LOCK_SECONDS, deviceStore } from '../services/merchant/deviceStore.js';
 import { sessionStore } from '../services/merchant/sessionStore.js';
-import { attemptLimiter, staffStore } from '../services/merchant/staffStore.js';
+import { pinLockedHandler } from '../services/merchant/security/pinGuard.js';
+import { staffStore } from '../services/merchant/staffStore.js';
 import { merchantProfileStore } from '../services/merchant/profileStore.js';
 import { canAddRole, type StaffRole } from '@clear/domain';
 import { raiseChargeFromDevice, readMerchantTerms } from '../services/chargeService.js';
@@ -98,21 +99,12 @@ merchantRouter.post('/session', requireDevice, async (req: Request, res: Respons
   const merchant = req.device!.merchant;
   const { pin, staffId } = req.body ?? {};
 
-  const gate = attemptLimiter(merchant);
-  if (!gate.allowed) {
-    res.status(429).json({
-      error: 'Too many attempts',
-      message: `Too many failed sign-ins. Try again in ${Math.ceil((gate.retryInSeconds ?? 60) / 60)} minutes.`,
-    });
-    return;
-  }
-
   // Shift start only. There is deliberately no password path: an owner authenticates through
   // Privy — emailed code, passkey or an existing wallet — and Clear holds no owner credential to
   // check. A password box on the one screen that controls the money would imply otherwise.
   const staff =
     typeof pin === 'string' && pin.length > 0
-      ? await staffStore.signInWithPin(merchant, pin, typeof staffId === 'string' ? staffId : undefined)
+      ? await staffStore.signInWithPin(merchant, pin, typeof staffId === 'string' ? staffId : undefined, 'session')
       : null;
 
   if (!staff) {
@@ -1074,5 +1066,9 @@ async function withNames(refund: Awaited<ReturnType<typeof refundStore.get>>) {
   const names = await refundStore.namesFor(refund);
   return { ...refund, requestedByName: names.requestedBy, decidedByName: names.decidedBy };
 }
+
+// A shop shut for too many wrong PINs answers 429 on every path that checks one. Last, so it sees
+// errors from every router above.
+merchantRouter.use(pinLockedHandler);
 
 export default merchantRouter;

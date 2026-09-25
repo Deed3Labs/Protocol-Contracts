@@ -12,7 +12,7 @@ import type {
   RegisterSmartReader,
 } from './cards';
 import type { CatalogItem, DiscountCode, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
-import type { BankDeposit, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
+import type { AuditEntry, BankDeposit, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
   CreateClearTender,
@@ -132,4 +132,6 @@ export interface MerchantApi {
   overview(range: Range): Promise<Overview>;
   /** Clear's monthly fee bills, newest first; empty unless the shop's processor can't take the fee per sale. */
   clearFeeBills(): Promise<ClearFeeBill[]>;
+  /** Owners only: who did what to the money, newest first. */
+  audit(range: Range): Promise<AuditEntry[]>;
 }

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Queryable } from '../../../db/db.js';
+import { audit } from '../security/audit.js';
 import { type AccountCode, ACCOUNTS, accountDef, type FixedAccount } from './accounts.js';
 
 /**
@@ -152,6 +153,15 @@ async function insertEntry(
       l.creditCents,
     ]);
   }
+  // Every booking is on the audit trail, in the same transaction: nothing moves the books unseen.
+  await audit(tx, {
+    merchant: input.merchant,
+    actor: input.createdBy ?? null,
+    action: `booked.${input.kind}`,
+    ref: input.ref ?? null,
+    amountCents: lines.reduce((sum, l) => sum + l.debitCents, 0),
+    detail: { entryId: id, ...(input.reverses ? { reverses: input.reverses } : {}), ...(input.memo ? { memo: input.memo } : {}) },
+  });
   return { entry: (await getEntry(tx, input.merchant, id))!, created: true };
 }
 

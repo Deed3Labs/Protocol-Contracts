@@ -7,6 +7,7 @@ import { DrawerError, lockOpenDrawer } from '../drawer/drawerService.js';
 import { checkNewTender, PaymentError, type TenderOrderRow as OrderRow } from './tenderRules.js';
 import { getOrder, type PinCheck } from './orderService.js';
 import { settleOrder } from './settle.js';
+import { audit } from '../security/audit.js';
 
 /**
  * Cash and Clear tenders, splitting, and voiding an order (card-processing prompt, Phase 6). Card
@@ -63,6 +64,14 @@ export async function createCashTender(db: Db, input: { merchant: string; orderI
        VALUES ($1,$2,$3,'cash',$4,$5,'approved',$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [`tnd_${randomUUID()}`, input.merchant, order.id, t.amountCents, t.tipCents, t.idempotencyKey, requestHash, order.raised_by, input.staffId, drawer.id, t.handedOverCents, change],
     );
+    await audit(tx, {
+      merchant: input.merchant,
+      actor: input.staffId,
+      action: 'tender.cash_taken',
+      ref: { type: 'tender', id: rows[0]!.id },
+      amountCents: t.amountCents + t.tipCents,
+      detail: { orderId: order.id, tipCents: t.tipCents, handedOverCents: t.handedOverCents, changeCents: change, drawerSessionId: drawer.id },
+    });
     await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: input.staffId });
     return rows[0]!;
   });
@@ -87,6 +96,7 @@ export async function createClearTender(db: Db, clear: ClearCharges, input: { me
        VALUES ($1,$2,$3,'clear',$4,$5,'pending',$6,$7,$8,$9) RETURNING *`,
       [`tnd_${randomUUID()}`, input.merchant, order.id, t.amountCents, t.tipCents, t.idempotencyKey, requestHash, order.raised_by, input.staffId],
     );
+    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tender.clear_started', ref: { type: 'tender', id: rows[0]!.id }, amountCents: t.amountCents + t.tipCents, detail: { orderId: order.id, tipCents: t.tipCents } });
     await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: input.staffId });
     return rows[0]!;
   });
@@ -100,11 +110,16 @@ export async function createClearTender(db: Db, clear: ClearCharges, input: { me
     // withdrawal back and leave the order owing on a payment that never started.
     await db.transaction(async (tx) => {
       await tx.query(`UPDATE payments.tenders SET status = 'cancelled', updated_at = now() WHERE id = $1 AND status = 'pending'`, [pending.id]);
+      await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tender.clear_refused', ref: { type: 'tender', id: pending.id }, amountCents: t.amountCents + t.tipCents, detail: { reason: raised.reason } });
       await settleOrder(tx, { merchant: input.merchant, orderId: pending.order_id, actor: input.staffId });
     });
     throw new PaymentError(`Clear couldn’t take this one: ${raised.reason}`, 'clear_refused');
   }
-  const { rows: out } = await db.query<TenderRow>('UPDATE payments.tenders SET clear_charge_code = $2, updated_at = now() WHERE id = $1 RETURNING *', [pending.id, raised.code]);
+  const out = await db.transaction(async (tx) => {
+    const { rows } = await tx.query<TenderRow>('UPDATE payments.tenders SET clear_charge_code = $2, updated_at = now() WHERE id = $1 RETURNING *', [pending.id, raised.code]);
+    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tender.clear_raised', ref: { type: 'tender', id: pending.id }, amountCents: t.amountCents + t.tipCents, detail: { chargeCode: raised.code } });
+    return rows;
+  });
   return toTender(out[0]!);
 }
 
@@ -128,6 +143,7 @@ export async function syncClearTender(db: Db, clear: ClearCharges, input: { merc
     const next = tenderTransition({ method: 'clear', status: row.status, amountCents: Number(row.amount_cents), tipCents: Number(row.tip_cents), refundedCents: 0 }, event);
     if (!next.ok) return row;
     const { rows: updated } = await tx.query<TenderRow>('UPDATE payments.tenders SET status = $2, updated_at = now() WHERE id = $1 RETURNING *', [row.id, next.state.status]);
+    await audit(tx, { merchant: input.merchant, actor: input.actor, action: `tender.clear_${next.state.status}`, ref: { type: 'tender', id: row.id }, amountCents: Number(row.amount_cents) + Number(row.tip_cents), detail: { chargeStatus: status } });
     await settleOrder(tx, { merchant: input.merchant, orderId: row.order_id, actor: input.actor });
     return updated[0]!;
   });
@@ -149,6 +165,7 @@ export async function cancelClearTender(db: Db, clear: ClearCharges, input: { me
   // Never raised (it failed on the way): withdraw the tender itself.
   return db.transaction(async (tx) => {
     const { rows: out } = await tx.query<TenderRow>(`UPDATE payments.tenders SET status = 'cancelled', updated_at = now() WHERE id = $1 AND status = 'pending' RETURNING *`, [t.id]);
+    if (out[0]) await audit(tx, { merchant: input.merchant, actor: input.actor, action: 'tender.clear_withdrawn', ref: { type: 'tender', id: t.id }, amountCents: Number(t.amount_cents) + Number(t.tip_cents) });
     await settleOrder(tx, { merchant: input.merchant, orderId: t.order_id, actor: input.actor });
     return toTender(out[0] ?? t);
   });
@@ -213,6 +230,15 @@ export async function voidOrder(
     const still = now.filter((t) => ['pending', 'authorised'].includes(t.status));
     if (still.length) throw new PaymentError('A payment on it is still going through; try again in a moment', 'not_voidable');
     await tx.query(`UPDATE commerce.orders SET status = 'voided', voided_at = now(), voided_by = $2, updated_at = now() WHERE id = $1`, [order.id, approver.id]);
+    await audit(tx, {
+      merchant: input.merchant,
+      actor: input.staffId,
+      approver: approver.id,
+      action: 'order.voided',
+      ref: { type: 'order', id: order.id },
+      amountCents: Number(order.total_cents),
+      detail: { tenders: now.map((t) => ({ id: t.id, method: t.method, status: t.status })) },
+    });
     await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: approver.id });
   });
   return getOrder(db, input.merchant, order.id);

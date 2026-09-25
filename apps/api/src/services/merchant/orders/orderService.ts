@@ -17,6 +17,7 @@ import { getSettings } from '../shop/shopService.js';
 import type { TaxApi } from '../tax/taxApi.js';
 import { type OrderTax, taxForOrder } from '../tax/taxService.js';
 import { settleOrder } from './settle.js';
+import { audit } from '../security/audit.js';
 
 /**
  * Orders (card-processing prompt, Phase 6: the order service). The app sends lines and a discount
@@ -527,6 +528,15 @@ export async function applyDiscount(
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
       [`odc_${randomUUID()}`, order.id, spec.kind, spec.codeId, spec.label, spec.percent, priced.discount, spec.reason, spec.appliedBy, spec.approvedBy],
     );
+    await audit(tx, {
+      merchant: input.merchant,
+      actor: input.staff.id,
+      approver: spec.approvedBy,
+      action: 'order.discount_applied',
+      ref: { type: 'order', id: order.id },
+      amountCents: priced.discount,
+      detail: { kind: spec.kind, label: spec.label, percent: spec.percent, codeId: spec.codeId, reason: spec.reason },
+    });
     await rewrite(tx, input.merchant, order, priced, spec, input.staff.id);
   });
   return getOrder(db, input.merchant, input.orderId);
@@ -536,6 +546,7 @@ export async function removeDiscount(db: Db, deps: OrderDeps, input: { merchant:
   await db.transaction(async (tx) => {
     const order = await lockEditable(tx, input.merchant, input.orderId);
     await tx.query('UPDATE commerce.order_discounts SET removed_at = now() WHERE order_id = $1 AND removed_at IS NULL', [order.id]);
+    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'order.discount_removed', ref: { type: 'order', id: order.id } });
     const lines = await currentLines(tx, order.id);
     const priced = await price(tx, deps, input.merchant, lines, null);
     await rewrite(tx, input.merchant, order, priced, null, input.staffId);

@@ -139,3 +139,23 @@ export const Overview = z.object({
   dayReports: z.array(DayReport),
 });
 export type Overview = z.infer<typeof Overview>;
+
+/**
+ * One row of the shop's audit trail (card-processing prompt, Phase 10): who did what to the money,
+ * and when. Every ledger booking (`booked.<kind>`) and every money action that books nothing itself
+ * (a card hold, capture or void; a refund asked for or decided; a PIN override; a count, a sign-off,
+ * a close). Owners only: it names everyone's actions and shows blind counts.
+ */
+export const AuditEntry = z.object({
+  id: z.string(),
+  at: z.string(),
+  /** Staff id; null for the system (a job, a processor webhook). */
+  actor: z.string().nullable(),
+  /** Whoever approved it with their PIN. */
+  approver: z.string().nullable(),
+  action: z.string(),
+  ref: z.object({ type: z.string(), id: z.string() }).nullable(),
+  amountCents: z.number().int().nullable(),
+  detail: z.record(z.string(), z.unknown()),
+});
+export type AuditEntry = z.infer<typeof AuditEntry>;

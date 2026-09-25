@@ -8,6 +8,7 @@ import { checkNewTender, PaymentError } from '../orders/tenderRules.js';
 import { announceRefund, itemsOf, refundSplit, restock } from '../orders/refundBooks.js';
 import { CardDeclined, type CardConnectorProvider, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
 import { takingCards } from './terminal.js';
+import { audit } from '../security/audit.js';
 
 /**
  * Card tenders (card-processing prompt, Phase 4). The server creates, captures, voids and refunds;
@@ -220,6 +221,14 @@ export async function createCardTender(
        RETURNING *`,
       [`tnd_${randomUUID()}`, input.merchant, order.id, input.amountCents, input.tipCents, input.idempotencyKey, requestHash, order.raised_by, input.staffId, connector.id, input.readerId, fee, !provider.supportsPlatformFee],
     );
+    await audit(tx, {
+      merchant: input.merchant,
+      actor: input.staffId,
+      action: 'tender.card_started',
+      ref: { type: 'tender', id: rows[0]!.id },
+      amountCents: input.amountCents + input.tipCents,
+      detail: { orderId: order.id, tipCents: input.tipCents, readerId: input.readerId, provider: provider.provider, applicationFeeCents: fee, feeBilled: !provider.supportsPlatformFee },
+    });
     await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: input.staffId });
     return rows[0]!;
   });
@@ -282,6 +291,15 @@ export async function applyPaymentSnapshot(
     [row.id, state.status, s.paymentId, s.card?.brand ?? null, s.card?.last4 ?? null],
   );
   let tender = rows[0]!;
+  // Authorised, captured, voided, declined: at the processor, whether we asked or a webhook told us.
+  await audit(tx, {
+    merchant: input.merchant,
+    actor: input.actor,
+    action: `card.${state.status}`,
+    ref: { type: 'tender', id: row.id },
+    amountCents: Number(row.amount_cents) + Number(row.tip_cents),
+    detail: { from: row.status, paymentId: s.paymentId, ...(s.card?.last4 ? { cardLast4: s.card.last4, cardBrand: s.card.brand } : {}), ...(s.declineCode ? { declineCode: s.declineCode } : {}) },
+  });
   if (tender.fee_billed && state.status === 'captured') tender = await accrueClearFee(tx, tender, input.actor);
   await settleOrder(tx, { merchant: input.merchant, orderId: row.order_id, actor: input.actor });
   return { tender, changed: true, declined: state.status === 'declined' };
@@ -432,6 +450,7 @@ export async function adjustCardTip(
     );
     if (!next.ok) throw new TenderError(next.reason, 'wrong_state');
     const { rows } = await tx.query<TenderRow>('UPDATE payments.tenders SET tip_cents = $2, updated_at = now() WHERE id = $1 RETURNING *', [row.id, input.tipCents]);
+    await audit(tx, { merchant: input.merchant, actor: input.actor, action: 'card.tip_adjusted', ref: { type: 'tender', id: row.id }, amountCents: amount + input.tipCents, detail: { fromTipCents: oldTip, toTipCents: input.tipCents } });
 
     // If the sale is already booked, book the difference; if not, the sale will use the new tip.
     const sale = (await entriesFor(tx, input.merchant, { type: 'order', id: row.order_id })).filter((e) => e.kind.endsWith('_sale'));
@@ -544,6 +563,7 @@ export async function applyRefundSnapshot(tx: Queryable, input: { merchant: stri
 
   if (input.snapshot.state === 'failed') {
     const { rows: out } = await tx.query<RefundRow>(`UPDATE payments.refunds SET status = 'failed', failure_reason = $2, updated_at = now() WHERE id = $1 RETURNING *`, [refund.id, input.snapshot.failureReason]);
+    await audit(tx, { merchant: input.merchant, actor: input.actor, action: 'refund.card_failed', ref: { type: 'refund', id: refund.id }, amountCents: Number(refund.amount_cents), detail: { reason: input.snapshot.failureReason } });
     return out[0]!;
   }
 
@@ -588,6 +608,7 @@ export async function applyRefundSnapshot(tx: Queryable, input: { merchant: stri
   await restock(tx, { merchant: input.merchant, refundId: refund.id, items, actor: input.actor });
   await announceRefund(tx, { merchant: input.merchant, refundId: refund.id, orderId: tender.order_id });
   const { rows: out } = await tx.query<RefundRow>(`UPDATE payments.refunds SET status = 'succeeded', updated_at = now() WHERE id = $1 RETURNING *`, [refund.id]);
+  await audit(tx, { merchant: input.merchant, actor: input.actor, action: 'refund.card_succeeded', ref: { type: 'refund', id: refund.id }, amountCents: amount, detail: { tenderId: tender.id, refundId: input.snapshot.refundId } });
   await settleOrder(tx, { merchant: input.merchant, orderId: tender.order_id, actor: input.actor });
   return out[0]!;
 }
