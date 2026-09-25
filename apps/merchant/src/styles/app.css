@@ -254,3 +254,16 @@ input.c-field.c-si-in {
 .c-mc-tablet > .c-slab.c-ob-cell {
   flex: none;
 }
+
+/* ---- The public receipt page (/r/<token>) ---------------------------------------------------------
+   The printed slip at phone width. Not drawn in the reference; it follows the New Charge slip. */
+.c-rcpt-page{min-height:100dvh;background:var(--paper);padding:20px 16px 40px;display:flex;flex-direction:column;align-items:center;gap:24px}
+.c-rcpt-head{width:100%;max-width:420px}
+.c-rcpt-page .c-rcpt-slip{width:100%;max-width:420px;padding:24px 20px 18px;font-size:14px}
+.c-rcpt-page .c-rcpt-slip .c-shop{font-size:22px}
+.c-rcpt-page .c-rcpt-slip .c-det.c-c{font-size:13px}
+.c-rcpt-page .c-rcpt-slip .c-ln.c-sm{font-size:13px}
+.c-rcpt-page .c-rcpt-slip .c-ln.c-tot{font-size:16px}
+.c-rcpt-line small{display:block;color:var(--ink-50);font-size:12px;margin-top:1px}
+.c-rcpt-refund{color:var(--ink)}
+.c-rcpt-note{width:100%;max-width:420px;display:flex;flex-direction:column;gap:8px;align-items:flex-start}

@@ -15,7 +15,7 @@ import { fromWire } from '@clear/domain';
  * accident, and the browser never attaches it on its own.
  */
 
-const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://localhost:3001';
+export const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || 'http://localhost:3001';
 const TOKEN_KEY = 'clear.merchant.token';
 
 /**
