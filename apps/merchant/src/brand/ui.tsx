@@ -92,20 +92,25 @@ export function Sheet({
   label,
 }: SheetProps) {
   const ref = useRef<HTMLDivElement>(null);
+  // The latest onClose, read at the moment Escape is pressed. Callers pass a new function on every
+  // render; were it a dependency below, each render (a digit typed into a PIN) would pull focus out
+  // of the field and back to the sheet, and on a tablet close the keyboard after one digit.
+  const close = useRef(onClose);
+  close.current = onClose;
 
   useEffect(() => {
     if (inline) return;
     const before = document.activeElement as HTMLElement | null;
     ref.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && onClose) onClose();
+      if (e.key === 'Escape') close.current?.();
     };
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
       before?.focus?.();
     };
-  }, [inline, onClose]);
+  }, [inline]);
 
   const sheet = (
     <div

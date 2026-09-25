@@ -1,5 +1,5 @@
 import type { MerchantApi } from '@clear/merchant-contracts';
-import { request } from '../apiClient';
+import { api as client, request } from '../apiClient';
 import { createMockMerchantApi, type MockMerchantApi, type MockSwitches } from './mock';
 import { realMerchantApi } from './real';
 
@@ -9,6 +9,9 @@ import { realMerchantApi } from './real';
  *
  *   VITE_MERCHANT_API=real | mock   says which, for a build
  *   otherwise                       the dev preview (`?preview=1`) gets the mock; everything else, real
+ *
+ * With the mock, the older client (`api` in ../apiClient.ts) answers its Clear-side calls from the
+ * same state too: see ClearSide in ./mock.ts.
  *
  * The mock reads its switches from the URL, so a state in the reference files is a link:
  * `&stripe=not_connected`, `&drawer=none|open|balanced|short|disagree|closed`, `&card=decline`,
@@ -47,6 +50,9 @@ export function merchantApi(): MerchantApi {
     const mode = merchantApiMode();
     const mock = mode === 'mock' ? createMockMerchantApi(switchesFromUrl()) : null;
     current = { mode, api: mock ? mock.api : realMerchantApi(request), mock };
+    // The older client's Clear-side calls (Charges, a charge's refund, the payout position, the
+    // roster, the profile) come from the same mock state, so the demo is one shop throughout.
+    if (mock) Object.assign(client, mock.clear);
   }
   return current.api;
 }

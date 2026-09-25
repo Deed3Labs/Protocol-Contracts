@@ -25,8 +25,33 @@ import type {
   Tender,
   TenderEvent,
 } from '@clear/merchant-contracts';
+import { refundQuote, seesMoney, type ChargeState } from '@clear/domain';
+import type { api as ApiClient, MerchantCharge, MerchantProfile, PayoutPosition, Refund as ClearRefund, StaffMember } from '../apiClient';
 import { price } from './pricing';
 import * as seed from './seed';
+
+/**
+ * The older client's Clear-side calls (`api` in ../apiClient.ts), which the Charges pages, the
+ * payout position and the roster still use. The mock answers them from the same state, so a Clear
+ * charge raised in New Charge is the one Charges lists and a refund can be taken through.
+ */
+export type ClearSide = Pick<
+  typeof ApiClient,
+  | 'charges'
+  | 'cancelCharge'
+  | 'openRefundFor'
+  | 'requestRefund'
+  | 'checkOwnerCode'
+  | 'authoriseRefund'
+  | 'decideRefund'
+  | 'withdrawRefund'
+  | 'refundThreshold'
+  | 'setRefundThreshold'
+  | 'payouts'
+  | 'staff'
+  | 'roster'
+  | 'profile'
+>;
 
 /**
  * The merchant API in memory (UI prompt, Phase 3): the demo, the preview and the tests. It keeps the
@@ -742,24 +767,152 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     audit: async () => audit,
   };
 
+  // ---- The Clear side (the older client's calls) ----------------------------------------------------
+  const clearRefunds = new Map<string, ClearRefund>();
+  let refundLimitCents = 50000;
+  /** Seeded charges nobody approved in 24 hours: expired, not cancelled at the counter. */
+  const expired = new Set(seed.ORDERS.filter((o) => o.tender.method === 'clear' && o.tender.status === 'cancelled').map((o) => (o.tender as { code: string }).code));
+  const clearTender = (code: string) => [...tenders.values()].find((t) => t.method === 'clear' && t.clearChargeCode === code) ?? refuse('No such charge', 404, 'not_found');
+  const plusMinutes = (iso: string, m: number) => new Date(Date.parse(iso) + m * 60_000).toISOString();
+  function chargeState(t: Tender): ChargeState {
+    const r = [...clearRefunds.values()].filter((x) => x.chargeCode === t.clearChargeCode).at(-1);
+    if (r?.state === 'requested') return 'refund_requested';
+    if (r?.state === 'approved' || r?.state === 'settled') return 'refunded';
+    if (r?.state === 'declined') return 'refund_declined';
+    if (t.status === 'pending') return 'waiting';
+    if (t.status === 'approved') return 'approved';
+    if (t.status === 'declined') return 'declined';
+    return expired.has(t.clearChargeCode ?? '') ? 'expired' : 'cancelled';
+  }
+  function toCharge(t: Tender): MerchantCharge {
+    const rec = orderRec(t.orderId);
+    const code = t.clearChargeCode!;
+    const amountCents = t.amountCents + t.tipCents;
+    const state = chargeState(t);
+    // How the member chose to pay, once they have: the reference's for the seeded charges.
+    const splitInto = state === 'waiting' ? null : (seed.CLEAR_SPLITS[code] ?? 4);
+    const bps = splitInto && splitInto > 1 ? shop.clearTier.overTimeBps : shop.clearTier.paidNowBps;
+    const staffer = who(rec.raisedBy);
+    return {
+      code,
+      amount: amountCents / 100,
+      // Payout figures are owner-only on the server; a counter shift gets none.
+      ...(seesMoney(who(viewer)?.role ?? 'counter') ? { payout: Math.round(amountCents * (1 - bps / 10000)) / 100 } : {}),
+      state,
+      splitInto,
+      memberName: rec.customer,
+      raisedBy: staffer?.name ?? null,
+      raisedByStaffId: rec.raisedBy,
+      createdAt: t.createdAt,
+      expiresAt: plusMinutes(t.createdAt, 24 * 60),
+      openedAt: seed.CLEAR_OPENED.has(code) || state !== 'waiting' ? plusMinutes(t.createdAt, 1) : null,
+      resolvedAt: state === 'waiting' ? null : plusMinutes(t.createdAt, 3),
+    };
+  }
+  const refund = (refundId: string) => clearRefunds.get(refundId) ?? refuse('No such refund', 404, 'not_found');
+  const owedCents = seed.POSITION.owedCents;
+
+  const clear: ClearSide = {
+    charges: async (opts = {}) =>
+      [...tenders.values()]
+        .filter((t) => t.method === 'clear' && t.clearChargeCode && (!opts.since || t.createdAt >= opts.since))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .slice(0, opts.limit ?? 200)
+        .map(toCharge),
+    cancelCharge: async (code) => {
+      const t = clearTender(code);
+      if (t.status !== 'pending') refuse('Only a charge still waiting can be cancelled', 409, 'not_cancellable');
+      step(t.id, { type: 'cancel' });
+    },
+    openRefundFor: async (code) => [...clearRefunds.values()].find((r) => r.chargeCode === code && r.state === 'requested') ?? null,
+    requestRefund: async (input) => {
+      const t = clearTender(input.chargeCode);
+      if (chargeState(t) !== 'approved') refuse('Only a confirmed charge can be refunded', 409, 'not_refundable');
+      const amount = (t.amountCents + t.tipCents) / 100;
+      const q = refundQuote({ amount, splitInto: input.splitInto, ratePerCycle: input.ratePerCycle, cyclesCleared: input.cyclesCleared, discountRate: input.discountRate, nextPayout: input.nextPayoutCents / 100 });
+      const r: ClearRefund = {
+        id: id('rfd'),
+        chargeCode: input.chargeCode,
+        amountCents: Math.round(amount * 100),
+        memberCents: Math.round(q.memberReceives * 100),
+        carryKeptCents: Math.round(q.carryKept * 100),
+        clawbackCents: Math.round(q.merchantClawback * 100),
+        state: 'requested',
+        requestedByName: who(viewer)?.name ?? 'Someone',
+        decidedByName: null,
+        requestedAt: now(),
+        decidedAt: null,
+        decidedVia: null,
+      };
+      clearRefunds.set(r.id, r);
+      return r;
+    },
+    checkOwnerCode: async (code) => {
+      const s = who(pinOf(code) ?? '');
+      if (!s || !isManager(s.id)) refuse('That PIN was not recognised.', 401, 'bad_code');
+      return { id: s!.id, name: s!.name, role: s!.role };
+    },
+    authoriseRefund: async (refundId, code, decision) => {
+      const r = refund(refundId);
+      const s = who(pinOf(code) ?? '');
+      if (!s || !isManager(s.id)) refuse('That PIN was not recognised.', 401, 'bad_code');
+      // The code path is bounded: at or over the limit it needs the owner's own device.
+      if (decision === 'approve' && !(refundLimitCents > 0 && r.amountCents < refundLimitCents)) refuse('Over the limit a PIN can clear. The owner approves this on their own phone.', 403, 'over_limit');
+      const next: ClearRefund = { ...r, state: decision === 'approve' ? 'approved' : 'declined', decidedByName: s!.name, decidedAt: now(), decidedVia: 'owner_code' };
+      clearRefunds.set(r.id, next);
+      return next;
+    },
+    decideRefund: async (refundId, decision) => {
+      const r = refund(refundId);
+      const me = who(viewer);
+      if (me?.role !== 'owner' && !(me?.role === 'manager' && r.amountCents < refundLimitCents)) refuse('Only the owner can decide this refund', 403, 'forbidden');
+      const next: ClearRefund = { ...r, state: decision === 'approve' ? 'approved' : 'declined', decidedByName: me!.name, decidedAt: now(), decidedVia: 'owner_device' };
+      clearRefunds.set(r.id, next);
+      return next;
+    },
+    withdrawRefund: async (refundId) => {
+      if (refund(refundId).state !== 'requested') refuse('That refund has been decided', 409, 'decided');
+      clearRefunds.delete(refundId);
+    },
+    refundThreshold: async () => ({ limitCents: refundLimitCents, maxCents: null }),
+    setRefundThreshold: async (limitCents) => {
+      if (who(viewer)?.role !== 'owner') refuse('Only the owner sets the limit', 403, 'forbidden');
+      refundLimitCents = limitCents;
+      return { limitCents };
+    },
+    payouts: async (): Promise<PayoutPosition> => {
+      if (!seesMoney(who(viewer)?.role ?? 'counter')) refuse('Payouts are for an owner or a manager', 403, 'forbidden');
+      return { ...seed.POSITION, owedCents, paid: seed.POSITION.paid.map((x) => ({ ...x })) };
+    },
+    staff: async (): Promise<StaffMember[]> =>
+      seed.STAFF.map((s) => ({ ...s, chargesThisMonth: seed.CHARGES_THIS_MONTH[s.id] ?? 0 })),
+    roster: async () => seed.STAFF.filter((s) => s.active).map(({ id: staffId, name, role }) => ({ id: staffId, name, role })),
+    profile: async (): Promise<MerchantProfile> => {
+      const owner = who(viewer)?.role === 'owner';
+      return { ...seed.PROFILE, name: shop.name, ...(owner ? seed.PROFILE_OWNER : {}) };
+    },
+  };
+
   // Every call waits, and can be made to fail once, so loading and error states can be seen.
-  const wrapped = Object.fromEntries(
-    Object.entries(api).map(([name, fn]) => [
-      name,
-      async (...args: unknown[]) => {
-        await wait();
-        if (failNext && failNext.method === name) {
-          const f = failNext;
-          failNext = null;
-          throw new MockApiError(f.message, f.status);
-        }
-        return structuredClone(await (fn as (...a: unknown[]) => Promise<unknown>)(...args));
-      },
-    ]),
-  ) as unknown as MerchantApi;
+  const wrap = <T extends object>(methods: T): T =>
+    Object.fromEntries(
+      Object.entries(methods).map(([name, fn]) => [
+        name,
+        async (...args: unknown[]) => {
+          await wait();
+          if (failNext && failNext.method === name) {
+            const f = failNext;
+            failNext = null;
+            throw new MockApiError(f.message, f.status);
+          }
+          return structuredClone(await (fn as (...a: unknown[]) => Promise<unknown>)(...args));
+        },
+      ]),
+    ) as T;
 
   return {
-    api: wrapped,
+    api: wrap(api) as MerchantApi,
+    clear: wrap(clear),
     controls: {
       switches,
       /** Who's on shift: counts are blind to everyone but their own, and PIN rules follow the role. */
@@ -767,7 +920,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
         viewer = staffId;
       },
       set: (next: Partial<MockSwitches>) => Object.assign(switches, next),
-      failNext: (method: keyof MerchantApi, message = 'Something went wrong. Take the ticket the usual way and try again.', status = 500) => {
+      failNext: (method: keyof MerchantApi | keyof ClearSide, message = 'Something went wrong. Take the ticket the usual way and try again.', status = 500) => {
         failNext = { method, message, status };
       },
     },

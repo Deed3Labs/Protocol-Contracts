@@ -31,8 +31,8 @@ const SCREENS: { path: string; open?: (p: Page) => Promise<void> }[] = [
   { path: '/' },
   { path: '/new' },
   { path: '/charges' },
-  // An item, opened from its list (the mock's ids are its own). A charge can't be opened here yet:
-  // the Clear charges list is read from the API client, which the mock doesn't stand in for.
+  // A charge and an item, opened from their lists (the mock's ids are its own).
+  { path: '/charges', open: (p) => p.getByRole('button', { name: /Marcus T\./ }).first().click() },
   { path: '/inventory' },
   { path: '/inventory', open: (p) => p.locator('.c-iv-row').first().click() },
   { path: '/close' },
@@ -113,3 +113,33 @@ for (const role of ROLES) {
     });
   });
 }
+
+test.describe('a Clear refund, start to finish', () => {
+  test.beforeEach(({}, info) => test.skip(info.project.name !== 'landscape', 'one walk-through is enough'));
+
+  test('Jen asks, Luis clears it with his PIN, and the charge reads Refunded', async ({ page }) => {
+    const errors = await visit(page, 'counter', '/charges');
+    // A counter shift sees today and yesterday: Marcus, confirmed at 11:02am.
+    await page.getByRole('button', { name: /Marcus T\./ }).first().click();
+    await settle(page);
+    // The preview's parameters travel with it, so a reload stays on the mock.
+    expect(new URL(page.url()).search).toContain('live=1');
+    await expect(page.getByText('Confirmed')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Start a refund', exact: true }).click();
+    await page.getByRole('button', { name: /Send to (an owner|a manager)/ }).click();
+    // Under the $500 limit, a manager's PIN clears it at the counter.
+    // The sheet names who can clear it, from the roster every shift can read.
+    await expect(page.getByRole('dialog', { name: 'Waiting on Mike' })).toBeVisible();
+    await page.getByRole('textbox', { name: /PIN/ }).pressSequentially('2222');
+    await page.getByRole('button', { name: 'Approve refund' }).click();
+    await expect(page.getByRole('dialog', { name: 'Refunded' })).toBeVisible();
+
+    // Back to the list inside the app (the mock lives as long as the page does).
+    await page.getByRole('dialog', { name: 'Refunded' }).getByRole('button', { name: 'Done' }).click();
+    await expect(page).toHaveURL(/\/charges\?preview=1&live=1&as=jen$/);
+    const row = page.getByRole('button', { name: /Marcus T\./ }).first();
+    await expect(row).toContainText('Refunded');
+    expect(errors).toEqual([]);
+  });
+});

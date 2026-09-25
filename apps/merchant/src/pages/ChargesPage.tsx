@@ -58,7 +58,13 @@ export default function ChargesPage() {
   const mine = owner ? all : all.filter((r) => r.byId === myId);
   const t = raisedToday(mine);
   const people = preview ? TEAM_NAMES : [...new Set(all.map((r) => r.by).filter((b) => b !== '—'))];
-  const q = preview ? `?preview=1${screen === 'counter' ? '&screen=counter' : ''}` : '';
+  // The dev preview's own parameters travel with it: the reference frames' counter view, and on the
+  // live path `live` and who's on shift, so opening a charge stays on the mock.
+  const q = preview
+    ? `?preview=1${screen === 'counter' ? '&screen=counter' : ''}`
+    : import.meta.env.DEV && params.get('preview') === '1'
+      ? `?preview=1&live=1${params.get('as') ? `&as=${params.get('as')}` : ''}`
+      : '';
 
   return (
     <>
