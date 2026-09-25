@@ -1,4 +1,5 @@
 import { isPending, type ChargeState } from '@clear/domain';
+import { canVoidOrder, type OrderWithTenders, type Tender } from '@clear/merchant-contracts';
 import type { MerchantCharge } from '@/data/apiClient';
 import { ago, clockTime, firstName } from '../home/model';
 
@@ -13,7 +14,7 @@ import { ago, clockTime, firstName } from '../home/model';
 
 export type PayMethod = 'clear' | 'card' | 'cash' | 'split';
 
-export type RowState = 'waiting' | 'confirmed' | 'paid' | 'expired' | 'refunded' | 'refund' | 'declined' | 'cancelled';
+export type RowState = 'waiting' | 'confirmed' | 'paid' | 'expired' | 'refunded' | 'refund' | 'declined' | 'cancelled' | 'voided';
 
 export interface ChargeRow {
   id: string;
@@ -91,6 +92,46 @@ export function rowFromApi(c: MerchantCharge, now = Date.now()): ChargeRow {
     by: c.raisedBy ? firstName(c.raisedBy) : '—',
     byId: c.raisedByStaffId ?? undefined,
     note,
+  };
+}
+
+// ---- Card, cash and split sales, from the orders ---------------------------------------------------
+
+/** A tender that took money (or holds it, for a card before capture). */
+export const took = (t: Tender) => ['approved', 'authorised', 'captured', 'partly_refunded', 'refunded'].includes(t.status);
+
+const cardLabel = (t: Tender) => `${t.cardBrand ? t.cardBrand[0]!.toUpperCase() + t.cardBrand.slice(1) : 'Card'} ••${t.cardLast4 ?? '····'}`;
+
+/**
+ * A sale on the Charges list: an order that took card or cash. Its Clear part, if any, is on the
+ * list already as a Clear charge, so this row is the card and cash part, and each dollar is listed
+ * once. A Clear-only order is only its Clear charge; an order still being paid isn't a sale yet.
+ */
+export function rowFromOrder(o: OrderWithTenders, nameOf: (staffId: string) => string, now = Date.now()): ChargeRow | null {
+  const voided = o.status === 'voided';
+  const legs = o.tenders.filter((t) => t.method !== 'clear' && (voided ? true : took(t)));
+  if (!legs.length) return null;
+  const methods = new Set(legs.map((t) => t.method));
+  const withClear = o.tenders.some((t) => t.method === 'clear' && took(t));
+  const method: PayMethod = methods.size > 1 || withClear ? 'split' : (legs[0]!.method as PayMethod);
+  const d = new Date(o.createdAt);
+  const day = dayOf(o.createdAt, new Date(now));
+  return {
+    id: o.id,
+    name: o.customer ?? 'Walk-in',
+    amountCents: legs.reduce((s, t) => s + t.amountCents + t.tipCents, 0),
+    method,
+    state: voided ? 'voided' : o.status === 'refunded' ? 'refunded' : 'paid',
+    day,
+    date: day > 1 ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : undefined,
+    time: clockTime(o.createdAt),
+    at: d.getHours() * 60 + d.getMinutes() - day * 1440,
+    by: firstName(nameOf(o.raisedBy)),
+    byId: o.raisedBy,
+    note: o.status === 'partly_refunded' ? 'part refunded' : undefined,
+    pay: method === 'split' ? 'Split' : method === 'card' ? cardLabel(legs[0]!) : 'Cash',
+    sold: o.lines[0]?.name,
+    tipCents: legs.reduce((s, t) => s + t.tipCents, 0) || undefined,
   };
 }
 
@@ -284,7 +325,7 @@ export const MARCUS_DETAIL: ClearDetail = {
 };
 
 export interface Leg {
-  method: 'card' | 'cash';
+  method: 'card' | 'cash' | 'clear';
   /** "Cash", "Visa ••4242" */
   t: string;
   det: string;
@@ -305,11 +346,16 @@ export interface Sale {
   taxCents: number;
   tipCents: number;
   legs: Leg[];
-  receipt: string;
-  /** "Settled Sunday night" */
-  settled: string;
+  /** "Printed", "Texted". Absent when it isn't known. */
+  receipt?: string;
+  /** "Settled Sunday night". Absent with no card part. */
+  settled?: string;
   /** Settled, so only a refund remains. */
   refundOnly: boolean;
+  /** "Sales tax · 7.75% on parts"; "Sales tax" when the rate isn't to hand. */
+  taxLabel?: string;
+  /** A live sale's own ids, for its void, tip and refund. */
+  live?: { order: OrderWithTenders };
 }
 
 export const SPLIT_SALE: Sale = {
@@ -357,3 +403,40 @@ export const CARD_SALE: Sale = {
   settled: 'Settles tonight',
   refundOnly: false,
 };
+
+/**
+ * A sale opened: what was sold and how it was paid, from the order and its tenders. It can be
+ * voided the same day, before a card on it is captured; after that only a refund remains.
+ */
+export function saleFromOrder(o: OrderWithTenders, nameOf: (staffId: string) => string, today: string): Sale {
+  const legs = o.tenders.filter(took);
+  const card = legs.find((t) => t.method === 'card');
+  const sameDay = o.businessDate === today;
+  const d = new Date(o.createdAt);
+  const day = sameDay ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const net = (l: OrderWithTenders['lines'][number]) => l.lineCents - l.discountCents;
+  return {
+    id: o.id,
+    name: o.customer ?? 'Walk-in',
+    when: `${day} · ${clockTime(o.createdAt)} · ${firstName(nameOf(o.raisedBy))}`,
+    count: o.lines.reduce((s, l) => s + l.quantity, 0),
+    totalCents: o.totalCents + o.tipCents,
+    lines: o.lines.map((l) => ({ t: `${l.quantity} × ${l.name}${l.options.length ? ` · ${l.options.map((x) => x.name.toLowerCase()).join(', ')}` : ''}`, cents: net(l) })),
+    goodsCents: o.lines.filter((l) => l.taxKind !== 'labour').reduce((s, l) => s + net(l), 0),
+    labourCents: o.lines.filter((l) => l.taxKind === 'labour').reduce((s, l) => s + net(l), 0),
+    taxCents: o.taxCents,
+    tipCents: o.tipCents,
+    legs: legs.map((t) => ({
+      method: t.method,
+      t: t.method === 'card' ? cardLabel(t) : t.method === 'cash' ? 'Cash' : 'Clear',
+      det: `${clockTime(t.createdAt)}${t.method === 'cash' && t.changeCents ? ` · ${usdOf(t.changeCents)} change` : ''}${t.refundedCents ? ` · ${usdOf(t.refundedCents)} refunded` : ''}`,
+      cents: t.amountCents + t.tipCents,
+    })),
+    settled: card ? (card.status === 'authorised' ? 'Settles when the day is closed' : 'Settled') : undefined,
+    refundOnly: !(sameDay && canVoidOrder({ totalCents: o.totalCents, voided: o.status === 'voided' }, o.tenders).ok),
+    taxLabel: 'Sales tax',
+    live: { order: o },
+  };
+}
+
+const usdOf = (cents: number) => `$${(cents / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;

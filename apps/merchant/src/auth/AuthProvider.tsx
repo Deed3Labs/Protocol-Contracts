@@ -130,6 +130,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [adopt],
   );
 
+  /** A first shift: the PIN they just picked is set, and their shift starts with it. */
+  const startFirstShift = useCallback(
+    async (pin: string, staffId: string) => adopt(await api.firstShift({ staffId, pin })),
+    [adopt],
+  );
+
   /**
    * An owner authorising one act without taking over the session.
    *
@@ -200,12 +206,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canSeeMoney: session ? seesMoney(session.staff.role) : false,
       canAuthoriseRefunds: session ? canAuthoriseRefund(session.staff.role) : false,
       signInWithPin,
+      startFirstShift,
       authoriseWithOwnerCode,
       signOut,
       enrollDevice,
       refresh,
     }),
-    [session, device, loading, signInWithPin, authoriseWithOwnerCode, signOut, enrollDevice, refresh],
+    [session, device, loading, signInWithPin, startFirstShift, authoriseWithOwnerCode, signOut, enrollDevice, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

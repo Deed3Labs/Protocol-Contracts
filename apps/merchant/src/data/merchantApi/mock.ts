@@ -50,6 +50,8 @@ export type ClearSide = Pick<
   | 'payouts'
   | 'staff'
   | 'roster'
+  | 'resetPin'
+  | 'removeStaff'
   | 'profile'
 >;
 
@@ -130,7 +132,10 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
 
   const who = (staffId: string) => seed.STAFF.find((s) => s.id === staffId);
   const isManager = (staffId: string) => ['manager', 'owner'].includes(who(staffId)?.role ?? '');
-  const pinOf = (pin: string | null | undefined) => (pin ? seed.MOCK_PINS[pin] ?? null : null);
+  // Whose PIN is whose, as the server keeps them: a reset clears one, a first shift sets one.
+  const pins = new Map<string, string>(Object.entries(seed.MOCK_PINS).map(([pin, staffId]) => [staffId, pin]));
+  const removed = new Set<string>();
+  const pinOf = (pin: string | null | undefined) => (pin ? ([...pins].find(([staffId, p]) => p === pin && !removed.has(staffId))?.[0] ?? null) : null);
   const refuse = (message: string, status = 409, code?: string): never => {
     throw new MockApiError(message, status, code);
   };
@@ -487,6 +492,11 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
     order: async (orderId) => toOrder(orderRec(orderId)),
     orders: async ({ date }) => [...orders.values()].filter((o) => o.businessDate === date).map(toOrder).sort((a, b) => (b.createdAt < a.createdAt ? -1 : 1)),
+    orderHistory: async ({ from, to }) =>
+      [...orders.values()]
+        .filter((o) => o.businessDate >= from && o.businessDate <= to)
+        .sort((a, b) => (b.createdAt < a.createdAt ? -1 : 1))
+        .map((o) => ({ ...toOrder(o), tenders: [...tenders.values()].filter((t) => t.orderId === o.id).map(publicTender) })),
     applyDiscount: async (orderId, input) => {
       const rec = orderRec(orderId);
       editable(rec);
@@ -810,6 +820,14 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     };
   }
   const refund = (refundId: string) => clearRefunds.get(refundId) ?? refuse('No such refund', 404, 'not_found');
+  function staffTarget(staffId: string) {
+    const target = who(staffId);
+    const me = who(viewer);
+    if (!target || removed.has(staffId)) refuse('No such person at this shop.', 404, 'not_found');
+    if (staffId === viewer) refuse('Someone else does this for you.', 403, 'forbidden');
+    if (!(target!.role !== 'owner' && (me?.role === 'owner' || (me?.role === 'manager' && target!.role === 'counter')))) refuse('That needs the owner.', 403, 'forbidden');
+    return target!;
+  }
   const owedCents = seed.POSITION.owedCents;
 
   const clear: ClearSide = {
@@ -885,8 +903,19 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       return { ...seed.POSITION, owedCents, paid: seed.POSITION.paid.map((x) => ({ ...x })) };
     },
     staff: async (): Promise<StaffMember[]> =>
-      seed.STAFF.map((s) => ({ ...s, chargesThisMonth: seed.CHARGES_THIS_MONTH[s.id] ?? 0 })),
-    roster: async () => seed.STAFF.filter((s) => s.active).map(({ id: staffId, name, role }) => ({ id: staffId, name, role })),
+      seed.STAFF.map((s) => ({ ...s, active: s.active && !removed.has(s.id), pinSet: pins.has(s.id), chargesThisMonth: seed.CHARGES_THIS_MONTH[s.id] ?? 0 })),
+    roster: async () =>
+      seed.STAFF.filter((s) => s.active && !removed.has(s.id)).map(({ id: staffId, name, role }) => ({ id: staffId, name, role, pinSet: pins.has(staffId) })),
+    // The server's rules (routes/merchant.ts, staffTarget): a manager resets or removes counter
+    // staff, an owner counter staff and managers; never an owner, never yourself.
+    resetPin: async (staffId, approverPin) => {
+      const target = staffTarget(staffId);
+      if (pins.get(viewer) !== approverPin) refuse('That did not match.', 401, 'bad_pin');
+      pins.delete(target.id);
+    },
+    removeStaff: async (staffId) => {
+      removed.add(staffTarget(staffId).id);
+    },
     profile: async (): Promise<MerchantProfile> => {
       const owner = who(viewer)?.role === 'owner';
       return { ...seed.PROFILE, name: shop.name, ...(owner ? seed.PROFILE_OWNER : {}) };
