@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS, type Shop, ShopHours, ShopPatch, ShopSettings, ShopSe
 import type { Db, Queryable } from '../../../db/db.js';
 import type { CardConnectorProvider } from '../cards/connector.js';
 import { connectorStore } from '../cards/connectorStore.js';
+import { markSetup } from '../setup/setupService.js';
 
 /**
  * The shop and its settings (card-processing prompt, Phase 2 `merchant`; Phase 5: what the app
@@ -248,6 +249,9 @@ export async function updateSettings(db: Db, input: { merchant: string; staffId:
       s.breaks.afterMinutes,
     ],
   );
+  // Set up the till: starting cash, and tips and discounts, count as done once saved.
+  if (parsed.data.startingCashCents !== undefined) await markSetup(db, input.merchant, 'cash');
+  if (parsed.data.tips !== undefined || parsed.data.discountLimits !== undefined) await markSetup(db, input.merchant, 'tips');
   return fromRow(rows[0]!);
 }
 

@@ -1,8 +1,9 @@
 import { Router, type Request, type Response } from 'express';
 import { merchantDb } from '../config/merchantDb.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
-import { requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
+import { requireManager, requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
 import { connectorForShop } from '../services/merchant/cards/registry.js';
+import { setupProgress } from '../services/merchant/setup/setupService.js';
 import { getHours, getSettings, getShop, saveHours, ShopError, updateSettings, updateShop } from '../services/merchant/shop/shopService.js';
 
 /**
@@ -16,6 +17,7 @@ import { getHours, getSettings, getShop, saveHours, ShopError, updateSettings, u
  *   GET   /settings    any signed-in staff: the counter's screens follow these (payment methods,
  *                      tips, offline cards and their limit, discount limits)
  *   PATCH /settings    owners
+ *   GET   /setup       owners and managers: Home's Set up the till, which steps are done
  */
 
 const router = forwardAsyncErrors(Router());
@@ -68,6 +70,12 @@ router.put('/shop/hours', requireMerchant, requireOwner, async (req: Request, re
   } catch (error) {
     refuse(res, error);
   }
+});
+
+router.get('/setup', requireMerchant, requireManager, async (req: Request, res: Response) => {
+  const d = await db(res);
+  if (!d) return;
+  res.json(await setupProgress(d, req.merchant!.merchant));
 });
 
 router.get('/settings', requireMerchant, async (req: Request, res: Response) => {

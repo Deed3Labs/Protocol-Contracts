@@ -58,8 +58,8 @@ Decided 2026-09-24.
 - **A padlocked nav item opens the owner's sign-in**, the proposal in the Home file's Open list.
 - **What a live shop sees.** Home is built from what the API answers: today's charges, the payout
   position, the roster, the drawer and a counter shift's time clock (on for, since, until, the
-  booked hours and breaks). The Closing up card and the setup checklist's progress have no backend
-  yet, so a live shop doesn't see them. The reference scenario shows every state in development:
+  booked hours and breaks), and for owners and managers Set up the till and Running low. The Closing
+  up card isn't live yet. The reference scenario shows every state in development:
   `?preview=1&home=running|counter|onBreak|early|dayOne|closing` (`&as=jen` for the counter) and
   `/close?preview=1&drawer=short|signed|balanced`.
 
@@ -114,8 +114,8 @@ Decided 2026-09-24.
   day-one list (add counter staff, print counter cards, run a $1.00 test charge), and signup now
   covers all three. Owners and managers see the till list under the figure instead, with Home's
   own hero rather than the Onboarding file's "Today" hero; each row opens the screen that does it,
-  "Hide for now" is remembered on the tablet, and it goes when every row is done. A live shop
-  doesn't see it yet, because nothing records which rows a shop has done. Preview:
+  "Hide for now" is remembered on the tablet, and it goes when every row is done. On a live shop
+  the rows come from `GET /setup` (below, "Set up the till and Running low"). Preview:
   `/?preview=1&home=dayOne` (1 of 6) and `&home=tillLater` (4 of 6).
 - Preview: `/onboarding?preview=1&step=1..7`, `&done=1`, `&team=solo`, `&code=warn|bad`,
   `&verify=needs|verified`, `&bank=waiting`.
@@ -535,4 +535,19 @@ reason for any difference, is written to `e2e/.report/index.html`.
   can read the week through the API, though the Staff route itself stays owners and managers.
 - **Removing someone ends their shift**, on the server and in the mock, so they drop off the crew
   strip at once rather than on their next request.
+
+## Set up the till and Running low
+
+- **Four steps read the shop's own data:** cards connected (charges enabled), a reader paired, an
+  item in the catalogue, someone added besides the owner. The team row names them ("Jen and Luis,
+  added").
+- **Two steps leave nothing else behind, so they're marked when they happen** (migration 0014,
+  `merchant.setup_marks`): starting cash when it's saved in Settings or a drawer is opened with it;
+  tips and discounts when either is saved or a discount code is made. A mark is never taken back.
+- `GET /setup` (owners and managers) answers all six; the list goes once every one is done, and
+  "Hide for now" still hides it on this tablet.
+- **Running low** is worked out on the tablet from the catalogue and open reorders: stocked items at
+  or under their reorder line, or out. Services never appear. "Mark reordered" opens the item.
+- **The mock:** `&setup=new` is a shop that hasn't set starting cash or tips; with
+  `&stripe=not_connected` the till shows four of six to do. Walk-through: `e2e/home-setup.spec.ts`.
 
