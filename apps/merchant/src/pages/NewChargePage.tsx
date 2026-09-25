@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { fromWire, seesMoney } from '@clear/domain';
+import type { Order, Tender } from '@clear/merchant-contracts';
+import { seesMoney } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
 import { Segmented } from '@/brand/controls';
 import { OneColumn, cx } from '@/brand/ui';
-import { ApiError, api } from '@/data/apiClient';
-import { useApi } from '@/data/useApi';
+import { api } from '@/data/apiClient';
+import { useMerchantApi } from '@/data/merchantApi';
+import { errorSentence, useApi } from '@/data/useApi';
 import { useLayout } from '@/lib/useBreakpoint';
 import { FlowTop } from '@/shell/chrome';
 import {
@@ -52,6 +54,7 @@ import {
 import { CardChargeCell, PrintReceiptSheet, ReaderCell, ReaderPickerSheet, ReceiptGroups, SendReceiptSheet, type ReaderState, type SendBy } from '@/charge/card';
 import { currentPlatform, previewPlatform, readerService, type Platform, type ReaderInfo, type ReaderService } from '@/reader';
 import { CashPaidView, CashView, SplitLegsCell, SplitView, type Leg, type LegMethod } from '@/charge/cash';
+import { cardName, chargeItemFrom, codeCheck, legsFromTenders, nothingTaken, payKey, pickedOptionIds, toLineInputs, totalsFromOrder } from '@/charge/live';
 import { FailureSheet, PhoneAmount, PhoneCart, PhoneCode, PhoneItems, PhoneStatus } from '@/charge/phone';
 
 /**
@@ -60,12 +63,13 @@ import { FailureSheet, PhoneAmount, PhoneCart, PhoneCode, PhoneItems, PhoneStatu
  * Start with an amount or items, check out, take the tip, then take it by Clear, card, cash or a
  * split. Every way ends the same: paid, a receipt, and New charge.
  *
- * **What runs live.** A typed amount paid with Clear: raised through the API, shown as a code,
- * watched until the customer approves, declines or it expires. The rest has no backend yet —
- * the catalog, discounts, tips, card (Stripe), cash and splits (card-processing prompt, Phases
- * 3–7) — so a live shop sees Amount only, Card locked as the reference draws it before Stripe is
- * connected, and no cash or split. In development, `?preview=1&screen=<frame>` opens any frame of
- * the reference on its own scenario and the whole flow can be clicked through (see SCREENS).
+ * **What runs live** (MerchantApi, UI Phase 6 step 4): the shop's catalogue, or a typed amount;
+ * Checkout raises the order on the server, which works out tax, discounts and the total; the tip
+ * from the shop's settings; then Clear (a tender on the order: its code shown, the member's answer
+ * followed), cash (into the open drawer, the change the server's sum) or a split of those. An order
+ * nothing was paid on is discarded on the way out, so its stock isn't left held. The card reader is
+ * step 5. In development, `?preview=1&screen=<frame>` opens any frame of the reference on its own
+ * scenario (see SCREENS), and `?preview=1&live=1` runs the live page against the mock.
  */
 
 type Screen =
@@ -112,6 +116,8 @@ interface Flow {
   given: string;
   legs: Leg[];
   legMethod: LegMethod;
+  /** Live: the split's next part, as typed; empty for all that's left. */
+  part: string;
   phone: string;
   sendBy: SendBy;
   sheet: Sheet;
@@ -136,6 +142,7 @@ const BLANK: Flow = {
   given: '',
   legs: [],
   legMethod: 'card',
+  part: '',
   phone: '',
   sendBy: 'text',
   sheet: null,
@@ -276,6 +283,16 @@ export default function NewChargePage() {
   const preset = preview ? SCREENS[params.get('screen') ?? ''] : undefined;
 
   const { data: profile } = useApi(() => api.profile(), []);
+  // The live shop's catalogue, codes, ways to pay and tips, from the merchant API.
+  const merchant = useMerchantApi();
+  const liveCatalog = useApi(() => (preview ? Promise.resolve(null) : merchant.catalog()), [preview]);
+  const liveCodes = useApi(() => (preview ? Promise.resolve(null) : merchant.discountCodes()), [preview]);
+  const liveSettings = useApi(() => (preview ? Promise.resolve(null) : merchant.settings()), [preview]);
+  const [order, setOrder] = useState<Order | null>(null);
+  const [tenders, setTenders] = useState<Tender[]>([]);
+  const [tender, setTender] = useState<Tender | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
   const shop = preview ? 'Mike’s Tire' : (profile?.name ?? '');
   const fees: FeeTerms | null = !seesMoney(role)
     ? null
@@ -297,49 +314,97 @@ export default function NewChargePage() {
   const [live, setLive] = useState<{ openedAt: string | null; resolvedAt: string | null; splitInto: number | null } | null>(null);
   const [raisedAt, setRaisedAt] = useState<Date>(() => new Date());
 
-  const catalog = f.catalog === 'food' ? FOOD : CATALOG;
+  const shopItems = useMemo(() => (liveCatalog.data ?? []).filter((c) => !c.archivedAt).map(chargeItemFrom), [liveCatalog.data]);
+  const catalog = preview ? (f.catalog === 'food' ? FOOD : CATALOG) : shopItems;
   const typedCents = Math.round(parseFloat(f.typed || '0') * 100);
   const body = { lines: f.mode === 'items' ? f.lines : [], typedCents, discount: f.discount };
-  const baseCents = chargeTotal(body);
-  const tipCents = f.tip && f.tip.kind !== 'none' ? f.tip.cents : 0;
-  const dueCents = baseCents + tipCents;
+  // Live, the order's numbers are the server's: what it comes to, and what's still owed. The tip
+  // goes on the first payment only, so a split doesn't tip twice.
+  const tipTaken = tenders.some((t) => t.tipCents > 0 && t.status !== 'declined' && t.status !== 'cancelled');
+  const tipCents = f.tip && f.tip.kind !== 'none' && !tipTaken ? f.tip.cents : 0;
+  const baseCents = order ? order.remainingCents : chargeTotal(body);
+  // A split's next part: what's typed, never more than is owed; otherwise all of it.
+  const typedPart = Math.round(parseFloat(f.part || '0') * 100);
+  const partCents = f.method === 'split' && order && typedPart > 0 ? Math.min(typedPart, order.remainingCents) : baseCents;
+  const dueCents = partCents + tipCents;
   const inCart = useMemo(() => Object.fromEntries(f.lines.filter((l) => l.itemId).map((l) => [l.itemId!, l.qty])), [f.lines]);
 
-  // ---- The live path: raise the charge, then watch it ---------------------------------------
+  // ---- The live path: the order, and its payments -------------------------------------------
+  const refresh = async (orderId: string) => {
+    const [o, ts] = await Promise.all([merchant.order(orderId), merchant.tenders(orderId)]);
+    setOrder(o);
+    setTenders(ts);
+    return o;
+  };
+  const attempt = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setPayError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setPayError(errorSentence(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Checkout: the cart as an order on the server, which prices it (tax, discount, total). */
+  const toCheckout = () => {
+    if (preview) return set({ screen: 'checkout' });
+    const lines = toLineInputs(f.mode === 'items' ? f.lines : [], f.mode === 'items' ? 0 : typedCents);
+    if (!lines.length) return;
+    void attempt(async () => {
+      const o = order && order.status === 'open' ? await merchant.updateOrder(order.id, { lines }) : order ? order : await merchant.createOrder({ lines, customer: null });
+      setOrder(o);
+      set({ screen: 'checkout' });
+    });
+  };
+
+  /** Clear: a tender on the order for what's owed (and the tip), shown to the member as a code. */
   const raise = async () => {
     if (preview) {
       set({ screen: 'code', code: '8QK2' });
       return;
     }
+    if (!order) return;
     setRaising(true);
     setRaiseError(null);
     try {
-      const r = await api.raiseCharge({ amountCents: dueCents });
+      const t = await merchant.createClearTender(order.id, { amountCents: partCents, tipCents, idempotencyKey: payKey() });
+      setTender(t);
       setRaisedAt(new Date());
-      set({ screen: 'code', code: r.code });
+      setLive(null);
+      set({ screen: 'code', code: t.clearChargeCode ?? '' });
     } catch (e) {
-      // The server's own words when it answered; a dropped connection gets the plain version.
-      setRaiseError(e instanceof ApiError ? e.message : 'That charge could not be raised. Take the ticket the usual way.');
+      setRaiseError(errorSentence(e));
     } finally {
       setRaising(false);
     }
   };
 
+  // The member's answer, followed on the tender (and how far they've got, on the charge itself).
   useEffect(() => {
-    if (preview || !f.code || !['code', 'waiting'].includes(f.screen)) return;
+    if (preview || !tender || tender.method !== 'clear' || !['code', 'waiting'].includes(f.screen)) return;
     let stopped = false;
     const tick = async () => {
       try {
-        const c = await api.watchCharge(f.code);
+        const t = await merchant.syncTender(tender.id);
         if (stopped) return;
-        setLive({ openedAt: c.openedAt, resolvedAt: c.resolvedAt, splitInto: c.splitInto });
-        const s = fromWire(c.status);
-        if (s === 'approved') set({ screen: 'approved' });
-        else if (s === 'declined') set({ sheet: { k: 'fail', kind: 'declined' } });
-        else if (s === 'expired') set({ sheet: { k: 'fail', kind: 'expired' } });
-        else if (c.openedAt && f.screen === 'code') set({ screen: 'waiting' });
+        setTender(t);
+        if (t.clearChargeCode) {
+          const c = await api.watchCharge(t.clearChargeCode).catch(() => null);
+          if (!stopped && c) {
+            setLive({ openedAt: c.openedAt, resolvedAt: c.resolvedAt, splitInto: c.splitInto });
+            if (c.openedAt && f.screen === 'code') set({ screen: 'waiting' });
+          }
+        }
+        if (t.status === 'approved') {
+          const o = await refresh(t.orderId);
+          if (!stopped) set(o.remainingCents > 0 && f.method === 'split' ? { screen: 'split', part: '' } : { screen: 'approved' });
+        } else if (t.status === 'declined') set({ sheet: { k: 'fail', kind: 'declined' } });
+        else if (t.status === 'cancelled') set({ sheet: { k: 'fail', kind: 'expired' } });
       } catch {
-        // A poll that fails changes nothing; the charge is safe on the server and the next tick asks again.
+        // A poll that fails changes nothing; the payment is safe on the server and the next tick asks again.
       }
     };
     void tick();
@@ -348,7 +413,39 @@ export default function NewChargePage() {
       stopped = true;
       window.clearInterval(id);
     };
-  }, [preview, f.code, f.screen, set]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, tender?.id, f.screen]);
+
+  /** Cash: what's owed (the tip with it), or in a split what was handed over up to what's owed. */
+  const takeCash = () => {
+    if (preview || !order) return set({ screen: 'cashPaid', sendBy: 'none' });
+    const given = Math.round(parseFloat(f.given || '0') * 100);
+    void attempt(async () => {
+      const t = await merchant.createCashTender(order.id, { amountCents: partCents, tipCents, handedOverCents: given, idempotencyKey: payKey() });
+      setTender(t);
+      const o = await refresh(order.id);
+      set(o.remainingCents > 0 ? { screen: 'split', given: '', part: '' } : { screen: 'cashPaid', sendBy: 'none' });
+    });
+  };
+
+  /** Leaving: an order nothing was paid on is discarded, so its stock isn't held for nobody. */
+  const discardIfUnpaid = async (o: Order | null) => {
+    if (preview || !o || o.status === 'voided') return;
+    const ts = await merchant.tenders(o.id).catch(() => null);
+    if (ts && nothingTaken(ts)) await merchant.discardOrder(o.id).catch(() => undefined);
+  };
+  const release = () => discardIfUnpaid(order);
+  // However the screen is left (the nav bar, Back, another tab of the app), not only by its own
+  // buttons. Discarding is safe to repeat, so leaving by a button as well does no harm.
+  const orderRef = useRef<Order | null>(null);
+  orderRef.current = order;
+  useEffect(
+    () => () => {
+      void discardIfUnpaid(orderRef.current);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   // ---- The card reader ---------------------------------------------------------------------------
   // The reader service drives the card screen's four states: the installed app's plugin, a
@@ -405,8 +502,18 @@ export default function NewChargePage() {
   }, [f.sheet?.k]);
 
   // ---- Moving through --------------------------------------------------------------------------
-  const exit = () => navigate('/');
-  const again = () => setF({ ...BLANK });
+  const reset = () => {
+    setOrder(null);
+    setTenders([]);
+    setTender(null);
+    setPayError(null);
+  };
+  const exit = () => void release().then(() => navigate('/'));
+  const again = () =>
+    void release().then(() => {
+      reset();
+      setF({ ...BLANK });
+    });
   const addLine = (item: Item, picked: Record<string, string[]> = {}, qty = 1) => {
     const chosen = (item.options ?? [])
       .flatMap((g) => (picked[g.id] ?? []).map((id) => g.choices.find((c) => c.id === id)))
@@ -418,31 +525,37 @@ export default function NewChargePage() {
       const found = cur.lines.find((l) => l.key === key);
       const lines = found
         ? cur.lines.map((l) => (l.key === key ? { ...l, qty: l.qty + qty } : l))
-        : [...cur.lines, { key, itemId: item.id, name: item.name, chosen: chosen || undefined, qty, unitCents: unitPrice(item, picked), tax: item.tax, hasOptions: !!item.options }];
+        : [...cur.lines, { key, itemId: item.id, name: item.name, chosen: chosen || undefined, qty, unitCents: unitPrice(item, picked), tax: item.tax, hasOptions: !!item.options, optionIds: pickedOptionIds(item, picked) }];
       return { ...cur, lines, sheet: null };
     });
   };
   const setQty = (itemId: string, qty: number) =>
     setF((cur) => ({ ...cur, lines: qty <= 0 ? cur.lines.filter((l) => l.itemId !== itemId) : cur.lines.map((l) => (l.itemId === itemId ? { ...l, qty } : l)) }));
+  const tipsOn = preview || liveSettings.data?.tips.enabled !== false;
   const pick = (m: Method) => {
-    // A live shop has no tip to carry yet, so Clear goes straight to raising the charge.
-    if (!preview) {
-      if (m === 'clear') void raise();
-      return;
+    setPayError(null);
+    // The tip is asked first, on the customer's side, when the shop takes tips.
+    if (tipsOn) set({ method: m, screen: 'tip', tip: null });
+    else {
+      set({ method: m, tip: { kind: 'none' } });
+      afterTipFor(m);
     }
-    set({ method: m, screen: 'tip', tip: null });
   };
-  const afterTip = () => {
-    if (f.method === 'clear') void raise();
-    else if (f.method === 'card') setF((cur) => ({ ...cur, screen: 'card', reader: 'ready', run: cur.run + 1 }));
-    else if (f.method === 'cash') set({ screen: 'cash', given: '' });
-    else set({ screen: 'split', legs: [], legMethod: 'card' });
+  const afterTip = () => afterTipFor(f.method);
+  const afterTipFor = (method: Method | null) => {
+    if (method === 'clear') void raise();
+    else if (method === 'card') setF((cur) => ({ ...cur, screen: 'card', reader: 'ready', run: cur.run + 1 }));
+    else if (method === 'cash') set({ screen: 'cash', given: '' });
+    // The preview's split starts on card, as the reference draws it; live, cards come with step 5.
+    else set({ screen: 'split', legs: [], legMethod: preview ? 'card' : 'cash' });
   };
 
   // Tires usually go with mount and balance: suggested once, the count matched.
   const tires = f.lines.filter((l) => catalog.find((i) => i.id === l.itemId)?.thumb === 'tire').reduce((s, l) => s + l.qty, 0);
+  // The reference's item is `mount`; a live shop's is whatever its catalogue calls it.
+  const mountItem = catalog.find((i) => i.id === 'mount' || /^mount and balance$/i.test(i.name));
   const suggestion =
-    f.catalog === 'shop' && tires > 0 && !f.lines.some((l) => l.itemId === 'mount') && !f.suggested
+    f.catalog === 'shop' && mountItem && tires > 0 && !f.lines.some((l) => l.itemId === mountItem.id) && !f.suggested
       ? { t: 'Tires usually go with mount and balance', det: `${tires} × ${usd(2500)}, one per tire`, action: `Add ${tires}` }
       : null;
 
@@ -469,8 +582,9 @@ export default function NewChargePage() {
   );
 
   if (f.screen === 'start' || f.screen === 'cart') {
-    // A live shop has no catalog yet, so it starts with an amount and the switch is not offered.
-    const items = preview && f.mode === 'items';
+    // A shop with a catalogue starts with an amount or its items; one without, with an amount.
+    const hasItems = preview || shopItems.length > 0;
+    const items = hasItems && f.mode === 'items';
     if (phone) {
       main =
         items && f.screen === 'cart' ? (
@@ -480,7 +594,7 @@ export default function NewChargePage() {
             onQty={(l, n) => l.itemId && setQty(l.itemId, n)}
             onRemove={(l) => l.itemId && setQty(l.itemId, 0)}
             onBack={() => set({ screen: 'start' })}
-            onCheckout={() => set({ screen: 'checkout' })}
+            onCheckout={toCheckout}
           />
         ) : items ? (
           <PhoneItems
@@ -502,12 +616,12 @@ export default function NewChargePage() {
             fees={fees}
             recordedAgainst={who}
             onKey={(k) => setF((cur) => ({ ...cur, typed: typeAmount(cur.typed, k) }))}
-            onContinue={() => set({ screen: 'checkout' })}
+            onContinue={toCheckout}
             onExit={exit}
           />
         );
     } else {
-      top = preview ? (
+      top = hasItems ? (
         <StartTop mode={f.mode} onMode={(mode) => set({ mode })} onShift={me} onExit={exit} title={f.catalog === 'food' ? 'New order' : 'New charge'} />
       ) : (
         <FlowTop title="New charge" onExit={exit} onShift={me} />
@@ -543,10 +657,10 @@ export default function NewChargePage() {
               lines={f.lines}
               suggestion={suggestion}
               onAddSuggestion={() => {
-                addLine(catalog.find((i) => i.id === 'mount')!, {}, tires);
+                if (mountItem) addLine(mountItem, {}, tires);
                 set({ suggested: true });
               }}
-              onCheckout={() => set({ screen: 'checkout' })}
+              onCheckout={toCheckout}
               heading={f.catalog === 'food' ? 'Order 47' : undefined}
               headingDet={f.catalog === 'food' ? '“Sam”' : undefined}
               heroLabel={f.catalog === 'food' ? 'Total' : undefined}
@@ -562,7 +676,7 @@ export default function NewChargePage() {
               recordedAgainst={seesMoney(role) ? undefined : who}
               owner={seesMoney(role)}
               onKey={(k) => setF((cur) => ({ ...cur, typed: typeAmount(cur.typed, k) }))}
-              onContinue={() => set({ screen: 'checkout', lines: [] })}
+              onContinue={toCheckout}
             />
         );
       }
@@ -572,11 +686,25 @@ export default function NewChargePage() {
     main = (
       <CheckoutView
         body={body}
+        server={order ? totalsFromOrder(order) : null}
+        // Live, the card reader is step 5; until then the card tile is locked as the reference
+        // draws it before Stripe is connected.
         cardLocked={!preview || params.get('screen') === 'checkout-nostripe'}
-        unavailable={preview ? [] : ['cash', 'split']}
+        unavailable={
+          preview
+            ? []
+            : ([!liveSettings.data?.paymentMethods.cash && 'cash', !liveSettings.data?.paymentMethods.split && 'split'].filter(Boolean) as Method[])
+        }
         onEditCart={() => set({ screen: 'start' })}
         onDiscount={() => set({ sheet: { k: 'discount' } })}
-        onRemoveDiscount={() => set({ discount: null })}
+        onRemoveDiscount={() =>
+          preview || !order
+            ? set({ discount: null })
+            : void attempt(async () => {
+                setOrder(await merchant.removeDiscount(order.id));
+                set({ discount: null });
+              })
+        }
         onPick={pick}
       />
     );
@@ -587,7 +715,7 @@ export default function NewChargePage() {
         shop={shop}
         totalCents={baseCents}
         count={body.lines.length ? totals(body.lines).count : undefined}
-        presets={[500, 1000, 2000]}
+        presets={preview ? [500, 1000, 2000] : (liveSettings.data?.tips.presets ?? [500, 1000, 2000])}
         tip={f.tip}
         onTip={(tip) => set({ tip })}
         onContinue={afterTip}
@@ -639,6 +767,8 @@ export default function NewChargePage() {
     );
   } else if (f.screen === 'waiting' || f.screen === 'approved') {
     const approved = f.screen === 'approved';
+    // Live, the payment's own amount: once it's approved nothing is owed, so "due" would read $0.00.
+    const shownCents = !preview && tender?.method === 'clear' ? tender.amountCents + tender.tipCents : dueCents;
     const s: ChargeState = preview
       ? approved
         ? { ...DANA_OK, raisedBy: me }
@@ -646,16 +776,16 @@ export default function NewChargePage() {
       : {
           code: f.code,
           raisedBy: me,
-          amountCents: dueCents,
+          amountCents: shownCents,
           status: approved ? 'approved' : 'waiting',
-          howPaid: approved && live?.splitInto ? `${live.splitInto} payments of ${usd(exampleSplit(dueCents).each)}` : undefined,
+          howPaid: approved && live?.splitInto ? `${live.splitInto} payments of ${usd(exampleSplit(shownCents).each)}` : undefined,
           steps: [
             { t: 'Raised', det: raisedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', ''), state: 'd' },
             { t: 'Opened', det: live?.openedAt ? new Date(live.openedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') : 'Not yet', state: approved || live?.openedAt ? 'd' : 'on' },
             { t: 'Approved', det: approved ? 'Just now' : 'Any time today', state: approved ? 'd' : live?.openedAt ? 'on' : '' },
           ],
         };
-    const fee = fees ? { label: `Fee · ${fees.over ?? fees.now}%${fees.over ? ', over time' : ''}`, cents: Math.round((dueCents * (fees.over ?? fees.now)) / 100) } : undefined;
+    const fee = fees ? { label: `Fee · ${fees.over ?? fees.now}%${fees.over ? ', over time' : ''}`, cents: Math.round((shownCents * (fees.over ?? fees.now)) / 100) } : undefined;
     const reached = preview
       ? ([
           { how: 'Text', status: 'Delivered', at: '12:16pm' },
@@ -666,7 +796,7 @@ export default function NewChargePage() {
         ? ([{ how: 'App', status: 'Opened', at: new Date(live.openedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] as const)
         : [];
     const cancel = async () => {
-      if (!preview && f.code) await api.cancelCharge(f.code).catch(() => undefined);
+      if (!preview && tender) await merchant.cancelTender(tender.id).catch(() => undefined);
       exit();
     };
     if (phone) {
@@ -734,15 +864,17 @@ export default function NewChargePage() {
           givenCents={given}
           onKey={(k) => setF((cur) => ({ ...cur, given: typeAmount(cur.given, k) }))}
           onQuick={(c) => set({ given: (c / 100).toFixed(2) })}
-          onTake={() => set({ screen: 'cashPaid', sendBy: 'none' })}
+          onTake={takeCash}
         />
     );
   } else if (f.screen === 'cashPaid') {
-    top = flowTop(`Cash · ${usd(dueCents)}`);
-    const given = Math.round(parseFloat(f.given || '0') * 100);
+    // Live, what the server took and the change it worked out.
+    const paidCents = tender && tender.method === 'cash' ? tender.amountCents + tender.tipCents : dueCents;
+    top = flowTop(`Cash · ${usd(paidCents)}`);
+    const given = tender && tender.method === 'cash' ? (tender.handedOverCents ?? paidCents) : Math.round(parseFloat(f.given || '0') * 100);
     main = (
       <CashPaidView
-        dueCents={dueCents}
+        dueCents={paidCents}
         givenCents={given}
         at={preview ? '4:41pm' : nowTime()}
         receipt={<ReceiptGroups icons={false} by={f.sendBy} onBy={(sendBy) => set({ sendBy })} none="No number for this customer" onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />}
@@ -752,15 +884,34 @@ export default function NewChargePage() {
     );
   } else if (f.screen === 'split') {
     top = flowTop(`Split · ${usd(dueCents)}`);
-    const paid = f.legs.filter((l) => l.state === 'paid').reduce((s, l) => s + l.amountCents, 0);
-    const declined = f.legs.some((l) => l.state === 'declined');
-    const legs: Leg[] = declined ? f.legs : [...f.legs, { method: f.legMethod, amountCents: dueCents - paid, det: 'Choose below', state: 'next' }];
+    // Live, the parts are the order's tenders and what's left is the server's.
+    const done: Leg[] = preview ? f.legs : legsFromTenders(tenders);
+    // The parts count toward the order's total; a tip rides on top of the first part it's paid with.
+    const total = preview ? dueCents : (order?.totalCents ?? 0);
+    const paid = done.filter((l) => l.state === 'paid').reduce((s, l) => s + l.amountCents, 0);
+    const declined = preview && f.legs.some((l) => l.state === 'declined');
+    const next = preview ? dueCents - paid : partCents;
+    const legs: Leg[] = declined ? done : [...done, { method: f.legMethod, amountCents: next, det: 'Choose below', state: 'next' }];
+    const chargeLeg = () => {
+      if (preview) return set({ screen: f.legMethod === 'card' ? 'card' : f.legMethod === 'cash' ? 'cash' : 'code', code: '8QK2' });
+      if (f.legMethod === 'cash') return set({ screen: 'cash', given: '' });
+      if (f.legMethod === 'clear') return void raise();
+      setPayError('Cards aren’t switched on in the app yet. Take this part by Clear or cash.');
+    };
     main = declined ? (
       <div className="c-slab c-one">
-        <SplitLegsCell totalCents={dueCents} legs={legs} />
+        <SplitLegsCell totalCents={total} legs={legs} />
       </div>
     ) : (
-      <SplitView totalCents={dueCents} legs={legs} nextCents={dueCents - paid} method={f.legMethod} onMethod={(legMethod) => set({ legMethod })} onCharge={() => set({ screen: f.legMethod === 'card' ? 'card' : f.legMethod === 'cash' ? 'cash' : 'code', code: '8QK2' })} />
+      <SplitView
+        totalCents={total}
+        legs={legs}
+        nextCents={next}
+        method={f.legMethod}
+        onMethod={(legMethod) => set({ legMethod })}
+        onCharge={chargeLeg}
+        {...(preview ? {} : { typed: f.part, onAmount: (part: string) => set({ part }) })}
+      />
     );
   }
 
@@ -789,16 +940,54 @@ export default function NewChargePage() {
       <DiscountSheet
         lines={body.lines}
         limitPercent={role === 'owner' ? null : role === 'manager' ? 25 : 10}
-        check={(c) => CODES[c] ?? null}
+        check={(c) => (preview ? (CODES[c] ?? null) : codeCheck(liveCodes.data ?? [], c))}
+        askPin={!preview}
         initialMode={sh.mode}
         initialCode={sh.code}
         initialValue={sh.value}
         pinFilled={sh.pin}
-        onApply={(discount) => set({ discount, sheet: null })}
+        onApply={(discount, pin) =>
+          preview || !order
+            ? set({ discount, sheet: null })
+            : void attempt(async () => {
+                const o = await merchant.applyDiscount(
+                  order.id,
+                  discount.code
+                    ? { kind: 'code', code: discount.code }
+                    : {
+                        kind: 'manual',
+                        percent: discount.percent !== undefined ? Math.max(1, Math.round(discount.percent)) : null,
+                        amountCents: discount.percent === undefined ? (discount.amountCents ?? null) : null,
+                        reason: discount.reason ?? 'Other',
+                        approverPin: pin,
+                      },
+                );
+                setOrder(o);
+                set({ discount: { ...discount, label: o.discount?.label ?? discount.label }, sheet: null });
+              })
+        }
         onClose={close}
       />
     ) : sh?.k === 'send' ? (
-      <SendReceiptSheet shop={shop} totalCents={dueCents} card="Visa ending 4242" date="Sep 22" link="useclear.org/r/8QK2" initialBy={sh.by} initialTo={sh.to} onSend={close} onClose={close} />
+      <SendReceiptSheet
+        shop={shop}
+        totalCents={preview ? dueCents : tender ? tender.amountCents + tender.tipCents : dueCents}
+        card={preview ? 'Visa ending 4242' : tender?.method === 'card' ? cardName(tender) : tender?.method === 'cash' ? 'Cash' : 'Clear'}
+        date={preview ? 'Sep 22' : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+        link={preview ? 'useclear.org/r/8QK2' : 'a link to the receipt'}
+        initialBy={sh.by}
+        initialTo={sh.to}
+        onSend={
+          preview || !order
+            ? close
+            : (by, to) =>
+                void attempt(async () => {
+                  await merchant.sendReceipt(order.id, { by, to });
+                  close();
+                })
+        }
+        onClose={close}
+      />
     ) : sh?.k === 'print' ? (
       <PrintReceiptSheet
         printer={sh.printer}
@@ -852,9 +1041,14 @@ export default function NewChargePage() {
     <div className={cx('c-app c-mc-tablet', phone && 'c-mc-page', FRAME[f.screen === 'start' && f.mode === 'items' ? 'items' : f.screen])}>
       {top}
       <OneColumn.Provider value={one}>{main}</OneColumn.Provider>
-      {raiseError && (
+      {(raiseError || payError) && (
         <p className="c-det" role="alert" style={{ color: 'var(--absent)', marginTop: 'var(--s2)' }}>
-          {raiseError}
+          {raiseError ?? payError}
+        </p>
+      )}
+      {busy && (
+        <p className="c-det" aria-live="polite" style={{ marginTop: 'var(--s2)' }}>
+          One moment&hellip;
         </p>
       )}
       {raising && (

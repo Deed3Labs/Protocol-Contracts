@@ -65,6 +65,7 @@ export function realMerchantApi(request: Transport): MerchantApi {
     applyDiscount: (orderId, input) => post(`/orders/${id(orderId)}/discount`, input),
     removeDiscount: (orderId) => send('DELETE', `/orders/${id(orderId)}/discount`),
     voidOrder: (orderId, input) => post(`/orders/${id(orderId)}/void`, input),
+    discardOrder: (orderId) => post(`/orders/${id(orderId)}/discard`),
 
     // ---- Tenders
     tenders: (orderId) => get(`/orders/${id(orderId)}/tenders`),

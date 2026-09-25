@@ -108,7 +108,9 @@ describe('cancelling a charge actually cancels it', () => {
     const detail = readApp('pages/ChargeDetailPage.tsx');
     const raise = readApp('pages/NewChargePage.tsx');
     expect(detail).toContain('api.cancelCharge');
-    expect(raise).toContain('api.cancelCharge');
+    // New Charge raises Clear as a tender on the order (UI Phase 6): cancelling withdraws that
+    // tender, which withdraws its Clear charge on the server (payments.ts cancelClearTender).
+    expect(raise).toContain('merchant.cancelTender(tender.id)');
     // The shape that was wrong: a bare navigate as the entire handler.
     expect(detail).not.toMatch(/onClick=\{\(\) => navigate\('\/charges'\)\}[\s\S]{0,80}Cancel charge/);
     expect(raise).not.toContain("onCancel={() => navigate('/')}");

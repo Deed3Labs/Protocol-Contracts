@@ -152,6 +152,8 @@ try {
     await check('voidOrder', C.Order, () => jen.voidOrder(w.id, { pin: PINS.manager }));
   } else ['createCardTender', 'presentTender', 'syncTender', 'adjustTip', 'cancelTender', 'voidOrder'].forEach((m) => skip(m, 'no Stripe test key'));
   await check('receipt', C.Receipt, () => jen.receipt(o.id));
+  const walked = await jen.createOrder({ lines: [labour('Walked away', 2000)], customer: null });
+  await check('discardOrder', C.Order, () => jen.discardOrder(walked.id));
   await check('sendReceipt', null, () => jen.sendReceipt(o.id, { by: 'none', to: null }));
 
   // ---- Counting and closing: the counts disagree, one recounts, they agree $1 short, it's signed off.
