@@ -21,7 +21,8 @@
     "lithic:verify-step8": "node scripts/lithic-verify-step8.mjs",
     "lithic:verify-asa": "node scripts/lithic-verify-asa.mjs",
     "e2e:live": "bun e2e/live.ts",
-    "e2e:contract": "bun e2e/contract.ts"
+    "e2e:contract": "bun e2e/contract.ts",
+    "e2e:staff": "bun e2e/staff.ts"
   },
   "dependencies": {
     "@clear/domain": "file:../../packages/domain",

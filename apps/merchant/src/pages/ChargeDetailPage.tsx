@@ -2,16 +2,18 @@ import { useContext, useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { canAuthoriseRefund, canTransition, CHARGE_LABEL, refundQuote, splitQuote, toCents } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
-import { OneColumn, cx } from '@/brand/ui';
+import { OneColumn, cx, useDigitKeys } from '@/brand/ui';
 import { PhoneBack } from '@/charge/phone';
 import { api, type MerchantCharge } from '@/data/apiClient';
-import { useApi } from '@/data/useApi';
+import { errorSentence, useApi } from '@/data/useApi';
 import { STUB_MERCHANT } from '@/data/stubs';
 import { clockTime, firstName, usd } from '@/home/model';
 import { useLayout } from '@/lib/useBreakpoint';
 import { FlowTop, roleLabel } from '@/shell/chrome';
 import { useShiftActions } from '@/shell/shiftActions';
-import { CARD_SALE, MARCUS, MARCUS_DETAIL, SPLIT_SALE, type ClearDetail, type Sale } from '@/charges/model';
+import type { OrderWithTenders } from '@clear/merchant-contracts';
+import { CARD_SALE, MARCUS, MARCUS_DETAIL, SPLIT_SALE, saleFromOrder, type ClearDetail, type Sale } from '@/charges/model';
+import { useMerchantApi } from '@/data/merchantApi';
 import {
   ChoseCell,
   GoodsRefundSheet,
@@ -28,6 +30,7 @@ import {
   VoidSheet,
   type Person,
   type Quote,
+  ManagerPinSheet,
 } from '@/charges/views';
 
 /**
@@ -43,7 +46,10 @@ import {
  * is. The writer sees what the customer gets back; the owner sees what it does to their payout.
  * Both come from one `refundQuote`, so they cannot drift apart.
  *
- * Card, cash and split sales, and void and tip, have no backend yet: the preview's
+ * A card, cash or split sale opens by its order id: what was sold and how it was paid. The same
+ * day, before a card on it is captured, it can be voided (a manager's PIN) and a card's tip
+ * adjusted; once money is taken, goods can be refunded, the card first and then cash, back into
+ * stock or not, with a manager's PIN when a counter shift asks. The preview's reference sales are
  * `/charges/split` and `/charges/card`. Frames: `?preview=1&screen=counter|refund|waiting|approve|
  * refunded|declined` on /charges/marcus, `refund-goods` on /charges/split, `void|tip` on
  * /charges/card.
@@ -104,6 +110,24 @@ export default function ChargeDetailPage() {
 
   const charge = (charges ?? []).find((c) => c.code === id);
 
+  // Not a Clear charge: a card, cash or split sale, by its order id.
+  const merchant = useMerchantApi();
+  const lookForSale = !preview && !loading && !charge;
+  const order = useApi<OrderWithTenders | null>(
+    () => (lookForSale ? Promise.all([merchant.order(id), merchant.tenders(id)]).then(([o, tenders]) => ({ ...o, tenders })) : Promise.resolve(null)),
+    [lookForSale, id],
+  );
+  const people = useApi(() => (preview ? Promise.resolve(null) : api.roster()), [preview]);
+  const nameOf = (staffId: string) => people.data?.find((p) => p.id === staffId)?.name ?? '—';
+  const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const liveSale = order.data ? saleFromOrder(order.data, nameOf, localDay()) : null;
+  // A void's PIN, or a counter shift's refund waiting on a manager's.
+  const [pin, setPin] = useState('');
+  const [pinFor, setPinFor] = useState<string[] | null>(null);
+  const [saleBusy, setSaleBusy] = useState(false);
+  const [saleError, setSaleError] = useState<string | null>(null);
+
+
   const [step, setStep] = useState<Step>(() => {
     if (screen === 'refund') return 'review';
     if (screen === 'waiting') return 'waiting';
@@ -115,6 +139,10 @@ export default function ChargeDetailPage() {
   const [sheet, setSheet] = useState<'goods' | 'void' | 'tip' | null>(
     screen === 'refund-goods' ? 'goods' : screen === 'void' ? 'void' : screen === 'tip' ? 'tip' : null,
   );
+  const pinOpen = !preview && (sheet === 'void' || pinFor !== null);
+  const digit = (d: string) => (setSaleError(null), setPin((p) => (p.length >= 4 ? p : p + d)));
+  const undigit = () => setPin((p) => p.slice(0, -1));
+  useDigitKeys(pinOpen && !saleBusy, digit, undigit);
   const [refundId, setRefundId] = useState<string | null>(null);
   const [requestedAt, setRequestedAt] = useState(preview ? '2:31pm' : '');
   const [requester, setRequester] = useState<string>(preview ? 'Jen R.' : me);
@@ -138,7 +166,7 @@ export default function ChargeDetailPage() {
   }, [openRefund, refundId, pathname]);
 
   // ---- What this page shows ------------------------------------------------------------------------
-  const sale: Sale | null = preview ? (id === 'split' ? SPLIT_SALE : id === 'card' ? CARD_SALE : null) : null;
+  const sale: Sale | null = preview ? (id === 'split' ? SPLIT_SALE : id === 'card' ? CARD_SALE : null) : liveSale;
   const counterView = screen === 'counter' || (!preview && !canSeeMoney);
 
   let name: string;
@@ -158,7 +186,8 @@ export default function ChargeDetailPage() {
     raisedBy = 'You, at 11:02am';
   } else {
     if (loading && !charge) return null;
-    if (!charge) return <Navigate to="/charges" replace />;
+    // Not a Clear charge: wait for its order, and go back to the list only once it isn't one either.
+    if (!charge) return lookForSale && !order.error ? null : <Navigate to={`/charges${q}`} replace />;
     live = charge;
     name = charge.memberName ?? 'A customer';
     amountCents = toCents(charge.amount);
@@ -321,10 +350,82 @@ export default function ChargeDetailPage() {
     </button>
   ) : undefined;
 
+  // ---- A live sale's actions ------------------------------------------------------------------------
+  const o = order.data;
+  const by = o ? firstName(nameOf(o.raisedBy)) : '';
+  const authorisedCard = o?.tenders.find((t) => t.method === 'card' && t.status === 'authorised');
+  const openSheet = (k: 'goods' | 'void' | 'tip') => (setPin(''), setSaleError(null), setSheet(k));
+  const endSheet = () => (setSheet(null), setPinFor(null), setPin(''), setSaleError(null));
+  async function act(fn: () => Promise<unknown>) {
+    setSaleBusy(true);
+    setSaleError(null);
+    try {
+      await fn();
+      endSheet();
+      order.reload();
+    } catch (e) {
+      setPin('');
+      setSaleError(errorSentence(e));
+    } finally {
+      setSaleBusy(false);
+    }
+  }
+  /**
+   * Refund goods: the money goes back the way it came, the card first, then cash from the drawer,
+   * one refund per tender (the items ride on the first). A manager's or owner's own request is
+   * approved as it's made; a counter shift's waits for a manager's PIN.
+   */
+  async function refundGoods(returned: { index: number; quantity: number; backInStock: boolean; cents: number }[]) {
+    if (!o) return;
+    let left = returned.reduce((s, r) => s + r.cents, 0);
+    const items = returned.map((r) => ({ orderLineId: o.lines[r.index]!.id, quantity: r.quantity, backInStock: r.backInStock }));
+    const order_ = [...o.tenders.filter((t) => t.method === 'card'), ...o.tenders.filter((t) => t.method === 'cash')].filter((t) =>
+      ['captured', 'approved', 'partly_refunded'].includes(t.status),
+    );
+    setSaleBusy(true);
+    setSaleError(null);
+    try {
+      const waiting: string[] = [];
+      for (const [i, t] of order_.entries()) {
+        const cents = Math.min(left, t.amountCents + t.tipCents - t.refundedCents);
+        if (cents <= 0) continue;
+        const r = await merchant.requestRefund({ tenderId: t.id, amountCents: cents, items: i === 0 ? items : [], reason: null, idempotencyKey: crypto.randomUUID() });
+        if (r.status === 'requested') waiting.push(r.id);
+        left -= cents;
+      }
+      if (waiting.length) {
+        setPin('');
+        setPinFor(waiting);
+        setSheet(null);
+      } else {
+        endSheet();
+        order.reload();
+      }
+    } catch (e) {
+      setSaleError(errorSentence(e));
+    } finally {
+      setSaleBusy(false);
+    }
+  }
+  const returnLines =
+    o?.lines.map((l) => ({
+      t: `${l.quantity} × ${l.name}`,
+      det: l.taxKind === 'labour' ? 'Labour, already done' : `${usd(l.unitCents)} each${l.taxCents && !o.taxIncluded ? ' + tax' : ''}`,
+      cents: l.lineCents - l.discountCents + (o.taxIncluded ? 0 : l.taxCents),
+      labour: l.taxKind === 'labour',
+      stock: l.taxKind !== 'labour',
+      quantity: l.quantity,
+    })) ?? [];
+
   const cells = sale ? (
     <>
       <SoldCell s={sale} />
-      <PaidHowCell s={sale} onRefund={() => setSheet('goods')} onVoid={() => setSheet('void')} onTip={() => setSheet('tip')} />
+      <PaidHowCell
+        s={sale}
+        onRefund={preview || o?.tenders.some((t) => ['captured', 'approved', 'partly_refunded'].includes(t.status) && t.method !== 'clear') ? () => openSheet('goods') : undefined}
+        onVoid={() => openSheet('void')}
+        onTip={preview || authorisedCard ? () => openSheet('tip') : undefined}
+      />
     </>
   ) : (
     <>
@@ -367,17 +468,67 @@ export default function ChargeDetailPage() {
       {sale && sheet === 'goods' && (
         <GoodsRefundSheet
           s={sale}
-          lines={[
-            { t: '1 × Goodyear Assurance', det: '$162.00 + $3.00 disposal + tax', cents: 17779, stock: true },
-            { t: '1 × Mount and balance', det: 'Labour, already done', cents: 2500, labour: true },
-            { t: '1 × Tire rotation', det: 'Labour, already done', cents: 2500, labour: true },
-          ]}
-          onSend={() => setSheet(null)}
-          onClose={() => setSheet(null)}
+          lines={
+            preview
+              ? [
+                  { t: '1 × Goodyear Assurance', det: '$162.00 + $3.00 disposal + tax', cents: 17779, stock: true },
+                  { t: '1 × Mount and balance', det: 'Labour, already done', cents: 2500, labour: true },
+                  { t: '1 × Tire rotation', det: 'Labour, already done', cents: 2500, labour: true },
+                ]
+              : returnLines
+          }
+          busy={saleBusy}
+          error={saleError}
+          onSend={preview ? () => setSheet(null) : (returned) => void refundGoods(returned)}
+          onClose={endSheet}
         />
       )}
-      {sale && sheet === 'void' && <VoidSheet s={sale} by="Jen" manager="Luis" filled={3} onKeep={() => setSheet(null)} onVoid={() => setSheet(null)} />}
-      {sale && sheet === 'tip' && <TipSheet s={sale} by="Jen" initial={1500} onSave={() => setSheet(null)} onClose={() => setSheet(null)} />}
+      {sale && sheet === 'void' &&
+        (preview ? (
+          <VoidSheet s={sale} by="Jen" manager="Luis" filled={3} onKeep={() => setSheet(null)} onVoid={() => setSheet(null)} />
+        ) : (
+          <VoidSheet
+            s={sale}
+            by={by}
+            manager="A manager"
+            filled={pin.length}
+            busy={saleBusy}
+            error={saleError}
+            onDigit={digit}
+            onDelete={undigit}
+            onKeep={endSheet}
+            onVoid={() => void act(() => merchant.voidOrder(o!.id, { pin }))}
+          />
+        ))}
+      {sale && sheet === 'tip' &&
+        (preview ? (
+          <TipSheet s={sale} by="Jen" initial={1500} onSave={() => setSheet(null)} onClose={() => setSheet(null)} />
+        ) : (
+          <TipSheet
+            s={sale}
+            by={by}
+            initial={authorisedCard?.tipCents ?? 0}
+            busy={saleBusy}
+            error={saleError}
+            onSave={(tipCents) => void act(() => merchant.adjustTip(authorisedCard!.id, { tipCents }))}
+            onClose={endSheet}
+          />
+        ))}
+      {pinFor && sale && (
+        <ManagerPinSheet
+          title="A manager approves this refund"
+          body={<>Nothing goes back to the customer until a manager or the owner approves. {sale.name} · {usd(sale.totalCents)}</>}
+          filled={pin.length}
+          busy={saleBusy}
+          error={saleError}
+          onDigit={digit}
+          onDelete={undigit}
+          onCancel={endSheet}
+          onApprove={() => void act(async () => {
+            for (const refundId of pinFor) await merchant.decideRefund(refundId, { decision: 'approve', pin });
+          })}
+        />
+      )}
     </>
   );
 

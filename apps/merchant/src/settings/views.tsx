@@ -665,7 +665,181 @@ export function ConfirmLeaveSheet({
   );
 }
 
-export function NewCodeSheet({ onCreate, onClose }: { onCreate?: () => void; onClose: () => void }) {
+/** What a new code is, as the form has it: the API's DiscountCode less its id and uses. */
+export interface NewCode {
+  code: string;
+  percent: number | null;
+  amountCents: number | null;
+  appliesTo: { all: true } | { categories: string[] };
+  startsAt: string | null;
+  endsAt: string | null;
+  oncePerCustomer: boolean;
+}
+
+/**
+ * A new discount code. On a live shop (`onCreate` takes the code) every field is entered: the code,
+ * a percent or an amount, the whole charge or the shop's categories, optional dates, and once per
+ * customer. The preview draws the reference's example.
+ */
+export function NewCodeSheet({
+  onCreate,
+  onDone,
+  onClose,
+  categories,
+  busy,
+  error,
+}: {
+  onCreate?: (c: NewCode) => void;
+  /** The preview's Create, which only closes the sheet. */
+  onDone?: () => void;
+  onClose: () => void;
+  /** The shop's item categories; given, the sheet is the live form. */
+  categories?: string[];
+  busy?: boolean;
+  error?: string | null;
+}) {
+  if (categories && onCreate) return <NewCodeForm categories={categories} onCreate={onCreate} onClose={onClose} busy={busy} error={error} />;
+  return <NewCodeReference onCreate={onDone} onClose={onClose} />;
+}
+
+function NewCodeForm({ categories, onCreate, onClose, busy, error }: { categories: string[]; onCreate: (c: NewCode) => void; onClose: () => void; busy?: boolean; error?: string | null }) {
+  const [code, setCode] = useState('');
+  const [pct, setPct] = useState(true);
+  const [value, setValue] = useState('');
+  const [on, setOn] = useState(0);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [once, setOnce] = useState(false);
+  const n = parseFloat(value.replace(/[^0-9.]/g, ''));
+  const ok = code.length >= 2 && Number.isFinite(n) && n > 0 && (!pct || n <= 100);
+  const day = (d: string, end: boolean) => (d ? new Date(`${d}T${end ? '23:59:59' : '00:00:00'}`).toISOString() : null);
+  const create = () =>
+    onCreate({
+      code,
+      percent: pct ? Math.round(n) : null,
+      amountCents: pct ? null : Math.round(n * 100),
+      appliesTo: on === 0 ? { all: true } : { categories: [categories[on - 1]!] },
+      startsAt: day(from, false),
+      endsAt: day(to, true),
+      oncePerCustomer: once,
+    });
+  return (
+    <Sheet
+      className="c-st-sheet"
+      title="New discount code"
+      onClose={onClose}
+      foot={
+        <>
+          {error && (
+            <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: '0 0 var(--s1)' }}>
+              {error}
+            </p>
+          )}
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ width: '100%' }} disabled={!ok || busy} onClick={create}>
+            {busy ? 'Creating…' : code ? `Create ${code}` : 'Create'}
+          </button>
+        </>
+      }
+    >
+      <p className="c-label c-st-fl" style={{ marginTop: 0 }}>
+        Code
+      </p>
+      <input className="c-field c-st-in" aria-label="Code" placeholder="WINTER15" value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 24))} />
+      <p className="c-label c-st-fl">Takes off</p>
+      <div className="c-st-two">
+        <div className="c-st-seg" role="radiogroup" aria-label="Takes off">
+          <b className={pct ? 'c-on' : undefined} role="radio" aria-checked={pct} tabIndex={0} onKeyDown={clickOnKey} onClick={() => setPct(true)}>
+            %
+          </b>
+          <b className={pct ? undefined : 'c-on'} role="radio" aria-checked={!pct} tabIndex={0} onKeyDown={clickOnKey} onClick={() => setPct(false)}>
+            $
+          </b>
+        </div>
+        <input className="c-field c-st-in" inputMode="decimal" aria-label={pct ? 'Percent off' : 'Dollars off'} placeholder={pct ? '15' : '15.00'} value={value} onChange={(e) => setValue(e.target.value)} />
+      </div>
+      <p className="c-label c-st-fl">On</p>
+      <Chips options={['The whole charge', ...categories]} value={on} onPick={setOn} />
+      <p className="c-label c-st-fl">Runs</p>
+      <div className="c-st-two">
+        <input className="c-field c-st-in" type="date" aria-label="From" value={from} onChange={(e) => setFrom(e.target.value)} />
+        <input className="c-field c-st-in" type="date" aria-label="Until" value={to} onChange={(e) => setTo(e.target.value)} />
+      </div>
+      <Rows style={{ marginTop: 'var(--s2)' }}>
+        <Switch t="Once per customer" det="Checked by their phone number or Clear account" on={once} onChange={setOnce} />
+      </Rows>
+    </Sheet>
+  );
+}
+
+/**
+ * An amount a setting holds: starting cash in dollars, a discount limit or a tip in percent or
+ * dollars. Saved as typed; the page turns it into the settings patch.
+ */
+export function AmountSheet({
+  title,
+  det,
+  unit,
+  initial,
+  max,
+  onSave,
+  onRemove,
+  onClose,
+  busy,
+  error,
+}: {
+  title: string;
+  det: string;
+  unit: '$' | '%';
+  /** Cents for $, whole percents for %. */
+  initial: number | null;
+  max?: number;
+  onSave: (value: number) => void;
+  onRemove?: () => void;
+  onClose: () => void;
+  busy?: boolean;
+  error?: string | null;
+}) {
+  const [v, setV] = useState(initial === null ? '' : unit === '$' ? (initial / 100).toFixed(2) : String(initial));
+  const n = parseFloat(v.replace(/[^0-9.]/g, ''));
+  const value = unit === '$' ? Math.round(n * 100) : Math.round(n);
+  const ok = Number.isFinite(n) && n >= 0 && (max === undefined || value <= max);
+  return (
+    <Sheet
+      className="c-st-sheet"
+      title={title}
+      onClose={onClose}
+      foot={
+        <>
+          {error && (
+            <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: '0 0 var(--s1)' }}>
+              {error}
+            </p>
+          )}
+          <div className="c-pair">
+            {onRemove && (
+              <button type="button" className="c-btn" disabled={busy} onClick={onRemove}>
+                Remove
+              </button>
+            )}
+            <button type="button" className="c-btn c-btn-primary" disabled={!ok || busy} onClick={() => onSave(value)}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </>
+      }
+    >
+      <p className="c-det" style={{ marginTop: 0 }}>
+        {det}
+      </p>
+      <div className="c-st-two" style={{ marginTop: 'var(--s2)', alignItems: 'center' }}>
+        <input className="c-field c-st-in" inputMode="decimal" aria-label={title} value={v} autoFocus onChange={(e) => setV(e.target.value)} />
+        <span className="c-det">{unit === '$' ? 'dollars' : 'percent'}</span>
+      </div>
+    </Sheet>
+  );
+}
+
+function NewCodeReference({ onCreate, onClose }: { onCreate?: () => void; onClose: () => void }) {
   const [code, setCode] = useState('WINTER15');
   const [pct, setPct] = useState(true);
   return (

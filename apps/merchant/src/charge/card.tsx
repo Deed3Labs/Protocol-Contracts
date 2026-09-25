@@ -284,6 +284,15 @@ export function ReceiptGroups({
         </div>
         <p className="c-det">
           {by === 'none' ? (none ?? 'No receipt sent') : to ? `To ${to}` : 'Asks where to send it'}
+          {by !== 'none' && !to && onChange && (
+            <>
+              {' '}
+              &middot;{' '}
+              <button type="button" className="c-ci-link" onClick={onChange}>
+                Add
+              </button>
+            </>
+          )}
           {by !== 'none' && to && (
             <>
               {' '}
@@ -407,9 +416,18 @@ export function PrintReceiptSheet({
   onRetry,
   onClose,
   inline,
+  system,
+  loading,
 }: {
   slip: Slip;
   printer: 'ready' | 'offline';
+  /**
+   * Printing through the device's own print dialog (AirPrint, the Android print service): the app
+   * can't see a printer's status, so the sheet says where it prints rather than "Ready".
+   */
+  system?: boolean;
+  /** The receipt is still being read: Print waits for it. */
+  loading?: boolean;
   initialCopies?: number;
   onPrint?: (copies: number) => void;
   onSendInstead?: () => void;
@@ -428,8 +446,8 @@ export function PrintReceiptSheet({
       onClose={onClose}
       foot={
         ready ? (
-          <button type="button" className="c-btn c-btn-primary c-btn-lg" onClick={() => onPrint?.(copies)}>
-            Print {copies} {copies === 1 ? 'copy' : 'copies'}
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={loading} onClick={() => onPrint?.(copies)}>
+            {loading ? 'Getting the receipt…' : `Print ${copies} ${copies === 1 ? 'copy' : 'copies'}`}
           </button>
         ) : (
           <div className="c-pair">
@@ -448,10 +466,12 @@ export function PrintReceiptSheet({
           <IconPrint />
         </span>
         <div>
-          <p className="c-t">{ready ? 'Counter printer' : 'No printer found'}</p>
-          <p className="c-det">{ready ? 'Receipt paper, 80mm' : 'Turn it on, or connect one in Settings, Devices'}</p>
+          <p className="c-t">{system ? 'This tablet’s printer' : ready ? 'Counter printer' : 'No printer found'}</p>
+          <p className="c-det">
+            {system ? 'Opens the print dialog: AirPrint, or a printer the tablet can reach. Receipt paper, 80mm' : ready ? 'Receipt paper, 80mm' : 'Turn it on, or connect one in Settings, Devices'}
+          </p>
         </div>
-        {ready ? (
+        {system ? null : ready ? (
           <Chip tone="settled" dot>
             Ready
           </Chip>

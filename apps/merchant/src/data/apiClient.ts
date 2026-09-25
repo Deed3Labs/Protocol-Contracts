@@ -145,8 +145,8 @@ export const api = {
    * Names and roles only, and reachable before anyone has signed in — the screen exists so a
    * writer picks their own name rather than remembering which of four codes is theirs.
    */
-  async roster(): Promise<{ id: string; name: string; role: StaffRole }[]> {
-    const res = await request<{ staff: { id: string; name: string; role: StaffRole }[] }>(
+  async roster(): Promise<{ id: string; name: string; role: StaffRole; pinSet: boolean }[]> {
+    const res = await request<{ staff: { id: string; name: string; role: StaffRole; pinSet: boolean }[] }>(
       '/api/merchant/roster',
       { method: 'POST', body: '{}' },
     );
@@ -164,6 +164,19 @@ export const api = {
     const res = await request<SessionResponse>('/api/merchant/session', {
       method: 'POST',
       body: JSON.stringify(input),
+    });
+    if (res.token) storeToken(res.token);
+    return res;
+  },
+
+  /**
+   * A first shift: the person picks their four digits and their shift starts. Only while their PIN
+   * isn't set; a PIN somebody else at the shop has is refused (409).
+   */
+  async firstShift(input: { staffId: string; pin: string }): Promise<SessionResponse> {
+    const res = await request<SessionResponse>(`/api/merchant/staff/${encodeURIComponent(input.staffId)}/first-pin`, {
+      method: 'POST',
+      body: JSON.stringify({ pin: input.pin }),
     });
     if (res.token) storeToken(res.token);
     return res;
@@ -552,6 +565,16 @@ export const api = {
     return request('/api/merchant/staff', { method: 'POST', body: JSON.stringify(input) });
   },
 
+  /** Clear somebody's PIN (they pick a new one next shift). The one resetting confirms with their own PIN. */
+  async resetPin(staffId: string, approverPin: string): Promise<void> {
+    await request(`/api/merchant/staff/${encodeURIComponent(staffId)}/reset-pin`, { method: 'POST', body: JSON.stringify({ approverPin }) });
+  },
+
+  /** Take somebody off the tablet. Their charges keep their name. */
+  async removeStaff(staffId: string): Promise<void> {
+    await request(`/api/merchant/staff/${encodeURIComponent(staffId)}`, { method: 'DELETE' });
+  },
+
   async profile(): Promise<MerchantProfile> {
     return request('/api/merchant/profile');
   },
@@ -654,6 +677,8 @@ export interface StaffMember {
   name: string;
   role: StaffRole;
   active: boolean;
+  /** False until they pick their PIN on their first shift. */
+  pinSet: boolean;
   chargesThisMonth: number;
 }
 

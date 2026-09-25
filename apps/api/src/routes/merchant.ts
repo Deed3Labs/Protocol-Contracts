@@ -13,6 +13,8 @@ import { DEFAULT_IDLE_LOCK_SECONDS, deviceStore } from '../services/merchant/dev
 import { sessionStore } from '../services/merchant/sessionStore.js';
 import { pinLockedHandler } from '../services/merchant/security/pinGuard.js';
 import { staffStore } from '../services/merchant/staffStore.js';
+import { audit } from '../services/merchant/security/audit.js';
+import { merchantDb } from '../config/merchantDb.js';
 import { merchantProfileStore } from '../services/merchant/profileStore.js';
 import { canAddRole, type StaffRole } from '@clear/domain';
 import { raiseChargeFromDevice, readMerchantTerms } from '../services/chargeService.js';
@@ -907,6 +909,7 @@ merchantRouter.get('/staff', requireMerchant, requireManager, async (req: Reques
       name: s.name,
       role: s.role,
       active: s.active,
+      pinSet: s.pinSet,
       chargesThisMonth: counts[s.id] ?? 0,
     })),
   });
@@ -950,6 +953,94 @@ merchantRouter.post('/staff', requireMerchant, requireManager, async (req: Reque
   } catch (err) {
     res.status(400).json({ error: 'Invalid', message: (err as Error).message });
   }
+});
+
+/**
+ * A first shift: somebody new (or reset) picks their four digits, and their shift starts.
+ *
+ * On the enrolled tablet, like `/session`, and only while their PIN isn't set. A PIN somebody else
+ * at the shop already has is refused (staffStore.setFirstPin says why), without saying whose.
+ */
+merchantRouter.post('/staff/:id/first-pin', requireDevice, async (req: Request, res: Response) => {
+  const merchant = req.device!.merchant;
+  const pin = String(req.body?.pin ?? '');
+  if (!/^\d{4}$/.test(pin)) {
+    res.status(400).json({ error: 'Invalid', message: 'A PIN is exactly four digits.' });
+    return;
+  }
+  const result = await staffStore.setFirstPin(merchant, req.params.id, pin);
+  if (result === 'taken') {
+    res.status(409).json({ error: 'Taken', message: 'Pick different four digits.' });
+    return;
+  }
+  if (result === 'not_pending') {
+    res.status(409).json({ error: 'Already set', message: 'This person already has a PIN. Start a shift with it, or ask a manager to reset it.' });
+    return;
+  }
+  const staff = await staffStore.get(req.params.id);
+  const session = staff ? await sessionStore.create(staff) : null;
+  if (!staff || !session) {
+    res.status(503).json({ error: 'Unavailable', message: 'sessions are not configured' });
+    return;
+  }
+  res.json({ token: session.token, expiresAt: session.expiresAt, staff: { id: staff.id, name: staff.name, role: staff.role }, merchant: staff.merchant });
+});
+
+/**
+ * Who may reset or remove whom: a manager, counter staff; an owner, counter staff and managers.
+ * Never an owner (owners are added and removed by Clear), and never yourself.
+ */
+async function staffTarget(req: Request, res: Response) {
+  const { merchant, staff: actor } = req.merchant!;
+  const target = await staffStore.get(req.params.id);
+  if (!target || target.merchant !== merchant.trim().toLowerCase() || !target.active) {
+    res.status(404).json({ error: 'Not found', message: 'No such person at this shop.' });
+    return null;
+  }
+  if (target.id === actor.id) {
+    res.status(403).json({ error: 'Forbidden', message: 'Someone else does this for you.' });
+    return null;
+  }
+  const allowed = target.role !== 'owner' && (actor.role === 'owner' || target.role === 'counter');
+  if (!allowed) {
+    res.status(403).json({ error: 'Forbidden', message: target.role === 'owner' ? 'Owners are changed by Clear. Contact support.' : 'That needs the owner.' });
+    return null;
+  }
+  return target;
+}
+
+/**
+ * Reset somebody's PIN — the Staff sheet's "Reset their PIN". The one resetting confirms with
+ * their own PIN (a shared tablet can be left signed in), and the person picks a new one on their
+ * next shift. Their shift, if they're on one, carries on.
+ */
+merchantRouter.post('/staff/:id/reset-pin', requireMerchant, requireManager, async (req: Request, res: Response) => {
+  const { merchant, staff: actor } = req.merchant!;
+  const target = await staffTarget(req, res);
+  if (!target) return;
+  const approver = await staffStore.signInWithPin(merchant, String(req.body?.approverPin ?? ''), actor.id, 'approval');
+  if (!approver) {
+    res.status(401).json({ error: 'Unauthorized', message: 'That did not match.' });
+    return;
+  }
+  await staffStore.clearPin(target.id);
+  const db = await merchantDb();
+  if (db) await audit(db, { merchant, actor: actor.id, approver: actor.id, action: 'staff.pin_reset', ref: { type: 'staff', id: target.id } });
+  res.json({ id: target.id, pinSet: false });
+});
+
+/**
+ * Remove somebody from the tablet. Their PIN stops working and their shift ends on its next
+ * request (a session re-reads the staff row); every charge they raised keeps their name.
+ */
+merchantRouter.delete('/staff/:id', requireMerchant, requireManager, async (req: Request, res: Response) => {
+  const { merchant, staff: actor } = req.merchant!;
+  const target = await staffTarget(req, res);
+  if (!target) return;
+  await staffStore.setActive(target.id, false);
+  const db = await merchantDb();
+  if (db) await audit(db, { merchant, actor: actor.id, action: 'staff.removed', ref: { type: 'staff', id: target.id } });
+  res.json({ id: target.id, active: false });
 });
 
 /** The shop's own details. The rate and cap are owner-only; the name is not. */

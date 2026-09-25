@@ -19,6 +19,7 @@ import type {
   DiscountRequest,
   LineInput,
   Order,
+  OrderWithTenders,
   Refund,
   Receipt,
   RequestRefund,
@@ -86,6 +87,8 @@ export interface MerchantApi {
   updateOrder(id: string, input: { lines: In<typeof LineInput>[] }): Promise<Order>;
   order(id: string): Promise<Order>;
   orders(input: { date: z.infer<typeof BusinessDate> }): Promise<Order[]>;
+  /** Orders over days (93 at most), newest first, each with its tenders: Charges' card, cash and split sales. */
+  orderHistory(range: Range): Promise<OrderWithTenders[]>;
   /** One per order; over the applier's limit it needs a manager's or owner's PIN. */
   applyDiscount(orderId: string, input: In<typeof DiscountRequest>): Promise<Order>;
   removeDiscount(orderId: string): Promise<Order>;
