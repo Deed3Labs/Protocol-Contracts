@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Clear for Merchants</string>
+    <string name="title_activity_main">Clear for Merchants</string>
+    <string name="package_name">org.useclear.merchant</string>
+    <string name="custom_url_scheme">org.useclear.merchant</string>
+</resources>

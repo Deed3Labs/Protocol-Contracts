@@ -13,6 +13,8 @@ import { IconMinus, IconPlusSm } from '@/brand/icons';
 import { Sheet, cx } from '@/brand/ui';
 import { Breakdown, lineLabel } from '@/charge/start';
 import { itemCount, totals, usd, type CartLine } from '@/charge/model';
+import { PickRow } from '@/payouts/views';
+import type { ReaderInfo } from '@/reader';
 
 /**
  * Paying by card — New Charge reference, section 5.
@@ -86,8 +88,11 @@ export function ReaderCell({
   onOfferClear,
   onDone,
   onNew,
+  error,
 }: {
   state: ReaderState;
+  /** The reader couldn't start: no connection, or cards aren't on for this shop yet. */
+  error?: string | null;
   reader?: string;
   amountCents: number;
   card?: string;
@@ -103,8 +108,13 @@ export function ReaderCell({
   onNew?: () => void;
 }) {
   const steps = STEPS(state);
+  const stuck = !!error && state === 'ready';
   const chip =
-    state === 'declined' ? (
+    stuck ? (
+      <Chip tone="absent" dot>
+        Not connected
+      </Chip>
+    ) : state === 'declined' ? (
       <Chip tone="absent" dot>
         Declined
       </Chip>
@@ -128,11 +138,12 @@ export function ReaderCell({
           {state === 'declined' && <IconReaderDeclined />}
           {state === 'approved' && <IconReaderApproved />}
           <p className="c-cc-h">
-            {state === 'ready' && <span className="c-cc-live" />}
-            {{ ready: 'Ready for the card', reading: 'Reading the card', declined: 'Declined', approved: 'Approved' }[state]}
+            {state === 'ready' && !stuck && <span className="c-cc-live" />}
+            {stuck ? 'The reader isn’t ready' : { ready: 'Ready for the card', reading: 'Reading the card', declined: 'Declined', approved: 'Approved' }[state]}
           </p>
           <p className="c-det">
-            {state === 'ready' && `Tap, insert or swipe on the reader. ${usd(amountCents)} is already on it.`}
+            {stuck && `${error} Nothing was taken.`}
+            {state === 'ready' && !stuck && `Tap, insert or swipe on the reader. ${usd(amountCents)} is already on it.`}
             {state === 'reading' && 'Keep it on the reader. This takes a few seconds.'}
             {state === 'declined' && `${card}. The bank declined it and nothing was taken. Ask for another card.`}
             {state === 'approved' && `${card}${at ? ` · ${at}` : ''}`}
@@ -498,6 +509,77 @@ export function PrintReceiptSheet({
           The sale is done either way. You can send the receipt instead, or print it later from the charge in Charges.
         </p>
       )}
+    </Sheet>
+  );
+}
+
+// ---- Use another reader ---------------------------------------------------------------------------
+
+/**
+ * The readers this device can use, and which is connected. Not drawn in the reference; it takes
+ * the picker rows of Payouts' "Where withdrawals go". A browser lists smart readers only; the
+ * installed app adds the M2 and Tap to Pay.
+ */
+export function ReaderPickerSheet({
+  readers,
+  current,
+  web,
+  loading,
+  error,
+  onPick,
+  onClose,
+}: {
+  readers: ReaderInfo[];
+  current: string | null;
+  /** In a browser: say where the M2 and Tap to Pay work. */
+  web: boolean;
+  loading?: boolean;
+  error?: string | null;
+  onPick: (r: ReaderInfo) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet
+      title="Use another reader"
+      onClose={onClose}
+      foot={
+        <p className="c-det">
+          {error ?? (web ? 'In a browser, smart readers only. The M2 and Tap to Pay need the Clear app.' : 'Only the readers this device can use are listed.')}
+        </p>
+      }
+    >
+      <div className="c-rows">
+        {loading && !readers.length && (
+          <div>
+            <div className="c-line" style={{ alignItems: 'center' }}>
+              <span className="c-det">Looking for readers…</span>
+            </div>
+          </div>
+        )}
+        {!loading && !readers.length && (
+          <div>
+            <div className="c-line" style={{ alignItems: 'center' }}>
+              <span className="c-det">No readers found. Check the reader is on and nearby.</span>
+            </div>
+          </div>
+        )}
+        {readers.map((r) => (
+          <PickRow
+            key={r.id}
+            on={r.id === current}
+            t={r.label}
+            det={r.detail}
+            onPick={() => onPick(r)}
+            right={
+              r.id === current ? (
+                <Chip tone="settled" dot>
+                  Connected
+                </Chip>
+              ) : null
+            }
+          />
+        ))}
+      </div>
     </Sheet>
   );
 }
