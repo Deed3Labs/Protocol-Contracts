@@ -53,7 +53,7 @@ const counter: HomeModel = {
     clock: { onFor: '4h 12m', left: '3h 48m', since: '8:04am', until: '4:00pm', hours: 8, done: 4.27 },
     raised: 2,
     shopRaised: 5,
-    drawer: { startCents: 15000, cashInCents: 6200 },
+    drawer: { startCents: 15000, cashInCents: 6179 },
     job: { name: 'Nina P.', amountCents: 41000, ago: '2 minutes ago', opened: false },
   },
 };
@@ -129,10 +129,10 @@ export const DAY: DaySummary = {
   date: 'Tue, Sep 22',
   charges: 6,
   span: '8:30am to 5:40pm',
-  takenCents: 189952,
+  takenCents: 189931,
   clear: { n: 3, cents: 90000 },
   card: { n: 1, cents: 93752 },
-  cash: { n: 2, cents: 6200 },
+  cash: { n: 2, cents: 6179 },
   tipsCents: 1500,
   taxCents: 6231,
   discountsCents: 0,
@@ -146,7 +146,7 @@ const tips: DrawerClose['tips'] = [
 
 export const DRAWERS = {
   short: {
-    expectedCents: 21200,
+    expectedCents: 21179,
     countedCents: 20800,
     note: 'Gave change twice on a $20.',
     counters: ['Luis M.', 'Mike R.'],
@@ -154,7 +154,7 @@ export const DRAWERS = {
     leaveCents: 15000,
   },
   signed: {
-    expectedCents: 21200,
+    expectedCents: 21179,
     countedCents: 20800,
     note: 'Gave change twice on a $20.',
     counters: ['Luis M.', 'Mike R.'],
@@ -163,8 +163,8 @@ export const DRAWERS = {
     leaveCents: 15000,
   },
   balanced: {
-    expectedCents: 21200,
-    countedCents: 21200,
+    expectedCents: 21179,
+    countedCents: 21179,
     counters: ['Luis M.', 'Mike R.'],
     tips,
     leaveCents: 15000,

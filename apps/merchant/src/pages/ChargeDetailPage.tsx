@@ -1,225 +1,389 @@
-import { useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
-import {
-  CHARGE_LABEL,
-  canTransition,
-  dollars,
-  formatCalendarDate,
-  isPending,
-  merchantFee,
-  merchantPayout,
-  splitQuote,
-} from '@clear/domain';
-import { Button, Inset } from '@/shell/ui';
+import { useContext, useEffect, useState } from 'react';
+import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { canAuthoriseRefund, canTransition, CHARGE_LABEL, refundQuote, splitQuote, toCents } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
-import { api } from '@/data/apiClient';
+import { OneColumn, cx } from '@/brand/ui';
+import { PhoneBack } from '@/charge/phone';
+import { api, type MerchantCharge, type StaffMember } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 import { STUB_MERCHANT } from '@/data/stubs';
+import { clockTime, firstName, usd } from '@/home/model';
+import { useLayout } from '@/lib/useBreakpoint';
+import { FlowTop, roleLabel } from '@/shell/chrome';
+import { useShiftActions } from '@/shell/shiftActions';
+import { CARD_SALE, MARCUS, MARCUS_DETAIL, SPLIT_SALE, type ClearDetail, type Sale } from '@/charges/model';
+import {
+  ChoseCell,
+  GoodsRefundSheet,
+  PaidHowCell,
+  RefundApproveSheet,
+  RefundDeclinedSheet,
+  RefundedSheet,
+  RefundReviewSheet,
+  RefundWaitingSheet,
+  ShopGetsCell,
+  SoldCell,
+  ThisChargeCell,
+  TipSheet,
+  VoidSheet,
+  type Person,
+  type Quote,
+} from '@/charges/views';
 
 /**
- * Charge detail — reference section 15.
+ * A charge, opened — docs/merchant-reference/clear-merchant-charges.html ("A charge, opened", "A
+ * Clear refund", "Refunds by how it was paid", "Void, and adjusting a tip").
  *
- * Refunds are unavoidable in retail — wrong tyre, returned part, job cancelled — and a merchant
- * asks about them in the first conversation. So the entry point lives here, on the charge itself.
+ * A flow at every size: back, what it is, who is on shift. An owner sees what the shop gets; a
+ * counter shift sees the charge without the fee or the payout date. The refund is the reference's
+ * two people, three steps, as sheets over the charge; `/charges/:id/refund` opens it, which is
+ * where an owner's phone lands.
  *
- * **"Start a refund", never "Refund".** The label has to tell a writer they are beginning
- * something rather than doing it. Any staff member can start one; an owner finishes it. A writer
- * who reads the button as the whole act promises a customer a refund and then discovers they
- * cannot complete it, which is the worst conversation at a counter.
+ * **Nothing is said to the customer until step three completes**, and every sheet says whose it
+ * is. The writer sees what the customer gets back; the owner sees what it does to their payout.
+ * Both come from one `refundQuote`, so they cannot drift apart.
  *
- * The money block is owner-only. The reference draws the owner's view; counter staff never see
- * payout figures, the fee or the rate, so for them the screen is the charge and the plan without
- * the economics.
+ * Card, cash and split sales, and void and tip, have no backend yet: the preview's
+ * `/charges/split` and `/charges/card`. Frames: `?preview=1&screen=counter|refund|waiting|approve|
+ * refunded|declined` on /charges/marcus, `refund-goods` on /charges/split, `void|tip` on
+ * /charges/card.
  */
 
-export default function ChargeDetailPage() {
-  const { id } = useParams();
-  const [cancelling, setCancelling] = useState(false);
-  const [cancelError, setCancelError] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const { session, canSeeMoney } = useAuth();
+type Step = 'review' | 'waiting' | 'approve' | 'done' | 'declined' | null;
 
-  // No single-charge endpoint: the list is what the tablet already reads, and a shop's day is
-  // small enough that finding the row in it costs less than another route. Hooks run before the
-  // guard below, which is why the fetch is not conditional on having found anything.
-  const { data: charges, loading } = useApi(() => api.charges({ limit: 200 }), []);
-  const { data: profile } = useApi(() => api.profile(), []);
+const clockOf = (d: Date | string) => clockTime(typeof d === 'string' ? d : d.toISOString());
+
+const toQuote = (q: ReturnType<typeof refundQuote>): Quote => ({
+  amountCents: toCents(q.amount),
+  memberCents: toCents(q.memberReceives),
+  carryCents: toCents(q.carryKept),
+  clawbackCents: toCents(q.merchantClawback),
+  payoutAfterCents: toCents(q.payoutAfter),
+});
+
+/** Marcus T.'s refund, from the reference: $412.00 over four, one cleared, a $4,218.91 payout. */
+const MARCUS_QUOTE = toQuote(
+  refundQuote({ amount: 412, splitInto: 4, ratePerCycle: 0.02, cyclesCleared: 1, discountRate: 0.02, nextPayout: 4218.91 }),
+);
+
+export default function ChargeDetailPage() {
+  const { id = '' } = useParams();
+  const { pathname } = useLocation();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const layout = useLayout();
+  const phone = layout === 'phone';
+  const one = useContext(OneColumn);
+  const shift = useShiftActions();
+  const { session, canSeeMoney, authoriseWithOwnerCode } = useAuth();
+
+  const preview = import.meta.env.DEV && params.get('preview') === '1' && params.get('live') !== '1';
+  const screen = preview ? (params.get('screen') ?? '') : '';
+  const q = preview ? '?preview=1' : '';
+  const back = () => navigate(`/charges${q}`);
+  const me = session?.staff.name ?? '';
+
+  // ---- The live charge ------------------------------------------------------------------------------
+  // No single-charge endpoint: the list is what the tablet already reads, and a shop's day is small
+  // enough that finding the row in it costs less than another route.
+  const { data: charges, loading } = useApi(() => (preview ? Promise.resolve(null) : api.charges({ limit: 200 })), [preview]);
+  const { data: profile } = useApi(() => (preview ? Promise.resolve(null) : api.profile()), [preview]);
+  const { data: position } = useApi(() => (preview || !canSeeMoney ? Promise.resolve(null) : api.payouts()), [preview, canSeeMoney]);
+  const { data: staff } = useApi(() => (preview || !canSeeMoney ? Promise.resolve(null) : api.staff()), [preview, canSeeMoney]);
+  const { data: threshold } = useApi(
+    () => (preview || session?.staff.role !== 'owner' ? Promise.resolve(null) : api.refundThreshold()),
+    [preview, session?.staff.role],
+  );
+  const { data: openRefund } = useApi(() => (preview ? Promise.resolve(null) : api.openRefundFor(id)), [preview, id]);
 
   const charge = (charges ?? []).find((c) => c.code === id);
 
-  if (loading && !charge) {
-    return <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">Loading…</p>;
+  const [step, setStep] = useState<Step>(() => {
+    if (screen === 'refund') return 'review';
+    if (screen === 'waiting') return 'waiting';
+    if (screen === 'approve') return 'approve';
+    if (screen === 'refunded') return 'done';
+    if (screen === 'declined') return 'declined';
+    return pathname.endsWith('/refund') ? 'review' : null;
+  });
+  const [sheet, setSheet] = useState<'goods' | 'void' | 'tip' | null>(
+    screen === 'refund-goods' ? 'goods' : screen === 'void' ? 'void' : screen === 'tip' ? 'tip' : null,
+  );
+  const [refundId, setRefundId] = useState<string | null>(null);
+  const [requestedAt, setRequestedAt] = useState(preview ? '2:31pm' : '');
+  const [requester, setRequester] = useState<string>(preview ? 'Jen R.' : me);
+  const [decided, setDecided] = useState(preview ? 'Mike · 2:36pm' : '');
+  const [approver, setApprover] = useState<Person | null>(preview ? { name: 'Mike R.', role: 'owner' } : null);
+  const [via, setVia] = useState<'code' | 'device'>('device');
+  const [code, setCode] = useState(preview && screen === 'waiting' ? '12' : '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Adopt a refund this screen did not start: an owner opening it on their phone, or the same
+   * tablet after a reload. The record on the server says which step this is.
+   */
+  useEffect(() => {
+    if (!openRefund || refundId) return;
+    setRefundId(openRefund.id);
+    setRequestedAt(clockOf(openRefund.requestedAt));
+    setRequester(openRefund.requestedByName);
+    if (pathname.endsWith('/refund')) setStep('waiting');
+  }, [openRefund, refundId, pathname]);
+
+  // ---- What this page shows ------------------------------------------------------------------------
+  const sale: Sale | null = preview ? (id === 'split' ? SPLIT_SALE : id === 'card' ? CARD_SALE : null) : null;
+  const counterView = screen === 'counter' || (!preview && !canSeeMoney);
+
+  let name: string;
+  let amountCents: number;
+  let detail: ClearDetail | null = null;
+  let status = '';
+  let raisedBy = '';
+  let live: MerchantCharge | undefined;
+  if (sale) {
+    name = sale.name;
+    amountCents = sale.totalCents;
+  } else if (preview) {
+    name = MARCUS.name;
+    amountCents = MARCUS.amountCents;
+    detail = MARCUS_DETAIL;
+    status = 'Confirmed';
+    raisedBy = 'You, at 11:02am';
+  } else {
+    if (loading && !charge) return null;
+    if (!charge) return <Navigate to="/charges" replace />;
+    live = charge;
+    name = charge.memberName ?? 'A customer';
+    amountCents = toCents(charge.amount);
+    const rate = profile?.discountRate ?? null;
+    const n = charge.splitInto;
+    detail = {
+      payoutCents: charge.payout !== undefined ? toCents(charge.payout) : null,
+      feeCents: charge.payout !== undefined ? amountCents - toCents(charge.payout) : null,
+      rate: rate === null ? null : `${(rate * 100).toFixed(1)}%`,
+      paidOut:
+        charge.state === 'approved' && position?.nextPayoutOn
+          ? new Date(position.nextPayoutOn).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          : null,
+      splitInto: n,
+      perCycleCents: n && n > 1 ? toCents(splitQuote(charge.amount, n, STUB_MERCHANT.ratePerCycle).perCycle) : null,
+    };
+    status = CHARGE_LABEL[charge.state];
+    raisedBy = `${charge.raisedByStaffId === session?.staff.id ? 'You' : (charge.raisedBy ?? '—')}, at ${clockTime(charge.createdAt)}`;
   }
-  if (!charge) return <Navigate to="/charges" replace />;
+  const title = `${name} · ${usd(amountCents)}`;
 
-  const rate = profile?.discountRate ?? null;
-  // The carry rate is a Clear product parameter rather than a merchant term, so it is not on the
-  // profile endpoint. Still a fixture until it is exposed somewhere honest.
-  const plan = charge.splitInto === null ? null : { splitInto: charge.splitInto };
-  const quote = plan ? splitQuote(charge.amount, plan.splitInto, STUB_MERCHANT.ratePerCycle) : null;
+  // ---- The refund's numbers and who can clear it ---------------------------------------------------
+  const quote: Quote = live
+    ? toQuote(
+        refundQuote({
+          amount: live.amount,
+          // How many cycles the member has cleared is not on the merchant's feed, so the clawback is
+          // quoted against the whole plan: it never understates what a refund costs the shop.
+          splitInto: live.splitInto ?? 1,
+          ratePerCycle: STUB_MERCHANT.ratePerCycle,
+          cyclesCleared: 0,
+          discountRate: profile?.discountRate ?? 0,
+          nextPayout: (position?.owedCents ?? 0) / 100,
+        }),
+      )
+    : MARCUS_QUOTE;
+  const roster: StaffMember[] = staff ?? [];
+  const ownerName = preview ? 'Mike R.' : (roster.find((s) => s.role === 'owner' && s.active)?.name ?? 'the owner');
+  const managers = preview ? ['Luis'] : roster.filter((s) => s.role === 'manager' && s.active).map((s) => firstName(s.name));
+  const limitCents = preview ? 50000 : (threshold?.limitCents ?? null);
+  const role = session?.staff.role ?? null;
+  const limitKnown = limitCents !== null;
+  /** A code at the counter is bounded, whoever's it is: strictly under the limit. */
+  const codeCanClear = preview || !limitKnown || (limitCents > 0 && amountCents < limitCents);
+  /** This viewer, signed in on this device: the stronger evidence, and uncapped for an owner. */
+  const viewerCanDecide = !preview && role !== null && canAuthoriseRefund(role, amountCents, limitKnown ? limitCents : undefined);
 
-  const resolvedOn = charge.resolvedAt ?? charge.createdAt;
-  const when = new Date(resolvedOn);
-  const today = when.toDateString() === new Date().toDateString();
-  const timeLabel = when
-    .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-    .toLowerCase()
-    .replace(' ', '');
+  async function send() {
+    if (!live) return setStep('waiting');
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await api.requestRefund({
+        chargeCode: live.code,
+        splitInto: live.splitInto ?? 1,
+        cyclesCleared: 0,
+        ratePerCycle: STUB_MERCHANT.ratePerCycle,
+        discountRate: profile?.discountRate ?? 0,
+        nextPayoutCents: position?.owedCents ?? 0,
+      });
+      setRefundId(created.id);
+      setRequestedAt(clockOf(new Date()));
+      setRequester(me);
+      setStep(viewerCanDecide ? 'approve' : 'waiting');
+      if (viewerCanDecide) {
+        setApprover({ name: me, role: role ?? 'owner' });
+        setVia('device');
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That could not be sent just now.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  // Counter staff may cancel a charge they raised themselves, while it is still waiting. An owner
-  // may cancel any. The lifecycle decides whether cancelling is possible at all.
-  const cancellable =
-    canTransition(charge.state, 'cancelled') &&
-    (canSeeMoney || charge.raisedByStaffId === session?.staff.id);
+  async function typed(pin: string) {
+    setCode(pin);
+    setError(null);
+    if (pin.length < 4) return;
+    if (preview) {
+      setApprover({ name: 'Luis M.', role: 'manager' });
+      setVia('code');
+      return setStep('approve');
+    }
+    try {
+      const who = await authoriseWithOwnerCode(pin);
+      setApprover({ name: who.name, role: roleLabel(who.role).toLowerCase() });
+      setVia('code');
+      setStep('approve');
+    } catch (e) {
+      setCode('');
+      setError(e instanceof Error ? e.message : 'That PIN was not recognised.');
+    }
+  }
 
-  const refundable = canTransition(charge.state, 'refund_requested');
+  async function decide(decision: 'approve' | 'decline') {
+    if (preview) {
+      if (approver) setDecided(`${firstName(approver.name)} · 2:36pm`);
+      return setStep(decision === 'approve' ? 'done' : 'declined');
+    }
+    if (!refundId) return setError('That refund was not recorded. Start it again.');
+    setBusy(true);
+    setError(null);
+    try {
+      if (via === 'code') await api.authoriseRefund(refundId, code, decision);
+      else await api.decideRefund(refundId, decision);
+      setDecided(`${firstName(approver?.name ?? me)} · ${clockOf(new Date())}`);
+      setStep(decision === 'approve' ? 'done' : 'declined');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That could not be recorded just now.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  // A refund already started, waiting on a decision. This was the only state the screen offered
-  // no way out of: `refundable` is false here — correctly, since a second request is not a legal
-  // move — and it gated the sole link into the refund flow, so a charge that needed an owner had
-  // nowhere for one to go. The lifecycle says a decision is exactly what is owed on it.
-  const awaitingDecision = charge.state === 'refund_requested';
+  async function withdraw() {
+    if (live && refundId) await api.withdrawRefund(refundId).catch(() => undefined);
+    setRefundId(null);
+    setStep(null);
+    setCode('');
+  }
+
+  // A viewer who can decide on this device goes straight to deciding.
+  const waitingOrDecide: Step = step === 'waiting' && viewerCanDecide ? 'approve' : step;
+  const writer: Person = { name: preview ? 'Jen R.' : requester || me, role: preview ? 'counter' : roleLabel(role ?? 'counter').toLowerCase() };
+  const decider: Person = approver ?? { name: me, role: roleLabel(role ?? 'owner').toLowerCase() };
+
+  // ---- The foot of the right-hand cell -------------------------------------------------------------
+  const cancellable = !!live && canTransition(live.state, 'cancelled') && (canSeeMoney || live.raisedByStaffId === session?.staff.id);
+  const refundable = preview || (!!live && canTransition(live.state, 'refund_requested'));
+  const awaiting = !!live && live.state === 'refund_requested';
+  const foot = cancellable ? (
+    <button
+      type="button"
+      className="c-btn c-btn-lg"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        setError(null);
+        try {
+          await api.cancelCharge(live!.code);
+          back();
+        } catch (e) {
+          setError(e instanceof Error ? e.message : 'That could not be cancelled just now.');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {busy ? 'Cancelling…' : 'Cancel charge'}
+    </button>
+  ) : awaiting ? (
+    <button type="button" className="c-btn c-btn-lg" onClick={() => setStep('waiting')}>
+      {canSeeMoney ? 'Approve or decline the refund' : 'See the refund'}
+    </button>
+  ) : refundable ? (
+    // Never "Refund": the writer is beginning something, not completing it.
+    <button type="button" className="c-btn c-btn-lg" onClick={() => setStep('review')}>
+      Start a refund
+    </button>
+  ) : undefined;
+
+  const cells = sale ? (
+    <>
+      <SoldCell s={sale} />
+      <PaidHowCell s={sale} onRefund={() => setSheet('goods')} onVoid={() => setSheet('void')} onTip={() => setSheet('tip')} />
+    </>
+  ) : (
+    <>
+      {counterView || (live && live.state !== 'approved' && live.state !== 'refunded' && live.state !== 'refund_requested') ? (
+        <ThisChargeCell amountCents={amountCents} raisedBy={raisedBy} status={status} />
+      ) : (
+        <ShopGetsCell d={detail!} />
+      )}
+      <ChoseCell d={live && (live.state === 'waiting' || live.state === 'resolving') ? null : detail} foot={foot} />
+    </>
+  );
+
+  const sheets = (
+    <>
+      {waitingOrDecide === 'review' && (
+        <RefundReviewSheet customer={name} q={quote} writer={writer} owner={ownerName} busy={busy} error={error} onSend={send} onCancel={() => setStep(null)} />
+      )}
+      {waitingOrDecide === 'waiting' && (
+        <RefundWaitingSheet
+          customer={name}
+          amountCents={amountCents}
+          writer={writer.name}
+          owner={ownerName}
+          requestedAt={requestedAt}
+          limitCents={limitCents}
+          managers={managers}
+          pin={code}
+          onPin={typed}
+          codeCanClear={codeCanClear}
+          error={error}
+          onWithdraw={withdraw}
+          onClose={() => setStep(null)}
+        />
+      )}
+      {waitingOrDecide === 'approve' && (
+        <RefundApproveSheet customer={name} q={quote} writer={writer.name} approver={decider} busy={busy} error={error} onApprove={() => decide('approve')} onDecline={() => decide('decline')} />
+      )}
+      {step === 'done' && <RefundedSheet customer={name} q={quote} asked={`${firstName(writer.name)} · ${requestedAt}`} approved={decided} onDone={back} />}
+      {step === 'declined' && <RefundDeclinedSheet customer={name} decider={decider.name} onDone={() => setStep(null)} />}
+      {sale && sheet === 'goods' && (
+        <GoodsRefundSheet
+          s={sale}
+          lines={[
+            { t: '1 × Goodyear Assurance', det: '$162.00 + $3.00 disposal + tax', cents: 17779, stock: true },
+            { t: '1 × Mount and balance', det: 'Labour, already done', cents: 2500, labour: true },
+            { t: '1 × Tire rotation', det: 'Labour, already done', cents: 2500, labour: true },
+          ]}
+          onSend={() => setSheet(null)}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sale && sheet === 'void' && <VoidSheet s={sale} by="Jen" manager="Luis" filled={3} onKeep={() => setSheet(null)} onVoid={() => setSheet(null)} />}
+      {sale && sheet === 'tip' && <TipSheet s={sale} by="Jen" initial={1500} onSave={() => setSheet(null)} onClose={() => setSheet(null)} />}
+    </>
+  );
 
   return (
-    <div className="mx-auto w-full max-w-[400px]">
-      <div className="mb-4 flex items-center gap-2.5">
-        <button
-          type="button"
-          onClick={() => navigate('/charges')}
-          aria-label="Back"
-          className="text-[var(--clear-text-secondary)]"
-        >
-          <ChevronLeft size={20} />
-        </button>
-        <span className="text-[16px] font-medium">
-          {charge.memberName ?? 'Not opened yet'}
-        </span>
-      </div>
-
-      <p className="m-0 mb-[3px] text-[26px] font-medium tabular-nums">{dollars(charge.amount)}</p>
-      <p className="m-0 mb-[18px] text-[12.5px] text-[var(--clear-text-muted)]">
-        {CHARGE_LABEL[charge.state]} {today ? 'today' : formatCalendarDate(resolvedOn)}, {timeLabel}{' '}
-        · raised by {charge.raisedBy ?? '—'}
-      </p>
-
-      {/* Payout figures, the fee and the rate are owner-only. */}
-      {canSeeMoney ? (
-        <Inset className="mb-3.5 !px-4 !py-3.5">
-          <div className="flex justify-between text-[13px]">
-            <span className="text-[var(--clear-text-secondary)]">You receive</span>
-            <span className="font-medium tabular-nums">
-              {/* The server already computed this for owners, and it is the figure of record.
-                  Computing it again here would be a second source of truth for the same money. */}
-              {charge.payout !== undefined
-                ? dollars(charge.payout)
-                : rate === null
-                  ? '—'
-                  : dollars(merchantPayout(charge.amount, rate))}
-            </span>
-          </div>
-          <div className="mt-[7px] flex justify-between text-[13px]">
-            <span className="text-[var(--clear-text-secondary)]">Fee</span>
-            <span className="tabular-nums">
-              {rate === null
-                ? '—'
-                : `${dollars(merchantFee(charge.amount, rate))} · ${Math.round(rate * 1000) / 10}%`}
-            </span>
-          </div>
-          <div className="mt-[7px] flex justify-between text-[13px]">
-            <span className="text-[var(--clear-text-secondary)]">Paid out</span>
-            <span>{charge.state === 'approved' ? formatCalendarDate('2026-12-14') : '—'}</span>
-          </div>
-          {plan && quote && (
-            <div className="mt-[7px] flex justify-between gap-3 border-t-[0.5px] border-[var(--clear-border)] pt-[9px] text-[13px]">
-              <span className="text-[var(--clear-text-secondary)]">They chose</span>
-              <span className="text-right">
-                {/* How many cycles the member has already cleared is not on the merchant's charge
-                    feed, and it is the member's repayment progress rather than the shop's business.
-                    The plan and the per-cycle figure are the parts that describe this sale. */}
-                {plan.splitInto === 1 ? 'In full' : `Split in ${plan.splitInto}`} ·{' '}
-                <span className="tabular-nums">{dollars(quote.perCycle)}</span> a cycle
-              </span>
-            </div>
-          )}
-        </Inset>
+    <div className="c-app c-mc-tablet c-mc-page">
+      {phone ? (
+        <PhoneBack back title={title} onExit={back} />
       ) : (
-        plan && (
-          <Inset className="mb-3.5 !px-4 !py-3.5">
-            <div className="flex justify-between gap-3 text-[13px]">
-              <span className="text-[var(--clear-text-secondary)]">They chose</span>
-              <span className="text-right">
-                {plan.splitInto === 1 ? 'In full' : `Split in ${plan.splitInto}`}
-              </span>
-            </div>
-          </Inset>
-        )
+        <FlowTop back title={title} onExit={back} onShift={preview && screen === 'counter' ? 'Jen R.' : me} onChangeShift={shift.changeShift} />
       )}
-
-      {refundable && (
-        <>
-          {/* Never "Refund". The writer is beginning something, not completing it. */}
-          <Button onClick={() => navigate(`/charges/${charge.code}/refund`)} className="w-full">
-            Start a refund
-          </Button>
-          <p className="m-0 mt-2.5 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
-            Any staff member can start one. An owner finishes it.
-          </p>
-        </>
-      )}
-
-      {awaitingDecision && (
-        <>
-          {/* The label differs by who is reading. An owner is being asked to decide; a writer is
-              being told where it stands, and follows the same link to withdraw it. */}
-          <Button onClick={() => navigate(`/charges/${charge.code}/refund`)} className="w-full">
-            {canSeeMoney ? 'Approve or decline the refund' : 'See the refund'}
-          </Button>
-          <p className="m-0 mt-2.5 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
-            {canSeeMoney
-              ? 'Nothing has been said to the customer yet.'
-              : 'Waiting on an owner. Nothing has been said to the customer yet.'}
-          </p>
-        </>
-      )}
-
-      {cancellable && (
-        <>
-          <Button
-            disabled={cancelling}
-            onClick={async () => {
-              // This navigated and nothing else, so a cancelled charge stayed live and the
-              // customer could still approve it. The server decides whether it is too late.
-              setCancelling(true);
-              setCancelError(null);
-              try {
-                await api.cancelCharge(charge.code);
-                navigate('/charges');
-              } catch (e) {
-                setCancelError(
-                  e instanceof Error ? e.message : 'That could not be cancelled just now.',
-                );
-              } finally {
-                setCancelling(false);
-              }
-            }}
-            className="mt-2 w-full"
-          >
-            {cancelling ? 'Cancelling…' : 'Cancel charge'}
-          </Button>
-          {cancelError && (
-            <p role="alert" className="m-0 mt-2 text-center text-[12.5px] leading-[1.5]">
-              {cancelError}
-            </p>
-          )}
-        </>
-      )}
-
-      {isPending(charge.state) && (
-        <p className="m-0 mt-2.5 text-center text-[11.5px] text-[var(--clear-text-muted)]">
-          They can approve any time today.
-        </p>
-      )}
+      <div className={cx('c-slab', one && 'c-one')}>{cells}</div>
+      {sheets}
     </div>
   );
 }
