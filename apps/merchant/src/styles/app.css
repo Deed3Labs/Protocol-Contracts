@@ -63,6 +63,11 @@ body {
   .c-mc-tablet {
     padding: var(--s2) var(--s2) calc(var(--s6) + env(safe-area-inset-bottom));
   }
+  /* The reference's phone is a plain page, not the tablet's flex column, so margins collapse
+     between blocks as they do there. */
+  .c-mc-tablet.c-mc-page {
+    display: block;
+  }
   .c-navwrap,
   .c-ci-bar {
     position: fixed;
@@ -197,5 +202,17 @@ input.c-field.c-si-in {
   }
   .c-ci .c-cfoot > .c-line > .c-pair .c-btn {
     flex: 1;
+  }
+}
+:where(.c-app) :where(button.c-iv-link) {
+  line-height: inherit;
+}
+
+/* Home in portrait: the reference makes New charge and Build cart full width but leaves them on
+   the figure's row, where they overflow (its frame clips it). They wrap onto their own row. */
+@media (min-width: 520px) and (max-width: 899.98px) {
+  .c-mc-hero {
+    flex-wrap: wrap;
+    row-gap: var(--s2);
   }
 }

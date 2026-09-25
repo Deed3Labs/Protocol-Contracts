@@ -4,7 +4,7 @@ import { useAuth } from '@/auth/authContext';
 import { OwnerSignIn } from '@/auth/OwnerSignIn';
 import { IdleLockScreen, type ShiftPerson } from '@/auth/screens';
 import { usePinAttempts } from '@/auth/pinAttempts';
-import { useDigitKeys } from '@/brand/ui';
+import { OneColumn, useDigitKeys } from '@/brand/ui';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 import { useLayout } from '@/lib/useBreakpoint';
@@ -218,7 +218,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // Inside a flow the nav gives way to the flow's own header (close or back, what this is, who is
   // on shift), which the flow draws itself. The lock above still applies.
-  if (FLOWS.some((f) => pathname === f || pathname.startsWith(`${f}/`))) return <>{children}</>;
+  // Below 900px every slab is one column (the reference's `.slab.one`); pages read it from here.
+  const one = layout !== 'two-column';
+  if (FLOWS.some((f) => pathname === f || pathname.startsWith(`${f}/`)))
+    return <OneColumn.Provider value={one}>{children}</OneColumn.Provider>;
+  // An item in Inventory is a flow on a tablet (back, what it is, who is on shift); on a phone it
+  // keeps the phone's own header and bar, with a back row above it.
+  if (layout !== 'phone' && /^\/inventory\/[^/]+/.test(pathname)) return <OneColumn.Provider value={one}>{children}</OneColumn.Provider>;
 
   const header = {
     shop,
@@ -256,7 +262,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* No wrapper around the page: the reference's rules reach its blocks as direct children of
           the tablet (`.mc-tablet > .slab`), so the page's blocks sit right here. */}
-      {children}
+      <OneColumn.Provider value={one}>{children}</OneColumn.Provider>
 
       {layout === 'phone' && <PhoneNav current={current} role={role} onPlus={() => setOpen('plus')} onLocked={() => setOpen('owner')} />}
 

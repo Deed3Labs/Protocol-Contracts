@@ -119,6 +119,8 @@ export interface HomeModel {
   shift?: ShiftCell;
   /** Owners and managers, from half an hour before closing. */
   closing?: ClosingUp;
+  /** Owners and managers: stock under its reorder line (Inventory reference). */
+  runningLow?: import('@/inventory/model').InvItem[];
 }
 
 export const sees = (role: StaffRole) => role === 'owner' || role === 'manager';

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ClearMark, IconClose, IconCloseLg, IconDelete } from '@/brand/icons';
 
@@ -262,4 +262,83 @@ export const OneColumn = createContext(false);
 export function Slab({ children, className }: { children: ReactNode; className?: string }) {
   const one = useContext(OneColumn);
   return <div className={cx('c-slab', one && 'c-one', className)}>{children}</div>;
+}
+
+/**
+ * A menu that drops from its button: the reference's `.sheet.menu`, anchored under the control
+ * that opened it rather than centred on a scrim. Drawn at the top of the page, positioned under
+ * its button, so the header it opens from does not restyle it. Closes on a tap outside, Escape,
+ * scrolling or resizing.
+ */
+export function MenuButton({
+  button,
+  children,
+  className,
+  width,
+  align = 'right',
+  defaultOpen = false,
+}: {
+  /** Open on first draw: the dev preview shows a menu as the reference draws it. */
+  defaultOpen?: boolean;
+  button: (open: boolean, toggle: () => void) => ReactNode;
+  children: (close: () => void) => ReactNode;
+  className?: string;
+  width?: number;
+  align?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [at, setAt] = useState<{ top: number; left: number; right: number } | null>(null);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = anchor.current?.getBoundingClientRect();
+      if (r) setAt({ top: r.bottom + 6, left: r.left, right: window.innerWidth - r.right });
+    };
+    place();
+    const off = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!anchor.current?.contains(t) && !menu.current?.contains(t)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const shut = () => setOpen(false);
+    document.addEventListener('mousedown', off);
+    document.addEventListener('keydown', esc);
+    window.addEventListener('resize', shut);
+    window.addEventListener('scroll', shut, true);
+    return () => {
+      document.removeEventListener('mousedown', off);
+      document.removeEventListener('keydown', esc);
+      window.removeEventListener('resize', shut);
+      window.removeEventListener('scroll', shut, true);
+    };
+  }, [open]);
+  return (
+    <span ref={anchor} style={{ display: 'inline-flex' }}>
+      {button(open, () => setOpen((o) => !o))}
+      {open &&
+        at &&
+        createPortal(
+          <div className="c-app">
+            <div
+              ref={menu}
+              className={cx('c-sheet c-menu', className)}
+              role="menu"
+              style={{
+                position: 'fixed',
+                top: at.top,
+                ...(align === 'right' ? { right: at.right } : { left: at.left }),
+                zIndex: 30,
+                width,
+                boxShadow: '0 0 0 1px var(--ink-28)',
+              }}
+            >
+              <div className="c-modal">{children(() => setOpen(false))}</div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </span>
+  );
 }
