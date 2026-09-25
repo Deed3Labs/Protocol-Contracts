@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { type Address, CardDeclined, type CardConnectorProvider, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
+import { type Address, type BalanceItem, CardDeclined, type CardConnectorProvider, type Payout, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
 
 /**
  * Stripe as a card connector: Connect, Standard accounts, direct charges (card-processing prompt,
@@ -275,9 +275,66 @@ export function stripeConnector(stripe: Stripe): CardConnectorProvider {
       );
       return refundSnapshot(refund);
     },
+
+    async getPayout(account, payoutId) {
+      return toPayout(await stripe.payouts.retrieve(payoutId, {}, { stripeAccount: account }));
+    },
+
+    async listPayouts(account, since) {
+      const out: Payout[] = [];
+      for await (const p of stripe.payouts.list({ created: { gte: Math.floor(since.getTime() / 1000) }, limit: 100 }, { stripeAccount: account })) out.push(toPayout(p));
+      return out;
+    },
+
+    async payoutItems(account, payoutId) {
+      const out: BalanceItem[] = [];
+      for await (const b of stripe.balanceTransactions.list({ payout: payoutId, limit: 100, expand: ['data.source'] }, { stripeAccount: account })) {
+        if (b.type !== 'payout') out.push(balanceItem(b));
+      }
+      return out;
+    },
+
+    async balanceItems(account, since) {
+      const out: BalanceItem[] = [];
+      for await (const b of stripe.balanceTransactions.list({ created: { gte: Math.floor(since.getTime() / 1000) }, limit: 100, expand: ['data.source'] }, { stripeAccount: account })) {
+        if (b.type !== 'payout') out.push(balanceItem(b));
+      }
+      return out;
+    },
   };
   return connector;
 }
+
+/**
+ * A balance transaction, with Stripe's fee split (checked in test mode, 2026-09-25: a direct charge
+ * with an application fee carries `fee_details` of `stripe_fee` and `application_fee`; a refund
+ * that keeps the application fee carries none). Only for automatic payouts can Stripe say which
+ * transactions a payout settled (docs.stripe.com/reports/payout-reconciliation).
+ */
+export function balanceItem(b: Stripe.BalanceTransaction): BalanceItem {
+  const fee = (type: string) => b.fee_details.filter((f) => f.type === type).reduce((s, f) => s + f.amount, 0);
+  const source = typeof b.source === 'string' ? null : (b.source as { payment_intent?: string | { id: string } | null } | null);
+  const pi = source?.payment_intent ?? null;
+  return {
+    id: b.id,
+    type: b.type,
+    amountCents: b.amount,
+    // Everything that isn't Clear's is the processor's (its fee, and any tax on it).
+    processorFeeCents: b.fee - fee('application_fee'),
+    platformFeeCents: fee('application_fee'),
+    netCents: b.net,
+    paymentId: typeof pi === 'string' ? pi : (pi?.id ?? null),
+    createdAt: new Date(b.created * 1000).toISOString(),
+  };
+}
+
+const toPayout = (p: Stripe.Payout): Payout => ({
+  id: p.id,
+  status: p.status as Payout['status'],
+  amountCents: p.amount,
+  arrivalDate: new Date(p.arrival_date * 1000).toISOString().slice(0, 10),
+  automatic: p.automatic,
+});
 
 export function refundSnapshot(refund: Stripe.Refund): RefundSnapshot {
   const state: RefundSnapshot['state'] =

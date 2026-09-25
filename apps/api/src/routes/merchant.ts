@@ -26,6 +26,7 @@ import merchantCatalogRouter from './merchantCatalog.js';
 import merchantOrdersRouter from './merchantOrders.js';
 import merchantRefundsReceiptsRouter from './merchantRefundsReceipts.js';
 import merchantCloseRouter from './merchantClose.js';
+import merchantReportsRouter from './merchantReports.js';
 
 /**
  * The merchant surface.
@@ -59,6 +60,8 @@ merchantRouter.use(merchantOrdersRouter);
 merchantRouter.use(merchantRefundsReceiptsRouter);
 // Counting the drawer, Close the day, deposits, day reports (routes/merchantClose.ts).
 merchantRouter.use(merchantCloseRouter);
+// Card deposits, Overview, reconciliation (routes/merchantReports.ts).
+merchantRouter.use(merchantReportsRouter);
 
 /** Sign-in is scoped to one shop: a four-digit PIN only means anything against a merchant. */
 function merchantOf(req: Request): string {

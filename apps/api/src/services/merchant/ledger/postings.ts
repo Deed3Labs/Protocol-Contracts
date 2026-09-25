@@ -243,15 +243,19 @@ export function refund(
 }
 
 /**
- * A card payout, from Stripe's figures: the gross it settles comes off the receivable, the net
- * lands in the bank, and the difference is card processing, with Stripe's fee and Clear's
- * application fee as separate lines so the deposit can show both.
+ * A card payout, from the processor's figures: the gross it settles (charges less refunds) comes off
+ * the receivable, the net lands in the bank, and the difference is card processing: the processor's
+ * fee and Clear's application fee as separate lines, so the deposit can show both. Disputes and
+ * adjustments (`otherCents`, signed as they hit the balance) are booked to card processing too,
+ * marked in the memo, until disputes get their own accounts.
  */
 export function cardPayout(
-  input: Base & { payoutId: string; grossCents: number; stripeFeeCents: number; clearFeeCents: number },
+  input: Base & { payoutId: string; grossCents: number; stripeFeeCents: number; clearFeeCents: number; otherCents?: number },
 ): EntryInput {
-  const net = input.grossCents - input.stripeFeeCents - input.clearFeeCents;
+  const other = input.otherCents ?? 0;
+  const net = input.grossCents - input.stripeFeeCents - input.clearFeeCents + other;
   if (net < 0) throw new Error('Fees are more than the payout');
+  const receivable = input.grossCents;
   return {
     merchant: input.merchant,
     kind: 'card_payout',
@@ -259,12 +263,15 @@ export function cardPayout(
     ref: { type: 'payout', id: input.payoutId },
     occurredAt: input.occurredAt,
     createdBy: input.createdBy,
-    memo: 'Card processing: Stripe fee, then Clear fee',
+    memo: other !== 0 ? 'Card processing: processor fee, Clear fee, and disputes or adjustments' : 'Card processing: processor fee, then Clear fee',
     lines: lines(
       { account: 'bank', debit: net },
       { account: 'card_processing_expense', debit: input.stripeFeeCents },
       { account: 'card_processing_expense', debit: input.clearFeeCents },
-      { account: 'card_receivable', credit: input.grossCents },
+      { account: 'card_processing_expense', debit: other < 0 ? -other : 0 },
+      { account: 'card_processing_expense', credit: other > 0 ? other : 0 },
+      { account: 'card_receivable', credit: receivable > 0 ? receivable : 0 },
+      { account: 'card_receivable', debit: receivable < 0 ? -receivable : 0 },
     ),
   };
 }

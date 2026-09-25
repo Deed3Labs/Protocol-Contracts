@@ -2,6 +2,7 @@ import type Stripe from 'stripe';
 import { applyPaymentSnapshot, applyRefundSnapshot } from '../cards/cardTenders.js';
 import type { CardConnectorProvider } from '../cards/connector.js';
 import { refundSnapshot } from '../cards/stripeConnector.js';
+import { syncPayout } from '../payouts/payoutSync.js';
 import type { Handlers } from './inbox.js';
 
 /**
@@ -59,6 +60,28 @@ export function cardPaymentHandlers(provider: () => CardConnectorProvider | null
     'refund.updated': onRefund,
     'refund.failed': onRefund,
     'charge.refund.updated': onRefund,
+
+    ...Object.fromEntries(
+      ['payout.created', 'payout.updated', 'payout.paid', 'payout.failed', 'payout.canceled'].map((type) => [
+        type,
+        /**
+         * A shop's payout moved. Synced from the processor (not the event body), in the event's own
+         * transaction: the payout, its ledger entry and "event done" commit together.
+         */
+        (async (tx, event) => {
+          const payout = event.data.object as Stripe.Payout;
+          if (!event.account) return;
+          const { rows } = await tx.query<{ id: string; merchant: string }>(
+            'SELECT id, merchant FROM merchant.card_connectors WHERE external_account_id = $1 ORDER BY (disconnected_at IS NULL) DESC LIMIT 1',
+            [event.account],
+          );
+          if (!rows[0]) return;
+          const p = provider();
+          if (!p) throw new Error('Card processing is not configured here; will retry');
+          await syncPayout(tx, p, { merchant: rows[0].merchant, connectorId: rows[0].id, account: event.account, payoutId: payout.id });
+        }) as NonNullable<Handlers[string]>,
+      ]),
+    ),
 
     /**
      * A customer disputed a card payment. Recorded for the owner (the outbox carries it to

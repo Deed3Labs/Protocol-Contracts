@@ -40,6 +40,29 @@ export interface RefundSnapshot {
   failureReason: string | null;
 }
 
+/** One money movement in the shop's processor balance, with the processor's own fee split. */
+export interface BalanceItem {
+  id: string;
+  /** charge, refund, adjustment (disputes), and so on: the processor's word. */
+  type: string;
+  /** Signed: a charge is positive, a refund negative. */
+  amountCents: number;
+  /** Fees on it, as the processor charged them: its own, and the platform's (Clear's). */
+  processorFeeCents: number;
+  platformFeeCents: number;
+  netCents: number;
+  paymentId: string | null;
+  createdAt: string;
+}
+
+export interface Payout {
+  id: string;
+  status: 'pending' | 'in_transit' | 'paid' | 'failed' | 'canceled';
+  amountCents: number;
+  arrivalDate: string;
+  automatic: boolean;
+}
+
 export class CardDeclined extends Error {
   constructor(readonly code: string | null) {
     super('The card was declined');
@@ -122,4 +145,13 @@ export interface CardConnectorProvider {
     paymentId: string,
     input: { amountCents: number; refundApplicationFee: boolean; idempotencyKey: string; metadata: Record<string, string> },
   ): Promise<RefundSnapshot>;
+
+  // ---- Payouts and fee data (Phase 8) -----------------------------------------------------------
+  getPayout(account: string, payoutId: string): Promise<Payout>;
+  /** Payouts created since a moment, newest first. */
+  listPayouts(account: string, since: Date): Promise<Payout[]>;
+  /** What an automatic payout settled: every balance item in it (not the payout itself). */
+  payoutItems(account: string, payoutId: string): Promise<BalanceItem[]>;
+  /** Charges (and refunds) in the balance since a moment, for reconciliation. */
+  balanceItems(account: string, since: Date): Promise<BalanceItem[]>;
 }
