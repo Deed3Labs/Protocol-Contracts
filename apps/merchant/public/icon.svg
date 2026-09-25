@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Clear for Merchants">
-<rect width="512" height="512" fill="#DFE3DE"/>
-<g transform="translate(256 256) scale(1.05)"><g fill="none" stroke="#16211D">
-  <path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="#16211D"/>
-  <path d="M 0 -8 H 114 V 8 H 0 Z" fill="#16211D" stroke="none"/>
-  <circle cx="0" cy="0" r="34" fill="#16211D" stroke="none"/>
+<rect width="512" height="512" fill="#16211D"/>
+<g transform="translate(256 256) scale(1.05)"><g fill="none" stroke="#DFE3DE">
+  <path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="#DFE3DE"/>
+  <path d="M 0 -8 H 114 V 8 H 0 Z" fill="#DFE3DE" stroke="none"/>
+  <circle cx="0" cy="0" r="34" fill="#DFE3DE" stroke="none"/>
   <circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/>
 </g></g>
 </svg>
