@@ -116,19 +116,27 @@ describe('cancelling a charge actually cancels it', () => {
 });
 
 describe('a failure leaves the writer something to say', () => {
+  // The failure sheet moved into charge/phone.tsx (FailureSheet) when New Charge was rebuilt to the
+  // reference in #581. The guarantees below did not move with a file; they are about what a counter
+  // can do and say.
+  const phone = readApp('charge/phone.tsx');
+  const sheet = phone.slice(phone.indexOf('export function FailureSheet'));
+
   test('offline offers no retry, because there is nothing to retry', () => {
-    // The reference gives Declined and Expired a button each and offline none. A button there
-    // invites a writer to stand tapping it while somebody waits; the screen's job is to send them
-    // to paper. This is the third element I added that the reference does not have.
-    const failed = readApp('charge/ChargeFailed.tsx');
-    const offline = failed.slice(failed.indexOf('offline: {'), failed.indexOf('}[kind]'));
-    expect(offline).toContain('action: null');
-    expect(offline).toContain('Take the ticket the usual way');
+    // A retry button while Clear can't reach the phone invites a writer to stand tapping it while
+    // somebody waits. The sheet hands them the other ways to pay instead.
+    const offlineFoot = sheet.slice(sheet.indexOf("kind === 'offline' ? ("), sheet.indexOf(') : ('));
+    expect(offlineFoot).toContain('onClick={onCash}');
+    expect(offlineFoot).toContain('onClick={onCard}');
+    expect(offlineFoot).not.toContain('onPrimary');
+    expect(offlineFoot).not.toMatch(/again|retry|try/i);
+    // And no queue for Clear: a charge the ledger has not seen is a promise that may not hold.
+    const offline = sheet.slice(sheet.indexOf('offline: {'), sheet.indexOf('}[kind]'));
+    expect(offline).toContain('There is no offline queue for Clear');
   });
 
   test('a decline never carries a reason to the counter', () => {
-    const failed = readApp('charge/ChargeFailed.tsx');
-    const declined = failed.slice(failed.indexOf('declined: {'), failed.indexOf('expired: {'));
+    const declined = sheet.slice(sheet.indexOf('declined: {'), sheet.indexOf('expired: {'));
     // Why Clear could not cover it is between Clear and the member.
     expect(declined).toContain('can see why in their app');
     for (const leak of ['limit', 'credit', 'balance', 'score']) {
