@@ -1,4 +1,4 @@
-import { CardDeclined, type CardConnectorProvider, type ConnectorAccountStatus, type PaymentSnapshot, type RefundSnapshot } from './connector.js';
+import { CardDeclined, type CardConnectorProvider, type ConnectorAccountStatus, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
 
 /**
  * A card processor for tests: behaves like Stripe where the merchant code depends on it (manual
@@ -40,8 +40,14 @@ export function fakeProvider() {
     captures: [] as Array<{ paymentId: string; amountCents: number; applicationFeeCents: number }>,
     cancels: [] as string[],
     refunds: [] as Array<{ paymentId: string; amountCents: number; refundApplicationFee: boolean }>,
+    presented: [] as Array<{ reader: string; paymentId: string }>,
+    cleared: [] as string[],
   };
-  const knobs = { raiseDeclines: false, refundState: 'succeeded' as RefundSnapshot['state'] };
+  const knobs = {
+    raiseDeclines: false,
+    refundState: 'succeeded' as RefundSnapshot['state'],
+    reader: 'ready' as 'ready' | 'busy' | 'offline',
+  };
 
   const snap = (p: FakePayment): PaymentSnapshot => ({
     paymentId: p.id,
@@ -117,6 +123,14 @@ export function fakeProvider() {
       p.fee = input.applicationFeeCents;
       p.state = 'captured';
       return snap(p);
+    },
+    async presentOnReader(_account, reader, paymentId) {
+      if (knobs.reader !== 'ready') throw new ReaderUnavailable(knobs.reader, `reader ${knobs.reader}`);
+      calls.presented.push({ reader, paymentId });
+    },
+    async clearReader(_account, reader) {
+      if (knobs.reader === 'busy') throw new ReaderUnavailable('busy', 'reader busy');
+      calls.cleared.push(reader);
     },
     async cancel(_account, paymentId) {
       calls.cancels.push(paymentId);

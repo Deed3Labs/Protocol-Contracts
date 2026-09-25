@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { merchantDb } from '../config/merchantDb.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireMerchant } from '../middleware/merchantAuth.js';
-import { adjustCardTip, cancelCardTender, createCardTender, syncCardTender, TenderError, type TenderRow, toTender } from '../services/merchant/cards/cardTenders.js';
+import { adjustCardTip, cancelCardTender, createCardTender, presentCardTender, syncCardTender, TenderError, type TenderRow, toTender } from '../services/merchant/cards/cardTenders.js';
 import { defaultCardConnector } from '../services/merchant/cards/stripeConnector.js';
 import { terminalRefusal } from './merchantCards.js';
 
@@ -14,6 +14,7 @@ import { terminalRefusal } from './merchantCards.js';
  *
  *   GET  /orders/:orderId/tenders         the order's tenders
  *   POST /orders/:orderId/tenders/card    start a card payment: the reader SDK gets the client secret
+ *   POST /tenders/:id/present             send it to the shop's smart reader (server-driven)
  *   POST /tenders/:id/sync                after the tap, catch the tender up with the processor
  *   POST /tenders/:id/cancel              void before capture (an authorised one needs a manager)
  *   POST /tenders/:id/tip                 change the tip before capture
@@ -34,6 +35,10 @@ const STATUS: Record<TenderError['code'], number> = {
   tip_declined: 402,
   changed: 409,
   stale: 409,
+  not_smart_reader: 422,
+  reader_busy: 409,
+  reader_offline: 503,
+  reader_timeout: 504,
 };
 
 function refuse(res: Response, error: unknown): void {
@@ -81,6 +86,16 @@ router.post('/orders/:orderId/tenders/card', requireMerchant, async (req: Reques
         ...body.data,
       }),
     );
+  } catch (error) {
+    refuse(res, error);
+  }
+});
+
+router.post('/tenders/:id/present', requireMerchant, async (req: Request, res: Response) => {
+  const deps = await ready(res);
+  if (!deps) return;
+  try {
+    res.json(await presentCardTender(deps.db, deps.provider, { merchant: req.merchant!.merchant, tenderId: String(req.params.id) }));
   } catch (error) {
     refuse(res, error);
   }

@@ -4,7 +4,7 @@ import type { Db, Queryable } from '../../../db/db.js';
 import { entriesFor, post } from '../ledger/ledgerService.js';
 import * as postings from '../ledger/postings.js';
 import { settleOrder } from '../orders/settle.js';
-import { CardDeclined, type CardConnectorProvider, type PaymentSnapshot, type RefundSnapshot } from './connector.js';
+import { CardDeclined, type CardConnectorProvider, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
 import { takingCards } from './terminal.js';
 
 /**
@@ -45,7 +45,11 @@ export class TenderError extends Error {
       | 'tip_not_raisable'
       | 'tip_declined'
       | 'changed'
-      | 'stale',
+      | 'stale'
+      | 'not_smart_reader'
+      | 'reader_busy'
+      | 'reader_offline'
+      | 'reader_timeout',
   ) {
     super(message);
     this.name = 'TenderError';
@@ -274,6 +278,42 @@ export async function syncCardTender(db: Db, provider: CardConnectorProvider, in
   return toTender(result.tender);
 }
 
+/** A tender's reader, when it's a smart reader the server drives. */
+async function smartReaderOf(q: Queryable, merchant: string, readerId: string | null): Promise<{ external_reader_id: string } | null> {
+  if (!readerId) return null;
+  const { rows } = await q.query<{ external_reader_id: string; type: string }>(
+    'SELECT external_reader_id, type FROM merchant.readers WHERE id = $1 AND merchant = $2 AND removed_at IS NULL',
+    [readerId, merchant],
+  );
+  return rows[0]?.type === 'smart' ? rows[0] : null;
+}
+
+function readerRefusal(error: unknown): never {
+  if (error instanceof ReaderUnavailable) {
+    throw new TenderError(error.message, error.reason === 'busy' ? 'reader_busy' : error.reason === 'offline' ? 'reader_offline' : 'reader_timeout');
+  }
+  throw error;
+}
+
+/**
+ * Sends a card payment to the shop's smart reader (server-driven; Stripe's recommendation for smart
+ * readers, and no need for the counter device and reader to share a network). The reader asks for
+ * the card and authorises on its own; the outcome reaches the tender through the reader's webhook,
+ * the payment's webhook or the app's sync, whichever is first.
+ *
+ * Presenting again is how the counter retries after the customer cancelled on the reader or the
+ * reader timed out. A declined card ends its tender (declined, voided) and the counter starts
+ * another, so a retry can't be confirmed onto the declined attempt.
+ */
+export async function presentCardTender(db: Db, provider: CardConnectorProvider, input: { merchant: string; tenderId: string }): Promise<Tender> {
+  const t = await cardTender(db, input.merchant, input.tenderId);
+  if (t.status !== 'pending' || !t.payment_intent_id) throw new TenderError(`A ${t.status} card payment can’t be sent to the reader`, 'wrong_state');
+  const reader = await smartReaderOf(db, input.merchant, t.reader_id);
+  if (!reader) throw new TenderError('Only a smart reader takes a payment from here; the M2 and Tap to Pay take it on the device', 'not_smart_reader');
+  await provider.presentOnReader(t.account, reader.external_reader_id, t.payment_intent_id).catch(readerRefusal);
+  return toTender(t);
+}
+
 /**
  * Void: cancels a card payment before capture. Free, because nothing was taken. Voiding one the
  * card already authorised needs a manager or owner, the same as voiding an order.
@@ -300,6 +340,17 @@ export async function cancelCardTender(
       return rows[0]!;
     });
     return toTender(r);
+  }
+  // A smart reader still asking for this card is cleared first, so it stops showing the amount. It
+  // refuses while a card is mid-authorisation, and then so does the void: wait for the outcome.
+  if (t.status === 'pending') {
+    const reader = await smartReaderOf(db, input.merchant, t.reader_id);
+    if (reader) {
+      await provider.clearReader(t.account, reader.external_reader_id).catch((error) => {
+        if (error instanceof ReaderUnavailable && error.reason === 'busy') readerRefusal(error);
+        // Offline or timed out: the reader will fail the payment when it can't confirm a cancelled one.
+      });
+    }
   }
   const snapshot = await provider.cancel(t.account, t.payment_intent_id);
   const r = await db.transaction((tx) => applyPaymentSnapshot(tx, { merchant: input.merchant, tenderId: t.id, snapshot, actor: input.actor }));

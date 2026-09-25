@@ -73,9 +73,10 @@ export async function ensureLocation(db: Db, provider: CardConnectorProvider, me
   });
 }
 
-export async function connectionToken(db: Db, provider: CardConnectorProvider, merchant: string): Promise<{ secret: string }> {
+export async function connectionToken(db: Db, provider: CardConnectorProvider, merchant: string): Promise<{ secret: string; locationId: string }> {
   const { connector, locationId } = await ensureLocation(db, provider, merchant);
-  return provider.connectionToken(connector.external_account_id, locationId);
+  const { secret } = await provider.connectionToken(connector.external_account_id, locationId);
+  return { secret, locationId };
 }
 
 interface ReaderRow {

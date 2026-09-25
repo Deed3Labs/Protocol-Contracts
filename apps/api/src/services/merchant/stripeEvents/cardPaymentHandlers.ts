@@ -20,8 +20,9 @@ const PAYMENT_EVENTS = [
 ] as const;
 
 export function cardPaymentHandlers(provider: () => CardConnectorProvider | null): Handlers {
-  const onPayment: Handlers[string] = async (tx, event) => {
-    const pi = event.data.object as Stripe.PaymentIntent;
+  const catchUp = async (tx: Parameters<NonNullable<Handlers[string]>>[0], event: Stripe.Event, paymentId: string | null) => {
+    if (!paymentId) return;
+    const pi = { id: paymentId };
     const { rows } = await tx.query<{ id: string; merchant: string }>('SELECT id, merchant FROM payments.tenders WHERE payment_intent_id = $1', [pi.id]);
     // Not one of ours: a payment the shop took some other way on its own account.
     if (!rows[0] || !event.account) return;
@@ -31,6 +32,17 @@ export function cardPaymentHandlers(provider: () => CardConnectorProvider | null
     const r = await applyPaymentSnapshot(tx, { merchant: rows[0].merchant, tenderId: rows[0].id, snapshot, actor: null });
     // A declined attempt is voided so it can't be confirmed later; the counter starts a new tender.
     if (r.declined) await p.cancel(event.account, pi.id).catch(() => undefined);
+  };
+  const onPayment: Handlers[string] = (tx, event) => catchUp(tx, event, (event.data.object as Stripe.PaymentIntent).id);
+  /**
+   * A smart reader finished (or failed) a payment it was sent. Often the first news, and the
+   * failure codes (declined, customer cancelled, connection error) all come down to one question
+   * answered the same way: where does the PaymentIntent stand now.
+   */
+  const onReader: Handlers[string] = (tx, event) => {
+    const reader = event.data.object as Stripe.Terminal.Reader;
+    const target = reader.action?.type === 'process_payment_intent' ? reader.action.process_payment_intent?.payment_intent : null;
+    return catchUp(tx, event, typeof target === 'string' ? target : (target?.id ?? null));
   };
 
   const onRefund: Handlers[string] = async (tx, event) => {
@@ -42,6 +54,8 @@ export function cardPaymentHandlers(provider: () => CardConnectorProvider | null
 
   return {
     ...Object.fromEntries(PAYMENT_EVENTS.map((type) => [type, onPayment])),
+    'terminal.reader.action_succeeded': onReader,
+    'terminal.reader.action_failed': onReader,
     'refund.updated': onRefund,
     'refund.failed': onRefund,
     'charge.refund.updated': onRefund,

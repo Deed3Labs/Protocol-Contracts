@@ -47,6 +47,16 @@ export class CardDeclined extends Error {
   }
 }
 
+export class ReaderUnavailable extends Error {
+  constructor(
+    readonly reason: 'busy' | 'offline' | 'timeout',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ReaderUnavailable';
+  }
+}
+
 export interface Address {
   line1: string;
   line2: string | null;
@@ -95,6 +105,14 @@ export interface CardConnectorProvider {
   /** Raise the hold to a new total. Throws CardDeclined if the card won't take it; the old hold stands. */
   raiseAuthorisation(account: string, paymentId: string, input: { amountCents: number; applicationFeeCents: number }): Promise<PaymentSnapshot>;
   capture(account: string, paymentId: string, input: { amountCents: number; applicationFeeCents: number; idempotencyKey: string }): Promise<PaymentSnapshot>;
+  /**
+   * Sends a payment to a smart reader (server-driven): the reader asks for the card and authorises.
+   * Asynchronous; the outcome comes back on the payment. Throws ReaderUnavailable if the reader is
+   * busy, offline or didn't answer.
+   */
+  presentOnReader(account: string, externalReaderId: string, paymentId: string): Promise<void>;
+  /** Clears whatever the smart reader is asking for. Refused (ReaderUnavailable 'busy') mid-authorisation. */
+  clearReader(account: string, externalReaderId: string): Promise<void>;
   /** Void: releases the hold. Safe to repeat. */
   cancel(account: string, paymentId: string): Promise<PaymentSnapshot>;
   refund(
