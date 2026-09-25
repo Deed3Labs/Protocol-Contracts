@@ -119,5 +119,7 @@ export function realMerchantApi(request: Transport): MerchantApi {
     overview: (r) => get(`/overview?${range(r)}`),
     clearFeeBills: () => get('/clear-fee-bills'),
     audit: (r) => get(`/audit?${range(r)}`),
+    reconciliation: () => get('/reconciliation'),
+    explainFlag: (flagId, input) => post(`/reconciliation/${id(flagId)}/explain`, input),
   };
 }

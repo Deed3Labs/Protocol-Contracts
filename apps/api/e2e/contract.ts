@@ -226,6 +226,15 @@ try {
   await check('overview', C.Overview, () => manager.overview(range));
   await check('clearFeeBills', C.ClearFeeBill.array(), () => manager.clearFeeBills());
   await check('audit', C.AuditEntry.array(), () => owner.audit(range));
+  await check('reconciliation', C.Reconciliation, () => manager.reconciliation());
+  // Nothing has run the nightly reconciliation here, so there's no flag to explain: a made-up one is
+  // refused as "not this shop's", which is the route, the client and the error shape.
+  await check('explainFlag', C.ReconciliationFlag, () =>
+    manager.explainFlag('flag_none', { note: 'Checked in Stripe' }).catch((error: Error & { status?: number }) => {
+      if (error.status === 404) return Promise.reject(Object.assign(new Error(`refused cleanly (404): ${error.message}`), { expected: true }));
+      throw error;
+    }),
+  );
   await check('archiveItem', C.CatalogItem, () => manager.archiveItem(tire.id));
 } finally {
   server.stop();
