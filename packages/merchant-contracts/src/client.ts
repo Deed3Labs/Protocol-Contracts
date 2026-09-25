@@ -2,6 +2,9 @@ import type { z } from 'zod';
 import type { BusinessDate } from './common';
 import type {
   CardAvailability,
+  ExplainFlag,
+  Reconciliation,
+  ReconciliationFlag,
   CardDeposit,
   ClearFeeBill,
   CardTenderStart,
@@ -168,4 +171,8 @@ export interface MerchantApi {
   clearFeeBills(): Promise<ClearFeeBill[]>;
   /** Owners only: who did what to the money, newest first. */
   audit(range: Range): Promise<AuditEntry[]>;
+  /** Owners and managers: where the books and the processor disagree, open and recently explained. */
+  reconciliation(): Promise<Reconciliation>;
+  /** Owners and managers: close a flag with what happened. */
+  explainFlag(id: string, input: In<typeof ExplainFlag>): Promise<ReconciliationFlag>;
 }

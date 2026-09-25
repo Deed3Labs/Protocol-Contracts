@@ -150,8 +150,8 @@ Decided 2026-09-24.
 - **The payout detail** (a row's Statement) isn't drawn. It takes a back row and one cell.
 - **What a live shop sees.** The figure, the cycle, where it sits, the cash account and its
   payouts, all from the payout position; Withdraw and the signer grant are live. Card deposits,
-  the drawer's cash and tips, receiving by ACH, and adding or choosing a bank have no backend
-  yet. Preview: `/payouts?preview=1&screen=none|paying|year|counter|withdraw|from|to|sending|done|
+  the drawer's cash and tips, and the nightly reconciliation ("Checked against Stripe", below).
+  Receiving by ACH, and adding or choosing a bank, have no backend yet. Preview: `/payouts?preview=1&screen=none|paying|year|counter|withdraw|from|to|sending|done|
   breakdown|receive|destinations|add-bank`; `&live=1` for the live path.
 
 ## Settings
@@ -587,4 +587,19 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **Offline**: a line above New charge while the tablet has no connection: cash still works; card
   and Clear wait. Offline cards aren't built (`OFFLINE_BUILT` in `reader/platform.ts`).
 - Walk-through: `e2e/new-charge-extras.spec.ts`, with the camera replaced by a canvas showing a QR.
+
+## Payouts: Checked against Stripe
+
+- **The nightly reconciliation is on Payouts**, for owners and managers, as a cell the reference
+  doesn't draw. "Everything matches" when nothing is open; otherwise each flag in plain words ("A
+  payout that isn't in the books", "Clear's fee on a card sale differs") with its figures ("Expected
+  $0.30 · found $0.29") and since when.
+- **Explain closes a flag with what happened** (`POST /reconciliation/:id/explain`, a note of at
+  least a few words), with who said so. The audit trail records `reconciliation.explained` with
+  the note. Migration 0015 adds the explanation to the flag.
+- **An explained flag stays closed while its figures hold.** If the nightly run finds the same
+  thing at the same figures, it isn't opened again; if the figures move, it's news, and it opens.
+- `GET /reconciliation` now answers `{open, explained}`: what's open, and the last 20 explained,
+  which the cell shows under "Explained".
+- Walk-through: `e2e/reconcile.spec.ts`.
 

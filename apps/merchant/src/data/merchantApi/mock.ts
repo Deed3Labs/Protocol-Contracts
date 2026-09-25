@@ -141,6 +141,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   const deposits: BankDeposit[] = [];
   const cardDeposits: CardDeposit[] = [];
   let orderNumber = 0;
+  // The nightly reconciliation's findings, as the reference day's shop would have them.
+  const flags = structuredClone(seed.RECON_FLAGS);
   // Set up the till's two steps nothing else records.
   const marks = new Set<'cash' | 'tips'>(switches.setup === 'new' ? [] : ['cash', 'tips']);
   // Shifts and hours: who is on, their breaks, and each person's usual week and this week.
@@ -900,6 +902,17 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
     clearFeeBills: async () => [],
     audit: async () => audit,
+    reconciliation: async () => {
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      return { open: flags.filter((f) => !f.explained), explained: flags.filter((f) => f.explained).reverse() };
+    },
+    explainFlag: async (flagId, input) => {
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      const f = flags.find((x) => x.id === flagId && !x.explained) ?? refuse('That flag is closed already, or isn’t this shop’s', 404, 'not_found');
+      if (input.note.trim().length < 3) refuse('Say what happened, in a few words', 422, 'invalid');
+      f.explained = { by: who(viewer)!.name, note: input.note.trim(), at: now() };
+      return { ...f };
+    },
   };
 
   // ---- The Clear side (the older client's calls) ----------------------------------------------------
