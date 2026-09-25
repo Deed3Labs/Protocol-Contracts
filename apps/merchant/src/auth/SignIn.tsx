@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/data/apiClient';
 import { useAuth } from '@/auth/authContext';
-import { PinScreen, WhoIsOnScreen, type ShiftPerson } from '@/auth/screens';
+import { FirstPinSheet, PinScreen, WhoIsOnScreen, type ShiftPerson } from '@/auth/screens';
 import { usePinAttempts } from '@/auth/pinAttempts';
 import { useDigitKeys } from '@/brand/ui';
 import { resettersOf } from '@/shell/chrome';
@@ -21,7 +21,7 @@ import { rememberedShop } from '@/lib/shopName';
  * needs the owner.
  */
 export function SignIn() {
-  const { signInWithPin, device } = useAuth();
+  const { signInWithPin, startFirstShift, device } = useAuth();
   const [roster, setRoster] = useState<ShiftPerson[] | null>(null);
   const [picked, setPicked] = useState<ShiftPerson | null>(null);
   const [pin, setPin] = useState('');
@@ -32,13 +32,18 @@ export function SignIn() {
   useEffect(() => {
     api
       .roster()
-      .then(setRoster)
+      // Somebody whose PIN isn't set yet (new, or reset) picks one instead of typing it.
+      .then((people) => setRoster(people.map(({ pinSet, ...p }) => ({ ...p, first: !pinSet }))))
       .catch(() => setRoster([]));
   }, []);
 
+  // A first shift: four digits, then the same four again.
+  const [chosen, setChosen] = useState<string | null>(null);
+  const first = !!picked?.first;
+
   // Four digits is the whole PIN, so it goes on the fourth rather than asking for a confirm tap.
   useEffect(() => {
-    if (pin.length !== 4 || !picked || busy) return;
+    if (pin.length !== 4 || !picked || busy || first) return;
     setBusy(true);
     signInWithPin(pin, picked.id)
       .catch((e: unknown) => {
@@ -49,7 +54,32 @@ export function SignIn() {
         setPin('');
       })
       .finally(() => setBusy(false));
-  }, [pin, picked, busy, signInWithPin, attempts]);
+  }, [pin, picked, busy, first, signInWithPin, attempts]);
+
+  useEffect(() => {
+    if (!first || !picked || busy || pin.length !== 4) return;
+    if (chosen === null) {
+      setChosen(pin);
+      setPin('');
+      return;
+    }
+    if (pin !== chosen) {
+      setError('Those didn’t match. Pick your four digits again.');
+      setChosen(null);
+      setPin('');
+      return;
+    }
+    setBusy(true);
+    startFirstShift(pin, picked.id)
+      .catch((e: unknown) => {
+        const status = (e as { status?: number })?.status;
+        // Taken (409) or the shop's PIN limit (429): the server's own sentence says which.
+        setError(e instanceof Error && (status === 409 || status === 429) ? e.message : 'That didn’t work. Try again.');
+        setChosen(null);
+        setPin('');
+      })
+      .finally(() => setBusy(false));
+  }, [first, picked, busy, pin, chosen, startFirstShift]);
 
   const typing = !!picked && !busy && !attempts.waiting;
   const digit = (d: string) => {
@@ -61,20 +91,41 @@ export function SignIn() {
 
   const shop = rememberedShop() ?? '';
 
-  if (!picked) {
+  const back = () => {
+    setPicked(null);
+    setPin('');
+    setChosen(null);
+    setError(null);
+  };
+
+  if (!picked || first) {
     return (
-      <WhoIsOnScreen
-        shop={shop}
-        deviceLabel={device?.label ?? ''}
-        people={roster ?? []}
-        loading={roster === null}
-        onPick={(p) => {
-          setPicked(p);
-          setPin('');
-          setError(null);
-          attempts.reset();
-        }}
-      />
+      <>
+        <WhoIsOnScreen
+          shop={shop}
+          deviceLabel={device?.label ?? ''}
+          people={roster ?? []}
+          loading={roster === null}
+          onPick={(p) => {
+            setPicked(p);
+            setPin('');
+            setError(null);
+            attempts.reset();
+          }}
+        />
+        {picked && first && (
+          <FirstPinSheet
+            name={picked.name}
+            role={picked.role}
+            choose={chosen === null ? pin.length : 4}
+            again={chosen === null ? 0 : pin.length}
+            error={error}
+            onDigit={digit}
+            onDelete={del}
+            onClose={back}
+          />
+        )}
+      </>
     );
   }
 
@@ -88,13 +139,9 @@ export function SignIn() {
       resetters={resettersOf(roster ?? [])}
       onDigit={digit}
       onDelete={del}
-      onNotMe={() => {
-        // Where a clear key would sit. Picking the wrong name is the common mistake, and backing
-        // out of it should cost one tap.
-        setPicked(null);
-        setPin('');
-        setError(null);
-      }}
+      // Where a clear key would sit. Picking the wrong name is the common mistake, and backing
+      // out of it should cost one tap.
+      onNotMe={back}
     />
   );
 }

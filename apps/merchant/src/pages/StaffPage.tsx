@@ -2,7 +2,8 @@ import { useContext, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { canAddRole, type StaffRole } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
-import { OneColumn, Slab } from '@/brand/ui';
+import { ResetPinSheet } from '@/auth/screens';
+import { OneColumn, Slab, useDigitKeys } from '@/brand/ui';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 import { useShiftActions } from '@/shell/shiftActions';
@@ -38,10 +39,10 @@ import {
  * Three blocks, as on Home: who is on the counter now, a slot while someone added has not started,
  * then the week and the slab (the team, what each role can do, the refund limit).
  *
- * **A live shop sees the team, the roles and the limit.** The API has the roster, each person's
- * charges this month and the refund limit, and it adds people. Shifts, hours, removing someone and
- * resetting a PIN have no backend yet (card-processing prompt, Phase 7), so the crew strip, the
- * week and the person sheet are the preview's. In development, `?preview=1&screen=<frame>`:
+ * **A live shop sees the team, the roles and the limit**, adds people, and opens a person to reset
+ * their PIN (the one resetting confirms with their own) or remove them. Who may: a manager, counter
+ * staff; an owner, counter staff and managers; never an owner, never yourself. Shifts and hours have
+ * no backend yet, so the crew strip and the week are the preview's. In development, `?preview=1&screen=<frame>`:
  * owner (the default), counter, first, busy, add, person, remove, hours, hours-week, day-hours,
  * hours-friday, limit; `&live=1` for the live path.
  */
@@ -50,6 +51,7 @@ type Open =
   | { k: 'add' }
   | { k: 'person'; m: Mate }
   | { k: 'remove'; m: Mate }
+  | { k: 'reset'; m: Mate }
   | { k: 'hours'; m: Mate; h: Hours; once?: boolean; day?: number }
   | { k: 'limit' }
   | null;
@@ -108,8 +110,16 @@ export default function StaffPage() {
   const hoursOf = (m: Mate): Hours => (m.id === 'jen' ? JEN_HOURS : { days: shut.map(() => false), start: 8, end: 16, own: {} });
 
   const waiting = manage ? team.find((m) => m.added && !m.on) : undefined;
-  // Nothing about a person can be changed through the API yet, so a live team's rows do not open.
-  const onTap = preview ? (m: Mate) => setOpen({ k: 'person', m }) : undefined;
+  const onTap = (m: Mate) => setOpen({ k: 'person', m });
+  /** The server's rule (routes/merchant.ts, staffTarget): who this viewer may reset or remove. */
+  const mayChange = (m: Mate) => preview || (m.role !== 'owner' && m.id !== session?.staff.id && (owner || (role === 'manager' && m.role === 'counter')));
+
+  // Resetting someone's PIN: the one resetting confirms with their own.
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const resetting = open?.k === 'reset' ? open.m : null;
+  useDigitKeys(!!resetting && !busy, (d) => (setPinError(null), setPin((p) => (p.length >= 4 ? p : p + d))), () => setPin((p) => p.slice(0, -1)));
 
   const teamCell = <TeamCell team={team} manage={manage} onTap={onTap} onAdd={() => setOpen({ k: 'add' })} />;
   const roles = <RolesCell />;
@@ -166,13 +176,54 @@ export default function StaffPage() {
       {open?.k === 'person' && (
         <PersonSheet
           m={open.m}
-          onHours={() => setOpen({ k: 'hours', m: open.m, h: hoursOf(open.m) })}
-          onResetPin={() => undefined}
-          onRemove={() => setOpen({ k: 'remove', m: open.m })}
+          onHours={preview ? () => setOpen({ k: 'hours', m: open.m, h: hoursOf(open.m) }) : undefined}
+          onResetPin={mayChange(open.m) ? () => (setPin(''), setPinError(null), setOpen({ k: 'reset', m: open.m })) : undefined}
+          onRemove={mayChange(open.m) ? () => setOpen({ k: 'remove', m: open.m }) : undefined}
           onClose={close}
         />
       )}
-      {open?.k === 'remove' && <RemoveSheet m={open.m} onKeep={close} onRemove={preview ? close : undefined} />}
+      {open?.k === 'remove' && (
+        <RemoveSheet
+          m={open.m}
+          onKeep={close}
+          onRemove={
+            preview
+              ? close
+              : async () => {
+                  await api.removeStaff(open.m.id);
+                  staff.reload();
+                  close();
+                }
+          }
+        />
+      )}
+      {resetting && (
+        <ResetPinSheet
+          name={resetting.name}
+          approver={session?.staff.name ?? ''}
+          approverRole={role}
+          filled={pin.length}
+          error={pinError}
+          busy={busy}
+          onDigit={(d) => (setPinError(null), setPin((p) => (p.length >= 4 ? p : p + d)))}
+          onDelete={() => setPin((p) => p.slice(0, -1))}
+          onCancel={close}
+          onReset={async () => {
+            if (preview) return close();
+            setBusy(true);
+            try {
+              await api.resetPin(resetting.id, pin);
+              staff.reload();
+              close();
+            } catch (e) {
+              setPin('');
+              setPinError(e instanceof Error ? e.message : 'That did not match.');
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      )}
       {open?.k === 'hours' && (
         <HoursSheet
           name={open.m.name}

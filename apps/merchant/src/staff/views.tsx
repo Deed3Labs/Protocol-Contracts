@@ -718,7 +718,11 @@ function Kv({ k, v, onTap }: { k: string; v: ReactNode; onTap?: () => void }) {
   );
 }
 
-/** A person: their role, PIN and hours, and the two things an owner does to them. */
+/**
+ * A person: their role, PIN and hours, and the two things an owner or a manager does to them. Reset
+ * and Remove show only when the viewer may do them (the server's rule: a manager for counter staff,
+ * an owner for counter staff and managers; never an owner, never yourself).
+ */
 export function PersonSheet({
   m,
   onHours,
@@ -739,14 +743,18 @@ export function PersonSheet({
       title={m.name}
       onClose={onClose}
       foot={
-        owner ? undefined : (
+        owner || (!onResetPin && !onRemove) ? undefined : (
           <div className="c-pair">
-            <button type="button" className="c-btn" onClick={onResetPin}>
-              Reset their PIN
-            </button>
-            <button type="button" className="c-btn c-btn-danger" onClick={onRemove}>
-              Remove
-            </button>
+            {onResetPin && !m.added && (
+              <button type="button" className="c-btn" onClick={onResetPin}>
+                Reset their PIN
+              </button>
+            )}
+            {onRemove && (
+              <button type="button" className="c-btn c-btn-danger" onClick={onRemove}>
+                Remove
+              </button>
+            )}
           </div>
         )
       }
@@ -766,8 +774,8 @@ export function PersonSheet({
         <span className={cx('c-chip', tone)}>{can}</span>
       </div>
       <div className="c-rows">
-        <Kv k="Role" v={roleLabel(m.role)} onTap={owner ? undefined : () => undefined} />
-        <Kv k={owner ? 'Sign-in' : 'PIN'} v={owner ? 'Owner sign-in' : m.added ? 'On first shift' : 'Set'} onTap={owner ? undefined : onResetPin} />
+        <Kv k="Role" v={roleLabel(m.role)} />
+        <Kv k={owner ? 'Sign-in' : 'PIN'} v={owner ? 'Owner sign-in' : m.added ? 'On first shift' : 'Set'} onTap={owner || m.added ? undefined : onResetPin} />
         <Kv k="Hours" v={m.usual ?? 'No hours yet'} onTap={onHours} />
         <Kv k="Charges this month" v={m.chargesThisMonth ?? 0} />
         <Kv k="Last shift" v={m.lastShift ?? '—'} />

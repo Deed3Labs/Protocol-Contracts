@@ -31,8 +31,11 @@ export const STAFF: Staff[] = [
   { id: 'stf_ana', name: 'Ana Ruiz', role: 'counter', active: true },
 ];
 export const STAFF_ID = { jen: 'stf_jen', luis: 'stf_luis', mike: 'stf_mike', ana: 'stf_ana' } as const;
-/** PINs in the mock: a manager's or owner's approves. */
-export const MOCK_PINS: Record<string, string> = { '1111': STAFF_ID.jen, '2222': STAFF_ID.luis, '9999': STAFF_ID.mike, '3333': STAFF_ID.ana };
+/**
+ * PINs in the mock: a manager's or owner's approves. Ana has none yet: she picks hers on her first
+ * shift (Staff reference, "Ana Ruiz has not started a shift").
+ */
+export const MOCK_PINS: Record<string, string> = { '1111': STAFF_ID.jen, '2222': STAFF_ID.luis, '9999': STAFF_ID.mike };
 
 export const SETTINGS: ShopSettings = { ...DEFAULT_SETTINGS, updatedAt: at(YESTERDAY, '09:00') };
 

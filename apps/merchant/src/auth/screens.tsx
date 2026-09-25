@@ -719,6 +719,10 @@ export function ResetPinSheet({
   filled,
   onCancel,
   onReset,
+  onDigit,
+  onDelete,
+  error,
+  busy,
   inline,
 }: {
   name: string;
@@ -727,6 +731,11 @@ export function ResetPinSheet({
   filled: number;
   onCancel?: () => void;
   onReset?: () => void;
+  /** The approver's PIN, typed here; without these the sheet only draws. */
+  onDigit?: (d: string) => void;
+  onDelete?: () => void;
+  error?: string | null;
+  busy?: boolean;
   inline?: boolean;
 }) {
   const first = name.split(/\s+/)[0];
@@ -742,8 +751,8 @@ export function ResetPinSheet({
           <button type="button" className="c-btn c-btn-lg" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="c-btn c-btn-primary c-btn-lg" onClick={onReset}>
-            Reset PIN
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={busy || (!!onDigit && filled < 4)} onClick={onReset}>
+            {busy ? 'Resetting…' : 'Reset PIN'}
           </button>
         </div>
       }
@@ -758,7 +767,13 @@ export function ResetPinSheet({
           <p className="c-det">{roleLabel(approverRole)}</p>
         </div>
       </div>
-      <PinDots filled={filled} />
+      <PinDots filled={filled} bad={!!error} />
+      {error && (
+        <p className="c-si-err" role="alert" style={{ textAlign: 'center' }}>
+          {error}
+        </p>
+      )}
+      {onDigit && <PinKeys onDigit={onDigit} onDelete={() => onDelete?.()} />}
     </Sheet>
   );
 }
