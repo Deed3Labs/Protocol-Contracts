@@ -224,15 +224,16 @@ export function Drop({ label, onPick }: { label: string; onPick?: () => void }) 
 
 // ---- After onboarding: set up the till ------------------------------------------------------------
 
-export interface TillItem {
-  t: string;
-  det: string;
-  done?: boolean;
-  onOpen?: () => void;
-}
-
 /** Home's checklist for everything signup left out on purpose. */
-export function TillCell({ items, onHide }: { items: TillItem[]; onHide?: () => void }) {
+export function TillCell<T extends { key: string; t: string; det: string; done?: boolean }>({
+  items,
+  onOpen,
+  onHide,
+}: {
+  items: T[];
+  onOpen?: (item: T) => void;
+  onHide?: () => void;
+}) {
   const done = items.filter((i) => i.done).length;
   return (
     <div className="c-slab c-one c-ob-cell">
@@ -250,7 +251,7 @@ export function TillCell({ items, onHide }: { items: TillItem[]; onHide?: () => 
             <i style={{ width: `${Math.floor((done / items.length) * 100)}%` }} />
           </div>
           {items.map((i) => (
-            <div key={i.t} className={cx('c-ob-cl', i.done && 'c-done')} {...press(i.onOpen)}>
+            <div key={i.key} className={cx('c-ob-cl', i.done && 'c-done')} {...press(onOpen ? () => onOpen(i) : undefined)}>
               <span className={cx('c-ob-tick', i.done && 'c-on')} />
               <div>
                 <p className="c-t">{i.t}</p>
@@ -269,28 +270,6 @@ export function TillCell({ items, onHide }: { items: TillItem[]; onHide?: () => 
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-export function TillHero({ cents, det, cart, onNew, onCart }: { cents: string; det: string; cart?: boolean; onNew: () => void; onCart?: () => void }) {
-  return (
-    <div className="c-ob-hero">
-      <div>
-        <p className="c-label">Today</p>
-        <p className="c-ob-fig">{cents}</p>
-        <p className="c-det">{det}</p>
-      </div>
-      <span className="c-ob-acts">
-        {cart && (
-          <button type="button" className="c-btn" onClick={onCart}>
-            Build cart
-          </button>
-        )}
-        <button type="button" className="c-btn c-btn-primary" onClick={onNew}>
-          New charge
-        </button>
-      </span>
     </div>
   );
 }

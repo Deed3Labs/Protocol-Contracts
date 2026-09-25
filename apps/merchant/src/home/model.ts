@@ -61,11 +61,12 @@ export interface WriterTip {
   other: string;
 }
 
-export interface SetupItem {
-  key: string;
+/** A row of Set up the till: everything signup leaves out on purpose (Onboarding reference). */
+export interface TillItem {
+  key: 'stripe' | 'reader' | 'items' | 'team' | 'cash' | 'tips';
   t: string;
   det: string;
-  action: string;
+  done?: boolean;
 }
 
 export interface ShiftClock {
@@ -114,7 +115,8 @@ export interface HomeModel {
   payout?: Payout;
   byPerson?: PersonTally[];
   tip?: WriterTip;
-  setup?: SetupItem[];
+  /** Owners and managers, until every row is done or it is hidden. */
+  till?: TillItem[];
   /** Counter shifts only. */
   shift?: ShiftCell;
   /** Owners and managers, from half an hour before closing. */

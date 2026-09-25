@@ -4,25 +4,44 @@ import { useAuth } from '@/auth/authContext';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 import { HomeView, type HomeActions } from '@/home/HomeView';
-import { clockTime, fromApi, type HomeModel, type WaitingCharge } from '@/home/model';
+import { clockTime, fromApi, type HomeModel, type TillItem, type WaitingCharge } from '@/home/model';
 import { DANA_STEPS, HOME_STATES, type HomeState } from '@/home/seed';
 import { WaitingSheet, type Milestone } from '@/home/WaitingSheet';
 import { useLayout } from '@/lib/useBreakpoint';
-import { TillCell, TillHero, type TillItem } from '@/onboarding/views';
 
 /**
  * Home — docs/merchant-reference/clear-merchant-home.html.
  *
  * A live shop's Home is built from what the API answers today (home/model.ts `fromApi`). In
- * development, `?home=running|counter|onBreak|early|dayOne|closing` shows the reference scenario
+ * development, `?home=running|counter|onBreak|early|dayOne|tillLater|closing|lowStock` shows the reference scenario
  * instead, so every state can be looked at without a database; it falls out of a production build.
  */
+const TILL_HIDDEN = 'clear.merchant.tillHidden';
+
+/** Where each row of Set up the till goes. */
+const TILL_TO: Record<TillItem['key'], string> = {
+  stripe: '/settings/payments',
+  reader: '/settings/devices',
+  items: '/inventory',
+  team: '/staff',
+  cash: '/settings/closing',
+  tips: '/settings/tips',
+};
+
 export default function HomePage() {
   const { session } = useAuth();
   const layout = useLayout();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [open, setOpen] = useState<WaitingCharge | null>(null);
+  const [tillHidden, setTillHidden] = useState(() => {
+    if (import.meta.env.DEV && params.get('home')) return false;
+    try {
+      return localStorage.getItem(TILL_HIDDEN) === '1';
+    } catch {
+      return false;
+    }
+  });
 
   const forced = import.meta.env.DEV ? (params.get('home') as HomeState | null) : null;
   const seeded = forced && forced in HOME_STATES ? HOME_STATES[forced] : null;
@@ -45,33 +64,6 @@ export default function HomePage() {
     });
   }, [seeded, session, charges, position, staff]);
 
-  // After onboarding: the till checklist, from the Onboarding reference (`?home=till|till4`). A live
-  // shop doesn't see it yet: nothing records which of these a shop has done.
-  const till = import.meta.env.DEV ? params.get('home') : null;
-  if (till === 'till' || till === 'till4') {
-    const four = till === 'till4';
-    const items: TillItem[] = [
-      { t: 'Connect Stripe to take cards', det: 'Settings › Payments', done: four, onOpen: () => navigate('/settings/payments?preview=1') },
-      { t: 'Pair a card reader', det: 'An M2, a smart reader, or a phone', done: four, onOpen: () => navigate('/settings/devices?preview=1') },
-      { t: 'Add what you sell', det: 'One at a time, or import a spreadsheet', done: four, onOpen: () => navigate('/inventory?preview=1') },
-      { t: 'Your team', det: 'Jen and Luis, added at signup', done: true, onOpen: () => navigate('/staff?preview=1') },
-      { t: 'Set starting cash', det: 'For the drawer, $150.00 is common', onOpen: () => navigate('/settings/closing?preview=1') },
-      { t: 'Tips and discounts', det: 'Optional', onOpen: () => navigate('/settings/tips?preview=1') },
-    ];
-    return (
-      <>
-        <TillHero
-          cents={four ? '$412.00' : '$0.00'}
-          det={four ? '1 confirmed today' : 'No charges yet. The first one is one tap away.'}
-          cart={four}
-          onNew={() => navigate('/new?preview=1')}
-          onCart={() => navigate('/new?preview=1&items=1')}
-        />
-        <TillCell items={items} />
-      </>
-    );
-  }
-
   if (!model) return null;
 
   const a: HomeActions = {
@@ -81,9 +73,17 @@ export default function HomePage() {
     onAllCharges: () => navigate('/charges'),
     onPayouts: () => navigate('/payouts'),
     onStaff: () => navigate('/staff'),
-    onSetup: (s) => {
-      if (s.key === 'staff') navigate('/staff');
-      if (s.key === 'test') navigate('/new');
+    // Each row opens the screen that already does it.
+    onTill: (t) => navigate(`${TILL_TO[t.key]}${seeded ? '?preview=1' : ''}`),
+    onHideTill: () => {
+      setTillHidden(true);
+      // The preview's scenario hides for this visit only; a shop's choice is remembered on the tablet.
+      if (seeded) return;
+      try {
+        localStorage.setItem(TILL_HIDDEN, '1');
+      } catch {
+        // Hidden for this visit only.
+      }
     },
     onCloseDay: () => navigate(`/close${seeded ? '?drawer=short' : ''}`),
     onMarkReordered: (id) => navigate(`/inventory/${id}${seeded ? '?preview=1&screen=reorder' : ''}`),
@@ -106,7 +106,7 @@ export default function HomePage() {
 
   return (
     <>
-      <HomeView m={model} layout={layout} a={a} />
+      <HomeView m={tillHidden ? { ...model, till: undefined } : model} layout={layout} a={a} />
       {open && (
         <WaitingSheet
           name={open.name}

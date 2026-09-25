@@ -1,5 +1,5 @@
 import type { DaySummary, DrawerClose } from '@/home/drawer';
-import type { HomeModel, SetupItem } from '@/home/model';
+import type { HomeModel, TillItem } from '@/home/model';
 import type { Milestone } from '@/home/WaitingSheet';
 import { INVENTORY } from '@/inventory/model';
 
@@ -80,15 +80,14 @@ const early: HomeModel = {
   tip: { fact: 'Jen has raised both of today’s charges', other: 'Luis' },
 };
 
-export const SETUP: SetupItem[] = [
-  { key: 'staff', t: 'Add your counter staff', det: 'A PIN each, so every charge says who raised it', action: 'Add' },
-  { key: 'cards', t: 'Print counter cards', det: 'Goes home with an estimate', action: 'Print' },
-  {
-    key: 'test',
-    t: 'Run a $1.00 test charge',
-    det: 'The whole loop once, with nobody watching — refunded straight away',
-    action: 'Run',
-  },
+/** Set up the till, as the Onboarding reference draws it the day after signup. */
+export const TILL: TillItem[] = [
+  { key: 'stripe', t: 'Connect Stripe to take cards', det: 'Settings › Payments' },
+  { key: 'reader', t: 'Pair a card reader', det: 'An M2, a smart reader, or a phone' },
+  { key: 'items', t: 'Add what you sell', det: 'One at a time, or import a spreadsheet' },
+  { key: 'team', t: 'Your team', det: 'Jen and Luis, added at signup', done: true },
+  { key: 'cash', t: 'Set starting cash', det: 'For the drawer, $150.00 is common' },
+  { key: 'tips', t: 'Tips and discounts', det: 'Optional' },
 ];
 
 const dayOne: HomeModel = {
@@ -98,7 +97,7 @@ const dayOne: HomeModel = {
   confirmedCount: 0,
   waiting: [],
   confirmed: [],
-  setup: SETUP,
+  till: TILL,
   payout: { totalCents: 0, availableCents: 0, settlingCents: 0, landsOn: 'Oct 14', dayOrdinal: '14th', first: true },
 };
 
@@ -112,9 +111,19 @@ const closing: HomeModel = {
   },
 };
 
+/** A few days on: cards, a reader and items done, and the first Clear charge confirmed. */
+const tillLater: HomeModel = {
+  ...dayOne,
+  stage: 'early',
+  confirmedCents: 41200,
+  confirmedCount: 1,
+  confirmed: [confirmed[0]],
+  till: TILL.map((t, i) => ({ ...t, done: i < 4 })),
+};
+
 const lowStock: HomeModel = { ...running, runningLow: INVENTORY.filter((i) => i.id === 'goodyear' || i.id === 'rotor') };
 
-export const HOME_STATES = { running, counter, onBreak, early, dayOne, closing, lowStock } as const;
+export const HOME_STATES = { running, counter, onBreak, early, dayOne, tillLater, closing, lowStock } as const;
 export type HomeState = keyof typeof HOME_STATES;
 
 export const DANA_STEPS: Milestone[] = [
