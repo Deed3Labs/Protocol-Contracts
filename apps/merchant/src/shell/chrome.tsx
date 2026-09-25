@@ -452,8 +452,7 @@ export function WhoIsOnSheet({
       title="Who is on the counter?"
       foot={
         <p className="c-det">
-          Every charge is recorded against whoever is on shift. The owner is in this list too &mdash; making him sign
-          in differently to raise a charge is a reason to hand the tablet to someone else.
+          Every charge is recorded against whoever is on shift. The owner is in this list too &mdash; making them sign in differently to raise a charge is a reason to hand the tablet to someone else.
         </p>
       }
     >

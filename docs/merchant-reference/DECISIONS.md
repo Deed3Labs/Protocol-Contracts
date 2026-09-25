@@ -40,6 +40,14 @@ Decided 2026-09-24.
 - **Where drawings of the same rule differ, most files win.** The transcription script lists every
   such case in a comment above the rule in `reference.css`.
 
+## Copy
+
+- **Neutral pronouns.** The reference writes about its example people ("making him sign in",
+  "Her shift keeps running", "She picks a new one"). In the app those sentences describe whoever
+  is on the tablet, so they say "them", "their" and "they".
+- **Two lines the reference doesn't have**, kept by decision: "That is not it. Try again in 30
+  seconds." after a third wrong PIN, and "Coming with the Inventory page." on the placeholder.
+
 ## Adaptations: the reference doesn't draw these
 
 - **Frames become the screen.** The tablet's 1180:820 outline and the phone's 340px outline go.

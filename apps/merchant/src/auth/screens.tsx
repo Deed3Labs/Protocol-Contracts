@@ -352,7 +352,7 @@ export function IdleLockScreen({
           left="Someone else"
           onLeft={onSomeoneElse}
         />
-        <p className="c-det">Her shift keeps running while it is locked. Nothing waiting is lost.</p>
+        <p className="c-det">Their shift keeps running while it is locked. Nothing waiting is lost.</p>
       </div>
     </SignInFrame>
   );
@@ -746,7 +746,7 @@ export function ResetPinSheet({
       }
     >
       <p style={{ margin: 0, fontSize: 'var(--t-sec)', lineHeight: 1.5 }}>
-        Her old PIN stops working now. She picks a new one the next time she starts a shift. Nothing she raised changes.
+        Their old PIN stops working now. They pick a new one the next time they start a shift. Nothing they raised changes.
       </p>
       <div className="c-si-pinhead" style={{ marginTop: 'var(--s2)' }}>
         <span className="c-av">{initials(approver)}</span>
