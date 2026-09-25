@@ -20,6 +20,7 @@ import {
   WeekHours,
   type DayHours,
 } from '@/settings/views';
+import { kindsFor, offlineFor, type Platform, type ReaderKind } from '@/reader';
 
 /**
  * Settings' sections, in the rail's order, and what each pane holds. `Shop` opens first, because
@@ -64,6 +65,12 @@ export const SECTIONS: { key: Section; label: string; det: string; desc: string;
 
 export const YOU = { key: 'you' as const, label: 'You', det: 'Your own PIN, and how this tablet is set.', desc: 'Your PIN and this tablet' };
 
+/** The reference shop's paired readers. The preview lists those this platform can use. */
+const PAIRED: { kind: ReaderKind; t: string; sub: string; chip: string }[] = [
+  { kind: 'bluetooth', t: 'Stripe Reader M2', sub: 'Chip, tap and swipe · Bluetooth to this tablet', chip: 'Connected' },
+  { kind: 'tapToPay', t: 'Tap to Pay on Jen’s iPhone', sub: 'Tap only · +10¢ a tap', chip: 'Ready' },
+];
+
 export const HOURS_DET = 'Open and close for each day. Staff’s hours and members’ “open now” both read from here.';
 
 /** Everything a pane shows. The preview fills it from the reference; a live shop from the API. */
@@ -98,6 +105,8 @@ export interface SettingsData {
   taxId: string;
   counterUrl: string;
   stripe: boolean;
+  /** Which readers this device can drive: a browser lists smart readers only. */
+  platform: Platform;
 }
 
 export const REFERENCE: SettingsData = {
@@ -145,6 +154,7 @@ export const REFERENCE: SettingsData = {
   taxId: '••-•••4829',
   counterUrl: 'https://useclear.org/c/8QK2',
   stripe: false,
+  platform: 'ios',
 };
 
 /** "Mon – Thu" rows from a week: runs of days with the same hours. */
@@ -384,7 +394,9 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
           </Cell>
         </>
       );
-    case 'payments':
+    case 'payments': {
+      const kinds = kindsFor(d.platform);
+      const readers = PAIRED.filter((r) => kinds.includes(r.kind));
       return (
         <>
           <Cell label="Ways to pay" det="What Checkout offers" foot={<FootDet>Clear is always on: it is what you are a partner for.</FootDet>}>
@@ -418,43 +430,43 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
               </Cell>
               <Cell
                 label="Readers"
-                det="2"
+                det={String(readers.length)}
                 foot={
-                  <FootLine det="An M2, a smart reader, or any phone running the Clear app.">
+                  <FootLine
+                    det={
+                      d.platform === 'web'
+                        ? 'In a browser, smart readers on your network. The M2 and Tap to Pay work in the Clear app.'
+                        : 'An M2, a smart reader, or any phone running the Clear app.'
+                    }
+                  >
                     <Btn>Add a reader</Btn>
                   </FootLine>
                 }
               >
                 <Main>
                   <Rows link>
-                    <Kv
-                      k={
-                        <>
-                          Stripe Reader M2<span className="c-det c-st-sub">Chip, tap and swipe · Bluetooth to this tablet</span>
-                        </>
-                      }
-                      v={
-                        <span className="c-chip c-settled">
-                          <span className="c-core" />
-                          Connected
-                        </span>
-                      }
-                      go
-                    />
-                    <Kv
-                      k={
-                        <>
-                          Tap to Pay on Jen’s iPhone<span className="c-det c-st-sub">Tap only · +10¢ a tap</span>
-                        </>
-                      }
-                      v={
-                        <span className="c-chip c-settled">
-                          <span className="c-core" />
-                          Ready
-                        </span>
-                      }
-                      go
-                    />
+                    {readers.length ? (
+                      readers.map((r) => (
+                        <Kv
+                          key={r.t}
+                          k={
+                            <>
+                              {r.t}
+                              <span className="c-det c-st-sub">{r.sub}</span>
+                            </>
+                          }
+                          v={
+                            <span className="c-chip c-settled">
+                              <span className="c-core" />
+                              {r.chip}
+                            </span>
+                          }
+                          go
+                        />
+                      ))
+                    ) : (
+                      <Kv k="No readers on this device yet" v="—" />
+                    )}
                   </Rows>
                 </Main>
               </Cell>
@@ -495,13 +507,21 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
               </Rows>
             </Main>
           </Cell>
-          <Cell label="When the connection drops" det="Offline" foot={<FootDet>Cash works as normal offline.</FootDet>}>
+          <Cell
+            label="When the connection drops"
+            det="Offline"
+            foot={<FootDet>{d.stripe && d.platform !== 'web' ? 'Cash works as normal offline. Tap to Pay needs a connection.' : 'Cash works as normal offline.'}</FootDet>}
+          >
             <Main>
               <Rows>
-                {d.stripe ? (
+                {!d.stripe ? (
+                  <Locked t="Store card payments" det="Needs Stripe connected first" />
+                ) : d.platform === 'web' ? (
+                  <Locked t="Store card payments" det="On the M2, in the Clear app" />
+                ) : offlineFor('bluetooth') ? (
                   <Switch t="Store card payments" det="Sent when the connection is back, up to $500.00 each" />
                 ) : (
-                  <Locked t="Store card payments" det="Needs Stripe connected first" />
+                  <Locked t="Store card payments" det="Coming to the M2 in an app update" />
                 )}
                 <Fixed t="Clear" det="Needs a connection, always. There is no offline queue." />
               </Rows>
@@ -509,6 +529,7 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
           </Cell>
         </>
       );
+    }
     case 'tax':
       return (
         <>

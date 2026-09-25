@@ -226,6 +226,47 @@ Decided 2026-09-24.
   hours-week|day-hours|hours-friday|limit`, and `&live=1` for the live path. The route stays
   owners and managers only, as agreed; the counter view is reached through `screen=counter`.
 
+## Phase 5: the installed app and the reader
+
+- **Capacitor 8 wraps the same web build** (`capacitor.config.ts`, `ios/`, `android/`; app id
+  `org.useclear.merchant`). The web app at merchant.useclear.org is unchanged. The service worker
+  doesn't register inside the installed app, whose pages already come from the app bundle.
+- **The community plugin, not a custom one, for now.** `@capacitor-community/stripe-terminal`
+  8.2.1 is current (Capacitor 8, updated September 2026) and covers the M2 over Bluetooth, Tap to
+  Pay and smart readers. It wraps the native Terminal SDK 5.7, one minor version behind 5.8, and
+  **it has no offline (store-and-forward) API**. The prompt says to write a thin native plugin in
+  that case. This machine has no Xcode, Android SDK or Java, so native code written here couldn't
+  be compiled or run on a device. So:
+  - The screens reach readers only through `src/reader` (`ReaderService`). The plugin sits behind
+    it in one file (`native.ts`), so a custom plugin replaces that file and nothing else.
+  - Offline is off everywhere (`OFFLINE_BUILT` in `reader/platform.ts`). Settings says "Coming to
+    the M2 in an app update". The thin plugin, adding offline to the M2 only, is the next native
+    step, on a Mac with Xcode and Android Studio.
+- **Which readers show.** A browser lists smart readers only, through Stripe's web SDK
+  (`@stripe/terminal-js`). The installed app adds the M2 and Tap to Pay. Settings › Payments and
+  the card screen's "Use another reader" list only these. The preview is the installed app, as
+  the reference draws it; add `&platform=web` for a browser's view.
+- **"Use another reader"** isn't drawn. It's a sheet of the device's readers, reusing Payouts'
+  picker rows. Picking one connects it and starts collecting again.
+- **The card screen's states come from the SDK.** Ready is collecting; reading is a card inserted
+  or the payment processing; declined is a failed confirm; approved is after the server's capture.
+  Leaving the screen cancels on the reader and the server. A reader that can't start says so on
+  the card screen ("The reader isn't ready"), which the reference doesn't draw.
+- **The server's half isn't built.** Connection tokens, create, capture and cancel, and reader
+  registration are the backend prompt's Phase 5, typed in `packages/merchant-contracts`.
+  `reader/backend.ts` stands in, and says cards aren't switched on yet. When the endpoints land,
+  that file is the one that changes. Until then card stays locked for a live shop, as before.
+- **Permissions.** Android: Bluetooth scan and connect, and fine location, with `minSdkVersion` 26.
+  iOS: Bluetooth and location usage strings, and Bluetooth background mode.
+- **Blocker for iOS Tap to Pay: Apple's Tap to Pay entitlement**
+  (`com.apple.developer.proximity-reader.payment.acceptance`). It's a separate request to Apple,
+  and it isn't in the project, because a signing profile without it would fail. Android Tap to Pay
+  needs no entitlement.
+- **Still to do before shipping the app:** the Clear icon and splash (the templates' defaults are
+  there now); the API allowing the app's origins (`capacitor://localhost`, `https://localhost`)
+  and `VITE_API_BASE_URL` at build time; and checking the owner's Privy sign-in, especially
+  passkeys, inside the app's WebView.
+
 ## Adaptations: the reference doesn't draw these
 
 - **Frames become the screen.** The tablet's 1180:820 outline and the phone's 340px outline go.

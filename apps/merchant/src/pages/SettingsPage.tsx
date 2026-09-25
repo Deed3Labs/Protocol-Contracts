@@ -9,6 +9,7 @@ import { useApi } from '@/data/useApi';
 import { usd } from '@/home/model';
 import { useLayout } from '@/lib/useBreakpoint';
 import { roleLabel } from '@/shell/chrome';
+import { currentPlatform, previewPlatform } from '@/reader';
 import { useShiftActions } from '@/shell/shiftActions';
 import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type Section, type SettingsData } from '@/settings/panes';
 import { AddDeviceSheet, ChangeAccountSheet, ConfirmLeaveSheet, IndexCell, LeaveSheet, NewCodeSheet, PaneHead, Rail, Who } from '@/settings/views';
@@ -89,9 +90,11 @@ export default function SettingsPage() {
   const { data: devices, reload: reloadDevices } = useApi(() => (preview || !owner ? Promise.resolve(null) : api.devices()), [preview, owner]);
 
   const me = { name: session?.staff.name ?? '', role: roleLabel(role) };
+  // The preview is the installed app, as the reference draws it; `&platform=web` shows a browser's list.
+  const platform = preview ? (previewPlatform(params) ?? 'ios') : currentPlatform();
   const d: SettingsData = preview
-    ? { ...REFERENCE, stripe: screen === 'payments-connected', owner: screen === 'counter' ? REFERENCE.owner : (session?.staff.name ?? REFERENCE.owner) }
-    : fromApi(profile, position, devices, me, device?.id ?? null);
+    ? { ...REFERENCE, platform, stripe: screen === 'payments-connected', owner: screen === 'counter' ? REFERENCE.owner : (session?.staff.name ?? REFERENCE.owner) }
+    : { ...fromApi(profile, position, devices, me, device?.id ?? null), platform };
 
   const [open, setOpen] = useState<Open>(() =>
     (['account', 'device', 'leave', 'confirm', 'code'] as const).find((s) => s === screen) ?? null,

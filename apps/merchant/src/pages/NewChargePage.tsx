@@ -49,7 +49,8 @@ import {
   type ChargeState,
   type ShiftRow,
 } from '@/charge/clear';
-import { CardChargeCell, PrintReceiptSheet, ReaderCell, ReceiptGroups, SendReceiptSheet, type ReaderState, type SendBy } from '@/charge/card';
+import { CardChargeCell, PrintReceiptSheet, ReaderCell, ReaderPickerSheet, ReceiptGroups, SendReceiptSheet, type ReaderState, type SendBy } from '@/charge/card';
+import { currentPlatform, previewPlatform, readerService, type Platform, type ReaderInfo, type ReaderService } from '@/reader';
 import { CashPaidView, CashView, SplitLegsCell, SplitView, type Leg, type LegMethod } from '@/charge/cash';
 import { FailureSheet, PhoneAmount, PhoneCart, PhoneCode, PhoneItems, PhoneStatus } from '@/charge/phone';
 
@@ -89,6 +90,7 @@ type Sheet =
   | { k: 'send'; by: 'text' | 'email'; to: string }
   | { k: 'print'; printer: 'ready' | 'offline' }
   | { k: 'fail'; kind: 'declined' | 'expired' | 'offline' }
+  | { k: 'readers' }
   | null;
 
 interface Flow {
@@ -103,6 +105,10 @@ interface Flow {
   method: Method | null;
   code: string;
   reader: ReaderState;
+  /** Bumped each time the reader starts collecting: arriving from Checkout, or another card. */
+  run: number;
+  /** "Visa ending 4242", from the reader. */
+  card?: string;
   given: string;
   legs: Leg[];
   legMethod: LegMethod;
@@ -126,6 +132,7 @@ const BLANK: Flow = {
   method: null,
   code: '',
   reader: 'ready',
+  run: 0,
   given: '',
   legs: [],
   legMethod: 'card',
@@ -343,18 +350,59 @@ export default function NewChargePage() {
     };
   }, [preview, f.code, f.screen, set]);
 
-  // The card reader, simulated in the preview: ready, then reading, then approved.
+  // ---- The card reader ---------------------------------------------------------------------------
+  // The reader service drives the card screen's four states: the installed app's plugin, a
+  // browser's smart readers, or the preview's simulation. Leaving the screen cancels the payment.
+  const readerPlatform: Platform = preview ? (previewPlatform(params) ?? 'ios') : currentPlatform();
+  const [readerLabel, setReaderLabel] = useState<string | undefined>();
+  const [readerError, setReaderError] = useState<string | null>(null);
+  const [readerList, setReaderList] = useState<{ readers: ReaderInfo[]; current: string | null; loading: boolean; error: string | null }>({
+    readers: [],
+    current: null,
+    loading: false,
+    error: null,
+  });
+  const readerOpts = preview ? { preview: { platform: readerPlatform, decline: params.get('decline') === '1' } } : {};
   useEffect(() => {
-    if (!preview || f.screen !== 'card' || preset?.reader) return;
-    if (f.reader === 'ready') {
-      const t = window.setTimeout(() => set({ reader: 'reading' }), 2500);
-      return () => window.clearTimeout(t);
-    }
-    if (f.reader === 'reading') {
-      const t = window.setTimeout(() => set({ reader: 'approved' }), 2500);
-      return () => window.clearTimeout(t);
-    }
-  }, [preview, preset, f.screen, f.reader, set]);
+    if (f.screen !== 'card' || preset?.reader) return;
+    let on = true;
+    let svc: ReaderService | null = null;
+    setReaderError(null);
+    readerService(readerOpts)
+      .then(async (service) => {
+        if (!on) return;
+        svc = service;
+        setReaderLabel(service.connected()?.label);
+        await service.collect(dueCents, (e) => {
+          if (!on) return;
+          set(e.state === 'approved' || e.state === 'declined' ? { reader: e.state, card: 'card' in e ? e.card : undefined } : { reader: e.state });
+        });
+      })
+      .catch((e) => on && setReaderError(e instanceof Error ? e.message : 'The reader isn’t responding.'));
+    return () => {
+      on = false;
+      void svc?.cancel();
+    };
+    // Collecting starts afresh on each run, not on every state the reader reports.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.screen, f.run]);
+
+  // "Use another reader": what this device can drive, found by the same service.
+  useEffect(() => {
+    if (f.sheet?.k !== 'readers') return;
+    let on = true;
+    setReaderList((l) => ({ ...l, loading: true, error: null }));
+    readerService(readerOpts)
+      .then(async (service) => {
+        const found = (await Promise.all(service.kinds.map((k) => service.discover(k).catch(() => [])))).flat();
+        if (on) setReaderList({ readers: found, current: service.connected()?.id ?? null, loading: false, error: null });
+      })
+      .catch((e) => on && setReaderList({ readers: [], current: null, loading: false, error: e instanceof Error ? e.message : 'The reader isn’t responding.' }));
+    return () => {
+      on = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.sheet?.k]);
 
   // ---- Moving through --------------------------------------------------------------------------
   const exit = () => navigate('/');
@@ -386,7 +434,7 @@ export default function NewChargePage() {
   };
   const afterTip = () => {
     if (f.method === 'clear') void raise();
-    else if (f.method === 'card') set({ screen: 'card', reader: 'ready' });
+    else if (f.method === 'card') setF((cur) => ({ ...cur, screen: 'card', reader: 'ready', run: cur.run + 1 }));
     else if (f.method === 'cash') set({ screen: 'cash', given: '' });
     else set({ screen: 'split', legs: [], legMethod: 'card' });
   };
@@ -664,8 +712,12 @@ export default function NewChargePage() {
           amountCents={dueCents}
           at="4:41pm"
           receipt={<ReceiptGroups by={f.sendBy} onBy={(sendBy) => set({ sendBy })} to="(909) 555-0177" onChange={() => set({ sheet: { k: 'send', by: 'text', to: '(909) 555-0177' } })} onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />}
+          reader={readerLabel}
+          card={f.card}
+          error={readerError}
           onCancel={() => set({ screen: 'checkout' })}
-          onTryAnother={() => set({ reader: 'ready' })}
+          onOtherReader={() => set({ sheet: { k: 'readers' } })}
+          onTryAnother={() => setF((cur) => ({ ...cur, reader: 'ready', run: cur.run + 1 }))}
           onOfferClear={() => set({ method: 'clear', screen: 'code', code: '8QK2' })}
           onDone={exit}
           onNew={again}
@@ -764,13 +816,31 @@ export default function NewChargePage() {
         onRetry={close}
         onClose={close}
       />
+    ) : sh?.k === 'readers' ? (
+      <ReaderPickerSheet
+        readers={readerList.readers}
+        current={readerList.current}
+        web={readerPlatform === 'web'}
+        loading={readerList.loading}
+        error={readerList.error}
+        onPick={(r) =>
+          void readerService(readerOpts)
+            .then((service) => service.connect(r))
+            .then(() => {
+              setReaderLabel(r.label);
+              setF((cur) => ({ ...cur, sheet: null, reader: 'ready', run: cur.run + 1 }));
+            })
+            .catch((e) => setReaderList((l) => ({ ...l, error: e instanceof Error ? e.message : 'That reader didn’t connect.' })))
+        }
+        onClose={close}
+      />
     ) : sh?.k === 'fail' ? (
       <FailureSheet
         kind={sh.kind}
         customer={preview ? 'Dana R.' : undefined}
         onPrimary={() => (sh.kind === 'declined' ? set({ sheet: null, screen: 'start' }) : preview ? set({ sheet: null, screen: 'waiting' }) : void raise().then(close))}
         onCash={() => set({ sheet: null, screen: 'cash' })}
-        onCard={() => set({ sheet: null, screen: 'card' })}
+        onCard={() => setF((cur) => ({ ...cur, sheet: null, screen: 'card', reader: 'ready', run: cur.run + 1 }))}
         onClose={close}
       />
     ) : null;

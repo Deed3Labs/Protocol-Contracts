@@ -10,12 +10,20 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "bun test src",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "cap:sync": "npm run build && cap sync",
+    "cap:ios": "npm run cap:sync && cap open ios",
+    "cap:android": "npm run cap:sync && cap open android"
   },
   "dependencies": {
+    "@capacitor-community/stripe-terminal": "^8.2.1",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@clear/domain": "*",
     "@clear/tokens": "*",
     "@privy-io/react-auth": "^3.32.2",
+    "@stripe/terminal-js": "^0.26.0",
     "@tailwindcss/vite": "^4.1.11",
     "lucide-react": "^0.525.0",
     "qrcode.react": "^4.2.0",
@@ -25,6 +33,7 @@
     "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
