@@ -60,6 +60,25 @@ Decided 2026-09-24.
   `?preview=1&home=running|counter|onBreak|early|dayOne|closing` (`&as=jen` for the counter) and
   `/close?preview=1&drawer=short|signed|balanced`.
 
+## New Charge
+
+- **Neutral pronouns** again: "Reached her" is "Reached them", "She has it open" is "They have it
+  open", "A receipt went to her phone" is "...their phone", "Dana can see why in her app" is
+  "...their app", "If she misses a payment" is "If they miss a payment".
+- **The category tabs keep a 6px gap.** Inventory's reference spaces them 6px apart. New Charge's
+  uses the same tabs but never styles the row, so its tabs touch. Inventory's version is kept.
+- **What a live shop sees.** A typed amount paid with Clear is live: raised through the API, shown
+  as a code, and watched until it's approved, declined or expired. Nothing else has a backend yet:
+  - the catalog (Items), discounts and tips,
+  - card (Stripe), cash and split,
+  - scanning a member's own code, and texting a link.
+
+  So a live shop starts on Amount with no Items switch. Checkout shows Clear, and Card locked as
+  the reference draws it before Stripe is connected. Cash, split and the two shortcuts aren't shown.
+  Every frame is reachable in development at `/new?preview=1&screen=<frame>` (see `SCREENS` in
+  `NewChargePage.tsx`); add `&as=jen` for a counter shift and `&live=1` for the live path.
+- **Custom tip** selects Custom but has no amount entry yet: the reference doesn't draw one.
+
 ## Adaptations: the reference doesn't draw these
 
 - **Frames become the screen.** The tablet's 1180:820 outline and the phone's 340px outline go.
@@ -69,5 +88,10 @@ Decided 2026-09-24.
 - **Sign-in on a phone**: the frame takes the phone's 16px sides so six code boxes fit, and "Who's
   on the counter?" goes two by two instead of four across.
 - **A long flow-header title trims** with an ellipsis instead of pushing the shift pill off a phone.
+- **Card and cash on a phone.** The reference draws them only on a tablet. On a phone the footer's
+  two buttons take a row of their own, and the cart bar is pinned to the bottom of the screen.
+- **A charge's screens are fixed frames on a tablet, landscape or portrait.** The slab fills the
+  screen and each cell scrolls inside it, as the reference draws them, so the pad and the primary
+  button never leave the screen. The phone scrolls as a page.
 - **Theme is pinned to light** until the Dusk and Dark pass, which comes after every screen is
   converted. The profile sheet still stores the choice.

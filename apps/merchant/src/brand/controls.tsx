@@ -47,16 +47,21 @@ export function Segmented<T extends string>({
   onChange,
   kind = 'sheet',
   label,
+  className,
+  as: Tag = 'div',
 }: {
   value: T;
   options: { value: T; label: ReactNode }[];
   onChange?: (v: T) => void;
   kind?: 'sheet' | 'inline' | 'wide' | 'mode';
   label: string;
+  className?: string;
+  /** The flow header draws the mode switch as a span. */
+  as?: 'div' | 'span';
 }) {
   const cls = { sheet: 'c-st-seg', inline: 'c-cc-seg', wide: 'c-cc-seg c-wide', mode: 'c-ci-mode' }[kind];
   return (
-    <div className={cls} role="radiogroup" aria-label={label}>
+    <Tag className={cx(cls, className)} role="radiogroup" aria-label={label}>
       {options.map((o) => (
         <b
           key={o.value}
@@ -70,7 +75,7 @@ export function Segmented<T extends string>({
           {o.label}
         </b>
       ))}
-    </div>
+    </Tag>
   );
 }
 
