@@ -3,6 +3,7 @@ import { Chip } from '@/brand/controls';
 import { IconCart } from '@/brand/icons';
 import { cx, initials } from '@/brand/ui';
 import type { Layout } from '@/lib/useBreakpoint';
+import { RunningLowPanel } from '@/inventory/views';
 import {
   firstName,
   inWords,
@@ -44,6 +45,8 @@ export interface HomeActions {
   onBreak?: () => void;
   onEndShift?: () => void;
   onCloseDay?: () => void;
+  onMarkReordered?: (id: string) => void;
+  onInventory?: () => void;
 }
 
 const lineP = (t: ReactNode, det?: ReactNode) => (
@@ -579,6 +582,12 @@ export function HomeView({ m, layout, a = {} }: { m: HomeModel; layout: Layout; 
           <ClosingUpPanel c={m.closing} onCloseDay={a.onCloseDay} />
         </div>
       )}
+      {money && m.runningLow?.length ? (
+        // Inventory's card on Home: it carries Inventory's page class so Inventory's own rules reach it.
+        <div className="c-mc-slot c-page-inventory">
+          <RunningLowPanel items={m.runningLow} onReordered={(i) => a.onMarkReordered?.(i.id)} onInventory={a.onInventory} />
+        </div>
+      ) : null}
       {temporary.length > 0 && <TemporaryPanel rows={temporary} />}
       {twoColumn && right.length ? (
         <div className="c-slab">

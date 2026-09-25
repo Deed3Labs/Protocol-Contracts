@@ -138,7 +138,9 @@ function place(part, media) {
   if (cls.some((c) => !used.has(c))) return null;
   if (media.includes('prefers-color-scheme') || media.includes('max-width:900px')) return null;
 
-  // Frames.
+  // Frames. A frame's own class counts toward specificity in the reference (`.phone .iv-th`
+  // beats `.iv-th.lg`), so the frame is replaced by `:root`, which counts the same and always
+  // matches: the rule keeps its weight without the frame.
   if (/^\.phone(\.[\w-]+)*$/.test(part)) return null; // the outline itself
   // A phone frame with a modifier: `.phone.ci .ci-th` is the item list on a phone, and keeps its
   // modifier as the ancestor it names. `.phone.fixed` and `.phone.page` are the outline's own
@@ -147,16 +149,16 @@ function place(part, media) {
   if (m) {
     const mods = m[1].split('.').filter((x) => x && x !== 'fixed' && x !== 'page');
     if (!mods.length) return null;
-    return [PHONE, `.${mods.join('.')}${m[2]}`];
+    return [PHONE, `:root .${mods.join('.')}${m[2]}`];
   }
   m = part.match(/^\.phone\s+(.+)$/);
-  if (m) return [PHONE, m[1]];
+  if (m) return [PHONE, `:root ${m[1]}`];
   if (/^\.mc-tablet\.mc-portrait$/.test(part)) return null;
   m = part.match(/^\.mc-tablet\.mc-portrait\s+(.+)$/);
-  if (m) return [PORTRAIT, `.mc-tablet ${m[1]}`];
+  if (m) return [PORTRAIT, `:root .mc-tablet ${m[1]}`];
   // Most portrait rules name the frame by its modifier alone: `.mc-portrait .mc-qr`.
   m = part.match(/^\.mc-portrait\s+(.+)$/);
-  if (m) return [PORTRAIT, m[1]];
+  if (m) return [PORTRAIT, `:root ${m[1]}`];
   return [media, part];
 }
 
@@ -194,7 +196,10 @@ function emit(media, sel, body, pages, forced, note) {
         }));
     // `:where()` scopes without adding specificity, so the cascade stays the reference's own: a
     // later rule still beats an earlier one exactly as it does in the file it came from.
-    const scoped = pages && leaks ? pages.map((f) => `:where(.page-${f}) ${p[1]}`) : [p[1]];
+    // The page class is on <html>, which is `:root` itself, so a frame rule's `:root` takes it
+    // directly.
+    const scope = (f) => (p[1].startsWith(':root ') ? `:root:where(.page-${f}) ${p[1].slice(6)}` : `:where(.page-${f}) ${p[1]}`);
+    const scoped = pages && leaks ? pages.map(scope) : [p[1]];
     byMedia.get(p[0]).push(...scoped.map(prefix));
   }
   if (!byMedia.size) return false;
@@ -227,13 +232,16 @@ for (const { key, n, media, sel } of order) {
           .join(' | ')} */`
       : '';
   let any = false;
+  const pages = w.files.length < files.length / 2 ? w.files : null;
   if (body !== undefined) {
-    const pages = w.files.length < files.length / 2 ? w.files : null;
     any = emit(media, sel, body, pages, false, note);
     if (note) drifted++;
   }
+  // Another version is kept for its own pages when it differs, or when the winner was scoped to
+  // its pages and so does not reach them: Inventory draws `.iv-th.lg` once and New Charge twice,
+  // and Inventory still needs its copy.
   for (const o of w.others) {
-    if (o.bodies[n] !== undefined && o.bodies[n] !== body) any = emit(media, sel, o.bodies[n], o.files, true, '') || any;
+    if (o.bodies[n] !== undefined && (o.bodies[n] !== body || pages)) any = emit(media, sel, o.bodies[n], o.files, true, '') || any;
   }
   if (!any) dropped++;
 }

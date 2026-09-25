@@ -1,6 +1,7 @@
 import type { DaySummary, DrawerClose } from '@/home/drawer';
 import type { HomeModel, SetupItem } from '@/home/model';
 import type { Milestone } from '@/home/WaitingSheet';
+import { INVENTORY } from '@/inventory/model';
 
 /**
  * The reference scenario for Home: Mike's Tire on Tue, Sep 22. Every figure is from
@@ -111,7 +112,9 @@ const closing: HomeModel = {
   },
 };
 
-export const HOME_STATES = { running, counter, onBreak, early, dayOne, closing } as const;
+const lowStock: HomeModel = { ...running, runningLow: INVENTORY.filter((i) => i.id === 'goodyear' || i.id === 'rotor') };
+
+export const HOME_STATES = { running, counter, onBreak, early, dayOne, closing, lowStock } as const;
 export type HomeState = keyof typeof HOME_STATES;
 
 export const DANA_STEPS: Milestone[] = [

@@ -79,6 +79,20 @@ Decided 2026-09-24.
   `NewChargePage.tsx`); add `&as=jen` for a counter shift and `&live=1` for the live path.
 - **Custom tip** selects Custom but has no amount entry yet: the reference doesn't draw one.
 
+## Inventory
+
+- **Two catalogues.** Inventory's reference and New Charge's list different items for the same
+  shop (Inventory has a Brakes category and "225/65R17 · all-season" details; New Charge files
+  Brake job under Services and shows the size alone). Each page keeps its own reference's items
+  until there is one real catalogue.
+- **"Items None yet" is "—"** on the empty state, by the em-dash rule.
+- **Search in portrait stays typeable.** The reference collapses it to an icon there.
+- **What a live shop sees.** There is no catalogue or stock API yet, so a live shop gets the
+  empty state, which is true of it. Its sheets open, but their save buttons stay disabled until
+  the API exists. Every frame is in development at `/inventory?preview=1&screen=<frame>`.
+- **Running low sits on Home** for owners and managers, as the Inventory reference asks
+  (preview: `/?preview=1&home=lowStock`).
+
 ## Adaptations: the reference doesn't draw these
 
 - **Frames become the screen.** The tablet's 1180:820 outline and the phone's 340px outline go.
@@ -90,6 +104,8 @@ Decided 2026-09-24.
 - **A long flow-header title trims** with an ellipsis instead of pushing the shift pill off a phone.
 - **Card and cash on a phone.** The reference draws them only on a tablet. On a phone the footer's
   two buttons take a row of their own, and the cart bar is pinned to the bottom of the screen.
+- **Home's New charge and Build cart wrap in portrait.** The reference makes them full width on
+  the figure's row, where they overflow (its frame clips it). They take their own row instead.
 - **A charge's screens are fixed frames on a tablet, landscape or portrait.** The slab fills the
   screen and each cell scrolls inside it, as the reference draws them, so the pad and the primary
   button never leave the screen. The phone scrolls as a page.

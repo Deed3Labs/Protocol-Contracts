@@ -124,6 +124,8 @@ export default function App() {
         <Route path="/charges/:id" element={<ChargeDetailPage />} />
         <Route path="/charges/:id/refund" element={<RefundPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/inventory/:id" element={<InventoryPage />} />
+        <Route path="/inventory/:id/:sub" element={<InventoryPage />} />
         {/* Owners and managers close the day; the page itself says the rest. */}
         <Route
           path="/close"

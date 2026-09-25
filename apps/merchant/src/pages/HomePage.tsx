@@ -58,6 +58,8 @@ export default function HomePage() {
       if (s.key === 'test') navigate('/new');
     },
     onCloseDay: () => navigate(`/close${seeded ? '?drawer=short' : ''}`),
+    onMarkReordered: (id) => navigate(`/inventory/${id}${seeded ? '?preview=1&screen=reorder' : ''}`),
+    onInventory: () => navigate(`/inventory${seeded ? '?preview=1' : ''}`),
   };
 
   // What a waiting charge has been through. The API knows when it was raised and when it was opened;
