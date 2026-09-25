@@ -243,3 +243,9 @@ input.c-field.c-si-in {
     padding: 0 8px;
   }
 }
+
+/* Settings' New discount code: the reference zeroes its first label's top margin with an inline
+   !important, which a React style can't carry. */
+.c-st-sheet .c-cmain > .c-st-fl:first-child {
+  margin-top: 0 !important;
+}

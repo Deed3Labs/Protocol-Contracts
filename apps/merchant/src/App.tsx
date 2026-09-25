@@ -169,6 +169,8 @@ export default function App() {
         />
         {/* Still routable, just no longer in the nav: the profile sheet links here. */}
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings/:section" element={<SettingsPage />} />
+        <Route path="/settings/:section/:sub" element={<SettingsPage />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

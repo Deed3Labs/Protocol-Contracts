@@ -95,6 +95,25 @@ Decided 2026-09-24.
 - **Running low sits on Home** for owners and managers, as the Inventory reference asks
   (preview: `/?preview=1&home=lowStock`).
 
+## Settings
+
+- **The index lists every section.** The reference's portrait and phone index still has the
+  first eight (Shop to Help); its rail has fourteen since Selling was added. The index follows
+  the rail, with a line for each new section taken from its pane.
+- **A counter shift's rail has one item, You**, as the reference's note says ("absent, not
+  locked"). Its drawing reuses the owner's rail with nothing selected. A manager sees the same
+  as a counter shift for now (the reference's Open list suggests Payouts read-only later).
+- **Sections are routes**: `/settings/<section>`, and `/settings/shop/hours` for the pushed
+  page. On a landscape tablet `/settings` opens Shop; narrower it's the index.
+- **Tax ID is ••-•••4829** (Figures, above).
+- **What a live shop sees.** Shop (the listing from the profile), Payouts, Partnership, Security
+  (its enrolled tablets, each signed out with the existing API) and Help. Hours, contact,
+  statements, Counter, Payments, Tax, Tips, Discounts, Devices, Closing, Notifications and
+  Advanced have no backend yet. Their sheets (Change account, Add a device, Leave Clear, New
+  discount code) open in the preview, with their final buttons disabled on a live shop.
+  Preview: `/settings[/<section>]?preview=1&screen=counter|payments-connected|account|device|
+  leave|confirm|code`; `&live=1` for the live path.
+
 ## Charges
 
 - **Neutral pronouns** in the Clear refund: "His plan closes", "He gets back", "Carry he already

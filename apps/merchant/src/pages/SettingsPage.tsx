@@ -1,270 +1,195 @@
-import { useEffect, useState } from 'react';
-import { Columns } from '@/shell/AppShell';
-import { canChangePayoutAccount, dollars, fromCents } from '@clear/domain';
-import { Button, Cap, Card, Chip, Row } from '@/shell/ui';
+import { useContext, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { seesMoney } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
-import { api, type EnrolledDevice } from '@/data/apiClient';
+import { IconBackChevron } from '@/brand/chargeIcons';
+import { OneColumn } from '@/brand/ui';
+import { api, type EnrolledDevice, type MerchantProfile, type PayoutPosition } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
-import {
-  STUB_LISTING,
-  STUB_NOTIFICATIONS,
-  STUB_TERMS,
-} from '@/data/stubs';
+import { usd } from '@/home/model';
+import { useLayout } from '@/lib/useBreakpoint';
+import { roleLabel } from '@/shell/chrome';
+import { useShiftActions } from '@/shell/shiftActions';
+import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type Section, type SettingsData } from '@/settings/panes';
+import { AddDeviceSheet, ChangeAccountSheet, ConfirmLeaveSheet, IndexCell, LeaveSheet, NewCodeSheet, PaneHead, Rail, Who } from '@/settings/views';
 
 /**
- * Settings — reference section 09.
+ * Settings — docs/merchant-reference/clear-merchant-settings.html.
  *
- * One page with sections, not a rail. A merchant has few settings and visits them rarely; a nav
- * would be more structure than content.
+ * On a landscape tablet: the shop, then a rail and a pane, Shop first. Everywhere narrower: an
+ * index, and each section a pushed page. Sub-pages are panes; only actions are sheets. A counter
+ * shift's rail has one item, You: money and the listing are absent, not locked.
  *
- * **Terms are shown but not editable.** They live in the signed agreement. A settings page that
- * lets a merchant change their own rate is a settings page that will be used to change their own
- * rate — so there is nothing to edit here, and the copy says why.
- *
- * Counter staff see almost none of this: the rate, the bank and the terms are all money. What is
- * left for them is the device itself, which is why signing out lives here.
- *
- * One discrepancy with the drawing, flagged rather than resolved by guesswork. The reference lists
- * "Rate 2% · for life", but every screen that does arithmetic uses 2.5% — $23.50 on $940, $10.30
- * on $412, $401.70 paid out — and those figures are asserted in the domain's tests. The rate is
- * rendered from the merchant record so it agrees with the money; if 2% is the real term, changing
- * `discountRate` corrects all of it at once.
+ * A live shop gets the sections the API can fill: the listing, payouts, the partnership, security
+ * and help. The rest are the preview's until their backends land:
+ * `/settings[/<section>]?preview=1`, `&screen=counter|payments-connected|account|device|leave|
+ * confirm|code`, and `/settings/shop/hours`.
  */
-/** "Mike's Tire" → "MT". Derived rather than stored: a shop that renames itself keeps a matching mark. */
-function initials(name: string | undefined): string {
-  return (name ?? '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('');
+
+type Open = 'account' | 'device' | 'leave' | 'confirm' | 'code' | null;
+
+const monthYear = (iso: string | null, short: boolean) =>
+  iso ? new Date(iso).toLocaleDateString('en-US', { month: short ? 'short' : 'long', year: 'numeric' }) : null;
+
+function fromApi(p: MerchantProfile | null, pos: PayoutPosition | null, devices: EnrolledDevice[] | null, me: { name: string; role: string }, currentDevice: string | null): SettingsData {
+  const rate = p?.discountRate ?? null;
+  const next = pos?.nextPayoutOn ? new Date(pos.nextPayoutOn).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null;
+  return {
+    ...REFERENCE,
+    preview: false,
+    shop: p?.name ?? 'Your shop',
+    owner: me.name,
+    category: p?.category ?? '—',
+    oneLine: '—',
+    photo: 'Your initials for now',
+    hours: null,
+    closedDates: [],
+    account: p?.payoutAccount ? { bank: 'Business checking', det: p.payoutAccount } : null,
+    nextPayout: next && pos ? `${next} · ${usd(pos.owedCents)}` : '—',
+    payoutWhen: p?.payoutTerms ?? '—',
+    ratesNow: '—',
+    ratesOver: rate === null ? '—' : `${(rate * 100).toFixed(1)}%`,
+    cap: p?.approvalCapCents == null ? '—' : usd(p.approvalCapCents),
+    signed: p?.partnerSince ? `Signed ${new Date(p.partnerSince).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : '',
+    memberSince: p?.partnerSince ? new Date(p.partnerSince).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—',
+    joinedWith: p?.founding ? 'Founding partner' : '—',
+    signIn: '—',
+    devices: (devices ?? [])
+      .filter((d) => !d.revokedAt)
+      .map((d) => ({
+        id: d.id,
+        name: d.label,
+        det: `${d.id === currentDevice ? 'This one · ' : ''}enrolled ${new Date(d.enrolledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+        kind: 'tablet' as const,
+        current: d.id === currentDevice,
+      })),
+    me: { ...me, hours: '—' },
+  };
 }
 
 export default function SettingsPage() {
-  const { session, device, canSeeMoney } = useAuth();
-  const { data: profile } = useApi(() => api.profile(), []);
+  const { section, sub } = useParams();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const layout = useLayout();
+  const phone = layout === 'phone';
+  const one = useContext(OneColumn);
+  const shift = useShiftActions();
+  const { session, device } = useAuth();
 
-  // The rate is rendered from the merchant record so it agrees with the money on every other
-  // screen. `forDisplay` reads it from the chain and falls back to the stored copy, so a Settings
-  // page never asserts a rate the arithmetic disagrees with. Em dash while it loads rather than a
-  // zero, which would be a wrong number rather than a missing one.
-  const rate = profile?.discountRate;
-  const ratePercent = rate == null ? null : Math.round(rate * 1000) / 10;
-  const cap = profile?.approvalCapCents;
+  const preview = import.meta.env.DEV && params.get('preview') === '1' && params.get('live') !== '1';
+  const screen = preview ? (params.get('screen') ?? '') : '';
+  const role = screen === 'counter' ? 'counter' : (session?.staff.role ?? 'counter');
+  // A counter shift and a manager see You: the owner's sections are about the business.
+  const owner = role === 'owner';
+  const q = preview ? `?preview=1${screen === 'counter' || screen === 'payments-connected' ? `&screen=${screen}` : ''}` : '';
 
-  return (
-    <Columns
-      action={
-        <>
-          {canSeeMoney && (
-            <>
-              <Cap>Your terms</Cap>
-              <Card rows className="mb-4 !px-4 !py-0">
-                <Row
-                  title={<span className="text-[var(--clear-text-secondary)]">Rate</span>}
-                  right={
-                    <span>
-                      {ratePercent === null ? '—' : `${ratePercent}%`}
-                      {STUB_TERMS.rateForLife ? ' · for life' : ''}
-                    </span>
-                  }
-                />
-                <Row
-                  title={<span className="text-[var(--clear-text-secondary)]">Payout</span>}
-                  right={<span>{profile?.payoutTerms ?? '—'}</span>}
-                />
-                <Row
-                  title={<span className="text-[var(--clear-text-secondary)]">Approval cap</span>}
-                  right={
-                    <span>{cap == null ? '—' : `${dollars(fromCents(cap))} per charge`}</span>
-                  }
-                />
-                <Row
-                  title={<span className="text-[var(--clear-text-secondary)]">Partner since</span>}
-                  right={
-                    <span>
-                      {profile?.partnerSince ?? '—'}
-                      {profile?.founding ? ' · founding' : ''}
-                    </span>
-                  }
-                />
-              </Card>
-              <p className="m-0 mb-4 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
-                Terms are set in your agreement. To change one, talk to us — there is nothing to
-                edit here.
-              </p>
+  const { data: profile } = useApi(() => (preview ? Promise.resolve(null) : api.profile()), [preview]);
+  const { data: position } = useApi(() => (preview || !seesMoney(role) ? Promise.resolve(null) : api.payouts()), [preview, role]);
+  const { data: devices, reload: reloadDevices } = useApi(() => (preview || !owner ? Promise.resolve(null) : api.devices()), [preview, owner]);
 
-              <Cap>Where payouts go</Cap>
-              <Card rows className="mb-4 !px-4 !py-0">
-                <Row
-                  title={profile?.payoutAccount ?? 'No account yet'}
-                  meta="Business checking"
-                  right={
-                    // Owner only, and shown as such rather than hidden: a manager should be able to
-                    // see where payouts land without being able to send them somewhere else.
-                    canChangePayoutAccount(session?.staff.role ?? 'counter') ? (
-                      <Button className="!px-[11px] !py-1 !text-[12px]">Change</Button>
-                    ) : (
-                      <span className="text-[11.5px] text-[var(--clear-text-muted)]">Owner only</span>
-                    )
-                  }
-                />
-              </Card>
-            </>
-          )}
+  const me = { name: session?.staff.name ?? '', role: roleLabel(role) };
+  const d: SettingsData = preview
+    ? { ...REFERENCE, stripe: screen === 'payments-connected', owner: screen === 'counter' ? REFERENCE.owner : (session?.staff.name ?? REFERENCE.owner) }
+    : fromApi(profile, position, devices, me, device?.id ?? null);
 
-          {/* Signing out and which shift is running moved to the profile sheet in section 21 —
-              they are not settings, they are who is on the counter right now. The tablet LIST
-              stays: section 19 promises removal from Settings, from any device. */}
-          {canSeeMoney && <EnrolledDevices currentId={device?.id ?? null} />}
-        </>
-      }
-      context={
-        <>
-          {/* The artefact that makes the waiting-room path work, which is why it is here rather
-              than buried in a menu — a merchant should be able to reorder without asking. */}
-          <Cap>Counter materials</Cap>
-          <Card className="mb-4 !py-[15px]">
-            <p className="m-0 mb-3 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
-              The printed card carries the same code as this tablet. Send it home with an estimate
-              and they can sign up while they wait.
-            </p>
-            <div className="flex gap-2">
-              <Button className="flex-1 !text-[12px]">Print counter cards</Button>
-              <Button className="flex-1 !text-[12px]">Order more</Button>
-            </div>
-          </Card>
-
-          {canSeeMoney && (
-            <>
-              <Cap>Notifications</Cap>
-              <Card rows className="mb-4 !px-4 !py-0">
-                {STUB_NOTIFICATIONS.map((n) => (
-                  <Row
-                    key={n.id}
-                    title={<span className="text-[var(--clear-text-secondary)]">{n.label}</span>}
-                    right={
-                      <span className="text-[11.5px] text-[var(--clear-text-muted)]">
-                        {n.on ? 'On' : 'Off'}
-                      </span>
-                    }
-                  />
-                ))}
-              </Card>
-
-              <Cap>How members see you</Cap>
-              <Card className="mb-4 !py-[15px]">
-                <div className="mb-3 flex items-center gap-[11px]">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--clear-bg-success)] text-[11.5px] text-[var(--clear-text-success)]">
-                    {initials(profile?.name)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="m-0 text-[13px]">{profile?.name ?? 'Your shop'}</p>
-                    <p className="m-0 mt-0.5 text-[11.5px] text-[var(--clear-text-muted)]">
-                      {profile?.category ?? STUB_LISTING.category} ·{' '}
-                      {profile?.town ?? STUB_LISTING.town}
-                    </p>
-                  </div>
-                  {STUB_LISTING.creditTag && (
-                    <span className="ml-auto shrink-0">
-                      <Chip tone="accent">Credit</Chip>
-                    </span>
-                  )}
-                </div>
-                <p className="m-0 mb-3 text-[11.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
-                  Your entry in the Clear Partners directory, where members look for somewhere to
-                  spend. The{' '}
-                  <strong className="font-medium text-[var(--clear-text-primary)]">Credit</strong>{' '}
-                  tag marks you as a shop where they can split a purchase.
-                </p>
-                <Button className="w-full !text-[12px]">Edit listing</Button>
-              </Card>
-
-              {/* Small and deliberate: the one place the co-op is stated plainly, away from the
-                  counter where it would only slow a sale down. */}
-              <Cap>Your membership</Cap>
-              <Card className="!py-[15px]">
-                <p className="m-0 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
-                  {profile?.name ?? 'Your shop'} is a partner member of the Clear co-op. One member, one vote
-                  — the same as every other member.
-                </p>
-              </Card>
-            </>
-          )}
-        </>
-      }
-    />
+  const [open, setOpen] = useState<Open>(() =>
+    (['account', 'device', 'leave', 'confirm', 'code'] as const).find((s) => s === screen) ?? null,
   );
-}
+  const close = () => setOpen(null);
 
-/**
- * Every tablet this shop has — reference section 19.
- *
- * "Remove it any time, from any device" is the sentence that makes a lost tablet survivable, and
- * it is only true if this list exists somewhere an owner can reach on their phone. Revoking writes
- * one row server-side and takes effect on that tablet's very next request; it does not wait for a
- * session to expire.
- *
- * Removed tablets stay on the list, greyed. An owner asking "what was that one we lost in March"
- * deserves an answer, and a list that silently forgets is a list that cannot be audited.
- */
-function EnrolledDevices({ currentId }: { currentId: string | null }) {
-  const [devices, setDevices] = useState<EnrolledDevice[] | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const items = owner ? SECTIONS.filter((s) => preview || s.live) : [YOU];
+  const helpItem = owner ? items.find((s) => s.key === 'help') : undefined;
+  const railItems = items.filter((s) => s.key !== 'help');
+  const fallback: Section = owner ? 'shop' : 'you';
+  const current = (items.find((s) => s.key === section)?.key ?? (one ? null : fallback)) as Section | null;
+  const hours = current === 'shop' && sub === 'hours' && !!d.hours;
+  const go = (k: string) => navigate(`/settings/${k}${q}`);
 
-  useEffect(() => {
-    api.devices().then(setDevices).catch(() => setDevices([]));
-  }, []);
+  const since = preview
+    ? { long: 'August 2026', short: 'Aug 2026' }
+    : { long: monthYear(profile?.partnerSince ?? null, false) ?? '—', short: monthYear(profile?.partnerSince ?? null, true) ?? '—' };
+  const kind = preview || profile?.founding ? 'Founding partner' : 'Partner';
+  const who = owner ? (
+    <Who name={d.shop} sub={phone ? `${kind} since ${since.short}` : `${kind} since ${since.long} · ${d.owner}, owner`} />
+  ) : (
+    <Who person name={preview ? REFERENCE.me.name : me.name} sub={`${me.role} at ${d.shop}${preview ? ' since August 2026' : ''}`} />
+  );
 
-  async function remove(id: string) {
-    setBusy(id);
-    try {
-      await api.revokeDevice(id);
-      setDevices(await api.devices());
-    } catch {
-      // Left on screen unchanged rather than half-updated: an owner who thinks they revoked a
-      // tablet that is still live is worse off than one who sees it did not work and retries.
-    } finally {
-      setBusy(null);
-    }
+  const actions = {
+    onHours: () => navigate(`/settings/shop/hours${q}`),
+    onAccount: () => setOpen('account'),
+    onPayouts: () => navigate(`/payouts${preview ? '?preview=1' : ''}`),
+    onDevice: () => setOpen('device'),
+    onLeave: () => setOpen('leave'),
+    onNewCode: () => setOpen('code'),
+    onSignOutDevice: preview
+      ? undefined
+      : async (id: string) => {
+          await api.revokeDevice(id).catch(() => undefined);
+          reloadDevices();
+        },
+  };
+
+  const meta = current ? (current === 'you' ? YOU : SECTIONS.find((s) => s.key === current)!) : null;
+  const body = hours ? hoursBody(d) : current ? paneBody(current, d, actions) : null;
+  const head = hours ? (
+    <PaneHead title="Shop hours" det={HOURS_DET} back={() => navigate(`/settings/shop${q}`)} small={phone} />
+  ) : meta ? (
+    <PaneHead title={meta.label} det={meta.det} back={one ? () => navigate(`/settings${q}`) : undefined} small={phone} />
+  ) : null;
+
+  const sheets = (
+    <>
+      {open === 'account' && <ChangeAccountSheet now={preview ? 'Chase ••4417' : (profile?.payoutAccount ?? '—')} next={`${d.nextPayout.split(' · ')[0]} payout`} onClose={close} />}
+      {open === 'device' && <AddDeviceSheet shop={d.shop} code="482719" onClose={close} />}
+      {open === 'leave' && <LeaveSheet onTalk={close} onContinue={() => setOpen('confirm')} onClose={close} />}
+      {open === 'confirm' && (
+        <ConfirmLeaveSheet payout={['Paid to Chase ••4417 on Oct 14', '$4,218.91']} waiting="2 · $1,350.00" names="Nina P. and Dana R." onStay={close} />
+      )}
+      {open === 'code' && <NewCodeSheet onCreate={preview ? close : undefined} onClose={close} />}
+    </>
+  );
+
+  // ---- Narrower than a landscape tablet: an index, and pushed pages -------------------------------
+  if (one) {
+    if (!current)
+      return (
+        <>
+          <div className="c-paneback" style={phone ? { marginBottom: 'var(--s2)' } : { margin: 'var(--s1) 0 var(--s2)' }}>
+            <button type="button" aria-label="Back" onClick={() => navigate(preview ? '/?preview=1' : '/')} style={{ display: 'flex' }}>
+              <IconBackChevron />
+            </button>
+            <p className="c-panetitle" style={phone ? { fontSize: 15 } : undefined}>
+              Settings
+            </p>
+          </div>
+          {who}
+          <IndexCell items={items} onPick={go} onEnd={shift.endShift} />
+          {sheets}
+        </>
+      );
+    return (
+      <>
+        {head}
+        <div className="c-panebody">{body}</div>
+        {sheets}
+      </>
+    );
   }
 
-  if (!devices || devices.length === 0) return null;
-
+  // ---- A landscape tablet: the rail and the pane ---------------------------------------------------
   return (
     <>
-      <Cap>Tablets</Cap>
-      <Card rows className="!px-4 !py-0">
-        {devices.map((d) => (
-          <Row
-            key={d.id}
-            title={
-              <span className={d.revokedAt ? 'text-[var(--clear-text-muted)] line-through' : ''}>
-                {d.label}
-              </span>
-            }
-            meta={
-              d.revokedAt
-                ? 'Removed'
-                : d.id === currentId
-                  ? 'This tablet'
-                  : d.enrolledByName
-                    ? `Set up by ${d.enrolledByName}`
-                    : 'Enrolled'
-            }
-            right={
-              d.revokedAt ? null : (
-                <Button
-                  onClick={() => remove(d.id)}
-                  className="!px-[11px] !py-1 !text-[12px]"
-                >
-                  {busy === d.id ? 'Removing…' : 'Remove'}
-                </Button>
-              )
-            }
-          />
-        ))}
-      </Card>
+      {who}
+      <div className="c-pane">
+        <Rail items={railItems} help={helpItem} on={current ?? fallback} onPick={go} />
+        <div>
+          {head}
+          <div className="c-panebody">{body}</div>
+        </div>
+      </div>
+      {sheets}
     </>
   );
 }
