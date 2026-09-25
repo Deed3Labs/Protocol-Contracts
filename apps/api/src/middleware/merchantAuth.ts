@@ -40,6 +40,9 @@ function deviceToken(req: Request): string {
   return String(req.headers['x-clear-device'] ?? '').trim();
 }
 
+/** The enrolled tablet a request came from, when it came from one: for routes that don't require it. */
+export const deviceOf = (req: Request) => deviceStore.resolve(deviceToken(req));
+
 /**
  * This tablet is enrolled — reference section 19.
  *

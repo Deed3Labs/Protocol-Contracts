@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/auth/authContext';
 import { api } from '@/data/apiClient';
@@ -7,10 +7,11 @@ import { errorSentence, useApi } from '@/data/useApi';
 import { CountResultSheet, CountSheet, OpenDrawerSheet, SignOffSheet } from '@/home/drawer';
 import { HomeView, type HomeActions } from '@/home/HomeView';
 import { drawerPrompt, drawerStep } from '@/home/liveDrawer';
-import { clockTime, fromApi, type HomeModel, type TillItem, type WaitingCharge } from '@/home/model';
+import { clockTime, fromApi, shiftClock, type HomeModel, type TillItem, type WaitingCharge } from '@/home/model';
 import { DANA_STEPS, HOME_STATES, type HomeState } from '@/home/seed';
 import { WaitingSheet, type Milestone } from '@/home/WaitingSheet';
 import { useLayout } from '@/lib/useBreakpoint';
+import { useShiftActions } from '@/shell/shiftActions';
 
 /**
  * Home — docs/merchant-reference/clear-merchant-home.html.
@@ -73,6 +74,15 @@ export default function HomePage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   })();
   const ordersToday = useApi(() => (seeded || !session ? Promise.resolve(null) : merchant.orders({ date: todayIso })), [seeded, !!session, todayIso]);
+  // A counter shift's time clock: who is on (their own shift), ticking once a minute.
+  const shiftsNow = useApi(() => (seeded || !session ? Promise.resolve(null) : merchant.shifts()), [seeded, !!session]);
+  const [tick, setTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setTick(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const shiftActions = useShiftActions();
+  const [shiftError, setShiftError] = useState<string | null>(null);
   const [drawerSheet, setDrawerSheet] = useState<null | { k: 'open' } | { k: 'count'; which: 'first' | 'second' } | { k: 'result' } | { k: 'signoff' }>(null);
   const [drawerError, setDrawerError] = useState<string | null>(null);
   const [note, setNote] = useState('');
@@ -114,7 +124,10 @@ export default function HomePage() {
 
   if (!model) return null;
   const view = countsNow.data;
-  const liveModel: HomeModel = seeded || drawerNow.loading ? model : { ...model, drawer: drawerPrompt(openSession ?? null, view ?? null, me, names) };
+  const withDrawer: HomeModel = seeded || drawerNow.loading ? model : { ...model, drawer: drawerPrompt(openSession ?? null, view ?? null, me, names) };
+  const mine = shiftsNow.data?.find((s) => s.staffId === me);
+  const liveModel: HomeModel =
+    !seeded && withDrawer.shift && mine ? { ...withDrawer, shift: { ...withDrawer.shift, clock: shiftClock(mine, shopSettings.data?.breaks ?? null, tick) } } : withDrawer;
 
   const a: HomeActions = {
     onNewCharge: () => navigate('/new'),
@@ -135,6 +148,15 @@ export default function HomePage() {
         // Hidden for this visit only.
       }
     },
+    onBreak: seeded
+      ? undefined
+      : () => {
+          setShiftError(null);
+          (mine?.onBreakSince ? merchant.endBreak() : merchant.startBreak())
+            .then(() => (shiftsNow.reload(), setTick(Date.now())))
+            .catch((e) => setShiftError(errorSentence(e)));
+        },
+    onEndShift: shiftActions.endShift,
     onCloseDay: () => navigate(`/close${seeded ? '?drawer=short' : ''}`),
     onDrawer: () => {
       setDrawerError(null);
@@ -166,6 +188,11 @@ export default function HomePage() {
   return (
     <>
       <HomeView m={tillHidden ? { ...liveModel, till: undefined } : liveModel} layout={layout} a={a} />
+      {shiftError && (
+        <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
+          {shiftError}
+        </p>
+      )}
       {drawerError && !drawerSheet && (
         <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
           {drawerError}

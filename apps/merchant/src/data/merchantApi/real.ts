@@ -37,6 +37,17 @@ export function realMerchantApi(request: Transport): MerchantApi {
       (await get<{ staff: Array<Staff & Record<string, unknown>> }>('/staff')).staff.map(({ id: staffId, name, role, active }) => ({ id: staffId, name, role, active })),
     taxStatus: () => get('/tax'),
 
+    // ---- Shifts and hours
+    shifts: () => get('/shifts'),
+    startBreak: () => post('/shifts/me/break'),
+    endBreak: () => send('DELETE', '/shifts/me/break'),
+    endShift: async (staffId) => {
+      await post(`/shifts/${id(staffId)}/end`);
+    },
+    staffWeek: (date) => get(`/staff/week${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+    staffHours: (staffId) => get(`/staff/${id(staffId)}/hours`),
+    saveStaffHours: (staffId, input) => send('PUT', `/staff/${id(staffId)}/hours`, input),
+
     // ---- Cards
     cardAvailability: () => get('/cards/availability'),
     connectCards: () => post('/cards/connect'),

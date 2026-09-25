@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@clear/merchant-contracts';
-import type { CatalogItem, DiscountCode, LineInput, Reader, Reorder, Shop, ShopHours, ShopSettings, Staff } from '@clear/merchant-contracts';
+import type { CatalogItem, DiscountCode, LineInput, Reader, Reorder, Shop, ShopHours, ShopSettings, Staff, StaffHours } from '@clear/merchant-contracts';
 import { GOODYEAR_ON_ORDER, INVENTORY } from '../../inventory/model';
 
 /**
@@ -51,6 +51,31 @@ export const STAFF: Staff[] = [
 export const STAFF_ID = { jen: 'stf_jen', luis: 'stf_luis', mike: 'stf_mike', ana: 'stf_ana' } as const;
 /** PINs in the mock: a manager's or owner's approves. */
 export const MOCK_PINS: Record<string, string> = { '1111': STAFF_ID.jen, '2222': STAFF_ID.luis, '9999': STAFF_ID.mike, '3333': STAFF_ID.ana };
+
+/** Who is on at 12:16pm on the reference day, as Staff draws it. */
+export const SHIFTS = [
+  { staffId: STAFF_ID.jen, startedAt: at(REFERENCE_DAY, '08:04') },
+  { staffId: STAFF_ID.luis, startedAt: at(REFERENCE_DAY, '08:12') },
+  { staffId: STAFF_ID.mike, startedAt: at(REFERENCE_DAY, '12:10') },
+];
+
+const span = (day: number, from: string, to: string) => ({ day, open: { from, to } });
+const days = (list: number[], from: string, to: string): StaffHours => ({ days: list.map((d) => span(d, from, to)) });
+/**
+ * Staff's week of Sep 21: Jen Mon–Fri 8–4 with a short Thursday, Luis Tue–Fri 8–2 with Thursday
+ * afternoon instead, Mike Monday morning and Wednesday afternoon, Ana nothing yet.
+ */
+export const STAFF_HOURS: Record<string, { usual: StaffHours | null; thisWeek: StaffHours | null }> = {
+  [STAFF_ID.jen]: {
+    usual: days([0, 1, 2, 3, 4], '08:00', '16:00'),
+    thisWeek: { days: [span(0, '08:00', '16:00'), span(1, '08:00', '16:00'), span(2, '08:00', '16:00'), span(3, '08:00', '12:00'), span(4, '08:00', '16:00')] },
+  },
+  [STAFF_ID.luis]: {
+    usual: days([1, 2, 3, 4], '08:00', '14:00'),
+    thisWeek: { days: [span(1, '08:00', '14:00'), span(2, '08:00', '14:00'), span(3, '14:00', '18:00'), span(4, '08:00', '14:00')] },
+  },
+  [STAFF_ID.mike]: { usual: { days: [span(0, '08:00', '12:00'), span(2, '14:00', '18:00')] }, thisWeek: null },
+};
 
 export const SETTINGS: ShopSettings = { ...DEFAULT_SETTINGS, updatedAt: at(YESTERDAY, '09:00') };
 

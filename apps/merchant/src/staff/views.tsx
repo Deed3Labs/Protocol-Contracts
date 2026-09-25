@@ -29,6 +29,8 @@ import {
   hoursTotal,
   span,
   ticks,
+  toHHMM,
+  toHour,
   time,
   weekHours,
   type Hours,
@@ -724,22 +726,34 @@ export function PersonSheet({
   onHours,
   onResetPin,
   onRemove,
+  onEndShift,
   onClose,
 }: {
   m: Mate;
   onHours?: () => void;
   onResetPin?: () => void;
   onRemove?: () => void;
+  /** On shift, and not the one holding the tablet: an owner or manager can end it for them. */
+  onEndShift?: () => void;
   onClose: () => void;
 }) {
   const [tone, can] = CAN[m.role];
   const owner = m.role === 'owner';
+  const end = onEndShift && (
+    <button type="button" className="c-btn" style={{ width: '100%', marginBottom: owner ? 0 : 'var(--s1)' }} onClick={onEndShift}>
+      End {first(m.name)}’s shift
+    </button>
+  );
   return (
     <Sheet
       title={m.name}
       onClose={onClose}
       foot={
-        owner ? undefined : (
+        owner ? (
+          end
+        ) : (
+          <>
+          {end}
           <div className="c-pair">
             <button type="button" className="c-btn" onClick={onResetPin}>
               Reset their PIN
@@ -748,6 +762,7 @@ export function PersonSheet({
               Remove
             </button>
           </div>
+          </>
         )
       }
     >
@@ -850,13 +865,21 @@ function Days({ days, shut, onToggle }: { days: boolean[]; shut: boolean[]; onTo
   );
 }
 
-const Span = ({ from, to }: { from: number; to: number }) => (
-  <div className="c-mc-span">
-    <span className="c-mc-time">{time(from)}</span>
-    <span className="c-sep">–</span>
-    <span className="c-mc-time">{time(to)}</span>
-  </div>
-);
+/** From and to. Given `onChange`, each is the device's own time picker. */
+const Span = ({ from, to, onChange, label = '' }: { from: number; to: number; onChange?: (from: number, to: number) => void; label?: string }) =>
+  onChange ? (
+    <div className="c-mc-span">
+      <input type="time" className="c-mc-time" aria-label={`${label}Starts`} value={toHHMM(from)} onChange={(e) => e.target.value && onChange(toHour(e.target.value), to)} />
+      <span className="c-sep">–</span>
+      <input type="time" className="c-mc-time" aria-label={`${label}Ends`} value={toHHMM(to)} onChange={(e) => e.target.value && onChange(from, toHour(e.target.value))} />
+    </div>
+  ) : (
+    <div className="c-mc-span">
+      <span className="c-mc-time">{time(from)}</span>
+      <span className="c-sep">–</span>
+      <span className="c-mc-time">{time(to)}</span>
+    </div>
+  );
 
 const Callout = ({ children }: { children: ReactNode }) => (
   <div className="c-mc-callout" role="note">
@@ -877,6 +900,11 @@ export function HoursSheet({
   initialDay,
   onSave,
   onClose,
+  editable,
+  startsThisWeek,
+  backOn = 'Monday the 28th',
+  busy,
+  error,
 }: {
   name: string;
   /** The shop's closed days, which cannot be picked. */
@@ -887,6 +915,14 @@ export function HoursSheet({
   initialDay?: number;
   onSave?: (h: Hours, once: boolean) => void;
   onClose: () => void;
+  /** A live shop: the times are pickers. */
+  editable?: boolean;
+  /** Someone with no usual hours yet: Every week starts now. */
+  startsThisWeek?: boolean;
+  /** When usual hours come back after "This week only": "Monday the 28th". */
+  backOn?: string;
+  busy?: boolean;
+  error?: string | null;
 }) {
   const [h, setH] = useState(initial);
   const [once, setOnce] = useState(initialOnce);
@@ -896,6 +932,8 @@ export function HoursSheet({
   if (own !== null) {
     return (
       <DayHours
+        key={own}
+        editable={editable}
         day={own}
         usual={[h.start, h.end]}
         hours={h.own[own] ?? [h.start, 12]}
@@ -948,15 +986,20 @@ export function HoursSheet({
               </div>
             </div>
           </div>
-          <Callout>{once ? 'Their usual hours come back on Monday the 28th.' : 'Starts next week. This week stays as it is.'}</Callout>
+          <Callout>{once ? `Their usual hours come back on ${backOn}.` : startsThisWeek ? 'Starts this week.' : 'Starts next week. This week stays as it is.'}</Callout>
+          {error && (
+            <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0 0' }}>
+              {error}
+            </p>
+          )}
           <button
             type="button"
             className="c-btn c-btn-primary c-btn-lg"
             style={{ marginTop: 'var(--s2)' }}
-            disabled={!onSave}
+            disabled={!onSave || busy}
             onClick={() => onSave?.(h, once)}
           >
-            {once ? 'Save this week' : `Save ${f}’s hours`}
+            {busy ? 'Saving…' : once ? 'Save this week' : `Save ${f}’s hours`}
           </button>
         </>
       }
@@ -983,7 +1026,7 @@ export function HoursSheet({
           Hours
         </p>
       )}
-      <Span from={h.start} to={h.end} />
+      <Span from={h.start} to={h.end} onChange={editable ? (start, end) => setH((x) => ({ ...x, start, end })) : undefined} />
       {ownDays.length > 0 && (
         <div className="c-mc-own">
           {ownDays.map((d) => (
@@ -1028,13 +1071,15 @@ export function HoursSheet({
 function DayHours({
   day,
   usual,
-  hours,
+  hours: initialHours,
   shut,
   onPick,
   onBack,
   onClose,
   onSet,
+  editable,
 }: {
+  editable?: boolean;
   day: number;
   usual: [number, number];
   hours: [number, number];
@@ -1044,6 +1089,7 @@ function DayHours({
   onClose: () => void;
   onSet: (d: number, s: [number, number]) => void;
 }) {
+  const [hours, setHours] = useState(initialHours);
   return (
     <Sheet
       className="c-mc-hsheet"
@@ -1065,7 +1111,7 @@ function DayHours({
           <Callout>
             Their other days stay {time(usual[0])} – {time(usual[1])}.
           </Callout>
-          <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ marginTop: 'var(--s2)' }} onClick={() => onSet(day, hours)}>
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ marginTop: 'var(--s2)' }} disabled={hours[1] <= hours[0]} onClick={() => onSet(day, hours)}>
             Set {dayName(day)}
           </button>
         </>
@@ -1078,7 +1124,7 @@ function DayHours({
       <p className="c-label" style={{ margin: 'var(--s3) 0 var(--s1)' }}>
         Hours on {dayName(day)}
       </p>
-      <Span from={hours[0]} to={hours[1]} />
+      <Span from={hours[0]} to={hours[1]} label={`${dayName(day)} `} onChange={editable ? (a, b) => setHours([a, b]) : undefined} />
       <p className="c-det" style={{ marginTop: 'var(--s2)' }}>
         Picking a day they do not work adds it.
       </p>

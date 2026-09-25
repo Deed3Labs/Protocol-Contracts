@@ -508,24 +508,30 @@ export function ShiftCellView({ s, a, solo }: { s: ShiftCell; a: HomeActions; so
           <div>
             <div className="c-mc-clockhead">
               <p className="c-mc-clock">{c.onFor}</p>
-              <p className="c-mc-remain">
-                {c.left}
-                <span className="c-of">left</span>
-              </p>
-              <p className="c-det">Since {c.since}</p>
-              <p className="c-det">{paused ? `Break from ${c.onBreak!.from}` : `Until ${c.until}, no break yet`}</p>
-            </div>
-            <div className="c-mc-hours" role="img" aria-label={`${c.onFor} of a ${c.hours} hour shift`}>
-              {hours.map((i) =>
-                i < Math.floor(c.done) ? (
-                  <span key={i} className="c-done" />
-                ) : i === Math.floor(c.done) && c.done % 1 > 0 ? (
-                  <span key={i} className="c-now" style={{ ['--p' as string]: `${Math.round((c.done % 1) * 100)}%` }} />
-                ) : (
-                  <span key={i} />
-                ),
+              {c.left && (
+                <p className="c-mc-remain">
+                  {c.left}
+                  <span className="c-of">left</span>
+                </p>
               )}
+              <p className="c-det">Since {c.since}</p>
+              <p className="c-det">
+                {paused ? `Break from ${c.onBreak!.from}` : c.until ? `Until ${c.until}, ${c.breakNote ?? 'no break yet'}` : `Not booked today, ${c.breakNote ?? 'no break yet'}`}
+              </p>
             </div>
+            {c.hours > 0 && (
+              <div className="c-mc-hours" role="img" aria-label={`${c.onFor} of a ${c.hours} hour shift`}>
+                {hours.map((i) =>
+                  i < Math.floor(c.done) ? (
+                    <span key={i} className="c-done" />
+                  ) : i === Math.floor(c.done) && c.done % 1 > 0 ? (
+                    <span key={i} className="c-now" style={{ ['--p' as string]: `${Math.round((c.done % 1) * 100)}%` }} />
+                  ) : (
+                    <span key={i} />
+                  ),
+                )}
+              </div>
+            )}
           </div>
         )}
         <div className="c-rows c-mc-shiftrows">

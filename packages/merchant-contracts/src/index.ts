@@ -13,6 +13,7 @@ export * from './cards';
 export * from './catalog';
 export * from './orders';
 export * from './drawer';
+export * from './shifts';
 export * from './states';
 export * from './fees';
 export type { MerchantApi } from './client';

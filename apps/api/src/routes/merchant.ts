@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import {
+  deviceOf,
   requireDevice,
   requireManager,
   requireMerchant,
@@ -11,6 +12,8 @@ import { ownerCodeLimitFor, refundStore } from '../services/merchant/refundStore
 import { settleRefund } from '../services/refundSettlement.js';
 import { DEFAULT_IDLE_LOCK_SECONDS, deviceStore } from '../services/merchant/deviceStore.js';
 import { sessionStore } from '../services/merchant/sessionStore.js';
+import { endShift, startShift } from '../services/merchant/shifts/shiftService.js';
+import { merchantDb } from '../config/merchantDb.js';
 import { pinLockedHandler } from '../services/merchant/security/pinGuard.js';
 import { staffStore } from '../services/merchant/staffStore.js';
 import { merchantProfileStore } from '../services/merchant/profileStore.js';
@@ -28,6 +31,7 @@ import merchantOrdersRouter from './merchantOrders.js';
 import merchantRefundsReceiptsRouter from './merchantRefundsReceipts.js';
 import merchantCloseRouter from './merchantClose.js';
 import merchantReportsRouter from './merchantReports.js';
+import merchantShiftsRouter from './merchantShifts.js';
 
 /**
  * The merchant surface.
@@ -53,6 +57,8 @@ merchantRouter.use('/cards', merchantCardsRouter);
 merchantRouter.use(merchantTendersRouter);
 // The shop and its settings (routes/merchantShop.ts).
 merchantRouter.use(merchantShopRouter);
+// Shifts, breaks and staff hours (routes/merchantShifts.ts).
+merchantRouter.use(merchantShiftsRouter);
 // Inventory: items, stock, reorders, discount codes (routes/merchantCatalog.ts).
 merchantRouter.use(merchantCatalogRouter);
 // Orders, discounts, tax (routes/merchantOrders.ts).
@@ -81,6 +87,13 @@ function merchantOf(req: Request): string {
  * merchant address from the request body — which anyone could have supplied — and an unenrolled
  * tablet gets no roster at all.
  */
+/** A shift starts with a sign-in. It never stops one: the record of hours is not worth a failed sign-in. */
+async function shiftStarts(merchant: string, staffId: string, deviceId: string): Promise<void> {
+  const d = await merchantDb();
+  if (!d) return;
+  await startShift(d, { merchant, staffId, deviceId }).catch((error) => console.error('[merchant] shift start failed', error));
+}
+
 merchantRouter.post('/roster', requireDevice, async (req: Request, res: Response) => {
   res.json({ staff: await staffStore.roster(req.device!.merchant) });
 });
@@ -119,6 +132,7 @@ merchantRouter.post('/session', requireDevice, async (req: Request, res: Respons
     res.status(503).json({ error: 'Unavailable', message: 'sessions are not configured' });
     return;
   }
+  await shiftStarts(staff.merchant, staff.id, req.device!.id);
 
   res.json({
     token: session.token,
@@ -190,6 +204,9 @@ merchantRouter.post('/session/owner', async (req: Request, res: Response) => {
     res.status(503).json({ error: 'Unavailable', message: 'sessions are not configured' });
     return;
   }
+  // Signing in on an enrolled tablet puts the owner on shift, as a PIN does.
+  const tablet = await deviceOf(req).catch(() => null);
+  if (tablet && tablet.merchant === staff.merchant) await shiftStarts(staff.merchant, staff.id, tablet.id);
 
   res.json({
     token: session.token,
@@ -265,6 +282,9 @@ merchantRouter.post('/onboarding', async (req: Request, res: Response) => {
 
 /** End a shift. */
 merchantRouter.delete('/session', requireMerchant, async (req: Request, res: Response) => {
+  // End shift: signing out ends the caller's shift. Handing the tablet over is a new sign-in, not this.
+  const d = await merchantDb();
+  if (d) await endShift(d, { merchant: req.merchant!.merchant, staffId: req.merchant!.staff.id, by: req.merchant!.staff.id });
   await sessionStore.destroy((req.headers.authorization || '').replace('Bearer ', '').trim());
   res.json({ ok: true });
 });
@@ -346,6 +366,7 @@ merchantRouter.get('/charges', requireMerchant, async (req: Request, res: Respon
  */
 merchantRouter.post(
   '/charges',
+  deviceOf,
   requireDevice,
   requireMerchant,
   async (req: Request, res: Response) => {
@@ -393,6 +414,7 @@ merchantRouter.post(
  */
 merchantRouter.get(
   '/charges/:code',
+  deviceOf,
   requireDevice,
   requireMerchant,
   async (req: Request, res: Response) => {
