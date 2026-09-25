@@ -588,3 +588,18 @@ reason for any difference, is written to `e2e/.report/index.html`.
   and Clear wait. Offline cards aren't built (`OFFLINE_BUILT` in `reader/platform.ts`).
 - Walk-through: `e2e/new-charge-extras.spec.ts`, with the camera replaced by a canvas showing a QR.
 
+## Dusk and Dark
+
+- **The brand guide's palettes, the member app's values.** The reference draws Light only. Dusk (a
+  tan page, still light, so it keeps light's status colours) and Dark (the guide's ink ground) are
+  the same tokens as `apps/member/src/styles/clear-tokens.css`, set on `<html data-theme>` in
+  `styles/app.css`. Light is no attribute at all: the reference's own `:root`.
+- **Chosen per tablet**, from the profile sheet's Appearance, and applied before the first frame
+  draws, so a reload doesn't flash light. A tablet set to Dusk or Dark while the choice was pinned
+  comes back in it now. A customer's receipt page, which is on their phone, stays light.
+- **Codes stay dark on light** in every theme (`--qr-ink`, `--qr-paper`): an inverted QR is one some
+  phone cameras won't read. Cash's sage chip keeps dark text on Dark.
+- Every main page passes axe's WCAG 2.1 AA checks, colour contrast included, in both
+  (`e2e/themes.spec.ts`). The visual baselines stay Light, as the reference is drawn. In
+  development, `?theme=dusk|dark` shows one without changing the tablet's setting.
+
