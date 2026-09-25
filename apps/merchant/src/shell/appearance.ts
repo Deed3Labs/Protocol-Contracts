@@ -22,11 +22,21 @@ export function readAppearance(): Appearance {
   return 'light';
 }
 
+/**
+ * Pinned to light while the screens move to the reference.
+ *
+ * The reference's tokens are light only; Dusk and Dark get their own pass once every screen is
+ * converted, as the member app did. Until then the choice is still stored, so a tablet already set
+ * to Dusk comes back as Dusk when the pass lands, but nothing is applied — the old Dusk and Dark
+ * palettes would recolour only the pages that have not been converted yet.
+ */
+const THEME_PINNED = true;
+
 export function applyAppearance(next: Appearance): void {
   // Light is the absence of an attribute, so the base :root palette is never overridden by a
   // selector that has to win — one less specificity question when a token is added later.
   const root = document.documentElement;
-  if (next === 'light') root.removeAttribute('data-theme');
+  if (THEME_PINNED || next === 'light') root.removeAttribute('data-theme');
   else root.setAttribute('data-theme', next);
   try {
     window.localStorage.setItem(KEY, next);

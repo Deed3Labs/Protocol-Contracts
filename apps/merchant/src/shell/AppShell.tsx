@@ -1,102 +1,282 @@
-import type { ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/authContext';
-import { ProfileSheet, Squircle } from '@/shell/ProfileSheet';
-import { applyAppearance, readAppearance } from '@/shell/appearance';
+import { OwnerSignIn } from '@/auth/OwnerSignIn';
+import { IdleLockScreen, type ShiftPerson } from '@/auth/screens';
+import { usePinAttempts } from '@/auth/pinAttempts';
+import { useDigitKeys } from '@/brand/ui';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
+import { useLayout } from '@/lib/useBreakpoint';
+import { rememberShop } from '@/lib/shopName';
+import { applyAppearance, readAppearance, type Appearance } from '@/shell/appearance';
+import {
+  PhoneNav,
+  PhoneTop,
+  PinSheet,
+  PlusSheet,
+  ProfileSheet,
+  TopBar,
+  WhoIsOnSheet,
+  resettersOf,
+  roleLabel,
+  type NavKey,
+  type ProfileRow,
+  type RosterPerson,
+} from '@/shell/chrome';
 
 /**
- * The layout, at all three widths.
+ * The shell every signed-in screen sits in, at all three widths.
  *
- * Above 900px the action sits left and its context right. Between 520 and 900 it becomes one
- * column with the action first. Below 520 it is the phone layout. **Nothing is removed at any
- * width** — a counter tablet turned portrait is still the same app, and a writer who learned where
- * something was on the tablet must find it on the phone. Only the arrangement changes.
+ * Above 900px the tablet header: "Clear | shop", six destinations, the shift pill and the avatar.
+ * Between 520 and 900 the same header with the nav on its own row. Below 520 the phone: the
+ * lockup and shift at the top, the six destinations as icons in a floating bar, and New charge on
+ * the action button. **Nothing is removed at any width**; only the arrangement changes.
  *
- * The top bar is the reference's exactly: a wordmark carrying the shop's name, and five plain text
- * links. Things that are deliberately NOT here, having been in an earlier draft of this file:
- *
- * - **New charge.** It is the primary button on Home, not a sixth link. Putting it in the nav gives
- *   a writer two routes to the same place and makes the one real action look like navigation.
- * - **A role chip.** The brief asks for one on every screen *of the refund flow*, where authority
- *   moves between two people and the tablet has to say whose hands it is in. On Home it is chrome.
- * - **Sign out.** It lives in Settings, where a writer looks for it once a day at most.
+ * It also owns the three things that sit over any screen: the profile sheet behind the avatar, the
+ * shift change behind the pill, and the lock after the tablet's idle minutes.
  */
 
-/**
- * Five destinations, and everything else behind the avatar — reference section 21.
- *
- * Settings left the nav because it is not a shift task. A counter tablet has five things a writer
- * touches during a shift and a pile of things an owner touches monthly; mixing them makes the nav
- * longer and the frequent items smaller. Overview takes the fifth slot — the month-end view an
- * owner asks for, which is a shift-length question in a way Settings never was.
- */
-const NAV = [
-  { to: '/', label: 'Home', end: true },
-  { to: '/charges', label: 'Charges' },
-  { to: '/payouts', label: 'Payouts', ownerOnly: true },
-  { to: '/staff', label: 'Staff', ownerOnly: true },
-  { to: '/overview', label: 'Overview', ownerOnly: true },
-] as const;
+type Open = 'profile' | 'who' | 'pin' | 'owner' | 'plus' | null;
+
+const SECTION: [string, NavKey][] = [
+  ['/charges', 'charges'],
+  ['/inventory', 'inventory'],
+  ['/payouts', 'payouts'],
+  ['/staff', 'staff'],
+  ['/overview', 'overview'],
+];
+
+function sectionOf(path: string): NavKey | null {
+  if (path === '/') return 'home';
+  return SECTION.find(([p]) => path === p || path.startsWith(`${p}/`))?.[1] ?? null;
+}
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { canSeeMoney, session } = useAuth();
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const { session, device, canSeeMoney, signOut, signInWithPin, refresh } = useAuth();
+  const layout = useLayout();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState<Open>(null);
+  const [appearance, setAppearance] = useState<Appearance>(readAppearance);
 
-  // The tablet's own setting, applied before anything renders so there is no flash of the wrong
-  // palette on a counter that lives in dusk.
-  useEffect(() => {
-    applyAppearance(readAppearance());
-  }, []);
-  // The shop's own name, in the one place it appears on every screen. Read here rather than passed
-  // down: the header outlives every page, and a name that flickers on navigation reads as a reload.
+  // The shop's name, in the one place it appears on every screen. Remembered on the tablet too, so
+  // the shift screen can show it before anyone is on.
   const { data: profile } = useApi(() => api.profile(), []);
-  const shopName = profile?.name ?? 'your shop';
+  useEffect(() => rememberShop(profile?.name), [profile?.name]);
+  const shop = profile?.name ?? '';
+
+  // ---- Changing who is on the counter --------------------------------------------------------
+  const [roster, setRoster] = useState<RosterPerson[]>([]);
+  const [picked, setPicked] = useState<RosterPerson | null>(null);
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const attempts = usePinAttempts();
+
+  useEffect(() => {
+    if (open !== 'who') return;
+    api
+      .roster()
+      .then(setRoster)
+      .catch(() => setRoster([]));
+  }, [open]);
+
+  // ---- The idle lock -------------------------------------------------------------------------
+  const idleSeconds = device?.idleLockSeconds ?? 300;
+  const [locked, setLocked] = useState(false);
+  useEffect(() => {
+    if (locked) return;
+    let timer = window.setTimeout(() => setLocked(true), idleSeconds * 1000);
+    const touch = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setLocked(true), idleSeconds * 1000);
+    };
+    const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
+    events.forEach((e) => window.addEventListener(e, touch, { passive: true }));
+    return () => {
+      window.clearTimeout(timer);
+      events.forEach((e) => window.removeEventListener(e, touch));
+    };
+  }, [locked, idleSeconds]);
+
+  const closeSheets = useCallback(() => {
+    setOpen(null);
+    setPicked(null);
+    setPin('');
+    setPinError(null);
+  }, []);
+
+  // A PIN goes on its fourth digit, whether it is someone taking over or the same person unlocking.
+  const who = picked ?? (locked && session ? (session.staff as RosterPerson) : null);
+  useEffect(() => {
+    if (pin.length !== 4 || !who || busy) return;
+    setBusy(true);
+    signInWithPin(pin, who.id)
+      .then(() => {
+        closeSheets();
+        setLocked(false);
+        attempts.reset();
+      })
+      .catch((e: unknown) => {
+        const status = (e as { status?: number })?.status;
+        setPinError(status === 429 && e instanceof Error ? e.message : attempts.miss());
+        setPin('');
+      })
+      .finally(() => setBusy(false));
+  }, [pin, who, busy, signInWithPin, closeSheets, attempts]);
+
+  const typing = !!who && !busy && !attempts.waiting && (open === 'pin' || (locked && open === null));
+  const digit = (d: string) => {
+    setPinError(null);
+    setPin((p) => (p.length >= 4 ? p : p + d));
+  };
+  const del = () => setPin((p) => p.slice(0, -1));
+  useDigitKeys(typing, digit, del);
+
+  if (!session) return null;
+  const staff = session.staff;
+  const role = staff.role;
+  const current = sectionOf(pathname);
+
+  const pickSheets = (
+    <>
+      {open === 'who' && (
+        <WhoIsOnSheet
+          people={roster}
+          onClose={closeSheets}
+          onPick={(p) => {
+            setPicked(p);
+            setPin('');
+            setPinError(null);
+            attempts.reset();
+            setOpen('pin');
+          }}
+        />
+      )}
+      {open === 'pin' && picked && (
+        <PinSheet
+          name={picked.name}
+          filled={pin.length}
+          error={pinError}
+          disabled={!typing}
+          resetters={resettersOf(roster)}
+          onDigit={digit}
+          onDelete={del}
+          onNotMe={() => {
+            setPicked(null);
+            setPin('');
+            setOpen('who');
+          }}
+          onClose={closeSheets}
+        />
+      )}
+    </>
+  );
+
+  // Locked: the shift keeps running underneath, so the same PIN opens it, or someone else starts
+  // a different shift.
+  if (locked) {
+    const person: ShiftPerson = { id: staff.id, name: staff.name, role };
+    return (
+      <>
+        <IdleLockScreen
+          shop={shop}
+          person={person}
+          minutes={Math.round(idleSeconds / 60)}
+          filled={open === null ? pin.length : 0}
+          error={open === null ? pinError : null}
+          disabled={!typing}
+          onDigit={digit}
+          onDelete={del}
+          onSomeoneElse={() => {
+            setPin('');
+            setPinError(null);
+            setOpen('who');
+          }}
+        />
+        {pickSheets}
+      </>
+    );
+  }
+
+  const header = {
+    shop,
+    current,
+    role,
+    onShift: staff.name,
+    avatarName: staff.name,
+    onChangeShift: () => setOpen('who'),
+    onProfile: () => setOpen('profile'),
+  };
+
+  // What the profile sheet lists. The owner's rows (terms, the cash account) appear only for
+  // someone who sees money; destinations not built yet are rows that go nowhere for now.
+  const go = (to: string) => () => {
+    closeSheets();
+    navigate(to);
+  };
+  const tablet: ProfileRow = { label: 'This tablet', value: `${device?.label ?? 'This tablet'} · enrolled` };
+  const rows: ProfileRow[] = canSeeMoney
+    ? [
+        { label: 'Settings', onClick: go('/settings') },
+        { label: 'Your terms', onClick: go('/overview') },
+        { label: 'Cash account', onClick: go('/payouts') },
+        { label: 'Counter materials' },
+        tablet,
+        { label: 'Help' },
+      ]
+    : [tablet, { label: 'Help' }];
 
   return (
-    <div className="@container min-h-dvh bg-[var(--clear-surface-2)] text-[var(--clear-text-primary)]">
-      <div className="mx-auto flex min-h-dvh max-w-[960px] flex-col px-5 py-6 @[520px]:px-6">
-        <header className="mb-[18px] flex items-center justify-between gap-4 border-b-[0.5px] border-[var(--clear-border)] pb-[13px]">
-          <span className="text-[15px] font-semibold tracking-[-0.2px]">
-            Clear{' '}
-            <span className="font-normal text-[var(--clear-text-muted)]">
-              for {shopName}
-            </span>
-          </span>
+    <div className="c-app c-mc-tablet c-mc-page">
+      {layout === 'phone' ? <PhoneTop {...header} /> : <TopBar {...header} />}
 
-          <nav className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-[12px] text-[var(--clear-text-secondary)] @[900px]:gap-x-5 @[900px]:text-[13px]">
-            {NAV.filter((n) => !('ownerOnly' in n && n.ownerOnly) || canSeeMoney).map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={'end' in item ? item.end : undefined}
-                className={({ isActive }) =>
-                  isActive
-                    ? 'text-[var(--clear-text-primary)]'
-                    : 'text-[var(--clear-text-secondary)]'
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-            {/* The avatar is the way into everything that is not a shift task. */}
-            <button
-              type="button"
-              onClick={() => setSheetOpen(true)}
-              aria-label="Your profile and settings"
-              className="ml-1"
-            >
-              <Squircle name={session?.staff.name ?? ''} size={26} />
-            </button>
-          </nav>
-        </header>
+      {/* A container, because the pages not yet converted size themselves with container queries. */}
+      <main className="@container">{children}</main>
 
-        {sheetOpen && <ProfileSheet onClose={() => setSheetOpen(false)} />}
+      {layout === 'phone' && <PhoneNav current={current} role={role} onPlus={() => setOpen('plus')} />}
 
-        <main className="flex flex-1 flex-col">{children}</main>
-      </div>
+      {open === 'plus' && (
+        <PlusSheet onClose={closeSheets} onAmount={go('/new')} onCart={go('/new?items=1')} />
+      )}
+
+      {open === 'profile' && (
+        <ProfileSheet
+          name={staff.name}
+          subtitle={role === 'owner' ? 'Owner · signed in' : `${roleLabel(role)} · on shift`}
+          owner={role === 'owner'}
+          rows={rows}
+          appearance={appearance}
+          onAppearance={(a) => {
+            setAppearance(a);
+            applyAppearance(a);
+          }}
+          onEndShift={() => {
+            closeSheets();
+            void signOut();
+          }}
+          onOwnerSignIn={() => setOpen('owner')}
+          onOwnerSignOut={() => {
+            closeSheets();
+            void signOut();
+          }}
+          onClose={closeSheets}
+        />
+      )}
+
+      {open === 'owner' && (
+        <OwnerSignIn
+          variant="sheet"
+          onBack={closeSheets}
+          onDone={async () => {
+            await refresh();
+            closeSheets();
+          }}
+        />
+      )}
+
+      {pickSheets}
     </div>
   );
 }
@@ -104,8 +284,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 /**
  * Two equal columns above 900px, one below — action first either way.
  *
- * A container query rather than a media query, so the arrangement follows the space the content
- * actually has: correct in a split-screen tablet as well as a full one.
+ * The pages not yet converted to the reference still lay themselves out with this. It goes when
+ * the last of them does.
  */
 export function Columns({ action, context }: { action: ReactNode; context: ReactNode }) {
   return (

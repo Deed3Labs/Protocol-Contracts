@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { lazy, Suspense } from 'react';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { AppShell } from '@/shell/AppShell';
 import { SignIn } from '@/auth/SignIn';
 import { OwnerSignIn } from '@/auth/OwnerSignIn';
@@ -15,6 +16,12 @@ import StaffPage from '@/pages/StaffPage';
 import OverviewPage from '@/pages/OverviewPage';
 import SettingsPage from '@/pages/SettingsPage';
 import OnboardingPage from '@/pages/OnboardingPage';
+import InventoryPage from '@/pages/InventoryPage';
+import { useLayout } from '@/lib/useBreakpoint';
+
+// Dev only: every component in every state, at the three widths. `import.meta.env.DEV` is
+// statically false in a production build, so the route and this chunk fall out of it.
+const Gallery = import.meta.env.DEV ? lazy(() => import('@/gallery/Gallery')) : null;
 
 /**
  * The routing skeleton.
@@ -30,6 +37,16 @@ function OwnerOnly({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const { session, device, loading, refresh } = useAuth();
+  const layout = useLayout();
+  const navigate = useNavigate();
+
+  if (Gallery && window.location.pathname.startsWith('/_gallery')) {
+    return (
+      <Suspense fallback={null}>
+        <Gallery />
+      </Suspense>
+    );
+  }
 
   // Dev-only. Enrollment sits behind a backend and an owner's Privy sign-in, which makes it the one
   // screen that cannot be looked at while building it. `import.meta.env.DEV` is statically false in
@@ -43,9 +60,7 @@ export default function App() {
   // device up, which reads as a bug on the one screen that has to look deliberate.
   if (loading) {
     return (
-      <div className="grid min-h-dvh place-items-center bg-[var(--clear-surface-2)]">
-        <p className="m-0 text-[13px] text-[var(--clear-text-muted)]">Starting up…</p>
-      </div>
+      <div className="c-app c-mc-tablet" aria-busy="true" />
     );
   }
 
@@ -68,7 +83,16 @@ export default function App() {
           {/* No `onBack`: there is no counter behind this yet. `onDone` re-reads the session —
               sign-in stores its own bearer token, so without this the app would sit on this screen
               having already signed in. */}
-          <Route path="*" element={<OwnerSignIn onDone={refresh} />} />
+          <Route
+            path="*"
+            element={
+              <OwnerSignIn
+                onDone={refresh}
+                phone={layout === 'phone'}
+                onSetUpShop={() => navigate('/onboarding')}
+              />
+            }
+          />
         </Routes>
       );
     }
@@ -98,6 +122,7 @@ export default function App() {
         <Route path="/charges" element={<ChargesPage />} />
         <Route path="/charges/:id" element={<ChargeDetailPage />} />
         <Route path="/charges/:id/refund" element={<RefundPage />} />
+        <Route path="/inventory" element={<InventoryPage />} />
         <Route
           path="/payouts"
           element={
