@@ -10,7 +10,7 @@ import type {
   RecordReader,
   RegisterSmartReader,
 } from './cards';
-import type { CatalogItem, DiscountCode, ItemInput, OptionGroup, Reorder, StockAdjustment } from './catalog';
+import type { CatalogItem, DiscountCode, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
 import type { BankDeposit, CountsView, DayReport, DrawerSession, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
@@ -64,6 +64,8 @@ export interface MerchantApi {
   archiveItem(id: string): Promise<CatalogItem>;
   saveOptionGroups(itemId: string, groups: Omit<OptionGroup, 'id'>[]): Promise<CatalogItem>;
   adjustStock(input: In<typeof StockAdjustment>): Promise<CatalogItem>;
+  /** Every change to an item's stock, newest first. Owners and managers. */
+  stockHistory(itemId: string): Promise<StockMovement[]>;
   reorders(): Promise<Reorder[]>;
   markReordered(input: { itemId: string; quantity: number; supplier: string | null; expectedOn: string | null }): Promise<Reorder>;
   receiveReorder(id: string, input: { quantity: number }): Promise<Reorder>;
