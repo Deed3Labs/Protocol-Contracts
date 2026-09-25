@@ -21,6 +21,7 @@ export const ChosenOption = z.object({
   name: z.string(),
   deltaCents: Cents,
 });
+export type ChosenOption = z.infer<typeof ChosenOption>;
 
 export const OrderLine = z.object({
   id: Id,
@@ -33,6 +34,8 @@ export const OrderLine = z.object({
   unitCents: NonNegativeCents,
   options: z.array(ChosenOption),
   lineCents: NonNegativeCents,
+  /** This line's share of the order's discount; tax is worked out after it. */
+  discountCents: NonNegativeCents,
   taxKind: TaxKind,
   taxCents: NonNegativeCents,
 });
@@ -95,8 +98,14 @@ export const Order = z.object({
   subtotalCents: NonNegativeCents,
   discountCents: NonNegativeCents,
   taxCents: NonNegativeCents,
-  /** subtotal − discount + tax. Tips ride on tenders, and are summed here for display. */
+  /**
+   * subtotal − discount + tax. Tips ride on tenders, and are summed here for display. With tax
+   * included in prices, the total is what the prices say and the subtotal is what's left before tax.
+   */
   totalCents: NonNegativeCents,
+  taxIncluded: z.boolean(),
+  /** Where the tax came from: the shop's Stripe Tax, the rate for its address, or none yet. */
+  taxSource: z.enum(['stripe', 'address_rate', 'none']),
   tipCents: NonNegativeCents,
   /** What the tenders have not yet covered. */
   remainingCents: NonNegativeCents,

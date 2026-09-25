@@ -60,6 +60,21 @@ export const ShopPatch = z
   .partial();
 export type ShopPatch = z.infer<typeof ShopPatch>;
 
+/**
+ * Where a shop's sales tax comes from (Settings › Tax). The shop is liable, so tax is worked out on
+ * its own Stripe account once Stripe Tax is on there; until then from the rate for its address,
+ * looked up once and kept; with neither, no tax is added and Settings says so.
+ */
+export const TaxStatus = z.object({
+  source: z.enum(['stripe', 'address_rate', 'none']),
+  /** Why Stripe Tax isn't being used yet, for the Settings copy. */
+  stripe: z.enum(['active', 'not_connected', 'setup_needed']),
+  /** The rate at the shop by kind of item, "7.75", when known. */
+  rates: z.object({ goods: z.string().nullable(), labour: z.string().nullable(), food: z.string().nullable() }),
+  pricesIncludeTax: z.boolean(),
+});
+export type TaxStatus = z.infer<typeof TaxStatus>;
+
 export const Staff = z.object({
   id: Id,
   name: z.string().min(1),
@@ -83,6 +98,8 @@ export const ShopSettings = z.object({
   onePersonClose: z.enum(['owner_next_morning', 'wait_for_second']),
   /** Store-and-forward on the M2 only; Tap to Pay is always online. */
   offlineCards: z.object({ enabled: z.boolean(), limitCents: NonNegativeCents }),
+  /** Prices at the counter: before tax (added at checkout), or with tax included ("a $9.00 taco costs $9.00"). */
+  tax: z.object({ pricesIncludeTax: z.boolean() }),
   /** Most off a charge a role can give without a PIN, in whole percents. Null: no limit. */
   discountLimits: z.object({
     counter: z.number().int().min(0).max(100),
@@ -104,5 +121,6 @@ export const DEFAULT_SETTINGS: Omit<ShopSettings, 'updatedAt'> = {
   twoCounts: true,
   onePersonClose: 'owner_next_morning',
   offlineCards: { enabled: false, limitCents: 50000 },
+  tax: { pricesIncludeTax: false },
   discountLimits: { counter: 10, manager: 25, owner: null },
 };

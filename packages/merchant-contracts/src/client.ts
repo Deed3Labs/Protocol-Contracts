@@ -22,7 +22,7 @@ import type {
   RequestRefund,
   Tender,
 } from './orders';
-import type { Shop, ShopPatch, ShopSettings, ShopSettingsPatch, Staff } from './shop';
+import type { Shop, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
 
 type In<T extends z.ZodType> = z.input<T>;
 type Range = { from: z.infer<typeof BusinessDate>; to: z.infer<typeof BusinessDate> };
@@ -46,6 +46,8 @@ export interface MerchantApi {
   /** Owners only. */
   updateSettings(patch: In<typeof ShopSettingsPatch>): Promise<ShopSettings>;
   staff(): Promise<Staff[]>;
+  /** Settings › Tax: where the tax comes from and the rate at the shop. */
+  taxStatus(): Promise<TaxStatus>;
 
   // ---- Cards ---------------------------------------------------------------------------------------
   cardAvailability(): Promise<CardAvailability>;
