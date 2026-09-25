@@ -40,7 +40,7 @@ import { ShiftActionsContext } from '@/shell/shiftActions';
  */
 
 /** Routes that are flows rather than pages. */
-const FLOWS = ['/close', '/new'];
+const FLOWS = ['/close', '/new', '/onboarding'];
 
 type Open = 'profile' | 'who' | 'pin' | 'owner' | 'plus' | null;
 
