@@ -90,6 +90,8 @@ export interface CardConnectorProvider {
   // ---- Readers ---------------------------------------------------------------------------------
   /** The shop's one reader location on its own account, at its address. */
   createLocation(account: string, input: { name: string; address: Address }): Promise<{ locationId: string }>;
+  /** The shop moved or renamed: its reader location follows. */
+  updateLocation(account: string, locationId: string, input: { name: string; address: Address }): Promise<void>;
   /** For the reader SDKs, scoped to the shop's location. */
   connectionToken(account: string, locationId: string): Promise<{ secret: string }>;
   /** A smart reader, by the code it shows on its screen. */

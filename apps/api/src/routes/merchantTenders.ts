@@ -39,6 +39,7 @@ const STATUS: Record<TenderError['code'], number> = {
   reader_busy: 409,
   reader_offline: 503,
   reader_timeout: 504,
+  method_off: 409,
 };
 
 function refuse(res: Response, error: unknown): void {

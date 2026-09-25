@@ -49,7 +49,8 @@ export class TenderError extends Error {
       | 'not_smart_reader'
       | 'reader_busy'
       | 'reader_offline'
-      | 'reader_timeout',
+      | 'reader_timeout'
+      | 'method_off',
   ) {
     super(message);
     this.name = 'TenderError';
@@ -180,6 +181,9 @@ export async function createCardTender(
     }
 
     if (order.voided_at || !['open', 'paying'].includes(order.status)) throw new TenderError('That order is not taking payments', 'order_closed');
+    // The shop's own setting, enforced here and not only hidden in the app.
+    const { rows: settings } = await tx.query<{ accept_card: boolean }>('SELECT accept_card FROM merchant.shop_settings WHERE merchant = $1', [input.merchant]);
+    if (settings[0] && !settings[0].accept_card) throw new TenderError('This shop has card payments turned off in Settings', 'method_off');
     const connector = await takingCards(tx, input.merchant);
     const { rows: readers } = await tx.query('SELECT 1 FROM merchant.readers WHERE id = $1 AND merchant = $2 AND removed_at IS NULL', [input.readerId, input.merchant]);
     if (!readers[0]) throw new TenderError('That reader isn’t one of this shop’s', 'reader_unknown');

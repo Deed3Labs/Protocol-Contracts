@@ -51,6 +51,15 @@ export const Shop = z.object({
 });
 export type Shop = z.infer<typeof Shop>;
 
+/** What an owner can change about the shop: where it is (which sets sales tax and the reader location) and its timezone. */
+export const ShopPatch = z
+  .object({
+    address: Address,
+    timezone: z.string().min(1),
+  })
+  .partial();
+export type ShopPatch = z.infer<typeof ShopPatch>;
+
 export const Staff = z.object({
   id: Id,
   name: z.string().min(1),
