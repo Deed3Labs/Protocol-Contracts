@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { orderStatus, type OrderStatus, type TenderState } from '@clear/merchant-contracts';
 import type { Queryable } from '../../../db/db.js';
 import { type Entry, entriesFor, post, reverse } from '../ledger/ledgerService.js';
@@ -101,6 +102,63 @@ export async function settleOrder(tx: Queryable, input: { merchant: string; orde
     );
   }
 
+  await syncStock(tx, { merchant: input.merchant, orderId: order.id, status: summary.status, actor: input.actor });
+  if (summary.status === 'paid' && order.status !== 'paid') {
+    // For whoever acts on a sale after it's booked (tax recording, notifications, reports).
+    await tx.query(
+      `INSERT INTO payments.outbox (merchant, topic, dedupe_key, payload) VALUES ($1, 'order.paid', $2, $3) ON CONFLICT (dedupe_key) DO NOTHING`,
+      [input.merchant, `order.paid:${order.id}:${live.attempts}`, JSON.stringify({ orderId: order.id })],
+    );
+  }
   await tx.query('UPDATE commerce.orders SET status = $2, tip_cents = $3, updated_at = now() WHERE id = $1', [order.id, summary.status, summary.tipCents]);
   return summary.status;
+}
+
+/**
+ * Stock follows the order: held while it's open or being paid, sold once it's paid (refunds bring
+ * goods back through their own return movements), released if it's voided. Each line is moved from
+ * where its movements say it is to where the status says it should be, under the items' row locks,
+ * so this is safe to call again and again.
+ */
+export async function syncStock(tx: Queryable, input: { merchant: string; orderId: string; status: OrderStatus; actor: string | null }): Promise<void> {
+  const { rows: lines } = await tx.query<{ id: string; item_id: string; quantity: number; removed_at: unknown; held: string | number; sold: string | number }>(
+    `SELECT l.id, l.item_id, l.quantity, l.removed_at,
+            COALESCE(sum(m.quantity) FILTER (WHERE m.kind IN ('hold','release')), 0) AS held,
+            COALESCE(-sum(m.quantity) FILTER (WHERE m.kind = 'sell'), 0)
+              - COALESCE(sum(m.quantity) FILTER (WHERE m.kind = 'return' AND m.reason = 'sale undone'), 0) AS sold
+       FROM commerce.order_lines l
+       JOIN commerce.catalog_items i ON i.id = l.item_id AND i.stock_tracked
+       LEFT JOIN commerce.stock_movements m ON m.order_line_id = l.id
+      WHERE l.order_id = $1
+      GROUP BY l.id
+      ORDER BY l.item_id, l.id`,
+    [input.orderId],
+  );
+  if (lines.length === 0) return;
+  // Items in a fixed order, so two orders sharing items can't deadlock.
+  for (const itemId of [...new Set(lines.map((l) => l.item_id))].sort()) {
+    await tx.query('SELECT 1 FROM commerce.catalog_items WHERE id = $1 FOR UPDATE', [itemId]);
+  }
+  const move = (itemId: string, lineId: string, kind: string, quantity: number, reason: string | null) =>
+    tx.query(
+      `INSERT INTO commerce.stock_movements (id, merchant, item_id, kind, quantity, reason, order_line_id, actor) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [`mov_${randomUUID()}`, input.merchant, itemId, kind, quantity, reason, lineId, input.actor],
+    );
+
+  for (const l of lines) {
+    const q = l.removed_at ? 0 : l.quantity;
+    const want =
+      input.status === 'open' || input.status === 'paying'
+        ? { held: q, sold: 0 }
+        : input.status === 'voided'
+          ? { held: 0, sold: 0 }
+          : { held: 0, sold: q };
+    const held = Number(l.held);
+    const sold = Number(l.sold);
+    // Undo a sale first (a paid order voided back to open), then move holds, then sell.
+    if (sold > want.sold) await move(l.item_id, l.id, 'return', sold - want.sold, 'sale undone');
+    if (held > want.held) await move(l.item_id, l.id, 'release', -(held - want.held), null);
+    if (held < want.held) await move(l.item_id, l.id, 'hold', want.held - held, null);
+    if (sold < want.sold) await move(l.item_id, l.id, 'sell', -(want.sold - sold), null);
+  }
 }

@@ -131,6 +131,7 @@ interface SettingsRow {
   one_person_close: 'owner_next_morning' | 'wait_for_second';
   offline_cards_enabled: boolean;
   offline_cards_limit_cents: string | number;
+  prices_include_tax: boolean;
   discount_limit_counter: number;
   discount_limit_manager: number;
   discount_limit_owner: number | null;
@@ -144,6 +145,7 @@ const fromRow = (r: SettingsRow): ShopSettings => ({
   twoCounts: r.two_counts,
   onePersonClose: r.one_person_close,
   offlineCards: { enabled: r.offline_cards_enabled, limitCents: Number(r.offline_cards_limit_cents) },
+  tax: { pricesIncludeTax: r.prices_include_tax },
   discountLimits: { counter: r.discount_limit_counter, manager: r.discount_limit_manager, owner: r.discount_limit_owner },
   updatedAt: new Date(r.updated_at).toISOString(),
 });
@@ -187,15 +189,16 @@ export async function updateSettings(db: Db, input: { merchant: string; staffId:
   const { rows } = await db.query<SettingsRow>(
     `INSERT INTO merchant.shop_settings (merchant, accept_card, accept_cash, accept_split, tips_enabled, tips_mode, tips_presets, tips_go_to,
        starting_cash_cents, two_counts, one_person_close, offline_cards_enabled, offline_cards_limit_cents,
-       discount_limit_counter, discount_limit_manager, discount_limit_owner, updated_by, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17, now())
+       discount_limit_counter, discount_limit_manager, discount_limit_owner, updated_by, prices_include_tax, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, now())
      ON CONFLICT (merchant) DO UPDATE SET
        accept_card = EXCLUDED.accept_card, accept_cash = EXCLUDED.accept_cash, accept_split = EXCLUDED.accept_split,
        tips_enabled = EXCLUDED.tips_enabled, tips_mode = EXCLUDED.tips_mode, tips_presets = EXCLUDED.tips_presets, tips_go_to = EXCLUDED.tips_go_to,
        starting_cash_cents = EXCLUDED.starting_cash_cents, two_counts = EXCLUDED.two_counts, one_person_close = EXCLUDED.one_person_close,
        offline_cards_enabled = EXCLUDED.offline_cards_enabled, offline_cards_limit_cents = EXCLUDED.offline_cards_limit_cents,
        discount_limit_counter = EXCLUDED.discount_limit_counter, discount_limit_manager = EXCLUDED.discount_limit_manager,
-       discount_limit_owner = EXCLUDED.discount_limit_owner, updated_by = EXCLUDED.updated_by, updated_at = now()
+       discount_limit_owner = EXCLUDED.discount_limit_owner, updated_by = EXCLUDED.updated_by,
+       prices_include_tax = EXCLUDED.prices_include_tax, updated_at = now()
      RETURNING *`,
     [
       input.merchant,
@@ -215,6 +218,7 @@ export async function updateSettings(db: Db, input: { merchant: string; staffId:
       s.discountLimits.manager,
       s.discountLimits.owner,
       input.staffId,
+      s.tax.pricesIncludeTax,
     ],
   );
   return fromRow(rows[0]!);
