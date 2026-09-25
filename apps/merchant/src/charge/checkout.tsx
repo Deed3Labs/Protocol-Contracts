@@ -410,6 +410,37 @@ export function DiscountSheet({
 export type TipChoice = { kind: 'none' } | { kind: 'preset'; cents: number } | { kind: 'custom'; cents: number };
 
 /**
+ * The customer's own tip, in dollars, typed on the device's number pad. The reference draws Custom
+ * without an amount; this is the smallest thing that lets it take one.
+ */
+function CustomTip({ cents, onCents }: { cents: number; onCents: (cents: number) => void }) {
+  const [text, setText] = useState(cents ? (cents / 100).toFixed(2) : '');
+  return (
+    <label className="c-ck-custom" style={{ display: 'block', marginTop: 'var(--s2)' }}>
+      <span className="c-label" style={{ display: 'block', marginBottom: 6 }}>
+        Your tip, in dollars
+      </span>
+      <input
+        className="c-field"
+        inputMode="decimal"
+        autoFocus
+        aria-label="Tip amount"
+        placeholder="0.00"
+        value={text}
+        style={{ width: '100%', height: 48, fontSize: 'var(--t-fig)', textAlign: 'center' }}
+        onChange={(e) => {
+          const v = e.target.value.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+          if (/\.\d{3,}$/.test(v)) return;
+          setText(v);
+          const n = Math.round(Number(v || '0') * 100);
+          onCents(Number.isFinite(n) ? Math.min(n, 99_999_00) : 0);
+        }}
+      />
+    </label>
+  );
+}
+
+/**
  * Asked once, on the customer's side of the screen, before they pay any way at all. The tip is
  * added to the total and goes with whatever they pay with.
  */
@@ -492,12 +523,13 @@ export function TipView({
               <b>Custom</b>
             </button>
           </div>
+          {tip?.kind === 'custom' && <CustomTip cents={tip.cents} onCents={(cents) => onTip?.({ kind: 'custom', cents })} />}
           <button type="button" className="c-ck-notip" aria-pressed={tip?.kind === 'none'} onClick={() => onTip?.({ kind: 'none' })}>
             No tip
           </button>
         </div>
         <div className="c-cfoot">
-          <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!tip} onClick={onContinue}>
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!tip || (tip.kind === 'custom' && tip.cents <= 0)} onClick={onContinue}>
             Continue &middot; {usd(totalCents + tipCents)}
           </button>
         </div>

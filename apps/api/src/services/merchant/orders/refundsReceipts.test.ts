@@ -155,7 +155,7 @@ describe('recording tax at Stripe', () => {
     await createCashTender(db, { merchant: s.merchant, orderId: o.id, staffId: s.staff.jen, tender: { amountCents: 45730, tipCents: 0, handedOverCents: 45730, idempotencyKey: key() } });
     await s.drain();
     const first = (await db.query<{ tax_transaction_id: string }>('SELECT tax_transaction_id FROM commerce.orders WHERE id = $1', [o.id])).rows[0]!.tax_transaction_id;
-    await voidOrder(db, { card: null, clear: { raise: async () => ({ ok: false, reason: '' }), status: async () => null, cancel: async () => false }, pinCheck: s.deps.pinCheck }, {
+    await voidOrder(db, { card: null, clear: { raise: async () => ({ ok: false, reason: '' }), status: async () => null, cancel: async () => false, sendTo: async () => ({ ok: false, reason: '' }) }, pinCheck: s.deps.pinCheck }, {
       merchant: s.merchant,
       orderId: o.id,
       staffId: s.staff.jen,
@@ -193,7 +193,7 @@ describe('an order with a refund on it', () => {
     await s.drain();
     // At the counter, an order with a refund on it is refunded, not voided…
     await expect(
-      voidOrder(db, { card: null, clear: { raise: async () => ({ ok: false, reason: '' }), status: async () => null, cancel: async () => false }, pinCheck: s.deps.pinCheck }, {
+      voidOrder(db, { card: null, clear: { raise: async () => ({ ok: false, reason: '' }), status: async () => null, cancel: async () => false, sendTo: async () => ({ ok: false, reason: '' }) }, pinCheck: s.deps.pinCheck }, {
         merchant: s.merchant,
         orderId: o.id,
         staffId: s.staff.jen,

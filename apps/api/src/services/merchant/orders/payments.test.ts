@@ -11,7 +11,7 @@ import { tipsPayable } from '../ledger/accounts.js';
 import { balance } from '../ledger/ledgerService.js';
 import { updateSettings } from '../shop/shopService.js';
 import { createOrder, getOrder, type OrderDeps } from './orderService.js';
-import { cancelClearTender, type ClearCharges, createCashTender, createClearTender, discardOrder, STALE_ORDER_MS, sweepStaleOrders, syncClearTender, voidOrder } from './payments.js';
+import { cancelClearTender, type ClearCharges, createCashTender, createClearTender, discardOrder, phoneE164, sendClearTender, STALE_ORDER_MS, sweepStaleOrders, syncClearTender, voidOrder } from './payments.js';
 
 let db: Db;
 beforeAll(async () => {
@@ -39,8 +39,14 @@ function fakeClear(opts: { refuse?: string } = {}) {
       charges.set(code, 'cancelled');
       return true;
     },
+    async sendTo(code, to) {
+      if (charges.get(code) !== 'pending') return { ok: false, reason: 'That charge has ended' };
+      sent.push({ code, to });
+      return { ok: true, label: 'member' in to ? 'their Clear app' : to.phone };
+    },
   };
-  return { clear, charges, raised };
+  const sent: Array<{ code: string; to: { member: string } | { phone: string } }> = [];
+  return { clear, charges, raised, sent };
 }
 
 let seq = 0;
@@ -158,6 +164,35 @@ describe('splitting', () => {
     fake.tap(fake.payments.values().next().value!.id);
     await syncCardTender(db, fake.provider, { merchant: s.merchant, tenderId: start.tenderId, actor: null });
     expect((await getOrder(db, s.merchant, o.id)).status).toBe('paid');
+  });
+});
+
+describe('sending a Clear charge', () => {
+  test('phone numbers, as a text needs them', () => {
+    expect(phoneE164('(909) 555-0177')).toBe('+19095550177');
+    expect(phoneE164('1 909 555 0177')).toBe('+19095550177');
+    expect(phoneE164('+44 20 7946 0958')).toBe('+442079460958');
+    expect(phoneE164('555-0177')).toBeNull();
+  });
+
+  test('to a scanned member or a number, only while it waits; audited without the whole number', async () => {
+    const s = await shop();
+    const o = await s.order(1);
+    const c = fakeClear();
+    const t = await createClearTender(db, c.clear, { merchant: s.merchant, orderId: o.id, staffId: s.staff.jen, tender: { amountCents: 18900, tipCents: 0, idempotencyKey: key() } });
+    const wallet = `0x${'ab'.repeat(20)}`;
+    expect(await sendClearTender(db, c.clear, { merchant: s.merchant, tenderId: t.id, actor: s.staff.jen, body: { to: 'member', wallet: wallet.toUpperCase().replace('0X', '0x') } })).toEqual({ to: 'member', label: 'their Clear app' });
+    expect(c.sent[0]).toEqual({ code: t.clearChargeCode!, to: { member: wallet } });
+    expect((await sendClearTender(db, c.clear, { merchant: s.merchant, tenderId: t.id, actor: s.staff.jen, body: { to: 'phone', phone: '(909) 555-0177' } })).label).toBe('+19095550177');
+    await expect(sendClearTender(db, c.clear, { merchant: s.merchant, tenderId: t.id, actor: s.staff.jen, body: { to: 'phone', phone: '555' } })).rejects.toMatchObject({ code: 'invalid' });
+    await expect(sendClearTender(db, c.clear, { merchant: s.merchant, tenderId: t.id, actor: s.staff.jen, body: { to: 'member', wallet: 'jen' } })).rejects.toMatchObject({ code: 'invalid' });
+    const { rows } = await db.query<{ detail: { to: string; ending: string } }>(`SELECT detail FROM payments.audit_log WHERE action = 'tender.clear_sent' AND ref_id = $1 ORDER BY at`, [t.id]);
+    expect(rows.map((r) => r.detail)).toEqual([{ to: 'member', ending: 'abab' }, { to: 'phone', ending: '0177' }]);
+
+    // Answered: nothing more to send.
+    c.charges.set(t.clearChargeCode!, 'approved');
+    await syncClearTender(db, c.clear, { merchant: s.merchant, tenderId: t.id, actor: null });
+    await expect(sendClearTender(db, c.clear, { merchant: s.merchant, tenderId: t.id, actor: s.staff.jen, body: { to: 'phone', phone: '9095550177' } })).rejects.toMatchObject({ code: 'not_sendable' });
   });
 });
 

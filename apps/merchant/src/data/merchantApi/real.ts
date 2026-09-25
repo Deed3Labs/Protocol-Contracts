@@ -91,6 +91,7 @@ export function realMerchantApi(request: Transport): MerchantApi {
     adjustTip: (tenderId, input) => post(`/tenders/${id(tenderId)}/tip`, input),
     createCashTender: (orderId, input) => post(`/orders/${id(orderId)}/tenders/cash`, input),
     createClearTender: (orderId, input) => post(`/orders/${id(orderId)}/tenders/clear`, input),
+    sendClearCharge: (tenderId, input) => post(`/tenders/${id(tenderId)}/send`, input),
     sendReceipt: async (orderId, input) => {
       await post(`/orders/${id(orderId)}/receipt`, input);
     },

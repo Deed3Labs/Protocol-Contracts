@@ -57,6 +57,9 @@ import { currentPlatform, previewPlatform, readerService, type Platform, type Re
 import { CashPaidView, CashView, SplitLegsCell, SplitView, type Leg, type LegMethod } from '@/charge/cash';
 import { cardName, chargeItemFrom, codeCheck, legsFromTenders, nothingTaken, payKey, pickedOptionIds, toLineInputs, totalsFromOrder } from '@/charge/live';
 import { FailureSheet, PhoneAmount, PhoneCart, PhoneCode, PhoneItems, PhoneStatus } from '@/charge/phone';
+import { CodeScanner } from '@/charge/CodeScanner';
+import { memberWalletFrom } from '@/charge/memberCode';
+import { useOnline } from '@/lib/useOnline';
 
 /**
  * New charge — docs/merchant-reference/clear-merchant-new-charge.html.
@@ -333,6 +336,11 @@ export default function NewChargePage() {
   );
   const [raising, setRaising] = useState(false);
   const [raiseError, setRaiseError] = useState<string | null>(null);
+  // A waiting Clear charge sent on: to a member whose code was scanned, or as a text to a number.
+  const online = useOnline();
+  const [sentVia, setSentVia] = useState<{ how: 'App' | 'Text'; label: string; at: Date; to: { to: 'member'; wallet: string } | { to: 'phone'; phone: string } } | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const [live, setLive] = useState<{ openedAt: string | null; resolvedAt: string | null; splitInto: number | null } | null>(null);
   const [raisedAt, setRaisedAt] = useState<Date>(() => new Date());
 
@@ -404,9 +412,25 @@ export default function NewChargePage() {
     }
   };
 
+  /** Send the waiting charge on; the screen then waits on their answer, as it does for the code. */
+  const sendOn = async (to: { to: 'member'; wallet: string } | { to: 'phone'; phone: string }) => {
+    if (!tender || sending) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      const r = await merchant.sendClearCharge(tender.id, to);
+      setSentVia({ how: r.to === 'member' ? 'App' : 'Text', label: r.label, at: new Date(), to });
+      set({ screen: 'waiting' });
+    } catch (e) {
+      setSendError(errorSentence(e));
+    } finally {
+      setSending(false);
+    }
+  };
+
   // The member's answer, followed on the tender (and how far they've got, on the charge itself).
   useEffect(() => {
-    if (preview || !tender || tender.method !== 'clear' || !['code', 'waiting'].includes(f.screen)) return;
+    if (preview || !tender || tender.method !== 'clear' || !['code', 'waiting', 'theirs', 'phone'].includes(f.screen)) return;
     let stopped = false;
     const tick = async () => {
       try {
@@ -782,7 +806,7 @@ export default function NewChargePage() {
     const c = { shop, amountCents: dueCents, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), lines: body.lines.length ? body.lines : undefined, minimumCents: f.underMin ? 5000 : undefined };
     if (preview && params.get('screen') === 'code' && c.date) c.date = 'Sep 22';
     if (phone) {
-      main = <PhoneCode code={f.code} amountCents={dueCents} onExit={exit} onScanTheirs={preview ? () => set({ screen: 'theirs' }) : undefined} onPhone={preview ? () => set({ screen: 'phone' }) : undefined} />;
+      main = <PhoneCode code={f.code} amountCents={dueCents} onExit={exit} onScanTheirs={() => set({ screen: 'theirs' })} onPhone={() => set({ screen: 'phone' })} />;
     } else {
       top = flowTop(`${usd(dueCents)} · showing the code`, false);
       main = f.underMin ? (
@@ -792,35 +816,64 @@ export default function NewChargePage() {
       ) : one ? (
         <div className="c-slab c-one">
           <CodeCell code={f.code} amountCents={dueCents} />
-          <CustomerCell c={c} alts={preview ? ['theirs', 'phone'] : []} onScanTheirs={() => set({ screen: 'theirs' })} onPhone={() => set({ screen: 'phone' })} />
+          <CustomerCell c={c} alts={['theirs', 'phone']} onScanTheirs={() => set({ screen: 'theirs' })} onPhone={() => set({ screen: 'phone' })} />
         </div>
-      ) : preview ? (
-        <ShowCodeView c={c} code={f.code} onScanTheirs={() => set({ screen: 'theirs' })} onPhone={() => set({ screen: 'phone' })} />
       ) : (
-        // Live, the two shortcuts are left off: scanning a member's own code and texting a link
-        // both need the backend, and a link that does nothing is worse than no link.
-        <div className="c-slab">
-          <CustomerCell c={c} alts={[]} />
-          <CodeCell code={f.code} amountCents={dueCents} />
-        </div>
+        <ShowCodeView c={c} code={f.code} onScanTheirs={() => set({ screen: 'theirs' })} onPhone={() => set({ screen: 'phone' })} />
       );
     }
   } else if (f.screen === 'theirs') {
     top = flowTop(`${usd(dueCents)} · scan their code`, false);
-    main = <ScanTheirsView amountCents={dueCents} lines={body.lines.length ? body.lines : undefined} onShowMine={() => set({ screen: 'code' })} onPhone={() => set({ screen: 'phone' })} />;
+    main = (
+      <>
+        <ScanTheirsView
+          amountCents={dueCents}
+          lines={body.lines.length ? body.lines : undefined}
+          onShowMine={() => set({ screen: 'code' })}
+          onPhone={() => set({ screen: 'phone' })}
+          camera={
+            preview ? undefined : (
+              <CodeScanner
+                onCode={(raw) => {
+                  const wallet = memberWalletFrom(raw);
+                  if (!wallet) {
+                    setSendError('That isn’t a member’s Clear code. Ask them to open Code in the Clear app.');
+                    return false;
+                  }
+                  void sendOn({ to: 'member', wallet });
+                  return true;
+                }}
+              />
+            )
+          }
+        />
+        {sendError && (
+          <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
+            {sendError}
+          </p>
+        )}
+      </>
+    );
   } else if (f.screen === 'phone') {
     top = flowTop(`${usd(dueCents)} · send to a number`, false);
     main = (
+      <>
       <SendToNumberView
         shop={shop}
         amountCents={dueCents}
         code={f.code}
         digits={f.phone}
         onKey={(k) => setF((cur) => ({ ...cur, phone: k === 'del' ? cur.phone.slice(0, -1) : cur.phone.length >= 10 ? cur.phone : cur.phone + k }))}
-        onSend={() => set({ screen: 'waiting' })}
+        onSend={preview ? () => set({ screen: 'waiting' }) : () => void sendOn({ to: 'phone', phone: f.phone })}
         onShowMine={() => set({ screen: 'code' })}
         onScanTheirs={() => set({ screen: 'theirs' })}
       />
+      {sendError && (
+        <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
+          {sendError}
+        </p>
+      )}
+      </>
     );
   } else if (f.screen === 'waiting' || f.screen === 'approved') {
     const approved = f.screen === 'approved';
@@ -834,6 +887,7 @@ export default function NewChargePage() {
           code: f.code,
           raisedBy: me,
           amountCents: shownCents,
+          sentTo: sentVia ? `Sent to ${sentVia.label}` : undefined,
           status: approved ? 'approved' : 'waiting',
           howPaid: approved && live?.splitInto ? `${live.splitInto} payments of ${usd(exampleSplit(shownCents).each)}` : undefined,
           steps: [
@@ -849,9 +903,12 @@ export default function NewChargePage() {
           { how: 'Email', status: 'Delivered', at: '12:16pm' },
           { how: 'App', status: 'Opened', at: '12:17pm' },
         ] as const)
-      : live?.openedAt
-        ? ([{ how: 'App', status: 'Opened', at: new Date(live.openedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] as const)
-        : [];
+      : [
+          ...(sentVia ? [{ how: sentVia.how, status: 'Sent', at: sentVia.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] : []),
+          ...(live?.openedAt ? [{ how: 'App' as const, status: 'Opened', at: new Date(live.openedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] : []),
+        ];
+    // Again the same way it went, or a number if it has only been shown.
+    const sendAgain = () => (sentVia ? void sendOn(sentVia.to) : set({ screen: 'phone' }));
     const cancel = async () => {
       if (!preview && tender) await merchant.cancelTender(tender.id).catch(() => undefined);
       exit();
@@ -865,7 +922,7 @@ export default function NewChargePage() {
           paidOut={preview ? 'Oct 14' : undefined}
           onExit={exit}
           onHome={exit}
-          onSendAgain={() => undefined}
+          onSendAgain={preview ? () => undefined : sendAgain}
           onCancel={cancel}
           onDone={exit}
           onNew={again}
@@ -885,7 +942,7 @@ export default function NewChargePage() {
           onNew={again}
         />
       ) : (
-        <WaitingView s={s} reached={[...reached]} onSendAgain={() => undefined} onCancel={cancel} onHome={exit} />
+        <WaitingView s={s} reached={[...reached]} reachedNote={preview ? undefined : sentVia ? (sentVia.how === 'Text' ? 'By text' : 'In their Clear app') : 'The code on this screen'} onSendAgain={preview ? () => undefined : sendAgain} onCancel={cancel} onHome={exit} />
       );
     }
   } else if (f.screen === 'card') {
@@ -1139,6 +1196,16 @@ export default function NewChargePage() {
     // screen. The phone scrolls as a page.
     <div className={cx('c-app c-mc-tablet', phone && 'c-mc-page', FRAME[f.screen === 'start' && f.mode === 'items' ? 'items' : f.screen])}>
       {top}
+      {!online && (
+        // Offline cards aren't built (reader/platform.ts), so only cash works until it's back.
+        <div className="c-mc-offline" role="status">
+          <span className="c-chip c-underway">
+            <span className="c-core" />
+            No connection
+          </span>
+          <span className="c-det">Cash still works. Card and Clear wait for the internet to come back.</span>
+        </div>
+      )}
       <OneColumn.Provider value={one}>{main}</OneColumn.Provider>
       {(raiseError || payError) && (
         <p className="c-det" role="alert" style={{ color: 'var(--absent)', marginTop: 'var(--s2)' }}>

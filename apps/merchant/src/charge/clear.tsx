@@ -514,6 +514,7 @@ function StateCell({ s, foot }: { s: ChargeState; foot: ReactNode }) {
 export function WaitingView({
   s,
   reached,
+  reachedNote = 'All three at once',
   onSendAgain,
   onCancel,
   onHome,
@@ -521,6 +522,8 @@ export function WaitingView({
   s: ChargeState;
   /** Text, email, app: what reached them and when. Absent where the API does not say. */
   reached?: { how: 'Text' | 'Email' | 'App'; status: string; at: string }[];
+  /** Beside "Reached them": how it went out. */
+  reachedNote?: string;
   onSendAgain?: () => void;
   onCancel?: () => void;
   onHome?: () => void;
@@ -548,7 +551,7 @@ export function WaitingView({
         <div className="c-chead">
           <div className="c-sechead">
             <p className="c-label">Reached them</p>
-            <span className="c-det">All three at once</span>
+            <span className="c-det">{reachedNote}</span>
           </div>
         </div>
         <div className="c-cmain">

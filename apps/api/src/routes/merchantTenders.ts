@@ -10,7 +10,7 @@ import { connectorForShop } from '../services/merchant/cards/registry.js';
 import { currentDrawer, DrawerError, openDrawer } from '../services/merchant/drawer/drawerService.js';
 import { clearChargesFor } from '../services/merchant/orders/clearCharges.js';
 import { businessDate } from '../services/merchant/orders/orderService.js';
-import { cancelClearTender, createCashTender, createClearTender, discardOrder, PaymentError, syncClearTender, voidOrder } from '../services/merchant/orders/payments.js';
+import { cancelClearTender, createCashTender, createClearTender, discardOrder, PaymentError, sendClearTender, syncClearTender, voidOrder } from '../services/merchant/orders/payments.js';
 import { staffStore } from '../services/merchant/staffStore.js';
 import type { Role } from '@clear/merchant-contracts';
 import { terminalRefusal } from './merchantCards.js';
@@ -25,6 +25,7 @@ import { terminalRefusal } from './merchantCards.js';
  *   POST /orders/:orderId/void            same day, before capture, with a manager's or owner's PIN
  *   GET  /drawer   POST /drawer           the open drawer, and opening it with the starting cash
  *   POST /tenders/:id/present             send it to the shop's smart reader (server-driven)
+ *   POST /tenders/:id/send                send a waiting Clear charge to a scanned member or as a text
  *   POST /tenders/:id/sync                catch a card or Clear tender up with the processor or charge
  *   POST /tenders/:id/cancel              void a card before capture (an authorised one needs a
  *                                         manager), or withdraw an unanswered Clear charge
@@ -68,6 +69,7 @@ const PAYMENT_STATUS: Record<PaymentError['code'], number> = {
   not_same_day: 409,
   approver_invalid: 403,
   drawer_closed: 409,
+  not_sendable: 409,
 };
 
 function refuse(res: Response, error: unknown): void {
@@ -145,6 +147,16 @@ async function methodOf(merchant: string, tenderId: string): Promise<{ method: '
   const { rows } = await db.query<{ method: 'card' | 'cash' | 'clear' }>('SELECT method FROM payments.tenders WHERE id = $1 AND merchant = $2', [tenderId, merchant]);
   return rows[0] ?? null;
 }
+
+router.post('/tenders/:id/send', requireMerchant, async (req: Request, res: Response) => {
+  const db = await merchantDb();
+  if (!db) return res.status(503).json({ error: 'Unavailable', message: 'merchant database is not configured' });
+  try {
+    res.json(await sendClearTender(db, clearChargesFor(db), { merchant: req.merchant!.merchant, tenderId: String(req.params.id), actor: req.merchant!.staff.id, body: req.body }));
+  } catch (error) {
+    refuse(res, error);
+  }
+});
 
 router.post('/tenders/:id/sync', requireMerchant, async (req: Request, res: Response) => {
   const merchant = req.merchant!.merchant;

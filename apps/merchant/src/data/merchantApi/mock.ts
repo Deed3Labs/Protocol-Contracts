@@ -718,6 +718,19 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       log('tender.cash_taken', { ref: { type: 'tender', id: t.id }, amountCents: input.amountCents + input.tipCents });
       return publicTender(t);
     },
+    sendClearCharge: async (tenderId, input) => {
+      const t = tenders.get(tenderId);
+      if (!t || t.method !== 'clear') refuse('No such Clear payment', 404, 'not_found');
+      if (t!.status !== 'pending') refuse('That payment isn’t waiting on anyone', 409, 'not_sendable');
+      if (input.to === 'member') {
+        if (!/^0x[0-9a-fA-F]{40}$/.test(input.wallet)) refuse('That isn’t a member’s code', 400, 'invalid');
+        return { to: 'member' as const, label: 'their Clear app' };
+      }
+      const d = input.phone.replace(/\D/g, '');
+      const ten = d.length === 11 && d.startsWith('1') ? d.slice(1) : d;
+      if (ten.length !== 10) refuse('That isn’t a phone number we can text', 400, 'invalid');
+      return { to: 'phone' as const, label: `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}` };
+    },
     createClearTender: async (orderId, input) => {
       const again = replay(input.idempotencyKey);
       if (again) return publicTender(again);

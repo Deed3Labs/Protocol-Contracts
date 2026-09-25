@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { canVoidOrder, CreateCashTender, CreateClearTender, type Order, type Role, type Tender, type TenderEvent, tenderTransition } from '@clear/merchant-contracts';
+import { canVoidOrder, type ClearChargeSent, CreateCashTender, CreateClearTender, SendClearCharge, type Order, type Role, type Tender, type TenderEvent, tenderTransition } from '@clear/merchant-contracts';
 import type { Db, Queryable } from '../../../db/db.js';
 import { cancelCardTender, type TenderRow, toTender } from '../cards/cardTenders.js';
 import type { CardConnectorProvider } from '../cards/connector.js';
@@ -31,6 +31,20 @@ export interface ClearCharges {
   status(code: string): Promise<'pending' | 'approved' | 'declined' | 'expired' | 'cancelled' | 'other' | null>;
   /** Withdraws a charge nobody has answered. False if it was answered first. */
   cancel(code: string, merchant: string): Promise<boolean>;
+  /**
+   * Sends a waiting charge to someone: a member (their wallet, from their scanned code; it lands in
+   * their app) or a phone number (a text with the link). `label` is where it went, for the screen.
+   */
+  sendTo(code: string, to: { member: string } | { phone: string }): Promise<{ ok: true; label: string } | { ok: false; reason: string }>;
+}
+
+/** "(909) 555-0177" → "+19095550177"; a number with its country code is kept. Null if it isn't one. */
+export function phoneE164(raw: string): string | null {
+  const digits = raw.replace(/\D/g, '');
+  if (raw.trim().startsWith('+')) return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : null;
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return null;
 }
 
 const hash = (parts: unknown[]) => createHash('sha256').update(JSON.stringify(parts)).digest('hex');
@@ -148,6 +162,40 @@ export async function syncClearTender(db: Db, clear: ClearCharges, input: { merc
     return updated[0]!;
   });
   return toTender(out);
+}
+
+/**
+ * Sends a waiting Clear charge to someone instead of having them scan the tablet: a member whose own
+ * code was scanned, or a text to a number. Only while nobody has answered; the tender itself doesn't
+ * change, it still follows the member's answer.
+ */
+export async function sendClearTender(db: Db, clear: ClearCharges, input: { merchant: string; tenderId: string; actor: string; body: unknown }): Promise<ClearChargeSent> {
+  const parsed = SendClearCharge.safeParse(input.body);
+  if (!parsed.success) throw new PaymentError(parsed.error.issues[0]?.message ?? 'Where to send it isn’t valid', 'invalid');
+  const { rows } = await db.query<TenderRow>(`SELECT * FROM payments.tenders WHERE id = $1 AND merchant = $2 AND method = 'clear'`, [input.tenderId, input.merchant]);
+  const t = rows[0];
+  if (!t) throw new PaymentError('No such Clear payment', 'not_found');
+  if (t.status !== 'pending' || !t.clear_charge_code) throw new PaymentError('That payment isn’t waiting on anyone', 'not_sendable');
+  const to = parsed.data;
+  let target: { member: string } | { phone: string };
+  if (to.to === 'member') target = { member: to.wallet.toLowerCase() };
+  else {
+    const phone = phoneE164(to.phone);
+    if (!phone) throw new PaymentError('That isn’t a phone number we can text', 'invalid');
+    target = { phone };
+  }
+  const sent = await clear.sendTo(t.clear_charge_code, target);
+  if (!sent.ok) throw new PaymentError(sent.reason, 'not_sendable');
+  await audit(db, {
+    merchant: input.merchant,
+    actor: input.actor,
+    action: 'tender.clear_sent',
+    ref: { type: 'tender', id: t.id },
+    amountCents: Number(t.amount_cents) + Number(t.tip_cents),
+    // Never the whole number or wallet: the end is enough to know where it went.
+    detail: { to: to.to, ending: 'phone' in target ? target.phone.slice(-4) : target.member.slice(-4) },
+  });
+  return { to: to.to, label: sent.label };
 }
 
 /** Withdraws a Clear charge nobody has answered yet. If the member got there first, the tender follows their answer instead. */
