@@ -153,3 +153,16 @@ export const CHARGE_LABEL: Readonly<Record<ChargeState, string>> = {
 export function countsAsVolume(state: ChargeState): boolean {
   return state === 'waiting' || state === 'resolving' || state === 'approved';
 }
+
+/**
+ * The smallest charge a member can pay over time; under it, the charge is paid now, in full
+ * (card-processing prompt, Phase 6: "Below the pay-over-time minimum, pay now only"). A Clear
+ * setting, $50.00 for now. One number for both apps and the server: the member's approval screen
+ * offers only "in full" under it, and the server refuses a split under it.
+ */
+export const PAY_OVER_TIME_MIN_CENTS = 5000;
+
+/** The splits a member can choose for a charge: "in full" only under the minimum. */
+export function splitsOffered(amountCents: number, splits: readonly number[]): number[] {
+  return amountCents < PAY_OVER_TIME_MIN_CENTS ? [1] : [...splits];
+}

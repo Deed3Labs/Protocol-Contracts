@@ -5,6 +5,7 @@ import { chargeStore, type ChargeRow } from './chargeStore.js';
 import { notificationStore } from './notificationStore.js';
 import { sendNotificationService } from './sendNotificationService.js';
 import { memberStore } from './memberStore.js';
+import { dollars, PAY_OVER_TIME_MIN_CENTS } from '@clear/domain';
 
 /*
  * Raising a charge, and a member answering it.
@@ -446,6 +447,12 @@ export async function approveCharge(
   if (!existing) return { ok: false, reason: 'no such charge' };
   if (existing.memberWallet !== member.trim().toLowerCase()) {
     return { ok: false, reason: 'not your charge' };
+  }
+
+  // Under the minimum a charge is paid now, in full. The approval screen offers only that; this is
+  // the check that holds when a client doesn't.
+  if (installments > 1 && existing.amountCents < PAY_OVER_TIME_MIN_CENTS) {
+    return { ok: false, reason: `Paying over time is for charges of ${dollars(PAY_OVER_TIME_MIN_CENTS / 100)} or more. This one is paid now.` };
   }
 
   const termIssuerAddress = getContractAddress(chainId(), 'TermIssuer');

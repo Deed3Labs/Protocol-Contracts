@@ -1,5 +1,23 @@
 import crypto from 'crypto';
+import { EventEmitter } from 'node:events';
 import { getPostgresPool } from '../config/postgres.js';
+
+/**
+ * A charge was answered (approved, declined) or cancelled: `chargeEvents.on('resolved', (row) => …)`.
+ *
+ * A nudge for whoever mirrors charges elsewhere (the merchant back office's Clear tenders), fired
+ * after the row is written. Best effort: a listener that throws is logged and ignored, and the
+ * listener must be able to catch up anyway, because an expiry is never written and so never fires.
+ */
+export const chargeEvents = new EventEmitter();
+const resolved = (row: ChargeRow | null) => {
+  if (!row) return;
+  try {
+    chargeEvents.emit('resolved', row);
+  } catch (error) {
+    console.error('[charge] a resolved-charge listener failed:', error instanceof Error ? error.message : error);
+  }
+};
 
 /*
  * Charges a merchant has raised against a member's Clear account.
@@ -313,7 +331,9 @@ export const chargeStore = {
         input.txHash ?? null,
       ],
     );
-    return r.rows[0] ? toRow(r.rows[0]) : null;
+    const row = r.rows[0] ? toRow(r.rows[0]) : null;
+    resolved(row);
+    return row;
   },
 
   /**
@@ -422,7 +442,9 @@ export const chargeStore = {
         RETURNING ${COLUMNS}`,
       [code.trim().toUpperCase(), normalizeWallet(merchant)],
     );
-    return r.rows[0] ? toRow(r.rows[0]) : null;
+    const row = r.rows[0] ? toRow(r.rows[0]) : null;
+    resolved(row);
+    return row;
   },
 
   /** Attribute a charge to the writer who raised it. */

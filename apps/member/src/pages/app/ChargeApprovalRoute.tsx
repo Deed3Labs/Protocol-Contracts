@@ -11,7 +11,7 @@ import {
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useInstallMode } from '@/hooks/useInstallMode';
-import { shopSlug } from '@clear/domain';
+import { shopSlug, splitsOffered } from '@clear/domain';
 import ChargeApproval from './ChargeApproval';
 
 /**
@@ -26,6 +26,9 @@ import ChargeApproval from './ChargeApproval';
  * promise the app cannot keep — and the reference's own line, "nothing is charged until you
  * approve", cuts both ways.
  */
+/** The splits the approval screen offers, when the charge is big enough to split at all. */
+const SPLITS = [1, 2, 4, 12];
+
 export default function ChargeApprovalRoute() {
   const { code = '' } = useParams<{ code: string }>();
   const { isAuthenticated, address } = useAppKitAuth();
@@ -122,6 +125,12 @@ export default function ChargeApprovalRoute() {
   }, [address]);
 
   const amount = useMemo(() => (charge ? charge.amountCents / 100 : 0), [charge]);
+  // Under the pay-over-time minimum a charge is paid now, in full; the server refuses a split.
+  const splitOptions = useMemo(() => (charge ? splitsOffered(charge.amountCents, SPLITS) : SPLITS), [charge]);
+  const payNowOnly = splitOptions.length === 1;
+  useEffect(() => {
+    if (payNowOnly) setSplitInto(1);
+  }, [payNowOnly]);
 
   const onApprove = useCallback(async () => {
     if (!charge) return;
@@ -197,6 +206,7 @@ export default function ChargeApprovalRoute() {
       amount={amount}
       splitInto={charge.splitInto ?? splitInto}
       onSplitChange={setSplitInto}
+      splitOptions={splitOptions}
       perCycleLimit={perCycleLimit}
       doneBy={(n) => `${n} cycle${n === 1 ? '' : 's'} from now`}
       busy={busy}

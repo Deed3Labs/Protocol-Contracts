@@ -153,6 +153,27 @@ export function drawerDifference(input: Base & { sessionId: string; differenceCe
   };
 }
 
+/**
+ * Opening the drawer with a float different from what the last close left in it: the difference
+ * came from (or went back to) the bank. Keeps "what the drawer should hold" true from the first day.
+ */
+export function drawerFloat(input: Base & { sessionId: string; changeCents: number }): EntryInput | null {
+  const d = input.changeCents;
+  if (d === 0) return null;
+  return {
+    merchant: input.merchant,
+    kind: 'drawer_float',
+    idempotencyKey: `float:${input.sessionId}`,
+    ref: { type: 'drawer_session', id: input.sessionId },
+    occurredAt: input.occurredAt,
+    createdBy: input.createdBy,
+    lines:
+      d > 0
+        ? [{ account: 'drawer_cash', debit: d }, { account: 'bank', credit: d }]
+        : [{ account: 'bank', debit: -d }, { account: 'drawer_cash', credit: -d }],
+  };
+}
+
 /** At close: the cash for the bank leaves the drawer. */
 export function depositLeftDrawer(input: Base & { depositId: string; amountCents: number }): EntryInput {
   return {
