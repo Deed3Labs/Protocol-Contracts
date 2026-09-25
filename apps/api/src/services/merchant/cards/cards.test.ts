@@ -3,37 +3,13 @@ import type { Db } from '../../../db/db.js';
 import { seedShop, testDb } from '../../../db/testDb.js';
 import { cardAvailability } from './availability.js';
 import { availabilityFor, CardsError, connectCards, STATUS_REFRESH_MS } from './cardsService.js';
-import type { CardConnectorProvider, ConnectorAccountStatus } from './connector.js';
 import { connectorStore } from './connectorStore.js';
+import { fakeProvider } from './fakeProvider.js';
 
 let db: Db;
 beforeAll(async () => {
   ({ db } = await testDb());
 });
-
-/** A processor that records what it was asked, and whose account status a test can set. */
-function fakeProvider() {
-  const calls = { create: [] as string[], links: [] as Array<{ account: string; returnUrl: string; refreshUrl: string }>, status: 0 };
-  const status = new Map<string, ConnectorAccountStatus>();
-  let n = 0;
-  const provider: CardConnectorProvider = {
-    provider: 'stripe',
-    async createAccount({ idempotencyKey }) {
-      calls.create.push(idempotencyKey);
-      return { externalAccountId: `acct_fake_${++n}_${Math.random().toString(36).slice(2, 6)}` };
-    },
-    async onboardingLink(account, urls) {
-      calls.links.push({ account, ...urls });
-      return { url: `https://connect.example/setup/${account}` };
-    },
-    dashboardUrl: () => 'https://dashboard.example/',
-    async accountStatus(account) {
-      calls.status += 1;
-      return status.get(account) ?? { chargesEnabled: false, detailsSubmitted: false };
-    },
-  };
-  return { provider, calls, status };
-}
 
 const APP = 'https://merchant.example/';
 

@@ -1,6 +1,8 @@
 import { merchantDb } from '../config/merchantDb.js';
 import { stripeLivemode } from '../services/merchant/cards/stripeConnector.js';
 import { cardConnectorHandlers } from '../services/merchant/stripeEvents/cardConnectorHandlers.js';
+import { cardPaymentHandlers } from '../services/merchant/stripeEvents/cardPaymentHandlers.js';
+import { defaultCardConnector } from '../services/merchant/cards/stripeConnector.js';
 import { type Handlers, processPending } from '../services/merchant/stripeEvents/inbox.js';
 
 /*
@@ -19,6 +21,7 @@ const SWEEP_MS = 30_000;
 /** Every event type the merchant back office acts on. Later phases add theirs here. */
 export const MERCHANT_STRIPE_HANDLERS: Handlers = {
   ...cardConnectorHandlers,
+  ...cardPaymentHandlers(defaultCardConnector),
 };
 
 let running = false;

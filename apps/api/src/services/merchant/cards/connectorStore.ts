@@ -11,6 +11,7 @@ export interface ConnectorRow {
   external_account_id: string;
   charges_enabled: boolean;
   details_submitted: boolean;
+  terminal_location_id: string | null;
   status_at: Date | string | null;
   updated_at: Date | string;
   disconnected_at: Date | string | null;
