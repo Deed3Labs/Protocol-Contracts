@@ -1,12 +1,9 @@
 import { type TerminalBackend, ReaderUnavailable } from './types';
 
 /**
- * The server's half of a card payment, until it exists.
- *
- * Connection tokens, create, capture and cancel, and reader registration are the backend prompt's
- * Phase 5, typed in `packages/merchant-contracts`. Neither exists yet, so a live shop's card screen
- * says cards aren't ready rather than pretending. When the endpoints land, this is the one file
- * that changes: each method calls its endpoint.
+ * The server's half of a card payment, until the app's data layer wires the real client (merchant
+ * UI prompt, Phase 3). The endpoints exist (/api/merchant/cards/…, /api/merchant/tenders/…); this
+ * stand-in keeps a live shop's card screen saying cards aren't ready rather than pretending.
  */
 const notYet = (): never => {
   throw new ReaderUnavailable('Card payments aren’t switched on for this shop yet.');
@@ -14,9 +11,10 @@ const notYet = (): never => {
 
 export const unavailableBackend: TerminalBackend = {
   connectionToken: async () => notYet(),
-  createPayment: async () => notYet(),
-  capture: async () => notYet(),
-  cancel: async () => notYet(),
-  registerReader: async () => notYet(),
-  locationId: async () => null,
+  readers: async () => [],
+  recordReader: async () => notYet(),
+  startCardTender: async () => notYet(),
+  present: async () => notYet(),
+  sync: async () => notYet(),
+  cancelTender: async () => notYet(),
 };

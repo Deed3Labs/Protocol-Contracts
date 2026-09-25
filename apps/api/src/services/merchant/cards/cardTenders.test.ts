@@ -7,7 +7,7 @@ import { balance, entriesFor } from '../ledger/ledgerService.js';
 import { settleOrder } from '../orders/settle.js';
 import { cardPaymentHandlers } from '../stripeEvents/cardPaymentHandlers.js';
 import { processPending, recordEvent } from '../stripeEvents/inbox.js';
-import { adjustCardTip, cancelCardTender, captureCardTender, captureDue, createCardTender, refundCardTender, syncCardTender, TenderError } from './cardTenders.js';
+import { adjustCardTip, cancelCardTender, captureCardTender, captureDue, createCardTender, presentCardTender, refundCardTender, syncCardTender, TenderError } from './cardTenders.js';
 import { connectorStore } from './connectorStore.js';
 import { fakeProvider } from './fakeProvider.js';
 import { connectionToken, listReaders, recordReader, registerSmartReader, TerminalError } from './terminal.js';
@@ -429,5 +429,80 @@ describe('readers and connection tokens', () => {
     const readers = await listReaders(db, s.merchant);
     expect(readers.filter((r) => r.externalReaderId === 'STRM2-000123')).toHaveLength(1);
     expect(readers.map((r) => r.type).sort()).toEqual(['m2', 'm2', 'smart']);
+  });
+});
+
+describe('a smart reader driven from the server', () => {
+  async function smartShop() {
+    const s = await cardShop();
+    const smart = await registerSmartReader(db, s.fake.provider, { merchant: s.merchant, registrationCode: 'simulated-wpe', label: 'Front counter' });
+    const o = await s.order();
+    const start = await createCardTender(db, s.fake.provider, { merchant: s.merchant, orderId: o, staffId: s.staff.jen, amountCents: 9275, tipCents: 0, readerId: smart.id, idempotencyKey: key() });
+    const paymentId = (await tender(start.tenderId)).payment_intent_id as string;
+    return { ...s, smart, orderId: o, tenderId: start.tenderId, paymentId };
+  }
+  const readerEvent = (s: { acct: string }, paymentId: string, type: string) =>
+    ({
+      id: `evt_rdr_${++seq}`,
+      object: 'event',
+      type,
+      account: s.acct,
+      created: Math.floor(Date.now() / 1000),
+      livemode: false,
+      data: { object: { id: 'tmr_x', object: 'terminal.reader', action: { type: 'process_payment_intent', status: type.endsWith('succeeded') ? 'succeeded' : 'failed', process_payment_intent: { payment_intent: paymentId } } } },
+    }) as unknown as Stripe.Event;
+
+  test('sends the payment to its reader, and the reader’s webhook settles the tender', async () => {
+    const s = await smartShop();
+    await presentCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: s.tenderId });
+    expect(s.fake.calls.presented).toEqual([{ reader: s.smart.externalReaderId, paymentId: s.paymentId }]);
+    s.fake.tap(s.paymentId);
+    await recordEvent(db, 'connect', readerEvent(s, s.paymentId, 'terminal.reader.action_succeeded'));
+    await processPending(db, cardPaymentHandlers(() => s.fake.provider), { livemode: false });
+    expect((await tender(s.tenderId)).status).toBe('authorised');
+    expect((await orderRow(s.orderId)).status).toBe('paid');
+  });
+
+  test('a declined card on the reader ends the tender and voids the attempt', async () => {
+    const s = await smartShop();
+    await presentCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: s.tenderId });
+    s.fake.decline(s.paymentId);
+    await recordEvent(db, 'connect', readerEvent(s, s.paymentId, 'terminal.reader.action_failed'));
+    await processPending(db, cardPaymentHandlers(() => s.fake.provider), { livemode: false });
+    expect((await tender(s.tenderId)).status).toBe('declined');
+    expect(s.fake.payments.get(s.paymentId)!.state).toBe('cancelled');
+    await expect(presentCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: s.tenderId })).rejects.toMatchObject({ code: 'wrong_state' });
+  });
+
+  test('the customer cancelling on the reader leaves it pending, to send again', async () => {
+    const s = await smartShop();
+    await presentCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: s.tenderId });
+    await recordEvent(db, 'connect', readerEvent(s, s.paymentId, 'terminal.reader.action_failed'));
+    await processPending(db, cardPaymentHandlers(() => s.fake.provider), { livemode: false });
+    expect((await tender(s.tenderId)).status).toBe('pending');
+    await presentCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: s.tenderId });
+    expect(s.fake.calls.presented).toHaveLength(2);
+  });
+
+  test('a busy or offline reader is said plainly; an M2 tender isn’t sent from the server', async () => {
+    const s = await smartShop();
+    s.fake.knobs.reader = 'busy';
+    await expect(presentCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: s.tenderId })).rejects.toMatchObject({ code: 'reader_busy' });
+    s.fake.knobs.reader = 'offline';
+    await expect(presentCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: s.tenderId })).rejects.toMatchObject({ code: 'reader_offline' });
+    const m2 = await startCard(s, await s.order());
+    await expect(presentCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: m2.tenderId })).rejects.toMatchObject({ code: 'not_smart_reader' });
+  });
+
+  test('voiding clears the reader first, and waits if a card is mid-authorisation', async () => {
+    const s = await smartShop();
+    await presentCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: s.tenderId });
+    s.fake.knobs.reader = 'busy';
+    await expect(cancelCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: s.tenderId, actor: s.staff.jen, canVoidAuthorised: false })).rejects.toMatchObject({ code: 'reader_busy' });
+    expect((await tender(s.tenderId)).status).toBe('pending');
+    s.fake.knobs.reader = 'ready';
+    const v = await cancelCardTender(db, s.fake.provider, { merchant: s.merchant, tenderId: s.tenderId, actor: s.staff.jen, canVoidAuthorised: false });
+    expect(v.status).toBe('cancelled');
+    expect(s.fake.calls.cleared).toEqual([s.smart.externalReaderId]);
   });
 });

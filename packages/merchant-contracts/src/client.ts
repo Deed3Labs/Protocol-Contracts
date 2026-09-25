@@ -83,6 +83,10 @@ export interface MerchantApi {
   // ---- Tenders -------------------------------------------------------------------------------------
   tenders(orderId: string): Promise<Tender[]>;
   createCardTender(orderId: string, input: In<typeof CreateCardTender>): Promise<CardTenderStart>;
+  /** A smart reader's payment is sent to it from the server; the M2 and Tap to Pay collect on the device. */
+  presentTender(tenderId: string): Promise<Tender>;
+  /** After the tap: where the payment stands, from the processor. */
+  syncTender(tenderId: string): Promise<Tender>;
   /** Stop collecting on the reader, and cancel on the server. */
   cancelTender(tenderId: string): Promise<Tender>;
   /** Before Close the day captures it. */

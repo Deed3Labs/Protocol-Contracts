@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { CardDeclined, type CardConnectorProvider, type PaymentSnapshot, type RefundSnapshot } from './connector.js';
+import { CardDeclined, type CardConnectorProvider, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
 
 /**
  * Stripe as a card connector: Connect, Standard accounts, direct charges (card-processing prompt,
@@ -38,6 +38,14 @@ import { CardDeclined, type CardConnectorProvider, type PaymentSnapshot, type Re
  *   docs.stripe.com/api/refunds/create
  * - **Offline payments are created by the device**, not the server, and can't be incremented. See
  *   the seam in cardTenders.ts. docs.stripe.com/terminal/features/operate-offline/overview
+ * - **Smart readers are driven from the server** (Stripe's recommendation for the S700/S710 and
+ *   WisePOS E: the JS SDK needs the reader on the same local network). `process_payment_intent`
+ *   answers at once and the reader works asynchronously; the outcome arrives as
+ *   `terminal.reader.action_succeeded` / `action_failed` and on the PaymentIntent. A reader that's
+ *   mid-payment refuses new work (`terminal_reader_busy`), one silent for 2 minutes is offline
+ *   (`terminal_reader_offline`), and `terminal_reader_timeout` may be a false negative, so it's
+ *   safe to try again. `cancel_action` is refused while a card is being authorised.
+ *   docs.stripe.com/terminal/payments/collect-card-payment?terminal-sdk-platform=server-driven
  */
 
 let client: Stripe | null = null;
@@ -84,6 +92,23 @@ export function paymentSnapshot(pi: Stripe.PaymentIntent): PaymentSnapshot {
 }
 
 const EXPAND = ['latest_charge'];
+
+const READER_ERRORS: Record<string, ['busy' | 'offline' | 'timeout', string]> = {
+  terminal_reader_busy: ['busy', 'The reader is busy with another payment. Finish or cancel that one first.'],
+  terminal_reader_offline: ['offline', 'The reader is offline. Check it’s on and connected to the internet.'],
+  terminal_reader_timeout: ['timeout', 'The reader didn’t answer in time. Try again.'],
+};
+
+async function readerAware<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    const code = error instanceof Stripe.errors.StripeError ? error.code : undefined;
+    const known = code ? READER_ERRORS[code] : undefined;
+    if (known) throw new ReaderUnavailable(known[0], known[1]);
+    throw error;
+  }
+}
 
 async function declineAware<T>(call: () => Promise<T>): Promise<T> {
   try {
@@ -214,6 +239,20 @@ export function stripeConnector(stripe: Stripe): CardConnectorProvider {
           ),
         ),
       );
+    },
+
+    async presentOnReader(account, externalReaderId, paymentId) {
+      await readerAware(() =>
+        stripe.terminal.readers.processPaymentIntent(
+          externalReaderId,
+          { payment_intent: paymentId, process_config: { enable_customer_cancellation: true } },
+          { stripeAccount: account },
+        ),
+      );
+    },
+
+    async clearReader(account, externalReaderId) {
+      await readerAware(() => stripe.terminal.readers.cancelAction(externalReaderId, {}, { stripeAccount: account }));
     },
 
     async cancel(account, paymentId) {

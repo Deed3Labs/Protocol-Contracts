@@ -50,8 +50,12 @@ export const Reader = z.object({
 });
 export type Reader = z.infer<typeof Reader>;
 
-/** For the web and native Terminal SDKs, made on the shop's connected account. */
-export const ConnectionToken = z.object({ secret: z.string() });
+/**
+ * For the native Terminal SDK, made on the shop's connected account and scoped to its location.
+ * `locationId` is the shop's reader location, which the SDK needs to connect an M2 or Tap to Pay.
+ */
+export const ConnectionToken = z.object({ secret: z.string(), locationId: z.string() });
+export type ConnectionToken = z.infer<typeof ConnectionToken>;
 
 /** A smart reader registered with the code it shows on screen. */
 export const RegisterSmartReader = z.object({ registrationCode: z.string().min(1), label: z.string().min(1) });

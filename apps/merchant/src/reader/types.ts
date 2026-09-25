@@ -12,6 +12,8 @@
  * app only collects it on the reader.
  */
 
+import type { CardTenderStart, ConnectionToken, Reader, Tender } from '@clear/merchant-contracts';
+
 export type ReaderKind = 'smart' | 'bluetooth' | 'tapToPay';
 
 export type Platform = 'web' | 'ios' | 'android';
@@ -44,21 +46,32 @@ export interface CollectResult {
   message?: string;
 }
 
+/** Which order a card payment is for, and the tip on it. */
+export interface TenderOrder {
+  orderId: string;
+  tipCents: number;
+}
+
 /**
- * The server's side of a card payment: the backend prompt's Phase 5, typed in
- * `packages/merchant-contracts` once that exists. Until then `unavailableBackend` stands in.
+ * The server's side of a card payment: the merchant API's card endpoints (backend prompt, Phases
+ * 4 and 5; typed in `packages/merchant-contracts`). The server creates, sends to smart readers,
+ * voids and captures (at Close the day); the app only collects the card on the M2 and Tap to Pay.
+ * `unavailableBackend` stands in until the app's data layer wires the real client.
  */
 export interface TerminalBackend {
-  /** A connection token on the shop's connected account, for any SDK. */
-  connectionToken(): Promise<string>;
-  /** Creates the payment for a card tender; the app collects it on the reader. */
-  createPayment(input: { amountCents: number; orderId?: string }): Promise<{ id: string; clientSecret: string }>;
-  capture(id: string): Promise<void>;
-  cancel(id: string): Promise<void>;
+  /** For the native SDK: a token on the shop's account, and the shop's reader location. */
+  connectionToken(): Promise<ConnectionToken>;
+  /** The shop's readers as the server knows them. */
+  readers(): Promise<Reader[]>;
   /** Records an M2 or Tap to Pay reader once the app connects it. */
-  registerReader(reader: Pick<ReaderInfo, 'id' | 'kind' | 'label'>): Promise<void>;
-  /** The Stripe Terminal location this shop's readers belong to. */
-  locationId(): Promise<string | null>;
+  recordReader(input: { type: 'm2' | 'tap_to_pay'; externalReaderId: string; label: string }): Promise<Reader>;
+  startCardTender(orderId: string, input: { amountCents: number; tipCents: number; readerId: string; idempotencyKey: string }): Promise<CardTenderStart>;
+  /** Sends a smart reader's payment to it. */
+  present(tenderId: string): Promise<void>;
+  /** Where the payment stands, from the processor. */
+  sync(tenderId: string): Promise<Tender>;
+  /** Void before capture; clears a smart reader first. */
+  cancelTender(tenderId: string): Promise<void>;
 }
 
 export interface ReaderService {
@@ -69,11 +82,12 @@ export interface ReaderService {
   connect(reader: ReaderInfo): Promise<void>;
   connected(): ReaderInfo | null;
   /**
-   * Collect `amountCents` on the connected reader: the server creates the payment, the reader
-   * collects it, the server captures it. Events drive the card screen.
+   * Collect `amountCents` for an order on the connected reader. The server starts the payment; a
+   * smart reader is sent it by the server, an M2 or Tap to Pay collects it here; the server learns
+   * the outcome and captures at Close the day. Events drive the card screen.
    */
-  collect(amountCents: number, onEvent: (e: CollectEvent) => void, orderId?: string): Promise<CollectResult>;
-  /** Stop collecting, and cancel the payment on the server. */
+  collect(amountCents: number, onEvent: (e: CollectEvent) => void, order?: TenderOrder): Promise<CollectResult>;
+  /** Stop collecting, and void the payment on the server. */
   cancel(): Promise<void>;
   disconnect(): Promise<void>;
 }
