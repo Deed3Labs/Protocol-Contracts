@@ -47,6 +47,8 @@ export interface HomeActions {
   onBreak?: () => void;
   onEndShift?: () => void;
   onCloseDay?: () => void;
+  /** A live shop's drawer panel: open it, count it, or close the day. */
+  onDrawer?: () => void;
   onMarkReordered?: (id: string) => void;
   onInventory?: () => void;
 }
@@ -223,6 +225,30 @@ function TemporaryPanel({ rows }: { rows: { key: string; t: ReactNode; det: Reac
               </div>
             ))}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A live shop's drawer: where it stands (never a figure before both counts are in), and the next step. */
+export function DrawerPanel({ d, onAction }: { d: import('@/home/model').DrawerPrompt; onAction?: () => void }) {
+  return (
+    <div className="c-panel c-dr-prompt">
+      <div className="c-chead">
+        <div className="c-sechead">
+          <p className="c-label">Drawer</p>
+          <span className="c-det">{d.t}</span>
+        </div>
+      </div>
+      <div className="c-cfoot">
+        <div className="c-line" style={{ alignItems: 'center' }}>
+          <span className="c-det">{d.det}</span>
+          {d.cta && (
+            <button type="button" className="c-btn c-btn-primary" onClick={onAction}>
+              {d.cta}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -578,6 +604,11 @@ export function HomeView({ m, layout, a = {} }: { m: HomeModel; layout: Layout; 
     <>
       <Hero m={m} phone={phone} a={a} />
       <WaitingPanel waiting={m.waiting} a={a} />
+      {m.drawer && (
+        <div className="c-mc-slot">
+          <DrawerPanel d={m.drawer} onAction={a.onDrawer} />
+        </div>
+      )}
       {money && m.closing && (
         <div className="c-mc-slot">
           <ClosingUpPanel c={m.closing} onCloseDay={a.onCloseDay} />

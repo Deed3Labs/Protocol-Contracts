@@ -11,7 +11,7 @@ import { realMerchantApi } from './real';
  *   otherwise                       the dev preview (`?preview=1`) gets the mock; everything else, real
  *
  * The mock reads its switches from the URL, so a state in the reference files is a link:
- * `&stripe=not_connected`, `&drawer=open|balanced|short|disagree|closed`, `&card=decline`,
+ * `&stripe=not_connected`, `&drawer=none|open|balanced|short|disagree|closed`, `&card=decline`,
  * `&clear=approve|decline|wait`, `&delay=800`.
  */
 
@@ -24,17 +24,19 @@ export function merchantApiMode(): MerchantApiMode {
   return 'real';
 }
 
-function switchesFromUrl(): Partial<MockSwitches> {
+function switchesFromUrl(): Partial<MockSwitches> & { viewer?: string } {
   if (typeof window === 'undefined') return {};
   const q = new URLSearchParams(window.location.search);
   const pick = <T extends string>(k: string, allowed: readonly T[]) => (allowed.includes(q.get(k) as T) ? { [k]: q.get(k) as T } : {});
   const delay = Number(q.get('delay'));
   return {
     ...pick('stripe', ['connected', 'not_connected'] as const),
-    ...pick('drawer', ['open', 'balanced', 'short', 'disagree', 'closed'] as const),
+    ...pick('drawer', ['none', 'open', 'balanced', 'short', 'disagree', 'closed'] as const),
     ...pick('card', ['approve', 'decline'] as const),
     ...pick('clear', ['approve', 'decline', 'wait'] as const),
     ...(Number.isFinite(delay) && q.has('delay') ? { delayMs: delay } : {}),
+    // Who's on shift in the preview (AuthProvider's `&as=`): the mock sees the same person.
+    viewer: q.get('as') === 'jen' ? 'stf_jen' : q.get('as') === 'luis' ? 'stf_luis' : 'stf_mike',
   };
 }
 
