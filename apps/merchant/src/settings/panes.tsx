@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { CardAvailability } from '@clear/merchant-contracts';
+import type { CardAvailability, DiscountCode, ShopSettings, ShopSettingsPatch, TaxKind, TaxStatus } from '@clear/merchant-contracts';
 import {
   Account,
   Btn,
@@ -22,6 +22,7 @@ import {
   type DayHours,
 } from '@/settings/views';
 import { kindsFor, offlineFor, type Platform, type ReaderKind } from '@/reader';
+import { clickOnKey } from '@/brand/ui';
 
 /**
  * Settings' sections, in the rail's order, and what each pane holds. `Shop` opens first, because
@@ -53,11 +54,11 @@ export const SECTIONS: { key: Section; label: string; det: string; desc: string;
   { key: 'partnership', label: 'Partnership', det: 'Your terms, your agreement, and your record in the co-op.', desc: 'Terms, agreement, co-op record', live: true },
   { key: 'counter', label: 'Counter', det: 'The printed cards, and how a shift runs on the tablet.', desc: 'Counter cards, breaks, idle lock' },
   { key: 'payments', label: 'Payments', det: 'How customers can pay you, and what happens when the connection drops.', desc: 'Ways to pay, cards, offline', live: true },
-  { key: 'tax', label: 'Tax', det: 'Sales tax, worked out from where the shop is.', desc: 'Where you collect, how prices show' },
-  { key: 'tips', label: 'Tips', det: 'Whether Checkout asks, what it offers, and who gets it.', desc: 'Asking, amounts, who gets them' },
-  { key: 'discounts', label: 'Discounts', det: 'Codes you create, and how much each role can give without asking.', desc: 'Codes, limits by role' },
+  { key: 'tax', label: 'Tax', det: 'Sales tax, worked out from where the shop is.', desc: 'Where you collect, how prices show', live: true },
+  { key: 'tips', label: 'Tips', det: 'Whether Checkout asks, what it offers, and who gets it.', desc: 'Asking, amounts, who gets them', live: true },
+  { key: 'discounts', label: 'Discounts', det: 'Codes you create, and how much each role can give without asking.', desc: 'Codes, limits by role', live: true },
   { key: 'devices', label: 'Devices', det: 'What is paired with this tablet.', desc: 'Reader, printer, this tablet' },
-  { key: 'closing', label: 'Closing', det: 'How the drawer is opened, counted and signed off.', desc: 'The drawer, and who closes' },
+  { key: 'closing', label: 'Closing', det: 'How the drawer is opened, counted and signed off.', desc: 'The drawer, and who closes', live: true },
   { key: 'security', label: 'Security', det: 'How you sign in, and what is signed in as the shop.', desc: 'Sign-in, owner PIN, devices', live: true },
   { key: 'notifications', label: 'Notifications', det: 'What reaches you, and where.', desc: 'What reaches you and how' },
   { key: 'advanced', label: 'Advanced', det: 'Business details, your data, and leaving.', desc: 'Business details, your data, leaving' },
@@ -121,7 +122,28 @@ export interface SettingsData {
   ways: { card: boolean; cash: boolean; split: boolean } | null;
   /** Which readers this device can drive: a browser lists smart readers only. */
   platform: Platform;
+  /**
+   * A live shop's selling settings, for Tax, Tips, Discounts and Closing; null in the preview (which
+   * draws the reference) and until they're read.
+   */
+  live?: LiveSelling | null;
 }
+
+export interface LiveSelling {
+  settings: ShopSettings;
+  tax: TaxStatus | null;
+  codes: DiscountCode[] | null;
+  /** How many items the catalogue has of each tax kind. */
+  kinds: Record<TaxKind, number> | null;
+  /** "412 Colton Ave, Redlands, CA" */
+  address: string | null;
+  region: string | null;
+  /** Who can close the day: owners and managers, by name. */
+  closers: string;
+}
+
+/** An amount a setting holds, opened in a sheet to change. */
+export type AmountEdit = { kind: 'startingCash' } | { kind: 'limit'; role: 'counter' | 'manager' } | { kind: 'preset'; index: number | null };
 
 export const REFERENCE: SettingsData = {
   preview: true,
@@ -203,6 +225,206 @@ export interface Actions {
   onAddReader?: () => void;
   /** Owners: a way to pay switched on or off. */
   onWay?: (way: 'card' | 'cash' | 'split', on: boolean) => void;
+  /** Owners: a selling setting changed (saved as it changes). */
+  onSettings?: (patch: ShopSettingsPatch) => void;
+  /** Owners: an amount to change, in a sheet. */
+  onAmount?: (edit: AmountEdit) => void;
+}
+
+const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+const ago = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+/** A discount code's line: what it takes off, and on what. */
+function codeLine(c: DiscountCode): string {
+  const off = c.percent !== null ? `${c.percent}% off` : `${money(c.amountCents ?? 0)} off`;
+  return 'all' in c.appliesTo ? `${off} the whole charge` : `${off} ${c.appliesTo.categories.join(', ').toLowerCase()}`;
+}
+/** Until when, or that it ended: a chip. */
+function codeChip(c: DiscountCode, now = Date.now()) {
+  if (c.endsAt && Date.parse(c.endsAt) < now) return <span className="c-chip c-neutral">Ended {ago(c.endsAt)}</span>;
+  if (c.startsAt && Date.parse(c.startsAt) > now) return <span className="c-chip c-neutral">From {ago(c.startsAt)}</span>;
+  return (
+    <span className="c-chip c-settled">
+      <span className="c-core" />
+      {c.endsAt ? `Until ${ago(c.endsAt)}` : 'Running'}
+    </span>
+  );
+}
+
+/** Tax, Tips, Discounts and Closing on a live shop: the shop's own settings, changed as they're set. */
+function liveSelling(key: Section, l: LiveSelling, a: Actions): ReactNode {
+  const s = l.settings;
+  const set = (patch: ShopSettingsPatch) => a.onSettings?.(patch);
+  switch (key) {
+    case 'tax': {
+      const t = l.tax;
+      const source = !t ? '—' : t.source === 'stripe' ? 'Worked out by Stripe Tax' : t.source === 'address_rate' ? 'The rate for the shop’s address' : 'No tax added yet';
+      const rate = (r: string | null | undefined) => (r ? `${r}%` : '—');
+      const k = l.kinds;
+      return (
+        <>
+          <Cell
+            label="Where you collect"
+            det={source}
+            foot={
+              <FootDet>
+                {t?.stripe === 'active'
+                  ? 'The rate follows the address. You never type a percentage.'
+                  : 'Until Stripe Tax is on in the shop’s own Stripe account, the rate for its address is used. Turn it on in Stripe to have it worked out per sale.'}
+              </FootDet>
+            }
+          >
+            <Main>
+              <Rows>
+                <Kv k="Shop address" v={l.address ?? '—'} ink />
+                <Kv k="Registered in" v={l.region ?? '—'} ink />
+                <Kv k="Rate at the shop" v={rate(t?.rates.goods)} ink />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="How prices show" det="At the counter" foot={<FootDet>Food trucks often choose tax included, so a $9.00 taco costs $9.00.</FootDet>}>
+            <Main>
+              <Chips options={['Before tax, added at checkout', 'Tax included']} value={s.tax.pricesIncludeTax ? 1 : 0} onPick={(i) => set({ tax: { pricesIncludeTax: i === 1 } })} />
+            </Main>
+          </Cell>
+          <Cell label="Kinds of item" det="Set on each item in Inventory">
+            <Main>
+              <Rows>
+                <Kv k="Taxable goods" v={`${rate(t?.rates.goods)} · ${k?.goods ?? 0} items`} ink />
+                <Kv k="Labour" v={`${rate(t?.rates.labour)} · ${k?.labour ?? 0} items`} ink />
+                <Kv k="Prepared food" v={`${rate(t?.rates.food)} · ${k?.food ?? 0} items`} ink />
+                <Kv k="Exempt" v={`— · ${k?.exempt ?? 0} items`} ink />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    }
+    case 'tips': {
+      const tips = s.tips;
+      const label = (p: number) => (tips.mode === 'amounts' ? `$${p % 100 ? (p / 100).toFixed(2) : p / 100}` : `${p}%`);
+      return (
+        <>
+          <Cell
+            label="Asking for a tip"
+            det="On the customer’s side of the screen"
+            foot={<FootDet>Amounts suit large tickets like tires. A food truck would offer 15, 18 and 20%.</FootDet>}
+          >
+            <Main>
+              <Rows>
+                <Switch t="Ask before they pay" det="Once, for any way to pay" on={tips.enabled} onChange={(on) => set({ tips: { ...tips, enabled: on } })} />
+              </Rows>
+              <p className="c-label c-st-fl">Offer</p>
+              <Chips
+                options={['Amounts', 'Percentages']}
+                value={tips.mode === 'amounts' ? 0 : 1}
+                // Changing what's offered starts from that kind's usual three.
+                onPick={(i) => set({ tips: { ...tips, mode: i === 0 ? 'amounts' : 'percentages', presets: i === 0 ? [500, 1000, 2000] : [15, 18, 20] } })}
+              />
+              <div className="c-st-presets">
+                {tips.presets.map((p, i) => (
+                  <div key={i} role="button" tabIndex={0} onKeyDown={clickOnKey} onClick={() => a.onAmount?.({ kind: 'preset', index: i })} aria-label={`Change ${label(p)}`}>
+                    {label(p)}
+                  </div>
+                ))}
+                {tips.presets.length < 4 && (
+                  <div className="c-add" role="button" tabIndex={0} onKeyDown={clickOnKey} onClick={() => a.onAmount?.({ kind: 'preset', index: null })}>
+                    + Add
+                  </div>
+                )}
+              </div>
+            </Main>
+          </Cell>
+          <Cell label="Who gets them" det="Shared at close" foot={<FootDet>Card tips are paid with payroll. Cash tips come out of the drawer at close. Splitting by hours comes with the shift clock.</FootDet>}>
+            <Main>
+              <Chips options={['Whoever raised the charge', 'Split by hours on shift']} value={tips.goTo === 'raiser' ? 0 : 1} disabled={[1]} onPick={() => set({ tips: { ...tips, goTo: 'raiser' } })} />
+            </Main>
+          </Cell>
+        </>
+      );
+    }
+    case 'discounts': {
+      const codes = l.codes ?? [];
+      const top = [...codes].sort((x, y) => y.uses - x.uses)[0];
+      const lim = s.discountLimits;
+      return (
+        <>
+          <Cell
+            label="Codes"
+            det={String(codes.length)}
+            foot={
+              <FootLine det={top && top.uses ? `${top.code} has been used ${top.uses} ${top.uses === 1 ? 'time' : 'times'}.` : 'A code works at checkout, typed or scanned.'}>
+                <Btn primary onClick={a.onNewCode}>
+                  New code
+                </Btn>
+              </FootLine>
+            }
+          >
+            <Main>
+              {codes.length ? (
+                <Rows>
+                  {codes.map((c) => (
+                    <Kv
+                      key={c.id}
+                      k={
+                        <>
+                          <b className="c-st-dcode">{c.code}</b> {codeLine(c)}
+                        </>
+                      }
+                      v={codeChip(c)}
+                    />
+                  ))}
+                </Rows>
+              ) : (
+                <p className="c-det">No codes yet.</p>
+              )}
+            </Main>
+          </Cell>
+          <Cell label="Limits by role" det="Without a PIN" foot={<FootDet>Above a limit, an owner or manager enters their PIN at the counter.</FootDet>}>
+            <Main>
+              <Rows link>
+                <Kv k="Counter" v={`Up to ${lim.counter}%`} go onTap={() => a.onAmount?.({ kind: 'limit', role: 'counter' })} />
+                <Kv k="Manager" v={`Up to ${lim.manager}%`} go onTap={() => a.onAmount?.({ kind: 'limit', role: 'manager' })} />
+                <Kv k="Owner" v={lim.owner === null ? 'No limit' : `Up to ${lim.owner}%`} ink />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    }
+    case 'closing':
+      return (
+        <>
+          <Cell label="The drawer" det="Every day">
+            <Main>
+              <Rows link>
+                <Kv k="Starting cash" v={money(s.startingCashCents)} go onTap={() => a.onAmount?.({ kind: 'startingCash' })} />
+                <Switch t="Two counts at close" det="By two people, neither seeing the other’s figure" on={s.twoCounts} onChange={(on) => set({ twoCounts: on })} />
+                <R2 t="Any difference needs a sign-off" det="By an owner or manager who did not count first" end={<span className="c-det">Always</span>} />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="When only one person is on" det="For late closes" foot={<FootDet>The owner sees it on Home in the morning, with the count and the note.</FootDet>}>
+            <Main>
+              <Chips
+                options={['One count, signed off by the owner next morning', 'Wait for a second person']}
+                value={s.onePersonClose === 'owner_next_morning' ? 0 : 1}
+                onPick={(i) => set({ onePersonClose: i === 0 ? 'owner_next_morning' : 'wait_for_second' })}
+              />
+            </Main>
+          </Cell>
+          <Cell label="Who can close" det="Close the day">
+            <Main>
+              <Rows>
+                <Kv k="Owners and managers" v={l.closers} ink />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    default:
+      return null;
+  }
 }
 
 /** What the locked card cell says, by why cards are locked. */
@@ -239,6 +461,8 @@ const LOCKED: Record<Exclude<CardAvailability, { available: true }>['reason'], {
 
 /** A pane's cells. */
 export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
+  // A live shop's own settings, never the reference's example figures, even while they load.
+  if (!d.preview && (key === 'tax' || key === 'tips' || key === 'discounts' || key === 'closing')) return d.live ? liveSelling(key, d.live, a) : null;
   switch (key) {
     case 'shop':
       return (

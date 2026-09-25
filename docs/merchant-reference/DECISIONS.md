@@ -165,10 +165,10 @@ Decided 2026-09-24.
 - **Sections are routes**: `/settings/<section>`, and `/settings/shop/hours` for the pushed
   page. On a landscape tablet `/settings` opens Shop; narrower it's the index.
 - **Tax ID is ••-•••4829** (Figures, above).
-- **What a live shop sees.** Shop (the listing from the profile), Payouts, Partnership, Security
-  (its enrolled tablets, each signed out with the existing API) and Help. Hours, contact,
-  statements, Counter, Payments, Tax, Tips, Discounts, Devices, Closing, Notifications and
-  Advanced have no backend yet. Their sheets (Change account, Add a device, Leave Clear, New
+- **What a live shop sees.** Shop (the listing from the profile), Payouts, Partnership, Payments,
+  Security (its enrolled tablets, each signed out with the existing API), Tax, Tips, Discounts,
+  Closing and Help. Hours, contact, statements, Counter, Devices, Notifications and Advanced have
+  no backend yet. Their sheets (Change account, Add a device, Leave Clear, New
   discount code) open in the preview, with their final buttons disabled on a live shop.
   Preview: `/settings[/<section>]?preview=1&screen=counter|payments-connected|account|device|
   leave|confirm|code`; `&live=1` for the live path.
@@ -459,3 +459,23 @@ reason for any difference, is written to `e2e/.report/index.html`.
   own receipt (`GET /orders/:id/receipt`), laid out for 80mm receipt paper, one copy per page, so
   a refund taken later shows on a reprint. Print waits until the receipt has been read. There is
   no printer SDK. A native one would replace `lib/printReceipt.ts`.
+
+## Settings: Tax, Tips, Discounts and Closing on a live shop
+
+- **The shop's own settings, saved as they're set.** Each change goes to `PATCH /settings` (owners
+  only, the server's rule) and the pane then shows what the server holds. An amount opens a small
+  sheet: starting cash, a role's discount limit, a tip preset. While the settings load, a live
+  pane shows nothing, never the reference's example figures.
+- **Tax** shows where the rate comes from: Stripe Tax, the rate for the shop's address, or none yet.
+  It also shows the shop's address, the rate by kind of item with the catalogue's counts, and
+  before-tax or tax-included prices (a choice).
+- **Tips**: asking on or off, amounts or percentages (switching starts from that kind's usual
+  three: $5, $10, $20 or 15, 18, 20%), up to four presets to change, add or remove.
+- **"Split by hours on shift" is shown but can't be chosen.** It needs the shift clock, which
+  isn't built.
+- **Discounts**: the shop's codes, with what they take off and until when. New code is a real form:
+  a percent or an amount, the whole charge or one category, optional dates, once per customer. The
+  counter's and a manager's limits can be changed; an owner has none.
+- **Closing**: starting cash, two counts, and what happens with one person on. "Any difference
+  needs a sign-off" reads Always, because the server always requires it. Who can close lists the
+  owners and managers by name.
