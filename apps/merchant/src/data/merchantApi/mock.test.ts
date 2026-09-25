@@ -213,3 +213,64 @@ describe('every method returns the contract’s shape', () => {
     ok(C.DrawerSession, await api.openDrawer({ startingCashCents: 15000 }), 'openDrawer');
   });
 });
+
+describe("the older client's Clear side, from the same state", () => {
+  const refundInput = (chargeCode: string) => ({ chargeCode, splitInto: 4, cyclesCleared: 0, ratePerCycle: 0.02, discountRate: 0.02, nextPayoutCents: 421891 });
+
+  test('Charges lists the reference: two waiting, four confirmed, Tom expired; payouts only for money roles', async () => {
+    const { clear } = createMockMerchantApi(fast);
+    const all = await clear.charges();
+    expect(all.map((c) => [c.memberName, c.state, c.amount, c.splitInto])).toEqual([
+      ['Dana R.', 'waiting', 940, null],
+      ['Nina P.', 'waiting', 410, null],
+      ['Marcus T.', 'approved', 412, 4],
+      ['Priya S.', 'approved', 188, 1],
+      ['Ana V.', 'approved', 300, 2],
+      ['Ray C.', 'approved', 1240, 2],
+      ['Tom B.', 'expired', 310, 4],
+    ]);
+    // 2.0% over time, 1.25% paid now: what the charge page shows the owner.
+    expect(all.find((c) => c.code === 'CLR-MARCUS')!.payout).toBe(403.76);
+    expect(all.find((c) => c.code === 'CLR-PRIYA')!.payout).toBe(185.65);
+    const counter = createMockMerchantApi({ ...fast, viewer: STAFF_ID.jen }).clear;
+    expect((await counter.charges()).every((c) => c.payout === undefined)).toBe(true);
+    await expect(counter.payouts()).rejects.toThrow();
+  });
+
+  test('a charge raised in New Charge is the one Charges lists, and it can be cancelled while it waits', async () => {
+    const { api, clear } = createMockMerchantApi(fast);
+    const o = await api.createOrder({ lines: [{ itemId: null, name: 'Patch', note: null, amountCents: 5000, taxKind: 'labour' }], customer: 'Sam W.' });
+    const t = await api.createClearTender(o.id, { amountCents: 5000, tipCents: 0, idempotencyKey: key() });
+    const [newest] = await clear.charges();
+    expect(newest).toMatchObject({ code: t.clearChargeCode, memberName: 'Sam W.', state: 'waiting', amount: 50 });
+    await clear.cancelCharge(t.clearChargeCode!);
+    expect((await clear.charges())[0].state).toBe('cancelled');
+    await expect(clear.cancelCharge('CLR-MARCUS')).rejects.toThrow('Only a charge still waiting');
+  });
+
+  test('a refund: a manager PIN clears it under the limit; over it, only the owner on their own device', async () => {
+    const { clear, controls } = createMockMerchantApi({ ...fast, viewer: STAFF_ID.jen });
+    const r = await clear.requestRefund(refundInput('CLR-MARCUS'));
+    expect(r).toMatchObject({ state: 'requested', requestedByName: 'Jen R.', amountCents: 41200 });
+    expect(await clear.openRefundFor('CLR-MARCUS')).toMatchObject({ id: r.id });
+    await expect(clear.checkOwnerCode('1111')).rejects.toThrow('not recognised'); // a counter PIN
+    expect(await clear.checkOwnerCode('2222')).toMatchObject({ name: 'Luis M.', role: 'manager' });
+    expect(await clear.authoriseRefund(r.id, '2222', 'approve')).toMatchObject({ state: 'approved', decidedVia: 'owner_code', decidedByName: 'Luis M.' });
+    expect((await clear.charges()).find((c) => c.code === 'CLR-MARCUS')!.state).toBe('refunded');
+
+    const big = await clear.requestRefund(refundInput('CLR-RAY'));
+    await expect(clear.authoriseRefund(big.id, '9999', 'approve')).rejects.toThrow('Over the limit');
+    await expect(clear.decideRefund(big.id, 'approve')).rejects.toThrow('Only the owner');
+    controls.setViewer(STAFF_ID.mike);
+    expect(await clear.decideRefund(big.id, 'approve')).toMatchObject({ state: 'approved', decidedVia: 'owner_device' });
+  });
+
+  test('the roster, the staff list and the profile', async () => {
+    const owner = createMockMerchantApi(fast).clear;
+    expect((await owner.roster()).map((s) => s.name)).toEqual(['Jen R.', 'Luis M.', 'Mike R.', 'Ana Ruiz']);
+    expect((await owner.staff()).find((s) => s.id === STAFF_ID.jen)!.chargesThisMonth).toBe(18);
+    expect(await owner.profile()).toMatchObject({ name: 'Mike’s Tire', founding: true, discountRate: 0.02, payoutAccount: 'Chase ••4417' });
+    const counter = createMockMerchantApi({ ...fast, viewer: STAFF_ID.jen }).clear;
+    expect(await counter.profile()).not.toHaveProperty('discountRate');
+  });
+});

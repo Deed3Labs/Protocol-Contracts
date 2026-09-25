@@ -136,3 +136,46 @@ export const DRAWER = { startingCashCents: 15000, countedCents: 20800 } as const
 
 /** Wed, Sep 23: the card walk-in's deposit. Stripe 2.7% + 5¢ on $937.52 is $25.36; Clear's 30¢. */
 export const CARD_DEPOSIT = { arrivalDate: '2026-09-23', grossCents: 93752, processorFeeCents: 2536, clearFeeCents: 30 } as const;
+
+/**
+ * The Clear side, for the older client's calls (mock.ts, ClearSide).
+ *
+ * How each confirmed member chose to pay, as the Charges reference draws them: Marcus in four,
+ * Priya all at once, Ana and Ray in two. A charge approved in the mock later splits in four.
+ */
+export const CLEAR_SPLITS: Record<string, number> = { 'CLR-MARCUS': 4, 'CLR-PRIYA': 1, 'CLR-ANA': 2, 'CLR-RAY': 2 };
+/** Dana has seen hers; Nina hasn't opened it (Home reference). */
+export const CLEAR_OPENED = new Set(['CLR-DANA']);
+
+/** The payout position the Payouts reference draws: $3,012.40 ready, $4,218.91 releasing Oct 14. */
+export const POSITION = {
+  owedCents: 421891,
+  cashAccountCents: 61240,
+  releasedReadyCents: 240000,
+  scheduledCents: 181891,
+  readyToWithdrawCents: 301240,
+  nextPayoutOn: '2026-10-14T12:00:00',
+  clearsBalanceCents: 0,
+  toBankCents: 421891,
+  availableTodayCents: 240000,
+  paid: [
+    { id: 'po_sep', amountCents: 311840, charges: 22, on: '2026-09-14', paidAt: '2026-09-14T15:00:00Z' },
+    { id: 'po_aug', amountCents: 588410, charges: 61, on: '2026-08-14', paidAt: '2026-08-14T15:00:00Z' },
+  ],
+};
+
+/** Charges each person raised this month (Overview: "Jen has raised 18 of this month's 34"). */
+export const CHARGES_THIS_MONTH: Record<string, number> = { [STAFF_ID.jen]: 18, [STAFF_ID.luis]: 13, [STAFF_ID.mike]: 3, [STAFF_ID.ana]: 0 };
+
+/** What anyone on shift may read about the shop. */
+export const PROFILE = {
+  merchant: SHOP.id,
+  name: SHOP.name,
+  category: 'Auto repair',
+  town: 'Redlands',
+  partnerSince: '2026-08-12',
+  founding: true,
+  payoutTerms: 'Paid on the 14th, and sooner when the pool allows',
+};
+/** The owner's own: the rate over time, the cap, where payouts land. */
+export const PROFILE_OWNER = { discountRate: 0.02, approvalCapCents: 250000, payoutAccount: 'Chase ••4417', termsSource: 'chain' as const };

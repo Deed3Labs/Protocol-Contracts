@@ -364,3 +364,37 @@ reason for any difference, is written to `e2e/.report/index.html`.
   someone mid-charge: the new build takes over at the next load.
 - **The Capacitor web layer** is checked with Capacitor's bridge on the window, as the installed
   app has it. The same build starts, and doesn't register the service worker.
+
+## The mock's Clear side
+
+- **The older client is mocked from the same state.** Some screens make Clear-side calls through
+  `api` in `apps/merchant/src/data/apiClient.ts`, not through the merchant API:
+  - the Charges list;
+  - a charge and its refund;
+  - the payout position;
+  - the roster, the staff list and the profile.
+
+  The mock had none of them, so the dev demo's Charges list was empty. Now, whenever the merchant
+  API is the mock (the dev preview, or `VITE_MERCHANT_API=mock`), the mock's `ClearSide` stands in
+  for those calls, from the same in-memory state. A Clear charge raised in New Charge is the one
+  Charges lists, and a refund taken through the sheets marks it Refunded.
+- **Not in the merchant API contract.** The contract says a Clear refund goes through the existing
+  Clear endpoints, and they already have a real client. Copying them into the contract would be two
+  clients for one endpoint.
+- **Seeded as the reference draws it:**
+  - Marcus in four payments, Priya paid now, Ana and Ray in two;
+  - Dana has opened hers, Tom's charge expired;
+  - the Payouts position ($3,012.40 ready, $4,218.91 on Oct 14);
+  - the month's charges by person (Jen 18, Luis 13).
+
+  Refunds follow the server's rules: a manager's or owner's PIN clears one under the limit ($500);
+  at or over it, only the owner on their own device.
+- **A charge names its owner to every shift.** The refund sheets read the owner's and managers'
+  names from the roster every shift can read, not the owner-only staff list. A counter shift was
+  seeing "Waiting on the" and "Only the can clear it".
+- **A sheet takes focus once, when it opens.** It was taking focus again on every render, because
+  callers pass a new `onClose` each time. Typing a PIN into a sheet lost focus after the first
+  digit, which on a tablet closes the keyboard.
+- **The mock's day is Sep 22**, the reference day, while the clock is real. A counter shift's
+  "Today and yesterday" is empty in the browser after that, so the Playwright checks fix the clock
+  to 4:41pm on the reference day.

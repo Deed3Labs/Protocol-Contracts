@@ -4,7 +4,7 @@ import { canAuthoriseRefund, canTransition, CHARGE_LABEL, refundQuote, splitQuot
 import { useAuth } from '@/auth/authContext';
 import { OneColumn, cx } from '@/brand/ui';
 import { PhoneBack } from '@/charge/phone';
-import { api, type MerchantCharge, type StaffMember } from '@/data/apiClient';
+import { api, type MerchantCharge } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
 import { STUB_MERCHANT } from '@/data/stubs';
 import { clockTime, firstName, usd } from '@/home/model';
@@ -79,7 +79,11 @@ export default function ChargeDetailPage() {
 
   const preview = import.meta.env.DEV && params.get('preview') === '1' && params.get('live') !== '1';
   const screen = preview ? (params.get('screen') ?? '') : '';
-  const q = preview ? '?preview=1' : '';
+  const q = preview
+    ? '?preview=1'
+    : import.meta.env.DEV && params.get('preview') === '1'
+      ? `?preview=1&live=1${params.get('as') ? `&as=${params.get('as')}` : ''}`
+      : '';
   const back = () => navigate(`/charges${q}`);
   const me = session?.staff.name ?? '';
 
@@ -89,7 +93,9 @@ export default function ChargeDetailPage() {
   const { data: charges, loading } = useApi(() => (preview ? Promise.resolve(null) : api.charges({ limit: 200 })), [preview]);
   const { data: profile } = useApi(() => (preview ? Promise.resolve(null) : api.profile()), [preview]);
   const { data: position } = useApi(() => (preview || !canSeeMoney ? Promise.resolve(null) : api.payouts()), [preview, canSeeMoney]);
-  const { data: staff } = useApi(() => (preview || !canSeeMoney ? Promise.resolve(null) : api.staff()), [preview, canSeeMoney]);
+  // Who can clear a refund, by name: the roster every shift can read (the staff list is owners' and
+  // managers' only, and a counter shift asking for a refund needs the owner's name as much as anyone).
+  const { data: staff } = useApi(() => (preview ? Promise.resolve(null) : api.roster()), [preview]);
   const { data: threshold } = useApi(
     () => (preview || session?.staff.role !== 'owner' ? Promise.resolve(null) : api.refundThreshold()),
     [preview, session?.staff.role],
@@ -189,9 +195,9 @@ export default function ChargeDetailPage() {
         }),
       )
     : MARCUS_QUOTE;
-  const roster: StaffMember[] = staff ?? [];
-  const ownerName = preview ? 'Mike R.' : (roster.find((s) => s.role === 'owner' && s.active)?.name ?? 'the owner');
-  const managers = preview ? ['Luis'] : roster.filter((s) => s.role === 'manager' && s.active).map((s) => firstName(s.name));
+  const roster = staff ?? [];
+  const ownerName = preview ? 'Mike R.' : (roster.find((s) => s.role === 'owner')?.name ?? 'the owner');
+  const managers = preview ? ['Luis'] : roster.filter((s) => s.role === 'manager').map((s) => firstName(s.name));
   const limitCents = preview ? 50000 : (threshold?.limitCents ?? null);
   const role = session?.staff.role ?? null;
   const limitKnown = limitCents !== null;

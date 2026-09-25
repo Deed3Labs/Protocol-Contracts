@@ -301,13 +301,18 @@ export default function NewChargePage() {
   const [busy, setBusy] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const shop = preview ? 'Mike’s Tire' : (profile?.name ?? '');
+  // The shop's Clear terms, both of them: what it pays on a charge paid now, and over time.
+  const liveShop = useApi(() => (preview || !seesMoney(role) ? Promise.resolve(null) : merchant.shop()), [preview, role]);
+  const tier = liveShop.data?.clearTier;
   const fees: FeeTerms | null = !seesMoney(role)
     ? null
     : preview
       ? { now: 1.25, over: 2.0 }
-      : profile?.discountRate != null
-        ? { now: Math.round(profile.discountRate * 10000) / 100 }
-        : null;
+      : tier
+        ? { now: tier.paidNowBps / 100, over: tier.overTimeBps / 100 }
+        : profile?.discountRate != null
+          ? { now: Math.round(profile.discountRate * 10000) / 100 }
+          : null;
   const limitCents = preview ? 250000 : (profile?.approvalCapCents ?? null);
 
   const [f, setF] = useState<Flow>(() => ({

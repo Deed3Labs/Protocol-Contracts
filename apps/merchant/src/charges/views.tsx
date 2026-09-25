@@ -716,7 +716,9 @@ export interface Person {
   role: string;
 }
 
-const first = (n: string) => n.split(/\s+/)[0] ?? n;
+/** A first name, or a stand-in like "the owner" kept whole (the roster couldn't be read). */
+const first = (n: string) => (/^the /.test(n) ? n : (n.split(/\s+/)[0] ?? n));
+const First = (n: string) => first(n).replace(/^the /, 'The ');
 
 function Who({ p }: { p: Person }) {
   return (
@@ -772,7 +774,7 @@ export function RefundReviewSheet({
           <div className="c-footnote" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
             <p>
               {error ??
-                `Nothing moves yet, and ${first(customer)} is told nothing. ${first(owner)} gets this on their phone, or types their code here.`}
+                `Nothing moves yet, and ${first(customer)} is told nothing. ${First(owner)} gets this on their phone, or types their code here.`}
             </p>
           </div>
           <div className="c-pair" style={{ marginTop: 'var(--s2)' }}>
