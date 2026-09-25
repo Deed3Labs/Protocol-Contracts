@@ -487,6 +487,11 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
     order: async (orderId) => toOrder(orderRec(orderId)),
     orders: async ({ date }) => [...orders.values()].filter((o) => o.businessDate === date).map(toOrder).sort((a, b) => (b.createdAt < a.createdAt ? -1 : 1)),
+    orderHistory: async ({ from, to }) =>
+      [...orders.values()]
+        .filter((o) => o.businessDate >= from && o.businessDate <= to)
+        .sort((a, b) => (b.createdAt < a.createdAt ? -1 : 1))
+        .map((o) => ({ ...toOrder(o), tenders: [...tenders.values()].filter((t) => t.orderId === o.id).map(publicTender) })),
     applyDiscount: async (orderId, input) => {
       const rec = orderRec(orderId);
       editable(rec);

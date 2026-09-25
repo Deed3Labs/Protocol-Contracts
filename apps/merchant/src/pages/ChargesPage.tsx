@@ -4,6 +4,7 @@ import { seesMoney } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
 import { OneColumn } from '@/brand/ui';
 import { api } from '@/data/apiClient';
+import { useMerchantApi } from '@/data/merchantApi';
 import { useApi } from '@/data/useApi';
 import { firstName } from '@/home/model';
 import {
@@ -17,6 +18,7 @@ import {
   type ChargeRow,
   type Filters,
   type SortBy,
+  rowFromOrder,
 } from '@/charges/model';
 import { ChargesList, HowPaidPanel, RaisedTodayPanel } from '@/charges/views';
 
@@ -27,10 +29,19 @@ import { ChargesList, HowPaidPanel, RaisedTodayPanel } from '@/charges/views';
  * Raised today sits above it, with How it was paid beside it on a landscape tablet. A counter
  * shift sees its own there, and today and yesterday in the list.
  *
- * A live shop's rows are its Clear charges from the API. Card, cash and split have no backend yet,
- * so the preview shows them: `?preview=1&screen=owner|late|counter|menu-filter|menu-sort` (and
- * `&as=jen` for a counter shift's header).
+ * A live shop's rows are its Clear charges, and its card, cash and split sales from the order
+ * history (the month so far): a sale's Clear part is its own Clear row, so each dollar is listed
+ * once. The preview shows the reference: `?preview=1&screen=owner|late|counter|menu-filter|
+ * menu-sort` (and `&as=jen` for a counter shift's header); `&live=1` for the live path.
  */
+/** The month so far, and yesterday on the 1st: every range the list's filters can ask for. */
+function historyRange(now = new Date()) {
+  const day = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  return { from: day(yesterday < first ? yesterday : first), to: day(now) };
+}
+
 export default function ChargesPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -45,10 +56,17 @@ export default function ChargesPage() {
   const myId = screen === 'counter' ? 'jen' : session?.staff.id;
 
   const { data } = useApi(() => (preview ? Promise.resolve(null) : api.charges({ limit: 200 })), [preview]);
-  const all: ChargeRow[] = useMemo(
-    () => (preview ? (screen === 'late' ? LATE_ROWS : REFERENCE_ROWS) : (data ?? []).map((c) => rowFromApi(c))),
-    [preview, screen, data],
-  );
+  // Card, cash and split sales: the orders over the month so far (and yesterday, on the 1st).
+  const merchant = useMerchantApi();
+  const sales = useApi(() => (preview ? Promise.resolve(null) : merchant.orderHistory(historyRange())), [preview]);
+  const roster = useApi(() => (preview ? Promise.resolve(null) : api.roster()), [preview]);
+  const all: ChargeRow[] = useMemo(() => {
+    if (preview) return screen === 'late' ? LATE_ROWS : REFERENCE_ROWS;
+    const nameOf = (id: string) => roster.data?.find((p) => p.id === id)?.name ?? '—';
+    const clear = (data ?? []).map((c) => rowFromApi(c));
+    const sold = (sales.data ?? []).flatMap((o) => rowFromOrder(o, nameOf) ?? []);
+    return [...clear, ...sold];
+  }, [preview, screen, data, sales.data, roster.data]);
 
   const [filters, setFilters] = useState<Filters>({ when: owner ? 'month' : 'both', status: 'all', method: 'any', by: 'anyone' });
   const [sort, setSort] = useState<SortBy>('newest');
