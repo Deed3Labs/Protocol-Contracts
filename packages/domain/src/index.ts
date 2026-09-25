@@ -23,6 +23,8 @@ export {
   countsAsVolume,
   isPending,
   isTerminal,
+  PAY_OVER_TIME_MIN_CENTS,
+  splitsOffered,
   toWire,
 } from './charge';
 

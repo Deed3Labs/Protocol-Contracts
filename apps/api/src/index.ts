@@ -61,6 +61,7 @@ import { startRelayerGasMonitor } from './jobs/relayerGas.js';
 import { startSessionCleanup } from './jobs/sessionCleanup.js';
 import { startStripeEventProcessor } from './jobs/stripeEventProcessor.js';
 import { startCardCaptureSafety } from './jobs/cardCaptureSafety.js';
+import { startClearTenderSync } from './jobs/clearTenderSync.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
@@ -398,6 +399,8 @@ async function startServer() {
     startStripeEventProcessor();
     // Captures card holds nobody closed, well inside Stripe's 2-day window.
     startCardCaptureSafety();
+    // Clear tenders follow their charges: approved, declined, expired, withdrawn.
+    startClearTenderSync();
 
     // Start HTTP server (Express + WebSocket)
     // Bind to 0.0.0.0 to accept connections from Railway/external hosts

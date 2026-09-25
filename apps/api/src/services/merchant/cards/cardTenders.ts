@@ -4,6 +4,7 @@ import type { Db, Queryable } from '../../../db/db.js';
 import { entriesFor, post } from '../ledger/ledgerService.js';
 import * as postings from '../ledger/postings.js';
 import { settleOrder } from '../orders/settle.js';
+import { checkNewTender, PaymentError } from '../orders/tenderRules.js';
 import { CardDeclined, type CardConnectorProvider, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
 import { takingCards } from './terminal.js';
 
@@ -180,22 +181,17 @@ export async function createCardTender(
       return existing[0];
     }
 
-    if (order.voided_at || !['open', 'paying'].includes(order.status)) throw new TenderError('That order is not taking payments', 'order_closed');
-    // The shop's own setting, enforced here and not only hidden in the app.
-    const { rows: settings } = await tx.query<{ accept_card: boolean }>('SELECT accept_card FROM merchant.shop_settings WHERE merchant = $1', [input.merchant]);
-    if (settings[0] && !settings[0].accept_card) throw new TenderError('This shop has card payments turned off in Settings', 'method_off');
+    // The same rules as every tender: taking payments, card on, splitting allowed, no more than owed.
+    await checkNewTender(tx, { merchant: input.merchant, orderId: order.id, method: 'card', amountCents: input.amountCents }).catch((error) => {
+      if (error instanceof PaymentError) {
+        const code = error.code === 'method_off' ? 'method_off' : error.code === 'over_remaining' || error.code === 'split_off' ? 'over_remaining' : 'order_closed';
+        throw new TenderError(error.message, code);
+      }
+      throw error;
+    });
     const connector = await takingCards(tx, input.merchant);
     const { rows: readers } = await tx.query('SELECT 1 FROM merchant.readers WHERE id = $1 AND merchant = $2 AND removed_at IS NULL', [input.readerId, input.merchant]);
     if (!readers[0]) throw new TenderError('That reader isn’t one of this shop’s', 'reader_unknown');
-
-    // What's still owed: the total less what other tenders have taken or are taking now.
-    const { rows: owed } = await tx.query<{ covered: string | number }>(
-      `SELECT COALESCE(sum(amount_cents), 0) AS covered FROM payments.tenders
-        WHERE order_id = $1 AND status IN ('pending','authorised','approved','captured','partly_refunded','refunded')`,
-      [order.id],
-    );
-    const remaining = Number(order.total_cents) - Number(owed[0]!.covered);
-    if (input.amountCents > remaining) throw new TenderError(`Only ${remaining} cents are still owed on this order`, 'over_remaining');
 
     const { plan } = await cardPlan(tx, input.merchant);
     const fee = clearCardFee(input.amountCents + input.tipCents, plan);
