@@ -218,11 +218,10 @@ Decided 2026-09-24.
 - **An owner's own sheet** has no Reset or Remove: owners are added by Clear, not from the app.
 - **The limit at Off** shows $0.00 and one row, "Every refund: Your PIN, or your phone". The
   reference draws only $500.
-- **What a live shop sees.** The API has the roster, charges this month and the refund limit,
-  and it adds people. Shifts, hours, removing someone and resetting a PIN have no backend yet
-  (card-processing prompt, Phase 7). So a live shop sees the team, the roles and the limit, and
-  can add someone and change the limit. The crew strip, the slot, the week and a person's sheet
-  are the preview's: `/staff?preview=1&screen=owner|counter|first|busy|add|person|remove|hours|
+- **What a live shop sees.** The API has the roster, charges this month and the refund limit. It
+  adds people, resets a PIN and removes someone. So a live shop sees the team, the roles and the
+  limit. It can add someone, change the limit, and open a person to reset their PIN or remove them.
+  Shifts and hours have no backend yet, so the crew strip, the slot and the week are the preview's: `/staff?preview=1&screen=owner|counter|first|busy|add|person|remove|hours|
   hours-week|day-hours|hours-friday|limit`, and `&live=1` for the live path. The route stays
   owners and managers only, as agreed; the counter view is reached through `screen=counter`.
 
@@ -398,3 +397,26 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **The mock's day is Sep 22**, the reference day, while the clock is real. A counter shift's
   "Today and yesterday" is empty in the browser after that, so the Playwright checks fix the clock
   to 4:41pm on the reference day.
+
+## Staff PINs (first shift, reset, remove)
+
+- **A new person picks their own PIN on their first shift.** Someone added in Staff has no PIN,
+  and the shift screen shows them as "First shift" with "Pick a PIN". They choose four digits and
+  type them again, and their shift starts (`POST /api/merchant/staff/:id/first-pin`, on the
+  enrolled tablet). It works only while their PIN isn't set, and the write is conditional, so two
+  tablets can't both set it. Before this, nobody added in the app could ever start a shift.
+- **A PIN is unique within the shop.** An approval (a discount over the limit, a void, a refund) is
+  a PIN with no name, matched against everyone. A counter PIN equal to a manager's would approve as
+  the manager, so a PIN somebody else has is refused ("Pick different four digits", never whose).
+  The refusal counts against the shop's PIN limit like a wrong guess, so it can't be used to probe.
+- **Resetting a PIN clears it; it never chooses a new one.** "Reset their PIN" asks the one
+  resetting for their own PIN (a shared tablet can be left signed in). The person picks a new one on
+  their next shift, and a shift they're on carries on.
+- **Removing someone** ends their shift on its next request (a session re-reads the staff row), and
+  every charge they raised keeps their name.
+- **Who may reset or remove whom:** a manager, counter staff; an owner, counter staff and managers.
+  Never an owner (Clear changes owners) and never yourself. The API enforces it, and the Staff sheet
+  shows the buttons only when the viewer may use them. Both acts are on the audit trail
+  (`staff.pin_reset`, `staff.removed`).
+- **In the mock, Ana has no PIN yet**, as the Staff reference draws her ("Ana Ruiz has not started a
+  shift").

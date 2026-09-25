@@ -143,3 +143,40 @@ test.describe('a Clear refund, start to finish', () => {
     expect(errors).toEqual([]);
   });
 });
+
+test.describe('staff PINs', () => {
+  test.beforeEach(({}, info) => test.skip(info.project.name !== 'landscape', 'one walk-through is enough'));
+
+  test('Luis resets Jen’s PIN with his own, and removes Ana; he can’t touch the owner', async ({ page }) => {
+    const errors = await visit(page, 'manager', '/staff');
+    const row = (name: RegExp) => page.getByRole('button', { name }).first();
+
+    // The owner's sheet has nothing a manager can do.
+    await row(/Mike R\./).click();
+    await expect(page.getByRole('dialog', { name: 'Mike R.' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Reset their PIN' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    await row(/Jen R\./).click();
+    await page.getByRole('button', { name: 'Reset their PIN' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Reset Jen’s PIN' });
+    await expect(sheet).toContainText('Luis M. approves');
+    for (const d of '0000') await sheet.getByRole('button', { name: d, exact: true }).click();
+    await sheet.getByRole('button', { name: 'Reset PIN' }).click();
+    await expect(sheet.getByRole('alert')).toContainText('did not match');
+    for (const d of '2222') await sheet.getByRole('button', { name: d, exact: true }).click();
+    await sheet.getByRole('button', { name: 'Reset PIN' }).click();
+    await expect(sheet).toHaveCount(0);
+    // The list reloads with her PIN cleared.
+    await expect(row(/Jen R\./)).toContainText('Not started yet');
+    await row(/Jen R\./).click();
+    await expect(page.getByRole('dialog', { name: 'Jen R.' })).toContainText('On first shift');
+    await page.keyboard.press('Escape');
+
+    await row(/Ana Ruiz/).click();
+    await page.getByRole('dialog', { name: 'Ana Ruiz' }).getByRole('button', { name: 'Remove' }).click();
+    await page.getByRole('dialog', { name: 'Remove Ana' }).getByRole('button', { name: 'Remove' }).click();
+    await expect(page.getByRole('button', { name: /Ana Ruiz/ })).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+});
