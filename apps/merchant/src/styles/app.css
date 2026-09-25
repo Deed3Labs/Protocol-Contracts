@@ -250,19 +250,7 @@ input.c-field.c-si-in {
   margin-top: 0 !important;
 }
 
-/* The till checklist's hero on a phone, which the Onboarding reference doesn't draw: Build cart
-   and New charge take a row of their own under the figure. */
-@media (max-width: 519.98px) {
-  .c-ob-hero {
-    flex-wrap: wrap;
-    row-gap: var(--s2);
-  }
-  .c-ob-hero .c-ob-acts {
-    display: flex;
-    gap: var(--s1);
-    width: 100%;
-  }
-  .c-ob-hero .c-ob-acts .c-btn {
-    flex: 1;
-  }
+/* Set up the till on Home keeps its own height; the page's slab below takes the rest. */
+.c-mc-tablet > .c-slab.c-ob-cell {
+  flex: none;
 }

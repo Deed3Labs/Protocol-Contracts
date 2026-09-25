@@ -110,12 +110,13 @@ Decided 2026-09-24.
 - **Save and finish later** keeps the form on the device and nothing else.
 - **Onboarding is always its own screen**, without the app's header, even when someone is
   signed in.
-- **Set up the till** (the reference's checklist on Home after onboarding) is at
-  `/?preview=1&home=till|till4`. A live shop doesn't see it yet, because nothing records which of
-  its items a shop has done. It overlaps Home's day-one list (staff, counter cards, a test
-  charge), which signup now covers: **an open question**, whether the till list replaces it.
-- **The till hero on a phone**, which isn't drawn, puts Build cart and New charge on a row of
-  their own.
+- **Set up the till replaces Home's day-one list** (decided 2026-09-24). Home's reference drew a
+  day-one list (add counter staff, print counter cards, run a $1.00 test charge), and signup now
+  covers all three. Owners and managers see the till list under the figure instead, with Home's
+  own hero rather than the Onboarding file's "Today" hero; each row opens the screen that does it,
+  "Hide for now" is remembered on the tablet, and it goes when every row is done. A live shop
+  doesn't see it yet, because nothing records which rows a shop has done. Preview:
+  `/?preview=1&home=dayOne` (1 of 6) and `&home=tillLater` (4 of 6).
 - Preview: `/onboarding?preview=1&step=1..7`, `&done=1`, `&team=solo`, `&code=warn|bad`,
   `&verify=needs|verified`, `&bank=waiting`.
 

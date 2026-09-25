@@ -4,6 +4,7 @@ import { IconCart } from '@/brand/icons';
 import { cx, initials } from '@/brand/ui';
 import type { Layout } from '@/lib/useBreakpoint';
 import { RunningLowPanel } from '@/inventory/views';
+import { TillCell } from '@/onboarding/views';
 import {
   firstName,
   inWords,
@@ -14,7 +15,7 @@ import {
   type HomeModel,
   type Payout,
   type PersonTally,
-  type SetupItem,
+  type TillItem,
   type ShiftCell,
   type WaitingCharge,
   type WriterTip,
@@ -25,7 +26,7 @@ import {
  *
  * The member Home's three blocks: the figure, the temporary slot, the slab. Today counts confirmed
  * charges only, with what is waiting stated beside it. Waiting is the action component and never
- * disappears; temporary actions (setup, the owner's tip) sit under it and go when they are done.
+ * disappears; temporary things (Set up the till, the owner's tip) sit under it and go when they are done.
  * The slab is what was confirmed on the left and, on the right, where it goes for someone who sees
  * money, or the shift for someone who does not.
  *
@@ -41,7 +42,8 @@ export interface HomeActions {
   onAllCharges?: () => void;
   onPayouts?: () => void;
   onStaff?: () => void;
-  onSetup?: (s: SetupItem) => void;
+  onTill?: (item: TillItem) => void;
+  onHideTill?: () => void;
   onBreak?: () => void;
   onEndShift?: () => void;
   onCloseDay?: () => void;
@@ -548,7 +550,6 @@ export function HomeView({ m, layout, a = {} }: { m: HomeModel; layout: Layout; 
   const money = sees(m.role);
 
   const temporary: Parameters<typeof TemporaryPanel>[0]['rows'] = [];
-  if (m.setup?.length) temporary.push(...m.setup.map((s) => ({ ...s, onClick: () => a.onSetup?.(s) })));
   if (money && m.tip)
     temporary.push({
       key: 'tip',
@@ -588,6 +589,7 @@ export function HomeView({ m, layout, a = {} }: { m: HomeModel; layout: Layout; 
           <RunningLowPanel items={m.runningLow} onReordered={(i) => a.onMarkReordered?.(i.id)} onInventory={a.onInventory} />
         </div>
       ) : null}
+      {money && m.till && m.till.some((t) => !t.done) && <TillCell items={m.till} onOpen={a.onTill} onHide={a.onHideTill} />}
       {temporary.length > 0 && <TemporaryPanel rows={temporary} />}
       {twoColumn && right.length ? (
         <div className="c-slab">
