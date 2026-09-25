@@ -58,8 +58,8 @@ Decided 2026-09-24.
 - **A padlocked nav item opens the owner's sign-in**, the proposal in the Home file's Open list.
 - **What a live shop sees.** Home is built from what the API answers: today's charges, the payout
   position, the roster, the drawer and a counter shift's time clock (on for, since, until, the
-  booked hours and breaks). The Closing up card and the setup checklist's progress have no backend
-  yet, so a live shop doesn't see them. The reference scenario shows every state in development:
+  booked hours and breaks). Running low, the Closing up card and the setup checklist's progress
+  aren't live yet, so a live shop doesn't see them. The reference scenario shows every state in development:
   `?preview=1&home=running|counter|onBreak|early|dayOne|closing` (`&as=jen` for the counter) and
   `/close?preview=1&drawer=short|signed|balanced`.
 
@@ -70,16 +70,14 @@ Decided 2026-09-24.
   "...their app", "If she misses a payment" is "If they miss a payment".
 - **The category tabs keep a 6px gap.** Inventory's reference spaces them 6px apart. New Charge's
   uses the same tabs but never styles the row, so its tabs touch. Inventory's version is kept.
-- **What a live shop sees.** A typed amount paid with Clear is live: raised through the API, shown
-  as a code, and watched until it's approved, declined or expired. Nothing else has a backend yet:
-  - the catalog (Items), discounts and tips,
-  - card (Stripe), cash and split,
-  - scanning a member's own code, and texting a link.
-
-  So a live shop starts on Amount with no Items switch. Checkout shows Clear, and Card locked as
-  the reference draws it before Stripe is connected. Cash, split and the two shortcuts aren't shown.
-  Every frame is reachable in development at `/new?preview=1&screen=<frame>` (see `SCREENS` in
-  `NewChargePage.tsx`); add `&as=jen` for a counter shift and `&live=1` for the live path.
+- **What a live shop sees.** The shop's catalogue or a typed amount; Checkout raises the order on
+  the server, which works out tax, discounts and the total; the tip from the shop's settings; then
+  Clear (its code shown, the member's answer followed), card through the reader, cash into the open
+  drawer, or a split; then the receipt, texted or printed (email waits on a provider). Not built
+  yet: scanning a member's own code, texting a link to pay, and the offline banner, so those two
+  shortcuts aren't shown on a live shop. Every frame is reachable in development at
+  `/new?preview=1&screen=<frame>` (see `SCREENS` in `NewChargePage.tsx`); add `&as=jen` for a
+  counter shift and `&live=1` for the live path.
 - **Custom tip** selects Custom but has no amount entry yet: the reference doesn't draw one.
 
 ## Inventory
@@ -90,9 +88,9 @@ Decided 2026-09-24.
   until there is one real catalogue.
 - **"Items None yet" is "—"** on the empty state, by the em-dash rule.
 - **Search in portrait stays typeable.** The reference collapses it to an icon there.
-- **What a live shop sees.** There is no catalogue or stock API yet, so a live shop gets the
-  empty state, which is true of it. Its sheets open, but their save buttons stay disabled until
-  the API exists. Every frame is in development at `/inventory?preview=1&screen=<frame>`.
+- **What a live shop sees.** The shop's catalogue and stock from the API: adding, editing and
+  archiving items, their options, stock adjustments and history, reorders and receiving them.
+  Importing a spreadsheet isn't built yet. Every frame is in development at `/inventory?preview=1&screen=<frame>`.
 - **Running low sits on Home** for owners and managers, as the Inventory reference asks
   (preview: `/?preview=1&home=lowStock`).
 
@@ -130,8 +128,9 @@ Decided 2026-09-24.
 - **A counter shift** is sent Home by the route, as for Payouts; its drawn page is at
   `screen=counter`, and its button opens the owner's sign-in.
 - **What a live shop sees.** The month, its trend and the writer line, recent charges, what is
-  owed, fees by plan, the months so far, the terms and the roster, all from the API. The second
-  slab needs card, cash, the catalogue and the drawer, so it's the preview's:
+  owed, fees by plan, the months so far, the terms and the roster, and the second slab (how it was
+  paid, top items, discounts, tips and tax, the end-of-day reports), all from the API. Exporting,
+  statement PDFs and sending to an accountant aren't built yet. Preview:
   `/overview?preview=1&screen=counter|statements|terms`; `&live=1` for the live path.
 
 ## Payouts
