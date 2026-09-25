@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Db, Queryable } from '../../../db/db.js';
 import { post } from '../ledger/ledgerService.js';
 import * as postings from '../ledger/postings.js';
+import { audit } from '../security/audit.js';
 
 /**
  * Clear's fee, billed monthly (card-processing prompt, Phase 9): the fallback for a card processor
@@ -153,20 +154,29 @@ export async function collectBills(db: Db, collector: FeeCollector, opts: { merc
   );
   const out = { collected: [] as string[], short: [] as string[], unconfirmed: [] as string[] };
   for (const bill of rows) {
-    const { rows: claimed } = await db.query<BillRow>(
-      `UPDATE payments.clear_fee_bills SET status = 'collecting', attempts = attempts + 1, attempted_at = now(), last_error = NULL
-        WHERE id = $1 AND status IN ('due','short') RETURNING *`,
-      [bill.id],
-    );
-    if (!claimed[0]) continue;
     const amount = Number(bill.amount_cents);
+    const ref = { type: 'fee_bill', id: bill.id };
+    const claimed = await db.transaction(async (tx) => {
+      const { rows: c } = await tx.query<BillRow>(
+        `UPDATE payments.clear_fee_bills SET status = 'collecting', attempts = attempts + 1, attempted_at = now(), last_error = NULL
+          WHERE id = $1 AND status IN ('due','short') RETURNING *`,
+        [bill.id],
+      );
+      if (c[0]) await audit(tx, { merchant: bill.merchant, actor: null, action: 'fee_bill.sending', ref, amountCents: amount, detail: { period: bill.period, attempt: c[0].attempts } });
+      return c;
+    });
+    if (!claimed[0]) continue;
 
     let result: Awaited<ReturnType<FeeCollector['collect']>>;
     try {
       result = await collector.collect({ merchant: bill.merchant, billId: bill.id, amountCents: amount });
     } catch (error) {
       // Maybe sent, maybe not: left `collecting` for a person. Retrying could take it twice.
-      await db.query('UPDATE payments.clear_fee_bills SET last_error = $2 WHERE id = $1', [bill.id, error instanceof Error ? error.message : String(error)]);
+      const message = error instanceof Error ? error.message : String(error);
+      await db.transaction(async (tx) => {
+        await tx.query('UPDATE payments.clear_fee_bills SET last_error = $2 WHERE id = $1', [bill.id, message]);
+        await audit(tx, { merchant: bill.merchant, actor: null, action: 'fee_bill.unconfirmed', ref, amountCents: amount, detail: { error: message } });
+      });
       out.unconfirmed.push(bill.id);
       continue;
     }
@@ -179,7 +189,11 @@ export async function collectBills(db: Db, collector: FeeCollector, opts: { merc
       });
       out.collected.push(bill.id);
     } else {
-      await db.query('UPDATE payments.clear_fee_bills SET status = $2, last_error = $3 WHERE id = $1', [bill.id, result.short ? 'short' : 'due', result.reason]);
+      const why = result;
+      await db.transaction(async (tx) => {
+        await tx.query('UPDATE payments.clear_fee_bills SET status = $2, last_error = $3 WHERE id = $1', [bill.id, why.short ? 'short' : 'due', why.reason]);
+        await audit(tx, { merchant: bill.merchant, actor: null, action: why.short ? 'fee_bill.short' : 'fee_bill.not_sent', ref, amountCents: amount, detail: { reason: why.reason } });
+      });
       if (result.short) out.short.push(bill.id);
     }
   }

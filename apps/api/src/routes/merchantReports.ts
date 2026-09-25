@@ -1,9 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import { merchantDb } from '../config/merchantDb.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
-import { requireManager, requireMerchant } from '../middleware/merchantAuth.js';
+import { requireManager, requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
 import { feeBills } from '../services/merchant/fees/feeBilling.js';
 import { overview } from '../services/merchant/overview.js';
+import { auditTrail } from '../services/merchant/security/audit.js';
 import { cardDeposits } from '../services/merchant/payouts/payoutSync.js';
 import { openFlags } from '../services/merchant/payouts/reconcile.js';
 
@@ -15,6 +16,8 @@ import { openFlags } from '../services/merchant/payouts/reconcile.js';
  *   GET /overview?from&to           sales by method, discounts, tips, tax, refunds, top items, day reports
  *   GET /reconciliation             where our books and the processor's disagree, open flags
  *   GET /clear-fee-bills            Clear's monthly fee bills (only a processor without a platform fee)
+ *   GET /audit?from&to              who did what to the money, and when (owners only: it names
+ *                                   everyone's actions and shows blind drawer counts)
  */
 
 const router = forwardAsyncErrors(Router());
@@ -34,6 +37,9 @@ router.get('/card-deposits', requireMerchant, requireManager, (req, res) =>
 );
 router.get('/overview', requireMerchant, requireManager, (req, res) => run(res, (db) => overview(db, { merchant: m(req), from: date(req.query.from, monthAgo()), to: date(req.query.to, today()) })));
 router.get('/reconciliation', requireMerchant, requireManager, (req, res) => run(res, (db) => openFlags(db, m(req))));
+router.get('/audit', requireMerchant, requireOwner, (req, res) =>
+  run(res, (db) => auditTrail(db, { merchant: m(req), from: date(req.query.from, monthAgo()), to: date(req.query.to, today()) })),
+);
 router.get('/clear-fee-bills', requireMerchant, requireManager, (req, res) =>
   run(res, async (db) =>
     (await feeBills(db, m(req))).map((b) => ({ id: b.id, period: b.period, amountCents: b.amountCents, status: b.status, txHash: b.txHash, collectedAt: b.collectedAt })),

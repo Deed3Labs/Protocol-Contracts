@@ -9,6 +9,7 @@ import * as postings from '../ledger/postings.js';
 import type { PinCheck } from './orderService.js';
 import { announceRefund, itemsOf, refundSplit, restock } from './refundBooks.js';
 import { settleOrder } from './settle.js';
+import { audit } from '../security/audit.js';
 
 /**
  * Card and cash refunds (card-processing prompt, Phase 6; the Charges reference). Two steps, as with
@@ -120,6 +121,14 @@ export async function requestRefund(db: Db, deps: RefundDeps, input: { merchant:
        VALUES ($1,$2,$3,$4,$5,$6,'requested',$7,$8,$9) RETURNING *`,
       [`rfd_${randomUUID()}`, input.merchant, t.id, r.amountCents, JSON.stringify(r.items), r.reason, r.idempotencyKey, requestHash, input.staff.id],
     );
+    await audit(tx, {
+      merchant: input.merchant,
+      actor: input.staff.id,
+      action: 'refund.requested',
+      ref: { type: 'refund', id: out[0]!.id },
+      amountCents: r.amountCents,
+      detail: { tenderId: t.id, method: t.method, items: r.items, reason: r.reason },
+    });
     return out[0]!;
   });
 
@@ -160,6 +169,16 @@ export async function decideRefund(
       status,
       approver.id,
     ]);
+    // Who decided, and whether they did it in their own session or by PIN at someone else's.
+    await audit(tx, {
+      merchant: input.merchant,
+      actor: input.staff.id,
+      approver: approver.id,
+      action: `refund.${status}`,
+      ref: { type: 'refund', id: r.id },
+      amountCents: Number(r.amount_cents),
+      detail: { byPin: approver.id !== input.staff.id },
+    });
     return rows[0]!;
   });
   if (decided.status !== 'approved') return toRefund(decided);
@@ -219,6 +238,7 @@ async function cashRefund(db: Db, input: { merchant: string; refundId: string; a
     await restock(tx, { merchant: input.merchant, refundId: r.id, items, actor: input.actor });
     await announceRefund(tx, { merchant: input.merchant, refundId: r.id, orderId: t.order_id });
     const { rows } = await tx.query<RefundRow>(`UPDATE payments.refunds SET status = 'succeeded', drawer_session_id = $2, updated_at = now() WHERE id = $1 RETURNING *`, [r.id, drawer.id]);
+    await audit(tx, { merchant: input.merchant, actor: input.actor, action: 'refund.cash_given', ref: { type: 'refund', id: r.id }, amountCents: amount, detail: { tenderId: t.id, drawerSessionId: drawer.id } });
     await settleOrder(tx, { merchant: input.merchant, orderId: t.order_id, actor: input.actor });
     return rows[0]!;
   });

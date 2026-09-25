@@ -9,6 +9,7 @@ import * as postings from '../ledger/postings.js';
 import type { PinCheck } from '../orders/orderService.js';
 import { getSettings } from '../shop/shopService.js';
 import { type CountRow, countsView } from './countsView.js';
+import { audit } from '../security/audit.js';
 
 /**
  * Counting the drawer and Close the day (card-processing prompt, Phase 7; the app's drawer sheets).
@@ -125,6 +126,8 @@ export async function saveCount(db: Db, input: { merchant: string; sessionId: st
       `INSERT INTO payments.drawer_counts (id, session_id, counter, method, notes, total_cents, second) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
       [`cnt_${randomUUID()}`, input.sessionId, input.staffId, c.method, c.method === 'notes' ? JSON.stringify(c.notes) : null, total, Boolean(first)],
     );
+    // Owners read the audit trail; counters never do, so a blind count stays blind to them.
+    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'drawer.counted', ref: { type: 'drawer_session', id: input.sessionId }, amountCents: total, detail: { second: Boolean(first), method: c.method } });
     if (session.status === 'open') await tx.query(`UPDATE payments.drawer_sessions SET status = 'counting' WHERE id = $1`, [session.id]);
   });
   return counts(db, { merchant: input.merchant, sessionId: input.sessionId, viewer: input.staffId });
@@ -145,6 +148,7 @@ export async function recount(db: Db, input: { merchant: string; sessionId: stri
     if (Number(target.total_cents) === Number(other.total_cents)) throw new CloseError('The counts agree; nothing to count again', 'invalid');
     if (target.counter !== input.staffId) throw new CloseError('Whoever made that count counts again', 'someone_else');
     await tx.query('UPDATE payments.drawer_counts SET superseded_at = now() WHERE id = $1', [target.id]);
+    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'drawer.recount', ref: { type: 'drawer_session', id: input.sessionId }, amountCents: Number(target.total_cents), detail: { which: input.which } });
   });
   return counts(db, { merchant: input.merchant, sessionId: input.sessionId, viewer: input.staffId });
 }
@@ -169,6 +173,15 @@ export async function signOff(db: Db, deps: { pinCheck: PinCheck }, input: { mer
       `INSERT INTO payments.drawer_signoffs (id, session_id, difference_cents, note, signed_by) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (session_id) DO NOTHING`,
       [`sgn_${randomUUID()}`, input.sessionId, view.differenceCents, parsed.data.note, signer.id],
     );
+    await audit(tx, {
+      merchant: input.merchant,
+      actor: input.staffId,
+      approver: signer.id,
+      action: 'drawer.signed_off',
+      ref: { type: 'drawer_session', id: input.sessionId },
+      amountCents: view.differenceCents,
+      detail: { note: parsed.data.note },
+    });
   });
   return counts(db, { merchant: input.merchant, sessionId: input.sessionId, viewer: input.staffId });
 }
@@ -316,6 +329,14 @@ export async function closeDay(db: Db, deps: { card: CardConnectorProvider | nul
       closedAt,
     ]);
     await tx.query(`UPDATE payments.drawer_sessions SET status = 'closed', closed_by = $2, closed_at = $3 WHERE id = $1`, [s.id, input.staffId, closedAt]);
+    await audit(tx, {
+      merchant: input.merchant,
+      actor: input.staffId,
+      action: 'day.closed',
+      ref: { type: 'drawer_session', id: s.id },
+      amountCents: r.drawer.countedCents,
+      detail: { businessDate: date, dayReportId: r.id, captured: captured.captured.length, captureFailures: captured.failed.map((f) => f.tenderId) },
+    });
     return r;
   });
   return { report, captureFailures: captured.failed };
