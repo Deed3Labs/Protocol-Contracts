@@ -353,7 +353,7 @@ reason for any difference, is written to `e2e/.report/index.html`.
   - No screen a counter shift can reach shows a payout, fee, cost or margin.
   - The nav locks Payouts and Overview for a counter shift.
   - Settings is You alone for a counter shift and a manager.
-- **The icon is the Clear mark**, as the brand draws it, in ink on paper. It is drawn into
+- **The icon is the Clear mark**, as the brand draws it, in paper on ink (the brand's dark green; switched from ink on paper at the user's request). It is drawn into
   `public/` by `scripts/icons.mjs`: the SVG, 180 for iOS, 192 and 512, and a maskable 512 that
   keeps the mark inside Android's safe circle. It replaces the purple placeholder, whose PNGs the
   manifest named but which didn't exist.

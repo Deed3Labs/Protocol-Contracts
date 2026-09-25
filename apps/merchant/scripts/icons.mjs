@@ -4,7 +4,7 @@
  * want 192 and 512, a maskable 512 for adaptive icons; iOS takes the 180 apple-touch-icon).
  *
  * The icon is the Clear mark, exactly as the brand draws it (ClearMark in src/brand/icons.tsx),
- * in ink on paper, the lockup's own colours. Square: the platform rounds it. The maskable one
+ * in paper on ink, the brand's dark green. Square: the platform rounds it. The maskable one
  * keeps the mark inside the middle 80%, the circle Android may crop to.
  *
  * Rasterised with the installed Chrome through Playwright, so nothing new is installed.
@@ -19,17 +19,17 @@ const INK = '#16211D';
 const pub = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'public');
 
 /** The mark, centred at 0,0 in its own 336 units (ClearMark, unaltered). */
-const MARK = `<g fill="none" stroke="${INK}">
-  <path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="${INK}"/>
-  <path d="M 0 -8 H 114 V 8 H 0 Z" fill="${INK}" stroke="none"/>
-  <circle cx="0" cy="0" r="34" fill="${INK}" stroke="none"/>
+const MARK = `<g fill="none" stroke="${PAPER}">
+  <path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" stroke-width="4" fill="${PAPER}"/>
+  <path d="M 0 -8 H 114 V 8 H 0 Z" fill="${PAPER}" stroke="none"/>
+  <circle cx="0" cy="0" r="34" fill="${PAPER}" stroke="none"/>
   <circle cx="131.5" cy="0" r="25.25" stroke-width="15.5"/>
 </g>`;
 
 /** The mark reaches 164.5 units from its centre; `scale` sizes it on a 512 square. */
 const icon = (scale, label = true) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"${label ? ' role="img" aria-label="Clear for Merchants"' : ''}>
-<rect width="512" height="512" fill="${PAPER}"/>
+<rect width="512" height="512" fill="${INK}"/>
 <g transform="translate(256 256) scale(${scale})">${MARK}</g>
 </svg>
 `;
