@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
-import { IconChevron, IconLock } from '@/brand/icons';
+import { IconBackChevron } from '@/brand/chargeIcons';
+import { IconChevron, IconClose, IconLock } from '@/brand/icons';
 import { Sheet } from '@/brand/ui';
 import { usd } from '@/home/model';
 import { roleLabel } from '@/shell/chrome';
 import type { OverviewModel } from '@/overview/model';
+import { money, type Statement } from '@/overview/statement';
 
 /**
  * Overview's blocks — docs/merchant-reference/clear-merchant-overview.html. Every cell ends in a
@@ -428,29 +430,39 @@ export function OverviewLocked({ name, onOwner }: { name: string; onOwner: () =>
 
 // ---- Sheets --------------------------------------------------------------------------------------
 
-export function StatementsSheet({ months, onClose }: { months: { t: string; det: string; cents: number }[]; onClose: () => void }) {
+/**
+ * The months, newest first. On a live shop (`onOpen`), a month opens its statement, and saving or
+ * sending happens there; the preview keeps the reference's buttons under the list.
+ */
+export function StatementsSheet({ months, onOpen, onClose }: { months: { t: string; det: string; cents: number }[]; onOpen?: (index: number) => void; onClose: () => void }) {
   return (
     <Sheet
       title="Statements"
       onClose={onClose}
       foot={
         <>
-          <div className="c-pair" style={{ marginBottom: 'var(--s2)' }}>
-            <button type="button" className="c-btn">
-              Download PDF
-            </button>
-            <button type="button" className="c-btn">
-              Send to my accountant
-            </button>
-          </div>
+          {onOpen ? (
+            <p className="c-det" style={{ marginBottom: 'var(--s1)' }}>
+              Open a month to save it as a PDF.
+            </p>
+          ) : (
+            <div className="c-pair" style={{ marginBottom: 'var(--s2)' }}>
+              <button type="button" className="c-btn">
+                Download PDF
+              </button>
+              <button type="button" className="c-btn">
+                Send to my accountant
+              </button>
+            </div>
+          )}
           <p className="c-det">Each statement lists every charge, every refund and the fee on each one. It reconciles to the payout that followed it.</p>
         </>
       }
     >
       <div className="c-rows">
-        {months.map((m) => (
+        {months.map((m, i) => (
           <div key={m.t}>
-            <div className="c-line" style={{ alignItems: 'center' }}>
+            <div className="c-line" style={{ alignItems: 'center', cursor: onOpen ? 'pointer' : undefined }} {...press(onOpen ? () => onOpen(i) : undefined)} aria-label={onOpen ? `${m.t} statement` : undefined}>
               <div>
                 <p style={{ margin: 0, fontSize: 'var(--t-sec)' }}>{m.t}</p>
                 <p className="c-det" style={{ marginTop: 3 }}>
@@ -465,6 +477,85 @@ export function StatementsSheet({ months, onClose }: { months: { t: string; det:
           </div>
         ))}
       </div>
+    </Sheet>
+  );
+}
+
+/** One month's statement, as it prints: Save as PDF is the print dialog's own choice. */
+export function MonthStatementSheet({
+  s,
+  error,
+  onPdf,
+  onBack,
+  onClose,
+}: {
+  /** Null while it loads. */
+  s: Statement | null;
+  error?: string | null;
+  onPdf: () => void;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet
+      label={s ? `${s.month} statement` : 'Statement'}
+      onClose={onClose}
+      head={
+        <div className="c-line" style={{ alignItems: 'center' }}>
+          <span className="c-mc-back" {...press(onBack)}>
+            <IconBackChevron />
+            <span className="c-mtitle">{s ? s.month : 'Statement'}</span>
+          </span>
+          <button type="button" className="c-mclose" aria-label="Close" onClick={onClose}>
+            <IconClose />
+          </button>
+        </div>
+      }
+      foot={
+        <>
+          <div className="c-pair" style={{ marginBottom: 'var(--s2)' }}>
+            <button type="button" className="c-btn c-btn-primary" disabled={!s} onClick={onPdf}>
+              Save as PDF
+            </button>
+            <button type="button" className="c-btn" disabled>
+              Send to my accountant
+            </button>
+          </div>
+          <p className="c-det">Save as PDF opens the print dialog, where it is one of the choices. Sending needs email, which isn’t set up yet.</p>
+        </>
+      }
+    >
+      {error ? (
+        <p className="c-det" role="alert" style={{ color: 'var(--absent)' }}>
+          {error}
+        </p>
+      ) : !s ? (
+        <p className="c-det">Reading the month…</p>
+      ) : (
+        <>
+          <p className="c-det" style={{ marginTop: 0 }}>
+            {s.period}
+            {s.inProgress ? ', in progress' : ''}
+          </p>
+          {s.sections.map((sec) => (
+            <div key={sec.title}>
+              <p className="c-label" style={{ margin: 'var(--s3) 0 var(--s1)' }}>
+                {sec.title}
+              </p>
+              <div className="c-rows">
+                {sec.rows.map(([k, v]) => (
+                  <div key={k}>
+                    <div className="c-line">
+                      <span style={{ fontSize: 'var(--t-sec)' }}>{k}</span>
+                      <span className="c-fig c-fig-row">{typeof v === 'number' ? money(v) : v}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </Sheet>
   );
 }

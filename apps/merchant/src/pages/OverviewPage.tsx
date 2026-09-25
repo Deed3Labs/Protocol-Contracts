@@ -4,7 +4,10 @@ import { useAuth } from '@/auth/authContext';
 import { OneColumn } from '@/brand/ui';
 import { api } from '@/data/apiClient';
 import { useMerchantApi } from '@/data/merchantApi';
-import { useApi } from '@/data/useApi';
+import { errorSentence, useApi } from '@/data/useApi';
+import { saveFile } from '@/lib/saveFile';
+import { salesCsv } from '@/overview/exportCsv';
+import { printStatement, statementOf, type Statement } from '@/overview/statement';
 import { liveMonth } from '@/overview/live';
 import { fromApi, REFERENCE, type OverviewModel } from '@/overview/model';
 import {
@@ -14,6 +17,7 @@ import {
   ItemsCell,
   MonthCard,
   MonthHero,
+  MonthStatementSheet,
   MonthsCell,
   OverviewLocked,
   OwedCell,
@@ -38,6 +42,8 @@ import { useShiftActions } from '@/shell/shiftActions';
  * A live shop's month, how it was paid, top items, discounts, tips, tax and the end-of-day reports
  * come from the merchant API (every way it was paid, not Clear alone); card processing from the
  * processor's deposits; Clear's fees, the payout position, terms and roster from the Clear API.
+ * Export saves the month's sales as a spreadsheet; Statements opens each month's statement, which
+ * prints (Save as PDF is the print dialog's). Sending to an accountant waits on email.
  * The preview: `?preview=1&screen=counter|statements|terms`; `?preview=1&live=1` runs it on the mock.
  */
 export default function OverviewPage() {
@@ -73,6 +79,9 @@ export default function OverviewPage() {
   );
   const roster = useApi(() => (preview ? Promise.resolve(null) : merchant.staff()), [preview]);
   const [open, setOpen] = useState<'statements' | 'terms' | null>(screen === 'statements' || screen === 'terms' ? screen : null);
+  // A month's statement, opened from Statements: loading (null) and then read.
+  const [statement, setStatement] = useState<{ s: Statement | null; error: string | null } | null>(null);
+  const [exportNote, setExportNote] = useState<string | null>(null);
 
   const m: OverviewModel | null = useMemo(() => {
     if (preview) return REFERENCE;
@@ -107,6 +116,36 @@ export default function OverviewPage() {
   );
   const people = <PeopleCell m={m} full={layout !== 'phone'} onStaff={go('/staff')} />;
   const more = m.more;
+  const shopName = profile?.name ?? 'Your shop';
+  /** Export: the month's sales, every way paid, as a spreadsheet. */
+  const exportMonth = async () => {
+    setExportNote(null);
+    try {
+      const history = await merchant.orderHistory(monthRange);
+      const names = new Map([...(staff ?? []), ...(roster.data ?? [])].map((x) => [x.id, x.name]));
+      const csv = salesCsv({ orders: history, clear: (charges ?? []).filter((c) => c.createdAt.slice(0, 10) >= monthRange.from), nameOf: (id) => names.get(id) ?? '—' });
+      const slug = shopName.toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'shop';
+      await saveFile(`${slug}-sales-${monthRange.from.slice(0, 7)}.csv`, csv, 'text/csv');
+    } catch (e) {
+      setExportNote(errorSentence(e));
+    }
+  };
+  /** A month's statement, from the months list ("Sep 2026"), newest first. */
+  const openStatement = async (t: string) => {
+    const first = new Date(`${t.replace(' ', ' 1, ')}`);
+    const from = ymd(first);
+    const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+    const inProgress = last >= new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const to = inProgress ? today : ymd(last);
+    const monthName = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    setStatement({ s: null, error: null });
+    try {
+      const [overview, deps] = await Promise.all([merchant.overview({ from, to }), merchant.cardDeposits({ from, to })]);
+      setStatement({ s: statementOf({ shop: shopName, month: monthName, from, to, inProgress, overview, deposits: deps }), error: null });
+    } catch (e) {
+      setStatement({ s: null, error: errorSentence(e) });
+    }
+  };
   const statements = [...m.months].reverse().map((x, i) => ({
     t: new Date(`${x.t.replace(' ', ' 1, ')}`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
     det: i === 0 ? `In progress · ${x.det.split(' · ')[0]}` : `Closed · ${x.det}`,
@@ -116,7 +155,12 @@ export default function OverviewPage() {
   return (
     <>
       <MonthHero m={m} onStatements={() => setOpen('statements')} />
-      <MonthCard m={m} />
+      <MonthCard m={m} onExport={preview ? undefined : () => void exportMonth()} />
+      {exportNote && (
+        <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
+          {exportNote}
+        </p>
+      )}
       {m.tip && <TipSlot tip={m.tip} onPeople={go('/staff')} />}
       {one ? (
         <div className="c-slab c-one">
@@ -161,7 +205,18 @@ export default function OverviewPage() {
           )}
         </>
       )}
-      {open === 'statements' && <StatementsSheet months={statements} onClose={() => setOpen(null)} />}
+      {open === 'statements' && !statement && (
+        <StatementsSheet months={statements} onOpen={preview ? undefined : (i) => void openStatement([...m.months].reverse()[i]!.t)} onClose={() => setOpen(null)} />
+      )}
+      {statement && (
+        <MonthStatementSheet
+          s={statement.s}
+          error={statement.error}
+          onPdf={() => statement.s && printStatement(statement.s)}
+          onBack={() => setStatement(null)}
+          onClose={() => (setStatement(null), setOpen(null))}
+        />
+      )}
       {open === 'terms' && <TermsSheet m={m} onClose={() => setOpen(null)} />}
     </>
   );
