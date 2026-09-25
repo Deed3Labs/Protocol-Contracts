@@ -60,7 +60,7 @@ export const SECTIONS: { key: Section; label: string; det: string; desc: string;
   { key: 'devices', label: 'Devices', det: 'What is paired with this tablet.', desc: 'Reader, printer, this tablet', live: true },
   { key: 'closing', label: 'Closing', det: 'How the drawer is opened, counted and signed off.', desc: 'The drawer, and who closes', live: true },
   { key: 'security', label: 'Security', det: 'How you sign in, and what is signed in as the shop.', desc: 'Sign-in, owner PIN, devices', live: true },
-  { key: 'notifications', label: 'Notifications', det: 'What reaches you, and where.', desc: 'What reaches you and how' },
+  { key: 'notifications', label: 'Notifications', det: 'What reaches you, and where.', desc: 'What reaches you and how', live: true },
   { key: 'advanced', label: 'Advanced', det: 'Business details, your data, and leaving.', desc: 'Business details, your data, leaving' },
   { key: 'help', label: 'Help', det: 'A person first, then the guides.', desc: 'A person, then the guides', live: true },
 ];
@@ -252,6 +252,8 @@ export interface Actions {
   onSettings?: (patch: ShopSettingsPatch) => void;
   /** Owners: an amount to change, in a sheet. */
   onAmount?: (edit: AmountEdit) => void;
+  /** Owners, live: where the end-of-day summary is emailed. */
+  onNotifyEmail?: () => void;
 }
 
 /** Counter and Devices on a live shop. */
@@ -477,6 +479,32 @@ function liveSelling(key: Section, l: LiveSelling, a: Actions): ReactNode {
         </>
       );
     }
+    case 'notifications': {
+      const n = s.notifications;
+      return (
+        <>
+          <Cell
+            label="By email"
+            det={n.email ?? 'No address yet'}
+            foot={<FootDet>Sent when the day is closed, so the figures are the final ones. Changes save as you make them.</FootDet>}
+          >
+            <Main>
+              <Rows link>
+                <Switch t="End-of-day summary" det="What was taken and how, the drawer, and tips by person" on={n.endOfDay} onChange={(on) => set({ notifications: { ...n, endOfDay: on } })} />
+                <Kv k="Send to" v={n.email ?? 'Add an address'} go onTap={a.onNotifyEmail} />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="On the way" det="Not yet" foot={<FootDet>A refund that needs you, a charge still waiting, stock running low and a payout sent come next. Home shows them today.</FootDet>}>
+            <Main>
+              <p className="c-det" style={{ margin: 0 }}>
+                The summary is the one notification by email for now.
+              </p>
+            </Main>
+          </Cell>
+        </>
+      );
+    }
     case 'closing':
       return (
         <>
@@ -548,7 +576,7 @@ const LOCKED: Record<Exclude<CardAvailability, { available: true }>['reason'], {
 export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
   if (!d.preview && (key === 'counter' || key === 'devices')) return d.liveShop ? liveCounterDevices(key, d.liveShop, a) : null;
   // A live shop's own settings, never the reference's example figures, even while they load.
-  if (!d.preview && (key === 'tax' || key === 'tips' || key === 'discounts' || key === 'closing')) return d.live ? liveSelling(key, d.live, a) : null;
+  if (!d.preview && (key === 'tax' || key === 'tips' || key === 'discounts' || key === 'closing' || key === 'notifications')) return d.live ? liveSelling(key, d.live, a) : null;
   switch (key) {
     case 'shop':
       return (

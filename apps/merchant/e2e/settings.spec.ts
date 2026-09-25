@@ -69,9 +69,24 @@ test('Tax: the shop’s own address, and prices with tax included', async ({ pag
   await expect(included).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('Notifications: the end-of-day summary, and where it goes', async ({ page }) => {
+  await open(page, 'notifications');
+  const summary = page.getByRole('switch', { name: 'End-of-day summary' });
+  await expect(summary).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByText('Add an address')).toBeVisible();
+  await page.getByText('Send to', { exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Send the summary to' });
+  await sheet.getByRole('textbox', { name: 'Email' }).fill('mike@mikestire.com');
+  await sheet.getByRole('button', { name: 'Save' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByText('mike@mikestire.com').first()).toBeVisible();
+  await summary.click();
+  await expect(summary).toHaveAttribute('aria-checked', 'false');
+});
+
 test('the live panes pass axe', async ({ page }) => {
   const { default: AxeBuilder } = await import('@axe-core/playwright');
-  for (const section of ['tax', 'tips', 'discounts', 'closing']) {
+  for (const section of ['tax', 'tips', 'discounts', 'closing', 'notifications']) {
     await open(page, section);
     const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
     expect(r.violations.map((v) => `${section}: ${v.id} ${v.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(', ')}`)).toEqual([]);

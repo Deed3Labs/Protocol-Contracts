@@ -126,6 +126,8 @@ export const ShopSettings = z.object({
   twoCounts: z.boolean(),
   /** A break: how long, and after how long on shift. Home shows who is due one. */
   breaks: z.object({ minutes: z.number().int().min(0).max(240), afterMinutes: z.number().int().min(60).max(960) }),
+  /** Settings › Notifications: the end-of-day summary, emailed when the day is closed, to `email`. */
+  notifications: z.object({ endOfDay: z.boolean(), email: z.string().trim().email('That isn’t an email address').nullable() }),
   /** When only one person is on at close. */
   onePersonClose: z.enum(['owner_next_morning', 'wait_for_second']),
   /** Store-and-forward on the M2 only; Tap to Pay is always online. */
@@ -151,6 +153,7 @@ export const DEFAULT_SETTINGS: Omit<ShopSettings, 'updatedAt'> = {
   tips: { enabled: true, mode: 'amounts', presets: [500, 1000, 2000], goTo: 'raiser' },
   startingCashCents: 15000,
   breaks: { minutes: 30, afterMinutes: 300 },
+  notifications: { endOfDay: true, email: null },
   twoCounts: true,
   onePersonClose: 'owner_next_morning',
   offlineCards: { enabled: false, limitCents: 50000 },

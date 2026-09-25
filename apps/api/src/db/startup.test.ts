@@ -21,7 +21,7 @@ const fakePool = {
 
 test('a fresh database gets the lazy merchant tables, then every migration', async () => {
   const applied = await runMerchantMigrations(fakePool);
-  expect(applied).toEqual(['0001_merchant_shop', '0002_commerce', '0003_payments', '0004_ledger', '0005_connector_status_and_event_retry', '0006_card_payments', '0007_checkout', '0008_refunds_receipts_tax', '0009_payouts_reconciliation', '0010_card_connectors_fee_billing', '0011_pin_failures_audit_log', '0012_shop_listing_hours', '0013_shifts_staff_hours', '0014_setup_marks']);
+  expect(applied).toEqual(['0001_merchant_shop', '0002_commerce', '0003_payments', '0004_ledger', '0005_connector_status_and_event_retry', '0006_card_payments', '0007_checkout', '0008_refunds_receipts_tax', '0009_payouts_reconciliation', '0010_card_connectors_fee_billing', '0011_pin_failures_audit_log', '0012_shop_listing_hours', '0013_shifts_staff_hours', '0014_setup_marks', '0016_end_of_day_email']);
   const { rows } = await pg.query<{ table_schema: string; n: number }>(
     `SELECT table_schema, count(*)::int AS n FROM information_schema.tables
       WHERE table_schema IN ('merchant','commerce','payments','ledger') GROUP BY table_schema ORDER BY table_schema`,

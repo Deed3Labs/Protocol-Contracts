@@ -1,4 +1,5 @@
 import type { Role } from '@clear/merchant-contracts';
+import { sendNotificationService } from '../services/sendNotificationService.js';
 import { Router, type Request, type Response } from 'express';
 import { merchantDb } from '../config/merchantDb.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
@@ -62,7 +63,7 @@ router.post('/drawer/:id/recount', requireMerchant, (req, res) =>
   run(res, (db) => close.recount(db, { merchant: m(req), sessionId: String(req.params.id), staffId: me(req), which: req.body?.which === 'second' ? 'second' : 'first' })),
 );
 router.post('/drawer/:id/signoff', requireMerchant, (req, res) => run(res, (db) => close.signOff(db, { pinCheck }, { merchant: m(req), sessionId: String(req.params.id), staffId: me(req), signOff: req.body })));
-router.post('/drawer/:id/close', requireMerchant, (req, res) => run(res, async (db) => close.closeDay(db, { card: await connectorForShop(db, m(req)) }, { merchant: m(req), sessionId: String(req.params.id), staffId: me(req) })));
+router.post('/drawer/:id/close', requireMerchant, (req, res) => run(res, async (db) => close.closeDay(db, { card: await connectorForShop(db, m(req)), mail: { configured: () => sendNotificationService.emailConfigured(), send: (e) => sendNotificationService.sendEmail(e) } }, { merchant: m(req), sessionId: String(req.params.id), staffId: me(req) })));
 router.get('/bank-deposits', requireMerchant, requireManager, (req, res) => run(res, (db) => close.bankDeposits(db, m(req))));
 router.post('/bank-deposits/:id/deposited', requireMerchant, requireManager, (req, res) => run(res, (db) => close.markDeposited(db, { merchant: m(req), depositId: String(req.params.id), staffId: me(req) })));
 router.get('/day-reports', requireMerchant, requireManager, (req, res) =>

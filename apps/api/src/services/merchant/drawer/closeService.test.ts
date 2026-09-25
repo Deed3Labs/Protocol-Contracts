@@ -10,6 +10,7 @@ import { createOrder, type OrderDeps } from '../orders/orderService.js';
 import { createCashTender } from '../orders/payments.js';
 import { updateSettings } from '../shop/shopService.js';
 import * as close from './closeService.js';
+import { daySummaryText } from './daySummary.js';
 import { openDrawer } from './drawerService.js';
 
 let db: Db;
@@ -180,3 +181,63 @@ describe('Close the day', () => {
     await expect(close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen })).rejects.toMatchObject({ code: 'counts_disagree' });
   });
 });
+
+describe('the end-of-day summary', () => {
+  const closeWith = async (settings: { endOfDay: boolean; email: string | null } | null, mail = { configured: () => true, sent: [] as Array<{ to: string; subject: string; body: string }> }) => {
+    const d = await day({ twoCounts: false });
+    if (settings) await updateSettings(db, { merchant: d.merchant, staffId: d.staff.owner, patch: { notifications: settings } });
+    await d.count(d.staff.jen, 21179);
+    const r = await close.closeDay(db, { card: null, mail: { configured: mail.configured, send: async (e) => void mail.sent.push(e) } }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    return { d, r, sent: mail.sent };
+  };
+
+  test('emailed when the day is closed, to the shop’s address', async () => {
+    const { d, sent } = await closeWith({ endOfDay: true, email: 'marcus@shop.example' });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toBe('marcus@shop.example');
+    expect(sent[0]!.subject).toMatch(/^Shop \d+: \$61\.79 taken /);
+    expect(sent[0]!.body).toContain('Closed by Jen');
+    expect(sent[0]!.body).toContain('Difference         none');
+    expect(sent[0]!.body).toContain('Jen  $5.00');
+    // Closing again (the same report) doesn't send it twice.
+    await close.closeDay(db, { card: null, mail: { configured: () => true, send: async (e) => void sent.push(e) } }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    expect(sent).toHaveLength(1);
+  });
+
+  test('not sent: switched off, no address, email not set up; a failed send never stops the close', async () => {
+    expect((await closeWith({ endOfDay: false, email: 'marcus@shop.example' })).sent).toHaveLength(0);
+    expect((await closeWith(null)).sent).toHaveLength(0);
+    expect((await closeWith({ endOfDay: true, email: 'marcus@shop.example' }, { configured: () => false, sent: [] })).sent).toHaveLength(0);
+    const d = await day({ twoCounts: false });
+    await updateSettings(db, { merchant: d.merchant, staffId: d.staff.owner, patch: { notifications: { endOfDay: true, email: 'marcus@shop.example' } } });
+    await d.count(d.staff.jen, 21179);
+    const r = await close.closeDay(db, { card: null, mail: { configured: () => true, send: async () => { throw new Error('Resend refused the email (500)'); } } }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    expect(r.report.takenCents).toBe(6179);
+  });
+
+  test('the text: a short day, a difference signed off, a card that couldn’t be captured', () => {
+    const t = daySummaryText(
+      {
+        id: 'r',
+        shop: 's',
+        businessDate: '2026-09-22',
+        takenCents: 125000,
+        byMethod: { clear: { count: 2, cents: 100000 }, card: { count: 1, cents: 20000 }, cash: { count: 1, cents: 5000 } },
+        tipsCents: 1500,
+        tipsByStaff: [{ staffId: 'j', cents: 1000, how: 'card' }, { staffId: 'j', cents: 500, how: 'cash' }],
+        taxCents: 1600,
+        discountsCents: 0,
+        refundsCents: 0,
+        drawer: { startingCashCents: 15000, expectedCents: 20000, countedCents: 19500, differenceCents: -500, leaveCents: 15000, toBankCents: 4000, signedOffBy: 'm' },
+        closedBy: 'l',
+        closedAt: '2026-09-23T01:02:00.000Z',
+      },
+      { shop: 'Mike’s Tire', nameOf: (id) => ({ j: 'Jen R.', m: 'Mike R.', l: 'Luis M.' })[id] ?? '?', captureFailures: 1 },
+    );
+    expect(t.subject).toBe('Mike’s Tire: $1,250.00 taken Tuesday, September 22');
+    expect(t.body).toContain('Difference         -$5.00, signed off by Mike R.');
+    expect(t.body).toContain('Jen R.  $15.00');
+    expect(t.body).toContain('1 card payment couldn’t be captured.');
+  });
+});
+

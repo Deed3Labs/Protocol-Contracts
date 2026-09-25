@@ -27,7 +27,6 @@ Work down it in order.
 
 **Not built yet** (none of these blocks the pilot):
 - Adding a bank, withdrawing to a bank by ACH, and statements. Plaid and Bridge are chosen for bank linking.
-- The end-of-day summary by email.
 - A reconciliation screen. Flags are read from the API for now (section 6).
 - Importing a spreadsheet into Inventory.
 - Splitting tips by hours. The shift clock now records hours, but tips still go to whoever raised the charge.
@@ -94,6 +93,7 @@ The M2 and Tap to Pay work only in the installed app (Capacitor, `org.useclear.m
 - [ ] **Each person's hours** are set in Staff, so the week shows cover, and Home's clock shows each shift's end.
 - [ ] **The shop's hours**, listing and contact are set in Settings › Shop, and the breaks rule in Settings › Counter.
 - [ ] **Discount limits** are agreed: counter 10%, manager 25%, owner no limit.
+- [ ] **The end-of-day summary** goes to Mike's email (Settings › Notifications): it arrives when the day is closed.
 - [ ] **The one-person close setting** is chosen: either one count signed off by the owner the next morning, or wait for a second person.
 - [ ] **The catalog** is entered, with the right **tax kind** on each item:
   - tires and parts: goods
