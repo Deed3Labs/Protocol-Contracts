@@ -154,6 +154,10 @@ export const Tender = z.object({
 });
 export type Tender = z.infer<typeof Tender>;
 
+/** An order with its tenders: a card, cash or split sale on the Charges list, or opened. */
+export const OrderWithTenders = Order.extend({ tenders: z.array(Tender) });
+export type OrderWithTenders = z.infer<typeof OrderWithTenders>;
+
 export const CreateCashTender = z.object({
   amountCents: PositiveCents,
   tipCents: NonNegativeCents,

@@ -192,9 +192,12 @@ Decided 2026-09-24.
   the charge stands and nobody has told the customer.
 - **Today's card sale opened** isn't drawn. It takes the split sale's layout, with Adjust the tip
   and Void in the footer, which is how the void and tip sheets are reached.
-- **What a live shop sees.** Its Clear charges from the API: the list, Raised today and How it
-  was paid, a charge opened, cancelling one, and the whole refund. Card, cash and split sales, the
-  goods refund, void and tip have no backend yet. Preview: `/charges?preview=1&screen=owner|late|
+- **What a live shop sees.** Everything on the list:
+  - Clear charges: opened, cancelled, and refunded through the whole Clear refund;
+  - card, cash and split sales from the order history (`GET /orders/history`): opened, voided the
+    same day with a manager's PIN, a card's tip adjusted before capture, and goods refunded.
+
+  "Pick dates" is listed but does nothing yet. Preview: `/charges?preview=1&screen=owner|late|
   counter|menu-filter|menu-sort`, `/charges/marcus?preview=1&screen=counter|refund|waiting|approve|
   refunded|declined`, `/charges/split?preview=1&screen=refund-goods`,
   `/charges/card?preview=1&screen=void|tip`; `&live=1` for the live path.
@@ -397,6 +400,27 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **The mock's day is Sep 22**, the reference day, while the clock is real. A counter shift's
   "Today and yesterday" is empty in the browser after that, so the Playwright checks fix the clock
   to 4:41pm on the reference day.
+
+## Card, cash and split sales in Charges
+
+- **One list, each dollar once.** A sale's row is its card and cash part. Its Clear part, if any,
+  is its own Clear charge row. A Clear-only order is only its Clear charge, and an order still
+  being paid isn't a sale yet. Voided sales stay listed as Voided.
+- **Order history is one request.** `orderHistory({from, to})` (`GET /orders/history`, 93 days at
+  most) returns each order with its tenders. The list asks for the month so far (and yesterday on
+  the 1st), which covers every filter. This is an addition to the merchant API contract.
+- **A refund goes back the way the money came:** the card first, then cash from the drawer, one
+  refund per tender, with the returned items on the first. A line of several asks how many come
+  back ("one of two tires"). Labour can't come back, so a sale that was only labour can't be
+  refunded from here.
+- **Who approves:** a manager's or owner's own request is approved as it's made (the server's
+  rule). A counter shift's waits on a sheet for a manager's or owner's PIN; nothing goes back until
+  then.
+- **Void needs a manager's or owner's PIN, always**, whoever is on shift (the server's rule): same
+  day, and before a card on it is captured at close.
+- **A same-day sale can also be refunded in part** ("Refund part") once card or cash has been taken,
+  beside Void. The reference only draws a refund once the sale has settled.
+- **Adjusting a tip** is for a card not yet captured. "Other" takes any amount.
 
 ## Staff PINs (first shift, reset, remove)
 
