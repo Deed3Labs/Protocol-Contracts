@@ -130,8 +130,8 @@ Decided 2026-09-24.
 - **A counter shift** is sent Home by the route, as for Payouts; its drawn page is at
   `screen=counter`, and its button opens the owner's sign-in.
 - **What a live shop sees.** The month, its trend and the writer line, recent charges, what is
-  owed, fees by plan, the months so far, the terms and the roster, all from the API. The second
-  slab needs card, cash, the catalogue and the drawer, so it's the preview's:
+  owed, fees by plan, the months so far, the terms and the roster, the second slab, Export and each
+  month's statement (below), all from the API. Sending to an accountant waits on email:
   `/overview?preview=1&screen=counter|statements|terms`; `&live=1` for the live path.
 
 ## Payouts
@@ -535,4 +535,21 @@ reason for any difference, is written to `e2e/.report/index.html`.
   can read the week through the API, though the Staff route itself stays owners and managers.
 - **Removing someone ends their shift**, on the server and in the mock, so they drop off the crew
   strip at once rather than on their next request.
+
+## Overview: Export and statements
+
+- **Export is a spreadsheet (CSV) of the month's sales**, one row a sale: when, the sale, the
+  customer, who raised it, its status, the items, subtotal, discount, tax, tip, total, how it was
+  paid and what's been refunded. It's made on the tablet from the order history Charges reads
+  (`orderHistory`), so it says what Charges says; a Clear charge with no order behind it is its own
+  row. A browser downloads it (`mikes-tire-sales-2026-09.csv`); the installed app, where a download
+  goes nowhere, opens the share sheet (Save to Files, Mail).
+- **A month's statement opens from Statements.** The reference puts Download PDF and Send to my
+  accountant under the list; on a live shop they move onto the month, since each statement is one
+  month. It shows sales by method, discounts, tips, tax, refunds, the card deposits (processor and
+  Clear fees, what reached the bank), tips by person and days closed, from `overview` and
+  `cardDeposits` for that month.
+- **"Save as PDF", not "Download PDF".** It opens the device's print dialog with the statement laid
+  out for letter paper, where Save as PDF (or Save to Files) is a choice. No PDF library is added.
+- **Send to my accountant is off** until email is wired (Resend, a provider item).
 
