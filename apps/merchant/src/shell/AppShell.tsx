@@ -25,6 +25,7 @@ import {
   type ProfileRow,
   type RosterPerson,
 } from '@/shell/chrome';
+import { ShiftActionsContext } from '@/shell/shiftActions';
 
 /**
  * The shell every signed-in screen sits in, at all three widths.
@@ -226,6 +227,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   // keeps the phone's own header and bar, with a back row above it.
   if (layout !== 'phone' && /^\/inventory\/[^/]+/.test(pathname)) return <OneColumn.Provider value={one}>{children}</OneColumn.Provider>;
 
+  const shiftActions = {
+    changeShift: () => setOpen('who'),
+    endShift: () => {
+      closeSheets();
+      void signOut();
+    },
+  };
+
   const header = {
     shop,
     current,
@@ -262,7 +271,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* No wrapper around the page: the reference's rules reach its blocks as direct children of
           the tablet (`.mc-tablet > .slab`), so the page's blocks sit right here. */}
-      <OneColumn.Provider value={one}>{children}</OneColumn.Provider>
+      <ShiftActionsContext.Provider value={shiftActions}>
+        <OneColumn.Provider value={one}>{children}</OneColumn.Provider>
+      </ShiftActionsContext.Provider>
 
       {layout === 'phone' && <PhoneNav current={current} role={role} onPlus={() => setOpen('plus')} onLocked={() => setOpen('owner')} />}
 

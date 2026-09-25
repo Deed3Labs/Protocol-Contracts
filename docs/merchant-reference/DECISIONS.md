@@ -93,6 +93,33 @@ Decided 2026-09-24.
 - **Running low sits on Home** for owners and managers, as the Inventory reference asks
   (preview: `/?preview=1&home=lowStock`).
 
+## Staff
+
+- **Neutral pronouns.** "Remind her" is "Remind them"; "she sets her PIN the first time she does"
+  is "they set their PIN the first time they do"; "Reset her PIN", "Keep her", "Her PIN",
+  "Charges she raised", "If she comes back", "Keep her name", "Add her again" take they, them
+  and their; "She is on shift. Removing her ends it." is "Jen is on shift. Removing them ends
+  it."; "Her other days stay", "Her usual hours come back" and "a day she does not work" likewise.
+  Add someone's note is "They choose their own four digits on their first shift", which keeps
+  the reference's two lines.
+- **The counter view as drawn.** The reference's counter shift shows two on the counter (Jen and
+  Luis) while its Team still says "3 on now". The preview keeps both as drawn; a live shop's
+  figures come from one source.
+- **Managers add counter staff only.** The roles cell says only an owner handles managers, so Add
+  someone offers Manager to an owner alone. (The API also lets a manager add a manager.)
+- **A manager's Refund limit** isn't drawn. It takes the counter's read-only form, with "Above
+  it, the owner approves." The API gives the limit to owners only, so a manager sees "—".
+- **An owner's own sheet** has no Reset or Remove: owners are added by Clear, not from the app.
+- **The limit at Off** shows $0.00 and one row, "Every refund: Your PIN, or your phone". The
+  reference draws only $500.
+- **What a live shop sees.** The API has the roster, charges this month and the refund limit,
+  and it adds people. Shifts, hours, removing someone and resetting a PIN have no backend yet
+  (card-processing prompt, Phase 7). So a live shop sees the team, the roles and the limit, and
+  can add someone and change the limit. The crew strip, the slot, the week and a person's sheet
+  are the preview's: `/staff?preview=1&screen=owner|counter|first|busy|add|person|remove|hours|
+  hours-week|day-hours|hours-friday|limit`, and `&live=1` for the live path. The route stays
+  owners and managers only, as agreed; the counter view is reached through `screen=counter`.
+
 ## Adaptations: the reference doesn't draw these
 
 - **Frames become the screen.** The tablet's 1180:820 outline and the phone's 340px outline go.
@@ -111,3 +138,5 @@ Decided 2026-09-24.
   button never leave the screen. The phone scrolls as a page.
 - **Theme is pinned to light** until the Dusk and Dark pass, which comes after every screen is
   converted. The profile sheet still stores the choice.
+- **Staff's slab footers on a phone** drop the tablet frame's footer layout (flex, full-width
+  children), which the reference applies to its tablet frame only.
