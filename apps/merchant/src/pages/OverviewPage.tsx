@@ -1,187 +1,136 @@
-import { Link } from 'react-router-dom';
-import { CHARGE_LABEL, countsAsVolume, dollars, formatCalendarDate, fromCents, isPending } from '@clear/domain';
-import { Cap, Card, Lbl, Pill } from '@/shell/ui';
+import { useContext, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/auth/authContext';
+import { OneColumn } from '@/brand/ui';
 import { api } from '@/data/apiClient';
 import { useApi } from '@/data/useApi';
+import { fromApi, REFERENCE, type OverviewModel } from '@/overview/model';
+import {
+  EodCell,
+  ExtrasCell,
+  FeesCell,
+  ItemsCell,
+  MonthCard,
+  MonthHero,
+  MonthsCell,
+  OverviewLocked,
+  OwedCell,
+  PaidByCell,
+  PeopleCell,
+  RecentCell,
+  StatementsSheet,
+  TermsCell,
+  TermsSheet,
+  TipSlot,
+} from '@/overview/views';
+import { useLayout } from '@/lib/useBreakpoint';
+import { useShiftActions } from '@/shell/shiftActions';
 
 /**
- * Overview — reference section 10.
+ * Overview — docs/merchant-reference/clear-merchant-overview.html.
  *
- * Everything an owner asks at month end, and nothing a writer needs mid-shift. It took the fifth
- * nav slot from Settings, which is the right trade: this is a question a shop asks weekly and
- * Settings is one it asks twice a year.
+ * Everything an owner asks at month end, and nothing a writer needs mid-shift. The same three
+ * blocks as Home: the month as the figure, the month as the live component, one insight as the
+ * slot, then the slab. It answers and does not manage: every cell links to the page that does.
  *
- * The layout is the reference's own, not the two-column shell the shift screens use: three figures
- * across the top, then recent charges beside a narrower column of terms and staff. A back-office
- * screen is read at a desk in one pass rather than glanced at across a counter, so it is denser
- * and wider than anything the counter uses.
+ * A live shop's figures come from its charges, payout position, profile and roster. How it was
+ * paid, top items, discounts, tips, tax and the end-of-day reports need card, cash, the catalogue
+ * and the drawer, so that second slab is the preview's: `?preview=1&screen=counter|statements|terms`.
  */
-
-const startOfMonth = () => {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
-};
-
-/** "today", "yesterday", then the date — the reference's own phrasing for the recent list. */
-function whenLabel(iso: string): string {
-  const d = new Date(iso);
-  const today = new Date();
-  if (d.toDateString() === today.toDateString()) return 'today';
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return 'yesterday';
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function Figure({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <Card className="!px-[17px] !py-[15px]">
-      <Lbl>{label}</Lbl>
-      <p className="m-0 text-[25px] font-medium tabular-nums">{value}</p>
-      <p className="m-0 mt-[5px] text-[11.5px] text-[var(--clear-text-muted)]">{sub}</p>
-    </Card>
-  );
-}
-
-function TermRow({ label, value, first }: { label: string; value: string; first?: boolean }) {
-  return (
-    <div className={`flex justify-between gap-3 text-[12.5px] ${first ? '' : 'mt-[7px]'}`}>
-      <span className="text-[var(--clear-text-secondary)]">{label}</span>
-      <span className="tabular-nums">{value}</span>
-    </div>
-  );
-}
-
 export default function OverviewPage() {
-  const { data: charges, loading } = useApi(() => api.charges({ limit: 300 }), []);
-  const { data: position } = useApi(() => api.payouts(), []);
-  const { data: profile } = useApi(() => api.profile(), []);
-  const { data: staff } = useApi(() => api.staff(), []);
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const one = useContext(OneColumn);
+  const layout = useLayout();
+  const shift = useShiftActions();
+  const { session } = useAuth();
 
-  const month = (charges ?? []).filter(
-    (c) => Date.parse(c.createdAt) >= startOfMonth() && countsAsVolume(c.state),
+  const preview = import.meta.env.DEV && params.get('preview') === '1' && params.get('live') !== '1';
+  const screen = preview ? (params.get('screen') ?? '') : '';
+  const q = preview ? '?preview=1' : '';
+
+  const { data: charges, loading } = useApi(() => (preview ? Promise.resolve(null) : api.charges({ limit: 300 })), [preview]);
+  const { data: position } = useApi(() => (preview ? Promise.resolve(null) : api.payouts()), [preview]);
+  const { data: profile } = useApi(() => (preview ? Promise.resolve(null) : api.profile()), [preview]);
+  const { data: staff } = useApi(() => (preview ? Promise.resolve(null) : api.staff()), [preview]);
+  const [open, setOpen] = useState<'statements' | 'terms' | null>(screen === 'statements' || screen === 'terms' ? screen : null);
+
+  const m: OverviewModel | null = useMemo(
+    () => (preview ? REFERENCE : loading ? null : fromApi({ charges: charges ?? [], position, profile, staff })),
+    [preview, loading, charges, position, profile, staff],
   );
-  const total = month.reduce((sum, c) => sum + c.amount, 0);
-  const average = month.length > 0 ? total / month.length : 0;
-  // From what the shop was actually paid, not from today's rate: a charge carries the rate that
-  // applied when it was raised, and that is the figure that reconciles.
-  const fees = month.reduce((sum, c) => sum + (c.payout === undefined ? 0 : c.amount - c.payout), 0);
-  const ratePercent =
-    profile?.discountRate == null ? null : Math.round(profile.discountRate * 1000) / 10;
-  const recent = (charges ?? []).slice(0, 5);
+
+  if (screen === 'counter') return <OverviewLocked name="Jen" onOwner={shift.ownerSignIn} />;
+  if (!m || !session) return null;
+
+  const go = (to: string) => () => navigate(`${to}${q}`);
+  const recent = <RecentCell m={m} onAll={go('/charges')} />;
+  const owed = m.owed && <OwedCell o={m.owed} onPayouts={go('/payouts')} />;
+  const fees = <FeesCell m={m} />;
+  const months = <MonthsCell m={m} />;
+  const terms = (
+    <div style={{ display: 'contents' }} onClick={() => setOpen('terms')}>
+      <TermsCell m={m} />
+    </div>
+  );
+  const people = <PeopleCell m={m} full={layout !== 'phone'} onStaff={go('/staff')} />;
+  const more = m.more;
+  const statements = [...m.months].reverse().map((x, i) => ({
+    t: new Date(`${x.t.replace(' ', ' 1, ')}`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    det: i === 0 ? `In progress · ${x.det.split(' · ')[0]}` : `Closed · ${x.det}`,
+    cents: x.cents,
+  }));
 
   return (
-    <div className="@container">
-      {/* Three figures across, stacking on anything narrow. */}
-      <div className="mb-3 grid grid-cols-1 gap-3 @[560px]:grid-cols-3">
-        <Figure
-          label="This month"
-          value={dollars(total)}
-          sub={
-            loading
-              ? 'Loading…'
-              : month.length === 0
-                ? 'No charges yet this month'
-                : `${month.length} charges · avg ${dollars(average)}`
-          }
-        />
-        <Figure
-          label="Owed to you"
-          value={dollars(fromCents(position?.owedCents ?? 0))}
-          sub={
-            position?.nextPayoutOn
-              ? `Next payout ${formatCalendarDate(position.nextPayoutOn)}`
-              : 'Next payout not scheduled yet'
-          }
-        />
-        <Figure
-          label="Fees this month"
-          value={month.length === 0 ? '—' : dollars(fees)}
-          sub={ratePercent === null ? 'Your agreed rate' : `${ratePercent}% · your rate`}
-        />
-      </div>
-
-      {/* Recent charges beside a narrower column, as the reference has it. */}
-      <div className="grid grid-cols-1 gap-4 @[760px]:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
-        <Card className="!px-[17px] !py-[15px]">
-          <Cap>Recent charges</Cap>
-          {recent.length === 0 ? (
-            <p className="m-0 mt-1 text-[13px] text-[var(--clear-text-muted)]">
-              {loading ? 'Loading…' : 'Nothing yet.'}
-            </p>
-          ) : (
-            recent.map((c) => (
-              <div
-                key={c.code}
-                className="flex items-center justify-between gap-3 border-b-[0.5px] border-[var(--clear-border)] py-3 text-[13px] last:border-b-0"
-              >
-                <Link to={`/charges/${c.code}`} className="min-w-0 truncate">
-                  {c.memberName ?? 'Not opened yet'} · {whenLabel(c.createdAt)}
-                </Link>
-                {isPending(c.state) ? (
-                  <Pill tone="pending">{CHARGE_LABEL[c.state]}</Pill>
-                ) : (
-                  <span className="shrink-0 tabular-nums">{dollars(c.amount)}</span>
-                )}
-              </div>
-            ))
+    <>
+      <MonthHero m={m} onStatements={() => setOpen('statements')} />
+      <MonthCard m={m} />
+      {m.tip && <TipSlot tip={m.tip} onPeople={go('/staff')} />}
+      {one ? (
+        <div className="c-slab c-one">
+          {owed}
+          {fees}
+          {months}
+          {recent}
+          {terms}
+          {people}
+          {more && (
+            <>
+              <PaidByCell more={more} onCharges={go('/charges')} />
+              <ItemsCell more={more} onInventory={go('/inventory')} />
+              <ExtrasCell more={more} onTax={go('/settings/tax')} />
+              <EodCell more={more} onAll={go('/close')} />
+            </>
           )}
-        </Card>
-
-        <div>
-          <Card className="mb-3 !px-[17px] !py-[15px]">
-            <Cap>Your terms</Cap>
-            <TermRow
-              first
-              label="Rate"
-              value={ratePercent === null ? '—' : `${ratePercent}%`}
-            />
-            <TermRow label="Payout" value={profile?.payoutTerms ?? '—'} />
-            <TermRow
-              label="Approval cap"
-              value={
-                profile?.approvalCapCents == null
-                  ? '—'
-                  : dollars(fromCents(profile.approvalCapCents))
-              }
-            />
-            {profile?.founding && (
-              <p className="m-0 mt-2.5 text-[11px] leading-[1.55] text-[var(--clear-text-muted)]">
-                Founding partner — first five shops.
-              </p>
-            )}
-          </Card>
-
-          <Card className="!px-[17px] !py-[15px]">
-            <Cap>Staff</Cap>
-            {(staff ?? []).filter((s) => s.active).length === 0 ? (
-              <p className="m-0 mt-1 text-[12.5px] text-[var(--clear-text-muted)]">
-                Nobody on the roster yet.
-              </p>
-            ) : (
-              (staff ?? [])
-                .filter((s) => s.active)
-                .map((s, i) => (
-                  <div
-                    key={s.id}
-                    className={`flex justify-between gap-3 text-[12.5px] ${i === 0 ? '' : 'mt-[7px]'}`}
-                  >
-                    <span className="min-w-0 truncate">
-                      {s.name.split(' ')[0]} · {s.role}
-                    </span>
-                    <span className="shrink-0 text-[var(--clear-text-muted)]">
-                      {s.role === 'owner'
-                        ? 'Full access'
-                        : s.role === 'manager'
-                          ? 'Runs the shop'
-                          : 'Can charge'}
-                    </span>
-                  </div>
-                ))
-            )}
-          </Card>
         </div>
-      </div>
-    </div>
+      ) : (
+        <>
+          <div className="c-slab">
+            {recent}
+            <div className="c-col">
+              {owed}
+              {fees}
+              {months}
+              {terms}
+            </div>
+            {people}
+          </div>
+          {more && (
+            <div className="c-slab c-ov-slab2">
+              <div className="c-col">
+                <PaidByCell more={more} onCharges={go('/charges')} />
+                <ItemsCell more={more} onInventory={go('/inventory')} />
+              </div>
+              <div className="c-col">
+                <ExtrasCell more={more} onTax={go('/settings/tax')} />
+                <EodCell more={more} onAll={go('/close')} />
+              </div>
+            </div>
+          )}
+        </>
+      )}
+      {open === 'statements' && <StatementsSheet months={statements} onClose={() => setOpen(null)} />}
+      {open === 'terms' && <TermsSheet m={m} onClose={() => setOpen(null)} />}
+    </>
   );
 }
