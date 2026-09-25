@@ -124,6 +124,9 @@ try {
   await check('saveOptionGroups', C.CatalogItem, () => manager.saveOptionGroups(tire.id, [{ name: 'Road hazard', rule: 'one', required: false, position: 0, options: [{ id: 'new', name: 'Warranty', deltaCents: 2000, position: 0 }] }] as never));
   await check('adjustStock', C.CatalogItem, () => manager.adjustStock({ itemId: tire.id, kind: 'receive', quantity: 8, reason: null }));
   await check('stockHistory', C.StockMovement.array(), () => manager.stockHistory(tire.id));
+  await check('importCatalog', C.ImportResult, () =>
+    manager.importCatalog({ rows: [{ name: 'Michelin Defender2', detail: '225/65R17', category: 'Tires', priceCents: 18900, costCents: 13200, quantity: 2, reorderAt: null }, { name: 'Valve stem', detail: null, category: null, priceCents: 500, costCents: null, quantity: 40, reorderAt: 10 }] }),
+  );
   const reorder = await check('markReordered', C.Reorder, () => manager.markReordered({ itemId: tire.id, quantity: 4, supplier: 'ATD', expectedOn: null }));
   await check('reorders', C.Reorder.array(), () => manager.reorders());
   if (reorder) await check('receiveReorder', C.Reorder, () => manager.receiveReorder(reorder.id, { quantity: 4 }));

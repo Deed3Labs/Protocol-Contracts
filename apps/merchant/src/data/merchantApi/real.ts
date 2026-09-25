@@ -60,6 +60,7 @@ export function realMerchantApi(request: Transport): MerchantApi {
     // ---- The catalogue and stock
     catalog: () => get('/catalog'),
     createItem: (input) => post('/catalog/items', input),
+    importCatalog: (input) => post('/catalog/import', input),
     updateItem: (itemId, input) => send('PATCH', `/catalog/items/${id(itemId)}`, input),
     archiveItem: (itemId) => post(`/catalog/items/${id(itemId)}/archive`),
     saveOptionGroups: (itemId, groups) => send('PUT', `/catalog/items/${id(itemId)}/options`, { groups }),
