@@ -375,8 +375,11 @@ export function CashAccountCell({ m, onWithdraw, onSpend, onReceive }: { m: Payo
 }
 
 /** What the last close left: in the drawer, to the bank (amber until it is), tips owed. */
-export function CashTipsCell({ d, me }: { d: NonNullable<PayoutsModel['drawer']>; me: string }) {
-  const [deposited, setDeposited] = useState(d.deposited);
+export function CashTipsCell({ d, me, onMark }: { d: NonNullable<PayoutsModel['drawer']>; me: string; onMark?: () => Promise<void> }) {
+  // A live shop marks it on the server (and the figure comes back from there); the preview here.
+  const [marked, setMarked] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const deposited = d.deposited ?? marked;
   const row = (t: string, det: ReactNode, cents: number, pend?: boolean) => (
     <div>
       <div className="c-kv">
@@ -410,12 +413,21 @@ export function CashTipsCell({ d, me }: { d: NonNullable<PayoutsModel['drawer']>
             type="button"
             className={cx('c-btn c-po-dep', deposited && 'c-done')}
             disabled={!!deposited}
-            onClick={() => setDeposited(`Deposited today by ${me}`)}
+            onClick={() =>
+              onMark
+                ? void onMark().catch((e: unknown) => setError(e instanceof Error ? e.message : 'That couldn’t be marked. Try again.'))
+                : setMarked(`Deposited today by ${me}`)
+            }
           >
             <IconCheck15 />
             <span>{deposited ? 'Deposited' : 'Mark deposited'}</span>
           </button>
         </div>
+        {error && (
+          <p className="c-det" role="alert" style={{ color: 'var(--absent)', marginTop: 6 }}>
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );

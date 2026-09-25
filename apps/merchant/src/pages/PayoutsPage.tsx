@@ -5,7 +5,9 @@ import { useAuth } from '@/auth/authContext';
 import { OwnerSignIn } from '@/auth/OwnerSignIn';
 import { OneColumn } from '@/brand/ui';
 import { api, type PayoutPosition } from '@/data/apiClient';
+import { useMerchantApi } from '@/data/merchantApi';
 import { useApi } from '@/data/useApi';
+import { cardRows, drawerCash } from '@/payouts/live';
 import GrantSignerPanel from '@/payouts/GrantSignerPanel';
 import { fromPosition, NONE, PAYING, REFERENCE, YEAR_ON, type HistRow, type PayoutsModel } from '@/payouts/model';
 import {
@@ -32,8 +34,9 @@ import { useShiftActions } from '@/shell/shiftActions';
  * top. Then the payout cycle, counting down to the day the rest releases, and the slab: the
  * payouts themselves, where the money sits, the cash account, and the drawer's cash and tips.
  *
- * A live shop's figures come from the payout position, and Withdraw and the signer grant are live.
- * Card deposits, the drawer, receiving by ACH and adding a bank have no backend yet, so they are
+ * A live shop's figures come from the payout position, and Withdraw and the signer grant are live;
+ * card deposits and the drawer's cash and tips come from the merchant API (UI Phase 6, step 8), and
+ * a deposit is marked there. Receiving by ACH and adding a bank have no backend yet, so they are
  * the preview's: `?preview=1&screen=none|paying|year|counter|withdraw|from|to|sending|done|
  * breakdown|receive|destinations|add-bank`.
  */
@@ -89,6 +92,14 @@ export default function PayoutsPage() {
    */
   const { data: signer, reload: reloadSigner } = useApi(() => (preview ? Promise.resolve(null) : api.signerStatus()), [preview]);
   const [granting, setGranting] = useState(false);
+  // Card deposits (the last month) and the last close's cash and tips.
+  const merchant = useMerchantApi();
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const month = { from: iso(new Date(Date.now() - 31 * 86_400_000)), to: iso(new Date(Date.now() + 7 * 86_400_000)) };
+  const deposits = useApi(() => (preview ? Promise.resolve(null) : merchant.cardDeposits(month)), [preview]);
+  const reports = useApi(() => (preview ? Promise.resolve(null) : merchant.dayReports(month)), [preview]);
+  const bankDeps = useApi(() => (preview ? Promise.resolve(null) : merchant.bankDeposits()), [preview]);
+  const roster = useApi(() => (preview ? Promise.resolve(null) : merchant.staff()), [preview]);
 
   const stages: Stage[] = ['from', 'to', 'sending', 'done'];
   const [open, setOpen] = useState<Open>(() =>
@@ -102,7 +113,7 @@ export default function PayoutsPage() {
   if (screen === 'counter') return <PayoutsLocked onOwner={shift.ownerSignIn} />;
 
   const bank = preview ? REFERENCE.bank : (profile?.payoutAccount ?? null);
-  const m: PayoutsModel | null = preview
+  const base: PayoutsModel | null = preview
     ? screen === 'none'
       ? NONE
       : screen === 'paying'
@@ -115,6 +126,8 @@ export default function PayoutsPage() {
       : loading
         ? null
         : UNREAD;
+  const lastClose = preview || !reports.data || !bankDeps.data ? null : drawerCash(reports.data, bankDeps.data, (id) => roster.data?.find((x) => x.id === id)?.name ?? '—');
+  const m: PayoutsModel | null = !base || preview ? base : { ...base, card: cardRows(deposits.data ?? [], bank), ...(lastClose ? { drawer: lastClose } : {}) };
   if (!m) return null;
 
   const pos = preview ? PREVIEW_POSITION : position;
@@ -136,7 +149,20 @@ export default function PayoutsPage() {
   );
   const sits = <WhereItSitsCell m={m} onBank={() => setOpen('destinations')} onDay={() => navigate(`/settings/payouts${preview ? '?preview=1' : ''}`)} />;
   const cash = <CashAccountCell m={m} onWithdraw={() => withdraw('cash')} onReceive={preview ? () => setOpen('receive') : undefined} />;
-  const tips = m.drawer && <CashTipsCell d={m.drawer} me={me} />;
+  const tips = m.drawer && (
+    <CashTipsCell
+      d={m.drawer}
+      me={me}
+      onMark={
+        lastClose?.depositId
+          ? async () => {
+              await merchant.markDeposited(lastClose.depositId!);
+              bankDeps.reload();
+            }
+          : undefined
+      }
+    />
+  );
 
   return (
     <>
