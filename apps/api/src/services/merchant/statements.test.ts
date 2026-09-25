@@ -47,7 +47,7 @@ describe('a statement by email', () => {
     expect(r).toEqual({ sentTo: 'books@acme-accounting.com' });
     expect(sent[0]!.subject).toMatch(/^Shop \d+: statement for August 2026$/);
     expect(sent[0]!.body).toContain('Taken (0 sales)');
-    const { rows } = await db.query<{ detail: { domain: string } }>(`SELECT detail FROM payments.audit_log WHERE merchant = $1 AND action = 'statement.sent'`, [merchant]);
+    const { rows } = await db.query<{ detail: Record<string, string> }>(`SELECT detail FROM payments.audit_log WHERE merchant = $1 AND action = 'statement.sent'`, [merchant]);
     expect(rows[0]!.detail).toEqual({ from: '2026-08-01', to: '2026-08-31', domain: 'acme-accounting.com' });
   });
 
