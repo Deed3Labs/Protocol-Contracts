@@ -36,6 +36,7 @@ export function fakeProvider() {
     status: 0,
     locations: [] as Array<{ account: string; name: string }>,
     tokens: [] as Array<{ account: string; locationId: string }>,
+    locationUpdates: [] as Array<{ account: string; locationId: string; name: string; city: string }>,
     raises: [] as Array<{ paymentId: string; amountCents: number; applicationFeeCents: number }>,
     captures: [] as Array<{ paymentId: string; amountCents: number; applicationFeeCents: number }>,
     cancels: [] as string[],
@@ -83,6 +84,9 @@ export function fakeProvider() {
     async createLocation(account, { name }) {
       calls.locations.push({ account, name });
       return { locationId: id('tml') };
+    },
+    async updateLocation(account, locationId, { name, address }) {
+      calls.locationUpdates.push({ account, locationId, name, city: address.city });
     },
     async connectionToken(account, locationId) {
       calls.tokens.push({ account, locationId });

@@ -21,6 +21,7 @@ import { redeemForMerchant, redemptionConfigured } from '../services/merchant/pa
 import { clearSignerStatus, confirmClearSigner, prepareClearSigner } from '../services/merchant/clearSignerGrant.js';
 import merchantCardsRouter from './merchantCards.js';
 import merchantTendersRouter from './merchantTenders.js';
+import merchantShopRouter from './merchantShop.js';
 
 /**
  * The merchant surface.
@@ -44,6 +45,8 @@ const merchantRouter = forwardAsyncErrors(Router());
 merchantRouter.use('/cards', merchantCardsRouter);
 // Card tenders: create, sync, void, tip (routes/merchantTenders.ts).
 merchantRouter.use(merchantTendersRouter);
+// The shop and its settings (routes/merchantShop.ts).
+merchantRouter.use(merchantShopRouter);
 
 /** Sign-in is scoped to one shop: a four-digit PIN only means anything against a merchant. */
 function merchantOf(req: Request): string {

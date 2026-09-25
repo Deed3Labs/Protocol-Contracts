@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { CardDeclined, type CardConnectorProvider, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
+import { type Address, CardDeclined, type CardConnectorProvider, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
 
 /**
  * Stripe as a card connector: Connect, Standard accounts, direct charges (card-processing prompt,
@@ -110,6 +110,15 @@ async function readerAware<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
+const stripeAddress = (a: Address) => ({
+  line1: a.line1,
+  ...(a.line2 ? { line2: a.line2 } : {}),
+  city: a.city,
+  state: a.region,
+  postal_code: a.postalCode,
+  country: a.country,
+});
+
 async function declineAware<T>(call: () => Promise<T>): Promise<T> {
   try {
     return await call();
@@ -165,21 +174,12 @@ export function stripeConnector(stripe: Stripe): CardConnectorProvider {
     },
 
     async createLocation(account, { name, address }) {
-      const location = await stripe.terminal.locations.create(
-        {
-          display_name: name,
-          address: {
-            line1: address.line1,
-            ...(address.line2 ? { line2: address.line2 } : {}),
-            city: address.city,
-            state: address.region,
-            postal_code: address.postalCode,
-            country: address.country,
-          },
-        },
-        { stripeAccount: account },
-      );
+      const location = await stripe.terminal.locations.create({ display_name: name, address: stripeAddress(address) }, { stripeAccount: account });
       return { locationId: location.id };
+    },
+
+    async updateLocation(account, locationId, { name, address }) {
+      await stripe.terminal.locations.update(locationId, { display_name: name, address: stripeAddress(address) }, { stripeAccount: account });
     },
 
     async connectionToken(account, locationId) {

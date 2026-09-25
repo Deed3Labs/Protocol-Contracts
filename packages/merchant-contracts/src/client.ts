@@ -22,7 +22,7 @@ import type {
   RequestRefund,
   Tender,
 } from './orders';
-import type { Shop, ShopSettings, ShopSettingsPatch, Staff } from './shop';
+import type { Shop, ShopPatch, ShopSettings, ShopSettingsPatch, Staff } from './shop';
 
 type In<T extends z.ZodType> = z.input<T>;
 type Range = { from: z.infer<typeof BusinessDate>; to: z.infer<typeof BusinessDate> };
@@ -40,6 +40,8 @@ type Range = { from: z.infer<typeof BusinessDate>; to: z.infer<typeof BusinessDa
 export interface MerchantApi {
   // ---- The shop ------------------------------------------------------------------------------------
   shop(): Promise<Shop>;
+  /** Owners only. The address sets sales tax and the card reader location. */
+  updateShop(patch: In<typeof ShopPatch>): Promise<Shop>;
   settings(): Promise<ShopSettings>;
   /** Owners only. */
   updateSettings(patch: In<typeof ShopSettingsPatch>): Promise<ShopSettings>;
