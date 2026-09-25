@@ -24,6 +24,7 @@ import merchantTendersRouter from './merchantTenders.js';
 import merchantShopRouter from './merchantShop.js';
 import merchantCatalogRouter from './merchantCatalog.js';
 import merchantOrdersRouter from './merchantOrders.js';
+import merchantRefundsReceiptsRouter from './merchantRefundsReceipts.js';
 
 /**
  * The merchant surface.
@@ -53,6 +54,8 @@ merchantRouter.use(merchantShopRouter);
 merchantRouter.use(merchantCatalogRouter);
 // Orders, discounts, tax (routes/merchantOrders.ts).
 merchantRouter.use(merchantOrdersRouter);
+// Card and cash refunds, receipts (routes/merchantRefundsReceipts.ts).
+merchantRouter.use(merchantRefundsReceiptsRouter);
 
 /** Sign-in is scoped to one shop: a four-digit PIN only means anything against a merchant. */
 function merchantOf(req: Request): string {

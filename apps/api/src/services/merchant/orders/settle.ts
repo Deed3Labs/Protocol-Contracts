@@ -79,6 +79,13 @@ export async function settleOrder(tx: Queryable, input: { merchant: string; orde
 
   if (!shouldHaveSale) {
     for (const e of [...live.adjustments, ...live.sales]) await reverse(tx, { merchant: input.merchant, entryId: e.id, createdBy: input.actor });
+    if (live.sales.length > 0) {
+      // A sale that was booked no longer stands (a void): whoever recorded it elsewhere undoes it.
+      await tx.query(
+        `INSERT INTO payments.outbox (merchant, topic, dedupe_key, payload) VALUES ($1, 'order.unpaid', $2, $3) ON CONFLICT (dedupe_key) DO NOTHING`,
+        [input.merchant, `order.unpaid:${order.id}:${live.attempts}`, JSON.stringify({ orderId: order.id })],
+      );
+    }
   } else if (live.sales.length === 0) {
     const taken = tenders.filter((t) => ['authorised', 'approved', 'captured', 'partly_refunded', 'refunded'].includes(t.status));
     await post(

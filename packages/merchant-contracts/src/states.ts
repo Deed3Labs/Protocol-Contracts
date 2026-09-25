@@ -119,7 +119,13 @@ export function orderStatus(order: OrderState, tenders: readonly TenderState[]):
 export function canVoidOrder(order: OrderState, tenders: readonly TenderState[]): { ok: true } | { ok: false; reason: string } {
   if (order.voided) return refusal('It is already voided.');
   const settled = tenders.find((t) => t.status === 'captured' || t.status === 'partly_refunded' || t.status === 'refunded');
-  if (settled) return refusal('A card on it has been captured, so it can only be refunded.');
+  if (settled) {
+    return refusal(
+      settled.status === 'captured' || settled.method === 'card'
+        ? 'A card on it has been captured, so it can only be refunded.'
+        : 'A refund has been given on it, so refund the rest instead.',
+    );
+  }
   if (tenders.some((t) => t.method === 'clear' && t.status === 'approved')) {
     return refusal('A Clear payment on it is approved, so it goes through the Clear refund flow.');
   }

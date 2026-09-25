@@ -4,8 +4,8 @@ import { seedShop, testDb } from '../../../db/testDb.js';
 import * as catalog from '../catalog/catalogService.js';
 import { connectorStore } from '../cards/connectorStore.js';
 import { updateSettings } from '../shop/shopService.js';
-import type { TaxApi, TaxLine } from '../tax/taxApi.js';
-import { forgetTaxStatus, taxAtRate, taxStatus } from '../tax/taxService.js';
+import { fakeTax } from '../tax/fakeTax.js';
+import { forgetTaxStatus, taxStatus } from '../tax/taxService.js';
 import { allocate, applyDiscount, businessDate, createOrder, getOrder, type OrderDeps, removeDiscount, updateOrder } from './orderService.js';
 import { settleOrder } from './settle.js';
 
@@ -13,27 +13,6 @@ let db: Db;
 beforeAll(async () => {
   ({ db } = await testDb());
 });
-
-/** Stripe Tax for tests: 7.75% on goods and prepared food, labour untaxed, in California. */
-function fakeTax(opts: { collecting?: boolean; shopStatus?: 'active' | 'setup_needed' } = {}) {
-  const calls: Array<{ account: string | null; lines: TaxLine[]; inclusive: boolean }> = [];
-  const RATE: Record<string, number> = { goods: 77500, food: 77500, labour: 0, exempt: 0 };
-  const api: TaxApi = {
-    async status() {
-      return opts.shopStatus ?? 'setup_needed';
-    },
-    async calculate(account, { lines, inclusive }) {
-      calls.push({ account, lines, inclusive });
-      const collecting = opts.collecting ?? true;
-      return {
-        calculationId: `taxcalc_${calls.length}`,
-        taxByLine: new Map(lines.map((l) => [l.reference, collecting ? taxAtRate(l.amountCents, RATE[l.taxKind]!, inclusive) : 0])),
-        rateByLine: new Map(lines.map((l) => [l.reference, collecting ? RATE[l.taxKind]! : null])),
-      };
-    },
-  };
-  return { api, calls };
-}
 
 async function mikesTire(opts: { address?: boolean } = {}) {
   const shop = await seedShop(db);

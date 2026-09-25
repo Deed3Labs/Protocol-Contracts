@@ -5,6 +5,7 @@ import { entriesFor, post } from '../ledger/ledgerService.js';
 import * as postings from '../ledger/postings.js';
 import { settleOrder } from '../orders/settle.js';
 import { checkNewTender, PaymentError } from '../orders/tenderRules.js';
+import { announceRefund, itemsOf, refundSplit, restock } from '../orders/refundBooks.js';
 import { CardDeclined, type CardConnectorProvider, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
 import { takingCards } from './terminal.js';
 
@@ -473,11 +474,17 @@ export async function captureDue(
 
 // ---- Refunds -----------------------------------------------------------------------------------
 
-interface RefundRow {
+export interface RefundRow {
   id: string;
   merchant: string;
   tender_id: string;
   amount_cents: string | number;
+  items: unknown;
+  reason: string | null;
+  created_at: Date | string;
+  decided_at: Date | string | null;
+  drawer_session_id: string | null;
+  request_hash: string;
   status: 'requested' | 'approved' | 'declined' | 'succeeded' | 'failed';
   requested_by: string;
   approved_by: string | null;
@@ -510,13 +517,15 @@ export async function applyRefundSnapshot(tx: Queryable, input: { merchant: stri
   if (!next.ok) throw new Error(`Refund ${refund.id} can’t apply to tender ${tender.id}: ${next.reason}`);
   await tx.query('UPDATE payments.tenders SET status = $2, refunded_cents = $3, updated_at = now() WHERE id = $1', [tender.id, next.state.status, next.state.refundedCents]);
 
-  // The tax part of the refund, in proportion to the order's tax. Phase 6 replaces this with the
-  // returned lines' own tax once refunds carry lines through the order service.
-  const { rows: orders } = await tx.query<{ tax_cents: string | number; total_cents: string | number }>('SELECT tax_cents, total_cents FROM commerce.orders WHERE id = $1', [tender.order_id]);
-  const order = orders[0]!;
-  const goodsAndTax = Math.min(amount, Number(tender.amount_cents) - Math.min(Number(tender.refunded_cents), Number(tender.amount_cents)));
-  const tip = amount - goodsAndTax;
-  const taxCents = Number(order.total_cents) > 0 ? Math.floor((goodsAndTax * Number(order.tax_cents)) / Number(order.total_cents)) : 0;
+  // Tax from the lines that came back (or the order's share when none were named), and any tip.
+  const items = itemsOf(refund.items);
+  const split = await refundSplit(tx, {
+    orderId: tender.order_id,
+    amountCents: amount,
+    tenderAmountCents: Number(tender.amount_cents),
+    alreadyRefundedCents: Number(tender.refunded_cents),
+    items,
+  });
   await post(
     tx,
     postings.refund({
@@ -524,11 +533,13 @@ export async function applyRefundSnapshot(tx: Queryable, input: { merchant: stri
       refundId: refund.id,
       method: 'card',
       amountCents: amount,
-      taxCents,
-      tip: tip > 0 ? { staffId: tender.tip_staff_id ?? tender.created_by, cents: tip } : null,
+      taxCents: split.taxCents,
+      tip: split.tipCents > 0 ? { staffId: tender.tip_staff_id ?? tender.created_by, cents: split.tipCents } : null,
       createdBy: input.actor,
     }),
   );
+  await restock(tx, { merchant: input.merchant, refundId: refund.id, items, actor: input.actor });
+  await announceRefund(tx, { merchant: input.merchant, refundId: refund.id, orderId: tender.order_id });
   const { rows: out } = await tx.query<RefundRow>(`UPDATE payments.refunds SET status = 'succeeded', updated_at = now() WHERE id = $1 RETURNING *`, [refund.id]);
   await settleOrder(tx, { merchant: input.merchant, orderId: tender.order_id, actor: input.actor });
   return out[0]!;
