@@ -1,6 +1,6 @@
 # Claude Code prompt: rebuilding the Clear merchant app's UI from the reference files
 
-You are working in the Clear monorepo (`github.com/Deed3Labs/Protocol-Contracts`). The merchant app lives at `apps/merchant`. It is a PWA, deployed to `merchants.useclear.org`, and it becomes an installed app through Capacitor. Your job is to rebuild its UI to match a set of finished HTML reference files. You'll run first on mock data, then switch to the real API as the backend lands.
+You are working in the Clear monorepo (`github.com/Deed3Labs/Protocol-Contracts`). The merchant app lives at `apps/merchant`. It is a PWA, deployed to `merchant.useclear.org`, and it becomes an installed app through Capacitor. Your job is to rebuild its UI to match a set of finished HTML reference files. You'll run first on mock data, then switch to the real API as the backend lands.
 
 Work on a branch. There are **hard stops** marked below. At each one, stop, summarise what you did and found, and wait for review.
 
@@ -164,7 +164,7 @@ Build in this order, one reference file at a time. For each file:
   - In a browser: smart readers only (Stripe's web SDK, or server-driven).
   - In the installed app: also the **Stripe Reader M2** over Bluetooth, and **Tap to Pay**.
   - The Settings › Payments Readers list and the card screen's "Use another reader" show only what is available.
-- **The card screen's states** (waiting, reading, declined, approved) map to the SDK's events. The server creates, captures and cancels the payment; the app collects it on the reader. Agree that flow with the backend prompt's Phase 6.
+- **The card screen's states** (waiting, reading, declined, approved) map to the SDK's events. The server creates, captures and cancels the payment; the app collects it on the reader. Agree that flow with the backend prompt's Phase 5.
 - **Offline:** store-and-forward on the M2 only when the shop setting is on, with its limit. Tap to Pay is online only, and the screen says so.
 - **Permissions:** Bluetooth and location. **Apple's Tap to Pay entitlement** is a separate request; flag it in the PR as a blocker for iOS Tap to Pay.
 

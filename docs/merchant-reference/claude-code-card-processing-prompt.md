@@ -1,6 +1,6 @@
 # Claude Code prompt: card processing, checkout, drawer and ledger for the Clear merchant app
 
-You are working in the Clear monorepo (`github.com/Deed3Labs/Protocol-Contracts`), which holds the member app, the protocol contracts and the merchant app at `apps/merchant` (deployed to `merchants.useclear.org`). Your job is to build the backend and app plumbing behind the merchant app's retail features: Stripe card processing, checkout, the cash drawer, and a double-entry ledger.
+You are working in the Clear monorepo (`github.com/Deed3Labs/Protocol-Contracts`), which holds the member app, the protocol contracts and the merchant app at `apps/merchant` (deployed to `merchant.useclear.org`). Your job is to build the backend and app plumbing behind the merchant app's retail features: Stripe card processing, checkout, the cash drawer, and a double-entry ledger.
 
 The screens already exist as HTML reference files (`clear-merchant-*.html`: New Charge, Inventory, Home, Staff, Charges, Settings, Payouts, Overview). **Treat them as the spec for behaviour and copy.** Where this prompt and a reference file disagree, stop and ask.
 
