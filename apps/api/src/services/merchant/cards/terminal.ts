@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Reader } from '@clear/merchant-contracts';
 import type { Db, Queryable } from '../../../db/db.js';
-import type { CardConnectorProvider } from './connector.js';
+import type { CardConnectorProvider, CardProviderName } from './connector.js';
 import { type ConnectorRow, connectorStore } from './connectorStore.js';
 
 /**
@@ -82,7 +82,7 @@ export async function connectionToken(db: Db, provider: CardConnectorProvider, m
 interface ReaderRow {
   id: string;
   merchant: string;
-  provider: 'stripe';
+  provider: CardProviderName;
   type: Reader['type'];
   external_reader_id: string;
   label: string;

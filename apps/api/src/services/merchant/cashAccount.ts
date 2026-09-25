@@ -16,7 +16,7 @@ import { chainId } from '../chargeService.js';
  * USDC, not CLRUSD: this is the account a merchant sends an ACH into and withdraws from, so it
  * holds the dollar-denominated token the rails actually move.
  */
-const USDC: Readonly<Record<number, string>> = {
+export const USDC: Readonly<Record<number, string>> = {
   8453: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
   84532: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
 };

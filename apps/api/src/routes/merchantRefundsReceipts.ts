@@ -1,10 +1,11 @@
 import type { Role } from '@clear/merchant-contracts';
 import { Router, type Request, type Response } from 'express';
 import { merchantDb } from '../config/merchantDb.js';
+import type { Db } from '../db/db.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireMerchant } from '../middleware/merchantAuth.js';
 import { type RefundRow } from '../services/merchant/cards/cardTenders.js';
-import { defaultCardConnector } from '../services/merchant/cards/stripeConnector.js';
+import { connectorForShop } from '../services/merchant/cards/registry.js';
 import { buildReceipt, ReceiptError, receiptByToken, sendReceipt } from '../services/merchant/orders/receipts.js';
 import { decideRefund, RefundError, requestRefund, toRefund } from '../services/merchant/orders/refunds.js';
 import { staffStore } from '../services/merchant/staffStore.js';
@@ -43,8 +44,8 @@ function refuse(res: Response, error: unknown) {
   throw error;
 }
 
-const deps = () => ({
-  card: defaultCardConnector(),
+const deps = async (db: Db, merchant: string) => ({
+  card: await connectorForShop(db, merchant),
   pinCheck: async (merchant: string, pin: string) => {
     const s = await staffStore.signInWithPin(merchant, pin);
     return s ? { id: s.id, role: s.role as Role } : null;
@@ -68,10 +69,10 @@ async function run(res: Response, fn: (db: NonNullable<Awaited<ReturnType<typeof
 
 const staff = (req: Request) => ({ id: req.merchant!.staff.id, role: req.merchant!.staff.role as Role });
 
-router.post('/tender-refunds', requireMerchant, (req, res) => run(res, (db) => requestRefund(db, deps(), { merchant: req.merchant!.merchant, staff: staff(req), request: req.body })));
+router.post('/tender-refunds', requireMerchant, (req, res) => run(res, async (db) => requestRefund(db, await deps(db, req.merchant!.merchant), { merchant: req.merchant!.merchant, staff: staff(req), request: req.body })));
 router.post('/tender-refunds/:id/decide', requireMerchant, (req, res) =>
-  run(res, (db) =>
-    decideRefund(db, deps(), {
+  run(res, async (db) =>
+    decideRefund(db, await deps(db, req.merchant!.merchant), {
       merchant: req.merchant!.merchant,
       refundId: String(req.params.id),
       decision: req.body?.decision === 'decline' ? 'decline' : 'approve',

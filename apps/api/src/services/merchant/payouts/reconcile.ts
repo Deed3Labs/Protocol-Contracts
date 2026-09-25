@@ -14,6 +14,8 @@ import { entriesFor } from '../ledger/ledgerService.js';
  *   payout_unbooked         a paid payout with no ledger entry
  *   payout_mismatch         a booked payout whose amount isn't what the processor paid
  *   payout_breakdown        a payout whose items don't add up to it (or can't be broken down)
+ *   fee_bill_unconfirmed    a monthly fee bill sent for collection an hour ago or more, and not
+ *                           seen to land: a person checks the chain before anything is sent again
  *
  * A flag stays open while each run still finds it, and closes itself when one doesn't.
  */
@@ -83,6 +85,15 @@ export async function findMismatches(q: Queryable, provider: CardConnectorProvid
     }
     const banked = entry.lines.filter((l) => l.account === 'bank').reduce((s, l) => s + l.debitCents - l.creditCents, 0);
     if (banked !== Number(p.amount_cents)) flags.push({ kind: 'payout_mismatch', ref: p.id, expectedCents: Number(p.amount_cents), actualCents: banked, detail: `Payout ${p.id} paid ${p.amount_cents} cents; the books show ${banked}` });
+  }
+
+  const { rows: stuck } = await q.query<{ id: string; period: string; amount_cents: string | number; last_error: string | null }>(
+    `SELECT id, period, amount_cents, last_error FROM payments.clear_fee_bills
+      WHERE merchant = $1 AND status = 'collecting' AND attempted_at < now() - interval '1 hour'`,
+    [input.merchant],
+  );
+  for (const b of stuck) {
+    flags.push({ kind: 'fee_bill_unconfirmed', ref: b.id, expectedCents: Number(b.amount_cents), actualCents: null, detail: `Clear's ${b.period} fee bill was sent for collection and not seen to land${b.last_error ? ` (${b.last_error})` : ''}. Check the chain before collecting it again` });
   }
   return flags;
 }

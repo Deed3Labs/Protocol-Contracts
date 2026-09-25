@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { merchantDb } from '../config/merchantDb.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
-import { defaultCardConnector } from '../services/merchant/cards/stripeConnector.js';
+import { connectorForShop } from '../services/merchant/cards/registry.js';
 import { getSettings, getShop, ShopError, updateSettings, updateShop } from '../services/merchant/shop/shopService.js';
 
 /**
@@ -45,7 +45,7 @@ router.patch('/shop', requireMerchant, requireOwner, async (req: Request, res: R
   const d = await db(res);
   if (!d) return;
   try {
-    res.json(await updateShop(d, defaultCardConnector(), { merchant: req.merchant!.merchant, patch: req.body }));
+    res.json(await updateShop(d, await connectorForShop(d, req.merchant!.merchant), { merchant: req.merchant!.merchant, patch: req.body }));
   } catch (error) {
     refuse(res, error);
   }

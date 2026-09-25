@@ -1,5 +1,5 @@
 import { merchantDb } from '../config/merchantDb.js';
-import { defaultCardConnector } from '../services/merchant/cards/stripeConnector.js';
+import { cardConnectors } from '../services/merchant/cards/registry.js';
 import { syncRecentPayouts } from '../services/merchant/payouts/payoutSync.js';
 import { reconcileAll } from '../services/merchant/payouts/reconcile.js';
 
@@ -15,19 +15,21 @@ const LOCK = 7_431_205_119;
 
 export async function runCardReconciliation(now = new Date()): Promise<void> {
   const db = await merchantDb();
-  const provider = defaultCardConnector();
-  if (!db || !provider) return;
+  const providers = cardConnectors();
+  if (!db || providers.length === 0) return;
   try {
     await db.transaction(async (tx) => {
       const got = await tx.query<{ ok: boolean }>('SELECT pg_try_advisory_xact_lock($1) AS ok', [LOCK]);
       if (!got.rows[0]?.ok) return;
       const since = new Date(now.getTime() - LOOKBACK_DAYS * DAY_MS);
-      const synced = await syncRecentPayouts(db, provider, { since });
-      const results = await reconcileAll(db, provider, { since });
-      const flags = results.reduce((n, r) => n + ('flags' in r ? r.flags : 0), 0);
-      console.log(`[card-reconciliation] payouts synced ${synced.synced}; shops checked ${results.length}; open flags ${flags}`);
-      for (const f of synced.failed) console.error('[card-reconciliation] payout sync:', f);
-      for (const r of results) if ('error' in r) console.error(`[card-reconciliation] ${r.merchant}:`, r.error);
+      for (const provider of providers) {
+        const synced = await syncRecentPayouts(db, provider, { since });
+        const results = await reconcileAll(db, provider, { since });
+        const flags = results.reduce((n, r) => n + ('flags' in r ? r.flags : 0), 0);
+        console.log(`[card-reconciliation] ${provider.provider}: payouts synced ${synced.synced}; shops checked ${results.length}; open flags ${flags}`);
+        for (const f of synced.failed) console.error('[card-reconciliation] payout sync:', f);
+        for (const r of results) if ('error' in r) console.error(`[card-reconciliation] ${r.merchant}:`, r.error);
+      }
     });
   } catch (error) {
     console.error('[card-reconciliation] failed:', (error as Error)?.message);

@@ -1,9 +1,7 @@
-import { PrivyClient } from '@privy-io/node';
-import { createPublicClient, encodeFunctionData, http, parseEventLogs, type Address, type Chain } from 'viem';
-import { base, baseSepolia } from 'viem/chains';
+import { encodeFunctionData, parseEventLogs, type Address } from 'viem';
 import { getContractAddress } from '../../config/contracts.js';
 import { chainId } from '../chargeService.js';
-import { merchantOrgFor } from './privyOrg.js';
+import { shopWallet, shopWalletGap } from './shopWallet.js';
 
 /*
  * Turning what a shop is owed into money, without the shop paying for gas.
@@ -33,18 +31,6 @@ import { merchantOrgFor } from './privyOrg.js';
  * key says so, and the caller records a request the old way rather than claiming money moved.
  */
 
-const APP_ID = (process.env.PRIVY_APP_ID || '').trim();
-const APP_SECRET = (process.env.PRIVY_APP_SECRET || '').trim();
-const AUTHORIZATION_PRIVATE_KEY = (process.env.PRIVY_AUTHORIZATION_PRIVATE_KEY || '').trim();
-
-const CHAINS: Record<number, Chain> = { 8453: base, 84532: baseSepolia };
-
-let client: PrivyClient | null = null;
-function privy(): PrivyClient | null {
-  if (!APP_ID || !APP_SECRET) return null;
-  if (!client) client = new PrivyClient({ appId: APP_ID, appSecret: APP_SECRET });
-  return client;
-}
 
 const CREDIT_ABI = [
   {
@@ -117,9 +103,8 @@ export function redemptionConfigured(): boolean {
 
 /** Why it cannot be, in the words a shop should be told. */
 export function redemptionGap(): string | null {
-  if (!privy()) return 'Privy is not configured on this server.';
-  if (!AUTHORIZATION_PRIVATE_KEY) return "Clear's signing key is not configured on this server.";
-  if (!CHAINS[chainId()]) return `No chain configuration for ${chainId()}.`;
+  const walletGap = shopWalletGap();
+  if (walletGap) return walletGap;
   if (!getContractAddress(chainId(), 'PayoutPool')) return 'No payout pool on this chain.';
   if (!getContractAddress(chainId(), 'ClearCredit')) return 'No credit ledger on this chain.';
   return null;
@@ -140,24 +125,13 @@ export async function redeemForMerchant(input: {
   const gap = redemptionGap();
   if (gap) return { ok: false, reason: gap };
 
-  const p = privy()!;
-  const chain = CHAINS[chainId()]!;
   const poolAddress = getContractAddress(chainId(), 'PayoutPool') as Address;
   const creditAddress = getContractAddress(chainId(), 'ClearCredit') as Address;
 
-  const org = await merchantOrgFor(input.merchant);
-  if (!org) return { ok: false, reason: 'This shop has no wallet on file.' };
-
-  // By address, not by the id we stored: a stale `privy_wallet_id` is a 404 that would read as a
-  // shop with no wallet at all.
-  const wallet = await p
-    .wallets()
-    .getWalletByAddress({ address: org.walletAddress })
-    .catch(() => null);
-  if (!wallet) return { ok: false, reason: 'Privy has no wallet at this shop’s address.' };
-
-  const publicClient = createPublicClient({ chain, transport: http() });
-  const merchant = wallet.address as Address;
+  const wallet = await shopWallet(input.merchant);
+  if ('error' in wallet) return { ok: false, reason: wallet.error };
+  const { publicClient, send } = wallet;
+  const merchant = wallet.address;
 
   const [held, allowance] = await Promise.all([
     publicClient.readContract({ address: creditAddress, abi: CREDIT_ABI, functionName: 'balanceOf', args: [merchant] }),
@@ -171,48 +145,6 @@ export async function redeemForMerchant(input: {
 
   const amount = input.amountMicros < held ? input.amountMicros : held;
   if (amount <= 0n) return { ok: false, reason: 'There is nothing to withdraw from what you are owed.' };
-
-  const caip2 = `eip155:${chain.id}` as const;
-
-  /*
-   * A sponsored send is a user operation, not a transaction, and it comes back saying so:
-   *
-   *   { hash: "", user_operation_hash: "0x…", sponsorship_provider: "alchemy", transaction_id: "…" }
-   *
-   * There is no transaction hash yet because a bundler has not yet included it. So this follows
-   * the `transaction_id` until Privy reports one, rather than reading `hash` and finding an empty
-   * string — which an earlier version of this did, and would have failed on every sponsored send
-   * while looking like a chain problem.
-   *
-   * What the receipt shows afterwards is worth recording: the wallet is EIP-7702 delegated by
-   * Privy, and the user operation's sender is the merchant's own address. So `redeem` sees the
-   * merchant as msg.sender, which is the entire reason this address can be the shop everywhere.
-   */
-  const settle = async (transactionId: string): Promise<`0x${string}`> => {
-    for (let i = 0; i < 40; i++) {
-      const tx = await p.transactions().get(transactionId);
-      if (tx.transaction_hash) return tx.transaction_hash as `0x${string}`;
-      if (tx.status === 'failed' || tx.status === 'execution_reverted' || tx.status === 'provider_error') {
-        throw new Error(`Privy reported the transaction ${tx.status}.`);
-      }
-      await new Promise((r) => setTimeout(r, 3000));
-    }
-    throw new Error('The transaction was accepted but has not been included yet.');
-  };
-
-  const send = async (to: Address, data: `0x${string}`) => {
-    const result = (await p.wallets().ethereum().sendTransaction(wallet.id, {
-      caip2,
-      params: { transaction: { to, data, chain_id: chain.id } },
-      // The whole of the gasless story. Privy's own sponsorship, configured in their dashboard,
-      // rather than a paymaster of ours to keep funded.
-      sponsor: true,
-      authorization_context: { authorization_private_keys: [AUTHORIZATION_PRIVATE_KEY] },
-    } as never)) as { hash?: string; transaction_id?: string };
-    if (result.hash) return result.hash as `0x${string}`;
-    if (!result.transaction_id) throw new Error('Privy returned neither a hash nor a transaction to follow.');
-    return settle(result.transaction_id);
-  };
 
   try {
     if (allowance < amount) {

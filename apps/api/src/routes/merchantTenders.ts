@@ -6,7 +6,7 @@ import { merchantDb } from '../config/merchantDb.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireMerchant } from '../middleware/merchantAuth.js';
 import { adjustCardTip, cancelCardTender, createCardTender, presentCardTender, syncCardTender, TenderError, type TenderRow, toTender } from '../services/merchant/cards/cardTenders.js';
-import { defaultCardConnector } from '../services/merchant/cards/stripeConnector.js';
+import { connectorForShop } from '../services/merchant/cards/registry.js';
 import { currentDrawer, DrawerError, openDrawer } from '../services/merchant/drawer/drawerService.js';
 import { clearChargesFor } from '../services/merchant/orders/clearCharges.js';
 import { businessDate } from '../services/merchant/orders/orderService.js';
@@ -86,9 +86,10 @@ function refuse(res: Response, error: unknown): void {
   throw error;
 }
 
-async function ready(res: Response) {
+/** The database and the connector this shop takes cards through, or a 503 already sent. */
+async function ready(res: Response, merchant: string) {
   const db = await merchantDb();
-  const provider = defaultCardConnector();
+  const provider = db && (await connectorForShop(db, merchant));
   if (!db || !provider) {
     res.status(503).json({ error: 'Unavailable', message: 'card processing is not set up here' });
     return null;
@@ -109,7 +110,7 @@ router.get('/orders/:orderId/tenders', requireMerchant, async (req: Request, res
 });
 
 router.post('/orders/:orderId/tenders/card', requireMerchant, async (req: Request, res: Response) => {
-  const deps = await ready(res);
+  const deps = await ready(res, req.merchant!.merchant);
   if (!deps) return;
   const body = CreateCardTender.safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: 'Invalid request', message: 'an amount, a tip, a reader and a retry key' });
@@ -128,7 +129,7 @@ router.post('/orders/:orderId/tenders/card', requireMerchant, async (req: Reques
 });
 
 router.post('/tenders/:id/present', requireMerchant, async (req: Request, res: Response) => {
-  const deps = await ready(res);
+  const deps = await ready(res, req.merchant!.merchant);
   if (!deps) return;
   try {
     res.json(await presentCardTender(deps.db, deps.provider, { merchant: req.merchant!.merchant, tenderId: String(req.params.id) }));
@@ -154,7 +155,7 @@ router.post('/tenders/:id/sync', requireMerchant, async (req: Request, res: Resp
       const db = (await merchantDb())!;
       return res.json(await syncClearTender(db, clearChargesFor(db), { merchant, tenderId, actor: req.merchant!.staff.id }));
     }
-    const deps = await ready(res);
+    const deps = await ready(res, req.merchant!.merchant);
     if (!deps) return;
     if (found.method === 'cash') {
       const { rows } = await deps.db.query<TenderRow>('SELECT * FROM payments.tenders WHERE id = $1', [tenderId]);
@@ -177,7 +178,7 @@ router.post('/tenders/:id/cancel', requireMerchant, async (req: Request, res: Re
       const db = (await merchantDb())!;
       return res.json(await cancelClearTender(db, clearChargesFor(db), { merchant, tenderId, actor: req.merchant!.staff.id }));
     }
-    const deps = await ready(res);
+    const deps = await ready(res, req.merchant!.merchant);
     if (!deps) return;
     res.json(
       await cancelCardTender(deps.db, deps.provider, {
@@ -222,7 +223,7 @@ router.post('/orders/:orderId/void', requireMerchant, async (req: Request, res: 
       await voidOrder(
         db,
         {
-          card: defaultCardConnector(),
+          card: await connectorForShop(db, merchant),
           clear: clearChargesFor(db),
           pinCheck: async (m, pin) => {
             const s = await staffStore.signInWithPin(m, pin);
@@ -257,7 +258,7 @@ router.post('/drawer', requireMerchant, async (req: Request, res: Response) => {
 const TipBody = z.object({ tipCents: z.number().int().min(0) });
 
 router.post('/tenders/:id/tip', requireMerchant, async (req: Request, res: Response) => {
-  const deps = await ready(res);
+  const deps = await ready(res, req.merchant!.merchant);
   if (!deps) return;
   const body = TipBody.safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: 'Invalid request', message: 'a tip in whole cents' });

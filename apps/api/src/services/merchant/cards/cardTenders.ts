@@ -79,6 +79,8 @@ export interface TenderRow {
   card_brand: string | null;
   card_last4: string | null;
   application_fee_cents: string | number | null;
+  fee_billed: boolean;
+  clear_fee_billed_cents: string | number;
   authorised_at: Date | string | null;
   captured_at: Date | string | null;
   clear_charge_code: string | null;
@@ -114,16 +116,29 @@ async function lockTender(tx: Queryable, merchant: string, tenderId: string): Pr
   return rows[0];
 }
 
-async function cardTender(q: Queryable, merchant: string, tenderId: string): Promise<TenderRow & { account: string }> {
-  const { rows } = await q.query<TenderRow & { account: string }>(
-    `SELECT t.*, c.external_account_id AS account FROM payments.tenders t
+/**
+ * A card tender with the processor account it was taken on. Refused when `provider` isn't the
+ * processor that took it: a shop that moved processors still voids and refunds its old payments
+ * through the old one, never by sending the old payment's id to the new one.
+ */
+async function cardTender(q: Queryable, provider: CardConnectorProvider, merchant: string, tenderId: string): Promise<TenderRow & { account: string }> {
+  const { rows } = await q.query<TenderRow & { account: string; connector_provider: string }>(
+    `SELECT t.*, c.external_account_id AS account, c.provider AS connector_provider FROM payments.tenders t
        JOIN merchant.card_connectors c ON c.id = t.connector_id
       WHERE t.id = $1 AND t.merchant = $2 AND t.method = 'card'`,
     [tenderId, merchant],
   );
   if (!rows[0]) throw new TenderError('No such card payment', 'not_found');
+  if (rows[0].connector_provider !== provider.provider) throw new TenderError(`This card payment was taken through ${rows[0].connector_provider}, which isn’t available here`, 'wrong_state');
   return rows[0];
 }
+
+/**
+ * What the processor is asked to take for Clear on `cents`: Clear's fee, or nothing when the
+ * processor can't take a platform fee. Then the fee is accrued at capture and billed monthly
+ * (fees/feeBilling.ts).
+ */
+const processorFee = (provider: CardConnectorProvider, cents: number, plan: CardPlan) => (provider.supportsPlatformFee ? clearCardFee(cents, plan) : 0);
 
 async function cardPlan(q: Queryable, merchant: string): Promise<{ plan: CardPlan; refundApplicationFee: boolean }> {
   const { rows } = await q.query<{ card_plan: 'payg' | 'paid'; card_plan_fee_cents: number | null; refund_application_fee: boolean }>(
@@ -194,21 +209,22 @@ export async function createCardTender(
     const { rows: readers } = await tx.query('SELECT 1 FROM merchant.readers WHERE id = $1 AND merchant = $2 AND removed_at IS NULL', [input.readerId, input.merchant]);
     if (!readers[0]) throw new TenderError('That reader isn’t one of this shop’s', 'reader_unknown');
 
+    if (connector.provider !== provider.provider) throw new Error(`This shop takes cards through ${connector.provider}, not ${provider.provider}`);
     const { plan } = await cardPlan(tx, input.merchant);
-    const fee = clearCardFee(input.amountCents + input.tipCents, plan);
+    const fee = processorFee(provider, input.amountCents + input.tipCents, plan);
     const { rows } = await tx.query<TenderRow>(
       `INSERT INTO payments.tenders
          (id, merchant, order_id, method, amount_cents, tip_cents, status, idempotency_key, request_hash, tip_staff_id, created_by,
-          connector_id, reader_id, application_fee_cents)
-       VALUES ($1, $2, $3, 'card', $4, $5, 'pending', $6, $7, $8, $9, $10, $11, $12)
+          connector_id, reader_id, application_fee_cents, fee_billed)
+       VALUES ($1, $2, $3, 'card', $4, $5, 'pending', $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
-      [`tnd_${randomUUID()}`, input.merchant, order.id, input.amountCents, input.tipCents, input.idempotencyKey, requestHash, order.raised_by, input.staffId, connector.id, input.readerId, fee],
+      [`tnd_${randomUUID()}`, input.merchant, order.id, input.amountCents, input.tipCents, input.idempotencyKey, requestHash, order.raised_by, input.staffId, connector.id, input.readerId, fee, !provider.supportsPlatformFee],
     );
     await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: input.staffId });
     return rows[0]!;
   });
 
-  const withAccount = await cardTender(db, input.merchant, tender.id);
+  const withAccount = await cardTender(db, provider, input.merchant, tender.id);
   // Same key every time for this tender, so a retry after a timeout gets the same PaymentIntent back.
   const { snapshot, clientSecret } = await provider.createPayment(withAccount.account, {
     amountCents: Number(tender.amount_cents) + Number(tender.tip_cents),
@@ -265,13 +281,29 @@ export async function applyPaymentSnapshot(
       RETURNING *`,
     [row.id, state.status, s.paymentId, s.card?.brand ?? null, s.card?.last4 ?? null],
   );
+  let tender = rows[0]!;
+  if (tender.fee_billed && state.status === 'captured') tender = await accrueClearFee(tx, tender, input.actor);
   await settleOrder(tx, { merchant: input.merchant, orderId: row.order_id, actor: input.actor });
-  return { tender: rows[0]!, changed: true, declined: state.status === 'declined' };
+  return { tender, changed: true, declined: state.status === 'declined' };
+}
+
+/**
+ * Clear's fee on a captured card whose processor couldn't take it: worked out on what was captured,
+ * kept on the tender, and owed to Clear until the month's bill (fees/feeBilling.ts). However the
+ * capture reached us, once: the posting is keyed on the tender.
+ */
+async function accrueClearFee(tx: Queryable, tender: TenderRow, actor: string | null): Promise<TenderRow> {
+  const { plan } = await cardPlan(tx, tender.merchant);
+  const fee = clearCardFee(Number(tender.amount_cents) + Number(tender.tip_cents), plan);
+  const accrual = postings.clearFeeAccrued({ merchant: tender.merchant, tenderId: tender.id, feeCents: fee, createdBy: actor });
+  if (accrual) await post(tx, accrual);
+  const { rows } = await tx.query<TenderRow>('UPDATE payments.tenders SET clear_fee_billed_cents = $2 WHERE id = $1 RETURNING *', [tender.id, fee]);
+  return rows[0]!;
 }
 
 /** Asks the processor where a card payment stands and catches the tender up. The app calls it after the tap. */
 export async function syncCardTender(db: Db, provider: CardConnectorProvider, input: { merchant: string; tenderId: string; actor: string | null }): Promise<Tender> {
-  const t = await cardTender(db, input.merchant, input.tenderId);
+  const t = await cardTender(db, provider, input.merchant, input.tenderId);
   if (!t.payment_intent_id) return toTender(t);
   const snapshot = await provider.getPayment(t.account, t.payment_intent_id);
   const result = await db.transaction((tx) => applyPaymentSnapshot(tx, { merchant: input.merchant, tenderId: t.id, snapshot, actor: input.actor }));
@@ -307,7 +339,7 @@ function readerRefusal(error: unknown): never {
  * another, so a retry can't be confirmed onto the declined attempt.
  */
 export async function presentCardTender(db: Db, provider: CardConnectorProvider, input: { merchant: string; tenderId: string }): Promise<Tender> {
-  const t = await cardTender(db, input.merchant, input.tenderId);
+  const t = await cardTender(db, provider, input.merchant, input.tenderId);
   if (t.status !== 'pending' || !t.payment_intent_id) throw new TenderError(`A ${t.status} card payment can’t be sent to the reader`, 'wrong_state');
   const reader = await smartReaderOf(db, input.merchant, t.reader_id);
   if (!reader) throw new TenderError('Only a smart reader takes a payment from here; the M2 and Tap to Pay take it on the device', 'not_smart_reader');
@@ -324,7 +356,7 @@ export async function cancelCardTender(
   provider: CardConnectorProvider,
   input: { merchant: string; tenderId: string; actor: string; canVoidAuthorised: boolean },
 ): Promise<Tender> {
-  const t = await cardTender(db, input.merchant, input.tenderId);
+  const t = await cardTender(db, provider, input.merchant, input.tenderId);
   if (t.status === 'authorised' && !input.canVoidAuthorised) throw new TenderError('Voiding a paid card needs a manager or owner', 'needs_manager');
   if (!['pending', 'authorised'].includes(t.status)) {
     if (t.status === 'cancelled') return toTender(t);
@@ -369,7 +401,7 @@ export async function adjustCardTip(
   input: { merchant: string; tenderId: string; tipCents: number; actor: string },
 ): Promise<Tender> {
   if (!Number.isInteger(input.tipCents) || input.tipCents < 0) throw new TenderError('A tip is a whole number of cents', 'wrong_state');
-  const t = await cardTender(db, input.merchant, input.tenderId);
+  const t = await cardTender(db, provider, input.merchant, input.tenderId);
   if (t.status !== 'authorised' || !t.payment_intent_id) throw new TenderError('A tip changes only on an authorised card, before the day is closed', 'wrong_state');
   const oldTip = Number(t.tip_cents);
   if (input.tipCents === oldTip) return toTender(t);
@@ -382,7 +414,7 @@ export async function adjustCardTip(
     if (newTotal > current.capturableCents) {
       if (!current.incrementalSupported) throw new TenderError('This card can’t have its tip raised. Take the extra another way.', 'tip_not_raisable');
       try {
-        await provider.raiseAuthorisation(t.account, t.payment_intent_id, { amountCents: newTotal, applicationFeeCents: clearCardFee(newTotal, plan) });
+        await provider.raiseAuthorisation(t.account, t.payment_intent_id, { amountCents: newTotal, applicationFeeCents: t.fee_billed ? 0 : clearCardFee(newTotal, plan) });
       } catch (error) {
         if (error instanceof CardDeclined) throw new TenderError('The card wouldn’t take the higher tip. The first tip stands.', 'tip_declined');
         throw error;
@@ -427,14 +459,18 @@ export async function adjustCardTip(
   return toTender(r);
 }
 
-/** Takes an authorised card payment for its final amount, tip included, with Clear's fee on that amount. */
+/**
+ * Takes an authorised card payment for its final amount, tip included, with Clear's fee on that
+ * amount: taken by the processor, or (a processor without a platform fee) accrued as the tender is
+ * marked captured, in applyPaymentSnapshot.
+ */
 export async function captureCardTender(db: Db, provider: CardConnectorProvider, input: { merchant: string; tenderId: string; actor: string | null }): Promise<Tender> {
-  const t = await cardTender(db, input.merchant, input.tenderId);
+  const t = await cardTender(db, provider, input.merchant, input.tenderId);
   if (t.status === 'captured') return toTender(t);
   if (t.status !== 'authorised' || !t.payment_intent_id) throw new TenderError(`A ${t.status} card payment can’t be captured`, 'wrong_state');
   const total = Number(t.amount_cents) + Number(t.tip_cents);
   const { plan } = await cardPlan(db, input.merchant);
-  const fee = clearCardFee(total, plan);
+  const fee = t.fee_billed ? 0 : clearCardFee(total, plan);
   const snapshot = await provider.capture(t.account, t.payment_intent_id, { amountCents: total, applicationFeeCents: fee, idempotencyKey: `clear-capture:${t.id}:${total}` });
   const r = await db.transaction(async (tx) => {
     await tx.query('UPDATE payments.tenders SET application_fee_cents = $2 WHERE id = $1', [t.id, fee]);
@@ -452,13 +488,16 @@ export async function captureDue(
   provider: CardConnectorProvider,
   input: { merchant?: string; authorisedBefore?: Date; actor?: string | null },
 ): Promise<{ captured: string[]; failed: Array<{ tenderId: string; error: string }> }> {
+  // Only this processor's cards: a shop that moved processors still has the old one's holds, and
+  // they're captured through the connector that made them.
   const { rows } = await db.query<{ id: string; merchant: string }>(
-    `SELECT id, merchant FROM payments.tenders
-      WHERE method = 'card' AND status = 'authorised'
-        AND ($1::text IS NULL OR merchant = $1)
-        AND ($2::timestamptz IS NULL OR authorised_at < $2)
-      ORDER BY authorised_at`,
-    [input.merchant ?? null, input.authorisedBefore?.toISOString() ?? null],
+    `SELECT t.id, t.merchant FROM payments.tenders t
+       JOIN merchant.card_connectors c ON c.id = t.connector_id
+      WHERE t.method = 'card' AND t.status = 'authorised' AND c.provider = $3
+        AND ($1::text IS NULL OR t.merchant = $1)
+        AND ($2::timestamptz IS NULL OR t.authorised_at < $2)
+      ORDER BY t.authorised_at`,
+    [input.merchant ?? null, input.authorisedBefore?.toISOString() ?? null, provider.provider],
   );
   const out = { captured: [] as string[], failed: [] as Array<{ tenderId: string; error: string }> };
   for (const r of rows) {
@@ -538,6 +577,14 @@ export async function applyRefundSnapshot(tx: Queryable, input: { merchant: stri
       createdBy: input.actor,
     }),
   );
+  // A billed fee comes back the way a processor gives back its platform fee: in proportion, when the
+  // shop's refund setting says so.
+  const billed = Number(tender.clear_fee_billed_cents);
+  if (billed > 0 && (await cardPlan(tx, input.merchant)).refundApplicationFee) {
+    const total = Number(tender.amount_cents) + Number(tender.tip_cents);
+    const returned = postings.clearFeeReturned({ merchant: input.merchant, refundId: refund.id, feeCents: Math.round((billed * amount) / total), createdBy: input.actor });
+    if (returned) await post(tx, returned);
+  }
   await restock(tx, { merchant: input.merchant, refundId: refund.id, items, actor: input.actor });
   await announceRefund(tx, { merchant: input.merchant, refundId: refund.id, orderId: tender.order_id });
   const { rows: out } = await tx.query<RefundRow>(`UPDATE payments.refunds SET status = 'succeeded', updated_at = now() WHERE id = $1 RETURNING *`, [refund.id]);
@@ -552,7 +599,7 @@ export async function refundCardTender(db: Db, provider: CardConnectorProvider, 
   if (!refund) throw new TenderError('No such refund', 'not_found');
   if (refund.status === 'succeeded' || refund.status === 'failed') return refund;
   if (refund.status !== 'approved') throw new TenderError('A refund goes to the card once it’s approved', 'wrong_state');
-  const t = await cardTender(db, input.merchant, refund.tender_id);
+  const t = await cardTender(db, provider, input.merchant, refund.tender_id);
   if (!t.payment_intent_id || !['captured', 'partly_refunded'].includes(t.status)) {
     throw new TenderError(t.status === 'authorised' ? 'An uncaptured card is voided, not refunded' : `A ${t.status} card payment can’t be refunded`, 'wrong_state');
   }

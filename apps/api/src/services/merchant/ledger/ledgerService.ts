@@ -15,7 +15,7 @@ import { type AccountCode, ACCOUNTS, accountDef, type FixedAccount } from './acc
  * leave the books unbalanced.
  */
 
-export type Ref = { type: 'order' | 'tender' | 'refund' | 'drawer_session' | 'bank_deposit' | 'payout' | 'entry'; id: string };
+export type Ref = { type: 'order' | 'tender' | 'refund' | 'drawer_session' | 'bank_deposit' | 'payout' | 'entry' | 'fee_bill'; id: string };
 
 export interface LineInput {
   account: AccountCode;

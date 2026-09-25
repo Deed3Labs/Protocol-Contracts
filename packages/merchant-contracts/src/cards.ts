@@ -8,7 +8,8 @@ import { BusinessDate, Cents, Id, IdempotencyKey, NonNegativeCents, ShopId, Time
  * Phase 9). Nothing here says Stripe except the provider name.
  */
 
-export const CardProvider = z.enum(['stripe']);
+/** Square is recorded but not offered: its connector is a stub until it's built (apps/api cards/SQUARE.md). */
+export const CardProvider = z.enum(['stripe', 'square']);
 
 export const CardConnector = z.object({
   id: Id,
@@ -103,3 +104,23 @@ export const CardDeposit = z.object({
   status: z.enum(['pending', 'in_transit', 'paid', 'failed']),
 });
 export type CardDeposit = z.infer<typeof CardDeposit>;
+
+/**
+ * Clear's fee for a month, billed when the shop's processor couldn't take it off each sale
+ * (card-processing prompt, Phase 9), and collected from the shop's cash account. A shop on Stripe
+ * never has one: Stripe takes the fee per sale.
+ *
+ *   due         raised, waiting to be collected
+ *   collecting  sent; not yet seen to land
+ *   short       the cash account didn't hold enough; tried again daily
+ *   collected   taken, with its transaction
+ */
+export const ClearFeeBill = z.object({
+  id: Id,
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  amountCents: NonNegativeCents,
+  status: z.enum(['due', 'collecting', 'short', 'collected']),
+  txHash: z.string().nullable(),
+  collectedAt: z.string().nullable(),
+});
+export type ClearFeeBill = z.infer<typeof ClearFeeBill>;

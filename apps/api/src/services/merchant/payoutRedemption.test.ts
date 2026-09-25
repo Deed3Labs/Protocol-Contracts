@@ -30,6 +30,8 @@ describe('redeeming without the configuration to do it', function () {
 
 describe('what the code promises in its own text', function () {
   const service = source('payoutRedemption.ts');
+  // How it sends from the shop's wallet, shared with the monthly fee bill.
+  const wallet = source('shopWallet.ts');
   const route = source('../../routes/merchant.ts');
 
   test('approves only when the allowance is short, then redeems', function () {
@@ -44,15 +46,16 @@ describe('what the code promises in its own text', function () {
   test('lets Privy pay the gas rather than a paymaster of ours', function () {
     // The whole of the gasless story is this flag. An earlier version built 7702 delegation, a
     // Kernel account and a paymaster to achieve what it does.
-    expect(service).toContain('sponsor: true');
-    expect(service).not.toContain('zerodev');
+    expect(service).toContain('shopWallet(input.merchant)');
+    expect(wallet).toContain('sponsor: true');
+    expect(service + wallet).not.toContain('zerodev');
   });
 
   test('redeems at the merchant address rather than a new one', function () {
     // The shop's own wallet sends it. The registry entry, the credits, the claim and the cash
     // account are one address by construction, and nothing here introduces a second.
-    expect(service).toContain('getWalletByAddress');
-    expect(service).toContain('org.walletAddress');
+    expect(wallet).toContain('getWalletByAddress');
+    expect(wallet).toContain('org.walletAddress');
   });
 
   test('records a redemption only when it worked', function () {
