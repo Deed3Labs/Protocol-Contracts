@@ -39,7 +39,7 @@ import {
  */
 
 /** Routes that are flows rather than pages. */
-const FLOWS = ['/close'];
+const FLOWS = ['/close', '/new'];
 
 type Open = 'profile' | 'who' | 'pin' | 'owner' | 'plus' | null;
 
@@ -78,7 +78,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   // the shift screen can show it before anyone is on.
   const { data: profile } = useApi(() => api.profile(), []);
   useEffect(() => rememberShop(profile?.name), [profile?.name]);
-  const shop = profile?.name ?? '';
+  // The dev preview (`?preview=1`) stands up a session with no API behind it; it is the
+  // reference scenario's shop.
+  const shop = profile?.name ?? (import.meta.env.DEV && device?.id === 'preview' ? 'Mike\u2019s Tire' : '');
 
   // ---- Changing who is on the counter --------------------------------------------------------
   const [roster, setRoster] = useState<RosterPerson[]>([]);

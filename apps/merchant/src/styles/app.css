@@ -63,7 +63,8 @@ body {
   .c-mc-tablet {
     padding: var(--s2) var(--s2) calc(var(--s6) + env(safe-area-inset-bottom));
   }
-  .c-navwrap {
+  .c-navwrap,
+  .c-ci-bar {
     position: fixed;
     bottom: calc(var(--s2) + env(safe-area-inset-bottom));
     z-index: 10;
@@ -138,10 +139,14 @@ body {
 
 /* ---- Real controls where the reference drew divs --------------------------------------------- */
 
-/* The reference draws the owner's email as a field-shaped div that stretches; a real input
-   does not, so it is told to. */
-input.c-si-in2 {
+/* The reference draws fields as divs that stretch to their row; a real input does not, so it is
+   told to. The one inline field (a tablet's name, in a row beside its label) keeps its own width. */
+input.c-field {
   width: 100%;
+  color: var(--ink);
+}
+input.c-field.c-si-in {
+  width: auto;
 }
 
 /* The + sheet's options and the flow header's close are buttons, so they can be reached by
@@ -173,4 +178,24 @@ input.c-si-in2 {
 /* Close the day is a whole screen in the app; the reference's gap above it is document spacing. */
 .c-mc-tablet.c-dr-close {
   margin-top: 0;
+}
+
+/* Inline links the reference draws as spans are buttons here; they sit on the text's own line. */
+:where(.c-app) :where(button.c-ci-link, button.c-si-link) {
+  line-height: inherit;
+}
+
+/* Card and cash on a phone, which the reference does not draw: a footer's note and its two
+   buttons do not fit one row at 390px, so the buttons take a row of their own. */
+@media (max-width: 519.98px) {
+  .c-ci .c-cfoot > .c-line {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  .c-ci .c-cfoot > .c-line > .c-pair {
+    width: 100%;
+  }
+  .c-ci .c-cfoot > .c-line > .c-pair .c-btn {
+    flex: 1;
+  }
 }

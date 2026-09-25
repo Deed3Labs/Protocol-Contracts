@@ -12,8 +12,8 @@
  * - Rules no reference markup uses are dropped. The library carries the member app's parts too
  *   (card faces, messages, the savings ladder), and the merchant app has none of them.
  * - The page's own chrome is dropped: the document the frames sit on, its notes and headings.
- * - Frames become widths. `.phone X` becomes X below 520px; `.mc-tablet.mc-portrait X` becomes X
- *   between 520 and 900. The frames themselves (a 340px phone outline, a tablet aspect ratio) go,
+ * - Frames become widths. `.phone X` becomes X below 520px; `.mc-portrait X` (or
+ *   `.mc-tablet.mc-portrait X`) becomes X between 520 and 900. The frames themselves (a 340px phone outline, a tablet aspect ratio) go,
  *   because in the app the screen is the frame.
  * - Where two files define the same rule differently, the version most files use wins, and the
  *   others are listed in a comment above it.
@@ -75,7 +75,7 @@ const classesOf = (part) => [...part.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map((m) =
 // Every class the markup actually uses, across all ten files.
 // Plus the one class the reference's own script adds (Staff's crew row, when it overflows).
 const used = new Set(['over']);
-/** How many files' markup use each class. A class in three or more is shared, not a page's own. */
+/** Which files' markup use each class. */
 const classFiles = new Map();
 /**
  * A rule can appear more than once in one file, the second adding to the first. So a selector is
@@ -95,7 +95,8 @@ for (const f of files) {
   }
   for (const c of mine) {
     used.add(c);
-    classFiles.set(c, (classFiles.get(c) ?? 0) + 1);
+    if (!classFiles.has(c)) classFiles.set(c, new Set());
+    classFiles.get(c).add(f.slice(15, -5));
   }
   const counts = new Map();
   for (const r of parse(style)) {
@@ -139,12 +140,23 @@ function place(part, media) {
 
   // Frames.
   if (/^\.phone(\.[\w-]+)*$/.test(part)) return null; // the outline itself
-  if (/^\.phone(\.[\w-]+)+[ >]/.test(part)) return null; // .phone.fixed > .slab: frame layout
-  let m = part.match(/^\.phone\s+(.+)$/);
+  // A phone frame with a modifier: `.phone.ci .ci-th` is the item list on a phone, and keeps its
+  // modifier as the ancestor it names. `.phone.fixed` and `.phone.page` are the outline's own
+  // layout, which the screen replaces.
+  let m = part.match(/^\.phone((?:\.[\w-]+)+)(\s*>?\s*.+)$/);
+  if (m) {
+    const mods = m[1].split('.').filter((x) => x && x !== 'fixed' && x !== 'page');
+    if (!mods.length) return null;
+    return [PHONE, `.${mods.join('.')}${m[2]}`];
+  }
+  m = part.match(/^\.phone\s+(.+)$/);
   if (m) return [PHONE, m[1]];
   if (/^\.mc-tablet\.mc-portrait$/.test(part)) return null;
   m = part.match(/^\.mc-tablet\.mc-portrait\s+(.+)$/);
   if (m) return [PORTRAIT, `.mc-tablet ${m[1]}`];
+  // Most portrait rules name the frame by its modifier alone: `.mc-portrait .mc-qr`.
+  m = part.match(/^\.mc-portrait\s+(.+)$/);
+  if (m) return [PORTRAIT, m[1]];
   return [media, part];
 }
 
@@ -155,46 +167,75 @@ const add = (media, line) => {
 };
 let dropped = 0;
 let drifted = 0;
+/**
+ * Emit one rule. `pages` scopes it: `forced` always, otherwise only when it could match on a page
+ * that does not carry it (see below).
+ */
+function emit(media, sel, body, pages, forced, note) {
+  if (sel.startsWith('@keyframes')) {
+    add('', `${sel}{${body}}`);
+    return true;
+  }
+  const byMedia = new Map();
+  for (const part of sel.split(/\s*,\s*(?![^()]*\))/)) {
+    const p = place(part.trim(), media);
+    if (!p) continue;
+    if (!byMedia.has(p[0])) byMedia.set(p[0], []);
+    // Scoped when the selector could match on a page that does not carry the rule: some other
+    // file uses every one of its classes.
+    const cls = classesOf(p[1]);
+    const leaks =
+      forced ||
+      (!!pages &&
+        cls.length > 0 &&
+        files.some((file) => {
+          const g = file.slice(15, -5);
+          return !pages.includes(g) && cls.every((c) => classFiles.get(c)?.has(g));
+        }));
+    // `:where()` scopes without adding specificity, so the cascade stays the reference's own: a
+    // later rule still beats an earlier one exactly as it does in the file it came from.
+    const scoped = pages && leaks ? pages.map((f) => `:where(.page-${f}) ${p[1]}`) : [p[1]];
+    byMedia.get(p[0]).push(...scoped.map(prefix));
+  }
+  if (!byMedia.size) return false;
+  for (const [m, parts] of byMedia) {
+    if (note) add(m, note.replace(/\.([a-zA-Z_][\w-]*)/g, '.c-$1'));
+    add(m, `${parts.join(',')}{${body}}`);
+  }
+  return true;
+}
+
+/*
+ * A page's own rule stays on that page. Inventory sets `.mc-tablet .slab:not(.one)` to equal
+ * columns and `.iv-pick-sheet` to 420px for its frames; pooled with every other file they would
+ * square up Home's slab and widen New Charge's options sheet. So a rule fewer than half the files
+ * carry, and that could match on another page (some file uses all its classes), is scoped under
+ * `.c-page-<file>` for each file that has it. The app puts that class on <html> for the page that
+ * is open (lib/usePage.ts).
+ *
+ * Where files draw the same rule differently, the version most files use applies everywhere, and
+ * each other version is kept too, scoped to its own files: New Charge's phone buttons sit in a
+ * row where most pages stack them, and on New Charge they still do.
+ */
 for (const { key, n, media, sel } of order) {
   const w = winner.get(key);
   const body = w.bodies[n];
-  if (body === undefined) continue; // an occurrence only the losing files have
   const note =
     n === 0 && w.others.length
       ? `/* ${w.files.join(', ')}. Differs in ${w.others
           .map((o) => `${o.files.join(', ')}: ${o.bodies.join(' + ')}`)
           .join(' | ')} */`
       : '';
-  if (sel.startsWith('@keyframes')) {
-    add('', `${sel}{${body}}`);
-    continue;
+  let any = false;
+  if (body !== undefined) {
+    const pages = w.files.length < files.length / 2 ? w.files : null;
+    any = emit(media, sel, body, pages, false, note);
+    if (note) drifted++;
   }
-  /*
-   * A page's own rule, written against shared classes, stays on that page. Inventory sets
-   * `.mc-tablet .slab:not(.one)` to equal columns for its frames; pooled with every other file
-   * it would square up Home's slab too. So a rule fewer than half the files carry, whose classes
-   * are all shared ones, is scoped under `.c-page-<file>` for each file that has it. The app puts
-   * that class on <html> for the page that is open (lib/usePage.ts).
-   */
-  const pages = w.files.length < files.length / 2 ? w.files : null;
-  const byMedia = new Map();
-  for (const part of sel.split(/\s*,\s*(?![^()]*\))/)) {
-    const p = place(part.trim(), media);
-    if (!p) continue;
-    if (!byMedia.has(p[0])) byMedia.set(p[0], []);
-    const shared = classesOf(p[1]).every((c) => (classFiles.get(c) ?? 0) >= 3);
-    const scoped = pages && shared && classesOf(p[1]).length ? pages.map((f) => `.page-${f} ${p[1]}`) : [p[1]];
-    byMedia.get(p[0]).push(...scoped.map(prefix));
+  for (const o of w.others) {
+    if (o.bodies[n] !== undefined && o.bodies[n] !== body) any = emit(media, sel, o.bodies[n], o.files, true, '') || any;
   }
-  if (!byMedia.size) {
-    dropped++;
-    continue;
-  }
-  if (note) drifted++;
-  for (const [m, parts] of byMedia) {
-    if (note) add(m, note.replace(/\.([a-zA-Z_][\w-]*)/g, '.c-$1'));
-    add(m, `${parts.join(',')}{${body}}`);
-  }
+  if (!any) dropped++;
 }
 
 // The tablet frame is the screen: a full-height column, not a 1180:820 picture of one.

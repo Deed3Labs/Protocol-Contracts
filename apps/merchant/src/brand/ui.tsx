@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ClearMark, IconClose, IconCloseLg, IconDelete } from '@/brand/icons';
 
@@ -251,4 +251,15 @@ export function useDigitKeys(enabled: boolean, onDigit: (d: string) => void, onD
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [enabled]);
+}
+
+/**
+ * One column or two. Above 900px a slab lays its cells side by side; below, one above the other,
+ * which the reference draws as `.slab.one`. A page sets it once for the views inside it.
+ */
+export const OneColumn = createContext(false);
+
+export function Slab({ children, className }: { children: ReactNode; className?: string }) {
+  const one = useContext(OneColumn);
+  return <div className={cx('c-slab', one && 'c-one', className)}>{children}</div>;
 }
