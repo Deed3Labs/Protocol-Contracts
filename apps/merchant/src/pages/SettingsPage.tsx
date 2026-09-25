@@ -1,18 +1,20 @@
-import { useContext, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
+import type { Reader } from '@clear/merchant-contracts';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { seesMoney } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
 import { IconBackChevron } from '@/brand/chargeIcons';
 import { OneColumn } from '@/brand/ui';
 import { api, type EnrolledDevice, type MerchantProfile, type PayoutPosition } from '@/data/apiClient';
-import { useApi } from '@/data/useApi';
+import { useMerchantApi } from '@/data/merchantApi';
+import { errorSentence, useApi } from '@/data/useApi';
 import { usd } from '@/home/model';
 import { useLayout } from '@/lib/useBreakpoint';
 import { roleLabel } from '@/shell/chrome';
 import { currentPlatform, previewPlatform } from '@/reader';
 import { useShiftActions } from '@/shell/shiftActions';
-import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type Section, type SettingsData } from '@/settings/panes';
-import { AddDeviceSheet, ChangeAccountSheet, ConfirmLeaveSheet, IndexCell, LeaveSheet, NewCodeSheet, PaneHead, Rail, Who } from '@/settings/views';
+import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type ReaderRow, type Section, type SettingsData } from '@/settings/panes';
+import { AddDeviceSheet, AddReaderSheet, ChangeAccountSheet, ConfirmLeaveSheet, IndexCell, LeaveSheet, NewCodeSheet, PaneHead, Rail, Who } from '@/settings/views';
 
 /**
  * Settings — docs/merchant-reference/clear-merchant-settings.html.
@@ -27,7 +29,14 @@ import { AddDeviceSheet, ChangeAccountSheet, ConfirmLeaveSheet, IndexCell, Leave
  * confirm|code`, and `/settings/shop/hours`.
  */
 
-type Open = 'account' | 'device' | 'leave' | 'confirm' | 'code' | null;
+type Open = 'account' | 'device' | 'leave' | 'confirm' | 'code' | 'reader' | null;
+
+const READER_ROW: Record<Reader['type'], { kind: ReaderRow['kind']; sub: string }> = {
+  smart: { kind: 'smart', sub: 'Smart reader · on the shop’s network' },
+  m2: { kind: 'bluetooth', sub: 'Chip, tap and swipe · Bluetooth' },
+  tap_to_pay: { kind: 'tapToPay', sub: 'Tap only · on a phone running Clear' },
+};
+const readerRow = (r: Reader): ReaderRow => ({ ...READER_ROW[r.type], t: r.label, chip: 'Paired' });
 
 const monthYear = (iso: string | null, short: boolean) =>
   iso ? new Date(iso).toLocaleDateString('en-US', { month: short ? 'short' : 'long', year: 'numeric' }) : null;
@@ -88,13 +97,48 @@ export default function SettingsPage() {
   const { data: profile } = useApi(() => (preview ? Promise.resolve(null) : api.profile()), [preview]);
   const { data: position } = useApi(() => (preview || !seesMoney(role) ? Promise.resolve(null) : api.payouts()), [preview, role]);
   const { data: devices, reload: reloadDevices } = useApi(() => (preview || !owner ? Promise.resolve(null) : api.devices()), [preview, owner]);
+  // Payments: whether cards are open (and why not), the readers, and the ways to pay.
+  const merchant = useMerchantApi();
+  const { data: cards, reload: reloadCards } = useApi(() => (preview || !owner ? Promise.resolve(null) : merchant.cardAvailability()), [preview, owner]);
+  const { data: readers, reload: reloadReaders } = useApi(() => (preview || !owner ? Promise.resolve(null) : merchant.readers()), [preview, owner]);
+  const { data: shopSettings, reload: reloadSettings } = useApi(() => (preview || !owner ? Promise.resolve(null) : merchant.settings()), [preview, owner]);
+  const [payError, setPayError] = useState<string | null>(null);
 
   const me = { name: session?.staff.name ?? '', role: roleLabel(role) };
   // The preview is the installed app, as the reference draws it; `&platform=web` shows a browser's list.
   const platform = preview ? (previewPlatform(params) ?? 'ios') : currentPlatform();
   const d: SettingsData = preview
     ? { ...REFERENCE, platform, stripe: screen === 'payments-connected', owner: screen === 'counter' ? REFERENCE.owner : (session?.staff.name ?? REFERENCE.owner) }
-    : { ...fromApi(profile, position, devices, me, device?.id ?? null), platform };
+    : {
+        ...fromApi(profile, position, devices, me, device?.id ?? null),
+        // The reference's legal name must never stand in for a live shop's.
+        legalName: profile?.name ?? '—',
+        platform,
+        stripe: cards?.available === true,
+        cards: cards ?? { available: false, reason: 'not_connected' },
+        readers: (readers ?? []).map(readerRow),
+        ways: shopSettings?.paymentMethods ?? null,
+      };
+
+  const connectStripe = async () => {
+    setPayError(null);
+    try {
+      const { url } = await merchant.connectCards();
+      window.location.assign(url);
+    } catch (e) {
+      setPayError(errorSentence(e));
+    }
+  };
+
+  // Back from Stripe's onboarding: read where it stands now. Stripe sends `refresh` when its link
+  // expired before the owner finished, so a fresh one is asked for straight away.
+  const returned = params.get('cards');
+  useEffect(() => {
+    if (preview || !owner || !returned) return;
+    if (returned === 'refresh') void connectStripe();
+    else reloadCards();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returned, preview, owner]);
 
   const [open, setOpen] = useState<Open>(() =>
     (['account', 'device', 'leave', 'confirm', 'code'] as const).find((s) => s === screen) ?? null,
@@ -132,10 +176,36 @@ export default function SettingsPage() {
           await api.revokeDevice(id).catch(() => undefined);
           reloadDevices();
         },
+    onConnectStripe: preview ? undefined : () => void connectStripe(),
+    onAddReader: () => setOpen('reader'),
+    onWay:
+      preview || !shopSettings
+        ? undefined
+        : async (way: 'card' | 'cash' | 'split', on: boolean) => {
+            setPayError(null);
+            try {
+              await merchant.updateSettings({ paymentMethods: { ...shopSettings.paymentMethods, [way]: on } });
+            } catch (e) {
+              setPayError(errorSentence(e));
+            }
+            reloadSettings();
+          },
   };
 
   const meta = current ? (current === 'you' ? YOU : SECTIONS.find((s) => s.key === current)!) : null;
-  const body = hours ? hoursBody(d) : current ? paneBody(current, d, actions) : null;
+  const paneError = current === 'payments' && payError ? (
+    <p className="c-det" role="alert" style={{ color: 'var(--absent)', marginBottom: 'var(--s2)' }}>
+      {payError}
+    </p>
+  ) : null;
+  const body = hours ? (
+    hoursBody(d)
+  ) : current ? (
+    <>
+      {paneError}
+      {paneBody(current, d, actions)}
+    </>
+  ) : null;
   const head = hours ? (
     <PaneHead title="Shop hours" det={HOURS_DET} back={() => navigate(`/settings/shop${q}`)} small={phone} />
   ) : meta ? (
@@ -151,6 +221,20 @@ export default function SettingsPage() {
         <ConfirmLeaveSheet payout={['Paid to Chase ••4417 on Oct 14', '$4,218.91']} waiting="2 · $1,350.00" names="Nina P. and Dana R." onStay={close} />
       )}
       {open === 'code' && <NewCodeSheet onCreate={preview ? close : undefined} onClose={close} />}
+      {open === 'reader' && (
+        <AddReaderSheet
+          app={platform !== 'web'}
+          onAdd={
+            preview
+              ? async () => undefined
+              : async ({ code, label }) => {
+                  await merchant.registerSmartReader({ registrationCode: code, label });
+                  reloadReaders();
+                }
+          }
+          onClose={close}
+        />
+      )}
     </>
   );
 

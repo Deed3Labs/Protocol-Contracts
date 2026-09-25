@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { CardAvailability } from '@clear/merchant-contracts';
 import {
   Account,
   Btn,
@@ -51,7 +52,7 @@ export const SECTIONS: { key: Section; label: string; det: string; desc: string;
   { key: 'payouts', label: 'Payouts', det: 'Where your money goes, when, and the record of it.', desc: 'Bank, schedule, statements', live: true },
   { key: 'partnership', label: 'Partnership', det: 'Your terms, your agreement, and your record in the co-op.', desc: 'Terms, agreement, co-op record', live: true },
   { key: 'counter', label: 'Counter', det: 'The printed cards, and how a shift runs on the tablet.', desc: 'Counter cards, breaks, idle lock' },
-  { key: 'payments', label: 'Payments', det: 'How customers can pay you, and what happens when the connection drops.', desc: 'Ways to pay, cards, offline' },
+  { key: 'payments', label: 'Payments', det: 'How customers can pay you, and what happens when the connection drops.', desc: 'Ways to pay, cards, offline', live: true },
   { key: 'tax', label: 'Tax', det: 'Sales tax, worked out from where the shop is.', desc: 'Where you collect, how prices show' },
   { key: 'tips', label: 'Tips', det: 'Whether Checkout asks, what it offers, and who gets it.', desc: 'Asking, amounts, who gets them' },
   { key: 'discounts', label: 'Discounts', det: 'Codes you create, and how much each role can give without asking.', desc: 'Codes, limits by role' },
@@ -65,8 +66,15 @@ export const SECTIONS: { key: Section; label: string; det: string; desc: string;
 
 export const YOU = { key: 'you' as const, label: 'You', det: 'Your own PIN, and how this tablet is set.', desc: 'Your PIN and this tablet' };
 
+export interface ReaderRow {
+  kind: ReaderKind;
+  t: string;
+  sub: string;
+  chip: string;
+}
+
 /** The reference shop's paired readers. The preview lists those this platform can use. */
-const PAIRED: { kind: ReaderKind; t: string; sub: string; chip: string }[] = [
+const PAIRED: ReaderRow[] = [
   { kind: 'bluetooth', t: 'Stripe Reader M2', sub: 'Chip, tap and swipe · Bluetooth to this tablet', chip: 'Connected' },
   { kind: 'tapToPay', t: 'Tap to Pay on Jen’s iPhone', sub: 'Tap only · +10¢ a tap', chip: 'Ready' },
 ];
@@ -105,6 +113,12 @@ export interface SettingsData {
   taxId: string;
   counterUrl: string;
   stripe: boolean;
+  /** Why cards are locked, for a live shop; null in the preview (which reads `stripe`). */
+  cards: CardAvailability | null;
+  /** The shop's readers from the API; null in the preview (which lists the reference's). */
+  readers: ReaderRow[] | null;
+  /** The ways to pay the shop has on; null in the preview. */
+  ways: { card: boolean; cash: boolean; split: boolean } | null;
   /** Which readers this device can drive: a browser lists smart readers only. */
   platform: Platform;
 }
@@ -154,6 +168,9 @@ export const REFERENCE: SettingsData = {
   taxId: '••-•••4829',
   counterUrl: 'https://useclear.org/c/8QK2',
   stripe: false,
+  cards: null,
+  readers: null,
+  ways: null,
   platform: 'ios',
 };
 
@@ -181,7 +198,44 @@ export interface Actions {
   onLeave: () => void;
   onNewCode: () => void;
   onSignOutDevice?: (id: string) => void;
+  /** Owners: to Stripe's onboarding (or its dashboard, once connected). */
+  onConnectStripe?: () => void;
+  onAddReader?: () => void;
+  /** Owners: a way to pay switched on or off. */
+  onWay?: (way: 'card' | 'cash' | 'split', on: boolean) => void;
 }
+
+/** What the locked card cell says, by why cards are locked. */
+const LOCKED: Record<Exclude<CardAvailability, { available: true }>['reason'], { chip: string; t: string; det: string; cta: string; foot: string }> = {
+  not_connected: {
+    chip: 'Not connected',
+    t: 'Connect your Stripe account to take cards',
+    det: 'Cards run through your own Stripe account, in your business’s name, and land in your bank the next business day. Clear adds its part of the fee to each sale; you never pay for hardware you do not want.',
+    cta: 'Connect Stripe',
+    foot: 'Takes about five minutes. You can use an existing Stripe account.',
+  },
+  details_pending: {
+    chip: 'Almost there',
+    t: 'Finish Stripe’s questions to take cards',
+    det: 'Stripe still needs a few details about the business before cards can be taken. Pick up where you left off.',
+    cta: 'Continue with Stripe',
+    foot: 'Your answers so far are saved.',
+  },
+  charges_disabled: {
+    chip: 'Paused by Stripe',
+    t: 'Stripe has paused card payments',
+    det: 'Stripe needs something from you before cards can be taken again. Their dashboard says what. Cash and Clear work as normal meanwhile.',
+    cta: 'Open Stripe',
+    foot: 'Usually a document or a detail that changed.',
+  },
+  disconnected: {
+    chip: 'Disconnected',
+    t: 'Stripe was disconnected from Clear',
+    det: 'Cards are off until you connect again. Anything taken before stays in your Stripe account.',
+    cta: 'Connect again',
+    foot: 'You can use the same Stripe account.',
+  },
+};
 
 /** A pane's cells. */
 export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
@@ -396,16 +450,18 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
       );
     case 'payments': {
       const kinds = kindsFor(d.platform);
-      const readers = PAIRED.filter((r) => kinds.includes(r.kind));
+      const readers = (d.readers ?? PAIRED).filter((r) => kinds.includes(r.kind));
+      const locked = d.cards && !d.cards.available ? LOCKED[d.cards.reason] : LOCKED.not_connected;
+      const way = (k: 'card' | 'cash' | 'split') => (d.ways && a.onWay ? { on: d.ways[k], onChange: (on: boolean) => a.onWay!(k, on) } : {});
       return (
         <>
           <Cell label="Ways to pay" det="What Checkout offers" foot={<FootDet>Clear is always on: it is what you are a partner for.</FootDet>}>
             <Main>
               <Rows>
                 <Fixed t="Clear" det="Pay now or over time, approved on their phone" />
-                {d.stripe ? <Switch t="Card" det="On the counter reader" /> : <Locked t="Card" det="Needs Stripe connected first" />}
-                <Switch t="Cash" det="Change worked out, counted at close" />
-                <Switch t="Split between methods" det="Part one way, part another" />
+                {d.stripe ? <Switch t="Card" det="On the counter reader" {...way('card')} /> : <Locked t="Card" det="Needs Stripe connected first" />}
+                <Switch t="Cash" det="Change worked out, counted at close" {...way('cash')} />
+                <Switch t="Split between methods" det="Part one way, part another" {...way('split')} />
               </Rows>
             </Main>
           </Cell>
@@ -423,7 +479,7 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
               >
                 <Main>
                   <Rows link>
-                    <Kv k="Stripe account" v={d.legalName} go />
+                    <Kv k="Stripe account" v={d.legalName} go onTap={a.onConnectStripe} />
                     <Kv k="Card processing" v="2.7% + 35¢ a sale · 2.7% + 5¢ under $10" go />
                   </Rows>
                 </Main>
@@ -439,7 +495,7 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
                         : 'An M2, a smart reader, or any phone running the Clear app.'
                     }
                   >
-                    <Btn>Add a reader</Btn>
+                    <Btn onClick={a.onAddReader}>Add a reader</Btn>
                   </FootLine>
                 }
               >
@@ -477,22 +533,23 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
                 <div className="c-chead">
                   <div className="c-sechead">
                     <p className="c-label">Card payments</p>
-                    <span className="c-chip c-neutral">Not connected</span>
+                    <span className="c-chip c-neutral">{locked.chip}</span>
                   </div>
                 </div>
                 <Main>
-                  <p className="c-st-lk-t">Connect your Stripe account to take cards</p>
+                  <p className="c-st-lk-t">{locked.t}</p>
                   <p className="c-det" style={{ marginTop: 6, lineHeight: 1.5 }}>
-                    Cards run through your own Stripe account, in your business’s name, and land in your bank the next business day. Clear adds
-                    its part of the fee to each sale; you never pay for hardware you do not want.
+                    {locked.det}
                   </p>
                   <Rows style={{ marginTop: 'var(--s2)' }}>
                     <Kv k="Card processing" v="2.7% + 35¢ a sale, 2.7% + 5¢ under $10" ink />
                     <Kv k="Readers" v="Stripe Reader M2, smart readers, or Tap to Pay on a phone" ink />
                   </Rows>
                 </Main>
-                <FootLine det="Takes about five minutes. You can use an existing Stripe account.">
-                  <Btn primary>Connect Stripe</Btn>
+                <FootLine det={locked.foot}>
+                  <Btn primary onClick={a.onConnectStripe} disabled={!a.onConnectStripe && !d.preview}>
+                    {locked.cta}
+                  </Btn>
                 </FootLine>
               </div>
             </div>

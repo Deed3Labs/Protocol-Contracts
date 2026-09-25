@@ -129,10 +129,14 @@ export function Tg({ on, onChange, label }: { on: boolean; onChange?: (on: boole
   return <span className={cx('c-tg', on && 'c-on')} role="switch" aria-checked={on} aria-label={label} tabIndex={0} {...(onChange ? { onClick: () => onChange(!on) } : {})} />;
 }
 
-/** A switch row that keeps its own state: settings save as they change. */
-export function Switch({ t, det, initial = true }: { t: string; det: string; initial?: boolean }) {
-  const [on, setOn] = useState(initial);
-  return <R2 t={t} det={det} end={<Tg on={on} onChange={setOn} label={t} />} />;
+/**
+ * A switch row. Given `on` and `onChange` it's the shop's setting, saved as it changes; without
+ * them it keeps its own state (the preview's rows that have no setting behind them yet).
+ */
+export function Switch({ t, det, initial = true, on: controlled, onChange }: { t: string; det: string; initial?: boolean; on?: boolean; onChange?: (on: boolean) => void }) {
+  const [own, setOwn] = useState(initial);
+  const on = controlled ?? own;
+  return <R2 t={t} det={det} end={<Tg on={on} onChange={onChange ?? setOwn} label={t} />} />;
 }
 
 /** Two lines and something at the end: a switch, a button, a word. */
@@ -542,6 +546,56 @@ export function NewCodeSheet({ onCreate, onClose }: { onCreate?: () => void; onC
       <Rows style={{ marginTop: 'var(--s2)' }}>
         <Switch t="Once per customer" det="Checked by their phone number or Clear account" />
       </Rows>
+    </Sheet>
+  );
+}
+
+/**
+ * Adding a smart reader: the code it shows on its own screen, and a name for it. The M2 and Tap to
+ * Pay pair from the card screen in the Clear app, where the device can reach them.
+ */
+export function AddReaderSheet({ app, onAdd, onClose }: { app: boolean; onAdd?: (input: { code: string; label: string }) => Promise<void>; onClose: () => void }) {
+  const [code, setCode] = useState('');
+  const [label, setLabel] = useState('Front counter');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const add = async () => {
+    if (!onAdd) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onAdd({ code: code.trim(), label: label.trim() });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That reader couldn’t be added. Check the code and try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet
+      className="c-st-sheet"
+      title="Add a smart reader"
+      onClose={onClose}
+      foot={
+        <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ width: '100%' }} disabled={!onAdd || busy || !code.trim() || !label.trim()} onClick={add}>
+          {busy ? 'Adding…' : 'Add reader'}
+        </button>
+      }
+    >
+      <p className="c-det" style={{ marginTop: 0, lineHeight: 1.5 }}>
+        On the reader, open Settings and choose Generate pairing code. Type the code it shows here.
+        {app ? ' An M2 or Tap to Pay pairs from the card screen instead.' : ' An M2 or Tap to Pay pairs in the Clear app.'}
+      </p>
+      <p className="c-label c-st-fl">Pairing code</p>
+      <input className="c-field c-st-in" aria-label="Pairing code" autoComplete="off" value={code} onChange={(e) => setCode(e.target.value)} />
+      <p className="c-label c-st-fl">Name</p>
+      <input className="c-field c-st-in" aria-label="Reader name" value={label} onChange={(e) => setLabel(e.target.value)} />
+      {error && (
+        <p className="c-det" role="alert" style={{ marginTop: 'var(--s2)', color: 'var(--absent)' }}>
+          {error}
+        </p>
+      )}
     </Sheet>
   );
 }

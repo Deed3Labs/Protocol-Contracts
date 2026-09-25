@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError } from '@/data/apiClient';
+
+/**
+ * A refusal the server worded: the real client's ApiError and the mock's MockApiError alike carry a
+ * status and a sentence. Anything else (a failed fetch) isn't something to say at a counter.
+ */
+export function isRefusal(e: unknown): e is Error & { status: number } {
+  return e instanceof Error && typeof (e as { status?: unknown }).status === 'number';
+}
+
+/** The sentence for a failure: the server's own, or what to do when it couldn't be reached. */
+export function errorSentence(e: unknown): string {
+  return isRefusal(e) ? e.message : 'Could not reach Clear. Take the ticket the usual way and try again.';
+}
 
 /**
  * One fetch, with the three states every screen in this app has to render.
@@ -46,7 +58,7 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncStat
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        if (e instanceof ApiError && e.status === 403) {
+        if (isRefusal(e) && e.status === 403) {
           setData(null);
           return;
         }
@@ -54,11 +66,7 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncStat
         // `TypeError: Failed to fetch`, which is true, useless at a counter, and not something
         // anybody can say to the person standing there — so an unreachable server gets a sentence
         // about what to do instead of the browser's word for what broke.
-        setError(
-          e instanceof ApiError
-            ? e.message
-            : 'Could not reach Clear. Take the ticket the usual way and try again.',
-        );
+        setError(errorSentence(e));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
