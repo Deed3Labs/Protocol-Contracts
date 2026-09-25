@@ -17,7 +17,7 @@ import { IconPlusSm } from '@/brand/icons';
 import { SaPanel } from '@/brand/sa';
 import { MenuButton, Sheet, Slab, cx } from '@/brand/ui';
 import { OptionsSheet } from '@/charge/start';
-import { usd, type Item, type OptionGroup, type TaxKind } from '@/charge/model';
+import { usd, type Item, type TaxKind } from '@/charge/model';
 import { TAX_LABEL, free, level, type InvItem, type ItemKind } from '@/inventory/model';
 
 /**
@@ -27,6 +27,15 @@ import { TAX_LABEL, free, level, type InvItem, type ItemKind } from '@/inventory
  * category, each row the item, its stock and its price in fixed columns. An item opened: stock
  * and price, with the stock's own history. And one sheet for every reason stock moves by hand.
  */
+
+/** "$176.00", "+$3.00", "176" → cents; blank → null. */
+export function centsOf(text: string): number | null {
+  const t = text.replace(/[^\d.]/g, '');
+  if (!t) return null;
+  const n = Math.round(parseFloat(t) * 100);
+  return Number.isFinite(n) ? n : null;
+}
+const wholeOf = (text: string): number | null => (/^\s*\d+\s*$/.test(text) ? parseInt(text, 10) : null);
 
 export function KindThumb({ kind }: { kind: ItemKind }) {
   return kind === 'tire' ? <IconTire /> : kind === 'brake' ? <IconBrake /> : kind === 'part' ? <IconPart /> : <IconService />;
@@ -642,7 +651,15 @@ const sizeOf = (i: InvItem) => i.detail.split(' · ')[0];
  * One sheet for every reason stock moves by hand. The reason is chosen first, because it decides
  * whether the stepper adds, sets or takes away.
  */
-export function AdjustStockSheet({ i, onSave, onClose, inline }: { i: InvItem; onSave?: (after: number) => void; onClose?: () => void; inline?: boolean }) {
+export interface StockChange {
+  why: 'received' | 'counted' | 'damaged';
+  /** How many came in, were found, or were damaged. */
+  n: number;
+  /** What the shelf holds after. */
+  after: number;
+}
+
+export function AdjustStockSheet({ i, onSave, onClose, inline }: { i: InvItem; onSave?: (change: StockChange) => void; onClose?: () => void; inline?: boolean }) {
   const s = i.stock!;
   const [why, setWhy] = useState<'received' | 'counted' | 'damaged'>('received');
   const [n, setN] = useState(why === 'received' ? 8 : s.shelf);
@@ -656,7 +673,7 @@ export function AdjustStockSheet({ i, onSave, onClose, inline }: { i: InvItem; o
       closeSize="lg"
       onClose={onClose}
       foot={
-        <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!onSave} onClick={() => onSave?.(after)}>
+        <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!onSave} onClick={() => onSave?.({ why, n, after })}>
           Save &middot; {after} on the shelf
         </button>
       }
@@ -920,7 +937,7 @@ export function EditItemSheet({
           <button type="button" className="c-btn" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="c-btn c-btn-primary" disabled={!onSave} onClick={() => onSave?.({ name, detail, priceCents: cents, tax })}>
+          <button type="button" className="c-btn c-btn-primary" disabled={!onSave} onClick={() => onSave?.({ name, detail, priceCents: cents, tax, category: cat as InvItem['category'], costCents: centsOf(cost) ?? undefined, stock: i.stock ? { ...i.stock, reorderAt: wholeOf(reorder) ?? i.stock.reorderAt } : undefined })}>
             Save changes
           </button>
         </div>
@@ -985,6 +1002,20 @@ export function EditItemSheet({
 }
 
 /** Goods or a service first: it decides the rest of the form. */
+/** A new item, as the Add item sheet collects it. */
+export interface NewItem {
+  service: boolean;
+  name: string;
+  detail: string | null;
+  priceCents: number;
+  costCents: number | null;
+  /** On the shelf now; null for a service. */
+  shelf: number | null;
+  reorderAt: number | null;
+  category: string;
+  tax: TaxKind;
+}
+
 export function AddItemSheet({
   initialType = 'goods',
   initial,
@@ -994,7 +1025,7 @@ export function AddItemSheet({
 }: {
   initialType?: 'goods' | 'service';
   initial?: Partial<Record<'name' | 'detail' | 'price' | 'cost' | 'shelf' | 'reorder' | 'per', string>>;
-  onAdd?: (item: Partial<InvItem>) => void;
+  onAdd?: (item: NewItem) => void;
   onClose?: () => void;
   inline?: boolean;
 }) {
@@ -1010,7 +1041,19 @@ export function AddItemSheet({
       closeSize="lg"
       onClose={onClose}
       foot={
-        <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!onAdd || !f.name.trim() || !f.price.trim()} onClick={() => onAdd?.({ name: f.name })}>
+        <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!onAdd || !f.name.trim() || !f.price.trim()} onClick={() =>
+            onAdd?.({
+              service: type === 'service',
+              name: f.name.trim(),
+              detail: type === 'service' ? f.per.trim() || null : f.detail.trim() || null,
+              priceCents: centsOf(f.price) ?? 0,
+              costCents: type === 'service' ? null : centsOf(f.cost),
+              shelf: type === 'service' ? null : wholeOf(f.shelf),
+              reorderAt: type === 'service' ? null : wholeOf(f.reorder),
+              category: type === 'service' ? 'Services' : cat === '+ New' ? 'Other' : cat,
+              tax,
+            })
+          }>
           Add to inventory
         </button>
       }
@@ -1276,6 +1319,14 @@ export function OptionsPage({
 }
 
 /** Name, must pick or can skip, one or any, and the choices with what each adds. */
+/** A new option group, as the sheet collects it. */
+export interface NewGroup {
+  name: string;
+  required: boolean;
+  rule: 'one' | 'any';
+  choices: { name: string; deltaCents: number }[];
+}
+
 export function AddGroupSheet({
   initialName = '',
   initialRequired = false,
@@ -1289,7 +1340,7 @@ export function AddGroupSheet({
   initialRequired?: boolean;
   initialRule?: 'one' | 'any';
   initialChoices?: { name: string; price: string }[];
-  onSave?: (g: Partial<OptionGroup>) => void;
+  onSave?: (g: NewGroup) => void;
   onClose?: () => void;
   inline?: boolean;
 }) {
@@ -1309,7 +1360,7 @@ export function AddGroupSheet({
       closeSize="lg"
       onClose={onClose}
       foot={
-        <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!name.trim()} onClick={() => onSave?.({ name, required, rule })}>
+        <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!name.trim()} onClick={() => onSave?.({ name: name.trim(), required, rule, choices: choices.filter((c) => c.name.trim()).map((c) => ({ name: c.name.trim(), deltaCents: centsOf(c.price) ?? 0 })) })}>
           Save group
         </button>
       }

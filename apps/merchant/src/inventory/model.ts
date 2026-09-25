@@ -1,12 +1,12 @@
+import type { CatalogItem, Reorder, StockMovement } from '@clear/merchant-contracts';
 import type { OptionGroup, TaxKind } from '@/charge/model';
 
 /**
  * Inventory, as data — docs/merchant-reference/clear-merchant-inventory.html.
  *
  * Stock is a count, not bookkeeping: on the shelf, held for waiting charges, free to sell, and
- * the reorder line. Services keep no stock. There is no catalog API yet (card-processing prompt,
- * Phase 2), so a live shop has an empty inventory and this module's scenario is what the
- * preview shows.
+ * the reorder line. Services keep no stock. A live shop's inventory comes from the catalog API
+ * (`fromCatalog`, below); this module's scenario is what the preview shows.
  */
 
 export type ItemKind = 'tire' | 'brake' | 'part' | 'service';
@@ -131,3 +131,69 @@ export const TAX_LABEL: Record<TaxKind, string> = {
   food: 'Prepared food',
   exempt: 'Exempt',
 };
+
+// ---- A live shop's inventory: the catalog API, as the screens draw it --------------------------------
+
+const KIND_BY_CATEGORY: Record<string, ItemKind> = { Tires: 'tire', Brakes: 'brake', Services: 'service' };
+const shortDate = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+/** An item from the catalog API, with its open reorder and (on its own page) its stock history. */
+export function fromCatalog(c: CatalogItem, reorders: Reorder[] = [], history: StockMovement[] | null = null): InvItem {
+  const open = reorders.find((r) => r.itemId === c.id && (r.status === 'open' || r.status === 'partly_received'));
+  const service = !c.stockTracked;
+  return {
+    id: c.id,
+    name: c.name,
+    detail: c.detail ?? '',
+    category: c.category as InvItem['category'],
+    kind: service ? 'service' : (KIND_BY_CATEGORY[c.category] ?? 'part'),
+    priceCents: c.priceCents,
+    ...(c.costCents != null ? { costCents: c.costCents } : {}),
+    tax: c.taxKind,
+    ...(c.stock
+      ? {
+          stock: {
+            shelf: c.stock.onHand,
+            held: c.stock.held,
+            reorderAt: c.reorderAt ?? 0,
+            ...(open ? { onOrder: open.quantity - open.receivedQuantity, supplier: open.supplier ?? undefined, due: open.expectedOn ? shortDate(open.expectedOn) : undefined } : {}),
+          },
+        }
+      : {}),
+    ...(c.optionGroups.length
+      ? {
+          options: c.optionGroups.map((g) => ({
+            id: g.id,
+            name: g.name,
+            rule: g.rule,
+            required: g.required,
+            choices: g.options.map((o) => ({ id: o.id, name: o.name, deltaCents: o.deltaCents })),
+          })),
+        }
+      : {}),
+    ...(history ? { history: history.map(historyEntry) } : {}),
+  };
+}
+
+const MOVED: Record<StockMovement['kind'], string> = {
+  receive: 'Received',
+  count: 'Counted',
+  damage: 'Damaged',
+  hold: 'Held for a charge',
+  release: 'Released from a charge',
+  sell: 'Sold',
+  return: 'Returned',
+};
+
+/** One stock movement as the item's history line. */
+export function historyEntry(m: StockMovement): InvItem['history'] extends (infer E)[] | undefined ? E : never {
+  const at = new Date(m.at);
+  const today = new Date().toDateString() === at.toDateString();
+  const when = today ? `Today, ${at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase()}` : at.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const q = `${m.quantity > 0 ? '+' : m.quantity < 0 ? '−' : ''}${Math.abs(m.quantity)}`;
+  const tone = m.kind === 'hold' ? 'held' : m.kind === 'receive' || (m.kind === 'count' && m.quantity > 0) ? 'in' : undefined;
+  return { when, what: m.reason ? `${MOVED[m.kind]} · ${m.reason}` : MOVED[m.kind], q, ...(tone ? { tone } : {}) };
+}
+
+/** What's on the shelf at cost, for the owner's note: only items with a cost count. */
+export const shelfAtCost = (items: InvItem[]) => items.reduce((sum, i) => sum + (i.stock && i.costCents !== undefined ? i.stock.shelf * i.costCents : 0), 0);
