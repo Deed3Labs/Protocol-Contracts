@@ -11,7 +11,7 @@ import { tipsPayable } from '../ledger/accounts.js';
 import { balance } from '../ledger/ledgerService.js';
 import { updateSettings } from '../shop/shopService.js';
 import { createOrder, getOrder, type OrderDeps } from './orderService.js';
-import { cancelClearTender, type ClearCharges, createCashTender, createClearTender, syncClearTender, voidOrder } from './payments.js';
+import { cancelClearTender, type ClearCharges, createCashTender, createClearTender, discardOrder, syncClearTender, voidOrder } from './payments.js';
 
 let db: Db;
 beforeAll(async () => {
@@ -194,6 +194,31 @@ describe('Clear', () => {
     expect(PAY_OVER_TIME_MIN_CENTS).toBe(5000);
     expect(splitsOffered(4999, [1, 2, 4, 12])).toEqual([1]);
     expect(splitsOffered(5000, [1, 2, 4, 12])).toEqual([1, 2, 4, 12]);
+  });
+});
+
+describe('discarding an order nothing was paid on', () => {
+  test('walked away: the hold released, no PIN; declined or withdrawn payments don’t count', async () => {
+    const s = await shop();
+    const o = await s.order(2);
+    const held = async () => (await db.query<{ held: number }>('SELECT held FROM commerce.stock_levels WHERE item_id = $1', [s.tire.id])).rows[0]!.held;
+    expect(await held()).toBe(2);
+    const c = fakeClear();
+    const t = await createClearTender(db, c.clear, { merchant: s.merchant, orderId: o.id, staffId: s.staff.jen, tender: { amountCents: 1000, tipCents: 0, idempotencyKey: key() } });
+    await cancelClearTender(db, c.clear, { merchant: s.merchant, tenderId: t.id, actor: s.staff.jen });
+    const gone = await discardOrder(db, { merchant: s.merchant, orderId: o.id, staffId: s.staff.jen });
+    expect(gone.status).toBe('voided');
+    expect(await held()).toBe(0);
+    // Safe to repeat.
+    expect((await discardOrder(db, { merchant: s.merchant, orderId: o.id, staffId: s.staff.jen })).status).toBe('voided');
+  });
+
+  test('anything that took money is voided or refunded instead', async () => {
+    const s = await shop();
+    await openDrawer(db, { merchant: s.merchant, staffId: s.staff.jen });
+    const o = await s.order(1);
+    await cash(s, o.id, 5000, 5000);
+    await expect(discardOrder(db, { merchant: s.merchant, orderId: o.id, staffId: s.staff.jen })).rejects.toMatchObject({ code: 'not_voidable' });
   });
 });
 

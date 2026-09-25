@@ -505,6 +505,16 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       return toOrder(rec);
     },
 
+    discardOrder: async (orderId) => {
+      const rec = orderRec(orderId);
+      if (rec.voided) return toOrder(rec);
+      const ts = [...tenders.values()].filter((t) => t.orderId === rec.id);
+      if (ts.some((t) => t.status !== 'declined' && t.status !== 'cancelled')) refuse('A payment has started on it, so it’s voided (with a manager’s PIN) or refunded instead', 409, 'not_voidable');
+      rec.voided = true;
+      for (const l of stockLines(rec)) moveStock(l.itemId, 'release', l.quantity, rec.id);
+      log('order.discarded', { ref: { type: 'order', id: rec.id } });
+      return toOrder(rec);
+    },
     tenders: async (orderId) => [...tenders.values()].filter((t) => t.orderId === orderId).map(publicTender),
     createCardTender: async (orderId, input) => {
       const again = replay(input.idempotencyKey);

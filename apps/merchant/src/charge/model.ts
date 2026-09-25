@@ -56,6 +56,8 @@ export interface CartLine {
   unitCents: number;
   tax: TaxKind;
   hasOptions?: boolean;
+  /** The options picked, by id, as the order is raised with them. */
+  optionIds?: string[];
 }
 
 export interface Discount {
@@ -63,6 +65,9 @@ export interface Discount {
   label: string;
   percent?: number;
   amountCents?: number;
+  /** A code's discount carries the code; an amount carries its reason. */
+  code?: string;
+  reason?: string;
 }
 
 export const TAX_RATE = 0.0775;

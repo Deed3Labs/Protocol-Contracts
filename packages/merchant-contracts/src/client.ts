@@ -87,6 +87,8 @@ export interface MerchantApi {
   removeDiscount(orderId: string): Promise<Order>;
   /** Same day, before capture: cards cancelled, cash back from the drawer, stock released. */
   voidOrder(orderId: string, input: { pin: string }): Promise<Order>;
+  /** An order nothing was paid on (walked away, or every payment declined): its hold released. No PIN. */
+  discardOrder(orderId: string): Promise<Order>;
 
   // ---- Tenders -------------------------------------------------------------------------------------
   tenders(orderId: string): Promise<Tender[]>;

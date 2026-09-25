@@ -266,6 +266,8 @@ export function SplitView({
   method,
   onMethod,
   onCharge,
+  typed,
+  onAmount,
 }: {
   totalCents: number;
   legs: Leg[];
@@ -273,6 +275,9 @@ export function SplitView({
   method: LegMethod;
   onMethod?: (m: LegMethod) => void;
   onCharge?: () => void;
+  /** Live: what's typed for this part ("40.00"); empty for all that's left. */
+  typed?: string;
+  onAmount?: (text: string) => void;
 }) {
   const paid = legs.filter((l) => l.state === 'paid').reduce((s, l) => s + l.amountCents, 0);
   const all = nextCents === totalCents - paid;
@@ -306,10 +311,24 @@ export function SplitView({
         <div className="c-cmain c-ck-pay" role="radiogroup" aria-label="Next payment by">
           <div className="c-ck-next">
             <p className="c-label">Amount</p>
-            <div className="c-mc-amount c-ck-in" aria-live="polite">
-              {usd(nextCents)}
-              <span className="c-caret" />
-            </div>
+            {onAmount ? (
+              <label className="c-mc-amount c-ck-in" style={{ display: 'flex', alignItems: 'baseline' }}>
+                $
+                <input
+                  inputMode="decimal"
+                  aria-label="Amount for this part"
+                  placeholder={(nextCents / 100).toFixed(2)}
+                  value={typed ?? ''}
+                  onChange={(e) => onAmount(e.target.value.replace(/[^\d.]/g, ''))}
+                  style={{ border: 0, background: 'transparent', font: 'inherit', color: 'inherit', outline: 'none', padding: 0, width: '7ch' }}
+                />
+              </label>
+            ) : (
+              <div className="c-mc-amount c-ck-in" aria-live="polite">
+                {usd(nextCents)}
+                <span className="c-caret" />
+              </div>
+            )}
             <p className="c-det">{all ? 'All that is left. Type less to split it again.' : 'Part of what is left. The rest comes next.'}</p>
           </div>
           {tile('clear', 'Pay now or over time, on their phone')}

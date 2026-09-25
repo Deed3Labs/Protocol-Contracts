@@ -189,6 +189,8 @@ describe('every method returns the contract’s shape', () => {
     if (s2) ok(C.Tender, await api.cancelTender(s2.tenderId), 'cancelTender');
     ok(C.Order, await api.voidOrder(o2.id, { pin: '9999' }), 'voidOrder');
     ok(C.Receipt, await api.receipt(o.id), 'receipt');
+    const walked = await api.createOrder({ lines: [{ itemId: itemId('tpms'), quantity: 1, optionIds: [] }], customer: null });
+    ok(C.Order, await api.discardOrder(walked.id), 'discardOrder');
     const s = (await api.drawer())!;
     ok(C.DrawerSession, s, 'drawer');
     ok(C.CountsView, await api.counts(s.id), 'counts');

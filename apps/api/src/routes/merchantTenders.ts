@@ -10,7 +10,7 @@ import { connectorForShop } from '../services/merchant/cards/registry.js';
 import { currentDrawer, DrawerError, openDrawer } from '../services/merchant/drawer/drawerService.js';
 import { clearChargesFor } from '../services/merchant/orders/clearCharges.js';
 import { businessDate } from '../services/merchant/orders/orderService.js';
-import { cancelClearTender, createCashTender, createClearTender, PaymentError, syncClearTender, voidOrder } from '../services/merchant/orders/payments.js';
+import { cancelClearTender, createCashTender, createClearTender, discardOrder, PaymentError, syncClearTender, voidOrder } from '../services/merchant/orders/payments.js';
 import { staffStore } from '../services/merchant/staffStore.js';
 import type { Role } from '@clear/merchant-contracts';
 import { terminalRefusal } from './merchantCards.js';
@@ -234,6 +234,17 @@ router.post('/orders/:orderId/void', requireMerchant, async (req: Request, res: 
         { merchant, orderId: String(req.params.orderId), staffId: req.merchant!.staff.id, pin: String(req.body?.pin ?? ''), today: businessDate(rows[0]?.timezone ?? 'America/Los_Angeles') },
       ),
     );
+  } catch (error) {
+    refuse(res, error);
+  }
+});
+
+// Nothing paid on it: the hold released, no PIN (payments.ts discardOrder).
+router.post('/orders/:orderId/discard', requireMerchant, async (req: Request, res: Response) => {
+  const db = await merchantDb();
+  if (!db) return res.status(503).json({ error: 'Unavailable', message: 'merchant database is not configured' });
+  try {
+    res.json(await discardOrder(db, { merchant: req.merchant!.merchant, orderId: String(req.params.orderId), staffId: req.merchant!.staff.id }));
   } catch (error) {
     refuse(res, error);
   }

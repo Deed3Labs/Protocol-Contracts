@@ -172,6 +172,31 @@ export async function cancelClearTender(db: Db, clear: ClearCharges, input: { me
 }
 
 /**
+ * Discards an order no money has touched: the customer walked away before paying, or every payment
+ * on it was declined or withdrawn. Its held stock goes back on the shelf. No PIN: nothing was paid,
+ * so there's nothing to undo but the hold; anything that took money is voided or refunded instead.
+ */
+export async function discardOrder(db: Db, input: { merchant: string; orderId: string; staffId: string }): Promise<Order> {
+  await db.transaction(async (tx) => {
+    const { rows } = await tx.query<OrderRow>('SELECT id, status, voided_at, total_cents, business_date, raised_by FROM commerce.orders WHERE id = $1 AND merchant = $2 FOR UPDATE', [
+      input.orderId,
+      input.merchant,
+    ]);
+    const order = rows[0];
+    if (!order) throw new PaymentError('No such order', 'not_found');
+    if (order.voided_at) return;
+    const { rows: tenders } = await tx.query<TenderRow>('SELECT * FROM payments.tenders WHERE order_id = $1 FOR UPDATE', [order.id]);
+    if (tenders.some((t) => t.status !== 'declined' && t.status !== 'cancelled')) {
+      throw new PaymentError('A payment has started on it, so it’s voided (with a manager’s PIN) or refunded instead', 'not_voidable');
+    }
+    await tx.query(`UPDATE commerce.orders SET status = 'voided', voided_at = now(), voided_by = $2, updated_at = now() WHERE id = $1`, [order.id, input.staffId]);
+    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'order.discarded', ref: { type: 'order', id: order.id }, amountCents: Number(order.total_cents) });
+    await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: input.staffId });
+  });
+  return getOrder(db, input.merchant, input.orderId);
+}
+
+/**
  * Voids an order: a same-day undo before any card is captured, approved with a manager's or owner's
  * PIN. Card holds are released, pending Clear charges withdrawn, cash goes back out of the drawer,
  * and stock is released. An approved Clear payment or a captured card can only be refunded.

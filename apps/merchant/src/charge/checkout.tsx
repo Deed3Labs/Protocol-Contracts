@@ -4,7 +4,7 @@ import { Segmented } from '@/brand/controls';
 import { IconCloseLg } from '@/brand/icons';
 import { Sheet, cx, Slab } from '@/brand/ui';
 import { Breakdown, lineLabel } from '@/charge/start';
-import { itemCount, totals, usd, type CartLine, type Discount } from '@/charge/model';
+import { itemCount, totals, usd, type CartLine, type Discount, type Totals } from '@/charge/model';
 
 /**
  * Checkout and the tip — New Charge reference, sections 2 and 3.
@@ -87,6 +87,7 @@ export function PayTiles({
 
 export function CheckoutView({
   body,
+  server,
   cardLocked,
   unavailable,
   onEditCart,
@@ -95,6 +96,8 @@ export function CheckoutView({
   onPick,
 }: {
   body: ChargeBody;
+  /** A live shop: the order's totals, from the server, in place of the local estimate. */
+  server?: Totals | null;
   cardLocked?: boolean;
   unavailable?: Method[];
   onEditCart?: () => void;
@@ -103,8 +106,8 @@ export function CheckoutView({
   onPick?: (m: Method) => void;
 }) {
   const hasLines = body.lines.length > 0;
-  const t = hasLines ? totals(body.lines, body.discount) : null;
-  const total = chargeTotal(body);
+  const t = hasLines ? (server ?? totals(body.lines, body.discount)) : null;
+  const total = server ? server.totalCents : chargeTotal(body);
   return (
     <Slab>
       <div className="c-cell">
@@ -231,6 +234,7 @@ export function DiscountSheet({
   initialValue = '',
   initialReason = REASONS[0],
   pinFilled = 0,
+  askPin,
   onApply,
   onClose,
   inline,
@@ -245,7 +249,9 @@ export function DiscountSheet({
   initialValue?: string;
   initialReason?: string;
   pinFilled?: number;
-  onApply?: (d: Discount) => void;
+  /** A live shop: over the limit, the owner or manager types their PIN here (the preview draws the dots). */
+  askPin?: boolean;
+  onApply?: (d: Discount, pin: string | null) => void;
   onClose?: () => void;
   inline?: boolean;
 }) {
@@ -260,14 +266,16 @@ export function DiscountSheet({
   const amountDiscount: Discount | null =
     mode === 'amount' && n > 0
       ? unit === '%'
-        ? { label: `${n}% · ${reason}`, percent: n }
-        : { label: `${usd(Math.round(n * 100))} · ${reason}`, amountCents: Math.round(n * 100) }
+        ? { label: `${n}% · ${reason}`, percent: n, reason }
+        : { label: `${usd(Math.round(n * 100))} · ${reason}`, amountCents: Math.round(n * 100), reason }
       : null;
-  const codeDiscount: Discount | null = found?.ok ? { label: `${found.code} · ${found.percent}% off`, percent: found.percent } : null;
+  const codeDiscount: Discount | null = found?.ok ? { label: found.percent ? `${found.code} · ${found.percent}% off` : found.code, percent: found.percent, code: found.code } : null;
   const d = mode === 'code' ? codeDiscount : amountDiscount;
   const after = d ? totals(lines, d) : null;
   const pct = d?.percent ?? (d?.amountCents ? (d.amountCents / Math.max(1, totals(lines).totalCents - totals(lines).taxCents)) * 100 : 0);
   const over = mode === 'amount' && limitPercent !== null && pct > limitPercent;
+  const [pin, setPin] = useState('');
+  const pinReady = askPin ? pin.length === 4 : pinFilled >= 4;
 
   return (
     <Sheet
@@ -280,8 +288,8 @@ export function DiscountSheet({
         <button
           type="button"
           className="c-btn c-btn-primary c-btn-lg"
-          disabled={!d || (over && pinFilled < 4)}
-          onClick={() => d && onApply?.(d)}
+          disabled={!d || (over && !pinReady)}
+          onClick={() => d && onApply?.(d, over ? pin : null)}
         >
           {over ? 'Approve with PIN' : mode === 'code' && found?.ok ? `Apply ${found.code}` : 'Apply'}
         </button>
@@ -372,11 +380,25 @@ export function DiscountSheet({
             <p className="c-t">Over your limit</p>
             <p className="c-det">Counter staff can give up to {limitPercent}%. An owner or manager enters their PIN.</p>
           </div>
-          <div className="c-dots" role="img" aria-label={`${pinFilled} of 4 digits`}>
-            {[0, 1, 2, 3].map((i) => (
-              <i key={i} className={i < pinFilled ? 'c-f' : ''} />
-            ))}
-          </div>
+          {askPin ? (
+            <input
+              className="c-field c-cc-in"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={4}
+              aria-label="Owner or manager PIN"
+              value={pin}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              style={{ width: '6ch', letterSpacing: '0.3em', textAlign: 'center' }}
+            />
+          ) : (
+            <div className="c-dots" role="img" aria-label={`${pinFilled} of 4 digits`}>
+              {[0, 1, 2, 3].map((i) => (
+                <i key={i} className={i < pinFilled ? 'c-f' : ''} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </Sheet>
