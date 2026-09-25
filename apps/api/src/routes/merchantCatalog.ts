@@ -4,12 +4,14 @@ import { merchantDb } from '../config/merchantDb.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireManager, requireMerchant } from '../middleware/merchantAuth.js';
 import * as catalog from '../services/merchant/catalog/catalogService.js';
+import { importCatalog } from '../services/merchant/catalog/importService.js';
 
 /**
  * Inventory (card-processing prompt, Phase 6), mounted on /api/merchant.
  *
  *   GET   /catalog                          items, options, stock; cost only for managers and owners
  *   POST  /catalog/items                    managers: add an item
+ *   POST  /catalog/import                   managers: many items from a spreadsheet; matches add stock
  *   PATCH /catalog/items/:id                managers: change it (past charges keep their prices)
  *   POST  /catalog/items/:id/archive        managers
  *   PUT   /catalog/items/:id/options        managers: replace its option groups
@@ -40,6 +42,7 @@ const m = (req: Request) => req.merchant!.merchant;
 const staff = (req: Request) => req.merchant!.staff.id;
 
 router.get('/catalog', requireMerchant, (req, res) => run(res, (db) => catalog.listCatalog(db, m(req), { seesCost: seesMoney(req.merchant!.staff.role) })));
+router.post('/catalog/import', requireMerchant, requireManager, (req, res) => run(res, (db) => importCatalog(db, { merchant: m(req), staffId: req.merchant!.staff.id, body: req.body })));
 router.post('/catalog/items', requireMerchant, requireManager, (req, res) => run(res, (db) => catalog.createItem(db, { merchant: m(req), staffId: staff(req), item: req.body })));
 router.patch('/catalog/items/:id', requireMerchant, requireManager, (req, res) => run(res, (db) => catalog.updateItem(db, { merchant: m(req), itemId: String(req.params.id), patch: req.body })));
 router.post('/catalog/items/:id/archive', requireMerchant, requireManager, (req, res) => run(res, (db) => catalog.archiveItem(db, { merchant: m(req), itemId: String(req.params.id) })));

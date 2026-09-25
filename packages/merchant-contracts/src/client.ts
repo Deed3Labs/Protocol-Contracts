@@ -11,7 +11,7 @@ import type {
   RecordReader,
   RegisterSmartReader,
 } from './cards';
-import type { CatalogItem, DiscountCode, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
+import type { CatalogImport, CatalogItem, DiscountCode, ImportResult, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
 import type { AuditEntry, BankDeposit, CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
@@ -89,6 +89,8 @@ export interface MerchantApi {
   // ---- The catalogue and stock ----------------------------------------------------------------------
   catalog(): Promise<CatalogItem[]>;
   createItem(input: In<typeof ItemInput>): Promise<CatalogItem>;
+  /** Owners and managers: many items at once, from a spreadsheet; matches add to stock. */
+  importCatalog(input: In<typeof CatalogImport>): Promise<ImportResult>;
   updateItem(id: string, input: Partial<In<typeof ItemInput>>): Promise<CatalogItem>;
   archiveItem(id: string): Promise<CatalogItem>;
   saveOptionGroups(itemId: string, groups: Omit<OptionGroup, 'id'>[]): Promise<CatalogItem>;
