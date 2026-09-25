@@ -8,6 +8,13 @@ import {
 } from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
 import { Button, PrimaryButton } from '@/shell/ui';
+import {
+  CheckEmailScreen,
+  CheckEmailSheet,
+  OwnerSignInScreen,
+  OwnerSignInSheet,
+  PasskeyScreen,
+} from '@/auth/screens';
 
 /**
  * Signing in as the owner — reference section 19.
@@ -87,6 +94,14 @@ export function OwnerSignIn(props: {
    * either way, just without the wrapper that assumes it is the whole page.
    */
   embedded?: boolean;
+  /**
+   * How it is drawn, when it is not embedded: the full screen (a tablet not yet enrolled, the
+   * back-office computer) or the sheet over a running shift. Both from the sign-in reference.
+   */
+  variant?: 'screen' | 'sheet';
+  /** The phone's narrower full screen. */
+  phone?: boolean;
+  onSetUpShop?: () => void;
 }) {
   if (!PRIVY_APP_ID) {
     return (
@@ -138,6 +153,9 @@ function OwnerSignInForm({
   title,
   blurb,
   embedded,
+  variant = 'screen',
+  phone,
+  onSetUpShop,
 }: {
   onDone: () => void;
   onBack?: () => void;
@@ -174,6 +192,9 @@ function OwnerSignInForm({
    * either way, just without the wrapper that assumes it is the whole page.
    */
   embedded?: boolean;
+  variant?: 'screen' | 'sheet';
+  phone?: boolean;
+  onSetUpShop?: () => void;
 }) {
   const { ready, authenticated, getAccessToken, login } = usePrivy();
   /*
@@ -198,6 +219,7 @@ function OwnerSignInForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adopting, setAdopting] = useState(false);
+  const [awaitingPasskey, setAwaitingPasskey] = useState(false);
 
   /**
    * Exchange the Privy token for a merchant session — but only once Privy says it is signed in.
@@ -266,6 +288,50 @@ function OwnerSignInForm({
     } finally {
       setBusy(false);
     }
+  }
+
+  /*
+   * The sign-in reference's own screens and sheets, for everything but the embedded use inside
+   * pages that have not been converted yet (onboarding, withdrawing), which keep the form below.
+   */
+  if (!embedded && !authorizedContent) {
+    const sendCodeNow = () => {
+      if (!ready || busy || !email.includes('@')) return;
+      void run(async () => {
+        await sendCode({ email });
+        setSent(true);
+      });
+    };
+    const startPasskey = () => {
+      setSent(false);
+      setAwaitingPasskey(true);
+      // Privy's own window takes it from here; this screen waits behind it until the sign-in lands
+      // (the effect above adopts it) or the owner chooses the emailed code instead.
+      void run(async () => {
+        await login();
+        setAdopting(true);
+      });
+    };
+    const typeCode = (v: string) => {
+      setCode(v);
+      setError(null);
+      if (v.length === 6 && !busy)
+        void run(async () => {
+          await loginWithCode({ code: v });
+          setAdopting(true);
+        });
+    };
+    const resend = () => void run(() => sendCode({ email }));
+    const form = { email, onEmail: setEmail, onSendCode: sendCodeNow, onPasskey: startPasskey, busy: busy || adopting || !ready, error };
+    const codeStep = { email, code, onCode: typeCode, error, onResend: resend, onPasskey: startPasskey };
+
+    if (variant === 'sheet') {
+      return sent ? <CheckEmailSheet {...codeStep} onClose={onBack} /> : <OwnerSignInSheet {...form} onClose={onBack} />;
+    }
+    if (awaitingPasskey && !sent) {
+      return <PasskeyScreen onRetry={startPasskey} onEmail={() => setAwaitingPasskey(false)} />;
+    }
+    return sent ? <CheckEmailScreen {...codeStep} /> : <OwnerSignInScreen {...form} phone={phone} onSetUpShop={onSetUpShop} />;
   }
 
   return (

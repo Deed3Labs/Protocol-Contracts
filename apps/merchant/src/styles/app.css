@@ -1,0 +1,171 @@
+/*
+ * Where the app departs from docs/merchant-reference/, and why.
+ *
+ * reference.css is generated from the reference files and is not edited by hand. Everything here
+ * is either the difference between a drawing of a screen and a screen, or a decision taken over
+ * the reference (docs/merchant-reference/DECISIONS.md). Keep the two apart, so regenerating
+ * reference.css never quietly undoes a decision.
+ */
+
+/* ---- The page ------------------------------------------------------------------------------ */
+
+/* The reference's own body rule, less the padding and gap of the document the frames sit on. */
+body {
+  margin: 0;
+  background: var(--paper);
+  font-family: var(--font-text);
+  font-size: var(--t-body);
+  line-height: 1.6;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Browser defaults, back inside the converted screens.
+ *
+ * The reference is drawn on an unstyled page: a <p> it does not zero keeps its 1em margin, an
+ * <svg> sits inline. Tailwind's reset removes both, and the screens not yet converted still need
+ * that reset. :where() keeps these at the specificity of a bare element, so any class in
+ * reference.css still wins, exactly as it does over the browser's own defaults.
+ */
+:where(.c-app) :where(p, ul, ol) {
+  margin-block: 1em;
+}
+:where(.c-app) :where(svg, img) {
+  display: inline;
+  vertical-align: baseline;
+}
+:where(.c-app) :where(b, strong) {
+  font-weight: bolder;
+}
+/* A button's text sits on the browser's own line height, not the page's 1.6. */
+:where(.c-app) :where(button) {
+  line-height: normal;
+}
+
+/* ---- Frames become the screen -------------------------------------------------------------- */
+
+/*
+ * The reference draws a tablet as a 1180:820 picture with a rounded outline. On a tablet the
+ * screen is the outline, so the frame's chrome goes and it fills the viewport.
+ */
+.c-mc-tablet {
+  background: var(--paper);
+  border: 0;
+  border-radius: 0;
+  max-width: none;
+  aspect-ratio: auto;
+  height: 100dvh;
+  padding: var(--s3);
+}
+/* The phone frame's padding: room at the bottom for the floating nav. */
+@media (max-width: 519.98px) {
+  .c-mc-tablet {
+    padding: var(--s2) var(--s2) calc(var(--s6) + env(safe-area-inset-bottom));
+  }
+  .c-navwrap {
+    position: fixed;
+    bottom: calc(var(--s2) + env(safe-area-inset-bottom));
+    z-index: 10;
+  }
+}
+
+/* A drawn scrim covers its frame; a real one covers the screen. */
+.c-mc-scrim {
+  position: fixed;
+  z-index: 20;
+}
+.c-mc-scrim .c-sheet {
+  max-width: 100%;
+}
+/* The phone's + sheet: the reference pins it to its frame, the app to the screen. */
+.c-ps-scrim,
+.c-ps-sheet {
+  position: fixed;
+  z-index: 20;
+}
+.c-ps-sheet {
+  padding-bottom: calc(var(--s3) + env(safe-area-inset-bottom));
+}
+
+/* ---- Decisions (DECISIONS.md) --------------------------------------------------------------- */
+
+/* Square corners everywhere, sheets included. Pill buttons and round dots stay as they are. */
+.c-sheet,
+.c-ch-sheet.c-wide,
+.c-ps-sheet,
+.c-ps-grab,
+.c-ck-scrim,
+.c-iv-scrim {
+  border-radius: 0;
+}
+
+/* Toggles are pill switches. Charges drew a smaller, rounded one; it takes the Settings pill. */
+.c-ch-toggle {
+  width: 40px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--ink-28);
+  background: var(--paper-2);
+}
+.c-ch-toggle::after {
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  background: var(--ink-50);
+}
+.c-ch-toggle.c-on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.c-ch-toggle.c-on::after {
+  left: 19px;
+  background: var(--paper);
+}
+
+/*
+ * Only something live pulses: the reader waiting, someone on shift. A shop that has finished
+ * setting up, an owner who has signed in and a stock level are states, so their dots hold still.
+ * The glow stays, because every dot in the brand has it.
+ */
+.c-ob-live::after,
+.c-si-live::after,
+.c-iv-st i.c-ping::after {
+  animation: none;
+  opacity: 0;
+}
+
+/* ---- Real controls where the reference drew divs --------------------------------------------- */
+
+/* The reference draws the owner's email as a field-shaped div that stretches; a real input
+   does not, so it is told to. */
+input.c-si-in2 {
+  width: 100%;
+}
+
+/* The + sheet's options and the flow header's close are buttons, so they can be reached by
+   keyboard and heard by a screen reader. A button centres its text; the reference's divs did not. */
+.c-ps-opt {
+  width: 100%;
+  text-align: left;
+}
+
+/* The flow header's title can shrink, so a long one trims instead of pushing the shift pill off a
+   phone. The reference never draws a flow header at phone width; this is the least it needs. */
+.c-mc-flowtop .c-t {
+  min-width: 0;
+}
+
+/* Who's on the counter, on a phone: the reference draws four people across a tablet and never
+   narrower. Four across 390px crushes each card, so they go two by two. */
+@media (max-width: 519.98px) {
+  .c-si-people {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* The sign-in frame's 24px sides leave 342px, and six code boxes need 346. The phone's own
+     16px, as every phone frame in the reference has. */
+  .c-si-lock {
+    padding: var(--s2);
+  }
+}

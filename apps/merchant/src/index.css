@@ -1,26 +1,13 @@
 @import 'tailwindcss';
-/* Colour, type scale, spacing and radii — shared with the member app, and the whole of what is. */
+/* The old palette. Only the pages not yet converted to the reference still read it. */
 @import '../../../packages/tokens/src/tokens.css';
+/*
+ * The reference, transcribed (generated — see scripts/reference-css.mjs), then the app's own
+ * departures from it. In the components layer, so they sit above Tailwind's reset.
+ */
+@import './styles/reference.css' layer(components);
+@import './styles/app.css' layer(components);
 
-html {
-  /*
-   * The screen is surface-2, not surface-0.
-   *
-   * In the reference the darker tones are the *document* the mockups sit on; the tablet's own
-   * screen is the lightest one, and cards are that same colour defined only by a hairline. Using
-   * surface-0 here made every card a panel floating on a brown field, which is a different and
-   * much heavier product.
-   */
-  background: var(--clear-surface-2);
-  font-family: var(--clear-font-sans);
-  /* A counter tablet is touched, not clicked; stop iOS zooming on a tapped input. */
-  -webkit-text-size-adjust: 100%;
-}
-
-body {
-  margin: 0;
-  color: var(--clear-text-primary);
-}
 
 /* Figures line up in columns so a writer can scan a list of amounts without reading each one. */
 .tabular-nums {
