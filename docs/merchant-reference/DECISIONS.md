@@ -242,8 +242,8 @@ Decided 2026-09-24.
   - Offline is off everywhere (`OFFLINE_BUILT` in `reader/platform.ts`). Settings says "Coming to
     the M2 in an app update". The thin plugin, adding offline to the M2 only, is the next native
     step, on a Mac with Xcode and Android Studio.
-- **Which readers show.** A browser lists smart readers only, through Stripe's web SDK
-  (`@stripe/terminal-js`). The installed app adds the M2 and Tap to Pay. Settings › Payments and
+- **Which readers show.** A browser lists smart readers only, driven from the server (see
+  *Smart readers are driven from the server* below; this was Stripe's web SDK until then). The installed app adds the M2 and Tap to Pay. Settings › Payments and
   the card screen's "Use another reader" list only these. The preview is the installed app, as
   the reference draws it; add `&platform=web` for a browser's view.
 - **"Use another reader"** isn't drawn. It's a sheet of the device's readers, reusing Payouts'
@@ -266,6 +266,15 @@ Decided 2026-09-24.
   there now); the API allowing the app's origins (`capacitor://localhost`, `https://localhost`)
   and `VITE_API_BASE_URL` at build time; and checking the owner's Privy sign-in, especially
   passkeys, inside the app's WebView.
+
+- **Smart readers are driven from the server** (2026-09-24). Stripe recommends the server-driven
+  integration for smart readers (S700/S710, WisePOS E): its browser SDK needs the counter device and
+  the reader on the same local network. So the app no longer loads `@stripe/terminal-js`. For a
+  smart reader, on the web and in the installed app alike, it asks the API to start the card tender
+  and send it to the reader (`POST /api/merchant/tenders/:id/present`), then follows the tender
+  (`/sync`) to approved or declined. The M2 and Tap to Pay still collect on the device through the
+  Capacitor plugin, then the server catches up. **Nothing in the app captures:** the server
+  captures at Close the day. See `apps/merchant/src/reader/server.ts`.
 
 ## Adaptations: the reference doesn't draw these
 
