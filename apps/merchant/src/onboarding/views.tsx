@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { IconUpload } from '@/brand/chargeIcons';
 import { ClearMark, IconChevron } from '@/brand/icons';
-import { cx } from '@/brand/ui';
+import { cx, clickOnKey } from '@/brand/ui';
 
 /**
  * Onboarding's pieces — docs/merchant-reference/clear-merchant-onboarding.html: the frame every
@@ -209,8 +209,18 @@ export const Kvs = ({ rows }: { rows: [string, string][] }) => (
   </div>
 );
 
-export function Tick({ on, onChange }: { on: boolean; onChange?: (on: boolean) => void }) {
-  return <span className={cx('c-ob-tick', on && 'c-on')} role="checkbox" aria-checked={on} tabIndex={0} onClick={() => onChange?.(!on)} />;
+export function Tick({ on, onChange, label }: { on: boolean; onChange?: (on: boolean) => void; label: string }) {
+  return (
+    <span
+      className={cx('c-ob-tick', on && 'c-on')}
+      role="checkbox"
+      aria-checked={on}
+      aria-label={label}
+      tabIndex={0}
+      onKeyDown={clickOnKey}
+      onClick={() => onChange?.(!on)}
+    />
+  );
 }
 
 export function Drop({ label, onPick }: { label: string; onPick?: () => void }) {

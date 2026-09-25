@@ -12,7 +12,7 @@ import {
   IconSplit15,
   IconTick,
 } from '@/brand/chargeIcons';
-import { cx, initials, MenuButton, Sheet } from '@/brand/ui';
+import { clickOnKey, cx, initials, MenuButton, Sheet } from '@/brand/ui';
 import { TickBox } from '@/brand/controls';
 import { usd } from '@/home/model';
 import {
@@ -163,7 +163,7 @@ const PM: Record<PayMethod, [string, () => ReactNode]> = {
 export function MethodBox({ method }: { method: PayMethod }) {
   const [label, Icon] = PM[method];
   return (
-    <span className={cx('c-ch-pm', `c-${method}`)} title={label} aria-label={label}>
+    <span className={cx('c-ch-pm', `c-${method}`)} title={label} aria-label={label} role="img">
       <Icon />
     </span>
   );
@@ -235,15 +235,17 @@ const SORT_LABEL: Record<SortBy, [string, string]> = {
   waiting: ['Waiting', 'Waiting first'],
 };
 
-function Opt({ on, off, label, count, onPick }: { on: boolean; off?: boolean; label: string; count?: number; onPick?: () => void }) {
+/** An option in a menu (a sort), or a radio in a filter's group (`radio`). */
+function Opt({ on, off, label, count, onPick, radio }: { on: boolean; off?: boolean; label: string; count?: number; onPick?: () => void; radio?: boolean }) {
   return (
     <div
       className={cx('c-ch-opt', on && 'c-on', off && 'c-off')}
-      role="menuitemradio"
+      role={radio ? 'radio' : 'menuitemradio'}
       aria-checked={on}
       aria-disabled={off}
       tabIndex={off ? -1 : 0}
       onClick={off ? undefined : onPick}
+      onKeyDown={off ? undefined : clickOnKey}
     >
       <span>{label}</span>
       {count !== undefined && <span className="c-det">{count}</span>}
@@ -327,6 +329,8 @@ export function ChargesList({
             <MenuButton
               defaultOpen={menuOpen === 'filter'}
               className="c-ch-menu"
+              role="dialog"
+              label="Filter charges"
               button={(_, toggle) => (
                 <button type="button" className="c-ch-tool" onClick={toggle}>
                   <IconFilter />
@@ -337,19 +341,19 @@ export function ChargesList({
             >
               {(close) => (
                 <>
-                  <div className="c-grp">
+                  <div className="c-grp" role="radiogroup" aria-label="When">
                     <p className="c-label">When</p>
-                    <Opt label="Today" count={count('today')} on={filters.when === 'today'} onPick={() => (set({ when: 'today' }), close())} />
-                    <Opt label="Yesterday" count={count('yesterday')} on={filters.when === 'yesterday'} onPick={() => (set({ when: 'yesterday' }), close())} />
+                    <Opt radio label="Today" count={count('today')} on={filters.when === 'today'} onPick={() => (set({ when: 'today' }), close())} />
+                    <Opt radio label="Yesterday" count={count('yesterday')} on={filters.when === 'yesterday'} onPick={() => (set({ when: 'yesterday' }), close())} />
                     {owner ? (
                       <>
-                        <Opt label="This month" count={count('month')} on={filters.when === 'month'} onPick={() => (set({ when: 'month' }), close())} />
-                        <Opt label="Pick dates" on={false} />
+                        <Opt radio label="This month" count={count('month')} on={filters.when === 'month'} onPick={() => (set({ when: 'month' }), close())} />
+                        <Opt radio label="Pick dates" on={false} />
                       </>
                     ) : (
                       <>
-                        <Opt label="Today and yesterday" count={count('both')} on={filters.when === 'both'} onPick={() => (set({ when: 'both' }), close())} />
-                        <Opt label="This month" on={false} off />
+                        <Opt radio label="Today and yesterday" count={count('both')} on={filters.when === 'both'} onPick={() => (set({ when: 'both' }), close())} />
+                        <Opt radio label="This month" on={false} off />
                       </>
                     )}
                   </div>
@@ -396,6 +400,7 @@ export function ChargesList({
               defaultOpen={menuOpen === 'sort'}
               className="c-ch-menu"
               width={240}
+              label="Sort charges"
               button={(_, toggle) => (
                 <button type="button" className="c-ch-tool c-sort" aria-label={`Sort: ${SORT_LABEL[sort][1].toLowerCase()}`} onClick={toggle}>
                   <IconSort />
@@ -405,7 +410,7 @@ export function ChargesList({
               )}
             >
               {(close) => (
-                <div className="c-grp">
+                <div className="c-grp" role="group" aria-label="Sort by">
                   <p className="c-label">Sort by</p>
                   {(['newest', 'oldest', 'largest', 'waiting'] as SortBy[]).map((s) => (
                     <Opt key={s} label={SORT_LABEL[s][1]} on={sort === s} onPick={() => (onSort(s), close())} />
@@ -1052,14 +1057,14 @@ export function GoodsRefundSheet({
       <p className="c-label c-ch-fl">What is coming back</p>
       <div className="c-ch-rets">
         {lines.map((l, i) => (
-          <div key={l.t} className={cx('c-ch-ret', on[i] && 'c-on')}>
+          <div key={l.t} className={cx('c-ch-ret', on[i] && 'c-on')} aria-disabled={l.labour || undefined}>
             <TickBox kind="charge" on={on[i]} label={l.t} onChange={l.labour ? undefined : (v) => setOn(on.map((x, k) => (k === i ? v : x)))} />
             <div>
               <p className="c-t">{l.t}</p>
               <p className="c-det">{l.det}</p>
               {!l.labour && (
                 <label className="c-ch-stock" onClick={() => setStock(stock.map((x, k) => (k === i ? !x : x)))}>
-                  <span className={cx('c-ch-toggle', stock[i] && 'c-on')} />
+                  <span className={cx('c-ch-toggle', stock[i] && 'c-on')} role="switch" aria-checked={stock[i]} aria-label="Back in stock" tabIndex={0} onKeyDown={clickOnKey} />
                   Back in stock
                 </label>
               )}

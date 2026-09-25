@@ -172,6 +172,9 @@ const cart = { mode: 'items' as const, lines: REFERENCE_CART };
 const typed940 = { typed: '940', mode: 'amount' as const };
 
 /** Every frame of the reference, reachable in development as `?preview=1&screen=<name>`. */
+/** A rate as the reference writes it: 2.0%, 1.25%. */
+const pctLabel = (p: number) => `${p % 1 ? p.toFixed(2).replace(/0$/, '') : p.toFixed(1)}%`;
+
 export const SCREENS: Record<string, Partial<Flow>> = {
   amount: { ...typed940 },
   items: { ...cart },
@@ -185,6 +188,8 @@ export const SCREENS: Record<string, Partial<Flow>> = {
   food: { mode: 'items', view: 'tiles', catalog: 'food', lines: FOOD_ORDER },
   'food-options': { mode: 'items', view: 'tiles', catalog: 'food', lines: FOOD_ORDER, sheet: { k: 'options', item: FOOD[1], missing: true } },
   checkout: { ...cart, screen: 'checkout' },
+  // Before Stripe is connected: Card is locked (the page reads the screen name for that).
+  'checkout-nostripe': { ...cart, screen: 'checkout' },
   'checkout-amount': { ...typed940, screen: 'checkout' },
   'checkout-discount': { ...cart, screen: 'checkout', discount: FALL10 },
   'discount-code': { ...cart, screen: 'checkout', sheet: { k: 'discount', code: 'FALL10' } },
@@ -700,7 +705,7 @@ export default function NewChargePage() {
               }}
               onCheckout={toCheckout}
               heading={f.catalog === 'food' ? 'Order 47' : undefined}
-              headingDet={f.catalog === 'food' ? '“Sam”' : undefined}
+              headingDet={f.catalog === 'food' ? 'For “Sam”' : undefined}
               heroLabel={f.catalog === 'food' ? 'Total' : undefined}
             />
           </div>
@@ -822,7 +827,7 @@ export default function NewChargePage() {
             { t: 'Approved', det: approved ? 'Just now' : 'Any time today', state: approved ? 'd' : live?.openedAt ? 'on' : '' },
           ],
         };
-    const fee = fees ? { label: `Fee · ${fees.over ?? fees.now}%${fees.over ? ', over time' : ''}`, cents: Math.round((shownCents * (fees.over ?? fees.now)) / 100) } : undefined;
+    const fee = fees ? { label: `Fee · ${pctLabel(fees.over ?? fees.now)}${fees.over ? ', over time' : ''}`, cents: Math.round((shownCents * (fees.over ?? fees.now)) / 100) } : undefined;
     const reached = preview
       ? ([
           { how: 'Text', status: 'Delivered', at: '12:16pm' },

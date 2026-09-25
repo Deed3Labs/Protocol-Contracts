@@ -103,8 +103,11 @@ function Strip({
         <div key={i} className={c.tone ? `c-${c.tone}` : ''}>
           <p className="c-label">{c.label}</p>
           {c.tone === 'hid' ? (
-            <p className="c-f" aria-label="Hidden">
-              $&bull;&bull;&bull;.&bull;&bull;
+            // A paragraph can't carry a label, so the bullets are hidden from a screen reader and
+            // the word it hears sits beside them, out of sight.
+            <p className="c-f">
+              <span aria-hidden="true">$&bull;&bull;&bull;.&bull;&bull;</span>
+              <span className="c-sr">Hidden</span>
             </p>
           ) : (
             <p className="c-f">{c.cents === null ? DASH : usd(c.cents)}</p>

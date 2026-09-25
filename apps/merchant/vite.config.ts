@@ -1,10 +1,30 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { createHash } from 'crypto';
+import { readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
+import type { Plugin } from 'vite';
+
+/**
+ * Stamps the service worker with this build's id (a hash of index.html, which names every hashed
+ * asset), so each deploy is a new worker whose activation clears the last build's cache.
+ */
+function stampServiceWorker(): Plugin {
+  return {
+    name: 'clear-merchant-sw-stamp',
+    apply: 'build',
+    closeBundle() {
+      const dist = resolve(__dirname, 'dist');
+      const id = createHash('sha256').update(readFileSync(resolve(dist, 'index.html'))).digest('hex').slice(0, 12);
+      const sw = resolve(dist, 'sw.js');
+      writeFileSync(sw, readFileSync(sw, 'utf8').replace('__BUILD__', id));
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), stampServiceWorker()],
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

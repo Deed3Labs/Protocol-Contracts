@@ -316,7 +316,7 @@ export default function OnboardingPage() {
             </ObCell>
             {!phone && (
               <label className="c-ob-agree">
-                <Tick on={agree} onChange={setAgree} />
+                <Tick on={agree} onChange={setAgree} label="I agree to the Clear Partner terms" />
                 <span>
                   I agree to the Clear Partner terms, including the card processing and payout terms above. <span className="c-ob-link">Read them</span>
                 </span>
@@ -474,7 +474,7 @@ export default function OnboardingPage() {
             >
               {TRAINING.map(([t, det], i) => (
                 <div key={t} className={cx('c-ob-train', trained[i] && 'c-done')}>
-                  <Tick on={trained[i]} onChange={(v) => setTrained(trained.map((x, k) => (k === i ? v : x)))} />
+                  <Tick on={trained[i]} onChange={(v) => setTrained(trained.map((x, k) => (k === i ? v : x)))} label={t} />
                   <div>
                     <p className="c-t">{t}</p>
                     <p className="c-det">{det}</p>
@@ -488,7 +488,7 @@ export default function OnboardingPage() {
                 </div>
               ))}
               <div className={cx('c-ob-train', trained[3] && 'c-done')}>
-                <Tick on={trained[3]} onChange={(v) => setTrained([...trained.slice(0, 3), v])} />
+                <Tick on={trained[3]} onChange={(v) => setTrained([...trained.slice(0, 3), v])} label="Their first shift" />
                 <div>
                   <p className="c-t">Their first shift</p>
                   <p className="c-det">
@@ -526,7 +526,6 @@ export default function OnboardingPage() {
               </span>
               <span className="c-mc-for">Setting up {f.shopName}</span>
             </span>
-            <span className="c-ob-save">Save and finish later</span>
           </div>
         )}
         <div className="c-ob-done">

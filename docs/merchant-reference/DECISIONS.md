@@ -298,3 +298,69 @@ Decided 2026-09-24.
   children), which the reference applies to its tablet frame only.
 - **A Charges row's chip on a phone** keeps the list's size (84 × 20): the stylesheet gathers phone
   rules at its end, which would otherwise let the general phone rule win.
+
+## UI Phase 7: checks
+
+Run from `apps/merchant` on Node 22, with the installed Chrome (`channel: 'chrome'`):
+`npm run test:visual` (the states and their reference frames), `npm run test:e2e` (everything:
+visual, `a11y`, `roles`, `pwa`). The report, each state beside the frame it is drawn from with the
+reason for any difference, is written to `e2e/.report/index.html`.
+
+- **Every state, at every size.** `e2e/states.ts` lists 171 states the preview can show without a
+  backend, each paired with the reference frames it is drawn from (149 pairs) and a note where the
+  two differ. Each state is captured at 1180×820, 820×1180 and 390×844. A frame is drawn at one
+  size, so it pairs with that size's capture. The sign-in screens only show signed out, so they are
+  captured from the gallery, which frames the same components.
+- **Baselines aren't committed.** 171 states at three sizes is about 36MB of PNGs, and the fonts
+  differ between a Mac and a Linux runner, so a committed baseline would only fit one of them.
+  `toHaveScreenshot` compares against baselines made on the same machine: run
+  `npm run test:visual -- --update-snapshots` on the base branch, then `npm run test:visual` on the
+  change. `e2e/__screenshots__` is git-ignored.
+- **Fixed on the way:**
+  - The phone's Confirmed today head is the count alone.
+  - The food example's order says `For “Sam”`.
+  - The approved fee reads `2.0%`.
+  - The phone's delivery rows keep their ticks.
+  - Done no longer offers Save and finish later.
+- **Focus is ours.** The reference draws no focus state. Anything focused from the keyboard gets a
+  2px ink ring, 2px clear of it, which reads on paper and around ink buttons alike. A sheet takes
+  focus when it opens (so Tab lands inside it) without drawing a ring round itself.
+- **Every control answers the keyboard.** Controls drawn as something other than a `<button>` (a
+  row, a leg, a chip, a tick) take Enter and Space through one handler, `clickOnKey`, which clicks
+  them, so their onClick stays the only path. A row that holds its own button (a waiting charge's
+  Resend, a day's ×) is no longer a button itself: its name is, and the whole row still opens it for
+  a pointer.
+- **Menus and filters.** A sort is a menu of `menuitemradio`s. A filter mixes options and chips, so
+  it is a labelled dialog, its options a radio group.
+- **The hidden expected total** is heard as "Hidden": the bullets are hidden from a screen reader,
+  and the word sits beside them out of sight (a paragraph can't carry a label).
+- **Contrast.** Every token passes WCAG AA on paper except ink-28 (1.8:1). The reference dims with
+  opacity, which takes even ink-50 below 4.5:1. Where what is dimmed is still live, it keeps full
+  opacity and reads in ink-50 (4.8:1) instead:
+  - a step still to come;
+  - the next leg of a split;
+  - a refund line not ticked yet;
+  - a closed day's label;
+  - a locked nav item, which still opens the owner's sign-in.
+
+  What is genuinely unavailable (an item out of stock, labour that can't come back) keeps the
+  reference's dim and is marked `aria-disabled`, which WCAG exempts.
+- **Reduced motion stills everything**, not just the pings: the caret, the PIN dots, the reader's
+  wave and the crew strip's scroll all finish at once.
+- **Roles.** Every screen is checked as Jen (counter), Luis (manager) and Mike (owner), on the live
+  path against the mock:
+  - Close the day, Payouts, Staff and Overview send a counter shift Home.
+  - No screen a counter shift can reach shows a payout, fee, cost or margin.
+  - The nav locks Payouts and Overview for a counter shift.
+  - Settings is You alone for a counter shift and a manager.
+- **The icon is the Clear mark**, as the brand draws it, in ink on paper. It is drawn into
+  `public/` by `scripts/icons.mjs`: the SVG, 180 for iOS, 192 and 512, and a maskable 512 that
+  keeps the mark inside Android's safe circle. It replaces the purple placeholder, whose PNGs the
+  manifest named but which didn't exist.
+- **A deploy is a new service worker.** The build stamps its id into `sw.js`, so each deploy
+  installs a new worker whose activation clears the last build's cache. Navigations stay network
+  first, and each good one refreshes the offline copy of the page. A deploy therefore shows on the
+  next load, and offline opens the build last seen online. A running tablet isn't reloaded under
+  someone mid-charge: the new build takes over at the next load.
+- **The Capacitor web layer** is checked with Capacitor's bridge on the window, as the installed
+  app has it. The same build starts, and doesn't register the service worker.
