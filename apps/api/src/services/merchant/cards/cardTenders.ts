@@ -50,7 +50,6 @@ export class TenderError extends Error {
       | 'reader_busy'
       | 'reader_offline'
       | 'reader_timeout'
-
       | 'method_off',
   ) {
     super(message);
