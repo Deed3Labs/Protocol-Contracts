@@ -84,6 +84,8 @@ export interface MockSwitches {
   drawer: 'none' | 'open' | 'balanced' | 'short' | 'disagree' | 'closed';
   card: 'approve' | 'decline';
   clear: 'approve' | 'decline' | 'wait';
+  /** Set up the till: `new` is a shop that hasn't set starting cash or tips yet. */
+  setup: 'done' | 'new';
   delayMs: number;
 }
 
@@ -112,7 +114,7 @@ interface OrderRec {
 const TODAY = seed.REFERENCE_DAY;
 
 export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?: string } = {}) {
-  const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', delayMs: 250, ...initial };
+  const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', setup: 'done', delayMs: 250, ...initial };
   let viewer = initial.viewer ?? seed.STAFF_ID.mike;
   let failNext: { method: string; message: string; status: number } | null = null;
   let n = 1000;
@@ -139,6 +141,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   const deposits: BankDeposit[] = [];
   const cardDeposits: CardDeposit[] = [];
   let orderNumber = 0;
+  // Set up the till's two steps nothing else records.
+  const marks = new Set<'cash' | 'tips'>(switches.setup === 'new' ? [] : ['cash', 'tips']);
   // Shifts and hours: who is on, their breaks, and each person's usual week and this week.
   type ShiftRec = { staffId: string; startedAt: string; breakFrom: string | null; breakMinutes: number };
   const shifts = new Map<string, ShiftRec>(seed.SHIFTS.map((s) => [s.staffId, { ...s, breakFrom: null, breakMinutes: 0 }]));
@@ -435,7 +439,20 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     updateSettings: async (patch) => {
       if (who(viewer)?.role !== 'owner') refuse('Only the owner changes settings', 403);
       settings = { ...settings, ...(patch as Partial<ShopSettings>), updatedAt: now() };
+      if (patch.startingCashCents !== undefined) marks.add('cash');
+      if (patch.tips !== undefined || patch.discountLimits !== undefined) marks.add('tips');
       return settings;
+    },
+    setup: async () => {
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      return {
+        stripe: switches.stripe === 'connected',
+        reader: switches.stripe === 'connected' && readers.length > 0,
+        items: [...items.values()].some((i) => !i.archivedAt),
+        team: seed.STAFF.filter((s) => s.role !== 'owner' && s.active && !removed.has(s.id)).map((s) => s.name),
+        cash: marks.has('cash'),
+        tips: marks.has('tips'),
+      };
     },
     staff: async () => seed.STAFF,
 
@@ -567,6 +584,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     createDiscountCode: async (input) => {
       const c: DiscountCode = { ...input, id: id('dsc'), uses: 0 };
       codes.set(c.id, c);
+      marks.add('tips');
       return c;
     },
 
@@ -767,6 +785,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       if (openSession()) refuse('The drawer is already open', 409, 'already_open');
       const s: DrawerSession = { id: id('drw'), shop: shop.id, businessDate: TODAY, openedBy: viewer, startingCashCents: input.startingCashCents ?? settings.startingCashCents, openedAt: now(), closedAt: null, status: 'open' };
       sessions.set(s.id, s);
+      marks.add('cash');
       return s;
     },
     saveCount: async (sessionId, input) => {

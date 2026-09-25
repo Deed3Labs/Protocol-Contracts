@@ -104,6 +104,7 @@ try {
   await fetch(`${origin}/api/merchant/session`, { method: 'DELETE', headers: { Authorization: `Bearer ${jenShift.token}` } });
   if ((await jen.shifts()).length) throw new Error('signing out did not end the shift');
   await check('taxStatus', C.TaxStatus, () => owner.taxStatus());
+  await check('setup', C.SetupProgress, () => manager.setup());
 
   // ---- Cards
   await check('cardAvailability', C.CardAvailability, () => jen.cardAvailability());

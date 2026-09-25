@@ -6,6 +6,7 @@ import * as postings from '../ledger/postings.js';
 import { businessDate } from '../orders/orderService.js';
 import { getSettings } from '../shop/shopService.js';
 import { audit } from '../security/audit.js';
+import { markSetup } from '../setup/setupService.js';
 
 /**
  * The cash drawer's session (card-processing prompt, Phase 7 opens it; cash tenders in Phase 6 need
@@ -79,6 +80,8 @@ export async function openDrawer(db: Db, input: { merchant: string; staffId: str
     const float = postings.drawerFloat({ merchant: input.merchant, sessionId: id, changeCents: starting - inDrawer, createdBy: input.staffId });
     if (float) await post(tx, float);
     await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'drawer.opened', ref: { type: 'drawer_session', id }, amountCents: starting, detail: { inDrawerBeforeCents: inDrawer } });
+    // Opening a drawer with its starting cash is setting it.
+    await markSetup(tx, input.merchant, 'cash');
   });
   return (await currentDrawer(db, input.merchant))!;
 }

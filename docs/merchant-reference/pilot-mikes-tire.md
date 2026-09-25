@@ -7,24 +7,38 @@ Phase 10 of the card-processing prompt asks for a checklist for the first real s
 - a week of real closes
 - reconciliation reviewed every day
 
-This is that checklist, written after the backend phases were built (PRs #593–#608). It says plainly what isn't ready yet.
+This is that checklist. It was first written after the backend phases (PRs #593–#608) and brought up to date on 2026-09-25, after the merchant app was wired to the API (UI Phases 3–7, PRs #610–#621) and the audit's pilot fixes (#623–#628). It says plainly what isn't ready yet.
 
-Work down it in order. Section 0 blocks everything after it.
+Work down it in order.
 
 ---
 
-## 0. Blocking: the app doesn't use the checkout API yet
+## 0. Where the app stands
 
-The backend is built and tested end to end against Stripe's simulated reader (`apps/api`, `bun run e2e:live`, 7/7). **The merchant app isn't wired to it.**
+**Live on a real shop**, against the API:
+- **Selling:** the catalogue or a typed amount, tax and discounts worked out by the server, tips, then Clear, card (smart reader in a browser; M2 and Tap to Pay in the installed app), cash or a split.
+- **Receipts:** texted (Twilio) or printed through the tablet's print dialog. Email isn't wired yet (section 1).
+- **Charges:** every sale, however it was paid. Void (a manager's PIN), adjust a tip before capture, refund goods back into stock, and the whole Clear refund.
+- **The drawer and Close the day:** blind counts, sign-off of a difference, capture of the day's cards, the day report.
+- **Staff:** adding people, who pick their own PIN on their first shift. Resetting a PIN, removing someone, shifts and breaks, and each person's weekly hours.
+- **Inventory:** items, options, stock, reorders.
+- **Settings:** the shop's listing and hours, Counter (breaks, the PIN lock), Payments, Devices, Tax, Tips, Discounts, Closing.
+- **Overview and Payouts:** the month, card deposits, Clear's fees and the payout position.
 
-- `apps/merchant/src/data/apiClient.ts` only calls the older routes (Clear charges, onboarding, staff, payouts).
-- None of the checkout routes are called: orders, tenders, drawer, close, catalog, refunds, cards.
-- The card screen runs on `reader/backend.ts`'s `unavailableBackend`, which says "Card payments aren't switched on for this shop yet".
+**Not built yet** (none of these blocks the pilot):
+- Adding a bank, withdrawing to a bank by ACH, and statements. Plaid and Bridge are chosen for bank linking.
+- Email (receipts, statements, the end-of-day summary). Resend is chosen.
+- A reconciliation screen. Flags are read from the API for now (section 6).
+- Exporting and "send to accountant" on Overview.
+- Scanning a member's own code, texting a link to pay, a custom tip amount, and an offline banner.
+- Importing a spreadsheet into Inventory.
+- Home's "Running low" and setup checklist on a live shop.
+- Splitting tips by hours. The shift clock now records hours, but tips still go to whoever raised the charge.
 
-That wiring is **UI Phase 3** in `claude-code-merchant-ui-prompt.md`: switch the screens from mock data to `packages/merchant-contracts`' `MerchantApi`, endpoint by endpoint.
-
-- [ ] UI Phase 3 done, including `TerminalBackend` backed by `/api/merchant/cards/*` and `/api/merchant/tenders/*`.
-- [ ] Rerun `bun run e2e:live` against the deployed API, then run the same six stories by hand in the app (section 5).
+**Before the dress rehearsal:**
+- [ ] `bun run e2e:live` (apps/api) passes against Stripe test mode: the six Phase 10 stories and the audit trail. It passed 7/7 on `dev` on 2026-09-25; rerun it on the commit that ships.
+- [ ] `bun run e2e:contract` passes: every `MerchantApi` method against the real API.
+- [ ] The Connect webhook's signing secret is set (section 1). Until it is, card holds and captures still work from the app, but Stripe's updates never arrive: disconnects, payouts, refunds settling.
 
 ## 1. Accounts and settings (the owner of Clear's Stripe and Railway does these)
 
@@ -32,8 +46,9 @@ Clear never enters keys into service settings for you. Set these yourself.
 
 **Railway, apps/api service:**
 - [ ] `STRIPE_SECRET_KEY`: Clear's platform key. **Live** for the pilot (`sk_live_…`); test for any dress rehearsal.
-- [ ] `STRIPE_CONNECT_WEBHOOK_SECRET`: the signing secret of the Connect webhook endpoint below.
+- [ ] `STRIPE_CONNECT_WEBHOOK_SECRET`: the **signing secret** of the Connect webhook endpoint below. It starts `whsec_`. The endpoint's id (`we_…`) is not it. On dev this still holds the endpoint id (checked 2026-09-25).
 - [ ] `MERCHANT_APP_URL`: where the merchant app is served. Onboarding and receipt links point back to it.
+- [ ] `SEND_TWILIO_ACCOUNT_SID`, `SEND_TWILIO_AUTH_TOKEN`, and `SEND_TWILIO_MESSAGING_SERVICE_SID` (or `SEND_TWILIO_FROM_PHONE_NUMBER`): texted receipts. These are set on dev.
 - [ ] Leave `CLEAR_FEE_COLLECTION_ADDRESS` **unset**. Stripe takes Clear's fee per sale, so monthly billing never applies to Mike's Tire.
 
 **Stripe Dashboard, Clear's platform account:**
@@ -49,8 +64,8 @@ Clear never enters keys into service settings for you. Set these yourself.
 - [ ] **Stripe Tax: register California** on Clear's own account. The address-rate fallback looks up a shop's rate on Clear's account, and treats "not registered" as unknown, never 0%. Until Mike's Tire turns on Stripe Tax in its own account, this is where its rate comes from.
 
 **Not yet available (decide before the pilot, or go without):**
-- [ ] **Email receipts:** no email provider is wired. Text receipts go through Twilio, and printed ones work.
-- [ ] **Splitting tips by hours:** needs the shift clock. Tips are recorded per person as they're given.
+- [ ] **Email receipts:** Resend is chosen but not wired, and needs `RESEND_API_KEY` once it is. Text and printed receipts work.
+- [ ] **Splitting tips by hours:** the shift clock records hours now, but splitting isn't built. Tips go to whoever raised the charge.
 
 ## 2. The installed app and Tap to Pay
 
@@ -75,10 +90,12 @@ The M2 and Tap to Pay work only in the installed app (Capacitor, `org.useclear.m
 - [ ] **Connect Stripe** from Settings:
   - Mike completes Stripe's hosted onboarding for his own Standard account.
   - Cards stay locked until Stripe reports **charges enabled**. Check that Settings shows cards available.
-- [ ] **Staff are added**, each setting their own four-digit PIN at first sign-in. **Roles:**
+- [ ] **Staff are added** in Staff. Each picks their own four-digit PIN on their first shift ("Pick a PIN" on the shift screen). A PIN someone else has is refused. **Roles:**
   - Mike is the owner.
   - At least one **manager**, because refunds, voids, discounts over the limit and drawer differences need a manager's or owner's PIN.
   - Counter staff.
+- [ ] **Each person's hours** are set in Staff, so the week shows cover, and Home's clock shows each shift's end.
+- [ ] **The shop's hours**, listing and contact are set in Settings › Shop, and the breaks rule in Settings › Counter.
 - [ ] **Discount limits** are agreed: counter 10%, manager 25%, owner no limit.
 - [ ] **The one-person close setting** is chosen: either one count signed off by the owner the next morning, or wait for a second person.
 - [ ] **The catalog** is entered, with the right **tax kind** on each item:
@@ -105,7 +122,7 @@ Run each of the six stories once, with a real card and real (small) amounts, the
 - [ ] If close lists a card it couldn't capture, act the same day (see "When something's off").
 
 **Next morning, reconciliation (owner or Clear):**
-- [ ] **Reconciliation flags:** open ones are listed at `GET /api/merchant/reconciliation`. Each flag should be understood and either resolved or explained. The flags are:
+- [ ] **Reconciliation flags:** open ones are listed at `GET /api/merchant/reconciliation` (there's no screen for them yet). Each flag should be understood and either resolved or explained. The flags are:
   - `charge_without_tender`, `tender_without_charge`, `amount_mismatch`, `fee_mismatch`
   - `payout_unbooked`, `payout_mismatch`, `payout_breakdown`
   - `card_stranded`
@@ -134,4 +151,4 @@ Run each of the six stories once, with a real card and real (small) amounts, the
 - [ ] Every day closed, and every reconciliation flag resolved or explained.
 - [ ] Every Stripe payout for the week matched to a card deposit and to the bank.
 - [ ] Mike's and his staff's notes on what was slow or confusing at the counter.
-- [ ] A decision on the open items (email receipts, offline, the Tap to Pay platform) before a second shop.
+- [ ] A decision on the open items (email receipts, offline, the Tap to Pay platform, splitting tips by hours) before a second shop.

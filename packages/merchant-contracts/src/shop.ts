@@ -157,3 +157,17 @@ export const DEFAULT_SETTINGS: Omit<ShopSettings, 'updatedAt'> = {
   tax: { pricesIncludeTax: false },
   discountLimits: { counter: 10, manager: 25, owner: null },
 };
+
+/**
+ * Set up the till (Home, owners and managers): the steps signup leaves for later, and which are
+ * done. `team` lists who has been added besides the owner.
+ */
+export const SetupProgress = z.object({
+  stripe: z.boolean(),
+  reader: z.boolean(),
+  items: z.boolean(),
+  team: z.array(z.string()),
+  cash: z.boolean(),
+  tips: z.boolean(),
+});
+export type SetupProgress = z.infer<typeof SetupProgress>;
