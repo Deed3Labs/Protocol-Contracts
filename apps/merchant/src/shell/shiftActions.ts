@@ -8,8 +8,10 @@ import { createContext, useContext } from 'react';
 export interface ShiftActions {
   changeShift: () => void;
   endShift: () => void;
+  /** The owner's sign-in, as a padlocked nav item opens it. */
+  ownerSignIn: () => void;
 }
 
-export const ShiftActionsContext = createContext<ShiftActions>({ changeShift: () => undefined, endShift: () => undefined });
+export const ShiftActionsContext = createContext<ShiftActions>({ changeShift: () => undefined, endShift: () => undefined, ownerSignIn: () => undefined });
 
 export const useShiftActions = () => useContext(ShiftActionsContext);

@@ -95,6 +95,26 @@ Decided 2026-09-24.
 - **Running low sits on Home** for owners and managers, as the Inventory reference asks
   (preview: `/?preview=1&home=lowStock`).
 
+## Payouts
+
+- **The phone follows the portrait.** The reference's phone draws Payouts as Clear only, without
+  the card group or Cash and tips. The portrait, drawn later, has all four cells; the phone
+  keeps them too, in the same order.
+- **The withdraw picker is the reference's two sheets**, "Where is it coming from?" and "Where
+  does it end up?", reached by tapping the leg. A debit card says "Not set up yet" and can't be
+  picked: no card is on file, and the reference's ••2208 would be a number we don't have.
+- **The signer grant**, which the reference doesn't draw, is a slot under the cycle card, shown
+  only while Clear can't yet settle this shop's payouts.
+- **A counter shift** is still sent Home by the route (owners and managers only, as agreed). Its
+  drawn page, "Payouts need an owner", is at `screen=counter`, and its button opens the owner's
+  sign-in.
+- **The payout detail** (a row's Statement) isn't drawn. It takes a back row and one cell.
+- **What a live shop sees.** The figure, the cycle, where it sits, the cash account and its
+  payouts, all from the payout position; Withdraw and the signer grant are live. Card deposits,
+  the drawer's cash and tips, receiving by ACH, and adding or choosing a bank have no backend
+  yet. Preview: `/payouts?preview=1&screen=none|paying|year|counter|withdraw|from|to|sending|done|
+  breakdown|receive|destinations|add-bank`; `&live=1` for the live path.
+
 ## Settings
 
 - **The index lists every section.** The reference's portrait and phone index still has the
