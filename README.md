@@ -528,7 +528,7 @@ and **held** — are different money and are never summed.
 Screens: `/` counter, `/new`, `/charges` + detail + refund, `/payouts` + detail with the withdraw
 modal, `/staff`, `/overview`, `/settings`, `/onboarding`.
 
-Design reference: [`docs/ux/clear-merchant-app-reference.html`](./docs/ux/clear-merchant-app-reference.html).
+Design reference: [`docs/merchant-reference/`](./docs/merchant-reference/) — one file per screen.
 
 ---
 
@@ -566,7 +566,7 @@ here assumes they do not — that has not been reviewed by counsel, and should b
 | CLRUSD + ESA bootstrap | [`docs/contracts/clrusd-esa-bootstrap.md`](./docs/contracts/clrusd-esa-bootstrap.md) |
 | Lithic integration | [`docs/integrations/lithic-integration-spec.md`](./docs/integrations/lithic-integration-spec.md) |
 | App design spec | [`docs/ux/clear-app-design-spec.md`](./docs/ux/clear-app-design-spec.md) |
-| Merchant reference | [`docs/ux/clear-merchant-app-reference.html`](./docs/ux/clear-merchant-app-reference.html) |
+| Merchant reference | [`docs/merchant-reference/`](./docs/merchant-reference/) |
 | Contract guides | [`docs/contracts/`](./docs/contracts/) — assurance, token registry, bonds |
 | Architecture | [`docs/architecture/`](./docs/architecture/) |
 | Frontend | [`apps/member/README.md`](./apps/member/README.md) · Backend [`apps/api/README.md`](./apps/api/README.md) |
