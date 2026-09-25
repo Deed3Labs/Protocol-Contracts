@@ -3,7 +3,7 @@
 Scaffolded in Phase 3. Staff at a counter raise charges here; owners manage
 payouts, staff and refunds. Deploys to `merchant.useclear.org`.
 
-Design reference: [`docs/ux/clear-merchant-app-reference.html`](../../docs/ux/clear-merchant-app-reference.html).
+Design reference: [`docs/merchant-reference/`](../../docs/merchant-reference/) — one file per screen, every state and width.
 
 Network-originated transactions only. A Clear code, approved in the member app, settles on Clear's
 rails and lands here. A card tap never does. This is the Clear half of the counter.

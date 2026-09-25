@@ -49,8 +49,7 @@ root [`README.md`](../README.md).
 | [`ux/clear-app-design-spec.md`](./ux/clear-app-design-spec.md) | The member app's navigation and screens — what the rebuild is built to |
 | [`reference/clear-app-reference-screens.html`](./reference/clear-app-reference-screens.html) | Static reference screens: Home, limit breakdown, Savings, Earn, Activity, Send, Card. Colors, spacing and structure are authoritative; the implementation approach is not |
 | [`ux/clear-onboarding-plan.md`](./ux/clear-onboarding-plan.md) | Making the reference onboarding flow real, and the components it needs |
-| [`ux/clear-merchant-app-reference.html`](./ux/clear-merchant-app-reference.html) | Design reference for the counter app |
-| [`ux/clear-merchant-auth.html`](./ux/clear-merchant-auth.html) | Signing in, shifts, and who is allowed to see what |
+| [`merchant-reference/`](./merchant-reference/) | Design reference for the merchant app: one file per screen with every state, sheet and width, plus the two build prompts (UI and backend) |
 | [`ux/clear-merchant-privy-orgs.md`](./ux/clear-merchant-privy-orgs.md) | Why the merchant app creates four Privy objects where the consumer app creates one, and where each call lands in onboarding |
 | [`reference/README.md`](./reference/README.md) | Index of the visual reference material |
 
