@@ -710,8 +710,12 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
         m.count += 1;
         m.cents += t.amountCents + t.tipCents;
       }
-      const tipBy = new Map<string, number>();
-      for (const t of ts.filter((x) => x.tipCents > 0)) tipBy.set(t.tipStaffId ?? seed.STAFF_ID.jen, (tipBy.get(t.tipStaffId ?? seed.STAFF_ID.jen) ?? 0) + t.tipCents);
+      const tipBy = new Map<string, { cents: number; cashCents: number }>();
+      for (const t of ts.filter((x) => x.tipCents > 0)) {
+        const k = t.tipStaffId ?? seed.STAFF_ID.jen;
+        const e = tipBy.get(k) ?? { cents: 0, cashCents: 0 };
+        tipBy.set(k, { cents: e.cents + t.tipCents, cashCents: e.cashCents + (t.method === 'cash' ? t.tipCents : 0) });
+      }
       const top = new Map<string, { itemId: string | null; name: string; quantity: number; cents: number }>();
       for (const o of os) for (const l of o.lines) {
         const k = l.itemId ?? 'quick';
@@ -727,7 +731,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
         orderCount: os.length,
         byMethod,
         discounts: { count: os.filter((o) => o.discountCents > 0).length, cents: os.reduce((s, o) => s + o.discountCents, 0) },
-        tips: { cents: [...tipBy.values()].reduce((s, c) => s + c, 0), byStaff: [...tipBy].map(([staffId, cents]) => ({ staffId, name: who(staffId)?.name ?? staffId, cents })) },
+        tips: { cents: [...tipBy.values()].reduce((s, c) => s + c.cents, 0), byStaff: [...tipBy].map(([staffId, t]) => ({ staffId, name: who(staffId)?.name ?? staffId, ...t })) },
         taxCents: os.reduce((s, o) => s + o.taxCents, 0),
         refundsCents: [...refunds.values()].filter((r) => r.status === 'succeeded').reduce((s, r) => s + r.amountCents, 0),
         topItems: [...top.values()].sort((a, b) => b.cents - a.cents).slice(0, 5),

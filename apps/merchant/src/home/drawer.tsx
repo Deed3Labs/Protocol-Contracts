@@ -724,7 +724,7 @@ export function CloseDayView({
               </p>
             ) : (
               <p className="c-dr-quote">
-                &ldquo;{drawer.note}&rdquo;{' '}
+                {drawer.note ? <>&ldquo;{drawer.note}&rdquo;{' '}</> : null}
                 <span className="c-det">
                   Counted by {c1}, checked by {c2}
                 </span>

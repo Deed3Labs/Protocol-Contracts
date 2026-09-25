@@ -143,7 +143,8 @@ export const Overview = z.object({
   orderCount: z.number().int().min(0),
   byMethod: ByMethod,
   discounts: z.object({ count: z.number().int().min(0), cents: NonNegativeCents }),
-  tips: z.object({ cents: NonNegativeCents, byStaff: z.array(z.object({ staffId: Id, name: z.string(), cents: NonNegativeCents })) }),
+  /** By person; `cashCents` is the part paid in cash, which comes out of the drawer at close. */
+  tips: z.object({ cents: NonNegativeCents, byStaff: z.array(z.object({ staffId: Id, name: z.string(), cents: NonNegativeCents, cashCents: NonNegativeCents })) }),
   taxCents: NonNegativeCents,
   refundsCents: NonNegativeCents,
   topItems: z.array(z.object({ itemId: Id.nullable(), name: z.string(), quantity: z.number().int().min(0), cents: NonNegativeCents })),

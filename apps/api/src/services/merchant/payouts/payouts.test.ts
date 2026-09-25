@@ -202,7 +202,7 @@ describe('Overview', () => {
       takenCents: 11000 + 2000 + 9000,
       orderCount: 3,
       byMethod: { card: { count: 1, cents: 11000 }, cash: { count: 1, cents: 2000 }, clear: { count: 1, cents: 9000 } },
-      tips: { cents: 1200, byStaff: [{ staffId: s.staff.jen, name: 'Jen', cents: 1200 }] },
+      tips: { cents: 1200, byStaff: [{ staffId: s.staff.jen, name: 'Jen', cents: 1200, cashCents: 200 }] },
       refundsCents: 0,
     });
     expect(v.topItems.map((i) => [i.name, i.cents])).toEqual([['Quick sales', 20800]]);
