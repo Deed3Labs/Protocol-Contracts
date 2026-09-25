@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@clear/merchant-contracts';
-import type { CatalogItem, DiscountCode, LineInput, Reader, Reorder, Shop, ShopHours, ShopSettings, Staff, StaffHours } from '@clear/merchant-contracts';
+import type { CatalogItem, DiscountCode, ReconciliationFlag, LineInput, Reader, Reorder, Shop, ShopHours, ShopSettings, Staff, StaffHours } from '@clear/merchant-contracts';
 import { GOODYEAR_ON_ORDER, INVENTORY } from '../../inventory/model';
 
 /**
@@ -225,3 +225,28 @@ export const PROFILE = {
 };
 /** The owner's own: the rate over time, the cap, where payouts land. */
 export const PROFILE_OWNER = { discountRate: 0.02, approvalCapCents: 250000, payoutAccount: 'Chase ••4417', termsSource: 'chain' as const };
+
+/** What the nightly reconciliation found: a fee a cent off on one card sale, and a payout Stripe paid that the books don't have yet. */
+export const RECON_FLAGS: ReconciliationFlag[] = [
+  {
+    id: 'flag_fee',
+    kind: 'fee_mismatch',
+    ref: 'tnd_card_937',
+    expectedCents: 30,
+    actualCents: 29,
+    detail: 'Clear’s fee on tender tnd_card_937 should be 30 cents; the processor took 29',
+    foundAt: at(YESTERDAY, '02:10'),
+    explained: null,
+  },
+  {
+    id: 'flag_payout',
+    kind: 'payout_unbooked',
+    ref: 'po_mock_0921',
+    expectedCents: 88412,
+    actualCents: null,
+    detail: 'Payout po_mock_0921 was paid but isn’t in the books',
+    foundAt: at(REFERENCE_DAY, '02:10'),
+    explained: null,
+  },
+];
+

@@ -9,7 +9,7 @@ describe('the migration runner', () => {
     await pg.exec(LAZY_MERCHANT_TABLES);
     const db = pgliteDb(pg);
     const all = await loadMigrations();
-    expect(all.map((m) => m.version)).toEqual(['0001_merchant_shop', '0002_commerce', '0003_payments', '0004_ledger', '0005_connector_status_and_event_retry', '0006_card_payments', '0007_checkout', '0008_refunds_receipts_tax', '0009_payouts_reconciliation', '0010_card_connectors_fee_billing', '0011_pin_failures_audit_log', '0012_shop_listing_hours', '0013_shifts_staff_hours', '0014_setup_marks', '0016_end_of_day_email']);
+    expect(all.map((m) => m.version)).toEqual(['0001_merchant_shop', '0002_commerce', '0003_payments', '0004_ledger', '0005_connector_status_and_event_retry', '0006_card_payments', '0007_checkout', '0008_refunds_receipts_tax', '0009_payouts_reconciliation', '0010_card_connectors_fee_billing', '0011_pin_failures_audit_log', '0012_shop_listing_hours', '0013_shifts_staff_hours', '0014_setup_marks', '0015_flag_explanations', '0016_end_of_day_email']);
     expect(await migrate(db)).toEqual(all.map((m) => m.version));
     expect(await migrate(db)).toEqual([]);
     const { rows } = await db.query<{ version: string }>('SELECT version FROM merchant.schema_migrations ORDER BY version');

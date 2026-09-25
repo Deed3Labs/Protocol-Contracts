@@ -297,7 +297,7 @@ export function CounterCard({ shop, url }: { shop: string; url: string }) {
     <div className="c-st-card">
       <p className="c-t">Pay over time at {shop}</p>
       <div className="c-qr">
-        <QRCodeSVG value={url} size={104} bgColor="var(--paper)" fgColor="var(--ink)" level="M" style={{ width: '100%', height: '100%' }} role="img" aria-label="The counter card's code" />
+        <QRCodeSVG value={url} size={104} bgColor="var(--qr-paper)" fgColor="var(--qr-ink)" level="M" style={{ width: '100%', height: '100%' }} role="img" aria-label="The counter card's code" />
       </div>
       <p className="c-det">Scan with your camera</p>
     </div>

@@ -141,6 +141,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   const deposits: BankDeposit[] = [];
   const cardDeposits: CardDeposit[] = [];
   let orderNumber = 0;
+  // The nightly reconciliation's findings, as the reference day's shop would have them.
+  const flags = structuredClone(seed.RECON_FLAGS);
   // Set up the till's two steps nothing else records.
   const marks = new Set<'cash' | 'tips'>(switches.setup === 'new' ? [] : ['cash', 'tips']);
   // Shifts and hours: who is on, their breaks, and each person's usual week and this week.
@@ -535,6 +537,47 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       items.set(it.id, it);
       return it;
     },
+    // The server's rules (services/merchant/catalog/importService.ts): a match adds to stock; a new
+    // item needs a price; services and labour keep no stock.
+    importCatalog: async (input) => {
+      if (!isManager(viewer)) refuse('Only an owner or a manager changes prices and stock', 403, 'forbidden');
+      if (!input.rows.length) refuse('The spreadsheet has no rows', 400, 'invalid');
+      const key = (n: string, d: string | null | undefined) => `${n.trim().toLowerCase().replace(/\s+/g, ' ')}|${(d ?? '').trim().toLowerCase().replace(/\s+/g, ' ')}`;
+      const byKey = new Map([...items.values()].filter((i) => !i.archivedAt).map((i) => [key(i.name, i.detail), i.id]));
+      const out = { created: 0, addedTo: 0, skipped: [] as { row: number; reason: string }[] };
+      input.rows.forEach((r, i) => {
+        const found = byKey.get(key(r.name, r.detail));
+        if (found) {
+          const it = items.get(found)!;
+          if (r.quantity && !it.stock) return void out.skipped.push({ row: i + 1, reason: `${r.name} is a service, which keeps no stock` });
+          if (r.quantity) moveStock(found, 'receive', r.quantity, null);
+          out.addedTo++;
+          return;
+        }
+        if (r.priceCents == null) return void out.skipped.push({ row: i + 1, reason: `${r.name} has no price` });
+        const service = !!r.category && /^(services?|labou?r)$/i.test(r.category.trim());
+        const it: CatalogItem = {
+          id: id('itm'),
+          shop: shop.id,
+          name: r.name.trim(),
+          detail: r.detail?.trim() || null,
+          category: service ? 'Services' : r.category?.trim() || 'Parts',
+          priceCents: r.priceCents,
+          costCents: r.costCents ?? null,
+          taxKind: service ? 'labour' : 'goods',
+          stockTracked: !service,
+          stock: service ? null : { onHand: 0, held: 0, free: 0 },
+          reorderAt: service ? null : (r.reorderAt ?? null),
+          optionGroups: [],
+          archivedAt: null,
+        };
+        items.set(it.id, it);
+        if (!service && r.quantity) moveStock(it.id, 'receive', r.quantity, null);
+        byKey.set(key(r.name, r.detail), it.id);
+        out.created++;
+      });
+      return out;
+    },
     updateItem: async (itemId, input) => {
       const it = items.get(itemId) ?? refuse('No such item', 404);
       const next = { ...it!, ...(input as Partial<CatalogItem>) };
@@ -900,6 +943,17 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
     clearFeeBills: async () => [],
     audit: async () => audit,
+    reconciliation: async () => {
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      return { open: flags.filter((f) => !f.explained), explained: flags.filter((f) => f.explained).reverse() };
+    },
+    explainFlag: async (flagId, input) => {
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      const f = flags.find((x) => x.id === flagId && !x.explained) ?? refuse('That flag is closed already, or isn’t this shop’s', 404, 'not_found');
+      if (input.note.trim().length < 3) refuse('Say what happened, in a few words', 422, 'invalid');
+      f.explained = { by: who(viewer)!.name, note: input.note.trim(), at: now() };
+      return { ...f };
+    },
     sendStatement: async (input) => {
       if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) refuse('That isn’t an email address', 422, 'invalid');

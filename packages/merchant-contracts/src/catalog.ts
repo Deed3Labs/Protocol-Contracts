@@ -133,3 +133,28 @@ export const DiscountCode = z
   })
   .refine((d) => (d.percent === null) !== (d.amountCents === null), 'A code takes off a percent or an amount, not both');
 export type DiscountCode = z.infer<typeof DiscountCode>;
+
+/**
+ * Inventory › Import a spreadsheet: rows as the tablet read them, columns already matched. A row
+ * matching an item the shop has (name and detail) adds to its stock; any other is a new item and
+ * needs a price. Owners and managers.
+ */
+export const ImportRow = z.object({
+  name: z.string().trim().min(1).max(160),
+  detail: z.string().trim().max(160).nullable(),
+  category: z.string().trim().max(60).nullable(),
+  priceCents: NonNegativeCents.nullable(),
+  costCents: NonNegativeCents.nullable(),
+  quantity: z.number().int().min(0).max(100_000).nullable(),
+  reorderAt: z.number().int().min(0).max(100_000).nullable(),
+});
+export type ImportRow = z.infer<typeof ImportRow>;
+export const CatalogImport = z.object({ rows: z.array(ImportRow).min(1, 'The spreadsheet has no rows').max(2000, 'At most 2,000 rows at a time') });
+export const ImportResult = z.object({
+  created: z.number().int().min(0),
+  addedTo: z.number().int().min(0),
+  /** 1-based, among the rows sent. */
+  skipped: z.array(z.object({ row: z.number().int().min(1), reason: z.string() })),
+});
+export type ImportResult = z.infer<typeof ImportResult>;
+

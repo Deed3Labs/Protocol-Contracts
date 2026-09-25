@@ -217,8 +217,8 @@ export function CodeCell({ code, amountCents }: { code: string; amountCents: num
               size={260}
               level="M"
               marginSize={2}
-              bgColor="var(--paper)"
-              fgColor="var(--ink)"
+              bgColor="var(--qr-paper)"
+              fgColor="var(--qr-ink)"
               role="img"
               aria-label="Code for this charge"
             />

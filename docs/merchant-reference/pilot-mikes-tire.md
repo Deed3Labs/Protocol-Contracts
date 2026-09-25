@@ -27,8 +27,6 @@ Work down it in order.
 
 **Not built yet** (none of these blocks the pilot):
 - Adding a bank, withdrawing to a bank by ACH, and statements. Plaid and Bridge are chosen for bank linking.
-- A reconciliation screen. Flags are read from the API for now (section 6).
-- Importing a spreadsheet into Inventory.
 - Splitting tips by hours. The shift clock now records hours, but tips still go to whoever raised the charge.
 
 **Before the dress rehearsal:**
@@ -119,7 +117,7 @@ Run each of the six stories once, with a real card and real (small) amounts, the
 - [ ] If close lists a card it couldn't capture, act the same day (see "When something's off").
 
 **Next morning, reconciliation (owner or Clear):**
-- [ ] **Reconciliation flags:** open ones are listed at `GET /api/merchant/reconciliation` (there's no screen for them yet). Each flag should be understood and either resolved or explained. The flags are:
+- [ ] **Reconciliation flags:** open ones are on Payouts, under "Checked against Stripe" (and at `GET /api/merchant/reconciliation`). Each is explained there once looked into. Each flag should be understood and either resolved or explained. The flags are:
   - `charge_without_tender`, `tender_without_charge`, `amount_mismatch`, `fee_mismatch`
   - `payout_unbooked`, `payout_mismatch`, `payout_breakdown`
   - `card_stranded`
@@ -133,7 +131,7 @@ Run each of the six stories once, with a real card and real (small) amounts, the
   - If Stripe was disconnected from Mike's Tire while a card was authorised, Clear can't capture it.
   - Close names it with the time the hold lapses, and reconciliation flags `card_stranded`.
   - Mike captures it in his Stripe Dashboard before then, or the sale goes unpaid.
-  - There's no in-app action yet to record what he did, so the flag stays until someone resolves it.
+  - Once he has, Explain on Payouts records what he did, and the flag closes.
 - **A PIN lockout:** ten wrong PINs in 15 minutes lock every PIN at the shop, shifts and approvals alike. It reopens by itself as they age out, and the screen says when. Nobody can clear it early, by design.
 - **A drawer that won't close:**
   - The message names the reason: part-paid orders, counts missing or disagreeing, or a difference not yet signed off.

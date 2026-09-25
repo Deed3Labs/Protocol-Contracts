@@ -387,3 +387,67 @@ input.c-st-time {
   border: 1px solid var(--underway);
   background: var(--paper-2);
 }
+
+/* ---- Dusk and Dark ------------------------------------------------------------------------------
+ * Reference section 21: Light, Dusk, Dark, chosen per tablet (shell/appearance.ts). The reference
+ * draws Light only; these are the brand guide's on-ink and dusk columns, the same values the member
+ * app uses (apps/member/src/styles/clear-tokens.css), set on <html data-theme>. Light is no
+ * attribute at all, so it is always the reference's own :root. */
+:root[data-theme='dark'],
+:root[data-theme='dusk'] {
+  --live: #7c8cc5;
+  --settled: #6fcb9f;
+  --underway: #e3b667;
+  --absent: #e58c7f;
+  /* The guide has no land on ink: lightened from #6B7F5C to clear 4.5:1 on both grounds. */
+  --land: #9cae8b;
+  --land-ink: #9cae8b;
+  --tier-savings: var(--settled);
+  --tier-asset: var(--land);
+  --tier-asset-ink: var(--land-ink);
+  --tier-income: var(--underway);
+  --tier-boost: var(--absent);
+  --vest-cash: var(--ink);
+  --vest-vested: var(--settled);
+  --vest-vesting: var(--underway);
+  --seam: var(--ink-28);
+}
+/* Dark is the guide's ink ground, cool. */
+:root[data-theme='dark'] {
+  --paper: #16211d;
+  --paper-2: #1e2c27;
+  --ink: #dfe3de;
+  --ink-70: #abb1ac;
+  --ink-50: #939995;
+  --ink-28: #5a635f;
+  --ink-13: #3a4440;
+  color-scheme: dark;
+}
+/* Dusk is a tan page, not a dark one: light, so it keeps light's status colours and tier ramp. */
+:root[data-theme='dusk'] {
+  --paper: #e6dbc6;
+  --paper-2: #f1e9da;
+  --ink: #221c14;
+  --ink-70: #4e4739;
+  --ink-50: #5a5244;
+  --ink-28: #afa48d;
+  --ink-13: #ccc0a8;
+  --live: #24409e;
+  --settled: #0e6b4e;
+  --underway: #8a5512;
+  --absent: #9b2c22;
+  --land: #6b7f5c;
+  --land-ink: #55654a;
+  color-scheme: light;
+}
+
+/* A code stays dark on light in every theme: an inverted QR is one some phone cameras won't read. */
+:root {
+  --qr-ink: #16211d;
+  --qr-paper: #dfe3de;
+}
+
+/* Cash's sage chip keeps dark text on a dark ground (the ink there is light). */
+:root[data-theme='dark'] .c-ch-pm.c-cash {
+  color: #16211d;
+}

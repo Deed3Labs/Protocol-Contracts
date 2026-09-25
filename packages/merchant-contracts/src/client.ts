@@ -2,6 +2,9 @@ import type { z } from 'zod';
 import type { BusinessDate } from './common';
 import type {
   CardAvailability,
+  ExplainFlag,
+  Reconciliation,
+  ReconciliationFlag,
   CardDeposit,
   ClearFeeBill,
   CardTenderStart,
@@ -11,7 +14,7 @@ import type {
   RecordReader,
   RegisterSmartReader,
 } from './cards';
-import type { CatalogItem, DiscountCode, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
+import type { CatalogImport, CatalogItem, DiscountCode, ImportResult, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
 import type { AuditEntry, BankDeposit, SendStatement, CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
@@ -89,6 +92,8 @@ export interface MerchantApi {
   // ---- The catalogue and stock ----------------------------------------------------------------------
   catalog(): Promise<CatalogItem[]>;
   createItem(input: In<typeof ItemInput>): Promise<CatalogItem>;
+  /** Owners and managers: many items at once, from a spreadsheet; matches add to stock. */
+  importCatalog(input: In<typeof CatalogImport>): Promise<ImportResult>;
   updateItem(id: string, input: Partial<In<typeof ItemInput>>): Promise<CatalogItem>;
   archiveItem(id: string): Promise<CatalogItem>;
   saveOptionGroups(itemId: string, groups: Omit<OptionGroup, 'id'>[]): Promise<CatalogItem>;
@@ -168,6 +173,10 @@ export interface MerchantApi {
   clearFeeBills(): Promise<ClearFeeBill[]>;
   /** Owners only: who did what to the money, newest first. */
   audit(range: Range): Promise<AuditEntry[]>;
+  /** Owners and managers: where the books and the processor disagree, open and recently explained. */
+  reconciliation(): Promise<Reconciliation>;
+  /** Owners and managers: close a flag with what happened. */
+  explainFlag(id: string, input: In<typeof ExplainFlag>): Promise<ReconciliationFlag>;
   /** Owners and managers: a month's statement, emailed (to an accountant). */
   sendStatement(input: In<typeof SendStatement>): Promise<{ sentTo: string }>;
 }

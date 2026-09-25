@@ -351,7 +351,7 @@ export function InventoryEmpty({ onAdd, onImport }: { onAdd?: () => void; onImpo
               <div>
                 <p className="c-label">From a spreadsheet</p>
                 <p className="c-det">A CSV from your supplier or your old system.</p>
-                <button type="button" className="c-btn" onClick={onImport}>
+                <button type="button" className="c-btn" onClick={onImport} disabled={!onImport}>
                   Import a spreadsheet
                 </button>
               </div>
