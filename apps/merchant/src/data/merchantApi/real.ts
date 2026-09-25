@@ -121,5 +121,6 @@ export function realMerchantApi(request: Transport): MerchantApi {
     audit: (r) => get(`/audit?${range(r)}`),
     reconciliation: () => get('/reconciliation'),
     explainFlag: (flagId, input) => post(`/reconciliation/${id(flagId)}/explain`, input),
+    sendStatement: (input) => post('/statements/send', input),
   };
 }

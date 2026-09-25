@@ -15,7 +15,7 @@ import type {
   RegisterSmartReader,
 } from './cards';
 import type { CatalogImport, CatalogItem, DiscountCode, ImportResult, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
-import type { AuditEntry, BankDeposit, CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
+import type { AuditEntry, BankDeposit, SendStatement, CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
   ClearChargeSent,
@@ -177,4 +177,6 @@ export interface MerchantApi {
   reconciliation(): Promise<Reconciliation>;
   /** Owners and managers: close a flag with what happened. */
   explainFlag(id: string, input: In<typeof ExplainFlag>): Promise<ReconciliationFlag>;
+  /** Owners and managers: a month's statement, emailed (to an accountant). */
+  sendStatement(input: In<typeof SendStatement>): Promise<{ sentTo: string }>;
 }

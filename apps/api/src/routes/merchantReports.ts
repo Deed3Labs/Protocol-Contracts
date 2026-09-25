@@ -4,6 +4,8 @@ import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireManager, requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
 import { feeBills } from '../services/merchant/fees/feeBilling.js';
 import { overview } from '../services/merchant/overview.js';
+import { sendStatement, StatementError } from '../services/merchant/statements.js';
+import { sendNotificationService } from '../services/sendNotificationService.js';
 import { auditTrail } from '../services/merchant/security/audit.js';
 import { cardDeposits } from '../services/merchant/payouts/payoutSync.js';
 import { explainFlag, FlagError, reconciliationView } from '../services/merchant/payouts/reconcile.js';
@@ -17,6 +19,7 @@ import { explainFlag, FlagError, reconciliationView } from '../services/merchant
  *   GET /reconciliation             where our books and the processor's disagree: open, and recently explained
  *   POST /reconciliation/:id/explain  owners and managers: close a flag with what happened
  *   GET /clear-fee-bills            Clear's monthly fee bills (only a processor without a platform fee)
+ *   POST /statements/send           owners and managers: a month's statement, emailed (to an accountant)
  *   GET /audit?from&to              who did what to the money, and when (owners only: it names
  *                                   everyone's actions and shows blind drawer counts)
  */
@@ -45,6 +48,24 @@ router.post('/reconciliation/:id/explain', requireMerchant, requireManager, asyn
     res.json(await explainFlag(db, { merchant: m(req), flagId: String(req.params.id), staffId: req.merchant!.staff.id, body: req.body }));
   } catch (error) {
     if (error instanceof FlagError) return res.status(error.code === 'not_found' ? 404 : 422).json({ error: error.code, message: error.message });
+    throw error;
+  }
+});
+router.post('/statements/send', requireMerchant, requireManager, async (req, res) => {
+  const db = await merchantDb();
+  if (!db) return res.status(503).json({ error: 'Unavailable', message: 'merchant database is not configured' });
+  try {
+    res.json(
+      await sendStatement(
+        db,
+        { configured: () => sendNotificationService.emailConfigured(), send: (e) => sendNotificationService.sendStatement(e) },
+        { merchant: m(req), staffId: req.merchant!.staff.id, body: req.body },
+      ),
+    );
+  } catch (error) {
+    if (error instanceof StatementError) {
+      return res.status(error.code === 'invalid' ? 422 : error.code === 'not_configured' ? 503 : 502).json({ error: error.code, message: error.message });
+    }
     throw error;
   }
 });

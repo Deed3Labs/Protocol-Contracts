@@ -17,7 +17,7 @@ Work down it in order.
 
 **Live on a real shop**, against the API:
 - **Selling:** the catalogue or a typed amount, tax and discounts worked out by the server, tips, then Clear, card (smart reader in a browser; M2 and Tap to Pay in the installed app), cash or a split.
-- **Receipts:** texted (Twilio) or printed through the tablet's print dialog. Email isn't wired yet (section 1).
+- **Receipts:** texted (Twilio), emailed (Resend) or printed through the tablet's print dialog.
 - **Charges:** every sale, however it was paid. Void (a manager's PIN), adjust a tip before capture, refund goods back into stock, and the whole Clear refund.
 - **The drawer and Close the day:** blind counts, sign-off of a difference, capture of the day's cards, the day report.
 - **Staff:** adding people, who pick their own PIN on their first shift. Resetting a PIN, removing someone, shifts and breaks, and each person's weekly hours.
@@ -27,11 +27,7 @@ Work down it in order.
 
 **Not built yet** (none of these blocks the pilot):
 - Adding a bank, withdrawing to a bank by ACH, and statements. Plaid and Bridge are chosen for bank linking.
-- Email (receipts, statements, the end-of-day summary). Resend is chosen.
-- Exporting and "send to accountant" on Overview.
-- Scanning a member's own code, texting a link to pay, a custom tip amount, and an offline banner.
-- Importing a spreadsheet into Inventory.
-- Home's "Running low" and setup checklist on a live shop.
+- The end-of-day summary by email.
 - Splitting tips by hours. The shift clock now records hours, but tips still go to whoever raised the charge.
 
 **Before the dress rehearsal:**
@@ -63,7 +59,7 @@ Clear never enters keys into service settings for you. Set these yourself.
 - [ ] **Stripe Tax: register California** on Clear's own account. The address-rate fallback looks up a shop's rate on Clear's account, and treats "not registered" as unknown, never 0%. Until Mike's Tire turns on Stripe Tax in its own account, this is where its rate comes from.
 
 **Not yet available (decide before the pilot, or go without):**
-- [ ] **Email receipts:** Resend is chosen but not wired, and needs `RESEND_API_KEY` once it is. Text and printed receipts work.
+- [ ] **Email (receipts, statements to an accountant):** `RESEND_API_KEY` and `RESEND_FROM` (for example `Mike’s Tire via Clear <receipts@useclear.org>`), with that domain verified in Resend. Without them, text and printed receipts work and statements save as PDF.
 - [ ] **Splitting tips by hours:** the shift clock records hours now, but splitting isn't built. Tips go to whoever raised the charge.
 
 ## 2. The installed app and Tap to Pay

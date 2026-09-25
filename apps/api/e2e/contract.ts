@@ -235,6 +235,7 @@ try {
       throw error;
     }),
   );
+  await check('sendStatement', null, () => manager.sendStatement({ from: range.from, to: range.to, email: 'books@example.com' }));
   await check('archiveItem', C.CatalogItem, () => manager.archiveItem(tire.id));
 } finally {
   server.stop();
