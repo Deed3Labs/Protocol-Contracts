@@ -150,7 +150,7 @@ Build in this order, one reference file at a time. For each file:
 8. **Overview.**
 9. **Onboarding.** Build it once the shell and Home exist, since its checklist lives on Home.
 
-**Sign-in is part of Phase 2's app shell**, not a later screen: device enrolment, the shift picker and PIN, the idle lock and the owner sign-in wrap every other screen, so build them with the shell and use `clear-merchant-sign-in.html` as their spec.
+**Sign-in is part of Phase 2's app shell**, not a later screen: device enrollment, the shift picker and PIN, the idle lock and the owner sign-in wrap every other screen, so build them with the shell and use `clear-merchant-sign-in.html` as their spec.
 
 **Stop after Home and after New Charge** for review. The remaining files can run without stopping unless something conflicts.
 
@@ -164,7 +164,7 @@ Build in this order, one reference file at a time. For each file:
   - In a browser: smart readers only (Stripe's web SDK, or server-driven).
   - In the installed app: also the **Stripe Reader M2** over Bluetooth, and **Tap to Pay**.
   - The Settings › Payments Readers list and the card screen's "Use another reader" show only what is available.
-- **The card screen's states** (waiting, reading, declined, approved) map to the SDK's events. The server creates, captures and cancels the payment; the app collects it on the reader. Agree that flow with the backend prompt's Phase 5.
+- **The card screen's states** (waiting, reading, declined, approved) map to the SDK's events. The server creates, captures and cancels the payment; the app collects it on the reader. Agree that flow with the backend prompt's Phase 6.
 - **Offline:** store-and-forward on the M2 only when the shop setting is on, with its limit. Tap to Pay is online only, and the screen says so.
 - **Permissions:** Bluetooth and location. **Apple's Tap to Pay entitlement** is a separate request; flag it in the PR as a blocker for iOS Tap to Pay.
 
@@ -173,14 +173,15 @@ Build in this order, one reference file at a time. For each file:
 ## Phase 6: Switching to the real API
 
 Switch endpoint by endpoint as the backend phases land, in this order:
-1. Card availability and Stripe connection.
-2. Catalog and stock.
-3. Orders and checkout, and tax.
-4. Card payments.
-5. Cash and the drawer.
-6. Close the day.
-7. Payouts and card deposits.
-8. Overview.
+1. Onboarding, device enrollment, shifts and owner sign-in.
+2. Card availability and Stripe connection.
+3. Catalog and stock.
+4. Orders and checkout, and tax.
+5. Card payments.
+6. Cash and the drawer.
+7. Close the day.
+8. Payouts and card deposits.
+9. Overview.
 
 Keep the mock working throughout: it is the demo and test data.
 
