@@ -1,0 +1,879 @@
+import type { ReactNode } from 'react';
+import {
+  Account,
+  Btn,
+  Cell,
+  Chips,
+  Conseq,
+  CounterCard,
+  Device,
+  Fixed,
+  FootDet,
+  FootLine,
+  Kv,
+  Locked,
+  Main,
+  Pair,
+  R2,
+  Rows,
+  Switch,
+  WeekHours,
+  type DayHours,
+} from '@/settings/views';
+
+/**
+ * Settings' sections, in the rail's order, and what each pane holds. `Shop` opens first, because
+ * what members see is what a shop was sold. A live shop gets the sections the API can fill (the
+ * listing, payouts, the partnership, security and help); the rest are the preview's until their
+ * backends land. Figures are the reference's where a live shop has nothing.
+ */
+
+export type Section =
+  | 'shop'
+  | 'payouts'
+  | 'partnership'
+  | 'counter'
+  | 'payments'
+  | 'tax'
+  | 'tips'
+  | 'discounts'
+  | 'devices'
+  | 'closing'
+  | 'security'
+  | 'notifications'
+  | 'advanced'
+  | 'help'
+  | 'you';
+
+export const SECTIONS: { key: Section; label: string; det: string; desc: string; live?: boolean }[] = [
+  { key: 'shop', label: 'Shop', det: 'What members see in Clear Partners, and when you are open.', desc: 'Listing, hours, contact', live: true },
+  { key: 'payouts', label: 'Payouts', det: 'Where your money goes, when, and the record of it.', desc: 'Bank, schedule, statements', live: true },
+  { key: 'partnership', label: 'Partnership', det: 'Your terms, your agreement, and your record in the co-op.', desc: 'Terms, agreement, co-op record', live: true },
+  { key: 'counter', label: 'Counter', det: 'The printed cards, and how a shift runs on the tablet.', desc: 'Counter cards, breaks, idle lock' },
+  { key: 'payments', label: 'Payments', det: 'How customers can pay you, and what happens when the connection drops.', desc: 'Ways to pay, cards, offline' },
+  { key: 'tax', label: 'Tax', det: 'Sales tax, worked out from where the shop is.', desc: 'Where you collect, how prices show' },
+  { key: 'tips', label: 'Tips', det: 'Whether Checkout asks, what it offers, and who gets it.', desc: 'Asking, amounts, who gets them' },
+  { key: 'discounts', label: 'Discounts', det: 'Codes you create, and how much each role can give without asking.', desc: 'Codes, limits by role' },
+  { key: 'devices', label: 'Devices', det: 'What is paired with this tablet.', desc: 'Reader, printer, this tablet' },
+  { key: 'closing', label: 'Closing', det: 'How the drawer is opened, counted and signed off.', desc: 'The drawer, and who closes' },
+  { key: 'security', label: 'Security', det: 'How you sign in, and what is signed in as the shop.', desc: 'Sign-in, owner PIN, devices', live: true },
+  { key: 'notifications', label: 'Notifications', det: 'What reaches you, and where.', desc: 'What reaches you and how' },
+  { key: 'advanced', label: 'Advanced', det: 'Business details, your data, and leaving.', desc: 'Business details, your data, leaving' },
+  { key: 'help', label: 'Help', det: 'A person first, then the guides.', desc: 'A person, then the guides', live: true },
+];
+
+export const YOU = { key: 'you' as const, label: 'You', det: 'Your own PIN, and how this tablet is set.', desc: 'Your PIN and this tablet' };
+
+export const HOURS_DET = 'Open and close for each day. Staff’s hours and members’ “open now” both read from here.';
+
+/** Everything a pane shows. The preview fills it from the reference; a live shop from the API. */
+export interface SettingsData {
+  preview: boolean;
+  shop: string;
+  owner: string;
+  category: string;
+  oneLine: string;
+  photo: string;
+  hours: DayHours[] | null;
+  closedDates: [string, string][];
+  address: string;
+  phone: string;
+  email: string;
+  account: { bank: string; det: string } | null;
+  nextPayout: string;
+  payoutWhen: string;
+  ratesNow: string;
+  ratesOver: string;
+  cap: string;
+  signed: string;
+  memberSince: string;
+  joinedWith: string;
+  signIn: string;
+  devices: { id: string; name: string; det: string; kind: 'tablet' | 'pc'; current?: boolean }[];
+  tablet: { name: string; enrolled: string };
+  idle: string;
+  me: { name: string; role: string; hours: string };
+  closers: string;
+  legalName: string;
+  taxId: string;
+  counterUrl: string;
+  stripe: boolean;
+}
+
+export const REFERENCE: SettingsData = {
+  preview: true,
+  shop: 'Mike’s Tire',
+  owner: 'Mike R.',
+  category: 'Auto repair, Tires',
+  oneLine: 'Tires, brakes and alignment…',
+  photo: 'Your initials for now',
+  hours: [
+    { dn: 'Mon', open: ['8:00am', '6:00pm'] },
+    { dn: 'Tue', open: ['8:00am', '6:00pm'] },
+    { dn: 'Wed', open: ['8:00am', '6:00pm'] },
+    { dn: 'Thu', open: ['8:00am', '6:00pm'] },
+    { dn: 'Fri', open: ['8:00am', '4:00pm'] },
+    { dn: 'Sat', open: ['9:00am', '2:00pm'] },
+    { dn: 'Sun', open: null },
+  ],
+  closedDates: [
+    ['Thanksgiving', 'Nov 26 · closed'],
+    ['Christmas Eve', 'Dec 24 · until noon'],
+  ],
+  address: '412 Colton Ave',
+  phone: '555-0142',
+  email: 'hello@mikestire.com',
+  account: { bank: 'Chase business checking', det: '••4417 · verified Aug 12' },
+  nextPayout: 'Oct 14 · $4,218.91',
+  payoutWhen: 'Monthly, on the 14th',
+  ratesNow: '1.25%',
+  ratesOver: '2.0%',
+  cap: '$2,500.00',
+  signed: 'Signed Aug 12',
+  memberSince: 'Aug 12, 2026',
+  joinedWith: 'Code FOUNDING',
+  signIn: 'mike@mikestire.com',
+  devices: [
+    { id: 'tab', name: 'Counter tablet', det: 'This one · active now', kind: 'tablet', current: true },
+    { id: 'pc', name: 'Back office PC', det: 'Browser · last used Monday', kind: 'pc' },
+  ],
+  tablet: { name: 'Counter tablet', enrolled: 'Aug 14 by Mike' },
+  idle: '5 minutes idle',
+  me: { name: 'Jen R.', role: 'Counter', hours: 'Mon – Fri, 8:00am – 4:00pm' },
+  closers: 'Luis M., Mike R.',
+  legalName: 'Mike’s Tire LLC',
+  taxId: '••-•••4829',
+  counterUrl: 'https://useclear.org/c/8QK2',
+  stripe: false,
+};
+
+/** "Mon – Thu" rows from a week: runs of days with the same hours. */
+function hoursRows(days: DayHours[]): [string, string, boolean][] {
+  const long: Record<string, string> = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
+  const out: [string, string, boolean][] = [];
+  let i = 0;
+  while (i < days.length) {
+    let j = i;
+    const same = (a: DayHours, b: DayHours) => JSON.stringify(a.open) === JSON.stringify(b.open);
+    while (j + 1 < days.length && same(days[j + 1], days[i])) j++;
+    const label = i === j ? long[days[i].dn] : `${days[i].dn} – ${days[j].dn}`;
+    out.push([label, days[i].open ? `${days[i].open![0]} – ${days[i].open![1]}` : 'Closed', !!days[i].open]);
+    i = j + 1;
+  }
+  return out;
+}
+
+export interface Actions {
+  onHours: () => void;
+  onAccount: () => void;
+  onPayouts: () => void;
+  onDevice: () => void;
+  onLeave: () => void;
+  onNewCode: () => void;
+  onSignOutDevice?: (id: string) => void;
+}
+
+/** A pane's cells. */
+export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
+  switch (key) {
+    case 'shop':
+      return (
+        <>
+          <Cell
+            label="Your listing"
+            det="In Clear Partners"
+            foot={
+              <FootLine det="Members see it with a Credit tag.">
+                <Btn>Preview as a member</Btn>
+              </FootLine>
+            }
+          >
+            <Main>
+              <Rows link>
+                <Kv k="Name" v={d.shop} go />
+                <Kv k="What you do" v={d.category} go />
+                <Kv k="One line" v={d.oneLine} go />
+                <Kv k="Photo" v={d.photo} go />
+              </Rows>
+            </Main>
+          </Cell>
+          {d.hours && (
+            <Cell
+              label="Shop hours"
+              det="Staff’s hours sit inside these"
+              foot={
+                <FootLine det="Members see “open now” from these.">
+                  <Btn onClick={a.onHours}>Change hours</Btn>
+                </FootLine>
+              }
+            >
+              <Main>
+                <Rows>
+                  {hoursRows(d.hours).map(([k, v, open]) => (
+                    <Kv key={k} k={k} v={v} ink={open} />
+                  ))}
+                  <Kv k="Closed on a date" v={`${d.closedDates.length} coming up`} go onTap={a.onHours} />
+                </Rows>
+              </Main>
+            </Cell>
+          )}
+          {d.preview && (
+            <Cell label="Contact" det="On your listing">
+              <Main>
+                <Rows link>
+                  <Kv k="Address" v={d.address} go />
+                  <Kv k="Phone" v={d.phone} go />
+                  <Kv k="Email" v={d.email} go />
+                </Rows>
+              </Main>
+            </Cell>
+          )}
+        </>
+      );
+    case 'payouts':
+      return (
+        <>
+          <Cell
+            label="Where payouts go"
+            det="Owner only"
+            foot={
+              <FootLine det="Changed by secure link. Clear never sees your login.">
+                <Btn onClick={a.onAccount}>Change account</Btn>
+              </FootLine>
+            }
+          >
+            <Main>
+              <Account bank={d.account?.bank ?? 'No account yet'} det={d.account?.det ?? 'Add one to be paid out'} ready={!!d.account} />
+            </Main>
+          </Cell>
+          <Cell
+            label="Schedule"
+            det="From your terms"
+            foot={
+              <FootLine det="Every payout traces back to its charges.">
+                <Btn onClick={a.onPayouts}>See payouts</Btn>
+              </FootLine>
+            }
+          >
+            <Main>
+              <Rows>
+                <Kv k="Next payout" v={d.nextPayout} ink />
+                <Kv k="Paid" v={d.payoutWhen} />
+                <Kv k="Managers" v="Send, not redirect" />
+              </Rows>
+            </Main>
+          </Cell>
+          {d.preview && (
+            <Cell label="Statements" det="Monthly">
+              <Main>
+                <Rows>
+                  <R2 t="September" det="Still being written" end="In progress" />
+                  <R2
+                    t="August"
+                    det="$3,118.40 paid out Sep 14"
+                    endClass="c-ink"
+                    end={
+                      <>
+                        <Btn sm>PDF</Btn>
+                        <Btn sm>CSV</Btn>
+                      </>
+                    }
+                  />
+                </Rows>
+              </Main>
+              <Main>
+                <Rows>
+                  <Switch t="Email each statement" det="On the 2nd, to books@mikestire.com" />
+                </Rows>
+              </Main>
+            </Cell>
+          )}
+        </>
+      );
+    case 'partnership':
+      return (
+        <>
+          <Cell
+            label="Your terms"
+            det={d.signed}
+            foot={
+              <FootLine det="Terms change only by a new agreement, never here.">
+                <Btn disabled={!d.preview}>Download agreement</Btn>
+              </FootLine>
+            }
+          >
+            <Main>
+              <p className="c-label" style={{ margin: '0 0 6px' }}>
+                What you pay
+              </p>
+              <Conseq
+                rows={[
+                  ['Paid now', d.ratesNow, true],
+                  ['Over time', d.ratesOver, true],
+                  ['Standard, after founding', '1.5% now · 2.5% over time'],
+                  ...(d.preview ? ([['First 20 charges', 'No fee · 3 left']] as [string, string][]) : []),
+                ]}
+              />
+            </Main>
+            <Main>
+              <p className="c-label" style={{ margin: '0 0 6px' }}>
+                What you get
+              </p>
+              <Conseq
+                rows={[
+                  ['Payouts', d.payoutWhen],
+                  ['If a member does not pay', 'Clear carries it'],
+                  ['Largest charge', d.cap],
+                ]}
+              />
+            </Main>
+            <Main>
+              <Conseq
+                rows={[
+                  ['Exclusivity', 'None'],
+                  ['Leaving', 'Any time, no fee'],
+                ]}
+              />
+            </Main>
+          </Cell>
+          <Cell label="Co-op record" det="Partner member">
+            <Main>
+              <Rows>
+                <Kv k="Member since" v={d.memberSince} ink />
+                <Kv k="Joined with" v={d.joinedWith} />
+                <Kv k="Membership certificate" v="PDF" go />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'counter':
+      return (
+        <>
+          <Cell
+            label="Counter cards"
+            det="40 printed Aug 14"
+            foot={
+              <FootLine det="More are free and arrive in about five days.">
+                <Pair>
+                  <Btn>Print at home</Btn>
+                  <Btn primary>Send 40 more</Btn>
+                </Pair>
+              </FootLine>
+            }
+          >
+            <Main>
+              <div className="c-st-cardrow">
+                <CounterCard shop={d.shop} url={d.counterUrl} />
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 'var(--t-sec)' }}>About 12 left</p>
+                  <p className="c-det" style={{ marginTop: 6 }}>
+                    The same code the tablet shows. It goes home with an estimate, so a customer can sign up and decide in their own time.
+                  </p>
+                </div>
+              </div>
+            </Main>
+          </Cell>
+          <Cell label="Shifts" det="Shop-wide" foot={<FootDet>Home shows who is due a break from this. It is not a timesheet.</FootDet>}>
+            <Main>
+              <Rows link>
+                <Kv k="Break" v="30 minutes, over 5 hours" go />
+                <Kv k="Ask for a PIN after" v={d.idle} go />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'payments':
+      return (
+        <>
+          <Cell label="Ways to pay" det="What Checkout offers" foot={<FootDet>Clear is always on: it is what you are a partner for.</FootDet>}>
+            <Main>
+              <Rows>
+                <Fixed t="Clear" det="Pay now or over time, approved on their phone" />
+                {d.stripe ? <Switch t="Card" det="On the counter reader" /> : <Locked t="Card" det="Needs Stripe connected first" />}
+                <Switch t="Cash" det="Change worked out, counted at close" />
+                <Switch t="Split between methods" det="Part one way, part another" />
+              </Rows>
+            </Main>
+          </Cell>
+          {d.stripe ? (
+            <>
+              <Cell
+                label="Card payments"
+                det={
+                  <span className="c-chip c-settled">
+                    <span className="c-core" />
+                    Stripe connected
+                  </span>
+                }
+                foot={<FootDet>One figure for card processing. Each deposit in Payouts shows how it splits between Stripe and Clear.</FootDet>}
+              >
+                <Main>
+                  <Rows link>
+                    <Kv k="Stripe account" v={d.legalName} go />
+                    <Kv k="Card processing" v="2.7% + 35¢ a sale · 2.7% + 5¢ under $10" go />
+                  </Rows>
+                </Main>
+              </Cell>
+              <Cell
+                label="Readers"
+                det="2"
+                foot={
+                  <FootLine det="An M2, a smart reader, or any phone running the Clear app.">
+                    <Btn>Add a reader</Btn>
+                  </FootLine>
+                }
+              >
+                <Main>
+                  <Rows link>
+                    <Kv
+                      k={
+                        <>
+                          Stripe Reader M2<span className="c-det c-st-sub">Chip, tap and swipe · Bluetooth to this tablet</span>
+                        </>
+                      }
+                      v={
+                        <span className="c-chip c-settled">
+                          <span className="c-core" />
+                          Connected
+                        </span>
+                      }
+                      go
+                    />
+                    <Kv
+                      k={
+                        <>
+                          Tap to Pay on Jen’s iPhone<span className="c-det c-st-sub">Tap only · +10¢ a tap</span>
+                        </>
+                      }
+                      v={
+                        <span className="c-chip c-settled">
+                          <span className="c-core" />
+                          Ready
+                        </span>
+                      }
+                      go
+                    />
+                  </Rows>
+                </Main>
+              </Cell>
+            </>
+          ) : (
+            <div className="c-slab c-one">
+              <div className="c-cell c-full c-st-lockcell">
+                <div className="c-chead">
+                  <div className="c-sechead">
+                    <p className="c-label">Card payments</p>
+                    <span className="c-chip c-neutral">Not connected</span>
+                  </div>
+                </div>
+                <Main>
+                  <p className="c-st-lk-t">Connect your Stripe account to take cards</p>
+                  <p className="c-det" style={{ marginTop: 6, lineHeight: 1.5 }}>
+                    Cards run through your own Stripe account, in your business’s name, and land in your bank the next business day. Clear adds
+                    its part of the fee to each sale; you never pay for hardware you do not want.
+                  </p>
+                  <Rows style={{ marginTop: 'var(--s2)' }}>
+                    <Kv k="Card processing" v="2.7% + 35¢ a sale, 2.7% + 5¢ under $10" ink />
+                    <Kv k="Readers" v="Stripe Reader M2, smart readers, or Tap to Pay on a phone" ink />
+                  </Rows>
+                </Main>
+                <FootLine det="Takes about five minutes. You can use an existing Stripe account.">
+                  <Btn primary>Connect Stripe</Btn>
+                </FootLine>
+              </div>
+            </div>
+          )}
+          <Cell label="Paying with Clear" det="Your founding rates">
+            <Main>
+              <Rows>
+                <Kv k="Paid now" v={`${d.ratesNow} of the charge`} ink />
+                <Kv k="Over time" v={`${d.ratesOver} of the charge`} ink />
+                <Kv k="Over time is offered on" v="Charges of $50.00 or more" ink />
+                <Kv k="Below that" v="Pay now, from their Clear balance" ink />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="When the connection drops" det="Offline" foot={<FootDet>Cash works as normal offline.</FootDet>}>
+            <Main>
+              <Rows>
+                {d.stripe ? (
+                  <Switch t="Store card payments" det="Sent when the connection is back, up to $500.00 each" />
+                ) : (
+                  <Locked t="Store card payments" det="Needs Stripe connected first" />
+                )}
+                <Fixed t="Clear" det="Needs a connection, always. There is no offline queue." />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'tax':
+      return (
+        <>
+          <Cell label="Where you collect" det="Worked out by Stripe Tax" foot={<FootDet>The rate follows the address. You never type a percentage.</FootDet>}>
+            <Main>
+              <Rows link>
+                <Kv k="Shop address" v="412 Colton Ave, Redlands, CA" go />
+                <Kv k="Registered in" v="California" go />
+                <Kv k="Rate at the shop" v="7.75%" ink />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="How prices show" det="At the counter" foot={<FootDet>Food trucks often choose tax included, so a $9.00 taco costs $9.00.</FootDet>}>
+            <Main>
+              <Chips options={['Before tax, added at checkout', 'Tax included']} initial={[0]} />
+            </Main>
+          </Cell>
+          <Cell label="Kinds of item" det="Set on each item in Inventory">
+            <Main>
+              <Rows>
+                <Kv k="Taxable goods" v="7.75% · 8 items" ink />
+                <Kv k="Labour, not taxed" v="— · 3 items" ink />
+                <Kv k="Prepared food" v="7.75% · 0 items" ink />
+                <Kv k="Exempt" v="— · 0 items" ink />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'tips':
+      return (
+        <>
+          <Cell
+            label="Asking for a tip"
+            det="On the customer’s side of the screen"
+            foot={<FootDet>Amounts suit large tickets like tires. A food truck would offer 15, 18 and 20%.</FootDet>}
+          >
+            <Main>
+              <Rows>
+                <Switch t="Ask before they pay" det="Once, for any way to pay" />
+              </Rows>
+              <p className="c-label c-st-fl">Offer</p>
+              <Chips options={['Amounts', 'Percentages']} initial={[0]} />
+              <div className="c-st-presets">
+                <div>$5</div>
+                <div>$10</div>
+                <div>$20</div>
+                <div className="c-add">+ Add</div>
+              </div>
+            </Main>
+          </Cell>
+          <Cell label="Who gets them" det="Shared at close" foot={<FootDet>Card tips are paid with payroll. Cash tips come out of the drawer at close.</FootDet>}>
+            <Main>
+              <Chips options={['Whoever raised the charge', 'Split by hours on shift']} initial={[0]} />
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'discounts':
+      return (
+        <>
+          <Cell
+            label="Codes"
+            det="2"
+            foot={
+              <FootLine det="FALL10 has been used 4 times.">
+                <Btn primary onClick={a.onNewCode}>
+                  New code
+                </Btn>
+              </FootLine>
+            }
+          >
+            <Main>
+              <Rows link>
+                <Kv
+                  k={
+                    <>
+                      <b className="c-st-dcode">FALL10</b> 10% off the whole charge
+                    </>
+                  }
+                  v={
+                    <span className="c-chip c-settled">
+                      <span className="c-core" />
+                      Until Oct 31
+                    </span>
+                  }
+                  go
+                />
+                <Kv
+                  k={
+                    <>
+                      <b className="c-st-dcode">SUMMER25</b> 25% off tires
+                    </>
+                  }
+                  v={<span className="c-chip c-neutral">Ended Sep 1</span>}
+                  go
+                />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="Limits by role" det="Without a PIN" foot={<FootDet>Above a limit, an owner or manager enters their PIN at the counter.</FootDet>}>
+            <Main>
+              <Rows link>
+                <Kv k="Counter" v="Up to 10%" go />
+                <Kv k="Manager" v="Up to 25%" go />
+                <Kv k="Owner" v="No limit" ink />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'devices':
+      return (
+        <>
+          <Cell
+            label="Paired"
+            det="3"
+            foot={
+              <FootLine det="The M2 pairs over Bluetooth with the Clear app.">
+                <Btn>Pair a device</Btn>
+              </FootLine>
+            }
+          >
+            <Main>
+              <Rows link>
+                <Kv
+                  k="Stripe Reader M2"
+                  v={
+                    <span className="c-chip c-settled">
+                      <span className="c-core" />
+                      Connected
+                    </span>
+                  }
+                  go
+                />
+                <Kv
+                  k="Receipt printer"
+                  v={
+                    <span className="c-chip c-settled">
+                      <span className="c-core" />
+                      Ready
+                    </span>
+                  }
+                  go
+                />
+                <Kv k="Cash drawer" v="Opens with the printer" go />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="This tablet" det="Enrolled">
+            <Main>
+              <Rows>
+                <Kv k="Name" v={d.tablet.name} ink />
+                <Kv k="Enrolled" v={d.tablet.enrolled} ink />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'closing':
+      return (
+        <>
+          <Cell label="The drawer" det="Every day">
+            <Main>
+              <Rows link>
+                <Kv k="Starting cash" v="$150.00" go />
+                <Switch t="Two counts at close" det="By two people, neither seeing the other’s figure" />
+                <Switch t="Any difference needs a sign-off" det="By an owner or manager who did not count first" />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="When only one person is on" det="For late closes" foot={<FootDet>The owner sees it on Home in the morning, with the count and the note.</FootDet>}>
+            <Main>
+              <Chips options={['One count, signed off by the owner next morning', 'Wait for a second person']} initial={[0]} />
+            </Main>
+          </Cell>
+          <Cell label="Who can close" det="Close the day">
+            <Main>
+              <Rows>
+                <Kv k="Owners and managers" v={d.closers} ink />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'security':
+      return (
+        <>
+          <Cell label="You" det="Owner" foot={<FootDet>Your PIN approves refunds and leaving. Staff never see it.</FootDet>}>
+            <Main>
+              <Rows link>
+                <Kv k="Sign-in" v={d.signIn} go />
+                <Kv k="Owner PIN" v="Change" go />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell
+            label="Devices"
+            det={`${d.devices.length} signed in`}
+            foot={
+              <FootLine det="A device charges with a PIN. Money needs you.">
+                <Btn onClick={a.onDevice}>Add a device</Btn>
+              </FootLine>
+            }
+          >
+            <Main>
+              <Rows>
+                {d.devices.map((v) => (
+                  <Device key={v.id} name={v.name} det={v.det} kind={v.kind} current={v.current} onSignOut={a.onSignOutDevice && (() => a.onSignOutDevice!(v.id))} />
+                ))}
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'notifications':
+      return (
+        <>
+          <Cell label="To you" det={d.owner} foot={<FootDet>Changes save as you make them.</FootDet>}>
+            <Main>
+              <Rows>
+                <Switch t="End-of-day summary" det="9:00pm, every charge and who raised it" />
+                <Switch t="A refund needs you" det="Right away, so nobody waits at the counter" />
+                <Switch t="A charge is still waiting" det="After an hour, once, so you can follow up" />
+                <Switch t="Stock running low" det="When an item drops under its reorder line" />
+                <Switch t="Payout sent" det="When the money leaves Clear" />
+                <Switch t="Every charge" det="Forty a day is noise; the summary has them" initial={false} />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="Send to" det="">
+            <Main>
+              <Chips options={[`${d.owner.split(' ')[0]}’s phone`, d.signIn, 'Text message']} initial={[0, 1]} multi />
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'advanced':
+      return (
+        <>
+          <Cell label="Business details" det="Verified" foot={<FootDet>Locked after verification. Contact Clear to correct them.</FootDet>}>
+            <Main>
+              <Rows>
+                <Kv k="Legal name" v={d.legalName} />
+                <Kv k="Tax ID" v={d.taxId} />
+                <Kv k="Registered address" v={d.address} />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="Your data" det="">
+            <Main>
+              <Rows>
+                <R2 t="Every charge" det="Since you joined, as CSV" end={<Btn sm>Download</Btn>} />
+                <R2 t="Every payout" det="With the charges in each, as CSV" end={<Btn sm>Download</Btn>} />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell
+            label="Leaving"
+            det="Any time, no fee"
+            foot={
+              <FootLine det="You can talk to someone before anything happens.">
+                <Btn onClick={a.onLeave}>Leave Clear</Btn>
+              </FootLine>
+            }
+          >
+            <Main>
+              <p className="c-sub" style={{ margin: 0 }}>
+                There is no exclusivity and no fee. Charges already approved still settle, and what you are owed is still paid on the 14th.
+              </p>
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'help':
+      return (
+        <>
+          <Cell
+            label="Your contact"
+            det="Founding partners"
+            foot={<FootDet>For the first five shops, a person answers. That will not last forever, and the guides below are how it scales.</FootDet>}
+          >
+            <Main>
+              <Rows>
+                <R2
+                  t="Clear partner support"
+                  det="Weekdays, 8:00am – 6:00pm"
+                  end={
+                    <>
+                      <Btn sm>Call</Btn>
+                      <Btn sm>Message</Btn>
+                    </>
+                  }
+                />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="Guides" det="">
+            <Main>
+              <Rows link>
+                <Kv k="Raising a charge" go />
+                <Kv k="Refunds, and who approves them" go />
+                <Kv k="Training the counter" go />
+                <Kv k="Reading a statement" go />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+    case 'you':
+      return (
+        <>
+          <Cell label="You" det={`${d.me.name} · ${d.me.role}`}>
+            <Main>
+              <Rows>
+                <Kv k="Your PIN" v="Change" go />
+                <Kv k="Your hours" v={d.me.hours} ink />
+              </Rows>
+            </Main>
+          </Cell>
+          <Cell label="This tablet" det="Set by the owner">
+            <Main>
+              <Rows>
+                <Kv k="Shop hours" v={d.hours ? 'Mon – Sat, closed Sunday' : '—'} ink />
+                <Kv k="Asks for a PIN after" v={d.idle} ink />
+                <Kv k="Counter cards running low" v={`Tell ${d.owner.split(' ')[0]}`} />
+              </Rows>
+            </Main>
+          </Cell>
+        </>
+      );
+  }
+}
+
+/** Shop › Shop hours, the one pushed page inside a pane. */
+export function hoursBody(d: SettingsData, onSave?: () => void): ReactNode {
+  return (
+    <>
+      <Cell label="Each week" det="">
+        <Main>
+          <WeekHours days={d.hours ?? REFERENCE.hours!} />
+        </Main>
+      </Cell>
+      <Cell
+        label="Closed on a date"
+        det="A week’s notice"
+        foot={
+          <FootLine det="Shifts booked on Staff sit inside these hours.">
+            <Pair>
+              <Btn>Add a date</Btn>
+              <Btn primary onClick={onSave} disabled={!onSave}>
+                Save hours
+              </Btn>
+            </Pair>
+          </FootLine>
+        }
+      >
+        <Main>
+          <Rows link>
+            {d.closedDates.map(([k, v]) => (
+              <Kv key={k} k={k} v={v} go />
+            ))}
+          </Rows>
+        </Main>
+      </Cell>
+    </>
+  );
+}
