@@ -53,7 +53,8 @@ export const CountsView = z.discriminatedUnion('state', [
   z.object({ state: z.literal('awaiting_second'), mine: OwnCount.nullable() }),
   z.object({
     state: z.literal('compared'),
-    counts: z.tuple([OwnCount, OwnCount]),
+    /** Both counts; one when the shop has two counts turned off. */
+    counts: z.union([z.tuple([OwnCount]), z.tuple([OwnCount, OwnCount])]),
     expectedCents: NonNegativeCents,
     /** Counted − expected: negative is short. */
     differenceCents: Cents,
