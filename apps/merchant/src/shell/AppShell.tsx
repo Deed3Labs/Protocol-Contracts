@@ -219,6 +219,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const shiftActions = {
     changeShift: () => setOpen('who'),
+    ownerSignIn: () => setOpen('owner'),
     endShift: () => {
       closeSheets();
       void signOut();

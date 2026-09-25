@@ -1,37 +1,29 @@
 import { useState } from 'react';
-import { ArrowRight, Check, ChevronLeft, Delete, X } from 'lucide-react';
-import { dollars, formatCalendarDate, fromCents, toCents } from '@clear/domain';
-import { Button, Cap, PrimaryButton } from '@/shell/ui';
+import { formatCalendarDate, toCents } from '@clear/domain';
+import { IconKeyDelete, IconRoute } from '@/brand/chargeIcons';
+import { cx, Sheet, useDigitKeys } from '@/brand/ui';
 import { api, type PayoutPosition } from '@/data/apiClient';
-import {
-  type Destination,
-  type Source,
-  arrivalLabel,
-  feeCents,
-  feeLabel,
-  routeLabel,
-  steps,
-} from '@/payouts/withdrawModel';
+import { usd } from '@/home/model';
+import { PickRow } from '@/payouts/views';
+import { type Destination, type Source, arrivalLabel, feeCents, feeLabel, routeLabel, steps } from '@/payouts/withdrawModel';
 
 /**
- * Withdrawing — reference section 07b.
+ * Withdrawing — docs/merchant-reference/clear-merchant-payouts.html ("Withdrawing: from where, to
+ * where"). The member app's move-money modal with its contents changed: the amount, the quick
+ * chips, the two legs on one seam, the pad, the consequences.
  *
- * **The modal asks both legs, because both matter.** Owed money must pass through the cash account
- * and money already there goes straight out, so "how much" is not a complete question on its own.
- * Tapping either leg opens the picker; the Route line reports which hop is happening so it never
- * becomes a step the merchant has to think about.
+ * **It asks both legs, because both matter.** Owed money passes through the cash account and money
+ * already there goes straight out, so "how much" is not a complete question on its own. Tapping a
+ * leg opens its sheet; the Route line reports the hop so it never becomes a step to think about.
  *
- * **The constraint changes with the source.** Owed money is capped by what the pool can free
- * today; cash-account money is capped only by the balance. The amount line says which cap is in
- * force rather than making a merchant discover it by being refused.
- *
- * On mobile it slides up from the bottom with a grab handle, matching every other modal in this
- * app and the member app — one motion, one dismissal gesture, learned once.
+ * **The cap changes with the source.** Owed money is capped by what the pool can free today;
+ * cash-account money only by the balance. The amount line says which is in force rather than
+ * letting a merchant find out by being refused.
  */
 
-type Stage = 'amount' | 'picker' | 'sending' | 'done';
+export type Stage = 'amount' | 'from' | 'to' | 'sending' | 'done';
+type Outcome = Awaited<ReturnType<typeof api.requestWithdrawal>>;
 
-/** Digits with at most two decimals, held as the string the owner is building. */
 function press(entry: string, key: string): string {
   if (key === 'del') return entry.slice(0, -1);
   if (key === '.') return entry.includes('.') ? entry : `${entry || '0'}.`;
@@ -46,43 +38,31 @@ const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'] as c
 export function WithdrawModal({
   position,
   bankName,
+  initialSource,
+  initialEntry = '',
+  initialStage = 'amount',
+  request = api.requestWithdrawal,
   onClose,
   onDone,
 }: {
   position: PayoutPosition;
-  /** Null when no payout account is set up — the bank leg then says so rather than inventing one. */
   bankName: string | null;
+  initialSource?: Source;
+  initialEntry?: string;
+  initialStage?: Stage;
+  /** The preview passes its own; a live shop's goes to the API. */
+  request?: typeof api.requestWithdrawal;
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [stage, setStage] = useState<Stage>('amount');
-  // Start wherever the money actually is. A shop with nothing released today should not open on a
-  // source that can only refuse them.
-  const initialSource: Source = (position.releasedReadyCents ?? 0) > 0 ? 'owed' : 'cash';
-  const [source, setSource] = useState<Source>(initialSource);
-  const [destination, setDestination] = useState<Destination>(
-    /**
-     * Never the same on both legs.
-     *
-     * The picker already drops cash from the destinations once it is the source, but the OPENING
-     * state was chosen independently — so a shop with an empty cash account and no bank on file
-     * opened on cash → cash, the one combination the reference says cannot exist. Two correct
-     * rules that never spoke to each other.
-     */
-    initialSource === 'cash' ? (bankName ? 'bank' : 'debit') : bankName ? 'bank' : 'cash',
-  );
-  const [entry, setEntry] = useState('');
+  const [stage, setStage] = useState<Stage>(initialStage);
+  const firstSource: Source = initialSource ?? ((position.releasedReadyCents ?? 0) > 0 ? 'owed' : 'cash');
+  const [source, setSource] = useState<Source>(firstSource);
+  const [destination, setDestination] = useState<Destination>(firstSource === 'cash' ? (bankName ? 'bank' : 'debit') : bankName ? 'bank' : 'cash');
+  const [entry, setEntry] = useState(initialEntry);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /*
-   * What actually happened, rather than what was asked for.
-   *
-   * Owed money is now redeemed on chain as part of the request, and there are three endings: it
-   * landed in the cash account, it queued behind other claims because the pool was short, or the
-   * server could not do the chain leg and it is a request as before. The closing screen used to
-   * say "On its way" for all of them, which was true of only one.
-   */
-  const [outcome, setOutcome] = useState<Awaited<ReturnType<typeof api.requestWithdrawal>> | null>(null);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   const cap = source === 'cash' ? position.cashAccountCents : position.releasedReadyCents;
   const cents = entry ? toCents(Number(entry) || 0) : 0;
@@ -90,18 +70,20 @@ export function WithdrawModal({
   const fee = feeCents(destination, cents);
   const receives = Math.max(0, cents - fee);
   const bank = bankName ?? 'your bank';
+  const to = destination === 'cash' ? 'your cash account' : destination === 'bank' ? bank : 'your card';
 
   const [whole, frac] = entry.includes('.') ? entry.split('.') : [entry, ''];
   const shownWhole = whole === '' ? '0' : Number(whole).toLocaleString('en-US');
   const shownFrac = entry.includes('.') ? frac.padEnd(2, '0').slice(0, 2) : '00';
 
+  useDigitKeys(stage === 'amount', (d) => setEntry((e) => press(e, d)), () => setEntry((e) => press(e, 'del')));
+
   async function submit() {
     setBusy(true);
     setError(null);
     try {
-      setOutcome(await api.requestWithdrawal({ amountCents: cents, source, destination }));
+      setOutcome(await request({ amountCents: cents, source, destination }));
       setStage('sending');
-      // The hops are visible here and only here. Long enough to read, then the outcome.
       window.setTimeout(() => setStage('done'), 2200);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'That could not be requested just now.');
@@ -110,473 +92,307 @@ export function WithdrawModal({
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 @[520px]:items-center">
-      {/* Slides up from the bottom on a phone, centres on anything wider. Square top corners and a
-          grab handle, matching the member app — see section 21. */}
-      <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-[16px] bg-[var(--clear-surface-2)] px-5 pb-6 pt-3 @[520px]:max-w-[400px] @[520px]:rounded-[16px]">
-        <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-[var(--clear-border-strong)] @[520px]:hidden" />
-
-        {stage === 'picker' ? (
-          <Picker
-            position={position}
-            bankName={bankName}
-            source={source}
-            destination={destination}
-            onSource={(s) => {
-              setSource(s);
-              // Cash to cash is not a movement, so it cannot remain selected once cash is the source.
-              if (s === 'cash' && destination === 'cash') setDestination(bankName ? 'bank' : 'debit');
-              setEntry('');
-            }}
-            onDestination={setDestination}
-            onBack={() => setStage('amount')}
-          />
-        ) : stage === 'sending' ? (
-          <Sending amount={cents} destination={destination} source={source} bank={bank} />
-        ) : stage === 'done' ? (
-          <Done
-            amount={cents}
-            destination={destination}
-            bank={bank}
-            position={position}
-            outcome={outcome}
-            onDone={() => {
-              onDone();
-              onClose();
-            }}
-          />
-        ) : (
-          <>
-            <div className="mb-4 flex items-center justify-between">
-              <p className="m-0 text-[16px] font-medium">Withdraw</p>
-              <button type="button" onClick={onClose} aria-label="Close">
-                <X size={18} className="text-[var(--clear-text-secondary)]" />
-              </button>
-            </div>
-
-            <Cap>Amount</Cap>
-            <p className="m-0 mb-[3px] tabular-nums">
-              <span className="text-[36px] font-medium tracking-[-1px]">${shownWhole}</span>
-              <span className="text-[20px] text-[var(--clear-text-muted)]">.{shownFrac}</span>
-            </p>
-            {/* The amount line says which cap is in force, rather than letting a merchant find out
-                by being refused. */}
-            <p className="m-0 mb-3 text-[11.5px] text-[var(--clear-text-muted)]">
-              {cap === null
-                ? source === 'cash'
-                  ? 'We cannot read your cash account just now'
-                  : 'Nothing is released early today — it arrives on your scheduled payout'
-                : source === 'cash'
-                  ? `All of your cash account, ${dollars(fromCents(cap))}`
-                  : `All that is free today, of ${dollars(fromCents(position.owedCents))} owed`}
-            </p>
-
-            <div className="mb-3 grid grid-cols-3 gap-2">
-              {[50_000, 100_000, cap ?? 0].map((c, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  disabled={cap === null || c > cap || c <= 0}
-                  onClick={() => setEntry(String(fromCents(c)))}
-                  className="rounded-[10px] border-[0.5px] border-[var(--clear-border)] bg-[var(--clear-surface-1)] py-2.5 text-[12.5px] text-[var(--clear-text-secondary)] disabled:opacity-40"
-                >
-                  {i === 2 ? 'All free' : dollars(fromCents(c))}
-                </button>
-              ))}
-            </div>
-
-            <Route
-              source={source}
-              destination={destination}
-              position={position}
-              bank={bank}
-              onTap={() => setStage('picker')}
+  // ---- Where is it coming from? ----------------------------------------------------------------
+  if (stage === 'from')
+    return (
+      <Sheet
+        title="Where is it coming from?"
+        onClose={() => setStage('amount')}
+        foot={<p className="c-det">Owed money is capped by what the pool can free today. Cash-account money is capped only by the balance.</p>}
+      >
+        <div className="c-rows">
+          {(
+            [
+              ['owed', 'Owed to you', 'Passes through your cash account', position.releasedReadyCents, 'free today'],
+              ['cash', 'Cash account', 'Goes straight out', position.cashAccountCents, 'all of it'],
+            ] as const
+          ).map(([k, t, det, c, note]) => (
+            <PickRow
+              key={k}
+              on={source === k}
+              t={t}
+              det={det}
+              disabled={(c ?? 0) <= 0}
+              onPick={() => {
+                setSource(k);
+                if (k === 'cash' && destination === 'cash') setDestination(bankName ? 'bank' : 'debit');
+                setEntry('');
+                setStage('amount');
+              }}
+              right={
+                <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <span className="c-fig c-fig-row" style={{ display: 'block' }}>
+                    {c === null ? '—' : usd(c)}
+                  </span>
+                  <span className="c-det" style={{ display: 'block', marginTop: 2 }}>
+                    {c === null ? 'unknown' : note}
+                  </span>
+                </span>
+              }
             />
+          ))}
+        </div>
+      </Sheet>
+    );
 
-            <div className="mb-3.5 grid grid-cols-3 gap-2">
-              {KEYS.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setEntry((e) => press(e, k))}
-                  aria-label={k === 'del' ? 'Delete' : k}
-                  className="flex items-center justify-center rounded-[11px] bg-[var(--clear-surface-1)] py-[13px] text-[19px]"
-                >
-                  {k === 'del' ? <Delete size={18} aria-hidden /> : k}
-                </button>
-              ))}
-            </div>
-
-            <div className="mb-3 rounded-[10px] border-[0.5px] border-[var(--clear-border)] px-[14px] py-3">
-              <Line label="Route" value={routeLabel(source, destination, bank)} />
-              <Line label="Fee" value={feeLabel(destination, cents)} />
-              <Line label="Arrives" value={arrivalLabel(destination)} />
-              <Line label="You receive" value={dollars(fromCents(receives))} strong />
-            </div>
-
-            {(error || overCap) && (
-              <p role="alert" className="m-0 mb-2 text-center text-[12.5px] leading-[1.5]">
-                {error ?? 'That is more than is available from there.'}
-              </p>
-            )}
-
-            {(cap ?? 0) <= 0 && (
-              <p className="m-0 mb-2 text-center text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
-                {source === 'owed'
-                  ? 'Nothing is released early today. Change the source, or it arrives on your scheduled payout.'
-                  : 'Your cash account is empty. Change the source to what you are owed.'}
-              </p>
-            )}
-
-            <PrimaryButton
-              disabled={busy || cents <= 0 || overCap || cap === null || cap <= 0}
-              onClick={submit}
-              className="!py-[13px] !text-[14.5px]"
+  // ---- Where does it end up? -------------------------------------------------------------------
+  if (stage === 'to') {
+    const options: [Destination, string, string, string, string, boolean][] = [
+      ...(source !== 'cash' ? ([['cash', 'Cash account', 'Spend at partners, no wait', 'Instant', 'no fee', true]] as [Destination, string, string, string, string, boolean][]) : []),
+      ['bank', bankName ?? 'Bank account', bankName ? 'Business checking' : 'Not set up yet', '1–3 days', 'no fee', !!bankName],
+      // No card on file and none invented: showing a card number we don't have would be a fabrication.
+      ['debit', 'Debit card', 'Not set up yet', 'Minutes', `1.5%${cents ? ` · ${usd(feeCents('debit', cents))}` : ''}`, false],
+    ];
+    return (
+      <Sheet
+        title="Where does it end up?"
+        onClose={() => setStage('amount')}
+        foot={
+          <p className="c-det">Cash account is on both lists, and that is right — it receives released money and sends money on. It drops off this list once it is the source.</p>
+        }
+      >
+        <div className="c-rows">
+          {options.map(([k, t, det, when, cost, ok]) => (
+            <div
+              key={k}
+              role="button"
+              tabIndex={ok ? 0 : -1}
+              aria-disabled={!ok}
+              aria-pressed={destination === k}
+              style={ok ? { cursor: 'pointer' } : { opacity: 0.45 }}
+              onClick={() => {
+                if (!ok) return;
+                setDestination(k);
+                setStage('amount');
+              }}
             >
-              {busy
-                ? 'Requesting…'
-                : `Withdraw to ${destination === 'cash' ? 'cash account' : destination === 'bank' ? bank : 'card'}`}
-            </PrimaryButton>
-          </>
-        )}
+              <div className="c-line" style={{ alignItems: 'center' }}>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 'var(--t-sec)', fontWeight: destination === k ? 600 : undefined }}>{t}</p>
+                  <p className="c-det" style={{ marginTop: 3 }}>
+                    {det}
+                  </p>
+                </div>
+                <span style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <span style={{ display: 'block', fontSize: 'var(--t-sec)' }}>{when}</span>
+                  <span className="c-det" style={{ display: 'block', marginTop: 2, color: k === 'debit' ? 'var(--absent)' : undefined }}>
+                    {cost}
+                  </span>
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Sheet>
+    );
+  }
+
+  // ---- Sending, then done --------------------------------------------------------------------------
+  if (stage === 'sending') {
+    const list = steps(source, destination, bank);
+    return (
+      <Sheet
+        title={' '}
+        label={`Sending ${usd(cents)}`}
+        onClose={onClose}
+        foot={
+          <p className="c-det">
+            {destination === 'cash'
+              ? 'A few seconds to your cash account. You can close this.'
+              : `A few seconds to your cash account, then ${destination === 'bank' ? '1–3 business days to the bank' : 'minutes to your card'}. You can close this.`}
+          </p>
+        }
+      >
+        <p className="c-fig c-fig-sec">Sending {usd(cents)}</p>
+        <p className="c-det" style={{ marginTop: 4 }}>
+          To {to}
+        </p>
+        <div className="c-rail" style={{ marginTop: 'var(--s3)' }}>
+          {list.map((s, i) => (
+            <div key={s} className={cx('c-mstone', i === 0 ? 'c-done' : i === 1 ? 'c-now' : 'c-later', i === list.length - 1 && 'c-last')}>
+              <span className="c-mdot" />
+              <p style={{ margin: 0, fontSize: 'var(--t-sec)' }}>{s}</p>
+            </div>
+          ))}
+        </div>
+      </Sheet>
+    );
+  }
+
+  if (stage === 'done') {
+    const paid = outcome?.status === 'paid';
+    const queued = outcome?.queued === true;
+    const firstHop = outcome?.inCashAccount === true && !paid;
+    const heading = paid ? 'Paid' : queued ? 'Queued' : firstHop ? 'In your cash account' : 'On its way';
+    const arrives = paid ? 'In your account' : queued ? 'Within your payout terms' : firstHop ? `Released — ${arrivalLabel(destination)} to ${to}` : arrivalLabel(destination);
+    const finish = () => {
+      onDone();
+      onClose();
+    };
+    const kv = (k: string, v: string) => (
+      <div>
+        <div className="c-kv">
+          <span>{k}</span>
+          <span className="c-v">{v}</span>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+    return (
+      <Sheet
+        title={' '}
+        label={heading}
+        onClose={finish}
+        foot={
+          <button type="button" className="c-btn c-btn-lg" onClick={finish}>
+            Done
+          </button>
+        }
+      >
+        <p className="c-fig c-fig-sec">{heading}</p>
+        <p className="c-det" style={{ marginTop: 4 }}>
+          {usd(cents)} to {to}
+        </p>
+        <div className="c-rows" style={{ marginTop: 'var(--s3)' }}>
+          {kv('Arrives', arrives)}
+          {kv('Still owed to you', usd(Math.max(0, position.owedCents - (source === 'owed' ? cents : 0))))}
+          {kv('Cash account', position.cashAccountCents === null ? '—' : usd(position.cashAccountCents - (source === 'cash' ? cents : 0)))}
+          {position.nextPayoutOn && kv('Next payout', formatCalendarDate(position.nextPayoutOn))}
+        </div>
+        {queued && (
+          <p className="c-det" style={{ marginTop: 'var(--s2)' }}>
+            Claims are paid in the order they were made. Yours is in the queue and is paid as the pool is funded, at the latest by the end of
+            your terms.
+          </p>
+        )}
+        {outcome?.settlementNote && (
+          <p className="c-det" style={{ marginTop: 'var(--s2)' }}>
+            {outcome.settlementNote}
+          </p>
+        )}
+      </Sheet>
+    );
+  }
 
-function Line({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="flex justify-between gap-3 text-[12.5px] leading-[2]">
-      <span className="text-[var(--clear-text-secondary)]">{label}</span>
-      <span className={strong ? 'font-medium tabular-nums' : 'tabular-nums'}>{value}</span>
-    </div>
-  );
-}
-
-/** The two legs. Tapping either opens the picker — the reference has both sides live. */
-function Route({
-  source,
-  destination,
-  position,
-  bank,
-  onTap,
-}: {
-  source: Source;
-  destination: Destination;
-  position: PayoutPosition;
-  bank: string;
-  onTap: () => void;
-}) {
+  // ---- The amount ----------------------------------------------------------------------------------
+  const quick = [50_000, 100_000, cap ?? 0];
   const from =
     source === 'cash'
-      ? { name: 'Cash account', sub: position.cashAccountCents === null ? 'balance unknown' : `${dollars(fromCents(position.cashAccountCents))} all of it` }
-      : { name: 'Owed to you', sub: position.releasedReadyCents === null ? 'nothing free today' : `${dollars(fromCents(position.releasedReadyCents))} free` };
-  const to =
+      ? { nm: 'Cash account', bal: position.cashAccountCents === null ? 'balance unknown' : `${usd(position.cashAccountCents)} all of it` }
+      : { nm: 'Owed to you', bal: position.releasedReadyCents === null ? 'nothing free today' : `${usd(position.releasedReadyCents)} free` };
+  const dest =
     destination === 'cash'
-      ? { name: 'Cash account', sub: 'Instant · no fee' }
+      ? { nm: 'Cash account', bal: 'Instant · no fee' }
       : destination === 'bank'
-        ? { name: bank, sub: '1–3 days · no fee' }
-        : { name: 'Debit card', sub: 'Minutes · 1.5%' };
+        ? { nm: bank, bal: '1–3 days · no fee' }
+        : { nm: 'Debit card', bal: 'Minutes · 1.5%' };
+  const note =
+    error ??
+    (overCap
+      ? 'That is more than is available from there.'
+      : (cap ?? 0) <= 0
+        ? source === 'owed'
+          ? 'Nothing is released early today. Change the source, or it arrives on your scheduled payout.'
+          : 'Your cash account is empty. Change the source to what you are owed.'
+        : source === 'owed'
+          ? 'Owed money passes through your cash account. That hop is automatic.'
+          : 'Cash-account money goes straight out.');
 
   return (
-    <div className="relative mb-3.5 grid grid-cols-2 items-stretch gap-1">
-      <button type="button" onClick={onTap} className="min-w-0 rounded-l-[10px] rounded-r-[4px] bg-[var(--clear-surface-1)] py-[11px] pl-[13px] pr-[25px] text-left">
-        <p className="m-0 mb-[5px] text-[9.5px] uppercase leading-none tracking-[0.4px] text-[var(--clear-text-muted)]">From</p>
-        <p className="m-0 truncate text-[13px] leading-[1.3]">{from.name}</p>
-        <p className="m-0 mt-0.5 truncate text-[11.5px] leading-[1.35] text-[var(--clear-text-muted)]">{from.sub}</p>
-      </button>
-      <button type="button" onClick={onTap} className="min-w-0 rounded-l-[4px] rounded-r-[10px] bg-[var(--clear-surface-1)] py-[11px] pl-[25px] pr-[13px] text-left">
-        <p className="m-0 mb-[5px] text-[9.5px] uppercase leading-none tracking-[0.4px] text-[var(--clear-text-muted)]">To</p>
-        <p className="m-0 truncate text-[13px] leading-[1.3]">{to.name}</p>
-        <p className="m-0 mt-0.5 truncate text-[11.5px] leading-[1.35] text-[var(--clear-text-muted)]">{to.sub}</p>
-      </button>
-      <span className="pointer-events-none absolute left-1/2 top-1/2 flex h-[26px] w-[26px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[0.5px] border-[var(--clear-border)] bg-[var(--clear-surface-2)] shadow-[0_0_0_4px_var(--clear-surface-2)]">
-        <ArrowRight size={13} className="text-[var(--clear-text-secondary)]" />
-      </span>
-    </div>
-  );
-}
-
-
-/**
- * Both legs, one screen — reference section 07b.
- *
- * The cash account appears on both sides and that is correct: a destination when money is being
- * released, a source when it is being sent on. Cash to cash simply drops out of the second list
- * once cash is the source, rather than being offered and refused.
- */
-function Picker({
-  position,
-  bankName,
-  source,
-  destination,
-  onSource,
-  onDestination,
-  onBack,
-}: {
-  position: PayoutPosition;
-  bankName: string | null;
-  source: Source;
-  destination: Destination;
-  onSource: (s: Source) => void;
-  onDestination: (d: Destination) => void;
-  onBack: () => void;
-}) {
-  return (
-    <>
-      <div className="mb-4 flex items-center gap-2.5">
-        <button type="button" onClick={onBack} aria-label="Back">
-          <ChevronLeft size={20} className="text-[var(--clear-text-secondary)]" />
-        </button>
-        <p className="m-0 text-[16px] font-medium">Where is it coming from?</p>
-      </div>
-
-      <div className="mb-5">
-        <Option
-          name="Owed to you"
-          detail="Passes through your cash account"
-          right={
-            position.releasedReadyCents === null
-              ? 'nothing free today'
-              : `${dollars(fromCents(position.releasedReadyCents))} free today`
-          }
-          selected={source === 'owed'}
-          disabled={(position.releasedReadyCents ?? 0) <= 0}
-          onClick={() => onSource('owed')}
-        />
-        <Option
-          name="Cash account"
-          detail="Goes straight out"
-          right={
-            position.cashAccountCents === null
-              ? 'balance unknown'
-              : `${dollars(fromCents(position.cashAccountCents))} all of it`
-          }
-          selected={source === 'cash'}
-          disabled={(position.cashAccountCents ?? 0) <= 0}
-          onClick={() => onSource('cash')}
-        />
-      </div>
-
-      <p className="m-0 mb-1 text-[16px] font-medium">Where does it end up?</p>
-      <div className="mb-4">
-        {/* Only when it is not already the source. Cash to cash is not a movement. */}
-        {source !== 'cash' && (
-          <Option
-            name="Cash account"
-            detail="Spend at partners, no wait"
-            right="Instant · no fee"
-            selected={destination === 'cash'}
-            onClick={() => onDestination('cash')}
-          />
-        )}
-        <Option
-          name={bankName ?? 'Bank account'}
-          detail={bankName ? 'Business checking' : 'Not set up yet'}
-          right="1–3 days · no fee"
-          selected={destination === 'bank'}
-          disabled={!bankName}
-          onClick={() => onDestination('bank')}
-        />
-        {/* No card on file and none invented. The reference shows a masked number; showing one we
-            do not have would be the same fabrication as the old "On its way" screen. */}
-        <Option
-          name="Debit card"
-          detail="Not set up yet"
-          right="Minutes · 1.5%"
-          selected={destination === 'debit'}
-          disabled
-          onClick={() => onDestination('debit')}
-        />
-      </div>
-
-      <PrimaryButton onClick={onBack} className="!py-[13px] !text-[14.5px]">
-        Done
-      </PrimaryButton>
-    </>
-  );
-}
-
-function Option({
-  name,
-  detail,
-  right,
-  selected,
-  disabled,
-  onClick,
-}: {
-  name: string;
-  detail: string;
-  right: string;
-  selected: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 border-b-[0.5px] border-[var(--clear-border)] py-[13px] text-left last:border-b-0 disabled:opacity-45"
+    <Sheet
+      title="Withdraw"
+      onClose={onClose}
+      foot={
+        <>
+          <div className="c-conseq">
+            <div className="c-earn">
+              <span>Route</span>
+              <span>{routeLabel(source, destination, bank)}</span>
+            </div>
+            <div>
+              <span>Fee</span>
+              <span>{feeLabel(destination, cents)}</span>
+            </div>
+            <div>
+              <span>Arrives</span>
+              <span>{arrivalLabel(destination)}</span>
+            </div>
+            <div className="c-limit">
+              <span>You receive</span>
+              <span>{usd(receives)}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="c-btn c-btn-primary c-btn-lg"
+            style={{ marginTop: 'var(--s2)' }}
+            disabled={busy || cents <= 0 || overCap || cap === null || cap <= 0}
+            onClick={submit}
+          >
+            {busy ? 'Requesting…' : `Withdraw to ${destination === 'cash' ? 'cash account' : destination === 'bank' ? bank.split(' ')[0] : 'card'}`}
+          </button>
+          <p className="c-det" role={error || overCap ? 'alert' : undefined} style={{ marginTop: 'var(--s1)', textAlign: 'center' }}>
+            {note}
+          </p>
+        </>
+      }
     >
-      <span className="min-w-0">
-        <span className="block text-[13.5px]">{name}</span>
-        <span className="mt-0.5 block text-[11.5px] text-[var(--clear-text-muted)]">{detail}</span>
-      </span>
-      <span className="flex shrink-0 items-center gap-2.5">
-        <span className="whitespace-nowrap text-right text-[12px] text-[var(--clear-text-secondary)]">
-          {right}
-        </span>
-        <span
-          className={`h-[18px] w-[18px] shrink-0 rounded-full border-[1.5px] ${
-            selected
-              ? 'border-[var(--clear-text-accent)] bg-[var(--clear-text-accent)]'
-              : 'border-[var(--clear-border-strong)]'
-          }`}
-        >
-          {selected && <span className="block h-full w-full scale-[0.45] rounded-full bg-[var(--clear-surface-2)]" />}
-        </span>
-      </span>
-    </button>
-  );
-}
-
-/**
- * Where the hops become visible, and the only place they need to be.
- *
- * Three steps when it starts as owed, two when it starts in the cash account — the shorter flow is
- * finished rather than truncated, so it shows two rather than three with one greyed out.
- */
-function Sending({
-  amount,
-  source,
-  destination,
-  bank,
-}: {
-  amount: number;
-  source: Source;
-  destination: Destination;
-  bank: string;
-}) {
-  const list = steps(source, destination, bank);
-  return (
-    <div className="py-2">
-      <Cap>Sending {dollars(fromCents(amount))}</Cap>
-      <p className="m-0 mb-4 text-[12.5px] text-[var(--clear-text-muted)]">
-        To {destination === 'cash' ? 'your cash account' : destination === 'bank' ? bank : 'your card'}
+      <p className="c-label">Amount</p>
+      <p className="c-bigamt">
+        ${shownWhole}
+        <span className="c-dec">.{shownFrac}</span>
       </p>
-      <div className="mb-4">
-        {list.map((step, i) => (
-          <div key={step} className="flex items-center gap-2.5 py-2">
-            <span
-              className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full ${
-                i === 0 ? 'bg-[var(--clear-text-accent)]' : 'border-[1.5px] border-[var(--clear-border-strong)]'
-              }`}
-            >
-              {i === 0 && <Check size={11} strokeWidth={3} className="text-[var(--clear-surface-2)]" />}
-            </span>
-            <span className={`text-[13px] ${i === 0 ? '' : 'text-[var(--clear-text-muted)]'}`}>{step}</span>
+      <p className="c-det" style={{ marginTop: 6 }}>
+        {cap === null
+          ? source === 'cash'
+            ? 'We cannot read your cash account just now'
+            : 'Nothing is released early today — it arrives on your scheduled payout'
+          : source === 'cash'
+            ? `All of your cash account, ${usd(cap)}`
+            : `All that is free today, of ${usd(position.owedCents)} owed`}
+      </p>
+      <div className="c-qc">
+        {quick.map((c, i) => (
+          <button
+            key={i}
+            type="button"
+            className={cx('c-btn c-chip-q', cents > 0 && cents === c && 'c-on')}
+            disabled={cap === null || c > cap || c <= 0}
+            onClick={() => setEntry(String(c / 100))}
+          >
+            {i === 2 ? 'All free' : usd(c).replace(/\.00$/, '')}
+          </button>
+        ))}
+      </div>
+      <div className="c-route">
+        <div className="c-leg" role="button" tabIndex={0} onClick={() => setStage('from')}>
+          <p className="c-label">From</p>
+          <p className="c-nm">{from.nm}</p>
+          <p className="c-bal">{from.bal}</p>
+        </div>
+        <div className="c-leg" role="button" tabIndex={0} onClick={() => setStage('to')}>
+          <p className="c-label">To</p>
+          <p className="c-nm">{dest.nm}</p>
+          <p className="c-bal">{dest.bal}</p>
+        </div>
+        <div className="c-swap" style={{ cursor: 'default' }}>
+          <IconRoute />
+        </div>
+      </div>
+      <div className="c-keypad">
+        {KEYS.map((k) => (
+          <div
+            key={k}
+            className={k === '.' || k === 'del' ? 'c-fn' : ''}
+            role="button"
+            tabIndex={0}
+            aria-label={k === 'del' ? 'Delete' : k}
+            onClick={() => setEntry((e) => press(e, k))}
+          >
+            {k === 'del' ? <IconKeyDelete /> : k}
           </div>
         ))}
       </div>
-      <p className="m-0 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
-        {destination === 'cash'
-          ? 'A few seconds to your cash account. You can close this.'
-          : `A few seconds to your cash account, then ${destination === 'bank' ? '1–3 business days to the bank' : 'minutes to your card'}. You can close this.`}
-      </p>
-    </div>
-  );
-}
-
-/**
- * The done state reports BOTH balances.
- *
- * A merchant who has just moved money from one pot wants to see where both stand, and the
- * remaining owed figure is the next question either way.
- *
- * **And it says which of three things happened.** Owed money is redeemed on chain as part of the
- * request: it either landed, or queued behind claims ahead of it because the pool was short, or
- * the chain leg was not available and this is a request somebody settles later. "On its way" was
- * written when only the third existed, and it is the wrong sentence for the other two -- it
- * understates the first and overstates the second.
- */
-function Done({
-  amount,
-  destination,
-  bank,
-  position,
-  outcome,
-  onDone,
-}: {
-  amount: number;
-  destination: Destination;
-  bank: string;
-  position: PayoutPosition;
-  outcome: Awaited<ReturnType<typeof api.requestWithdrawal>> | null;
-  onDone: () => void;
-}) {
-  const paid = outcome?.status === 'paid';
-  const queued = outcome?.queued === true;
-  /*
-   * Redeemed, but bound for a bank.
-   *
-   * Redemption puts USDC in the shop's own cash account — that is all it can do, because the same
-   * address is the wallet, the cash account and what the registry knows. Getting from there to a
-   * bank is an off-ramp nothing performs yet, so this is a first hop that landed and a second that
-   * has not: "Paid" would be a lie and "On its way" would understate what actually happened.
-   */
-  const firstHopDone = outcome?.inCashAccount === true && !paid;
-  const heading = paid ? 'Paid' : queued ? 'Queued' : firstHopDone ? 'In your cash account' : 'On its way';
-  return (
-    <div className="py-2">
-      <Cap>{heading}</Cap>
-      <p className="m-0 mb-[3px] text-[24px] font-medium tabular-nums">
-        {dollars(fromCents(amount))}
-      </p>
-      <p className="m-0 mb-4 text-[12.5px] text-[var(--clear-text-muted)]">
-        to {destination === 'cash' ? 'your cash account' : destination === 'bank' ? bank : 'your card'}
-      </p>
-      <div className="mb-4 rounded-[10px] border-[0.5px] border-[var(--clear-border)] px-3.5 py-3">
-        {/* Paid is already here, so a date is the wrong answer; queued is waiting on the pool
-            rather than on a rail, so the rail's timing would be a fiction. */}
-        <Line
-          label="Arrives"
-          value={
-            paid
-              ? 'In your account'
-              : queued
-                ? 'Within your payout terms'
-                : firstHopDone
-                  ? `Released — ${arrivalLabel(destination)} to ${destination === 'bank' ? bank : 'your card'}`
-                  : arrivalLabel(destination)
-          }
-        />
-        <Line
-          label="Still owed to you"
-          value={dollars(fromCents(Math.max(0, position.owedCents - amount)))}
-        />
-        <Line
-          label="Cash account"
-          value={position.cashAccountCents === null ? '—' : dollars(fromCents(position.cashAccountCents))}
-        />
-        {position.nextPayoutOn && (
-          <Line label="Next payout" value={formatCalendarDate(position.nextPayoutOn)} />
-        )}
-      </div>
-      {queued && (
-        <p className="m-0 mb-4 text-[12.5px] text-[var(--clear-text-muted)]">
-          Claims are paid in the order they were made. Yours is in the queue and is paid as the pool
-          is funded, at the latest by the end of your terms.
-        </p>
-      )}
-      {outcome?.settlementNote && (
-        <p className="m-0 mb-4 text-[12.5px] text-[var(--clear-text-muted)]">{outcome.settlementNote}</p>
-      )}
-      <Button onClick={onDone} className="w-full">
-        Done
-      </Button>
-    </div>
+    </Sheet>
   );
 }
 

@@ -161,3 +161,13 @@ export const IconTabletSm = () => (
 export const IconMonitor = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12"/><path d="M8 20h8M12 16v4"/></svg>
 );
+
+// ---- Payouts -------------------------------------------------------------------------------------
+
+export const IconCheck15 = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+);
+/** The arrow between a withdrawal's two legs. */
+export const IconRoute = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-70)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+);
