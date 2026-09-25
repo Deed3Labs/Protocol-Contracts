@@ -774,7 +774,7 @@ export default function MoveMoneyDialog({
       }
       // The wide sheet — 640px and square, like the guide's `.sheet.wide` — only where the two-column
       // form applies. Modal is a bottom sheet below 640px, the same breakpoint the grid uses.
-      className={nothingReady ? undefined : progress ? undefined : 'sm:w-[640px] sm:max-w-[640px] sm:rounded-none'}
+      className={nothingReady ? undefined : progress ? undefined : 'sm:w-[640px] sm:max-w-[640px]'}
       footer={footer}
     >
       {body}

@@ -149,7 +149,7 @@ export default function AddMoneyDialog({
       onOpenChange={onOpenChange}
       title="Add money"
       description="Move money in from a linked bank account, or send it back."
-      className="sm:w-[640px] sm:max-w-[640px] sm:rounded-none"
+      className="sm:w-[640px] sm:max-w-[640px]"
       footer={footer}
     >
       <div className="sm:grid sm:grid-cols-[minmax(0,1fr)_216px] sm:items-start sm:gap-s3">

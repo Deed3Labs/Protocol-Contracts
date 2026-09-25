@@ -8,7 +8,8 @@ import { cn } from '@/lib/utils';
  * A header menu: a dropdown anchored to its trigger on desktop, a bottom sheet on mobile.
  *
  * The guide draws both as the same `.sheet` — "the same component either way" — so the body is
- * rendered once and only its container changes. The sheet takes the 26px radius the guide gives it.
+ * rendered once and only its container changes. Square, like the modal it shares a surface class
+ * with: `.c-sheet` carries the radius now, and it is `--radius-none`.
  */
 export default function Surface({
   open,
@@ -46,7 +47,7 @@ export default function Surface({
           align="end"
           sideOffset={10}
           style={{ width }}
-          className={cn('c-sheet rounded-[26px] outline-none border-ink-28 bg-paper p-0 text-ink shadow-none')}
+          className={cn('c-sheet rounded-none outline-none border-ink-28 bg-paper p-0 text-ink shadow-none')}
         >
           <div className="c-modal c-text">{children}</div>
         </PopoverContent>
@@ -66,7 +67,7 @@ export default function Surface({
           aria-label={label}
           aria-describedby={undefined}
           onDismiss={() => onOpenChange(false)}
-          className="rounded-t-[26px] border-ink-28 bg-paper pb-s3 text-ink shadow-none"
+          className="rounded-none border-ink-28 bg-paper pb-s3 text-ink shadow-none"
         >
           <div className="c-modal c-text overflow-y-auto">{children}</div>
         </SheetContent>

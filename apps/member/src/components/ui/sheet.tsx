@@ -4,8 +4,12 @@ import { motion, useDragControls, type PanInfo } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 /**
- * Responsive sheet: a bottom sheet on mobile (slides up, rounded top, a pull handle you can drag down to
- * dismiss) and a right-side drawer on desktop. Radix Dialog under the hood (same primitive as our Dialog).
+ * Responsive sheet: a bottom sheet on mobile (slides up, a pull handle you can drag down to dismiss)
+ * and a right-side drawer on desktop. Radix Dialog under the hood (same primitive as our Dialog).
+ *
+ * Square, like every other surface. The brand has two radii -- none and pill -- and a sheet is
+ * neither a button nor a chip, so it takes none. The grabber is what says it can be dragged; a
+ * rounded top was saying it twice and contradicting the rest of the page to do it.
  */
 const Sheet = SheetPrimitive.Root;
 const SheetClose = SheetPrimitive.Close;
@@ -44,7 +48,7 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
     const isMobile = useIsMobile();
     const controls = useDragControls();
     const pos = isMobile
-      ? 'inset-x-0 bottom-0 max-h-[92vh] rounded-t-2xl border-t data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom'
+      ? 'inset-x-0 bottom-0 max-h-[92vh] rounded-none border-t data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom'
       : 'inset-y-0 right-0 h-full w-full max-w-[460px] border-l data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right';
 
     return (

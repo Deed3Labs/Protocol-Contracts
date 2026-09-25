@@ -124,7 +124,7 @@ export default function SendMoneyDialog({
       onOpenChange={onOpenChange}
       title="Send"
       description={`Send money to ${contact.name}`}
-      className="sm:w-[640px] sm:max-w-[640px] sm:rounded-none"
+      className="sm:w-[640px] sm:max-w-[640px]"
       footer={footer}
     >
       <div className="sm:grid sm:grid-cols-[minmax(0,1fr)_216px] sm:items-start sm:gap-s3">

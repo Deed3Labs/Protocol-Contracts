@@ -911,7 +911,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
       
       {/* Modal Content */}
       <div className="fixed inset-0 z-[101] flex items-center justify-center p-0 sm:p-4">
-        <div className="bg-card rounded-none sm:rounded-sm shadow-xl w-full h-full sm:max-w-6xl sm:h-[95vh] sm:max-h-[95vh] flex flex-col">
+        <div className="bg-card shadow-xl w-full h-full sm:max-w-6xl sm:h-[95vh] sm:max-h-[95vh] flex flex-col">
         {/* Header — title + connection status on the left, actions on the right (single row) */}
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between gap-3">
@@ -956,7 +956,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
                       <span className="hidden sm:inline sm:ml-1.5">New</span>
                     </Button>
                   </DialogTrigger>
-                  <DialogContent overlayClassName="z-[110]" className="z-[120] w-[calc(100vw-2rem)] max-w-lg mx-auto rounded-sm border-border">
+                  <DialogContent overlayClassName="z-[110]" className="z-[120] w-[calc(100vw-2rem)] max-w-lg mx-auto border-border">
                     <DialogHeader>
                       <DialogTitle>Create New Conversation</DialogTitle>
                     </DialogHeader>
@@ -1823,7 +1823,7 @@ const XMTPMessaging: React.FC<XMTPMessagingProps> = ({
 
       {/* Rename group — any member can set a custom name that everyone sees */}
       <Dialog open={!!renameGroupId} onOpenChange={(open) => { if (!open) setRenameGroupId(null); }}>
-        <DialogContent overlayClassName="z-[110]" className="z-[120] w-[calc(100vw-2rem)] max-w-sm mx-auto rounded-sm border-border">
+        <DialogContent overlayClassName="z-[110]" className="z-[120] w-[calc(100vw-2rem)] max-w-sm mx-auto border-border">
           <DialogHeader>
             <DialogTitle>Rename group</DialogTitle>
           </DialogHeader>

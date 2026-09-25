@@ -40,8 +40,13 @@ const focusSurface = (e: Event) => {
  * group their body (the limit breakdown's secured and unsecured).
  *
  * Centred on desktop, a bottom sheet on mobile, which brings drag-to-dismiss and the grabber with it.
- * The sheet takes the guide's 26px radius; `onBack` swaps the close for a back arrow, for surfaces that
- * read as a sub-view of the page behind them.
+ * `onBack` swaps the close for a back arrow, for surfaces that read as a sub-view of the page behind them.
+ *
+ * **Square on both, and no radius passed here at all.** The tokens carry exactly two: `--radius-none`
+ * and `--radius-pill`. 26px came from the guide's `.sheet`, where it is the 340px phone-width mock
+ * matching the bezel of the `.phone` frame beside it -- the guide's own desktop form, `.sheet.wide`,
+ * is square. Four callers had already noticed and were each passing `sm:rounded-none` to undo it,
+ * which is the shape of a default that is wrong: the exceptions outnumbered the rule.
  */
 export default function Modal({
   open,
@@ -103,7 +108,7 @@ export default function Modal({
         <SheetContent
           onOpenAutoFocus={focusSurface}
           onDismiss={() => onOpenChange(false)}
-          className={cn('rounded-t-[26px] border-ink-28 bg-paper pb-s3 font-text text-ink shadow-none', className)}
+          className={cn('rounded-none border-ink-28 bg-paper pb-s3 font-text text-ink shadow-none', className)}
         >
           <DialogTitle className="sr-only">{title}</DialogTitle>
           {description && <DialogDescription className="sr-only">{description}</DialogDescription>}
@@ -118,7 +123,7 @@ export default function Modal({
       <DialogContent
         onOpenAutoFocus={focusSurface}
         className={cn(
-          'c-sheet block w-[340px] outline-none max-w-[calc(100vw-32px)] gap-0 rounded-[26px] border-ink-28 bg-paper p-0 font-text shadow-none sm:rounded-[26px]',
+          'c-sheet block w-[340px] rounded-none outline-none max-w-[calc(100vw-32px)] gap-0 border-ink-28 bg-paper p-0 font-text shadow-none',
           className,
         )}
       >

@@ -233,7 +233,10 @@
 .c-qa .c-btn{width:100%}
 
 /* ================= MODAL — a component like any other ================= */
-.c-sheet{background:var(--paper);border:1px solid var(--ink-28);border-radius:26px;overflow:hidden;color:var(--ink)}
+/* Square, and through the token rather than a literal. The guide's `.sheet` says 26px because there
+   it is the 340px phone-width mock taking the `.phone` bezel's radius; its own desktop form,
+   `.sheet.wide`, is `border-radius:0`. There are only two radii in this system. */
+.c-sheet{background:var(--paper);border:1px solid var(--ink-28);border-radius:var(--radius-none);overflow:hidden;color:var(--ink)}
 .c-modal{display:flex;flex-direction:column;min-width:0}
 /* The guide's body text. Pages inherit it from the shell; modals and menus render in a portal outside
    the shell, so they carry it themselves. */
