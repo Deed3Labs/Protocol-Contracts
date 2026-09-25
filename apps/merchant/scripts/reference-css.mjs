@@ -75,6 +75,8 @@ const classesOf = (part) => [...part.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map((m) =
 // Every class the markup actually uses, across all ten files.
 // Plus the one class the reference's own script adds (Staff's crew row, when it overflows).
 const used = new Set(['over']);
+/** How many files' markup use each class. A class in three or more is shared, not a page's own. */
+const classFiles = new Map();
 /**
  * A rule can appear more than once in one file, the second adding to the first. So a selector is
  * compared across files as the whole sequence of its bodies, and each occurrence keeps its own
@@ -87,8 +89,13 @@ for (const f of files) {
   const html = readFileSync(join(refDir, f), 'utf8');
   const style = html.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
   const markup = html.slice(html.indexOf('</style>'));
+  const mine = new Set();
   for (const m of markup.matchAll(/class\s*=\s*"([^"]*)"|class\s*=\s*([\w-]+)/g)) {
-    for (const c of (m[1] ?? m[2]).split(/\s+/)) if (c) used.add(c);
+    for (const c of (m[1] ?? m[2]).split(/\s+/)) if (c) mine.add(c);
+  }
+  for (const c of mine) {
+    used.add(c);
+    classFiles.set(c, (classFiles.get(c) ?? 0) + 1);
   }
   const counts = new Map();
   for (const r of parse(style)) {
@@ -162,12 +169,22 @@ for (const { key, n, media, sel } of order) {
     add('', `${sel}{${body}}`);
     continue;
   }
+  /*
+   * A page's own rule, written against shared classes, stays on that page. Inventory sets
+   * `.mc-tablet .slab:not(.one)` to equal columns for its frames; pooled with every other file
+   * it would square up Home's slab too. So a rule fewer than half the files carry, whose classes
+   * are all shared ones, is scoped under `.c-page-<file>` for each file that has it. The app puts
+   * that class on <html> for the page that is open (lib/usePage.ts).
+   */
+  const pages = w.files.length < files.length / 2 ? w.files : null;
   const byMedia = new Map();
   for (const part of sel.split(/\s*,\s*(?![^()]*\))/)) {
     const p = place(part.trim(), media);
     if (!p) continue;
     if (!byMedia.has(p[0])) byMedia.set(p[0], []);
-    byMedia.get(p[0]).push(prefix(p[1]));
+    const shared = classesOf(p[1]).every((c) => (classFiles.get(c) ?? 0) >= 3);
+    const scoped = pages && shared && classesOf(p[1]).length ? pages.map((f) => `.page-${f} ${p[1]}`) : [p[1]];
+    byMedia.get(p[0]).push(...scoped.map(prefix));
   }
   if (!byMedia.size) {
     dropped++;

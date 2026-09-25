@@ -31,6 +31,10 @@ import {
   WhoIsOnSheet,
 } from '@/shell/chrome';
 import { useLayout } from '@/lib/useBreakpoint';
+import { ClosingUpPanel, ShiftCellView } from '@/home/HomeView';
+import { CountResultSheet, CountSheet, EndShiftSheet, OpenDrawerSheet, SignOffSheet } from '@/home/drawer';
+import { DANA_STEPS, HOME_STATES } from '@/home/seed';
+import { WaitingSheet } from '@/home/WaitingSheet';
 
 /**
  * Every component in every state, on static props from the reference scenario (Mike's Tire,
@@ -80,9 +84,9 @@ function Item({ label, children, frame, pad }: { label: string; children: ReactN
   );
 }
 
-function Sec({ title, children }: { title: string; children: ReactNode }) {
+function Sec({ title, children, page }: { title: string; children: ReactNode; page?: string }) {
   return (
-    <section className="g-sec">
+    <section className={page ? `g-sec c-page-${page}` : 'g-sec'}>
       <h2>{title}</h2>
       {children}
     </section>
@@ -109,6 +113,9 @@ function Widths() {
     </div>
   );
 }
+
+// Set before any component mounts, so usePage() leaves <html> alone here.
+if (typeof document !== 'undefined') document.documentElement.dataset.gallery = '1';
 
 export default function Gallery() {
   if (window.location.pathname.startsWith('/_gallery/widths')) {
@@ -253,7 +260,7 @@ function GalleryBody() {
         </div>
       </Sec>
 
-      <Sec title="Signing in: enrolling a device">
+      <Sec title="Signing in: enrolling a device" page="sign-in">
         <Item label="Set up this tablet, by code" frame>
           <EnrollCodeScreen code="48271" />
         </Item>
@@ -265,7 +272,7 @@ function GalleryBody() {
         </Item>
       </Sec>
 
-      <Sec title="Signing in: starting a shift">
+      <Sec title="Signing in: starting a shift" page="sign-in">
         <Item label="Who's on the counter?" frame>
           <WhoIsOnScreen shop={SHOP} deviceLabel="Counter tablet" people={PEOPLE} />
         </Item>
@@ -285,7 +292,7 @@ function GalleryBody() {
         </div>
       </Sec>
 
-      <Sec title="Signing in: the owner">
+      <Sec title="Signing in: the owner" page="sign-in">
         <div className="g-row">
           <Item label="This needs the owner">
             <OwnerNeededSheet
@@ -315,7 +322,7 @@ function GalleryBody() {
         </Item>
       </Sec>
 
-      <Sec title="Signing in: a forgotten PIN, and a lost tablet">
+      <Sec title="Signing in: a forgotten PIN, and a lost tablet" page="sign-in">
         <div className="g-row">
           <Item label="Reset a PIN">
             <ResetPinSheet inline name="Jen R." approver="Luis M." approverRole="manager" filled={3} />
@@ -327,6 +334,97 @@ function GalleryBody() {
         <Item label="The removed tablet" frame>
           <TabletRemovedScreen by="Mike" shop={SHOP} at="2:40pm" />
         </Item>
+      </Sec>
+
+      <Sec title="Home" page="home">
+        <p className="c-det">
+          Home itself, on the reference scenario:{' '}
+          {(['running', 'counter', 'onBreak', 'early', 'dayOne', 'closing'] as const).map((k) => (
+            <a key={k} className="c-si-link" style={{ marginRight: 12 }} href={`/?preview=1${k === 'counter' || k === 'onBreak' ? '&as=jen' : ''}&home=${k}`}>
+              {k}
+            </a>
+          ))}
+          Close the day:{' '}
+          {(['short', 'signed', 'balanced'] as const).map((k) => (
+            <a key={k} className="c-si-link" style={{ marginRight: 12 }} href={`/close?preview=1&drawer=${k}`}>
+              {k}
+            </a>
+          ))}
+        </p>
+        <div className="g-row">
+          <Item label="Your shift, on a break">
+            <div className="c-panel c-mc-solo">
+              <ShiftCellView s={HOME_STATES.onBreak.shift!} a={{}} solo />
+            </div>
+          </Item>
+          <Item label="Closing up, near closing time">
+            <div style={{ maxWidth: 560 }}>
+              <ClosingUpPanel c={HOME_STATES.closing.closing!} />
+            </div>
+          </Item>
+          <Item label="A waiting charge">
+            <WaitingSheet inline name="Dana R." amountCents={94000} opened steps={DANA_STEPS} />
+          </Item>
+        </div>
+      </Sec>
+
+      <Sec title="The drawer" page="home">
+        <div className="g-row">
+          <Item label="Opening it">
+            <OpenDrawerSheet inline name="Jen R." at="7:58am" lastCloseCents={15000} />
+          </Item>
+          <Item label="Opening it with something else">
+            <OpenDrawerSheet inline name="Jen R." at="7:58am" lastCloseCents={15000} initialOther="200" />
+          </Item>
+          <Item label="Ending a shift, with someone still on">
+            <EndShiftSheet
+              inline
+              name="Jen R."
+              span={"8:04am to 4:02pm \u00b7 7h 58m"}
+              raised={{ n: 3, cents: 176200 }}
+              cashCents={null}
+              tips={{ cents: 1000, how: 'card' }}
+              stillOn={{ name: 'Luis M.', until: '6:00pm' }}
+            />
+          </Item>
+        </div>
+        <div className="g-row">
+          <Item label="First count, by note">
+            <CountSheet inline which="first" name="Luis M." at="5:58pm" initialNotes={[0, 1, 5, 3, 3, 10]} initialCoins={300} />
+          </Item>
+          <Item label="Second count, typed, blind">
+            <CountSheet inline which="second" name="Mike R." at="6:00pm" otherName="Luis M." initialTotal="208.00" />
+          </Item>
+        </div>
+        <div className="g-row">
+          <Item label="The counts match">
+            <CountResultSheet inline outcome="match" first={{ name: 'Luis M.', cents: 21200 }} second={{ name: 'Mike R.', cents: 21200 }} expectedCents={21200} />
+          </Item>
+          <Item label="The counts don't agree">
+            <CountResultSheet inline outcome="disagree" first={{ name: 'Luis M.', cents: 20800 }} second={{ name: 'Mike R.', cents: 21000 }} expectedCents={21200} />
+          </Item>
+          <Item label="The counts agree, the drawer is short">
+            <CountResultSheet
+              inline
+              outcome="short"
+              first={{ name: 'Luis M.', cents: 20800 }}
+              second={{ name: 'Mike R.', cents: 20800 }}
+              expectedCents={21200}
+              note="Gave change twice on a $20"
+            />
+          </Item>
+          <Item label="Sign off a short drawer">
+            <SignOffSheet
+              inline
+              expectedCents={21200}
+              countedCents={20800}
+              counters={['Luis M.', 'Mike R.']}
+              note="Gave change twice on a $20."
+              signer={{ name: 'Mike R.', role: 'Owner' }}
+              pinFilled={2}
+            />
+          </Item>
+        </div>
       </Sec>
 
       <Sec title="Parts">

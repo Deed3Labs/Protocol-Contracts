@@ -104,19 +104,31 @@ export interface HeaderProps {
   ownerUntil?: string;
   onChangeShift?: () => void;
   onProfile?: () => void;
+  /** A padlocked destination was tapped: the owner signs in for it. */
+  onLocked?: () => void;
   /** Real links in the app; plain spans in the gallery, where there is nowhere to go. */
   static?: boolean;
 }
 
-export function TopBar({ shop, current, role, onShift, avatarName, ownerUntil, onChangeShift, onProfile, static: still }: HeaderProps) {
+export function TopBar({ shop, current, role, onShift, avatarName, ownerUntil, onChangeShift, onProfile, onLocked, static: still }: HeaderProps) {
   return (
     <div className="c-mc-top">
       <Lockup shop={shop} />
       <nav aria-label="Main">
         {NAV.map((n) => {
           if (isLocked(role, n.key)) {
+            // Dimmed with a padlock, and leading to the owner's sign-in (Home reference, Open).
             return (
-              <span key={n.key} className="c-mc-lock" aria-disabled="true">
+              <span
+                key={n.key}
+                className="c-mc-lock"
+                role="button"
+                tabIndex={0}
+                aria-label={`${n.label}, needs the owner`}
+                style={{ cursor: onLocked ? 'pointer' : undefined }}
+                onClick={onLocked}
+                onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onLocked?.()}
+              >
                 {n.label}
                 <span className="c-mc-lockg">
                   <IconLock />
@@ -169,11 +181,13 @@ export function PhoneNav({
   current,
   role,
   onPlus,
+  onLocked,
   static: still,
 }: {
   current: NavKey | null;
   role: StaffRole;
   onPlus?: () => void;
+  onLocked?: () => void;
   static?: boolean;
 }) {
   return (
@@ -186,7 +200,15 @@ export function PhoneNav({
           const style = locked ? { color: 'var(--ink-28)' } : undefined;
           if (locked || still) {
             return (
-              <a key={n.key} className={cls} aria-label={n.label} aria-disabled={locked || undefined} style={style}>
+              <a
+                key={n.key}
+                className={cls}
+                aria-label={locked ? `${n.label}, needs the owner` : n.label}
+                role={locked ? 'button' : undefined}
+                tabIndex={locked ? 0 : undefined}
+                style={style}
+                onClick={locked ? onLocked : undefined}
+              >
                 <Icon />
               </a>
             );

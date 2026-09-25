@@ -48,6 +48,18 @@ Decided 2026-09-24.
 - **Two lines the reference doesn't have**, kept by decision: "That is not it. Try again in 30
   seconds." after a third wrong PIN, and "Coming with the Inventory page." on the placeholder.
 
+## Home
+
+- **"Dana R. has seen hers" is "Dana R. has seen it"**, by the neutral-pronoun rule above.
+- **"None today" under a name in Who raised what is "—"**, by the em-dash rule.
+- **A padlocked nav item opens the owner's sign-in**, the proposal in the Home file's Open list.
+- **What a live shop sees.** Home is built from what the API answers: today's charges, the payout
+  position and the roster. The shift clock and breaks, the drawer, Close the day, the Closing up
+  card and the setup checklist's progress have no backend yet (card-processing prompt, Phase 7), so
+  a live shop doesn't see them. The reference scenario shows every state in development:
+  `?preview=1&home=running|counter|onBreak|early|dayOne|closing` (`&as=jen` for the counter) and
+  `/close?preview=1&drawer=short|signed|balanced`.
+
 ## Adaptations: the reference doesn't draw these
 
 - **Frames become the screen.** The tablet's 1180:820 outline and the phone's 340px outline go.

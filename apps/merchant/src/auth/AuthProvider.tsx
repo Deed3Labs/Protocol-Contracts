@@ -59,14 +59,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         idleLockSeconds: 300,
         merchant: cachedMerchant,
       });
+      // `&as=jen` or `&as=luis` stands in the reference's counter writer or manager instead.
+      const as = new URLSearchParams(window.location.search).get('as');
+      const who =
+        as === 'jen'
+          ? { id: 'preview-jen', name: 'Jen R.', role: 'counter' }
+          : as === 'luis'
+            ? { id: 'preview-luis', name: 'Luis M.', role: 'manager' }
+            : { id: 'preview-owner', name: 'Mike R.', role: 'owner' };
       setSession({
-        staff: {
-          id: 'preview-owner',
-          name: 'Mike R.',
-          role: 'owner',
-          hasPin: true,
-          active: true,
-        } as Staff,
+        staff: { ...who, hasPin: true, active: true } as Staff,
         method: 'pin',
       });
       setLoading(false);

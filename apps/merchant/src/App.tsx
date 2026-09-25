@@ -17,6 +17,7 @@ import OverviewPage from '@/pages/OverviewPage';
 import SettingsPage from '@/pages/SettingsPage';
 import OnboardingPage from '@/pages/OnboardingPage';
 import InventoryPage from '@/pages/InventoryPage';
+import CloseDayPage from '@/pages/CloseDayPage';
 import { useLayout } from '@/lib/useBreakpoint';
 
 // Dev only: every component in every state, at the three widths. `import.meta.env.DEV` is
@@ -123,6 +124,15 @@ export default function App() {
         <Route path="/charges/:id" element={<ChargeDetailPage />} />
         <Route path="/charges/:id/refund" element={<RefundPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
+        {/* Owners and managers close the day; the page itself says the rest. */}
+        <Route
+          path="/close"
+          element={
+            <OwnerOnly>
+              <CloseDayPage />
+            </OwnerOnly>
+          }
+        />
         <Route
           path="/payouts"
           element={
