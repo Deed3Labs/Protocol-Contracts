@@ -1,156 +1,146 @@
-import { useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Check } from 'lucide-react';
-import { dollars } from '@clear/domain';
-import { Button, Cap, Card, Inset, PrimaryButton, Row } from '@/shell/ui';
-import { api } from '@/data/apiClient';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { OwnerSignIn } from '@/auth/OwnerSignIn';
-import { STUB_MERCHANT, STUB_TERMS } from '@/data/stubs';
+import { ClearMark } from '@/brand/icons';
+import { cx, initials } from '@/brand/ui';
+import { api } from '@/data/apiClient';
+import { useLayout } from '@/lib/useBreakpoint';
+import { usePage } from '@/lib/usePage';
+import { Chip, Chips, Drop, Field, Foot, Frame, Kvs, ObCell, PhoneFrame, StepHead, STEPS, Tick } from '@/onboarding/views';
 
 /**
- * Merchant onboarding — reference section 13.
+ * Onboarding — docs/merchant-reference/clear-merchant-onboarding.html.
  *
- * The merchant signs themselves up. For merchants one to five a rep is sitting there, but the flow
- * must not require one, or merchant twenty needs a visit that does not scale.
+ * Only what a Clear charge needs: who you are, your shop, your team, your terms, verifying, where
+ * payouts go, and training the counter. Cards, readers, items, the drawer, tips and discounts are
+ * not in signup; they are a checklist on Home afterwards. The step list sits on the left of a
+ * tablet; on a phone it becomes a line and a bar at the top.
  *
- * **The last step is the one that decides whether the shop transacts.** Signing takes four minutes
- * and any owner will do it; training the counter takes fifteen and is the step people skip. So it
- * is inside the flow rather than a follow-up email, and what is skipped carries over to Home as
- * the checklist that screen already knows how to show.
- *
- * Desktop-primary — an owner does this at the back-office computer, not standing at the counter.
- * Step rail left, one step at a time on the right. On tablet and phone the same six steps in the
- * same order, the rail replaced by a progress line: **no step is removed and no state differs**,
- * only the two-column panels stack.
- *
- * Outside the signed-in shell, because a shop working through this has no counter session yet and
- * the nav would offer them places they cannot go.
+ * **What creates the shop.** The API makes the shop and its wallet from a verified owner sign-in,
+ * the owner's name and a four-digit counter PIN, so on a live signup the Verify step is that
+ * sign-in: nothing is written to Clear until then, and an owner who stops halfway leaves nothing
+ * behind. Bridge's business check, codes, bank linking and the team have no backend here yet; the
+ * preview shows them as drawn: `?preview=1&step=1..7`, `&done=1`, `&team=solo`, `&code=warn|bad`,
+ * `&verify=needs|verified`, `&bank=waiting`.
  */
 
-const STEPS = [
-  'Start',
-  'Your shop',
-  'Your terms',
-  'Verify',
-  'Where payouts go',
-  'The counter',
+interface Form {
+  shopName: string;
+  ownerName: string;
+  email: string;
+  mobile: string;
+  street: string;
+  city: string;
+  stateZip: string;
+  sell: string;
+  typical: string;
+  people: string;
+  code: string;
+}
+
+const EMPTY: Form = { shopName: '', ownerName: '', email: '', mobile: '', street: '', city: '', stateZip: '', sell: '', typical: '', people: '' , code: '' };
+
+const REFERENCE_FORM: Form = {
+  shopName: 'Mike’s Tire',
+  ownerName: 'Mike R.',
+  email: 'mike@mikestire.com',
+  mobile: '(909) 555-0118',
+  street: '412 Colton Ave',
+  city: 'Redlands',
+  stateZip: 'CA 92374',
+  sell: 'Auto and tires',
+  typical: 'Over $500',
+  people: '2 to 5',
+  code: 'KAI-1104',
+};
+
+const KEY = 'clear.merchant.onboarding';
+
+/** "Save and finish later" keeps the form on this device, and nothing else. */
+function remembered(): Form {
+  try {
+    return { ...EMPTY, ...JSON.parse(localStorage.getItem(KEY) ?? '{}') };
+  } catch {
+    return EMPTY;
+  }
+}
+
+const TERMS: [string, string, string, boolean][] = [
+  ['Paid now', '1.5%', '1.25%', true],
+  ['Paid over time', '2.5%', '2.0%', true],
+  ['Card processing', '2.7% + 35¢ a sale', 'Same', false],
+  ['Monthly fee', 'None', 'None', false],
+  ['Payouts', 'On the 14th, sooner when the pool allows', 'Same', false],
+  ['Approval cap', '$1,500.00', 'Same', false],
+];
+
+const CODE_MSG = {
+  ok: ['settled', 'Founding partner · 2 of 5 left', 'Lowers both Clear rates for as long as you are a partner.'],
+  warn: ['underway', 'All 5 founding places are taken', 'Standard terms apply. Nothing about your setup changes.'],
+  bad: ['absent', 'Not a code we know', 'Check the letters and numbers, or carry on without one.'],
+} as const;
+
+const TRAINING = [
+  ['What the customer sees', 'A minute, on your own phone: the text, the approval, pay now or over time.'],
+  ['Take a practice charge', '$1.00 in practice mode. Nobody is charged, and it never reaches your payouts.'],
+  ['The one sentence to say', '“Nothing is charged until you approve it on your phone.” Everything else is detail.'],
 ] as const;
 
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="mb-[9px]">
-      <p className="m-0 mb-1 text-[10px] uppercase tracking-[0.5px] text-[var(--clear-text-muted)]">
-        {label}
-      </p>
-      <div className="rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-2)] px-[15px] py-3 text-[13px]">
-        {value}
-      </div>
-    </div>
-  );
-}
-
-/**
- * The editable twin of `Field`.
- *
- * Same border, padding and type size, because a step where one row is typed and the next is shown
- * should not look like two different screens. What changes is only whether it accepts a caret.
- */
-function Input({
-  label,
-  value,
-  onChange,
-  placeholder,
-  hint,
-  inputMode,
-  maxLength,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  hint?: string;
-  inputMode?: 'text' | 'numeric';
-  maxLength?: number;
-}) {
-  return (
-    <div className="mb-[9px]">
-      <p className="m-0 mb-1 text-[10px] uppercase tracking-[0.5px] text-[var(--clear-text-muted)]">
-        {label}
-      </p>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        inputMode={inputMode}
-        maxLength={maxLength}
-        className="w-full rounded-[8px] border-[0.5px] border-[var(--clear-border-strong)] bg-[var(--clear-surface-1)] px-[15px] py-3 text-[13px] outline-none placeholder:text-[var(--clear-text-muted)]"
-      />
-      {hint && (
-        <p className="m-0 mt-1 text-[11px] leading-[1.5] text-[var(--clear-text-muted)]">{hint}</p>
-      )}
-    </div>
-  );
-}
-
-function TermLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="mt-1.5 flex justify-between gap-3 text-[12.5px] first:mt-0">
-      <span className="text-[var(--clear-text-secondary)]">{label}</span>
-      <span className="text-right">{value}</span>
-    </div>
-  );
-}
-
-function StepFrame({ title, blurb, children }: { title: string; blurb?: string; children: ReactNode }) {
-  return (
-    <div>
-      <p className="m-0 mb-1 text-[17px] font-medium">{title}</p>
-      {blurb && (
-        <p className="m-0 mb-4 text-[12.5px] leading-[1.6] text-[var(--clear-text-secondary)]">
-          {blurb}
-        </p>
-      )}
-      {children}
-    </div>
-  );
-}
-
 export default function OnboardingPage() {
+  usePage('onboarding');
   const navigate = useNavigate();
-  const [step, setStep] = useState(0);
-  const next = () => setStep((s) => Math.min(s + 1, STEPS.length - 1));
-  const rate = Math.round(STUB_MERCHANT.discountRate * 1000) / 10;
+  const [params] = useSearchParams();
+  const phone = useLayout() === 'phone';
 
-  // Collected across the first three steps and submitted once, at Verify — the step that produces
-  // the Privy token. Nothing is written to Clear until then, so an owner who abandons signup
-  // halfway leaves nothing behind to clean up.
-  const [shopName, setShopName] = useState('');
-  const [ownerName, setOwnerName] = useState('');
-  const [category, setCategory] = useState('');
-  const [town, setTown] = useState('');
-  const [ownerPin, setOwnerPin] = useState('');
+  const preview = import.meta.env.DEV && params.get('preview') === '1';
+  const [step, setStep] = useState(() => (preview ? Math.max(0, Math.min(6, Number(params.get('step') ?? 1) - 1)) : 0));
+  const [done, setDone] = useState(preview && params.get('done') === '1');
+  const [f, setF] = useState<Form>(() => (preview ? REFERENCE_FORM : remembered()));
+  const [codeState, setCodeState] = useState<keyof typeof CODE_MSG | null>(preview ? ((params.get('code') as 'warn' | 'bad') ?? 'ok') : null);
+  const [agree, setAgree] = useState(preview);
+  const [roles, setRoles] = useState<Record<string, 'Counter' | 'Manager'>>({ jen: 'Counter', luis: 'Manager' });
+  const [trained, setTrained] = useState([preview, preview, false, false]);
+  const [pin, setPin] = useState('');
   const [shop, setShop] = useState<{ merchant: string; signerReady: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const set = (k: keyof Form) => (v: string) => setF((x) => ({ ...x, [k]: v }));
+  useEffect(() => {
+    if (preview) return;
+    try {
+      localStorage.setItem(KEY, JSON.stringify(f));
+    } catch {
+      // A private window: the form simply isn't kept.
+    }
+  }, [f, preview]);
+
+  const back = step > 0 ? () => setStep(step - 1) : undefined;
+  const next = () => setStep((s) => Math.min(s + 1, STEPS.length - 1));
+  const later = () => navigate('/');
+  const solo = f.people === 'Just me' || (preview && params.get('team') === 'solo');
+
   /**
-   * Create the shop. Called with the token the Privy step just verified.
-   *
-   * The merchant address is not sent and not chosen — it comes back, because it is the address of
-   * the organization wallet Privy creates. Which means the registry, the payout destination and
-   * Clear's own row name the same thing by construction.
+   * Create the shop, with the token the owner's sign-in just verified. The merchant address comes
+   * back rather than being chosen: it is the address of the wallet Privy creates, so the registry,
+   * the payout destination and Clear's own record name the same thing by construction.
    */
   async function createShop(privyToken: string) {
     setError(null);
     try {
       const res = await api.onboard({
         privyToken,
-        shopName,
-        ownerName,
-        ownerPin,
-        category: category || null,
-        town: town || null,
+        shopName: f.shopName,
+        ownerName: f.ownerName,
+        ownerPin: pin,
+        category: f.sell || null,
+        town: f.city || null,
       });
       setShop({ merchant: res.merchant, signerReady: res.signerReady });
+      try {
+        localStorage.removeItem(KEY);
+      } catch {
+        // Nothing to forget.
+      }
       next();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'That did not work. Try again in a moment.');
@@ -158,315 +148,434 @@ export default function OnboardingPage() {
     }
   }
 
-  return (
-    <div className="@container min-h-dvh bg-[var(--clear-surface-2)] text-[var(--clear-text-primary)]">
-      <div className="mx-auto max-w-[900px] px-5 py-6">
-        <header className="mb-[18px] flex items-center justify-between gap-4 border-b-[0.5px] border-[var(--clear-border)] pb-[13px]">
-          <span className="text-[15px] font-semibold tracking-[-0.2px]">
-            Clear <span className="font-normal text-[var(--clear-text-muted)]">for Merchants</span>
-          </span>
-          <span className="text-[12.5px] text-[var(--clear-text-muted)]">
-            Setting up {shopName || 'your shop'}
-          </span>
-        </header>
-
-        <div className="grid grid-cols-1 gap-5 @[900px]:grid-cols-[210px_minmax(0,1fr)] @[900px]:gap-7">
-          {/* The rail on a back-office screen; a progress line everywhere narrower. Same six steps
-              in the same order either way. */}
-          <nav className="hidden @[900px]:block">
-            <ol className="m-0 list-none p-0">
-              {STEPS.map((label, i) => (
-                <li key={label} className="mb-3 flex items-center gap-2.5 text-[12.5px]">
-                  <span
-                    className={[
-                      'flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[10px]',
-                      i < step
-                        ? 'bg-[var(--clear-bg-success)] text-[var(--clear-text-success)]'
-                        : i === step
-                          ? 'bg-[var(--clear-text-primary)] text-[var(--clear-surface-2)]'
-                          : 'border-[0.5px] border-[var(--clear-border)] text-[var(--clear-text-muted)]',
-                    ].join(' ')}
-                  >
-                    {i < step ? <Check size={11} strokeWidth={3} aria-hidden /> : i + 1}
-                  </span>
-                  <span className={i === step ? '' : 'text-[var(--clear-text-muted)]'}>{label}</span>
-                </li>
-              ))}
-            </ol>
-          </nav>
-
-          <div className="@[900px]:hidden">
-            <p className="m-0 mb-1.5 text-[11px] tracking-[0.3px] text-[var(--clear-text-muted)]">
-              Step {step + 1} of {STEPS.length} · {STEPS[step]}
-            </p>
-            <div className="h-[3px] w-full rounded-full bg-[var(--clear-surface-1)]">
-              <div
-                className="h-full rounded-full bg-[var(--clear-text-primary)] transition-[width]"
-                style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
-              />
+  // ---- The steps ------------------------------------------------------------------------------------
+  const pane = (() => {
+    switch (step) {
+      case 0:
+        return (
+          <>
+            <StepHead
+              phone={phone}
+              step={0}
+              title="Take Clear payments at your counter"
+              sub="Customers join in about three minutes and can pay now or over time. You are paid on the 14th, and sooner when the pool allows. Setting up takes about ten."
+            />
+            <div className="c-ob-fields">
+              <Field label="Business name" value={f.shopName} onChange={set('shopName')} />
+              {!preview && <Field label="Your name" value={f.ownerName} onChange={set('ownerName')} hint="As it should read on the charges you raise" />}
+              <Field label="Your email" value={f.email} onChange={set('email')} inputMode="email" hint="Where your payouts and statements go" />
+              <Field label="Your mobile" value={f.mobile} onChange={set('mobile')} inputMode="tel" hint="For sign-in codes. Never shown to customers" />
             </div>
-          </div>
-
-          <div>
-            {step === 0 && (
-              <StepFrame
-                title="Clear for Merchants"
-                blurb="Finance work at your counter. Customers sign up in about three minutes; you are paid on your normal terms."
-              >
-                <Input
-                  label="Business name"
-                  value={shopName}
-                  onChange={setShopName}
-                  placeholder="Mike's Tire"
-                />
-                <Input
-                  label="Your name"
-                  value={ownerName}
-                  onChange={setOwnerName}
-                  placeholder="Mike R."
-                  hint="Shown on the shift screen and against every charge you raise."
-                />
-                <p className="m-0 mb-4 text-[11.5px] text-[var(--clear-text-muted)]">
-                  Have a code?{' '}
-                  <span className="text-[var(--clear-text-accent)] underline underline-offset-2">
-                    Enter it
-                  </span>{' '}
-                  — some codes carry different terms.
+            <p className="c-det c-ob-note">No rep needed. If someone from Clear is with you, they can sit beside you, but every step is yours to do.</p>
+            <Foot phone={phone} primary="Start" onPrimary={next} disabled={!f.shopName.trim() || (!preview && !f.ownerName.trim())} />
+          </>
+        );
+      case 1:
+        return (
+          <>
+            <StepHead phone={phone} step={1} title="Your shop" sub="Where it is, and what it sells. This sets up tax and a few defaults you can change any time in Settings." />
+            <div className="c-ob-fields">
+              <Field label="Street address" value={f.street} onChange={set('street')} />
+              <div className="c-ob-two">
+                <Field label="City" value={f.city} onChange={set('city')} />
+                <Field label="State and ZIP" value={f.stateZip} onChange={set('stateZip')} />
+              </div>
+            </div>
+            {preview && (
+              // Stripe Tax works the rate out from the address; until it's connected there is no rate to show.
+              <div className="c-ob-result">
+                <span className="c-dot" />
+                <p className="c-det">
+                  <b>Sales tax here is 7.75%.</b> Worked out from your address, so you never type a rate.
                 </p>
-                <PrimaryButton
-                  disabled={!shopName.trim() || !ownerName.trim()}
-                  onClick={next}
-                  className="!py-[11px] !text-[15px]"
-                >
-                  Get started
-                </PrimaryButton>
-              </StepFrame>
+              </div>
             )}
-
-            {step === 1 && (
-              <StepFrame
-                title="About the business"
-                blurb="This is also your entry in the Clear Partners directory, where members look for somewhere to spend."
-              >
-                <Field label="Business name" value={shopName || '—'} />
-                <Input
-                  label="Category"
-                  value={category}
-                  onChange={setCategory}
-                  placeholder="Auto & tires"
-                />
-                <Input label="Town" value={town} onChange={setTown} placeholder="Redlands, CA" />
-                <p className="m-0 mb-4 text-[11.5px] leading-[1.6] text-[var(--clear-text-muted)]">
-                  Your approval cap starts from your typical ticket and moves on its own once you
-                  have volume — you do not have to ask.
+            <Chips label="What you sell" options={['Auto and tires', 'Retail', 'Food and drink', 'Services', 'Something else']} value={f.sell} onPick={set('sell')} />
+            <Chips
+              label="A typical sale"
+              options={['Under $50', '$50 to $500', 'Over $500']}
+              value={f.typical}
+              onPick={set('typical')}
+              hint="Sets list or tiles at the counter, and tip amounts or percentages"
+            />
+            <Chips label="People at the counter" options={['Just me', '2 to 5', '6 or more']} value={f.people} onPick={set('people')} />
+            <Foot phone={phone} back={back} primary="Continue" onPrimary={next} />
+          </>
+        );
+      case 2:
+        return (
+          <>
+            <StepHead
+              phone={phone}
+              step={2}
+              title="Your team"
+              sub="Everyone who will use the counter, so every charge carries the name of whoever raised it. You can add or change people in Staff any time."
+            />
+            {solo ? (
+              <ObCell label="Your team" right={<span className="c-det">You said just me</span>}>
+                <p className="c-ob-bt">Just you, for now</p>
+                <p className="c-det" style={{ marginTop: 4, lineHeight: 1.5 }}>
+                  This step is skipped and the list on the left marks it so. When you hire, add people in Staff and they pick a PIN on their first shift.
                 </p>
-                <PrimaryButton onClick={next} className="!py-[11px] !text-[15px]">
-                  Continue
-                </PrimaryButton>
-              </StepFrame>
-            )}
-
-            {step === 2 && (
-              <StepFrame
-                title="One page, in plain terms"
-                blurb="Read it here. The full agreement is linked below and emailed to you when you sign."
+              </ObCell>
+            ) : (
+              <ObCell
+                label="Who uses the counter"
+                right={<span className="c-det">{f.people ? `You said ${f.people}` : ''}</span>}
+                foot={<p className="c-det">Each picks a four-digit PIN on their first shift. Counter can charge; a manager can also approve refunds and close the day.</p>}
               >
-                {/*
-                  Six lines, not a document. An owner who reads six lines has actually read their
-                  agreement; one who scrolls a contract has not, and will be surprised later —
-                  which is the same thing as churning.
-                */}
-                <Cap>What you pay</Cap>
-                <Card className="mb-3.5 !py-3">
-                  <TermLine label="Your rate" value={`${rate}% of financed amount`} />
-                  <TermLine label="Instead of" value="Card processing" />
-                  <TermLine label="Setup, monthly, hardware" value="None" />
-                </Card>
-
-                <Cap>What you get</Cap>
-                <Card className="mb-3.5 !py-3">
-                  <TermLine label="You are paid" value={STUB_TERMS.payoutTerms} />
-                  <TermLine label="Who bears a default" value="Clear" />
-                  <TermLine
-                    label="Approval cap"
-                    value={`${dollars(STUB_TERMS.approvalCap)} per charge`}
-                  />
-                  <TermLine label="Exclusivity" value="None — keep Synchrony, Snap, anything else" />
-                  <TermLine label="Leaving" value="Any time, no fee, no notice" />
-                </Card>
-
-                <Inset className="mb-3.5 !py-3">
-                  <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-                    Signing also makes {shopName || 'your shop'} a{' '}
-                    <strong className="font-medium text-[var(--clear-text-primary)]">
-                      partner member of the Clear co-op
-                    </strong>{' '}
-                    — one member, one vote, the same as every other member.
-                  </p>
-                </Inset>
-
-                <PrimaryButton onClick={next} className="mb-2 !py-[11px] !text-[15px]">
-                  Agree &amp; sign
-                </PrimaryButton>
-                <Button className="w-full">Read the full agreement</Button>
-              </StepFrame>
+                <div className="c-ob-person">
+                  <span className="c-ob-av">{initials(f.ownerName || 'You')}</span>
+                  <div className="c-nm">
+                    <p className="c-t">{f.ownerName || 'You'}</p>
+                    <p className="c-det">{f.email || '—'}</p>
+                  </div>
+                  <span className="c-det">Owner · you</span>
+                </div>
+                {preview &&
+                  (
+                    [
+                      ['jen', 'Jen R.', '(909) 555-0142 · gets a text to join'],
+                      ['luis', 'Luis M.', 'No mobile yet'],
+                    ] as const
+                  ).map(([id, name, det]) => (
+                    <div key={id} className="c-ob-person">
+                      <span className="c-ob-av">{initials(name)}</span>
+                      <div className="c-nm">
+                        <p className="c-t">{name}</p>
+                        <p className="c-det">{det}</p>
+                      </div>
+                      <div className="c-st-chips c-ob-roles">
+                        {(['Counter', 'Manager'] as const).map((r) => (
+                          <button key={r} type="button" className={cx('c-btn', roles[id] === r && 'c-on')} onClick={() => setRoles({ ...roles, [id]: r })}>
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                <div className="c-ob-person c-add">
+                  <span className="c-ob-av c-add">+</span>
+                  <div className="c-nm">
+                    <p className="c-t">Add someone</p>
+                    <p className="c-det">{preview ? 'Name and role. Their mobile is optional' : 'After setup, in Staff'}</p>
+                  </div>
+                </div>
+              </ObCell>
             )}
-
-            {step === 3 && (
-              <StepFrame
+            <Foot phone={phone} back={back} primary="Continue" onPrimary={next} skip={solo ? undefined : next} />
+          </>
+        );
+      case 3: {
+        const msg = codeState ? CODE_MSG[codeState] : null;
+        const better = codeState === 'ok';
+        return (
+          <>
+            <StepHead
+              phone={phone}
+              step={3}
+              title="Your terms"
+              sub="Standard terms are what most shops sign. A code can replace some of them, and you see exactly what it changes before anything is applied."
+            />
+            <ObCell label="Have a code?" right={phone ? undefined : <span className="c-det">Optional</span>}>
+              <div className="c-ob-code">
+                <div className="c-ob-codein">
+                  <input className="c-field c-ob-in" aria-label="Code" value={f.code} onChange={(e) => set('code')(e.target.value.toUpperCase())} />
+                  <button
+                    type="button"
+                    className="c-btn"
+                    disabled={!preview || !f.code}
+                    onClick={() => setCodeState(f.code === 'KAI-1104' ? 'ok' : f.code === 'KAI-0932' ? 'warn' : 'bad')}
+                  >
+                    Apply
+                  </button>
+                </div>
+                {msg && (
+                  <div className={cx('c-ob-codemsg', `c-${codeState}`)}>
+                    <Chip tone={msg[0]}>{msg[1]}</Chip>
+                    <p className="c-det">{msg[2]}</p>
+                  </div>
+                )}
+              </div>
+            </ObCell>
+            <ObCell label="What you pay" right={phone ? undefined : <span className="c-det">Taken at each sale</span>}>
+              <div className="c-ob-terms">
+                <div className="c-ob-tr c-th">
+                  <span />
+                  <span className="c-std c-label">Standard</span>
+                  <span className="c-you c-label">With your code</span>
+                </div>
+                {TERMS.map(([k, std, you, lower]) => (
+                  <div key={k} className="c-ob-tr">
+                    <span>{k}</span>
+                    <span className="c-std">{std}</span>
+                    <span className={cx('c-you', better && lower && 'c-better')}>{better ? you : lower ? std : you}</span>
+                  </div>
+                ))}
+              </div>
+            </ObCell>
+            {!phone && (
+              <label className="c-ob-agree">
+                <Tick on={agree} onChange={setAgree} />
+                <span>
+                  I agree to the Clear Partner terms, including the card processing and payout terms above. <span className="c-ob-link">Read them</span>
+                </span>
+              </label>
+            )}
+            <Foot phone={phone} back={back} primary={phone ? 'Accept' : 'Accept and continue'} onPrimary={next} disabled={!phone && !agree} />
+          </>
+        );
+      }
+      case 4: {
+        const verify = params.get('verify');
+        if (!preview)
+          return (
+            <>
+              <StepHead
+                phone={phone}
+                step={4}
                 title="Verify it is you"
-                blurb="This is what creates your shop's wallet. Everything before it was a form; this step is the one that exists afterwards."
+                sub="This creates your shop and its wallet. Sign in with an emailed code or a passkey, and that account becomes the owner of the shop."
+              />
+              <div className="c-ob-fields">
+                {/* The PIN before the sign-in: a PIN refused after the wallet exists would leave a
+                    wallet nobody can reach, so the cheap check comes first. */}
+                <Field
+                  label="Your PIN for the counter"
+                  value={pin}
+                  onChange={(v) => setPin(v.replace(/\D/g, '').slice(0, 4))}
+                  inputMode="numeric"
+                  placeholder="4 digits"
+                  hint="Starts your shift and names you on charges. Signing in is what protects the money."
+                />
+              </div>
+              {shop ? (
+                <ObCell label="Your shop" right={<Chip tone="settled">Created</Chip>}>
+                  <Kvs rows={[['Wallet', `${shop.merchant.slice(0, 6)}…${shop.merchant.slice(-4)}`]]} />
+                </ObCell>
+              ) : pin.length === 4 && f.shopName && f.ownerName ? (
+                <div className="c-ob-cell">
+                  <OwnerSignIn
+                    embedded
+                    blurb="Clear holds no password. Sign in with an emailed code or a passkey, and that account becomes the owner of this shop."
+                    onToken={createShop}
+                    onDone={() => undefined}
+                  />
+                </div>
+              ) : null}
+              {error && (
+                <p className="c-det c-ob-note" role="alert">
+                  {error}
+                </p>
+              )}
+              <Foot phone={phone} back={back} primary="Continue" onPrimary={next} disabled={!shop} />
+            </>
+          );
+        return (
+          <>
+            <StepHead
+              phone={phone}
+              step={4}
+              title="Verify the business"
+              sub="Bridge, who moves money in and out of your Clear account, checks the business and its owner, as the law requires. It happens in their secure window, and Clear never sees or stores your full Social Security number."
+            />
+            {verify === 'needs' ? (
+              <ObCell label="Your business" right={<Chip tone="underway">Needs one thing</Chip>}>
+                <p className="c-ob-bt">They need your EIN letter from the IRS</p>
+                <p className="c-det" style={{ marginTop: 4 }}>
+                  The CP 575 or 147C with your business name on it. A photo is fine.
+                </p>
+                <Drop label="Add a photo or PDF" />
+              </ObCell>
+            ) : verify === 'verified' ? (
+              <ObCell label="Your business" right={<Chip tone="settled">Verified</Chip>}>
+                <Kvs
+                  rows={[
+                    ['Legal name', 'Mike’s Tire LLC'],
+                    ['Verified', 'Aug 11, 10:42am'],
+                  ]}
+                />
+              </ObCell>
+            ) : (
+              <ObCell
+                label="Your business"
+                right={<Chip tone="underway">In review</Chip>}
+                foot={<p className="c-det">Usually a few minutes. You can keep going while it finishes; payouts wait for it.</p>}
               >
-                {/*
-                  Said before they ask, not after. A shop that thinks it is being credit-checked
-                  stops here, and the reason never reaches you.
-                */}
-                <div className="mb-3.5 rounded-r-[8px] border-l-[2.5px] border-[var(--clear-border-accent)] bg-[var(--clear-bg-accent)] px-3.5 py-3">
-                  <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-                    <strong className="font-medium text-[var(--clear-text-accent)]">
-                      This is not a credit check.
-                    </strong>{' '}
-                    Nothing here affects your rate, your cap or whether you are approved. You
-                    already have terms — you signed them on the last screen.
+                <Kvs
+                  rows={[
+                    ['Legal name', 'Mike’s Tire LLC'],
+                    ['EIN', '••-•••4829'],
+                    ['Owner', 'Mike R. · identity checked'],
+                  ]}
+                />
+              </ObCell>
+            )}
+            <Foot phone={phone} back={back} primary="Continue while it finishes" onPrimary={next} />
+          </>
+        );
+      }
+      case 5: {
+        const waiting = params.get('bank') === 'waiting';
+        return (
+          <>
+            <StepHead phone={phone} step={5} title="Where payouts go" sub="One business account for payouts, in the same name as the business you verified." />
+            {!preview ? (
+              <ObCell label="Business bank account" right={<Chip tone="neutral">Not linked yet</Chip>}>
+                <p className="c-det" style={{ lineHeight: 1.5 }}>
+                  Link it in Settings before your first payout, through your bank’s own sign-in. Nobody at Clear sees it.
+                </p>
+              </ObCell>
+            ) : waiting ? (
+              <ObCell label="Business bank account" right={<Chip tone="underway">Waiting on deposits</Chip>}>
+                <p className="c-det" style={{ lineHeight: 1.5 }}>
+                  Two small deposits are on their way to the account ending 4417. When they land, in one or two business days, enter them in Settings to finish.
+                </p>
+              </ObCell>
+            ) : (
+              <ObCell
+                label="Business bank account"
+                right={<Chip tone="settled">Linked</Chip>}
+                foot={
+                  <div className="c-line" style={{ alignItems: 'center' }}>
+                    <p className="c-det">
+                      <LockSm /> Linked with Plaid, through your bank’s own sign-in. Nobody at Clear sees it.
+                    </p>
+                    <span className="c-ob-link">Change</span>
+                  </div>
+                }
+              >
+                <Kvs
+                  rows={[
+                    ['Account', 'Chase ••4417 · checking'],
+                    ['In the name of', 'Mike’s Tire LLC'],
+                    ['Payouts', 'On the 14th, and sooner when the pool allows'],
+                  ]}
+                />
+              </ObCell>
+            )}
+            <ObCell label="Your Clear cash account" right={<Chip tone="neutral">Opens with verification</Chip>}>
+              <p className="c-det" style={{ lineHeight: 1.5 }}>
+                Money that is free before the 14th lands here, in your business’s name. It is held as USDC, digital dollars, in your shop’s own wallet, and Bridge moves it to your bank whenever you withdraw, at no cost. It is not a bank account and is not FDIC-insured.
+              </p>
+            </ObCell>
+            <Foot phone={phone} back={back} primary="Continue" onPrimary={next} />
+          </>
+        );
+      }
+      default:
+        return (
+          <>
+            <StepHead phone={phone} step={6} title="The counter" sub="Signing takes four minutes; training the counter is what decides whether the shop actually uses it." />
+            <ObCell
+              label="Train the counter"
+              right={<span className="c-det">About fifteen minutes, together</span>}
+              foot={<p className="c-det">This is the step shops skip, so it lives here and not in an email.</p>}
+            >
+              {TRAINING.map(([t, det], i) => (
+                <div key={t} className={cx('c-ob-train', trained[i] && 'c-done')}>
+                  <Tick on={trained[i]} onChange={(v) => setTrained(trained.map((x, k) => (k === i ? v : x)))} />
+                  <div>
+                    <p className="c-t">{t}</p>
+                    <p className="c-det">{det}</p>
+                    {i === 0 && (
+                      <span className="c-ob-link c-ob-play">
+                        <PlaySm />
+                        Watch
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <div className={cx('c-ob-train', trained[3] && 'c-done')}>
+                <Tick on={trained[3]} onChange={(v) => setTrained([...trained.slice(0, 3), v])} />
+                <div>
+                  <p className="c-t">Their first shift</p>
+                  <p className="c-det">
+                    {preview ? 'Jen and Luis, from Your team,' : 'Everyone you add in Staff'} each pick a four-digit PIN the first time they start a shift. Nothing to set now.
                   </p>
                 </div>
+              </div>
+            </ObCell>
+            <ObCell label="This tablet" right={<span className="c-det">Becomes the counter tablet</span>}>
+              <Kvs
+                rows={[
+                  ['Name', 'Counter tablet'],
+                  ['Signed in as', f.shopName || '—'],
+                ]}
+              />
+            </ObCell>
+            <Foot phone={phone} back={back} primary="Finish setup" onPrimary={() => setDone(true)} />
+          </>
+        );
+    }
+  })();
 
-                {/*
-                  The PIN before the sign-in, deliberately.
-                  
-                  Both are needed by the same call, and a PIN rejected AFTER an organization exists
-                  at Privy leaves an orphan nobody can reach — a wallet's entity cannot be changed
-                  once set. So the cheap check happens first and the irreversible one second.
-                */}
-                <Input
-                  label="Your PIN for the counter"
-                  value={ownerPin}
-                  onChange={(v) => setOwnerPin(v.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="4 digits"
-                  inputMode="numeric"
-                  maxLength={4}
-                  hint="Starts your shift and attributes charges. It is not what protects the money — signing in is."
-                />
+  const root = phone ? 'c-app c-mc-tablet c-mc-page c-ob-ph' : 'c-app c-mc-tablet c-ob';
+  const style = { height: 'auto', minHeight: '100dvh' };
 
-                {ownerPin.length === 4 ? (
-                  <div className="rounded-[10px] border-[0.5px] border-[var(--clear-border)] bg-[var(--clear-surface-1)] px-3.5 py-3">
-                    {/* The same sign-in screen the app uses everywhere else, handed the token
-                        instead of a session: there is no staff row to sign in as yet, because
-                        this call is what creates it. */}
-                    <OwnerSignIn
-                      blurb="Clear holds no password. Sign in with an emailed code or a passkey, and that account becomes the owner of this shop."
-                      embedded
-                      onToken={createShop}
-                      onDone={() => undefined}
-                    />
-                  </div>
-                ) : (
-                  <PrimaryButton disabled className="!py-[11px] !text-[15px]">
-                    Continue
-                  </PrimaryButton>
-                )}
-
-                {error && (
-                  <p role="alert" className="m-0 mt-3 text-[13px] leading-[1.6]">
-                    {error}
-                  </p>
-                )}
-              </StepFrame>
-            )}
-
-            {step === 4 && (
-              <StepFrame
-                title="Where payouts go"
-                blurb="Payouts land here on the 14th of each month. You can change it any time in Settings."
-              >
-                <Field label="Search for your bank" value="Chase, Bank of America, a credit union…" />
-                <PrimaryButton onClick={next} className="mb-2 !py-[11px] !text-[15px]">
-                  Connect securely
-                </PrimaryButton>
-                <Button className="mb-3.5 w-full">Enter account details instead</Button>
-
-                <Inset className="mb-3.5 !py-3">
-                  <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-                    <strong className="font-medium text-[var(--clear-text-primary)]">
-                      Nobody from Clear ever sees your banking credentials.
-                    </strong>{' '}
-                    You sign in to your own bank; we receive a token that lets us send money to you
-                    and nothing else. If someone from Clear is sitting with you, they should stand
-                    back for this step — and say so.
-                  </p>
-                </Inset>
-
-                {/* Skippable on purpose: a shop can sign, train the counter and take charges today,
-                    and add banking before the 14th. */}
-                <Button onClick={next} className="w-full">
-                  Skip — add it before my first payout
-                </Button>
-              </StepFrame>
-            )}
-
-            {step === 5 && (
-              <StepFrame
-                title="Set up your counter"
-                blurb="The part that decides whether any of this gets used. Fifteen minutes, once."
-              >
-                <Card rows className="mb-3.5">
-                  <Row
-                    title="Add your staff"
-                    meta="A four-digit PIN each, so charges are attributed"
-                    right={<Button className="!px-[11px] !py-1 !text-[12px]">Add</Button>}
-                  />
-                  <Row
-                    title="Print counter cards"
-                    meta="The same code the tablet shows — goes home with an estimate"
-                    right={<Button className="!px-[11px] !py-1 !text-[12px]">Print</Button>}
-                  />
-                  <Row
-                    title="Run a test charge"
-                    meta="$1.00 to your own phone, refunded straight away"
-                    right={<Button className="!px-[11px] !py-1 !text-[12px]">Run</Button>}
-                  />
-                </Card>
-
-                <Inset className="mb-3.5 !py-3">
-                  <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-                    <strong className="font-medium text-[var(--clear-text-primary)]">
-                      Run the test charge with whoever works the counter.
-                    </strong>{' '}
-                    It puts the whole loop in front of them once — enter the amount, turn the
-                    screen, they approve, you refund it — with no customer waiting.
-                  </p>
-                </Inset>
-
-                {shop && (
-                  <Inset className="mb-3.5 !py-3">
-                    <p className="m-0 text-[12px] leading-[1.6] text-[var(--clear-text-secondary)]">
-                      <strong className="font-medium text-[var(--clear-text-primary)]">
-                        {shopName} is set up.
-                      </strong>{' '}
-                      Its wallet is {shop.merchant.slice(0, 6)}…{shop.merchant.slice(-4)} — that
-                      address is your shop, on the register and on every payout.
-                      {/* Stated, not hidden. A shop that can take charges but cannot be paid out of
-                          should hear it here rather than discover it on the 14th. */}
-                      {!shop.signerReady &&
-                        ' Payouts are not switched on yet — we will finish that before your first one.'}
-                    </p>
-                  </Inset>
-                )}
-
-                <PrimaryButton onClick={() => navigate('/')} className="mb-2 !py-[11px] !text-[15px]">
-                  Open Clear
-                </PrimaryButton>
-                <Button onClick={() => navigate('/')} className="w-full">
-                  Finish later
-                </Button>
-                <p className="m-0 mt-[11px] text-[11.5px] leading-[1.55] text-[var(--clear-text-muted)]">
-                  Anything skipped carries over to Home as a checklist until it is done.
-                </p>
-              </StepFrame>
-            )}
+  if (done)
+    return (
+      <div className={root} style={style}>
+        {phone ? null : (
+          <div className="c-ob-top">
+            <span className="c-mc-who">
+              <span className="c-lockup">
+                <ClearMark />
+                <span className="c-wm">Clear</span>
+              </span>
+              <span className="c-mc-for">Setting up {f.shopName}</span>
+            </span>
+            <span className="c-ob-save">Save and finish later</span>
           </div>
+        )}
+        <div className="c-ob-done">
+          <span className="c-ob-live" aria-hidden="true" />
+          <p className="c-ob-title">{f.shopName || 'Your shop'} is set up</p>
+          <p className="c-det c-ob-sub">
+            {preview
+              ? 'You can take a Clear charge now. Verification finished while you were training the counter.'
+              : `You can take a Clear charge now.${shop && !shop.signerReady ? ' Payouts switch on before your first one.' : ''}`}
+          </p>
+          <div className="c-ob-next">
+            <button type="button" className="c-btn c-btn-primary" onClick={() => navigate(`/new${preview ? '?preview=1' : ''}`)}>
+              Take your first charge
+            </button>
+            <button type="button" className="c-btn" onClick={() => navigate(preview ? '/?preview=1' : '/')}>
+              Go to Home
+            </button>
+          </div>
+          <p className="c-det">Cards, items, a reader and the drawer are on a short list on Home, to do at your own pace.</p>
         </div>
       </div>
+    );
+
+  return (
+    <div className={root} style={style}>
+      {phone ? (
+        <PhoneFrame step={step} onSave={later}>
+          {pane}
+        </PhoneFrame>
+      ) : (
+        <Frame shop={f.shopName} step={step} onSave={later}>
+          {pane}
+        </Frame>
+      )}
     </div>
   );
 }
+
+const LockSm = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="5" y="11" width="14" height="10" rx="1" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </svg>
+);
+
+const PlaySm = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" />
+    <path d="m10 8.5 5 3.5-5 3.5z" />
+  </svg>
+);
+

@@ -96,6 +96,29 @@ Decided 2026-09-24.
 - **Running low sits on Home** for owners and managers, as the Inventory reference asks
   (preview: `/?preview=1&home=lowStock`).
 
+## Onboarding
+
+- **Verify creates the shop on a live signup.** The API makes the shop and its wallet from a
+  verified owner sign-in, the owner's name and a four-digit counter PIN, and nothing else. So a
+  live signup asks Your name on Start (the reference has no name field), and its Verify step is
+  "Verify it is you": the PIN, then the owner's sign-in, which creates the shop. Nothing is
+  written to Clear before it. The reference's Verify, Bridge checking the business, is the
+  preview's until the merchant app has a Bridge business check.
+- **Codes, the team, the bank and the tax rate have no backend here yet.** A live signup shows
+  standard terms with Apply disabled, the owner alone in Your team ("After setup, in Staff"), the
+  bank as "Not linked yet", and no tax rate (Stripe Tax works it out once cards are connected).
+- **Save and finish later** keeps the form on the device and nothing else.
+- **Onboarding is always its own screen**, without the app's header, even when someone is
+  signed in.
+- **Set up the till** (the reference's checklist on Home after onboarding) is at
+  `/?preview=1&home=till|till4`. A live shop doesn't see it yet, because nothing records which of
+  its items a shop has done. It overlaps Home's day-one list (staff, counter cards, a test
+  charge), which signup now covers: **an open question**, whether the till list replaces it.
+- **The till hero on a phone**, which isn't drawn, puts Build cart and New charge on a row of
+  their own.
+- Preview: `/onboarding?preview=1&step=1..7`, `&done=1`, `&team=solo`, `&code=warn|bad`,
+  `&verify=needs|verified`, `&bank=waiting`.
+
 ## Overview
 
 - **Narrower frames keep the second slab.** The reference's portrait and phone end at "Who can use

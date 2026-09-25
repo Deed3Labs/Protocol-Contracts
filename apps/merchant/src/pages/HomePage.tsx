@@ -8,6 +8,7 @@ import { clockTime, fromApi, type HomeModel, type WaitingCharge } from '@/home/m
 import { DANA_STEPS, HOME_STATES, type HomeState } from '@/home/seed';
 import { WaitingSheet, type Milestone } from '@/home/WaitingSheet';
 import { useLayout } from '@/lib/useBreakpoint';
+import { TillCell, TillHero, type TillItem } from '@/onboarding/views';
 
 /**
  * Home — docs/merchant-reference/clear-merchant-home.html.
@@ -43,6 +44,33 @@ export default function HomePage() {
       staff,
     });
   }, [seeded, session, charges, position, staff]);
+
+  // After onboarding: the till checklist, from the Onboarding reference (`?home=till|till4`). A live
+  // shop doesn't see it yet: nothing records which of these a shop has done.
+  const till = import.meta.env.DEV ? params.get('home') : null;
+  if (till === 'till' || till === 'till4') {
+    const four = till === 'till4';
+    const items: TillItem[] = [
+      { t: 'Connect Stripe to take cards', det: 'Settings › Payments', done: four, onOpen: () => navigate('/settings/payments?preview=1') },
+      { t: 'Pair a card reader', det: 'An M2, a smart reader, or a phone', done: four, onOpen: () => navigate('/settings/devices?preview=1') },
+      { t: 'Add what you sell', det: 'One at a time, or import a spreadsheet', done: four, onOpen: () => navigate('/inventory?preview=1') },
+      { t: 'Your team', det: 'Jen and Luis, added at signup', done: true, onOpen: () => navigate('/staff?preview=1') },
+      { t: 'Set starting cash', det: 'For the drawer, $150.00 is common', onOpen: () => navigate('/settings/closing?preview=1') },
+      { t: 'Tips and discounts', det: 'Optional', onOpen: () => navigate('/settings/tips?preview=1') },
+    ];
+    return (
+      <>
+        <TillHero
+          cents={four ? '$412.00' : '$0.00'}
+          det={four ? '1 confirmed today' : 'No charges yet. The first one is one tap away.'}
+          cart={four}
+          onNew={() => navigate('/new?preview=1')}
+          onCart={() => navigate('/new?preview=1&items=1')}
+        />
+        <TillCell items={items} />
+      </>
+    );
+  }
 
   if (!model) return null;
 
