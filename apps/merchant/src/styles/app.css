@@ -154,6 +154,14 @@ input.c-field.c-si-in {
   width: auto;
 }
 
+/* The reference's `.c-field { flex: 1 }` shares a row between fields. Where a field sits in a
+   column instead (the phone sign-in, whose screen is a flex column), the same rule grows it down
+   into all the spare height, and the 0 basis overrides its 44px. A field is never taller than
+   it is drawn. */
+.c-field {
+  max-height: 44px;
+}
+
 /* The + sheet's options and the flow header's close are buttons, so they can be reached by
    keyboard and heard by a screen reader. A button centres its text; the reference's divs did not. */
 .c-ps-opt {
