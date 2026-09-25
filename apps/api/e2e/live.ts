@@ -13,17 +13,13 @@
  * is a signed `account.application.deauthorized` sent to our real endpoint: the connected account
  * isn't actually disconnected. Test mode only; it never touches live money.
  */
-import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import Stripe from 'stripe';
+import { bootApi, PINS, seedShop, WEBHOOK_SECRET } from './harness.js';
 
-const API_DIR = fileURLToPath(new URL('..', import.meta.url));
 const PORT = Number(process.env.E2E_PORT || 3999);
-const BASE = `http://localhost:${PORT}/api`;
 const KEY = (process.env.STRIPE_SECRET_KEY || '').trim();
 const ACCOUNT = (process.env.E2E_STRIPE_ACCOUNT || '').trim();
 const DATABASE_URL = (process.env.DATABASE_URL || '').trim();
-const WEBHOOK_SECRET = 'whsec_e2e_local';
 
 if (!KEY.startsWith('sk_test_')) throw new Error('STRIPE_SECRET_KEY must be a TEST key (sk_test_…)');
 if (!ACCOUNT.startsWith('acct_')) throw new Error('E2E_STRIPE_ACCOUNT must name a test connected account');
@@ -35,59 +31,13 @@ let n = 0;
 const key = () => `e2e-live-${Date.now()}-${++n}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// ---- The API, booted as it runs in production --------------------------------------------------
-const server = spawn('bun', ['src/index.ts'], {
-  cwd: API_DIR,
-  env: {
-    PATH: process.env.PATH ?? '',
-    HOME: process.env.HOME ?? '',
-    PORT: String(PORT),
-    DATABASE_URL,
-    POSTGRES_SSL_MODE: process.env.POSTGRES_SSL_MODE ?? 'disable',
-    STRIPE_SECRET_KEY: KEY,
-    STRIPE_CONNECT_WEBHOOK_SECRET: WEBHOOK_SECRET,
-    NODE_ENV: 'development',
-  },
-  stdio: ['ignore', 'pipe', 'pipe'],
-});
-let serverLog = '';
-server.stdout.on('data', (d) => (serverLog += d));
-server.stderr.on('data', (d) => (serverLog += d));
-const stop = () => server.kill('SIGTERM');
-process.on('exit', stop);
-
-for (let i = 0; ; i++) {
-  if (i > 60) throw new Error(`The API didn't come up:\n${serverLog.slice(-3000)}`);
-  const up = await fetch(`${BASE}/merchant/cards/availability`).then((r) => r.status).catch(() => 0);
-  if (up === 401) break;
-  await sleep(1000);
-}
-
-// ---- Mike's Tire: the shop, its staff and their sessions, seeded through the real stores -------
-process.env.DATABASE_URL = DATABASE_URL;
-process.env.POSTGRES_SSL_MODE = process.env.POSTGRES_SSL_MODE ?? 'disable';
-const { getMerchantPool } = await import('../src/config/merchantDb.js');
-const { poolDb } = await import('../src/db/db.js');
-const { staffStore } = await import('../src/services/merchant/staffStore.js');
-const { sessionStore } = await import('../src/services/merchant/sessionStore.js');
-const { connectorStore } = await import('../src/services/merchant/cards/connectorStore.js');
-const db = poolDb(getMerchantPool()!);
-
-const merchant = `0x${Date.now().toString(16).padStart(40, '0')}`;
-await db.query(
-  `INSERT INTO merchant.profiles (merchant, name, address_line1, address_city, address_region, address_postal_code) VALUES ($1, 'Mike''s Tire', '412 Colton Ave', 'Redlands', 'CA', '92374')`,
-  [merchant],
-);
-const PINS = { owner: '9090', manager: '4321', jen: '1111', luis: '2222' };
-const staff = {
-  owner: (await staffStore.add({ merchant, name: 'Mike', role: 'owner', secret: PINS.owner }))!,
-  manager: (await staffStore.add({ merchant, name: 'Dana', role: 'manager', secret: PINS.manager }))!,
-  jen: (await staffStore.add({ merchant, name: 'Jen', role: 'counter', secret: PINS.jen }))!,
-  luis: (await staffStore.add({ merchant, name: 'Luis', role: 'counter', secret: PINS.luis }))!,
-};
-const token = Object.fromEntries(await Promise.all(Object.entries(staff).map(async ([k, s]) => [k, (await sessionStore.create(s))!.token]))) as Record<keyof typeof staff, string>;
-const cc = await connectorStore.insert(db, { merchant, provider: 'stripe', externalAccountId: ACCOUNT, connectedBy: staff.owner.id });
-await connectorStore.applyStatus(db, { provider: 'stripe', externalAccountId: ACCOUNT, chargesEnabled: true, detailsSubmitted: true, at: new Date() });
+// The API, booted as it runs in production; Mike's Tire seeded through the real stores.
+const api = await bootApi({ port: PORT, databaseUrl: DATABASE_URL, stripeKey: KEY });
+const BASE = api.base;
+const stop = api.stop;
+const shop = await seedShop({ databaseUrl: DATABASE_URL, stripeAccount: ACCOUNT });
+const { db, merchant, staff, token } = shop;
+const serverLog = { toString: () => api.log() };
 
 type Who = keyof typeof staff;
 async function call<T = any>(who: Who, method: string, path: string, body?: unknown): Promise<{ status: number; body: T }> {
@@ -247,12 +197,12 @@ try {
   void tipped;
 } finally {
   stop();
-  await getMerchantPool()?.end();
+  await shop.end();
 }
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);
 if (failed.length) {
-  console.log(serverLog.split('\n').filter((l) => /error|fail/i.test(l)).slice(-20).join('\n'));
+  console.log(String(serverLog).split('\n').filter((l) => /error|fail/i.test(l)).slice(-20).join('\n'));
   process.exit(1);
 }

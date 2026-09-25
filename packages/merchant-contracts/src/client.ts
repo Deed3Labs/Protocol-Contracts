@@ -12,7 +12,7 @@ import type {
   RegisterSmartReader,
 } from './cards';
 import type { CatalogItem, DiscountCode, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
-import type { AuditEntry, BankDeposit, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
+import type { AuditEntry, BankDeposit, CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
   CreateClearTender,
@@ -120,8 +120,11 @@ export interface MerchantApi {
   /** The two counts disagree: one of the two counters counts again, replacing their own count. */
   recount(sessionId: string, input: { which: 'first' | 'second' }): Promise<CountsView>;
   signOff(sessionId: string, input: In<typeof SignOff>): Promise<CountsView>;
-  /** Captures the day's card authorisations and locks the day report. Blocked while a difference is unsigned. */
-  closeDay(sessionId: string): Promise<DayReport>;
+  /**
+   * Captures the day's card authorisations and locks the day report. Blocked while a difference is
+   * unsigned. Returns the report and any card that couldn't be captured, with why.
+   */
+  closeDay(sessionId: string): Promise<CloseDayResult>;
   bankDeposits(): Promise<BankDeposit[]>;
   markDeposited(depositId: string): Promise<BankDeposit>;
 

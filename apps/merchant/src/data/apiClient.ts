@@ -81,7 +81,7 @@ export function storeToken(token: string | null): void {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = readToken();
   const device = readDeviceToken();
   const res = await fetch(`${BASE}${path}`, {
