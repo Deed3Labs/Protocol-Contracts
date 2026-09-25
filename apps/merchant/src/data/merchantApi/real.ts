@@ -28,6 +28,8 @@ export function realMerchantApi(request: Transport): MerchantApi {
     // ---- The shop
     shop: () => get('/shop'),
     updateShop: (patch) => send('PATCH', '/shop', patch),
+    hours: () => get('/shop/hours'),
+    saveHours: (h) => send('PUT', '/shop/hours', h),
     settings: () => get('/settings'),
     updateSettings: (patch) => send('PATCH', '/settings', patch),
     // The roster endpoint predates the contracts and says more than Staff does; only Staff is kept.

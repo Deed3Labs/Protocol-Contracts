@@ -165,11 +165,12 @@ Decided 2026-09-24.
 - **Sections are routes**: `/settings/<section>`, and `/settings/shop/hours` for the pushed
   page. On a landscape tablet `/settings` opens Shop; narrower it's the index.
 - **Tax ID is ••-•••4829** (Figures, above).
-- **What a live shop sees.** Shop (the listing from the profile), Payouts, Partnership, Payments,
-  Security (its enrolled tablets, each signed out with the existing API), Tax, Tips, Discounts,
-  Closing and Help. Hours, contact, statements, Counter, Devices, Notifications and Advanced have
-  no backend yet. Their sheets (Change account, Add a device, Leave Clear, New
-  discount code) open in the preview, with their final buttons disabled on a live shop.
+- **What a live shop sees.** Shop (the listing, the contact and the hours, each changeable by
+  the owner), Payouts, Partnership, Counter (breaks, and how long this tablet waits for a PIN),
+  Payments, Devices (the readers, and this tablet renamed), Security (its enrolled tablets, each
+  signed out with the existing API), Tax, Tips, Discounts, Closing and Help. Statements,
+  Notifications and Advanced have no backend yet. Their sheets (Change account, Add a device, Leave
+  Clear) open in the preview, with their final buttons disabled on a live shop.
   Preview: `/settings[/<section>]?preview=1&screen=counter|payments-connected|account|device|
   leave|confirm|code`; `&live=1` for the live path.
 
@@ -479,3 +480,29 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **Closing**: starting cash, two counts, and what happens with one person on. "Any difference
   needs a sign-off" reads Always, because the server always requires it. Who can close lists the
   owners and managers by name.
+
+## Settings: the shop, its hours, Counter and Devices
+
+- **The listing lives on the shop.** Migration 0012 gives the profile a category ("What you do"),
+  a one-line description, and a phone and email for the listing. `PATCH /shop` takes `name` and a
+  partial `listing`; a field sent as null or empty comes off the listing. An email is checked for
+  shape. The address was already there and is changed through the same call.
+- **Hours are their own table.** `merchant.shop_hours` holds a span per open weekday (0 is
+  Monday, matching the reference's week), and `merchant.shop_closures` a date with a label and
+  either other hours or closed. `GET /shop/hours` reads them; `PUT /shop/hours` (owner) replaces
+  the week and the dates together, in one transaction, because the page saves them together.
+  Closing must be after opening; a date appears once.
+- **Save hours, not save-as-you-go.** The reference draws a Save hours button, so the week and
+  the dates are edited on the page and saved as one. Times use the device's own time picker. A
+  day switched on starts at 9 to 5. Dates are added with "A date that differs": closed all day, or
+  open other hours ("Christmas Eve, until noon"). Photo stays the preview's until there's an
+  upload.
+- **Breaks are a shop setting**, not a timesheet: how long a break is (30 minutes) and after how
+  many hours on shift one is due (5). They sit with the other shop settings (`breaks` in
+  `ShopSettings`). Nothing reads them yet: the shift clock, next, is what says who is due one.
+- **The PIN lock is the tablet's**, as it always was (`idle_lock_seconds` on the device). Counter
+  offers 1, 2, 5, 10, 15 or 30 minutes; `PATCH /devices/:id` now takes `idleLockSeconds` (60 to
+  3600) as well as a new label.
+- **The mock holds the tablet.** The dev preview's "Counter tablet" is in the mock's `ClearSide`
+  (list, rename, lock), so Counter and Devices work on `?preview=1&live=1`. Walk-through:
+  `e2e/settings-shop.spec.ts`.

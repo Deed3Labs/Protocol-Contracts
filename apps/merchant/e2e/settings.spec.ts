@@ -36,7 +36,7 @@ test('Closing: starting cash and two counts', async ({ page }) => {
 test('Discounts: a limit, and a new code', async ({ page }) => {
   await open(page, 'discounts');
   await expect(page.getByText('FALL10', { exact: true })).toBeVisible();
-  await page.getByText('Counter', { exact: true }).click();
+  await page.getByRole('button', { name: /^Counter Up to/ }).click();
   await amount(page, 'Counter discount limit', '15');
   await expect(page.getByText('Up to 15%')).toBeVisible();
 

@@ -311,6 +311,144 @@ export interface DayHours {
   open: [string, string] | null;
 }
 
+/** "08:00" → "8:00am" */
+export const clock12 = (t: string) => {
+  const [h, m] = t.split(':').map(Number) as [number, number];
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')}${h < 12 ? 'am' : 'pm'}`;
+};
+
+type Span = { from: string; to: string };
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/**
+ * A live shop's week, to change: a switch per day, and when it's open, the times (the device's own
+ * time picker). A day switched on starts at 9 to 5.
+ */
+export function WeekHoursEdit({ week, onChange }: { week: { day: number; open: Span | null }[]; onChange: (week: { day: number; open: Span | null }[]) => void }) {
+  const set = (day: number, open: Span | null) => onChange(week.map((w) => (w.day === day ? { ...w, open } : w)));
+  return (
+    <Rows className="c-days">
+      {week.map((w) => (
+        <div key={w.day}>
+          <div className={cx('c-st-day', !w.open && 'c-off')}>
+            <span className="c-dn">{DAY_NAMES[w.day]}</span>
+            {w.open ? (
+              <span className="c-st-span">
+                <input type="time" className="c-st-time" aria-label={`${DAY_NAMES[w.day]} opens`} value={w.open.from} onChange={(e) => set(w.day, { ...w.open!, from: e.target.value })} />
+                <span className="c-sep">–</span>
+                <input type="time" className="c-st-time" aria-label={`${DAY_NAMES[w.day]} closes`} value={w.open.to} onChange={(e) => set(w.day, { ...w.open!, to: e.target.value })} />
+              </span>
+            ) : (
+              <span className="c-st-span">Closed</span>
+            )}
+            <Tg on={!!w.open} label={`Open on ${DAY_NAMES[w.day]}`} onChange={(v) => set(w.day, v ? { from: '09:00', to: '17:00' } : null)} />
+          </div>
+        </div>
+      ))}
+    </Rows>
+  );
+}
+
+/** A date the shop is closed, or open other hours: "Thanksgiving, closed", "Christmas Eve, until noon". */
+export function DateHoursSheet({ onAdd, onClose }: { onAdd: (d: { date: string; label: string; open: Span | null }) => void; onClose: () => void }) {
+  const [date, setDate] = useState('');
+  const [label, setLabel] = useState('');
+  const [closed, setClosed] = useState(true);
+  const [from, setFrom] = useState('08:00');
+  const [to, setTo] = useState('12:00');
+  const ok = !!date && label.trim().length > 0 && (closed || to > from);
+  return (
+    <Sheet
+      className="c-st-sheet"
+      title="A date that differs"
+      onClose={onClose}
+      foot={
+        <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ width: '100%' }} disabled={!ok} onClick={() => onAdd({ date, label: label.trim(), open: closed ? null : { from, to } })}>
+          Add the date
+        </button>
+      }
+    >
+      <p className="c-label c-st-fl" style={{ marginTop: 0 }}>
+        Date
+      </p>
+      <input className="c-field c-st-in" type="date" aria-label="Date" value={date} onChange={(e) => setDate(e.target.value)} />
+      <p className="c-label c-st-fl">What it is</p>
+      <input className="c-field c-st-in" aria-label="What it is" placeholder="Thanksgiving" maxLength={60} value={label} onChange={(e) => setLabel(e.target.value)} />
+      <p className="c-label c-st-fl">That day</p>
+      <Chips options={['Closed all day', 'Open other hours']} value={closed ? 0 : 1} onPick={(i) => setClosed(i === 0)} />
+      {!closed && (
+        <div className="c-st-two" style={{ marginTop: 'var(--s2)' }}>
+          <input className="c-field c-st-in" type="time" aria-label="Opens" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <input className="c-field c-st-in" type="time" aria-label="Closes" value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+/** One or a few text fields for the shop: its name, what it does, a line, a phone, an email, the address. */
+export function TextSheet({
+  title,
+  det,
+  fields,
+  onSave,
+  onClose,
+  busy,
+  error,
+}: {
+  title: string;
+  det?: string;
+  fields: { key: string; label: string; value: string; max: number; required?: boolean; inputMode?: 'text' | 'tel' | 'email' }[];
+  onSave: (values: Record<string, string>) => void;
+  onClose: () => void;
+  busy?: boolean;
+  error?: string | null;
+}) {
+  const [v, setV] = useState(() => Object.fromEntries(fields.map((f) => [f.key, f.value])));
+  const ok = fields.every((f) => !f.required || v[f.key]!.trim().length > 0);
+  return (
+    <Sheet
+      className="c-st-sheet"
+      title={title}
+      onClose={onClose}
+      foot={
+        <>
+          {error && (
+            <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: '0 0 var(--s1)' }}>
+              {error}
+            </p>
+          )}
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ width: '100%' }} disabled={!ok || busy} onClick={() => onSave(v)}>
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      {det && (
+        <p className="c-det" style={{ marginTop: 0 }}>
+          {det}
+        </p>
+      )}
+      {fields.map((f, i) => (
+        <div key={f.key}>
+          <p className="c-label c-st-fl" style={i === 0 && !det ? { marginTop: 0 } : undefined}>
+            {f.label}
+          </p>
+          <input
+            className="c-field c-st-in"
+            aria-label={f.label}
+            inputMode={f.inputMode}
+            maxLength={f.max}
+            value={v[f.key]}
+            autoFocus={i === 0}
+            onChange={(e) => setV({ ...v, [f.key]: e.target.value })}
+          />
+        </div>
+      ))}
+    </Sheet>
+  );
+}
+
 export function WeekHours({ days }: { days: DayHours[] }) {
   const [on, setOn] = useState(days.map((d) => !!d.open));
   return (

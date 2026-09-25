@@ -1,5 +1,5 @@
 import { DEFAULT_SETTINGS } from '@clear/merchant-contracts';
-import type { CatalogItem, DiscountCode, LineInput, Reader, Reorder, Shop, ShopSettings, Staff } from '@clear/merchant-contracts';
+import type { CatalogItem, DiscountCode, LineInput, Reader, Reorder, Shop, ShopHours, ShopSettings, Staff } from '@clear/merchant-contracts';
 import { GOODYEAR_ON_ORDER, INVENTORY } from '../../inventory/model';
 
 /**
@@ -22,6 +22,24 @@ export const SHOP: Shop = {
   cardPlan: { kind: 'payg' },
   // Founding: 1.25% paid now, 2.0% over time (standard is 1.5% and 2.5%).
   clearTier: { tier: 'founding', paidNowBps: 125, overTimeBps: 200 },
+  listing: { category: 'Auto repair, Tires', oneLine: 'Tires, brakes and alignment', phone: '(909) 555-0142', email: 'hello@mikestire.com' },
+};
+
+/** The Settings reference's week: Monday to Thursday 8 to 6, Friday to 4, Saturday 9 to 2, closed Sunday. */
+export const HOURS: ShopHours = {
+  week: [
+    ['08:00', '18:00'],
+    ['08:00', '18:00'],
+    ['08:00', '18:00'],
+    ['08:00', '18:00'],
+    ['08:00', '16:00'],
+    ['09:00', '14:00'],
+    null,
+  ].map((o, day) => ({ day, open: o ? { from: o[0]!, to: o[1]! } : null })),
+  dates: [
+    { date: '2026-11-26', label: 'Thanksgiving', open: null },
+    { date: '2026-12-24', label: 'Christmas Eve', open: { from: '08:00', to: '12:00' } },
+  ],
 };
 
 export const STAFF: Staff[] = [

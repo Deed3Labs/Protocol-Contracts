@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { CardAvailability, DiscountCode, ShopSettings, ShopSettingsPatch, TaxKind, TaxStatus } from '@clear/merchant-contracts';
+import type { CardAvailability, DiscountCode, Reader, ShopSettings, ShopSettingsPatch, TaxKind, TaxStatus } from '@clear/merchant-contracts';
 import {
   Account,
   Btn,
@@ -52,12 +52,12 @@ export const SECTIONS: { key: Section; label: string; det: string; desc: string;
   { key: 'shop', label: 'Shop', det: 'What members see in Clear Partners, and when you are open.', desc: 'Listing, hours, contact', live: true },
   { key: 'payouts', label: 'Payouts', det: 'Where your money goes, when, and the record of it.', desc: 'Bank, schedule, statements', live: true },
   { key: 'partnership', label: 'Partnership', det: 'Your terms, your agreement, and your record in the co-op.', desc: 'Terms, agreement, co-op record', live: true },
-  { key: 'counter', label: 'Counter', det: 'The printed cards, and how a shift runs on the tablet.', desc: 'Counter cards, breaks, idle lock' },
+  { key: 'counter', label: 'Counter', det: 'The printed cards, and how a shift runs on the tablet.', desc: 'Counter cards, breaks, idle lock', live: true },
   { key: 'payments', label: 'Payments', det: 'How customers can pay you, and what happens when the connection drops.', desc: 'Ways to pay, cards, offline', live: true },
   { key: 'tax', label: 'Tax', det: 'Sales tax, worked out from where the shop is.', desc: 'Where you collect, how prices show', live: true },
   { key: 'tips', label: 'Tips', det: 'Whether Checkout asks, what it offers, and who gets it.', desc: 'Asking, amounts, who gets them', live: true },
   { key: 'discounts', label: 'Discounts', det: 'Codes you create, and how much each role can give without asking.', desc: 'Codes, limits by role', live: true },
-  { key: 'devices', label: 'Devices', det: 'What is paired with this tablet.', desc: 'Reader, printer, this tablet' },
+  { key: 'devices', label: 'Devices', det: 'What is paired with this tablet.', desc: 'Reader, printer, this tablet', live: true },
   { key: 'closing', label: 'Closing', det: 'How the drawer is opened, counted and signed off.', desc: 'The drawer, and who closes', live: true },
   { key: 'security', label: 'Security', det: 'How you sign in, and what is signed in as the shop.', desc: 'Sign-in, owner PIN, devices', live: true },
   { key: 'notifications', label: 'Notifications', det: 'What reaches you, and where.', desc: 'What reaches you and how' },
@@ -122,12 +122,27 @@ export interface SettingsData {
   ways: { card: boolean; cash: boolean; split: boolean } | null;
   /** Which readers this device can drive: a browser lists smart readers only. */
   platform: Platform;
+  /** A live shop's Counter and Devices panes; null in the preview and until read. */
+  liveShop?: LiveShop | null;
   /**
    * A live shop's selling settings, for Tax, Tips, Discounts and Closing; null in the preview (which
    * draws the reference) and until they're read.
    */
   live?: LiveSelling | null;
 }
+
+export interface LiveShop {
+  settings: ShopSettings | null;
+  readers: Reader[] | null;
+  /** This tablet, as enrolled. Null in a browser that isn't one. */
+  device: { label: string; enrolledAt: string; idleLockSeconds: number } | null;
+}
+
+/** A field of the shop an owner changes in Settings › Shop. */
+export type ShopField = 'name' | 'category' | 'oneLine' | 'phone' | 'email' | 'address';
+
+const IDLE = [60, 120, 300, 600, 900, 1800];
+const minutes = (s: number) => (s < 120 ? `${s / 60} minute` : `${s / 60} minutes`);
 
 export interface LiveSelling {
   settings: ShopSettings;
@@ -225,10 +240,80 @@ export interface Actions {
   onAddReader?: () => void;
   /** Owners: a way to pay switched on or off. */
   onWay?: (way: 'card' | 'cash' | 'split', on: boolean) => void;
+  /** Owners, live: change a field of the shop. */
+  onEditShop?: (field: ShopField) => void;
+  /** Owners, live: the break length and when it's due. */
+  onBreaks?: () => void;
+  /** Owners, live: how long this tablet waits before asking for a PIN. */
+  onIdle?: (seconds: number) => void;
+  /** Owners, live: rename this tablet. */
+  onRenameDevice?: () => void;
   /** Owners: a selling setting changed (saved as it changes). */
   onSettings?: (patch: ShopSettingsPatch) => void;
   /** Owners: an amount to change, in a sheet. */
   onAmount?: (edit: AmountEdit) => void;
+}
+
+/** Counter and Devices on a live shop. */
+function liveCounterDevices(key: 'counter' | 'devices', l: LiveShop, a: Actions): ReactNode {
+  if (key === 'counter') {
+    const b = l.settings?.breaks;
+    return (
+      <Cell label="Shifts" det="Shop-wide" foot={<FootDet>Home shows who is due a break from this. It is not a timesheet.</FootDet>}>
+        <Main>
+          <Rows link>
+            <Kv k="Break" v={b ? `${b.minutes} minutes, over ${b.afterMinutes % 60 ? `${b.afterMinutes} minutes` : `${b.afterMinutes / 60} hours`}` : '—'} go onTap={a.onBreaks} />
+          </Rows>
+          {l.device && (
+            <>
+              <p className="c-label c-st-fl">This tablet asks for a PIN after</p>
+              <Chips
+                options={IDLE.map((s) => minutes(s))}
+                value={Math.max(0, IDLE.indexOf(l.device.idleLockSeconds))}
+                onPick={(i) => a.onIdle?.(IDLE[i]!)}
+              />
+            </>
+          )}
+        </Main>
+      </Cell>
+    );
+  }
+  const readers = l.readers ?? [];
+  return (
+    <>
+      <Cell
+        label="Paired"
+        det={String(readers.length)}
+        foot={
+          <FootLine det="Printing uses this tablet’s print dialog: AirPrint, or a printer it can reach.">
+            <Btn onClick={a.onAddReader}>Pair a reader</Btn>
+          </FootLine>
+        }
+      >
+        <Main>
+          {readers.length ? (
+            <Rows>
+              {readers.map((r) => (
+                <Kv key={r.id} k={r.label} v={r.type === 'smart' ? 'Smart reader' : r.type === 'm2' ? 'Stripe Reader M2' : 'Tap to Pay'} ink />
+              ))}
+            </Rows>
+          ) : (
+            <p className="c-det">No card reader yet.</p>
+          )}
+        </Main>
+      </Cell>
+      {l.device && (
+        <Cell label="This tablet" det="Enrolled">
+          <Main>
+            <Rows link>
+              <Kv k="Name" v={l.device.label} go onTap={a.onRenameDevice} />
+              <Kv k="Enrolled" v={l.device.enrolledAt ? new Date(l.device.enrolledAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'} ink />
+            </Rows>
+          </Main>
+        </Cell>
+      )}
+    </>
+  );
 }
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
@@ -461,6 +546,7 @@ const LOCKED: Record<Exclude<CardAvailability, { available: true }>['reason'], {
 
 /** A pane's cells. */
 export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
+  if (!d.preview && (key === 'counter' || key === 'devices')) return d.liveShop ? liveCounterDevices(key, d.liveShop, a) : null;
   // A live shop's own settings, never the reference's example figures, even while they load.
   if (!d.preview && (key === 'tax' || key === 'tips' || key === 'discounts' || key === 'closing')) return d.live ? liveSelling(key, d.live, a) : null;
   switch (key) {
@@ -471,17 +557,21 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
             label="Your listing"
             det="In Clear Partners"
             foot={
-              <FootLine det="Members see it with a Credit tag.">
-                <Btn>Preview as a member</Btn>
-              </FootLine>
+              d.preview ? (
+                <FootLine det="Members see it with a Credit tag.">
+                  <Btn>Preview as a member</Btn>
+                </FootLine>
+              ) : (
+                <FootDet>Members see it with a Credit tag.</FootDet>
+              )
             }
           >
             <Main>
               <Rows link>
-                <Kv k="Name" v={d.shop} go />
-                <Kv k="What you do" v={d.category} go />
-                <Kv k="One line" v={d.oneLine} go />
-                <Kv k="Photo" v={d.photo} go />
+                <Kv k="Name" v={d.shop} go onTap={a.onEditShop && (() => a.onEditShop!('name'))} />
+                <Kv k="What you do" v={d.category} go onTap={a.onEditShop && (() => a.onEditShop!('category'))} />
+                <Kv k="One line" v={d.oneLine} go onTap={a.onEditShop && (() => a.onEditShop!('oneLine'))} />
+                <Kv k="Photo" v={d.photo} go={d.preview} />
               </Rows>
             </Main>
           </Cell>
@@ -505,13 +595,13 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
               </Main>
             </Cell>
           )}
-          {d.preview && (
+          {(d.preview || a.onEditShop) && (
             <Cell label="Contact" det="On your listing">
               <Main>
                 <Rows link>
-                  <Kv k="Address" v={d.address} go />
-                  <Kv k="Phone" v={d.phone} go />
-                  <Kv k="Email" v={d.email} go />
+                  <Kv k="Address" v={d.address} go onTap={a.onEditShop && (() => a.onEditShop!('address'))} />
+                  <Kv k="Phone" v={d.phone} go onTap={a.onEditShop && (() => a.onEditShop!('phone'))} />
+                  <Kv k="Email" v={d.email} go onTap={a.onEditShop && (() => a.onEditShop!('email'))} />
                 </Rows>
               </Main>
             </Cell>

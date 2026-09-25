@@ -3,13 +3,16 @@ import { merchantDb } from '../config/merchantDb.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
 import { connectorForShop } from '../services/merchant/cards/registry.js';
-import { getSettings, getShop, ShopError, updateSettings, updateShop } from '../services/merchant/shop/shopService.js';
+import { getHours, getSettings, getShop, saveHours, ShopError, updateSettings, updateShop } from '../services/merchant/shop/shopService.js';
 
 /**
  * The shop and its settings (card-processing prompt, Phase 5), mounted on /api/merchant.
  *
  *   GET   /shop        any signed-in staff: name, address, timezone, card plan, Clear tier
- *   PATCH /shop        owners: address (sets sales tax and the reader location) and timezone
+ *   PATCH /shop        owners: address (sets sales tax and the reader location), timezone, name and
+ *                      the listing (what the shop does, a line about it, phone, email)
+ *   GET   /shop/hours  any signed-in staff: the usual week and the dates that differ
+ *   PUT   /shop/hours  owners
  *   GET   /settings    any signed-in staff: the counter's screens follow these (payment methods,
  *                      tips, offline cards and their limit, discount limits)
  *   PATCH /settings    owners
@@ -46,6 +49,22 @@ router.patch('/shop', requireMerchant, requireOwner, async (req: Request, res: R
   if (!d) return;
   try {
     res.json(await updateShop(d, await connectorForShop(d, req.merchant!.merchant), { merchant: req.merchant!.merchant, patch: req.body }));
+  } catch (error) {
+    refuse(res, error);
+  }
+});
+
+router.get('/shop/hours', requireMerchant, async (req: Request, res: Response) => {
+  const d = await db(res);
+  if (!d) return;
+  res.json(await getHours(d, req.merchant!.merchant));
+});
+
+router.put('/shop/hours', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+  const d = await db(res);
+  if (!d) return;
+  try {
+    res.json(await saveHours(d, { merchant: req.merchant!.merchant, hours: req.body }));
   } catch (error) {
     refuse(res, error);
   }

@@ -180,4 +180,18 @@ export const deviceStore = {
     );
     return (rowCount ?? 0) > 0;
   },
+
+  /** How long the tablet sits idle before it asks for a PIN again: a minute to an hour. */
+  async setIdleLock(id: string, merchant: string, seconds: number): Promise<boolean> {
+    const pool = getMerchantPool();
+    if (!pool) return false;
+    await ensureMerchantSchema();
+    if (!Number.isInteger(seconds) || seconds < 60 || seconds > 3600) return false;
+    const { rowCount } = await pool.query(
+      `UPDATE ${MERCHANT_SCHEMA}.devices SET idle_lock_seconds = $3
+        WHERE id = $1 AND merchant = $2 AND revoked_at IS NULL`,
+      [id, normalizeMerchant(merchant), seconds],
+    );
+    return (rowCount ?? 0) > 0;
+  },
 };
