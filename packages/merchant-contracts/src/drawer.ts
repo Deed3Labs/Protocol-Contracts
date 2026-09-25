@@ -51,6 +51,12 @@ export type OwnCount = z.infer<typeof OwnCount>;
 export const CountsView = z.discriminatedUnion('state', [
   z.object({ state: z.literal('awaiting_first') }),
   z.object({ state: z.literal('awaiting_second'), mine: OwnCount.nullable() }),
+  /**
+   * Both counts are in and they don't agree. Both figures show (the counters see how far apart they
+   * are), but the expected total stays hidden until two counts agree, or a recount could be steered
+   * toward it.
+   */
+  z.object({ state: z.literal('disagree'), counts: z.tuple([OwnCount, OwnCount]) }),
   z.object({
     state: z.literal('compared'),
     /** Both counts; one when the shop has two counts turned off. */
@@ -58,7 +64,7 @@ export const CountsView = z.discriminatedUnion('state', [
     expectedCents: NonNegativeCents,
     /** Counted − expected: negative is short. */
     differenceCents: Cents,
-    /** The two counts agree with each other. When they don't, count again. */
+    /** Always true here: counts that disagree are the `disagree` state. Kept for the screens that read it. */
     countsAgree: z.boolean(),
     /** A difference is signed off by an owner or manager who wasn't the first counter. */
     signoffNeeded: z.boolean(),

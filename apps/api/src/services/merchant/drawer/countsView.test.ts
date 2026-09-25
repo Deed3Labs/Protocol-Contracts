@@ -44,14 +44,16 @@ describe('blind counts', () => {
     expect(v).toMatchObject({ state: 'compared', expectedCents: 21179, differenceCents: -379, countsAgree: true, signoffNeeded: true });
   });
 
-  test('counts that disagree are counted again before anyone signs', () => {
+  test('counts that disagree see each other but never the expected total', () => {
     const v = countsView({
       live: [row({}), row({ id: 'cnt_2', counter: 'stf_luis', second: true, total_cents: 21000 })],
       viewer: 'stf_jen',
       twoCounts: true,
-      expectedCents: () => 21179,
+      expectedCents: never,
     });
-    expect(v).toMatchObject({ state: 'compared', countsAgree: false, signoffNeeded: false });
+    expect(v.state).toBe('disagree');
+    expect(JSON.stringify(v)).not.toContain('21179');
+    expect(v).not.toHaveProperty('expectedCents');
   });
 
   test('with two counts off, one count is compared straight away', () => {

@@ -40,6 +40,8 @@ export function countsView(input: {
   viewer: string;
   twoCounts: boolean;
   expectedCents: () => number;
+  /** A difference already signed off needs no more. */
+  signed?: boolean;
 }): CountsView {
   const first = input.live.find((r) => !r.second);
   const second = input.live.find((r) => r.second);
@@ -52,6 +54,11 @@ export function countsView(input: {
   }
 
   const counts = second ? ([own(first), own(second)] as const) : ([own(first)] as const);
+  // Disagreeing counts see each other, never what the drawer should hold: a recount mustn't be
+  // steered toward it.
+  if (second && Number(first.total_cents) !== Number(second.total_cents)) {
+    return CountsView.parse({ state: 'disagree', counts: [own(first), own(second)] });
+  }
   const expected = input.expectedCents();
   // The figure that stands is the later count; the two have to agree before a difference is signed.
   const counted = counts[counts.length - 1]!.totalCents;
@@ -63,6 +70,6 @@ export function countsView(input: {
     expectedCents: expected,
     differenceCents,
     countsAgree,
-    signoffNeeded: countsAgree && differenceCents !== 0,
+    signoffNeeded: countsAgree && differenceCents !== 0 && !input.signed,
   });
 }
