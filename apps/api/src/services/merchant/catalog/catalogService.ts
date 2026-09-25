@@ -10,6 +10,7 @@ import {
 } from '@clear/merchant-contracts';
 import { z } from 'zod';
 import type { Db, Queryable } from '../../../db/db.js';
+import { markSetup } from '../setup/setupService.js';
 
 /**
  * Items, their options, stock, reorders and discount codes (card-processing prompt, Phase 6;
@@ -385,6 +386,7 @@ export async function createDiscountCode(db: Db, input: { merchant: string; staf
     if (String((error as { code?: string }).code) === '23505') throw new CatalogError(`${code} is already a code`, 'code_taken');
     throw error;
   }
+  await markSetup(db, input.merchant, 'tips');
   const { rows } = await db.query<CodeRow>(`${CODE_SELECT} WHERE c.id = $1`, [id]);
   return toCode(rows[0]!);
 }

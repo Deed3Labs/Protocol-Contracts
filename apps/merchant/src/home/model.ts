@@ -1,6 +1,7 @@
 import { countsAsVolume, dollars, type StaffRole } from '@clear/domain';
 import type { MerchantCharge, PayoutPosition, StaffMember } from '@/data/apiClient';
-import type { Order, ShiftNow } from '@clear/merchant-contracts';
+import type { CatalogItem, Order, Reorder, SetupProgress, ShiftNow } from '@clear/merchant-contracts';
+import { fromCatalog, level, type InvItem } from '../inventory/model';
 
 /**
  * What Home shows, as data.
@@ -173,6 +174,34 @@ export function ago(iso: string, now = Date.now()): string {
 }
 
 // ---- From the API ---------------------------------------------------------------------------
+
+/** "Jen", "Jen and Luis", "Jen, Luis and Ana" */
+const names = (list: string[]) => (list.length < 2 ? (list[0] ?? '') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`);
+
+/**
+ * Set up the till from what the shop has done (`GET /setup`). Nothing once every step is done:
+ * the list goes, as the Onboarding reference says.
+ */
+export function tillFromSetup(p: SetupProgress): TillItem[] | undefined {
+  const team = p.team.map(firstName);
+  const rows: TillItem[] = [
+    { key: 'stripe', t: 'Connect Stripe to take cards', det: 'Settings › Payments', done: p.stripe },
+    { key: 'reader', t: 'Pair a card reader', det: 'An M2, a smart reader, or a phone', done: p.reader },
+    { key: 'items', t: 'Add what you sell', det: 'One at a time, or import a spreadsheet', done: p.items },
+    { key: 'team', t: 'Your team', det: team.length ? `${names(team)}, added` : 'Counter staff and a manager', done: team.length > 0 },
+    { key: 'cash', t: 'Set starting cash', det: 'For the drawer, $150.00 is common', done: p.cash },
+    { key: 'tips', t: 'Tips and discounts', det: 'Optional', done: p.tips },
+  ];
+  return rows.every((r) => r.done) ? undefined : rows;
+}
+
+/** Running low (owners and managers): stocked items at or under their reorder line, or out. */
+export function runningLowFrom(catalog: CatalogItem[], reorders: Reorder[] = []): InvItem[] {
+  return catalog
+    .filter((c) => !c.archivedAt && c.stockTracked)
+    .map((c) => fromCatalog(c, reorders))
+    .filter((i) => level(i) === 'low' || level(i) === 'out');
+}
 
 /** "4h 12m", "12m" */
 export function duration(minutes: number): string {
