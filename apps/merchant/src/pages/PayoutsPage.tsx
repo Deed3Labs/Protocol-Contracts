@@ -6,6 +6,8 @@ import { OwnerSignIn } from '@/auth/OwnerSignIn';
 import { OneColumn } from '@/brand/ui';
 import { api, type PayoutPosition } from '@/data/apiClient';
 import { useMerchantApi } from '@/data/merchantApi';
+import { ExplainFlagSheet, ReconcileCell } from '@/payouts/reconcile';
+import type { ReconciliationFlag } from '@clear/merchant-contracts';
 import { useApi } from '@/data/useApi';
 import { cardRows, drawerCash } from '@/payouts/live';
 import GrantSignerPanel from '@/payouts/GrantSignerPanel';
@@ -100,6 +102,9 @@ export default function PayoutsPage() {
   const reports = useApi(() => (preview ? Promise.resolve(null) : merchant.dayReports(month)), [preview]);
   const bankDeps = useApi(() => (preview ? Promise.resolve(null) : merchant.bankDeposits()), [preview]);
   const roster = useApi(() => (preview ? Promise.resolve(null) : merchant.staff()), [preview]);
+  // The nightly reconciliation: what doesn't match Stripe, for an owner or manager to look at.
+  const recon = useApi(() => (preview ? Promise.resolve(null) : merchant.reconciliation()), [preview]);
+  const [explaining, setExplaining] = useState<ReconciliationFlag | null>(null);
 
   const stages: Stage[] = ['from', 'to', 'sending', 'done'];
   const [open, setOpen] = useState<Open>(() =>
@@ -164,6 +169,8 @@ export default function PayoutsPage() {
     />
   );
 
+  const checked = recon.data && <ReconcileCell r={recon.data} onExplain={setExplaining} />;
+
   return (
     <>
       <PayoutsHero m={m} />
@@ -224,6 +231,7 @@ export default function PayoutsPage() {
           {cash}
           {tips}
           {payouts}
+          {checked}
         </div>
       ) : (
         <div className="c-slab">
@@ -232,6 +240,7 @@ export default function PayoutsPage() {
             {sits}
             {cash}
             {tips}
+            {checked}
           </div>
         </div>
       )}
@@ -264,6 +273,17 @@ export default function PayoutsPage() {
       )}
       {open === 'breakdown' && card?.card && <BreakdownSheet r={card} onClose={() => setOpen(null)} />}
       {open === 'receive' && <ReceiveSheet name="Mike’s Tire LLC" routing="084106768" account="9600000418824" onClose={() => setOpen(null)} />}
+      {explaining && (
+        <ExplainFlagSheet
+          f={explaining}
+          onSave={async (note) => {
+            await merchant.explainFlag(explaining.id, { note });
+            setExplaining(null);
+            recon.reload();
+          }}
+          onClose={() => setExplaining(null)}
+        />
+      )}
       {open === 'destinations' && <WhereWithdrawalsGoSheet bank={bank ?? 'Bank account'} onAdd={preview ? () => setOpen('add-bank') : undefined} onClose={() => setOpen(null)} />}
       {open === 'add-bank' && <AddBankSheet onClose={() => setOpen(null)} />}
     </>

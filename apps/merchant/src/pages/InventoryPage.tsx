@@ -8,6 +8,7 @@ import { FlowTop } from '@/shell/chrome';
 import { PhoneBack } from '@/charge/phone';
 import { CATALOG, type Item } from '@/charge/model';
 import { useMerchantApi } from '@/data/merchantApi';
+import { ImportLiveSheet } from '@/inventory/ImportLive';
 import { errorSentence, useApi } from '@/data/useApi';
 import { fromCatalog, GOODYEAR_ON_ORDER, INVENTORY, SHELF_AT_COST_CENTS, shelfAtCost, type InvItem } from '@/inventory/model';
 import {
@@ -181,7 +182,15 @@ export default function InventoryPage() {
       )}
       {sheet === 'add' && <AddItemSheet onClose={close} onAdd={onAdd} initial={screen === 'add' ? { name: 'Pirelli Scorpion AS Plus 3', detail: '235/65R17', price: '$176.00', shelf: '8', reorder: '4' } : undefined} />}
       {sheet === 'add-service' && <AddItemSheet initialType="service" onClose={close} onAdd={onAdd} initial={preview ? { name: 'Tire rotation', price: '$35.00' } : undefined} />}
-      {sheet === 'import' && (
+      {sheet === 'import' && !preview && owner && (
+        <ImportLiveSheet
+          existing={catalog.data ?? []}
+          onImport={(rows) => api.importCatalog({ rows })}
+          onDone={() => catalog.reload()}
+          onClose={close}
+        />
+      )}
+      {sheet === 'import' && preview && (
         <ImportSheet
           file="stock-sept.csv"
           rows={42}
@@ -194,8 +203,7 @@ export default function InventoryPage() {
             ['Qty', 'On the shelf'],
           ]}
           matches={3}
-          // A spreadsheet import has no endpoint yet: items are added one at a time.
-          onImport={preview ? close : undefined}
+          onImport={close}
           onClose={close}
         />
       )}
@@ -298,7 +306,7 @@ export default function InventoryPage() {
   if (!items.length) {
     return (
       <>
-        <InventoryEmpty onAdd={owner || preview ? () => setSheet('add') : undefined} onImport={() => setSheet('import')} />
+        <InventoryEmpty onAdd={owner || preview ? () => setSheet('add') : undefined} onImport={owner || preview ? () => setSheet('import') : undefined} />
         {sheets}
       </>
     );

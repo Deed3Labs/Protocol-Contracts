@@ -90,8 +90,8 @@ Decided 2026-09-24.
 - **"Items None yet" is "—"** on the empty state, by the em-dash rule.
 - **Search in portrait stays typeable.** The reference collapses it to an icon there.
 - **What a live shop sees.** The shop's catalogue and stock from the API: adding, editing and
-  archiving items, their options, stock adjustments and history, reorders and receiving them.
-  Importing a spreadsheet isn't built yet. Every frame is in development at `/inventory?preview=1&screen=<frame>`.
+  archiving items, their options, stock adjustments and history, reorders and receiving them,
+  and importing a spreadsheet (below). Every frame is in development at `/inventory?preview=1&screen=<frame>`.
 - **Running low sits on Home** for owners and managers, as the Inventory reference asks
   (preview: `/?preview=1&home=lowStock`).
 
@@ -150,8 +150,8 @@ Decided 2026-09-24.
 - **The payout detail** (a row's Statement) isn't drawn. It takes a back row and one cell.
 - **What a live shop sees.** The figure, the cycle, where it sits, the cash account and its
   payouts, all from the payout position; Withdraw and the signer grant are live. Card deposits,
-  the drawer's cash and tips, receiving by ACH, and adding or choosing a bank have no backend
-  yet. Preview: `/payouts?preview=1&screen=none|paying|year|counter|withdraw|from|to|sending|done|
+  the drawer's cash and tips, and the nightly reconciliation ("Checked against Stripe", below).
+  Receiving by ACH, and adding or choosing a bank, have no backend yet. Preview: `/payouts?preview=1&screen=none|paying|year|counter|withdraw|from|to|sending|done|
   breakdown|receive|destinations|add-bank`; `&live=1` for the live path.
 
 ## Settings
@@ -587,6 +587,39 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **Offline**: a line above New charge while the tablet has no connection: cash still works; card
   and Clear wait. Offline cards aren't built (`OFFLINE_BUILT` in `reader/platform.ts`).
 - Walk-through: `e2e/new-charge-extras.spec.ts`, with the camera replaced by a canvas showing a QR.
+
+## Inventory: importing a spreadsheet
+
+- **The tablet reads the CSV; the server imports it.** Choosing a file reads it on the tablet
+  (quoted fields, commas and line breaks in quotes, a BOM), guesses each column from its header
+  (Item → Name, Size → Size or detail, Retail → Price, Cost → You pay, Qty → On the shelf, and
+  Category and Reorder at), and shows the mapping, as the reference draws it. Each column can be
+  changed, or left out; a field is one column, so choosing it for one takes it off another.
+- `POST /catalog/import` (owners and managers) takes the rows and imports them in one transaction.
+  **A row matching an item the shop has** (name and size, ignoring case and spacing) adds its
+  quantity to that item's stock as a delivery ("Imported from a spreadsheet") and changes nothing
+  else, prices included. **Any other row is a new item** and needs a price. A category of
+  Services or Labour makes it a service (no stock, labour's tax); anything else is goods, in Parts
+  when no category is given. The same item twice in one file adds to the one just made.
+- **Rows that can't go in are listed back with why** ("Wiper blades has no price"), and the rest
+  still go in. At most 2,000 rows at a time.
+- A counter shift doesn't see Import, as it doesn't see Add an item.
+- Walk-through: `e2e/inventory-import.spec.ts`.
+
+## Payouts: Checked against Stripe
+
+- **The nightly reconciliation is on Payouts**, for owners and managers, as a cell the reference
+  doesn't draw. "Everything matches" when nothing is open; otherwise each flag in plain words ("A
+  payout that isn't in the books", "Clear's fee on a card sale differs") with its figures ("Expected
+  $0.30 · found $0.29") and since when.
+- **Explain closes a flag with what happened** (`POST /reconciliation/:id/explain`, a note of at
+  least a few words), with who said so. The audit trail records `reconciliation.explained` with
+  the note. Migration 0015 adds the explanation to the flag.
+- **An explained flag stays closed while its figures hold.** If the nightly run finds the same
+  thing at the same figures, it isn't opened again; if the figures move, it's news, and it opens.
+- `GET /reconciliation` now answers `{open, explained}`: what's open, and the last 20 explained,
+  which the cell shows under "Explained".
+- Walk-through: `e2e/reconcile.spec.ts`.
 
 ## Dusk and Dark
 

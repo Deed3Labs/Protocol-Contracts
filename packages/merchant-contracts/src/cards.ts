@@ -124,3 +124,25 @@ export const ClearFeeBill = z.object({
   collectedAt: z.string().nullable(),
 });
 export type ClearFeeBill = z.infer<typeof ClearFeeBill>;
+
+/**
+ * Where the shop's books and the card processor's disagree, found by the nightly reconciliation
+ * (card-processing prompt, Phase 8). Open until a later run no longer finds it, or an owner or
+ * manager explains it; an explained flag stays closed while its figures hold.
+ */
+export const ReconciliationFlag = z.object({
+  id: Id,
+  kind: z.string(),
+  /** What it's about: a tender, a processor charge, a payout, a fee bill. */
+  ref: z.string(),
+  expectedCents: Cents.nullable(),
+  actualCents: Cents.nullable(),
+  detail: z.string(),
+  foundAt: z.string(),
+  explained: z.object({ by: z.string(), note: z.string(), at: z.string() }).nullable(),
+});
+export type ReconciliationFlag = z.infer<typeof ReconciliationFlag>;
+export const Reconciliation = z.object({ open: z.array(ReconciliationFlag), explained: z.array(ReconciliationFlag) });
+export type Reconciliation = z.infer<typeof Reconciliation>;
+export const ExplainFlag = z.object({ note: z.string().trim().min(3, 'Say what happened, in a few words').max(500) });
+
