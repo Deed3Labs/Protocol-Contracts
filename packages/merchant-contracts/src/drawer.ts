@@ -121,6 +121,17 @@ export const DayReport = z.object({
 export type DayReport = z.infer<typeof DayReport>;
 
 /**
+ * What Close the day returns: the locked report, and any card it couldn't capture. The processor
+ * keeps trying those, except a card left on an account the shop disconnected, which only the shop
+ * can capture (the message says where and by when).
+ */
+export const CloseDayResult = z.object({
+  report: DayReport,
+  captureFailures: z.array(z.object({ tenderId: Id, error: z.string() })),
+});
+export type CloseDayResult = z.infer<typeof CloseDayResult>;
+
+/**
  * Overview, for a range of days: what was taken and how, discounts, tips, tax, refunds, the top
  * items, and the day reports. Built from paid orders and their tenders, so it agrees with the day
  * reports and with Charges.
