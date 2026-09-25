@@ -51,6 +51,7 @@ const STATUS: Record<TenderError['code'], number> = {
   reader_offline: 503,
   reader_timeout: 504,
   method_off: 409,
+  disconnected: 409,
 };
 
 const PAYMENT_STATUS: Record<PaymentError['code'], number> = {

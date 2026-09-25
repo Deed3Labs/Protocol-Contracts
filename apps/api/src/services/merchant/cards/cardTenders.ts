@@ -53,7 +53,8 @@ export class TenderError extends Error {
       | 'reader_busy'
       | 'reader_offline'
       | 'reader_timeout'
-      | 'method_off',
+      | 'method_off'
+      | 'disconnected',
   ) {
     super(message);
     this.name = 'TenderError';
@@ -123,15 +124,29 @@ async function lockTender(tx: Queryable, merchant: string, tenderId: string): Pr
  * through the old one, never by sending the old payment's id to the new one.
  */
 async function cardTender(q: Queryable, provider: CardConnectorProvider, merchant: string, tenderId: string): Promise<TenderRow & { account: string }> {
-  const { rows } = await q.query<TenderRow & { account: string; connector_provider: string }>(
-    `SELECT t.*, c.external_account_id AS account, c.provider AS connector_provider FROM payments.tenders t
+  const { rows } = await q.query<TenderRow & { account: string; connector_provider: string; disconnected_at: Date | string | null }>(
+    `SELECT t.*, c.external_account_id AS account, c.provider AS connector_provider, c.disconnected_at FROM payments.tenders t
        JOIN merchant.card_connectors c ON c.id = t.connector_id
       WHERE t.id = $1 AND t.merchant = $2 AND t.method = 'card'`,
     [tenderId, merchant],
   );
-  if (!rows[0]) throw new TenderError('No such card payment', 'not_found');
-  if (rows[0].connector_provider !== provider.provider) throw new TenderError(`This card payment was taken through ${rows[0].connector_provider}, which isn’t available here`, 'wrong_state');
-  return rows[0];
+  const t = rows[0];
+  if (!t) throw new TenderError('No such card payment', 'not_found');
+  if (t.connector_provider !== provider.provider) throw new TenderError(`This card payment was taken through ${t.connector_provider}, which isn’t available here`, 'wrong_state');
+  // The shop disconnected Clear from that account: Clear can't reach the payment any more, so
+  // nothing is sent. Only the shop can act on it, in their own dashboard.
+  if (t.disconnected_at) throw new TenderError(strandedMessage(t, provider), 'disconnected');
+  return t;
+}
+
+/**
+ * What the owner is told about a card left on an account they disconnected: authorised but not
+ * captured, it's theirs to capture in the processor's dashboard before the hold lapses, or it's lost.
+ */
+export function strandedMessage(t: Pick<TenderRow, 'status' | 'authorised_at'>, provider: CardConnectorProvider): string {
+  if (t.status !== 'authorised' || !t.authorised_at) return 'Card processing was disconnected, so Clear can’t reach this payment. Manage it in the Stripe Dashboard.';
+  const lapses = new Date(new Date(t.authorised_at).getTime() + provider.authorisationHoldMs);
+  return `Card processing was disconnected before this card was captured. Capture it in the Stripe Dashboard before ${lapses.toISOString().slice(0, 16).replace('T', ' ')} UTC, or the hold lapses and the sale isn’t paid.`;
 }
 
 /**
@@ -505,7 +520,7 @@ export async function captureCardTender(db: Db, provider: CardConnectorProvider,
 export async function captureDue(
   db: Db,
   provider: CardConnectorProvider,
-  input: { merchant?: string; authorisedBefore?: Date; actor?: string | null },
+  input: { merchant?: string; authorisedBefore?: Date; actor?: string | null; liveOnly?: boolean },
 ): Promise<{ captured: string[]; failed: Array<{ tenderId: string; error: string }> }> {
   // Only this processor's cards: a shop that moved processors still has the old one's holds, and
   // they're captured through the connector that made them.
@@ -515,8 +530,9 @@ export async function captureDue(
       WHERE t.method = 'card' AND t.status = 'authorised' AND c.provider = $3
         AND ($1::text IS NULL OR t.merchant = $1)
         AND ($2::timestamptz IS NULL OR t.authorised_at < $2)
+        AND (NOT $4::boolean OR c.disconnected_at IS NULL)
       ORDER BY t.authorised_at`,
-    [input.merchant ?? null, input.authorisedBefore?.toISOString() ?? null, provider.provider],
+    [input.merchant ?? null, input.authorisedBefore?.toISOString() ?? null, provider.provider, input.liveOnly ?? false],
   );
   const out = { captured: [] as string[], failed: [] as Array<{ tenderId: string; error: string }> };
   for (const r of rows) {

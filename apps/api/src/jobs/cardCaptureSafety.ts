@@ -33,7 +33,9 @@ export async function runSafetyCapture(now = new Date(), providers: CardConnecto
       const got = await tx.query<{ ok: boolean }>('SELECT pg_try_advisory_xact_lock($1) AS ok', [LOCK]);
       if (!got.rows[0]?.ok) return;
       for (const provider of providers) {
-        const r = await captureDue(db, provider, { authorisedBefore: new Date(now.getTime() - safetyCaptureAfterMs(provider)) });
+        // Cards on an account the shop disconnected can't be captured by Clear; the close named
+        // them and the nightly reconciliation flags them, so they aren't retried here every 30m.
+        const r = await captureDue(db, provider, { authorisedBefore: new Date(now.getTime() - safetyCaptureAfterMs(provider)), liveOnly: true });
         if (r.captured.length) console.log(`[card-capture-safety] ${provider.provider}: captured ${r.captured.length} card payment(s) nobody closed`);
         for (const f of r.failed) console.error(`[card-capture-safety] ${f.tenderId}: ${f.error}`);
       }
