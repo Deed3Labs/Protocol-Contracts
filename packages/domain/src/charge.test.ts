@@ -37,9 +37,13 @@ describe('the lifecycle both apps read', () => {
   });
 
   it('nothing can be approved without passing through the member', () => {
+    // Back to approved only from states the member's approval already passed through: a refund asked
+    // for and not given, or a dispute the member lost or withdrew (the dispute page's promise, and
+    // chargeStore.restoreAfterDispute on the server).
+    const undoing = ['refund_requested', 'refund_declined', 'disputed'];
     for (const from of ALL) {
       if (from === 'resolving') continue;
-      expect(canTransition(from, 'approved')).toBe(from === 'refund_requested' || from === 'refund_declined');
+      expect(canTransition(from, 'approved')).toBe(undoing.includes(from));
     }
   });
 
