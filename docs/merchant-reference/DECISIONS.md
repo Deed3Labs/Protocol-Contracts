@@ -398,3 +398,18 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **The mock's day is Sep 22**, the reference day, while the clock is real. A counter shift's
   "Today and yesterday" is empty in the browser after that, so the Playwright checks fix the clock
   to 4:41pm on the reference day.
+
+## Receipts on a live shop
+
+- **Text and Email ask where.** On a real shop, picking Text or Email after a sale opens the send
+  sheet for a number or address. The receipt goes out by the API's send route, and the screen
+  then says where it went ("To (909) 555-0177 · Change"). With nowhere yet, it reads "Asks where
+  to send it · Add". The cash screen has the same links. A text goes by Twilio once the API's
+  notification variables are set (the pilot checklist lists them). An email needs a provider,
+  which isn't wired.
+- **Printing uses the device's own print dialog:** AirPrint on an iPad, the Android print service,
+  or a browser's. A counter printer shows up there if the tablet can reach it. The sheet says
+  "This tablet's printer" instead of a Ready status the app can't know. The paper is the order's
+  own receipt (`GET /orders/:id/receipt`), laid out for 80mm receipt paper, one copy per page, so
+  a refund taken later shows on a reprint. Print waits until the receipt has been read. There is
+  no printer SDK. A native one would replace `lib/printReceipt.ts`.
