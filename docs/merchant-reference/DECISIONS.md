@@ -14,6 +14,7 @@ Decided 2026-09-24.
 | Home, Overview: sales tax collected | $60.45 | **$62.31** | Overview's top items include 4 sets of valve stems ($48). Tax is (756 + 48) × 7.75%. |
 | Charges: the valve-stem cash sale | $39.00 | **$38.79** | 3 × $12.00 plus 7.75% tax. |
 | Charges and Home: cash, paid and taken today | $62.00, $1,899.52 | **$61.79, $1,899.31** | Follow from the valve stems; the drawer expects $211.79, so Close the day's short count is $3.79. |
+| Overview: the month, average, change on August | $5,295.44, $155.75, up $2,113.40 | **$5,295.23, $155.74, up $2,113.19** | The same 21 cents; the close reads "Short $3.79". |
 | Charges: the split sale's card part | settled Saturday | **settled Sunday** | Follows from Sun, Sep 20. |
 | Charges: the split sale | Sat, Sep 20 | **Sun, Sep 20** | The Staff calendar has Mon 21 to Sun 27, so Sep 20 is a Sunday. |
 | Inventory: on order | due Fri, Sep 26 | **due Sat, Sep 26** | Same calendar. |
@@ -94,6 +95,20 @@ Decided 2026-09-24.
   the API exists. Every frame is in development at `/inventory?preview=1&screen=<frame>`.
 - **Running low sits on Home** for owners and managers, as the Inventory reference asks
   (preview: `/?preview=1&home=lowStock`).
+
+## Overview
+
+- **Narrower frames keep the second slab.** The reference's portrait and phone end at "Who can use
+  the tablet"; the tablet adds How it was paid, Top items, Discounts, tips and tax, and the
+  end-of-day reports, drawn later. Narrower, those follow in one column.
+- **Neutral pronouns**: "Everything Jen needs to do her job" is "...to do their job".
+- **Your terms opens the terms sheet** when tapped; Statements opens from the figure's button.
+- **A counter shift** is sent Home by the route, as for Payouts; its drawn page is at
+  `screen=counter`, and its button opens the owner's sign-in.
+- **What a live shop sees.** The month, its trend and the writer line, recent charges, what is
+  owed, fees by plan, the months so far, the terms and the roster, all from the API. The second
+  slab needs card, cash, the catalogue and the drawer, so it's the preview's:
+  `/overview?preview=1&screen=counter|statements|terms`; `&live=1` for the live path.
 
 ## Payouts
 
