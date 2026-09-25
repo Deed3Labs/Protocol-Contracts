@@ -221,6 +221,8 @@ export function teamFromApi(staff: StaffMember[], holderId: string): Mate[] {
       holds: s.id === holderId,
       on: s.id === holderId,
       chargesThisMonth: s.chargesThisMonth,
+      // Hasn't picked a PIN yet (new, or reset): "On first shift" in their sheet.
+      ...(s.pinSet ? {} : { added: 'Not started yet' }),
     }));
 }
 

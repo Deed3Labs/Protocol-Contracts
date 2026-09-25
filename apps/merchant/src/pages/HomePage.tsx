@@ -105,7 +105,7 @@ export default function HomePage() {
       staffId: session.staff.id,
       charges: charges ?? [],
       position,
-      staff: staff ?? (roster.data ? roster.data.map((x) => ({ ...x, chargesThisMonth: 0 })) : null),
+      staff: staff ?? (roster.data ? roster.data.map((x) => ({ ...x, pinSet: true, chargesThisMonth: 0 })) : null),
       orders: ordersToday.data,
       nameOf: (id) => names.get(id) ?? '—',
     });

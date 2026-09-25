@@ -116,6 +116,7 @@ try {
   await check('orders', C.Order.array(), () => jen.orders({ date: today }));
   await check('createCashTender', C.Tender, () => jen.createCashTender(o.id, { amountCents: 10000, tipCents: 0, handedOverCents: 10000, idempotencyKey: key() }));
   await check('tenders', C.Tender.array(), () => jen.tenders(o.id));
+  await check('orderHistory', C.OrderWithTenders.array(), () => jen.orderHistory({ from: today, to: today }));
   // A Clear charge needs the shop registered on chain, which a local database isn't: a clean
   // refusal (a sentence, a 4xx) is the right answer here, and it's recorded as such.
   await check('createClearTender', C.Tender, () =>
