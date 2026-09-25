@@ -73,12 +73,13 @@ Decided 2026-09-24.
 - **What a live shop sees.** The shop's catalogue or a typed amount; Checkout raises the order on
   the server, which works out tax, discounts and the total; the tip from the shop's settings; then
   Clear (its code shown, the member's answer followed), card through the reader, cash into the open
-  drawer, or a split; then the receipt, texted or printed (email waits on a provider). Not built
-  yet: scanning a member's own code, texting a link to pay, and the offline banner, so those two
-  shortcuts aren't shown on a live shop. Every frame is reachable in development at
+  drawer, or a split; then the receipt, texted or printed (email waits on a provider). A Clear
+  charge can also be sent: by scanning the member's own code, or as a text to a number (below).
+  Every frame is reachable in development at
   `/new?preview=1&screen=<frame>` (see `SCREENS` in `NewChargePage.tsx`); add `&as=jen` for a
   counter shift and `&live=1` for the live path.
-- **Custom tip** selects Custom but has no amount entry yet: the reference doesn't draw one.
+- **Custom tip** opens an amount, in dollars, under the presets. The reference draws Custom without
+  one; Continue waits until there's an amount.
 
 ## Inventory
 
@@ -549,4 +550,24 @@ reason for any difference, is written to `e2e/.report/index.html`.
   or under their reorder line, or out. Services never appear. "Mark reordered" opens the item.
 - **The mock:** `&setup=new` is a shop that hasn't set starting cash or tips; with
   `&stripe=not_connected` the till shows four of six to do. Walk-through: `e2e/home-setup.spec.ts`.
+
+## New charge: scan their code, text a link, offline
+
+- **Scanning a member's code sends them the charge.** Their code (Code in the member app) says who
+  they are and no amount: it's their send link, `…/send?to=0x…`. The tablet's camera reads it (the
+  browser's BarcodeDetector, or jsQR where there is none, as the member app does), and
+  `POST /tenders/:id/send {to: 'member', wallet}` makes the waiting charge theirs: it lands in
+  their app, with their text, as if they'd scanned the tablet. Only while nobody has it. A code that
+  isn't a member's (a charge code, a wifi code) says so and the camera keeps looking.
+- **Texting a link** (`{to: 'phone', phone}`) sends the charge's approve link to the number, by the
+  same Twilio text a member gets. US numbers without +1 are taken as US.
+- **Either way the tender doesn't change**: it still follows the member's answer, and the waiting
+  screen says where it went ("Sent to (909) 555-0177", "By text"). Send again repeats it the same
+  way, or asks for a number if it has only been shown. The audit trail records `tender.clear_sent`
+  with the last four digits only.
+- **The camera** asks for the back camera and takes the front one if that's all there is. Refused or
+  missing, the screen says so and offers the number.
+- **Offline**: a line above New charge while the tablet has no connection: cash still works; card
+  and Clear wait. Offline cards aren't built (`OFFLINE_BUILT` in `reader/platform.ts`).
+- Walk-through: `e2e/new-charge-extras.spec.ts`, with the camera replaced by a canvas showing a QR.
 

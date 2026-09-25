@@ -23,7 +23,8 @@ export class PaymentError extends Error {
       | 'not_voidable'
       | 'not_same_day'
       | 'approver_invalid'
-      | 'drawer_closed',
+      | 'drawer_closed'
+      | 'not_sendable',
   ) {
     super(message);
     this.name = 'PaymentError';

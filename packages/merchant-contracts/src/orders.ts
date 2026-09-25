@@ -171,6 +171,19 @@ export const CreateClearTender = z.object({
   idempotencyKey: IdempotencyKey,
 });
 
+/**
+ * Send a waiting Clear charge to someone, rather than have them scan the tablet's code: to a member
+ * whose own code was scanned (their wallet; the charge lands in their app, with a text), or as a
+ * text with the link to a phone number.
+ */
+export const SendClearCharge = z.discriminatedUnion('to', [
+  z.object({ to: z.literal('member'), wallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'That isn’t a member’s code') }),
+  z.object({ to: z.literal('phone'), phone: z.string().trim().min(7).max(24) }),
+]);
+/** Where it went, as the screen says it: "their Clear app", "(909) 555-0177". */
+export const ClearChargeSent = z.object({ to: z.enum(['member', 'phone']), label: z.string() });
+export type ClearChargeSent = z.infer<typeof ClearChargeSent>;
+
 export const RefundItem = z.object({
   orderLineId: Id,
   quantity: z.number().int().min(1),

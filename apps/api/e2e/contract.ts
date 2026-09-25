@@ -142,7 +142,7 @@ try {
   await check('removeDiscount', C.Order, () => jen.removeDiscount(o.id));
   await check('order', C.Order, () => jen.order(o.id));
   await check('orders', C.Order.array(), () => jen.orders({ date: today }));
-  await check('createCashTender', C.Tender, () => jen.createCashTender(o.id, { amountCents: 10000, tipCents: 0, handedOverCents: 10000, idempotencyKey: key() }));
+  const cashTender = await check('createCashTender', C.Tender, () => jen.createCashTender(o.id, { amountCents: 10000, tipCents: 0, handedOverCents: 10000, idempotencyKey: key() }));
   await check('tenders', C.Tender.array(), () => jen.tenders(o.id));
   await check('orderHistory', C.OrderWithTenders.array(), () => jen.orderHistory({ from: today, to: today }));
   // A Clear charge needs the shop registered on chain, which a local database isn't: a clean
@@ -153,6 +153,16 @@ try {
       throw error;
     }),
   );
+
+  // Sending needs a waiting Clear charge, which a shop not active on chain can't raise: a cash
+  // tender is refused as "no such Clear payment", which is the route, the client and the error shape.
+  if (cashTender)
+    await check('sendClearCharge', C.ClearChargeSent, () =>
+      jen.sendClearCharge(cashTender.id, { to: 'phone', phone: '(909) 555-0177' }).catch((error: Error & { status?: number }) => {
+        if (error.status === 404) return Promise.reject(Object.assign(new Error(`refused cleanly (404): ${error.message}`), { expected: true }));
+        throw error;
+      }),
+    );
 
   let cardTender: string | undefined;
   if (withCards && reader) {

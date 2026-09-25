@@ -376,3 +376,14 @@ input.c-st-time {
   -webkit-appearance: none;
   appearance: none;
 }
+
+/* New charge, offline: a line above the flow, not a sheet over it. */
+.c-mc-offline {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 10px var(--s2);
+  margin-bottom: var(--s2);
+  border: 1px solid var(--underway);
+  background: var(--paper-2);
+}

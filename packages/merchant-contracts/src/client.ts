@@ -15,6 +15,7 @@ import type { CatalogItem, DiscountCode, ItemInput, OptionGroup, Reorder, StockA
 import type { AuditEntry, BankDeposit, CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
+  ClearChargeSent,
   CreateClearTender,
   DiscountRequest,
   LineInput,
@@ -23,6 +24,7 @@ import type {
   Refund,
   Receipt,
   RequestRefund,
+  SendClearCharge,
   Tender,
 } from './orders';
 import type { PersonHours, SaveStaffHours, ShiftNow, StaffWeek } from './shifts';
@@ -129,6 +131,8 @@ export interface MerchantApi {
   createCashTender(orderId: string, input: In<typeof CreateCashTender>): Promise<Tender>;
   /** Raises a Clear charge for the tender; the member approves on their phone. */
   createClearTender(orderId: string, input: In<typeof CreateClearTender>): Promise<Tender>;
+  /** A waiting Clear charge, sent to a member whose code was scanned, or as a text to a number. */
+  sendClearCharge(tenderId: string, input: In<typeof SendClearCharge>): Promise<ClearChargeSent>;
   sendReceipt(orderId: string, input: { by: 'text' | 'email' | 'none'; to: string | null }): Promise<void>;
   /** The receipt to print, or to show on screen. */
   receipt(orderId: string): Promise<Receipt>;
