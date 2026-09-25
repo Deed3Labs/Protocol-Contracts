@@ -134,7 +134,7 @@ export function PhoneCode({
     <>
       <PhoneBack title={usd(amountCents)} onExit={onExit} />
       <div className="c-mc-qrwrap">
-        <QRCodeSVG value={url} className="c-mc-qr" size={220} level="M" marginSize={2} bgColor="var(--paper)" fgColor="var(--ink)" role="img" aria-label="Code for this charge" />
+        <QRCodeSVG value={url} className="c-mc-qr" size={220} level="M" marginSize={2} bgColor="var(--qr-paper)" fgColor="var(--qr-ink)" role="img" aria-label="Code for this charge" />
       </div>
       <p className="c-det" style={{ textAlign: 'center' }}>
         Scan with your phone camera

@@ -124,6 +124,9 @@ try {
   await check('saveOptionGroups', C.CatalogItem, () => manager.saveOptionGroups(tire.id, [{ name: 'Road hazard', rule: 'one', required: false, position: 0, options: [{ id: 'new', name: 'Warranty', deltaCents: 2000, position: 0 }] }] as never));
   await check('adjustStock', C.CatalogItem, () => manager.adjustStock({ itemId: tire.id, kind: 'receive', quantity: 8, reason: null }));
   await check('stockHistory', C.StockMovement.array(), () => manager.stockHistory(tire.id));
+  await check('importCatalog', C.ImportResult, () =>
+    manager.importCatalog({ rows: [{ name: 'Michelin Defender2', detail: '225/65R17', category: 'Tires', priceCents: 18900, costCents: 13200, quantity: 2, reorderAt: null }, { name: 'Valve stem', detail: null, category: null, priceCents: 500, costCents: null, quantity: 40, reorderAt: 10 }] }),
+  );
   const reorder = await check('markReordered', C.Reorder, () => manager.markReordered({ itemId: tire.id, quantity: 4, supplier: 'ATD', expectedOn: null }));
   await check('reorders', C.Reorder.array(), () => manager.reorders());
   if (reorder) await check('receiveReorder', C.Reorder, () => manager.receiveReorder(reorder.id, { quantity: 4 }));
@@ -223,6 +226,15 @@ try {
   await check('overview', C.Overview, () => manager.overview(range));
   await check('clearFeeBills', C.ClearFeeBill.array(), () => manager.clearFeeBills());
   await check('audit', C.AuditEntry.array(), () => owner.audit(range));
+  await check('reconciliation', C.Reconciliation, () => manager.reconciliation());
+  // Nothing has run the nightly reconciliation here, so there's no flag to explain: a made-up one is
+  // refused as "not this shop's", which is the route, the client and the error shape.
+  await check('explainFlag', C.ReconciliationFlag, () =>
+    manager.explainFlag('flag_none', { note: 'Checked in Stripe' }).catch((error: Error & { status?: number }) => {
+      if (error.status === 404) return Promise.reject(Object.assign(new Error(`refused cleanly (404): ${error.message}`), { expected: true }));
+      throw error;
+    }),
+  );
   await check('sendStatement', null, () => manager.sendStatement({ from: range.from, to: range.to, email: 'books@example.com' }));
   await check('archiveItem', C.CatalogItem, () => manager.archiveItem(tire.id));
 } finally {
