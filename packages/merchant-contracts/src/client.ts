@@ -19,6 +19,7 @@ import type {
   LineInput,
   Order,
   Refund,
+  Receipt,
   RequestRefund,
   Tender,
 } from './orders';
@@ -101,6 +102,8 @@ export interface MerchantApi {
   /** Raises a Clear charge for the tender; the member approves on their phone. */
   createClearTender(orderId: string, input: In<typeof CreateClearTender>): Promise<Tender>;
   sendReceipt(orderId: string, input: { by: 'text' | 'email' | 'none'; to: string | null }): Promise<void>;
+  /** The receipt to print, or to show on screen. */
+  receipt(orderId: string): Promise<Receipt>;
 
   // ---- Refunds -------------------------------------------------------------------------------------
   /** Card and cash. A Clear refund goes through the existing Clear refund endpoints. */

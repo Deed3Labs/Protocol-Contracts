@@ -53,7 +53,16 @@ export interface TaxApi {
   status(account: string): Promise<'active' | 'setup_needed'>;
   /** `account` null: Clear's own account, used only to look up the rate for an address. */
   calculate(account: string | null, input: { address: TaxAddress; lines: TaxLine[]; inclusive: boolean }): Promise<Calculation>;
+  /**
+   * A paid sale, recorded from its calculation (within 90 days). Throws CalculationUnusable when the
+   * calculation can't be used (expired, or already recorded after a void), so the caller recalculates.
+   */
+  record(account: string, input: { calculationId: string; reference: string; idempotencyKey: string }): Promise<{ transactionId: string }>;
+  /** Undoes a recorded sale in full (a void), or by an after-tax amount (a refund). */
+  reverse(account: string, input: { transactionId: string; reference: string; flatAmountCents?: number; idempotencyKey: string }): Promise<{ transactionId: string }>;
 }
+
+export class CalculationUnusable extends Error {}
 
 const ppm = (percentageDecimal: string) => Math.round(Number(percentageDecimal) * 10_000);
 
@@ -65,10 +74,9 @@ export function stripeTaxApi(stripe: Stripe): TaxApi {
     },
 
     async calculate(account, { address, lines, inclusive }) {
-      const calc = await stripe.tax.calculations.create(
-        {
-          currency: 'usd',
-          line_items: lines.map((l) => ({
+      const params: Stripe.Tax.CalculationCreateParams = {
+        currency: 'usd',
+        line_items: lines.map((l) => ({
             amount: l.amountCents,
             reference: l.reference,
             tax_code: TAX_CODES[l.taxKind],
@@ -79,9 +87,10 @@ export function stripeTaxApi(stripe: Stripe): TaxApi {
             address_source: 'billing',
           },
           expand: ['line_items.data.tax_breakdown'],
-        },
-        account ? { stripeAccount: account } : {},
-      );
+      };
+      // Options only when there are some: stripe-node 18 rejects an empty options object as
+      // "Unknown arguments" (a newer SDK accepts it, which is how a test with the wrong SDK missed it).
+      const calc = account ? await stripe.tax.calculations.create(params, { stripeAccount: account }) : await stripe.tax.calculations.create(params);
       const taxByLine = new Map<string, number>();
       const rateByLine = new Map<string, number | null>();
       for (const li of calc.line_items?.data ?? []) {
@@ -91,6 +100,26 @@ export function stripeTaxApi(stripe: Stripe): TaxApi {
         rateByLine.set(li.reference, notCollecting ? null : parts.reduce((sum, b) => sum + (b.tax_rate_details ? ppm(b.tax_rate_details.percentage_decimal) : 0), 0));
       }
       return { calculationId: calc.id!, taxByLine, rateByLine };
+    },
+
+    async record(account, { calculationId, reference, idempotencyKey }) {
+      try {
+        const tx = await stripe.tax.transactions.createFromCalculation({ calculation: calculationId, reference }, { stripeAccount: account, idempotencyKey });
+        return { transactionId: tx.id };
+      } catch (error) {
+        if (error instanceof Stripe.errors.StripeInvalidRequestError && error.param === 'calculation') throw new CalculationUnusable(error.message);
+        throw error;
+      }
+    },
+
+    async reverse(account, { transactionId, reference, flatAmountCents, idempotencyKey }) {
+      const tx = await stripe.tax.transactions.createReversal(
+        flatAmountCents === undefined
+          ? { mode: 'full', original_transaction: transactionId, reference }
+          : { mode: 'partial', original_transaction: transactionId, reference, flat_amount: -Math.abs(flatAmountCents) },
+        { stripeAccount: account, idempotencyKey },
+      );
+      return { transactionId: tx.id };
     },
   };
 }

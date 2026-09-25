@@ -9,7 +9,7 @@ export interface SendNotificationResult {
 }
 
 type NotificationChannel = 'email' | 'sms';
-type NotificationKind = 'claim_link' | 'otp' | 'charge_alert' | 'refund_alert';
+type NotificationKind = 'claim_link' | 'otp' | 'charge_alert' | 'refund_alert' | 'receipt';
 
 type GenericWebhookResponse = {
   provider?: string;
@@ -176,6 +176,34 @@ class SendNotificationService {
     }
   }
 
+  /** A shop's receipt, by text or email: who, how much, and the link to the whole of it. */
+  async sendReceipt(params: {
+    recipientType: RecipientType;
+    recipientContact: string;
+    merchantName: string;
+    total: string;
+    receiptUrl: string;
+  }): Promise<SendNotificationResult | null> {
+    const channel: NotificationChannel = params.recipientType === 'email' ? 'email' : 'sms';
+    try {
+      const dispatchResult = await this.dispatchNotification({
+        channel,
+        kind: 'receipt',
+        destination: params.recipientContact,
+        payload: { merchantName: params.merchantName, total: params.total, receiptUrl: params.receiptUrl },
+      });
+      return {
+        provider: dispatchResult.provider,
+        providerMessageId: dispatchResult.providerMessageId,
+        destinationHash: hashDestination(params.recipientContact.trim().toLowerCase()),
+        status: dispatchResult.status,
+      };
+    } catch (error) {
+      console.error('[receipt] dispatch failed', error instanceof Error ? error.message : error);
+      return null;
+    }
+  }
+
   private async dispatchNotification(params: {
     channel: NotificationChannel;
     kind: NotificationKind;
@@ -207,6 +235,11 @@ class SendNotificationService {
       // otherwise they keep budgeting for instalments that are no longer coming.
       const { merchantName = '', amount = '' } = params.payload;
       return `${merchantName} refunded ${amount} to your Clear account.\n\nIt has been taken off what you owe. Nothing more is due on it.`;
+    }
+
+    if (params.kind === 'receipt') {
+      const { merchantName = '', total = '', receiptUrl = '' } = params.payload;
+      return `Your receipt from ${merchantName}: ${total}.\n\n${receiptUrl}`;
     }
 
     if (params.kind === 'charge_alert') {

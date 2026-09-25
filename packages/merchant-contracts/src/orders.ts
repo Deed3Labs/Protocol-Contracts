@@ -194,3 +194,40 @@ export const RequestRefund = z.object({
   reason: z.string().max(200).nullable(),
   idempotencyKey: IdempotencyKey,
 });
+
+/**
+ * A receipt: what the customer is sent (by text or email, as a link) and what prints. Built from
+ * the order when it's read, so a later refund shows. Card numbers never appear, only brand and last
+ * four.
+ */
+export const Receipt = z.object({
+  shop: z.object({ name: z.string(), address: z.string().nullable() }),
+  orderNumber: z.number().int().nullable(),
+  businessDate: BusinessDate,
+  issuedAt: Timestamp,
+  lines: z.array(
+    z.object({ name: z.string(), quantity: z.number().int(), options: z.array(z.string()), note: z.string().nullable(), lineCents: Cents, discountCents: NonNegativeCents }),
+  ),
+  discount: z.object({ label: z.string(), amountCents: NonNegativeCents }).nullable(),
+  subtotalCents: Cents,
+  discountCents: NonNegativeCents,
+  taxCents: NonNegativeCents,
+  taxIncluded: z.boolean(),
+  tipCents: NonNegativeCents,
+  totalCents: Cents,
+  tenders: z.array(
+    z.object({
+      method: TenderMethod,
+      amountCents: Cents,
+      tipCents: NonNegativeCents,
+      /** "Visa ending 4242" */
+      card: z.string().nullable(),
+      changeCents: NonNegativeCents.nullable(),
+      status: TenderStatus,
+    }),
+  ),
+  refundedCents: NonNegativeCents,
+});
+export type Receipt = z.infer<typeof Receipt>;
+
+export const SendReceipt = z.object({ by: z.enum(['text', 'email', 'none']), to: z.string().trim().max(200).nullable() });
