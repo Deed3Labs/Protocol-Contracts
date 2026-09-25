@@ -19,7 +19,8 @@
     "lithic:verify-step3": "npm run lithic:build-asa && node scripts/lithic-verify-step3.mjs",
     "lithic:test": "bun test src/services",
     "lithic:verify-step8": "node scripts/lithic-verify-step8.mjs",
-    "lithic:verify-asa": "node scripts/lithic-verify-asa.mjs"
+    "lithic:verify-asa": "node scripts/lithic-verify-asa.mjs",
+    "e2e:live": "bun e2e/live.ts"
   },
   "dependencies": {
     "@clear/domain": "file:../../packages/domain",

@@ -16,6 +16,9 @@ import { entriesFor } from '../ledger/ledgerService.js';
  *   payout_breakdown        a payout whose items don't add up to it (or can't be broken down)
  *   fee_bill_unconfirmed    a monthly fee bill sent for collection an hour ago or more, and not
  *                           seen to land: a person checks the chain before anything is sent again
+ *   card_stranded           a card authorised on an account the shop then disconnected: Clear
+ *                           can't capture it, and the shop must, in the processor's dashboard,
+ *                           before the hold lapses. Found for a shop with no live connector too
  *
  * A flag stays open while each run still finds it, and closes itself when one doesn't.
  */
@@ -92,10 +95,29 @@ export async function findMismatches(q: Queryable, provider: CardConnectorProvid
       WHERE merchant = $1 AND status = 'collecting' AND attempted_at < now() - interval '1 hour'`,
     [input.merchant],
   );
+  flags.push(...(await strandedFlags(q, input.merchant)));
+
   for (const b of stuck) {
     flags.push({ kind: 'fee_bill_unconfirmed', ref: b.id, expectedCents: Number(b.amount_cents), actualCents: null, detail: `Clear's ${b.period} fee bill was sent for collection and not seen to land${b.last_error ? ` (${b.last_error})` : ''}. Check the chain before collecting it again` });
   }
   return flags;
+}
+
+/** Cards authorised on a connector the shop has since disconnected: needs no processor to find. */
+export async function strandedFlags(q: Queryable, merchant: string): Promise<Flag[]> {
+  const { rows } = await q.query<{ id: string; amount_cents: string | number; tip_cents: string | number; authorised_at: Date | string | null; provider: string }>(
+    `SELECT t.id, t.amount_cents, t.tip_cents, t.authorised_at, c.provider FROM payments.tenders t
+       JOIN merchant.card_connectors c ON c.id = t.connector_id
+      WHERE t.merchant = $1 AND t.method = 'card' AND t.status = 'authorised' AND c.disconnected_at IS NOT NULL`,
+    [merchant],
+  );
+  return rows.map((t) => ({
+    kind: 'card_stranded',
+    ref: t.id,
+    expectedCents: Number(t.amount_cents) + Number(t.tip_cents),
+    actualCents: null,
+    detail: `Card payment ${t.id} was authorised${t.authorised_at ? ` at ${new Date(t.authorised_at).toISOString()}` : ''} and then card processing (${t.provider}) was disconnected. Clear can't capture it: the shop captures it in their dashboard before the hold lapses, or the sale goes unpaid`,
+  }));
 }
 
 /** Records a shop's findings: new flags opened, ones still found touched, ones no longer found closed. */
@@ -132,6 +154,19 @@ export async function reconcileAll(db: Db, provider: CardConnectorProvider, opts
     [provider.provider, opts.merchant ?? null],
   );
   const out: Array<{ merchant: string; flags: number; opened: number; resolved: number } | { merchant: string; error: string }> = [];
+  // Shops with no live connector, but a card stranded on the one they disconnected: nothing to ask
+  // the processor, so only that is checked.
+  const { rows: stranded } = await db.query<{ merchant: string }>(
+    `SELECT DISTINCT t.merchant FROM payments.tenders t JOIN merchant.card_connectors c ON c.id = t.connector_id
+      WHERE t.method = 'card' AND t.status = 'authorised' AND c.disconnected_at IS NOT NULL AND c.provider = $1
+        AND ($2::text IS NULL OR t.merchant = $2)
+        AND NOT EXISTS (SELECT 1 FROM merchant.card_connectors l WHERE l.merchant = t.merchant AND l.disconnected_at IS NULL)`,
+    [provider.provider, opts.merchant ?? null],
+  );
+  for (const { merchant } of stranded) {
+    const flags = await strandedFlags(db, merchant);
+    out.push({ merchant, flags: flags.length, ...(await recordFlags(db, merchant, flags)) });
+  }
   for (const c of rows) {
     try {
       const flags = await findMismatches(db, provider, { merchant: c.merchant, account: c.external_account_id, since: opts.since });

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { type Refund, RequestRefund, type Role, tenderTransition } from '@clear/merchant-contracts';
 import type { Db, Queryable } from '../../../db/db.js';
-import { type RefundRow, refundCardTender, type TenderRow } from '../cards/cardTenders.js';
+import { type RefundRow, refundCardTender, TenderError, type TenderRow } from '../cards/cardTenders.js';
 import type { CardConnectorProvider } from '../cards/connector.js';
 import { DrawerError, lockOpenDrawer } from '../drawer/drawerService.js';
 import { post } from '../ledger/ledgerService.js';
@@ -195,7 +195,11 @@ export async function executeRefund(db: Db, deps: RefundDeps, input: { merchant:
   if (!r) throw new RefundError('No such refund', 'not_found');
   if (r.method === 'card') {
     if (!deps.card) throw new RefundError('Card processing isn’t set up here', 'not_refundable');
-    const out = await refundCardTender(db, deps.card, { merchant: input.merchant, refundId: r.id, actor: input.actor });
+    const out = await refundCardTender(db, deps.card, { merchant: input.merchant, refundId: r.id, actor: input.actor }).catch((error) => {
+      // Taken on an account the shop has since disconnected: only they can refund it now.
+      if (error instanceof TenderError && error.code === 'disconnected') throw new RefundError(error.message, 'not_refundable');
+      throw error;
+    });
     return toRefund(out);
   }
   const out = await cashRefund(db, { merchant: input.merchant, refundId: r.id, actor: input.actor });
