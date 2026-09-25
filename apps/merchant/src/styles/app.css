@@ -216,3 +216,19 @@ input.c-field.c-si-in {
     row-gap: var(--s2);
   }
 }
+
+/* Staff on a phone. The reference's slab footers are laid out for its tablet frame
+   (`.mc-tablet .slab .cell > .cfoot`), which the phone frame is not; here every frame is the
+   tablet, so on a phone the footers go back to the phone's own layout. */
+@media (max-width: 519.98px) {
+  :root:where(.c-page-staff) .c-mc-tablet .c-slab .c-cell > .c-cfoot {
+    display: block;
+    min-height: auto;
+  }
+  :root:where(.c-page-staff) .c-mc-tablet .c-slab .c-cell > .c-cfoot > * {
+    width: auto;
+  }
+  :root:where(.c-page-staff) .c-mc-tablet .c-slab .c-cell > .c-cfoot p.c-det {
+    line-height: 1.5;
+  }
+}
