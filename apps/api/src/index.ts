@@ -59,6 +59,7 @@ import { startSweepRunner } from './jobs/sweepRunner.js';
 import { startMemoryMonitor } from './jobs/memoryMonitor.js';
 import { startRelayerGasMonitor } from './jobs/relayerGas.js';
 import { startSessionCleanup } from './jobs/sessionCleanup.js';
+import { startStripeEventProcessor } from './jobs/stripeEventProcessor.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
@@ -391,6 +392,9 @@ async function startServer() {
     } catch (error) {
       console.error('❌ Merchant migrations failed; merchant back-office tables are not ready:', redactError(error));
     }
+    // Acts on the Stripe webhooks the merchant back office stored. After the migrations, which
+    // create the inbox it reads.
+    startStripeEventProcessor();
 
     // Start HTTP server (Express + WebSocket)
     // Bind to 0.0.0.0 to accept connections from Railway/external hosts

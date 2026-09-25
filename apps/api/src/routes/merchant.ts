@@ -19,6 +19,7 @@ import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
 import { onboardMerchant } from '../services/merchant/onboardingService.js';
 import { redeemForMerchant, redemptionConfigured } from '../services/merchant/payoutRedemption.js';
 import { clearSignerStatus, confirmClearSigner, prepareClearSigner } from '../services/merchant/clearSignerGrant.js';
+import merchantCardsRouter from './merchantCards.js';
 
 /**
  * The merchant surface.
@@ -37,6 +38,9 @@ import { clearSignerStatus, confirmClearSigner, prepareClearSigner } from '../se
 // Every handler below is async, and Express 4 lets a rejected one hang the request forever rather
 // than answering. This makes them fail loudly instead — including the ones added after today.
 const merchantRouter = forwardAsyncErrors(Router());
+
+// Card processing: availability and connecting the shop's processor (routes/merchantCards.ts).
+merchantRouter.use('/cards', merchantCardsRouter);
 
 /** Sign-in is scoped to one shop: a four-digit PIN only means anything against a merchant. */
 function merchantOf(req: Request): string {

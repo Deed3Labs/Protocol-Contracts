@@ -276,3 +276,16 @@ export async function runMerchantMigrations(pool: Pool | null = getMerchantPool(
   const [{ migrate }, { poolDb }] = await Promise.all([import('../db/migrate.js'), import('../db/db.js')]);
   return migrate(poolDb(pool));
 }
+
+let dbAdapter: { pool: Pool; db: import('../db/db.js').Db } | null = null;
+
+/** The merchant pool as a `Db`, for the back-office services (ledger, cards, …). Null when unconfigured. */
+export async function merchantDb(): Promise<import('../db/db.js').Db | null> {
+  const pool = getMerchantPool();
+  if (!pool) return null;
+  if (dbAdapter?.pool !== pool) {
+    const { poolDb } = await import('../db/db.js');
+    dbAdapter = { pool, db: poolDb(pool) };
+  }
+  return dbAdapter.db;
+}
