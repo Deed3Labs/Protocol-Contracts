@@ -104,6 +104,16 @@ export interface ClosingUp {
 
 export type Stage = 'dayOne' | 'early' | 'running';
 
+/** A live shop's drawer on Home: where it stands, and the one thing to do next. */
+export interface DrawerPrompt {
+  /** "Drawer open since 8:02am" */
+  t: string;
+  /** "Luis has counted. The second count is someone else's." — never a figure until both are in. */
+  det: string;
+  /** "Open the drawer", "Count the drawer", "Close the day"; none while it's someone else's turn. */
+  cta?: string;
+}
+
 export interface HomeModel {
   role: StaffRole;
   stage: Stage;
@@ -123,6 +133,8 @@ export interface HomeModel {
   closing?: ClosingUp;
   /** Owners and managers: stock under its reorder line (Inventory reference). */
   runningLow?: import('@/inventory/model').InvItem[];
+  /** A live shop: the drawer's panel (the preview draws `closing` and the shift's drawer row instead). */
+  drawer?: DrawerPrompt;
 }
 
 export const sees = (role: StaffRole) => role === 'owner' || role === 'manager';

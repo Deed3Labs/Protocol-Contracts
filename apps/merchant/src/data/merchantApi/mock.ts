@@ -36,7 +36,7 @@ import * as seed from './seed';
  *
  * Switches reach every state in the reference files:
  *   stripe   connected | not_connected            (Settings › Payments, the card screen)
- *   drawer   open | balanced | short | disagree | closed   (Home, counting, Close the day)
+ *   drawer   none | open | balanced | short | disagree | closed   (Home, counting, Close the day)
  *   card     approve | decline                     (what the next tap does)
  *   clear    approve | decline | wait              (what the member does)
  *   delayMs  every call waits this long            (spinners, skeletons)
@@ -45,7 +45,7 @@ import * as seed from './seed';
 
 export interface MockSwitches {
   stripe: 'connected' | 'not_connected';
-  drawer: 'open' | 'balanced' | 'short' | 'disagree' | 'closed';
+  drawer: 'none' | 'open' | 'balanced' | 'short' | 'disagree' | 'closed';
   card: 'approve' | 'decline';
   clear: 'approve' | 'decline' | 'wait';
   delayMs: number;
@@ -287,6 +287,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       }
     }
     orderNumber = seed.ORDERS.length;
+    if (switches.drawer === 'none') return finishSeed();
     const s: DrawerSession = { id: 'drw_reference', shop: shop.id, businessDate: TODAY, openedBy: seed.STAFF_ID.jen, startingCashCents: seed.DRAWER.startingCashCents, openedAt: seed.at(TODAY, '08:00'), closedAt: null, status: 'open' };
     sessions.set(s.id, s);
     const count = (counter: string, totalCents: number, second: boolean, time: string): OwnCount => ({ id: id('cnt'), counter, method: 'total', notes: null, totalCents, second, savedAt: seed.at(TODAY, time) });
@@ -300,6 +301,9 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       const result = closeReport(s.id, seed.STAFF_ID.mike, seed.at(TODAY, '17:45'));
       reports.set(s.id, result);
     }
+    finishSeed();
+  }
+  function finishSeed() {
     cardDeposits.push({ id: 'po_mock_0923', shop: shop.id, externalPayoutId: 'po_mock_0923', arrivalDate: seed.CARD_DEPOSIT.arrivalDate, grossCents: seed.CARD_DEPOSIT.grossCents, processorFeeCents: seed.CARD_DEPOSIT.processorFeeCents, clearFeeCents: seed.CARD_DEPOSIT.clearFeeCents, netCents: seed.CARD_DEPOSIT.grossCents - seed.CARD_DEPOSIT.processorFeeCents - seed.CARD_DEPOSIT.clearFeeCents, chargeCount: 1, status: 'in_transit' });
   }
 

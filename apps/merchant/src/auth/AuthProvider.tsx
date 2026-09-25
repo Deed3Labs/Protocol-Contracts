@@ -63,10 +63,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const as = new URLSearchParams(window.location.search).get('as');
       const who =
         as === 'jen'
-          ? { id: 'preview-jen', name: 'Jen R.', role: 'counter' }
+          ? { id: 'stf_jen', name: 'Jen R.', role: 'counter' }
           : as === 'luis'
-            ? { id: 'preview-luis', name: 'Luis M.', role: 'manager' }
-            : { id: 'preview-owner', name: 'Mike R.', role: 'owner' };
+            ? { id: 'stf_luis', name: 'Luis M.', role: 'manager' }
+            : { id: 'stf_mike', name: 'Mike R.', role: 'owner' };
+      // The same people as the mock API's seed (data/merchantApi/seed.ts), so "whose count is
+      // this" means the same thing on both sides of the preview.
       setSession({
         staff: { ...who, hasPin: true, active: true } as Staff,
         method: 'pin',
