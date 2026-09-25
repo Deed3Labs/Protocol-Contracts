@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'react';
-import type { MerchantApi, Reader, Shop, ShopHours, ShopSettings } from '@clear/merchant-contracts';
+import type { MerchantApi, Reader, Shop, ShopHours, ShopSettings, ShopSettingsPatch, TaxKind } from '@clear/merchant-contracts';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { seesMoney } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
@@ -13,8 +13,8 @@ import { useLayout } from '@/lib/useBreakpoint';
 import { roleLabel } from '@/shell/chrome';
 import { currentPlatform, previewPlatform } from '@/reader';
 import { useShiftActions } from '@/shell/shiftActions';
-import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type ReaderRow, type Section, type SettingsData, type ShopField } from '@/settings/panes';
-import { AddDeviceSheet, AddReaderSheet, Btn, Cell, ChangeAccountSheet, clock12, ConfirmLeaveSheet, DateHoursSheet, FootLine, IndexCell, Kv, LeaveSheet, Main, NewCodeSheet, Pair, PaneHead, Rail, Rows, TextSheet, WeekHoursEdit, Who } from '@/settings/views';
+import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type AmountEdit, type ReaderRow, type Section, type SettingsData, type ShopField } from '@/settings/panes';
+import { AddDeviceSheet, AddReaderSheet, AmountSheet, Btn, Cell, ChangeAccountSheet, clock12, ConfirmLeaveSheet, DateHoursSheet, FootLine, IndexCell, Kv, LeaveSheet, Main, NewCodeSheet, Pair, PaneHead, Rail, Rows, TextSheet, WeekHoursEdit, Who } from '@/settings/views';
 
 /**
  * Settings — docs/merchant-reference/clear-merchant-settings.html.
@@ -126,6 +126,29 @@ export default function SettingsPage() {
       setEditBusy(false);
     }
   };
+  // Tax, Tips, Discounts and Closing: the shop's own, for an owner.
+  const live = !preview && owner;
+  const tax = useApi(() => (live ? merchant.taxStatus() : Promise.resolve(null)), [live]);
+  const codes = useApi(() => (live ? merchant.discountCodes() : Promise.resolve(null)), [live]);
+  const catalog = useApi(() => (live ? merchant.catalog() : Promise.resolve(null)), [live]);
+  const roster = useApi(() => (live ? api.roster() : Promise.resolve(null)), [live]);
+  const [edit, setEdit] = useState<AmountEdit | null>(null);
+  const [saveBusy, setSaveBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  /** Save a change to the shop's settings, then read them again: the server's are what show. */
+  const saveSettings = async (patch: ShopSettingsPatch, after?: () => void) => {
+    setSaveBusy(true);
+    setSaveError(null);
+    try {
+      await merchant.updateSettings(patch);
+      after?.();
+    } catch (e) {
+      setSaveError(errorSentence(e));
+    } finally {
+      setSaveBusy(false);
+      reloadSettings();
+    }
+  };
 
   const me = { name: session?.staff.name ?? '', role: roleLabel(role) };
   // The preview is the installed app, as the reference draws it; `&platform=web` shows a browser's list.
@@ -147,6 +170,19 @@ export default function SettingsPage() {
               settings: shopSettings ?? null,
               readers: readers ?? null,
               device: device ? { label: device.label, enrolledAt: devices?.find((x) => x.id === device.id)?.enrolledAt ?? '', idleLockSeconds: device.idleLockSeconds } : null,
+              }
+            : null,
+        live: shopSettings
+          ? {
+              settings: shopSettings,
+              tax: tax.data,
+              codes: codes.data,
+              kinds: catalog.data
+                ? catalog.data.filter((i) => !i.archivedAt).reduce((k, i) => ({ ...k, [i.taxKind]: k[i.taxKind] + 1 }), { goods: 0, labour: 0, food: 0, exempt: 0 } as Record<TaxKind, number>)
+                : null,
+              address: shopRecord.data?.address ? `${shopRecord.data.address.line1}, ${shopRecord.data.address.city}, ${shopRecord.data.address.region}` : null,
+              region: shopRecord.data?.address?.region ?? null,
+              closers: (roster.data ?? []).filter((p) => p.role !== 'counter').map((p) => p.name).join(', ') || '—',
             }
           : null,
       };
@@ -213,6 +249,8 @@ export default function SettingsPage() {
     onBreaks: liveOwner ? () => (setEditError(null), setTextEdit('breaks')) : undefined,
     onIdle: liveOwner && device ? (seconds: number) => void change(() => api.setIdleLock(device.id, seconds), () => void refresh()) : undefined,
     onRenameDevice: liveOwner && device ? () => (setEditError(null), setTextEdit('device')) : undefined,
+    onSettings: live ? (patch: ShopSettingsPatch) => void saveSettings(patch) : undefined,
+    onAmount: live ? (e: AmountEdit) => (setSaveError(null), setEdit(e)) : undefined,
     onWay:
       preview || !shopSettings
         ? undefined
@@ -228,9 +266,10 @@ export default function SettingsPage() {
   };
 
   const meta = current ? (current === 'you' ? YOU : SECTIONS.find((s) => s.key === current)!) : null;
-  const paneError = current === 'payments' && payError ? (
+  const paneMessage = current === 'payments' ? payError : !edit && open !== 'code' ? saveError : null;
+  const paneError = paneMessage ? (
     <p className="c-det" role="alert" style={{ color: 'var(--absent)', marginBottom: 'var(--s2)' }}>
-      {payError}
+      {paneMessage}
     </p>
   ) : null;
   const body = hours ? (
@@ -259,7 +298,6 @@ export default function SettingsPage() {
       {open === 'confirm' && (
         <ConfirmLeaveSheet payout={['Paid to Chase ••4417 on Oct 14', '$4,218.91']} waiting="2 · $1,350.00" names="Nina P. and Dana R." onStay={close} />
       )}
-      {open === 'code' && <NewCodeSheet onCreate={preview ? close : undefined} onClose={close} />}
       {textEdit && (
         <ShopTextSheet
           what={textEdit}
@@ -274,6 +312,31 @@ export default function SettingsPage() {
           merchant={merchant}
         />
       )}
+      {open === 'code' &&
+        (preview ? (
+          <NewCodeSheet onDone={close} onClose={close} />
+        ) : (
+          <NewCodeSheet
+            categories={[...new Set((catalog.data ?? []).filter((i) => !i.archivedAt).map((i) => i.category))]}
+            busy={saveBusy}
+            error={saveError}
+            onCreate={async (c) => {
+              setSaveBusy(true);
+              setSaveError(null);
+              try {
+                await merchant.createDiscountCode(c);
+                codes.reload();
+                close();
+              } catch (e) {
+                setSaveError(errorSentence(e));
+              } finally {
+                setSaveBusy(false);
+              }
+            }}
+            onClose={close}
+          />
+        ))}
+      {edit && shopSettings && <AmountEditSheet edit={edit} s={shopSettings} busy={saveBusy} error={saveError} onSave={(patch) => void saveSettings(patch, () => setEdit(null))} onClose={() => setEdit(null)} />}
       {open === 'reader' && (
         <AddReaderSheet
           app={platform !== 'web'}
@@ -513,6 +576,76 @@ function ShopTextSheet({
       det={what === 'name' ? undefined : 'On your listing in Clear Partners. Leave it empty to leave it off.'}
       fields={[{ key: 'v', label: f.label, value: f.value ?? '', max: f.max, inputMode: f.inputMode, required: f.required }]}
       onSave={(v) => onSave(() => merchant.updateShop(what === 'name' ? { name: v.v!.trim() } : { listing: { [what]: v.v!.trim() || null } }))}
+    />
+  );
+}
+
+/** The sheet for an amount a setting holds: starting cash, a discount limit, a tip preset. */
+function AmountEditSheet({
+  edit,
+  s,
+  busy,
+  error,
+  onSave,
+  onClose,
+}: {
+  edit: AmountEdit;
+  s: ShopSettings;
+  busy: boolean;
+  error: string | null;
+  onSave: (patch: ShopSettingsPatch) => void;
+  onClose: () => void;
+}) {
+  if (edit.kind === 'startingCash')
+    return (
+      <AmountSheet
+        title="Starting cash"
+        det="What goes in the drawer each morning, and what's left in it at close for tomorrow."
+        unit="$"
+        initial={s.startingCashCents}
+        max={1_000_000}
+        busy={busy}
+        error={error}
+        onSave={(cents) => onSave({ startingCashCents: cents })}
+        onClose={onClose}
+      />
+    );
+  if (edit.kind === 'limit') {
+    const who = edit.role === 'counter' ? 'Counter' : 'Manager';
+    return (
+      <AmountSheet
+        title={`${who} discount limit`}
+        det={`The most off a charge ${edit.role === 'counter' ? 'counter staff' : 'a manager'} can give without a PIN. Above it, an owner or manager enters theirs.`}
+        unit="%"
+        initial={s.discountLimits[edit.role]}
+        max={100}
+        busy={busy}
+        error={error}
+        onSave={(pct) => onSave({ discountLimits: { ...s.discountLimits, [edit.role]: pct } })}
+        onClose={onClose}
+      />
+    );
+  }
+  const t = s.tips;
+  const amounts = t.mode === 'amounts';
+  const presets = [...t.presets];
+  return (
+    <AmountSheet
+      title={edit.index === null ? 'Add a tip' : 'Change a tip'}
+      det={amounts ? 'A tip the customer can tap, in dollars.' : 'A tip the customer can tap, as a percent of the charge.'}
+      unit={amounts ? '$' : '%'}
+      initial={edit.index === null ? null : (presets[edit.index] ?? null)}
+      max={amounts ? 100_000 : 100}
+      busy={busy}
+      error={error}
+      onSave={(v) => {
+        if (v <= 0) return;
+        if (edit.index === null) presets.push(v);
+        else presets[edit.index] = v;
+        onSave({ tips: { ...t, presets: [...new Set(presets)].sort((a, b) => a - b) } });
+      }}
+      onRemove={edit.index !== null && presets.length > 1 ? () => onSave({ tips: { ...t, presets: presets.filter((_, i) => i !== edit.index) } }) : undefined}
+      onClose={onClose}
     />
   );
 }

@@ -12,6 +12,7 @@ import { taxStatus } from '../services/merchant/tax/taxService.js';
  * Orders (card-processing prompt, Phase 6), mounted on /api/merchant.
  *
  *   GET    /orders?date=YYYY-MM-DD        the day's orders (default today)
+ *   GET    /orders/history?from=&to=      orders over a range of days (93 at most), each with its tenders
  *   POST   /orders                        raise one: lines (items with options, or quick sales), customer
  *   GET    /orders/:id
  *   PUT    /orders/:id/lines              change the lines while nothing is paid or being paid
@@ -64,6 +65,17 @@ router.get('/orders', requireMerchant, (req, res) =>
     const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : null;
     const { rows } = await db.query<{ timezone: string }>('SELECT timezone FROM merchant.profiles WHERE merchant = $1', [m(req)]);
     return orders.listOrders(db, m(req), date ?? orders.businessDate(rows[0]?.timezone ?? 'America/Los_Angeles'));
+  }),
+);
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+router.get('/orders/history', requireMerchant, (req, res) =>
+  run(res, async (db) => {
+    const { from, to } = req.query;
+    if (typeof from !== 'string' || typeof to !== 'string' || !DATE.test(from) || !DATE.test(to) || from > to) {
+      throw new orders.OrderError('from and to are dates, from first', 'invalid');
+    }
+    if ((Date.parse(to) - Date.parse(from)) / 86400000 > 93) throw new orders.OrderError('At most 93 days at a time', 'invalid');
+    return orders.listOrderHistory(db, m(req), from, to);
   }),
 );
 router.post('/orders', requireMerchant, (req, res) =>

@@ -46,6 +46,8 @@ export interface StaffRow {
   email: string | null;
   active: boolean;
   createdAt: string;
+  /** False until the person picks their four digits on their first shift. */
+  pinSet: boolean;
 }
 
 const normalizeMerchant = (m: string) => m.trim().toLowerCase();
@@ -107,6 +109,7 @@ const toRow = (r: DbStaff): StaffRow => ({
   email: r.email,
   active: r.active,
   createdAt: new Date(r.created_at).toISOString(),
+  pinSet: r.secret !== '',
 });
 
 export const staffStore = {
@@ -233,11 +236,12 @@ export const staffStore = {
    * already knows the address of, which is close to public, and it is the price of not asking a
    * writer to remember which of four codes is theirs.
    */
-  async roster(merchant: string): Promise<{ id: string; name: string; role: StaffRoleLocal }[]> {
+  async roster(merchant: string): Promise<{ id: string; name: string; role: StaffRoleLocal; pinSet: boolean }[]> {
     const rows = await this.list(merchant);
     // The owner appears here too. Mike works the counter, and making him sign in differently to
     // raise a charge is a reason to hand the tablet to Jen instead.
-    return rows.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name, role: r.role }));
+    // Whether each person has had a first shift: the screen offers "Pick a PIN" to someone who hasn't.
+    return rows.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name, role: r.role, pinSet: r.pinSet }));
   },
 
   /**
@@ -341,6 +345,59 @@ export const staffStore = {
       `UPDATE ${MERCHANT_SCHEMA}.staff SET secret = $2 WHERE id = $1`,
       [staffId, await hashSecret(pin)],
     );
+    return (rowCount ?? 0) > 0;
+  },
+
+  /**
+   * A first shift: the person picks their own four digits — reference section 08.
+   *
+   * Only while their PIN isn't set (a new person, or one an owner or manager reset), and the write
+   * is conditional on that, so two tablets racing can't both set it.
+   *
+   * **A PIN is unique within the shop.** An approval (a discount over the limit, a void, a refund)
+   * is a PIN with no name, matched against everyone, so a counter PIN that equalled a manager's
+   * would approve as the manager. A taken PIN is refused, and the refusal counts against the
+   * shop's PIN limit like a wrong guess: saying "taken" says someone has it, which is worth as much
+   * to a guesser as a wrong PIN is.
+   */
+  async setFirstPin(merchant: string, staffId: string, pin: string): Promise<'set' | 'taken' | 'not_pending'> {
+    const pool = getMerchantPool();
+    if (!pool) return 'not_pending';
+    await ensureMerchantSchema();
+    await gate(merchant);
+    if (!/^\d{4}$/.test(pin)) throw new Error('A PIN is exactly four digits.');
+
+    const { rows } = await pool.query<DbStaff>(
+      `SELECT * FROM ${MERCHANT_SCHEMA}.staff WHERE merchant = $1 AND active = true`,
+      [normalizeMerchant(merchant)],
+    );
+    const me = rows.find((r) => r.id === staffId);
+    if (!me || me.secret !== '') return 'not_pending';
+    // Every PIN is checked, as at sign-in, so the time taken says nothing about who has which.
+    let taken = false;
+    for (const row of rows) {
+      if (row.id !== staffId && row.secret !== '' && (await verifySecret(pin, row.secret))) taken = true;
+    }
+    if (taken) {
+      await recordFailure(merchant, 'session', staffId);
+      return 'taken';
+    }
+    const { rowCount } = await pool.query(
+      `UPDATE ${MERCHANT_SCHEMA}.staff SET secret = $3 WHERE id = $1 AND merchant = $2 AND secret = ''`,
+      [staffId, normalizeMerchant(merchant), await hashSecret(pin)],
+    );
+    return (rowCount ?? 0) > 0 ? 'set' : 'not_pending';
+  },
+
+  /**
+   * Clear somebody's PIN, so they pick a new one on their next shift. An owner or a manager does
+   * this in Staff; they never choose it for them, for the reason `add` gives.
+   */
+  async clearPin(staffId: string): Promise<boolean> {
+    const pool = getMerchantPool();
+    if (!pool) return false;
+    await ensureMerchantSchema();
+    const { rowCount } = await pool.query(`UPDATE ${MERCHANT_SCHEMA}.staff SET secret = '' WHERE id = $1`, [staffId]);
     return (rowCount ?? 0) > 0;
   },
 

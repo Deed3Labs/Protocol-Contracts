@@ -323,6 +323,8 @@ export function teamFromApi(staff: StaffMember[], holderId: string, live?: { shi
         holds: s.id === holderId,
         on: live ? !!shift : s.id === holderId,
         chargesThisMonth: s.chargesThisMonth,
+        // Hasn't picked a PIN yet (new, or reset): "On first shift" in their sheet.
+        ...(s.pinSet ? {} : { added: 'Not started yet' }),
       };
       if (!live) return base;
       return {

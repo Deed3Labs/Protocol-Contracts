@@ -167,10 +167,10 @@ Decided 2026-09-24.
 - **Tax ID is ••-•••4829** (Figures, above).
 - **What a live shop sees.** Shop (the listing, the contact and the hours, each changeable by
   the owner), Payouts, Partnership, Counter (breaks, and how long this tablet waits for a PIN),
-  Devices (the readers, and this tablet renamed), Security (its enrolled tablets, each signed out
-  with the existing API) and Help. Statements, Payments, Tax, Tips, Discounts, Closing,
-  Notifications and Advanced have no backend yet. Their sheets (Change account, Add a device, Leave Clear, New
-  discount code) open in the preview, with their final buttons disabled on a live shop.
+  Payments, Devices (the readers, and this tablet renamed), Security (its enrolled tablets, each
+  signed out with the existing API), Tax, Tips, Discounts, Closing and Help. Statements,
+  Notifications and Advanced have no backend yet. Their sheets (Change account, Add a device, Leave
+  Clear) open in the preview, with their final buttons disabled on a live shop.
   Preview: `/settings[/<section>]?preview=1&screen=counter|payments-connected|account|device|
   leave|confirm|code`; `&live=1` for the live path.
 
@@ -193,9 +193,12 @@ Decided 2026-09-24.
   the charge stands and nobody has told the customer.
 - **Today's card sale opened** isn't drawn. It takes the split sale's layout, with Adjust the tip
   and Void in the footer, which is how the void and tip sheets are reached.
-- **What a live shop sees.** Its Clear charges from the API: the list, Raised today and How it
-  was paid, a charge opened, cancelling one, and the whole refund. Card, cash and split sales, the
-  goods refund, void and tip have no backend yet. Preview: `/charges?preview=1&screen=owner|late|
+- **What a live shop sees.** Everything on the list:
+  - Clear charges: opened, cancelled, and refunded through the whole Clear refund;
+  - card, cash and split sales from the order history (`GET /orders/history`): opened, voided the
+    same day with a manager's PIN, a card's tip adjusted before capture, and goods refunded.
+
+  "Pick dates" is listed but does nothing yet. Preview: `/charges?preview=1&screen=owner|late|
   counter|menu-filter|menu-sort`, `/charges/marcus?preview=1&screen=counter|refund|waiting|approve|
   refunded|declined`, `/charges/split?preview=1&screen=refund-goods`,
   `/charges/card?preview=1&screen=void|tip`; `&live=1` for the live path.
@@ -221,8 +224,9 @@ Decided 2026-09-24.
   reference draws only $500.
 - **What a live shop sees.** The API has the roster, charges this month, the refund limit, who is
   on shift and the week's hours. So a live shop sees the crew strip, the week, the team, the roles
-  and the limit; an owner or manager opens a person, ends their shift and sets their hours, adds
-  someone and changes the limit. The slot for someone who hasn't started is the preview's: `/staff?preview=1&screen=owner|counter|first|busy|add|person|remove|hours|
+  and the limit. An owner or manager opens a person to end their shift, set their hours, reset
+  their PIN or remove them, adds someone and changes the limit. The slot for someone who hasn't
+  started is the preview's: `/staff?preview=1&screen=owner|counter|first|busy|add|person|remove|hours|
   hours-week|day-hours|hours-friday|limit`, and `&live=1` for the live path. The route stays
   owners and managers only, as agreed; the counter view is reached through `screen=counter`.
 
@@ -399,6 +403,85 @@ reason for any difference, is written to `e2e/.report/index.html`.
   "Today and yesterday" is empty in the browser after that, so the Playwright checks fix the clock
   to 4:41pm on the reference day.
 
+## Card, cash and split sales in Charges
+
+- **One list, each dollar once.** A sale's row is its card and cash part. Its Clear part, if any,
+  is its own Clear charge row. A Clear-only order is only its Clear charge, and an order still
+  being paid isn't a sale yet. Voided sales stay listed as Voided.
+- **Order history is one request.** `orderHistory({from, to})` (`GET /orders/history`, 93 days at
+  most) returns each order with its tenders. The list asks for the month so far (and yesterday on
+  the 1st), which covers every filter. This is an addition to the merchant API contract.
+- **A refund goes back the way the money came:** the card first, then cash from the drawer, one
+  refund per tender, with the returned items on the first. A line of several asks how many come
+  back ("one of two tires"). Labour can't come back, so a sale that was only labour can't be
+  refunded from here.
+- **Who approves:** a manager's or owner's own request is approved as it's made (the server's
+  rule). A counter shift's waits on a sheet for a manager's or owner's PIN; nothing goes back until
+  then.
+- **Void needs a manager's or owner's PIN, always**, whoever is on shift (the server's rule): same
+  day, and before a card on it is captured at close.
+- **A same-day sale can also be refunded in part** ("Refund part") once card or cash has been taken,
+  beside Void. The reference only draws a refund once the sale has settled.
+- **Adjusting a tip** is for a card not yet captured. "Other" takes any amount.
+
+## Staff PINs (first shift, reset, remove)
+
+- **A new person picks their own PIN on their first shift.** Someone added in Staff has no PIN,
+  and the shift screen shows them as "First shift" with "Pick a PIN". They choose four digits and
+  type them again, and their shift starts (`POST /api/merchant/staff/:id/first-pin`, on the
+  enrolled tablet). It works only while their PIN isn't set, and the write is conditional, so two
+  tablets can't both set it. Before this, nobody added in the app could ever start a shift.
+- **A PIN is unique within the shop.** An approval (a discount over the limit, a void, a refund) is
+  a PIN with no name, matched against everyone. A counter PIN equal to a manager's would approve as
+  the manager, so a PIN somebody else has is refused ("Pick different four digits", never whose).
+  The refusal counts against the shop's PIN limit like a wrong guess, so it can't be used to probe.
+- **Resetting a PIN clears it; it never chooses a new one.** "Reset their PIN" asks the one
+  resetting for their own PIN (a shared tablet can be left signed in). The person picks a new one on
+  their next shift, and a shift they're on carries on.
+- **Removing someone** ends their shift on its next request (a session re-reads the staff row), and
+  every charge they raised keeps their name.
+- **Who may reset or remove whom:** a manager, counter staff; an owner, counter staff and managers.
+  Never an owner (Clear changes owners) and never yourself. The API enforces it, and the Staff sheet
+  shows the buttons only when the viewer may use them. Both acts are on the audit trail
+  (`staff.pin_reset`, `staff.removed`).
+- **In the mock, Ana has no PIN yet**, as the Staff reference draws her ("Ana Ruiz has not started a
+  shift").
+
+## Receipts on a live shop
+
+- **Text and Email ask where.** On a real shop, picking Text or Email after a sale opens the send
+  sheet for a number or address. The receipt goes out by the API's send route, and the screen
+  then says where it went ("To (909) 555-0177 · Change"). With nowhere yet, it reads "Asks where
+  to send it · Add". The cash screen has the same links. A text goes by Twilio once the API's
+  notification variables are set (the pilot checklist lists them). An email needs a provider,
+  which isn't wired.
+- **Printing uses the device's own print dialog:** AirPrint on an iPad, the Android print service,
+  or a browser's. A counter printer shows up there if the tablet can reach it. The sheet says
+  "This tablet's printer" instead of a Ready status the app can't know. The paper is the order's
+  own receipt (`GET /orders/:id/receipt`), laid out for 80mm receipt paper, one copy per page, so
+  a refund taken later shows on a reprint. Print waits until the receipt has been read. There is
+  no printer SDK. A native one would replace `lib/printReceipt.ts`.
+
+## Settings: Tax, Tips, Discounts and Closing on a live shop
+
+- **The shop's own settings, saved as they're set.** Each change goes to `PATCH /settings` (owners
+  only, the server's rule) and the pane then shows what the server holds. An amount opens a small
+  sheet: starting cash, a role's discount limit, a tip preset. While the settings load, a live
+  pane shows nothing, never the reference's example figures.
+- **Tax** shows where the rate comes from: Stripe Tax, the rate for the shop's address, or none yet.
+  It also shows the shop's address, the rate by kind of item with the catalogue's counts, and
+  before-tax or tax-included prices (a choice).
+- **Tips**: asking on or off, amounts or percentages (switching starts from that kind's usual
+  three: $5, $10, $20 or 15, 18, 20%), up to four presets to change, add or remove.
+- **"Split by hours on shift" is shown but can't be chosen.** It needs the shift clock, which
+  isn't built.
+- **Discounts**: the shop's codes, with what they take off and until when. New code is a real form:
+  a percent or an amount, the whole charge or one category, optional dates, once per customer. The
+  counter's and a manager's limits can be changed; an owner has none.
+- **Closing**: starting cash, two counts, and what happens with one person on. "Any difference
+  needs a sign-off" reads Always, because the server always requires it. Who can close lists the
+  owners and managers by name.
+
 ## Settings: the shop, its hours, Counter and Devices
 
 - **The listing lives on the shop.** Migration 0012 gives the profile a category ("What you do"),
@@ -450,6 +533,6 @@ reason for any difference, is written to `e2e/.report/index.html`.
   sheet opens on it when there is one. The sheet's times are the device's own time pickers.
 - **Who sets hours:** an owner anyone's; a manager counter staff's and their own. Anyone signed in
   can read the week through the API, though the Staff route itself stays owners and managers.
-- **Stacked on #627** (the breaks setting lives there). This branch's Staff page and #623's (reset
-  and remove) both open a person's sheet; they're reconciled when both merge.
+- **Removing someone ends their shift**, on the server and in the mock, so they drop off the crew
+  strip at once rather than on their next request.
 

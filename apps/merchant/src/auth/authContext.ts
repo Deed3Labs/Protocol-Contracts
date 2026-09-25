@@ -63,6 +63,8 @@ export interface AuthValue {
   canAuthoriseRefunds: boolean;
   /** A name was picked on the roster, then a PIN. Starts a SHIFT, not a login. */
   signInWithPin: (pin: string, staffId: string) => Promise<Staff>;
+  /** A first shift: sets the PIN they picked, then starts the shift. */
+  startFirstShift: (pin: string, staffId: string) => Promise<Staff>;
   /**
    * An owner authorising something on a counter device without taking over the session.
    *

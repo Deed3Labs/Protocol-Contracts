@@ -9,6 +9,7 @@ import {
   orderStatus,
   type Role,
   type TaxKind,
+  type Tender,
   type TenderState,
 } from '@clear/merchant-contracts';
 import { z } from 'zod';
@@ -18,6 +19,7 @@ import type { TaxApi } from '../tax/taxApi.js';
 import { type OrderTax, taxForOrder } from '../tax/taxService.js';
 import { settleOrder } from './settle.js';
 import { audit } from '../security/audit.js';
+import { type TenderRow, toTender } from '../cards/cardTenders.js';
 
 /**
  * Orders (card-processing prompt, Phase 6: the order service). The app sends lines and a discount
@@ -300,6 +302,23 @@ export async function listOrders(q: Queryable, merchant: string, businessDate: s
   const { rows } = await q.query<OrderRow>('SELECT * FROM commerce.orders WHERE merchant = $1 AND business_date = $2 ORDER BY created_at DESC', [merchant, businessDate]);
   const out: Order[] = [];
   for (const r of rows) out.push(await toOrder(q, r));
+  return out;
+}
+
+/**
+ * Orders over a range of business days, newest first, each with its tenders: the Charges list's
+ * card, cash and split sales, and a sale opened. A range, so a month is one request.
+ */
+export async function listOrderHistory(q: Queryable, merchant: string, from: string, to: string): Promise<Array<Order & { tenders: Tender[] }>> {
+  const { rows } = await q.query<OrderRow>(
+    'SELECT * FROM commerce.orders WHERE merchant = $1 AND business_date BETWEEN $2 AND $3 ORDER BY created_at DESC',
+    [merchant, from, to],
+  );
+  const { rows: tenders } = rows.length
+    ? await q.query<TenderRow>('SELECT * FROM payments.tenders WHERE order_id = ANY($1) ORDER BY created_at, id', [rows.map((r) => r.id)])
+    : { rows: [] as TenderRow[] };
+  const out: Array<Order & { tenders: Tender[] }> = [];
+  for (const r of rows) out.push({ ...(await toOrder(q, r)), tenders: tenders.filter((t) => t.order_id === r.id).map(toTender) });
   return out;
 }
 

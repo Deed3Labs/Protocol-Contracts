@@ -75,6 +75,7 @@ export function realMerchantApi(request: Transport): MerchantApi {
     updateOrder: (orderId, input) => send('PUT', `/orders/${id(orderId)}/lines`, input),
     order: (orderId) => get(`/orders/${id(orderId)}`),
     orders: ({ date }) => get(`/orders?date=${encodeURIComponent(date)}`),
+    orderHistory: (r) => get(`/orders/history?${range(r)}`),
     applyDiscount: (orderId, input) => post(`/orders/${id(orderId)}/discount`, input),
     removeDiscount: (orderId) => send('DELETE', `/orders/${id(orderId)}/discount`),
     voidOrder: (orderId, input) => post(`/orders/${id(orderId)}/void`, input),

@@ -12,7 +12,8 @@ import {
   IconSplit15,
   IconTick,
 } from '@/brand/chargeIcons';
-import { clickOnKey, cx, initials, MenuButton, Sheet } from '@/brand/ui';
+import { IconMinus, IconPlusSm } from '@/brand/icons';
+import { clickOnKey, cx, initials, MenuButton, PinKeys, Sheet } from '@/brand/ui';
 import { TickBox } from '@/brand/controls';
 import { usd } from '@/home/model';
 import {
@@ -178,6 +179,7 @@ const CHIP: Record<RowState, [string, string]> = {
   refund: ['c-underway', 'Refund asked'],
   declined: ['c-absent', 'Declined'],
   cancelled: ['c-neutral', 'Cancelled'],
+  voided: ['c-neutral', 'Voided'],
 };
 
 function RowView({ r, methods, onOpen }: { r: ChargeRow; methods: boolean; onOpen?: () => void }) {
@@ -637,7 +639,7 @@ export function SoldCell({ s }: { s: Sale }) {
           rows={[
             ['Parts and tires', usd(s.goodsCents)],
             ['Labour', usd(s.labourCents)],
-            ['Sales tax · 7.75% on parts', usd(s.taxCents)],
+            [s.taxLabel ?? 'Sales tax · 7.75% on parts', usd(s.taxCents)],
             ['Discount', '—'],
             ['Tip', s.tipCents ? usd(s.tipCents) : '—'],
           ]}
@@ -669,17 +671,14 @@ export function PaidHowCell({ s, onRefund, onVoid, onTip }: { s: Sale; onRefund?
             </div>
           ))}
         </div>
-        <Small
-          rows={[
-            ['Receipt', s.receipt],
-            ['Card part', s.settled],
-          ]}
-        />
+        <Small rows={([['Receipt', s.receipt], ['Card part', s.settled]] as [string, string | undefined][]).filter((r): r is [string, string] => !!r[1])} />
         {s.refundOnly && (
           <div className="c-ch-bleed">
             <div>
               <p className="c-t">Refund only</p>
-              <p className="c-det">A void is same-day, before the card batch settles. This one settled on Sunday.</p>
+              <p className="c-det">
+                {s.live ? 'A void is same-day, before a card on it is captured at close.' : 'A void is same-day, before the card batch settles. This one settled on Sunday.'}
+              </p>
             </div>
           </div>
         )}
@@ -689,17 +688,28 @@ export function PaidHowCell({ s, onRefund, onVoid, onTip }: { s: Sale; onRefund?
           <span className="c-det">{s.refundOnly ? 'A refund needs a manager' : 'A void needs a manager'}</span>
           <span className="c-ch-pair">
             {s.refundOnly ? (
-              <button type="button" className="c-btn c-btn-primary" onClick={onRefund}>
-                Start a refund
-              </button>
+              onRefund && (
+                <button type="button" className="c-btn c-btn-primary" onClick={onRefund}>
+                  Start a refund
+                </button>
+              )
             ) : (
               <>
-                <button type="button" className="c-btn" onClick={onTip}>
-                  Adjust the tip
-                </button>
-                <button type="button" className="c-btn c-btn-primary" onClick={onVoid}>
-                  Void
-                </button>
+                {s.live && onRefund && (
+                  <button type="button" className="c-btn" onClick={onRefund}>
+                    Refund part
+                  </button>
+                )}
+                {onTip && (
+                  <button type="button" className="c-btn" onClick={onTip}>
+                    Adjust the tip
+                  </button>
+                )}
+                {onVoid && (
+                  <button type="button" className="c-btn c-btn-primary" onClick={onVoid}>
+                    Void
+                  </button>
+                )}
               </>
             )}
           </span>
@@ -1014,6 +1024,16 @@ export interface ReturnLine {
   /** Labour already done cannot come back. */
   labour?: boolean;
   stock?: boolean;
+  /** How many were sold: above one, the sheet asks how many come back ("one of two tires"). */
+  quantity?: number;
+}
+
+/** What comes back: a line, how many of it, whether it goes back on the shelf, and what it's worth. */
+export interface Returned {
+  index: number;
+  quantity: number;
+  backInStock: boolean;
+  cents: number;
 }
 
 /** Goods come back, and the money goes back the way it came: the card first, then the drawer. */
@@ -1022,15 +1042,24 @@ export function GoodsRefundSheet({
   lines,
   onSend,
   onClose,
+  busy,
+  error,
 }: {
   s: Sale;
   lines: ReturnLine[];
-  onSend?: () => void;
+  onSend?: (returned: Returned[]) => void;
   onClose: () => void;
+  busy?: boolean;
+  error?: string | null;
 }) {
   const [on, setOn] = useState(lines.map((l) => !l.labour));
   const [stock, setStock] = useState(lines.map((l) => !!l.stock));
-  const total = lines.reduce((t, l, i) => t + (on[i] ? l.cents : 0), 0);
+  const [qty, setQty] = useState(lines.map((l) => l.quantity ?? 1));
+  // A line's worth scales with how many come back, to the cent, with the whole line when all do.
+  const worth = (l: ReturnLine, i: number) => (qty[i] === (l.quantity ?? 1) ? l.cents : Math.round((l.cents * qty[i]!) / (l.quantity ?? 1)));
+  const total = lines.reduce((t, l, i) => t + (on[i] ? worth(l, i) : 0), 0);
+  const returned = (): Returned[] =>
+    lines.flatMap((l, i) => (on[i] && !l.labour ? [{ index: i, quantity: qty[i]!, backInStock: stock[i]!, cents: worth(l, i) }] : []));
   const card = s.legs.find((l) => l.method === 'card');
   const toCard = Math.min(total, card?.cents ?? 0);
   const toCash = total - toCard;
@@ -1047,8 +1076,13 @@ export function GoodsRefundSheet({
             <span>Refund</span>
             <b>{usd(total)}</b>
           </div>
-          <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ width: '100%' }} disabled={!total || !onSend} onClick={onSend}>
-            Send to a manager
+          {error && (
+            <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: '0 0 var(--s1)' }}>
+              {error}
+            </p>
+          )}
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ width: '100%' }} disabled={!total || !onSend || busy} onClick={() => onSend?.(returned())}>
+            {busy ? 'Sending…' : 'Send to a manager'}
           </button>
         </>
       }
@@ -1064,6 +1098,20 @@ export function GoodsRefundSheet({
             <div>
               <p className="c-t">{l.t}</p>
               <p className="c-det">{l.det}</p>
+              {!l.labour && (l.quantity ?? 1) > 1 && on[i] && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                  <span className="c-ci-step">
+                    <button type="button" aria-label={`One fewer of ${l.t}`} disabled={qty[i]! <= 1} onClick={() => setQty(qty.map((x, k) => (k === i ? x - 1 : x)))}>
+                      <IconMinus />
+                    </button>
+                    <b aria-live="polite">{qty[i]}</b>
+                    <button type="button" aria-label={`One more of ${l.t}`} disabled={qty[i]! >= l.quantity!} onClick={() => setQty(qty.map((x, k) => (k === i ? x + 1 : x)))}>
+                      <IconPlusSm />
+                    </button>
+                  </span>
+                  <span className="c-det">of {l.quantity} coming back</span>
+                </span>
+              )}
               {!l.labour && (
                 <label className="c-ch-stock" onClick={() => setStock(stock.map((x, k) => (k === i ? !x : x)))}>
                   <span className={cx('c-ch-toggle', stock[i] && 'c-on')} role="switch" aria-checked={stock[i]} aria-label="Back in stock" tabIndex={0} onKeyDown={clickOnKey} />
@@ -1071,7 +1119,7 @@ export function GoodsRefundSheet({
                 </label>
               )}
             </div>
-            <span className="c-v">{usd(l.cents)}</span>
+            <span className="c-v">{usd(on[i] ? worth(l, i) : l.cents)}</span>
           </div>
         ))}
       </div>
@@ -1104,8 +1152,47 @@ export function GoodsRefundSheet({
   );
 }
 
-export function VoidSheet({ s, by, manager, filled, onKeep, onVoid }: { s: Sale; by: string; manager: string; filled: number; onKeep: () => void; onVoid?: () => void }) {
-  const leg = s.legs[0];
+/** Four digits typed on the sheet itself: dots, then the keypad. */
+function PinPad({ error, onDigit, onDelete }: { error?: string | null; onDigit: (d: string) => void; onDelete: () => void }) {
+  return (
+    <>
+      {error && (
+        <p className="c-det" role="alert" style={{ color: 'var(--absent)', marginTop: 'var(--s1)' }}>
+          {error}
+        </p>
+      )}
+      <PinKeys onDigit={onDigit} onDelete={onDelete} />
+    </>
+  );
+}
+
+export function VoidSheet({
+  s,
+  by,
+  manager,
+  filled,
+  onKeep,
+  onVoid,
+  onDigit,
+  onDelete,
+  error,
+  busy,
+}: {
+  s: Sale;
+  by: string;
+  /** Whose PIN it asks for: "Luis", or "A manager" when anyone's will do. */
+  manager: string;
+  filled: number;
+  onKeep: () => void;
+  onVoid?: () => void;
+  onDigit?: (d: string) => void;
+  onDelete?: () => void;
+  error?: string | null;
+  busy?: boolean;
+}) {
+  const leg = s.legs[0]!;
+  const card = s.legs.some((l) => l.method === 'card');
+  const cash = s.legs.some((l) => l.method === 'cash');
   return (
     <Sheet
       className="c-ch-sheet "
@@ -1117,8 +1204,8 @@ export function VoidSheet({ s, by, manager, filled, onKeep, onVoid }: { s: Sale;
           <button type="button" className="c-btn c-btn-lg" onClick={onKeep}>
             Keep it
           </button>
-          <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!onVoid} onClick={onVoid}>
-            Void {usd(s.totalCents)}
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!onVoid || busy || (!!onDigit && filled < 4)} onClick={onVoid}>
+            {busy ? 'Voiding…' : `Void ${usd(s.totalCents)}`}
           </button>
         </div>
       }
@@ -1137,18 +1224,28 @@ export function VoidSheet({ s, by, manager, filled, onKeep, onVoid }: { s: Sale;
         {s.name} · {leg.t} · {leg.det.split(' · ')[0]} · {by}
       </p>
       <div className="c-ch-list2">
-        <div className="c-kv ">
-          <span>The card</span>
-          <span className="c-v">Never charged. They see nothing.</span>
-        </div>
+        {card && (
+          <div className="c-kv ">
+            <span>The card</span>
+            <span className="c-v">Never charged. They see nothing.</span>
+          </div>
+        )}
+        {cash && (
+          <div className="c-kv ">
+            <span>The cash</span>
+            <span className="c-v">Handed back from the drawer</span>
+          </div>
+        )}
         <div className="c-kv ">
           <span>The items</span>
           <span className="c-v">All {s.count} back in stock</span>
         </div>
-        <div className="c-kv ">
-          <span>{by}’s tip</span>
-          <span className="c-v">Goes with it</span>
-        </div>
+        {s.tipCents > 0 && (
+          <div className="c-kv ">
+            <span>{by}’s tip</span>
+            <span className="c-v">Goes with it</span>
+          </div>
+        )}
         <div className="c-kv ">
           <span>Fees</span>
           <span className="c-v">—</span>
@@ -1159,22 +1256,98 @@ export function VoidSheet({ s, by, manager, filled, onKeep, onVoid }: { s: Sale;
         tonight.
       </p>
       <div className="c-ch-pin">
-        <span className="c-det">{manager}’s manager PIN</span>
+        <span className="c-det">{/^A /.test(manager) ? `${manager}’s or the owner’s PIN` : `${manager}’s manager PIN`}</span>
         <span className="c-dots">
           {Array.from({ length: 4 }, (_, i) => (
             <i key={i} className={i < filled ? 'c-f' : undefined} />
           ))}
         </span>
       </div>
+      {onDigit && <PinPad error={error} onDigit={onDigit} onDelete={() => onDelete?.()} />}
+    </Sheet>
+  );
+}
+
+/**
+ * A refund a counter shift asked for, approved at the counter: a manager or the owner types their
+ * PIN. Nothing moves until they do.
+ */
+export function ManagerPinSheet({
+  title,
+  body,
+  filled,
+  onCancel,
+  onApprove,
+  onDigit,
+  onDelete,
+  error,
+  busy,
+}: {
+  title: string;
+  body: ReactNode;
+  filled: number;
+  onCancel: () => void;
+  onApprove: () => void;
+  onDigit: (d: string) => void;
+  onDelete: () => void;
+  error?: string | null;
+  busy?: boolean;
+}) {
+  return (
+    <Sheet
+      className="c-ch-sheet "
+      title={title}
+      closeSize="lg"
+      onClose={onCancel}
+      foot={
+        <div className="c-ch-pair c-wide">
+          <button type="button" className="c-btn c-btn-lg" onClick={onCancel}>
+            Not now
+          </button>
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={busy || filled < 4} onClick={onApprove}>
+            {busy ? 'Approving…' : 'Approve'}
+          </button>
+        </div>
+      }
+    >
+      <div className="c-det" style={{ lineHeight: 1.5 }}>
+        {body}
+      </div>
+      <div className="c-ch-pin">
+        <span className="c-det">A manager’s or the owner’s PIN</span>
+        <span className="c-dots">
+          {Array.from({ length: 4 }, (_, i) => (
+            <i key={i} className={i < filled ? 'c-f' : undefined} />
+          ))}
+        </span>
+      </div>
+      <PinPad error={error} onDigit={onDigit} onDelete={onDelete} />
     </Sheet>
   );
 }
 
 const TIPS = [1000, 1500, 2000];
 
-export function TipSheet({ s, by, initial, onSave, onClose }: { s: Sale; by: string; initial: number; onSave?: (cents: number) => void; onClose: () => void }) {
+export function TipSheet({
+  s,
+  by,
+  initial,
+  onSave,
+  onClose,
+  busy,
+  error,
+}: {
+  s: Sale;
+  by: string;
+  initial: number;
+  onSave?: (cents: number) => void;
+  onClose: () => void;
+  busy?: boolean;
+  error?: string | null;
+}) {
   const [tip, setTip] = useState(initial);
-  const leg = s.legs[0];
+  const [other, setOther] = useState(!TIPS.includes(initial) && initial > 0);
+  const leg = s.legs.find((l) => l.method === 'card') ?? s.legs[0]!;
   return (
     <Sheet
       className="c-ch-sheet "
@@ -1187,8 +1360,13 @@ export function TipSheet({ s, by, initial, onSave, onClose }: { s: Sale; by: str
             <span>New total</span>
             <b>{usd(s.totalCents - s.tipCents + tip)}</b>
           </div>
-          <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ width: '100%' }} disabled={!onSave} onClick={() => onSave?.(tip)}>
-            Save the tip
+          {error && (
+            <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: '0 0 var(--s1)' }}>
+              {error}
+            </p>
+          )}
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ width: '100%' }} disabled={!onSave || busy} onClick={() => onSave?.(tip)}>
+            {busy ? 'Saving…' : 'Save the tip'}
           </button>
         </>
       }
@@ -1208,14 +1386,30 @@ export function TipSheet({ s, by, initial, onSave, onClose }: { s: Sale; by: str
       </div>
       <div className="c-ch-tipq">
         {TIPS.map((t) => (
-          <button key={t} type="button" className={cx('c-btn', tip === t && 'c-on')} onClick={() => setTip(t)}>
+          <button key={t} type="button" className={cx('c-btn', !other && tip === t && 'c-on')} onClick={() => (setOther(false), setTip(t))}>
             {usd(t)}
           </button>
         ))}
-        <button type="button" className={cx('c-btn', !TIPS.includes(tip) && 'c-on')}>
+        <button type="button" className={cx('c-btn', other && 'c-on')} onClick={() => setOther(true)}>
           Other
         </button>
       </div>
+      {other && (
+        <label className="c-kv" style={{ marginTop: 'var(--s2)' }}>
+          <span>Tip, in dollars</span>
+          <input
+            className="c-field"
+            inputMode="decimal"
+            aria-label="Tip, in dollars"
+            style={{ width: 120, textAlign: 'right' }}
+            defaultValue={(tip / 100).toFixed(2)}
+            onChange={(e) => {
+              const v = Math.round(parseFloat(e.target.value.replace(/[^0-9.]/g, '')) * 100);
+              setTip(Number.isFinite(v) && v >= 0 ? v : 0);
+            }}
+          />
+        </label>
+      )}
       <p className="c-det" style={{ marginTop: 'var(--s2)', lineHeight: 1.5 }}>
         For a tip written on a printed slip. Tips can change until the day is closed; after that they are part of the day’s
         figures.

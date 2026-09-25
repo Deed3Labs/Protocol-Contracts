@@ -8,6 +8,7 @@ import { OneColumn, cx } from '@/brand/ui';
 import { api } from '@/data/apiClient';
 import { discardOnLeave, useMerchantApi } from '@/data/merchantApi';
 import { errorSentence, useApi } from '@/data/useApi';
+import { printReceipt } from '@/lib/printReceipt';
 import { useLayout } from '@/lib/useBreakpoint';
 import { FlowTop } from '@/shell/chrome';
 import {
@@ -120,6 +121,8 @@ interface Flow {
   part: string;
   phone: string;
   sendBy: SendBy;
+  /** Live: where the receipt was sent, once it has been. */
+  sentTo?: string;
   sheet: Sheet;
   suggested: boolean;
   catalog: 'shop' | 'food';
@@ -321,6 +324,13 @@ export default function NewChargePage() {
     ...preset,
   }));
   const set = useCallback((p: Partial<Flow>) => setF((cur) => ({ ...cur, ...p })), []);
+  // A receipt on a live shop: Text or Email asks where; paper prints from the order's own receipt.
+  const pickSend = (sendBy: SendBy) => set(sendBy === 'none' ? { sendBy } : { sendBy, sheet: { k: 'send', by: sendBy, to: '' } });
+  const openPrint = () => set({ sheet: { k: 'print', printer: 'ready' } });
+  const liveReceipt = useApi(
+    () => (!preview && order && f.sheet?.k === 'print' ? merchant.receipt(order.id) : Promise.resolve(null)),
+    [preview, order?.id, f.sheet?.k],
+  );
   const [raising, setRaising] = useState(false);
   const [raiseError, setRaiseError] = useState<string | null>(null);
   const [live, setLive] = useState<{ openedAt: string | null; resolvedAt: string | null; splitInto: number | null } | null>(null);
@@ -898,7 +908,7 @@ export default function NewChargePage() {
             preview ? (
               <ReceiptGroups by={f.sendBy} onBy={(sendBy) => set({ sendBy })} to="(909) 555-0177" onChange={() => set({ sheet: { k: 'send', by: 'text', to: '(909) 555-0177' } })} onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />
             ) : (
-              <ReceiptGroups by={f.sendBy} onBy={(sendBy) => set({ sendBy })} onChange={() => set({ sheet: { k: 'send', by: 'text', to: '' } })} onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />
+              <ReceiptGroups by={f.sendBy} to={f.sentTo} onBy={pickSend} onChange={() => set({ sheet: { k: 'send', by: f.sendBy === 'email' ? 'email' : 'text', to: '' } })} onPrint={openPrint} />
             )
           }
           reader={readerLabel}
@@ -936,7 +946,13 @@ export default function NewChargePage() {
         dueCents={paidCents}
         givenCents={given}
         at={preview ? '4:41pm' : nowTime()}
-        receipt={<ReceiptGroups icons={false} by={f.sendBy} onBy={(sendBy) => set({ sendBy })} none="No number for this customer" onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />}
+        receipt={
+          preview ? (
+            <ReceiptGroups icons={false} by={f.sendBy} onBy={(sendBy) => set({ sendBy })} none="No number for this customer" onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />
+          ) : (
+            <ReceiptGroups icons={false} by={f.sendBy} to={f.sentTo} onBy={pickSend} onChange={() => set({ sheet: { k: 'send', by: f.sendBy === 'email' ? 'email' : 'text', to: '' } })} onPrint={openPrint} />
+          )
+        }
         onDone={exit}
         onNew={again}
       />
@@ -1043,7 +1059,7 @@ export default function NewChargePage() {
             : (by, to) =>
                 void attempt(async () => {
                   await merchant.sendReceipt(order.id, { by, to });
-                  close();
+                  set({ sendBy: by, sentTo: to ?? undefined, sheet: null });
                 })
         }
         onClose={close}
@@ -1051,16 +1067,39 @@ export default function NewChargePage() {
     ) : sh?.k === 'print' ? (
       <PrintReceiptSheet
         printer={sh.printer}
-        slip={{
-          shop,
-          address: '412 Colton Ave · (909) 555-0180',
-          when: `Sep 22, 4:41pm · ${me.split(/\s+/)[0]}`,
-          lines: body.lines,
-          taxCents: totals(body.lines).taxCents,
-          totalCents: totals(body.lines).totalCents,
-          paid: ['Visa ending 4242', 'Approved'],
-        }}
-        onPrint={close}
+        system={!preview}
+        loading={!preview && !liveReceipt.data}
+        slip={
+          preview || !liveReceipt.data
+            ? {
+                shop,
+                address: '412 Colton Ave · (909) 555-0180',
+                when: `Sep 22, 4:41pm · ${me.split(/\s+/)[0]}`,
+                lines: body.lines,
+                taxCents: totals(body.lines).taxCents,
+                totalCents: totals(body.lines).totalCents,
+                paid: ['Visa ending 4242', 'Approved'],
+              }
+            : {
+                shop: liveReceipt.data.shop.name,
+                address: liveReceipt.data.shop.address ?? '',
+                when: `${new Date(liveReceipt.data.issuedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).replace(' AM', 'am').replace(' PM', 'pm')} · ${me.split(/\s+/)[0]}`,
+                lines: body.lines,
+                taxCents: liveReceipt.data.taxCents,
+                totalCents: liveReceipt.data.totalCents + liveReceipt.data.tipCents,
+                paid: liveReceipt.data.tenders[0]
+                  ? [liveReceipt.data.tenders[0].card ?? (liveReceipt.data.tenders[0].method === 'cash' ? 'Cash' : 'Clear'), 'Approved']
+                  : ['—', ''],
+              }
+        }
+        onPrint={
+          preview
+            ? close
+            : (copies) => {
+                if (liveReceipt.data) printReceipt(liveReceipt.data, copies);
+                close();
+              }
+        }
         onSendInstead={() => set({ sheet: { k: 'send', by: 'text', to: '' } })}
         onRetry={close}
         onClose={close}

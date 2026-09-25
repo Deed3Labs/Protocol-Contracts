@@ -143,3 +143,100 @@ test.describe('a Clear refund, start to finish', () => {
     expect(errors).toEqual([]);
   });
 });
+
+test.describe('card and cash sales in Charges', () => {
+  test.beforeEach(({}, info) => test.skip(info.project.name !== 'landscape', 'one walk-through is enough'));
+  const walkIn = (page: Page, cents: RegExp) => page.getByRole('button', { name: new RegExp(`Walk-in.*${cents.source}`) }).first();
+
+  test('the owner adjusts the card walk-in’s tip, then voids it with a manager’s PIN', async ({ page }) => {
+    const errors = await visit(page, 'owner', '/charges');
+    // Card and cash sales are on the list with the Clear charges.
+    await expect(walkIn(page, /\$937\.52/)).toContainText('Visa ••4242');
+    await expect(page.getByRole('button', { name: /Walk-in.*Cash/ }).first()).toBeVisible();
+
+    await walkIn(page, /\$937\.52/).click();
+    await expect(page.getByText('What was sold')).toBeVisible();
+    await page.getByRole('button', { name: 'Adjust the tip' }).click();
+    const tip = page.getByRole('dialog', { name: 'Adjust the tip' });
+    await tip.getByRole('button', { name: '$15.00' }).click();
+    await tip.getByRole('button', { name: 'Save the tip' }).click();
+    await expect(tip).toHaveCount(0);
+    await expect(page.getByText('$942.52').first()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Void', exact: true }).click();
+    const sheet = page.getByRole('dialog', { name: 'Void this charge?' });
+    for (const d of '1111') await sheet.getByRole('button', { name: d, exact: true }).click();
+    await sheet.getByRole('button', { name: /^Void \$/ }).click();
+    await expect(sheet.getByRole('alert')).toContainText('manager');
+    for (const d of '2222') await sheet.getByRole('button', { name: d, exact: true }).click();
+    await sheet.getByRole('button', { name: /^Void \$/ }).click();
+    await expect(sheet).toHaveCount(0);
+    await page.getByRole('button', { name: 'Back' }).first().click();
+    await expect(walkIn(page, /\$942\.52/)).toContainText('Voided');
+    expect(errors).toEqual([]);
+  });
+
+  test('after close, Jen refunds one of four tires back into stock; a manager’s PIN approves it', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.clock.setFixedTime(REFERENCE_NOW);
+    await page.goto('/charges?preview=1&live=1&as=jen&drawer=closed');
+    await settle(page);
+    await walkIn(page, /\$937\.52/).click();
+    await page.getByRole('button', { name: 'Start a refund' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Start a refund' });
+    // Four tires sold: one comes back.
+    for (let i = 0; i < 3; i++) await sheet.getByRole('button', { name: /One fewer of 4 × Michelin/ }).click();
+    await expect(sheet).toContainText('of 4 coming back');
+    // The valve stems stay sold.
+    await sheet.getByRole('checkbox', { name: /Valve stems/ }).click();
+    await sheet.getByRole('button', { name: 'Send to a manager' }).click();
+    const approve = page.getByRole('dialog', { name: 'A manager approves this refund' });
+    for (const d of '2222') await approve.getByRole('button', { name: d, exact: true }).click();
+    await approve.getByRole('button', { name: 'Approve' }).click();
+    await expect(approve).toHaveCount(0);
+    await expect(page.getByText(/refunded/).first()).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('staff PINs', () => {
+  test.beforeEach(({}, info) => test.skip(info.project.name !== 'landscape', 'one walk-through is enough'));
+
+  test('Luis resets Jen’s PIN with his own, and removes Ana; he can’t touch the owner', async ({ page }) => {
+    const errors = await visit(page, 'manager', '/staff');
+    // The team's rows (people on shift also have a tile in the crew strip).
+    const row = (name: RegExp) => page.locator('.c-tm-row').filter({ hasText: name });
+
+    // The owner's sheet has nothing a manager can do.
+    await row(/Mike R\./).click();
+    await expect(page.getByRole('dialog', { name: 'Mike R.' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Reset their PIN' })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    await row(/Jen R\./).click();
+    await page.getByRole('button', { name: 'Reset their PIN' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Reset Jen’s PIN' });
+    await expect(sheet).toContainText('Luis M. approves');
+    for (const d of '0000') await sheet.getByRole('button', { name: d, exact: true }).click();
+    await sheet.getByRole('button', { name: 'Reset PIN' }).click();
+    await expect(sheet.getByRole('alert')).toContainText('did not match');
+    for (const d of '2222') await sheet.getByRole('button', { name: d, exact: true }).click();
+    await sheet.getByRole('button', { name: 'Reset PIN' }).click();
+    await expect(sheet).toHaveCount(0);
+    // The list reloads with her PIN cleared; the shift she's on carries on.
+    await expect(async () => {
+      // A sheet opened before the reload keeps the old row, so each try opens it afresh.
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape');
+      await row(/Jen R\./).click();
+      await expect(page.getByRole('dialog', { name: 'Jen R.' })).toContainText('On first shift', { timeout: 500 });
+    }).toPass();
+    await page.keyboard.press('Escape');
+
+    await row(/Ana Ruiz/).click();
+    await page.getByRole('dialog', { name: 'Ana Ruiz' }).getByRole('button', { name: 'Remove' }).click();
+    await page.getByRole('dialog', { name: 'Remove Ana' }).getByRole('button', { name: 'Remove' }).click();
+    await expect(row(/Ana Ruiz/)).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+});
