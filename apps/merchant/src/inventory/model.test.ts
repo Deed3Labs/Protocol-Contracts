@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createMockMerchantApi } from '@/data/merchantApi/mock';
+import { createMockMerchantApi } from '../data/merchantApi/mock';
 import { fromCatalog, historyEntry, shelfAtCost } from './model';
 
 describe('a live shop’s inventory, from the catalog API', () => {
