@@ -119,3 +119,23 @@ export const DayReport = z.object({
   closedAt: Timestamp,
 });
 export type DayReport = z.infer<typeof DayReport>;
+
+/**
+ * Overview, for a range of days: what was taken and how, discounts, tips, tax, refunds, the top
+ * items, and the day reports. Built from paid orders and their tenders, so it agrees with the day
+ * reports and with Charges.
+ */
+export const Overview = z.object({
+  from: BusinessDate,
+  to: BusinessDate,
+  takenCents: NonNegativeCents,
+  orderCount: z.number().int().min(0),
+  byMethod: ByMethod,
+  discounts: z.object({ count: z.number().int().min(0), cents: NonNegativeCents }),
+  tips: z.object({ cents: NonNegativeCents, byStaff: z.array(z.object({ staffId: Id, name: z.string(), cents: NonNegativeCents })) }),
+  taxCents: NonNegativeCents,
+  refundsCents: NonNegativeCents,
+  topItems: z.array(z.object({ itemId: Id.nullable(), name: z.string(), quantity: z.number().int().min(0), cents: NonNegativeCents })),
+  dayReports: z.array(DayReport),
+});
+export type Overview = z.infer<typeof Overview>;

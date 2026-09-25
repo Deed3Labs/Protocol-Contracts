@@ -11,7 +11,7 @@ import type {
   RegisterSmartReader,
 } from './cards';
 import type { CatalogItem, DiscountCode, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
-import type { BankDeposit, CountsView, DayReport, DrawerSession, SaveCount, SignOff } from './drawer';
+import type { BankDeposit, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
   CreateClearTender,
@@ -127,4 +127,6 @@ export interface MerchantApi {
   // ---- Reports -------------------------------------------------------------------------------------
   dayReports(range: Range): Promise<DayReport[]>;
   cardDeposits(range: Range): Promise<CardDeposit[]>;
+  /** Owners and managers. */
+  overview(range: Range): Promise<Overview>;
 }

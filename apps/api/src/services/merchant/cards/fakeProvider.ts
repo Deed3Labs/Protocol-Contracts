@@ -1,4 +1,4 @@
-import { CardDeclined, type CardConnectorProvider, type ConnectorAccountStatus, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
+import { type BalanceItem, CardDeclined, type CardConnectorProvider, type ConnectorAccountStatus, type Payout, type PaymentSnapshot, ReaderUnavailable, type RefundSnapshot } from './connector.js';
 
 /**
  * A card processor for tests: behaves like Stripe where the merchant code depends on it (manual
@@ -44,6 +44,10 @@ export function fakeProvider() {
     presented: [] as Array<{ reader: string; paymentId: string }>,
     cleared: [] as string[],
   };
+  /** The shop's processor balance: charges on capture (Stripe's in-person 2.7% + 5¢), refunds, and anything a test adds. */
+  const balance: Array<BalanceItem & { payoutId: string | null }> = [];
+  const payoutsById = new Map<string, Payout>();
+  const stripeFee = (cents: number) => Math.round(cents * 0.027) + 5;
   const knobs = {
     raiseDeclines: false,
     refundState: 'succeeded' as RefundSnapshot['state'],
@@ -126,6 +130,8 @@ export function fakeProvider() {
       p.amount = input.amountCents;
       p.fee = input.applicationFeeCents;
       p.state = 'captured';
+      const sf = stripeFee(input.amountCents);
+      balance.push({ id: id('txn'), type: 'charge', amountCents: input.amountCents, processorFeeCents: sf, platformFeeCents: input.applicationFeeCents, netCents: input.amountCents - sf - input.applicationFeeCents, paymentId: p.id, createdAt: new Date().toISOString(), payoutId: null });
       return snap(p);
     },
     async presentOnReader(_account, reader, paymentId) {
@@ -135,6 +141,20 @@ export function fakeProvider() {
     async clearReader(_account, reader) {
       if (knobs.reader === 'busy') throw new ReaderUnavailable('busy', 'reader busy');
       calls.cleared.push(reader);
+    },
+    async getPayout(_account, payoutId) {
+      const p = payoutsById.get(payoutId);
+      if (!p) throw new Error(`no such payout ${payoutId}`);
+      return p;
+    },
+    async listPayouts() {
+      return [...payoutsById.values()].reverse();
+    },
+    async payoutItems(_account, payoutId) {
+      return balance.filter((b) => b.payoutId === payoutId).map(({ payoutId: _p, ...b }) => b);
+    },
+    async balanceItems() {
+      return balance.map(({ payoutId: _p, ...b }) => b);
     },
     async cancel(_account, paymentId) {
       calls.cancels.push(paymentId);
@@ -150,6 +170,7 @@ export function fakeProvider() {
       const p = get(paymentId);
       if (amountCents > p.captured - p.refunded) throw new Error('refund exceeds what was captured');
       p.refunded += amountCents;
+      balance.push({ id: id('txn'), type: 'refund', amountCents: -amountCents, processorFeeCents: 0, platformFeeCents: 0, netCents: -amountCents, paymentId: p.id, createdAt: new Date().toISOString(), payoutId: null });
       const r: RefundSnapshot = { refundId: id('re'), state: knobs.refundState, failureReason: knobs.refundState === 'failed' ? 'expired_or_canceled_card' : null };
       refundByKey.set(idempotencyKey, r);
       return r;
@@ -171,5 +192,20 @@ export function fakeProvider() {
     p.declineCode = code;
   };
 
-  return { provider, calls, status, payments, knobs, tap, decline };
+  /** The processor pays out everything not yet paid out (an automatic payout), in the given state. */
+  const payout = (status: Payout['status'] = 'paid', opts: { amountOffCents?: number } = {}) => {
+    const items = balance.filter((b) => b.payoutId === null);
+    const p: Payout = { id: id('po'), status, amountCents: items.reduce((s, b) => s + b.netCents, 0) - (opts.amountOffCents ?? 0), arrivalDate: '2026-09-28', automatic: true };
+    for (const b of items) b.payoutId = p.id;
+    payoutsById.set(p.id, p);
+    return p;
+  };
+  /** A dispute or other adjustment in the balance. */
+  const adjust = (amountCents: number, paymentId: string | null = null) =>
+    balance.push({ id: id('txn'), type: 'adjustment', amountCents, processorFeeCents: 0, platformFeeCents: 0, netCents: amountCents, paymentId, createdAt: new Date().toISOString(), payoutId: null });
+  const setPayoutStatus = (payoutId: string, status: Payout['status']) => {
+    payoutsById.get(payoutId)!.status = status;
+  };
+
+  return { provider, calls, status, payments, knobs, tap, decline, balance, payout, adjust, setPayoutStatus };
 }

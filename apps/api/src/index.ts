@@ -63,6 +63,7 @@ import { startStripeEventProcessor } from './jobs/stripeEventProcessor.js';
 import { startCardCaptureSafety } from './jobs/cardCaptureSafety.js';
 import { startClearTenderSync } from './jobs/clearTenderSync.js';
 import { startOutboxProcessor } from './jobs/outboxProcessor.js';
+import { startCardReconciliation } from './jobs/cardReconciliation.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
@@ -404,6 +405,8 @@ async function startServer() {
     startClearTenderSync();
     // Acts on what the back office announced: recording and reversing tax at Stripe.
     startOutboxProcessor();
+    // Nightly: card payouts brought up to date, then our books checked against the processor's.
+    startCardReconciliation();
 
     // Start HTTP server (Express + WebSocket)
     // Bind to 0.0.0.0 to accept connections from Railway/external hosts

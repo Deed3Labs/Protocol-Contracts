@@ -9,7 +9,7 @@ describe('the migration runner', () => {
     await pg.exec(LAZY_MERCHANT_TABLES);
     const db = pgliteDb(pg);
     const all = await loadMigrations();
-    expect(all.map((m) => m.version)).toEqual(['0001_merchant_shop', '0002_commerce', '0003_payments', '0004_ledger', '0005_connector_status_and_event_retry', '0006_card_payments', '0007_checkout', '0008_refunds_receipts_tax']);
+    expect(all.map((m) => m.version)).toEqual(['0001_merchant_shop', '0002_commerce', '0003_payments', '0004_ledger', '0005_connector_status_and_event_retry', '0006_card_payments', '0007_checkout', '0008_refunds_receipts_tax', '0009_payouts_reconciliation']);
     expect(await migrate(db)).toEqual(all.map((m) => m.version));
     expect(await migrate(db)).toEqual([]);
     const { rows } = await db.query<{ version: string }>('SELECT version FROM merchant.schema_migrations ORDER BY version');
