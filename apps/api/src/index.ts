@@ -65,6 +65,7 @@ import { startClearTenderSync } from './jobs/clearTenderSync.js';
 import { startOutboxProcessor } from './jobs/outboxProcessor.js';
 import { startCardReconciliation } from './jobs/cardReconciliation.js';
 import { startClearFeeBilling } from './jobs/clearFeeBilling.js';
+import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
@@ -410,6 +411,8 @@ async function startServer() {
     startCardReconciliation();
     // Daily: Clear's fee billed and collected for any shop whose processor can't take it per sale.
     startClearFeeBilling();
+    // Every 15m: unpaid orders left open for two hours give their stock back.
+    startStaleOrderSweep();
 
     // Start HTTP server (Express + WebSocket)
     // Bind to 0.0.0.0 to accept connections from Railway/external hosts

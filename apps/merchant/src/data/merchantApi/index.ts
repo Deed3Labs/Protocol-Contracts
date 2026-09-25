@@ -56,3 +56,17 @@ export function mockControls(): MockMerchantApi['controls'] | null {
 }
 
 export const useMerchantApi = (): MerchantApi => merchantApi();
+
+/**
+ * An unpaid order discarded as the page goes away (a tab closed mid-charge): a `keepalive` request,
+ * which the browser finishes after the page is gone. Best effort; the server's sweep catches what
+ * this can't (jobs/staleOrderSweep.ts). The server refuses it if money was taken, so it's safe.
+ */
+export function discardOnLeave(orderId: string): void {
+  merchantApi();
+  if (current!.mode === 'mock') {
+    void current!.api.discardOrder(orderId).catch(() => undefined);
+    return;
+  }
+  void request(`/api/merchant/orders/${encodeURIComponent(orderId)}/discard`, { method: 'POST', body: '{}', keepalive: true }).catch(() => undefined);
+}

@@ -6,7 +6,7 @@ import { useAuth } from '@/auth/authContext';
 import { Segmented } from '@/brand/controls';
 import { OneColumn, cx } from '@/brand/ui';
 import { api } from '@/data/apiClient';
-import { useMerchantApi } from '@/data/merchantApi';
+import { discardOnLeave, useMerchantApi } from '@/data/merchantApi';
 import { errorSentence, useApi } from '@/data/useApi';
 import { useLayout } from '@/lib/useBreakpoint';
 import { FlowTop } from '@/shell/chrome';
@@ -441,6 +441,8 @@ export default function NewChargePage() {
   // buttons. Discarding is safe to repeat, so leaving by a button as well does no harm.
   const orderRef = useRef<Order | null>(null);
   orderRef.current = order;
+  const tendersRef = useRef<Tender[]>([]);
+  tendersRef.current = tenders;
   useEffect(
     () => () => {
       void discardIfUnpaid(orderRef.current);
@@ -448,6 +450,17 @@ export default function NewChargePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
+  // The tab closed, or the tablet left the page, mid-charge: there's no time to ask the server
+  // first, so this goes on what the page knows (the server refuses it if money was taken).
+  useEffect(() => {
+    if (preview) return;
+    const onHide = () => {
+      const o = orderRef.current;
+      if (o && o.status !== 'voided' && nothingTaken(tendersRef.current)) discardOnLeave(o.id);
+    };
+    window.addEventListener('pagehide', onHide);
+    return () => window.removeEventListener('pagehide', onHide);
+  }, [preview]);
 
   // ---- The card reader ---------------------------------------------------------------------------
   // The reader service drives the card screen's four states: the installed app's plugin, a
@@ -641,6 +654,8 @@ export default function NewChargePage() {
             onKey={(k) => setF((cur) => ({ ...cur, typed: typeAmount(cur.typed, k) }))}
             onContinue={toCheckout}
             onExit={exit}
+            // A shop with a catalogue switches to its items here, as on a tablet.
+            modeSwitch={hasItems ? modeSwitch : undefined}
           />
         );
     } else {

@@ -176,7 +176,7 @@ export async function cancelClearTender(db: Db, clear: ClearCharges, input: { me
  * on it was declined or withdrawn. Its held stock goes back on the shelf. No PIN: nothing was paid,
  * so there's nothing to undo but the hold; anything that took money is voided or refunded instead.
  */
-export async function discardOrder(db: Db, input: { merchant: string; orderId: string; staffId: string }): Promise<Order> {
+export async function discardOrder(db: Db, input: { merchant: string; orderId: string; staffId: string | null }): Promise<Order> {
   await db.transaction(async (tx) => {
     const { rows } = await tx.query<OrderRow>('SELECT id, status, voided_at, total_cents, business_date, raised_by FROM commerce.orders WHERE id = $1 AND merchant = $2 FOR UPDATE', [
       input.orderId,
@@ -194,6 +194,36 @@ export async function discardOrder(db: Db, input: { merchant: string; orderId: s
     await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: input.staffId });
   });
   return getOrder(db, input.merchant, input.orderId);
+}
+
+/** An unpaid order untouched this long was walked away from: its hold is released. */
+export const STALE_ORDER_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * The backstop for an order left unpaid when the counter's page was closed (a tab shut, a tablet
+ * out of battery): no money on it, untouched for STALE_ORDER_MS, discarded by the system. The app
+ * discards on the way out as well; this catches what it couldn't. An order with a payment under way
+ * (a card at the reader, a Clear charge the member hasn't answered) isn't touched.
+ */
+export async function sweepStaleOrders(db: Db, opts: { now?: Date; idleMs?: number } = {}): Promise<string[]> {
+  const before = new Date((opts.now ?? new Date()).getTime() - (opts.idleMs ?? STALE_ORDER_MS)).toISOString();
+  const { rows } = await db.query<{ id: string; merchant: string }>(
+    `SELECT o.id, o.merchant FROM commerce.orders o
+      WHERE o.status IN ('open','paying') AND o.updated_at < $1
+        AND NOT EXISTS (SELECT 1 FROM payments.tenders t WHERE t.order_id = o.id AND t.status NOT IN ('declined','cancelled'))
+        AND NOT EXISTS (SELECT 1 FROM payments.tenders t WHERE t.order_id = o.id AND t.updated_at >= $1)`,
+    [before],
+  );
+  const discarded: string[] = [];
+  for (const o of rows) {
+    try {
+      await discardOrder(db, { merchant: o.merchant, orderId: o.id, staffId: null });
+      discarded.push(o.id);
+    } catch {
+      // Something started on it since it was found: leave it.
+    }
+  }
+  return discarded;
 }
 
 /**

@@ -11,7 +11,7 @@ import { tipsPayable } from '../ledger/accounts.js';
 import { balance } from '../ledger/ledgerService.js';
 import { updateSettings } from '../shop/shopService.js';
 import { createOrder, getOrder, type OrderDeps } from './orderService.js';
-import { cancelClearTender, type ClearCharges, createCashTender, createClearTender, discardOrder, syncClearTender, voidOrder } from './payments.js';
+import { cancelClearTender, type ClearCharges, createCashTender, createClearTender, discardOrder, STALE_ORDER_MS, sweepStaleOrders, syncClearTender, voidOrder } from './payments.js';
 
 let db: Db;
 beforeAll(async () => {
@@ -219,6 +219,33 @@ describe('discarding an order nothing was paid on', () => {
     const o = await s.order(1);
     await cash(s, o.id, 5000, 5000);
     await expect(discardOrder(db, { merchant: s.merchant, orderId: o.id, staffId: s.staff.jen })).rejects.toMatchObject({ code: 'not_voidable' });
+  });
+});
+
+describe('the sweep for orders left unpaid', () => {
+  test('two hours idle with nothing paid: discarded; recent, paid or waiting on the member: left', async () => {
+    const s = await shop();
+    await openDrawer(db, { merchant: s.merchant, staffId: s.staff.jen });
+    const idle = await s.order(1);
+    const recent = await s.order(1);
+    const paid = await s.order(1);
+    await cash(s, paid.id, 18900, 18900);
+    const waiting = await s.order(1);
+    await createClearTender(db, fakeClear().clear, { merchant: s.merchant, orderId: waiting.id, staffId: s.staff.jen, tender: { amountCents: 1000, tipCents: 0, idempotencyKey: key() } });
+    const later = new Date(Date.now() + STALE_ORDER_MS + 60_000);
+    // Only the first was left alone for two hours; the rest were touched "just now" relative to later.
+    await db.query(`UPDATE commerce.orders SET updated_at = now() - interval '3 hours' WHERE id = ANY($1::text[])`, [[idle.id, paid.id, waiting.id]]);
+    await db.query(`UPDATE payments.tenders SET updated_at = now() - interval '3 hours' WHERE order_id = ANY($1::text[])`, [[paid.id, waiting.id]]);
+    await db.query(`UPDATE commerce.orders SET updated_at = $2 WHERE id = $1`, [recent.id, new Date(later.getTime() - 60_000).toISOString()]);
+    const discarded = await sweepStaleOrders(db, { now: later });
+    expect(discarded).toContain(idle.id);
+    expect(discarded).not.toContain(recent.id);
+    expect(discarded).not.toContain(paid.id);
+    expect(discarded).not.toContain(waiting.id);
+    expect((await getOrder(db, s.merchant, idle.id)).status).toBe('voided');
+    const { rows } = await db.query<{ held: number }>('SELECT held FROM commerce.stock_levels WHERE item_id = $1', [s.tire.id]);
+    // The idle order's tire back; the recent one and the waiting Clear charge still hold theirs.
+    expect(rows[0]!.held).toBe(2);
   });
 });
 
