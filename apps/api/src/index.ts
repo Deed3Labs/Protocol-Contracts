@@ -6,6 +6,7 @@ import compression from 'compression';
 import dotenv from 'dotenv';
 import { getRedisClient, closeRedisConnection } from './config/redis.js';
 import { closePostgresPool } from './config/postgres.js';
+import { runMerchantMigrations } from './config/merchantDb.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { requireAuth } from './middleware/auth.js';
 import { requireMemberCapability } from './middleware/memberCapabilities.js';
@@ -380,6 +381,16 @@ async function startServer() {
     startCardSettlementSweeper().catch((error) => {
       console.error('Failed to start card settlement sweeper:', error);
     });
+
+    // The merchant back office's tables. Awaited so the merchant endpoints never see a half-built
+    // schema, but a failure doesn't take the member API down with it: nothing member-facing reads
+    // these tables, and a failed migration has rolled back whole.
+    try {
+      const applied = await runMerchantMigrations();
+      if (applied.length) console.log(`✅ Merchant migrations applied: ${applied.join(', ')}`);
+    } catch (error) {
+      console.error('❌ Merchant migrations failed; merchant back-office tables are not ready:', redactError(error));
+    }
 
     // Start HTTP server (Express + WebSocket)
     // Bind to 0.0.0.0 to accept connections from Railway/external hosts

@@ -16,9 +16,12 @@ WORKDIR /app
 # service writes, and the only way to guarantee that is one implementation. A container that can
 # only see apps/api cannot resolve it.
 #
-# The cost is a larger context, which is why .railwayignore is narrow: apps/api and packages/domain
-# and nothing else.
+# The cost is a larger context, which is why .railwayignore is narrow: apps/api, packages/domain
+# and packages/merchant-contracts (the merchant app's API contract, which the api validates
+# against), and nothing else. Both are copied before the install: bun copies `file:` packages into
+# node_modules, so a contract change has to invalidate the install layer to reach the image.
 COPY packages/domain ./packages/domain
+COPY packages/merchant-contracts ./packages/merchant-contracts
 
 # Dependencies first, so a source-only change reuses this layer instead of reinstalling.
 # Deliberately not --frozen-lockfile: bun.lock is currently stale against package.json, and

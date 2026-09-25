@@ -73,8 +73,7 @@ export function merchantDbConfigured(): boolean {
  * migration runner, and introducing one alongside a live database is a separate decision from
  * shipping the merchant app.
  */
-export async function ensureMerchantSchema(): Promise<void> {
-  const pool = getMerchantPool();
+export async function ensureMerchantSchema(pool: Pick<Pool, 'query'> | null = getMerchantPool()): Promise<void> {
   if (!pool || schemaReady) return;
 
   await pool.query(`CREATE SCHEMA IF NOT EXISTS ${MERCHANT_SCHEMA}`);
@@ -261,4 +260,19 @@ export async function ensureMerchantSchema(): Promise<void> {
   `);
 
   schemaReady = true;
+}
+
+/**
+ * The merchant back office's versioned tables (`commerce`, `payments`, `ledger`, and additions to
+ * this schema), from apps/api/migrations. Runs after ensureMerchantSchema() because the first
+ * migration adds to the profiles table it creates.
+ *
+ * Unlike the lazy stores above, these are versioned: a ledger's triggers and constraints are the
+ * kind of thing that has to change deliberately, in order, and be the same on every database.
+ */
+export async function runMerchantMigrations(pool: Pool | null = getMerchantPool()): Promise<string[]> {
+  if (!pool) return [];
+  await ensureMerchantSchema(pool);
+  const [{ migrate }, { poolDb }] = await Promise.all([import('../db/migrate.js'), import('../db/db.js')]);
+  return migrate(poolDb(pool));
 }
