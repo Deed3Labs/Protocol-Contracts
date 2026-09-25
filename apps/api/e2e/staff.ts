@@ -58,6 +58,8 @@ try {
   const first = await call('POST', `/staff/${ana}/first-pin`, { device: true, body: { pin: '5555' } });
   check('her first shift starts with the PIN she picked', first.status === 200 && first.body.staff?.id === ana && !!first.body.token);
   check('her session works', (await call('GET', '/profile', { token: first.body.token })).status === 200);
+  const onNow = await call('GET', '/shifts', { token: first.body.token });
+  check('her first PIN puts her on shift', onNow.status === 200 && onNow.body.some((x: { staffId: string }) => x.staffId === ana), JSON.stringify(onNow.body));
   check('the PIN can’t be picked twice', (await call('POST', `/staff/${ana}/first-pin`, { device: true, body: { pin: '6666' } })).status === 409);
   check('the next shift is a normal sign-in', (await call('POST', '/session', { device: true, body: { staffId: ana, pin: '5555' } })).status === 200);
 
@@ -76,6 +78,8 @@ try {
   check('nobody removes themselves', (await call('DELETE', `/staff/${shop.staff.owner.id}`, { token: token.owner })).status === 403);
   check('the owner removes her', (await call('DELETE', `/staff/${ana}`, { token: token.owner })).status === 200);
   check('her shift stops', (await call('GET', '/profile', { token: shift })).status === 401);
+  const stillOn = await call('GET', '/shifts', { token: token.owner });
+  check('removing her ends her shift', stillOn.status === 200 && !stillOn.body.some((x: { staffId: string }) => x.staffId === ana), JSON.stringify(stillOn.body));
   const after = await call('POST', '/roster', { device: true, body: {} });
   check('she’s off the roster', !after.body.staff.some((s: { id: string }) => s.id === ana));
   const trail = await call('GET', `/audit?from=${new Date().toISOString().slice(0, 10)}&to=${new Date().toISOString().slice(0, 10)}`, { token: token.owner });

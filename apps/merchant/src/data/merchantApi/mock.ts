@@ -20,7 +20,11 @@ import type {
   Receipt,
   Refund,
   Reorder,
+  PersonHours,
+  ShiftNow,
   ShopSettings,
+  StaffHours,
+  StaffWeek,
   StockMovement,
   Tender,
   TenderEvent,
@@ -57,6 +61,7 @@ export type ClearSide = Pick<
   | 'currentDevice'
   | 'renameDevice'
   | 'setIdleLock'
+  | 'signOut'
 >;
 
 /**
@@ -134,8 +139,34 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   const deposits: BankDeposit[] = [];
   const cardDeposits: CardDeposit[] = [];
   let orderNumber = 0;
+  // Shifts and hours: who is on, their breaks, and each person's usual week and this week.
+  type ShiftRec = { staffId: string; startedAt: string; breakFrom: string | null; breakMinutes: number };
+  const shifts = new Map<string, ShiftRec>(seed.SHIFTS.map((s) => [s.staffId, { ...s, breakFrom: null, breakMinutes: 0 }]));
+  const staffHours = new Map<string, { usual: StaffHours | null; next: StaffHours | null; thisWeek: StaffHours | null }>(
+    Object.entries(structuredClone(seed.STAFF_HOURS)).map(([k, v]) => [k, { ...v, next: null }]),
+  );
 
   const who = (staffId: string) => seed.STAFF.find((s) => s.id === staffId);
+  /** An owner changes anyone's shift or hours; a manager counter staff's and their own. */
+  const mayManage = (staffId: string) => who(viewer)?.role === 'owner' || (who(viewer)?.role === 'manager' && (staffId === viewer || who(staffId)?.role === 'counter'));
+  const bookedToday = (staffId: string) => {
+    const h = staffHours.get(staffId);
+    return (h?.thisWeek ?? h?.usual)?.days.find((d) => d.day === 1)?.open ?? null;
+  };
+  const shiftNow = (s: { staffId: string; startedAt: string; breakFrom: string | null; breakMinutes: number }): ShiftNow => ({
+    staffId: s.staffId,
+    name: who(s.staffId)!.name,
+    role: who(s.staffId)!.role,
+    startedAt: s.startedAt,
+    onBreakSince: s.breakFrom,
+    breakMinutes: s.breakMinutes,
+    booked: bookedToday(s.staffId),
+  });
+  const personHours = (staffId: string): PersonHours => {
+    if (!who(staffId)) refuse('That person is not on the team', 404, 'not_found');
+    const h = staffHours.get(staffId);
+    return { usual: h?.usual ?? null, next: h?.next ?? null, thisWeek: h?.thisWeek ?? null, nextWeekOf: '2026-09-28' };
+  };
   const isManager = (staffId: string) => ['manager', 'owner'].includes(who(staffId)?.role ?? '');
   // Whose PIN is whose, as the server keeps them: a reset clears one, a first shift sets one.
   const pins = new Map<string, string>(Object.entries(seed.MOCK_PINS).map(([pin, staffId]) => [staffId, pin]));
@@ -407,6 +438,55 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       return settings;
     },
     staff: async () => seed.STAFF,
+
+    // ---- Shifts and hours (the reference's Tuesday: the week of Sep 21)
+    shifts: async () => [...shifts.values()].sort((a, b) => a.startedAt.localeCompare(b.startedAt)).map(shiftNow),
+    startBreak: async () => {
+      const s = shifts.get(viewer) ?? refuse('You are not on shift', 409, 'not_on_shift');
+      if (s.breakFrom) refuse('You are already on a break', 409, 'on_break');
+      s.breakFrom = now();
+      return shiftNow(s);
+    },
+    endBreak: async () => {
+      const s = shifts.get(viewer) ?? refuse('You are not on shift', 409, 'not_on_shift');
+      if (!s.breakFrom) refuse('You are not on a break', 409, 'not_on_break');
+      s.breakMinutes += Math.floor((Date.now() - new Date(s.breakFrom!).getTime()) / 60000);
+      s.breakFrom = null;
+      return shiftNow(s);
+    },
+    endShift: async (staffId) => {
+      if (!mayManage(staffId)) refuse('Only the owner ends a manager’s shift', 403, 'forbidden');
+      shifts.delete(staffId);
+    },
+    staffWeek: async (): Promise<StaffWeek> => {
+      const dates = Array.from({ length: 7 }, (_, i) => `2026-09-${String(21 + i).padStart(2, '0')}`);
+      const staff = seed.STAFF.filter((s) => s.active && !removed.has(s.id));
+      const plan = (sid: string) => staffHours.get(sid)?.thisWeek ?? staffHours.get(sid)?.usual ?? null;
+      return {
+        weekOf: dates[0]!,
+        today: TODAY,
+        days: dates.map((date, i) => ({ date, open: hours.dates.find((d) => d.date === date)?.open ?? (hours.dates.some((d) => d.date === date) ? null : hours.week[i]!.open) })),
+        booked: Object.fromEntries(staff.filter((s) => plan(s.id)).map((s) => [s.id, dates.map((_, i) => plan(s.id)!.days.find((d) => d.day === i)?.open ?? null)])),
+        usual: Object.fromEntries(staff.map((s) => [s.id, staffHours.get(s.id)?.usual ?? null])),
+        lastShift: Object.fromEntries(staff.map((s) => [s.id, shifts.get(s.id)?.startedAt ?? null])),
+      };
+    },
+    staffHours: async (staffId): Promise<PersonHours> => {
+      if (staffId !== viewer && !isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      return personHours(staffId);
+    },
+    saveStaffHours: async (staffId, input): Promise<PersonHours> => {
+      if (!mayManage(staffId)) refuse('Only the owner sets a manager’s hours', 403, 'forbidden');
+      if (new Set(input.hours.days.map((d) => d.day)).size !== input.hours.days.length) refuse('Each day once', 422, 'invalid');
+      if (input.hours.days.some((d) => d.open.to <= d.open.from)) refuse('It closes after it opens', 422, 'invalid');
+      const h = staffHours.get(staffId) ?? { usual: null, next: null, thisWeek: null };
+      const days = { days: [...input.hours.days].sort((a, b) => a.day - b.day) };
+      if (input.once) h.thisWeek = days;
+      else if (!h.usual) h.usual = days;
+      else h.next = days;
+      staffHours.set(staffId, h);
+      return personHours(staffId);
+    },
     taxStatus: async () => ({ source: 'address_rate', stripe: switches.stripe === 'connected' ? 'setup_needed' : 'not_connected', rates: { goods: '7.75', labour: null, food: '7.75' }, pricesIncludeTax: settings.tax.pricesIncludeTax }),
 
     cardAvailability: async (): Promise<CardAvailability> => (switches.stripe === 'connected' ? { available: true } : { available: false, reason: 'not_connected' }),
@@ -932,10 +1012,15 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
     removeStaff: async (staffId) => {
       removed.add(staffTarget(staffId).id);
+      shifts.delete(staffId);
     },
     profile: async (): Promise<MerchantProfile> => {
       const owner = who(viewer)?.role === 'owner';
       return { ...seed.PROFILE, name: shop.name, ...(owner ? seed.PROFILE_OWNER : {}) };
+    },
+    // End shift: signing out ends the viewer's shift, as DELETE /session does.
+    signOut: async () => {
+      shifts.delete(viewer);
     },
     // The shop's tablets: this one is the preview's "Counter tablet" (auth/AuthProvider.tsx).
     devices: async () => {

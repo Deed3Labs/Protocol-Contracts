@@ -25,6 +25,7 @@ import type {
   RequestRefund,
   Tender,
 } from './orders';
+import type { PersonHours, SaveStaffHours, ShiftNow, StaffWeek } from './shifts';
 import type { Shop, ShopHours, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
 
 type In<T extends z.ZodType> = z.input<T>;
@@ -55,6 +56,21 @@ export interface MerchantApi {
   staff(): Promise<Staff[]>;
   /** Settings › Tax: where the tax comes from and the rate at the shop. */
   taxStatus(): Promise<TaxStatus>;
+
+  // ---- Shifts and hours --------------------------------------------------------------------------------
+  /** Everyone on shift now, the earliest first. A shift starts with a PIN and ends with End shift. */
+  shifts(): Promise<ShiftNow[]>;
+  /** The caller's own break. */
+  startBreak(): Promise<ShiftNow>;
+  endBreak(): Promise<ShiftNow>;
+  /** Owners and managers: end someone else's shift. The caller's own ends with signing out. */
+  endShift(staffId: string): Promise<void>;
+  /** The week that holds `date` (today when omitted): the shop's hours and who is booked. */
+  staffWeek(date?: string): Promise<StaffWeek>;
+  /** Owners and managers, or the person themselves. */
+  staffHours(staffId: string): Promise<PersonHours>;
+  /** Owners and managers (a manager sets counter staff's hours and their own). */
+  saveStaffHours(staffId: string, input: In<typeof SaveStaffHours>): Promise<PersonHours>;
 
   // ---- Cards ---------------------------------------------------------------------------------------
   cardAvailability(): Promise<CardAvailability>;

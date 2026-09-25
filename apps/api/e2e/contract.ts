@@ -76,6 +76,33 @@ try {
   await check('settings', C.ShopSettings, () => owner.settings());
   await check('updateSettings', C.ShopSettings, () => owner.updateSettings({}));
   await check('staff', C.Staff.array(), () => manager.staff());
+  await check('saveHours', C.ShopHours, () =>
+    owner.saveHours({ week: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day, open: day < 6 ? { from: '08:00', to: '18:00' } : null })), dates: [{ date: '2026-11-26', label: 'Thanksgiving', open: null }] }),
+  );
+  await check('hours', C.ShopHours, () => jen.hours());
+
+  // ---- Shifts: a PIN on an enrolled tablet starts one (POST /session), signing out ends it.
+  const enrolled = await fetch(`${origin}/api/merchant/devices`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${shop.token.owner}` }, body: JSON.stringify({ label: 'Counter tablet' }) }).then((r) => r.json() as Promise<{ deviceToken: string }>);
+  const pinIn = await fetch(`${origin}/api/merchant/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Clear-Device': enrolled.deviceToken }, body: JSON.stringify({ pin: PINS.jen, staffId: shop.staff.jen.id }) });
+  if (!pinIn.ok) throw new Error(`PIN sign-in failed: ${pinIn.status}`);
+  const jenShift = (await pinIn.json()) as { token: string };
+  const onNow = await check('shifts', C.ShiftNow.array(), () => jen.shifts());
+  if (onNow?.map((s) => s.staffId).join() !== shop.staff.jen.id) throw new Error(`expected Jen alone on shift, got ${JSON.stringify(onNow)}`);
+  await check('startBreak', C.ShiftNow, () => jen.startBreak());
+  await check('endBreak', C.ShiftNow, () => jen.endBreak());
+  await check('saveStaffHours', C.PersonHours, () => manager.saveStaffHours(shop.staff.jen.id, { hours: { days: [0, 1, 2, 3, 4].map((day) => ({ day, open: { from: '08:00', to: '16:00' } })) }, once: false }));
+  await check('staffHours', C.PersonHours, () => jen.staffHours(shop.staff.jen.id));
+  await check('staffWeek', C.StaffWeek, () => jen.staffWeek());
+  // A counter shift can't end someone else's; a manager can end a counter shift.
+  const refused = await jen.endShift(shop.staff.luis.id).then(() => 'ok', (e: { status?: number }) => e.status);
+  if (refused !== 403) throw new Error(`a counter shift ended someone else's: ${refused}`);
+  await check('endShift', null, () => manager.endShift(shop.staff.jen.id));
+  if ((await jen.shifts()).length) throw new Error('Jen is still on shift after a manager ended it');
+  // Signing out ends your own.
+  await fetch(`${origin}/api/merchant/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Clear-Device': enrolled.deviceToken }, body: JSON.stringify({ pin: PINS.jen, staffId: shop.staff.jen.id }) });
+  if ((await jen.shifts()).length !== 1) throw new Error('a second PIN did not start a new shift');
+  await fetch(`${origin}/api/merchant/session`, { method: 'DELETE', headers: { Authorization: `Bearer ${jenShift.token}` } });
+  if ((await jen.shifts()).length) throw new Error('signing out did not end the shift');
   await check('taxStatus', C.TaxStatus, () => owner.taxStatus());
 
   // ---- Cards

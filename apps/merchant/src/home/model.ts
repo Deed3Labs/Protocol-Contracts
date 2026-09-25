@@ -1,15 +1,15 @@
 import { countsAsVolume, dollars, type StaffRole } from '@clear/domain';
 import type { MerchantCharge, PayoutPosition, StaffMember } from '@/data/apiClient';
-import type { Order } from '@clear/merchant-contracts';
+import type { Order, ShiftNow } from '@clear/merchant-contracts';
 
 /**
  * What Home shows, as data.
  *
  * Home is drawn from docs/merchant-reference/clear-merchant-home.html. The view only draws this;
  * `fromApi` fills it from what the API has today, and home/seed.ts fills it with the reference
- * scenario for the preview and the gallery. Anything the API cannot answer yet (the shift clock,
- * the drawer, Close the day) is left out of `fromApi` rather than invented, and the view draws
- * nothing in its place.
+ * scenario for the preview and the gallery. Anything the API cannot answer is left out of `fromApi`
+ * rather than invented, and the view draws nothing in its place. The drawer and the shift clock
+ * are added by the page from their own endpoints (`drawerPrompt`, `shiftClock`).
  */
 
 export const usd = (cents: number) => dollars(cents / 100);
@@ -73,12 +73,14 @@ export interface TillItem {
 export interface ShiftClock {
   /** "4h 12m" */
   onFor: string;
-  /** "3h 48m" */
-  left: string;
+  /** "3h 48m"; absent when the shift wasn't booked. */
+  left?: string;
   /** "8:04am" */
   since: string;
-  /** "4:00pm" */
-  until: string;
+  /** "4:00pm"; absent when the shift wasn't booked. */
+  until?: string;
+  /** "no break yet", "break due", "30m break taken". */
+  breakNote?: string;
   /** Booked hours, one block each. */
   hours: number;
   /** Hours done, fractional: 4.2 fills four blocks and a fifth to 20%. */
@@ -172,14 +174,45 @@ export function ago(iso: string, now = Date.now()): string {
 
 // ---- From the API ---------------------------------------------------------------------------
 
+/** "4h 12m", "12m" */
+export function duration(minutes: number): string {
+  const m = Math.max(0, Math.floor(minutes));
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/**
+ * The counter's time clock from their shift: on for (breaks don't count), since when, and against
+ * what they're booked for today. A break is due once they've worked the shop's "due after" without
+ * one (Settings › Counter).
+ */
+export function shiftClock(s: ShiftNow, breaks: { minutes: number; afterMinutes: number } | null, now = Date.now()): ShiftClock {
+  const mins = (from: string) => (now - new Date(from).getTime()) / 60000;
+  const worked = mins(s.startedAt) - s.breakMinutes - (s.onBreakSince ? mins(s.onBreakSince) : 0);
+  const note = s.breakMinutes > 0 ? `${duration(s.breakMinutes)} break taken` : breaks && worked >= breaks.afterMinutes ? 'break due' : 'no break yet';
+  const c: ShiftClock = { onFor: duration(worked), since: clockTime(s.startedAt), hours: 0, done: 0, breakNote: note };
+  if (s.booked) {
+    const [fh, fm] = s.booked.from.split(':').map(Number) as [number, number];
+    const [th, tm] = s.booked.to.split(':').map(Number) as [number, number];
+    const end = new Date(now);
+    end.setHours(th, tm, 0, 0);
+    const length = th + tm / 60 - (fh + fm / 60);
+    c.until = clockTime(end.toISOString());
+    // Past the booked end, there is nothing left to count down.
+    if (end.getTime() > now) c.left = duration((end.getTime() - now) / 60000);
+    c.hours = Math.ceil(length);
+    c.done = Math.min(c.hours, Math.max(0, worked / 60));
+  }
+  if (s.onBreakSince) c.onBreak = { for: duration(mins(s.onBreakSince)), from: clockTime(s.onBreakSince) };
+  return c;
+}
+
 const isToday = (iso: string) => new Date(iso).toDateString() === new Date().toDateString();
 
 /**
  * Home from what the API answers today: today's charges, the payout position and the roster.
  *
- * Not here, because nothing answers them yet: the shift clock and breaks, the drawer, the Closing
- * up card and the setup checklist's state. Those arrive with the backend's drawer and shift work
- * (card-processing prompt, Phase 7); until then Home simply does not draw them for a live shop.
+ * Not here: the drawer and the shift clock, which the page adds from their own endpoints, and the
+ * Closing up card and the setup checklist's state, which nothing answers yet.
  */
 export function fromApi(input: {
   role: StaffRole;

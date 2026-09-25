@@ -205,7 +205,8 @@ test.describe('staff PINs', () => {
 
   test('Luis resets Jen’s PIN with his own, and removes Ana; he can’t touch the owner', async ({ page }) => {
     const errors = await visit(page, 'manager', '/staff');
-    const row = (name: RegExp) => page.getByRole('button', { name }).first();
+    // The team's rows (people on shift also have a tile in the crew strip).
+    const row = (name: RegExp) => page.locator('.c-tm-row').filter({ hasText: name });
 
     // The owner's sheet has nothing a manager can do.
     await row(/Mike R\./).click();
@@ -223,16 +224,19 @@ test.describe('staff PINs', () => {
     for (const d of '2222') await sheet.getByRole('button', { name: d, exact: true }).click();
     await sheet.getByRole('button', { name: 'Reset PIN' }).click();
     await expect(sheet).toHaveCount(0);
-    // The list reloads with her PIN cleared.
-    await expect(row(/Jen R\./)).toContainText('Not started yet');
-    await row(/Jen R\./).click();
-    await expect(page.getByRole('dialog', { name: 'Jen R.' })).toContainText('On first shift');
+    // The list reloads with her PIN cleared; the shift she's on carries on.
+    await expect(async () => {
+      // A sheet opened before the reload keeps the old row, so each try opens it afresh.
+      if (await page.getByRole('dialog').count()) await page.keyboard.press('Escape');
+      await row(/Jen R\./).click();
+      await expect(page.getByRole('dialog', { name: 'Jen R.' })).toContainText('On first shift', { timeout: 500 });
+    }).toPass();
     await page.keyboard.press('Escape');
 
     await row(/Ana Ruiz/).click();
     await page.getByRole('dialog', { name: 'Ana Ruiz' }).getByRole('button', { name: 'Remove' }).click();
     await page.getByRole('dialog', { name: 'Remove Ana' }).getByRole('button', { name: 'Remove' }).click();
-    await expect(page.getByRole('button', { name: /Ana Ruiz/ })).toHaveCount(0);
+    await expect(row(/Ana Ruiz/)).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 });

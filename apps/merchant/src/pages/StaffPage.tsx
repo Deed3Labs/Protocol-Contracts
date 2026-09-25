@@ -1,11 +1,14 @@
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
+import type { PersonHours } from '@clear/merchant-contracts';
 import { useSearchParams } from 'react-router-dom';
 import { canAddRole, type StaffRole } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
 import { ResetPinSheet } from '@/auth/screens';
 import { OneColumn, Slab, useDigitKeys } from '@/brand/ui';
 import { api } from '@/data/apiClient';
-import { useApi } from '@/data/useApi';
+import { useMerchantApi } from '@/data/merchantApi';
+import { errorSentence, useApi } from '@/data/useApi';
+import { ordinal } from '@/home/model';
 import { useShiftActions } from '@/shell/shiftActions';
 import {
   BUSY_SATURDAY,
@@ -15,7 +18,11 @@ import {
   JEN_HOURS,
   JEN_THIS_WEEK,
   OWNER_VIEW,
+  crewFromApi,
+  hoursFromApi,
+  hoursToApi,
   teamFromApi,
+  weekFromApi,
   type Hours,
   type Mate,
 } from '@/staff/model';
@@ -39,10 +46,10 @@ import {
  * Three blocks, as on Home: who is on the counter now, a slot while someone added has not started,
  * then the week and the slab (the team, what each role can do, the refund limit).
  *
- * **A live shop sees the team, the roles and the limit**, adds people, and opens a person to reset
- * their PIN (the one resetting confirms with their own) or remove them. Who may: a manager, counter
- * staff; an owner, counter staff and managers; never an owner, never yourself. Shifts and hours have
- * no backend yet, so the crew strip and the week are the preview's. In development, `?preview=1&screen=<frame>`:
+ * **A live shop** sees who is on shift, the week and the team from the API. An owner or manager
+ * opens a person to end their shift, set their hours, reset their PIN (the one resetting confirms
+ * with their own) or remove them. Who may: a manager, counter staff (and their own hours); an owner,
+ * counter staff and managers; never an owner, never yourself. In development, `?preview=1&screen=<frame>`:
  * owner (the default), counter, first, busy, add, person, remove, hours, hours-week, day-hours,
  * hours-friday, limit; `&live=1` for the live path.
  */
@@ -52,7 +59,7 @@ type Open =
   | { k: 'person'; m: Mate }
   | { k: 'remove'; m: Mate }
   | { k: 'reset'; m: Mate }
-  | { k: 'hours'; m: Mate; h: Hours; once?: boolean; day?: number }
+  | { k: 'hours'; m: Mate; h: Hours; once?: boolean; day?: number; live?: PersonHours }
   | { k: 'limit' }
   | null;
 
@@ -72,11 +79,26 @@ export default function StaffPage() {
   const staff = useApi(() => (preview ? Promise.resolve(null) : api.staff()), [preview]);
   const limit = useApi(() => (preview || !owner ? Promise.resolve(null) : api.refundThreshold()), [preview, owner]);
 
+  // A live shop: who is on now and the week, ticking so the tiles and "now" keep up.
+  const merchant = useMerchantApi();
+  const live = !preview && !!session;
+  const shiftsNow = useApi(() => (live ? merchant.shifts() : Promise.resolve(null)), [live]);
+  const weekNow = useApi(() => (live ? merchant.staffWeek() : Promise.resolve(null)), [live]);
+  const [tick, setTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setTick(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const liveWeek = useMemo(() => (weekNow.data && shiftsNow.data ? weekFromApi(weekNow.data, shiftsNow.data, new Date(tick)) : null), [weekNow.data, shiftsNow.data, tick]);
+
   const scene = preview ? (screen === 'counter' ? COUNTER_VIEW : OWNER_VIEW) : null;
-  const crew = screen === 'first' ? FIRST_THING : screen === 'busy' ? BUSY_SATURDAY : scene?.crew;
+  const liveCrew = shiftsNow.data && session ? crewFromApi(shiftsNow.data, session.staff.id, tick) : undefined;
+  const crew = screen === 'first' ? FIRST_THING : screen === 'busy' ? BUSY_SATURDAY : (scene?.crew ?? liveCrew);
   const team = useMemo(
-    () => scene?.team ?? (staff.data && session ? teamFromApi(staff.data, session.staff.id) : []),
-    [scene, staff.data, session],
+    () =>
+      scene?.team ??
+      (staff.data && session ? teamFromApi(staff.data, session.staff.id, shiftsNow.data ? { shifts: shiftsNow.data, week: weekNow.data, now: tick } : undefined) : []),
+    [scene, staff.data, session, shiftsNow.data, weekNow.data, tick],
   );
   const limitCents = scene ? scene.limitCents : (limit.data?.limitCents ?? null);
   const maxCents = scene ? scene.maxCents : (limit.data?.maxCents ?? null);
@@ -106,8 +128,28 @@ export default function StaffPage() {
   })();
   const [open, setOpen] = useState<Open>(initial);
   const close = () => setOpen(null);
-  const shut = (scene ?? OWNER_VIEW).week.days.map((d) => !d.open);
+  const shut = (scene?.week ?? liveWeek ?? OWNER_VIEW.week).days.map((d) => !d.open);
   const hoursOf = (m: Mate): Hours => (m.id === 'jen' ? JEN_HOURS : { days: shut.map(() => false), start: 8, end: 16, own: {} });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  /** Someone's hours: the preview's, or, live, loaded before the sheet opens. */
+  const openHours = (m: Mate) => {
+    if (!live) return setOpen({ k: 'hours', m, h: hoursOf(m) });
+    setError(null);
+    merchant.staffHours(m.id).then(
+      (ph) => setOpen({ k: 'hours', m, h: hoursFromApi(ph.thisWeek ?? ph.next ?? ph.usual), once: !!ph.thisWeek, live: ph }),
+      (e) => setError(errorSentence(e)),
+    );
+  };
+  // An owner ends anyone's shift; a manager a counter shift's. Nobody ends the holder's from here.
+  const mayEnd = (m: Mate) => live && m.on && !m.holds && (owner || (role === 'manager' && m.role === 'counter'));
+  const endFor = (m: Mate) => {
+    setError(null);
+    merchant.endShift(m.id).then(
+      () => (close(), shiftsNow.reload()),
+      (e) => setError(errorSentence(e)),
+    );
+  };
 
   const waiting = manage ? team.find((m) => m.added && !m.on) : undefined;
   const onTap = (m: Mate) => setOpen({ k: 'person', m });
@@ -117,7 +159,6 @@ export default function StaffPage() {
   // Resetting someone's PIN: the one resetting confirms with their own.
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const resetting = open?.k === 'reset' ? open.m : null;
   useDigitKeys(!!resetting && !busy, (d) => (setPinError(null), setPin((p) => (p.length >= 4 ? p : p + d))), () => setPin((p) => p.slice(0, -1)));
 
@@ -138,8 +179,11 @@ export default function StaffPage() {
         />
       )}
       {waiting && preview && <WaitingToStart m={waiting} />}
-      {scene && (
-        <WeekPanel week={scene.week} team={team} manage={manage} onSet={(m) => setOpen({ k: 'hours', m, h: hoursOf(m) })} />
+      {(scene || liveWeek) && <WeekPanel week={scene?.week ?? liveWeek!} team={team} manage={manage} onSet={openHours} />}
+      {error && !open && (
+        <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
+          {error}
+        </p>
       )}
       {one ? (
         <Slab>
@@ -176,7 +220,8 @@ export default function StaffPage() {
       {open?.k === 'person' && (
         <PersonSheet
           m={open.m}
-          onHours={preview ? () => setOpen({ k: 'hours', m: open.m, h: hoursOf(open.m) }) : undefined}
+          onHours={() => openHours(open.m)}
+          onEndShift={mayEnd(open.m) ? () => endFor(open.m) : undefined}
           onResetPin={mayChange(open.m) ? () => (setPin(''), setPinError(null), setOpen({ k: 'reset', m: open.m })) : undefined}
           onRemove={mayChange(open.m) ? () => setOpen({ k: 'remove', m: open.m }) : undefined}
           onClose={close}
@@ -231,7 +276,28 @@ export default function StaffPage() {
           initial={open.h}
           initialOnce={open.once}
           initialDay={open.day}
-          onSave={preview ? close : undefined}
+          editable={!!open.live}
+          startsThisWeek={open.live ? !open.live.usual : undefined}
+          backOn={open.live ? `Monday the ${ordinal(Number(open.live.nextWeekOf.slice(8)))}` : undefined}
+          busy={busy}
+          error={open.live ? error : null}
+          onSave={
+            preview
+              ? close
+              : open.live
+                ? (h, once) => {
+                    setBusy(true);
+                    setError(null);
+                    merchant
+                      .saveStaffHours(open.m.id, { hours: hoursToApi(h), once })
+                      .then(
+                        () => (close(), weekNow.reload()),
+                        (e) => setError(errorSentence(e)),
+                      )
+                      .finally(() => setBusy(false));
+                  }
+                : undefined
+          }
           onClose={close}
         />
       )}

@@ -57,9 +57,9 @@ Decided 2026-09-24.
 - **"None today" under a name in Who raised what is "—"**, by the em-dash rule.
 - **A padlocked nav item opens the owner's sign-in**, the proposal in the Home file's Open list.
 - **What a live shop sees.** Home is built from what the API answers: today's charges, the payout
-  position and the roster. The shift clock and breaks, the drawer, Close the day, the Closing up
-  card and the setup checklist's progress have no backend yet (card-processing prompt, Phase 7), so
-  a live shop doesn't see them. The reference scenario shows every state in development:
+  position, the roster, the drawer and a counter shift's time clock (on for, since, until, the
+  booked hours and breaks). The Closing up card and the setup checklist's progress have no backend
+  yet, so a live shop doesn't see them. The reference scenario shows every state in development:
   `?preview=1&home=running|counter|onBreak|early|dayOne|closing` (`&as=jen` for the counter) and
   `/close?preview=1&drawer=short|signed|balanced`.
 
@@ -222,10 +222,11 @@ Decided 2026-09-24.
 - **An owner's own sheet** has no Reset or Remove: owners are added by Clear, not from the app.
 - **The limit at Off** shows $0.00 and one row, "Every refund: Your PIN, or your phone". The
   reference draws only $500.
-- **What a live shop sees.** The API has the roster, charges this month and the refund limit. It
-  adds people, resets a PIN and removes someone. So a live shop sees the team, the roles and the
-  limit. It can add someone, change the limit, and open a person to reset their PIN or remove them.
-  Shifts and hours have no backend yet, so the crew strip, the slot and the week are the preview's: `/staff?preview=1&screen=owner|counter|first|busy|add|person|remove|hours|
+- **What a live shop sees.** The API has the roster, charges this month, the refund limit, who is
+  on shift and the week's hours. So a live shop sees the crew strip, the week, the team, the roles
+  and the limit. An owner or manager opens a person to end their shift, set their hours, reset
+  their PIN or remove them, adds someone and changes the limit. The slot for someone who hasn't
+  started is the preview's: `/staff?preview=1&screen=owner|counter|first|busy|add|person|remove|hours|
   hours-week|day-hours|hours-friday|limit`, and `&live=1` for the live path. The route stays
   owners and managers only, as agreed; the counter view is reached through `screen=counter`.
 
@@ -506,3 +507,32 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **The mock holds the tablet.** The dev preview's "Counter tablet" is in the mock's `ClearSide`
   (list, rename, lock), so Counter and Devices work on `?preview=1&live=1`. Walk-through:
   `e2e/settings-shop.spec.ts`.
+
+## Shifts, breaks and staff hours
+
+- **A shift starts with a PIN.** `POST /session` (and the owner's sign-in on an enrolled tablet)
+  starts the person's shift, unless one is running. Handing the tablet over is a new sign-in and
+  ends nobody's shift: everyone who started one is on until they end it. That is what the crew
+  strip draws, three on while one holds the tablet.
+- **End shift is signing out.** `DELETE /session` ends the caller's shift and any break. An owner
+  ends anyone's shift from their sheet ("End Jen's shift"); a manager, counter staff's. Nobody ends
+  the holder's from there: the holder has End my shift.
+- **A shift nobody ended** is closed on the next read after its day, eight hours in (or now, if
+  sooner), and marked `auto_ended`. We don't know when they left, so the record says it's a guess.
+- **Breaks pause the clock.** One at a time, only on shift. Home's clock counts worked time, and
+  says "break due" once someone has worked the shop's "due after" (Settings › Counter, 5 hours)
+  without one, then "30m break taken" after. The idle lock still applies during a break: the
+  tablet asks for the PIN when they're back.
+- **The clock against the booking.** "Until 4:00pm" and the hour blocks are today's booked hours.
+  Past the booked end the "left" figure goes rather than counting negative. Someone not booked
+  today sees "Not booked today" and no blocks, and their crew tile says "Not booked", as drawn.
+- **Hours are plans by week** (migration 0013): a person's usual hours from a Monday on, and a
+  week that differs. "Every week" starts next Monday, as the sheet says ("This week stays as it
+  is"), except for someone with no usual hours yet, or whose usual hours began this week: theirs
+  start now, and the sheet says "Starts this week." "This week only" replaces this week, and the
+  sheet opens on it when there is one. The sheet's times are the device's own time pickers.
+- **Who sets hours:** an owner anyone's; a manager counter staff's and their own. Anyone signed in
+  can read the week through the API, though the Staff route itself stays owners and managers.
+- **Removing someone ends their shift**, on the server and in the mock, so they drop off the crew
+  strip at once rather than on their next request.
+
