@@ -571,3 +571,8 @@ input.c-st-time {
   }
 }
 
+/* Staff › the day: before opening and after closing, when someone is booked then, the track is
+   hatched, so the shop's own hours still read on a widened timeline. */
+.c-trk i.c-out {
+  background: repeating-linear-gradient(135deg, var(--ink-28) 0 1px, transparent 1px 5px);
+}

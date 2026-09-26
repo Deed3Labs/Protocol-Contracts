@@ -219,9 +219,10 @@ async function member(q: Queryable, merchant: string, staffId: string) {
   return rows[0];
 }
 
-export async function personHours(q: Queryable, merchant: string, staffId: string): Promise<PersonHours> {
+/** Someone's hours as of the week holding `weekOf` (this week when not given). */
+export async function personHours(q: Queryable, merchant: string, staffId: string, weekOf?: string): Promise<PersonHours> {
   await member(q, merchant, staffId);
-  const monday = mondayOf(businessDate(await timezone(q, merchant)));
+  const monday = mondayOf(weekOf ?? businessDate(await timezone(q, merchant)));
   const next = addDays(monday, 7);
   const { rows } = await q.query<{ week_of: Date | string; once: boolean; days: unknown }>(
     'SELECT week_of, once, days FROM merchant.staff_hours WHERE staff_id = $1 AND merchant = $2 ORDER BY week_of DESC',
@@ -249,10 +250,15 @@ export async function saveStaffHours(db: Db, input: { merchant: string; staffId:
   if (!parsed.success) throw new ShiftError(parsed.error.issues[0]?.message ?? 'Those hours do not work', 'invalid');
   await member(db, input.merchant, input.staffId);
   const monday = mondayOf(businessDate(await timezone(db, input.merchant)));
+  // The week the schedule is showing: this one, or one ahead. A week that's gone isn't changed.
+  const shown = parsed.data.weekOf ? mondayOf(parsed.data.weekOf) : monday;
+  if (shown < monday) throw new ShiftError('That week has gone: its hours stay as they were', 'invalid');
   const before = await personHours(db, input.merchant, input.staffId);
   // Usual hours that only began this Monday are still being set up: a change replaces them.
   const { rows: fresh } = await db.query('SELECT 1 FROM merchant.staff_hours WHERE staff_id = $1 AND NOT once AND week_of = $2', [input.staffId, monday]);
-  const weekOf = parsed.data.once || !before.usual || fresh.length ? monday : addDays(monday, 7);
+  const fromNow = !before.usual || fresh.length ? monday : addDays(monday, 7);
+  // That week only; or every week from that week, and never sooner than the usual rule allows.
+  const weekOf = parsed.data.once ? shown : shown > fromNow ? shown : fromNow;
   await db.transaction(async (tx) => {
     if (!parsed.data.once) {
       await tx.query('DELETE FROM merchant.staff_hours WHERE staff_id = $1 AND NOT once AND week_of > $2', [input.staffId, weekOf]);
@@ -263,5 +269,5 @@ export async function saveStaffHours(db: Db, input: { merchant: string; staffId:
       [input.staffId, input.merchant, weekOf, parsed.data.once, JSON.stringify(asHours(parsed.data.hours.days).days)],
     );
   });
-  return personHours(db, input.merchant, input.staffId);
+  return personHours(db, input.merchant, input.staffId, shown);
 }

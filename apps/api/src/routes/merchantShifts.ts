@@ -14,7 +14,7 @@ import { endBreak, endShift, personHours, saveStaffHours, ShiftError, shiftsNow,
  *   POST   /shifts/:staffId/end    owners and managers: end someone else's shift (a manager, only
  *                                  counter staff's); the caller's own ends with DELETE /session
  *   GET    /staff/week?date=       anyone signed in: the shop's hours and who is booked, that week
- *   GET    /staff/:id/hours        owners and managers, or the person themselves
+ *   GET    /staff/:id/hours?week=  owners and managers, or the person themselves
  *   PUT    /staff/:id/hours        owners; managers for counter staff and themselves
  *
  * A shift itself starts with a sign-in (POST /session, or the owner's on an enrolled tablet).
@@ -102,7 +102,9 @@ router.get('/staff/:id/hours', requireMerchant, async (req: Request, res: Respon
     return;
   }
   try {
-    res.json(await personHours(d, req.merchant!.merchant, staffId));
+    // `?week=` a date in the week the schedule is showing; this week when not given.
+    const week = typeof req.query.week === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.week) ? req.query.week : undefined;
+    res.json(await personHours(d, req.merchant!.merchant, staffId, week));
   } catch (error) {
     refuse(res, error);
   }

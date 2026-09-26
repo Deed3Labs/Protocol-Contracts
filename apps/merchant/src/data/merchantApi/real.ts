@@ -57,7 +57,7 @@ export function realMerchantApi(request: Transport): MerchantApi {
       await post(`/shifts/${id(staffId)}/end`);
     },
     staffWeek: (date) => get(`/staff/week${date ? `?date=${encodeURIComponent(date)}` : ''}`),
-    staffHours: (staffId) => get(`/staff/${id(staffId)}/hours`),
+    staffHours: (staffId, weekOf) => get(`/staff/${id(staffId)}/hours${weekOf ? `?week=${encodeURIComponent(weekOf)}` : ''}`),
     saveStaffHours: (staffId, input) => send('PUT', `/staff/${id(staffId)}/hours`, input),
 
     // ---- Cards
