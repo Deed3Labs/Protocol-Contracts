@@ -131,6 +131,8 @@ export interface SettingsData {
   live?: LiveSelling | null;
   /** A live shop's business verification with Bridge; null in the preview and until read. */
   kyb?: KybStatus | null;
+  /** A live shop's statement months, newest first: this month (in progress) and the two before. */
+  statementMonths?: StatementMonth[];
 }
 
 export interface LiveShop {
@@ -157,6 +159,14 @@ export interface LiveSelling {
   region: string | null;
   /** Who can close the day: owners and managers, by name. */
   closers: string;
+}
+
+/** A month on Settings › Payouts › Statements. */
+export interface StatementMonth {
+  label: string;
+  from: string;
+  to: string;
+  inProgress: boolean;
 }
 
 /** An amount a setting holds, opened in a sheet to change. */
@@ -258,6 +268,11 @@ export interface Actions {
   onNotifyEmail?: () => void;
   /** Owners, live: start or carry on the business's verification with Bridge. */
   onVerifyBusiness?: () => void;
+  /** Owners, live: a month's statement, printed (Save as PDF) or as a spreadsheet. */
+  onStatementPdf?: (m: StatementMonth) => void;
+  onStatementCsv?: (m: StatementMonth) => void;
+  /** Owners, live: where each month's statement is emailed on the 2nd. */
+  onStatementsEmail?: () => void;
 }
 
 /** Counter and Devices on a live shop. */
@@ -740,6 +755,43 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
               </Rows>
             </Main>
           </Cell>
+          {!d.preview && d.live && d.statementMonths && (
+            <Cell label="Statements" det="Monthly" foot={<FootDet>Each lists what was taken and how, what came off it, and the card deposits. PDF opens the print dialog.</FootDet>}>
+              <Main>
+                <Rows>
+                  {d.statementMonths.map((m) => (
+                    <R2
+                      key={m.from}
+                      t={m.label}
+                      det={m.inProgress ? 'Still being written' : 'The whole month'}
+                      endClass="c-ink"
+                      end={
+                        <>
+                          <Btn sm onClick={a.onStatementPdf && (() => a.onStatementPdf!(m))}>
+                            PDF
+                          </Btn>
+                          <Btn sm onClick={a.onStatementCsv && (() => a.onStatementCsv!(m))}>
+                            CSV
+                          </Btn>
+                        </>
+                      }
+                    />
+                  ))}
+                </Rows>
+              </Main>
+              <Main>
+                <Rows link>
+                  <Switch
+                    t="Email each statement"
+                    det={d.live.settings.statementsEmail ? `On the 2nd, to ${d.live.settings.statementsEmail}` : 'On the 2nd, once there’s an address'}
+                    on={!!d.live.settings.statementsEmail}
+                    onChange={(on) => (on ? a.onStatementsEmail?.() : a.onSettings?.({ statementsEmail: null }))}
+                  />
+                  {d.live.settings.statementsEmail && <Kv k="Send to" v={d.live.settings.statementsEmail} go onTap={a.onStatementsEmail} />}
+                </Rows>
+              </Main>
+            </Cell>
+          )}
           {d.preview && (
             <Cell label="Statements" det="Monthly">
               <Main>

@@ -13,7 +13,10 @@ import { useLayout } from '@/lib/useBreakpoint';
 import { roleLabel } from '@/shell/chrome';
 import { currentPlatform, previewPlatform } from '@/reader';
 import { useShiftActions } from '@/shell/shiftActions';
-import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type AmountEdit, type ReaderRow, type Section, type SettingsData, type ShopField } from '@/settings/panes';
+import { saveFile } from '@/lib/saveFile';
+import { salesCsv } from '@/overview/exportCsv';
+import { printStatement, statementOf } from '@/overview/statement';
+import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type AmountEdit, type ReaderRow, type Section, type SettingsData, type ShopField, type StatementMonth } from '@/settings/panes';
 import { AddDeviceSheet, AddReaderSheet, AmountSheet, Btn, Cell, ChangeAccountSheet, clock12, ConfirmLeaveSheet, DateHoursSheet, FootLine, IndexCell, Kv, LeaveSheet, Main, NewCodeSheet, Pair, PaneHead, Rail, Rows, TextSheet, WeekHoursEdit, Who } from '@/settings/views';
 
 /**
@@ -109,8 +112,21 @@ export default function SettingsPage() {
   const shopHours = useApi(() => (liveOwner ? merchant.hours() : Promise.resolve(null)), [liveOwner]);
   // Business verification with Bridge (Advanced): read fresh each visit, so coming back from Bridge shows where it stands.
   const kyb = useApi(() => (!preview && seesMoney(role) ? merchant.kyb() : Promise.resolve(null)), [preview, role]);
+  // Where payouts go: the banks linked with Plaid (Payouts › Where withdrawals go).
+  const banks = useApi(() => (!preview && owner ? merchant.bankAccounts() : Promise.resolve(null)), [preview, owner]);
+  // Statements: this month so far and the two before.
+  const statementMonths = (() => {
+    const now = new Date();
+    const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return [0, 1, 2].map((back) => {
+      const first = new Date(now.getFullYear(), now.getMonth() - back, 1);
+      const last = back === 0 ? now : new Date(now.getFullYear(), now.getMonth() - back + 1, 0);
+      return { label: first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), from: ymd(first), to: ymd(last), inProgress: back === 0 };
+    });
+  })();
+  const [statementError, setStatementError] = useState<string | null>(null);
   const { refresh } = useAuth();
-  const [textEdit, setTextEdit] = useState<ShopField | 'breaks' | 'device' | 'notifyEmail' | 'kyb' | null>(null);
+  const [textEdit, setTextEdit] = useState<ShopField | 'breaks' | 'device' | 'notifyEmail' | 'kyb' | 'statementsEmail' | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   /** Run a change, then read the shop again: what shows is what the server holds. */
@@ -168,6 +184,8 @@ export default function SettingsPage() {
         ways: shopSettings?.paymentMethods ?? null,
         ...liveShopFields(shopRecord.data, shopHours.data),
         kyb: kyb.data,
+        statementMonths,
+        ...(banks.data?.[0] ? { account: { bank: `${banks.data[0].bankName} ••${banks.data[0].mask}`, det: `Business ${banks.data[0].subtype} · verified with Plaid` } } : {}),
         liveShop: liveOwner
           ? {
               settings: shopSettings ?? null,
@@ -235,7 +253,29 @@ export default function SettingsPage() {
 
   const actions = {
     onHours: () => navigate(`/settings/shop/hours${q}`),
-    onAccount: () => setOpen('account'),
+    onAccount: preview ? () => setOpen('account') : () => navigate('/payouts?open=destinations'),
+    onStatementPdf: liveOwner
+      ? (m: StatementMonth) => {
+          setStatementError(null);
+          Promise.all([merchant.overview({ from: m.from, to: m.to }), merchant.cardDeposits({ from: m.from, to: m.to })]).then(
+            ([o, deps]) => printStatement(statementOf({ shop: shopRecord.data?.name ?? 'Your shop', month: m.label, from: m.from, to: m.to, inProgress: m.inProgress, overview: o, deposits: deps })),
+            (e) => setStatementError(errorSentence(e)),
+          );
+        }
+      : undefined,
+    onStatementCsv: liveOwner
+      ? (m: StatementMonth) => {
+          setStatementError(null);
+          Promise.all([merchant.orderHistory({ from: m.from, to: m.to }), merchant.staff()])
+            .then(([orders, staff]) => {
+              const names = new Map(staff.map((x) => [x.id, x.name]));
+              const slug = (shopRecord.data?.name ?? 'shop').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'shop';
+              return saveFile(`${slug}-sales-${m.from.slice(0, 7)}.csv`, salesCsv({ orders, nameOf: (id) => names.get(id) ?? '—' }), 'text/csv');
+            })
+            .catch((e) => setStatementError(errorSentence(e)));
+        }
+      : undefined,
+    onStatementsEmail: liveOwner ? () => (setEditError(null), setTextEdit('statementsEmail')) : undefined,
     onPayouts: () => navigate(`/payouts${preview ? '?preview=1' : ''}`),
     onDevice: () => setOpen('device'),
     onLeave: () => setOpen('leave'),
@@ -271,7 +311,7 @@ export default function SettingsPage() {
   };
 
   const meta = current ? (current === 'you' ? YOU : SECTIONS.find((s) => s.key === current)!) : null;
-  const paneMessage = current === 'payments' ? payError : !edit && open !== 'code' ? saveError : null;
+  const paneMessage = current === 'payments' ? payError : current === 'payouts' && statementError ? statementError : !edit && open !== 'code' ? saveError : null;
   const paneError = paneMessage ? (
     <p className="c-det" role="alert" style={{ color: 'var(--absent)', marginBottom: 'var(--s2)' }}>
       {paneMessage}
@@ -517,7 +557,7 @@ function ShopTextSheet({
   onClose,
   merchant,
 }: {
-  what: ShopField | 'breaks' | 'device' | 'notifyEmail' | 'kyb';
+  what: ShopField | 'breaks' | 'device' | 'notifyEmail' | 'kyb' | 'statementsEmail';
   kybEmail?: string | null;
   shop: Shop | null;
   settings: ShopSettings | null;
@@ -561,6 +601,17 @@ function ShopTextSheet({
             window.location.assign(url);
           })
         }
+      />
+    );
+  }
+  if (what === 'statementsEmail') {
+    return (
+      <TextSheet
+        {...common}
+        title="Email each statement to"
+        det="Each month’s statement goes here on the 2nd, usually your accountant. Leave it empty to stop."
+        fields={[{ key: 'email', label: 'Email', value: settings?.statementsEmail ?? '', max: 200, inputMode: 'email' }]}
+        onSave={(v) => onSave(() => merchant.updateSettings({ statementsEmail: v.email!.trim() || null }))}
       />
     );
   }

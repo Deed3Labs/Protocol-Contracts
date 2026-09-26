@@ -170,8 +170,8 @@ Decided 2026-09-24.
   the owner), Payouts, Partnership, Counter (breaks, and how long this tablet waits for a PIN),
   Payments, Devices (the readers, and this tablet renamed), Security (its enrolled tablets, each
   signed out with the existing API), Tax, Tips, Discounts, Closing, Notifications (the end-of-day
-  summary), Advanced (business verification, and leaving) and Help. Statements have no backend
-  yet. Their sheets (Change account, Add
+  summary), Advanced (business verification, and leaving) and Help; Payouts has its statements and where
+  payouts go (below). Their sheets (Change account, Add
   a device, Leave Clear) open in the preview, with their final buttons disabled on a live shop.
   Preview: `/settings[/<section>]?preview=1&screen=counter|payments-connected|account|device|
   leave|confirm|code`; `&live=1` for the live path.
@@ -736,4 +736,16 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   address data"), so linking now checks that Bridge has verified the business (customer `active`)
   before Plaid Link opens, and says why if not, rather than after the owner has signed in to their
   bank. The `BankRail` seam gains `ready(customerId)` for it.
+
+## Settings › Payouts: statements, and where payouts go
+
+- **Where payouts go** names the bank linked with Plaid ("Chase ••4417 · Business checking,
+  verified with Plaid"); Change account opens Payouts › Where withdrawals go, where banks are added.
+- **Statements** lists this month (still being written) and the two before. PDF is the month's
+  statement through the print dialog (the Overview statement); CSV is the month's sales (the
+  Overview export).
+- **Email each statement** sends last month's statement on the 2nd, in the shop's own time, to the
+  address set here (migration 0020: `statements_email`; `merchant.statement_sends` so a month goes
+  once). A daily job does it (`jobs/monthlyStatements.ts`, under an advisory lock); one that fails
+  is tried again the next day. By Resend, like every email.
 

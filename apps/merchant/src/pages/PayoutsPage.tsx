@@ -133,7 +133,10 @@ export default function PayoutsPage() {
   const [open, setOpen] = useState<Open>(() =>
     screen === 'withdraw' || stages.includes(screen as Stage)
       ? 'withdraw'
-      : (['breakdown', 'receive', 'destinations', 'add-bank'] as const).find((s) => s === screen) ?? null,
+      : // Settings › Payouts › Change account opens Where withdrawals go here.
+        params.get('open') === 'destinations'
+        ? 'destinations'
+        : ((['breakdown', 'receive', 'destinations', 'add-bank'] as const).find((s) => s === screen) ?? null),
   );
   const [card, setCard] = useState<HistRow | null>(screen === 'breakdown' ? REFERENCE.card[0] : null);
   const [source, setSource] = useState<'owed' | 'cash' | undefined>(undefined);
