@@ -183,8 +183,9 @@ describe('what counts as the payment', () => {
 describe('the routes', () => {
   const routes = readFileSync(new URL('../routes/charges.ts', import.meta.url), 'utf8');
   const reconciler = readFileSync(new URL('./chargeReconciler.ts', import.meta.url), 'utf8');
-  test('starting to pay now takes a fresh Face ID; the member’s own charge only', () => {
+  test('paying now and approving a plan each take a fresh Face ID; the member’s own charge only', () => {
     expect(routes).toContain("chargesRouter.post('/:code/pay-now', requireAuth, requireStepUp, async");
+    expect(routes).toContain("chargesRouter.post('/:code/approve', requireAuth, requireStepUp, async");
     expect(routes.match(/requireVerifiedWallet\(req, res, charge\.memberWallet, 'charge'\)/g)?.length).toBe(6);
   });
   test('held charges are settled by their own reconciliation', () => {
