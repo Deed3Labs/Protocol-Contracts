@@ -724,3 +724,16 @@ reason for any difference, is written to `e2e/.report/index.html`.
   is recorded and the screen says it goes once Clear can sign. Bridge's `base` rail is Base mainnet,
   so a real off-ramp also needs the shop on mainnet; dev is Base Sepolia.
 
+## Bridge's sandbox, tried (2026-09-26)
+
+With a Bridge test key, in a command's environment only, against `api.sandbox.bridge.xyz`:
+- **Starting business verification works as sent:** `POST /kyc_links` with `type: business` returns
+  the customer and both links (terms, then KYB), and the customer reads back `not_started`, which
+  the tablet shows as Started. Bridge's sandbox approval switch moves a business on only to
+  `awaiting_ubo` (its owners), which the hosted form completes; so a full sandbox run is the
+  hosted pages filled in by hand.
+- **Registering a bank is refused until the business is verified** ("Customer is missing required
+  address data"), so linking now checks that Bridge has verified the business (customer `active`)
+  before Plaid Link opens, and says why if not, rather than after the owner has signed in to their
+  bank. The `BankRail` seam gains `ready(customerId)` for it.
+

@@ -470,6 +470,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     bankLinkToken: async () => {
       if (who(viewer)?.role !== 'owner') refuse('that needs full access', 403, 'forbidden');
       if (kyb.state === 'not_started') refuse('Verify the business first (Settings › Advanced): Bridge pays out only to a verified business.', 409, 'not_verified');
+      if (kyb.state !== 'verified') refuse('Bridge hasn’t finished verifying the business (Settings › Advanced). Link the bank once it has: Bridge pays out only to a verified business.', 409, 'not_verified');
       return { linkToken: 'mock-link-token' };
     },
     addBank: async (input) => {
