@@ -49,7 +49,8 @@ export interface DisputeRecord {
    * member owes (card, partner) or the send was stopped from being claimed (member). `not_held` when
    * there was nothing that could be held -- a send the other member had already claimed.
    */
-  holdState: 'held' | 'not_held' | 'released' | null;
+  /** `releasing`: decided, and the money is still moving (paid now); the sweep finishes it. */
+  holdState: 'held' | 'not_held' | 'releasing' | 'released' | null;
   /** Exactly what was set aside, so it can be put back to the cent. */
   heldDetail: Record<string, unknown> | null;
   /** Who the decision went to, or `withdrawn`. */
@@ -234,7 +235,7 @@ export const disputeStore = {
     return rows[0] ? toRecord(rows[0]) : null;
   },
 
-  async setHold(token: string, state: 'held' | 'not_held' | 'released', detail: Record<string, unknown> | null): Promise<void> {
+  async setHold(token: string, state: 'held' | 'not_held' | 'releasing' | 'released', detail: Record<string, unknown> | null): Promise<void> {
     const pool = getPayPool();
     if (!pool) return;
     await ensureTable();
