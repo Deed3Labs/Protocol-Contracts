@@ -124,3 +124,25 @@ test('Staff: with opening hours, the closed day is shut and the sheet says so', 
   await expect(sheet.getByRole('button', { name: 'Su', exact: true })).toBeDisabled();
   await expect(sheet.getByText('Dashed days are when the shop is closed.')).toBeVisible();
 });
+
+test('Staff: the week’s arrows move a week at a time, and say which', async ({ page }) => {
+  await open(page, '/staff');
+  const panel = page.locator('.c-wk-panel');
+  const head = panel.locator('.c-wk-head');
+  await expect(head).toContainText('This week');
+  await expect(head).toContainText('Sep 21 – 27');
+  await panel.getByRole('button', { name: 'Next week' }).click();
+  await expect(head).toContainText('Next week');
+  await expect(head).toContainText('Sep 28 – Oct 4');
+  // A week that hasn't started: no day is today.
+  await expect(panel.locator('.c-dv-days .c-today')).toHaveCount(0);
+  await panel.getByRole('button', { name: 'Next week' }).click();
+  await expect(head).toContainText('Week of Oct 5');
+  await panel.getByRole('button', { name: 'Last week' }).click();
+  await panel.getByRole('button', { name: 'Last week' }).click();
+  await expect(head).toContainText('This week');
+  await expect(panel.locator('.c-dv-days .c-today')).toHaveCount(1);
+  await panel.getByRole('button', { name: 'Last week' }).click();
+  await expect(head).toContainText('Last week');
+  await expect(head).toContainText('Sep 14 – 20');
+});

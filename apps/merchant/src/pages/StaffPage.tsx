@@ -18,6 +18,7 @@ import {
   JEN_HOURS,
   JEN_THIS_WEEK,
   OWNER_VIEW,
+  addWeeks,
   crewFromApi,
   hoursFromApi,
   hoursToApi,
@@ -83,7 +84,9 @@ export default function StaffPage() {
   const merchant = useMerchantApi();
   const live = !preview && !!session;
   const shiftsNow = useApi(() => (live ? merchant.shifts() : Promise.resolve(null)), [live]);
-  const weekNow = useApi(() => (live ? merchant.staffWeek() : Promise.resolve(null)), [live]);
+  // The week shown: this one until the arrows move it (a Monday, YYYY-MM-DD).
+  const [weekOf, setWeekOf] = useState<string | null>(null);
+  const weekNow = useApi(() => (live ? merchant.staffWeek(weekOf ?? undefined) : Promise.resolve(null)), [live, weekOf]);
   const [tick, setTick] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setTick(Date.now()), 30_000);
@@ -185,7 +188,17 @@ export default function StaffPage() {
         />
       )}
       {waiting && preview && <WaitingToStart m={waiting} />}
-      {(scene || liveWeek) && <WeekPanel week={scene?.week ?? liveWeek!} team={team} manage={manage} onSet={openHours} />}
+      {(scene || liveWeek) && (
+        <WeekPanel
+          key={liveWeek?.weekOf ?? 'preview'}
+          week={scene?.week ?? liveWeek!}
+          team={team}
+          manage={manage}
+          onSet={openHours}
+          // From the week asked for, not the one on screen, so two quick presses move two weeks.
+          onWeek={liveWeek?.weekOf ? (by) => setWeekOf((w) => addWeeks(w ?? liveWeek.weekOf!, by)) : undefined}
+        />
+      )}
       {error && !open && (
         <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
           {error}

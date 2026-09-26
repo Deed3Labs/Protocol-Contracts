@@ -525,10 +525,15 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       if (!mayManage(staffId)) refuse('Only the owner ends a manager’s shift', 403, 'forbidden');
       shifts.delete(staffId);
     },
-    staffWeek: async (): Promise<StaffWeek> => {
-      const dates = Array.from({ length: 7 }, (_, i) => `2026-09-${String(21 + i).padStart(2, '0')}`);
+    staffWeek: async (date?: string): Promise<StaffWeek> => {
+      // The week holding `date` (the reference's, Sep 21, by default): Monday to Sunday.
+      const at = new Date(`${date ?? '2026-09-21'}T12:00:00Z`);
+      at.setUTCDate(at.getUTCDate() - ((at.getUTCDay() + 6) % 7));
+      const dates = Array.from({ length: 7 }, (_, i) => new Date(at.getTime() + i * 86_400_000).toISOString().slice(0, 10));
+      const thisWeek = dates[0] === '2026-09-21';
       const staff = seed.STAFF.filter((s) => s.active && !removed.has(s.id));
-      const plan = (sid: string) => staffHours.get(sid)?.thisWeek ?? staffHours.get(sid)?.usual ?? null;
+      // A week other than the reference's has each person's usual hours, not that week's one-offs.
+      const plan = (sid: string) => (thisWeek ? staffHours.get(sid)?.thisWeek : null) ?? staffHours.get(sid)?.usual ?? null;
       return {
         weekOf: dates[0]!,
         today: TODAY,

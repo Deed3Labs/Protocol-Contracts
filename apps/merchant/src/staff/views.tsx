@@ -252,8 +252,9 @@ const Track = ({ segs, className }: { segs: Seg[]; className?: string }) => (
  * The week, one day at a time: the day buttons, then that day's rows against the shop's opening
  * hours. An owner or a manager also sees Cover, the gaps nobody is booked for.
  */
-export function WeekPanel({ week, team, manage, onSet }: { week: Week; team: Mate[]; manage: boolean; onSet?: (m: Mate) => void }) {
-  const [day, setDay] = useState(week.today);
+export function WeekPanel({ week, team, manage, onSet, onWeek }: { week: Week; team: Mate[]; manage: boolean; onSet?: (m: Mate) => void; onWeek?: (by: -1 | 1) => void }) {
+  // Today in this week, or Monday in another.
+  const [day, setDay] = useState(Math.min(6, Math.max(0, week.today > 6 ? 0 : week.today)));
   const total = Object.values(week.booked).reduce((t, d) => t + weekHours(d), 0);
   const gaps = gapLine(week);
 
@@ -261,13 +262,13 @@ export function WeekPanel({ week, team, manage, onSet }: { week: Week; team: Mat
     <div className="c-panel c-wk-panel">
       <div className="c-chead">
         <div className="c-wk-head">
-          <p className="c-label">This week</p>
+          <p className="c-label">{week.title ?? 'This week'}</p>
           <span className="c-r">
             <span className="c-det">{week.label}</span>
-            <button type="button" className="c-mc-arrow" aria-label="Last week">
+            <button type="button" className="c-mc-arrow" aria-label="Last week" onClick={() => onWeek?.(-1)}>
               <IconPrev />
             </button>
-            <button type="button" className="c-mc-arrow" aria-label="Next week">
+            <button type="button" className="c-mc-arrow" aria-label="Next week" onClick={() => onWeek?.(1)}>
               <IconChevronSm />
             </button>
           </span>
