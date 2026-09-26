@@ -50,7 +50,8 @@ describe('a code is not a credential', () => {
   });
 
   test('the merchant route is the only one without a session', () => {
-    const post = ROUTES.slice(ROUTES.indexOf("chargesRouter.post('/'"), ROUTES.indexOf("chargesRouter.get('/:code'"));
+    // From the merchant's POST to the next route, which is the member's own list (behind requireAuth).
+    const post = ROUTES.slice(ROUTES.indexOf("chargesRouter.post('/'"), ROUTES.indexOf("chargesRouter.get('/'"));
     expect(post).not.toContain('requireAuth');
     expect(post).not.toContain('req.auth');
   });
