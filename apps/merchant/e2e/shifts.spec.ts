@@ -179,3 +179,49 @@ test('Staff: the week goes back no further than the shop’s first week', async 
   await expect(last).toBeDisabled();
   await expect(panel.getByRole('button', { name: 'Next week' })).toBeEnabled();
 });
+
+async function roleSheet(page: Page, person: string) {
+  await page.locator('.c-tm-row', { hasText: person }).click();
+  await page.getByRole('dialog', { name: person }).getByText('Role', { exact: true }).click();
+  return page.getByRole('dialog', { name: `${person.split(' ')[0]}’s role` });
+}
+const typePin = async (sheet: import('@playwright/test').Locator, pin: string) => {
+  for (const d of pin) await sheet.getByRole('button', { name: d, exact: true }).click();
+};
+
+test('Staff: an owner changes someone’s role with their own PIN', async ({ page }) => {
+  await open(page, '/staff');
+  const sheet = await roleSheet(page, 'Jen R.');
+  await sheet.getByText('Manager', { exact: true }).click();
+  await expect(sheet).toContainText('Mike R. approves');
+  await typePin(sheet, '1234');
+  await sheet.getByRole('button', { name: 'Make Jen a manager' }).click();
+  await expect(sheet.getByRole('alert')).toContainText('That did not match.');
+  await typePin(sheet, '9999');
+  await sheet.getByRole('button', { name: 'Make Jen a manager' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.locator('.c-tm-row', { hasText: 'Jen R.' })).toContainText('Manager');
+});
+
+test('Staff: a manager changes a role only with the owner’s PIN', async ({ page }) => {
+  await open(page, '/staff', 'luis');
+  const sheet = await roleSheet(page, 'Ana Ruiz');
+  await sheet.getByText('Manager', { exact: true }).click();
+  await expect(sheet).toContainText('Mike R. approves');
+  await expect(sheet).toContainText('Hand them the tablet');
+  // The manager's own PIN isn't enough.
+  await typePin(sheet, '2222');
+  await sheet.getByRole('button', { name: 'Make Ana a manager' }).click();
+  await expect(sheet.getByRole('alert')).toContainText('That isn’t the owner’s PIN');
+  await typePin(sheet, '9999');
+  await sheet.getByRole('button', { name: 'Make Ana a manager' }).click();
+  await expect(sheet).toHaveCount(0);
+});
+
+test('Staff: an owner’s role isn’t changed here', async ({ page }) => {
+  await open(page, '/staff', 'luis');
+  await page.locator('.c-tm-row', { hasText: 'Mike R.' }).click();
+  const person = page.getByRole('dialog', { name: 'Mike R.' });
+  await person.getByText('Role', { exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Mike’s role' })).toHaveCount(0);
+});

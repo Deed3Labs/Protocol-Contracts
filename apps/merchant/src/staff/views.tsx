@@ -13,7 +13,7 @@ import {
   IconX14,
 } from '@/brand/chargeIcons';
 import { IconChevron, IconClose, IconLock } from '@/brand/icons';
-import { cx, initials, Sheet, clickOnKey } from '@/brand/ui';
+import { cx, initials, PinDots, PinKeys, Sheet, clickOnKey } from '@/brand/ui';
 import { Keypad, typeAmount } from '@/charge/start';
 import { usd } from '@/home/model';
 import { roleLabel } from '@/shell/chrome';
@@ -631,6 +631,81 @@ export function LimitCell({ role, limitCents, onChange }: { role: StaffRole; lim
 
 // ---- Sheets -------------------------------------------------------------------------------------
 
+/**
+ * Someone's role, counter or manager: pick it, then the PIN. An owner confirms with their own; a
+ * manager hands the tablet to the owner, who approves with theirs.
+ */
+export function RoleSheet({
+  name,
+  role,
+  approver,
+  ownerApproves,
+  onSave,
+  onClose,
+}: {
+  name: string;
+  role: 'counter' | 'manager';
+  /** Who types the PIN: the owner, by name. */
+  approver: string;
+  /** A manager is changing it: the owner approves. */
+  ownerApproves: boolean;
+  onSave: (role: 'counter' | 'manager', pin: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const first = name.split(/\s+/)[0];
+  const [next, setNext] = useState(role);
+  const [pin, setPin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const changed = next !== role;
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(next, pin);
+    } catch (e) {
+      setPin('');
+      setError(e instanceof Error ? e.message : 'That did not match.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet
+      title={`${first}’s role`}
+      onClose={onClose}
+      foot={
+        <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!changed || pin.length < 4 || busy} onClick={() => void save()}>
+          {busy ? 'Saving…' : changed ? `Make ${first} ${next === 'manager' ? 'a manager' : 'counter staff'}` : 'Choose a new role'}
+        </button>
+      }
+    >
+      <div className="c-rows">
+        <Pick on={next === 'counter'} title="Counter" det="Raises charges. Cannot approve a refund." onPick={() => setNext('counter')} />
+        <Pick on={next === 'manager'} title="Manager" det="Also approves refunds up to your limit, and adds counter staff." onPick={() => setNext('manager')} />
+      </div>
+      {changed && (
+        <>
+          <div className="c-si-pinhead" style={{ marginTop: 'var(--s3)' }}>
+            <span className="c-av">{initials(approver)}</span>
+            <div>
+              <p className="c-t">{approver} approves</p>
+              <p className="c-det">{ownerApproves ? 'The owner. Hand them the tablet for their PIN.' : 'Owner. Your PIN to confirm.'}</p>
+            </div>
+          </div>
+          <PinDots filled={pin.length} bad={!!error} />
+          {error && (
+            <p className="c-si-err" role="alert" style={{ textAlign: 'center' }}>
+              {error}
+            </p>
+          )}
+          <PinKeys onDigit={(d) => (setError(null), setPin((p) => (p.length >= 4 ? p : p + d)))} onDelete={() => setPin((p) => p.slice(0, -1))} />
+        </>
+      )}
+    </Sheet>
+  );
+}
+
 function Pick({ on, title, det, onPick }: { on: boolean; title: string; det: string; onPick: () => void }) {
   return (
     <div>
@@ -756,6 +831,7 @@ function Kv({ k, v, onTap }: { k: string; v: ReactNode; onTap?: () => void }) {
 export function PersonSheet({
   m,
   onHours,
+  onRole,
   onResetPin,
   onRemove,
   onEndShift,
@@ -763,6 +839,8 @@ export function PersonSheet({
 }: {
   m: Mate;
   onHours?: () => void;
+  /** An owner or manager changing someone else's role (not an owner's). */
+  onRole?: () => void;
   onResetPin?: () => void;
   onRemove?: () => void;
   /** On shift, and not the one holding the tablet: an owner or manager can end it for them. */
@@ -818,7 +896,7 @@ export function PersonSheet({
         <span className={cx('c-chip', tone)}>{can}</span>
       </div>
       <div className="c-rows">
-        <Kv k="Role" v={roleLabel(m.role)} />
+        <Kv k="Role" v={roleLabel(m.role)} onTap={onRole} />
         <Kv k={owner ? 'Sign-in' : 'PIN'} v={owner ? 'Owner sign-in' : m.added ? 'On first shift' : 'Set'} onTap={owner || m.added ? undefined : onResetPin} />
         <Kv k="Hours" v={m.usual ?? 'No hours yet'} onTap={onHours} />
         <Kv k="Charges this month" v={m.chargesThisMonth ?? 0} />

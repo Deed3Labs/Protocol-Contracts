@@ -586,6 +586,11 @@ export const api = {
   },
 
   /** Take somebody off the tablet. Their charges keep their name. */
+  /** Counter or manager. An owner confirms with their PIN; a manager needs the owner's. */
+  async changeRole(staffId: string, role: 'counter' | 'manager', approverPin: string): Promise<{ id: string; role: StaffRole }> {
+    return request(`/api/merchant/staff/${encodeURIComponent(staffId)}/role`, { method: 'POST', body: JSON.stringify({ role, approverPin }) });
+  },
+
   async removeStaff(staffId: string): Promise<void> {
     await request(`/api/merchant/staff/${encodeURIComponent(staffId)}`, { method: 'DELETE' });
   },
