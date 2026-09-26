@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { StaffRole } from '@clear/domain';
 import { seesMoney } from '@clear/domain';
@@ -312,7 +312,7 @@ export function FlowTop({
           {back ? <IconBack /> : <IconCloseLg />}
         </button>
         {/* A long title trims rather than pushing the shift off a phone. */}
-        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{withSeps(title)}</span>
       </span>
       {middle}
       <span className="c-mc-right">
@@ -320,6 +320,20 @@ export function FlowTop({
       </span>
     </div>
   );
+}
+
+/**
+ * A title's " · " as the app's separator (spaced and muted, `.c-sep`), not the font's narrow space
+ * either side of a dot, which reads as "Goodyear Assurance·215/55R17".
+ */
+export function withSeps(title: ReactNode): ReactNode {
+  if (typeof title !== 'string' || !title.includes(' · ')) return title;
+  return title.split(' · ').map((part, i) => (
+    <Fragment key={i}>
+      {i > 0 && <span className="c-sep">·</span>}
+      {part}
+    </Fragment>
+  ));
 }
 
 // ---- Sheets the shell opens -------------------------------------------------------------------
