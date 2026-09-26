@@ -748,6 +748,15 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   once). A daily job does it (`jobs/monthlyStatements.ts`, under an advisory lock); one that fails
   is tried again the next day. By Resend, like every email.
 
+## Bridge, live or sandbox
+
+- `BRIDGE_ENV=sandbox` points the whole API at Bridge's sandbox: `BRIDGE_SANDBOX_API_KEY` is used as
+  the key (and for Send payouts), the address becomes `api.sandbox.bridge.xyz/v0`, and
+  `BRIDGE_SANDBOX_WEBHOOK_PUBLIC_KEY`, when set, checks Bridge's webhooks. Swapped once at start-up
+  (`config/bridgeEnv.ts`), so every reader follows, member app included. The live key stays in
+  `BRIDGE_API_KEY` for production. Sandbox without its key leaves Bridge unconfigured rather than
+  falling back to live.
+
 ## Tips shared by hours on shift
 
 - Settings › Tips › Who gets them: whoever raised the charge, or **split by hours on shift**. By
