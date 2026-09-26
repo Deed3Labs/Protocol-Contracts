@@ -451,6 +451,8 @@ export interface RosterPerson {
   id: string;
   name: string;
   role: StaffRole;
+  /** "Until 4:00pm today", "No hours set" (auth/shiftLines). */
+  hours?: string;
 }
 
 /** "Forgot it? Luis or Mike can reset it in Staff." */
@@ -507,6 +509,7 @@ export function WhoIsOnSheet({
                   <span style={{ display: 'block', fontSize: 'var(--t-sec)' }}>{p.name}</span>
                   <span className="c-det" style={{ display: 'block', marginTop: 2 }}>
                     {roleLabel(p.role)}
+                    {p.hours ? ` · ${p.hours}` : ''}
                   </span>
                 </span>
               </span>

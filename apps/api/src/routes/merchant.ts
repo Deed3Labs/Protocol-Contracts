@@ -12,7 +12,7 @@ import { ownerCodeLimitFor, refundStore } from '../services/merchant/refundStore
 import { settleRefund } from '../services/refundSettlement.js';
 import { DEFAULT_IDLE_LOCK_SECONDS, deviceStore } from '../services/merchant/deviceStore.js';
 import { sessionStore } from '../services/merchant/sessionStore.js';
-import { endShift, startShift } from '../services/merchant/shifts/shiftService.js';
+import { endShift, rosterDays, startShift, type RosterDay } from '../services/merchant/shifts/shiftService.js';
 import { liveOfframp, withdrawToBank, type BankWithdrawal } from '../services/merchant/bank/offramp.js';
 import { pinLockedHandler } from '../services/merchant/security/pinGuard.js';
 import { staffStore } from '../services/merchant/staffStore.js';
@@ -86,10 +86,11 @@ function merchantOf(req: Request): string {
 /**
  * The shift roster — who is on the counter to choose from.
  *
- * Reached before anyone has signed in, so it is scoped only by merchant. It returns first names
- * and roles and nothing else: no counts, no emails, no secrets. That is close to public for a shop
- * whose address is already on chain, and it is the price of not asking a writer to remember which
- * of four codes is theirs — a borrowed PIN makes the name on every charge row a lie.
+ * Reached before anyone has signed in, so it is scoped only by merchant. It returns names, roles,
+ * today's hours, whether a shift is running and how many of their charges are waiting — what the
+ * sign-in, PIN and lock screens show under a name, and what anyone at the counter can already see
+ * on the Staff board. No emails, no secrets. That is the price of not asking a writer to remember
+ * which of four codes is theirs — a borrowed PIN makes the name on every charge row a lie.
  *
  * Behind device authentication: the tablet says which shop it is, so this no longer takes a
  * merchant address from the request body — which anyone could have supplied — and an unenrolled
@@ -103,7 +104,14 @@ async function shiftStarts(merchant: string, staffId: string, deviceId: string):
 }
 
 merchantRouter.post('/roster', requireDevice, async (req: Request, res: Response) => {
-  res.json({ staff: await staffStore.roster(req.device!.merchant) });
+  const merchant = req.device!.merchant;
+  const staff = await staffStore.roster(merchant);
+  // Each person's hours today, and their shift if one is running: what the sign-in, PIN and lock
+  // screens say under a name. Never a reason to fail the roster; without it they show a dash.
+  const d = await merchantDb();
+  const days: Map<string, RosterDay> = d ? await rosterDays(d, merchant).catch(() => new Map()) : new Map();
+  const none: RosterDay = { today: null, hoursSet: false, startedAt: null, waiting: 0 };
+  res.json({ staff: staff.map((p) => ({ ...p, ...(days.get(p.id) ?? none) })) });
 });
 
 /**

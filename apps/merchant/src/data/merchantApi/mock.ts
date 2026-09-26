@@ -1191,8 +1191,22 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
     staff: async (): Promise<StaffMember[]> =>
       seed.STAFF.map((s) => ({ ...s, role: roles.get(s.id) ?? s.role, active: s.active && !removed.has(s.id), pinSet: pins.has(s.id), chargesThisMonth: seed.CHARGES_THIS_MONTH[s.id] ?? 0 })),
+    // As the server's roster: today's hours, and the shift and its waiting charges if one is running.
     roster: async () =>
-      seed.STAFF.filter((s) => s.active && !removed.has(s.id)).map(({ id: staffId, name, role }) => ({ id: staffId, name, role: roles.get(staffId) ?? role, pinSet: pins.has(staffId) })),
+      seed.STAFF.filter((s) => s.active && !removed.has(s.id)).map(({ id: staffId, name, role }) => {
+        const h = staffHours.get(staffId);
+        const running = shifts.get(staffId);
+        return {
+          id: staffId,
+          name,
+          role: roles.get(staffId) ?? role,
+          pinSet: pins.has(staffId),
+          today: bookedToday(staffId),
+          hoursSet: Boolean(h?.usual ?? h?.thisWeek),
+          startedAt: running?.startedAt ?? null,
+          waiting: [...tenders.values()].filter((t) => t.method === 'clear' && t.status === 'pending' && orderRec(t.orderId).raisedBy === staffId).length,
+        };
+      }),
     // The server's rules (routes/merchant.ts, staffTarget): a manager resets or removes counter
     // staff, an owner counter staff and managers; never an owner, never yourself.
     resetPin: async (staffId, approverPin) => {

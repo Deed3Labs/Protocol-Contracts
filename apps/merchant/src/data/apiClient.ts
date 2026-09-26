@@ -1,3 +1,4 @@
+import type { RosterEntry } from '@/auth/shiftLines';
 import type { ChargeState, StaffRole } from '@clear/domain';
 import { fromWire } from '@clear/domain';
 import type { TermsCodeCheck } from '@clear/merchant-contracts';
@@ -146,8 +147,9 @@ export const api = {
    * Names and roles only, and reachable before anyone has signed in — the screen exists so a
    * writer picks their own name rather than remembering which of four codes is theirs.
    */
-  async roster(): Promise<{ id: string; name: string; role: StaffRole; pinSet: boolean }[]> {
-    const res = await request<{ staff: { id: string; name: string; role: StaffRole; pinSet: boolean }[] }>(
+  /** Who can start a shift, with today's hours and any shift running (auth/shiftLines). */
+  async roster(): Promise<RosterEntry[]> {
+    const res = await request<{ staff: RosterEntry[] }>(
       '/api/merchant/roster',
       { method: 'POST', body: '{}' },
     );

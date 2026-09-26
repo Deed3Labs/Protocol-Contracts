@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 import type { Db } from '../../../db/db.js';
 import { seedShop, testDb } from '../../../db/testDb.js';
 import { businessDate } from '../orders/orderService.js';
-import { addDays, endBreak, endShift, mondayOf, personHours, saveStaffHours, ShiftError, shiftsNow, staffWeek, startBreak, startShift, weekday } from './shiftService.js';
+import { addDays, endBreak, endShift, mondayOf, personHours, rosterDays, saveStaffHours, ShiftError, shiftsNow, staffWeek, startBreak, startShift, weekday } from './shiftService.js';
 
 let db: Db;
 beforeAll(async () => {
@@ -180,5 +180,25 @@ describe('hours', () => {
     await startShift(db, { merchant, staffId: staff.jen });
     expect((await shiftsNow(db, merchant))[0]!.booked).toEqual({ from: '07:00', to: '15:00' });
     expect((await staffWeek(db, merchant)).lastShift[staff.jen]).not.toBeNull();
+  });
+});
+
+describe('the roster’s day, for the tablet before anyone is on', () => {
+  test('today’s hours, whether any are set, and a running shift', async () => {
+    const { merchant, staff } = await seedShop(db);
+    const today = weekday(businessDate(TZ));
+    const every = { days: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day, open: { from: '08:00', to: '16:00' } })) };
+    const notToday = { days: [{ day: (today + 1) % 7, open: { from: '10:00', to: '18:00' } }] };
+    await saveStaffHours(db, { merchant, staffId: staff.jen, body: { hours: every, once: false } });
+    await saveStaffHours(db, { merchant, staffId: staff.manager, body: { hours: notToday, once: false } });
+    await startShift(db, { merchant, staffId: staff.jen });
+
+    const days = await rosterDays(db, merchant);
+    expect(days.get(staff.jen)).toMatchObject({ today: { from: '08:00', to: '16:00' }, hoursSet: true, waiting: 0 });
+    expect(days.get(staff.jen)!.startedAt).not.toBeNull();
+    // Hours on other days: set, but not today.
+    expect(days.get(staff.manager)).toMatchObject({ today: null, hoursSet: true, startedAt: null });
+    // No hours and no shift: not in the map, which the route reads as "No hours set".
+    expect(days.get(staff.owner)).toBeUndefined();
   });
 });

@@ -141,6 +141,49 @@ export async function shiftsNow(q: Queryable, merchant: string): Promise<ShiftNo
   }));
 }
 
+/**
+ * Each person's day, for the tablet before anyone is on (sign-in's "Until 4:00pm today", the PIN
+ * screen's "8:00am – 4:00pm", the lock's "Started 8:04am · 2 waiting"). Times are the shop's own,
+ * "HH:MM"; `hoursSet` is whether they have any hours at all ("No hours set" when not).
+ */
+export interface RosterDay {
+  today: { from: string; to: string } | null;
+  hoursSet: boolean;
+  startedAt: string | null;
+  /** Their Clear charges still waiting on a customer. */
+  waiting: number;
+}
+
+export async function rosterDays(q: Queryable, merchant: string): Promise<Map<string, RosterDay>> {
+  const tz = await timezone(q, merchant);
+  await sweep(q, merchant, tz);
+  const today = businessDate(tz);
+  const plan = await plans(q, merchant, mondayOf(today));
+  const { rows: open } = await q.query<{ staff_id: string; started_at: Date | string }>(
+    'SELECT staff_id, started_at FROM merchant.shifts WHERE merchant = $1 AND ended_at IS NULL',
+    [merchant],
+  );
+  const { rows: pending } = await q.query<{ created_by: string; n: string | number }>(
+    `SELECT created_by, count(*) AS n FROM payments.tenders
+      WHERE merchant = $1 AND method = 'clear' AND status = 'pending' GROUP BY created_by`,
+    [merchant],
+  );
+  const started = new Map(open.map((r) => [r.staff_id, iso(r.started_at)]));
+  const waiting = new Map(pending.map((r) => [r.created_by, Number(r.n)]));
+  const ids = new Set([...plan.keys(), ...started.keys(), ...waiting.keys()]);
+  const out = new Map<string, RosterDay>();
+  for (const id of ids) {
+    const span = spanOn(plan.get(id), weekday(today));
+    out.set(id, {
+      today: span ? { from: hhmm(span.from), to: hhmm(span.to) } : null,
+      hoursSet: plan.has(id),
+      startedAt: started.get(id) ?? null,
+      waiting: waiting.get(id) ?? 0,
+    });
+  }
+  return out;
+}
+
 async function mine(q: Queryable, merchant: string, staffId: string): Promise<ShiftNow> {
   const me = (await shiftsNow(q, merchant)).find((s) => s.staffId === staffId);
   if (!me) throw new ShiftError('You are not on shift', 'not_on_shift');
