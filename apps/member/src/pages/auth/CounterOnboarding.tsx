@@ -256,10 +256,10 @@ export default function CounterOnboarding({
     <Step
       step="choose"
       pending={pending}
-      title={covered ? 'Pick how to clear it' : `${money(available, { cents: true })} available`}
+      title={covered ? 'How do you want to pay?' : `${money(available, { cents: true })} available`}
       lede={
         covered
-          ? 'You can change this later that week, or three cycles in.'
+          ? 'Clearing early always costs less. You can change this any time.'
           : 'Your line covers part of this today. Pick how to clear that part, and put the rest on another method.'
       }
       action="Approve"
@@ -267,6 +267,33 @@ export default function CounterOnboarding({
       busy={busy}
       footnote="You have not been charged yet."
     >
+      {/* The same two ways to pay as a member's own charge screen. Someone joining at the counter
+          has nothing in their Clear cash yet, so paying now is shown, greyed, with that reason. */}
+      <div className="c-pc-opt c-off" aria-disabled="true">
+        <span className="c-pc-ic">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+        </span>
+        <div>
+          <p className="c-pc-t">Pay now</p>
+          <p className="c-det">Nothing in your Clear cash yet</p>
+        </div>
+      </div>
+      <div className="c-pc-opt" aria-current="true">
+        <span className="c-pc-ic">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="16" rx="1" />
+            <path d="M3 10h18M8 3v4M16 3v4" />
+          </svg>
+        </span>
+        <div>
+          <p className="c-pc-t">Pay over time</p>
+          <p className="c-det">{Math.round(ratePerCycle * 1000) / 10}% a cycle on what you still owe</p>
+        </div>
+        <span className="c-pc-radio c-on" aria-hidden />
+      </div>
       <SplitChooser
         amount={covered ? due : available}
         options={splitOptions}

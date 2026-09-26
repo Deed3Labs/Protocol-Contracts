@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { track } from '@/lib/analytics';
 import {
@@ -6,13 +6,22 @@ import {
   declineCharge,
   getCharge,
   getCredit,
+  releasePayNow,
   type ChargeView,
 } from '@/utils/apiClient';
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useInstallMode } from '@/hooks/useInstallMode';
-import { shopSlug, splitsOffered } from '@clear/domain';
-import ChargeApproval from './ChargeApproval';
+import { usePayNow, type PayNowStep } from '@/hooks/usePayNow';
+import { ClearBalancesProvider, useClearBalances } from '@/hooks/useClearBalances';
+import { BridgeProvider } from '@/context/BridgeContext';
+import { KycProvider } from '@/context/KycContext';
+import { LinkedWalletsProvider } from '@/context/LinkedWalletsContext';
+import AddMoneyModal from '@/components/app-ui/AddMoneyModal';
+import { getNetworkByChainId } from '@/config/networks';
+import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
+import { PAY_OVER_TIME_MIN_CENTS, shopSlug, splitsOffered } from '@clear/domain';
+import ChargeApproval, { type PayMode } from './ChargeApproval';
 
 /**
  * `/c/<code>` — the link in the text a member gets when a merchant raises a charge.
@@ -29,7 +38,36 @@ import ChargeApproval from './ChargeApproval';
 /** The splits the approval screen offers, when the charge is big enough to split at all. */
 const SPLITS = [1, 2, 4, 12];
 
+/**
+ * What paying now needs around it: the member's balances, and Add money for when they are short.
+ *
+ * This route renders outside AppShell (a scanned link must open without the app's chrome), so it
+ * brings the few providers those need itself, rather than sending somebody standing at a counter
+ * away from the charge to add money.
+ */
+function PayNowProviders({ children }: { children: ReactNode }) {
+  return (
+    <BridgeProvider>
+      <KycProvider>
+        <ClearBalancesProvider>
+          <LinkedWalletsProvider>{children}</LinkedWalletsProvider>
+        </ClearBalancesProvider>
+      </KycProvider>
+    </BridgeProvider>
+  );
+}
+
+const PAYING: Record<PayNowStep, string> = { 1: 'Confirm with Face ID…', 2: 'Paying…', 3: 'Checking…' };
+
 export default function ChargeApprovalRoute() {
+  return (
+    <PayNowProviders>
+      <ChargeApprovalScreen />
+    </PayNowProviders>
+  );
+}
+
+function ChargeApprovalScreen() {
   const { code = '' } = useParams<{ code: string }>();
   const { isAuthenticated, address } = useAppKitAuth();
   const { memberStatus, loaded: profileLoaded } = useMemberProfile();
@@ -43,6 +81,11 @@ export default function ChargeApprovalRoute() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [perCycleLimit, setPerCycleLimit] = useState<number | null>(null);
+  const [mode, setMode] = useState<PayMode>('choose');
+  const [paying, setPaying] = useState<PayNowStep | null>(null);
+  const [addMoneyOpen, setAddMoneyOpen] = useState(false);
+  const payNow = usePayNow();
+  const { cash, loading: balancesLoading, applyOptimistic } = useClearBalances();
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -91,6 +134,8 @@ export default function ChargeApprovalRoute() {
 
         setCharge(found);
         if (found?.splitInto) setSplitInto(found.splitInto);
+        // Came back to a charge held for paying now (a reload mid-payment): that is where it was.
+        if (found?.payingNow) setMode('now');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -125,12 +170,56 @@ export default function ChargeApprovalRoute() {
   }, [address]);
 
   const amount = useMemo(() => (charge ? charge.amountCents / 100 : 0), [charge]);
-  // Under the pay-over-time minimum a charge is paid now, in full; the server refuses a split.
+  // Under the pay-over-time minimum a charge is paid now: over time is shown greyed, with the reason.
   const splitOptions = useMemo(() => (charge ? splitsOffered(charge.amountCents, SPLITS) : SPLITS), [charge]);
   const payNowOnly = splitOptions.length === 1;
   useEffect(() => {
     if (payNowOnly) setSplitInto(1);
   }, [payNowOnly]);
+
+  /**
+   * A payment on its way: asked again every few seconds until the server has seen it land. The
+   * server marks it paid on its own (its reconciliation finds it), so this is only the screen
+   * catching up, never the thing that makes it true.
+   */
+  const onItsWay = charge?.status === 'resolving' && Boolean(charge.payingNow?.sent);
+  useEffect(() => {
+    if (!onItsWay) return;
+    const timer = setInterval(() => {
+      void getCharge(code).then((next) => {
+        if (next && next.status !== 'resolving') setCharge(next);
+      });
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [onItsWay, code]);
+
+  const onPayNow = useCallback(async () => {
+    if (!charge) return;
+    setError(null);
+    const result = await payNow(charge.code, setPaying);
+    setPaying(null);
+    if (result.charge) setCharge(result.charge);
+    if (result.error) setError(result.error);
+    if (result.charge?.paidNow || result.pending) {
+      applyOptimistic(-charge.amountCents / 100, 0);
+      track('charge_paid_now', {}); // no amount and no merchant
+    }
+  }, [charge, payNow, applyOptimistic]);
+
+  /**
+   * Back from Pay now. If Pay was pressed and nothing left the wallet, the server is still holding
+   * the charge for it: let it go, so over time (or the shop) can act on it again.
+   */
+  const onModeChange = useCallback(
+    (next: PayMode) => {
+      setError(null);
+      setMode(next);
+      if (next !== 'now' && charge?.status === 'resolving' && charge.payingNow && !charge.payingNow.sent) {
+        void releasePayNow(charge.code).then((r) => r.charge && setCharge(r.charge));
+      }
+    },
+    [charge],
+  );
 
   const onApprove = useCallback(async () => {
     if (!charge) return;
@@ -184,8 +273,9 @@ export default function ChargeApprovalRoute() {
   }
 
   // Every state that is not "waiting on you" says which one it is. A single "unavailable" would
-  // leave somebody unsure whether they had already paid.
-  if (charge.status !== 'pending' && charge.status !== 'approved') {
+  // leave somebody unsure whether they had already paid. Held for paying now is still theirs.
+  const heldForThem = charge.status === 'resolving' && Boolean(charge.payingNow);
+  if (charge.status !== 'pending' && charge.status !== 'approved' && !heldForThem) {
     const explain =
       charge.status === 'expired'
         ? 'This charge expired. Ask the shop to send a new one — nothing was charged.'
@@ -200,10 +290,38 @@ export default function ChargeApprovalRoute() {
     );
   }
 
+  const explorer = getNetworkByChainId(ACTIVE_CHAIN_ID)?.blockExplorer;
+  const paidNow = charge.status === 'approved' && charge.paidNow;
+
   return (
+    <>
     <ChargeApproval
       merchantName={charge.merchantName}
       amount={amount}
+      raisedBy={charge.raisedBy}
+      raisedAt={charge.createdAt}
+      items={charge.items}
+      taxCents={charge.taxCents}
+      discountCents={charge.discountCents}
+      mode={mode}
+      onModeChange={onModeChange}
+      overTimeMinimum={payNowOnly ? PAY_OVER_TIME_MIN_CENTS / 100 : null}
+      readyToAllocate={balancesLoading ? null : cash}
+      spendable={null}
+      onPayNow={onPayNow}
+      payingLabel={paying ? PAYING[paying] : null}
+      onAddMoney={() => setAddMoneyOpen(true)}
+      paid={
+        paidNow
+          ? {
+              at: charge.paidAt ?? null,
+              left: balancesLoading ? null : Math.max(0, cash),
+              receiptUrl: explorer && charge.txHash ? `${explorer}/tx/${charge.txHash}` : null,
+            }
+          : null
+      }
+      onItsWay={onItsWay}
+      onDone={() => navigate('/', { replace: true })}
       splitInto={charge.splitInto ?? splitInto}
       onSplitChange={setSplitInto}
       splitOptions={splitOptions}
@@ -213,8 +331,7 @@ export default function ChargeApprovalRoute() {
       error={error}
       onApprove={onApprove}
       onDecline={onDecline}
-      onBack={() => navigate('/')}
-      approved={charge.status === 'approved'}
+      approved={charge.status === 'approved' && !charge.paidNow}
       /*
        * Only on iOS, and only outside the installed app.
        *
@@ -224,5 +341,7 @@ export default function ChargeApprovalRoute() {
        */
       appHandoffCode={installMode === 'ios' ? charge.code : null}
     />
+    <AddMoneyModal open={addMoneyOpen} onOpenChange={setAddMoneyOpen} />
+    </>
   );
 }

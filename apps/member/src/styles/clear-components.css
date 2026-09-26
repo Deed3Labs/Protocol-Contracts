@@ -683,3 +683,56 @@
 .c-skel-line{display:block;height:14px;opacity:.55}
 .c-skel-short{width:60%}
 @media (prefers-reduced-motion:reduce){[data-pending] .c-fig,[data-pending] .c-apy,.c-skel{animation:none}[data-pending] .c-det,[data-pending] .c-sub{animation:none}}
+
+/* ================= Paying a shop: now, or over time (Merchant App References/clear-app-pay-choice) ================= */
+.c-pc-shop{display:flex;align-items:center;gap:12px}
+.c-pc-shop .c-pc-t{font-size:var(--t-sec);font-weight:600;margin:0}
+.c-pc-mk{width:36px;height:36px;border:1px solid var(--ink-28);display:flex;align-items:center;justify-content:center;color:var(--ink-70);flex-shrink:0}
+.c-pc-amt{margin-top:var(--s2);font-size:var(--t-hero-m);line-height:1.05}
+.c-pc-inc{margin-top:4px}
+.c-pc-link{color:var(--ink);text-decoration:underline;text-underline-offset:2px;text-decoration-color:var(--ink-28);cursor:pointer;background:none;border:0;padding:0;font:inherit}
+.c-pc-items{margin-top:var(--s1);border-top:1px solid var(--ink-13)}
+.c-pc-items > div{display:flex;justify-content:space-between;gap:var(--s2);padding:6px 0;font-size:var(--t-detail);color:var(--ink-70);border-bottom:1px solid var(--ink-13)}
+.c-pc-items > div span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.c-pc-q{margin:var(--s3) 0 var(--s1)}
+/* the two ways to pay: boxes, because they are the thing to tap */
+.c-pc-opt{display:flex;align-items:center;gap:12px;width:100%;padding:14px;border:1px solid var(--ink-28);background:var(--paper-2);margin-bottom:var(--s1);cursor:pointer;text-align:left;color:var(--ink);font:inherit}
+.c-pc-opt:focus-visible{outline:2px solid var(--live);outline-offset:2px}
+.c-pc-opt .c-pc-ic{width:40px;height:40px;border:1px solid var(--ink-13);background:var(--paper);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--ink)}
+.c-pc-opt > div{flex:1;min-width:0}
+.c-pc-opt .c-pc-t{font-size:var(--t-body);font-weight:600;margin:0}
+.c-pc-opt .c-det{margin-top:2px}
+.c-pc-opt .c-pc-r{display:flex;align-items:center;color:var(--ink-50)}
+.c-pc-opt .c-pc-r b{color:var(--ink);font-size:var(--t-body);font-variant-numeric:tabular-nums}
+.c-pc-opt.c-off{opacity:.5;cursor:default;background:transparent}
+.c-pc-foot{margin-top:var(--s2);text-align:center}
+/* where it comes from */
+.c-pc-src{display:flex;align-items:center;gap:12px;width:100%;padding:12px 0;border:0;border-bottom:1px solid var(--ink-13);background:none;text-align:left;color:var(--ink);font:inherit}
+.c-pc-src:first-of-type{border-top:1px solid var(--ink-13)}
+.c-pc-src > div{flex:1;min-width:0}
+.c-pc-src .c-pc-t{font-size:var(--t-sec);font-weight:500;margin:0}
+.c-pc-src .c-det{margin-top:2px}
+.c-pc-src .c-pc-bal{font-size:var(--t-sec);font-weight:600;font-variant-numeric:tabular-nums}
+.c-pc-src.c-off .c-pc-t,.c-pc-src.c-off .c-pc-bal{color:var(--ink-50)}
+.c-pc-short{color:var(--underway)}
+.c-pc-radio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--ink-50);flex-shrink:0;position:relative}
+.c-pc-radio.c-on{border-color:var(--ink)}
+.c-pc-radio.c-on::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--ink)}
+.c-pc-sum{margin-top:var(--s2);border:1px solid var(--ink-13);padding:4px 12px}
+.c-pc-sum .c-kv{padding:9px 0;border-bottom:1px solid var(--ink-13)}
+.c-pc-sum .c-kv:last-child{border-bottom:0}
+.c-pc-sum .c-kv > span:first-child{color:var(--ink-70)}
+.c-pc-sum .c-kv > span:last-child{font-variant-numeric:tabular-nums;color:var(--ink)}
+.c-pc-alt{margin-top:12px;text-align:center}
+.c-pc-note{margin-top:var(--s2);padding:12px 0;border-top:1px solid var(--ink-13)}
+.c-pc-note .c-pc-t{font-size:var(--t-sec);font-weight:600;margin:0}
+.c-pc-note .c-det{margin-top:4px}
+.c-pc-pair{display:flex;gap:var(--s1);margin-top:var(--s2)}
+.c-pc-pair .c-btn{flex:1}
+/* paid */
+.c-pc-done{display:flex;flex-direction:column;align-items:center;text-align:center;padding:var(--s2) 0}
+.c-pc-done .c-pc-t{margin-top:6px;font-size:var(--t-body);font-weight:600}
+.c-pc-done .c-det{margin-top:4px}
+.c-pc-live{color:var(--settled);position:relative;width:14px;height:14px;border-radius:50%;background:var(--settled);margin-top:var(--s1);box-shadow:0 0 10px 3px color-mix(in srgb, var(--settled) 55%, transparent)}
+/* over time: "Next cycle" is the longest label, so its chip is a little wider */
+.c-qc.c-split .c-chip-q:first-child{flex:1.35}

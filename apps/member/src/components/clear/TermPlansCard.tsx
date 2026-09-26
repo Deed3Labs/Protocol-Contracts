@@ -27,7 +27,7 @@ function planDetail(plan: TermPlan): ReactNode {
 
   const parts: ReactNode[] = [
     // A one-cycle plan isn't "split" into anything — it's just cleared.
-    plan.splitInto ? (plan.splitInto === 1 ? 'In full' : `Split in ${plan.splitInto}`) : null,
+    plan.splitInto ? (plan.splitInto === 1 ? 'Next cycle' : `Split in ${plan.splitInto}`) : null,
     perCycle !== undefined ? `${money(perCycle, { cents: true })} a cycle` : null,
     // Settled green, because it's the one part of the line that's good news.
     cleared > 0 ? (
