@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { sendBridgeWebhookVerifier } from '../services/sendBridgeWebhookVerifier.js';
 import { bridgeCustomerStore } from '../services/bridgeCustomerStore.js';
+import { shopBridgeCustomers } from '../services/merchant/shopBridgeCustomers.js';
 import { emitRampStatus } from '../services/rampNotifications.js';
 import { recordDeposit } from '../services/deposits/depositReceiptService.js';
 import { sweepStore } from '../services/sweeps/sweepStore.js';
@@ -57,6 +58,14 @@ router.post('/', async (req: RawBodyRequest, res: Response) => {
     const objectStatus = String(e.event_object_status || '');
     const obj = (e.event_object || {}) as Record<string, any>;
     const customerId = String(obj.customer_id || e.event_developer_id || '');
+
+    // A shop's business customer (Settings › Advanced) is never a member's: its deposits land in the
+    // shop's wallet and show in its cash account, so nothing here runs for it (shopBridgeCustomers.ts).
+    if (customerId && (await shopBridgeCustomers([customerId])).has(customerId)) {
+      console.log('[bridge/webhook] shop customer, nothing for the member app', { category, customerId: customerId.slice(0, 8) });
+      res.json({ received: true });
+      return;
+    }
 
     const wallet = customerId ? await bridgeCustomerStore.walletFor(customerId) : null;
     if (!wallet) {

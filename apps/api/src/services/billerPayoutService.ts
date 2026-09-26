@@ -28,6 +28,8 @@ interface BridgeResult<T> {
   status: number;
   data?: T;
   message?: string;
+  /** Bridge's answer when it refused, for the few refusals that carry something (a duplicate's link). */
+  body?: unknown;
 }
 
 export async function bridge<T>(path: string, init: RequestInit = {}): Promise<BridgeResult<T>> {
@@ -44,7 +46,7 @@ export async function bridge<T>(path: string, init: RequestInit = {}): Promise<B
     if (!res.ok) {
       const message =
         (body && typeof body === 'object' && (body.message || body.error)) || `Bridge request failed (${res.status})`;
-      return { ok: false, status: res.status, message: String(message) };
+      return { ok: false, status: res.status, message: String(message), body };
     }
     return { ok: true, status: res.status, data: body as T };
   } catch (error) {

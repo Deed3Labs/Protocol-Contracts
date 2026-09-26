@@ -108,7 +108,9 @@ export function bridgeRail(): BankRail {
   return {
     name: 'bridge',
     async ready(customerId) {
-      return (await getCustomerSnapshot(customerId))?.status === 'active';
+      // Verified, and as the business: never the owner verified as a person (kybService.ts).
+      const s = await getCustomerSnapshot(customerId);
+      return s?.status === 'active' && s.type !== 'individual';
     },
     async register(input) {
       const r = await bridge<{ id?: string }>(`/customers/${encodeURIComponent(input.customerId)}/external_accounts`, {
