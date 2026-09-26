@@ -274,6 +274,7 @@ export default function PayoutsPage() {
         <WithdrawModal
           position={pos}
           bankName={bank}
+          bankAccountId={preview ? null : (linked?.id ?? null)}
           initialSource={source}
           initialEntry={preview && screen ? '2400' : ''}
           initialStage={stages.includes(screen as Stage) ? (screen as Stage) : 'amount'}

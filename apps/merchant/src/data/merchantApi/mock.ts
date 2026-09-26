@@ -64,6 +64,7 @@ export type ClearSide = Pick<
   | 'renameDevice'
   | 'setIdleLock'
   | 'signOut'
+  | 'requestWithdrawal'
 >;
 
 /**
@@ -1150,6 +1151,30 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     profile: async (): Promise<MerchantProfile> => {
       const owner = who(viewer)?.role === 'owner';
       return { ...seed.PROFILE, name: shop.name, ...(owner ? seed.PROFILE_OWNER : {}) };
+    },
+    // A withdrawal: owed money redeemed into the cash account, then on to a linked bank (the server's
+    // services/merchant/bank/offramp.ts), standard free or same-day 1%.
+    requestWithdrawal: async (input) => {
+      if (!seesMoney(who(viewer)?.role ?? 'counter')) refuse('Payouts are for an owner or a manager', 403, 'forbidden');
+      const bank =
+        input.destination === 'bank' && input.bankAccountId
+          ? banks.some((b) => b.id === input.bankAccountId)
+            ? { id: id('bwd'), state: 'sent', feeCents: input.speed === 'same_day' ? Math.ceil(input.amountCents / 100) : 0, note: null }
+            : { id: '', state: 'refused', feeCents: 0, note: 'Choose a bank linked in Where withdrawals go.' }
+          : undefined;
+      return {
+        id: id('wd'),
+        amountCents: input.amountCents,
+        source: input.source,
+        destination: input.destination,
+        throughCashAccount: input.source === 'owed' && input.destination !== 'cash',
+        nextPayoutOn: seed.POSITION.nextPayoutOn,
+        cashAccountCents: seed.POSITION.cashAccountCents,
+        owedCents,
+        status: 'requested',
+        inCashAccount: true,
+        ...(bank ? { bank } : {}),
+      };
     },
     // End shift: signing out ends the viewer's shift, as DELETE /session does.
     signOut: async () => {

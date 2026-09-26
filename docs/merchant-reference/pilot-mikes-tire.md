@@ -26,7 +26,6 @@ Work down it in order.
 - **Overview and Payouts:** the month, card deposits, Clear's fees and the payout position.
 
 **Not built yet** (none of these blocks the pilot):
-- Withdrawing to a bank by ACH (banks are linked with Plaid and registered with Bridge already).
 - Splitting tips by hours. The shift clock now records hours, but tips still go to whoever raised the charge.
 
 **Before the dress rehearsal:**
@@ -43,6 +42,7 @@ Clear never enters keys into service settings for you. Set these yourself.
 - [ ] `STRIPE_CONNECT_WEBHOOK_SECRET`: the **signing secret** of the Connect webhook endpoint below. It starts `whsec_`. The endpoint's id (`we_…`) is not it. On dev this still holds the endpoint id (checked 2026-09-25).
 - [ ] `MERCHANT_APP_URL`: where the merchant app is served. Onboarding and receipt links point back to it.
 - [ ] `SEND_TWILIO_ACCOUNT_SID`, `SEND_TWILIO_AUTH_TOKEN`, and `SEND_TWILIO_MESSAGING_SERVICE_SID` (or `SEND_TWILIO_FROM_PHONE_NUMBER`): texted receipts. These are set on dev.
+- [ ] `PRIVY_AUTHORIZATION_PRIVATE_KEY` and `ZERODEV_PROJECT_ID`: Clear's signer on the shop's wallet and its gas. Without them, withdrawing what's owed (and on to the bank) is only recorded.
 - [ ] Leave `CLEAR_FEE_COLLECTION_ADDRESS` **unset**. Stripe takes Clear's fee per sale, so monthly billing never applies to Mike's Tire.
 
 **Stripe Dashboard, Clear's platform account:**

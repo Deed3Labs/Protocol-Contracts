@@ -42,11 +42,14 @@ export function WithdrawModal({
   initialEntry = '',
   initialStage = 'amount',
   request = api.requestWithdrawal,
+  bankAccountId = null,
   onClose,
   onDone,
 }: {
   position: PayoutPosition;
   bankName: string | null;
+  /** A live shop's linked bank (Plaid, then Bridge): offers same-day beside standard. */
+  bankAccountId?: string | null;
   initialSource?: Source;
   initialEntry?: string;
   initialStage?: Stage;
@@ -63,11 +66,14 @@ export function WithdrawModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  // To a linked bank: standard ACH (free, 1–3 days) or same-day (1%).
+  const [speed, setSpeed] = useState<'standard' | 'same_day'>('standard');
+  const sameDay = destination === 'bank' && !!bankAccountId && speed === 'same_day';
 
   const cap = source === 'cash' ? position.cashAccountCents : position.releasedReadyCents;
   const cents = entry ? toCents(Number(entry) || 0) : 0;
   const overCap = cap !== null && cents > cap;
-  const fee = feeCents(destination, cents);
+  const fee = sameDay ? Math.ceil(cents / 100) : feeCents(destination, cents);
   const receives = Math.max(0, cents - fee);
   const bank = bankName ?? 'your bank';
   const to = destination === 'cash' ? 'your cash account' : destination === 'bank' ? bank : 'your card';
@@ -82,7 +88,7 @@ export function WithdrawModal({
     setBusy(true);
     setError(null);
     try {
-      setOutcome(await request({ amountCents: cents, source, destination }));
+      setOutcome(await request({ amountCents: cents, source, destination, ...(destination === 'bank' && bankAccountId ? { bankAccountId, speed } : {}) }));
       setStage('sending');
       window.setTimeout(() => setStage('done'), 2200);
     } catch (e) {
@@ -137,9 +143,12 @@ export function WithdrawModal({
 
   // ---- Where does it end up? -------------------------------------------------------------------
   if (stage === 'to') {
-    const options: [Destination, string, string, string, string, boolean][] = [
+    const options: [Destination | 'bank_same_day', string, string, string, string, boolean][] = [
       ...(source !== 'cash' ? ([['cash', 'Cash account', 'Spend at partners, no wait', 'Instant', 'no fee', true]] as [Destination, string, string, string, string, boolean][]) : []),
-      ['bank', bankName ?? 'Bank account', bankName ? 'Business checking' : 'Not set up yet', '1–3 days', 'no fee', !!bankName],
+      ['bank', bankName ?? 'Bank account', bankName ? (bankAccountId ? 'Standard ACH' : 'Business checking') : 'Not set up yet', '1–3 days', 'no fee', !!bankName],
+      ...(bankAccountId && bankName
+        ? ([['bank_same_day', bankName, 'Same-day ACH', 'Today', `1%${cents ? ` · ${usd(Math.ceil(cents / 100))}` : ''}`, true]] as [Destination | 'bank_same_day', string, string, string, string, boolean][])
+        : []),
       // No card on file and none invented: showing a card number we don't have would be a fabrication.
       ['debit', 'Debit card', 'Not set up yet', 'Minutes', `1.5%${cents ? ` · ${usd(feeCents('debit', cents))}` : ''}`, false],
     ];
@@ -159,17 +168,18 @@ export function WithdrawModal({
               onKeyDown={clickOnKey}
               tabIndex={ok ? 0 : -1}
               aria-disabled={!ok}
-              aria-pressed={destination === k}
+              aria-pressed={k === 'bank_same_day' ? sameDay : destination === k && !(k === 'bank' && sameDay)}
               style={ok ? { cursor: 'pointer' } : { opacity: 0.45 }}
               onClick={() => {
                 if (!ok) return;
-                setDestination(k);
+                setDestination(k === 'bank_same_day' ? 'bank' : k);
+                setSpeed(k === 'bank_same_day' ? 'same_day' : 'standard');
                 setStage('amount');
               }}
             >
               <div className="c-line" style={{ alignItems: 'center' }}>
                 <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 'var(--t-sec)', fontWeight: destination === k ? 600 : undefined }}>{t}</p>
+                  <p style={{ margin: 0, fontSize: 'var(--t-sec)', fontWeight: (k === 'bank_same_day' ? sameDay : destination === k && !(k === 'bank' && sameDay)) ? 600 : undefined }}>{t}</p>
                   <p className="c-det" style={{ marginTop: 3 }}>
                     {det}
                   </p>
@@ -265,6 +275,11 @@ export function WithdrawModal({
             your terms.
           </p>
         )}
+        {outcome?.bank?.note && (
+          <p className="c-det" role="status" style={{ marginTop: 'var(--s2)' }}>
+            {outcome.bank.note}
+          </p>
+        )}
         {outcome?.settlementNote && (
           <p className="c-det" style={{ marginTop: 'var(--s2)' }}>
             {outcome.settlementNote}
@@ -284,7 +299,7 @@ export function WithdrawModal({
     destination === 'cash'
       ? { nm: 'Cash account', bal: 'Instant · no fee' }
       : destination === 'bank'
-        ? { nm: bank, bal: '1–3 days · no fee' }
+        ? { nm: bank, bal: sameDay ? 'Today · 1%' : '1–3 days · no fee' }
         : { nm: 'Debit card', bal: 'Minutes · 1.5%' };
   const note =
     error ??
@@ -311,11 +326,11 @@ export function WithdrawModal({
             </div>
             <div>
               <span>Fee</span>
-              <span>{feeLabel(destination, cents)}</span>
+              <span>{sameDay ? `1% · ${usd(fee)}` : feeLabel(destination, cents)}</span>
             </div>
             <div>
               <span>Arrives</span>
-              <span>{arrivalLabel(destination)}</span>
+              <span>{sameDay ? 'Today, by same-day ACH' : arrivalLabel(destination)}</span>
             </div>
             <div className="c-limit">
               <span>You receive</span>
