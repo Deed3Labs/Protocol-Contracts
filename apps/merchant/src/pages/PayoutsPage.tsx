@@ -8,7 +8,7 @@ import { api, type PayoutPosition } from '@/data/apiClient';
 import { useMerchantApi } from '@/data/merchantApi';
 import { runPlaidLink } from '@/lib/plaidLink';
 import { ExplainFlagSheet, ReconcileCell } from '@/payouts/reconcile';
-import type { ReconciliationFlag } from '@clear/merchant-contracts';
+import type { ReceiveDetails, ReconciliationFlag } from '@clear/merchant-contracts';
 import { errorSentence, useApi } from '@/data/useApi';
 import { cardRows, drawerCash } from '@/payouts/live';
 import GrantSignerPanel from '@/payouts/GrantSignerPanel';
@@ -61,6 +61,13 @@ const PREVIEW_POSITION: PayoutPosition = {
   paid: [],
 };
 
+/** The reference's account for being paid, as the preview shows it. */
+const PREVIEW_RECEIVE: ReceiveDetails = {
+  state: 'ready',
+  account: { beneficiary: 'Mike’s Tire LLC', bankName: null, routingNumber: '084106768', accountNumber: '9600000418824', rails: ['ach_push', 'wire'] },
+  email: null,
+};
+
 /** The position couldn't be read: every figure says so rather than showing $0.00. */
 const UNREAD: PayoutsModel = {
   readyCents: null,
@@ -109,6 +116,9 @@ export default function PayoutsPage() {
   const [explaining, setExplaining] = useState<ReconciliationFlag | null>(null);
   // Where withdrawals go: the banks linked with Plaid. An owner adds and removes them.
   const banks = useApi(() => (preview ? Promise.resolve(null) : merchant.bankAccounts()), [preview]);
+  // Payouts › Receive: the shop's account and routing numbers, read when the sheet opens.
+  const [receive, setReceive] = useState<ReceiveDetails | null>(null);
+  const [receiveError, setReceiveError] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
   const [bankError, setBankError] = useState<string | null>(null);
   const ownerHere = session?.staff.role === 'owner';
@@ -181,7 +191,14 @@ export default function PayoutsPage() {
     />
   );
   const sits = <WhereItSitsCell m={m} onBank={() => setOpen('destinations')} onDay={() => navigate(`/settings/payouts${preview ? '?preview=1' : ''}`)} />;
-  const cash = <CashAccountCell m={m} onWithdraw={() => withdraw('cash')} onReceive={preview ? () => setOpen('receive') : undefined} />;
+  const openReceiveSheet = () => {
+    setOpen('receive');
+    if (preview) return;
+    setReceive(null);
+    setReceiveError(null);
+    merchant.receiveDetails().then(setReceive, (e: unknown) => setReceiveError(errorSentence(e)));
+  };
+  const cash = <CashAccountCell m={m} onWithdraw={() => withdraw('cash')} onReceive={openReceiveSheet} />;
   const tips = m.drawer && (
     <CashTipsCell
       d={m.drawer}
@@ -301,7 +318,35 @@ export default function PayoutsPage() {
         />
       )}
       {open === 'breakdown' && card?.card && <BreakdownSheet r={card} onClose={() => setOpen(null)} />}
-      {open === 'receive' && <ReceiveSheet name="Mike’s Tire LLC" routing="084106768" account="9600000418824" onClose={() => setOpen(null)} />}
+      {open === 'receive' &&
+        (preview ? (
+          <ReceiveSheet d={PREVIEW_RECEIVE} onClose={() => setOpen(null)} />
+        ) : (
+          <ReceiveSheet
+            d={receive}
+            readError={receiveError}
+            onOpen={
+              ownerHere
+                ? async () => {
+                    try {
+                      setReceive(await merchant.openReceive());
+                    } catch (e) {
+                      throw new Error(errorSentence(e));
+                    }
+                  }
+                : undefined
+            }
+            onEmail={async () => {
+              try {
+                return (await merchant.emailReceive()).to;
+              } catch (e) {
+                throw new Error(errorSentence(e));
+              }
+            }}
+            onVerify={ownerHere ? () => navigate('/settings/advanced') : undefined}
+            onClose={() => setOpen(null)}
+          />
+        ))}
       {explaining && (
         <ExplainFlagSheet
           f={explaining}

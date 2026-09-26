@@ -1,36 +1,5 @@
 import { canVoidOrder, clearCardFee, orderStatus, tenderTransition } from '@clear/merchant-contracts';
-import type {
-  AuditEntry,
-  BankDeposit,
-  CardAvailability,
-  CardDeposit,
-  CatalogItem,
-  CloseDayResult,
-  CountsView,
-  DayReport,
-  DiscountCode,
-  DrawerSession,
-  LineInput,
-  MerchantApi,
-  Order,
-  OrderDiscount,
-  OrderLine,
-  OwnCount,
-  Reader,
-  Receipt,
-  Refund,
-  Reorder,
-  PersonHours,
-  ShiftNow,
-  BankAccount,
-  KybStatus,
-  ShopSettings,
-  StaffHours,
-  StaffWeek,
-  StockMovement,
-  Tender,
-  TenderEvent,
-} from '@clear/merchant-contracts';
+import type { AuditEntry, BankAccount, BankDeposit, CardAvailability, CardDeposit, CatalogItem, CloseDayResult, CountsView, DayReport, DiscountCode, DrawerSession, KybStatus, LineInput, MerchantApi, Order, OrderDiscount, OrderLine, OwnCount, PersonHours, Reader, Receipt, ReceiveDetails, Refund, Reorder, ShiftNow, ShopSettings, StaffHours, StaffWeek, StockMovement, Tender, TenderEvent } from '@clear/merchant-contracts';
 import { refundQuote, seesMoney, type ChargeState } from '@clear/domain';
 import type { api as ApiClient, EnrolledDevice, MerchantCharge, MerchantProfile, PayoutPosition, Refund as ClearRefund, StaffMember } from '../apiClient';
 import { price } from './pricing';
@@ -91,6 +60,8 @@ export interface MockSwitches {
   setup: 'done' | 'new';
   /** Business verification: `new` hasn't started. */
   kyb: 'done' | 'new';
+  /** Payouts › Receive: `new` is a verified shop that hasn't opened its account and routing numbers. */
+  receive: 'open' | 'new';
   delayMs: number;
 }
 
@@ -119,7 +90,7 @@ interface OrderRec {
 const TODAY = seed.REFERENCE_DAY;
 
 export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?: string } = {}) {
-  const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', setup: 'done', kyb: 'done', delayMs: 250, ...initial };
+  const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', setup: 'done', kyb: 'done', receive: 'open', delayMs: 250, ...initial };
   let viewer = initial.viewer ?? seed.STAFF_ID.mike;
   let failNext: { method: string; message: string; status: number } | null = null;
   let n = 1000;
@@ -152,6 +123,17 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     switches.kyb === 'new'
       ? { state: 'not_started', withdrawToBank: false, reason: null, email: null, available: true }
       : { state: 'verified', withdrawToBank: true, reason: null, email: 'mike@mikestire.com', available: true };
+  // The shop's account for being paid: Bridge's, open unless `&receive=new`.
+  let receiveOpen = switches.receive === 'open';
+  const receiveNow = (): ReceiveDetails => {
+    if (kyb.state !== 'verified') return { state: 'not_verified', account: null, email: kyb.email };
+    if (!receiveOpen) return { state: 'not_opened', account: null, email: kyb.email };
+    return {
+      state: 'ready',
+      account: { beneficiary: 'Mike’s Tire LLC', bankName: 'Lead Bank', routingNumber: '101019644', accountNumber: '900123456789', rails: ['ach_push', 'wire'] },
+      email: kyb.email,
+    };
+  };
   const banks: BankAccount[] = [{ id: 'bank_chase', bankName: 'Chase', mask: '4417', subtype: 'checking', addedAt: seed.at(seed.YESTERDAY, '09:00') }];
   // Set up the till's two steps nothing else records.
   const marks = new Set<'cash' | 'tips'>(switches.setup === 'new' ? [] : ['cash', 'tips']);
@@ -488,6 +470,23 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       const i = banks.findIndex((b) => b.id === bankId);
       if (i < 0) refuse('No such bank account', 404, 'not_found');
       banks.splice(i, 1);
+    },
+    receiveDetails: async () => {
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      return receiveNow();
+    },
+    openReceive: async () => {
+      if (who(viewer)?.role !== 'owner') refuse('that needs full access', 403, 'forbidden');
+      if (kyb.state !== 'verified') refuse('Verify the business first (Settings › Advanced): Bridge opens an account only for a verified business.', 409, 'not_verified');
+      receiveOpen = true;
+      return receiveNow();
+    },
+    emailReceive: async () => {
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      const r = receiveNow();
+      if (!r.account) refuse('Open the account first.', 409, 'not_verified');
+      if (!r.email) refuse('There’s no business email on file to send them to.', 409, 'no_email');
+      return { to: r.email! };
     },
     setup: async () => {
       if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');

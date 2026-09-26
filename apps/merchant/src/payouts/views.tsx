@@ -4,7 +4,7 @@ import { IconChevron, IconLock } from '@/brand/icons';
 import { cx, Sheet } from '@/brand/ui';
 import { usd } from '@/home/model';
 import { HIST_PAGE, type HistRow, type PayoutsModel } from '@/payouts/model';
-import type { BankAccount } from '@clear/merchant-contracts';
+import type { BankAccount, ReceiveDetails } from '@clear/merchant-contracts';
 
 /**
  * Payouts' blocks — docs/merchant-reference/clear-merchant-payouts.html: the figure a business
@@ -499,8 +499,46 @@ export function BreakdownSheet({ r, onClose }: { r: HistRow; onClose: () => void
   );
 }
 
-export function ReceiveSheet({ name, routing, account, onClose }: { name: string; routing: string; account: string; onClose: () => void }) {
+/**
+ * Payouts › Receive: the shop's account and routing numbers for being paid by ACH or wire, from
+ * Bridge. Read from Bridge each time; an owner opens them once the business is verified.
+ */
+export function ReceiveSheet({
+  d,
+  readError,
+  onOpen,
+  onEmail,
+  onVerify,
+  onClose,
+}: {
+  /** Null while it's being read. */
+  d: ReceiveDetails | null;
+  /** Why it couldn't be read. */
+  readError?: string | null;
+  /** Owners, when it isn't open yet. */
+  onOpen?: () => Promise<void>;
+  /** Sends them to the business's email; resolves to the address. */
+  onEmail?: () => Promise<string>;
+  /** To Settings › Advanced, when the business isn't verified yet. */
+  onVerify?: () => void;
+  onClose: () => void;
+}) {
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState<'open' | 'email' | null>(null);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const run = async (what: 'open' | 'email', fn: () => Promise<void>) => {
+    setBusy(what);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const a = d?.account ?? null;
   const kv = (k: string, v: string) => (
     <div>
       <div className="c-kv">
@@ -511,43 +549,94 @@ export function ReceiveSheet({ name, routing, account, onClose }: { name: string
       </div>
     </div>
   );
-  return (
-    <Sheet
-      title="Cash account"
-      onClose={onClose}
-      foot={
-        <>
-          <div className="c-pair" style={{ marginBottom: 'var(--s2)' }}>
-            <button
-              type="button"
-              className="c-btn"
-              onClick={() => {
-                void navigator.clipboard?.writeText(`${name}\nRouting ${routing}\nAccount ${account}\nChecking`);
-                setCopied(true);
-              }}
-            >
-              {copied ? 'Copied' : 'Copy all details'}
-            </button>
-            <button type="button" className="c-btn">
-              Email them to me
-            </button>
-          </div>
-          <p className="c-det">
-            Account and routing from Bridge, in your business’s name. Deposits arrive as USDC in your cash account, usually the same business
-            day.
-          </p>
-        </>
-      }
-    >
-      <p className="c-det" style={{ marginBottom: 'var(--s2)' }}>
-        Send money here by ACH or wire and it lands in your Clear balance.
+  const alert = error && (
+    <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s1) 0 0' }}>
+      {error}
+    </p>
+  );
+
+  let body: ReactNode;
+  let foot: ReactNode;
+  if (a) {
+    body = (
+      <>
+        <p className="c-det" style={{ marginBottom: 'var(--s2)' }}>
+          Send money here by ACH or wire and it lands in your Clear balance.
+        </p>
+        <div className="c-rows">
+          {kv('Account name', a.beneficiary)}
+          {a.bankName && kv('Bank', a.bankName)}
+          {kv('Routing', a.routingNumber)}
+          {kv('Account', a.accountNumber)}
+          {kv('Type', 'Checking')}
+        </div>
+      </>
+    );
+    foot = (
+      <>
+        <div className="c-pair" style={{ marginBottom: 'var(--s2)' }}>
+          <button
+            type="button"
+            className="c-btn"
+            onClick={() => {
+              void navigator.clipboard?.writeText(`${a.beneficiary}\n${a.bankName ? `${a.bankName}\n` : ''}Routing ${a.routingNumber}\nAccount ${a.accountNumber}\nChecking`);
+              setCopied(true);
+            }}
+          >
+            {copied ? 'Copied' : 'Copy all details'}
+          </button>
+          <button type="button" className="c-btn" disabled={!onEmail || !d?.email || busy !== null} onClick={() => onEmail && run('email', async () => setSentTo(await onEmail()))}>
+            {busy === 'email' ? 'Sending…' : sentTo ? 'Sent' : 'Email them to me'}
+          </button>
+        </div>
+        <p className="c-det">
+          {sentTo
+            ? `Sent to ${sentTo}.`
+            : `Account and routing from Bridge, in your business’s name. Deposits arrive as USDC in your cash account, usually the same business day.${d?.email ? ` Email sends them to ${d.email}.` : ''}`}
+        </p>
+        {alert}
+      </>
+    );
+  } else if (d === null) {
+    body = readError ? (
+      <p className="c-det" role="alert" style={{ color: 'var(--absent)' }}>
+        {readError}
       </p>
-      <div className="c-rows">
-        {kv('Account name', name)}
-        {kv('Routing', routing)}
-        {kv('Account', account)}
-        {kv('Type', 'Checking')}
-      </div>
+    ) : (
+      <p className="c-det">Reading the shop’s account…</p>
+    );
+  } else if (d.state === 'not_opened') {
+    body = (
+      <p className="c-det">
+        Get an account and routing number in the business’s name, from Bridge, to be paid by ACH or wire. Money sent to it lands in your cash account, usually the same business day.
+      </p>
+    );
+    foot = (
+      <>
+        {onOpen ? (
+          <button type="button" className="c-btn c-btn-lg" disabled={busy !== null} onClick={() => run('open', onOpen)}>
+            {busy === 'open' ? 'Opening…' : 'Get account and routing'}
+          </button>
+        ) : (
+          <p className="c-det">Only an owner can open it.</p>
+        )}
+        {alert}
+      </>
+    );
+  } else if (d.state === 'not_verified') {
+    body = <p className="c-det">Bridge opens an account only for a verified business. Verify it in Settings › Advanced, then come back here.</p>;
+    foot = onVerify ? (
+      <button type="button" className="c-btn c-btn-lg" onClick={onVerify}>
+        Verify the business
+      </button>
+    ) : undefined;
+  } else {
+    body = <p className="c-det">Receiving by ACH isn’t available yet.</p>;
+  }
+
+  return (
+    <Sheet title="Cash account" onClose={onClose} foot={foot}>
+      {body}
     </Sheet>
   );
 }

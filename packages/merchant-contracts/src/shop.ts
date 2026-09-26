@@ -208,6 +208,30 @@ export const BankAccount = z.object({
   addedAt: z.string(),
 });
 export type BankAccount = z.infer<typeof BankAccount>;
+/**
+ * Payouts › Receive: the shop's own account and routing numbers, from Bridge, for being paid by ACH
+ * or wire. Dollars sent to them arrive as USDC in the shop's cash account.
+ *
+ * `not_configured` Bridge isn't set up for Clear; `not_verified` the business isn't verified yet
+ * (Settings › Advanced); `not_opened` it is, and an owner can open the account; `ready` here it is.
+ */
+export const ReceiveDetails = z.object({
+  state: z.enum(['not_configured', 'not_verified', 'not_opened', 'ready']),
+  account: z
+    .object({
+      /** Whose name payers put on the transfer. */
+      beneficiary: z.string(),
+      bankName: z.string().nullable(),
+      routingNumber: z.string(),
+      accountNumber: z.string(),
+      /** The rails it takes: ach_push, wire. */
+      rails: z.array(z.string()),
+    })
+    .nullable(),
+  /** Where Email them sends them: the address the business was verified under. */
+  email: z.string().nullable(),
+});
+export type ReceiveDetails = z.infer<typeof ReceiveDetails>;
 /** What Plaid Link hands back: its public token, the account chosen, and the bank's name for display. */
 export const AddBank = z.object({
   publicToken: z.string().min(1),

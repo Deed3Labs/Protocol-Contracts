@@ -31,7 +31,7 @@ import type {
   Tender,
 } from './orders';
 import type { PersonHours, SaveStaffHours, ShiftNow, StaffWeek } from './shifts';
-import type { AddBank, BankAccount, KybStatus, SetupProgress, Shop, ShopHours, StartKyb, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
+import type { AddBank, BankAccount, KybStatus, ReceiveDetails, SetupProgress, Shop, ShopHours, StartKyb, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
 
 type In<T extends z.ZodType> = z.input<T>;
 type Range = { from: z.infer<typeof BusinessDate>; to: z.infer<typeof BusinessDate> };
@@ -75,6 +75,12 @@ export interface MerchantApi {
   bankAccounts(): Promise<BankAccount[]>;
   /** Owners. */
   removeBank(id: string): Promise<void>;
+  /** Owners and managers: the shop's account and routing numbers for being paid by ACH or wire. */
+  receiveDetails(): Promise<ReceiveDetails>;
+  /** Owners: open the account (once the business is verified). */
+  openReceive(): Promise<ReceiveDetails>;
+  /** Owners and managers: email the details to the address the business was verified under. */
+  emailReceive(): Promise<{ to: string }>;
 
   // ---- Shifts and hours --------------------------------------------------------------------------------
   /** Everyone on shift now, the earliest first. A shift starts with a PIN and ends with End shift. */
