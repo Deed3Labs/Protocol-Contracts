@@ -103,10 +103,10 @@ Decided 2026-09-24.
   "Verify it is you": the PIN, then the owner's sign-in, which creates the shop. Nothing is
   written to Clear before it. The reference's Verify, Bridge checking the business, is the
   preview's until the merchant app has a Bridge business check.
-- **Codes and the team are real; the bank and the tax rate aren't here yet.** A live signup
-  checks a terms code with Clear and adds the team with the shop (below, "Onboarding: terms codes
-  and the team"). The bank still reads "Not linked yet" (it's in Settings, after Bridge verifies
-  the business), and there's no tax rate (Stripe Tax works it out once cards are connected).
+- **Codes, the team and the bank are real; the tax rate isn't here.** A live signup checks a terms
+  code with Clear and adds the team with the shop (below, "Onboarding: terms codes and the team"),
+  and Where payouts go verifies the business and links the bank (below, "Onboarding: where payouts
+  go"). There's no tax rate (Stripe Tax works it out once cards are connected).
 - **Save and finish later** keeps the form on the device and nothing else.
 - **Onboarding is always its own screen**, without the app's header, even when someone is
   signed in.
@@ -823,6 +823,22 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   up to 20. Each picks their own PIN on their first shift, as in Staff. Added only when that call
   makes the shop, so a retried signup doesn't add everyone twice. Nobody gets a text yet (the
   reference's "gets a text to join"), and there's no mobile field.
+
+## Onboarding: where payouts go
+
+- **The owner is signed in when the shop is made,** with the same sign-in that made it, so Where
+  payouts go is Settings' own flow rather than a promise to do it later. If that sign-in doesn't
+  take, the step says to link the bank in Settings, as before.
+- **Bridge verifies the business first,** under the legal name and an email that belongs to the
+  business (prefilled from Start, and the hint says not the owner's own: Bridge keeps one
+  verification per email). Bridge's pages open in a new tab so signup stays where it is; Check
+  again reads where it got to. The wording is Settings › Advanced's.
+- **Then the bank, with Plaid,** once Bridge has verified the business (it pays out only to a
+  verified one). Before that, the bank reads "After verification".
+- **The cash account follows it:** "After verification", then "Ready". The preview keeps the
+  reference's "Opens with verification".
+- Nothing here holds up signup: Continue is always there, and Settings has the same.
+- Against the mock: `/onboarding?preview=1&live=1&step=6` (`&kyb=new` for a shop not yet verified).
 
 ## Settings › Advanced › Your data
 

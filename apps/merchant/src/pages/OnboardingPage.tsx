@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/auth/authContext';
 import { OwnerSignIn } from '@/auth/OwnerSignIn';
 import { ClearMark } from '@/brand/icons';
 import { cx, initials } from '@/brand/ui';
@@ -7,6 +8,7 @@ import type { TermsCodeCheck } from '@clear/merchant-contracts';
 import { api } from '@/data/apiClient';
 import { useLayout } from '@/lib/useBreakpoint';
 import { usePage } from '@/lib/usePage';
+import { CashAccountCell, LivePayouts } from '@/onboarding/LivePayouts';
 import { Chip, Chips, Drop, Field, Foot, Frame, Kvs, ObCell, PhoneFrame, StepHead, STEPS, Tick } from '@/onboarding/views';
 
 /**
@@ -21,9 +23,10 @@ import { Chip, Chips, Drop, Field, Foot, Frame, Kvs, ObCell, PhoneFrame, StepHea
  * the owner's name and a four-digit counter PIN, so on a live signup the Verify step is that
  * sign-in: nothing is written to Clear until then, and an owner who stops halfway leaves nothing
  * behind. A terms code is checked with Clear on Your terms, and the team is kept with the form;
- * both go with that sign-in, which takes the code's place and adds the team. Bridge's business
- * check and bank linking have no step here yet (they're in Settings); the preview shows them as
- * drawn: `?preview=1&step=1..7`, `&done=1`, `&team=solo`, `&code=warn|bad`,
+ * both go with that sign-in, which takes the code's place and adds the team. The same sign-in then
+ * signs the owner in, so Where payouts go is Settings' own flow: Bridge verifies the business, then
+ * the bank is linked with Plaid (`onboarding/LivePayouts.tsx`; against the mock with `&live=1`,
+ * which also takes `&step=`). The preview shows them as drawn: `?preview=1&step=1..7`, `&done=1`, `&team=solo`, `&code=warn|bad`,
  * `&verify=needs|verified`, `&bank=waiting`.
  */
 
@@ -112,8 +115,11 @@ export default function OnboardingPage() {
   const [params] = useSearchParams();
   const phone = useLayout() === 'phone';
 
-  const preview = import.meta.env.DEV && params.get('preview') === '1';
-  const [step, setStep] = useState(() => (preview ? Math.max(0, Math.min(6, Number(params.get('step') ?? 1) - 1)) : 0));
+  // `&live=1`: the live steps against the mock (with `&step=`), rather than the reference as drawn.
+  const mockLive = import.meta.env.DEV && params.get('preview') === '1' && params.get('live') === '1';
+  const preview = import.meta.env.DEV && params.get('preview') === '1' && !mockLive;
+  const { session, refresh } = useAuth();
+  const [step, setStep] = useState(() => (preview || mockLive ? Math.max(0, Math.min(6, Number(params.get('step') ?? 1) - 1)) : 0));
   const [done, setDone] = useState(preview && params.get('done') === '1');
   const [f, setF] = useState<Form>(() => (preview ? REFERENCE_FORM : remembered()));
   const [codeState, setCodeState] = useState<keyof typeof CODE_MSG | null>(preview ? ((params.get('code') as 'warn' | 'bad') ?? 'ok') : null);
@@ -183,6 +189,12 @@ export default function OnboardingPage() {
         team: solo ? [] : f.team,
       });
       setShop({ merchant: res.merchant, signerReady: res.signerReady, terms: res.terms, teamAdded: res.teamAdded });
+      // Then signed in as the owner, with the same sign-in, so Where payouts go can verify the
+      // business and link the bank. If it doesn't take, that step says to do it in Settings.
+      await api
+        .signInAsOwner(privyToken, res.merchant)
+        .then(() => refresh())
+        .catch(() => undefined);
       try {
         localStorage.removeItem(KEY);
       } catch {
@@ -537,13 +549,18 @@ export default function OnboardingPage() {
         const waiting = params.get('bank') === 'waiting';
         return (
           <>
-            <StepHead phone={phone} step={5} title="Where payouts go" sub="One business account for payouts, in the same name as the business you verified." />
+            <StepHead
+              phone={phone}
+              step={5}
+              title="Where payouts go"
+              sub={
+                preview
+                  ? 'One business account for payouts, in the same name as the business you verified.'
+                  : 'Bridge verifies the business, then one business account for payouts, in the same name. Both can wait until your first payout.'
+              }
+            />
             {!preview ? (
-              <ObCell label="Business bank account" right={<Chip tone="neutral">Not linked yet</Chip>}>
-                <p className="c-det" style={{ lineHeight: 1.5 }}>
-                  Link it in Settings before your first payout, through your bank’s own sign-in. Nobody at Clear sees it.
-                </p>
-              </ObCell>
+              <LivePayouts signedIn={!!session} shopName={f.shopName} email={f.email} />
             ) : waiting ? (
               <ObCell label="Business bank account" right={<Chip tone="underway">Waiting on deposits</Chip>}>
                 <p className="c-det" style={{ lineHeight: 1.5 }}>
@@ -572,11 +589,8 @@ export default function OnboardingPage() {
                 />
               </ObCell>
             )}
-            <ObCell label="Your Clear cash account" right={<Chip tone="neutral">Opens with verification</Chip>}>
-              <p className="c-det" style={{ lineHeight: 1.5 }}>
-                Money that is free before the 14th lands here, in your business’s name. It is held as USDC, digital dollars, in your shop’s own wallet, and Bridge moves it to your bank whenever you withdraw, at no cost. It is not a bank account and is not FDIC-insured.
-              </p>
-            </ObCell>
+            {/* A live signup's is in LivePayouts, where it follows the verification. */}
+            {preview && <CashAccountCell chip={<Chip tone="neutral">Opens with verification</Chip>} />}
             <Foot phone={phone} back={back} primary="Continue" onPrimary={next} />
           </>
         );
