@@ -57,7 +57,9 @@ describe('"You are not charged carry on a disputed amount"', () => {
 
 describe('"If it goes against you, it returns with the time added back"', () => {
   test('a card purchase is put back by exactly what came off, under a fresh ref, so carry starts from the decision', () => {
-    expect(enforce).toContain('await reissueAfterDispute(dispute.subjectRef, reversed, `${dispute.subjectRef}:after-dispute:${dispute.token}`)');
+    expect(enforce).toContain('done = await reissueCard(dispute, reversed);');
+    expect(enforce).toContain('const ref = `${dispute.subjectRef}:after-dispute:${dispute.token}`;');
+    expect(enforce).toContain('await reissueAfterDispute(dispute.subjectRef, cents, ref);');
     expect(settle).toContain('return ethers.id(onchainRef || transactionToken);');
     // Asks the chain first, so a retry cannot issue it twice.
     expect(settle.indexOf('await issuer.cardSettlementOf(ref)', settle.indexOf('export async function reissueAfterDispute'))).toBeGreaterThan(0);
@@ -114,5 +116,17 @@ describe('a decision’s money always finishes moving', () => {
   test('and the sweep comes back to it until it is done', () => {
     expect(enforce).toContain("WHERE hold_state = 'releasing'");
     expect(enforce).toContain('await finishRelease(dispute)');
+  });
+});
+
+describe('a lost card dispute is put back on chain, however many tries it takes', () => {
+  test('a failed re-issue leaves the dispute releasing, and the sweep retries it', () => {
+    expect(enforce).toContain('done = await reissueCard(dispute, reversed);');
+    expect(enforce).toContain("released = await releaseCard(before, memberWon);");
+    expect(enforce).toContain("if (dispute.kind === 'card') {");
+  });
+
+  test('a retry after a success does not count the cents twice', () => {
+    expect(settle).toContain('if (row.onchain_ref === freshRef) return row.onchain_tx;');
   });
 });
