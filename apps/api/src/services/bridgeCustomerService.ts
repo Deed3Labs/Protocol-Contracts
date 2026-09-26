@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { bridge } from './billerPayoutService.js';
+import { shopBridgeCustomers } from './merchant/shopBridgeCustomers.js';
 
 /*
  * Bridge customer + KYC + virtual account, resolved across EVERY email on a Clear account.
@@ -47,6 +48,7 @@ export type CapabilityStatus = 'pending' | 'active' | 'inactive' | 'rejected';
 
 interface BridgeCustomer {
   id?: string;
+  type?: 'individual' | 'business';
   status?: BridgeCustomerStatus;
   has_accepted_terms_of_service?: boolean;
   capabilities?: Partial<Record<'payin_crypto' | 'payout_crypto' | 'payin_fiat' | 'payout_fiat', CapabilityStatus>>;
@@ -62,6 +64,8 @@ export interface ResolvedBridgeCustomer {
 
 export interface CustomerSnapshot {
   customerId: string;
+  /** A person or a business: a shop's verification must be the business, not its owner. */
+  type?: 'individual' | 'business';
   status: BridgeCustomerStatus;
   tosAccepted: boolean;
   /** `base` endorsement — USD payments (ACH + wire + virtual accounts). */
@@ -85,7 +89,10 @@ export interface VirtualAccountDetails {
 const normalizeEmail = (value: unknown): string => String(value ?? '').trim().toLowerCase();
 
 /** First Bridge customer found across the account's emails, or null if none of them are known. */
-export async function resolveCustomerForEmails(emails: string[]): Promise<ResolvedBridgeCustomer | null> {
+export async function resolveCustomerForEmails(
+  emails: string[],
+  shopCustomers: (ids: string[]) => Promise<Set<string>> = shopBridgeCustomers,
+): Promise<ResolvedBridgeCustomer | null> {
   const seen = new Set<string>();
   for (const raw of emails) {
     const email = normalizeEmail(raw);
@@ -94,21 +101,26 @@ export async function resolveCustomerForEmails(emails: string[]): Promise<Resolv
 
     // Primary: the customers index. A miss (or a Bridge hiccup) on one email shouldn't stop the loop.
     const byCustomer = await bridge<{ data?: BridgeCustomer[] }>(
-      `/customers?email=${encodeURIComponent(email)}&limit=1`,
+      `/customers?email=${encodeURIComponent(email)}&limit=10`,
     );
     // A rejected API key looks identical to "this member isn't a Bridge customer" from here, which
     // is how a bad BRIDGE_API_KEY masqueraded as a brand-new user. Call it out in the logs.
     if (!byCustomer.ok && (byCustomer.status === 401 || byCustomer.status === 403)) {
       console.error('[bridge] API key rejected (%d) — check BRIDGE_API_KEY and BRIDGE_API_BASE_URL: %s', byCustomer.status, byCustomer.message);
     }
-    const customerId = byCustomer.ok ? byCustomer.data?.data?.[0]?.id : undefined;
+    // Never a shop's business customer verified under the same email (shopBridgeCustomers.ts).
+    const found = byCustomer.ok ? (byCustomer.data?.data ?? []).map((c) => c.id).filter((id): id is string => Boolean(id)) : [];
+    const shops = await shopCustomers(found);
+    const customerId = found.find((id) => !shops.has(id));
     if (customerId) return { customerId, email };
 
     // Fallback: customers created through a hosted KYC link.
     const byKycLink = await bridge<{ data?: { customer_id?: string }[] }>(
-      `/kyc_links?email=${encodeURIComponent(email)}&limit=1`,
+      `/kyc_links?email=${encodeURIComponent(email)}&limit=10`,
     );
-    const linkCustomerId = byKycLink.ok ? byKycLink.data?.data?.[0]?.customer_id : undefined;
+    const linked = byKycLink.ok ? (byKycLink.data?.data ?? []).map((l) => l.customer_id).filter((id): id is string => Boolean(id)) : [];
+    const linkShops = await shopCustomers(linked);
+    const linkCustomerId = linked.find((id) => !linkShops.has(id));
     if (linkCustomerId) return { customerId: linkCustomerId, email };
   }
   return null;
@@ -122,6 +134,7 @@ export async function getCustomerSnapshot(customerId: string): Promise<CustomerS
   const base = c.endorsements?.find((e) => e.name === 'base')?.status;
   return {
     customerId,
+    ...(c.type ? { type: c.type } : {}),
     status: c.status ?? 'not_started',
     tosAccepted: Boolean(c.has_accepted_terms_of_service),
     baseEndorsement: base === 'approved' || base === 'revoked' ? base : 'incomplete',
@@ -140,6 +153,21 @@ export interface KycLinkResult {
   source: 'existing_customer' | 'new_customer';
 }
 
+/** An existing customer's hosted verification link: the ToS first when unsigned, else the KYC flow. */
+export async function verificationLinkFor(customerId: string, redirectUri?: string): Promise<KycLinkResult | null> {
+  const redirectQuery = redirectUri ? `?redirect_uri=${encodeURIComponent(redirectUri)}` : '';
+  const [tos, kyc] = await Promise.all([
+    bridge<{ url?: string | null }>(`/customers/${encodeURIComponent(customerId)}/tos_acceptance_link`),
+    bridge<{ url?: string | null }>(`/customers/${encodeURIComponent(customerId)}/kyc_link${redirectQuery}`),
+  ]);
+  const tosUrl = (tos.ok && tos.data?.url) || null;
+  const kycUrl = (kyc.ok && kyc.data?.url) || null;
+  const snapshot = await getCustomerSnapshot(customerId);
+  // Signed the ToS already → straight to KYC; otherwise ToS has to come first.
+  const url = snapshot?.tosAccepted ? kycUrl || tosUrl : tosUrl || kycUrl;
+  return url ? { customerId, url, kycUrl, tosUrl, source: 'existing_customer' } : null;
+}
+
 /**
  * Get the hosted Bridge verification link for this member, reusing their existing customer when one
  * of their emails already maps to one. `email` is the address to onboard under when they're new.
@@ -154,19 +182,8 @@ export async function startKyc(input: {
   const existing = await resolveCustomerForEmails(input.emails);
 
   if (existing) {
-    const redirectQuery = input.redirectUri ? `?redirect_uri=${encodeURIComponent(input.redirectUri)}` : '';
-    const [tos, kyc] = await Promise.all([
-      bridge<{ url?: string | null }>(`/customers/${encodeURIComponent(existing.customerId)}/tos_acceptance_link`),
-      bridge<{ url?: string | null }>(`/customers/${encodeURIComponent(existing.customerId)}/kyc_link${redirectQuery}`),
-    ]);
-    const tosUrl = (tos.ok && tos.data?.url) || null;
-    const kycUrl = (kyc.ok && kyc.data?.url) || null;
-    const snapshot = await getCustomerSnapshot(existing.customerId);
-    // Signed the ToS already → straight to KYC; otherwise ToS has to come first.
-    const url = snapshot?.tosAccepted ? kycUrl || tosUrl : tosUrl || kycUrl;
-    if (url) {
-      return { customerId: existing.customerId, url, kycUrl, tosUrl, source: 'existing_customer' };
-    }
+    const links = await verificationLinkFor(existing.customerId, input.redirectUri);
+    if (links) return links;
     // Fall through to creating a link if Bridge gave us nothing usable.
   }
 

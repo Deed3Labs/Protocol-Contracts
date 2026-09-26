@@ -749,3 +749,18 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   once). A daily job does it (`jobs/monthlyStatements.ts`, under an advisory lock); one that fails
   is tried again the next day. By Resend, like every email.
 
+## The shop's Bridge customer is the business, never its owner
+
+- Bridge keeps one verification per email: asking for a business link under an email that already
+  verified a person answers `duplicate_record` with that person's link (seen in the sandbox). The
+  KYB used to find its customer by email, as the member app does, so an owner verifying the shop under
+  their own address would have made the shop's "business" the owner as a person.
+- So the shop's KYB never looks up by email: it uses the shop's own customer once it has one, and
+  before that makes a business customer. An email Bridge has as a person is refused with a sentence
+  asking for the business's own email; one it has as a business is used unless another shop has it.
+- A shop already holding a person (started before this) reads "needs info" with that reason, can't
+  link a bank, and starts over as the business with a new email.
+- The other way round: the member app's lookup by email skips any shop's customer, and the Bridge
+  webhook acknowledges a shop's events without running them through a member's deposits
+  (`shopBridgeCustomers.ts`).
+
