@@ -26,7 +26,6 @@ Work down it in order.
 - **Overview and Payouts:** the month, card deposits, Clear's fees and the payout position.
 
 **Not built yet** (none of these blocks the pilot):
-- Splitting tips by hours. The shift clock now records hours, but tips still go to whoever raised the charge.
 
 **Before the dress rehearsal:**
 - [ ] `bun run e2e:live` (apps/api) passes against Stripe test mode: the six Phase 10 stories and the audit trail. It passed 7/7 on `dev` on 2026-09-25; rerun it on the commit that ships.
@@ -59,7 +58,7 @@ Clear never enters keys into service settings for you. Set these yourself.
 
 **Not yet available (decide before the pilot, or go without):**
 - [ ] **Email (receipts, statements to an accountant):** `RESEND_API_KEY` and `RESEND_FROM` (for example `Mike’s Tire via Clear <receipts@useclear.org>`), with that domain verified in Resend. Without them, text and printed receipts work and statements save as PDF.
-- [ ] **Splitting tips by hours:** the shift clock records hours now, but splitting isn't built. Tips go to whoever raised the charge.
+- [ ] **Tips by hours:** if the shop wants it, choose Settings › Tips › Split by hours on shift, and have everyone clock in with their PIN and End shift, since the split follows the shift clock.
 
 ## 2. The installed app and Tap to Pay
 
@@ -147,4 +146,4 @@ Run each of the six stories once, with a real card and real (small) amounts, the
 - [ ] Every day closed, and every reconciliation flag resolved or explained.
 - [ ] Every Stripe payout for the week matched to a card deposit and to the bank.
 - [ ] Mike's and his staff's notes on what was slow or confusing at the counter.
-- [ ] A decision on the open items (email receipts, offline, the Tap to Pay platform, splitting tips by hours) before a second shop.
+- [ ] A decision on the open items (email receipts, offline, the Tap to Pay platform) before a second shop.

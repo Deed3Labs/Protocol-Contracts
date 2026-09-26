@@ -11,6 +11,7 @@ import { getSettings } from '../shop/shopService.js';
 import { type CountRow, countsView } from './countsView.js';
 import { audit } from '../security/audit.js';
 import { sendDaySummary, type SummaryMailer } from './daySummary.js';
+import { dayTips } from './tipShare.js';
 
 /**
  * Counting the drawer and Close the day (card-processing prompt, Phase 7; the app's drawer sheets).
@@ -200,7 +201,7 @@ interface ReportTender {
 }
 
 /** The day's figures, from its orders and tenders. */
-async function dayFigures(q: Queryable, merchant: string, date: string, sessionId: string) {
+async function dayFigures(q: Queryable, merchant: string, date: string, sessionId: string, goTo: 'raiser' | 'hours') {
   const { rows: tenders } = await q.query<ReportTender>(
     `SELECT t.method, t.status, t.amount_cents, t.tip_cents, t.tip_staff_id, t.created_by, t.drawer_session_id FROM payments.tenders t
        JOIN commerce.orders o ON o.id = t.order_id
@@ -208,21 +209,14 @@ async function dayFigures(q: Queryable, merchant: string, date: string, sessionI
     [merchant, date],
   );
   const byMethod = { clear: { count: 0, cents: 0 }, card: { count: 0, cents: 0 }, cash: { count: 0, cents: 0 } } as DayReport['byMethod'];
-  const tipMap = new Map<string, { staffId: string; cents: number; how: 'card' | 'cash' }>();
   for (const t of tenders) {
     const m = byMethod[t.method]!;
     m.count += 1;
     m.cents += Number(t.amount_cents) + Number(t.tip_cents);
-    if (Number(t.tip_cents) > 0) {
-      // Clear tips are paid like card tips: with payroll. Cash tips come out of the drawer.
-      const how = t.method === 'cash' ? 'cash' : 'card';
-      const staffId = t.tip_staff_id ?? t.created_by;
-      const k = `${staffId}:${how}`;
-      const e = tipMap.get(k) ?? { staffId, cents: 0, how };
-      e.cents += Number(t.tip_cents);
-      tipMap.set(k, e);
-    }
   }
+  // Whose tips: by raiser, or shared by hours on shift (tipShare.ts). Clear tips are paid like card
+  // tips, with payroll; cash tips come out of the drawer.
+  const tips = await dayTips(q, { merchant, date, goTo });
   const { rows: totals } = await q.query<{ tax: string | number; discounts: string | number }>(
     `SELECT COALESCE(sum(tax_cents), 0) AS tax, COALESCE(sum(discount_cents), 0) AS discounts FROM commerce.orders
       WHERE merchant = $1 AND business_date = $2 AND status IN ('paid','refunded','partly_refunded')`,
@@ -232,12 +226,13 @@ async function dayFigures(q: Queryable, merchant: string, date: string, sessionI
     `SELECT COALESCE(sum(f.amount_cents), 0) AS cents FROM payments.refunds f WHERE f.merchant = $1 AND f.status = 'succeeded' AND (f.drawer_session_id = $2 OR (f.updated_at AT TIME ZONE 'UTC')::date = $3::date)`,
     [merchant, sessionId, date],
   );
-  const tipsByStaff = [...tipMap.values()];
+  const tipsByStaff = tips.byStaff;
   return {
     byMethod,
     takenCents: Object.values(byMethod).reduce((s, m) => s + m.cents, 0),
     tipsCents: tipsByStaff.reduce((s, t) => s + t.cents, 0),
     tipsByStaff,
+    tips,
     taxCents: Number(totals[0]!.tax),
     discountsCents: Number(totals[0]!.discounts),
     refundsCents: Number(refunds[0]!.cents),
@@ -283,7 +278,15 @@ export async function closeDay(db: Db, deps: { card: CardConnectorProvider | nul
     const diff = postings.drawerDifference({ merchant: input.merchant, sessionId: s.id, differenceCents: difference, createdBy: input.staffId });
     if (diff) await post(tx, diff);
 
-    const figures = await dayFigures(tx, input.merchant, date, s.id);
+    const figures = await dayFigures(tx, input.merchant, date, s.id, settings.tips.goTo);
+    // Shared by hours: move each kind of tip from who raised it to each person's share first.
+    if (figures.tips.hours) {
+      for (const how of ['card', 'cash'] as const) {
+        const sum = (list: typeof figures.tipsByStaff) => new Map(list.filter((t) => t.how === how).map((t) => [t.staffId, t.cents]));
+        const e = postings.tipsShared({ merchant: input.merchant, sessionId: s.id, how, raised: sum(figures.tips.raised), shares: sum(figures.tipsByStaff), createdBy: input.staffId });
+        if (e) await post(tx, e);
+      }
+    }
     // Cash tips come out of the drawer now, each person's in one entry.
     for (const t of figures.tipsByStaff.filter((x) => x.how === 'cash')) {
       await post(tx, postings.tipPaidOut({ merchant: input.merchant, payoutId: `${s.id}:${t.staffId}`, staffId: t.staffId, sessionId: s.id, cents: t.cents, createdBy: input.staffId }));
@@ -313,6 +316,7 @@ export async function closeDay(db: Db, deps: { card: CardConnectorProvider | nul
       byMethod: figures.byMethod,
       tipsCents: figures.tipsCents,
       tipsByStaff: figures.tipsByStaff,
+      tipsHours: figures.tips.hours,
       taxCents: figures.taxCents,
       discountsCents: figures.discountsCents,
       refundsCents: figures.refundsCents,
