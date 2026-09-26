@@ -37,6 +37,8 @@ export function realMerchantApi(request: Transport): MerchantApi {
       (await get<{ staff: Array<Staff & Record<string, unknown>> }>('/staff')).staff.map(({ id: staffId, name, role, active }) => ({ id: staffId, name, role, active })),
     taxStatus: () => get('/tax'),
     setup: () => get('/setup'),
+    kyb: () => get('/kyb'),
+    startKyb: (input) => post('/kyb/start', input),
 
     // ---- Shifts and hours
     shifts: () => get('/shifts'),

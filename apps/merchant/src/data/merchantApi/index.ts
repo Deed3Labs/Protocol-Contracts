@@ -38,6 +38,7 @@ function switchesFromUrl(): Partial<MockSwitches> & { viewer?: string } {
     ...pick('card', ['approve', 'decline'] as const),
     ...pick('clear', ['approve', 'decline', 'wait'] as const),
     ...pick('setup', ['done', 'new'] as const),
+    ...pick('kyb', ['done', 'new'] as const),
     ...(Number.isFinite(delay) && q.has('delay') ? { delayMs: delay } : {}),
     // Who's on shift in the preview (AuthProvider's `&as=`): the mock sees the same person.
     viewer: q.get('as') === 'jen' ? 'stf_jen' : q.get('as') === 'luis' ? 'stf_luis' : 'stf_mike',

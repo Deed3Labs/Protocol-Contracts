@@ -31,7 +31,7 @@ import type {
   Tender,
 } from './orders';
 import type { PersonHours, SaveStaffHours, ShiftNow, StaffWeek } from './shifts';
-import type { SetupProgress, Shop, ShopHours, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
+import type { KybStatus, SetupProgress, Shop, ShopHours, StartKyb, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
 
 type In<T extends z.ZodType> = z.input<T>;
 type Range = { from: z.infer<typeof BusinessDate>; to: z.infer<typeof BusinessDate> };
@@ -63,6 +63,10 @@ export interface MerchantApi {
   taxStatus(): Promise<TaxStatus>;
   /** Owners and managers: Home's Set up the till, which steps are done. */
   setup(): Promise<SetupProgress>;
+  /** Owners and managers: where the shop's business verification with Bridge stands. */
+  kyb(): Promise<KybStatus>;
+  /** Owners: the hosted verification link (Bridge's terms, then the business's details). */
+  startKyb(input: In<typeof StartKyb>): Promise<{ url: string }>;
 
   // ---- Shifts and hours --------------------------------------------------------------------------------
   /** Everyone on shift now, the earliest first. A shift starts with a PIN and ends with End shift. */

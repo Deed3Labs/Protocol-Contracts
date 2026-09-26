@@ -169,7 +169,8 @@ Decided 2026-09-24.
   the owner), Payouts, Partnership, Counter (breaks, and how long this tablet waits for a PIN),
   Payments, Devices (the readers, and this tablet renamed), Security (its enrolled tablets, each
   signed out with the existing API), Tax, Tips, Discounts, Closing, Notifications (the end-of-day
-  summary) and Help. Statements and Advanced have no backend yet. Their sheets (Change account, Add
+  summary), Advanced (business verification, and leaving) and Help. Statements have no backend
+  yet. Their sheets (Change account, Add
   a device, Leave Clear) open in the preview, with their final buttons disabled on a live shop.
   Preview: `/settings[/<section>]?preview=1&screen=counter|payments-connected|account|device|
   leave|confirm|code`; `&live=1` for the live path.
@@ -664,4 +665,22 @@ reason for any difference, is written to `e2e/.report/index.html`.
   payout sent, every charge) aren't built; on a live shop the pane says so rather than showing
   switches that do nothing. Home shows those today.
 - By Resend, like every email (see "Email by Resend").
+
+## Business verification (Bridge hosted KYB)
+
+- **Bridge verifies the business before it moves the shop's money to a bank**, so this comes before
+  linking a bank and withdrawing to it. It's Bridge's hosted flow, as the member app's KYC is: Clear
+  sends the owner to Bridge's pages (its terms, then the business's details, owners and documents)
+  and reads back where it stands. Clear keeps only Bridge's customer id and the email it was
+  started under (migration 0017); the documents stay with Bridge.
+- **On Settings › Advanced** (owners), as the reference's Business details cell: Not verified,
+  Started, In review, Verified, Not approved (with Bridge's reason), or Paused, and whether
+  withdrawing to a bank is ready (Bridge's fiat payout capability). The owner starts or carries it
+  on from there; Bridge sends them back to the same page. The reference's legal name, tax ID and
+  registered address rows are Bridge's to hold, so a live shop doesn't show them.
+- `GET /kyb` (owners and managers) and `POST /kyb/start` (owners, audited as `kyb.started` with the
+  email's domain). Once started it stays with the first address: Bridge finds the customer by it.
+- **Dev's Bridge key is live**, so nothing here has been run against Bridge: tests stand in for it.
+  The first real verification is the first shop's.
+- The reference's "Your data" downloads aren't built; Overview's Export covers the month's sales.
 

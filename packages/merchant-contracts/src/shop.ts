@@ -174,3 +174,24 @@ export const SetupProgress = z.object({
   tips: z.boolean(),
 });
 export type SetupProgress = z.infer<typeof SetupProgress>;
+
+/**
+ * The shop's business verification with Bridge (hosted KYB), which Bridge needs before it moves the
+ * shop's money to a bank. `withdrawToBank` is Bridge's fiat payout capability for the shop.
+ */
+export const KybStatus = z.object({
+  state: z.enum(['not_started', 'needs_info', 'in_review', 'verified', 'rejected', 'paused']),
+  withdrawToBank: z.boolean(),
+  /** Bridge's reason, when it has said no or wants more. */
+  reason: z.string().nullable(),
+  /** The address the business was verified under. */
+  email: z.string().nullable(),
+  /** False when Bridge isn't set up for Clear at all. */
+  available: z.boolean(),
+});
+export type KybStatus = z.infer<typeof KybStatus>;
+export const StartKyb = z.object({
+  legalName: z.string().trim().min(2, 'The business’s legal name').max(160),
+  email: z.string().trim().email('That isn’t an email address'),
+});
+

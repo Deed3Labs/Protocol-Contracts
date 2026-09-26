@@ -105,6 +105,7 @@ try {
   if ((await jen.shifts()).length) throw new Error('signing out did not end the shift');
   await check('taxStatus', C.TaxStatus, () => owner.taxStatus());
   await check('setup', C.SetupProgress, () => manager.setup());
+  await check('kyb', C.KybStatus, () => manager.kyb());
 
   // ---- Cards
   await check('cardAvailability', C.CardAvailability, () => jen.cardAvailability());

@@ -107,8 +107,10 @@ export default function SettingsPage() {
   const liveOwner = !preview && owner;
   const shopRecord = useApi(() => (liveOwner ? merchant.shop() : Promise.resolve(null)), [liveOwner]);
   const shopHours = useApi(() => (liveOwner ? merchant.hours() : Promise.resolve(null)), [liveOwner]);
+  // Business verification with Bridge (Advanced): read fresh each visit, so coming back from Bridge shows where it stands.
+  const kyb = useApi(() => (!preview && seesMoney(role) ? merchant.kyb() : Promise.resolve(null)), [preview, role]);
   const { refresh } = useAuth();
-  const [textEdit, setTextEdit] = useState<ShopField | 'breaks' | 'device' | 'notifyEmail' | null>(null);
+  const [textEdit, setTextEdit] = useState<ShopField | 'breaks' | 'device' | 'notifyEmail' | 'kyb' | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   /** Run a change, then read the shop again: what shows is what the server holds. */
@@ -165,6 +167,7 @@ export default function SettingsPage() {
         readers: (readers ?? []).map(readerRow),
         ways: shopSettings?.paymentMethods ?? null,
         ...liveShopFields(shopRecord.data, shopHours.data),
+        kyb: kyb.data,
         liveShop: liveOwner
           ? {
               settings: shopSettings ?? null,
@@ -248,6 +251,7 @@ export default function SettingsPage() {
     onEditShop: liveOwner ? (f: ShopField) => (setEditError(null), setTextEdit(f)) : undefined,
     onBreaks: liveOwner ? () => (setEditError(null), setTextEdit('breaks')) : undefined,
     onNotifyEmail: liveOwner ? () => (setEditError(null), setTextEdit('notifyEmail')) : undefined,
+    onVerifyBusiness: liveOwner ? () => (setEditError(null), setTextEdit('kyb')) : undefined,
     onIdle: liveOwner && device ? (seconds: number) => void change(() => api.setIdleLock(device.id, seconds), () => void refresh()) : undefined,
     onRenameDevice: liveOwner && device ? () => (setEditError(null), setTextEdit('device')) : undefined,
     onSettings: live ? (patch: ShopSettingsPatch) => void saveSettings(patch) : undefined,
@@ -306,6 +310,7 @@ export default function SettingsPage() {
           settings={shopSettings ?? null}
           deviceLabel={device?.label ?? ''}
           deviceId={device?.id ?? ''}
+          kybEmail={kyb.data?.email}
           busy={editBusy}
           error={editError}
           onClose={() => setTextEdit(null)}
@@ -505,13 +510,15 @@ function ShopTextSheet({
   settings,
   deviceLabel,
   deviceId,
+  kybEmail,
   busy,
   error,
   onSave,
   onClose,
   merchant,
 }: {
-  what: ShopField | 'breaks' | 'device' | 'notifyEmail';
+  what: ShopField | 'breaks' | 'device' | 'notifyEmail' | 'kyb';
+  kybEmail?: string | null;
   shop: Shop | null;
   settings: ShopSettings | null;
   deviceLabel: string;
@@ -535,6 +542,25 @@ function ShopTextSheet({
           { key: 'after', label: 'Due after, in hours', value: String(b.afterMinutes / 60), max: 4, required: true, inputMode: 'tel' },
         ]}
         onSave={(v) => onSave(() => merchant.updateSettings({ breaks: { minutes: Math.round(Number(v.minutes)), afterMinutes: Math.round(Number(v.after) * 60) } }))}
+      />
+    );
+  }
+  if (what === 'kyb') {
+    return (
+      <TextSheet
+        {...common}
+        title="Verify the business"
+        det="Bridge, which moves the shop’s money to its bank, checks the business first. You’ll go to Bridge’s own pages: its terms, then the business’s details, its owners, and a document or two. They stay with Bridge."
+        fields={[
+          { key: 'legalName', label: 'Legal business name', value: shop?.name ?? '', max: 160, required: true },
+          { key: 'email', label: 'Business email', value: kybEmail ?? shop?.listing.email ?? '', max: 200, required: true, inputMode: 'email' },
+        ]}
+        onSave={(v) =>
+          onSave(async () => {
+            const { url } = await merchant.startKyb({ legalName: v.legalName!.trim(), email: v.email!.trim() });
+            window.location.assign(url);
+          })
+        }
       />
     );
   }
