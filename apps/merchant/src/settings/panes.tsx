@@ -601,7 +601,7 @@ const LOCKED: Record<Exclude<CardAvailability, { available: true }>['reason'], {
   },
 };
 
-const KYB: Record<KybStatus['state'], { chip: string; tone: string; t: string; cta: string | null }> = {
+export const KYB: Record<KybStatus['state'], { chip: string; tone: string; t: string; cta: string | null }> = {
   not_started: { chip: 'Not verified', tone: 'c-neutral', t: 'Bridge verifies the business before it pays out to a bank. It takes about ten minutes: the business’s details, its owners, and a document or two.', cta: 'Verify the business' },
   needs_info: { chip: 'Started', tone: 'c-underway', t: 'Bridge needs a little more before it can check the business. Pick up where you left off.', cta: 'Carry on' },
   in_review: { chip: 'In review', tone: 'c-underway', t: 'Bridge is checking the business. It usually takes a day or two; there’s nothing to do meanwhile.', cta: null },

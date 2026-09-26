@@ -72,3 +72,42 @@ test('Your terms: a code checked with Clear, its rates shown; a full one and an 
   await page.getByRole('button', { name: 'Apply' }).click();
   await expect(page.getByText('Not a code we know')).toBeVisible();
 });
+
+/** Where payouts go, signed in as the owner (the mock's live shop): Bridge verifies, then Plaid links. */
+async function payouts(page: Page, query = '') {
+  await page.addInitScript(() => {
+    localStorage.setItem('clear.merchant.onboarding', JSON.stringify({ shopName: 'Mike’s Tire', ownerName: 'Mike R.', email: 'mike@mikestire.com', people: '2 to 5' }));
+    // Bridge's pages open in a new tab: note where, rather than open one.
+    (window as unknown as { opened: string[] }).opened = [];
+    window.open = ((url: string) => void (window as unknown as { opened: string[] }).opened.push(url)) as typeof window.open;
+  });
+  await page.goto(`/onboarding?preview=1&live=1&step=6${query}`);
+  await settle(page);
+  await expect(page.getByText('Step 6 of 7', { exact: true })).toBeVisible();
+}
+const cell = (page: Page, label: string) => page.locator('.c-ob-cell', { hasText: label });
+
+test('Where payouts go: the owner starts Bridge’s verification, in a new tab, and checks again', async ({ page }) => {
+  await payouts(page, '&kyb=new');
+  const v = cell(page, 'Business verification');
+  await expect(v).toContainText('Not verified');
+  await expect(v.getByRole('textbox', { name: 'Legal business name' })).toHaveValue('Mike’s Tire');
+  await v.getByRole('textbox', { name: 'Legal business name' }).fill('Mike’s Tire LLC');
+  await v.getByRole('textbox', { name: 'Business email' }).fill('accounts@mikestire.com');
+  await v.getByRole('button', { name: 'Verify the business' }).click();
+  await expect(v).toContainText('Started');
+  await expect(v).toContainText('Under accounts@mikestire.com');
+  expect(await page.evaluate(() => (window as unknown as { opened: string[] }).opened)).toHaveLength(1);
+  await expect(v.getByRole('button', { name: 'Check again' })).toBeVisible();
+  await expect(cell(page, 'Business bank account')).toContainText('After verification');
+});
+
+test('Where payouts go: once verified, the bank is linked with Plaid', async ({ page }) => {
+  await payouts(page);
+  await expect(cell(page, 'Business verification')).toContainText('Verified');
+  const bank = cell(page, 'Business bank account');
+  await expect(bank).toContainText('Chase');
+  await bank.getByRole('button', { name: 'Add another' }).click();
+  await expect(bank).toContainText('First Platypus Bank');
+  await expect(bank).toContainText('Linked');
+});
