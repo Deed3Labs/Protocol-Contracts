@@ -107,6 +107,10 @@ try {
   await check('setup', C.SetupProgress, () => manager.setup());
   await check('kyb', C.KybStatus, () => manager.kyb());
   await check('bankAccounts', C.BankAccount.array(), () => manager.bankAccounts());
+  await check('receiveDetails', C.ReceiveDetails, () => manager.receiveDetails());
+  const counterReceive = await jen.receiveDetails().then(() => 'ok', (e: { status?: number }) => e.status);
+  if (counterReceive !== 403) throw new Error(`the counter read the shop's account numbers: ${counterReceive}`);
+  ['openReceive', 'emailReceive'].forEach((m) => skip(m, 'needs a business Bridge has verified'));
 
   // ---- Cards
   await check('cardAvailability', C.CardAvailability, () => jen.cardAvailability());

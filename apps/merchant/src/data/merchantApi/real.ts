@@ -45,6 +45,9 @@ export function realMerchantApi(request: Transport): MerchantApi {
     removeBank: async (bankId) => {
       await send('DELETE', `/bank/accounts/${id(bankId)}`);
     },
+    receiveDetails: () => get('/receive'),
+    openReceive: () => post('/receive'),
+    emailReceive: () => post('/receive/email'),
 
     // ---- Shifts and hours
     shifts: () => get('/shifts'),

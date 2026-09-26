@@ -790,3 +790,17 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   webhook acknowledges a shop's events without running them through a member's deposits
   (`shopBridgeCustomers.ts`).
 
+## Receiving by ACH: a Bridge virtual account paying the shop's wallet
+
+- Payouts › Receive shows the shop's own account and routing numbers: a Bridge virtual account on
+  its verified business customer, delivering USDC to the shop's wallet (its address is the shop).
+  A deposit shows in the cash account like any other USDC; the Bridge webhook leaves it alone.
+- An owner opens it once, after Bridge has verified the business (as a business, never the owner as
+  a person); it's read back from Bridge each time, and only one paying the shop's own address in
+  USDC counts. Clear stores none of the numbers; the audit keeps the last four.
+- Email them sends only to the address the business was verified under, not one typed in, so the
+  numbers can't be sent anywhere by whoever is holding the till.
+- The chain is `BRIDGE_PAYOUT_SOURCE_CHAIN` (default `base`), as the member app's accounts use: Base
+  mainnet. Dev's shop wallets are on Base Sepolia, so a real deposit there would arrive on mainnet;
+  try it on the sandbox (`BRIDGE_ENV=sandbox`), and for real only on production.
+
