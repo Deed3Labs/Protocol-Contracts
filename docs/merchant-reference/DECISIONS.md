@@ -863,3 +863,11 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
 - One rule on `.c-mc-tablet` (app.css), so every screen follows: the app's pages, onboarding, and
   sign-in.
 
+## No payout day: net-30
+
+- A shop with no next payout date is paid on net-30 terms, so wherever the day would go the app says
+  so rather than a dash: Payouts (Releases net-30, "30 day terms", Paid net-30, the rest releases
+  net-30), Home's Next payout (shown whenever something is owed), Overview and Settings (Net-30 ·
+  the amount), and an approved charge's Paid out. A dash is left only where the figure couldn't be
+  read. Against the mock: `&payday=none`.
+

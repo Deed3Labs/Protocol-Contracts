@@ -228,7 +228,7 @@ export function OwedCell({ o, onPayouts }: { o: NonNullable<OverviewModel['owed'
     >
       <div className="c-line">
         <span className="c-det">Next payout</span>
-        <span className="c-det">{o.on ?? '—'}</span>
+        <span className="c-det">{o.on ?? 'Net-30'}</span>
       </div>
       <div className="c-line" style={{ borderTop: '1px solid var(--ink-13)', marginTop: 'var(--s2)', paddingTop: 'var(--s2)' }}>
         <span className="c-sub">Free to move today</span>

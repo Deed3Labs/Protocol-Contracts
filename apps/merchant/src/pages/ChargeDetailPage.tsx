@@ -197,10 +197,13 @@ export default function ChargeDetailPage() {
       payoutCents: charge.payout !== undefined ? toCents(charge.payout) : null,
       feeCents: charge.payout !== undefined ? amountCents - toCents(charge.payout) : null,
       rate: rate === null ? null : `${(rate * 100).toFixed(1)}%`,
+      // An approved charge is paid with the next payout: its day, or net-30 when none is set.
       paidOut:
-        charge.state === 'approved' && position?.nextPayoutOn
-          ? new Date(position.nextPayoutOn).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          : null,
+        charge.state !== 'approved' || !position
+          ? null
+          : position.nextPayoutOn
+            ? new Date(position.nextPayoutOn).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            : 'Net-30',
       splitInto: n,
       perCycleCents: n && n > 1 ? toCents(splitQuote(charge.amount, n, STUB_MERCHANT.ratePerCycle).perCycle) : null,
     };
