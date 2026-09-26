@@ -186,11 +186,30 @@ input.c-field.c-si-in {
   min-width: 0;
 }
 
+/* Who's on the counter: each card a quarter of the row, as the reference draws four, but the row
+   centred, so one person or five sit in the middle rather than against the left edge. */
+.c-si-people {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.c-si-people > .c-si-p {
+  flex: 0 0 calc((100% - 3 * var(--s1)) / 4);
+  min-width: 0;
+}
+
+/* A sign-in screen whose last thing is its centred block sits a little above the middle: dead
+   centre under the header reads as low. The spacer gives way on a short screen. */
+.c-si-lock:has(> .c-si-center:last-child)::after {
+  content: '';
+  flex: 0 1 14vh;
+}
+
 /* Who's on the counter, on a phone: the reference draws four people across a tablet and never
    narrower. Four across 390px crushes each card, so they go two by two. */
 @media (max-width: 519.98px) {
-  .c-si-people {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .c-si-people > .c-si-p {
+    flex-basis: calc((100% - var(--s1)) / 2);
   }
   /* The sign-in frame's 24px sides leave 342px, and six code boxes need 346. The phone's own
      16px, as every phone frame in the reference has. */
