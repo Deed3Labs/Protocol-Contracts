@@ -103,6 +103,8 @@ export function dayRange(week: Week, day: number): [Hour, Hour] {
       hi = Math.max(hi, s[1]);
     }
   }
+  // Today, someone on shift without a booking counts too: from when they started.
+  if (day === week.today) for (const from of Object.values(week.unbooked ?? {})) lo = Math.min(lo, from);
   return [Math.floor(lo), Math.ceil(hi)];
 }
 

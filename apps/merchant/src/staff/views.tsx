@@ -241,11 +241,14 @@ export function WaitingToStart({ m, onRemind }: { m: Mate; onRemind?: () => void
 
 // ---- This week ----------------------------------------------------------------------------------
 
+/** A row's bar. Every segment is kept inside the track, whatever it was given. */
 const Track = ({ segs, className }: { segs: Seg[]; className?: string }) => (
   <span className={cx('c-trk', className)}>
-    {segs.map((s, i) => (
-      <i key={i} className={s.cls.split(' ').map((c) => (c ? `c-${c}` : '')).join(' ')} style={{ left: `${s.left.toFixed(1)}%`, width: `${s.width.toFixed(1)}%` }} />
-    ))}
+    {segs.map((s, i) => {
+      const left = Math.min(100, Math.max(0, s.left));
+      const width = Math.max(0, Math.min(100, s.left + s.width) - left);
+      return <i key={i} className={s.cls.split(' ').map((c) => (c ? `c-${c}` : '')).join(' ')} style={{ left: `${left.toFixed(1)}%`, width: `${width.toFixed(1)}%` }} />;
+    })}
   </span>
 );
 
