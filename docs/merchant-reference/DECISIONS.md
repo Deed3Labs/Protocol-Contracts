@@ -103,9 +103,10 @@ Decided 2026-09-24.
   "Verify it is you": the PIN, then the owner's sign-in, which creates the shop. Nothing is
   written to Clear before it. The reference's Verify, Bridge checking the business, is the
   preview's until the merchant app has a Bridge business check.
-- **Codes, the team, the bank and the tax rate have no backend here yet.** A live signup shows
-  standard terms with Apply disabled, the owner alone in Your team ("After setup, in Staff"), the
-  bank as "Not linked yet", and no tax rate (Stripe Tax works it out once cards are connected).
+- **Codes and the team are real; the bank and the tax rate aren't here yet.** A live signup
+  checks a terms code with Clear and adds the team with the shop (below, "Onboarding: terms codes
+  and the team"). The bank still reads "Not linked yet" (it's in Settings, after Bridge verifies
+  the business), and there's no tax rate (Stripe Tax works it out once cards are connected).
 - **Save and finish later** keeps the form on the device and nothing else.
 - **Onboarding is always its own screen**, without the app's header, even when someone is
   signed in.
@@ -803,4 +804,23 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
 - The chain is `BRIDGE_PAYOUT_SOURCE_CHAIN` (default `base`), as the member app's accounts use: Base
   mainnet. Dev's shop wallets are on Base Sepolia, so a real deposit there would arrive on mainnet;
   try it on the sandbox (`BRIDGE_ENV=sandbox`), and for real only on production.
+
+## Onboarding: terms codes and the team
+
+- **Terms codes** (migration 0021) are Clear's: a code, the tier it puts a shop on (founding today:
+  1.25% paid now, 2.0% over time) and how many places. Clear adds, lists and retires them with
+  `scripts/terms-code.ts`; nothing in the app makes one.
+- **Apply asks Clear** (`GET /api/merchant/terms-code/:code`, public because the shop doesn't
+  exist yet, ten tries a minute from one address) and shows the answer: the tier and places left,
+  with its own rates in "With your code"; every place taken; or not a code Clear knows (a retired
+  one included).
+- **The place is taken when the shop is made**, under a lock so two signups can't both take the
+  last one. Once only: a retried signup keeps its code. If the last place went between Apply and
+  the sign-in, the shop is on standard terms, and the Verify step says so.
+- **The tier is Clear's record; the chain charges what it's told.** Clear registers the shop on
+  chain (`scripts/register_merchant.ts`) with the terms of the tier recorded here.
+- **The team is added with the shop:** names and Counter or Manager, kept with the form until then,
+  up to 20. Each picks their own PIN on their first shift, as in Staff. Added only when that call
+  makes the shop, so a retried signup doesn't add everyone twice. Nobody gets a text yet (the
+  reference's "gets a text to join"), and there's no mobile field.
 
