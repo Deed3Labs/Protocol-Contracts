@@ -65,6 +65,7 @@ import { startClearTenderSync } from './jobs/clearTenderSync.js';
 import { startOutboxProcessor } from './jobs/outboxProcessor.js';
 import { startCardReconciliation } from './jobs/cardReconciliation.js';
 import { startClearFeeBilling } from './jobs/clearFeeBilling.js';
+import { startMonthlyStatements } from './jobs/monthlyStatements.js';
 import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
 import { startReconciler } from './jobs/reconciler.js';
@@ -411,6 +412,7 @@ async function startServer() {
     startCardReconciliation();
     // Daily: Clear's fee billed and collected for any shop whose processor can't take it per sale.
     startClearFeeBilling();
+    startMonthlyStatements();
     // Every 15m: unpaid orders left open for two hours give their stock back.
     startStaleOrderSweep();
 

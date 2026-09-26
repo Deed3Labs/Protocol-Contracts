@@ -68,6 +68,13 @@ export async function sendStatement(db: Db, mailer: StatementMailer, input: { me
   if (!parsed.success) throw new StatementError(parsed.error.issues[0]?.message ?? 'That statement can’t be sent', 'invalid');
   if (!mailer.configured()) throw new StatementError('Email isn’t set up for Clear yet, so statements can’t be sent. Save it as a PDF instead.', 'not_configured');
   const { from, to, email } = parsed.data;
+  await mailStatement(db, mailer, { merchant: input.merchant, from, to, email, actor: input.staffId });
+  return { sentTo: email };
+}
+
+/** Build a month's statement and email it; audited. Throws a StatementError when it doesn't go. */
+async function mailStatement(db: Db, mailer: StatementMailer, input: { merchant: string; from: string; to: string; email: string; actor: string | null }): Promise<void> {
+  const { from, to, email } = input;
   const { rows } = await db.query<{ name: string }>('SELECT name FROM merchant.profiles WHERE merchant = $1', [input.merchant]);
   const shop = rows[0]?.name ?? 'Your shop';
   const month = new Date(`${from}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -77,6 +84,43 @@ export async function sendStatement(db: Db, mailer: StatementMailer, input: { me
   } catch (e) {
     throw new StatementError(`That didn’t send: ${e instanceof Error ? e.message : String(e)}`, 'not_sent');
   }
-  await audit(db, { merchant: input.merchant, actor: input.staffId, action: 'statement.sent', ref: null, amountCents: o.takenCents, detail: { from, to, domain: email.split('@')[1] ?? '' } });
-  return { sentTo: email };
+  await audit(db, { merchant: input.merchant, actor: input.actor, action: 'statement.sent', ref: null, amountCents: o.takenCents, detail: { from, to, domain: email.split('@')[1] ?? '' } });
+}
+
+/** 'YYYY-MM' for the month before the one `date` (YYYY-MM-DD) is in, and its first and last days. */
+export function previousMonth(date: string): { period: string; from: string; to: string } {
+  const [y, m] = date.split('-').map(Number) as [number, number];
+  const first = new Date(Date.UTC(y, m - 2, 1));
+  const last = new Date(Date.UTC(y, m - 1, 0));
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { period: iso(first).slice(0, 7), from: iso(first), to: iso(last) };
+}
+
+/**
+ * Settings › Payouts › Email each statement: from the 2nd of a month (in the shop's own time), last
+ * month's statement goes to the shop's statements address, once. Run daily; a month already sent
+ * is skipped, and one that fails is tried again the next day.
+ */
+export async function sendMonthlyStatements(db: Db, mailer: StatementMailer, now = new Date()): Promise<{ sent: string[]; failed: string[] }> {
+  const out = { sent: [] as string[], failed: [] as string[] };
+  if (!mailer.configured()) return out;
+  const { rows } = await db.query<{ merchant: string; timezone: string; email: string }>(
+    `SELECT p.merchant, p.timezone, s.statements_email AS email FROM merchant.shop_settings s JOIN merchant.profiles p ON p.merchant = s.merchant WHERE s.statements_email IS NOT NULL`,
+  );
+  for (const r of rows) {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: r.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+    if (Number(today.slice(8, 10)) < 2) continue;
+    const m = previousMonth(today);
+    const { rows: done } = await db.query('SELECT 1 FROM merchant.statement_sends WHERE merchant = $1 AND period = $2', [r.merchant, m.period]);
+    if (done[0]) continue;
+    try {
+      await mailStatement(db, mailer, { merchant: r.merchant, from: m.from, to: m.to, email: r.email, actor: null });
+      await db.query('INSERT INTO merchant.statement_sends (merchant, period, sent_to) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [r.merchant, m.period, r.email]);
+      out.sent.push(r.merchant);
+    } catch (e) {
+      console.error('[monthly statements]', r.merchant, e instanceof Error ? e.message : e);
+      out.failed.push(r.merchant);
+    }
+  }
+  return out;
 }
