@@ -225,3 +225,13 @@ test('Staff: an owner’s role isn’t changed here', async ({ page }) => {
   await person.getByText('Role', { exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Mike’s role' })).toHaveCount(0);
 });
+
+test('Staff: from a week in the past, forward is always there', async ({ page }) => {
+  await open(page, '/staff');
+  const panel = page.locator('.c-wk-panel');
+  const last = panel.getByRole('button', { name: 'Last week' });
+  for (let i = 0; i < 6 && (await last.isEnabled()); i++) await last.click();
+  await expect(panel.getByRole('button', { name: 'Next week' })).toBeEnabled();
+  await panel.getByRole('button', { name: 'Next week' }).click();
+  await expect(panel.locator('.c-wk-head')).toContainText('Aug 17 – 23');
+});

@@ -89,8 +89,8 @@ export default function StaffPage() {
   const shiftsNow = useApi(() => (live ? merchant.shifts() : Promise.resolve(null)), [live]);
   // The week shown: this one until the arrows move it (a Monday, YYYY-MM-DD).
   const [weekOf, setWeekOf] = useState<string | null>(null);
-  // How far the arrows go: back to the week the shop joined; forward up to 12 weeks, while there's a
-  // schedule to show (anyone's usual hours carry on; a one-off shows in its week).
+  // How far the arrows go: back to the week the shop joined; forward a year ahead, always, since a
+  // week ahead is where hours get planned (it shows everyone's usual hours and any one-off to edit).
   const profile = useApi(() => (live ? api.profile() : Promise.resolve(null)), [live]);
   const [thisMonday, setThisMonday] = useState<string | null>(null);
   const weekNow = useApi(() => (live ? merchant.staffWeek(weekOf ?? undefined) : Promise.resolve(null)), [live, weekOf]);
@@ -215,13 +215,7 @@ export default function StaffPage() {
           onSet={openHours}
           // From the week asked for, not the one on screen, so two quick presses move two weeks.
           canBack={!liveWeek ? undefined : !!liveWeek.weekOf && (!profile.data?.partnerSince || !/^\d{4}-\d{2}-\d{2}/.test(profile.data.partnerSince) || liveWeek.weekOf > mondayOf(profile.data.partnerSince.slice(0, 10)))}
-          canForward={
-            !liveWeek
-              ? undefined
-              : !!liveWeek.weekOf &&
-            (!thisMonday || liveWeek.weekOf < addWeeks(thisMonday, 12)) &&
-            (Object.values(weekNow.data?.usual ?? {}).some(Boolean) || Object.keys(weekNow.data?.booked ?? {}).length > 0)
-          }
+          canForward={!liveWeek ? undefined : !!liveWeek.weekOf && (!thisMonday || liveWeek.weekOf < addWeeks(thisMonday, 52))}
           onWeek={liveWeek?.weekOf ? (by) => setWeekOf((w) => addWeeks(w ?? liveWeek.weekOf!, by)) : undefined}
         />
       )}
