@@ -35,8 +35,8 @@ export interface PayoutsModel {
   owedCents: number;
   /** "Oct 14"; null when nothing is scheduled. */
   on: string | null;
-  /** "14th" */
-  dayOrdinal: string;
+  /** "14th"; null when no payout day is set (the terms are then net-30). */
+  dayOrdinal: string | null;
   daysLeft: number | null;
   cycle: CycleState;
   /** On payout day: what left this morning, what moved early, when it lands. */
@@ -48,6 +48,11 @@ export interface PayoutsModel {
   made?: { chargesCents: number; feesCents: number; paidCents: number };
   drawer?: { inDrawerCents: number; toBankCents: number; tipsCents: number; tipsWho: string; from: string; deposited?: string };
 }
+
+/** What a payout without a day is: paid on net-30 terms. Said instead of a dash. */
+export const NET30 = 'net-30';
+/** "on the 14th", or "net-30" when there's no day. */
+export const onThe = (m: Pick<PayoutsModel, 'dayOrdinal'>) => (m.dayOrdinal ? `on the ${m.dayOrdinal}` : NET30);
 
 const short = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
@@ -67,7 +72,7 @@ export function fromPosition(p: PayoutPosition, bank: string | null, now = new D
     scheduledCents: p.scheduledCents,
     owedCents: p.owedCents,
     on,
-    dayOrdinal: p.nextPayoutOn ? ordinal(new Date(p.nextPayoutOn).getDate()) : '—',
+    dayOrdinal: p.nextPayoutOn ? ordinal(new Date(p.nextPayoutOn).getDate()) : null,
     daysLeft,
     cycle: (released ?? 0) > 0 ? 'free' : 'none',
     bank,

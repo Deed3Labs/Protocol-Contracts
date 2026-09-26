@@ -59,7 +59,8 @@ function fromApi(p: MerchantProfile | null, pos: PayoutPosition | null, devices:
     hours: null,
     closedDates: [],
     account: p?.payoutAccount ? { bank: 'Business checking', det: p.payoutAccount } : null,
-    nextPayout: next && pos ? `${next} · ${usd(pos.owedCents)}` : '—',
+    // No day set: the terms are net-30, said rather than dashed. A dash only when it can't be read.
+    nextPayout: pos ? `${next ?? 'Net-30'} · ${usd(pos.owedCents)}` : '—',
     payoutWhen: p?.payoutTerms ?? '—',
     ratesNow: '—',
     ratesOver: rate === null ? '—' : `${(rate * 100).toFixed(1)}%`,
