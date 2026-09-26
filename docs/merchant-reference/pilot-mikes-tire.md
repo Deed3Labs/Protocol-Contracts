@@ -79,6 +79,7 @@ The M2 and Tap to Pay work only in the installed app (Capacitor, `org.useclear.m
 
 ## 4. Setting up Mike's Tire
 
+- [ ] **A founding code** for the shop, if it's getting founding terms: `railway run -s Protocol-Contracts -e <env> bun scripts/terms-code.ts add <CODE> founding <places> "note"`, given to the owner before signup. Register the shop on chain with the matching terms.
 - [ ] **Clear onboarding** is complete: the shop's address (it sets the reader location and the tax rate) and the owner signed in.
 - [ ] **The business is verified with Bridge** (Settings › Advanced), then **the bank is linked** with Plaid (Payouts › Where withdrawals go).
 - [ ] **Connect Stripe** from Settings:

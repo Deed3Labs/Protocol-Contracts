@@ -104,6 +104,9 @@ try {
   await fetch(`${origin}/api/merchant/session`, { method: 'DELETE', headers: { Authorization: `Bearer ${jenShift.token}` } });
   if ((await jen.shifts()).length) throw new Error('signing out did not end the shift');
   await check('taxStatus', C.TaxStatus, () => owner.taxStatus());
+  // Onboarding's terms code check: public, before any shop exists.
+  const code = C.TermsCodeCheck.parse(await (await fetch(`${origin}/api/merchant/terms-code/NOPE-1`)).json());
+  if (code.state !== 'unknown') throw new Error(`an unknown terms code read as ${code.state}`);
   await check('setup', C.SetupProgress, () => manager.setup());
   await check('kyb', C.KybStatus, () => manager.kyb());
   await check('bankAccounts', C.BankAccount.array(), () => manager.bankAccounts());

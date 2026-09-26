@@ -451,3 +451,35 @@ input.c-st-time {
 :root[data-theme='dark'] .c-ch-pm.c-cash {
   color: #16211d;
 }
+
+/* Onboarding › Your team: Remove reads as a small link beside the role chips, at their text size. */
+.c-ob-roles {
+  align-items: center;
+}
+.c-ob-roles .c-ci-link {
+  font-size: var(--t-detail);
+  color: var(--ink-70);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--ink-28);
+  white-space: nowrap;
+  cursor: pointer;
+  margin-left: 4px;
+}
+
+/* On a phone, a person's role and Remove get their own row under the name, so the name keeps the
+   width it needs; Remove sits at the row's end. The owner's row and Add someone stay on one line. */
+.c-ob-ph .c-ob-person:has(.c-ob-roles) {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+.c-ob-ph .c-ob-person:has(.c-ob-roles) .c-nm {
+  flex-basis: calc(100% - 48px);
+}
+.c-ob-ph .c-ob-roles {
+  flex-basis: 100%;
+  padding-left: 48px;
+}
+.c-ob-ph .c-ob-roles .c-ci-link {
+  margin-left: auto;
+}

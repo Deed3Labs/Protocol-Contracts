@@ -23,6 +23,8 @@ import { canAddRole, type StaffRole } from '@clear/domain';
 import { raiseChargeFromDevice, readMerchantTerms } from '../services/chargeService.js';
 import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
 import { onboardMerchant } from '../services/merchant/onboardingService.js';
+import { checkCode, claimCode } from '../services/merchant/termsCodes.js';
+import { rateLimiter } from '../middleware/rateLimiter.js';
 import { redeemForMerchant, redemptionConfigured } from '../services/merchant/payoutRedemption.js';
 import { clearSignerStatus, confirmClearSigner, prepareClearSigner } from '../services/merchant/clearSignerGrant.js';
 import merchantCardsRouter from './merchantCards.js';
@@ -235,17 +237,51 @@ merchantRouter.post('/session/owner', async (req: Request, res: Response) => {
  * The shop's address is NOT accepted from the client. It is the organization wallet's address, so
  * the registry, the payout destination and Clear's own row name the same thing by construction.
  */
+/**
+ * Onboarding › Your terms › Have a code?: what a code would do, before the shop exists (so, like
+ * onboarding itself, with no auth). Ten tries a minute from one address, so the codes can't be
+ * walked through.
+ */
+const codeTries = rateLimiter(60_000, 10);
+merchantRouter.get('/terms-code/:code', (req, res, next) => void codeTries.then((limit) => limit(req, res, next)), async (req: Request, res: Response) => {
+  const d = await merchantDb();
+  if (!d) {
+    res.status(503).json({ error: 'Unavailable', message: 'merchant database is not configured' });
+    return;
+  }
+  res.json(await checkCode(d, String(req.params.code ?? '')));
+});
+
+/** Onboarding › Your team: who's added with the shop. They pick their own PINs on their first shift. */
+function teamFrom(raw: unknown): Array<{ name: string; role: 'counter' | 'manager' }> | string {
+  if (raw == null) return [];
+  if (!Array.isArray(raw) || raw.length > 20) return 'Up to 20 people can be added at signup; add more in Staff.';
+  const out: Array<{ name: string; role: 'counter' | 'manager' }> = [];
+  for (const p of raw as Array<{ name?: unknown; role?: unknown }>) {
+    const name = String(p?.name ?? '').trim();
+    if (!name || name.length > 60) return 'Each person needs a name, up to 60 characters.';
+    out.push({ name, role: p?.role === 'manager' ? 'manager' : 'counter' });
+  }
+  return out;
+}
+
 merchantRouter.post('/onboarding', async (req: Request, res: Response) => {
   const privyToken = String(req.body?.privyToken ?? '');
   const shopName = String(req.body?.shopName ?? '').trim();
   const ownerName = String(req.body?.ownerName ?? '').trim();
   const ownerPin = String(req.body?.ownerPin ?? '');
+  const termsCode = typeof req.body?.termsCode === 'string' && req.body.termsCode.trim() ? String(req.body.termsCode) : null;
+  const team = teamFrom(req.body?.team);
 
   if (!privyToken || !shopName || !ownerName) {
     res.status(400).json({
       error: 'Invalid request',
       message: 'A shop name, your name and a verified sign-in are all required.',
     });
+    return;
+  }
+  if (typeof team === 'string') {
+    res.status(400).json({ error: 'Invalid request', message: team });
     return;
   }
 
@@ -275,10 +311,26 @@ merchantRouter.post('/onboarding', async (req: Request, res: Response) => {
     return;
   }
 
+  /*
+   * Then what was chosen before the shop existed: the code's place (claimed once; a code that
+   * filled up since it was checked leaves standard terms, and the answer says so), and the team,
+   * added only when this call made the shop, so a retried signup doesn't add everyone twice.
+   */
+  const d = await merchantDb();
+  const terms = d && termsCode ? await claimCode(d, result.merchant, termsCode) : null;
+  let added = 0;
+  if (result.created) {
+    for (const p of team) {
+      if (await staffStore.add({ merchant: result.merchant, name: p.name, role: p.role, secret: '' }).catch(() => null)) added++;
+    }
+  }
+
   res.json({
     merchant: result.merchant,
     walletAddress: result.walletAddress,
     created: result.created,
+    terms,
+    teamAdded: added,
     // Stated rather than hidden: a shop whose wallet exists but whose signer does not can be
     // signed into and set up, and cannot yet be paid out of. The owner should know which they have.
     signerReady: result.signerReady,

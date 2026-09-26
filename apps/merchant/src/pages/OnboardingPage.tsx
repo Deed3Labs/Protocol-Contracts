@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { OwnerSignIn } from '@/auth/OwnerSignIn';
 import { ClearMark } from '@/brand/icons';
 import { cx, initials } from '@/brand/ui';
+import type { TermsCodeCheck } from '@clear/merchant-contracts';
 import { api } from '@/data/apiClient';
 import { useLayout } from '@/lib/useBreakpoint';
 import { usePage } from '@/lib/usePage';
@@ -19,8 +20,10 @@ import { Chip, Chips, Drop, Field, Foot, Frame, Kvs, ObCell, PhoneFrame, StepHea
  * **What creates the shop.** The API makes the shop and its wallet from a verified owner sign-in,
  * the owner's name and a four-digit counter PIN, so on a live signup the Verify step is that
  * sign-in: nothing is written to Clear until then, and an owner who stops halfway leaves nothing
- * behind. Bridge's business check, codes, bank linking and the team have no backend here yet; the
- * preview shows them as drawn: `?preview=1&step=1..7`, `&done=1`, `&team=solo`, `&code=warn|bad`,
+ * behind. A terms code is checked with Clear on Your terms, and the team is kept with the form;
+ * both go with that sign-in, which takes the code's place and adds the team. Bridge's business
+ * check and bank linking have no step here yet (they're in Settings); the preview shows them as
+ * drawn: `?preview=1&step=1..7`, `&done=1`, `&team=solo`, `&code=warn|bad`,
  * `&verify=needs|verified`, `&bank=waiting`.
  */
 
@@ -36,9 +39,11 @@ interface Form {
   typical: string;
   people: string;
   code: string;
+  /** Your team: added with the shop, each picks a PIN on their first shift. */
+  team: Array<{ name: string; role: 'counter' | 'manager' }>;
 }
 
-const EMPTY: Form = { shopName: '', ownerName: '', email: '', mobile: '', street: '', city: '', stateZip: '', sell: '', typical: '', people: '' , code: '' };
+const EMPTY: Form = { shopName: '', ownerName: '', email: '', mobile: '', street: '', city: '', stateZip: '', sell: '', typical: '', people: '', code: '', team: [] };
 
 const REFERENCE_FORM: Form = {
   shopName: 'Mike’s Tire',
@@ -52,6 +57,7 @@ const REFERENCE_FORM: Form = {
   typical: 'Over $500',
   people: '2 to 5',
   code: 'KAI-1104',
+  team: [],
 };
 
 const KEY = 'clear.merchant.onboarding';
@@ -73,6 +79,20 @@ const TERMS: [string, string, string, boolean][] = [
   ['Payouts', 'On the 14th, sooner when the pool allows', 'Same', false],
   ['Approval cap', '$1,500.00', 'Same', false],
 ];
+
+/** A rate in basis points as the terms show it: 125 → 1.25%, 200 → 2.0%. */
+const pct = (bps: number) => {
+  const v = String(bps / 100);
+  return `${v.includes('.') ? v : `${v}.0`}%`;
+};
+const tierName = (t: string) => (t === 'founding' ? 'Founding partner' : `${t[0]!.toUpperCase()}${t.slice(1)}`);
+
+/** What Clear said about a code, as the reference's three messages. */
+function checkMsg(c: TermsCodeCheck): readonly ['settled' | 'underway' | 'absent', string, string] {
+  if (c.state === 'ok') return ['settled', `${tierName(c.tier)} · ${c.placesLeft} of ${c.places} left`, 'Lowers both Clear rates for as long as you are a partner.'];
+  if (c.state === 'full') return ['underway', `All ${c.places} ${c.tier === 'founding' ? 'founding' : c.tier} places are taken`, 'Standard terms apply. Nothing about your setup changes.'];
+  return ['absent', 'Not a code we know', 'Check the letters and numbers, or carry on without one.'];
+}
 
 const CODE_MSG = {
   ok: ['settled', 'Founding partner · 2 of 5 left', 'Lowers both Clear rates for as long as you are a partner.'],
@@ -101,10 +121,35 @@ export default function OnboardingPage() {
   const [roles, setRoles] = useState<Record<string, 'Counter' | 'Manager'>>({ jen: 'Counter', luis: 'Manager' });
   const [trained, setTrained] = useState([preview, preview, false, false]);
   const [pin, setPin] = useState('');
-  const [shop, setShop] = useState<{ merchant: string; signerReady: boolean } | null>(null);
+  const [shop, setShop] = useState<{ merchant: string; signerReady: boolean; terms: TermsCodeCheck | null; teamAdded: number } | null>(null);
+  // Your terms: what Clear said about the code typed (live), and whether it's being asked.
+  const [codeCheck, setCodeCheck] = useState<TermsCodeCheck | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  // Your team: the name being typed into Add someone.
+  const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const set = (k: keyof Form) => (v: string) => setF((x) => ({ ...x, [k]: v }));
+  const set = (k: Exclude<keyof Form, 'team'>) => (v: string) => setF((x) => ({ ...x, [k]: v }));
+  const addPerson = () => {
+    const name = newName.trim();
+    if (!name || f.team.length >= 20) return;
+    setF((x) => ({ ...x, team: [...x.team, { name: name.slice(0, 60), role: 'counter' }] }));
+    setNewName('');
+  };
+  const setPerson = (i: number, role: 'counter' | 'manager') => setF((x) => ({ ...x, team: x.team.map((p, j) => (j === i ? { ...p, role } : p)) }));
+  const removePerson = (i: number) => setF((x) => ({ ...x, team: x.team.filter((_, j) => j !== i) }));
+  const applyCode = async () => {
+    setChecking(true);
+    setCodeError(null);
+    try {
+      setCodeCheck(await api.termsCode(f.code));
+    } catch (e) {
+      setCodeError(e instanceof Error ? e.message : 'Clear couldn’t check that code. Try again in a moment.');
+    } finally {
+      setChecking(false);
+    }
+  };
   useEffect(() => {
     if (preview) return;
     try {
@@ -134,8 +179,10 @@ export default function OnboardingPage() {
         ownerPin: pin,
         category: f.sell || null,
         town: f.city || null,
+        termsCode: codeCheck?.state === 'ok' ? codeCheck.code : null,
+        team: solo ? [] : f.team,
       });
-      setShop({ merchant: res.merchant, signerReady: res.signerReady });
+      setShop({ merchant: res.merchant, signerReady: res.signerReady, terms: res.terms, teamAdded: res.teamAdded });
       try {
         localStorage.removeItem(KEY);
       } catch {
@@ -232,6 +279,26 @@ export default function OnboardingPage() {
                   </div>
                   <span className="c-det">Owner · you</span>
                 </div>
+                {!preview &&
+                  f.team.map((p, i) => (
+                    <div key={i} className="c-ob-person">
+                      <span className="c-ob-av">{initials(p.name)}</span>
+                      <div className="c-nm">
+                        <p className="c-t">{p.name}</p>
+                        <p className="c-det">Picks a PIN on their first shift</p>
+                      </div>
+                      <div className="c-st-chips c-ob-roles">
+                        {(['counter', 'manager'] as const).map((r) => (
+                          <button key={r} type="button" className={cx('c-btn', p.role === r && 'c-on')} aria-pressed={p.role === r} onClick={() => setPerson(i, r)}>
+                            {r === 'counter' ? 'Counter' : 'Manager'}
+                          </button>
+                        ))}
+                        <button type="button" className="c-ci-link" aria-label={`Remove ${p.name}`} onClick={() => removePerson(i)}>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 {preview &&
                   (
                     [
@@ -256,10 +323,29 @@ export default function OnboardingPage() {
                   ))}
                 <div className="c-ob-person c-add">
                   <span className="c-ob-av c-add">+</span>
-                  <div className="c-nm">
-                    <p className="c-t">Add someone</p>
-                    <p className="c-det">{preview ? 'Name and role. Their mobile is optional' : 'After setup, in Staff'}</p>
-                  </div>
+                  {preview ? (
+                    <div className="c-nm">
+                      <p className="c-t">Add someone</p>
+                      <p className="c-det">Name and role. Their mobile is optional</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="c-nm">
+                        <input
+                          className="c-field c-ob-in"
+                          aria-label="Add someone"
+                          placeholder="Add someone: their name"
+                          value={newName}
+                          maxLength={60}
+                          onChange={(e) => setNewName(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && addPerson()}
+                        />
+                      </div>
+                      <button type="button" className="c-btn" disabled={!newName.trim() || f.team.length >= 20} onClick={addPerson}>
+                        Add
+                      </button>
+                    </>
+                  )}
                 </div>
               </ObCell>
             )}
@@ -267,8 +353,11 @@ export default function OnboardingPage() {
           </>
         );
       case 3: {
-        const msg = codeState ? CODE_MSG[codeState] : null;
-        const better = codeState === 'ok';
+        const msg = preview ? (codeState ? CODE_MSG[codeState] : null) : codeCheck ? checkMsg(codeCheck) : null;
+        const tone = preview ? codeState : codeCheck ? (codeCheck.state === 'ok' ? 'ok' : codeCheck.state === 'full' ? 'warn' : 'bad') : null;
+        const better = preview ? codeState === 'ok' : codeCheck?.state === 'ok';
+        // The code's own rates, live; the reference's, in the preview.
+        const yours = (row: number, drawn: string) => (!preview && codeCheck?.state === 'ok' ? (row === 0 ? pct(codeCheck.paidNowBps) : row === 1 ? pct(codeCheck.overTimeBps) : drawn) : drawn);
         return (
           <>
             <StepHead
@@ -280,18 +369,31 @@ export default function OnboardingPage() {
             <ObCell label="Have a code?" right={phone ? undefined : <span className="c-det">Optional</span>}>
               <div className="c-ob-code">
                 <div className="c-ob-codein">
-                  <input className="c-field c-ob-in" aria-label="Code" value={f.code} onChange={(e) => set('code')(e.target.value.toUpperCase())} />
+                  <input
+                    className="c-field c-ob-in"
+                    aria-label="Code"
+                    value={f.code}
+                    onChange={(e) => {
+                      set('code')(e.target.value.toUpperCase());
+                      setCodeCheck(null);
+                    }}
+                  />
                   <button
                     type="button"
                     className="c-btn"
-                    disabled={!preview || !f.code}
-                    onClick={() => setCodeState(f.code === 'KAI-1104' ? 'ok' : f.code === 'KAI-0932' ? 'warn' : 'bad')}
+                    disabled={!f.code.trim() || checking}
+                    onClick={() => (preview ? setCodeState(f.code === 'KAI-1104' ? 'ok' : f.code === 'KAI-0932' ? 'warn' : 'bad') : void applyCode())}
                   >
-                    Apply
+                    {checking ? 'Checking…' : 'Apply'}
                   </button>
                 </div>
+                {codeError && (
+                  <p className="c-det" role="alert" style={{ color: 'var(--absent)' }}>
+                    {codeError}
+                  </p>
+                )}
                 {msg && (
-                  <div className={cx('c-ob-codemsg', `c-${codeState}`)}>
+                  <div className={cx('c-ob-codemsg', `c-${tone}`)}>
                     <Chip tone={msg[0]}>{msg[1]}</Chip>
                     <p className="c-det">{msg[2]}</p>
                   </div>
@@ -305,11 +407,11 @@ export default function OnboardingPage() {
                   <span className="c-std c-label">Standard</span>
                   <span className="c-you c-label">With your code</span>
                 </div>
-                {TERMS.map(([k, std, you, lower]) => (
+                {TERMS.map(([k, std, you, lower], row) => (
                   <div key={k} className="c-ob-tr">
                     <span>{k}</span>
                     <span className="c-std">{std}</span>
-                    <span className={cx('c-you', better && lower && 'c-better')}>{better ? you : lower ? std : you}</span>
+                    <span className={cx('c-you', better && lower && 'c-better')}>{better ? yours(row, you) : lower ? std : you}</span>
                   </div>
                 ))}
               </div>
@@ -350,8 +452,24 @@ export default function OnboardingPage() {
                 />
               </div>
               {shop ? (
-                <ObCell label="Your shop" right={<Chip tone="settled">Created</Chip>}>
-                  <Kvs rows={[['Wallet', `${shop.merchant.slice(0, 6)}…${shop.merchant.slice(-4)}`]]} />
+                <ObCell
+                  label="Your shop"
+                  right={<Chip tone="settled">Created</Chip>}
+                  foot={
+                    codeCheck?.state === 'ok' && shop.terms?.state !== 'ok' ? (
+                      <p className="c-det" role="status">
+                        The last {codeCheck.tier === 'founding' ? 'founding' : codeCheck.tier} place went while you were signing up, so standard terms apply.
+                      </p>
+                    ) : undefined
+                  }
+                >
+                  <Kvs
+                    rows={[
+                      ['Wallet', `${shop.merchant.slice(0, 6)}…${shop.merchant.slice(-4)}`],
+                      ['Terms', shop.terms?.state === 'ok' ? tierName(shop.terms.tier) : 'Standard'],
+                      ...(shop.teamAdded ? ([['Team', `${shop.teamAdded} added, each picks a PIN on their first shift`]] as [string, string][]) : []),
+                    ]}
+                  />
                 </ObCell>
               ) : pin.length === 4 && f.shopName && f.ownerName ? (
                 <div className="c-ob-cell">
@@ -492,7 +610,7 @@ export default function OnboardingPage() {
                 <div>
                   <p className="c-t">Their first shift</p>
                   <p className="c-det">
-                    {preview ? 'Jen and Luis, from Your team,' : 'Everyone you add in Staff'} each pick a four-digit PIN the first time they start a shift. Nothing to set now.
+                    {preview ? 'Jen and Luis, from Your team,' : f.team.length && !solo ? 'Everyone from Your team, and anyone you add in Staff,' : 'Everyone you add in Staff'} each pick a four-digit PIN the first time they start a shift. Nothing to set now.
                   </p>
                 </div>
               </div>

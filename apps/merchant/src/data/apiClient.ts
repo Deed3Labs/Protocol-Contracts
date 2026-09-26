@@ -1,5 +1,6 @@
 import type { ChargeState, StaffRole } from '@clear/domain';
 import { fromWire } from '@clear/domain';
+import type { TermsCodeCheck } from '@clear/merchant-contracts';
 
 /**
  * The merchant app's API client.
@@ -221,11 +222,20 @@ export const api = {
     ownerPin: string;
     category?: string | null;
     town?: string | null;
-  }): Promise<{ merchant: string; walletAddress: string; created: boolean; signerReady: boolean }> {
+    /** A code checked on Your terms: its place is taken as the shop is made. */
+    termsCode?: string | null;
+    /** Your team: added with the shop; each picks a PIN on their first shift. */
+    team?: Array<{ name: string; role: 'counter' | 'manager' }>;
+  }): Promise<{ merchant: string; walletAddress: string; created: boolean; signerReady: boolean; terms: TermsCodeCheck | null; teamAdded: number }> {
     return request('/api/merchant/onboarding', {
       method: 'POST',
       body: JSON.stringify(input),
     });
+  },
+
+  /** What a terms code would do, before the shop exists. */
+  async termsCode(code: string): Promise<TermsCodeCheck> {
+    return request(`/api/merchant/terms-code/${encodeURIComponent(code.trim())}`);
   },
 
   /* --------------------------------------------------------------- device */

@@ -198,6 +198,18 @@ export const StartKyb = z.object({
   email: z.string().trim().email('That isn’t an email address'),
 });
 
+/**
+ * Onboarding › Your terms › Have a code?: what a code does. `ok` puts the shop on `tier` (its Clear
+ * rates, in basis points) while places last; `full` is a real code with no places left; `unknown`
+ * is any other string, a retired code included.
+ */
+export const TermsCodeCheck = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('ok'), code: z.string(), tier: z.string(), paidNowBps: z.number().int(), overTimeBps: z.number().int(), placesLeft: z.number().int().min(0), places: z.number().int().min(0) }),
+  z.object({ state: z.literal('full'), code: z.string(), tier: z.string(), places: z.number().int().min(0) }),
+  z.object({ state: z.literal('unknown') }),
+]);
+export type TermsCodeCheck = z.infer<typeof TermsCodeCheck>;
+
 /** A bank account the shop withdraws to: linked with Plaid, paid out to by Bridge. */
 export const BankAccount = z.object({
   id: Id,
