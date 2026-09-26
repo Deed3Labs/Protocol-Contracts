@@ -37,6 +37,12 @@ export interface GaslessConfig {
   clrusdAddress: string; // '' when not configured (only required for redeem)
 }
 
+/** USDC on a chain: the configured one, else Circle's. Empty when neither. */
+export function usdcAddressFor(chainId: number): string {
+  const configured = process.env[`SAVINGS_USDC_${chainId}`]?.trim();
+  return configured || DEFAULT_USDC_BY_CHAIN[chainId] || '';
+}
+
 function env(name: string): string | undefined {
   const value = process.env[name as keyof NodeJS.ProcessEnv];
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
@@ -46,7 +52,7 @@ class SavingsGaslessService {
   resolveConfig(chainId?: number): GaslessConfig {
     const id = chainId ?? savingsIntentService.defaultChainId();
     const vaultAddress = env(`SAVINGS_ESA_VAULT_${id}`) || env(`VITE_ESA_VAULT_${id}`) || '';
-    const usdcAddress = env(`SAVINGS_USDC_${id}`) || DEFAULT_USDC_BY_CHAIN[id] || '';
+    const usdcAddress = usdcAddressFor(id);
     const clrusdAddress = env(`SAVINGS_CLRUSD_${id}`) || env(`VITE_CLRUSD_${id}`) || '';
 
     if (!ethers.isAddress(vaultAddress)) {

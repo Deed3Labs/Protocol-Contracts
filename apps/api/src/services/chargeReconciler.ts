@@ -1,4 +1,5 @@
 import { reconcileCharges } from './chargeService.js';
+import { reconcilePayNow } from './payNowService.js';
 
 /*
  * The loop that ends a stuck charge's wait.
@@ -30,6 +31,14 @@ export async function runChargeReconcileOnce(): Promise<void> {
       console.log(
         `[charge] reconciled ${summary.checked}: ${summary.approved} approved, ` +
           `${summary.released} released, ${summary.stillPending} still pending, ${summary.unknown} unresolved`,
+      );
+    }
+    // Paying now is held and settled differently (see payNowService): its own pass.
+    const now = await reconcilePayNow();
+    if (now.checked > 0) {
+      console.log(
+        `[pay-now] reconciled ${now.checked}: ${now.paid} paid, ${now.released} released, ` +
+          `${now.stillPending} still pending, ${now.unknown} unresolved`,
       );
     }
   } catch (error) {

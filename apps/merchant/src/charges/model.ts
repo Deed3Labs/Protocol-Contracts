@@ -73,11 +73,13 @@ export function rowFromApi(c: MerchantCharge, now = Date.now()): ChargeRow {
       : `sent ${ago(c.createdAt, now)}`
     : state === 'expired'
       ? `not approved in ${hours} hours`
-      : c.splitInto === null
-        ? undefined
-        : c.splitInto === 1
-          ? 'paid now'
-          : `${c.splitInto} payments`;
+      : c.paidNow
+        ? 'paid now'
+        : c.splitInto === null
+          ? undefined
+          : c.splitInto === 1
+            ? 'next cycle'
+            : `${c.splitInto} payments`;
   const day = dayOf(c.createdAt, new Date(now));
   return {
     id: c.code,
@@ -309,6 +311,8 @@ export interface ClearDetail {
   /** "Dec 14", or null until it is paid out. */
   paidOut: string | null;
   splitInto: number | null;
+  /** Paid from their Clear cash, not over time. */
+  paidNow?: boolean;
   perCycleCents: number | null;
   /** Cycles the customer has cleared, when known. */
   cleared?: number;

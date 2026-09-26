@@ -1,6 +1,9 @@
 import { Router, type Request, type Response } from 'express';
 import { requireAuth, requireVerifiedWallet } from '../middleware/auth.js';
-import { chargeStore } from '../services/chargeStore.js';
+import { requireStepUp } from '../middleware/stepUp.js';
+import { chargeContents } from '../services/chargeContents.js';
+import { chargeStore, type ChargeRow } from '../services/chargeStore.js';
+import { confirmPayNow, releasePayNowFor, startPayNow, type PayNowResult } from '../services/payNowService.js';
 import {
   approveCharge,
   declineCharge,
@@ -25,18 +28,12 @@ import {
  */
 const chargesRouter = Router();
 
-/** What a member is allowed to see. Payout and the merchant's address are not their business. */
-function memberView(charge: {
-  code: string;
-  merchantName: string;
-  amountCents: number;
-  status: string;
-  splitInto: number | null;
-  planId: number | null;
-  txHash: string | null;
-  expiresAt: string;
-  createdAt: string;
-}) {
+/**
+ * What a member is allowed to see. Payout and the merchant's address are not their business -- except
+ * while they are paying now, when their own wallet is sending to it (`pay`, from the pay-now routes).
+ */
+async function memberView(charge: ChargeRow) {
+  const contents = await chargeContents(charge);
   return {
     code: charge.code,
     merchantName: charge.merchantName,
@@ -47,6 +44,11 @@ function memberView(charge: {
     txHash: charge.txHash,
     expiresAt: charge.expiresAt,
     createdAt: charge.createdAt,
+    paidNow: charge.paidNow,
+    /** Held for paying now: when the hold lapses, and whether a payment is already on its way. */
+    payingNow: charge.status === 'resolving' && charge.payNow ? { until: charge.payNow.until, sent: Boolean(charge.txHash) } : null,
+    paidAt: charge.status === 'approved' ? charge.resolvedAt : null,
+    ...contents,
   };
 }
 
@@ -122,14 +124,14 @@ chargesRouter.get('/:code', requireAuth, async (req: Request, res: Response) => 
       });
       return;
     }
-    res.json(memberView(claimed));
+    res.json(await memberView(claimed));
     return;
   }
 
   if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
 
   await chargeStore.markOpened(charge.code);
-  res.json(memberView(charge));
+  res.json(await memberView(charge));
 });
 
 chargesRouter.post('/:code/approve', requireAuth, async (req: Request, res: Response) => {
@@ -151,7 +153,7 @@ chargesRouter.post('/:code/approve', requireAuth, async (req: Request, res: Resp
     res.status(409).json({ error: 'Could not approve', message: result.reason ?? 'Approval failed.' });
     return;
   }
-  res.json(memberView(result.charge));
+  res.json(await memberView(result.charge));
 });
 
 chargesRouter.post('/:code/decline', requireAuth, async (req: Request, res: Response) => {
@@ -167,7 +169,55 @@ chargesRouter.post('/:code/decline', requireAuth, async (req: Request, res: Resp
     res.status(409).json({ error: 'Could not decline', message: result.reason ?? 'Decline failed.' });
     return;
   }
-  res.json(memberView(result.charge));
+  res.json(await memberView(result.charge));
+});
+
+/*
+ * Paying now, from the member's cash (services/payNowService). Three steps: hold and quote, then the
+ * member's wallet sends, then confirm. Starting one is spending, so it takes a fresh Face ID like the
+ * other money routes; confirming and going back move nothing.
+ */
+async function answer(res: Response, result: PayNowResult, failure: string) {
+  if (result.pending && result.charge) {
+    res.status(202).json({ ...(await memberView(result.charge)), message: result.reason });
+    return;
+  }
+  if (!result.ok || !result.charge) {
+    res.status(409).json({ error: failure, message: result.reason ?? failure });
+    return;
+  }
+  res.json({ ...(await memberView(result.charge)), ...(result.pay ? { pay: result.pay } : {}) });
+}
+
+chargesRouter.post('/:code/pay-now', requireAuth, requireStepUp, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+  await answer(res, await startPayNow(charge.code, charge.memberWallet!), 'Could not pay now');
+});
+
+chargesRouter.post('/:code/pay-now/confirm', requireAuth, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+  const txHash = typeof req.body?.txHash === 'string' ? req.body.txHash : '';
+  await answer(res, await confirmPayNow(charge.code, charge.memberWallet!, txHash), 'Could not confirm the payment');
+});
+
+chargesRouter.delete('/:code/pay-now', requireAuth, async (req: Request, res: Response) => {
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge) {
+    res.status(404).json({ error: 'Not found', message: 'No such charge.' });
+    return;
+  }
+  if (!requireVerifiedWallet(req, res, charge.memberWallet, 'charge')) return;
+  await answer(res, await releasePayNowFor(charge.code, charge.memberWallet!), 'Could not go back');
 });
 
 export default chargesRouter;

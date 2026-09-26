@@ -97,8 +97,9 @@ export function fromApi(input: {
     }));
 
   const fee = (list: MerchantCharge[]) => list.reduce((t, c) => t + (c.payout === undefined ? 0 : cents(c) - Math.round(c.payout * 100)), 0);
-  const now1 = month.filter((c) => c.splitInto === 1);
-  const over = month.filter((c) => (c.splitInto ?? 0) > 1);
+  const now1 = month.filter((c) => c.paidNow);
+  // Every plan is over time, next cycle included: it carries, and the shop pays the over-time rate.
+  const over = month.filter((c) => !c.paidNow && (c.splitInto ?? 0) >= 1);
   const pct = (list: MerchantCharge[]) => {
     const a = list.reduce((t, c) => t + cents(c), 0);
     return a ? `${((fee(list) / a) * 100).toFixed(2).replace(/0$/, '')}% of ${usdOf(a)}` : '—';

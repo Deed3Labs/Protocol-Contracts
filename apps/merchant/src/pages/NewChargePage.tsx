@@ -342,7 +342,7 @@ export default function NewChargePage() {
   const [sentVia, setSentVia] = useState<{ how: 'App' | 'Text'; label: string; at: Date; to: { to: 'member'; wallet: string } | { to: 'phone'; phone: string } } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [live, setLive] = useState<{ openedAt: string | null; resolvedAt: string | null; splitInto: number | null } | null>(null);
+  const [live, setLive] = useState<{ openedAt: string | null; resolvedAt: string | null; splitInto: number | null; paidNow: boolean } | null>(null);
   const [raisedAt, setRaisedAt] = useState<Date>(() => new Date());
 
   const shopItems = useMemo(() => (liveCatalog.data ?? []).filter((c) => !c.archivedAt).map(chargeItemFrom), [liveCatalog.data]);
@@ -441,7 +441,7 @@ export default function NewChargePage() {
         if (t.clearChargeCode) {
           const c = await api.watchCharge(t.clearChargeCode).catch(() => null);
           if (!stopped && c) {
-            setLive({ openedAt: c.openedAt, resolvedAt: c.resolvedAt, splitInto: c.splitInto });
+            setLive({ openedAt: c.openedAt, resolvedAt: c.resolvedAt, splitInto: c.splitInto, paidNow: c.paidNow === true });
             if (c.openedAt && f.screen === 'code') set({ screen: 'waiting' });
           }
         }
@@ -890,7 +890,15 @@ export default function NewChargePage() {
           amountCents: shownCents,
           sentTo: sentVia ? `Sent to ${sentVia.label}` : undefined,
           status: approved ? 'approved' : 'waiting',
-          howPaid: approved && live?.splitInto ? `${live.splitInto} payments of ${usd(exampleSplit(shownCents).each)}` : undefined,
+          howPaid: !approved
+            ? undefined
+            : live?.paidNow
+              ? 'Paid now, from their Clear cash'
+              : live?.splitInto === 1
+                ? 'Next cycle'
+                : live?.splitInto
+                  ? `${live.splitInto} payments of ${usd(exampleSplit(shownCents).each)}`
+                  : undefined,
           steps: [
             { t: 'Raised', det: raisedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', ''), state: 'd' },
             { t: 'Opened', det: live?.openedAt ? new Date(live.openedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') : 'Not yet', state: approved || live?.openedAt ? 'd' : 'on' },

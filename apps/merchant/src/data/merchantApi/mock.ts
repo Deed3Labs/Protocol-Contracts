@@ -1057,8 +1057,11 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     const amountCents = t.amountCents + t.tipCents;
     const state = chargeState(t);
     // How the member chose to pay, once they have: the reference's for the seeded charges.
-    const splitInto = state === 'waiting' ? null : (seed.CLEAR_SPLITS[code] ?? 4);
-    const bps = splitInto && splitInto > 1 ? shop.clearTier.overTimeBps : shop.clearTier.paidNowBps;
+    // 1 in the seed is paid now, from the member's cash; more is a plan.
+    const chose = state === 'waiting' ? null : (seed.CLEAR_SPLITS[code] ?? 4);
+    const paidNow = chose === 1;
+    const splitInto = paidNow ? null : chose;
+    const bps = paidNow ? shop.clearTier.paidNowBps : shop.clearTier.overTimeBps;
     const staffer = who(rec.raisedBy);
     return {
       code,
@@ -1067,6 +1070,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       ...(seesMoney(who(viewer)?.role ?? 'counter') ? { payout: Math.round(amountCents * (1 - bps / 10000)) / 100 } : {}),
       state,
       splitInto,
+      paidNow,
       memberName: rec.customer,
       raisedBy: staffer?.name ?? null,
       raisedByStaffId: rec.raisedBy,
