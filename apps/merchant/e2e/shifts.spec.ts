@@ -101,19 +101,18 @@ test('the live Staff page passes axe', async ({ page }) => {
   expect(r.violations.map((v) => `${v.id} ${v.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(', ')}`)).toEqual([]);
 });
 
-test('Staff: a shop with no opening hours can still book any day, and says why', async ({ page }) => {
+test('Staff: a shop with no opening hours can’t book a day, and says where to set them, on one line', async ({ page }) => {
   await page.clock.setFixedTime(REFERENCE_NOW);
   await page.goto('/staff?preview=1&live=1&shopHours=none');
   await settle(page);
   await page.locator('.c-tm-row', { hasText: 'Ana Ruiz' }).click();
   await page.getByRole('dialog', { name: 'Ana Ruiz' }).getByText('Hours', { exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Ana’s hours' });
-  await expect(sheet.getByText('The shop has no opening hours yet, so any day can be booked.')).toBeVisible();
-  for (const d of ['Fr', 'Sa', 'Su']) {
-    await expect(sheet.getByRole('button', { name: d, exact: true })).toBeEnabled();
-    await sheet.getByRole('button', { name: d, exact: true }).click();
-  }
-  await expect(sheet.getByText('3 days')).toBeVisible();
+  const note = sheet.getByText('No shop hours yet. Set them in Settings › Shop.');
+  await expect(note).toBeVisible();
+  // One line: no taller than its line height, and not cut off.
+  expect(await note.evaluate((e) => e.getBoundingClientRect().height <= parseFloat(getComputedStyle(e).lineHeight) + 1 && e.scrollWidth <= e.clientWidth)).toBe(true);
+  for (const d of ['Mo', 'Fr', 'Su']) await expect(sheet.getByRole('button', { name: d, exact: true })).toBeDisabled();
 });
 
 test('Staff: with opening hours, the closed day is shut and the sheet says so', async ({ page }) => {
@@ -122,5 +121,5 @@ test('Staff: with opening hours, the closed day is shut and the sheet says so', 
   await page.getByRole('dialog', { name: 'Ana Ruiz' }).getByText('Hours', { exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'Ana’s hours' });
   await expect(sheet.getByRole('button', { name: 'Su', exact: true })).toBeDisabled();
-  await expect(sheet.getByText('Dashed days are when the shop is closed.')).toBeVisible();
+  await expect(sheet.getByText('Dotted days, the shop is closed. See Settings › Shop.')).toBeVisible();
 });
