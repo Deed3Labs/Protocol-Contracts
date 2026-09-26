@@ -4,6 +4,7 @@ import {
   useAuthorizationSignature,
   useLinkWithPasskey,
   useLoginWithEmail,
+  useLoginWithPasskey,
   usePrivy,
 } from '@privy-io/react-auth';
 import { api } from '@/data/apiClient';
@@ -207,7 +208,7 @@ function OwnerSignInForm({
   phone?: boolean;
   onSetUpShop?: () => void;
 }) {
-  const { ready, authenticated, getAccessToken, login } = usePrivy();
+  const { ready, authenticated, getAccessToken } = usePrivy();
   /*
    * Authorizing a wallet change has to happen HERE, inside the provider.
    *
@@ -223,6 +224,23 @@ function OwnerSignInForm({
   const { generateAuthorizationSignature } = useAuthorizationSignature();
   const { linkWithPasskey } = useLinkWithPasskey();
   const { sendCode, loginWithCode } = useLoginWithEmail();
+  const { loginWithPasskey } = useLoginWithPasskey();
+  /**
+   * Passkey sign-in straight to the device's own prompt (Face ID, Touch ID, a security key), as the
+   * member app's Face ID does, rather than through Privy's window. Already signed in to Privy on
+   * this browser: nothing to ask, the session is adopted. A cancelled prompt, or no passkey for
+   * Clear on this device, says so and points at the emailed code.
+   */
+  const passkeySignIn = async () => {
+    if (!authenticated) {
+      try {
+        await loginWithPasskey();
+      } catch {
+        throw new Error('No passkey for Clear on this device, or it was cancelled. Email yourself a code instead.');
+      }
+    }
+    setAdopting(true);
+  };
 
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -316,12 +334,9 @@ function OwnerSignInForm({
     const startPasskey = () => {
       setSent(false);
       setAwaitingPasskey(true);
-      // Privy's own window takes it from here; this screen waits behind it until the sign-in lands
-      // (the effect above adopts it) or the owner chooses the emailed code instead.
-      void run(async () => {
-        await login();
-        setAdopting(true);
-      });
+      // The device's own passkey prompt takes it from here; this screen waits behind it until the
+      // sign-in lands (the effect above adopts it) or the owner chooses the emailed code instead.
+      void run(passkeySignIn);
     };
     const typeCode = (v: string) => {
       setCode(v);
@@ -340,7 +355,7 @@ function OwnerSignInForm({
       return sent ? <CheckEmailSheet {...codeStep} onClose={onBack} /> : <OwnerSignInSheet {...form} onClose={onBack} />;
     }
     if (awaitingPasskey && !sent) {
-      return <PasskeyScreen onRetry={startPasskey} onEmail={() => setAwaitingPasskey(false)} />;
+      return <PasskeyScreen onRetry={startPasskey} onEmail={() => (setError(null), setAwaitingPasskey(false))} error={busy ? null : error} />;
     }
     return sent ? <CheckEmailScreen {...codeStep} /> : <OwnerSignInScreen {...form} phone={phone} onSetUpShop={onSetUpShop} />;
   }
@@ -487,16 +502,11 @@ function OwnerSignInForm({
           <span className="h-[0.5px] flex-1 bg-[var(--clear-border)]" />
         </div>
 
-        {/* Offered second, better on a device the owner uses often. Privy's own flow covers
-            passkeys and an existing wallet, so this hands off rather than rebuilding either. */}
+        {/* Offered second, better on a device the owner uses often: the device's own prompt, as
+            above, not Privy's window. */}
         <Button
           disabled={!ready || busy || adopting}
-          onClick={() =>
-            run(async () => {
-              await login();
-              setAdopting(true);
-            })
-          }
+          onClick={() => run(passkeySignIn)}
           className="w-full !py-[13px] !text-[14px]"
         >
           Use a passkey
