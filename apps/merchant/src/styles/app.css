@@ -509,3 +509,32 @@ input.c-st-time {
 .c-sa-bar.c-empty {
   border-style: solid;
 }
+
+/* Inventory before the first item: the words and the two ways in sit in the middle of the cell, and
+   the two ways are a boxed pair (a border all round, and between them), not two loose columns. */
+.c-cmain:has(> .c-iv-empty) {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.c-iv-empty {
+  margin: 0 auto;
+  text-align: center;
+}
+.c-iv-ways {
+  border: 1px solid var(--ink-13);
+}
+.c-iv-ways > div,
+.c-iv-ways > div + div {
+  padding: var(--s2);
+}
+@media (max-width: 519.98px) {
+  .c-iv-ways {
+    grid-template-columns: 1fr;
+  }
+  .c-iv-ways > div + div {
+    border-left: 0;
+    border-top: 1px solid var(--ink-13);
+  }
+}
