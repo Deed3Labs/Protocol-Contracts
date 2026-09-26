@@ -13,6 +13,7 @@ import { reopenPlanAfterDispute } from '../chargeService.js';
 import { notificationStore } from '../notificationStore.js';
 import { refreshSnapshotsFor } from '../lithic/snapshotService.js';
 import { getLithic } from '../lithic/lithicClient.js';
+import { holdPaidNow, releasePaidNow } from './paidNowDispute.js';
 
 /*
  * What the dispute page promises, made true.
@@ -153,6 +154,8 @@ async function holdPartner(dispute: DisputeRecord): Promise<void> {
   const charge = await chargeStore.get(dispute.subjectRef);
   if (!charge) return;
   if (charge.status === 'approved') await chargeStore.markDisputed(charge.code);
+  // Paid now: no plan to unwind; the shop's share is held from its Clear cash instead.
+  if (charge.paidNow) return holdPaidNow(dispute, charge);
   const unwound = await closePlan(charge, charge.amountCents);
   if (!unwound.ok) {
     // Retried by the sweep; the dispute stands meanwhile, and the charge is already out of payouts.
@@ -264,6 +267,7 @@ async function releaseCard(dispute: DisputeRecord, memberWon: boolean): Promise<
 async function releasePartner(dispute: DisputeRecord, memberWon: boolean): Promise<void> {
   const charge = await chargeStore.get(dispute.subjectRef);
   if (!charge) return;
+  if (charge.paidNow) return releasePaidNow(dispute, charge, memberWon);
   if (memberWon) {
     await chargeStore.refundAfterDispute(charge.code);
     return;
