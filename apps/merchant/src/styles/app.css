@@ -529,6 +529,12 @@ input.c-st-time {
 .c-iv-ways > div + div {
   padding: var(--s2);
 }
+/* The two ways' buttons are one size: the main button's height and padding, and the same width. */
+.c-iv-ways .c-btn {
+  height: 44px;
+  padding: 0 var(--s3);
+  min-width: 184px;
+}
 @media (max-width: 519.98px) {
   .c-iv-ways {
     grid-template-columns: 1fr;
