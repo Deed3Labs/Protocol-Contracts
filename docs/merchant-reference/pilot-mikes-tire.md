@@ -26,7 +26,7 @@ Work down it in order.
 - **Overview and Payouts:** the month, card deposits, Clear's fees and the payout position.
 
 **Not built yet** (none of these blocks the pilot):
-- Adding a bank, withdrawing to a bank by ACH, and statements. Plaid and Bridge are chosen for bank linking.
+- Withdrawing to a bank by ACH (banks are linked with Plaid and registered with Bridge already).
 - Splitting tips by hours. The shift clock now records hours, but tips still go to whoever raised the charge.
 
 **Before the dress rehearsal:**
@@ -80,7 +80,8 @@ The M2 and Tap to Pay work only in the installed app (Capacitor, `org.useclear.m
 
 ## 4. Setting up Mike's Tire
 
-- [ ] **Clear onboarding** is complete: the shop's address (it sets the reader location and the tax rate), the payout bank, and the owner signed in.
+- [ ] **Clear onboarding** is complete: the shop's address (it sets the reader location and the tax rate) and the owner signed in.
+- [ ] **The business is verified with Bridge** (Settings › Advanced), then **the bank is linked** with Plaid (Payouts › Where withdrawals go).
 - [ ] **Connect Stripe** from Settings:
   - Mike completes Stripe's hosted onboarding for his own Standard account.
   - Cards stay locked until Stripe reports **charges enabled**. Check that Settings shows cards available.

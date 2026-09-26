@@ -150,8 +150,9 @@ Decided 2026-09-24.
 - **The payout detail** (a row's Statement) isn't drawn. It takes a back row and one cell.
 - **What a live shop sees.** The figure, the cycle, where it sits, the cash account and its
   payouts, all from the payout position; Withdraw and the signer grant are live. Card deposits,
-  the drawer's cash and tips, and the nightly reconciliation ("Checked against Stripe", below).
-  Receiving by ACH, and adding or choosing a bank, have no backend yet. Preview: `/payouts?preview=1&screen=none|paying|year|counter|withdraw|from|to|sending|done|
+  the drawer's cash and tips, the nightly reconciliation ("Checked against Stripe", below), and
+  the banks withdrawals go to ("Linking a bank", below). Receiving by ACH and withdrawing to a bank
+  by ACH have no backend yet. Preview: `/payouts?preview=1&screen=none|paying|year|counter|withdraw|from|to|sending|done|
   breakdown|receive|destinations|add-bank`; `&live=1` for the live path.
 
 ## Settings
@@ -683,4 +684,24 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **Dev's Bridge key is live**, so nothing here has been run against Bridge: tests stand in for it.
   The first real verification is the first shop's.
 - The reference's "Your data" downloads aren't built; Overview's Export covers the month's sales.
+
+## Linking a bank (Plaid, then Bridge)
+
+- **Clear's own Plaid links the bank; Bridge pays out to it.** The owner signs in to the bank in
+  Plaid Link (Auth), which verifies it's real and theirs: no typed numbers and no test deposits, so
+  the reference's Add a bank account form (routing and account numbers, verified by two small
+  deposits) stays the preview's. The API reads the chosen account's numbers from Plaid, registers
+  them with Bridge as the business's external account (in the shop's name, at its address), and
+  closes the Plaid link. Clear keeps the bank's name, the last four digits and checking or savings
+  (migration 0018); the full numbers are never stored or logged.
+- **The business has to be verified with Bridge first** (Settings › Advanced), and the shop needs
+  its address: the sheet says which.
+- **The rail is a seam** (`BankRail` in `services/merchant/bank/bankService.ts`): Bridge today;
+  Lithic would slot in there if it becomes the shop's fiat rail.
+- Payouts › Where withdrawals go lists the banks; an owner adds or removes one (audited as
+  `bank.added` and `bank.removed`, with the last four only), a manager sees them. "Withdraws to"
+  on Payouts names the first linked bank.
+- **Dev's Plaid is sandbox and its Bridge key is live**, so only Plaid's side can be tried on dev
+  without creating a real Bridge account; tests stand in for both. In the mock, Plaid Link is
+  skipped and picks Plaid's sandbox checking account.
 

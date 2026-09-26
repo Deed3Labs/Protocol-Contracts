@@ -22,6 +22,7 @@ import type {
   Reorder,
   PersonHours,
   ShiftNow,
+  BankAccount,
   KybStatus,
   ShopSettings,
   StaffHours,
@@ -150,6 +151,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     switches.kyb === 'new'
       ? { state: 'not_started', withdrawToBank: false, reason: null, email: null, available: true }
       : { state: 'verified', withdrawToBank: true, reason: null, email: 'mike@mikestire.com', available: true };
+  const banks: BankAccount[] = [{ id: 'bank_chase', bankName: 'Chase', mask: '4417', subtype: 'checking', addedAt: seed.at(seed.YESTERDAY, '09:00') }];
   // Set up the till's two steps nothing else records.
   const marks = new Set<'cash' | 'tips'>(switches.setup === 'new' ? [] : ['cash', 'tips']);
   // Shifts and hours: who is on, their breaks, and each person's usual week and this week.
@@ -462,6 +464,28 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) refuse('That isn’t an email address', 422, 'invalid');
       kyb = { ...kyb, state: 'needs_info', email: kyb.email ?? input.email.trim().toLowerCase() };
       return { url: '/settings/advanced?preview=1&live=1&kyb=back' };
+    },
+    // Where withdrawals go: the shop's Chase, and Plaid's sandbox bank once one is linked.
+    bankLinkToken: async () => {
+      if (who(viewer)?.role !== 'owner') refuse('that needs full access', 403, 'forbidden');
+      if (kyb.state === 'not_started') refuse('Verify the business first (Settings › Advanced): Bridge pays out only to a verified business.', 409, 'not_verified');
+      return { linkToken: 'mock-link-token' };
+    },
+    addBank: async (input) => {
+      if (who(viewer)?.role !== 'owner') refuse('that needs full access', 403, 'forbidden');
+      const b = { id: id('bank'), bankName: input.institution ?? 'Bank', mask: '0000', subtype: 'checking' as const, addedAt: now() };
+      banks.push(b);
+      return b;
+    },
+    bankAccounts: async () => {
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      return banks.map((b) => ({ ...b }));
+    },
+    removeBank: async (bankId) => {
+      if (who(viewer)?.role !== 'owner') refuse('that needs full access', 403, 'forbidden');
+      const i = banks.findIndex((b) => b.id === bankId);
+      if (i < 0) refuse('No such bank account', 404, 'not_found');
+      banks.splice(i, 1);
     },
     setup: async () => {
       if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');

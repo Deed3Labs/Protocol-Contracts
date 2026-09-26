@@ -6,9 +6,10 @@ import { OwnerSignIn } from '@/auth/OwnerSignIn';
 import { OneColumn } from '@/brand/ui';
 import { api, type PayoutPosition } from '@/data/apiClient';
 import { useMerchantApi } from '@/data/merchantApi';
+import { runPlaidLink } from '@/lib/plaidLink';
 import { ExplainFlagSheet, ReconcileCell } from '@/payouts/reconcile';
 import type { ReconciliationFlag } from '@clear/merchant-contracts';
-import { useApi } from '@/data/useApi';
+import { errorSentence, useApi } from '@/data/useApi';
 import { cardRows, drawerCash } from '@/payouts/live';
 import GrantSignerPanel from '@/payouts/GrantSignerPanel';
 import { fromPosition, NONE, PAYING, REFERENCE, YEAR_ON, type HistRow, type PayoutsModel } from '@/payouts/model';
@@ -24,6 +25,7 @@ import {
   ReceiveSheet,
   WhereItSitsCell,
   WhereWithdrawalsGoSheet,
+  LiveWithdrawalsSheet,
 } from '@/payouts/views';
 import WithdrawModal, { type Stage } from '@/payouts/WithdrawModal';
 import { useShiftActions } from '@/shell/shiftActions';
@@ -105,6 +107,27 @@ export default function PayoutsPage() {
   // The nightly reconciliation: what doesn't match Stripe, for an owner or manager to look at.
   const recon = useApi(() => (preview ? Promise.resolve(null) : merchant.reconciliation()), [preview]);
   const [explaining, setExplaining] = useState<ReconciliationFlag | null>(null);
+  // Where withdrawals go: the banks linked with Plaid. An owner adds and removes them.
+  const banks = useApi(() => (preview ? Promise.resolve(null) : merchant.bankAccounts()), [preview]);
+  const [linking, setLinking] = useState(false);
+  const [bankError, setBankError] = useState<string | null>(null);
+  const ownerHere = session?.staff.role === 'owner';
+  const linkBank = async () => {
+    setLinking(true);
+    setBankError(null);
+    try {
+      const { linkToken } = await merchant.bankLinkToken();
+      const chosen = await runPlaidLink(linkToken);
+      if (chosen) {
+        await merchant.addBank(chosen);
+        banks.reload();
+      }
+    } catch (e) {
+      setBankError(errorSentence(e));
+    } finally {
+      setLinking(false);
+    }
+  };
 
   const stages: Stage[] = ['from', 'to', 'sending', 'done'];
   const [open, setOpen] = useState<Open>(() =>
@@ -117,7 +140,9 @@ export default function PayoutsPage() {
 
   if (screen === 'counter') return <PayoutsLocked onOwner={shift.ownerSignIn} />;
 
-  const bank = preview ? REFERENCE.bank : (profile?.payoutAccount ?? null);
+  // The first bank linked with Plaid, or the account recorded before banks were linked here.
+  const linked = banks.data?.[0];
+  const bank = preview ? REFERENCE.bank : linked ? `${linked.bankName} ••${linked.mask}` : (profile?.payoutAccount ?? null);
   const base: PayoutsModel | null = preview
     ? screen === 'none'
       ? NONE
@@ -284,7 +309,27 @@ export default function PayoutsPage() {
           onClose={() => setExplaining(null)}
         />
       )}
-      {open === 'destinations' && <WhereWithdrawalsGoSheet bank={bank ?? 'Bank account'} onAdd={preview ? () => setOpen('add-bank') : undefined} onClose={() => setOpen(null)} />}
+      {open === 'destinations' && preview && <WhereWithdrawalsGoSheet bank={bank ?? 'Bank account'} onAdd={() => setOpen('add-bank')} onClose={() => setOpen(null)} />}
+      {open === 'destinations' && !preview && (
+        <LiveWithdrawalsSheet
+          banks={banks.data}
+          busy={linking}
+          error={bankError}
+          onAdd={ownerHere ? () => void linkBank() : undefined}
+          onRemove={
+            ownerHere
+              ? (b) => {
+                  setBankError(null);
+                  merchant.removeBank(b.id).then(
+                    () => banks.reload(),
+                    (e) => setBankError(errorSentence(e)),
+                  );
+                }
+              : undefined
+          }
+          onClose={() => (setBankError(null), setOpen(null))}
+        />
+      )}
       {open === 'add-bank' && <AddBankSheet onClose={() => setOpen(null)} />}
     </>
   );

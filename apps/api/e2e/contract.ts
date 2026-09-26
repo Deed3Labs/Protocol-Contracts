@@ -106,6 +106,7 @@ try {
   await check('taxStatus', C.TaxStatus, () => owner.taxStatus());
   await check('setup', C.SetupProgress, () => manager.setup());
   await check('kyb', C.KybStatus, () => manager.kyb());
+  await check('bankAccounts', C.BankAccount.array(), () => manager.bankAccounts());
 
   // ---- Cards
   await check('cardAvailability', C.CardAvailability, () => jen.cardAvailability());

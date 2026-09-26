@@ -33,6 +33,7 @@ import merchantRefundsReceiptsRouter from './merchantRefundsReceipts.js';
 import merchantCloseRouter from './merchantClose.js';
 import merchantReportsRouter from './merchantReports.js';
 import merchantShiftsRouter from './merchantShifts.js';
+import merchantBankRouter from './merchantBank.js';
 
 /**
  * The merchant surface.
@@ -60,6 +61,8 @@ merchantRouter.use(merchantTendersRouter);
 merchantRouter.use(merchantShopRouter);
 // Shifts, breaks and staff hours (routes/merchantShifts.ts).
 merchantRouter.use(merchantShiftsRouter);
+// The shop's bank accounts (routes/merchantBank.ts).
+merchantRouter.use(merchantBankRouter);
 // Inventory: items, stock, reorders, discount codes (routes/merchantCatalog.ts).
 merchantRouter.use(merchantCatalogRouter);
 // Orders, discounts, tax (routes/merchantOrders.ts).
