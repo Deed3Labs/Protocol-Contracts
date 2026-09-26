@@ -529,10 +529,8 @@ input.c-st-time {
 .c-iv-ways > div + div {
   padding: var(--s2);
 }
-/* The two ways' buttons are one size: the main button's height and padding, and the same width. */
+/* The two ways' buttons are one size (the app's button size, below) and one width. */
 .c-iv-ways .c-btn {
-  height: 44px;
-  padding: 0 var(--s3);
   min-width: 184px;
 }
 @media (max-width: 519.98px) {
@@ -544,3 +542,31 @@ input.c-st-time {
     border-top: 1px solid var(--ink-13);
   }
 }
+
+/*
+ * One button size across the app, on a tablet or wider: the outlined button's, 36px with the
+ * secondary text size. The reference drew filled buttons, pairs, the close and charge footers at
+ * 40 to 44px and some row buttons at 30 to 32, so a footer's two buttons didn't match. Not
+ * buttons in this sense, and left as they are: chips, toggles and tabs, the week's day tiles, the
+ * Inventory header's Add item, Home's New charge and Build cart, full-width sheet buttons
+ * (.c-btn-lg), and onboarding's Back and Continue. A phone keeps its full-width 44px buttons.
+ */
+@media (min-width: 520px) {
+  :root :is(.c-cell, .c-panel, .c-sheet) .c-btn.c-btn-primary:not(.c-btn-lg),
+  :root .c-pair:not(.c-mc-hero .c-pair, .c-ob-acts .c-pair, .c-ob-hero .c-pair) .c-btn:not(.c-btn-lg),
+  :root .c-dr-close .c-cfoot .c-btn,
+  :root .c-dr-again .c-btn,
+  :root .c-mc-foot2 .c-btn,
+  :root .c-cc .c-cfoot .c-pair .c-btn,
+  :root .c-ch-pair .c-btn,
+  :root .c-rl-row .c-btn,
+  :root .c-ci-sugline .c-btn,
+  :root .c-btn.c-cc-print,
+  :root :is(.c-cmain, .c-cfoot) .c-btn.c-sm,
+  :root .c-iv-ways .c-btn {
+    height: 36px;
+    padding: 0 var(--s2);
+    font-size: var(--t-sec);
+  }
+}
+
