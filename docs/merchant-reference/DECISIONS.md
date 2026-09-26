@@ -854,3 +854,12 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   "with the charges in each" is the count, as Payouts › a payout says.
 - Withdrawals to the bank aren't in it: they're the shop moving its own cash, not a payout.
 
+## Desktop width
+
+- **Wider than the reference's 1180px tablet, the frame stops at the member app's width:** 1120px of
+  content, header included, inside its 24px sides (1168px), centred, as the member app's header
+  (`max-w-[1120px]`) and pages (`max-w-[1168px]` with padding) are. At 1180px and below nothing
+  changes, so a tablet is still the reference's full screen.
+- One rule on `.c-mc-tablet` (app.css), so every screen follows: the app's pages, onboarding, and
+  sign-in.
+
