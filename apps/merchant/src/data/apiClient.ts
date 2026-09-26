@@ -357,6 +357,8 @@ export const api = {
     amountCents: number;
     splitInto: number | null;
     paidNow?: boolean;
+    /** The member is paying now, and it hasn't landed yet. */
+    payingNow?: boolean;
     expiresAt: string;
     openedAt: string | null;
     resolvedAt: string | null;

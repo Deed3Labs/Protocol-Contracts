@@ -23,6 +23,7 @@ export type ClearSide = Pick<
   | 'refundThreshold'
   | 'setRefundThreshold'
   | 'payouts'
+  | 'watchCharge'
   | 'staff'
   | 'roster'
   | 'resetPin'
@@ -56,7 +57,8 @@ export interface MockSwitches {
   stripe: 'connected' | 'not_connected';
   drawer: 'none' | 'open' | 'balanced' | 'short' | 'disagree' | 'closed';
   card: 'approve' | 'decline';
-  clear: 'approve' | 'decline' | 'wait';
+  /** `paying`: they opened it and pressed Pay now, and it hasn't landed — the counter says so. */
+  clear: 'approve' | 'decline' | 'wait' | 'paying';
   /** Set up the till: `new` is a shop that hasn't set starting cash or tips yet. */
   setup: 'done' | 'new';
   /** Business verification: `new` hasn't started. */
@@ -806,7 +808,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
         const synced = { ...t, syncs: t.syncs + 1 };
         tenders.set(t.id, synced);
         // The member answers on the second look, unless the switch says they're still thinking.
-        if (synced.syncs >= 2 && switches.clear !== 'wait') step(t.id, { type: switches.clear === 'approve' ? 'approve' : 'decline' });
+        if (synced.syncs >= 2 && switches.clear !== 'wait' && switches.clear !== 'paying') step(t.id, { type: switches.clear === 'approve' ? 'approve' : 'decline' });
       }
       return publicTender(tender(tenderId));
     },
@@ -1096,6 +1098,22 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   ];
   const device = (deviceId: string) => devices.find((x) => x.id === deviceId) ?? refuse('That tablet is not enrolled here', 404, 'not_found');
   const clear: ClearSide = {
+    watchCharge: async (code) => {
+      const t = clearTender(code);
+      const c = toCharge(t);
+      const paying = switches.clear === 'paying' && t.status === 'pending' && t.syncs >= 2;
+      return {
+        code,
+        status: paying ? 'resolving' : c.state,
+        amountCents: Math.round(c.amount * 100),
+        splitInto: c.splitInto,
+        paidNow: c.paidNow,
+        payingNow: paying,
+        expiresAt: c.expiresAt,
+        openedAt: c.openedAt ?? (t.syncs >= 1 ? t.createdAt : null),
+        resolvedAt: c.resolvedAt,
+      };
+    },
     charges: async (opts = {}) =>
       [...tenders.values()]
         .filter((t) => t.method === 'clear' && t.clearChargeCode && (!opts.since || t.createdAt >= opts.since))

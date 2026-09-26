@@ -342,7 +342,7 @@ export default function NewChargePage() {
   const [sentVia, setSentVia] = useState<{ how: 'App' | 'Text'; label: string; at: Date; to: { to: 'member'; wallet: string } | { to: 'phone'; phone: string } } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [live, setLive] = useState<{ openedAt: string | null; resolvedAt: string | null; splitInto: number | null; paidNow: boolean } | null>(null);
+  const [live, setLive] = useState<{ openedAt: string | null; resolvedAt: string | null; splitInto: number | null; paidNow: boolean; payingNow: boolean } | null>(null);
   const [raisedAt, setRaisedAt] = useState<Date>(() => new Date());
 
   const shopItems = useMemo(() => (liveCatalog.data ?? []).filter((c) => !c.archivedAt).map(chargeItemFrom), [liveCatalog.data]);
@@ -441,7 +441,7 @@ export default function NewChargePage() {
         if (t.clearChargeCode) {
           const c = await api.watchCharge(t.clearChargeCode).catch(() => null);
           if (!stopped && c) {
-            setLive({ openedAt: c.openedAt, resolvedAt: c.resolvedAt, splitInto: c.splitInto, paidNow: c.paidNow === true });
+            setLive({ openedAt: c.openedAt, resolvedAt: c.resolvedAt, splitInto: c.splitInto, paidNow: c.paidNow === true, payingNow: c.payingNow === true });
             if (c.openedAt && f.screen === 'code') set({ screen: 'waiting' });
           }
         }
@@ -890,6 +890,7 @@ export default function NewChargePage() {
           amountCents: shownCents,
           sentTo: sentVia ? `Sent to ${sentVia.label}` : undefined,
           status: approved ? 'approved' : 'waiting',
+          waitingLine: !approved && live?.payingNow ? 'Paying now, from their Clear cash' : undefined,
           howPaid: !approved
             ? undefined
             : live?.paidNow
@@ -902,7 +903,12 @@ export default function NewChargePage() {
           steps: [
             { t: 'Raised', det: raisedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', ''), state: 'd' },
             { t: 'Opened', det: live?.openedAt ? new Date(live.openedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') : 'Not yet', state: approved || live?.openedAt ? 'd' : 'on' },
-            { t: 'Approved', det: approved ? 'Just now' : 'Any time today', state: approved ? 'd' : live?.openedAt ? 'on' : '' },
+            {
+              t: approved && live?.paidNow ? 'Paid' : 'Approved',
+              // Paying now takes a few seconds on chain: the counter says it's happening, not "any time".
+              det: approved ? 'Just now' : live?.payingNow ? 'Paying now…' : 'Any time today',
+              state: approved ? 'd' : live?.openedAt ? 'on' : '',
+            },
           ],
         };
     const fee = fees ? { label: `Fee · ${pctLabel(fees.over ?? fees.now)}${fees.over ? ', over time' : ''}`, cents: Math.round((shownCents * (fees.over ?? fees.now)) / 100) } : undefined;
@@ -932,7 +938,7 @@ export default function NewChargePage() {
           onExit={exit}
           onHome={exit}
           onSendAgain={preview ? () => undefined : sendAgain}
-          onCancel={cancel}
+          onCancel={live?.payingNow ? undefined : cancel}
           onDone={exit}
           onNew={again}
         />
@@ -951,7 +957,7 @@ export default function NewChargePage() {
           onNew={again}
         />
       ) : (
-        <WaitingView s={s} reached={[...reached]} reachedNote={preview ? undefined : sentVia ? (sentVia.how === 'Text' ? 'By text' : 'In their Clear app') : 'The code on this screen'} onSendAgain={preview ? () => undefined : sendAgain} onCancel={cancel} onHome={exit} />
+        <WaitingView s={s} reached={[...reached]} reachedNote={preview ? undefined : sentVia ? (sentVia.how === 'Text' ? 'By text' : 'In their Clear app') : 'The code on this screen'} onSendAgain={preview ? () => undefined : sendAgain} onCancel={live?.payingNow ? undefined : cancel} onHome={exit} />
       );
     }
   } else if (f.screen === 'card') {
