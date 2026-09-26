@@ -26,6 +26,7 @@ export type ClearSide = Pick<
   | 'staff'
   | 'roster'
   | 'resetPin'
+  | 'changeRole'
   | 'removeStaff'
   | 'profile'
   | 'devices'
@@ -174,6 +175,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   // Whose PIN is whose, as the server keeps them: a reset clears one, a first shift sets one.
   const pins = new Map<string, string>(Object.entries(seed.MOCK_PINS).map(([pin, staffId]) => [staffId, pin]));
   const removed = new Set<string>();
+  // Roles an owner or manager changed (the seed's are fixed).
+  const roles = new Map<string, 'counter' | 'manager'>();
   const pinOf = (pin: string | null | undefined) => (pin ? ([...pins].find(([staffId, p]) => p === pin && !removed.has(staffId))?.[0] ?? null) : null);
   const refuse = (message: string, status = 409, code?: string): never => {
     throw new MockApiError(message, status, code);
@@ -1139,15 +1142,28 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       return { ...seed.POSITION, owedCents, paid: seed.POSITION.paid.map((x) => ({ ...x })), ...(switches.payday === 'none' ? { nextPayoutOn: null } : {}) };
     },
     staff: async (): Promise<StaffMember[]> =>
-      seed.STAFF.map((s) => ({ ...s, active: s.active && !removed.has(s.id), pinSet: pins.has(s.id), chargesThisMonth: seed.CHARGES_THIS_MONTH[s.id] ?? 0 })),
+      seed.STAFF.map((s) => ({ ...s, role: roles.get(s.id) ?? s.role, active: s.active && !removed.has(s.id), pinSet: pins.has(s.id), chargesThisMonth: seed.CHARGES_THIS_MONTH[s.id] ?? 0 })),
     roster: async () =>
-      seed.STAFF.filter((s) => s.active && !removed.has(s.id)).map(({ id: staffId, name, role }) => ({ id: staffId, name, role, pinSet: pins.has(staffId) })),
+      seed.STAFF.filter((s) => s.active && !removed.has(s.id)).map(({ id: staffId, name, role }) => ({ id: staffId, name, role: roles.get(staffId) ?? role, pinSet: pins.has(staffId) })),
     // The server's rules (routes/merchant.ts, staffTarget): a manager resets or removes counter
     // staff, an owner counter staff and managers; never an owner, never yourself.
     resetPin: async (staffId, approverPin) => {
       const target = staffTarget(staffId);
       if (pins.get(viewer) !== approverPin) refuse('That did not match.', 401, 'bad_pin');
       pins.delete(target.id);
+    },
+    // The server's rules (routes/merchant.ts, /staff/:id/role): never an owner, never yourself; an
+    // owner confirms with their PIN, a manager needs an owner's.
+    changeRole: async (staffId, role, approverPin) => {
+      const target = seed.STAFF.find((s) => s.id === staffId && !removed.has(s.id)) ?? refuse('No such person at this shop.', 404, 'not_found');
+      if (target.id === viewer) refuse('Someone else does this for you.', 403, 'forbidden');
+      if (target.role === 'owner') refuse('Owners are changed by Clear. Contact support.', 403, 'forbidden');
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      const owners = seed.STAFF.filter((s) => s.role === 'owner').map((s) => s.id);
+      if (!owners.some((o) => pins.get(o) === approverPin && (who(viewer)?.role !== 'owner' || o === viewer)))
+        refuse(who(viewer)?.role === 'owner' ? 'That did not match.' : 'That isn’t the owner’s PIN. The owner approves a new role.', 401, 'bad_pin');
+      roles.set(target.id, role);
+      return { id: target.id, role };
     },
     removeStaff: async (staffId) => {
       removed.add(staffTarget(staffId).id);

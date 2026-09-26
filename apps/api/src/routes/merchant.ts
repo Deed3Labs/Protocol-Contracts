@@ -1130,6 +1130,56 @@ merchantRouter.post('/staff/:id/reset-pin', requireMerchant, requireManager, asy
 });
 
 /**
+ * Change somebody's role, counter or manager — the Staff sheet's Role. An owner changes it and
+ * confirms with their own PIN. A manager can change it too, but the owner approves on the spot with
+ * theirs, as a refund over the manager's limit waits for the owner. Never an owner's role (Clear
+ * does that), never your own. Takes effect on their next request: a session re-reads the staff row.
+ */
+merchantRouter.post('/staff/:id/role', requireMerchant, requireManager, async (req: Request, res: Response) => {
+  const { merchant, staff: actor } = req.merchant!;
+  const role = req.body?.role === 'manager' ? 'manager' : req.body?.role === 'counter' ? 'counter' : null;
+  if (!role) {
+    res.status(400).json({ error: 'Invalid', message: 'A role is Counter or Manager.' });
+    return;
+  }
+  const target = await staffStore.get(req.params.id);
+  if (!target || target.merchant !== merchant.trim().toLowerCase() || !target.active) {
+    res.status(404).json({ error: 'Not found', message: 'No such person at this shop.' });
+    return;
+  }
+  if (target.id === actor.id) {
+    res.status(403).json({ error: 'Forbidden', message: 'Someone else does this for you.' });
+    return;
+  }
+  if (target.role === 'owner') {
+    res.status(403).json({ error: 'Forbidden', message: 'Owners are changed by Clear. Contact support.' });
+    return;
+  }
+  if (target.role === role) {
+    res.json({ id: target.id, role });
+    return;
+  }
+  const pin = String(req.body?.approverPin ?? '');
+  let approver: Awaited<ReturnType<typeof staffStore.signInWithPin>> = null;
+  if (actor.role === 'owner') {
+    approver = await staffStore.signInWithPin(merchant, pin, actor.id, 'approval');
+  } else {
+    for (const o of (await staffStore.list(merchant)).filter((s) => s.role === 'owner' && s.active)) {
+      approver = await staffStore.signInWithPin(merchant, pin, o.id, 'approval');
+      if (approver) break;
+    }
+  }
+  if (!approver || approver.role !== 'owner') {
+    res.status(401).json({ error: 'Unauthorized', message: actor.role === 'owner' ? 'That did not match.' : 'That isn’t the owner’s PIN. The owner approves a new role.' });
+    return;
+  }
+  await staffStore.setRole(target.id, role);
+  const db = await merchantDb();
+  if (db) await audit(db, { merchant, actor: actor.id, approver: approver.id, action: 'staff.role_changed', ref: { type: 'staff', id: target.id }, detail: { from: target.role, to: role } });
+  res.json({ id: target.id, role });
+});
+
+/**
  * Remove somebody from the tablet. Their PIN stops working and their shift ends on its next
  * request (a session re-reads the staff row); every charge they raised keeps their name.
  */

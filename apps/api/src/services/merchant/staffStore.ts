@@ -401,6 +401,14 @@ export const staffStore = {
     return (rowCount ?? 0) > 0;
   },
 
+  /** Counter or manager: an owner is never made or unmade here (routes/merchant.ts). */
+  async setRole(id: string, role: 'counter' | 'manager'): Promise<void> {
+    const pool = getMerchantPool();
+    if (!pool) return;
+    await ensureMerchantSchema();
+    await pool.query(`UPDATE ${MERCHANT_SCHEMA}.staff SET role = $2 WHERE id = $1 AND role <> 'owner'`, [id, role]);
+  },
+
   async setActive(id: string, active: boolean): Promise<void> {
     const pool = getMerchantPool();
     if (!pool) return;

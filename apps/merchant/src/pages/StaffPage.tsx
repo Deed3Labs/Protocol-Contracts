@@ -34,6 +34,7 @@ import {
   LimitSheet,
   PersonSheet,
   RemoveSheet,
+  RoleSheet,
   RolesCell,
   TeamCell,
   WaitingToStart,
@@ -59,6 +60,7 @@ type Open =
   | { k: 'person'; m: Mate }
   | { k: 'remove'; m: Mate }
   | { k: 'reset'; m: Mate }
+  | { k: 'role'; m: Mate }
   | { k: 'hours'; m: Mate; h: Hours; once?: boolean; day?: number; live?: PersonHours }
   | { k: 'limit' }
   | null;
@@ -160,6 +162,9 @@ export default function StaffPage() {
   const waiting = manage ? team.find((m) => m.added && !m.on) : undefined;
   const onTap = (m: Mate) => setOpen({ k: 'person', m });
   /** The server's rule (routes/merchant.ts, staffTarget): who this viewer may reset or remove. */
+  // A role: an owner changes anyone's but an owner's and their own; so can a manager, with the owner's approval.
+  const mayChangeRole = (m: Mate) => live && manage && m.role !== 'owner' && m.id !== session?.staff.id;
+  const ownerName = staff.data?.find((s) => s.role === 'owner')?.name ?? 'The owner';
   const mayChange = (m: Mate) => preview || (m.role !== 'owner' && m.id !== session?.staff.id && (owner || (role === 'manager' && m.role === 'counter')));
 
   // Resetting someone's PIN: the one resetting confirms with their own.
@@ -227,9 +232,24 @@ export default function StaffPage() {
         <PersonSheet
           m={open.m}
           onHours={() => openHours(open.m)}
+          onRole={mayChangeRole(open.m) ? () => setOpen({ k: 'role', m: open.m }) : undefined}
           onEndShift={mayEnd(open.m) ? () => endFor(open.m) : undefined}
           onResetPin={mayChange(open.m) ? () => (setPin(''), setPinError(null), setOpen({ k: 'reset', m: open.m })) : undefined}
           onRemove={mayChange(open.m) ? () => setOpen({ k: 'remove', m: open.m }) : undefined}
+          onClose={close}
+        />
+      )}
+      {open?.k === 'role' && (open.m.role === 'counter' || open.m.role === 'manager') && (
+        <RoleSheet
+          name={open.m.name}
+          role={open.m.role}
+          approver={owner ? (session?.staff.name ?? 'You') : ownerName}
+          ownerApproves={!owner}
+          onSave={async (next, pin) => {
+            await api.changeRole(open.m.id, next, pin);
+            staff.reload();
+            close();
+          }}
           onClose={close}
         />
       )}

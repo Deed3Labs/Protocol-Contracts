@@ -72,6 +72,20 @@ try {
   check('the old PIN stops working', (await call('POST', '/session', { device: true, body: { staffId: ana, pin: '5555' } })).status === 401);
   check('she picks a new one next shift', (await call('POST', `/staff/${ana}/first-pin`, { device: true, body: { pin: '7777' } })).status === 200);
 
+  // A role: the owner changes it with their own PIN; a manager needs the owner's.
+  const role = (tok: string, id: string, r: string, approverPin: string) => call('POST', `/staff/${id}/role`, { token: tok, body: { role: r, approverPin } });
+  check('counter staff can’t change a role', (await role(token.jen, ana, 'manager', PINS.jen)).status === 403);
+  check('nobody changes an owner’s role', (await role(token.manager, shop.staff.owner.id, 'counter', PINS.owner)).status === 403);
+  check('nobody changes their own role', (await role(token.manager, shop.staff.manager.id, 'counter', PINS.owner)).status === 403);
+  check('a manager’s own PIN doesn’t approve a role', (await role(token.manager, ana, 'manager', PINS.manager)).status === 401);
+  const byManager = await role(token.manager, ana, 'manager', PINS.owner);
+  check('a manager changes it with the owner’s PIN', byManager.status === 200 && byManager.body.role === 'manager', JSON.stringify(byManager.body));
+  check('the owner’s wrong PIN is refused', (await role(token.owner, ana, 'counter', '0000')).status === 401);
+  const byOwner = await role(token.owner, ana, 'counter', PINS.owner);
+  check('the owner changes it back with their own PIN', byOwner.status === 200 && byOwner.body.role === 'counter');
+  const listed = await call('GET', '/staff', { token: token.owner });
+  check('the new role is what Staff lists', listed.body.staff?.find((s: { id: string }) => s.id === ana)?.role === 'counter', JSON.stringify(listed.body).slice(0, 200));
+
   // Removing: her shift stops on its next request, and she's off the roster.
   const shift = (await call('POST', '/session', { device: true, body: { staffId: ana, pin: '7777' } })).body.token as string;
   check('a manager can’t remove a manager', (await call('DELETE', `/staff/${shop.staff.manager.id}`, { token: token.manager })).status === 403);
@@ -84,7 +98,7 @@ try {
   check('she’s off the roster', !after.body.staff.some((s: { id: string }) => s.id === ana));
   const trail = await call('GET', `/audit?from=${new Date().toISOString().slice(0, 10)}&to=${new Date().toISOString().slice(0, 10)}`, { token: token.owner });
   const actions = (trail.body as Array<{ action: string }>).map((e) => e.action);
-  check('the audit trail has the reset and the removal', actions.includes('staff.pin_reset') && actions.includes('staff.removed'), actions.join(', '));
+  check('the audit trail has the reset, the role and the removal', actions.includes('staff.pin_reset') && actions.includes('staff.role_changed') && actions.includes('staff.removed'), actions.join(', '));
 } catch (e) {
   failed++;
   console.error(e, '\n', api.log().slice(-2000));
