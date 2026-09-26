@@ -105,3 +105,14 @@ describe('kept, not attempted once', () => {
     expect(enforce).toContain("at.status === 'CASE_CLOSED'");
   });
 });
+
+describe('a decision’s money always finishes moving', () => {
+  test('a paid-now release still moving is left releasing, not marked released', () => {
+    expect(enforce).toContain("if (released) await disputeStore.setHold(token, 'released', null);");
+  });
+
+  test('and the sweep comes back to it until it is done', () => {
+    expect(enforce).toContain("WHERE hold_state = 'releasing'");
+    expect(enforce).toContain('await finishRelease(dispute)');
+  });
+});

@@ -328,6 +328,8 @@ describe('disputing a charge paid now', async () => {
   let moves: { from: string; to: string; units: bigint }[] = [];
   let holds: { state: string; detail: Record<string, unknown> | null }[] = [];
   let shopCash = 1_000_000_000n;
+  let clearFails = 0;
+  let receipts: Record<string, { status: number } | null> = {};
   let n = 0;
   const real = { ...refundChain };
   const realSetHold = disputeStore.setHold;
@@ -336,15 +338,21 @@ describe('disputing a charge paid now', async () => {
     moves = [];
     holds = [];
     shopCash = 1_000_000_000n;
+    clearFails = 0;
+    receipts = {};
     disputeStore.setHold = async (_t, state, detail) => {
-      holds.push({ state, detail });
+      holds.push({ state, detail: detail && JSON.parse(JSON.stringify(detail)) });
     };
     Object.assign(refundChain, {
-      receipt: async () => ({ status: 1 }),
+      receipt: async (_c: number, h: string) => (h in receipts ? receipts[h] : { status: 1 }),
       known: async () => false,
       balance: async () => shopCash,
       clearAddress: () => CLEAR_WALLET,
       sendFromClear: async (_c: number, _t: string, to: string, units: bigint, onHash: (h: string) => Promise<void>) => {
+        if (clearFails > 0) {
+          clearFails -= 1;
+          throw new Error('rpc down');
+        }
         await onHash(`0xc${++n}`);
         moves.push({ from: 'clear', to: to.toLowerCase(), units });
         return true;
@@ -417,5 +425,52 @@ describe('disputing a charge paid now', async () => {
     await releasePaidNow(dispute({ paidNow: true, heldCents: 92_825, holdTx: '0xhold' }), charge, false);
     expect(moves).toEqual([{ from: 'clear', to: SHOP.toLowerCase(), units: 928_250_000n }]);
     expect((await chargeStore.get(charge.code))!.status).toBe('approved');
+  });
+
+  // The dispute as the sweep would read it next: whatever the last pass saved.
+  const saved = (d: any) => ({ ...d, heldDetail: holds.at(-1)!.detail, holdState: holds.at(-1)!.state });
+
+  test('a release that fails is left releasing, and the next pass finishes it without paying twice', async () => {
+    const charge = await paid();
+    const d = dispute({ paidNow: true, heldCents: 92_825, holdTx: '0xhold' });
+    clearFails = 1;
+    expect(await releasePaidNow(d, charge, true)).toBe(false);
+    expect(holds.at(-1)).toMatchObject({ state: 'releasing', detail: { release: { outcome: 'member', error: 'rpc down' } } });
+    expect(moves).toHaveLength(0);
+    expect((await chargeStore.get(charge.code))!.status).toBe('disputed');
+
+    expect(await releasePaidNow(saved(d), charge, true)).toBe(true);
+    expect(moves).toEqual([{ from: 'clear', to: MEMBER.toLowerCase(), units: 940_000_000n }]);
+    expect((await chargeStore.get(charge.code))!.status).toBe('refunded');
+
+    // Run again: the recorded transfer landed, so nothing is sent a second time.
+    expect(await releasePaidNow(saved(d), charge, true)).toBe(true);
+    expect(moves).toHaveLength(1);
+  });
+
+  test('two transfers: the one that went is not sent again; only the one that failed is', async () => {
+    const charge = await paid();
+    const d = dispute({ paidNow: true, pending: true, holdTx: null });
+    clearFails = 1;
+    expect(await releasePaidNow(d, charge, true)).toBe(false);
+    expect(moves.map((m) => m.from)).toEqual(['shop']);
+    expect(await releasePaidNow(saved(d), charge, true)).toBe(true);
+    expect(moves.map((m) => m.from)).toEqual(['shop', 'clear']);
+  });
+
+  test('a recorded transfer that reverted goes again', async () => {
+    const charge = await paid();
+    receipts['0xbad'] = { status: 0 };
+    const d = dispute({ paidNow: true, heldCents: 92_825, holdTx: '0xhold', release: { outcome: 'shop', legs: { clear: '0xbad' } } });
+    expect(await releasePaidNow(d, charge, false)).toBe(true);
+    expect(moves).toEqual([{ from: 'clear', to: SHOP.toLowerCase(), units: 928_250_000n }]);
+  });
+
+  test('one that may have left with nothing to check it by waits for a person', async () => {
+    const charge = await paid();
+    const d = dispute({ paidNow: true, heldCents: 92_825, holdTx: '0xhold', release: { outcome: 'member', legs: { clear: 'sending' } } });
+    expect(await releasePaidNow(d, charge, true)).toBe(false);
+    expect(moves).toHaveLength(0);
+    expect(String(holds.at(-1)!.detail!.release && (holds.at(-1)!.detail!.release as any).error)).toContain('Needs a person');
   });
 });

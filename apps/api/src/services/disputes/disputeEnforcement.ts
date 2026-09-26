@@ -264,21 +264,31 @@ async function releaseCard(dispute: DisputeRecord, memberWon: boolean): Promise<
   await refreshSnapshotsFor(dispute.wallet).catch(() => 0);
 }
 
-async function releasePartner(dispute: DisputeRecord, memberWon: boolean): Promise<void> {
+/** False only for a paid-now release still moving money: left `releasing` for the sweep to finish. */
+async function releasePartner(dispute: DisputeRecord, memberWon: boolean): Promise<boolean> {
   const charge = await chargeStore.get(dispute.subjectRef);
-  if (!charge) return;
+  if (!charge) return true;
   if (charge.paidNow) return releasePaidNow(dispute, charge, memberWon);
   if (memberWon) {
     await chargeStore.refundAfterDispute(charge.code);
-    return;
+    return true;
   }
   const unwound = Number((dispute.heldDetail as { unwoundCents?: number } | null)?.unwoundCents ?? 0);
   const reopened = await reopenPlanAfterDispute(charge, unwound);
   if (!reopened.ok) {
     console.error(`[dispute] ${dispute.token} plan not reopened: ${reopened.reason}`);
-    return;
+    return true;
   }
   await chargeStore.restoreAfterDispute(charge.code, reopened.planId ?? null, reopened.txHash ?? null);
+  return true;
+}
+
+/** Finish a paid-now release a first attempt left moving. Called by the sweep. */
+async function finishRelease(dispute: DisputeRecord): Promise<void> {
+  const charge = await chargeStore.get(dispute.subjectRef);
+  if (!charge?.paidNow) return disputeStore.setHold(dispute.token, 'released', null);
+  const outcome = (dispute.heldDetail as { release?: { outcome?: string } } | null)?.release?.outcome;
+  if (await releasePaidNow(dispute, charge, outcome === 'member')) await disputeStore.setHold(dispute.token, 'released', null);
 }
 
 /**
@@ -297,13 +307,15 @@ export async function resolveDispute(
   if (!decided) return null;
 
   const memberWon = resolution === 'member';
+  let released = true;
   if (before.holdState === 'held') {
     if (before.kind === 'card') await releaseCard(before, memberWon);
-    else if (before.kind === 'partner') await releasePartner(before, memberWon);
+    else if (before.kind === 'partner') released = await releasePartner(before, memberWon);
     // Member sends: the claim block lifts with the dispute. A win is refunded by hand -- the escrow
     // only refunds after expiry -- and the note says so.
   }
-  await disputeStore.setHold(token, 'released', null);
+  // A paid-now release still moving money stays `releasing`, and the sweep finishes it.
+  if (released) await disputeStore.setHold(token, 'released', null);
 
   await notificationStore
     .emit({
@@ -368,6 +380,18 @@ export async function enforceDisputes(): Promise<number> {
     const dispute = await disputeStore.get(row.token);
     if (dispute) {
       await holdDispute(dispute).catch((e) => console.error('[dispute] hold failed', row.token, e));
+      acted += 1;
+    }
+  }
+
+  // Decided, with money still to move (paid now): finished here, however many passes it takes.
+  const releasing = await pool
+    .query<{ token: string }>(`SELECT token FROM member_disputes WHERE hold_state = 'releasing' LIMIT 25`)
+    .catch(() => ({ rows: [] as Array<{ token: string }> }));
+  for (const row of releasing.rows) {
+    const dispute = await disputeStore.get(row.token);
+    if (dispute) {
+      await finishRelease(dispute).catch((e) => console.error('[dispute] release retry failed', row.token, e));
       acted += 1;
     }
   }
