@@ -168,9 +168,9 @@ Decided 2026-09-24.
 - **What a live shop sees.** Shop (the listing, the contact and the hours, each changeable by
   the owner), Payouts, Partnership, Counter (breaks, and how long this tablet waits for a PIN),
   Payments, Devices (the readers, and this tablet renamed), Security (its enrolled tablets, each
-  signed out with the existing API), Tax, Tips, Discounts, Closing and Help. Statements,
-  Notifications and Advanced have no backend yet. Their sheets (Change account, Add a device, Leave
-  Clear) open in the preview, with their final buttons disabled on a live shop.
+  signed out with the existing API), Tax, Tips, Discounts, Closing, Notifications (the end-of-day
+  summary) and Help. Statements and Advanced have no backend yet. Their sheets (Change account, Add
+  a device, Leave Clear) open in the preview, with their final buttons disabled on a live shop.
   Preview: `/settings[/<section>]?preview=1&screen=counter|payments-connected|account|device|
   leave|confirm|code`; `&live=1` for the live path.
 
@@ -648,4 +648,20 @@ reason for any difference, is written to `e2e/.report/index.html`.
   a refused send says why.
 - A receipt that can't be emailed is recorded as not delivered, as a failed text is; nothing else
   about the sale changes.
+
+## The end-of-day summary
+
+- **Sent when the day is closed, not at 9:00pm.** The reference's Notifications pane says "9:00pm";
+  the figures are only final once Close the day has run, so that's when it goes. Closing again (the
+  same report) doesn't send it twice. A summary that can't go never holds up a close.
+- **What it says:** what was taken and how (Clear, card, cash), tips, tax, discounts and refunds;
+  the drawer (counted, expected, any difference and who signed it off, to the bank, left for
+  tomorrow); tips by person; and any card that couldn't be captured.
+- **Where it goes:** an address on Settings › Notifications ("Send to"). Owners sign in with Privy,
+  so Clear holds no owner email to default to; empty means it isn't sent. On by default once there
+  is an address (migration 0016: `notify_end_of_day`, `notify_email`; `ShopSettings.notifications`).
+- **The pane's other switches** (a refund needs you, a charge still waiting, stock running low, a
+  payout sent, every charge) aren't built; on a live shop the pane says so rather than showing
+  switches that do nothing. Home shows those today.
+- By Resend, like every email (see "Email by Resend").
 

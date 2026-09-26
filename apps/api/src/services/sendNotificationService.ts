@@ -186,6 +186,11 @@ class SendNotificationService {
    * it can't go, so the one sending it is told (unlike an alert, nothing else carries it).
    */
   async sendStatement(params: { to: string; subject: string; body: string }): Promise<SendNotificationResult> {
+    return this.sendEmail(params);
+  }
+
+  /** Any email the shop's back office sends (a statement, the end-of-day summary). Throws when it can't go. */
+  async sendEmail(params: { to: string; subject: string; body: string }): Promise<SendNotificationResult> {
     const r = await this.dispatchNotification({ channel: 'email', kind: 'statement', destination: params.to, payload: { subject: params.subject, body: params.body } });
     return { provider: r.provider, providerMessageId: r.providerMessageId, destinationHash: hashDestination(params.to.trim().toLowerCase()), status: r.status };
   }

@@ -10,6 +10,7 @@ import type { PinCheck } from '../orders/orderService.js';
 import { getSettings } from '../shop/shopService.js';
 import { type CountRow, countsView } from './countsView.js';
 import { audit } from '../security/audit.js';
+import { sendDaySummary, type SummaryMailer } from './daySummary.js';
 
 /**
  * Counting the drawer and Close the day (card-processing prompt, Phase 7; the app's drawer sheets).
@@ -250,7 +251,7 @@ export interface CloseResult {
 }
 
 /** Close the day: see the top of this file. Idempotent: closing a closed drawer returns its report. */
-export async function closeDay(db: Db, deps: { card: CardConnectorProvider | null }, input: { merchant: string; sessionId: string; staffId: string }): Promise<CloseResult> {
+export async function closeDay(db: Db, deps: { card: CardConnectorProvider | null; mail?: SummaryMailer }, input: { merchant: string; sessionId: string; staffId: string }): Promise<CloseResult> {
   const { rows: existing } = await db.query<{ report: DayReport | string }>('SELECT report FROM payments.day_reports WHERE session_id = $1', [input.sessionId]);
   if (existing[0]) return { report: typeof existing[0].report === 'string' ? JSON.parse(existing[0].report) : existing[0].report, captureFailures: [] };
 
@@ -339,6 +340,8 @@ export async function closeDay(db: Db, deps: { card: CardConnectorProvider | nul
     });
     return r;
   });
+  // The end-of-day summary, now its figures are final. Never holds up the close.
+  await sendDaySummary(db, deps.mail, { merchant: input.merchant, report, captureFailures: captured.failed.length }).catch(() => undefined);
   return { report, captureFailures: captured.failed };
 }
 

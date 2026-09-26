@@ -108,7 +108,7 @@ export default function SettingsPage() {
   const shopRecord = useApi(() => (liveOwner ? merchant.shop() : Promise.resolve(null)), [liveOwner]);
   const shopHours = useApi(() => (liveOwner ? merchant.hours() : Promise.resolve(null)), [liveOwner]);
   const { refresh } = useAuth();
-  const [textEdit, setTextEdit] = useState<ShopField | 'breaks' | 'device' | null>(null);
+  const [textEdit, setTextEdit] = useState<ShopField | 'breaks' | 'device' | 'notifyEmail' | null>(null);
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   /** Run a change, then read the shop again: what shows is what the server holds. */
@@ -247,6 +247,7 @@ export default function SettingsPage() {
     onAddReader: () => setOpen('reader'),
     onEditShop: liveOwner ? (f: ShopField) => (setEditError(null), setTextEdit(f)) : undefined,
     onBreaks: liveOwner ? () => (setEditError(null), setTextEdit('breaks')) : undefined,
+    onNotifyEmail: liveOwner ? () => (setEditError(null), setTextEdit('notifyEmail')) : undefined,
     onIdle: liveOwner && device ? (seconds: number) => void change(() => api.setIdleLock(device.id, seconds), () => void refresh()) : undefined,
     onRenameDevice: liveOwner && device ? () => (setEditError(null), setTextEdit('device')) : undefined,
     onSettings: live ? (patch: ShopSettingsPatch) => void saveSettings(patch) : undefined,
@@ -510,7 +511,7 @@ function ShopTextSheet({
   onClose,
   merchant,
 }: {
-  what: ShopField | 'breaks' | 'device';
+  what: ShopField | 'breaks' | 'device' | 'notifyEmail';
   shop: Shop | null;
   settings: ShopSettings | null;
   deviceLabel: string;
@@ -534,6 +535,18 @@ function ShopTextSheet({
           { key: 'after', label: 'Due after, in hours', value: String(b.afterMinutes / 60), max: 4, required: true, inputMode: 'tel' },
         ]}
         onSave={(v) => onSave(() => merchant.updateSettings({ breaks: { minutes: Math.round(Number(v.minutes)), afterMinutes: Math.round(Number(v.after) * 60) } }))}
+      />
+    );
+  }
+  if (what === 'notifyEmail') {
+    const n = settings?.notifications ?? { endOfDay: true, email: null };
+    return (
+      <TextSheet
+        {...common}
+        title="Send the summary to"
+        det="The end-of-day summary goes here when the day is closed. Leave it empty to stop it."
+        fields={[{ key: 'email', label: 'Email', value: n.email ?? '', max: 200, inputMode: 'email' }]}
+        onSave={(v) => onSave(() => merchant.updateSettings({ notifications: { ...n, email: v.email!.trim() || null } }))}
       />
     );
   }
