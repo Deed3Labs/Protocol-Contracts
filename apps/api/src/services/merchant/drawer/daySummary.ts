@@ -44,7 +44,16 @@ export function daySummaryText(r: DayReport, input: { shop: string; nameOf: (id:
     '',
     'THE DRAWER',
     ...drawer.map(line),
-    ...(tips.size ? ['', 'TIPS BY PERSON', ...[...tips].map(([id, c]) => `${input.nameOf(id)}  ${money(c)}`)] : []),
+    ...(tips.size
+      ? [
+          '',
+          r.tipsHours ? 'TIPS BY PERSON, SHARED BY HOURS ON SHIFT' : 'TIPS BY PERSON',
+          ...[...tips].map(([id, c]) => {
+            const m = r.tipsHours?.find((h) => h.staffId === id)?.minutes;
+            return `${input.nameOf(id)}  ${money(c)}${m ? ` (${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m)` : ''}`;
+          }),
+        ]
+      : []),
     ...(input.captureFailures ? ['', `${input.captureFailures} card ${input.captureFailures === 1 ? 'payment' : 'payments'} couldn’t be captured. Open Close the day on the tablet for what to do.`] : []),
     '',
     'Sent by Clear when the day was closed. Turn it off in Settings › Notifications.',

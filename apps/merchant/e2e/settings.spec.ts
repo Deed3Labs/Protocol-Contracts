@@ -50,7 +50,7 @@ test('Discounts: a limit, and a new code', async ({ page }) => {
   await expect(page.getByText('20% off tires')).toBeVisible();
 });
 
-test('Tips: percentages, and a preset added', async ({ page }) => {
+test('Tips: percentages, a preset added, and split by hours on shift', async ({ page }) => {
   await open(page, 'tips');
   await expect(page.getByRole('button', { name: 'Change $5' })).toBeVisible();
   await page.getByRole('button', { name: 'Percentages' }).click();
@@ -58,7 +58,10 @@ test('Tips: percentages, and a preset added', async ({ page }) => {
   await page.getByRole('button', { name: '+ Add' }).click();
   await amount(page, 'Add a tip', '22');
   await expect(page.getByRole('button', { name: 'Change 22%' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Split by hours on shift' })).toBeDisabled();
+  const hours = page.getByRole('button', { name: 'Split by hours on shift' });
+  await hours.click();
+  await expect(hours).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('shared at close by each person’s time on shift')).toBeVisible();
 });
 
 test('Tax: the shop’s own address, and prices with tax included', async ({ page }) => {
