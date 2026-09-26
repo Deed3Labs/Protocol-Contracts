@@ -151,8 +151,8 @@ Decided 2026-09-24.
 - **What a live shop sees.** The figure, the cycle, where it sits, the cash account and its
   payouts, all from the payout position; Withdraw and the signer grant are live. Card deposits,
   the drawer's cash and tips, the nightly reconciliation ("Checked against Stripe", below), and
-  the banks withdrawals go to ("Linking a bank", below). Receiving by ACH and withdrawing to a bank
-  by ACH have no backend yet. Preview: `/payouts?preview=1&screen=none|paying|year|counter|withdraw|from|to|sending|done|
+  the banks withdrawals go to and withdrawing to them ("Linking a bank" and "Withdrawing to a bank",
+  below). Receiving by ACH has no backend yet. Preview: `/payouts?preview=1&screen=none|paying|year|counter|withdraw|from|to|sending|done|
   breakdown|receive|destinations|add-bank`; `&live=1` for the live path.
 
 ## Settings
@@ -704,4 +704,23 @@ reason for any difference, is written to `e2e/.report/index.html`.
 - **Dev's Plaid is sandbox and its Bridge key is live**, so only Plaid's side can be tried on dev
   without creating a real Bridge account; tests stand in for both. In the mock, Plaid Link is
   skipped and picks Plaid's sandbox checking account.
+
+## Withdrawing to a bank
+
+- **One Withdraw, both hops.** Choosing the bank as where it ends up carries straight on: what's
+  owed is redeemed into the cash account (the shop's wallet, its USDC) as before, then Bridge is
+  asked for a transfer to the linked bank, answers with where to send the USDC, and the shop's
+  wallet sends it (signed by Clear's key on the wallet, as the redemption is). A redemption that
+  queued leaves nothing to send yet. Decided with the user 2026-09-26.
+- **Standard or same-day, the owner picks:** standard ACH is free and takes 1–3 business days;
+  same-day ACH carries Clear's 1% (Bridge's `developer_fee_percent`, `BRIDGE_INSTANT_WITHDRAW_FEE_PERCENT`),
+  as the member app's cash-out does. "Where does it end up?" lists both for a linked bank.
+- **Never says money moved when it didn't.** Each withdrawal is a row (migration 0019) written
+  before anything is asked, and the transfer is keyed to it, so a retry can't send twice. Nothing
+  is sent until Bridge has answered; a refusal, or a wallet that couldn't fund it, says so and that
+  nothing left the cash account. Sent ones are audited as `bank.withdrawal_sent`.
+- **Inert on dev, like the redemption:** it needs Clear's signing key on the shop's wallet
+  (`PRIVY_AUTHORIZATION_PRIVATE_KEY`, with `ZERODEV_PROJECT_ID` for gas). Without them the request
+  is recorded and the screen says it goes once Clear can sign. Bridge's `base` rail is Base mainnet,
+  so a real off-ramp also needs the shop on mainnet; dev is Base Sepolia.
 

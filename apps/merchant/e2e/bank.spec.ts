@@ -38,3 +38,20 @@ test('a manager sees the banks and can’t change them', async ({ page }) => {
   await expect(sheet.getByRole('button', { name: 'Add a bank account' })).toBeDisabled();
   await expect(sheet.getByRole('button', { name: /Remove/ })).toHaveCount(0);
 });
+
+test('withdrawing to the linked bank, same-day, with its 1%', async ({ page }) => {
+  await page.clock.setFixedTime(REFERENCE_NOW);
+  await page.goto('/payouts?preview=1&live=1');
+  await settle(page);
+  await page.getByText('Withdraw', { exact: true }).first().click();
+  for (const k of '100') await page.getByRole('button', { name: k, exact: true }).first().click();
+  await page.locator('.c-leg').nth(1).click();
+  const to = page.getByRole('dialog', { name: 'Where does it end up?' });
+  await expect(to).toContainText('Standard ACH');
+  await to.getByRole('button', { name: /Same-day ACH/ }).click();
+  await expect(page.locator('.c-leg').nth(1)).toContainText('Today · 1%');
+  await expect(page.getByText('1% · $1.00')).toBeVisible();
+  await expect(page.getByText('$99.00')).toBeVisible();
+  await page.getByRole('button', { name: /^Withdraw to/ }).click();
+  await expect(page.getByText(/1–3 business days to the bank|to the bank/).first()).toBeVisible();
+});

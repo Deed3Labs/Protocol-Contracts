@@ -13,6 +13,7 @@ import { settleRefund } from '../services/refundSettlement.js';
 import { DEFAULT_IDLE_LOCK_SECONDS, deviceStore } from '../services/merchant/deviceStore.js';
 import { sessionStore } from '../services/merchant/sessionStore.js';
 import { endShift, startShift } from '../services/merchant/shifts/shiftService.js';
+import { liveOfframp, withdrawToBank, type BankWithdrawal } from '../services/merchant/bank/offramp.js';
 import { pinLockedHandler } from '../services/merchant/security/pinGuard.js';
 import { staffStore } from '../services/merchant/staffStore.js';
 import { audit } from '../services/merchant/security/audit.js';
@@ -713,9 +714,23 @@ merchantRouter.post(
       }
     }
 
+    /*
+     * The second hop, for a bank: once the money is in the cash account (it was already, or the
+     * redemption paid it in just now), it carries straight on to the linked bank through Bridge.
+     * A redemption that queued instead leaves nothing to send yet.
+     */
+    let bank: BankWithdrawal | null = null;
+    const bankAccountId = typeof req.body?.bankAccountId === 'string' ? req.body.bankAccountId : null;
+    const speed = req.body?.speed === 'same_day' ? 'same_day' : 'standard';
+    if (destination === 'bank' && bankAccountId && (source === 'cash' || (redemption?.ok && redemption.paidNow))) {
+      const d = await merchantDb();
+      if (d) bank = await withdrawToBank(d, liveOfframp(), { merchant, staffId: staff.id, bankAccountId, amountCents, speed });
+    }
+
     const position = await merchantProfileStore.payoutPosition(merchant);
     res.status(201).json({
       id: result.id,
+      ...(bank ? { bank } : {}),
       amountCents,
       source,
       destination,

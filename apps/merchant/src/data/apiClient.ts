@@ -464,6 +464,9 @@ export const api = {
     /** Owed money passes through the cash account; cash-account money goes straight out. */
     source: 'owed' | 'cash';
     destination: 'cash' | 'bank' | 'debit';
+    /** To a bank: which linked bank, and how fast (same-day carries 1%). */
+    bankAccountId?: string;
+    speed?: 'standard' | 'same_day';
   }): Promise<{
     id: string;
     amountCents: number;
@@ -490,6 +493,8 @@ export const api = {
     inCashAccount?: boolean;
     /** Why this is still only a request. Present only when the chain leg was tried and refused. */
     settlementNote?: string;
+    /** The bank hop, when it was tried: sent to Bridge, or why not. */
+    bank?: { id: string; state: string; feeCents: number; note: string | null };
   }> {
     return request('/api/merchant/payouts/withdraw', {
       method: 'POST',
