@@ -36,7 +36,7 @@ function switchesFromUrl(): Partial<MockSwitches> & { viewer?: string } {
     ...pick('stripe', ['connected', 'not_connected'] as const),
     ...pick('drawer', ['none', 'open', 'balanced', 'short', 'disagree', 'closed'] as const),
     ...pick('card', ['approve', 'decline'] as const),
-    ...pick('clear', ['approve', 'decline', 'wait'] as const),
+    ...pick('clear', ['approve', 'decline', 'wait', 'paying'] as const),
     ...pick('setup', ['done', 'new'] as const),
     ...pick('kyb', ['done', 'new'] as const),
     ...pick('receive', ['open', 'new'] as const),

@@ -495,6 +495,8 @@ merchantRouter.get(
       amountCents: charge.amountCents,
       splitInto: charge.splitInto,
       paidNow: charge.paidNow,
+      // The member pressed Pay now and their payment is going through: the counter says so.
+      payingNow: charge.status === 'resolving' && charge.payNow !== null,
       expiresAt: charge.expiresAt,
       openedAt: charge.openedAt,
       resolvedAt: charge.resolvedAt,

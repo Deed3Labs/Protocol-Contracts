@@ -203,7 +203,7 @@ export function PhoneStatus({
               </div>
               <div className="c-mid">
                 <p className="c-amt">{usd(s.amountCents)}</p>
-                <p className="c-det c-sub">{approved ? (s.howPaid?.replace(/, the first on .*$/, '') ?? 'Approved') : 'Approving on their phone'}</p>
+                <p className="c-det c-sub">{approved ? (s.howPaid?.replace(/, the first on .*$/, '') ?? 'Approved') : (s.waitingLine ?? 'Approving on their phone')}</p>
               </div>
               <div className={cx('c-mc-steps', approved && 'c-done')} style={{ ['--n' as string]: s.steps.length }}>
                 {s.steps.map((st) => (
@@ -271,9 +271,12 @@ export function PhoneStatus({
                   <button type="button" className="c-btn" onClick={onSendAgain}>
                     Send again
                   </button>
-                  <button type="button" className="c-btn" onClick={onCancel}>
-                    Cancel
-                  </button>
+                  {/* Not while they're paying now: the payment is already going through. */}
+                  {onCancel && (
+                    <button type="button" className="c-btn" onClick={onCancel}>
+                      Cancel
+                    </button>
+                  )}
                 </div>
               </>
             )}

@@ -455,6 +455,8 @@ export interface ChargeState {
   steps: { t: string; det: string; state: 'd' | 'on' | '' }[];
   /** Approved: "4 payments of $235.00, the first on Oct 6" */
   howPaid?: string;
+  /** Waiting, when there is more to say than "approving": "Paying now, from their Clear cash". */
+  waitingLine?: string;
 }
 
 function StateCell({ s, foot }: { s: ChargeState; foot: ReactNode }) {
@@ -493,7 +495,7 @@ function StateCell({ s, foot }: { s: ChargeState; foot: ReactNode }) {
           <div className="c-mid">
             <p className="c-amt">{usd(s.amountCents)}</p>
             <p className="c-det c-sub">
-              {s.status === 'approved' ? (s.howPaid ?? 'Approved on their phone') : 'Approving on their phone, where they choose the split'}
+              {s.status === 'approved' ? (s.howPaid ?? 'Approved on their phone') : (s.waitingLine ?? 'Approving on their phone, where they choose how to pay')}
             </p>
           </div>
           <div className={cx('c-mc-steps', s.status === 'approved' && 'c-done')} style={{ ['--n' as string]: s.steps.length }}>
@@ -540,9 +542,11 @@ export function WaitingView({
               <button type="button" className="c-btn" onClick={onSendAgain}>
                 Send again
               </button>
-              <button type="button" className="c-btn" onClick={onCancel}>
-                Cancel charge
-              </button>
+              {onCancel && (
+                <button type="button" className="c-btn" onClick={onCancel}>
+                  Cancel charge
+                </button>
+              )}
             </span>
           </div>
         }
