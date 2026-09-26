@@ -502,7 +502,8 @@ input.c-st-time {
 .c-mc-track,
 .c-ck-prog,
 .c-sa-bar,
-.c-ov-bar {
+.c-ov-bar,
+.c-iv-level .c-tr {
   border: 1px solid var(--ink-28);
   box-sizing: border-box;
 }

@@ -421,7 +421,8 @@ function StockTrack({ i }: { i: InvItem }) {
     <div className="c-iv-level">
       <div className="c-tr">
         {s.held > 0 && <i className="c-held" style={{ width: pct(s.held) }} />}
-        <i className="c-free" style={{ width: pct(free(i)) }} />
+        {/* Free starts where held ends (the reference's 12.5% is its own 2 held of 16). */}
+        <i className="c-free" style={{ left: pct(s.held), width: pct(free(i)) }} />
         {s.onOrder ? <i className="c-order" style={{ left: pct(s.shelf), width: pct(s.onOrder) }} /> : null}
         <span className="c-mk" style={{ left: pct(s.reorderAt) }}>
           <b>Reorder at {s.reorderAt}</b>
