@@ -323,7 +323,8 @@ export default function NewChargePage() {
 
   const [f, setF] = useState<Flow>(() => ({
     ...BLANK,
-    mode: preview && params.get('items') ? 'items' : BLANK.mode,
+    // `?items=1`: Home's Build cart and the + sheet's cart open on the items, live or in the preview.
+    mode: params.get('items') ? 'items' : BLANK.mode,
     ...preset,
   }));
   const set = useCallback((p: Partial<Flow>) => setF((cur) => ({ ...cur, ...p })), []);

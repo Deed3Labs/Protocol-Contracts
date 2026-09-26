@@ -59,3 +59,25 @@ test('a counter shift can’t import', async ({ page }) => {
   await open(page, 'jen');
   await expect(page.getByRole('button', { name: 'Import a spreadsheet' })).toHaveCount(0);
 });
+
+test('an item in a category of the shop’s own is listed under it, and can be filtered to', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: 'Import a spreadsheet' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Import a spreadsheet' });
+  const csv = ['Item,Size,Category,Price,Qty', 'Hair Fertilizer,9.5oz,Hair care,24.99,15'].join('\r\n');
+  await sheet.locator('input[type=file]').setInputFiles({ name: 'salon.csv', mimeType: 'text/csv', buffer: Buffer.from(csv) });
+  await sheet.getByRole('button', { name: 'Import 1 item' }).click();
+  await sheet.getByRole('button', { name: 'Done' }).click();
+  await expect(sheet).toHaveCount(0);
+  // Sorted by category, the default: it has its own group, after the reference's four.
+  await expect(page.getByText('Hair Fertilizer')).toBeVisible();
+  await expect(page.getByText('Hair care', { exact: true }).first()).toBeVisible();
+  const filter = page.getByRole('dialog', { name: 'Filter items' });
+  await expect(async () => {
+    if (!(await filter.isVisible())) await page.getByRole('button', { name: /All items/ }).click();
+    await expect(filter).toBeVisible({ timeout: 1000 });
+  }).toPass();
+  await filter.getByRole('button', { name: 'Hair care', exact: true }).click();
+  await expect(page.getByText('Hair Fertilizer')).toBeVisible();
+  await expect(page.getByText('Michelin Defender2')).toHaveCount(0);
+});

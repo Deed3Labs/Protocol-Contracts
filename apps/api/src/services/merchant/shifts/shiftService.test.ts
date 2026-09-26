@@ -131,6 +131,30 @@ describe('hours', () => {
     expect(next.booked[staff.jen]![3]).toEqual({ from: '08:00', to: '16:00' });
   });
 
+  test('a week ahead: that week only, or every week from then; a week gone is refused', async () => {
+    const { merchant, staff } = await seedShop(db);
+    const monday = mondayOf(businessDate(TZ));
+    const ahead = addDays(monday, 14);
+    await saveStaffHours(db, { merchant, staffId: staff.jen, body: { hours: WEEKDAYS, once: false } });
+
+    // A one-off two weeks ahead changes that week and no other.
+    const off = { days: WEEKDAYS.days.filter((d) => d.day !== 0) };
+    const once = await saveStaffHours(db, { merchant, staffId: staff.jen, body: { hours: off, once: true, weekOf: addDays(ahead, 2) } });
+    expect(once.thisWeek).toEqual(off);
+    expect((await staffWeek(db, merchant, ahead)).booked[staff.jen]![0]).toBeNull();
+    expect((await staffWeek(db, merchant, addDays(ahead, 7))).booked[staff.jen]![0]).toEqual({ from: '08:00', to: '16:00' });
+    expect((await personHours(db, merchant, staff.jen, ahead)).thisWeek).toEqual(off);
+    expect((await personHours(db, merchant, staff.jen)).thisWeek).toBeNull();
+
+    // Every week from three weeks ahead: the weeks before keep the old hours.
+    const later = { days: WEEKDAYS.days.slice(0, 2) };
+    await saveStaffHours(db, { merchant, staffId: staff.jen, body: { hours: later, once: false, weekOf: addDays(monday, 21) } });
+    expect((await staffWeek(db, merchant, addDays(monday, 7))).booked[staff.jen]![3]).toEqual({ from: '08:00', to: '16:00' });
+    expect((await staffWeek(db, merchant, addDays(monday, 21))).booked[staff.jen]![3]).toBeNull();
+
+    await expect(saveStaffHours(db, { merchant, staffId: staff.jen, body: { hours: off, once: true, weekOf: addDays(monday, -7) } })).rejects.toThrow('That week has gone');
+  });
+
   test('a date the shop is closed shows in its week', async () => {
     const { merchant } = await seedShop(db);
     const monday = mondayOf(businessDate(TZ));

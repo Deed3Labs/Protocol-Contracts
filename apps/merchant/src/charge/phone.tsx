@@ -4,6 +4,7 @@ import { Chip } from '@/brand/controls';
 import { IconBack, IconCloseLg } from '@/brand/icons';
 import { IconText } from '@/brand/chargeIcons';
 import { Sheet, cx, initials } from '@/brand/ui';
+import { withSeps } from '@/shell/chrome';
 import { chargeLink, type ChargeState } from '@/charge/clear';
 import { BigLines, Breakdown, ItemList, Keypad, SearchItems, type ItemsProps, type FeeTerms } from '@/charge/start';
 import { itemCount, totals, usd, type CartLine, type Item } from '@/charge/model';
@@ -20,7 +21,7 @@ export function PhoneBack({ title, back, onExit, right }: { title: ReactNode; ba
         {back ? <IconBack /> : <IconCloseLg />}
       </button>
       <p className="c-panetitle" style={{ fontSize: 15 }}>
-        {title}
+        {withSeps(title)}
       </p>
       {right}
     </div>

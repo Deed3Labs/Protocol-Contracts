@@ -69,6 +69,10 @@ export interface ShopDay {
 export interface Week {
   /** "Sep 21 – 27" */
   label: string;
+  /** "This week", "Next week", "Last week" or "Week of Oct 5". This week when not given. */
+  title?: string;
+  /** The Monday it starts, as the API names it (a live week only), so the arrows can move it. */
+  weekOf?: string;
   days: ShopDay[];
   /** Index of today in `days`, and the time now. */
   today: number;
@@ -84,7 +88,26 @@ export type Seg = { cls: string; left: number; width: number };
 const pct = (x: number) => Math.round(x * 1000) / 10;
 
 /** Where a day's opening hours are covered by at least one booking, and where not. */
-export function cover(week: Week, day: number): { cov: Seg[]; gap: Seg[]; gaps: [Hour, Hour][]; full: boolean; none: boolean } {
+/**
+ * A day's timeline: the shop's open hours, widened to take in anyone booked before opening or after
+ * closing (setting up, cashing up), on whole hours.
+ */
+export function dayRange(week: Week, day: number): [Hour, Hour] {
+  const [a, b] = week.days[day].open!;
+  let lo = a;
+  let hi = b;
+  for (const d of Object.values(week.booked)) {
+    const s = d[day];
+    if (s) {
+      lo = Math.min(lo, s[0]);
+      hi = Math.max(hi, s[1]);
+    }
+  }
+  return [Math.floor(lo), Math.ceil(hi)];
+}
+
+/** Cover while the shop is open, drawn against `range` (the day's timeline; the open hours if not given). */
+export function cover(week: Week, day: number, range?: [Hour, Hour]): { cov: Seg[]; gap: Seg[]; gaps: [Hour, Hour][]; full: boolean; none: boolean } {
   const open = week.days[day].open;
   if (!open) return { cov: [], gap: [], gaps: [], full: false, none: false };
   const [a, b] = open;
@@ -107,8 +130,9 @@ export function cover(week: Week, day: number): { cov: Seg[]; gap: Seg[]; gaps: 
     at = Math.max(at, e);
   }
   if (at < b) gaps.push([at, b]);
-  const len = b - a;
-  const seg = (cls: string) => ([s, e]: [Hour, Hour]) => ({ cls, left: pct((s - a) / len), width: pct((e - s) / len) });
+  const [ra, rb] = range ?? [a, b];
+  const len = rb - ra;
+  const seg = (cls: string) => ([s, e]: [Hour, Hour]) => ({ cls, left: pct((s - ra) / len), width: pct((e - s) / len) });
   const full = gaps.length === 0;
   return {
     cov: merged.map(seg(full ? 'cov full' : 'cov')),
@@ -250,13 +274,31 @@ export function hoursToApi(h: Hours): StaffHours {
 }
 
 /** The Staff page's week from the API's: the shop's hours, who's booked, and now. */
+/** The Monday of a YYYY-MM-DD date. */
+export function mondayOf(date: string): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
+/** A YYYY-MM-DD date moved by whole weeks. */
+export function addWeeks(date: string, n: number): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 7 * n);
+  return d.toISOString().slice(0, 10);
+}
+
 export function weekFromApi(w: StaffWeek, shifts: ShiftNow[], now = new Date()): Week {
   const [, m0, d0] = ymd(w.days[0]!.date);
   const [, m6, d6] = ymd(w.days[6]!.date);
-  const today = w.days.findIndex((d) => d.date === w.today);
-  const onToday = today >= 0 ? today : 0;
+  const found = w.days.findIndex((d) => d.date === w.today);
+  // Another week: no day is today. A later one hasn't started (-1); an earlier one is all past (7).
+  const today = found >= 0 ? found : w.days[0]!.date > w.today ? -1 : 7;
+  const onToday = found >= 0 ? found : 0;
+  const weeks = Math.round((Date.parse(w.weekOf) - Date.parse(mondayOf(w.today))) / (7 * 86_400_000));
+  const title = weeks === 0 ? 'This week' : weeks === 1 ? 'Next week' : weeks === -1 ? 'Last week' : `Week of ${MONTH[m0 - 1]} ${d0}`;
   const unbooked: Record<string, Hour> = {};
-  for (const s of shifts) {
+  for (const s of found >= 0 ? shifts : []) {
     if (!w.booked[s.staffId]?.[onToday]) {
       const t = new Date(s.startedAt);
       unbooked[s.staffId] = t.getHours() + t.getMinutes() / 60;
@@ -264,8 +306,10 @@ export function weekFromApi(w: StaffWeek, shifts: ShiftNow[], now = new Date()):
   }
   return {
     label: m0 === m6 ? `${MONTH[m0 - 1]} ${d0} – ${d6}` : `${MONTH[m0 - 1]} ${d0} – ${MONTH[m6 - 1]} ${d6}`,
+    title,
+    weekOf: w.weekOf,
     days: w.days.map((d, i) => ({ short: DAY_SHORT[i]!, long: DAY_LONG[i]!, date: ymd(d.date)[2], open: d.open ? spanOf(d.open) : null })),
-    today: onToday,
+    today,
     now: now.getHours() + now.getMinutes() / 60,
     booked: Object.fromEntries(Object.entries(w.booked).map(([id, days]) => [id, days.map((d) => (d ? spanOf(d) : null))])),
     unbooked,

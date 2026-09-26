@@ -26,7 +26,8 @@ export interface InvItem {
   name: string;
   /** "225/65R17 · all-season" */
   detail: string;
-  category: 'Tires' | 'Brakes' | 'Parts' | 'Services';
+  /** The reference's four, or any the shop uses. */
+  category: string;
   kind: ItemKind;
   priceCents: number;
   /** What the shop pays. Owners and managers only. */
@@ -197,3 +198,15 @@ export function historyEntry(m: StockMovement): InvItem['history'] extends (infe
 
 /** What's on the shelf at cost, for the owner's note: only items with a cost count. */
 export const shelfAtCost = (items: InvItem[]) => items.reduce((sum, i) => sum + (i.stock && i.costCents !== undefined ? i.stock.shelf * i.costCents : 0), 0);
+
+export const CATEGORIES: readonly string[] = ['Tires', 'Brakes', 'Parts', 'Services'];
+
+/**
+ * The shop's own categories, from its items: the reference's four first in their order, then any
+ * others A to Z. Not a fixed list, or an item in a category of the shop's own (a shop that isn't a
+ * tire shop) was counted but never listed.
+ */
+export function categoriesOf(items: { category: string }[]): string[] {
+  const all = [...new Set(items.map((i) => i.category).filter(Boolean))];
+  return [...CATEGORIES.filter((c) => all.includes(c)), ...all.filter((c) => !CATEGORIES.includes(c)).sort((a, b) => a.localeCompare(b))];
+}

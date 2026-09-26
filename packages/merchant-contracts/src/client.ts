@@ -93,7 +93,8 @@ export interface MerchantApi {
   /** The week that holds `date` (today when omitted): the shop's hours and who is booked. */
   staffWeek(date?: string): Promise<StaffWeek>;
   /** Owners and managers, or the person themselves. */
-  staffHours(staffId: string): Promise<PersonHours>;
+  /** As of the week holding `weekOf` (this week when not given). */
+  staffHours(staffId: string, weekOf?: string): Promise<PersonHours>;
   /** Owners and managers (a manager sets counter staff's hours and their own). */
   saveStaffHours(staffId: string, input: In<typeof SaveStaffHours>): Promise<PersonHours>;
 
