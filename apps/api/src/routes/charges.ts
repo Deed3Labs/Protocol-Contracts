@@ -134,7 +134,8 @@ chargesRouter.get('/:code', requireAuth, async (req: Request, res: Response) => 
   res.json(await memberView(charge));
 });
 
-chargesRouter.post('/:code/approve', requireAuth, async (req: Request, res: Response) => {
+// Approving opens a credit plan the member owes: a fresh Face ID, checked here as well as in the app.
+chargesRouter.post('/:code/approve', requireAuth, requireStepUp, async (req: Request, res: Response) => {
   const charge = await chargeStore.get(req.params.code);
   if (!charge) {
     res.status(404).json({ error: 'Not found', message: 'No such charge.' });
