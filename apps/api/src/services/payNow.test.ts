@@ -314,3 +314,108 @@ describe('refunding a charge paid now', async () => {
     Object.assign(refundChain, real);
   });
 });
+
+/*
+ * A dispute on a charge paid now: the shop's share is held from its Clear cash while it is open, and
+ * goes to the member if they win, back to the shop if not.
+ */
+describe('disputing a charge paid now', async () => {
+  const { refundChain } = await import('./paidNowRefund');
+  const { holdPaidNow, releasePaidNow } = await import('./disputes/paidNowDispute');
+  const { disputeStore } = await import('./disputes/disputeStore');
+  const { decodeFunctionData, erc20Abi } = await import('viem');
+  const CLEAR_WALLET = '0x5555555555555555555555555555555555555555';
+  let moves: { from: string; to: string; units: bigint }[] = [];
+  let holds: { state: string; detail: Record<string, unknown> | null }[] = [];
+  let shopCash = 1_000_000_000n;
+  let n = 0;
+  const real = { ...refundChain };
+  const realSetHold = disputeStore.setHold;
+
+  beforeEach(() => {
+    moves = [];
+    holds = [];
+    shopCash = 1_000_000_000n;
+    disputeStore.setHold = async (_t, state, detail) => {
+      holds.push({ state, detail });
+    };
+    Object.assign(refundChain, {
+      receipt: async () => ({ status: 1 }),
+      known: async () => false,
+      balance: async () => shopCash,
+      clearAddress: () => CLEAR_WALLET,
+      sendFromClear: async (_c: number, _t: string, to: string, units: bigint, onHash: (h: string) => Promise<void>) => {
+        await onHash(`0xc${++n}`);
+        moves.push({ from: 'clear', to: to.toLowerCase(), units });
+        return true;
+      },
+      shopWallet: async () => ({
+        address: SHOP,
+        send: async (_token: string, data: `0x${string}`) => {
+          const { args } = decodeFunctionData({ abi: erc20Abi, data });
+          moves.push({ from: 'shop', to: String(args[0]).toLowerCase(), units: args[1] as bigint });
+          return `0xs${++n}` as `0x${string}`;
+        },
+      }),
+    });
+  });
+  afterAll(() => {
+    Object.assign(refundChain, real);
+    disputeStore.setHold = realSetHold;
+  });
+
+  async function paid() {
+    const code = await raise();
+    await chargeStore.holdForPayNow(code, MEMBER, QUOTE);
+    await chargeStore.finishPaidNow(code, `0xpay${++n}`);
+    await chargeStore.markDisputed(code);
+    return (await chargeStore.get(code))!;
+  }
+  const dispute = (detail: Record<string, unknown> | null = null) =>
+    ({ token: `d${++n}`, heldDetail: detail, holdState: detail ? 'held' : null }) as any;
+
+  test('open: the shop’s share moves from its Clear cash into Clear’s hold', async () => {
+    const charge = await paid();
+    await holdPaidNow(dispute(), charge);
+    expect(moves).toEqual([{ from: 'shop', to: CLEAR_WALLET, units: 928_250_000n }]);
+    expect(holds.at(-1)).toMatchObject({ state: 'held', detail: { paidNow: true, heldCents: 92_825, pending: false } });
+  });
+
+  test('short in the shop’s cash: the hold waits, and nothing moves', async () => {
+    const charge = await paid();
+    shopCash = 100_000_000n;
+    await holdPaidNow(dispute(), charge);
+    expect(moves).toHaveLength(0);
+    expect(holds.at(-1)?.detail).toMatchObject({ pending: true });
+    expect(String(holds.at(-1)?.detail?.error)).toContain('$928.25 is needed');
+  });
+
+  test('a hold left mid-transfer is never sent again blind', async () => {
+    const charge = await paid();
+    await holdPaidNow(dispute({ paidNow: true, pending: true, holdTx: 'sending' }), charge);
+    expect(moves).toHaveLength(0);
+  });
+
+  test('member wins: the whole amount back from Clear, and the charge is refunded', async () => {
+    const charge = await paid();
+    await releasePaidNow(dispute({ paidNow: true, heldCents: 92_825, holdTx: '0xhold' }), charge, true);
+    expect(moves).toEqual([{ from: 'clear', to: MEMBER.toLowerCase(), units: 940_000_000n }]);
+    expect((await chargeStore.get(charge.code))!.status).toBe('refunded');
+  });
+
+  test('member wins without a hold: the shop’s share from the shop, Clear’s fee from Clear', async () => {
+    const charge = await paid();
+    await releasePaidNow(dispute({ paidNow: true, pending: true, holdTx: null }), charge, true);
+    expect(moves).toEqual([
+      { from: 'shop', to: MEMBER.toLowerCase(), units: 928_250_000n },
+      { from: 'clear', to: MEMBER.toLowerCase(), units: 11_750_000n },
+    ]);
+  });
+
+  test('shop wins: the held share goes back to the shop, and the charge stands', async () => {
+    const charge = await paid();
+    await releasePaidNow(dispute({ paidNow: true, heldCents: 92_825, holdTx: '0xhold' }), charge, false);
+    expect(moves).toEqual([{ from: 'clear', to: SHOP.toLowerCase(), units: 928_250_000n }]);
+    expect((await chargeStore.get(charge.code))!.status).toBe('approved');
+  });
+});
