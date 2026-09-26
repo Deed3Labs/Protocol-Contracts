@@ -1,5 +1,5 @@
 import type { ActivityItem } from '@/hooks/useClearTransactions';
-import type { CardTransaction, CreditRepaymentEntry } from '@/utils/apiClient';
+import type { CardTransaction, ChargePayment, CreditRepaymentEntry } from '@/utils/apiClient';
 import { categoryForMcc } from './mccCategory';
 import type { ActivityRow, ActivityKind, ActivitySource } from '@/lib/clearModel';
 
@@ -112,6 +112,41 @@ export const REPAYMENT_METHOD_LABEL: Record<CreditRepaymentEntry['method'], stri
   bank: 'Bank deposit',
 };
 
+const when = (ts: number) => {
+  const at = new Date(ts);
+  return {
+    date: at.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+    datetime: at.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }),
+  };
+};
+
+/** A shop paid now, from Ready to allocate: one row, named for the shop, for the whole amount. */
+export function chargePaymentRow(p: ChargePayment, ts: number): ActivityRow {
+  return {
+    id: `charge:${p.code}`,
+    name: p.merchantName,
+    ...when(ts),
+    kind: 'spending',
+    source: 'cash',
+    amount: -p.amountCents / 100,
+    paidFromLabel: 'Ready to allocate',
+    status: p.status === 'refunded' ? 'Refunded' : p.status === 'disputed' ? 'In dispute' : 'Paid now',
+  };
+}
+
+/** The same payment given back. */
+export function chargeRefundRow(p: ChargePayment, ts: number): ActivityRow {
+  return {
+    id: `charge-refund:${p.code}`,
+    name: `Refund from ${p.merchantName}`,
+    ...when(ts),
+    kind: 'deposit',
+    source: 'cash',
+    amount: p.amountCents / 100,
+    status: 'Refunded',
+  };
+}
+
 /**
  * A repayment as an Activity row.
  *
@@ -140,6 +175,7 @@ export function mergedActivityRows(
   cards: CardTransaction[],
   cardLast4?: string,
   repayments: CreditRepaymentEntry[] = [],
+  chargePayments: ChargePayment[] = [],
 ): ActivityRow[] {
   /*
    * An on-chain repayment is also a token transfer, and the chain feed shows it as one. The
@@ -148,10 +184,34 @@ export function mergedActivityRows(
    */
   const repaidTx = repayments.map((r) => r.txHash?.toLowerCase()).filter((h): h is string => Boolean(h));
   const isRepaymentTransfer = (item: ActivityItem) => repaidTx.some((hash) => item.id.toLowerCase().includes(hash));
+  /*
+   * Paying a shop now is two transfers in one transaction (the shop's share and Clear's fee), and a
+   * refund of it is two more coming back. The chain feed lists each as "Sent USDC" / "Received USDC";
+   * the member paid Mike's Tire $940, once. Those transfers are folded into one row a payment, and one
+   * a refund, dated by the transfers themselves.
+   */
+  const inTx = (item: ActivityItem, hashes: string[]) => hashes.some((hash) => item.id.toLowerCase().includes(hash));
+  const shopRows: { ts: number; row: ActivityRow }[] = [];
+  const folded = new Set<ActivityItem>();
+  for (const p of chargePayments) {
+    const paidTx = p.txHash ? [p.txHash.toLowerCase()] : [];
+    const refundTx = p.refundTxHashes.map((h) => h.toLowerCase());
+    const paidItems = items.filter((item) => inTx(item, paidTx));
+    const refundItems = items.filter((item) => inTx(item, refundTx));
+    [...paidItems, ...refundItems].forEach((item) => folded.add(item));
+    const paidTs = p.paidAt ? Date.parse(p.paidAt) : Math.min(...paidItems.map((i) => i.ts), Date.now());
+    shopRows.push({ ts: paidTs, row: chargePaymentRow(p, paidTs) });
+    // A refund shows once its money is seen arriving: that is when it happened for the member.
+    if (refundItems.length) {
+      const ts = Math.max(...refundItems.map((i) => i.ts));
+      shopRows.push({ ts, row: chargeRefundRow(p, ts) });
+    }
+  }
   return [
-    ...items.filter((item) => !isRepaymentTransfer(item)).map((item) => ({ ts: item.ts, row: toActivityRow(item) })),
+    ...items.filter((item) => !isRepaymentTransfer(item) && !folded.has(item)).map((item) => ({ ts: item.ts, row: toActivityRow(item) })),
     ...cards.map((tx) => ({ ts: Date.parse(tx.at), row: cardTransactionRow(tx, cardLast4) })),
     ...repayments.map((entry) => ({ ts: Date.parse(entry.at), row: repaymentRow(entry) })),
+    ...shopRows,
   ]
     .sort((a, b) => b.ts - a.ts)
     .map((entry) => entry.row);

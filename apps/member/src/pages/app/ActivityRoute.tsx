@@ -4,6 +4,7 @@ import { ACTIVITY_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { mergedActivityRows } from '@/lib/activityMapping';
 import { useCreditRepayments } from '@/hooks/useCreditRepayments';
+import { useChargePayments } from '@/hooks/useChargePayments';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { onChainStale } from '@/lib/chainStale';
@@ -65,6 +66,8 @@ export default function ActivityRoute() {
   const [cards, setCards] = useRemembered<CardTransaction[]>(`cardtx:${walletKey(address)}`, []);
   // Every repayment, whichever way it was made, listed alongside what it paid for.
   const repayments = useCreditRepayments(address);
+  // Shops paid now: one row each, in place of the transfers they were made of.
+  const chargePayments = useChargePayments(address);
   const [pendingClaim, setPendingClaim] = useState<PendingClaim | undefined>(undefined);
   const [moved, setMoved] = useState<Record<string, string>>({});
   const [grouping, setGrouping] = useState(true);
@@ -137,7 +140,7 @@ export default function ActivityRoute() {
          * shows up, and it was on-chain items alone — so a card purchase counted towards the cycle
          * total, the category bar and the merchant list, then appeared nowhere underneath them.
          */
-        rows: mergedActivityRows(items, cards, undefined, repayments),
+        rows: mergedActivityRows(items, cards, undefined, repayments, chargePayments),
         cycleSpend,
         categories,
         merchants,

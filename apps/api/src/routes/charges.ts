@@ -92,6 +92,31 @@ chargesRouter.post('/', async (req: Request, res: Response) => {
   });
 });
 
+/**
+ * The member's own charges paid now, for Activity: one row a payment (and one a refund), in place of
+ * the USDC transfers each was made of. The transaction hashes are what lets the app fold those away.
+ */
+chargesRouter.get('/', requireAuth, async (req: Request, res: Response) => {
+  const wallet = req.auth?.walletAddress;
+  if (!wallet) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const rows = await chargeStore.listPaidNowByMember(wallet);
+  const hash = (h: string | null) => (h && h.startsWith('0x') ? h : null);
+  res.json({
+    payments: rows.map((c) => ({
+      code: c.code,
+      merchantName: c.merchantName,
+      amountCents: c.amountCents,
+      status: c.status,
+      paidAt: c.resolvedAt,
+      txHash: c.txHash,
+      refundTxHashes: [hash(c.refundLegs.shop), hash(c.refundLegs.clear)].filter((h): h is string => Boolean(h)),
+    })),
+  });
+});
+
 /** The member opens it. Also what the merchant's "waiting" state is watching. */
 chargesRouter.get('/:code', requireAuth, async (req: Request, res: Response) => {
   const charge = await chargeStore.get(req.params.code);

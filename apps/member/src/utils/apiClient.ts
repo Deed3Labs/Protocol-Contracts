@@ -2817,6 +2817,24 @@ export async function getCreditRepayments(wallet: string): Promise<CreditRepayme
   return r.error || !r.data ? [] : r.data.repayments;
 }
 
+/** A shop charge the member paid now, from their Clear cash — for Activity. */
+export interface ChargePayment {
+  code: string;
+  merchantName: string;
+  amountCents: number;
+  /** `refunded` once the shop refunded it; `disputed` while a dispute is open. */
+  status: string;
+  paidAt: string | null;
+  txHash: string | null;
+  /** The transfers that brought a refund back, when there was one. */
+  refundTxHashes: string[];
+}
+
+export async function getChargePayments(): Promise<ChargePayment[]> {
+  const r = await apiRequest<{ payments: ChargePayment[] }>('/api/charges');
+  return r.error || !r.data ? [] : r.data.payments;
+}
+
 /** Record a repayment the member made on chain. The server reads the amount from the transaction. */
 export async function recordCreditRepayment(
   wallet: string,

@@ -7,6 +7,7 @@ import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { mergedActivityRows } from '@/lib/activityMapping';
 import { useCreditRepayments } from '@/hooks/useCreditRepayments';
+import { useChargePayments } from '@/hooks/useChargePayments';
 import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
@@ -73,6 +74,8 @@ export default function HomeRoute() {
   const [cards, setCards] = useRemembered<CardTransaction[]>(`cardtx:${walletKey(address)}`, []);
   // Every repayment, whichever way it was made, listed alongside what it paid for.
   const repayments = useCreditRepayments(address);
+  // Shops paid now: one row each, in place of the transfers they were made of.
+  const chargePayments = useChargePayments(address);
   const repay = useCreditRepay();
   const payPlan = usePayPlan();
   const setSplit = useSetPlanSplit();
@@ -170,7 +173,7 @@ export default function HomeRoute() {
      * The newest four of EVERYTHING, not the newest four transfers. A member who paid for lunch on
      * the card and then sent a friend $20 should see both, in the order they happened.
      */
-    ...(txLoading ? {} : { recent: mergedActivityRows(items, cards, undefined, repayments).slice(0, 4) }),
+    ...(txLoading ? {} : { recent: mergedActivityRows(items, cards, undefined, repayments, chargePayments).slice(0, 4) }),
     ...(credit?.complete
       ? {
           // Pending card holds count as used: a live authorization is money this member cannot

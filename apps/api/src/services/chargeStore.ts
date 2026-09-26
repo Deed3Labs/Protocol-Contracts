@@ -571,6 +571,24 @@ export const chargeStore = {
     return (r.rowCount ?? 0) > 0;
   },
 
+  /**
+   * A member's charges they paid now, newest first: what their Activity shows as one payment to the
+   * shop rather than the two USDC transfers it was made of (and one refund, when there was one).
+   */
+  async listPaidNowByMember(wallet: string, limit = 100): Promise<ChargeRow[]> {
+    const pool = getPostgresPool();
+    if (!pool) return [];
+    await ensureTables();
+    const r = await pool.query<DbRow>(
+      `SELECT ${COLUMNS} FROM ${TABLE}
+        WHERE member_wallet = $1 AND paid_now
+        ORDER BY resolved_at DESC NULLS LAST
+        LIMIT $2`,
+      [normalizeWallet(wallet), limit],
+    );
+    return r.rows.map(toRow);
+  },
+
   /** Mark a charge refunded once the refund settles. */
   async markRefunded(code: string): Promise<void> {
     const pool = getPostgresPool();

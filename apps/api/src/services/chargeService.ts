@@ -667,8 +667,8 @@ export async function reconcileCharges(olderThanSeconds = 120): Promise<Reconcil
       if (planId === undefined) {
         await alertOps({
           key: `charge:${charge.code}:no-plan`,
-          subject: `Charge ${charge.code}: approved on chain with no plan`,
-          body: `Transaction ${charge.txHash} succeeded but emitted no PlanOpened. The charge is left resolving; check TermIssuer for a plan for ${charge.memberWallet} and record it, or release the charge if none exists.`,
+          subject: `Charge ${charge.code}: mined without PlanOpened`,
+          body: `Transaction ${charge.txHash} succeeded but emitted no PlanOpened. The charge is left resolving; check TermIssuer for a plan for ${charge.memberWallet} and record it, or set the charge back to pending if none exists.`,
         });
         summary.unknown += 1;
         continue;
