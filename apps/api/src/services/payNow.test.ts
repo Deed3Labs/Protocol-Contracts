@@ -291,7 +291,7 @@ describe('refunding a charge paid now', async () => {
     await chargeStore.setRefundLeg(charge.code, 'shop', 'sending', null);
     const r = await settlePaidNowRefund((await chargeStore.get(charge.code))!);
     expect(r.ok).toBe(false);
-    expect(r.reason).toContain('needs a look');
+    expect(r.reason).toContain('Clear has been told');
     expect(sent).toHaveLength(0);
   });
 
@@ -472,5 +472,42 @@ describe('disputing a charge paid now', async () => {
     expect(await releasePaidNow(d, charge, true)).toBe(false);
     expect(moves).toHaveLength(0);
     expect(String(holds.at(-1)!.detail!.release && (holds.at(-1)!.detail!.release as any).error)).toContain('Needs a person');
+  });
+});
+
+describe('telling Clear’s team when money needs a person', async () => {
+  const { alertOps } = await import('./opsAlert');
+  const { sendNotificationService } = await import('./sendNotificationService');
+  const realSend = sendNotificationService.sendEmail;
+  let mails: { to: string; subject: string }[] = [];
+  beforeEach(() => {
+    mails = [];
+    sendNotificationService.sendEmail = (async (p: { to: string; subject: string }) => {
+      mails.push({ to: p.to, subject: p.subject });
+      return { status: 'sent' };
+    }) as never;
+  });
+  afterAll(() => {
+    sendNotificationService.sendEmail = realSend;
+    delete process.env.OPS_ALERT_EMAIL;
+  });
+
+  test('emailed to every address in OPS_ALERT_EMAIL, once per thing', async () => {
+    process.env.OPS_ALERT_EMAIL = 'ops@example.com, lead@example.com';
+    await alertOps({ key: 'refund:ABC:shop', subject: 'Refund stuck', body: 'Look' });
+    await alertOps({ key: 'refund:ABC:shop', subject: 'Refund stuck', body: 'Look' });
+    expect(mails).toEqual([
+      { to: 'ops@example.com', subject: '[Clear] Refund stuck' },
+      { to: 'lead@example.com', subject: '[Clear] Refund stuck' },
+    ]);
+    // A different thing is its own alert, to everyone again.
+    await alertOps({ key: 'refund:ABC:clear', subject: 'Another', body: 'Look' });
+    expect(mails).toHaveLength(4);
+  });
+
+  test('without an address it is only logged', async () => {
+    delete process.env.OPS_ALERT_EMAIL;
+    await alertOps({ key: 'x:1', subject: 'S', body: 'B' });
+    expect(mails).toHaveLength(0);
   });
 });
