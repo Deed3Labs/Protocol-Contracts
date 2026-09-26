@@ -28,7 +28,7 @@ async function run(res: Response, fn: (db: NonNullable<Awaited<ReturnType<typeof
 }
 const m = (req: Request) => req.merchant!.merchant;
 
-router.post('/bank/link-token', requireMerchant, requireOwner, (req, res) => run(res, () => bankLinkToken(plaidBank(), m(req))));
+router.post('/bank/link-token', requireMerchant, requireOwner, (req, res) => run(res, (db) => bankLinkToken(db, { plaid: plaidBank(), rail: bridgeRail() }, m(req))));
 router.post('/bank/accounts', requireMerchant, requireOwner, (req, res) => run(res, (db) => addBank(db, { plaid: plaidBank(), rail: bridgeRail() }, { merchant: m(req), staffId: req.merchant!.staff.id, body: req.body })));
 router.get('/bank/accounts', requireMerchant, requireManager, (req, res) => run(res, (db) => bankAccounts(db, m(req))));
 router.delete('/bank/accounts/:id', requireMerchant, requireOwner, (req, res) => run(res, (db) => removeBank(db, bridgeRail(), { merchant: m(req), staffId: req.merchant!.staff.id, id: String(req.params.id) })));

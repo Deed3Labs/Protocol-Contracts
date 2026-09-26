@@ -3,6 +3,7 @@ import { AddBank, type BankAccount } from '@clear/merchant-contracts';
 import { Configuration, CountryCode, DepositoryAccountSubtype, PlaidApi, PlaidEnvironments, Products } from 'plaid';
 import type { Queryable } from '../../../db/db.js';
 import { bridge } from '../../billerPayoutService.js';
+import { getCustomerSnapshot } from '../../bridgeCustomerService.js';
 import { audit } from '../security/audit.js';
 
 /**
@@ -38,6 +39,12 @@ export interface PlaidBank {
 /** Where payouts go out from: registers a bank account with the rail that pays it. */
 export interface BankRail {
   readonly name: 'bridge' | 'lithic';
+  /**
+   * Whether the rail will take a bank for this customer yet. Bridge won't until the business has
+   * finished its verification (it refuses with "missing required address data" before then), so
+   * the owner is told before Plaid Link opens, not after they've signed in to their bank.
+   */
+  ready(customerId: string): Promise<boolean>;
   register(input: {
     customerId: string;
     ownerName: string;
@@ -100,6 +107,9 @@ export function plaidBank(): PlaidBank {
 export function bridgeRail(): BankRail {
   return {
     name: 'bridge',
+    async ready(customerId) {
+      return (await getCustomerSnapshot(customerId))?.status === 'active';
+    },
     async register(input) {
       const r = await bridge<{ id?: string }>(`/customers/${encodeURIComponent(input.customerId)}/external_accounts`, {
         method: 'POST',
@@ -138,9 +148,21 @@ export async function bankAccounts(q: Queryable, merchant: string): Promise<Bank
   return rows.map(toBank);
 }
 
-export async function bankLinkToken(plaid: PlaidBank, merchant: string): Promise<{ linkToken: string }> {
-  if (!plaid.configured()) throw new BankError('Linking a bank isn’t available yet.', 'not_configured', 503);
-  return { linkToken: await plaid.linkToken(merchant) };
+const NOT_YET = 'Bridge hasn’t finished verifying the business (Settings › Advanced). Link the bank once it has: Bridge pays out only to a verified business.';
+
+/** Whether the shop can link a bank now, and if not, the sentence that says why. */
+async function linkable(q: Queryable, rail: BankRail, merchant: string): Promise<string> {
+  const { rows } = await q.query<{ bridge_customer_id: string | null }>('SELECT bridge_customer_id FROM merchant.profiles WHERE merchant = $1', [merchant]);
+  const customerId = rows[0]?.bridge_customer_id;
+  if (!customerId) throw new BankError('Verify the business first (Settings › Advanced): Bridge pays out only to a verified business.', 'not_verified', 409);
+  if (!(await rail.ready(customerId))) throw new BankError(NOT_YET, 'not_verified', 409);
+  return customerId;
+}
+
+export async function bankLinkToken(q: Queryable, deps: { plaid: PlaidBank; rail: BankRail }, merchant: string): Promise<{ linkToken: string }> {
+  if (!deps.plaid.configured()) throw new BankError('Linking a bank isn’t available yet.', 'not_configured', 503);
+  await linkable(q, deps.rail, merchant);
+  return { linkToken: await deps.plaid.linkToken(merchant) };
 }
 
 /** The account chosen in Plaid Link: its numbers from Plaid, registered with the rail, and listed. */
@@ -154,6 +176,7 @@ export async function addBank(q: Queryable, deps: { plaid: PlaidBank; rail: Bank
   );
   const p = shop[0];
   if (!p?.bridge_customer_id) throw new BankError('Verify the business first (Settings › Advanced): Bridge pays out only to a verified business.', 'not_verified', 409);
+  if (!(await deps.rail.ready(p.bridge_customer_id))) throw new BankError(NOT_YET, 'not_verified', 409);
   if (!p.address_line1 || !p.address_city || !p.address_region || !p.address_postal_code) throw new BankError('Add the shop’s address first (Settings › Shop): the bank account is registered at it.', 'invalid', 409);
 
   const acct = await deps.plaid.accountFor(parsed.data.publicToken, parsed.data.accountId).catch((e: unknown) => {
