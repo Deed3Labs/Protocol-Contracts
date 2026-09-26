@@ -39,6 +39,12 @@ export function realMerchantApi(request: Transport): MerchantApi {
     setup: () => get('/setup'),
     kyb: () => get('/kyb'),
     startKyb: (input) => post('/kyb/start', input),
+    bankLinkToken: () => post('/bank/link-token'),
+    addBank: (input) => post('/bank/accounts', input),
+    bankAccounts: () => get('/bank/accounts'),
+    removeBank: async (bankId) => {
+      await send('DELETE', `/bank/accounts/${id(bankId)}`);
+    },
 
     // ---- Shifts and hours
     shifts: () => get('/shifts'),

@@ -195,3 +195,20 @@ export const StartKyb = z.object({
   email: z.string().trim().email('That isn’t an email address'),
 });
 
+/** A bank account the shop withdraws to: linked with Plaid, paid out to by Bridge. */
+export const BankAccount = z.object({
+  id: Id,
+  bankName: z.string(),
+  /** The last four digits. */
+  mask: z.string(),
+  subtype: z.enum(['checking', 'savings']),
+  addedAt: z.string(),
+});
+export type BankAccount = z.infer<typeof BankAccount>;
+/** What Plaid Link hands back: its public token, the account chosen, and the bank's name for display. */
+export const AddBank = z.object({
+  publicToken: z.string().min(1),
+  accountId: z.string().min(1),
+  institution: z.string().trim().max(120).nullable(),
+});
+

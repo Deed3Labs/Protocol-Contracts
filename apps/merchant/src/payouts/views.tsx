@@ -4,6 +4,7 @@ import { IconChevron, IconLock } from '@/brand/icons';
 import { cx, Sheet } from '@/brand/ui';
 import { usd } from '@/home/model';
 import { HIST_PAGE, type HistRow, type PayoutsModel } from '@/payouts/model';
+import type { BankAccount } from '@clear/merchant-contracts';
 
 /**
  * Payouts' blocks — docs/merchant-reference/clear-merchant-payouts.html: the figure a business
@@ -599,6 +600,76 @@ export function WhereWithdrawalsGoSheet({ bank, onAdd, onClose }: { bank: string
         <PickRow on={on === 0} t={bank} det="Business checking · verified" right={<span className="c-det" style={{ flexShrink: 0 }}>1–3 days · no fee</span>} onPick={() => setOn(0)} />
         <PickRow on={on === 1} t="Debit ••2208" det="Instant to your card" right={<span className="c-det" style={{ flexShrink: 0 }}>Minutes · 1.5%</span>} onPick={() => setOn(1)} />
       </div>
+    </Sheet>
+  );
+}
+
+/**
+ * Where withdrawals go, on a live shop: the bank accounts linked with Plaid. An owner adds one (Plaid
+ * Link: they sign in to the bank, so it's verified there and then) or removes one; a manager sees them.
+ */
+export function LiveWithdrawalsSheet({
+  banks,
+  onAdd,
+  onRemove,
+  busy,
+  error,
+  onClose,
+}: {
+  banks: BankAccount[] | null;
+  onAdd?: () => void;
+  onRemove?: (b: BankAccount) => void;
+  busy?: boolean;
+  error?: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet
+      title="Where withdrawals go"
+      onClose={onClose}
+      foot={
+        <>
+          <div className="c-footnote" style={{ borderTop: 0, marginTop: 0, paddingTop: 0 }}>
+            <p>Only an owner can change where money leaves to. You sign in to the bank with Plaid, which is how it’s verified: no numbers to type, no test deposits. It has to be in the business’s name.</p>
+          </div>
+          {error && (
+            <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s1) 0 0' }}>
+              {error}
+            </p>
+          )}
+          <button type="button" className="c-btn c-btn-lg" style={{ marginTop: 'var(--s2)' }} onClick={onAdd} disabled={!onAdd || busy}>
+            {busy ? 'Linking…' : 'Add a bank account'}
+          </button>
+        </>
+      }
+    >
+      {banks === null ? (
+        <p className="c-det">Reading the shop’s banks…</p>
+      ) : banks.length === 0 ? (
+        <p className="c-det">No bank yet. Add the business’s account to withdraw to it.</p>
+      ) : (
+        <div className="c-rows">
+          {banks.map((b) => (
+            <div key={b.id}>
+              <div className="c-line" style={{ alignItems: 'center' }}>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 'var(--t-sec)' }}>
+                    {b.bankName} ••{b.mask}
+                  </span>
+                  <span className="c-det" style={{ display: 'block', marginTop: 3 }}>
+                    Business {b.subtype} · verified with Plaid
+                  </span>
+                </span>
+                {onRemove && (
+                  <button type="button" className="c-ci-link" aria-label={`Remove ${b.bankName} ••${b.mask}`} onClick={() => onRemove(b)}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </Sheet>
   );
 }
