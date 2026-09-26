@@ -36,7 +36,9 @@ export function SplitControl({
             onClick={() => onChange(option)}
             className={cn('c-chip-q', splitInto === option && 'c-on')}
           >
-            {option === 1 ? 'In full' : `In ${option}`}
+            {/* Not "In full": beside Pay now that reads as the same thing, when it means clearing at
+                the end of the cycle, with a cycle's carry. */}
+            {option === 1 ? 'Next cycle' : `In ${option}`}
           </Btn>
         ))}
       </div>

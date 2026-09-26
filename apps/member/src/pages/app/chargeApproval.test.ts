@@ -34,7 +34,7 @@ describe('the split is chosen on the member’s phone', () => {
  */
 describe('a code is not a credential', () => {
   test('every member route sits behind requireAuth', () => {
-    for (const route of ["get('/:code'", "post('/:code/approve'", "post('/:code/decline'"]) {
+    for (const route of ["get('/:code'", "post('/:code/approve'", "post('/:code/decline'", "post('/:code/pay-now'", "post('/:code/pay-now/confirm'", "delete('/:code/pay-now'"]) {
       const at = ROUTES.indexOf(route);
       expect(at).toBeGreaterThan(-1);
       expect(ROUTES.slice(at, at + 120)).toContain('requireAuth');
@@ -42,10 +42,11 @@ describe('a code is not a credential', () => {
   });
 
   test('and re-checks the charge belongs to the caller', () => {
-    // Three routes, three checks. requireVerifiedWallet falls through to true when there is no
-    // req.auth at all, which is why the requireAuth test above is not redundant with this one.
+    // Six routes (open, approve, decline, and pay now's start, confirm and back), six checks.
+    // requireVerifiedWallet falls through to true when there is no req.auth at all, which is why the
+    // requireAuth test above is not redundant with this one.
     const checks = ROUTES.split('requireVerifiedWallet(req, res, charge.memberWallet').length - 1;
-    expect(checks).toBe(3);
+    expect(checks).toBe(6);
   });
 
   test('the merchant route is the only one without a session', () => {
@@ -146,13 +147,12 @@ describe('what the member is shown', () => {
   test('approval waits for the chain rather than showing an optimistic confirmation', () => {
     // setCharge runs on the result, so `approved` can only come from what the server returned.
     expect(ROUTE).toContain('setCharge(result.charge)');
-    expect(ROUTE).toContain("approved={charge.status === 'approved'}");
+    expect(ROUTE).toContain("approved={charge.status === 'approved' && !charge.paidNow}");
   });
 
   test('the reference’s exact reassurance is on the screen', () => {
     // Brand guide: the two questions at a counter, one line each.
-    expect(SCREEN).toContain('You have not been charged yet.');
-    expect(SCREEN).toContain('Expires in 24 hours.');
+    expect(SCREEN).toContain('You have not been charged yet &middot; Expires in 24 hours');
     expect(SCREEN).toContain('MAKE THE NEXT ONE FREE');
   });
 });
@@ -255,5 +255,64 @@ describe('a stuck charge reconciles against the chain', () => {
   test('it runs on its own rather than waiting to be remembered', () => {
     expect(RECONCILER).toContain('setInterval');
     expect(RECONCILER).toContain('void runChargeReconcileOnce();');
+  });
+});
+
+/*
+ * Pay now, or over time — Merchant App References/clear-app-pay-choice.
+ */
+describe('one question before the split', () => {
+  const HOOK = readFileSync(join(import.meta.dir, '../../hooks/usePayNow.ts'), 'utf8');
+  const CHOOSER = readFileSync(join(import.meta.dir, '../../components/clear/SplitChooser.tsx'), 'utf8');
+
+  test('both ways to pay, pay now first', () => {
+    const choose = SCREEN.slice(SCREEN.indexOf('// ---- Choosing'));
+    expect(choose).toContain('How do you want to pay?');
+    expect(choose.indexOf('>Pay now<')).toBeLessThan(choose.indexOf('>Pay over time<'));
+  });
+
+  test('"In full" is "Next cycle": beside Pay now it would read as the same thing', () => {
+    expect(CHOOSER).toContain("option === 1 ? 'Next cycle'");
+    expect(CHOOSER).not.toContain("'In full'");
+  });
+
+  test('under the minimum, over time is shown greyed with the reason, not hidden', () => {
+    expect(ROUTE).toContain('overTimeMinimum={payNowOnly ? PAY_OVER_TIME_MIN_CENTS / 100 : null}');
+    expect(SCREEN).toContain('For charges of {usd(overTimeMinimum!)} or more');
+  });
+
+  test('Spendable is shown and never picked; Ready to allocate pays', () => {
+    const now = SCREEN.slice(SCREEN.indexOf('// ---- Pay now ---'), SCREEN.indexOf('// ---- Pay over time ---'));
+    expect(now).toMatch(/c-pc-src c-off" aria-disabled="true">[\s\S]{0,200}Spendable/);
+    expect(now).toContain('readyToAllocate >= amount');
+  });
+
+  test('short of it is its own screen with the two real next steps', () => {
+    const now = SCREEN.slice(SCREEN.indexOf('// ---- Pay now ---'), SCREEN.indexOf('// ---- Pay over time ---'));
+    expect(now).toContain('more than this has');
+    expect(now).toContain('Add money');
+    expect(now).toContain('Pay over time');
+  });
+
+  test('held, paid by the member’s wallet, then checked by the server — in that order', () => {
+    const start = HOOK.indexOf('await startPayNow(');
+    const pay = HOOK.indexOf('await scPayShop(');
+    const confirm = HOOK.indexOf('await confirmPayNow(');
+    expect(start).toBeGreaterThan(-1);
+    expect(start).toBeLessThan(pay);
+    expect(pay).toBeLessThan(confirm);
+  });
+
+  test('once the money has left, nobody is told to try again', () => {
+    expect(HOOK).toContain('don’t pay again');
+  });
+
+  test('paid is what the server says, never assumed', () => {
+    expect(ROUTE).toContain("const paidNow = charge.status === 'approved' && charge.paidNow;");
+  });
+
+  test('going back lets the hold go, only if nothing was sent', () => {
+    expect(ROUTE).toContain("charge.payingNow && !charge.payingNow.sent");
+    expect(ROUTE).toContain('releasePayNow(charge.code)');
   });
 });

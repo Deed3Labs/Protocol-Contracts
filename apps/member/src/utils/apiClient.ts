@@ -3557,6 +3557,28 @@ export interface ChargeView {
   txHash: string | null;
   expiresAt: string;
   createdAt: string;
+  /** Paid from their Clear cash rather than a plan: nothing to clear later. */
+  paidNow?: boolean;
+  /** Held while they pay now: when the hold lapses, and whether a payment is already on its way. */
+  payingNow?: { until: string; sent: boolean } | null;
+  paidAt?: string | null;
+  /** First name of whoever raised it at the counter. */
+  raisedBy?: string | null;
+  /** The sale's lines, when the charge came from one. */
+  items?: { name: string; quantity: number; cents: number }[] | null;
+  taxCents?: number | null;
+  discountCents?: number | null;
+  /** The whole order, when this charge is only part of it. */
+  orderTotalCents?: number | null;
+}
+
+/** What the member's wallet sends to pay now: USDC token units (6dp), to the shop and Clear's fee. */
+export interface PayNowInstructions {
+  chainId: number;
+  token: string;
+  shop: { to: string; units: string };
+  fee: { to: string; units: string };
+  until: string;
 }
 
 /** Null when there is no such charge, or it is not this member's to see. */
@@ -3586,6 +3608,44 @@ export async function approveCharge(code: string, installments: number): Promise
     body: JSON.stringify({ installments }),
   });
   if (r.error || !r.data) return { error: r.error || 'We could not approve this charge.' };
+  return { charge: r.data };
+}
+
+/**
+ * Pay now, step one: the charge is held for this member and quoted. Face ID first, as for approving:
+ * the server takes a fresh one too. The same hold comes back if they press Pay again.
+ */
+export async function startPayNow(code: string): Promise<ChargeActionResult & { pay?: PayNowInstructions }> {
+  const denied = await stepUpDenied();
+  if (denied) return { error: denied };
+  const r = await apiRequest<ChargeView & { pay?: PayNowInstructions }>(`/api/charges/${encodeURIComponent(code)}/pay-now`, {
+    method: 'POST',
+  });
+  if (r.error || !r.data?.pay) return { error: r.error || 'We could not get this ready. Nothing was charged.' };
+  const { pay, ...charge } = r.data;
+  return { charge, pay };
+}
+
+/**
+ * Pay now, step three: the payment is sent; the server checks it on chain. `pending` when it has
+ * not landed yet — the charge stays held and is marked paid once it does.
+ */
+export async function confirmPayNow(code: string, txHash: string): Promise<ChargeActionResult & { pending?: boolean }> {
+  const r = await apiRequest<ChargeView & { message?: string }>(`/api/charges/${encodeURIComponent(code)}/pay-now/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ txHash }),
+    // Waits for the payment to land on chain (up to 30s on the server).
+    timeout: 45_000,
+  });
+  if (r.error || !r.data) return { error: r.error || 'We could not confirm your payment yet.' };
+  const pending = r.data.status === 'resolving';
+  return { charge: r.data, ...(pending ? { pending: true } : {}) };
+}
+
+/** Back from Pay now before paying: the charge is answerable again, over time or otherwise. */
+export async function releasePayNow(code: string): Promise<ChargeActionResult> {
+  const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}/pay-now`, { method: 'DELETE' });
+  if (r.error || !r.data) return { error: r.error || 'We could not go back just now.' };
   return { charge: r.data };
 }
 

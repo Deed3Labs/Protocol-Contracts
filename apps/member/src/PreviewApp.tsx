@@ -450,41 +450,69 @@ function BondPreview() {
   );
 }
 
-/** A charge arriving — the approval screen and the state after it. */
+/**
+ * A charge arriving: Merchant App References/clear-app-pay-choice, every frame. `?frame=` picks one
+ * directly (choose, now, short, paid, paying, over, approved, under), so a check can land on it.
+ */
+type ChargeFrame = 'choose' | 'now' | 'short' | 'paid' | 'paying' | 'over' | 'approved' | 'under';
+const CHARGE_FRAMES: ChargeFrame[] = ['choose', 'now', 'short', 'paid', 'paying', 'over', 'approved', 'under'];
+
 function ChargeApprovalPreview() {
+  const asked = new URLSearchParams(window.location.search).get('frame') as ChargeFrame | null;
+  const [frame, setFrame] = useState<ChargeFrame>(asked && CHARGE_FRAMES.includes(asked) ? asked : 'choose');
   const [splitInto, setSplitInto] = useState(4);
-  const [approved, setApproved] = useState(false);
+  const under = frame === 'under';
+  const mode = frame === 'now' || frame === 'short' ? 'now' : frame === 'over' ? 'over' : 'choose';
+  const items = under
+    ? [{ name: 'Tire patch', quantity: 1, cents: 3520 }]
+    : [
+        { name: 'All-season tire 225/65R17', quantity: 4, cents: 72000 },
+        { name: 'Mount and balance', quantity: 4, cents: 8000 },
+        { name: 'Valve stems', quantity: 1, cents: 1200 },
+      ];
 
   return (
     <div className="min-h-screen bg-background">
       <ChargeApproval
         merchantName="Mike's Tire"
-        amount={940}
+        amount={under ? 38 : 940}
+        raisedBy="Jen"
+        raisedAt={new Date(2026, 8, 26, under ? 15 : 14, under ? 5 : 14).toISOString()}
+        items={items}
+        taxCents={under ? 280 : 6800}
+        mode={mode}
+        onModeChange={(m) => setFrame(m === 'now' ? 'now' : m === 'over' ? 'over' : 'choose')}
+        overTimeMinimum={under ? 50 : null}
+        readyToAllocate={frame === 'short' ? 420 : 1186.4}
+        spendable={null}
+        onPayNow={() => setFrame('paid')}
+        onAddMoney={() => {}}
+        paid={frame === 'paid' ? { at: new Date(2026, 8, 26, 14, 16).toISOString(), left: 246.4, receiptUrl: '#' } : null}
+        onItsWay={frame === 'paying'}
+        onDone={() => setFrame('choose')}
         splitInto={splitInto}
         onSplitChange={setSplitInto}
+        splitOptions={under ? [1] : [1, 2, 4, 12]}
         perCycleLimit={850}
         clearsFromLabel="Chase ····4471"
         firstPaymentOn="Dec 14"
-        doneBy={() => 'Mar 14'}
-        onApprove={() => setApproved(true)}
-        onDecline={() => setApproved(false)}
-        onBack={() => setApproved(false)}
-        approved={approved}
+        doneBy={() => 'Jan 14'}
+        onApprove={() => setFrame('approved')}
+        onDecline={() => setFrame('choose')}
+        approved={frame === 'approved'}
       />
 
-      <div className="fixed inset-x-0 bottom-0 z-[60] flex justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
-        {(['approve', 'approved'] as const).map((s) => (
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        {CHARGE_FRAMES.map((f) => (
           <button
-            key={s}
+            key={f}
             type="button"
-            onClick={() => setApproved(s === 'approved')}
+            onClick={() => setFrame(f)}
             className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
-              approved === (s === 'approved')
-                ? 'border-tier-boost text-tier-boost-fg'
-                : 'border-border text-muted-foreground'
+              frame === f ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
             }`}
           >
-            {s}
+            {f}
           </button>
         ))}
       </div>

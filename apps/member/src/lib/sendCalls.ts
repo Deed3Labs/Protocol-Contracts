@@ -76,6 +76,29 @@ async function runBatch(smartWalletClient: unknown, owner: string, chainId: numb
   return run5792(owner, chainId, calls);
 }
 
+/**
+ * Pay a shop now, from the member's own USDC: the shop's share and Clear's fee, in ONE sponsored
+ * batch, so it is both or neither. The amounts and addresses come from the server's hold on the
+ * charge (`startPayNow`), which checks the transaction against them before marking it paid. A charge
+ * too small to carry a fee is one transfer.
+ */
+export async function scPayShop(args: {
+  smartWalletClient?: unknown;
+  ownerWallet: string;
+  chainId: number;
+  token: `0x${string}`;
+  shop: { to: `0x${string}`; units: bigint };
+  fee: { to: `0x${string}`; units: bigint };
+}): Promise<string> {
+  const transfer = (to: `0x${string}`, units: bigint): Call => ({
+    to: args.token,
+    data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [to, units] }),
+  });
+  const calls = [transfer(args.shop.to, args.shop.units)];
+  if (args.fee.units > 0n) calls.push(transfer(args.fee.to, args.fee.units));
+  return runBatch(args.smartWalletClient, args.ownerWallet, args.chainId, calls);
+}
+
 /** One-time sponsored ERC-20 approve (smart-account autopay allowance — they can't sign EIP-2612). */
 export async function scApprove(args: { smartWalletClient?: unknown; owner: string; token: `0x${string}`; spender: `0x${string}`; amount: bigint; chainId: number }): Promise<string> {
   return runBatch(args.smartWalletClient, args.owner, args.chainId, [
