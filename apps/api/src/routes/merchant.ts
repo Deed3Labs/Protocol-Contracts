@@ -23,6 +23,7 @@ import { canAddRole, type StaffRole } from '@clear/domain';
 import { raiseChargeFromDevice, readMerchantTerms } from '../services/chargeService.js';
 import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
 import { onboardMerchant } from '../services/merchant/onboardingService.js';
+import { memberStore } from '../services/memberStore.js';
 import { checkCode, claimCode } from '../services/merchant/termsCodes.js';
 import { rateLimiter } from '../middleware/rateLimiter.js';
 import { redeemForMerchant, redemptionConfigured } from '../services/merchant/payoutRedemption.js';
@@ -378,6 +379,11 @@ merchantRouter.get('/charges', requireMerchant, async (req: Request, res: Respon
       .map((r) => [r.chargeCode, r]),
   );
 
+  // One lookup for the page's members. If it can't be read, the list still loads, unnamed.
+  const memberNames = await memberStore
+    .publicNamesForWallets(rows.map((c) => c.memberWallet).filter((w): w is string => Boolean(w)))
+    .catch(() => new Map<string, string>());
+
   res.json({
     charges: rows.map((c) => ({
       code: c.code,
@@ -386,7 +392,8 @@ merchantRouter.get('/charges', requireMerchant, async (req: Request, res: Respon
       payoutCents: staff.role === 'owner' ? c.payoutCents : undefined,
       status: openRefunds.has(c.code) ? 'refund_requested' : c.status,
       splitInto: c.splitInto,
-      member: c.memberWallet ? { displayName: shortWallet(c.memberWallet) } : null,
+      // The name the member chose to be seen by; never their address.
+      member: c.memberWallet ? { displayName: memberNames.get(c.memberWallet.toLowerCase()) ?? 'A Clear member' } : null,
       raisedBy: c.raisedBy ? (staffNames.get(c.raisedBy) ?? null) : null,
       raisedByStaffId: c.raisedBy,
       createdAt: c.createdAt,
@@ -1249,10 +1256,6 @@ merchantRouter.get('/device', requireDevice, (req: Request, res: Response) => {
   });
 });
 
-/** `0x1234…abcd` — a merchant is never shown a member's full address. */
-function shortWallet(w: string): string {
-  return w.length > 10 ? `${w.slice(0, 6)}…${w.slice(-4)}` : w;
-}
 
 async function withNames(refund: Awaited<ReturnType<typeof refundStore.get>>) {
   if (!refund) return null;
