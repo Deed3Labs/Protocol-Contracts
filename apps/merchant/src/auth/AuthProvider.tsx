@@ -59,8 +59,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         idleLockSeconds: 300,
         merchant: cachedMerchant,
       });
-      // `&as=jen` or `&as=luis` stands in the reference's counter writer or manager instead.
+      // `&as=jen` or `&as=luis` stands in the reference's counter writer or manager instead, and
+      // `&as=none` leaves nobody on shift, which is "Who's on the counter?".
       const as = new URLSearchParams(window.location.search).get('as');
+      if (as === 'none') {
+        setSession(null);
+        setLoading(false);
+        return;
+      }
       const who =
         as === 'jen'
           ? { id: 'stf_jen', name: 'Jen R.', role: 'counter' }
