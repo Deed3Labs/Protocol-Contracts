@@ -576,3 +576,14 @@ input.c-st-time {
 .c-trk i.c-out {
   background: repeating-linear-gradient(135deg, var(--ink-28) 0 1px, transparent 1px 5px);
 }
+
+/* iOS zooms into any field under 16px when it's tapped. On iOS only (-webkit-touch-callout is
+   Safari's), fields are 16px, so the page stays put and people can still pinch to zoom: the
+   viewport doesn't cap scaling, which would shut out anyone who needs to zoom. */
+@supports (-webkit-touch-callout: none) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
