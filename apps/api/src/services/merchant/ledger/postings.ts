@@ -118,6 +118,30 @@ export function cardTipAdjusted(
   };
 }
 
+/**
+ * A day's tips shared by hours on shift, at close: out of what each person raised and into each
+ * one's share. One entry per session and kind of tip; it nets to zero, so only who is owed moves.
+ */
+export function tipsShared(input: Base & { sessionId: string; how: 'card' | 'cash'; raised: Map<string, number>; shares: Map<string, number> }): EntryInput | null {
+  const delta = new Map<string, number>();
+  for (const [id, c] of input.raised) delta.set(id, (delta.get(id) ?? 0) - c);
+  for (const [id, c] of input.shares) delta.set(id, (delta.get(id) ?? 0) + c);
+  const lines = [...delta]
+    .filter(([, d]) => d !== 0)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([id, d]) => (d > 0 ? { account: tipsPayable(id), credit: d } : { account: tipsPayable(id), debit: -d }));
+  if (!lines.length) return null;
+  return {
+    merchant: input.merchant,
+    kind: 'tips_shared',
+    idempotencyKey: `tips_shared:${input.sessionId}:${input.how}`,
+    ref: { type: 'drawer_session', id: input.sessionId },
+    occurredAt: input.occurredAt,
+    createdBy: input.createdBy,
+    lines,
+  };
+}
+
 /** Cash tips handed to someone out of the drawer. */
 export function tipPaidOut(input: Base & { payoutId: string; staffId: string; sessionId: string; cents: number }): EntryInput {
   return {

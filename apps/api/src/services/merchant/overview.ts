@@ -1,6 +1,8 @@
 import type { Overview, TenderMethod } from '@clear/merchant-contracts';
 import type { Queryable } from '../../db/db.js';
 import { dayReports } from './drawer/closeService.js';
+import { dayTips } from './drawer/tipShare.js';
+import { getSettings } from './shop/shopService.js';
 
 /**
  * Overview (card-processing prompt, Phase 8): the summary views over orders and the ledger's
@@ -47,6 +49,35 @@ export async function overview(q: Queryable, input: { merchant: string; from: st
     [...args, input.topItems ?? 5],
   );
 
+  const reports = await dayReports(q, { merchant: input.merchant, from: input.from, to: input.to });
+  let byStaff = tips.map((t) => ({ staffId: t.staff_id, name: t.name ?? '—', cents: Number(t.cents), cashCents: Number(t.cash_cents) }));
+  /*
+   * Shared by hours on shift: a closed day as its report shares it (what was paid), a day not yet
+   * closed as it would be shared now (tipShare.ts), so Close the day shows what closing will do.
+   */
+  if ((await getSettings(q, input.merchant)).tips.goTo === 'hours' && tips.length) {
+    const { rows: dates } = await q.query<{ d: string }>(
+      `SELECT DISTINCT o.business_date::text AS d FROM payments.tenders t JOIN commerce.orders o ON o.id = t.order_id
+        WHERE ${paid} AND t.tip_cents > 0 AND t.status IN ('authorised','approved','captured','partly_refunded','refunded') ORDER BY 1`,
+      args,
+    );
+    const each = new Map<string, { cents: number; cashCents: number }>();
+    for (const { d } of dates) {
+      const shares = reports.find((r) => r.businessDate === d)?.tipsByStaff ?? (await dayTips(q, { merchant: input.merchant, date: d, goTo: 'hours' })).byStaff;
+      for (const t of shares) {
+        const e = each.get(t.staffId) ?? { cents: 0, cashCents: 0 };
+        e.cents += t.cents;
+        if (t.how === 'cash') e.cashCents += t.cents;
+        each.set(t.staffId, e);
+      }
+    }
+    const { rows: names } = await q.query<{ id: string; name: string }>('SELECT id, name FROM merchant.staff WHERE merchant = $1', [input.merchant]);
+    byStaff = [...each]
+      .map(([staffId, e]) => ({ staffId, name: names.find((n) => n.id === staffId)?.name ?? '—', ...e }))
+      .filter((t) => t.cents > 0)
+      .sort((a, b) => b.cents - a.cents);
+  }
+
   return {
     from: input.from,
     to: input.to,
@@ -54,10 +85,10 @@ export async function overview(q: Queryable, input: { merchant: string; from: st
     orderCount: Number(totals[0]!.orders),
     byMethod,
     discounts: { count: Number(totals[0]!.discounted), cents: Number(totals[0]!.discounts) },
-    tips: { cents: tips.reduce((s, t) => s + Number(t.cents), 0), byStaff: tips.map((t) => ({ staffId: t.staff_id, name: t.name ?? '—', cents: Number(t.cents), cashCents: Number(t.cash_cents) })) },
+    tips: { cents: tips.reduce((s, t) => s + Number(t.cents), 0), byStaff },
     taxCents: Number(totals[0]!.tax),
     refundsCents: Number(refunds[0]!.cents),
     topItems: items.map((i) => ({ itemId: i.item_id, name: i.name, quantity: Number(i.qty), cents: Number(i.cents) })),
-    dayReports: await dayReports(q, { merchant: input.merchant, from: input.from, to: input.to }),
+    dayReports: reports,
   };
 }
