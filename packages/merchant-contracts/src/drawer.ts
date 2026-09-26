@@ -103,6 +103,8 @@ export const DayReport = z.object({
   byMethod: ByMethod,
   tipsCents: NonNegativeCents,
   tipsByStaff: z.array(z.object({ staffId: Id, cents: NonNegativeCents, how: z.enum(['card', 'cash']) })),
+  /** Set when the tips were shared by hours on shift (Settings › Tips): each person's minutes on. */
+  tipsHours: z.array(z.object({ staffId: Id, minutes: z.number().int().min(0) })).nullable().optional(),
   taxCents: NonNegativeCents,
   discountsCents: NonNegativeCents,
   refundsCents: NonNegativeCents,

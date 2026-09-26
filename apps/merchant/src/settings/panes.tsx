@@ -441,9 +441,19 @@ function liveSelling(key: Section, l: LiveSelling, a: Actions): ReactNode {
               </div>
             </Main>
           </Cell>
-          <Cell label="Who gets them" det="Shared at close" foot={<FootDet>Card tips are paid with payroll. Cash tips come out of the drawer at close. Splitting by hours comes with the shift clock.</FootDet>}>
+          <Cell
+            label="Who gets them"
+            det="Shared at close"
+            foot={
+              <FootDet>
+                {tips.goTo === 'hours'
+                  ? 'The day’s tips are pooled and shared at close by each person’s time on shift that day, from their PIN to End shift, less breaks. Card and cash are shared apart. A day nobody clocked in for goes to whoever raised each charge.'
+                  : 'Card tips are paid with payroll. Cash tips come out of the drawer at close.'}
+              </FootDet>
+            }
+          >
             <Main>
-              <Chips options={['Whoever raised the charge', 'Split by hours on shift']} value={tips.goTo === 'raiser' ? 0 : 1} disabled={[1]} onPick={() => set({ tips: { ...tips, goTo: 'raiser' } })} />
+              <Chips options={['Whoever raised the charge', 'Split by hours on shift']} value={tips.goTo === 'raiser' ? 0 : 1} onPick={(i) => set({ tips: { ...tips, goTo: i === 0 ? 'raiser' : 'hours' } })} />
             </Main>
           </Cell>
         </>

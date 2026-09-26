@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import cors from 'cors';
 import compression from 'compression';
 import dotenv from 'dotenv';
+import { applyBridgeEnv } from './config/bridgeEnv.js';
 import { getRedisClient, closeRedisConnection } from './config/redis.js';
 import { closePostgresPool } from './config/postgres.js';
 import { runMerchantMigrations } from './config/merchantDb.js';
@@ -77,6 +78,8 @@ import stepUpRouter from './routes/stepUp.js';
 import sessionRouter from './routes/session.js';
 
 dotenv.config();
+// Live Bridge, or its sandbox (BRIDGE_ENV=sandbox), before anything reads Bridge's settings.
+applyBridgeEnv();
 
 const app = express();
 const httpServer = createServer(app);

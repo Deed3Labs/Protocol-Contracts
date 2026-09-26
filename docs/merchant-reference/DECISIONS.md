@@ -474,8 +474,7 @@ reason for any difference, is written to `e2e/.report/index.html`.
   before-tax or tax-included prices (a choice).
 - **Tips**: asking on or off, amounts or percentages (switching starts from that kind's usual
   three: $5, $10, $20 or 15, 18, 20%), up to four presets to change, add or remove.
-- **"Split by hours on shift" is shown but can't be chosen.** It needs the shift clock, which
-  isn't built.
+- **"Split by hours on shift" can be chosen** (see "Tips shared by hours on shift" below).
 - **Discounts**: the shop's codes, with what they take off and until when. New code is a real form:
   a percent or an amount, the whole charge or one category, optional dates, once per customer. The
   counter's and a manager's limits can be changed; an owner has none.
@@ -748,6 +747,33 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   address set here (migration 0020: `statements_email`; `merchant.statement_sends` so a month goes
   once). A daily job does it (`jobs/monthlyStatements.ts`, under an advisory lock); one that fails
   is tried again the next day. By Resend, like every email.
+
+## Bridge, live or sandbox
+
+- `BRIDGE_ENV=sandbox` points the whole API at Bridge's sandbox: `BRIDGE_SANDBOX_API_KEY` is used as
+  the key (and for Send payouts), the address becomes `api.sandbox.bridge.xyz/v0`, and
+  `BRIDGE_SANDBOX_WEBHOOK_PUBLIC_KEY`, when set, checks Bridge's webhooks. Swapped once at start-up
+  (`config/bridgeEnv.ts`), so every reader follows, member app included. The live key stays in
+  `BRIDGE_API_KEY` for production. Sandbox without its key leaves Bridge unconfigured rather than
+  falling back to live.
+
+## Tips shared by hours on shift
+
+- Settings › Tips › Who gets them: whoever raised the charge, or **split by hours on shift**. By
+  hours, a business day's tips are pooled and shared by each person's minutes on shift that day:
+  shifts that started on the day, from PIN to End shift (or now, for someone still on), less breaks.
+- **Card and cash are shared apart,** because they're paid apart: cash out of the drawer at close,
+  card (and Clear) with payroll. Whole cents, largest remainder first, so the shares add up to the
+  pool; a tie goes to more minutes, then by id, so it's the same answer every time.
+- **Booked at close,** as one `tips_shared` entry per kind that nets to zero: out of each raiser's
+  tips account, into each person's share. The cash payout then pays the shares. Until the close the
+  ledger still shows who raised each tip, so "your tips" can change at close (the setting says
+  "Shared at close").
+- **One answer everywhere** (`drawer/tipShare.ts`): the close, the day report (which also records
+  each person's minutes: `tipsHours`), the end-of-day email, and Overview. For Overview, a closed
+  day is as its report shared it and a day not yet closed is as closing would share it now, so
+  Close the day shows what closing will do.
+- A day nobody clocked in for is shared by raiser, and its report has no minutes.
 
 ## The shop's Bridge customer is the business, never its owner
 
