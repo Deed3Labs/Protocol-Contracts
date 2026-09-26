@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import type { CardAvailability, DiscountCode, KybStatus, Reader, ShopSettings, ShopSettingsPatch, TaxKind, TaxStatus } from '@clear/merchant-contracts';
 import {
   Account,
@@ -273,6 +273,49 @@ export interface Actions {
   onStatementCsv?: (m: StatementMonth) => void;
   /** Owners, live: where each month's statement is emailed on the 2nd. */
   onStatementsEmail?: () => void;
+  /** Owners, live: Your data, as spreadsheets. */
+  onEveryCharge?: () => Promise<void>;
+  onEveryPayout?: () => Promise<void>;
+}
+
+/** Settings › Advanced › Your data on a live shop: two downloads, each saying while it's made. */
+function YourData({ a }: { a: Actions }) {
+  const [busy, setBusy] = useState<'charges' | 'payouts' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const run = (what: 'charges' | 'payouts', fn?: () => Promise<void>) => async () => {
+    if (!fn) return;
+    setBusy(what);
+    setError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Cell
+      label="Your data"
+      det=""
+      foot={
+        error ? (
+          <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 0 }}>
+            {error}
+          </p>
+        ) : (
+          <FootDet>Made on this tablet from Clear’s records, as spreadsheets (CSV).</FootDet>
+        )
+      }
+    >
+      <Main>
+        <Rows>
+          <R2 t="Every charge" det="Since you joined, as CSV" end={<Btn sm disabled={!a.onEveryCharge || busy !== null} onClick={run('charges', a.onEveryCharge)}>{busy === 'charges' ? 'Making…' : 'Download'}</Btn>} />
+          <R2 t="Every payout" det="With the charges in each, as CSV" end={<Btn sm disabled={!a.onEveryPayout || busy !== null} onClick={run('payouts', a.onEveryPayout)}>{busy === 'payouts' ? 'Making…' : 'Download'}</Btn>} />
+        </Rows>
+      </Main>
+    </Cell>
+  );
 }
 
 /** Counter and Devices on a live shop. */
@@ -648,6 +691,7 @@ function liveAdvanced(d: SettingsData, a: Actions): ReactNode {
           </Main>
         </Cell>
       )}
+      <YourData a={a} />
       <Cell
         label="Leaving"
         det="Any time, no fee"

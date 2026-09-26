@@ -840,3 +840,17 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
 - Nothing here holds up signup: Continue is always there, and Settings has the same.
 - Against the mock: `/onboarding?preview=1&live=1&step=6` (`&kyb=new` for a shop not yet verified).
 
+## Settings › Advanced › Your data
+
+- **Two downloads, made on the tablet** from what the app already reads (`settings/yourData.ts`),
+  owners only, as Advanced is.
+- **Every charge:** Overview's export (one row a sale, every way it was paid) over the whole history
+  since the shop joined, read 93 days at a time (the most the API gives in one go), plus Clear
+  charges with no order behind them (the newest 500, the most that list gives).
+- **Every payout:** Clear's payouts and the card processor's deposits, one row each: date, kind,
+  reference, how many charges were in it, gross, the processor's fee and Clear's fee where they're
+  known, net, and status. Deposits are read a fortnight ahead, since one in transit arrives after
+  today. Clear's payouts aren't itemised by charge (nothing batches charges into a payout run), so
+  "with the charges in each" is the count, as Payouts › a payout says.
+- Withdrawals to the bank aren't in it: they're the shop moving its own cash, not a payout.
+

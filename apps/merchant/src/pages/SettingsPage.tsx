@@ -14,6 +14,7 @@ import { roleLabel } from '@/shell/chrome';
 import { currentPlatform, previewPlatform } from '@/reader';
 import { useShiftActions } from '@/shell/shiftActions';
 import { saveFile } from '@/lib/saveFile';
+import { everyChargeCsv, everyPayoutCsv, since as historyFrom } from '@/settings/yourData';
 import { salesCsv } from '@/overview/exportCsv';
 import { printStatement, statementOf } from '@/overview/statement';
 import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type AmountEdit, type ReaderRow, type Section, type SettingsData, type ShopField, type StatementMonth } from '@/settings/panes';
@@ -79,6 +80,9 @@ function fromApi(p: MerchantProfile | null, pos: PayoutPosition | null, devices:
     me: { ...me, hours: '—' },
   };
 }
+
+/** A file name's shop part: "Mike’s Tire" → mikes-tire. */
+const slugOf = (name?: string | null) => (name ?? 'shop').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'shop';
 
 export default function SettingsPage() {
   const { section, sub } = useParams();
@@ -269,13 +273,33 @@ export default function SettingsPage() {
           Promise.all([merchant.orderHistory({ from: m.from, to: m.to }), merchant.staff()])
             .then(([orders, staff]) => {
               const names = new Map(staff.map((x) => [x.id, x.name]));
-              const slug = (shopRecord.data?.name ?? 'shop').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'shop';
+              const slug = slugOf(shopRecord.data?.name);
               return saveFile(`${slug}-sales-${m.from.slice(0, 7)}.csv`, salesCsv({ orders, nameOf: (id) => names.get(id) ?? '—' }), 'text/csv');
             })
             .catch((e) => setStatementError(errorSentence(e)));
         }
       : undefined,
     onStatementsEmail: liveOwner ? () => (setEditError(null), setTextEdit('statementsEmail')) : undefined,
+    // Your data: everything since the shop joined, as spreadsheets (settings/yourData.ts).
+    onEveryCharge: liveOwner
+      ? async () => {
+          const today = new Date().toISOString().slice(0, 10);
+          const from = historyFrom(profile?.partnerSince, today);
+          const staff = await merchant.staff();
+          const names = new Map(staff.map((x) => [x.id, x.name]));
+          const csv = await everyChargeCsv({ from, to: today, history: (r) => merchant.orderHistory(r), clear: () => api.charges({ since: from, limit: 500 }), nameOf: (id) => names.get(id) ?? '—' });
+          await saveFile(`${slugOf(shopRecord.data?.name)}-every-charge-${today}.csv`, csv, 'text/csv');
+        }
+      : undefined,
+    onEveryPayout: liveOwner
+      ? async () => {
+          const today = new Date().toISOString().slice(0, 10);
+          // Deposits still in transit arrive after today: read a fortnight ahead so they're in it.
+          const ahead = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10);
+          const [pos, deposits] = await Promise.all([api.payouts(), merchant.cardDeposits({ from: historyFrom(profile?.partnerSince, today), to: ahead })]);
+          await saveFile(`${slugOf(shopRecord.data?.name)}-every-payout-${today}.csv`, everyPayoutCsv({ clear: pos?.paid ?? [], deposits }), 'text/csv');
+        }
+      : undefined,
     onPayouts: () => navigate(`/payouts${preview ? '?preview=1' : ''}`),
     onDevice: () => setOpen('device'),
     onLeave: () => setOpen('leave'),
