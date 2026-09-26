@@ -18,6 +18,7 @@ import { sendNotificationService } from './sendNotificationService.js';
 import { chainId, explainChainError } from './chargeService.js';
 import { getContractAddress } from '../config/contracts.js';
 import { savingsIntentService } from './savingsIntentService.js';
+import { settlePaidNowRefund } from './paidNowRefund.js';
 
 const TERM_ABI = [
   'function planAt(uint256 planId) view returns (address member, uint256 principal, uint256 principalOutstanding, uint256 repaid, uint64 openedAt, uint32 installments, uint64 installmentLength, uint256 ratePerCycle, bool closed)',
@@ -64,9 +65,10 @@ export interface SettleResult {
 /** Exported for disputes, which unwind a plan provisionally while a dispute is open. */
 export async function closePlan(charge: ChargeRow, amountCents: number): Promise<SettleResult> {
   // Paid now, from the member's cash: there is no plan, and the money is in the shop's wallet.
-  // Returning ok here would mark it refunded and tell the member so while nothing moved back.
+  // Returning ok here would mark it refunded and tell the member so while nothing moved back. A
+  // refund goes through settlePaidNowRefund instead; a dispute can't hold money it doesn't have.
   if (charge.paidNow) {
-    return { ok: false, reason: 'This was paid now, from their Clear cash. Refunding it from the shop’s cash isn’t available yet.' };
+    return { ok: false, reason: 'This was paid now, from their Clear cash: there is no plan to unwind.' };
   }
   if (charge.planId == null) {
     // Nothing was opened, so there is nothing to close. Not a failure: a charge can be refunded
@@ -216,7 +218,8 @@ export async function settleRefund(
   const charge = await chargeStore.get(chargeCode);
   if (!charge) return { ok: false, reason: 'no such charge' };
 
-  const closed = await closePlan(charge, amountCents);
+  // Paid now: no plan to close. The money goes back the way it came (paidNowRefund).
+  const closed = charge.paidNow ? await settlePaidNowRefund(charge) : await closePlan(charge, amountCents);
   if (!closed.ok) return closed;
 
   await chargeStore.markRefunded(chargeCode);

@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, mock, test } from 'bun:test';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { ethers } from 'ethers';
@@ -190,5 +190,127 @@ describe('the routes', () => {
   });
   test('held charges are settled by their own reconciliation', () => {
     expect(reconciler).toContain('await reconcilePayNow()');
+  });
+});
+
+/*
+ * Refunding a charge paid now: both halves back to the member, the shop's from its Clear cash and
+ * Clear's fee from Clear's wallet; nothing moves unless both can; a retry never pays a half twice.
+ */
+describe('refunding a charge paid now', async () => {
+  const { refundChain, settlePaidNowRefund, paidNowRefundLegs } = await import('./paidNowRefund');
+  const SHOP_WALLET = SHOP as `0x${string}`;
+  const CLEAR_WALLET = '0x5555555555555555555555555555555555555555';
+  let sent: { from: string; units: bigint }[] = [];
+  let balances: Record<string, bigint> = {};
+  let receipts: Record<string, { status: number } | null> = {};
+  let clearFails = false;
+  let n = 0;
+  const real = { ...refundChain };
+
+  beforeEach(() => {
+    sent = [];
+    clearFails = false;
+    balances = { [SHOP_WALLET.toLowerCase()]: 1_000_000_000n, [CLEAR_WALLET.toLowerCase()]: 1_000_000_000n };
+    receipts = {};
+    Object.assign(refundChain, {
+      receipt: async (_c: number, h: string) => receipts[h] ?? null,
+      known: async () => false,
+      balance: async (_c: number, _t: string, who: string) => balances[who.toLowerCase()] ?? 0n,
+      clearAddress: () => CLEAR_WALLET,
+      sendFromClear: async (_c: number, _t: string, _to: string, units: bigint, onHash: (h: string) => Promise<void>) => {
+        if (clearFails) throw new Error('rpc down');
+        const h = `0xc${++n}`;
+        await onHash(h);
+        sent.push({ from: 'clear', units });
+        receipts[h] = { status: 1 };
+        return true;
+      },
+      shopWallet: async () => ({
+        address: SHOP_WALLET,
+        send: async () => {
+          const h = `0xs${++n}`;
+          sent.push({ from: 'shop', units: 928_250_000n });
+          receipts[h] = { status: 1 };
+          return h as `0x${string}`;
+        },
+      }),
+    });
+  });
+
+  async function paid() {
+    const code = await raise();
+    await chargeStore.holdForPayNow(code, MEMBER, QUOTE);
+    return (await chargeStore.finishPaidNow(code, `0xpay${++n}`))!;
+  }
+
+  test('the halves are what the shop received and Clear’s fee, adding up to the charge', () => {
+    expect(paidNowRefundLegs({ amountCents: 94_000, payoutCents: 92_825 })).toEqual({ shopCents: 92_825, clearCents: 1_175 });
+  });
+
+  test('both go back, and the member is told the whole amount', async () => {
+    const charge = await paid();
+    const r = await settlePaidNowRefund(charge);
+    expect(r).toMatchObject({ ok: true, returnedCents: 94_000, carryWithheldCents: 0 });
+    expect(sent.map((s) => [s.from, s.units])).toEqual([
+      ['shop', 928_250_000n],
+      ['clear', 11_750_000n],
+    ]);
+    const legs = (await chargeStore.get(charge.code))!.refundLegs;
+    expect(legs.shop).toMatch(/^0xs/);
+    expect(legs.clear).toMatch(/^0xc/);
+  });
+
+  test('short in the shop’s cash: refused with the figures, and nothing moves', async () => {
+    const charge = await paid();
+    balances[SHOP_WALLET.toLowerCase()] = 500_000_000n;
+    const r = await settlePaidNowRefund(charge);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('Your Clear cash holds $500.00');
+    expect(r.reason).toContain('$928.25');
+    expect(sent).toHaveLength(0);
+    expect((await chargeStore.get(charge.code))!.refundLegs).toEqual({ shop: null, clear: null });
+  });
+
+  test('Clear’s fee failing leaves the shop’s half done, and a retry sends only Clear’s', async () => {
+    const charge = await paid();
+    clearFails = true;
+    const first = await settlePaidNowRefund(charge);
+    expect(first.ok).toBe(false);
+    expect(first.reason).toContain('Approve it again to finish');
+    expect(sent.map((s) => s.from)).toEqual(['shop']);
+
+    clearFails = false;
+    const again = await settlePaidNowRefund((await chargeStore.get(charge.code))!);
+    expect(again.ok).toBe(true);
+    expect(sent.map((s) => s.from)).toEqual(['shop', 'clear']);
+  });
+
+  test('a half recorded as sending is never sent again blind', async () => {
+    const charge = await paid();
+    await chargeStore.setRefundLeg(charge.code, 'shop', 'sending', null);
+    const r = await settlePaidNowRefund((await chargeStore.get(charge.code))!);
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain('needs a look');
+    expect(sent).toHaveLength(0);
+  });
+
+  test('a recorded half that reverted on chain goes again', async () => {
+    const charge = await paid();
+    await chargeStore.setRefundLeg(charge.code, 'shop', '0xdead', null);
+    receipts['0xdead'] = { status: 0 };
+    const r = await settlePaidNowRefund((await chargeStore.get(charge.code))!);
+    expect(r.ok).toBe(true);
+    expect(sent.map((s) => s.from)).toEqual(['shop', 'clear']);
+  });
+
+  test('two settlements racing cannot both start the same half', async () => {
+    const charge = await paid();
+    expect(await chargeStore.setRefundLeg(charge.code, 'shop', 'sending', null)).toBe(true);
+    expect(await chargeStore.setRefundLeg(charge.code, 'shop', 'sending', null)).toBe(false);
+  });
+
+  afterAll(() => {
+    Object.assign(refundChain, real);
   });
 });

@@ -759,6 +759,11 @@ export interface Quote {
   carryCents: number;
   clawbackCents: number;
   payoutAfterCents: number;
+  /**
+   * Paid now, from their Clear cash: no plan and no carry. The shop's share comes back out of its
+   * Clear cash (`clawbackCents`) and Clear returns its fee, so they get the whole amount.
+   */
+  paidNow?: boolean;
 }
 
 /** Step one: the writer's numbers — what the customer gets back, never the payout. */
@@ -806,9 +811,19 @@ export function RefundReviewSheet({
       }
     >
       <div className="c-rows">
-        <Kv k="Their plan closes" v={usd(q.amountCents)} />
-        <Kv k="They get back" v={usd(q.memberCents)} strong />
-        <Kv k="Carry they already paid" v={`${usd(q.carryCents)} — kept`} />
+        {q.paidNow ? (
+          <>
+            <Kv k="Paid now, from their Clear cash" v={usd(q.amountCents)} />
+            <Kv k="They get back" v={usd(q.memberCents)} strong />
+            <Kv k="Carry" v="—" />
+          </>
+        ) : (
+          <>
+            <Kv k="Their plan closes" v={usd(q.amountCents)} />
+            <Kv k="They get back" v={usd(q.memberCents)} strong />
+            <Kv k="Carry they already paid" v={`${usd(q.carryCents)} — kept`} />
+          </>
+        )}
       </div>
     </Sheet>
   );
@@ -951,8 +966,18 @@ export function RefundApproveSheet({
       </p>
       <div className="c-rows">
         <Kv k="Refund" v={usd(q.amountCents)} />
-        <Kv k="Off your next payout" v={usd(q.clawbackCents)} />
-        <Kv k="Next payout becomes" v={usd(q.payoutAfterCents)} strong />
+        {q.paidNow ? (
+          <>
+            {/* It was paid to the shop's Clear cash, so that is where it comes back from. */}
+            <Kv k="From your Clear cash" v={usd(q.clawbackCents)} strong />
+            <Kv k="Clear returns its fee" v={usd(q.amountCents - q.clawbackCents)} />
+          </>
+        ) : (
+          <>
+            <Kv k="Off your next payout" v={usd(q.clawbackCents)} />
+            <Kv k="Next payout becomes" v={usd(q.payoutAfterCents)} strong />
+          </>
+        )}
       </div>
     </Sheet>
   );
@@ -991,7 +1016,7 @@ export function RefundedSheet({
     >
       <p className="c-fig c-fig-sec">Refunded</p>
       <p className="c-det" style={{ marginTop: 4 }}>
-        {c} has been told. Their plan is closed.
+        {c} has been told. {q.paidNow ? 'It’s back in their Clear cash.' : 'Their plan is closed.'}
       </p>
       <div className="c-rows" style={{ marginTop: 'var(--s3)' }}>
         <Kv k="Refunded" v={usd(q.amountCents)} />

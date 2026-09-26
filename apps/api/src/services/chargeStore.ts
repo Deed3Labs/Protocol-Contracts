@@ -83,6 +83,12 @@ export interface ChargeRow {
   paidNow: boolean;
   /** Set while the member is paying now: what the shop and Clear are owed, and when the hold lapses. */
   payNow: PayNowHold | null;
+  /**
+   * A paid-now refund's two transfers back to the member, as they happen: the shop's share and
+   * Clear's fee. A hash once sent, `sending` while one is in flight, null before. What makes a
+   * retried refund skip what already went, rather than pay it twice.
+   */
+  refundLegs: { shop: string | null; clear: string | null };
 }
 
 /**
@@ -124,6 +130,8 @@ interface DbRow {
   pay_now_fee_to: string | null;
   pay_now_at: string | null;
   pay_now_until: string | null;
+  refund_shop_tx: string | null;
+  refund_clear_tx: string | null;
 }
 
 // No I, L, O or U: read over a phone line, those are the ones that come back wrong.
@@ -189,6 +197,8 @@ async function ensureTables(): Promise<void> {
     ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS pay_now_fee_to TEXT;
     ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS pay_now_at TIMESTAMPTZ;
     ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS pay_now_until TIMESTAMPTZ;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS refund_shop_tx TEXT;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS refund_clear_tx TEXT;
   `);
   ensured = true;
 }
@@ -236,12 +246,14 @@ const toRow = (r: DbRow): ChargeRow =>
             until: r.pay_now_until,
           }
         : null,
+    refundLegs: { shop: r.refund_shop_tx ?? null, clear: r.refund_clear_tx ?? null },
   });
 
 const COLUMNS = `code, merchant_address, merchant_name, member_wallet, amount_cents, payout_cents,
                  status, split_into, plan_id, tx_hash, chain_id, expires_at, created_at,
                  resolved_at, opened_at, raised_by, paid_now, pay_now_payout_cents,
-                 pay_now_fee_cents, pay_now_fee_to, pay_now_at, pay_now_until`;
+                 pay_now_fee_cents, pay_now_fee_to, pay_now_at, pay_now_until, refund_shop_tx,
+                 refund_clear_tx`;
 
 export const chargeStore = {
   isConfigured(): boolean {
@@ -540,6 +552,23 @@ export const chargeStore = {
     await pool.query(`UPDATE ${TABLE} SET status = 'refunded' WHERE code = $1 AND status = 'disputed'`, [
       code.trim().toUpperCase(),
     ]);
+  },
+
+  /**
+   * One leg of a paid-now refund. `expect` is what it must still say, so two settlements racing
+   * cannot both start the same transfer: only one of them moves it off null.
+   */
+  async setRefundLeg(code: string, leg: 'shop' | 'clear', value: string | null, expect: string | null): Promise<boolean> {
+    const pool = getPostgresPool();
+    if (!pool) return false;
+    await ensureTables();
+    const column = leg === 'shop' ? 'refund_shop_tx' : 'refund_clear_tx';
+    const r = await pool.query(
+      `UPDATE ${TABLE} SET ${column} = $2
+        WHERE code = $1 AND paid_now AND status = 'approved' AND ${column} IS NOT DISTINCT FROM $3`,
+      [code.trim().toUpperCase(), value, expect],
+    );
+    return (r.rowCount ?? 0) > 0;
   },
 
   /** Mark a charge refunded once the refund settles. */
