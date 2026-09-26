@@ -28,7 +28,9 @@ const today = () => new Date().toISOString().slice(0, 10);
 describe('PIN entry is rate limited', () => {
   test('ten wrong PINs in fifteen minutes shut the shop; it opens as the oldest ages out', async () => {
     const merchant = `0xpin${++seq}`;
-    const t0 = new Date('2026-09-25T12:00:00Z');
+    // Relative to now, not a fixed date: recording a failure clears any older than a day by the real
+    // clock, so a fixed date wiped its own fixture once it was a day in the past.
+    const t0 = new Date(Date.now() - 5 * 60_000);
     for (let i = 0; i < MAX_FAILURES - 1; i++) {
       await recordPinFailure(db, { merchant, source: 'approval', at: new Date(t0.getTime() + i * 1000) });
     }
