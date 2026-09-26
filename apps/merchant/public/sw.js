@@ -51,7 +51,7 @@ self.addEventListener('fetch', (event) => {
         .then((res) => {
           if (res.ok) {
             const copy = res.clone();
-            caches.open(SHELL).then((c) => c.put('/index.html', copy));
+            caches.open(SHELL).then((c) => c.put('/index.html', copy)).catch(() => undefined);
           }
           return res;
         })
@@ -61,17 +61,21 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Hashed build assets are immutable, so cache-first is safe and makes the tablet feel instant.
+  // A fetch that fails (offline, or the connection dropped) ends as a network error the page sees,
+  // not an uncaught rejection in the worker ("TypeError: Failed to fetch at sw.js").
   event.respondWith(
     caches.match(request).then(
       (hit) =>
         hit ??
-        fetch(request).then((res) => {
-          if (res.ok && url.pathname.startsWith('/assets/')) {
-            const copy = res.clone();
-            caches.open(SHELL).then((c) => c.put(request, copy));
-          }
-          return res;
-        }),
+        fetch(request)
+          .then((res) => {
+            if (res.ok && url.pathname.startsWith('/assets/')) {
+              const copy = res.clone();
+              caches.open(SHELL).then((c) => c.put(request, copy)).catch(() => undefined);
+            }
+            return res;
+          })
+          .catch(() => Response.error()),
     ),
   );
 });

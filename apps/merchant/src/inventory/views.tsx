@@ -18,7 +18,7 @@ import { SaPanel } from '@/brand/sa';
 import { MenuButton, Sheet, Slab, cx, clickOnKey } from '@/brand/ui';
 import { OptionsSheet } from '@/charge/start';
 import { usd, type Item, type TaxKind } from '@/charge/model';
-import { TAX_LABEL, free, level, type InvItem, type ItemKind } from '@/inventory/model';
+import { TAX_LABEL, categoriesOf, free, level, type InvItem, type ItemKind } from '@/inventory/model';
 
 /**
  * Inventory — docs/merchant-reference/clear-merchant-inventory.html.
@@ -94,8 +94,6 @@ const SORT: [SortBy, string][] = [
   ['least', 'Least in stock'],
   ['best', 'Best selling'],
 ];
-const CATEGORIES = ['Tires', 'Brakes', 'Parts', 'Services'] as const;
-
 export function InventoryList({
   items,
   owner,
@@ -138,7 +136,8 @@ export function InventoryList({
   if (q) shown = shown.filter((i) => `${i.name} ${i.detail}`.toLowerCase().includes(q));
   if (sort === 'name') shown = [...shown].sort((a, b) => a.name.localeCompare(b.name));
   if (sort === 'least') shown = [...shown].sort((a, b) => (a.stock?.shelf ?? Infinity) - (b.stock?.shelf ?? Infinity));
-  const groups = sort === 'category' ? CATEGORIES.filter((c) => shown.some((i) => i.category === c)) : [null];
+  const categories = categoriesOf(items);
+  const groups = sort === 'category' ? categories.filter((c) => shown.some((i) => i.category === c)) : [null];
 
   const filterMenu = (
     <MenuButton
@@ -177,7 +176,7 @@ export function InventoryList({
           <div className="c-grp">
             <p className="c-label">Category</p>
             <div className="c-ch-chips">
-              {['All', ...CATEGORIES].map((c) => (
+              {['All', ...categories].map((c) => (
                 <button key={c} type="button" className={cx('c-btn', category === c && 'c-on')} onClick={() => onCategory?.(c)}>
                   {c}
                 </button>
@@ -421,7 +420,8 @@ function StockTrack({ i }: { i: InvItem }) {
     <div className="c-iv-level">
       <div className="c-tr">
         {s.held > 0 && <i className="c-held" style={{ width: pct(s.held) }} />}
-        <i className="c-free" style={{ width: pct(free(i)) }} />
+        {/* Free starts where held ends (the reference's 12.5% is its own 2 held of 16). */}
+        <i className="c-free" style={{ left: pct(s.held), width: pct(free(i)) }} />
         {s.onOrder ? <i className="c-order" style={{ left: pct(s.shelf), width: pct(s.onOrder) }} /> : null}
         <span className="c-mk" style={{ left: pct(s.reorderAt) }}>
           <b>Reorder at {s.reorderAt}</b>

@@ -140,13 +140,9 @@ export default function StaffPage() {
   })();
   const [open, setOpen] = useState<Open>(initial);
   const close = () => setOpen(null);
-  /*
-   * The days the shop is closed can't be booked. A shop with no hours set at all reads as closed
-   * every day, and would leave nothing to book: then any day can be (nothing to book against).
-   */
-  const closed = (scene?.week ?? liveWeek ?? OWNER_VIEW.week).days.map((d) => !d.open);
-  const noHours = closed.every(Boolean);
-  const shut = noHours ? closed.map(() => false) : closed;
+  // The days the shop is closed can't be booked: dotted, and not selectable. The sheet says why.
+  const shut = (scene?.week ?? liveWeek ?? OWNER_VIEW.week).days.map((d) => !d.open);
+  const noHours = shut.every(Boolean);
   const hoursOf = (m: Mate): Hours => (m.id === 'jen' ? JEN_HOURS : { days: shut.map(() => false), start: 8, end: 16, own: {} });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -317,7 +313,7 @@ export default function StaffPage() {
         <HoursSheet
           name={open.m.name}
           shut={shut}
-          daysNote={preview ? undefined : noHours ? 'The shop has no opening hours yet, so any day can be booked. Set them in Settings › Shop.' : closed.some(Boolean) ? 'Dashed days are when the shop is closed. Its hours are in Settings › Shop.' : undefined}
+          daysNote={preview ? undefined : noHours ? 'No shop hours yet. Set them in Settings › Shop.' : shut.some(Boolean) ? 'Dotted days, the shop is closed. See Settings › Shop.' : undefined}
           initial={open.h}
           initialOnce={open.once}
           initialDay={open.day}

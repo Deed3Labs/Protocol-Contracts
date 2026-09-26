@@ -948,7 +948,7 @@ export function HoursSheet({
   name: string;
   /** The shop's closed days, which cannot be picked. */
   shut: boolean[];
-  /** Why some days can't be picked, or why they all can. */
+  /** Why some days can't be picked: one line. */
   daysNote?: string;
   initial: Hours;
   initialOnce?: boolean;
@@ -1068,7 +1068,7 @@ export function HoursSheet({
       </p>
       <Days days={h.days} shut={shut} onToggle={(i) => setH((x) => ({ ...x, days: x.days.map((on, k) => (k === i ? !on : on)) }))} />
       {daysNote && (
-        <p className="c-det" style={{ margin: 'var(--s1) 0 0' }}>
+        <p className="c-det" style={{ margin: 'var(--s1) 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {daysNote}
         </p>
       )}
