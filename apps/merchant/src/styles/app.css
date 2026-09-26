@@ -48,6 +48,9 @@ body {
 /*
  * The reference draws a tablet as a 1180:820 picture with a rounded outline. On a tablet the
  * screen is the outline, so the frame's chrome goes and it fills the viewport.
+ *
+ * On anything wider than the reference's tablet (a desktop), it stops at the member app's width
+ * and sits in the middle (below).
  */
 .c-mc-tablet {
   background: var(--paper);
@@ -57,6 +60,14 @@ body {
   aspect-ratio: auto;
   height: 100dvh;
   padding: var(--s3);
+}
+/* Wider than the reference's 1180px tablet: 1120px of content, header included, inside the frame's
+   24px sides, centred, as the member app's header and pages are (1168px with their padding). */
+@media (min-width: 1181px) {
+  .c-mc-tablet {
+    max-width: calc(1120px + 2 * var(--s3));
+    margin-inline: auto;
+  }
 }
 /* The phone frame's padding: room at the bottom for the floating nav. */
 @media (max-width: 519.98px) {
