@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { CardAvailability, DiscountCode, Reader, ShopSettings, ShopSettingsPatch, TaxKind, TaxStatus } from '@clear/merchant-contracts';
+import type { CardAvailability, DiscountCode, KybStatus, Reader, ShopSettings, ShopSettingsPatch, TaxKind, TaxStatus } from '@clear/merchant-contracts';
 import {
   Account,
   Btn,
@@ -61,7 +61,7 @@ export const SECTIONS: { key: Section; label: string; det: string; desc: string;
   { key: 'closing', label: 'Closing', det: 'How the drawer is opened, counted and signed off.', desc: 'The drawer, and who closes', live: true },
   { key: 'security', label: 'Security', det: 'How you sign in, and what is signed in as the shop.', desc: 'Sign-in, owner PIN, devices', live: true },
   { key: 'notifications', label: 'Notifications', det: 'What reaches you, and where.', desc: 'What reaches you and how', live: true },
-  { key: 'advanced', label: 'Advanced', det: 'Business details, your data, and leaving.', desc: 'Business details, your data, leaving' },
+  { key: 'advanced', label: 'Advanced', det: 'Business details, your data, and leaving.', desc: 'Business details, your data, leaving', live: true },
   { key: 'help', label: 'Help', det: 'A person first, then the guides.', desc: 'A person, then the guides', live: true },
 ];
 
@@ -129,6 +129,8 @@ export interface SettingsData {
    * draws the reference) and until they're read.
    */
   live?: LiveSelling | null;
+  /** A live shop's business verification with Bridge; null in the preview and until read. */
+  kyb?: KybStatus | null;
 }
 
 export interface LiveShop {
@@ -254,6 +256,8 @@ export interface Actions {
   onAmount?: (edit: AmountEdit) => void;
   /** Owners, live: where the end-of-day summary is emailed. */
   onNotifyEmail?: () => void;
+  /** Owners, live: start or carry on the business's verification with Bridge. */
+  onVerifyBusiness?: () => void;
 }
 
 /** Counter and Devices on a live shop. */
@@ -572,9 +576,76 @@ const LOCKED: Record<Exclude<CardAvailability, { available: true }>['reason'], {
   },
 };
 
+const KYB: Record<KybStatus['state'], { chip: string; tone: string; t: string; cta: string | null }> = {
+  not_started: { chip: 'Not verified', tone: 'c-neutral', t: 'Bridge verifies the business before it pays out to a bank. It takes about ten minutes: the business’s details, its owners, and a document or two.', cta: 'Verify the business' },
+  needs_info: { chip: 'Started', tone: 'c-underway', t: 'Bridge needs a little more before it can check the business. Pick up where you left off.', cta: 'Carry on' },
+  in_review: { chip: 'In review', tone: 'c-underway', t: 'Bridge is checking the business. It usually takes a day or two; there’s nothing to do meanwhile.', cta: null },
+  verified: { chip: 'Verified', tone: 'c-settled', t: 'Bridge has verified the business.', cta: null },
+  rejected: { chip: 'Not approved', tone: 'c-absent', t: 'Bridge couldn’t verify the business.', cta: 'See what Bridge needs' },
+  paused: { chip: 'Paused', tone: 'c-underway', t: 'Bridge has paused the business’s account. Contact Clear and we’ll find out why.', cta: null },
+};
+
+/** Settings › Advanced on a live shop: the business's verification with Bridge, then leaving. */
+function liveAdvanced(d: SettingsData, a: Actions): ReactNode {
+  const k = d.kyb;
+  const v = k ? KYB[k.state] : null;
+  return (
+    <>
+      {k && v && (
+        <Cell
+          label="Business verification"
+          det="By Bridge"
+          foot={
+            k.available ? (
+              <FootLine det={k.email ? `Under ${k.email}` : 'The business’s documents stay with Bridge.'}>
+                {v.cta && a.onVerifyBusiness && <Btn primary={k.state === 'not_started'} onClick={a.onVerifyBusiness}>{v.cta}</Btn>}
+              </FootLine>
+            ) : (
+              <FootDet>Business verification isn’t available yet.</FootDet>
+            )
+          }
+        >
+          <Main>
+            <div className="c-line" style={{ alignItems: 'flex-start' }}>
+              <p style={{ margin: 0, fontSize: 'var(--t-sec)' }}>
+                {v.t}
+                {k.state === 'rejected' && k.reason ? ` Bridge says: ${k.reason}.` : ''}
+              </p>
+              <span className={`c-chip ${v.tone}`} style={{ flex: 'none' }}>
+                {v.chip}
+              </span>
+            </div>
+            <div style={{ marginTop: 'var(--s2)' }}>
+              <Rows>
+                <Kv k="Withdraw to a bank" v={k.withdrawToBank ? 'Ready' : k.state === 'verified' ? 'Bridge is setting it up' : 'After verification'} ink />
+              </Rows>
+            </div>
+          </Main>
+        </Cell>
+      )}
+      <Cell
+        label="Leaving"
+        det="Any time, no fee"
+        foot={
+          <FootLine det="You can talk to someone before anything happens.">
+            <Btn onClick={a.onLeave}>Leave Clear</Btn>
+          </FootLine>
+        }
+      >
+        <Main>
+          <p className="c-sub" style={{ margin: 0 }}>
+            There is no exclusivity and no fee. Charges already approved still settle, and what you are owed is still paid on the 14th.
+          </p>
+        </Main>
+      </Cell>
+    </>
+  );
+}
+
 /** A pane's cells. */
 export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
   if (!d.preview && (key === 'counter' || key === 'devices')) return d.liveShop ? liveCounterDevices(key, d.liveShop, a) : null;
+  if (!d.preview && key === 'advanced') return liveAdvanced(d, a);
   // A live shop's own settings, never the reference's example figures, even while they load.
   if (!d.preview && (key === 'tax' || key === 'tips' || key === 'discounts' || key === 'closing' || key === 'notifications')) return d.live ? liveSelling(key, d.live, a) : null;
   switch (key) {

@@ -4,6 +4,7 @@ import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireManager, requireMerchant, requireOwner } from '../middleware/merchantAuth.js';
 import { connectorForShop } from '../services/merchant/cards/registry.js';
 import { setupProgress } from '../services/merchant/setup/setupService.js';
+import { bridgeKyb, KybError, kybStatus, startKyb } from '../services/merchant/kyb/kybService.js';
 import { getHours, getSettings, getShop, saveHours, ShopError, updateSettings, updateShop } from '../services/merchant/shop/shopService.js';
 
 /**
@@ -18,6 +19,8 @@ import { getHours, getSettings, getShop, saveHours, ShopError, updateSettings, u
  *                      tips, offline cards and their limit, discount limits)
  *   PATCH /settings    owners
  *   GET   /setup       owners and managers: Home's Set up the till, which steps are done
+ *   GET   /kyb         owners and managers: the business's verification with Bridge
+ *   POST  /kyb/start   owners: Bridge's hosted verification link
  */
 
 const router = forwardAsyncErrors(Router());
@@ -69,6 +72,23 @@ router.put('/shop/hours', requireMerchant, requireOwner, async (req: Request, re
     res.json(await saveHours(d, { merchant: req.merchant!.merchant, hours: req.body }));
   } catch (error) {
     refuse(res, error);
+  }
+});
+
+router.get('/kyb', requireMerchant, requireManager, async (req: Request, res: Response) => {
+  const d = await db(res);
+  if (!d) return;
+  res.json(await kybStatus(d, bridgeKyb(), req.merchant!.merchant));
+});
+
+router.post('/kyb/start', requireMerchant, requireOwner, async (req: Request, res: Response) => {
+  const d = await db(res);
+  if (!d) return;
+  try {
+    res.json(await startKyb(d, bridgeKyb(), { merchant: req.merchant!.merchant, staffId: req.merchant!.staff.id, body: req.body, appUrl: process.env.MERCHANT_APP_URL || 'https://merchant.useclear.org' }));
+  } catch (error) {
+    if (error instanceof KybError) return void res.status(error.status).json({ error: error.code, message: error.message });
+    throw error;
   }
 });
 

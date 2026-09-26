@@ -22,6 +22,7 @@ import type {
   Reorder,
   PersonHours,
   ShiftNow,
+  KybStatus,
   ShopSettings,
   StaffHours,
   StaffWeek,
@@ -86,6 +87,8 @@ export interface MockSwitches {
   clear: 'approve' | 'decline' | 'wait';
   /** Set up the till: `new` is a shop that hasn't set starting cash or tips yet. */
   setup: 'done' | 'new';
+  /** Business verification: `new` hasn't started. */
+  kyb: 'done' | 'new';
   delayMs: number;
 }
 
@@ -114,7 +117,7 @@ interface OrderRec {
 const TODAY = seed.REFERENCE_DAY;
 
 export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?: string } = {}) {
-  const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', setup: 'done', delayMs: 250, ...initial };
+  const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', setup: 'done', kyb: 'done', delayMs: 250, ...initial };
   let viewer = initial.viewer ?? seed.STAFF_ID.mike;
   let failNext: { method: string; message: string; status: number } | null = null;
   let n = 1000;
@@ -143,6 +146,10 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   let orderNumber = 0;
   // The nightly reconciliation's findings, as the reference day's shop would have them.
   const flags = structuredClone(seed.RECON_FLAGS);
+  let kyb: KybStatus =
+    switches.kyb === 'new'
+      ? { state: 'not_started', withdrawToBank: false, reason: null, email: null, available: true }
+      : { state: 'verified', withdrawToBank: true, reason: null, email: 'mike@mikestire.com', available: true };
   // Set up the till's two steps nothing else records.
   const marks = new Set<'cash' | 'tips'>(switches.setup === 'new' ? [] : ['cash', 'tips']);
   // Shifts and hours: who is on, their breaks, and each person's usual week and this week.
@@ -444,6 +451,17 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       if (patch.startingCashCents !== undefined) marks.add('cash');
       if (patch.tips !== undefined || patch.discountLimits !== undefined) marks.add('tips');
       return settings;
+    },
+    // Business verification: the mock's shop is verified; `&kyb=new` is one that hasn't started.
+    kyb: async () => {
+      if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
+      return kyb;
+    },
+    startKyb: async (input) => {
+      if (who(viewer)?.role !== 'owner') refuse('that needs full access', 403, 'forbidden');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) refuse('That isn’t an email address', 422, 'invalid');
+      kyb = { ...kyb, state: 'needs_info', email: kyb.email ?? input.email.trim().toLowerCase() };
+      return { url: '/settings/advanced?preview=1&live=1&kyb=back' };
     },
     setup: async () => {
       if (!isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
