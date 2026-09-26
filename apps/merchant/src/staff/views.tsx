@@ -21,6 +21,7 @@ import {
   clock,
   cover,
   coverLine,
+  dayRange,
   DAY_KEYS,
   dayName,
   daysLabel,
@@ -252,7 +253,24 @@ const Track = ({ segs, className }: { segs: Seg[]; className?: string }) => (
  * The week, one day at a time: the day buttons, then that day's rows against the shop's opening
  * hours. An owner or a manager also sees Cover, the gaps nobody is booked for.
  */
-export function WeekPanel({ week, team, manage, onSet, onWeek }: { week: Week; team: Mate[]; manage: boolean; onSet?: (m: Mate) => void; onWeek?: (by: -1 | 1) => void }) {
+export function WeekPanel({
+  week,
+  team,
+  manage,
+  onSet,
+  onWeek,
+  canBack = true,
+  canForward = true,
+}: {
+  week: Week;
+  team: Mate[];
+  manage: boolean;
+  onSet?: (m: Mate, day?: number) => void;
+  onWeek?: (by: -1 | 1) => void;
+  /** Greyed out when there's nothing further back, or forward. */
+  canBack?: boolean;
+  canForward?: boolean;
+}) {
   // Today in this week, or Monday in another.
   const [day, setDay] = useState(Math.min(6, Math.max(0, week.today > 6 ? 0 : week.today)));
   const total = Object.values(week.booked).reduce((t, d) => t + weekHours(d), 0);
@@ -265,10 +283,10 @@ export function WeekPanel({ week, team, manage, onSet, onWeek }: { week: Week; t
           <p className="c-label">{week.title ?? 'This week'}</p>
           <span className="c-r">
             <span className="c-det">{week.label}</span>
-            <button type="button" className="c-mc-arrow" aria-label="Last week" onClick={() => onWeek?.(-1)}>
+            <button type="button" className="c-mc-arrow" aria-label="Last week" disabled={!canBack} onClick={() => onWeek?.(-1)}>
               <IconPrev />
             </button>
-            <button type="button" className="c-mc-arrow" aria-label="Next week" onClick={() => onWeek?.(1)}>
+            <button type="button" className="c-mc-arrow" aria-label="Next week" disabled={!canForward} onClick={() => onWeek?.(1)}>
               <IconChevronSm />
             </button>
           </span>
@@ -335,23 +353,31 @@ export function WeekPanel({ week, team, manage, onSet, onWeek }: { week: Week; t
   );
 }
 
-function DayBody({ week, day, team, manage, onSet }: { week: Week; day: number; team: Mate[]; manage: boolean; onSet?: (m: Mate) => void }) {
+function DayBody({ week, day, team, manage, onSet }: { week: Week; day: number; team: Mate[]; manage: boolean; onSet?: (m: Mate, day?: number) => void }) {
   const open = week.days[day].open!;
   const [a, b] = open;
-  const len = b - a;
+  // The timeline: open hours, widened for anyone booked before opening or after closing. Outside
+  // the open hours it's hatched, so the shop's own hours still read.
+  const range = dayRange(week, day);
+  const [ra, rb] = range;
+  const len = rb - ra;
   const today = day === week.today;
-  const f = today ? Math.round(((week.now - a) / len) * 1000) / 1000 : undefined;
+  const f = today ? Math.round(((week.now - ra) / len) * 1000) / 1000 : undefined;
   const tone = day < week.today ? 'past' : today ? 'now' : '';
   const total = Object.values(week.booked).reduce((t, d) => t + weekHours(d), 0);
   const c = coverLine(week, day);
-  const segs = cover(week, day);
+  const segs = cover(week, day, range);
+  const out: Seg[] = [
+    ...(a > ra ? [{ cls: 'out', left: 0, width: ((a - ra) / len) * 100 }] : []),
+    ...(rb > b ? [{ cls: 'out', left: ((b - ra) / len) * 100, width: ((rb - b) / len) * 100 }] : []),
+  ];
 
   return (
     <div className="c-dv-body">
       <div className="c-dv-axis">
         <span />
         <div className="c-dv-ticks">
-          {ticks(open, f).map((t) => (
+          {ticks(range, f).map((t) => (
             <span key={t.left} className={t.mid ? 'c-mid' : ''} style={{ left: `${t.left.toFixed(1)}%` }}>
               {t.label}
             </span>
@@ -360,7 +386,7 @@ function DayBody({ week, day, team, manage, onSet }: { week: Week; day: number; 
         <span className="c-wt c-h">Week</span>
       </div>
       <div className="c-dv-grid">
-        {gridLines(open).map((l) => (
+        {gridLines(range).map((l) => (
           <i key={l} style={{ left: `${l.toFixed(2)}%` }} />
         ))}
       </div>
@@ -374,10 +400,10 @@ function DayBody({ week, day, team, manage, onSet }: { week: Week; day: number; 
         if (s) {
           det = span(...s);
           now = today;
-          segsRow = [{ cls: tone, left: ((s[0] - a) / len) * 100, width: ((s[1] - s[0]) / len) * 100 }];
+          segsRow = [{ cls: tone, left: ((s[0] - ra) / len) * 100, width: ((s[1] - s[0]) / len) * 100 }];
         } else if (from !== undefined) {
           det = `From ${clock(from, true)}`;
-          segsRow = [{ cls: 'x', left: ((from - a) / len) * 100, width: ((b - from) / len) * 100 }];
+          segsRow = [{ cls: 'x', left: ((from - ra) / len) * 100, width: ((b - from) / len) * 100 }];
         } else if (!days) {
           det = (
             <>
@@ -385,7 +411,7 @@ function DayBody({ week, day, team, manage, onSet }: { week: Week; day: number; 
               {manage && (
                 <span className="c-lk">
                   {' · '}
-                  <span className="c-wk-link" {...press(onSet ? () => onSet(m) : undefined)}>
+                  <span className="c-wk-link" {...press(onSet ? () => onSet(m, day) : undefined)}>
                     Set
                   </span>
                 </span>
@@ -395,14 +421,15 @@ function DayBody({ week, day, team, manage, onSet }: { week: Week; day: number; 
         } else det = 'Off';
         return (
           <div key={m.id} className="c-dv-row">
-            <div className="c-who">
+            {/* An owner or manager taps someone to change their hours for this week, on this day. */}
+            <div className="c-who" {...(manage && onSet && days ? { ...press(() => onSet(m, day)), 'aria-label': `${m.name}’s hours`, style: { cursor: 'pointer' } } : {})}>
               <span className="c-avatarbtn c-sm">{initials(m.name)}</span>
               <div>
                 <p className="c-nm">{m.name}</p>
                 <p className={cx('c-det', now && 'c-now')}>{det}</p>
               </div>
             </div>
-            <Track segs={segsRow} />
+            <Track segs={[...out, ...segsRow]} />
             <span className="c-wt">{days ? `${weekHours(days)}h` : '—'}</span>
           </div>
         );
@@ -416,7 +443,7 @@ function DayBody({ week, day, team, manage, onSet }: { week: Week; day: number; 
               <p className={cx('c-det', `c-${c.cls}`)}>{c.t}</p>
             </div>
           </div>
-          <Track segs={[...segs.cov, ...segs.gap]} />
+          <Track segs={[...out, ...segs.cov, ...segs.gap]} />
           <span className="c-wt">{total}h</span>
         </div>
       )}
@@ -914,6 +941,7 @@ export function HoursSheet({
   editable,
   startsThisWeek,
   backOn = 'Monday the 28th',
+  weekLabel,
   busy,
   error,
 }: {
@@ -934,6 +962,8 @@ export function HoursSheet({
   startsThisWeek?: boolean;
   /** When usual hours come back after "This week only": "Monday the 28th". */
   backOn?: string;
+  /** Opened on another week from the schedule: "next week", "the week of Oct 5". */
+  weekLabel?: string;
   busy?: boolean;
   error?: string | null;
 }) {
@@ -999,7 +1029,15 @@ export function HoursSheet({
               </div>
             </div>
           </div>
-          <Callout>{once ? `Their usual hours come back on ${backOn}.` : startsThisWeek ? 'Starts this week.' : 'Starts next week. This week stays as it is.'}</Callout>
+          <Callout>
+            {once
+              ? `Their usual hours come back on ${backOn}.`
+              : weekLabel
+                ? `Starts ${weekLabel}. The weeks before stay as they are.`
+                : startsThisWeek
+                  ? 'Starts this week.'
+                  : 'Starts next week. This week stays as it is.'}
+          </Callout>
           {error && (
             <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0 0' }}>
               {error}
@@ -1012,7 +1050,7 @@ export function HoursSheet({
             disabled={!onSave || busy}
             onClick={() => onSave?.(h, once)}
           >
-            {busy ? 'Saving…' : once ? 'Save this week' : `Save ${f}’s hours`}
+            {busy ? 'Saving…' : once ? (weekLabel ? 'Save that week' : 'Save this week') : `Save ${f}’s hours`}
           </button>
         </>
       }
@@ -1022,7 +1060,7 @@ export function HoursSheet({
           Every week
         </button>
         <button type="button" className={cx('c-btn c-chip-q', once && 'c-on')} onClick={() => setOnce(true)}>
-          This week only
+          {weekLabel ? 'That week only' : 'This week only'}
         </button>
       </div>
       <p className="c-label" style={{ margin: 'var(--s3) 0 var(--s1)' }}>

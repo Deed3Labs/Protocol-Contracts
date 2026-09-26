@@ -165,10 +165,19 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     breakMinutes: s.breakMinutes,
     booked: bookedToday(s.staffId),
   });
-  const personHours = (staffId: string): PersonHours => {
+  // Weeks after the reference's: their one-offs, by person and Monday (the reference week's is thisWeek).
+  const onceWeeks = new Map<string, StaffHours>();
+  const mondayOfMock = (date: string) => {
+    const d = new Date(`${date}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    return d.toISOString().slice(0, 10);
+  };
+  const personHours = (staffId: string, weekOf?: string): PersonHours => {
     if (!who(staffId)) refuse('That person is not on the team', 404, 'not_found');
     const h = staffHours.get(staffId);
-    return { usual: h?.usual ?? null, next: h?.next ?? null, thisWeek: h?.thisWeek ?? null, nextWeekOf: '2026-09-28' };
+    const monday = mondayOfMock(weekOf ?? '2026-09-21');
+    const once = monday === '2026-09-21' ? (h?.thisWeek ?? null) : (onceWeeks.get(`${staffId}|${monday}`) ?? null);
+    return { usual: h?.usual ?? null, next: h?.next ?? null, thisWeek: once, nextWeekOf: '2026-09-28' };
   };
   const isManager = (staffId: string) => ['manager', 'owner'].includes(who(staffId)?.role ?? '');
   // Whose PIN is whose, as the server keeps them: a reset clears one, a first shift sets one.
@@ -531,9 +540,10 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       at.setUTCDate(at.getUTCDate() - ((at.getUTCDay() + 6) % 7));
       const dates = Array.from({ length: 7 }, (_, i) => new Date(at.getTime() + i * 86_400_000).toISOString().slice(0, 10));
       const thisWeek = dates[0] === '2026-09-21';
+      const onceThere = (sid: string) => (thisWeek ? null : (onceWeeks.get(`${sid}|${dates[0]}`) ?? null));
       const staff = seed.STAFF.filter((s) => s.active && !removed.has(s.id));
       // A week other than the reference's has each person's usual hours, not that week's one-offs.
-      const plan = (sid: string) => (thisWeek ? staffHours.get(sid)?.thisWeek : null) ?? staffHours.get(sid)?.usual ?? null;
+      const plan = (sid: string) => (thisWeek ? staffHours.get(sid)?.thisWeek : onceThere(sid)) ?? staffHours.get(sid)?.usual ?? null;
       return {
         weekOf: dates[0]!,
         today: TODAY,
@@ -543,9 +553,9 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
         lastShift: Object.fromEntries(staff.map((s) => [s.id, shifts.get(s.id)?.startedAt ?? null])),
       };
     },
-    staffHours: async (staffId): Promise<PersonHours> => {
+    staffHours: async (staffId, weekOf): Promise<PersonHours> => {
       if (staffId !== viewer && !isManager(viewer)) refuse('that needs a manager', 403, 'forbidden');
-      return personHours(staffId);
+      return personHours(staffId, weekOf);
     },
     saveStaffHours: async (staffId, input): Promise<PersonHours> => {
       if (!mayManage(staffId)) refuse('Only the owner sets a manager’s hours', 403, 'forbidden');
@@ -553,6 +563,13 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       if (input.hours.days.some((d) => d.open.to <= d.open.from)) refuse('It closes after it opens', 422, 'invalid');
       const h = staffHours.get(staffId) ?? { usual: null, next: null, thisWeek: null };
       const days = { days: [...input.hours.days].sort((a, b) => a.day - b.day) };
+      // The week the schedule shows (the server's rules): not one that's gone; a later week's one-off is its own.
+      const shown = mondayOfMock(input.weekOf ?? '2026-09-21');
+      if (shown < '2026-09-21') refuse('That week has gone: its hours stay as they were', 422, 'invalid');
+      if (input.once && shown !== '2026-09-21') {
+        onceWeeks.set(`${staffId}|${shown}`, days);
+        return personHours(staffId, shown);
+      }
       if (input.once) h.thisWeek = days;
       else if (!h.usual) h.usual = days;
       else h.next = days;

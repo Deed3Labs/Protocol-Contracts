@@ -19,6 +19,7 @@ import {
   JEN_THIS_WEEK,
   OWNER_VIEW,
   addWeeks,
+  mondayOf,
   crewFromApi,
   hoursFromApi,
   hoursToApi,
@@ -60,7 +61,7 @@ type Open =
   | { k: 'person'; m: Mate }
   | { k: 'remove'; m: Mate }
   | { k: 'reset'; m: Mate }
-  | { k: 'hours'; m: Mate; h: Hours; once?: boolean; day?: number; live?: PersonHours }
+  | { k: 'hours'; m: Mate; h: Hours; once?: boolean; day?: number; live?: PersonHours; weekOf?: string; weekLabel?: string }
   | { k: 'limit' }
   | null;
 
@@ -86,6 +87,10 @@ export default function StaffPage() {
   const shiftsNow = useApi(() => (live ? merchant.shifts() : Promise.resolve(null)), [live]);
   // The week shown: this one until the arrows move it (a Monday, YYYY-MM-DD).
   const [weekOf, setWeekOf] = useState<string | null>(null);
+  // How far the arrows go: back to the week the shop joined; forward up to 12 weeks, while there's a
+  // schedule to show (anyone's usual hours carry on; a one-off shows in its week).
+  const profile = useApi(() => (live ? api.profile() : Promise.resolve(null)), [live]);
+  const [thisMonday, setThisMonday] = useState<string | null>(null);
   const weekNow = useApi(() => (live ? merchant.staffWeek(weekOf ?? undefined) : Promise.resolve(null)), [live, weekOf]);
   const [tick, setTick] = useState(() => Date.now());
   useEffect(() => {
@@ -93,6 +98,10 @@ export default function StaffPage() {
     return () => clearInterval(t);
   }, []);
   const liveWeek = useMemo(() => (weekNow.data && shiftsNow.data ? weekFromApi(weekNow.data, shiftsNow.data, new Date(tick)) : null), [weekNow.data, shiftsNow.data, tick]);
+  // This week's Monday, from the first week shown (this one), for how far forward the arrows go.
+  useEffect(() => {
+    if (!thisMonday && liveWeek?.title === 'This week' && liveWeek.weekOf) setThisMonday(liveWeek.weekOf);
+  }, [liveWeek, thisMonday]);
 
   const scene = preview ? (screen === 'counter' ? COUNTER_VIEW : OWNER_VIEW) : null;
   const liveCrew = shiftsNow.data && session ? crewFromApi(shiftsNow.data, session.staff.id, tick) : undefined;
@@ -142,11 +151,19 @@ export default function StaffPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Someone's hours: the preview's, or, live, loaded before the sheet opens. */
-  const openHours = (m: Mate) => {
+  /**
+   * Someone's hours, for the week the schedule is showing. From the day view, a person booked that
+   * day opens on that day's times.
+   */
+  const openHours = (m: Mate, day?: number) => {
     if (!live) return setOpen({ k: 'hours', m, h: hoursOf(m) });
     setError(null);
-    merchant.staffHours(m.id).then(
-      (ph) => setOpen({ k: 'hours', m, h: hoursFromApi(ph.thisWeek ?? ph.next ?? ph.usual), once: !!ph.thisWeek, live: ph }),
+    const weekOf = liveWeek?.weekOf;
+    const title = liveWeek?.title ?? 'This week';
+    const weekLabel = title === 'This week' ? undefined : title === 'Next week' ? 'next week' : `the week of ${liveWeek!.label.split(' – ')[0]}`;
+    const bookedThatDay = day !== undefined && !!liveWeek?.booked[m.id]?.[day];
+    merchant.staffHours(m.id, weekOf).then(
+      (ph) => setOpen({ k: 'hours', m, h: hoursFromApi(ph.thisWeek ?? ph.next ?? ph.usual), once: !!ph.thisWeek, live: ph, weekOf, weekLabel, day: bookedThatDay ? day : undefined }),
       (e) => setError(errorSentence(e)),
     );
   };
@@ -196,6 +213,14 @@ export default function StaffPage() {
           manage={manage}
           onSet={openHours}
           // From the week asked for, not the one on screen, so two quick presses move two weeks.
+          canBack={!liveWeek ? undefined : !!liveWeek.weekOf && (!profile.data?.partnerSince || !/^\d{4}-\d{2}-\d{2}/.test(profile.data.partnerSince) || liveWeek.weekOf > mondayOf(profile.data.partnerSince.slice(0, 10)))}
+          canForward={
+            !liveWeek
+              ? undefined
+              : !!liveWeek.weekOf &&
+            (!thisMonday || liveWeek.weekOf < addWeeks(thisMonday, 12)) &&
+            (Object.values(weekNow.data?.usual ?? {}).some(Boolean) || Object.keys(weekNow.data?.booked ?? {}).length > 0)
+          }
           onWeek={liveWeek?.weekOf ? (by) => setWeekOf((w) => addWeeks(w ?? liveWeek.weekOf!, by)) : undefined}
         />
       )}
@@ -298,7 +323,8 @@ export default function StaffPage() {
           initialDay={open.day}
           editable={!!open.live}
           startsThisWeek={open.live ? !open.live.usual : undefined}
-          backOn={open.live ? `Monday the ${ordinal(Number(open.live.nextWeekOf.slice(8)))}` : undefined}
+          weekLabel={open.weekLabel}
+          backOn={open.live ? `Monday the ${ordinal(Number((open.weekLabel && open.weekOf ? addWeeks(open.weekOf, 1) : open.live.nextWeekOf).slice(8)))}` : undefined}
           busy={busy}
           error={open.live ? error : null}
           onSave={
@@ -309,7 +335,7 @@ export default function StaffPage() {
                     setBusy(true);
                     setError(null);
                     merchant
-                      .saveStaffHours(open.m.id, { hours: hoursToApi(h), once })
+                      .saveStaffHours(open.m.id, { hours: hoursToApi(h), once, ...(open.weekOf ? { weekOf: open.weekOf } : {}) })
                       .then(
                         () => (close(), weekNow.reload()),
                         (e) => setError(errorSentence(e)),

@@ -88,7 +88,26 @@ export type Seg = { cls: string; left: number; width: number };
 const pct = (x: number) => Math.round(x * 1000) / 10;
 
 /** Where a day's opening hours are covered by at least one booking, and where not. */
-export function cover(week: Week, day: number): { cov: Seg[]; gap: Seg[]; gaps: [Hour, Hour][]; full: boolean; none: boolean } {
+/**
+ * A day's timeline: the shop's open hours, widened to take in anyone booked before opening or after
+ * closing (setting up, cashing up), on whole hours.
+ */
+export function dayRange(week: Week, day: number): [Hour, Hour] {
+  const [a, b] = week.days[day].open!;
+  let lo = a;
+  let hi = b;
+  for (const d of Object.values(week.booked)) {
+    const s = d[day];
+    if (s) {
+      lo = Math.min(lo, s[0]);
+      hi = Math.max(hi, s[1]);
+    }
+  }
+  return [Math.floor(lo), Math.ceil(hi)];
+}
+
+/** Cover while the shop is open, drawn against `range` (the day's timeline; the open hours if not given). */
+export function cover(week: Week, day: number, range?: [Hour, Hour]): { cov: Seg[]; gap: Seg[]; gaps: [Hour, Hour][]; full: boolean; none: boolean } {
   const open = week.days[day].open;
   if (!open) return { cov: [], gap: [], gaps: [], full: false, none: false };
   const [a, b] = open;
@@ -111,8 +130,9 @@ export function cover(week: Week, day: number): { cov: Seg[]; gap: Seg[]; gaps: 
     at = Math.max(at, e);
   }
   if (at < b) gaps.push([at, b]);
-  const len = b - a;
-  const seg = (cls: string) => ([s, e]: [Hour, Hour]) => ({ cls, left: pct((s - a) / len), width: pct((e - s) / len) });
+  const [ra, rb] = range ?? [a, b];
+  const len = rb - ra;
+  const seg = (cls: string) => ([s, e]: [Hour, Hour]) => ({ cls, left: pct((s - ra) / len), width: pct((e - s) / len) });
   const full = gaps.length === 0;
   return {
     cov: merged.map(seg(full ? 'cov full' : 'cov')),
@@ -255,7 +275,7 @@ export function hoursToApi(h: Hours): StaffHours {
 
 /** The Staff page's week from the API's: the shop's hours, who's booked, and now. */
 /** The Monday of a YYYY-MM-DD date. */
-function mondayOf(date: string): string {
+export function mondayOf(date: string): string {
   const d = new Date(`${date}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
   return d.toISOString().slice(0, 10);

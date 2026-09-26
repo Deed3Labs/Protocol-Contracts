@@ -32,8 +32,12 @@ export const PersonHours = z.object({
 });
 export type PersonHours = z.infer<typeof PersonHours>;
 
-/** "Every week" changes the usual hours from next Monday (from this week for someone who has none); "This week only" changes this week. */
-export const SaveStaffHours = z.object({ hours: StaffHours, once: z.boolean() });
+/**
+ * "Every week" changes the usual hours from next Monday (from this week for someone who has none);
+ * "This week only" changes this week. `weekOf`, a date in the week the Staff schedule is showing,
+ * moves both to that week: its one-off, or usual hours from that Monday (not a week that's gone).
+ */
+export const SaveStaffHours = z.object({ hours: StaffHours, once: z.boolean(), weekOf: BusinessDate.optional() });
 
 /** Someone on shift now. */
 export const ShiftNow = z.object({
