@@ -8,7 +8,9 @@ const charge = (over: Partial<MerchantCharge>): MerchantCharge => ({
   amount: 100,
   payout: 98,
   state: 'approved',
-  splitInto: 1,
+  // Paid now unless a test says otherwise.
+  splitInto: null,
+  paidNow: true,
   memberName: 'A. Member',
   raisedBy: 'Jen R.',
   raisedByStaffId: 's_jen',
@@ -27,9 +29,9 @@ describe('the month, from the API', () => {
       profile: null,
       staff: null,
       charges: [
-        charge({ amount: 412, payout: 403.76, splitInto: 4 }),
+        charge({ amount: 412, payout: 403.76, splitInto: 4, paidNow: false }),
         charge({ amount: 188, payout: 185.65, raisedBy: 'Luis M.' }),
-        charge({ amount: 300, payout: 294, splitInto: 2, raisedBy: 'Jen R.' }),
+        charge({ amount: 300, payout: 294, splitInto: 2, paidNow: false, raisedBy: 'Jen R.' }),
         charge({ amount: 1240, createdAt: new Date(2026, 7, 20).toISOString() }),
       ],
     });

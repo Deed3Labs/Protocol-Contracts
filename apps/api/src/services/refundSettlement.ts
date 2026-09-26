@@ -63,6 +63,11 @@ export interface SettleResult {
  */
 /** Exported for disputes, which unwind a plan provisionally while a dispute is open. */
 export async function closePlan(charge: ChargeRow, amountCents: number): Promise<SettleResult> {
+  // Paid now, from the member's cash: there is no plan, and the money is in the shop's wallet.
+  // Returning ok here would mark it refunded and tell the member so while nothing moved back.
+  if (charge.paidNow) {
+    return { ok: false, reason: 'This was paid now, from their Clear cash. Refunding it from the shop’s cash isn’t available yet.' };
+  }
   if (charge.planId == null) {
     // Nothing was opened, so there is nothing to close. Not a failure: a charge can be refunded
     // before it ever became a plan.

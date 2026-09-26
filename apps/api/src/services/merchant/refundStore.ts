@@ -151,6 +151,10 @@ export const refundStore = {
     if (charge.status !== 'approved') {
       return { ok: false, reason: `a ${charge.status} charge cannot be refunded` };
     }
+    // Refused here, before two people spend time on it: settling one would fail (refundSettlement).
+    if (charge.paidNow) {
+      return { ok: false, reason: 'This was paid now, from their Clear cash. Refunding it from the shop’s cash isn’t available yet.' };
+    }
 
     // The same arithmetic the tablet showed the writer before they pressed Send to an owner.
     const quote = refundQuote({

@@ -356,6 +356,7 @@ export const api = {
     status: string;
     amountCents: number;
     splitInto: number | null;
+    paidNow?: boolean;
     expiresAt: string;
     openedAt: string | null;
     resolvedAt: string | null;
@@ -608,6 +609,7 @@ interface WireCharge {
   payoutCents?: number;
   status: string;
   splitInto: number | null;
+  paidNow?: boolean;
   member: { displayName: string } | null;
   raisedBy: string | null;
   raisedByStaffId: string | null;
@@ -623,7 +625,10 @@ export interface MerchantCharge {
   /** Absent for counter staff — payout figures are owner-only, server-side. */
   payout?: number;
   state: ChargeState;
+  /** A plan's payments: 1 is "next cycle". Null when paid now or not answered yet. */
   splitInto: number | null;
+  /** Paid from the member's Clear cash: no plan, and the paid-now rate. */
+  paidNow: boolean;
   memberName: string | null;
   raisedBy: string | null;
   raisedByStaffId: string | null;
@@ -640,6 +645,7 @@ const toCharge = (c: WireCharge): MerchantCharge => ({
   payout: c.payoutCents == null ? undefined : c.payoutCents / 100,
   state: fromWire(c.status),
   splitInto: c.splitInto,
+  paidNow: c.paidNow === true,
   memberName: c.member?.displayName ?? null,
   raisedBy: c.raisedBy,
   raisedByStaffId: c.raisedByStaffId,

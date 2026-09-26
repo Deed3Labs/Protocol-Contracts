@@ -522,7 +522,7 @@ export function ShopGetsCell({ d }: { d: ClearDetail }) {
         <div className="c-rows">
           <Kv k="You receive" v={d.payoutCents === null ? '—' : usd(d.payoutCents)} />
           <Kv
-            k={d.rate ? `Fee · ${d.rate}, ${d.splitInto && d.splitInto > 1 ? 'over time' : 'paid now'}` : 'Fee'}
+            k={d.rate ? `Fee · ${d.rate}, ${d.paidNow ? 'paid now' : 'over time'}` : 'Fee'}
             v={d.feeCents === null ? '—' : usd(d.feeCents)}
           />
           <Kv k="Paid out" v={d.paidOut ?? '—'} />
@@ -556,12 +556,19 @@ export function ThisChargeCell({ amountCents, raisedBy, status }: { amountCents:
 
 /** What the customer chose on their phone. Context, not an action. */
 export function ChoseCell({ d, foot }: { d: ClearDetail | null; foot?: ReactNode }) {
-  const n = d?.splitInto ?? null;
+  const n = d?.paidNow ? null : (d?.splitInto ?? null);
   return (
     <div className="c-cell">
       <Head label="What they chose" det="Their phone" />
       <div className="c-cmain">
-        {n === null ? (
+        {d?.paidNow ? (
+          <>
+            <p style={{ margin: 0, fontSize: 'var(--t-body)', fontWeight: 500 }}>Paid now</p>
+            <p className="c-det" style={{ marginTop: 4 }}>
+              From their Clear cash. Nothing for them to clear later.
+            </p>
+          </>
+        ) : n === null ? (
           <>
             <p style={{ margin: 0, fontSize: 'var(--t-body)', fontWeight: 500 }}>Not yet</p>
             <p className="c-det" style={{ marginTop: 4 }}>
@@ -570,7 +577,7 @@ export function ChoseCell({ d, foot }: { d: ClearDetail | null; foot?: ReactNode
           </>
         ) : (
           <>
-            <p style={{ margin: 0, fontSize: 'var(--t-body)', fontWeight: 500 }}>{n === 1 ? 'Paid now' : `${n} payments`}</p>
+            <p style={{ margin: 0, fontSize: 'var(--t-body)', fontWeight: 500 }}>{n === 1 ? 'Next cycle' : `${n} payments`}</p>
             {n > 1 && d?.perCycleCents != null && (
               <p className="c-det" style={{ marginTop: 4 }}>
                 {usd(d.perCycleCents)} a cycle

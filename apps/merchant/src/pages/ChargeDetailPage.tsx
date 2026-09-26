@@ -59,6 +59,19 @@ type Step = 'review' | 'waiting' | 'approve' | 'done' | 'declined' | null;
 
 const clockOf = (d: Date | string) => clockTime(typeof d === 'string' ? d : d.toISOString());
 
+const shortDay = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+/**
+ * When a charge's money reaches the shop. Paid now lands in the shop's own wallet as the member pays;
+ * a plan is paid with the next payout: its day, or net-30 when none is set.
+ */
+function paidOutOf(charge: MerchantCharge, nextPayoutOn: string | null, positionKnown: boolean): string | null {
+  if (charge.state !== 'approved') return null;
+  if (charge.paidNow) return charge.resolvedAt ? shortDay(charge.resolvedAt) : 'On payment';
+  if (!positionKnown) return null;
+  return nextPayoutOn ? shortDay(nextPayoutOn) : 'Net-30';
+}
+
 const toQuote = (q: ReturnType<typeof refundQuote>): Quote => ({
   amountCents: toCents(q.amount),
   memberCents: toCents(q.memberReceives),
@@ -191,20 +204,18 @@ export default function ChargeDetailPage() {
     live = charge;
     name = charge.memberName ?? 'A customer';
     amountCents = toCents(charge.amount);
-    const rate = profile?.discountRate ?? null;
     const n = charge.splitInto;
+    const feeCents = charge.payout !== undefined ? amountCents - toCents(charge.payout) : null;
+    // Paid now is the tier's paid-now rate, which is what the shop's share was cut at; a plan is the
+    // registry's over-time rate.
+    const rate = charge.paidNow ? (feeCents !== null && amountCents > 0 ? feeCents / amountCents : null) : (profile?.discountRate ?? null);
     detail = {
       payoutCents: charge.payout !== undefined ? toCents(charge.payout) : null,
-      feeCents: charge.payout !== undefined ? amountCents - toCents(charge.payout) : null,
-      rate: rate === null ? null : `${(rate * 100).toFixed(1)}%`,
-      // An approved charge is paid with the next payout: its day, or net-30 when none is set.
-      paidOut:
-        charge.state !== 'approved' || !position
-          ? null
-          : position.nextPayoutOn
-            ? new Date(position.nextPayoutOn).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-            : 'Net-30',
+      feeCents,
+      rate: rate === null ? null : `${(rate * 100).toFixed(charge.paidNow ? 2 : 1).replace(/(\.\d)0$/, '$1')}%`,
+      paidOut: paidOutOf(charge, position?.nextPayoutOn ?? null, !!position),
       splitInto: n,
+      paidNow: charge.paidNow,
       perCycleCents: n && n > 1 ? toCents(splitQuote(charge.amount, n, STUB_MERCHANT.ratePerCycle).perCycle) : null,
     };
     status = CHARGE_LABEL[charge.state];
@@ -320,7 +331,8 @@ export default function ChargeDetailPage() {
 
   // ---- The foot of the right-hand cell -------------------------------------------------------------
   const cancellable = !!live && canTransition(live.state, 'cancelled') && (canSeeMoney || live.raisedByStaffId === session?.staff.id);
-  const refundable = preview || (!!live && canTransition(live.state, 'refund_requested'));
+  // Paid now can't be refunded from the shop's cash yet; the server refuses it too (refundStore).
+  const refundable = preview || (!!live && !live.paidNow && canTransition(live.state, 'refund_requested'));
   const awaiting = !!live && live.state === 'refund_requested';
   const foot = cancellable ? (
     <button
@@ -351,6 +363,8 @@ export default function ChargeDetailPage() {
     <button type="button" className="c-btn c-btn-lg" onClick={() => setStep('review')}>
       Start a refund
     </button>
+  ) : live?.paidNow && live.state === 'approved' ? (
+    <p className="c-det">Paid now, straight to your Clear cash. Refunding it from there isn’t available yet.</p>
   ) : undefined;
 
   // ---- A live sale's actions ------------------------------------------------------------------------

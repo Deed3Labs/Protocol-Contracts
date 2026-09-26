@@ -220,11 +220,11 @@ describe("the older client's Clear side, from the same state", () => {
   test('Charges lists the reference: two waiting, four confirmed, Tom expired; payouts only for money roles', async () => {
     const { clear } = createMockMerchantApi(fast);
     const all = await clear.charges();
-    expect(all.map((c) => [c.memberName, c.state, c.amount, c.splitInto])).toEqual([
+    expect(all.map((c) => [c.memberName, c.state, c.amount, c.paidNow ? 'now' : c.splitInto])).toEqual([
       ['Dana R.', 'waiting', 940, null],
       ['Nina P.', 'waiting', 410, null],
       ['Marcus T.', 'approved', 412, 4],
-      ['Priya S.', 'approved', 188, 1],
+      ['Priya S.', 'approved', 188, 'now'],
       ['Ana V.', 'approved', 300, 2],
       ['Ray C.', 'approved', 1240, 2],
       ['Tom B.', 'expired', 310, 4],

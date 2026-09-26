@@ -392,6 +392,8 @@ merchantRouter.get('/charges', requireMerchant, async (req: Request, res: Respon
       payoutCents: staff.role === 'owner' ? c.payoutCents : undefined,
       status: openRefunds.has(c.code) ? 'refund_requested' : c.status,
       splitInto: c.splitInto,
+      // From the member's cash, not a plan: nothing is owed, and the fee is the paid-now rate.
+      paidNow: c.paidNow,
       // The name the member chose to be seen by; never their address.
       member: c.memberWallet ? { displayName: memberNames.get(c.memberWallet.toLowerCase()) ?? 'A Clear member' } : null,
       raisedBy: c.raisedBy ? (staffNames.get(c.raisedBy) ?? null) : null,
@@ -492,6 +494,7 @@ merchantRouter.get(
       status: charge.status,
       amountCents: charge.amountCents,
       splitInto: charge.splitInto,
+      paidNow: charge.paidNow,
       expiresAt: charge.expiresAt,
       openedAt: charge.openedAt,
       resolvedAt: charge.resolvedAt,

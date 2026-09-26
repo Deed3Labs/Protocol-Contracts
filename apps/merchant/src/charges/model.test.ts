@@ -38,6 +38,7 @@ describe('a charge from the API', () => {
     amount: 410,
     state: 'waiting',
     splitInto: null,
+    paidNow: false,
     memberName: 'Nina P.',
     raisedBy: 'Jen R.',
     raisedByStaffId: 's_jen',
@@ -54,7 +55,9 @@ describe('a charge from the API', () => {
 
   test('confirmed says the plan; expired says for how long it waited', () => {
     expect(rowFromApi({ ...base, state: 'approved', splitInto: 4 }, now).note).toBe('4 payments');
-    expect(rowFromApi({ ...base, state: 'approved', splitInto: 1 }, now).note).toBe('paid now');
+    expect(rowFromApi({ ...base, state: 'approved', paidNow: true }, now).note).toBe('paid now');
+    // One payment is a plan too: cleared at the end of the cycle, with its carry.
+    expect(rowFromApi({ ...base, state: 'approved', splitInto: 1 }, now).note).toBe('next cycle');
     expect(rowFromApi({ ...base, state: 'expired' }, now).note).toBe('not approved in 24 hours');
   });
 });

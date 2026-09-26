@@ -79,6 +79,26 @@ export interface ChargeRow {
   openedAt: string | null;
   /** The staff member who raised it. Null for charges raised before staff existed. */
   raisedBy: string | null;
+  /** Paid from the member's Clear cash, not a plan: no plan id, and the shop is paid at the paid-now rate. */
+  paidNow: boolean;
+  /** Set while the member is paying now: what the shop and Clear are owed, and when the hold lapses. */
+  payNow: PayNowHold | null;
+}
+
+/**
+ * A charge held while the member pays it from their cash.
+ *
+ * Quoted once, when the hold is taken, and kept: the member's transfers are checked against these
+ * figures, not against a rate read again later that might have moved in between.
+ */
+export interface PayNowHold {
+  payoutCents: number;
+  feeCents: number;
+  /** Where Clear's fee goes. */
+  feeTo: string;
+  /** When the hold was taken: a payment before it is not a payment for this charge. */
+  since: string;
+  until: string;
 }
 
 interface DbRow {
@@ -98,6 +118,12 @@ interface DbRow {
   resolved_at: string | null;
   opened_at: string | null;
   raised_by: string | null;
+  paid_now: boolean | null;
+  pay_now_payout_cents: string | number | null;
+  pay_now_fee_cents: string | number | null;
+  pay_now_fee_to: string | null;
+  pay_now_at: string | null;
+  pay_now_until: string | null;
 }
 
 // No I, L, O or U: read over a phone line, those are the ones that come back wrong.
@@ -154,6 +180,16 @@ async function ensureTables(): Promise<void> {
    * flow exist at all.
    */
   await pool.query(`ALTER TABLE ${TABLE} ALTER COLUMN member_wallet DROP NOT NULL`);
+  // Paying now, from the member's cash. `pay_now_until` is what marks a `resolving` row as a pay-now
+  // hold rather than a plan being opened: the two are reconciled differently (see listStuck).
+  await pool.query(`
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS paid_now BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS pay_now_payout_cents BIGINT;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS pay_now_fee_cents BIGINT;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS pay_now_fee_to TEXT;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS pay_now_at TIMESTAMPTZ;
+    ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS pay_now_until TIMESTAMPTZ;
+  `);
   ensured = true;
 }
 
@@ -189,11 +225,23 @@ const toRow = (r: DbRow): ChargeRow =>
     resolvedAt: r.resolved_at,
     openedAt: r.opened_at,
     raisedBy: r.raised_by ?? null,
+    paidNow: Boolean(r.paid_now),
+    payNow:
+      r.pay_now_until && r.pay_now_fee_to
+        ? {
+            payoutCents: Number(r.pay_now_payout_cents),
+            feeCents: Number(r.pay_now_fee_cents),
+            feeTo: r.pay_now_fee_to,
+            since: r.pay_now_at ?? r.pay_now_until,
+            until: r.pay_now_until,
+          }
+        : null,
   });
 
 const COLUMNS = `code, merchant_address, merchant_name, member_wallet, amount_cents, payout_cents,
                  status, split_into, plan_id, tx_hash, chain_id, expires_at, created_at,
-                 resolved_at, opened_at, raised_by`;
+                 resolved_at, opened_at, raised_by, paid_now, pay_now_payout_cents,
+                 pay_now_fee_cents, pay_now_fee_to, pay_now_at, pay_now_until`;
 
 export const chargeStore = {
   isConfigured(): boolean {
@@ -321,7 +369,7 @@ export const chargeStore = {
       // already been resolved some other way.
       `UPDATE ${TABLE}
           SET status = $2, split_into = $3, plan_id = $4, tx_hash = $5, resolved_at = now()
-        WHERE code = $1 AND status = 'resolving'
+        WHERE code = $1 AND status = 'resolving' AND pay_now_until IS NULL
         RETURNING ${COLUMNS}`,
       [
         code.trim().toUpperCase(),
@@ -368,7 +416,7 @@ export const chargeStore = {
     await ensureTables();
     const r = await pool.query<DbRow>(
       `SELECT ${COLUMNS} FROM ${TABLE}
-        WHERE status = 'resolving'
+        WHERE status = 'resolving' AND pay_now_until IS NULL
           AND created_at < now() - ($1 || ' seconds')::interval
         ORDER BY created_at ASC
         LIMIT $2`,
@@ -510,8 +558,126 @@ export const chargeStore = {
     const pool = getPostgresPool();
     if (!pool) return;
     await ensureTables();
-    await pool.query(`UPDATE ${TABLE} SET status = 'pending' WHERE code = $1 AND status = 'resolving'`, [
-      code.trim().toUpperCase(),
-    ]);
+    await pool.query(
+      `UPDATE ${TABLE} SET status = 'pending' WHERE code = $1 AND status = 'resolving' AND pay_now_until IS NULL`,
+      [code.trim().toUpperCase()],
+    );
+  },
+
+  /**
+   * Hold a pending charge while its member pays it from their cash.
+   *
+   * The same claim as `claimForResolution` (pending, unexpired, in the WHERE clause), so a member
+   * cannot pay now and approve a plan for one charge, and the shop cannot cancel it mid-payment.
+   * The hold lapses at `until` if the member never pays; nothing moved, so it goes back to pending.
+   */
+  async holdForPayNow(
+    code: string,
+    member: string,
+    quote: { payoutCents: number; feeCents: number; feeTo: string; holdSeconds: number },
+  ): Promise<ChargeRow | null> {
+    const pool = getPostgresPool();
+    if (!pool) return null;
+    await ensureTables();
+    const r = await pool.query<DbRow>(
+      `UPDATE ${TABLE}
+          SET status = 'resolving', tx_hash = NULL, pay_now_payout_cents = $3, pay_now_fee_cents = $4,
+              pay_now_fee_to = $5, pay_now_at = now(), pay_now_until = now() + ($6 || ' seconds')::interval
+        WHERE code = $1 AND member_wallet = $2 AND status = 'pending' AND expires_at > now()
+        RETURNING ${COLUMNS}`,
+      [
+        code.trim().toUpperCase(),
+        normalizeWallet(member),
+        quote.payoutCents,
+        quote.feeCents,
+        normalizeWallet(quote.feeTo),
+        String(quote.holdSeconds),
+      ],
+    );
+    return r.rows[0] ? toRow(r.rows[0]) : null;
+  },
+
+  /**
+   * The member's transfers are on chain and checked: the charge is paid.
+   *
+   * The payout becomes the paid-now one, because that is what the shop was actually sent. No plan
+   * and no split: nothing is owed.
+   */
+  async finishPaidNow(code: string, txHash: string): Promise<ChargeRow | null> {
+    const pool = getPostgresPool();
+    if (!pool) return null;
+    await ensureTables();
+    const r = await pool.query<DbRow>(
+      // The fee columns stay: they are what the shop paid Clear on this charge.
+      `UPDATE ${TABLE}
+          SET status = 'approved', paid_now = true, payout_cents = pay_now_payout_cents,
+              split_into = NULL, plan_id = NULL, tx_hash = $2, resolved_at = now(), pay_now_until = NULL
+        WHERE code = $1 AND status = 'resolving' AND pay_now_until IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM ${TABLE} o WHERE o.tx_hash = $2 AND o.code <> $1)
+        RETURNING ${COLUMNS}`,
+      [code.trim().toUpperCase(), txHash.toLowerCase()],
+    );
+    const row = r.rows[0] ? toRow(r.rows[0]) : null;
+    resolved(row);
+    return row;
+  },
+
+  /**
+   * Give up a pay-now hold: the member went back, or it lapsed with nothing paid.
+   *
+   * Never once a transaction has been reported (`tx_hash`): money may have left, and the pay-now
+   * reconciliation decides that one from the chain.
+   */
+  async releasePayNow(code: string, opts: { onlyIfLapsed?: boolean } = {}): Promise<ChargeRow | null> {
+    const pool = getPostgresPool();
+    if (!pool) return null;
+    await ensureTables();
+    const r = await pool.query<DbRow>(
+      `UPDATE ${TABLE}
+          SET status = 'pending', tx_hash = NULL, pay_now_payout_cents = NULL, pay_now_fee_cents = NULL,
+              pay_now_fee_to = NULL, pay_now_at = NULL, pay_now_until = NULL
+        WHERE code = $1 AND status = 'resolving' AND pay_now_until IS NOT NULL
+          AND tx_hash IS NULL
+          AND ($2::boolean IS NOT TRUE OR pay_now_until < now())
+        RETURNING ${COLUMNS}`,
+      [code.trim().toUpperCase(), opts.onlyIfLapsed ?? false],
+    );
+    return r.rows[0] ? toRow(r.rows[0]) : null;
+  },
+
+  /**
+   * A reported transaction that is not this charge's payment (it failed, paid something else, or
+   * the node has never heard of it). Forgotten, and the hold carries on as if it was never reported:
+   * the member can go back, or it lapses and the chain is searched first.
+   */
+  async forgetPayNowTx(code: string, txHash: string): Promise<void> {
+    const pool = getPostgresPool();
+    if (!pool) return;
+    await ensureTables();
+    await pool.query(
+      `UPDATE ${TABLE} SET tx_hash = NULL
+        WHERE code = $1 AND tx_hash = $2 AND status = 'resolving' AND pay_now_until IS NOT NULL`,
+      [code.trim().toUpperCase(), txHash],
+    );
+  },
+
+  /**
+   * Pay-now holds to look at: lapsed, or with a transaction reported and not yet confirmed (the
+   * member's app closed between paying and hearing back). Racing the confirm route is harmless:
+   * `finishPaidNow` only closes a row still held.
+   */
+  async listPayNowStuck(limit = 50): Promise<ChargeRow[]> {
+    const pool = getPostgresPool();
+    if (!pool) return [];
+    await ensureTables();
+    const r = await pool.query<DbRow>(
+      `SELECT ${COLUMNS} FROM ${TABLE}
+        WHERE status = 'resolving' AND pay_now_until IS NOT NULL
+          AND (pay_now_until < now() OR tx_hash IS NOT NULL)
+        ORDER BY pay_now_until ASC
+        LIMIT $1`,
+      [limit],
+    );
+    return r.rows.map(toRow);
   },
 };
