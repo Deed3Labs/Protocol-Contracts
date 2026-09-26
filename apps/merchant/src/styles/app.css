@@ -494,3 +494,18 @@ input.c-st-time {
 .c-ob-ph .c-ob-roles .c-ci-link {
   margin-left: auto;
 }
+
+/* Every bar has a border, so its whole length reads even when its figures are small or zero: How it
+   was paid, the month and releases bars, Where it sits, and the approval and spending bars. Inside
+   the bar's own height, so nothing around it moves. An empty one is the same outline, empty. */
+.c-bar,
+.c-mc-track,
+.c-ck-prog,
+.c-sa-bar,
+.c-ov-bar {
+  border: 1px solid var(--ink-28);
+  box-sizing: border-box;
+}
+.c-sa-bar.c-empty {
+  border-style: solid;
+}
