@@ -331,9 +331,8 @@ export function PaidByCell({ more, onCharges }: { more: NonNullable<OverviewMode
   return (
     <Cell label="How it was paid" right={<Det>This month</Det>} foot={<LinkFoot det={more.paid.note} to="Charges" onGo={onCharges} />}>
       <div className="c-ov-bar">
-        {rows.map(([k, [, c]], i) => (
-          <i key={k} style={{ flexGrow: c / 100, background: COLOURS[i] }} />
-        ))}
+        {/* Only the ways something was paid: a month with none is the empty outline, not stubs. */}
+        {rows.map(([k, [, c]], i) => (c > 0 ? <i key={k} style={{ flexGrow: c / 100, background: COLOURS[i] }} /> : null))}
       </div>
       <div className="c-rows">
         {rows.map(([k, [n, c]], i) => (
