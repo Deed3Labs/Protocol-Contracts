@@ -212,7 +212,26 @@ export async function holdDispute(dispute: DisputeRecord): Promise<void> {
 
 // ---- Deciding ----------------------------------------------------------------------------------
 
-async function releaseCard(dispute: DisputeRecord, memberWon: boolean): Promise<void> {
+/**
+ * Put a lost card dispute's purchase back on chain, fresh. Safe to repeat: the chain call checks its
+ * reference first, and the books check it too. False when it didn't happen yet — the dispute stays
+ * `releasing` and the sweep tries again.
+ */
+async function reissueCard(dispute: DisputeRecord, cents: number): Promise<boolean> {
+  const ref = `${dispute.subjectRef}:after-dispute:${dispute.token}`;
+  try {
+    await reissueAfterDispute(dispute.subjectRef, cents, ref);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[dispute] ${dispute.token} re-issue failed; the sweep retries it:`, message);
+    await disputeStore.setHold(dispute.token, 'releasing', { ...(dispute.heldDetail ?? {}), reissue: { cents, error: message } });
+    return false;
+  }
+}
+
+async function releaseCard(dispute: DisputeRecord, memberWon: boolean): Promise<boolean> {
+  let done = true;
   await ensureSettlementColumns();
   const parked = await parkedFor(dispute);
   for (const [tier, cents] of Object.entries(parked)) {
@@ -249,10 +268,8 @@ async function releaseCard(dispute: DisputeRecord, memberWon: boolean): Promise<
     );
     const row = rows[0];
     if (reversed > 0) {
-      // Back on chain, fresh: carry starts from the decision.
-      await reissueAfterDispute(dispute.subjectRef, reversed, `${dispute.subjectRef}:after-dispute:${dispute.token}`).catch((e) =>
-        console.error(`[dispute] ${dispute.token} re-issue failed; the sweep cannot redo this, needs a person:`, e),
-      );
+      // Back on chain, fresh: carry starts from the decision. Retried by the sweep until it lands.
+      done = await reissueCard(dispute, reversed);
     } else if (row?.onchain_status === 'held' && Number(row.onchain_cents ?? 0) === 0) {
       // Never reached the chain: it settles now, as any purchase would, and carry starts now.
       await pool.query(`UPDATE lithic_auth_decisions SET onchain_status = NULL WHERE transaction_token = $1`, [dispute.subjectRef]);
@@ -262,6 +279,7 @@ async function releaseCard(dispute: DisputeRecord, memberWon: boolean): Promise<
     }
   }
   await refreshSnapshotsFor(dispute.wallet).catch(() => 0);
+  return done;
 }
 
 /** False only for a paid-now release still moving money: left `releasing` for the sweep to finish. */
@@ -283,8 +301,13 @@ async function releasePartner(dispute: DisputeRecord, memberWon: boolean): Promi
   return true;
 }
 
-/** Finish a paid-now release a first attempt left moving. Called by the sweep. */
+/** Finish a release a first attempt left moving: a card re-issue, or a paid-now payout. Called by the sweep. */
 async function finishRelease(dispute: DisputeRecord): Promise<void> {
+  if (dispute.kind === 'card') {
+    const reissue = (dispute.heldDetail as { reissue?: { cents?: number } } | null)?.reissue;
+    if (!reissue?.cents || (await reissueCard(dispute, reissue.cents))) await disputeStore.setHold(dispute.token, 'released', null);
+    return;
+  }
   const charge = await chargeStore.get(dispute.subjectRef);
   if (!charge?.paidNow) return disputeStore.setHold(dispute.token, 'released', null);
   const outcome = (dispute.heldDetail as { release?: { outcome?: string } } | null)?.release?.outcome;
@@ -309,7 +332,7 @@ export async function resolveDispute(
   const memberWon = resolution === 'member';
   let released = true;
   if (before.holdState === 'held') {
-    if (before.kind === 'card') await releaseCard(before, memberWon);
+    if (before.kind === 'card') released = await releaseCard(before, memberWon);
     else if (before.kind === 'partner') released = await releasePartner(before, memberWon);
     // Member sends: the claim block lifts with the dispute. A win is refunded by hand -- the escrow
     // only refunds after expiry -- and the note says so.

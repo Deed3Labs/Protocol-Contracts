@@ -706,12 +706,14 @@ export async function reissueAfterDispute(transactionToken: string, cents: numbe
   if (cents <= 0 || !isCardSettlementConfigured()) return null;
   await ensureColumns();
   const pool = getPayPool()!;
-  const { rows } = await pool.query<{ wallet: string; onchain_cents: string | null }>(
-    `SELECT wallet, onchain_cents FROM ${DECISIONS} WHERE transaction_token = $1`,
+  const { rows } = await pool.query<{ wallet: string; onchain_cents: string | null; onchain_ref: string | null; onchain_tx: string | null }>(
+    `SELECT wallet, onchain_cents, onchain_ref, onchain_tx FROM ${DECISIONS} WHERE transaction_token = $1`,
     [transactionToken],
   );
   const row = rows[0];
   if (!row) return null;
+  // Already recorded under this reference: a retry after a success must not count the cents twice.
+  if (row.onchain_ref === freshRef) return row.onchain_tx;
   const issuer = await settlerIssuer();
   const ref = ethers.id(freshRef);
   const [member] = (await issuer.cardSettlementOf(ref)) as [string, bigint];
