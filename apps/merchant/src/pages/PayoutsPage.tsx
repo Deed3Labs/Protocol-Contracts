@@ -76,7 +76,7 @@ const UNREAD: PayoutsModel = {
   scheduledCents: 0,
   owedCents: 0,
   on: null,
-  dayOrdinal: '—',
+  dayOrdinal: null,
   daysLeft: null,
   cycle: 'none',
   bank: null,

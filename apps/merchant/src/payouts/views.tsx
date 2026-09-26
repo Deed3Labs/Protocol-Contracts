@@ -3,7 +3,7 @@ import { IconCheck15, IconChevronSm, IconPrev } from '@/brand/chargeIcons';
 import { IconChevron, IconLock } from '@/brand/icons';
 import { cx, Sheet } from '@/brand/ui';
 import { usd } from '@/home/model';
-import { HIST_PAGE, type HistRow, type PayoutsModel } from '@/payouts/model';
+import { HIST_PAGE, type HistRow, NET30, onThe, type PayoutsModel } from '@/payouts/model';
 import type { BankAccount, ReceiveDetails } from '@clear/merchant-contracts';
 
 /**
@@ -46,7 +46,7 @@ export function PayoutsHero({ m }: { m: PayoutsModel }) {
  * something free to move, nothing yet, or paying out today.
  */
 export function CycleCard({ m, onWithdraw, onHow, onCharges }: { m: PayoutsModel; onWithdraw: () => void; onHow?: () => void; onCharges?: () => void }) {
-  const on = m.on ?? '—';
+  const on = m.on ?? NET30;
   let label: string;
   let fig: number;
   let num: ReactNode;
@@ -76,8 +76,9 @@ export function CycleCard({ m, onWithdraw, onHow, onCharges }: { m: PayoutsModel
   } else {
     label = `Releases ${on}`;
     fig = m.owedCents;
-    num = m.daysLeft ?? '—';
-    unit = 'days left';
+    // No day to count down to: the terms themselves, 30 days.
+    num = m.daysLeft ?? 30;
+    unit = m.daysLeft === null ? 'day terms' : 'days left';
     const released = m.releasedCents ?? 0;
     if (m.cycle === 'free' && m.owedCents > 0) track = <div style={{ width: `${Math.round((released / m.owedCents) * 100)}%`, background: 'var(--settled)' }} />;
     const rest = m.cycle === 'free' ? m.owedCents - released : m.owedCents;
@@ -86,17 +87,17 @@ export function CycleCard({ m, onWithdraw, onHow, onCharges }: { m: PayoutsModel
         <>
           <span className="c-t-sav">{usd(released)} released</span>
           <span className="c-sep">·</span>
-          {usd(rest)} on {on}
+          {usd(rest)} {m.on ? `on ${m.on}` : NET30}
         </>
       ) : (
         <>
           Nothing released yet<span className="c-sep">·</span>
-          {usd(rest)} on {on}
+          {usd(rest)} {m.on ? `on ${m.on}` : NET30}
         </>
       );
     foot =
       m.cycle === 'free'
-        ? [`Paid on the ${m.dayOrdinal}, and sooner when the pool allows`, 'What is released is yours to move now, at no cost']
+        ? [`Paid ${onThe(m)}, and sooner when the pool allows`, 'What is released is yours to move now, at no cost']
         : ['The pool frees what it can, when it can', `Your cash account is untouched: ${money(m.cashCents)} is still yours to move`];
     action =
       m.cycle === 'free' ? (
@@ -204,7 +205,7 @@ export function PayoutsCell({ m, onStatement, onCard, onStatements }: { m: Payou
               </button>
             </span>
           ) : (
-            <span className="c-det">{groups ? 'Clear monthly · card daily' : `Monthly, on the ${m.dayOrdinal}`}</span>
+            <span className="c-det">{groups ? 'Clear monthly · card daily' : `Monthly, ${onThe(m)}`}</span>
           )}
         </div>
       </div>
@@ -212,7 +213,7 @@ export function PayoutsCell({ m, onStatement, onCard, onStatements }: { m: Payou
         {groups && (
           <div className="c-po-grp">
             <p className="c-label">Clear</p>
-            <span className="c-det">On the {m.dayOrdinal}</span>
+            <span className="c-det">{m.dayOrdinal ? `On the ${m.dayOrdinal}` : 'Net-30'}</span>
           </div>
         )}
         <div className="c-rows c-po-hist">
@@ -282,7 +283,7 @@ export function WhereItSitsCell({ m, onBank, onDay }: { m: PayoutsModel; onBank?
   const parts: [string, number | null, string][] = [
     ['Cash account', m.cashCents, 'var(--ink)'],
     ['Released', m.releasedCents, 'var(--settled)'],
-    [`Releases ${m.on ?? 'later'}`, m.scheduledCents, 'var(--underway)'],
+    [`Releases ${m.on ?? NET30}`, m.scheduledCents, 'var(--underway)'],
   ];
   const total = parts.reduce((t, [, c]) => t + (c ?? 0), 0);
   return (
@@ -309,7 +310,7 @@ export function WhereItSitsCell({ m, onBank, onDay }: { m: PayoutsModel; onBank?
             </div>
           ))}
         </div>
-        <p className="c-det c-po-held">Cash and released money can move today. The rest releases on the {m.dayOrdinal}.</p>
+        <p className="c-det c-po-held">Cash and released money can move today. The rest releases {onThe(m)}.</p>
       </div>
       <div className="c-cfoot">
         <div className="c-foot2" style={{ '--fp': '14px' } as CSSProperties}>
@@ -321,7 +322,7 @@ export function WhereItSitsCell({ m, onBank, onDay }: { m: PayoutsModel; onBank?
           </div>
           <div {...press(onDay)}>
             <p className="c-det">
-              <span className="c-muted">Paid on</span> <span style={{ color: 'var(--ink)' }}>The {m.dayOrdinal}</span>
+              <span className="c-muted">{m.dayOrdinal ? 'Paid on' : 'Paid'}</span> <span style={{ color: 'var(--ink)' }}>{m.dayOrdinal ? `The ${m.dayOrdinal}` : 'Net-30'}</span>
             </p>
             <IconChevron />
           </div>

@@ -362,10 +362,10 @@ function PayoutCell({ p, a }: { p: Payout; a: HomeActions }) {
       det="Owner"
       foot={
         p.first ? (
-          <LinkFoot left={`Paid on the ${p.dayOrdinal}`} right="Payouts" onClick={a.onPayouts} />
+          <LinkFoot left={p.dayOrdinal ? `Paid on the ${p.dayOrdinal}` : 'Paid net-30'} right="Payouts" onClick={a.onPayouts} />
         ) : (
           <div className="c-line" style={{ alignItems: 'center' }}>
-            <span className="c-det">Paid on the {p.dayOrdinal}, sooner when the pool allows</span>
+            <span className="c-det">{p.dayOrdinal ? `Paid on the ${p.dayOrdinal}` : 'Paid net-30'}, sooner when the pool allows</span>
             <button type="button" className="c-btn" onClick={a.onPayouts}>
               Payouts
             </button>
@@ -375,7 +375,7 @@ function PayoutCell({ p, a }: { p: Payout; a: HomeActions }) {
     >
       <div className="c-line" style={{ alignItems: 'baseline' }}>
         <span className="c-fig c-fig-sec">{usd(p.totalCents)}</span>
-        <span className="c-det">Lands {p.landsOn}</span>
+        <span className="c-det">{p.landsOn ? `Lands ${p.landsOn}` : 'Net-30'}</span>
       </div>
       <div className="c-bar" style={{ margin: 'var(--s2) 0 var(--s1)' }} role="img" aria-label={`${usd(p.availableCents)} available now of ${usd(p.totalCents)}`}>
         {pct > 0 && <div style={{ width: `${pct}%`, background: 'var(--settled)' }} />}

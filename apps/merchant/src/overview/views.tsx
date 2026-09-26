@@ -228,7 +228,7 @@ export function OwedCell({ o, onPayouts }: { o: NonNullable<OverviewModel['owed'
     >
       <div className="c-line">
         <span className="c-det">Next payout</span>
-        <span className="c-det">{o.on ?? '—'}</span>
+        <span className="c-det">{o.on ?? 'Net-30'}</span>
       </div>
       <div className="c-line" style={{ borderTop: '1px solid var(--ink-13)', marginTop: 'var(--s2)', paddingTop: 'var(--s2)' }}>
         <span className="c-sub">Free to move today</span>
@@ -331,9 +331,8 @@ export function PaidByCell({ more, onCharges }: { more: NonNullable<OverviewMode
   return (
     <Cell label="How it was paid" right={<Det>This month</Det>} foot={<LinkFoot det={more.paid.note} to="Charges" onGo={onCharges} />}>
       <div className="c-ov-bar">
-        {rows.map(([k, [, c]], i) => (
-          <i key={k} style={{ flexGrow: c / 100, background: COLOURS[i] }} />
-        ))}
+        {/* Only the ways something was paid: a month with none is the empty outline, not stubs. */}
+        {rows.map(([k, [, c]], i) => (c > 0 ? <i key={k} style={{ flexGrow: c / 100, background: COLOURS[i] }} /> : null))}
       </div>
       <div className="c-rows">
         {rows.map(([k, [n, c]], i) => (

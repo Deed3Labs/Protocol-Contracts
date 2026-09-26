@@ -660,16 +660,16 @@ export function CheckEmailScreen({ email, code, onCode, error, onResend, onPassk
   );
 }
 
-export function PasskeyScreen({ onRetry, onEmail }: { onRetry?: () => void; onEmail?: () => void }) {
+export function PasskeyScreen({ onRetry, onEmail, error }: { onRetry?: () => void; onEmail?: () => void; error?: string | null }) {
   return (
     <SignInFrame>
       <div className="c-si-center">
         <span className="c-si-bigic">
           <IconPasskey />
         </span>
-        <p className="c-si-title">Waiting for your passkey</p>
-        <p className="c-det c-si-sub">
-          Confirm with Face ID, Touch ID or your security key in the window your device just opened.
+        <p className="c-si-title">{error ? 'No passkey yet' : 'Waiting for your passkey'}</p>
+        <p className="c-det c-si-sub" role={error ? 'alert' : undefined}>
+          {error ?? 'Confirm with Face ID, Touch ID or your security key in the window your device just opened.'}
         </p>
         <p className="c-det c-si-links">
           <button type="button" className="c-si-link" onClick={onRetry}>

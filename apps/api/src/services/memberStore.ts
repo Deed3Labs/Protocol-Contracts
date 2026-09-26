@@ -2473,6 +2473,12 @@ export class MemberStore {
    * Returns null when they have opted out of notifications. Not an empty contact — the caller
    * should be able to tell "we have no way to reach them" apart from "they asked us not to".
    */
+  /** The names members chose to be seen by, for these wallets (memberPublicNames below). */
+  async publicNamesForWallets(wallets: string[]): Promise<Map<string, string>> {
+    await this.ensureReady();
+    return memberPublicNames(this.mustPool(), wallets);
+  }
+
   async getContactByWallet(
     walletAddress: string,
   ): Promise<{ email: string | null; phone: string | null } | null> {
@@ -3451,6 +3457,35 @@ export class MemberStore {
       `);
     });
   }
+}
+
+/**
+ * The name a shop sees for a member who paid it: the display name the member set, or their
+ * @username, from their PUBLIC profile only. Never the legal name, which is private and encrypted:
+ * a shop is shown what the member chose to show. Keyed by the lowercased wallet (primary or linked);
+ * a wallet with neither isn't in the map, and the caller says "A Clear member".
+ */
+export async function memberPublicNames(
+  q: { query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }> },
+  wallets: string[],
+): Promise<Map<string, string>> {
+  const wanted = [...new Set(wallets.filter(Boolean).map(normalizeWalletAddress))];
+  if (!wanted.length) return new Map();
+  const { rows } = (await q.query(
+    `SELECT x.addr, pp.display_name, pp.username
+       FROM unnest($1::text[]) AS x(addr)
+       JOIN ${TABLE_MEMBERS} m
+         ON m.primary_wallet = x.addr
+         OR m.id = (SELECT w.member_id FROM ${TABLE_WALLETS} w WHERE w.wallet_address = x.addr AND w.status = 'ACTIVE' LIMIT 1)
+       JOIN ${TABLE_PROFILE_PUBLIC} pp ON pp.member_id = m.id`,
+    [wanted],
+  )) as { rows: Array<{ addr: string; display_name: string | null; username: string | null }> };
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const name = r.display_name?.trim() || (r.username?.trim() ? `@${r.username.trim()}` : '');
+    if (name && !out.has(r.addr)) out.set(r.addr, name);
+  }
+  return out;
 }
 
 export const memberStore = new MemberStore();

@@ -62,6 +62,8 @@ export interface MockSwitches {
   kyb: 'done' | 'new';
   /** Payouts › Receive: `new` is a verified shop that hasn't opened its account and routing numbers. */
   receive: 'open' | 'new';
+  /** The next payout: `none` is a shop with no payout day set (its terms read net-30). */
+  payday: 'set' | 'none';
   /** The shop's opening hours: `none` is a shop that hasn't set any (closed every day). */
   shopHours: 'set' | 'none';
   delayMs: number;
@@ -92,7 +94,7 @@ interface OrderRec {
 const TODAY = seed.REFERENCE_DAY;
 
 export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?: string } = {}) {
-  const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', setup: 'done', kyb: 'done', receive: 'open', shopHours: 'set', delayMs: 250, ...initial };
+  const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', setup: 'done', kyb: 'done', receive: 'open', shopHours: 'set', payday: 'set', delayMs: 250, ...initial };
   let viewer = initial.viewer ?? seed.STAFF_ID.mike;
   let failNext: { method: string; message: string; status: number } | null = null;
   let n = 1000;
@@ -1134,7 +1136,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
     payouts: async (): Promise<PayoutPosition> => {
       if (!seesMoney(who(viewer)?.role ?? 'counter')) refuse('Payouts are for an owner or a manager', 403, 'forbidden');
-      return { ...seed.POSITION, owedCents, paid: seed.POSITION.paid.map((x) => ({ ...x })) };
+      return { ...seed.POSITION, owedCents, paid: seed.POSITION.paid.map((x) => ({ ...x })), ...(switches.payday === 'none' ? { nextPayoutOn: null } : {}) };
     },
     staff: async (): Promise<StaffMember[]> =>
       seed.STAFF.map((s) => ({ ...s, active: s.active && !removed.has(s.id), pinSet: pins.has(s.id), chargesThisMonth: seed.CHARGES_THIS_MONTH[s.id] ?? 0 })),
@@ -1171,7 +1173,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
         source: input.source,
         destination: input.destination,
         throughCashAccount: input.source === 'owed' && input.destination !== 'cash',
-        nextPayoutOn: seed.POSITION.nextPayoutOn,
+        nextPayoutOn: switches.payday === 'none' ? null : seed.POSITION.nextPayoutOn,
         cashAccountCents: seed.POSITION.cashAccountCents,
         owedCents,
         status: 'requested',

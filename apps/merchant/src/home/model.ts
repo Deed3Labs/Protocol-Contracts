@@ -40,10 +40,10 @@ export interface Payout {
   totalCents: number;
   availableCents: number;
   settlingCents: number;
-  /** "Oct 14" */
-  landsOn: string;
-  /** "14th" */
-  dayOrdinal: string;
+  /** "Oct 14"; null when no payout day is set (net-30). */
+  landsOn: string | null;
+  /** "14th"; null when no payout day is set (net-30). */
+  dayOrdinal: string | null;
   /** Nothing paid out yet, so the cell explains how the first one works. */
   first: boolean;
 }
@@ -289,13 +289,14 @@ export function fromApi(input: {
     const available = position.readyToWithdrawCents ?? position.releasedReadyCents ?? 0;
     const total = position.owedCents;
     const on = position.nextPayoutOn ? new Date(position.nextPayoutOn) : null;
-    if (on) {
+    // Something owed and no day set: it's paid net-30, and the cell says so rather than hiding.
+    if (on || total > 0) {
       model.payout = {
         totalCents: total,
         availableCents: Math.min(available, total),
         settlingCents: Math.max(0, total - available),
-        landsOn: on.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        dayOrdinal: ordinal(on.getDate()),
+        landsOn: on ? on.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null,
+        dayOrdinal: on ? ordinal(on.getDate()) : null,
         first: position.paid.length === 0,
       };
     }
