@@ -1,3 +1,4 @@
+import { clockAt, toShiftPerson } from '@/auth/shiftLines';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/authContext';
@@ -91,13 +92,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const attempts = usePinAttempts();
 
-  useEffect(() => {
-    if (open !== 'who') return;
-    api
-      .roster()
-      .then(setRoster)
-      .catch(() => setRoster([]));
-  }, [open]);
 
   // ---- The idle lock -------------------------------------------------------------------------
   const idleSeconds = device?.idleLockSeconds ?? 300;
@@ -116,6 +110,16 @@ export function AppShell({ children }: { children: ReactNode }) {
       events.forEach((e) => window.removeEventListener(e, touch));
     };
   }, [locked, idleSeconds]);
+
+  // Read when someone is picking, and when the tablet locks: the lock says the shift's hours, when
+  // it started and what is waiting.
+  useEffect(() => {
+    if (open !== 'who' && !locked) return;
+    api
+      .roster()
+      .then((people) => setRoster(people.map(toShiftPerson)))
+      .catch(() => setRoster([]));
+  }, [open, locked]);
 
   const closeSheets = useCallback(() => {
     setOpen(null);
@@ -194,12 +198,15 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Locked: the shift keeps running underneath, so the same PIN opens it, or someone else starts
   // a different shift.
   if (locked) {
-    const person: ShiftPerson = { id: staff.id, name: staff.name, role };
+    const mine = roster.find((p) => p.id === staff.id) as (ShiftPerson & { startedAt?: string | null; waiting?: number }) | undefined;
+    const person: ShiftPerson = { id: staff.id, name: staff.name, role, span: mine?.span };
     return (
       <>
         <IdleLockScreen
           shop={shop}
           person={person}
+          started={mine?.startedAt ? clockAt(mine.startedAt) : undefined}
+          waiting={mine ? mine.waiting : undefined}
           minutes={Math.round(idleSeconds / 60)}
           filled={open === null ? pin.length : 0}
           error={open === null ? pinError : null}

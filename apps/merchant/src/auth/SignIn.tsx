@@ -1,3 +1,4 @@
+import { toShiftPerson } from './shiftLines';
 import { useEffect, useState } from 'react';
 import { api } from '@/data/apiClient';
 import { useAuth } from '@/auth/authContext';
@@ -32,8 +33,9 @@ export function SignIn() {
   useEffect(() => {
     api
       .roster()
-      // Somebody whose PIN isn't set yet (new, or reset) picks one instead of typing it.
-      .then((people) => setRoster(people.map(({ pinSet, ...p }) => ({ ...p, first: !pinSet }))))
+      // Somebody whose PIN isn't set yet (new, or reset) picks one instead of typing it; everyone
+      // else shows today's hours (auth/shiftLines).
+      .then((people) => setRoster(people.map(toShiftPerson)))
       .catch(() => setRoster([]));
   }, []);
 
