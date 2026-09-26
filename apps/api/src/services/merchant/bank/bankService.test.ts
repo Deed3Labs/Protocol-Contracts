@@ -21,11 +21,12 @@ function fakePlaid(opts: { configured?: boolean; noAccount?: boolean } = {}): Pl
     },
   };
 }
-function fakeRail(opts: { refuse?: string } = {}): BankRail & { registered: Array<Record<string, unknown>>; removed: string[] } {
+function fakeRail(opts: { refuse?: string; notReady?: boolean } = {}): BankRail & { registered: Array<Record<string, unknown>>; removed: string[] } {
   const registered: Array<Record<string, unknown>> = [];
   const removed: string[] = [];
   return {
     name: 'bridge',
+    ready: async () => !opts.notReady,
     registered,
     removed,
     register: async (input) => {
@@ -48,7 +49,7 @@ async function verifiedShop() {
 describe('linking a bank', () => {
   test('Plaid’s account, registered with Bridge in the business’s name at its address; only the last four kept', async () => {
     const s = await verifiedShop();
-    expect(await bankLinkToken(fakePlaid(), s.merchant)).toEqual({ linkToken: `link-sandbox-${s.merchant.slice(-4)}` });
+    expect(await bankLinkToken(db, { plaid: fakePlaid(), rail: fakeRail() }, s.merchant)).toEqual({ linkToken: `link-sandbox-${s.merchant.slice(-4)}` });
     const plaid = fakePlaid();
     const rail = fakeRail();
     const b = await addBank(db, { plaid, rail }, { merchant: s.merchant, staffId: s.staff.owner, body: { publicToken: 'public-sandbox-1', accountId: 'acc_1', institution: 'First Platypus Bank' } });
@@ -83,7 +84,10 @@ describe('linking a bank', () => {
     await db.query(`UPDATE merchant.profiles SET bridge_customer_id = 'cus_x' WHERE merchant = $1`, [bare.merchant]);
     await expect(addBank(db, { plaid: fakePlaid(), rail: fakeRail() }, { merchant: bare.merchant, staffId: bare.staff.owner, body })).rejects.toThrow('Add the shop’s address first');
     const s = await verifiedShop();
-    await expect(bankLinkToken(fakePlaid({ configured: false }), s.merchant)).rejects.toMatchObject({ code: 'not_configured', status: 503 });
+    await expect(bankLinkToken(db, { plaid: fakePlaid({ configured: false }), rail: fakeRail() }, s.merchant)).rejects.toMatchObject({ code: 'not_configured', status: 503 });
+    // Started with Bridge but not finished: told before Plaid opens, and refused if it's tried anyway.
+    await expect(bankLinkToken(db, { plaid: fakePlaid(), rail: fakeRail({ notReady: true }) }, s.merchant)).rejects.toThrow('Bridge hasn’t finished verifying the business');
+    await expect(addBank(db, { plaid: fakePlaid(), rail: fakeRail({ notReady: true }) }, { merchant: s.merchant, staffId: s.staff.owner, body })).rejects.toMatchObject({ code: 'not_verified' });
     await expect(addBank(db, { plaid: fakePlaid({ noAccount: true }), rail: fakeRail() }, { merchant: s.merchant, staffId: s.staff.owner, body })).rejects.toThrow('Choose a checking or savings account');
     await expect(addBank(db, { plaid: fakePlaid(), rail: fakeRail({ refuse: 'account_owner_name does not match' }) }, { merchant: s.merchant, staffId: s.staff.owner, body })).rejects.toBeInstanceOf(BankError);
     expect(await bankAccounts(db, s.merchant)).toEqual([]);
