@@ -4,6 +4,7 @@ import { notificationStore } from '../notificationStore.js';
 import { paidNowRefundLegs, refundChain } from '../paidNowRefund.js';
 import { usdcAddressFor } from '../savingsGaslessService.js';
 import { disputeStore, type DisputeRecord } from './disputeStore.js';
+import { alertOps } from '../opsAlert.js';
 
 /*
  * A dispute on a charge the member paid now, from their Clear cash.
@@ -48,7 +49,11 @@ export async function holdPaidNow(dispute: DisputeRecord, charge: ChargeRow): Pr
 
   if (shopCents === 0) return disputeStore.setHold(dispute.token, 'held', { paidNow: true, heldCents: 0 });
   if (detail.holdTx === SENDING) {
-    console.error(`[dispute] ${dispute.token}: a paid-now hold may be mid-transfer; needs a person before it is retried`);
+    await alertOps({
+      key: `dispute:${dispute.token}:hold`,
+      subject: `Dispute ${dispute.token}: a hold may be mid-transfer`,
+      body: `Holding ${usd(shopCents)} from ${charge.merchantAddress}'s Clear cash for charge ${charge.code} was started and has no transaction to check. Look for a USDC transfer from the shop to Clear's hold (${clear ?? 'the operator wallet'}), then set held_detail.holdTx to its hash, or clear it if none was sent.`,
+    });
     return;
   }
   if (detail.holdTx) {
@@ -159,7 +164,11 @@ export async function releasePaidNow(dispute: DisputeRecord, charge: ChargeRow, 
     if (leg.cents <= 0) continue;
     const recorded = release.legs[leg.key];
     if (recorded === SENDING) {
-      console.error(`[dispute] ${dispute.token}: the ${leg.key} transfer may have left with no hash to check; needs a person`);
+      await alertOps({
+        key: `dispute:${dispute.token}:release:${leg.key}`,
+        subject: `Dispute ${dispute.token}: a payout may be mid-transfer`,
+        body: `Paying ${usd(leg.cents)} from ${leg.from === 'clear' ? "Clear's hold" : 'the shop'} to ${leg.to} for charge ${charge.code} was started and has no transaction to check. Look for that USDC transfer, then set held_detail.release.legs.${leg.key} to its hash, or remove it if none was sent; the sweep then finishes the rest.`,
+      });
       await save(`The ${leg.key} transfer may have left without a record. Needs a person.`);
       return false;
     }

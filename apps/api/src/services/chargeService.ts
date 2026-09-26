@@ -5,6 +5,7 @@ import { chargeStore, type ChargeRow } from './chargeStore.js';
 import { notificationStore } from './notificationStore.js';
 import { sendNotificationService } from './sendNotificationService.js';
 import { memberStore } from './memberStore.js';
+import { alertOps } from './opsAlert.js';
 import { dollars, PAY_OVER_TIME_MIN_CENTS } from '@clear/domain';
 
 /*
@@ -664,7 +665,11 @@ export async function reconcileCharges(olderThanSeconds = 120): Promise<Reconcil
       // paper over with a release: the transaction succeeded, so releasing could open a second
       // plan. Left alone and counted, so it shows up rather than being decided wrongly.
       if (planId === undefined) {
-        console.error('[charge] mined without PlanOpened — leaving for review:', charge.code, charge.txHash);
+        await alertOps({
+          key: `charge:${charge.code}:no-plan`,
+          subject: `Charge ${charge.code}: approved on chain with no plan`,
+          body: `Transaction ${charge.txHash} succeeded but emitted no PlanOpened. The charge is left resolving; check TermIssuer for a plan for ${charge.memberWallet} and record it, or release the charge if none exists.`,
+        });
         summary.unknown += 1;
         continue;
       }

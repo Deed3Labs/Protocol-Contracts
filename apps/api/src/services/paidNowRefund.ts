@@ -5,6 +5,7 @@ import { chargeStore, type ChargeRow } from './chargeStore.js';
 import { usdcAddressFor } from './savingsGaslessService.js';
 import { shopWallet } from './merchant/shopWallet.js';
 import type { SettleResult } from './refundSettlement.js';
+import { alertOps } from './opsAlert.js';
 
 /*
  * Refunding a charge the member paid now, from their Clear cash.
@@ -91,7 +92,13 @@ async function checkLeg(charge: ChargeRow, leg: 'shop' | 'clear'): Promise<Charg
 export async function settlePaidNowRefund(input: ChargeRow): Promise<SettleResult> {
   if (!input.paidNow || !input.memberWallet) return { ok: false, reason: 'This charge was not paid now.' };
   if (input.refundLegs.shop === SENDING || input.refundLegs.clear === SENDING) {
-    return { ok: false, reason: 'Part of this refund may already be on its way. It needs a look before it is tried again.' };
+    const leg = input.refundLegs.shop === SENDING ? 'shop' : 'clear';
+    await alertOps({
+      key: `refund:${input.code}:${leg}`,
+      subject: `Refund on ${input.code}: a transfer may be mid-flight`,
+      body: `The ${leg === 'shop' ? "shop's share" : "Clear's fee"} of the refund on charge ${input.code} (paid now) was started and has no transaction to check. Look for a USDC transfer to ${input.memberWallet}, then set charge_requests.refund_${leg}_tx to its hash, or clear it if none was sent; approving again finishes the rest.`,
+    });
+    return { ok: false, reason: 'Part of this refund may already be on its way. Clear has been told and will finish it; don’t send it again.' };
   }
   let charge = input;
   try {
@@ -153,7 +160,12 @@ export async function settlePaidNowRefund(input: ChargeRow): Promise<SettleResul
         await chargeStore.setRefundLeg(charge.code, 'shop', null, SENDING);
         return { ok: false, reason: 'The refund from your Clear cash didn’t go through. Nothing was refunded.' };
       }
-      return { ok: false, reason: 'The refund from your Clear cash was sent but hasn’t landed yet. It needs a look before it is tried again.' };
+      await alertOps({
+        key: `refund:${charge.code}:shop`,
+        subject: `Refund on ${charge.code}: the shop's share did not confirm`,
+        body: `Privy accepted the refund transfer from ${charge.merchantAddress} to ${member} for charge ${charge.code} but did not report it landed (${message}). Check the shop wallet's transfers, then set charge_requests.refund_shop_tx to the hash, or clear it if nothing was sent.`,
+      });
+      return { ok: false, reason: 'The refund from your Clear cash was sent but hasn’t landed yet. Clear has been told and will finish it; don’t send it again.' };
     }
   }
 
