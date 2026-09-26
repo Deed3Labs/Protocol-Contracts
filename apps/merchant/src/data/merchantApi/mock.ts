@@ -62,6 +62,8 @@ export interface MockSwitches {
   kyb: 'done' | 'new';
   /** Payouts › Receive: `new` is a verified shop that hasn't opened its account and routing numbers. */
   receive: 'open' | 'new';
+  /** The shop's opening hours: `none` is a shop that hasn't set any (closed every day). */
+  shopHours: 'set' | 'none';
   delayMs: number;
 }
 
@@ -90,7 +92,7 @@ interface OrderRec {
 const TODAY = seed.REFERENCE_DAY;
 
 export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?: string } = {}) {
-  const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', setup: 'done', kyb: 'done', receive: 'open', delayMs: 250, ...initial };
+  const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', setup: 'done', kyb: 'done', receive: 'open', shopHours: 'set', delayMs: 250, ...initial };
   let viewer = initial.viewer ?? seed.STAFF_ID.mike;
   let failNext: { method: string; message: string; status: number } | null = null;
   let n = 1000;
@@ -101,6 +103,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   let settings: ShopSettings = { ...seed.SETTINGS };
   let shop = { ...seed.SHOP };
   let hours = structuredClone(seed.HOURS);
+  if (switches.shopHours === 'none') hours = { ...hours, week: hours.week.map((d) => ({ ...d, open: null })), dates: [] };
   const items = new Map<string, CatalogItem>(seed.catalog().map((i) => [i.id, i]));
   const movements: Array<StockMovement & { itemId: string }> = [];
   const reorders = new Map<string, Reorder>(seed.REORDERS.map((r) => [r.id, { ...r }]));

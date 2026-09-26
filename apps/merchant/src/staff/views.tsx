@@ -904,6 +904,7 @@ const Callout = ({ children }: { children: ReactNode }) => (
 export function HoursSheet({
   name,
   shut,
+  daysNote,
   initial,
   initialOnce = false,
   initialDay,
@@ -918,6 +919,8 @@ export function HoursSheet({
   name: string;
   /** The shop's closed days, which cannot be picked. */
   shut: boolean[];
+  /** Why some days can't be picked, or why they all can. */
+  daysNote?: string;
   initial: Hours;
   initialOnce?: boolean;
   /** Open on the Different hours step for this day. */
@@ -1025,6 +1028,11 @@ export function HoursSheet({
         Days
       </p>
       <Days days={h.days} shut={shut} onToggle={(i) => setH((x) => ({ ...x, days: x.days.map((on, k) => (k === i ? !on : on)) }))} />
+      {daysNote && (
+        <p className="c-det" style={{ margin: 'var(--s1) 0 0' }}>
+          {daysNote}
+        </p>
+      )}
       {ownDays.length ? (
         <div className="c-mc-hourshead">
           <p className="c-label">Hours</p>
