@@ -224,7 +224,17 @@ export default function ChargeDetailPage() {
   const title = `${name} · ${usd(amountCents)}`;
 
   // ---- The refund's numbers and who can clear it ---------------------------------------------------
-  const quote: Quote = live
+  const quote: Quote = live?.paidNow
+    ? {
+        // Paid now: the whole amount goes back, the shop's share from its Clear cash (paidNowRefund).
+        amountCents: toCents(live.amount),
+        memberCents: toCents(live.amount),
+        carryCents: 0,
+        clawbackCents: toCents(live.payout ?? live.amount),
+        payoutAfterCents: 0,
+        paidNow: true,
+      }
+    : live
     ? toQuote(
         refundQuote({
           amount: live.amount,
@@ -331,8 +341,7 @@ export default function ChargeDetailPage() {
 
   // ---- The foot of the right-hand cell -------------------------------------------------------------
   const cancellable = !!live && canTransition(live.state, 'cancelled') && (canSeeMoney || live.raisedByStaffId === session?.staff.id);
-  // Paid now can't be refunded from the shop's cash yet; the server refuses it too (refundStore).
-  const refundable = preview || (!!live && !live.paidNow && canTransition(live.state, 'refund_requested'));
+  const refundable = preview || (!!live && canTransition(live.state, 'refund_requested'));
   const awaiting = !!live && live.state === 'refund_requested';
   const foot = cancellable ? (
     <button
@@ -363,8 +372,6 @@ export default function ChargeDetailPage() {
     <button type="button" className="c-btn c-btn-lg" onClick={() => setStep('review')}>
       Start a refund
     </button>
-  ) : live?.paidNow && live.state === 'approved' ? (
-    <p className="c-det">Paid now, straight to your Clear cash. Refunding it from there isn’t available yet.</p>
   ) : undefined;
 
   // ---- A live sale's actions ------------------------------------------------------------------------

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { refundQuote, toCents } from '@clear/domain';
 import { MERCHANT_SCHEMA, ensureMerchantSchema, getMerchantPool } from '../../config/merchantDb.js';
 import { chargeStore } from '../chargeStore.js';
+import { paidNowRefundLegs } from '../paidNowRefund.js';
 import { type StaffRow, staffStore } from './staffStore.js';
 
 /**
@@ -151,20 +152,23 @@ export const refundStore = {
     if (charge.status !== 'approved') {
       return { ok: false, reason: `a ${charge.status} charge cannot be refunded` };
     }
-    // Refused here, before two people spend time on it: settling one would fail (refundSettlement).
-    if (charge.paidNow) {
-      return { ok: false, reason: 'This was paid now, from their Clear cash. Refunding it from the shop’s cash isn’t available yet.' };
-    }
-
-    // The same arithmetic the tablet showed the writer before they pressed Send to an owner.
-    const quote = refundQuote({
-      amount: charge.amountCents / 100,
-      splitInto: input.splitInto,
-      ratePerCycle: input.ratePerCycle,
-      cyclesCleared: input.cyclesCleared,
-      discountRate: input.discountRate,
-      nextPayout: input.nextPayoutCents / 100,
-    });
+    // The same arithmetic the tablet showed the writer before they pressed Send to an owner. Paid
+    // now has no plan and no carry: the member gets it all back, the shop returns what it received
+    // from its Clear cash, and Clear returns its fee (paidNowRefund).
+    const quote = charge.paidNow
+      ? {
+          memberReceives: charge.amountCents / 100,
+          carryKept: 0,
+          merchantClawback: paidNowRefundLegs(charge).shopCents / 100,
+        }
+      : refundQuote({
+          amount: charge.amountCents / 100,
+          splitInto: input.splitInto,
+          ratePerCycle: input.ratePerCycle,
+          cyclesCleared: input.cyclesCleared,
+          discountRate: input.discountRate,
+          nextPayout: input.nextPayoutCents / 100,
+        });
 
     try {
       const { rows } = await pool.query<DbRefund>(

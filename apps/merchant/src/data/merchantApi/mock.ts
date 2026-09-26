@@ -1112,7 +1112,11 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       const t = clearTender(input.chargeCode);
       if (chargeState(t) !== 'approved') refuse('Only a confirmed charge can be refunded', 409, 'not_refundable');
       const amount = (t.amountCents + t.tipCents) / 100;
-      const q = refundQuote({ amount, splitInto: input.splitInto, ratePerCycle: input.ratePerCycle, cyclesCleared: input.cyclesCleared, discountRate: input.discountRate, nextPayout: input.nextPayoutCents / 100 });
+      // Paid now, as the server does it: all of it back, the shop's share out of its Clear cash.
+      const charge = toCharge(t);
+      const q = charge.paidNow
+        ? { memberReceives: amount, carryKept: 0, merchantClawback: charge.payout ?? amount }
+        : refundQuote({ amount, splitInto: input.splitInto, ratePerCycle: input.ratePerCycle, cyclesCleared: input.cyclesCleared, discountRate: input.discountRate, nextPayout: input.nextPayoutCents / 100 });
       const r: ClearRefund = {
         id: id('rfd'),
         chargeCode: input.chargeCode,
