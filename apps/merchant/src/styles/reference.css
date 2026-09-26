@@ -1777,7 +1777,9 @@ html{-webkit-text-size-adjust:100%}
   /* home, staff, charges, settings, payouts, overview, onboarding, sign-in. Differs in new-charge, inventory: flex-direction:column + flex-direction:row */
   :root .c-cfoot .c-pair{flex-direction:column}
   /* home, inventory, staff, charges, settings, payouts, overview, onboarding, sign-in. Differs in new-charge: width:100% + flex:1;height:44px */
-  :root .c-cfoot .c-pair .c-btn{width:100%}
+  /* Stacked, a button's flex:1 (a 0% basis) sizes its HEIGHT from nothing and squashed it to its
+     text (18px). The floor keeps the 44px; a pair that stays a row still splits evenly. */
+  :root .c-cfoot .c-pair .c-btn{width:100%;min-height:44px}
   :root .c-mc-shiftcell .c-cfoot .c-pair .c-btn{flex:none;height:44px}
   :root .c-mc-heroacts{width:100%}
   :root .c-mc-heroacts .c-btn{flex:1;width:auto;padding:0 var(--s2);font-size:var(--t-sec)}
