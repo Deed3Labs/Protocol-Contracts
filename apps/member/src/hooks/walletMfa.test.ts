@@ -14,6 +14,9 @@ describe('payments are guarded at the wallet (Privy MFA)', () => {
     expect(read('App.tsx')).toContain('<ConfirmIdentitySheet />');
     expect(read('components/shell/AppShell.tsx')).not.toContain('<ConfirmIdentitySheet />');
     const sheet = read('components/shell/ConfirmIdentitySheet.tsx');
+    // …and it's what says the wallet asks for itself, so a cold /c/:code doesn't ask twice.
+    expect(sheet).toContain('setWalletMfa(walletFactor);');
+    expect(read('hooks/usePaymentProtection.ts')).not.toContain('setWalletMfa(');
     expect(sheet).toContain('useRegisterMfaListener({');
     expect(sheet).toMatch(/const options = await init\('passkey'\);[\s\S]{0,80}await submit\('passkey', options\);/);
     expect(sheet).toMatch(/await init\('totp'\);\s*await submit\('totp', code\);/);
