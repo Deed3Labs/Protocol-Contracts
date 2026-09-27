@@ -6,6 +6,7 @@ import { OneColumn } from '@/brand/ui';
 import { api } from '@/data/apiClient';
 import { useMerchantApi } from '@/data/merchantApi';
 import { useApi } from '@/data/useApi';
+import { liveEvery, useLive } from '@/data/useLive';
 import { firstName } from '@/home/model';
 import {
   filterRows,
@@ -55,7 +56,10 @@ export default function ChargesPage() {
   const me = screen === 'counter' ? 'Jen' : firstName(session?.staff.name ?? '');
   const myId = screen === 'counter' ? 'jen' : session?.staff.id;
 
-  const { data } = useApi(() => (preview ? Promise.resolve(null) : api.charges({ limit: 200 })), [preview]);
+  const chargesNow = useApi(() => (preview ? Promise.resolve(null) : api.charges({ limit: 200 })), [preview]);
+  const { data } = chargesNow;
+  // Live: a charge answered on a member's phone changes here without a refresh.
+  useLive(chargesNow.refresh, preview ? null : liveEvery((data ?? []).some((c) => c.state === 'waiting' || c.state === 'resolving')));
   // Card, cash and split sales: the orders over the month so far (and yesterday, on the 1st).
   const merchant = useMerchantApi();
   const sales = useApi(() => (preview ? Promise.resolve(null) : merchant.orderHistory(historyRange())), [preview]);

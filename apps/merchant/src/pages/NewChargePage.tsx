@@ -415,7 +415,9 @@ export default function NewChargePage() {
 
   /** Send the waiting charge on; the screen then waits on their answer, as it does for the code. */
   const sendOn = async (to: { to: 'member'; wallet: string } | { to: 'phone'; phone: string }) => {
-    if (!tender || sending) return;
+    if (sending) return;
+    // Not silently: a scan or a number sent before the charge exists would otherwise do nothing at all.
+    if (!tender) return setSendError('The charge is still being set up. Try again in a moment.');
     setSending(true);
     setSendError(null);
     try {
@@ -842,6 +844,12 @@ export default function NewChargePage() {
                     setSendError('That isn’t a member’s Clear code. Ask them to open Code in the Clear app.');
                     return false;
                   }
+                  // The charge isn't raised yet: say so and keep the camera on, so the next scan sends it.
+                  if (!tender) {
+                    setSendError('The charge is still being set up. Hold the code up again in a moment.');
+                    return false;
+                  }
+                  setSendError(null);
                   void sendOn({ to: 'member', wallet });
                   return true;
                 }}

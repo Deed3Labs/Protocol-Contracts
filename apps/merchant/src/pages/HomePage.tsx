@@ -4,6 +4,7 @@ import { useAuth } from '@/auth/authContext';
 import { api } from '@/data/apiClient';
 import { useMerchantApi } from '@/data/merchantApi';
 import { errorSentence, useApi } from '@/data/useApi';
+import { liveEvery, useLive } from '@/data/useLive';
 import { CountResultSheet, CountSheet, OpenDrawerSheet, SignOffSheet } from '@/home/drawer';
 import { HomeView, type HomeActions } from '@/home/HomeView';
 import { drawerPrompt, drawerStep, mayCloseDay, shiftDrawer } from '@/home/liveDrawer';
@@ -55,7 +56,8 @@ export default function HomePage() {
   const forced = import.meta.env.DEV ? (params.get('home') as HomeState | null) : null;
   const seeded = forced && forced in HOME_STATES ? HOME_STATES[forced] : null;
 
-  const { data: charges, reload } = useApi(() => api.charges({ limit: 100 }), []);
+  const chargesNow = useApi(() => api.charges({ limit: 100 }), []);
+  const { data: charges, reload } = chargesNow;
   // Owners and managers only; a counter shift is refused these, and the cells that need them are
   // not drawn for that role anyway.
   const { data: position } = useApi(() => api.payouts(), []);
@@ -77,6 +79,13 @@ export default function HomePage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   })();
   const ordersToday = useApi(() => (seeded || !session ? Promise.resolve(null) : merchant.orders({ date: todayIso })), [seeded, !!session, todayIso]);
+  // Live: a member approving, declining or opening a charge on their phone shows here without a
+  // refresh, and so does what it did to today's figures.
+  const anyWaiting = (charges ?? []).some((c) => c.state === 'waiting' || c.state === 'resolving');
+  useLive(
+    () => Promise.all([chargesNow.refresh(), ordersToday.refresh(), countsNow.refresh()]).then(() => undefined),
+    seeded ? null : liveEvery(anyWaiting),
+  );
   // The open drawer's day, with each sale's tenders: the shift column counts its cash sales.
   const drawerDay = useApi(
     () => (seeded || !openSession ? Promise.resolve(null) : merchant.orderHistory({ from: openSession.businessDate, to: openSession.businessDate })),
