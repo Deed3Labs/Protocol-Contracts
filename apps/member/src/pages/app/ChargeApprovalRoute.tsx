@@ -337,6 +337,8 @@ function ChargeApprovalScreen() {
       error={error}
       onApprove={onApprove}
       onDecline={onDecline}
+      // Closing leaves it waiting: Shop charges and the banner on Send and Activity bring it back.
+      onLeave={() => navigate('/', { replace: true })}
       approved={charge.status === 'approved' && !charge.paidNow}
       /*
        * Only on iOS, and only outside the installed app.
