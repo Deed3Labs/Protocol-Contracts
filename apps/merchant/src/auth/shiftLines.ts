@@ -4,7 +4,8 @@ import type { ShiftPerson } from './screens';
 /**
  * What the sign-in, PIN and lock screens say under a name, from the roster:
  *
- *   picker  "Until 4:00pm today" · "No hours set" · "Not on today" · "First shift"
+ *   picker  "Until 4:00pm today" (or "Hours ended 4:00pm today" once it has) · "No hours set" ·
+ *           "Not on today" · "First shift"
  *   PIN     "8:00am – 4:00pm"
  *   lock    "8:00am – 4:00pm", "Started 8:04am · 2 waiting"
  *
@@ -33,11 +34,20 @@ export function clockAt(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
 }
 
-export function toShiftPerson(r: RosterEntry): ShiftPerson & { startedAt: string | null; waiting: number } {
+/** Whether today's "HH:MM" has gone by on the tablet's clock. */
+const gone = (hm: string, now: number) => {
+  const [h, m] = hm.split(':').map(Number) as [number, number];
+  const t = new Date(now);
+  t.setHours(h, m, 0, 0);
+  return t.getTime() <= now;
+};
+
+export function toShiftPerson(r: RosterEntry, now = Date.now()): ShiftPerson & { startedAt: string | null; waiting: number } {
   const first = !r.pinSet;
   const span = r.today ? `${twelveHour(r.today.from)} – ${twelveHour(r.today.to)}` : undefined;
+  // "Until 4:00pm" at 11pm says they're still due on; past the end, the booking is history.
   const hours = r.today
-    ? `Until ${twelveHour(r.today.to)} today`
+    ? `${gone(r.today.to, now) ? 'Hours ended' : 'Until'} ${twelveHour(r.today.to)} today`
     : r.hoursSet === undefined
       ? undefined
       : r.hoursSet

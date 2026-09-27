@@ -78,8 +78,12 @@ export interface ShiftClock {
   left?: string;
   /** "8:04am" */
   since: string;
-  /** "4:00pm"; absent when the shift wasn't booked. */
+  /** "4:00pm"; absent when the shift wasn't booked, or started after the booking ended. */
   until?: string;
+  /** Past the booked end: how long over ("1h 12m"), in place of `left`. */
+  over?: string;
+  /** Started after today's booking ended: the booking, "8:00am–4:00pm", which this shift is outside. */
+  outside?: string;
   /** "no break yet", "break due", "30m break taken". */
   breakNote?: string;
   /** Booked hours, one block each. */
@@ -226,14 +230,23 @@ export function shiftClock(s: ShiftNow, breaks: { minutes: number; afterMinutes:
   if (s.booked) {
     const [fh, fm] = s.booked.from.split(':').map(Number) as [number, number];
     const [th, tm] = s.booked.to.split(':').map(Number) as [number, number];
+    const start = new Date(now);
+    start.setHours(fh, fm, 0, 0);
     const end = new Date(now);
     end.setHours(th, tm, 0, 0);
-    const length = th + tm / 60 - (fh + fm / 60);
-    c.until = clockTime(end.toISOString());
-    // Past the booked end, there is nothing left to count down.
-    if (end.getTime() > now) c.left = duration((end.getTime() - now) / 60000);
-    c.hours = Math.ceil(length);
-    c.done = Math.min(c.hours, Math.max(0, worked / 60));
+    if (new Date(s.startedAt).getTime() >= end.getTime()) {
+      // Clocked on after today's booking ended: it doesn't describe this shift, so no "until", no
+      // countdown and no bar of its hours; the clock says the shift is outside it.
+      c.outside = `${clockTime(start.toISOString())}–${clockTime(end.toISOString())}`;
+    } else {
+      const length = th + tm / 60 - (fh + fm / 60);
+      c.until = clockTime(end.toISOString());
+      // Before the booked end, what's left; past it, how long over.
+      if (end.getTime() > now) c.left = duration((end.getTime() - now) / 60000);
+      else if (now - end.getTime() >= 60000) c.over = duration((now - end.getTime()) / 60000);
+      c.hours = Math.ceil(length);
+      c.done = Math.min(c.hours, Math.max(0, worked / 60));
+    }
   }
   if (s.onBreakSince) c.onBreak = { for: duration(mins(s.onBreakSince)), from: clockTime(s.onBreakSince) };
   return c;
