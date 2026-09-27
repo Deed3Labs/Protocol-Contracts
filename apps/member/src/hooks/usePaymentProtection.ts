@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useMfaEnrollment, usePrivy } from '@privy-io/react-auth';
-import { setWalletMfa } from '@/lib/stepUp';
 import { enrollWithServer, useServerStepUp } from '@/lib/serverStepUp';
 
 /*
@@ -68,10 +67,8 @@ export function usePaymentProtection(): PaymentProtection {
 
   const faceIdOn = (user?.linkedAccounts ?? []).some((a) => a.type === 'passkey');
 
-  // The wallet now asks for itself, so the app does not ask a second time before a signature.
-  useEffect(() => {
-    setWalletMfa(factors.length > 0);
-  }, [factors.length]);
+  // Whether the wallet asks for itself (so the app doesn't ask again) is set by ConfirmIdentitySheet,
+  // which is mounted on every route; this runs only inside the shell.
 
   const enrollFaceId = useCallback(async () => {
     const privyMissing = unenrolledPasskeys.length > 0 && !factors.includes('passkey');

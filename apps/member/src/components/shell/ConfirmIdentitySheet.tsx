@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   errorIndicatesMaxMfaRetries,
   errorIndicatesMfaTimeout,
   errorIndicatesMfaVerificationFailed,
   useMfa,
+  usePrivy,
   useRegisterMfaListener,
   type MfaMethod,
 } from '@privy-io/react-auth';
 import Modal from '@/components/clear/Modal';
 import { Btn } from '@/components/clear/brand/anatomy';
 import PinBox from '@/components/clear/auth/PinBox';
+import { setWalletMfa } from '@/lib/stepUp';
 
 /**
  * "Confirm it's you" — our sheet in front of Privy's wallet MFA.
@@ -24,6 +26,15 @@ import PinBox from '@/components/clear/auth/PinBox';
  */
 export default function ConfirmIdentitySheet() {
   const { init, submit, cancel } = useMfa();
+  const { user } = usePrivy();
+
+  // A member with a wallet factor is asked by the wallet (this sheet) before it signs, so the app
+  // skips its own Face ID there -- or they'd be asked twice. Set here, on every route, because this
+  // is: from the shell only, a payment link opened cold asked twice.
+  const walletFactor = (user?.mfaMethods ?? []).some((m) => m === 'passkey' || m === 'totp');
+  useEffect(() => {
+    setWalletMfa(walletFactor);
+  }, [walletFactor]);
   const [methods, setMethods] = useState<MfaMethod[] | null>(null);
   const [mode, setMode] = useState<'passkey' | 'totp'>('passkey');
   const [code, setCode] = useState('');
