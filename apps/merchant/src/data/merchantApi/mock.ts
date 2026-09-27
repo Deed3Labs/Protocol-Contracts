@@ -14,6 +14,7 @@ export type ClearSide = Pick<
   typeof ApiClient,
   | 'charges'
   | 'cancelCharge'
+  | 'resendCharge'
   | 'openRefundFor'
   | 'requestRefund'
   | 'checkOwnerCode'
@@ -153,6 +154,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   );
 
   const who = (staffId: string) => seed.STAFF.find((s) => s.id === staffId);
+  /** Resend's once-a-minute, per charge, as the server keys it. */
+  const resent = new Map<string, number>();
   /** Settings › Closing › Who can close, as the server holds it. */
   const mayClose = () => {
     const role = roles.get(viewer) ?? who(viewer)?.role;
@@ -1147,6 +1150,13 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       const t = clearTender(code);
       if (t.status !== 'pending') refuse('Only a charge still waiting can be cancelled', 409, 'not_cancellable');
       step(t.id, { type: 'cancel' });
+    },
+    resendCharge: async (code) => {
+      const t = clearTender(code);
+      if (t.status !== 'pending') refuse('They have already answered this one.', 409, 'too_late');
+      const minute = Math.floor(Date.now() / 60_000);
+      if (resent.get(code) === minute) refuse('Sent a moment ago. Give them a minute.', 429, 'just_sent');
+      resent.set(code, minute);
     },
     openRefundFor: async (code) => [...clearRefunds.values()].find((r) => r.chargeCode === code && r.state === 'requested') ?? null,
     requestRefund: async (input) => {

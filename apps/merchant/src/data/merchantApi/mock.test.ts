@@ -274,3 +274,15 @@ describe("the older client's Clear side, from the same state", () => {
     expect(await counter.profile()).not.toHaveProperty('discountRate');
   });
 });
+
+describe('Resend a waiting Clear charge', () => {
+  test('once a minute, and only while it waits', async () => {
+    const { clear } = createMockMerchantApi({ delayMs: 0 });
+    const waiting = (await clear.charges()).find((c) => c.state === 'waiting');
+    if (!waiting) throw new Error('the mock has a waiting charge');
+    await clear.resendCharge(waiting.code);
+    await expect(clear.resendCharge(waiting.code)).rejects.toMatchObject({ status: 429 });
+    const done = (await clear.charges()).find((c) => c.state === 'approved');
+    if (done) await expect(clear.resendCharge(done.code)).rejects.toMatchObject({ status: 409 });
+  });
+});

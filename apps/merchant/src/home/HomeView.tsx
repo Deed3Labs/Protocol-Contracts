@@ -177,12 +177,13 @@ function WaitingPanel({ waiting, a }: { waiting: WaitingCharge[]; a: HomeActions
                       <button
                         type="button"
                         className="c-btn c-btn-primary"
+                        disabled={w.resent}
                         onClick={(e) => {
                           e.stopPropagation();
                           a.onResend?.(w);
                         }}
                       >
-                        Resend
+                        {w.resent ? 'Sent' : 'Resend'}
                       </button>
                     )}
                   </span>

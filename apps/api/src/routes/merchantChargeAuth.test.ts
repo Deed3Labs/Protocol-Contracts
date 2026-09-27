@@ -84,9 +84,22 @@ describe('the customer attaches by opening the code', () => {
     expect(fn.slice(0, 900)).toContain('expires_at > now()');
   });
 
+  test('Resend: the shop’s own waiting charge, to its member, once a minute', () => {
+    const route = read('routes/merchant.ts');
+    const fn = route.slice(route.indexOf("merchantRouter.post('/charges/:code/resend'"));
+    expect(fn.slice(0, 1400)).toContain('charge.merchantAddress !== merchant');
+    expect(fn.slice(0, 1400)).toContain('if (!charge.memberWallet)');
+    expect(fn.slice(0, 1400)).toContain("charge.status !== 'pending'");
+    expect(fn.slice(0, 1400)).toContain('notifyMember(charge, { resend: true })');
+    const notify = service.slice(service.indexOf('export async function notifyMember'));
+    // Keyed to the minute, and a repeat in that minute sends no text either.
+    expect(notify).toContain('`charge:${charge.code}:resend:${Math.floor(Date.now() / 60_000)}`');
+    expect(notify).toContain('if (opts.resend && !sent) return false;');
+  });
+
   test('nobody is notified about a charge that has no customer yet', () => {
     const fn = service.slice(service.indexOf('export async function notifyMember'));
-    expect(fn.slice(0, 600)).toContain('if (!charge.memberWallet) return;');
+    expect(fn.slice(0, 600)).toContain('if (!charge.memberWallet) return false;');
   });
 });
 

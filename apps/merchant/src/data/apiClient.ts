@@ -382,6 +382,11 @@ export const api = {
     await request(`/api/merchant/charges/${encodeURIComponent(code)}/cancel`, { method: 'POST' });
   },
 
+  /** Send a waiting charge's alert to the member again (in-app, lock screen, text). Once a minute. */
+  async resendCharge(code: string): Promise<void> {
+    await request(`/api/merchant/charges/${encodeURIComponent(code)}/resend`, { method: 'POST' });
+  },
+
   /* ---------------------------------------------------------------- refunds */
 
   /**

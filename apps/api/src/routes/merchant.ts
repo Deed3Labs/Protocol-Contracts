@@ -20,7 +20,7 @@ import { audit } from '../services/merchant/security/audit.js';
 import { merchantDb } from '../config/merchantDb.js';
 import { merchantProfileStore } from '../services/merchant/profileStore.js';
 import { canAddRole, type StaffRole } from '@clear/domain';
-import { raiseChargeFromDevice, readMerchantTerms } from '../services/chargeService.js';
+import { notifyMember, raiseChargeFromDevice, readMerchantTerms } from '../services/chargeService.js';
 import { verifyPrivyToken } from '../services/merchant/privyOrg.js';
 import { onboardMerchant } from '../services/merchant/onboardingService.js';
 import { memberStore } from '../services/memberStore.js';
@@ -534,6 +534,33 @@ merchantRouter.post('/charges/:code/cancel', requireMerchant, async (req: Reques
     return;
   }
   res.json({ code: cancelled.code, status: cancelled.status });
+});
+
+/**
+ * Resend a waiting charge's alert to the member: in-app, on their lock screen, and the text or
+ * email, as when it was raised. Anyone at the counter may; at most once a minute per charge (a
+ * second tap in the same minute sends nothing), so a busy counter can't flood a customer.
+ */
+merchantRouter.post('/charges/:code/resend', requireMerchant, async (req: Request, res: Response) => {
+  const { merchant } = req.merchant!;
+  const charge = await chargeStore.get(req.params.code);
+  if (!charge || charge.merchantAddress !== merchant) {
+    res.status(404).json({ error: 'Not found', message: 'no such charge' });
+    return;
+  }
+  if (!charge.memberWallet) {
+    res.status(409).json({ error: 'No customer', message: 'Nobody to send it to yet: this one is waiting for a customer to scan the code.' });
+    return;
+  }
+  if (charge.status !== 'pending') {
+    res.status(409).json({ error: 'Too late', message: charge.status === 'expired' ? 'This charge has expired.' : 'They have already answered this one.' });
+    return;
+  }
+  if (!(await notifyMember(charge, { resend: true }))) {
+    res.status(429).json({ error: 'Just sent', message: 'Sent a moment ago. Give them a minute.' });
+    return;
+  }
+  res.json({ code: charge.code, sent: true });
 });
 
 /**

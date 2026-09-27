@@ -314,10 +314,10 @@ export async function raiseChargeFromDevice(input: {
  * "You have not been charged yet" is the whole message — it is what makes the other two sentences
  * safe to read on a lock screen, and it is why the body is not summarised or shortened here.
  */
-export async function notifyMember(charge: ChargeRow): Promise<void> {
+export async function notifyMember(charge: ChargeRow, opts: { resend?: boolean } = {}): Promise<boolean> {
   // A charge raised by showing a code has no member yet — the customer is standing at the counter
   // and will scan it in a moment. There is nobody to alert and nothing to say to them.
-  if (!charge.memberWallet) return;
+  if (!charge.memberWallet) return false;
 
   const amount = (charge.amountCents / 100).toLocaleString('en-US', {
     style: 'currency',
@@ -327,24 +327,27 @@ export async function notifyMember(charge: ChargeRow): Promise<void> {
 
   const approveUrl = `${base}/c/${charge.code}`;
 
-  // In-app and Web Push together, deduped on the code so a retried raise cannot alert twice.
-  await notificationStore.emit({
+  // In-app and Web Push together, deduped on the code so a retried raise cannot alert twice. The
+  // counter's Resend is keyed to the minute: a second tap in the same minute is the same alert, and
+  // sends nothing, text included.
+  const sent = await notificationStore.emit({
     wallet: charge.memberWallet,
     kind: 'request',
     title: `${charge.merchantName} is charging ${amount}`,
     body: 'Approve or decline. You have not been charged yet.',
     data: { chargeCode: charge.code, url: approveUrl, amountCents: charge.amountCents },
-    dedupeKey: `charge:${charge.code}`,
+    dedupeKey: opts.resend ? `charge:${charge.code}:resend:${Math.floor(Date.now() / 60_000)}` : `charge:${charge.code}`,
   });
+  if (opts.resend && !sent) return false;
 
   // Then the text, which the reference treats as the primary channel — a member standing at a
   // counter has not necessarily opened the app since they installed it. Null means they opted out
   // of notifications, which is a decision to respect rather than a lookup that failed.
   try {
     const contact = await memberStore.getContactByWallet(charge.memberWallet);
-    if (!contact) return;
+    if (!contact) return true;
     const destination = contact.phone ?? contact.email;
-    if (!destination) return;
+    if (!destination) return true;
     await sendNotificationService.sendChargeAlert({
       recipientType: contact.phone ? 'phone' : 'email',
       recipientContact: destination,
@@ -357,6 +360,7 @@ export async function notifyMember(charge: ChargeRow): Promise<void> {
     // and failing the merchant's request because Twilio was down would be the wrong trade.
     console.error('[charge] contact alert failed', error instanceof Error ? error.message : error);
   }
+  return true;
 }
 
 export interface ResolveResult {

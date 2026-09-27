@@ -17,6 +17,7 @@ export function WaitingSheet({
   amountCents,
   steps,
   opened,
+  resent,
   onResend,
   onCancel,
   onClose,
@@ -26,6 +27,8 @@ export function WaitingSheet({
   amountCents: number;
   steps: Milestone[];
   opened: boolean;
+  /** Resent in the last minute. */
+  resent?: boolean;
   onResend?: () => void;
   onCancel?: () => void;
   onClose?: () => void;
@@ -44,8 +47,8 @@ export function WaitingSheet({
             </p>
           )}
           <div className="c-pair">
-            <button type="button" className="c-btn" onClick={onResend}>
-              Resend
+            <button type="button" className="c-btn" onClick={onResend} disabled={resent}>
+              {resent ? 'Sent' : 'Resend'}
             </button>
             <button type="button" className="c-btn c-btn-danger" onClick={onCancel}>
               Cancel charge
