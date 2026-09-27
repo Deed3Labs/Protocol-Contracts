@@ -3,6 +3,7 @@ import { sendNotificationService } from '../../sendNotificationService.js';
 import { chargeStore } from '../../chargeStore.js';
 import type { Db } from '../../../db/db.js';
 import type { ClearCharges } from './payments.js';
+import { memberAppUrl } from '../../memberAppUrl.js';
 
 /**
  * The Clear charge flow, as the merchant back office's Clear tenders use it: the same
@@ -50,7 +51,7 @@ export function clearChargesFor(db: Db): ClearCharges {
       }
       const charge = await chargeStore.get(code);
       if (!charge || charge.status !== 'pending') return { ok: false, reason: 'That charge has ended' };
-      const base = (process.env.APP_PUBLIC_URL || 'https://app.useclear.org').replace(/\/+$/, '');
+      const base = memberAppUrl();
       const sent = await sendNotificationService.sendChargeAlert({
         recipientType: 'phone',
         recipientContact: to.phone,
