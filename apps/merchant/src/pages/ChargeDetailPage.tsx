@@ -6,6 +6,7 @@ import { OneColumn, cx, useDigitKeys } from '@/brand/ui';
 import { PhoneBack } from '@/charge/phone';
 import { api, type MerchantCharge } from '@/data/apiClient';
 import { errorSentence, useApi } from '@/data/useApi';
+import { liveEvery, useLive } from '@/data/useLive';
 import { STUB_MERCHANT } from '@/data/stubs';
 import { clockTime, firstName, usd } from '@/home/model';
 import { useLayout } from '@/lib/useBreakpoint';
@@ -109,7 +110,8 @@ export default function ChargeDetailPage() {
   // ---- The live charge ------------------------------------------------------------------------------
   // No single-charge endpoint: the list is what the tablet already reads, and a shop's day is small
   // enough that finding the row in it costs less than another route.
-  const { data: charges, loading } = useApi(() => (preview ? Promise.resolve(null) : api.charges({ limit: 200 })), [preview]);
+  const chargesNow = useApi(() => (preview ? Promise.resolve(null) : api.charges({ limit: 200 })), [preview]);
+  const { data: charges, loading } = chargesNow;
   const { data: profile } = useApi(() => (preview ? Promise.resolve(null) : api.profile()), [preview]);
   const { data: position } = useApi(() => (preview || !canSeeMoney ? Promise.resolve(null) : api.payouts()), [preview, canSeeMoney]);
   // Who can clear a refund, by name: the roster every shift can read (the staff list is owners' and
@@ -122,6 +124,8 @@ export default function ChargeDetailPage() {
   const { data: openRefund } = useApi(() => (preview ? Promise.resolve(null) : api.openRefundFor(id)), [preview, id]);
 
   const charge = (charges ?? []).find((c) => c.code === id);
+  // Live while it waits on the member: their answer shows here without a refresh.
+  useLive(chargesNow.refresh, preview ? null : liveEvery(charge?.state === 'waiting' || charge?.state === 'resolving'));
 
   // Not a Clear charge: a card, cash or split sale, by its order id.
   const merchant = useMerchantApi();

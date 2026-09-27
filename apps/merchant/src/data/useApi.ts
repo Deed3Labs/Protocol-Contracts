@@ -33,6 +33,11 @@ export interface AsyncState<T> {
   loading: boolean;
   error: string | null;
   reload: () => void;
+  /**
+   * Read again without the loading state: what a live screen does on a timer (useLive). The page
+   * keeps showing what it has, and swaps in the answer; a failed read keeps what was there.
+   */
+  refresh: () => Promise<void>;
 }
 
 export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncState<T> {
@@ -79,5 +84,14 @@ export function useApi<T>(fn: () => Promise<T>, deps: unknown[] = []): AsyncStat
   }, [...deps, nonce]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
-  return { data, loading, error, reload };
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fnRef.current();
+      setData(res);
+      setError(null);
+    } catch {
+      // Keep what's on screen: the next tick, or the writer, asks again.
+    }
+  }, []);
+  return { data, loading, error, reload, refresh };
 }
