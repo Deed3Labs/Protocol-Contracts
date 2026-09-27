@@ -242,8 +242,7 @@ html{-webkit-text-size-adjust:100%}
 .c-mc-hours{display:grid;grid-template-columns:repeat(var(--n,8),minmax(0,1fr));gap:3px;height:8px; margin-top:var(--s2)}
 .c-mc-hours > span{background:var(--ink-13)}
 .c-mc-hours > span.c-done{background:var(--settled)}
-.c-mc-hours > span.c-now{position:relative;background:linear-gradient(to right,var(--settled) var(--p),var(--ink-13) var(--p))}
-.c-mc-hours > span.c-now::after{content:'';position:absolute;left:var(--p);top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--ink)}
+.c-mc-hours > span.c-now{background:linear-gradient(to right,var(--settled) var(--p),var(--ink-13) var(--p))}
 .c-mc-shiftrows{border-top:1px solid var(--ink-13)}
 .c-mc-shiftrows > div:first-child{padding-top:var(--s2)}
 .c-mc-shiftrows .c-fig-row{white-space:nowrap}
@@ -253,7 +252,6 @@ html{-webkit-text-size-adjust:100%}
 .c-mc-shiftcell.c-paused .c-mc-clock,.c-mc-shiftcell.c-paused .c-mc-remain{color:var(--ink-50)}
 .c-mc-shiftcell.c-paused .c-mc-hours > span.c-done{background:var(--ink-28)}
 .c-mc-shiftcell.c-paused .c-mc-hours > span.c-now{background:linear-gradient(to right,var(--ink-28) var(--p),var(--ink-13) var(--p))}
-.c-mc-shiftcell.c-paused .c-mc-hours > span.c-now::after{background:var(--ink-50)}
 .c-mc-solo{max-width:480px}
 .c-mc-lockg{display:inline-flex;color:var(--ink-28)}
 .c-mc-tip .c-keyline{margin:0}
@@ -906,8 +904,6 @@ html{-webkit-text-size-adjust:100%}
 .c-iv-pg.c-err > .c-det{color:var(--absent)}
 .c-iv-pg.c-err .c-iv-radio{border-color:var(--absent)}
 :where(.c-page-new-charge) .c-iv-pick-sheet .c-cfoot .c-line .c-iv-stepper{flex-shrink:0}
-/* Category chips, on Inventory and New charge alike: a gap, and a new row when there are many. */
-.c-iv-tabs{display:flex;flex-wrap:wrap;gap:6px}
 .c-iv-tabs .c-btn{height:30px;padding:0 12px;font-size:var(--t-detail)}
 .c-iv-tabs .c-btn.c-on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 .c-sechead:has(.c-iv-tabs){height:auto;align-items:center}
@@ -1138,6 +1134,7 @@ html{-webkit-text-size-adjust:100%}
 :where(.c-page-inventory) .c-iv-pick-sheet{width:420px}
 .c-iv-choices .c-r{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:var(--s1);margin-bottom:var(--s1)}
 .c-iv-choices .c-pr{justify-content:flex-end;font-variant-numeric:tabular-nums}
+:where(.c-page-inventory) .c-iv-tabs{display:flex;gap:6px}
 .c-iv-pc{display:flex;flex-direction:column}
 .c-iv-pc .c-iv-pricehead{padding-bottom:var(--s2);border-bottom:1px solid var(--ink-13)}
 .c-iv-pc .c-iv-facts > div:first-child .c-kv{padding-top:12px}
@@ -1780,9 +1777,7 @@ html{-webkit-text-size-adjust:100%}
   /* home, staff, charges, settings, payouts, overview, onboarding, sign-in. Differs in new-charge, inventory: flex-direction:column + flex-direction:row */
   :root .c-cfoot .c-pair{flex-direction:column}
   /* home, inventory, staff, charges, settings, payouts, overview, onboarding, sign-in. Differs in new-charge: width:100% + flex:1;height:44px */
-  /* Stacked, a button's flex:1 (a 0% basis) sizes its HEIGHT from nothing and squashed it to its
-     text (18px). The floor keeps the 44px; a pair that stays a row still splits evenly. */
-  :root .c-cfoot .c-pair .c-btn{width:100%;min-height:44px}
+  :root .c-cfoot .c-pair .c-btn{width:100%}
   :root .c-mc-shiftcell .c-cfoot .c-pair .c-btn{flex:none;height:44px}
   :root .c-mc-heroacts{width:100%}
   :root .c-mc-heroacts .c-btn{flex:1;width:auto;padding:0 var(--s2);font-size:var(--t-sec)}
