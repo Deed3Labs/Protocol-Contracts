@@ -12,7 +12,7 @@ import { REFERENCE_NOW, settle } from './capture';
  * - The money routes (Close the day, Payouts, Staff, Overview) send a counter shift Home.
  * - A counter shift never sees what the shop is paid, owed or charged: no payout, fee, cost or
  *   margin on any screen it can reach.
- * - The nav locks Payouts and Overview for a counter shift, and opens them for the other two.
+ * - The nav locks Payouts, Staff and Overview for a counter shift, and opens them for the other two.
  * - Settings is You alone for a counter shift and a manager, every section for the owner.
  * - Every screen renders without an uncaught error, and passes axe, as each role.
  */
@@ -85,7 +85,7 @@ for (const role of ROLES) {
     test('the nav', async ({ page }, info) => {
       await visit(page, role, '/');
       const phone = info.project.name === 'phone';
-      for (const label of ['Payouts', 'Overview']) {
+      for (const label of ['Payouts', 'Staff', 'Overview']) {
         const locked = page.getByRole('button', { name: `${label}, needs the owner` });
         if (role === 'counter') {
           await expect(locked.first()).toBeVisible();

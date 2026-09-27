@@ -358,7 +358,8 @@ reason for any difference, is written to `e2e/.report/index.html`.
   path against the mock:
   - Close the day, Payouts, Staff and Overview send a counter shift Home.
   - No screen a counter shift can reach shows a payout, fee, cost or margin.
-  - The nav locks Payouts and Overview for a counter shift.
+  - The nav locks Payouts, Staff and Overview for a counter shift: the pages whose routes send it
+    Home. Staff was left open in the nav at first, so it looked reachable and quietly landed on Home.
   - Settings is You alone for a counter shift and a manager.
 - **The icon is the Clear mark**, as the brand draws it, in paper on ink (the brand's dark green; switched from ink on paper at the user's request). It is drawn into
   `public/` by `scripts/icons.mjs`: the SVG, 180 for iOS, 192 and 512, and a maskable 512 that
