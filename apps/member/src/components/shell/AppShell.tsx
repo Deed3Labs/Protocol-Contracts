@@ -63,7 +63,7 @@ function LiveHeaderActions() {
         time: notificationTime(n.createdAt),
         unread: !n.read,
         // Only kinds with one obvious destination carry an action; the rest keep Read and Clear.
-        ...(destinationFor(n.kind) ? { action: destinationFor(n.kind) } : {}),
+        ...(destinationFor(n.kind, n.data) ? { action: destinationFor(n.kind, n.data) } : {}),
       }))}
       onMarkAllRead={() => void markAllRead()}
       onRead={(id) => void markRead(id)}

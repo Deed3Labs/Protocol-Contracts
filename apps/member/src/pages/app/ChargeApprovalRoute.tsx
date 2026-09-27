@@ -281,7 +281,13 @@ function ChargeApprovalScreen() {
         ? 'This charge expired. Ask the shop to send a new one — nothing was charged.'
         : charge.status === 'declined'
           ? 'You declined this charge. Nothing was charged.'
-          : 'This one is still going through. Give it a moment before trying again.';
+          : charge.status === 'cancelled'
+            ? 'The shop cancelled this charge before you answered. Nothing was charged.'
+            : charge.status === 'refunded'
+              ? 'The shop refunded this charge. It’s back where it came from.'
+              : charge.status === 'disputed'
+                ? 'You disputed this charge. It’s on hold while it’s looked into.'
+                : 'This one is still going through. Give it a moment before trying again.';
     return (
       <div className="w-full px-5 py-8 lg:mx-auto lg:max-w-[420px] text-center">
         <p className="mb-1.5 text-[19px] font-medium">{charge.merchantName}</p>

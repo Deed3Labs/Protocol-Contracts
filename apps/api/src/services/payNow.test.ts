@@ -47,6 +47,25 @@ beforeEach(async () => {
   await pg.exec('DELETE FROM charge_requests');
 });
 
+describe('a member’s charges (their Charges page and Activity)', () => {
+  test('every one of theirs, whatever became of it, newest first; nobody else’s, nor one not yet claimed', async () => {
+    const first = await raise(1_000);
+    await chargeStore.claimForResolution(first);
+    await chargeStore.finish(first, { status: 'declined' });
+    const second = await raise(2_000);
+    const other = await chargeStore.create({ merchantAddress: SHOP, merchantName: 'Mike’s Tire', amountCents: 3_000, payoutCents: 2_900, chainId: 84532, ttlSeconds: 86_400 });
+    await chargeStore.attachMember(other!.code, '0x4444444444444444444444444444444444444444');
+    await chargeStore.create({ merchantAddress: SHOP, merchantName: 'Mike’s Tire', amountCents: 4_000, payoutCents: 3_900, chainId: 84532, ttlSeconds: 86_400 });
+    await pg.query(`UPDATE charge_requests SET created_at = now() - interval '1 hour' WHERE code = $1`, [first]);
+
+    const mine = await chargeStore.listByMember(MEMBER.toUpperCase().replace('0X', '0x'));
+    expect(mine.map((c) => [c.code, c.status])).toEqual([
+      [second, 'pending'],
+      [first, 'declined'],
+    ]);
+  });
+});
+
 describe('the hold', () => {
   test('takes a pending charge out of reach of a plan, the shop and the plan reconciler', async () => {
     const code = await raise();

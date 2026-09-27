@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import SendPage from './SendPage';
+import { useChargeHistory } from '@/hooks/useChargeHistory';
+import { useAppKitAccount } from '@/lib/walletCompat';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { SEND_DAY_ONE } from '@/data/clearPlaceholder';
 import { useContacts, type Contact as SavedContact } from '@/context/ContactsContext';
@@ -30,7 +32,10 @@ import type { Contact, PendingClaim } from '@/lib/clearModel';
  * the credit route.
  */
 export default function SendRoute() {
-  return <SendPage data={useSendData()} />;
+  const { address } = useAppKitAccount();
+  // Shop charges, the page's last cell: the latest few, and the way to all of them.
+  const charges = useChargeHistory(address);
+  return <SendPage data={useSendData()} charges={charges} />;
 }
 
 /** The live Send data — shared with the full-screen code and the contacts list. */

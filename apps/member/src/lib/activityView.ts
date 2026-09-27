@@ -88,6 +88,7 @@ export function groupByDay(rows: ActivityRow[]): { day: string; rows: ActivityRo
 
 /** The tag beside a row: what paid for it, or what it was, and the colour that goes with it. */
 export function rowTag(row: ActivityRow): { label: string; className?: string } {
+  if (row.tagLabel) return { label: row.tagLabel, className: row.pending ? 'c-t-und' : undefined };
   if (row.termPayment) {
     return { label: `Term plan · ${row.termPayment.index} of ${row.termPayment.count}`, className: 'c-t-inc' };
   }

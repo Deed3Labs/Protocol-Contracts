@@ -49,8 +49,15 @@ const DESTINATION: Record<string, { label: string; to: string }> = {
   kyc: { label: 'Finish verification', to: '/settings' },
 };
 
-/** Where a notification leads, if anywhere — for the panel's own swipe action. */
-export function destinationFor(kind: string): { label: string; to: string } | undefined {
+/**
+ * Where a notification leads, if anywhere — for the panel's own swipe action and the Inbox row.
+ *
+ * A shop's charge is a `request` too, but it isn't asking for money to be sent: it opens the charge
+ * itself, to approve or decline (it said "Open Send" and landed on Send, which does neither).
+ */
+export function destinationFor(kind: string, data?: Record<string, unknown> | null): { label: string; to: string } | undefined {
+  const code = data && typeof data.chargeCode === 'string' ? data.chargeCode : null;
+  if (code) return { label: 'Review charge', to: `/c/${encodeURIComponent(code)}` };
   return DESTINATION[kind];
 }
 
@@ -64,6 +71,6 @@ export function toAlerts(notifications: ApiNotification[], now = new Date()): Al
     group: groupFor(n.createdAt, now),
     tone: TONE[n.kind] ?? 'muted',
     read: n.read,
-    action: DESTINATION[n.kind],
+    action: destinationFor(n.kind, n.data),
   }));
 }

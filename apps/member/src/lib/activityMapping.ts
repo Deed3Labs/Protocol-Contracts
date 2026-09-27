@@ -2,6 +2,8 @@ import type { ActivityItem } from '@/hooks/useClearTransactions';
 import type { CardTransaction, ChargePayment, CreditRepaymentEntry } from '@/utils/apiClient';
 import { categoryForMcc } from './mccCategory';
 import type { ActivityRow, ActivityKind, ActivitySource } from '@/lib/clearModel';
+import type { MemberCharge } from '@/utils/apiClient';
+import { chargeActivityRows } from './memberCharges';
 
 /**
  * Turns a transaction into a row the Activity page can show.
@@ -129,6 +131,7 @@ export function chargePaymentRow(p: ChargePayment, ts: number): ActivityRow {
     kind: 'spending',
     source: 'cash',
     amount: -p.amountCents / 100,
+    chargeCode: p.code,
     paidFromLabel: 'Ready to allocate',
     status: p.status === 'refunded' ? 'Refunded' : p.status === 'disputed' ? 'In dispute' : 'Paid now',
   };
@@ -176,6 +179,7 @@ export function mergedActivityRows(
   cardLast4?: string,
   repayments: CreditRepaymentEntry[] = [],
   chargePayments: ChargePayment[] = [],
+  charges: MemberCharge[] = [],
 ): ActivityRow[] {
   /*
    * An on-chain repayment is also a token transfer, and the chain feed shows it as one. The
@@ -212,6 +216,8 @@ export function mergedActivityRows(
     ...cards.map((tx) => ({ ts: Date.parse(tx.at), row: cardTransactionRow(tx, cardLast4) })),
     ...repayments.map((entry) => ({ ts: Date.parse(entry.at), row: repaymentRow(entry) })),
     ...shopRows,
+    // Charges the rows above don't cover: waiting on them, over time, never charged.
+    ...chargeActivityRows(charges),
   ]
     .sort((a, b) => b.ts - a.ts)
     .map((entry) => entry.row);

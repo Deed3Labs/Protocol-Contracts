@@ -28,6 +28,8 @@ import CodePage from '@/pages/app/CodePage';
 import ExplainerPage from '@/pages/app/ExplainerPage';
 import PartnersPage from '@/pages/app/PartnersPage';
 import SendPage from '@/pages/app/SendPage';
+import ChargesPage from '@/pages/app/ChargesPage';
+import { chargeActivityRows } from '@/lib/memberCharges';
 import EarnPage from '@/pages/app/EarnPage';
 import SettingsPage from '@/pages/app/SettingsPage';
 import { EMPTY_ADDRESS, type MailingAddress } from '@/hooks/useMemberProfile';
@@ -47,6 +49,7 @@ import {
   CARD_IN_USE,
   CARD_DAY_ONE,
   SEND_IN_USE,
+  SHOP_CHARGES_IN_USE,
   SEND_DAY_ONE,
   CONTACTS,
   ALERTS,
@@ -905,8 +908,20 @@ export default function PreviewApp() {
                         />
                         <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
                         <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
-                        <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} />} />
-                        <Route path="/activity" element={<ActivityPage key={String(empty)} data={empty ? ACTIVITY_DAY_ONE : ACTIVITY_IN_USE} email="kai@example.com" />} />
+                        <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} charges={empty ? [] : SHOP_CHARGES_IN_USE} />} />
+                        <Route path="/charges" element={<ChargesPage key={String(empty)} charges={empty ? [] : SHOP_CHARGES_IN_USE} />} />
+                        <Route
+                          path="/activity"
+                          element={
+                            <ActivityPage
+                              key={String(empty)}
+                              // With the shop charges Activity lists alongside the rest.
+                              data={empty ? ACTIVITY_DAY_ONE : { ...ACTIVITY_IN_USE, rows: [...chargeActivityRows(SHOP_CHARGES_IN_USE).map((r) => r.row), ...ACTIVITY_IN_USE.rows] }}
+                              email="kai@example.com"
+                              charges={empty ? [] : SHOP_CHARGES_IN_USE}
+                            />
+                          }
+                        />
                         <Route path="/card" element={<CardPreviewFrame empty={empty} />} />
                         <Route path="/contacts" element={<Navigate to="/settings/contacts" replace />} />
                         <Route path="/partners" element={<PartnersPage />} />
