@@ -35,7 +35,7 @@ export function SignIn() {
       .roster()
       // Somebody whose PIN isn't set yet (new, or reset) picks one instead of typing it; everyone
       // else shows today's hours (auth/shiftLines).
-      .then((people) => setRoster(people.map(toShiftPerson)))
+      .then((people) => setRoster(people.map((p) => toShiftPerson(p))))
       .catch(() => setRoster([]));
   }, []);
 

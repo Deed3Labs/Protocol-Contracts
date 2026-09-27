@@ -117,7 +117,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (open !== 'who' && !locked) return;
     api
       .roster()
-      .then((people) => setRoster(people.map(toShiftPerson)))
+      .then((people) => setRoster(people.map((p) => toShiftPerson(p))))
       .catch(() => setRoster([]));
   }, [open, locked]);
 

@@ -6,8 +6,16 @@ const base = { id: 's1', name: 'Jen R.', role: 'counter' as const, pinSet: true 
 
 describe('the lines under a name', () => {
   test('booked today: until when, and the span on the PIN and lock screens', () => {
-    const p = toShiftPerson({ ...base, today: { from: '08:00', to: '16:00' }, hoursSet: true });
+    const noon = new Date(2026, 8, 26, 12, 0).getTime();
+    const p = toShiftPerson({ ...base, today: { from: '08:00', to: '16:00' }, hoursSet: true }, noon);
     expect(p.hours).toBe('Until 4:00pm today');
+    expect(p.span).toBe('8:00am – 4:00pm');
+  });
+
+  test('once the booked hours are over, they read as over, not "until"', () => {
+    const late = new Date(2026, 8, 26, 22, 51).getTime();
+    const p = toShiftPerson({ ...base, today: { from: '08:00', to: '16:00' }, hoursSet: true }, late);
+    expect(p.hours).toBe('Hours ended 4:00pm today');
     expect(p.span).toBe('8:00am – 4:00pm');
   });
 
