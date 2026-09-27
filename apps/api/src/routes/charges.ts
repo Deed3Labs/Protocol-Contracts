@@ -117,6 +117,34 @@ chargesRouter.get('/', requireAuth, async (req: Request, res: Response) => {
   });
 });
 
+/**
+ * Every charge the member has had, newest first: waiting on them, paid now, over time, declined,
+ * expired. For the Charges page and Activity, so a charge can be found again after the alert is gone
+ * or the app was closed. Only their own (by the session's wallet); nothing here opens or claims one.
+ */
+chargesRouter.get('/history', requireAuth, async (req: Request, res: Response) => {
+  const wallet = req.auth?.walletAddress;
+  if (!wallet) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const rows = await chargeStore.listByMember(wallet);
+  res.json({
+    charges: rows.map((c) => ({
+      code: c.code,
+      merchantName: c.merchantName,
+      amountCents: c.amountCents,
+      status: c.status,
+      paidNow: c.paidNow,
+      splitInto: c.splitInto,
+      createdAt: c.createdAt,
+      resolvedAt: c.resolvedAt,
+      expiresAt: c.expiresAt,
+      payingNow: c.status === 'resolving' && Boolean(c.payNow),
+    })),
+  });
+});
+
 /** The member opens it. Also what the merchant's "waiting" state is watching. */
 chargesRouter.get('/:code', requireAuth, async (req: Request, res: Response) => {
   const charge = await chargeStore.get(req.params.code);

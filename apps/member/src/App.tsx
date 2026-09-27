@@ -17,6 +17,7 @@ import ClaimFunds from "@/pages/auth/ClaimFunds";
 import OnboardingRoute from "@/pages/auth/OnboardingRoute";
 import CounterOnboardingRoute from "@/pages/auth/CounterOnboardingRoute";
 import ChargeApprovalRoute from "@/pages/app/ChargeApprovalRoute";
+import ChargesRoute from "@/pages/app/ChargesRoute";
 import ConfirmIdentitySheet from "@/components/shell/ConfirmIdentitySheet";
 import { MemberProfileProvider } from '@/hooks/useMemberProfile';
 import LoginRoute from "@/pages/auth/LoginRoute";
@@ -180,6 +181,8 @@ function App() {
                       <Route path="/savings" element={<SavingsRoute />} />
                       <Route path="/earn" element={<EarnRoute />} />
                       <Route path="/send" element={<SendRoute />} />
+                      {/* Reached from Send and Activity: every charge a shop has sent, whatever became of it. */}
+                      <Route path="/charges" element={<ChargesRoute />} />
                       <Route path="/activity" element={<ActivityRoute />} />
                       <Route path="/card" element={<CardRoute />} />
                       <Route path="/contacts" element={<Navigate to="/settings/contacts" replace />} />

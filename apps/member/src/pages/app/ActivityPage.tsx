@@ -5,6 +5,9 @@ import { ChevronIcon, FilterIcon, PlusIcon, SearchIcon, SortIcon } from '@/compo
 import MenuButton from '@/components/clear/brand/MenuButton';
 import { useSetMobileAction } from '@/components/shell/MobileAction';
 import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
+import WaitingChargeBanner from '@/components/clear/WaitingChargeBanner';
+import { latestWaiting } from '@/lib/memberCharges';
+import type { MemberCharge } from '@/utils/apiClient';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import FiltersDialog from '@/components/clear/activity/FiltersDialog';
 import ExportDialog from '@/components/clear/activity/ExportDialog';
@@ -72,6 +75,7 @@ export default function ActivityPage({
   grouping: savedGrouping,
   onMoveMerchant,
   onGrouping,
+  charges = [],
 }: {
   data?: ActivityData;
   email?: string;
@@ -80,6 +84,8 @@ export default function ActivityPage({
   grouping?: boolean;
   onMoveMerchant?: (merchant: string, group: string) => void;
   onGrouping?: (on: boolean) => void;
+  /** Shop charges, for the temporary slot's "waiting on you". */
+  charges?: MemberCharge[];
 }) {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
@@ -113,9 +119,11 @@ export default function ActivityPage({
   const cycle = data.cycleSpend ?? { spent: 0, daysLeft: 0, fromCash: 0, fromCredit: 0, carryCost: 0 };
   const matching = sortRows(filterRows(data.rows, filters, query), sort);
   const shown = matching.slice(0, limit);
+  const latest = latestWaiting(charges);
   const narrowed = query.trim() !== '' || filters.direction !== 'all' || filters.paidFrom !== 'any';
   const total = narrowed ? matching.length : (data.cycleCount ?? data.rows.length);
-  const anyPending = shown.some((r) => r.pending);
+  // Card holds clear overnight; a charge waiting on the member doesn't, so it doesn't say so.
+  const anyPending = shown.some((r) => r.pending && !r.chargeCode);
 
   // ---- Hero ---------------------------------------------------------------------------------------
 
@@ -267,7 +275,7 @@ export default function ActivityPage({
    * alone. The funding tag gives way to 'Reversed' because no tier is paying for it any more.
    */
   const tag = (row: ActivityRow) => {
-    if (row.reversed) return <span className={cn('c-det', REVERSED_ROW.text)}>{REVERSED_ROW.label}</span>;
+    if (row.reversed) return <span className={cn('c-det', REVERSED_ROW.text)}>{row.reversedLabel ?? REVERSED_ROW.label}</span>;
     const t = rowTag(row);
     return <span className={cn('c-det', t.className)}>{t.label}</span>;
   };
@@ -282,7 +290,7 @@ export default function ActivityPage({
       {signedMoney(row.amount)}
     </span>
   );
-  const pendingChip = <Chip tone="underway">Pending</Chip>;
+  const pendingChip = (row: ActivityRow) => <Chip tone="underway">{row.pendingLabel ?? 'Pending'}</Chip>;
 
   const whenLabel = WHEN.find((w) => w.id === filters.when)!.label;
   const fromLabel =
@@ -348,13 +356,19 @@ export default function ActivityPage({
               <p className="c-grouplabel">{group.day}</p>
               <Rows>
                 {group.rows.map((row) => (
-                  <button key={row.id} type="button" onClick={() => setSelected(row)} className="block w-full text-left">
+                  <button
+                    key={row.id}
+                    type="button"
+                    // A shop charge opens itself: to approve it, or to see what became of it.
+                    onClick={() => (row.chargeCode ? navigate(`/c/${row.chargeCode}`) : setSelected(row))}
+                    className="block w-full text-left"
+                  >
                     {desktop ? (
                       <div className="grid grid-cols-[1fr_170px_130px] items-center">
                         <span className={cn('text-sec', row.reversed && REVERSED_ROW.text)}>{row.name}</span>
                         <span className="c-det">
                           {tag(row)}
-                          {row.pending && <span className="ml-s1">{pendingChip}</span>}
+                          {row.pending && <span className="ml-s1">{pendingChip(row)}</span>}
                         </span>
                         {amount(row)}
                       </div>
@@ -365,7 +379,7 @@ export default function ActivityPage({
                           <p className="mt-[2px]">{tag(row)}</p>
                         </div>
                         <span className="flex shrink-0 items-center gap-s1">
-                          {row.pending && pendingChip}
+                          {row.pending && pendingChip(row)}
                           {amount(row)}
                         </span>
                       </Line>
@@ -395,6 +409,7 @@ export default function ActivityPage({
     <>
       {hero}
       <div className="c-home">
+        {latest && <WaitingChargeBanner charge={latest.charge} more={latest.more} />}
         {data.pendingClaim && <PendingClaimBanner claim={data.pendingClaim} showSent />}
         <div className={cn('c-slab', !desktop && 'c-one')}>
           {whereItWent}

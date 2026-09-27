@@ -49,6 +49,7 @@ function Chrome({
   // Send — still need a title, and one that matches what the link promised.
   const OFF_NAV: Record<string, string> = {
     '/partners': 'Clear Partners',
+    '/charges': 'Shop charges',
     '/settings': 'Settings',
     '/assurance': 'Assurance',
     '/inbox': 'Inbox',

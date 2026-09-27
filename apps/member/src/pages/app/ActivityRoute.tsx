@@ -3,6 +3,7 @@ import ActivityPage from './ActivityPage';
 import { ACTIVITY_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
 import { mergedActivityRows } from '@/lib/activityMapping';
+import { useChargeHistory } from '@/hooks/useChargeHistory';
 import { useCreditRepayments } from '@/hooks/useCreditRepayments';
 import { useChargePayments } from '@/hooks/useChargePayments';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
@@ -68,6 +69,8 @@ export default function ActivityRoute() {
   const repayments = useCreditRepayments(address);
   // Shops paid now: one row each, in place of the transfers they were made of.
   const chargePayments = useChargePayments(address);
+  // Every charge they've had: waiting ones, over time, never charged (paid-now ones come from above).
+  const charges = useChargeHistory(address);
   const [pendingClaim, setPendingClaim] = useState<PendingClaim | undefined>(undefined);
   const [moved, setMoved] = useState<Record<string, string>>({});
   const [grouping, setGrouping] = useState(true);
@@ -140,7 +143,7 @@ export default function ActivityRoute() {
          * shows up, and it was on-chain items alone — so a card purchase counted towards the cycle
          * total, the category bar and the merchant list, then appeared nowhere underneath them.
          */
-        rows: mergedActivityRows(items, cards, undefined, repayments, chargePayments),
+        rows: mergedActivityRows(items, cards, undefined, repayments, chargePayments, charges),
         cycleSpend,
         categories,
         merchants,
@@ -151,6 +154,7 @@ export default function ActivityRoute() {
     <ActivityPage
       data={data}
       email={member.email || undefined}
+      charges={charges}
       moved={moved}
       grouping={grouping}
       onMoveMerchant={(merchant, group) => {

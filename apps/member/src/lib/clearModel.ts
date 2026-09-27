@@ -350,6 +350,14 @@ export interface ActivityRow {
   counterpartyHandle?: string;
   /** This payment's place in a term plan. */
   termPayment?: { index: number; count: number };
+  /** A shop charge: tapping the row opens it (/c/<code>), to approve it or see what became of it. */
+  chargeCode?: string;
+  /** The row's tag, when it says more than where the money came from ("Over time · 4 payments"). */
+  tagLabel?: string;
+  /** A pending row's chip, when it isn't "Pending" ("Waiting" on the member). */
+  pendingLabel?: string;
+  /** A struck row's tag, when it isn't "Reversed" ("Declined", "Expired"). */
+  reversedLabel?: string;
   /**
    * How this payment is known to the disputes API, when it can be. Card charges only for now: their
    * id is Lithic's transaction token. Chain rows carry hashes, which are not what a dispute names.

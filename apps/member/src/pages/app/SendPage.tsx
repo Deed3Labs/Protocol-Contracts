@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Btn, CFoot, CHead, CMain, Cell, Line, SecHead } from '@/components/clear/brand/anatomy';
+import { Btn, CFoot, CHead, CMain, Cell, Chip, Line, Rows, SecHead } from '@/components/clear/brand/anatomy';
 import { ChevronIcon, PlusIcon, ScanIcon } from '@/components/clear/brand/icons';
 import ClearCode from '@/components/clear/ClearCode';
 import CodeFoot from '@/components/clear/CodeFoot';
 import ContactRows from '@/components/clear/ContactRows';
 import PartnerRows from '@/components/clear/PartnerRows';
 import PendingClaimBanner from '@/components/clear/PendingClaimBanner';
+import WaitingChargeBanner from '@/components/clear/WaitingChargeBanner';
 import SendMoneyDialog from '@/components/clear/SendMoneyDialog';
 import RequestMoneyDialog from '@/components/clear/RequestMoneyDialog';
 import PartnerSheet from '@/components/clear/PartnerSheet';
@@ -14,7 +15,10 @@ import { useSetMobileAction } from '@/components/shell/MobileAction';
 import { SEND_DAY_ONE } from '@/data/clearPlaceholder';
 import { money } from '@clear/domain';
 import { useIsDesktop } from '@/lib/useIsDesktop';
-import { searchContacts, type Contact, type Partner, type SendData } from '@/lib/clearModel';
+import { REVERSED_ROW, searchContacts, type Contact, type Partner, type SendData } from '@/lib/clearModel';
+import { chargeLabel, chargeState, latestCharges, latestWaiting, notCharged, waitingSummary } from '@/lib/memberCharges';
+import type { MemberCharge } from '@/utils/apiClient';
+import { cn } from '@/lib/utils';
 
 /** A header or footer link: detail text with a chevron, never a Unicode arrow. */
 function MoreLink({ to, children }: { to: string; children: string }) {
@@ -36,7 +40,7 @@ function MoreLink({ to, children }: { to: string; children: string }) {
  * The phone puts Your code first, because the phone is the thing you hold up at a counter, and the
  * nav's action button reads Scan.
  */
-export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
+export default function SendPage({ data = SEND_DAY_ONE, charges = [] }: { data?: SendData; charges?: MemberCharge[] }) {
   const navigate = useNavigate();
   const desktop = useIsDesktop();
   const [query, setQuery] = useState('');
@@ -151,6 +155,56 @@ export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
     </Cell>
   );
 
+  // Shop charges, last and full width: the latest few (waiting ones first), and the way to all of them.
+  const waiting = waitingSummary(charges);
+  const latest = latestWaiting(charges);
+  const chargesCell = (
+    <Cell full>
+      <CHead>
+        <SecHead label="Shop charges">
+          <MoreLink to="/charges">See all</MoreLink>
+        </SecHead>
+      </CHead>
+      <CMain>
+        {charges.length === 0 ? (
+          <p className="c-det">No shop charges yet. When a shop charges you, it waits here until you approve or decline it.</p>
+        ) : (
+          <Rows>
+            {latestCharges(charges, 3).map((c) => {
+              const s = chargeState(c);
+              const struck = notCharged(c) || s === 'refunded';
+              const open = s === 'waiting' || s === 'paying';
+              return (
+                <button key={c.code} type="button" onClick={() => navigate(`/c/${c.code}`)} className="block w-full text-left">
+                  <Line>
+                    <div className="min-w-0">
+                      <p className={cn('text-sec', struck && REVERSED_ROW.text)}>{c.merchantName}</p>
+                      <p className={cn('c-det mt-[2px]', struck ? REVERSED_ROW.text : open && 'c-t-und')}>{chargeLabel(c)}</p>
+                    </div>
+                    <span className="flex shrink-0 items-center gap-s1">
+                      {open && <Chip tone="underway">{s === 'paying' ? 'Paying' : 'Waiting'}</Chip>}
+                      <span className={cn('c-fig c-fig-row', struck ? REVERSED_ROW.amount : open && 'c-muted')}>
+                        {money(c.amountCents / 100, { cents: true })}
+                      </span>
+                    </span>
+                  </Line>
+                </button>
+              );
+            })}
+          </Rows>
+        )}
+      </CMain>
+      <CFoot>
+        <Line className="items-center!">
+          <span className="c-det">
+            {waiting.count === 0 ? 'Nothing waiting on you' : `${waiting.count} waiting on you · ${money(waiting.cents / 100, { cents: true })}`}
+          </span>
+          <MoreLink to="/charges">{charges.length > 3 ? `All ${charges.length}` : 'See all'}</MoreLink>
+        </Line>
+      </CFoot>
+    </Cell>
+  );
+
   return (
     <>
       <div className="mb-s3">
@@ -170,6 +224,8 @@ export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
       </div>
 
       <div className="c-home">
+        {/* The temporary slot: a charge waiting on them first (it needs an answer), then money to claim. */}
+        {latest && <WaitingChargeBanner charge={latest.charge} more={latest.more} />}
         {data.pendingClaim && <PendingClaimBanner claim={data.pendingClaim} />}
 
         {desktop ? (
@@ -178,6 +234,7 @@ export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
             {codeCell}
             {partnersCell}
             {networkCell}
+            {chargesCell}
           </div>
         ) : (
           <div className="c-slab c-one">
@@ -185,6 +242,7 @@ export default function SendPage({ data = SEND_DAY_ONE }: { data?: SendData }) {
             {contactsCell}
             {partnersCell}
             {networkCell}
+            {chargesCell}
           </div>
         )}
       </div>

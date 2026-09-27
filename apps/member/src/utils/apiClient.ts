@@ -2830,6 +2830,29 @@ export interface ChargePayment {
   refundTxHashes: string[];
 }
 
+/** A shop charge the member has had, whatever became of it: their Charges page and Activity. */
+export interface MemberCharge {
+  code: string;
+  merchantName: string;
+  amountCents: number;
+  status: 'pending' | 'resolving' | 'approved' | 'declined' | 'expired' | 'cancelled' | 'refunded' | 'disputed';
+  /** Paid from their Clear cash rather than over time. */
+  paidNow: boolean;
+  /** Over time: how many payments. Null when paid now, or not answered. */
+  splitInto: number | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  expiresAt: string;
+  /** They pressed Pay now and it is going through. */
+  payingNow: boolean;
+}
+
+/** Every charge the member has had, newest first. Null when it couldn't be read (keep what's shown). */
+export async function getChargeHistory(): Promise<MemberCharge[] | null> {
+  const r = await apiRequest<{ charges: MemberCharge[] }>('/api/charges/history');
+  return r.error || !r.data ? null : r.data.charges;
+}
+
 export async function getChargePayments(): Promise<ChargePayment[]> {
   const r = await apiRequest<{ payments: ChargePayment[] }>('/api/charges');
   return r.error || !r.data ? [] : r.data.payments;
@@ -3569,7 +3592,7 @@ export interface ChargeView {
   code: string;
   merchantName: string;
   amountCents: number;
-  status: 'pending' | 'resolving' | 'approved' | 'declined' | 'expired';
+  status: 'pending' | 'resolving' | 'approved' | 'declined' | 'expired' | 'cancelled' | 'refunded' | 'disputed';
   splitInto: number | null;
   planId: number | null;
   txHash: string | null;

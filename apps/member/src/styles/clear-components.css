@@ -119,6 +119,8 @@
 /* Boost's text colour. The guide uses .t-bst in the Repay modal without defining it; this follows
    the ramp (boost → absent), the same way the other three tiers map. */
 .c-t-bst{color:var(--tier-boost)}
+/* Waiting on the member: a charge to answer, in the colour of what is underway. */
+.c-t-und{color:var(--underway)}
 .c-legend > div{display:flex;justify-content:space-between;gap:var(--s2);font-size:var(--t-detail);line-height:2}
 .c-legend > div span:last-child{flex-shrink:0;white-space:nowrap;color:var(--ink-70)}
 .c-legend > div span.c-muted:last-child{color:var(--ink-50)}

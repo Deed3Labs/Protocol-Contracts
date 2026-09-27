@@ -1168,3 +1168,22 @@ export const DISPUTE_SAMPLE_MINE: MemberDispute[] = [
   { token: 'sample-open', kind: 'card', subjectLabel: 'Mike’s Tire', amountCents: 24675, status: 'with_network', holdState: 'held', resolution: null, createdAt: '2026-11-03T12:00:00Z' },
   { token: 'sample-won', kind: 'partner', subjectLabel: 'TinyBox Systems', amountCents: 120000, status: 'decided', holdState: 'released', resolution: 'member', createdAt: '2026-10-29T12:00:00Z' },
 ];
+
+/**
+ * A member's shop charges for the preview: one waiting on them, paid now, over time, declined,
+ * expired and refunded, dated back from now so the day sections read Today, Yesterday and so on.
+ */
+const daysAgo = (d: number, h = 14) => {
+  const t = new Date();
+  t.setDate(t.getDate() - d);
+  t.setHours(h, 20, 0, 0);
+  return t.toISOString();
+};
+export const SHOP_CHARGES_IN_USE: import('@/utils/apiClient').MemberCharge[] = [
+  { code: '55DCQ9PR', merchantName: 'MiMi Crack', amountCents: 5000, status: 'pending', paidNow: false, splitInto: null, createdAt: daysAgo(0, 12), resolvedAt: null, expiresAt: daysAgo(-1), payingNow: false },
+  { code: '8QK2MIKE', merchantName: 'Mike’s Tire', amountCents: 94000, status: 'approved', paidNow: false, splitInto: 4, createdAt: daysAgo(1, 10), resolvedAt: daysAgo(1, 10), expiresAt: daysAgo(0), payingNow: false },
+  { code: 'CAFE4412', merchantName: 'Corner Café', amountCents: 1250, status: 'approved', paidNow: true, splitInto: null, createdAt: daysAgo(1, 8), resolvedAt: daysAgo(1, 8), expiresAt: daysAgo(0), payingNow: false },
+  { code: 'BRAKES01', merchantName: 'Mike’s Tire', amountCents: 18800, status: 'declined', paidNow: false, splitInto: null, createdAt: daysAgo(3), resolvedAt: daysAgo(3), expiresAt: daysAgo(2), payingNow: false },
+  { code: 'TACO0047', merchantName: 'Taqueria Sol', amountCents: 2300, status: 'expired', paidNow: false, splitInto: null, createdAt: daysAgo(6), resolvedAt: null, expiresAt: daysAgo(5), payingNow: false },
+  { code: 'BOOKS202', merchantName: 'Paper Trail Books', amountCents: 4150, status: 'refunded', paidNow: false, splitInto: 2, createdAt: daysAgo(9), resolvedAt: daysAgo(9), expiresAt: daysAgo(8), payingNow: false },
+];
