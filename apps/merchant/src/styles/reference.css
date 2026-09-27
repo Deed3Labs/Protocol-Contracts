@@ -904,6 +904,8 @@ html{-webkit-text-size-adjust:100%}
 .c-iv-pg.c-err > .c-det{color:var(--absent)}
 .c-iv-pg.c-err .c-iv-radio{border-color:var(--absent)}
 :where(.c-page-new-charge) .c-iv-pick-sheet .c-cfoot .c-line .c-iv-stepper{flex-shrink:0}
+/* Category chips, on Inventory and New charge alike: a gap, and a new row when there are many. */
+.c-iv-tabs{display:flex;flex-wrap:wrap;gap:6px}
 .c-iv-tabs .c-btn{height:30px;padding:0 12px;font-size:var(--t-detail)}
 .c-iv-tabs .c-btn.c-on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
 .c-sechead:has(.c-iv-tabs){height:auto;align-items:center}
@@ -1134,7 +1136,6 @@ html{-webkit-text-size-adjust:100%}
 :where(.c-page-inventory) .c-iv-pick-sheet{width:420px}
 .c-iv-choices .c-r{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:var(--s1);margin-bottom:var(--s1)}
 .c-iv-choices .c-pr{justify-content:flex-end;font-variant-numeric:tabular-nums}
-:where(.c-page-inventory) .c-iv-tabs{display:flex;gap:6px}
 .c-iv-pc{display:flex;flex-direction:column}
 .c-iv-pc .c-iv-pricehead{padding-bottom:var(--s2);border-bottom:1px solid var(--ink-13)}
 .c-iv-pc .c-iv-facts > div:first-child .c-kv{padding-top:12px}
