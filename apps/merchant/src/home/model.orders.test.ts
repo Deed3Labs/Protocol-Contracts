@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createMockMerchantApi } from '../data/merchantApi/mock';
 import { REFERENCE_DAY, STAFF, STAFF_ID } from '../data/merchantApi/seed';
+import type { MerchantCharge } from '@/data/apiClient';
 import { fromApi } from './model';
 
 const staff = STAFF.map((s) => ({ ...s, chargesThisMonth: 0 }));
@@ -24,5 +25,20 @@ describe('Home from the day’s orders', () => {
     const orders = await api.orders({ date: REFERENCE_DAY });
     const m = fromApi({ role: 'counter', staffId: STAFF_ID.jen, charges: [], position: null, staff, orders, nameOf });
     expect(m.shift).toMatchObject({ raised: 5, shopRaised: 8 });
+  });
+
+  test('Waiting on: their own Clear charge nobody has opened, and only that', () => {
+    const now = new Date().toISOString();
+    const charge = (code: string, over: Partial<MerchantCharge>): MerchantCharge => ({
+      code, amount: 410, state: 'waiting', splitInto: null, paidNow: false, memberName: 'Nina P.', raisedBy: 'Jen R.', raisedByStaffId: STAFF_ID.jen,
+      createdAt: now, expiresAt: now, openedAt: null, resolvedAt: null, ...over,
+    });
+    const shift = (charges: MerchantCharge[]) => fromApi({ role: 'counter', staffId: STAFF_ID.jen, charges, position: null, staff, orders: [], nameOf }).shift;
+
+    expect(shift([charge('A', {})])?.job).toMatchObject({ name: 'Nina P.', amountCents: 41000, opened: false });
+    // Opened: nothing left to do but wait. Someone else's: not their job.
+    expect(shift([charge('B', { openedAt: now })])?.job).toBeUndefined();
+    expect(shift([charge('C', { raisedByStaffId: STAFF_ID.luis, raisedBy: 'Luis M.' })])?.job).toBeUndefined();
+    expect(shift([])?.job).toBeUndefined();
   });
 });

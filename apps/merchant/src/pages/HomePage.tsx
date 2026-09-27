@@ -6,7 +6,7 @@ import { useMerchantApi } from '@/data/merchantApi';
 import { errorSentence, useApi } from '@/data/useApi';
 import { CountResultSheet, CountSheet, OpenDrawerSheet, SignOffSheet } from '@/home/drawer';
 import { HomeView, type HomeActions } from '@/home/HomeView';
-import { drawerPrompt, drawerStep } from '@/home/liveDrawer';
+import { drawerPrompt, drawerStep, shiftDrawer } from '@/home/liveDrawer';
 import { clockTime, fromApi, runningLowFrom, sees, shiftClock, tillFromSetup, type HomeModel, type TillItem, type WaitingCharge } from '@/home/model';
 import { DANA_STEPS, HOME_STATES, type HomeState } from '@/home/seed';
 import { WaitingSheet, type Milestone } from '@/home/WaitingSheet';
@@ -74,6 +74,11 @@ export default function HomePage() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   })();
   const ordersToday = useApi(() => (seeded || !session ? Promise.resolve(null) : merchant.orders({ date: todayIso })), [seeded, !!session, todayIso]);
+  // The open drawer's day, with each sale's tenders: the shift column counts its cash sales.
+  const drawerDay = useApi(
+    () => (seeded || !openSession ? Promise.resolve(null) : merchant.orderHistory({ from: openSession.businessDate, to: openSession.businessDate })),
+    [seeded, openSession?.id, ordersToday.data],
+  );
   // Owners and managers: Set up the till, and stock running low.
   const manages = !!session && sees(session.staff.role);
   const setup = useApi(() => (seeded || !manages ? Promise.resolve(null) : merchant.setup()), [seeded, manages]);
@@ -131,7 +136,16 @@ export default function HomePage() {
   const withDrawer: HomeModel = seeded || drawerNow.loading ? model : { ...model, drawer: drawerPrompt(openSession ?? null, view ?? null, me, names) };
   const mine = shiftsNow.data?.find((s) => s.staffId === me);
   const withClock: HomeModel =
-    !seeded && withDrawer.shift && mine ? { ...withDrawer, shift: { ...withDrawer.shift, clock: shiftClock(mine, shopSettings.data?.breaks ?? null, tick) } } : withDrawer;
+    !seeded && withDrawer.shift
+      ? {
+          ...withDrawer,
+          shift: {
+            ...withDrawer.shift,
+            clock: mine ? shiftClock(mine, shopSettings.data?.breaks ?? null, tick) : withDrawer.shift.clock,
+            drawer: shiftDrawer(openSession ?? null, view ?? null, drawerDay.data ?? null),
+          },
+        }
+      : withDrawer;
   const liveModel: HomeModel = seeded
     ? withClock
     : {

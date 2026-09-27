@@ -94,7 +94,11 @@ export interface ShiftCell {
   clock?: ShiftClock;
   raised: number;
   shopRaised: number;
-  drawer?: { startCents: number; cashInCents: number };
+  /**
+   * The open drawer. `cashInCents` only once both closing counts are in (with the start it is what
+   * the drawer should hold, which the counts are blind to); before that, how many cash sales.
+   */
+  drawer?: { startCents: number; cashInCents?: number; cashSales?: number };
   /** The one row that is a job: a charge of theirs someone has not opened. */
   job?: { name: string; amountCents: number; ago: string; opened: boolean };
 }
