@@ -99,7 +99,7 @@ describe('splitting tips by hours on shift', () => {
     await updateSettings(db, { merchant: d.merchant, staffId: d.staff.owner, patch: { twoCounts: false } });
     const expected = await balance(db, d.merchant, 'drawer_cash');
     await close.saveCount(db, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen, count: { method: 'total', totalCents: expected } });
-    const { report } = await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    const { report } = await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager });
     expect(report.tipsCents).toBe(600);
     expect(report.tipsByStaff).toEqual([
       { staffId: d.staff.jen, cents: 375, how: 'cash' },
@@ -126,7 +126,7 @@ describe('splitting tips by hours on shift', () => {
     await updateSettings(db, { merchant: d.merchant, staffId: d.staff.owner, patch: { twoCounts: false } });
     const expected = await balance(db, d.merchant, 'drawer_cash');
     await close.saveCount(db, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen, count: { method: 'total', totalCents: expected } });
-    const { report } = await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    const { report } = await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager });
     expect(report.tipsByStaff).toEqual([{ staffId: d.staff.jen, cents: 600, how: 'cash' }]);
     expect(report.tipsHours ?? null).toBeNull();
   });
@@ -142,7 +142,7 @@ describe('splitting tips by hours on shift', () => {
     ]);
     await updateSettings(db, { merchant: d.merchant, staffId: d.staff.owner, patch: { twoCounts: false } });
     await close.saveCount(db, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen, count: { method: 'total', totalCents: await balance(db, d.merchant, 'drawer_cash') } });
-    await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager });
     // Luis working on after the close doesn't change what was paid.
     await db.query(`UPDATE merchant.shifts SET ended_at = now() + interval '5 hours' WHERE staff_id = $1`, [d.staff.luis]);
     expect((await overview(db, range)).tips.byStaff.map((t) => t.cents)).toEqual([375, 225]);

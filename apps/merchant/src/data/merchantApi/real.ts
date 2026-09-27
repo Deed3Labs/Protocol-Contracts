@@ -121,6 +121,7 @@ export function realMerchantApi(request: Transport): MerchantApi {
     recount: (sessionId, input) => post(`/drawer/${id(sessionId)}/recount`, input),
     signOff: (sessionId, input) => post(`/drawer/${id(sessionId)}/signoff`, input),
     closeDay: (sessionId) => post(`/drawer/${id(sessionId)}/close`),
+    closeDayFigures: (sessionId) => get(`/drawer/${id(sessionId)}/day`),
     bankDeposits: () => get('/bank-deposits'),
     markDeposited: (depositId) => post(`/bank-deposits/${id(depositId)}/deposited`),
 

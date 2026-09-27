@@ -1,4 +1,5 @@
-import type { CountsView, DrawerSession, OrderWithTenders, OwnCount, TenderStatus } from '@clear/merchant-contracts';
+import { seesMoney, type StaffRole } from '@clear/domain';
+import type { CountsView, DrawerSession, OrderWithTenders, OwnCount, ShopSettings, TenderStatus } from '@clear/merchant-contracts';
 import { clockTime, firstName, type DrawerPrompt, type ShiftCell } from './model';
 
 /**
@@ -25,7 +26,11 @@ export function drawerStep(session: DrawerSession | null, view: CountsView | nul
 
 const counterName = (c: OwnCount | null | undefined, names: Map<string, string>) => (c ? firstName(names.get(c.counter) ?? 'Someone') : 'Someone');
 
-export function drawerPrompt(session: DrawerSession | null, view: CountsView | null, viewer: string, names: Map<string, string>): DrawerPrompt {
+/** Settings › Closing › Who can close: owners and managers always; anyone on shift when the owner says so. */
+export const mayCloseDay = (role: StaffRole | undefined, settings: Pick<ShopSettings, 'whoCanClose'> | null | undefined): boolean =>
+  !!role && (seesMoney(role) || settings?.whoCanClose === 'anyone');
+
+export function drawerPrompt(session: DrawerSession | null, view: CountsView | null, viewer: string, names: Map<string, string>, mayClose = true): DrawerPrompt {
   const step = drawerStep(session, view, viewer);
   if (step.kind === 'open' || !session) return { t: 'Not open yet', det: 'Open it with the starting cash before the first cash sale.', cta: 'Open the drawer' };
   const t = `Open since ${clockTime(session.openedAt)}`;
@@ -43,7 +48,10 @@ export function drawerPrompt(session: DrawerSession | null, view: CountsView | n
         ? { t, det: 'The two counts disagree. One of you counts again.', cta: 'See the counts' }
         : { t, det: `${counterName(step.view.counts[0], names)} and ${counterName(step.view.counts[1] ?? step.view.counts[0], names)} agree; it doesn’t match. A manager signs it off.`, cta: 'See the counts' };
     case 'close':
-      return { t, det: 'Counted and settled. Close the day to lock it.', cta: 'Close the day' };
+      // Someone who can't close is told who does; the button asks for them (the owner's sign-in).
+      return mayClose
+        ? { t, det: 'Counted and settled. Close the day to lock it.', cta: 'Close the day' }
+        : { t, det: 'Counted and settled. An owner or manager closes the day.', cta: 'Close the day' };
   }
 }
 

@@ -33,10 +33,11 @@ export default function CloseDayPage() {
   const s = drawer.data;
   const day = s?.businessDate ?? null;
   const counts = useApi(() => (s ? api.counts(s.id) : Promise.resolve(null)), [s?.id]);
-  const overview = useApi(() => (day ? api.overview({ from: day, to: day }) : Promise.resolve(null)), [day]);
+  // The day's figures come from Close the day's own endpoint, which anyone who may close can read
+  // (the Overview and the staff list are a manager's).
+  const overview = useApi(() => (s ? api.closeDayFigures(s.id) : Promise.resolve(null)), [s?.id]);
   const orders = useApi(() => (day ? api.orders({ date: day }) : Promise.resolve(null)), [day]);
   const settings = useApi(() => (reference ? Promise.resolve(null) : api.settings()), [reference]);
-  const staff = useApi(() => (reference ? Promise.resolve(null) : api.staff()), [reference]);
   // Who signed a difference off: on the audit trail, which only an owner reads.
   const owner = session?.staff.role === 'owner';
   const audit = useApi(() => (day && owner ? api.audit({ from: day, to: day }) : Promise.resolve(null)), [day, owner]);
@@ -99,7 +100,7 @@ export default function CloseDayPage() {
             </div>
             <div className="c-cfoot">
               <div className="c-line" style={{ alignItems: 'center' }}>
-                <span className="c-det">The report is kept in Overview.</span>
+                <span className="c-det">{session && session.staff.role !== 'counter' ? 'The report is kept in Overview.' : 'The owner has the report, in Overview.'}</span>
                 <button type="button" className="c-btn c-btn-primary" onClick={home}>
                   Done
                 </button>
@@ -116,7 +117,7 @@ export default function CloseDayPage() {
   if (!s) return <Navigate to={`/${keep}`} replace />;
 
   const view = counts.data;
-  const built = view && overview.data && orders.data ? closeDayFrom({ session: s, view, overview: overview.data, orders: orders.data, settings: settings.data, staff: staff.data ?? [], audit: audit.data ?? [] }) : null;
+  const built = view && overview.data && orders.data ? closeDayFrom({ session: s, view, overview: overview.data, orders: orders.data, settings: settings.data, staff: overview.data.names, audit: audit.data ?? [] }) : null;
   if (!built) {
     return (
       <div className="c-app c-mc-tablet c-mc-page">

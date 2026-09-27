@@ -48,7 +48,8 @@ export class CloseError extends Error {
       | 'signer_invalid'
       | 'unsigned'
       | 'orders_open'
-      | 'counts_needed',
+      | 'counts_needed'
+      | 'not_allowed',
   ) {
     super(message);
     this.name = 'CloseError';
@@ -86,6 +87,18 @@ async function signedOff(q: Queryable, sessionId: string): Promise<{ signed_by: 
 }
 
 /** What the viewer may see of the counts: their own until both are in, then everything. */
+/**
+ * Settings › Closing › Who can close: owners and managers, or anyone on shift. Throws `not_allowed`
+ * otherwise. The role is read here, never taken from the caller.
+ */
+export async function mayClose(q: Queryable, input: { merchant: string; staffId: string }): Promise<void> {
+  const { rows } = await q.query<{ role: Role }>('SELECT role FROM merchant.staff WHERE id = $1 AND merchant = $2', [input.staffId, input.merchant]);
+  const role = rows[0]?.role;
+  if (role === 'owner' || role === 'manager') return;
+  if (role && (await getSettings(q, input.merchant)).whoCanClose === 'anyone') return;
+  throw new CloseError('An owner or manager closes the day', 'not_allowed');
+}
+
 export async function counts(db: Queryable, input: { merchant: string; sessionId: string; viewer: string }): Promise<CountsView> {
   const { rows } = await db.query<SessionRow>('SELECT * FROM payments.drawer_sessions WHERE id = $1 AND merchant = $2', [input.sessionId, input.merchant]);
   if (!rows[0]) throw new CloseError('No such drawer', 'not_found');
@@ -247,6 +260,8 @@ export interface CloseResult {
 
 /** Close the day: see the top of this file. Idempotent: closing a closed drawer returns its report. */
 export async function closeDay(db: Db, deps: { card: CardConnectorProvider | null; mail?: SummaryMailer }, input: { merchant: string; sessionId: string; staffId: string }): Promise<CloseResult> {
+  // Who can close, first: a closed day answers with its report, which is a manager's.
+  await mayClose(db, input);
   const { rows: existing } = await db.query<{ report: DayReport | string }>('SELECT report FROM payments.day_reports WHERE session_id = $1', [input.sessionId]);
   if (existing[0]) return { report: typeof existing[0].report === 'string' ? JSON.parse(existing[0].report) : existing[0].report, captureFailures: [] };
 

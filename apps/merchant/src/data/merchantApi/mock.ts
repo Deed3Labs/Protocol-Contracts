@@ -153,6 +153,12 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   );
 
   const who = (staffId: string) => seed.STAFF.find((s) => s.id === staffId);
+  /** Settings › Closing › Who can close, as the server holds it. */
+  const mayClose = () => {
+    const role = roles.get(viewer) ?? who(viewer)?.role;
+    if (role === 'owner' || role === 'manager' || (role && settings.whoCanClose === 'anyone')) return;
+    refuse('An owner or manager closes the day', 403, 'not_allowed');
+  };
   /** An owner changes anyone's shift or hours; a manager counter staff's and their own. */
   const mayManage = (staffId: string) => who(viewer)?.role === 'owner' || (who(viewer)?.role === 'manager' && (staffId === viewer || who(staffId)?.role === 'counter'));
   const bookedToday = (staffId: string) => {
@@ -958,6 +964,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       return countsView(sessionId, viewer);
     },
     closeDay: async (sessionId): Promise<CloseDayResult> => {
+      mayClose();
       const existing = reports.get(sessionId);
       if (existing) return { report: existing, captureFailures: [] };
       const view = countsView(sessionId, viewer);
@@ -977,6 +984,22 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       return deposits[i]!;
     },
 
+    closeDayFigures: async (sessionId) => {
+      mayClose();
+      const d = session(sessionId).businessDate;
+      const o = await api.overview({ from: d, to: d });
+      return {
+        from: o.from,
+        to: o.to,
+        takenCents: o.takenCents,
+        orderCount: o.orderCount,
+        byMethod: o.byMethod,
+        discounts: o.discounts,
+        tips: o.tips,
+        taxCents: o.taxCents,
+        names: seed.STAFF.map((s) => ({ id: s.id, name: s.name })),
+      };
+    },
     dayReports: async ({ from, to }) => [...reports.values()].filter((r) => r.businessDate >= from && r.businessDate <= to),
     cardDeposits: async ({ from, to }) => cardDeposits.filter((d) => d.arrivalDate >= from && d.arrivalDate <= to),
     overview: async ({ from, to }) => {

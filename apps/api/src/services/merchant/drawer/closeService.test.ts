@@ -9,6 +9,7 @@ import { balance } from '../ledger/ledgerService.js';
 import { createOrder, type OrderDeps } from '../orders/orderService.js';
 import { createCashTender } from '../orders/payments.js';
 import { updateSettings } from '../shop/shopService.js';
+import { closeDayFigures } from './closeFigures.js';
 import * as close from './closeService.js';
 import { daySummaryText } from './daySummary.js';
 import { openDrawer } from './drawerService.js';
@@ -98,15 +99,49 @@ describe('a difference, signed off', () => {
   });
 });
 
+describe('who can close (Settings › Closing)', () => {
+  test('owners and managers by default; a counter is told who closes, and can’t read the day either', async () => {
+    const d = await day();
+    await d.count(d.staff.jen, 21179);
+    await d.count(d.staff.luis, 21179);
+    await expect(close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen })).rejects.toMatchObject({ code: 'not_allowed' });
+    await expect(closeDayFigures(db, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen })).rejects.toMatchObject({ code: 'not_allowed' });
+    // A manager closes; afterwards a counter still can't pull the (manager's) report through close.
+    await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager });
+    await expect(close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen })).rejects.toMatchObject({ code: 'not_allowed' });
+  });
+
+  test('anyone on shift, when the owner says so: the day’s figures, then the close', async () => {
+    const d = await day();
+    await updateSettings(db, { merchant: d.merchant, staffId: d.staff.owner, patch: { whoCanClose: 'anyone' } });
+    await d.count(d.staff.jen, 21179);
+    await d.count(d.staff.luis, 21179);
+    const f = await closeDayFigures(db, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    expect(f).toMatchObject({ takenCents: 6179, orderCount: 2, byMethod: { cash: { count: 2, cents: 6179 } }, tips: { cents: 500 } });
+    expect(f.names.map((x) => x.id)).toContain(d.staff.jen);
+    // One day of the Overview, not the rest of it.
+    expect(f).not.toHaveProperty('topItems');
+    expect(f).not.toHaveProperty('dayReports');
+    const { report } = await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    expect(report.drawer.differenceCents).toBe(0);
+  });
+
+  test('a stranger to the shop never closes it, whatever the setting', async () => {
+    const d = await day();
+    await updateSettings(db, { merchant: d.merchant, staffId: d.staff.owner, patch: { whoCanClose: 'anyone' } });
+    await expect(close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: 'stf_nobody' })).rejects.toMatchObject({ code: 'not_allowed' });
+  });
+});
+
 describe('Close the day', () => {
   test('the reference evening: $3.79 short, signed off; cash tips paid out, $150 left, the rest to the bank, and a locked report', async () => {
     const d = await day();
     await d.count(d.staff.jen, 20800);
     await d.count(d.staff.luis, 20800);
-    await expect(close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen })).rejects.toMatchObject({ code: 'unsigned' });
+    await expect(close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager })).rejects.toMatchObject({ code: 'unsigned' });
     await close.signOff(db, { pinCheck: d.pinCheck }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen, signOff: { note: 'Short a few coins', pin: '9999' } });
 
-    const { report } = await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    const { report } = await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager });
     expect(report.drawer).toEqual({ startingCashCents: 15000, expectedCents: 21179, countedCents: 20800, differenceCents: -379, leaveCents: 15000, toBankCents: 20800 - 500 - 15000, signedOffBy: d.staff.owner });
     expect(report).toMatchObject({ takenCents: 6179, byMethod: { cash: { count: 2, cents: 6179 }, card: { count: 0, cents: 0 } }, tipsCents: 500, tipsByStaff: [{ staffId: d.staff.jen, cents: 500, how: 'cash' }] });
     // The books: the drawer holds exactly tomorrow's float; the rest is on its way to the bank.
@@ -115,7 +150,7 @@ describe('Close the day', () => {
     expect(await balance(db, d.merchant, 'cash_over_short')).toBe(379);
     expect(await balance(db, d.merchant, tipsPayable(d.staff.jen))).toBe(0);
     // Closing again returns the same report; the report can't be edited.
-    expect((await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen })).report.id).toBe(report.id);
+    expect((await close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager })).report.id).toBe(report.id);
     await expect(db.query(`UPDATE payments.day_reports SET report = '{}' WHERE id = $1`, [report.id])).rejects.toThrow('immutable');
     expect(await close.dayReports(db, { merchant: d.merchant, from: '1970-01-01', to: '9999-12-31' })).toHaveLength(1);
 
@@ -146,7 +181,7 @@ describe('Close the day', () => {
     await createCashTender(db, { merchant: d.merchant, orderId: half.id, staffId: d.staff.jen, tender: { amountCents: 2000, tipCents: 0, handedOverCents: 2000, idempotencyKey: key() } });
     await d.count(d.staff.jen, 23179);
     await d.count(d.staff.luis, 23179);
-    await expect(close.closeDay(db, { card: fake.provider }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen })).rejects.toMatchObject({ code: 'orders_open' });
+    await expect(close.closeDay(db, { card: fake.provider }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager })).rejects.toMatchObject({ code: 'orders_open' });
   });
 
   test('with nothing half-paid: the card is captured and its tip stays owed', async () => {
@@ -164,7 +199,7 @@ describe('Close the day', () => {
     await syncCardTender(db, fake.provider, { merchant: d.merchant, tenderId: start.tenderId, actor: null });
     await d.count(d.staff.jen, 21179);
     await d.count(d.staff.luis, 21179);
-    const { report } = await close.closeDay(db, { card: fake.provider }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    const { report } = await close.closeDay(db, { card: fake.provider }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager });
     expect(fake.payments.get(pi)!.state).toBe('captured');
     expect(report.byMethod.card).toEqual({ count: 1, cents: 41000 });
     expect(report.tipsByStaff).toEqual(expect.arrayContaining([{ staffId: d.staff.jen, cents: 1000, how: 'card' }, { staffId: d.staff.jen, cents: 500, how: 'cash' }]));
@@ -175,10 +210,10 @@ describe('Close the day', () => {
 
   test('can’t close without both counts, or while they disagree', async () => {
     const d = await day();
-    await expect(close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen })).rejects.toMatchObject({ code: 'counts_needed' });
+    await expect(close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager })).rejects.toMatchObject({ code: 'counts_needed' });
     await d.count(d.staff.jen, 20000);
     await d.count(d.staff.luis, 21179);
-    await expect(close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen })).rejects.toMatchObject({ code: 'counts_disagree' });
+    await expect(close.closeDay(db, { card: null }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager })).rejects.toMatchObject({ code: 'counts_disagree' });
   });
 });
 
@@ -187,7 +222,7 @@ describe('the end-of-day summary', () => {
     const d = await day({ twoCounts: false });
     if (settings) await updateSettings(db, { merchant: d.merchant, staffId: d.staff.owner, patch: { notifications: settings } });
     await d.count(d.staff.jen, 21179);
-    const r = await close.closeDay(db, { card: null, mail: { configured: mail.configured, send: async (e) => void mail.sent.push(e) } }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    const r = await close.closeDay(db, { card: null, mail: { configured: mail.configured, send: async (e) => void mail.sent.push(e) } }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager });
     return { d, r, sent: mail.sent };
   };
 
@@ -196,11 +231,11 @@ describe('the end-of-day summary', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.to).toBe('marcus@shop.example');
     expect(sent[0]!.subject).toMatch(/^Shop \d+: \$61\.79 taken /);
-    expect(sent[0]!.body).toContain('Closed by Jen');
+    expect(sent[0]!.body).toContain('Closed by Ana');
     expect(sent[0]!.body).toContain('Difference         none');
     expect(sent[0]!.body).toContain('Jen  $5.00');
     // Closing again (the same report) doesn't send it twice.
-    await close.closeDay(db, { card: null, mail: { configured: () => true, send: async (e) => void sent.push(e) } }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    await close.closeDay(db, { card: null, mail: { configured: () => true, send: async (e) => void sent.push(e) } }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager });
     expect(sent).toHaveLength(1);
   });
 
@@ -211,7 +246,7 @@ describe('the end-of-day summary', () => {
     const d = await day({ twoCounts: false });
     await updateSettings(db, { merchant: d.merchant, staffId: d.staff.owner, patch: { notifications: { endOfDay: true, email: 'marcus@shop.example' } } });
     await d.count(d.staff.jen, 21179);
-    const r = await close.closeDay(db, { card: null, mail: { configured: () => true, send: async () => { throw new Error('Resend refused the email (500)'); } } }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.jen });
+    const r = await close.closeDay(db, { card: null, mail: { configured: () => true, send: async () => { throw new Error('Resend refused the email (500)'); } } }, { merchant: d.merchant, sessionId: d.drawer.id, staffId: d.staff.manager });
     expect(r.report.takenCents).toBe(6179);
   });
 
