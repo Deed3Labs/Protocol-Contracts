@@ -17,6 +17,7 @@ import ClaimFunds from "@/pages/auth/ClaimFunds";
 import OnboardingRoute from "@/pages/auth/OnboardingRoute";
 import CounterOnboardingRoute from "@/pages/auth/CounterOnboardingRoute";
 import ChargeApprovalRoute from "@/pages/app/ChargeApprovalRoute";
+import ConfirmIdentitySheet from "@/components/shell/ConfirmIdentitySheet";
 import { MemberProfileProvider } from '@/hooks/useMemberProfile';
 import LoginRoute from "@/pages/auth/LoginRoute";
 import WalletLinkPage from "@/pages/auth/WalletLink";
@@ -118,6 +119,11 @@ function App() {
                   <OfflineIndicator />
                   <PWAInitializer />
                   <PwaInstallTakeover />
+                  {/* "Confirm it's you" in front of Privy's wallet MFA, for every route. Privy waits for
+                      this listener instead of showing its own prompt, so a payment made where it isn't
+                      mounted waits until Privy times out -- which is what Pay now on /c/:code did while
+                      it lived inside AppShell. */}
+                  <ConfirmIdentitySheet />
                   
                   <Routes>
                     {/* Login Page - Public */}

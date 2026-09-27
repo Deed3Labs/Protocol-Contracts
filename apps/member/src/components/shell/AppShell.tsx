@@ -1,4 +1,3 @@
-import ConfirmIdentitySheet from './ConfirmIdentitySheet';
 import { type ReactNode } from 'react';
 import { Outlet, Navigate, useNavigate } from 'react-router-dom';
 import AppChrome from './AppChrome';
@@ -141,8 +140,8 @@ export default function AppShell() {
           </AppChrome>
           <XmtpModalHost />
           <FaceIdOffer />
-          {/* Our sheet in front of Privy's wallet MFA: it asks, Privy verifies and signs. */}
-          <ConfirmIdentitySheet />
+          {/* "Confirm it's you" (Privy's wallet MFA) is mounted once in App, not here: a payment made
+              outside the shell (/c/:code, onboarding) needs it too. */}
         </AppLock>
       </MoneyActionsProvider>
       </CreditProvider>

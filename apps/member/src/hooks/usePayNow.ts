@@ -28,6 +28,19 @@ export type PayNowStep = 1 | 2 | 3;
  * If the app dies between pay and confirm, the server still finds the payment: nothing here is the
  * record of it, the chain is.
  */
+/**
+ * The wallet's refusal, as a sentence. Privy's MFA errors arrive wrapped by viem ("An unknown RPC
+ * error occurred. Details: Timed out waiting for MFA code …"), which is no use to a member.
+ */
+export function payError(e: unknown): string {
+  const m = e instanceof Error ? e.message : '';
+  if (/timed out waiting for mfa/i.test(m)) return 'Confirming it’s you took too long, so nothing was paid. Try again.';
+  if (/mfa/i.test(m) && /cancel/i.test(m)) return 'You didn’t confirm it, so nothing was paid.';
+  if (/mfa/i.test(m)) return 'We couldn’t confirm it’s you, so nothing was paid. Try again.';
+  if (!m || /unknown rpc error/i.test(m)) return 'That did not go through. Nothing was paid.';
+  return m;
+}
+
 export function usePayNow(): (code: string, onStep?: (step: PayNowStep) => void) => Promise<PayNowOutcome> {
   const address = useOptionalAddress();
   const getClientForChain = useOptionalSmartWalletClient();
@@ -55,7 +68,7 @@ export function usePayNow(): (code: string, onStep?: (step: PayNowStep) => void)
       } catch (e) {
         // Nothing left the wallet. The hold stays until they go back or it lapses; paying again
         // picks up the same one.
-        return { error: e instanceof Error && e.message ? e.message : 'That did not go through. Nothing was paid.' };
+        return { error: payError(e) };
       }
       markChainStale();
 
