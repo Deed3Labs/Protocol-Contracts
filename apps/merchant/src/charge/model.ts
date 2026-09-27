@@ -263,6 +263,17 @@ export const FOOD: Item[] = [
 /** Mike's Tire's tile layout, as the reference draws All. */
 export const TILE_ORDER = ['michelin', 'goodyear', 'continental', 'mount', 'alignment', 'valves', 'tpms'];
 
+/**
+ * What takes a tile. All shows a tile layout when there is one, a category tab that category; out of
+ * stock never takes a tile. A layout naming none of the catalogue's items (another shop's) shows the
+ * whole catalogue, not an empty grid.
+ */
+export function tilesFor(catalog: Item[], tab: string, tileOrder?: string[]): Item[] {
+  const inStock = (i: Item) => !(i.stock && i.stock.free <= 0);
+  const laidOut = tab === 'All' && tileOrder ? tileOrder.map((id) => catalog.find((i) => i.id === id)).filter((i): i is Item => Boolean(i)) : [];
+  return laidOut.length ? laidOut.filter(inStock) : catalog.filter((i) => (tab === 'All' || i.category === tab) && inStock(i));
+}
+
 /** The food truck's order 47, for "Sam". */
 export const FOOD_ORDER: CartLine[] = [
   { key: 'tacos', itemId: 'tacos', name: 'Street tacos, 3', chosen: 'al pastor, guac', qty: 2, unitCents: 1100, tax: 'food', hasOptions: true },

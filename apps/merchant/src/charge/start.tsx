@@ -17,6 +17,7 @@ import { FlowTop } from '@/shell/chrome';
 import {
   itemCount,
   missingGroup,
+  tilesFor,
   totals,
   unitPrice,
   usd,
@@ -434,15 +435,7 @@ export function ItemList({ catalog, inCart, onAdd, onQty, onQuickSale, onOptions
 
 /** The same items as a grid you can tap without reading. */
 export function ItemTiles({ catalog, inCart, onAdd, onQuickSale, onOptions, tab = 'All', tileOrder }: ItemsProps) {
-  // All shows the shop's own tile layout (set in Settings) when it has one; a category tab shows
-  // that category. Out of stock never takes a tile.
-  const inStock = (i: Item) => !(i.stock && i.stock.free <= 0);
-  const shown =
-    tab === 'All'
-      ? tileOrder
-        ? tileOrder.map((id) => catalog.find((i) => i.id === id)!).filter(Boolean)
-        : catalog.filter(inStock)
-      : catalog.filter((i) => i.category === tab && inStock(i));
+  const shown = tilesFor(catalog, tab, tileOrder);
   return (
     <div className="c-cmain">
       <div className="c-iv-tiles">
