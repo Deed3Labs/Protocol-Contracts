@@ -19,15 +19,15 @@ export default function WaitingChargeBanner({ charge, more = 0 }: { charge: Memb
       <CMain>
         <Rows>
           <div>
-            <Line className="items-center!">
+            {/* A tighter gap than a Line's: the detail stays one line beside Review on a phone
+                (430px, an iPhone Pro Max, with room to spare). How many more is its own line. */}
+            <Line className="items-center! gap-s1!">
               <div className="min-w-0">
                 <p className="text-sec">
                   {charge.merchantName} is charging {money(charge.amountCents / 100, { cents: true })}
                 </p>
-                <p className="c-det mt-[3px]">
-                  Sent {at} · nothing is taken until you approve
-                  {more > 0 && ` · ${more} more waiting`}
-                </p>
+                <p className="c-det mt-[3px]">Sent {at} · nothing taken until you approve</p>
+                {more > 0 && <p className="c-det">{more} more waiting in Shop charges</p>}
               </div>
               <Btn primary onClick={() => navigate(`/c/${encodeURIComponent(charge.code)}`)}>
                 Review
