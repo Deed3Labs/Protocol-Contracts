@@ -7,6 +7,7 @@ import { sendNotificationService } from './sendNotificationService.js';
 import { memberStore } from './memberStore.js';
 import { alertOps } from './opsAlert.js';
 import { dollars, PAY_OVER_TIME_MIN_CENTS } from '@clear/domain';
+import { memberAppUrl } from './memberAppUrl.js';
 
 /*
  * Raising a charge, and a member answering it.
@@ -323,7 +324,7 @@ export async function notifyMember(charge: ChargeRow, opts: { resend?: boolean }
     style: 'currency',
     currency: 'USD',
   });
-  const base = (process.env.APP_PUBLIC_URL || 'https://app.useclear.org').replace(/\/+$/, '');
+  const base = memberAppUrl();
 
   const approveUrl = `${base}/c/${charge.code}`;
 
