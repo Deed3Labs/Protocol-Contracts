@@ -249,10 +249,9 @@ export default function HomePage() {
           expectedCents={view.state === 'compared' ? view.expectedCents : 0}
           note={note}
           onNote={setNote}
-          onDone={() => {
-            setDrawerSheet(null);
-            if (view.state === 'compared' && !view.signoffNeeded) navigate(`/close${keep}`);
-          }}
+          // Back to Home, whose drawer panel then offers Close the day. Nothing opens it but that tap:
+          // agreeing counts are not a decision to close.
+          onDone={() => setDrawerSheet(null)}
           onRecount={(which) => void drawerDo(() => merchant.recount(openSession.id, { which }), { k: 'count', which })}
           onAskSignOff={() => {
             setPin('');
@@ -276,7 +275,6 @@ export default function HomePage() {
             void drawerDo(async () => {
               await merchant.signOff(openSession.id, { note: note.trim() || 'Signed off at close', pin });
               setPin('');
-              navigate(`/close${keep}`);
             })
           }
           onClose={() => setDrawerSheet(null)}
