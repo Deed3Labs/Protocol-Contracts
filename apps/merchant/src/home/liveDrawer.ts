@@ -1,5 +1,5 @@
-import type { CountsView, DrawerSession, OwnCount } from '@clear/merchant-contracts';
-import { clockTime, firstName, type DrawerPrompt } from './model';
+import type { CountsView, DrawerSession, OrderWithTenders, OwnCount, TenderStatus } from '@clear/merchant-contracts';
+import { clockTime, firstName, type DrawerPrompt, type ShiftCell } from './model';
 
 /**
  * A live shop's drawer on Home (UI Phase 6, step 6): what the panel says and which sheet its button
@@ -43,4 +43,21 @@ export function drawerPrompt(session: DrawerSession | null, view: CountsView | n
     case 'close':
       return { t, det: 'Counted and settled. Close the day to lock it.', cta: 'Close the day' };
   }
+}
+
+/** A cash tender that happened: taken, not tried and failed. A refund later doesn't undo the sale. */
+const TOOK: readonly TenderStatus[] = ['approved', 'captured', 'refunded', 'partly_refunded'];
+
+/**
+ * The Drawer row in a counter's shift column. Nothing once the day is closed. While it's open, the
+ * starting cash and how many cash sales went in, never a dollar total: start plus cash in is what
+ * the drawer should hold, and the closing counts are blind to it (the server sends it only once
+ * both are in). Once they are, the whole row, from the server's figure.
+ */
+export function shiftDrawer(session: DrawerSession | null, view: CountsView | null, orders: OrderWithTenders[] | null): ShiftCell['drawer'] {
+  if (!session || session.status === 'closed' || session.closedAt) return undefined;
+  const startCents = session.startingCashCents;
+  if (view?.state === 'compared') return { startCents, cashInCents: view.expectedCents - startCents };
+  const cashSales = orders?.filter((o) => o.businessDate === session.businessDate && o.tenders.some((t) => t.method === 'cash' && TOOK.includes(t.status))).length;
+  return { startCents, cashSales };
 }

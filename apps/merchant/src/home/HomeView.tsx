@@ -538,15 +538,31 @@ export function ShiftCellView({ s, a, solo }: { s: ShiftCell; a: HomeActions; so
         <div className="c-rows c-mc-shiftrows">
           <div>
             <div className="c-line">
-              {lineP('You raised', `${s.raised} of the shop’s ${s.shopRaised} today`)}
+              {lineP('You raised', s.shopRaised ? `${s.raised} of the shop’s ${s.shopRaised} today` : 'None yet today')}
               <span className="c-fig c-fig-row">{s.raised}</span>
             </div>
           </div>
           {s.drawer && (
             <div>
               <div className="c-line">
-                {lineP('Drawer', `Started with ${usd(s.drawer.startCents)} · ${usd(s.drawer.cashInCents)} cash in`)}
-                <span className="c-fig c-fig-row">{usd(s.drawer.startCents + s.drawer.cashInCents)}</span>
+                {s.drawer.cashInCents !== undefined ? (
+                  <>
+                    {lineP(
+                      'Drawer',
+                      `Started with ${usd(s.drawer.startCents)} · ${usd(Math.abs(s.drawer.cashInCents))} cash ${s.drawer.cashInCents < 0 ? 'out' : 'in'}`,
+                    )}
+                    <span className="c-fig c-fig-row">{usd(s.drawer.startCents + s.drawer.cashInCents)}</span>
+                  </>
+                ) : (
+                  // Before both closing counts are in, no total: it is what the counts are blind to.
+                  <>
+                    {lineP(
+                      'Drawer',
+                      `Started with ${usd(s.drawer.startCents)}${s.drawer.cashSales === undefined ? '' : ` · ${s.drawer.cashSales || 'no'} cash sale${s.drawer.cashSales === 1 ? '' : 's'}`}`,
+                    )}
+                    <span className="c-det">Total at close</span>
+                  </>
+                )}
               </div>
             </div>
           )}

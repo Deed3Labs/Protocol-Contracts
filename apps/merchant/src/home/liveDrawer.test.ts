@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createMockMerchantApi } from '../data/merchantApi/mock';
 import { STAFF, STAFF_ID } from '../data/merchantApi/seed';
-import { drawerPrompt, drawerStep } from './liveDrawer';
+import { drawerPrompt, drawerStep, shiftDrawer } from './liveDrawer';
 
 const names = new Map(STAFF.map((s) => [s.id, s.name]));
 
@@ -34,5 +34,31 @@ describe('the drawer on a live Home', () => {
     const dis = createMockMerchantApi({ delayMs: 0, drawer: 'disagree', viewer: STAFF_ID.mike });
     const d = (await dis.api.drawer())!;
     expect(drawerPrompt(d, await dis.api.counts(d.id), STAFF_ID.mike, names).det).toContain('One of you counts again');
+  });
+});
+
+describe('the Drawer row in the shift column', () => {
+  test('open: the start and the cash sales, never a total; counted: the whole row; closed: nothing', async () => {
+    const { api, controls } = createMockMerchantApi({ delayMs: 0, viewer: STAFF_ID.luis });
+    const s = (await api.drawer())!;
+    const day = await api.orderHistory({ from: s.businessDate, to: s.businessDate });
+    const cash = day.filter((o) => o.tenders.some((t) => t.method === 'cash' && ['approved', 'captured', 'refunded', 'partly_refunded'].includes(t.status))).length;
+
+    const open = shiftDrawer(s, await api.counts(s.id), day)!;
+    expect(open).toEqual({ startCents: s.startingCashCents, cashSales: cash });
+    expect(open).not.toHaveProperty('cashInCents');
+
+    // One count in: still blind.
+    await api.saveCount(s.id, { method: 'total', totalCents: 21200 });
+    expect(shiftDrawer(s, await api.counts(s.id), day)).not.toHaveProperty('cashInCents');
+
+    controls.setViewer(STAFF_ID.mike);
+    await api.saveCount(s.id, { method: 'total', totalCents: 21200 });
+    const v = await api.counts(s.id);
+    if (v?.state !== 'compared') throw new Error('expected both counts in');
+    expect(shiftDrawer(s, v, day)).toEqual({ startCents: s.startingCashCents, cashInCents: v.expectedCents - s.startingCashCents });
+
+    expect(shiftDrawer({ ...s, status: 'closed', closedAt: '2026-09-26T23:00:00Z' }, v, day)).toBeUndefined();
+    expect(shiftDrawer(null, null, null)).toBeUndefined();
   });
 });
