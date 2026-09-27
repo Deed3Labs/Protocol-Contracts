@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { FALL10, REFERENCE_CART, lineOf, totals, type CartLine } from './model';
+import { CATALOG, FALL10, REFERENCE_CART, TILE_ORDER, lineOf, tilesFor, totals, type CartLine, type Item } from './model';
 
 /** The reference's own figures, from docs/merchant-reference/clear-merchant-new-charge.html. */
 describe('cart totals', () => {
@@ -40,5 +40,26 @@ describe('cart totals', () => {
     const t = totals(lines);
     expect(t.taxCents).toBe(271);
     expect(t.totalCents).toBe(3771);
+  });
+});
+
+describe('Item tiles', () => {
+  const item = (id: string, name: string, extra: Partial<Item> = {}): Item => ({ id, name, detail: '', category: 'Beauty', thumb: 'part', priceCents: 2500, tax: 'goods', ...extra });
+  const shop = [item('itm_1', 'Silk press'), item('itm_2', 'Edge control', { stock: { free: 0 } }), item('itm_3', 'Braids', { category: 'Hair' })];
+  const names = (items: Item[]) => items.map((i) => i.name);
+
+  test('a live shop’s tiles are its catalogue, not the reference’s layout', () => {
+    // The reference layout names items this shop doesn't have: it must not empty the grid.
+    expect(names(tilesFor(shop, 'All', TILE_ORDER))).toEqual(['Silk press', 'Braids']);
+    expect(names(tilesFor(shop, 'All'))).toEqual(['Silk press', 'Braids']);
+  });
+
+  test('a layout that names the items orders them, still without what is out of stock; a tab is its category', () => {
+    expect(names(tilesFor(shop, 'All', ['itm_3', 'itm_2', 'itm_1']))).toEqual(['Braids', 'Silk press']);
+    expect(names(tilesFor(shop, 'Hair', ['itm_1']))).toEqual(['Braids']);
+  });
+
+  test('the reference layout still draws the reference catalogue', () => {
+    expect(tilesFor(CATALOG, 'All', TILE_ORDER).map((i) => i.id)).toEqual(TILE_ORDER.filter((id) => CATALOG.some((i) => i.id === id && !(i.stock && i.stock.free <= 0))));
   });
 });

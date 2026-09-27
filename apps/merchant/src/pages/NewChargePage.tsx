@@ -734,7 +734,8 @@ export default function NewChargePage() {
               onQuickSale={() => set({ sheet: { k: 'quick' } })}
               onOptions={(i) => set({ sheet: { k: 'options', item: i } })}
               tabs={f.catalog === 'food' ? ['All', 'Food', 'Drinks', 'Sweet'] : undefined}
-              tileOrder={f.catalog === 'food' ? ['tacos', 'burrito', 'quesadilla', 'chips', 'horchata', 'agua', 'churros'] : TILE_ORDER}
+              // The reference's tile layouts are for its own catalogues; a live shop's tiles are its catalogue.
+              tileOrder={!preview ? undefined : f.catalog === 'food' ? ['tacos', 'burrito', 'quesadilla', 'chips', 'horchata', 'agua', 'churros'] : TILE_ORDER}
             />
             <CartCell
               lines={f.lines}
