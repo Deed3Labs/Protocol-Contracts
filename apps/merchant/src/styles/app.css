@@ -293,6 +293,53 @@ input.c-field.c-si-in {
   flex: none;
 }
 
+/* ---- Fixes over the reference's drawing ----------------------------------------------------- */
+
+/* A slab's two cells share one footer row, as tall as the taller footer. The shorter one's content
+   sat at the top of it ("Stock changes need an owner or a manager." beside Add to a charge); every
+   slab footer centres its content, as Home's already did. A column, so what stacked still stacks. */
+:where(.c-slab) .c-cell > .c-cfoot {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* New charge's category chips: the reference gives them a gap only on Inventory, which draws none,
+   so they touched. A gap wherever they are, and a new row when a shop has many categories. */
+.c-iv-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Home's time clock marks how far into the current hour they are, as Staff's tiles do (grey on a
+   break, as the bar is). */
+.c-mc-hours > span.c-now {
+  position: relative;
+}
+.c-mc-hours > span.c-now::after {
+  content: '';
+  position: absolute;
+  left: var(--p);
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ink);
+}
+.c-mc-shiftcell.c-paused .c-mc-hours > span.c-now::after {
+  background: var(--ink-50);
+}
+
+/* Stacked on a phone, a footer pair's buttons keep flex:1 (a 0% basis), which sizes their HEIGHT
+   from nothing and squashed them to their text (18px). The floor keeps the 44px; a pair that stays
+   a row still splits evenly. */
+@media (max-width: 519.98px) {
+  :root .c-cfoot .c-pair .c-btn {
+    min-height: 44px;
+  }
+}
+
 /* ---- The public receipt page (/r/<token>) ---------------------------------------------------------
    The printed slip at phone width. Not drawn in the reference; it follows the New Charge slip. */
 .c-rcpt-page{min-height:100dvh;background:var(--paper);padding:20px 16px 40px;display:flex;flex-direction:column;align-items:center;gap:24px}
