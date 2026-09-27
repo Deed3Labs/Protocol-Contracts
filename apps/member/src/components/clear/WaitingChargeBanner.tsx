@@ -29,7 +29,8 @@ export default function WaitingChargeBanner({ charge, more = 0 }: { charge: Memb
                 <p className="c-det mt-[3px]">Sent {at} · nothing taken until you approve</p>
                 {more > 0 && <p className="c-det">{more} more waiting in Shop charges</p>}
               </div>
-              <Btn primary onClick={() => navigate(`/c/${encodeURIComponent(charge.code)}`)}>
+              {/* Remind's size beside it (a plain button's 36px and padding), in black: the one to answer. */}
+              <Btn primary className="h-[36px]! px-s2!" onClick={() => navigate(`/c/${encodeURIComponent(charge.code)}`)}>
                 Review
               </Btn>
             </Line>
