@@ -90,7 +90,8 @@ describe('turning Face ID off when the passkey is gone', () => {
 describe('only payments Face ID is asked for before money moves', () => {
   test('the gate asks the server, or nobody: no browser-only check on the sign-in passkey', () => {
     const lock = read('components/shell/AppLock.tsx');
-    expect(lock).toMatch(/setStepUpVerifier\(async \(\) => \{\s*if \(serverStepUpEnrolled\(\)\) return proveWithServer\(\);\s*\}\);/);
+    // On every route (ConfirmIdentitySheet, mounted in App), not only inside the shell.
+    expect(read('components/shell/ConfirmIdentitySheet.tsx')).toMatch(/setStepUpVerifier\(async \(\) => \{\s*if \(serverStepUpEnrolled\(\)\) return proveWithServer\(\);\s*\}\);/);
     // The lock screen still opens on the sign-in passkey -- that one IS signing in.
     expect(lock).toMatch(/await faceIdRef\.current\.confirm\(\);/);
   });
