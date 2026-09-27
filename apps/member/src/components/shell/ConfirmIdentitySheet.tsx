@@ -11,7 +11,8 @@ import {
 import Modal from '@/components/clear/Modal';
 import { Btn } from '@/components/clear/brand/anatomy';
 import PinBox from '@/components/clear/auth/PinBox';
-import { setWalletMfa } from '@/lib/stepUp';
+import { serverStepUpEnrolled, setStepUpVerifier, setWalletMfa } from '@/lib/stepUp';
+import { proveWithServer } from '@/lib/serverStepUp';
 
 /**
  * "Confirm it's you" — our sheet in front of Privy's wallet MFA.
@@ -35,6 +36,25 @@ export default function ConfirmIdentitySheet() {
   useEffect(() => {
     setWalletMfa(walletFactor);
   }, [walletFactor]);
+
+  useEffect(() => {
+    /*
+     * The Face ID asked before money moves (lib/stepUp), on every route: here rather than in the
+     * shell's AppLock, because a charge is approved at /c/:code, outside the shell, and there it
+     * asked for Face ID with nothing to ask it -- no system sheet, and the approve refused.
+     *
+     * Only members who turned Face ID on FOR PAYMENTS are asked. This used to fall back to the sign-in
+     * passkey for anyone who had one, from before payments had a switch of its own. That asked
+     * members who had deliberately left payments unprotected, and asked them with a check nothing
+     * verifies -- the browser's own answer, which devtools can step round. The server refuses the
+     * requests that matter for enrolled members either way, so what that fallback added was friction
+     * rather than protection.
+     */
+    setStepUpVerifier(async () => {
+      if (serverStepUpEnrolled()) return proveWithServer();
+    });
+    return () => setStepUpVerifier(null);
+  }, []);
   const [methods, setMethods] = useState<MfaMethod[] | null>(null);
   const [mode, setMode] = useState<'passkey' | 'totp'>('passkey');
   const [code, setCode] = useState('');

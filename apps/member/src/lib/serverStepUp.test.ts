@@ -75,7 +75,9 @@ describe('wired through', () => {
 
   test('the verifier and the lock screen use the server\'s Face ID where the member has it', () => {
     const lock = read('components/shell/AppLock.tsx');
-    expect(lock).toContain('if (serverStepUpEnrolled()) return proveWithServer();');
+    // The verifier is on every route (ConfirmIdentitySheet, mounted in App); the lock screen is the shell's.
+    expect(read('components/shell/ConfirmIdentitySheet.tsx')).toContain('if (serverStepUpEnrolled()) return proveWithServer();');
+    expect(lock).not.toContain('setStepUpVerifier(');
     expect(lock).toContain('if (serverStepUpEnrolled()) await proveWithServer();');
   });
 

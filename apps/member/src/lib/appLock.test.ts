@@ -127,7 +127,9 @@ describe('the lock screen', () => {
   });
   test('members who have not turned Face ID on for payments are not blocked from moving money', () => {
     // Face ID for signing in does not gate money: that is the Payments switch, which the server checks.
-    expect(lock).toMatch(/setStepUpVerifier\(async \(\) => \{\s*if \(serverStepUpEnrolled\(\)\) return proveWithServer\(\);\s*\}\);/);
+    // Registered on every route (ConfirmIdentitySheet), so a charge approved outside the shell asks too.
+    expect(read('components/shell/ConfirmIdentitySheet.tsx')).toMatch(/setStepUpVerifier\(async \(\) => \{\s*if \(serverStepUpEnrolled\(\)\) return proveWithServer\(\);\s*\}\);/);
+    expect(read('App.tsx')).toContain('<ConfirmIdentitySheet />');
   });
   test('the code fallback is a real sign-in, and signing in starts the clock', () => {
     expect(lock).toContain('logout({ sendCode: true })');

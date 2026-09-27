@@ -7,7 +7,7 @@ import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { forgetMember, rememberedMember } from '@/lib/rememberedMember';
 import { isStale, lastActive, markActive, onServerLocked } from '@/lib/appLock';
 import { getSessionLock, reportActive } from '@/utils/apiClient';
-import { markStepUpVerified, serverStepUpEnrolled, setStepUpVerifier } from '@/lib/stepUp';
+import { markStepUpVerified, serverStepUpEnrolled } from '@/lib/stepUp';
 import { proveWithServer } from '@/lib/serverStepUp';
 
 /** Activity is written at most this often; the lock only needs to know roughly when. */
@@ -114,21 +114,9 @@ export default function AppLock({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useEffect(() => {
-    /*
-     * Only members who turned Face ID on FOR PAYMENTS are asked before money moves.
-     *
-     * This used to fall back to the sign-in passkey for anyone who had one, from before payments had
-     * a switch of its own. That asked members who had deliberately left payments unprotected, and
-     * asked them with a check nothing verifies -- the browser's own answer, which devtools can step
-     * round. The server refuses the requests that matter for enrolled members either way, so what
-     * that fallback added was friction rather than protection.
-     */
-    setStepUpVerifier(async () => {
-      if (serverStepUpEnrolled()) return proveWithServer();
-    });
-    return () => setStepUpVerifier(null);
-  }, []);
+  // The Face ID asked before money moves is registered in ConfirmIdentitySheet, on every route: from
+  // here it went when the shell did, so approving a charge (/c/:code) asked for Face ID with nothing
+  // to ask it.
 
   const unlock = useCallback(async () => {
     setBusy(true);
