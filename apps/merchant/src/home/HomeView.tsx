@@ -520,11 +520,12 @@ export function ShiftCellView({ s, a, solo }: { s: ShiftCell; a: HomeActions; so
               </p>
             </div>
             {c.hours > 0 && (
-              <div className="c-mc-hours" role="img" aria-label={`${c.onFor} of a ${c.hours} hour shift`}>
+              <div className="c-mc-hours" style={{ ['--n' as string]: c.hours }} role="img" aria-label={`${c.onFor} of a ${c.hours} hour shift`}>
+                {/* The hour they're in carries a tick at how far into it they are, as Staff's tiles do. */}
                 {hours.map((i) =>
                   i < Math.floor(c.done) ? (
                     <span key={i} className="c-done" />
-                  ) : i === Math.floor(c.done) && c.done % 1 > 0 ? (
+                  ) : i === Math.floor(c.done) ? (
                     <span key={i} className="c-now" style={{ ['--p' as string]: `${Math.round((c.done % 1) * 100)}%` }} />
                   ) : (
                     <span key={i} />
