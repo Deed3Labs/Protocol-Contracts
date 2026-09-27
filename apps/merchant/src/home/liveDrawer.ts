@@ -32,10 +32,12 @@ export function drawerPrompt(session: DrawerSession | null, view: CountsView | n
   switch (step.kind) {
     case 'count':
       return step.which === 'first'
-        ? { t, det: 'Two blind counts at close: neither sees the other’s, or what it should hold.', cta: 'Count the drawer' }
-        : { t, det: 'One count is in, hidden. The second is yours.', cta: 'Count the drawer' };
+        ? // Said as the closing count it is: straight after opening it read as a check of the float,
+          // and agreeing led on to Close the day.
+          { t, det: 'Open for the day. At close, two people count it blind: neither sees the other’s, or what it should hold.', cta: 'Count to close' }
+        : { t, det: 'One closing count is in, hidden. The second is yours.', cta: 'Count to close' };
     case 'wait':
-      return { t, det: 'You’ve counted. The second count is someone else’s.' };
+      return { t, det: 'You’ve counted for close. The second count is someone else’s.' };
     case 'result':
       return step.view.state === 'disagree'
         ? { t, det: 'The two counts disagree. One of you counts again.', cta: 'See the counts' }

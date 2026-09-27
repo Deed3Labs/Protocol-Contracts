@@ -114,7 +114,7 @@ export interface DrawerPrompt {
   t: string;
   /** "Luis has counted. The second count is someone else's." — never a figure until both are in. */
   det: string;
-  /** "Open the drawer", "Count the drawer", "Close the day"; none while it's someone else's turn. */
+  /** "Open the drawer", "Count to close", "Close the day"; none while it's someone else's turn. */
   cta?: string;
 }
 
