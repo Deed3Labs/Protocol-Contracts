@@ -9,7 +9,10 @@ describe('payments are guarded at the wallet (Privy MFA)', () => {
   test('our sheet prompts, Privy verifies; Face ID off also takes it off payments', () => {
     const cfg = read('AppKitProvider.tsx');
     expect(cfg).toContain('mfa: { noPromptOnMfaRequired: true },');
-    expect(read('components/shell/AppShell.tsx')).toContain('<ConfirmIdentitySheet />');
+    // Mounted once, for every route: /c/:code (Pay now) and onboarding sit outside the shell, and
+    // Privy waits on this listener, so a payment there would wait until Privy timed out.
+    expect(read('App.tsx')).toContain('<ConfirmIdentitySheet />');
+    expect(read('components/shell/AppShell.tsx')).not.toContain('<ConfirmIdentitySheet />');
     const sheet = read('components/shell/ConfirmIdentitySheet.tsx');
     expect(sheet).toContain('useRegisterMfaListener({');
     expect(sheet).toMatch(/const options = await init\('passkey'\);[\s\S]{0,80}await submit\('passkey', options\);/);
