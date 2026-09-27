@@ -106,7 +106,7 @@ describe('the audit log', () => {
     await saveCount(db, { merchant: s.merchant, sessionId, staffId: s.staff.jen, count: { method: 'total', totalCents: 15000 + 3000 - 500 } });
     await saveCount(db, { merchant: s.merchant, sessionId, staffId: s.staff.luis, count: { method: 'total', totalCents: 15000 + 3000 - 500 } });
     await signOff(db, { pinCheck: managerPin }, { merchant: s.merchant, sessionId, staffId: s.staff.luis, signOff: { note: 'Change error', pin: '4321' } });
-    await closeDay(db, { card: card.provider }, { merchant: s.merchant, sessionId, staffId: s.staff.luis });
+    await closeDay(db, { card: card.provider }, { merchant: s.merchant, sessionId, staffId: s.staff.manager });
 
     const trail = await auditTrail(db, { merchant: s.merchant, from: today(), to: today() });
     const by = (action: string) => trail.filter((e) => e.action === action);
@@ -122,16 +122,16 @@ describe('the audit log', () => {
     expect(by('tender.card_started')).toHaveLength(2);
     expect(by('card.authorised')).toHaveLength(2);
     expect(by('card.cancelled')).toMatchObject([{ actor: s.staff.manager, ref: { id: start.tenderId } }]);
-    expect(by('card.captured')).toMatchObject([{ actor: s.staff.luis, ref: { id: c1.tenderId }, amountCents: 9000 }]);
+    expect(by('card.captured')).toMatchObject([{ actor: s.staff.manager, ref: { id: c1.tenderId }, amountCents: 9000 }]);
     expect(by('drawer.opened')).toMatchObject([{ actor: s.staff.jen, amountCents: 15000 }]);
     expect(by('drawer.counted')).toHaveLength(2);
-    expect(by('day.closed')).toMatchObject([{ actor: s.staff.luis }]);
+    expect(by('day.closed')).toMatchObject([{ actor: s.staff.manager }]);
     // Every booking, from the ledger service itself.
     expect(by('booked.cash_sale')).toMatchObject([{ actor: s.staff.jen, ref: { type: 'order', id: a.id } }]);
     expect(by('booked.card_sale').length).toBeGreaterThan(0);
     expect(by('booked.reversal').length).toBeGreaterThan(0); // the voided card sale
     expect(by('booked.cash_refund')).toMatchObject([{ actor: s.staff.owner, amountCents: 1000 }]);
-    expect(by('booked.drawer_short')).toMatchObject([{ actor: s.staff.luis, amountCents: 500 }]);
+    expect(by('booked.drawer_short')).toMatchObject([{ actor: s.staff.manager, amountCents: 500 }]);
     // No PIN ever lands in it.
     expect(JSON.stringify(trail)).not.toContain('4321');
   });

@@ -68,7 +68,7 @@ async function openShop() {
   /** Two blind counts, both at `countedCents`; a difference needs the manager's sign-off first. */
   const countAndClose = async (countedCents: number) => {
     for (const staffId of [s.staff.jen, s.staff.luis]) await saveCount(db, { merchant: s.merchant, sessionId: drawer.id, staffId, count: { method: 'total', totalCents: countedCents } });
-    return closeDay(db, { card: fake.provider }, { merchant: s.merchant, sessionId: drawer.id, staffId: s.staff.luis });
+    return closeDay(db, { card: fake.provider }, { merchant: s.merchant, sessionId: drawer.id, staffId: s.staff.manager });
   };
   const trail = async () => auditTrail(db, { merchant: s.merchant, from: '2000-01-01', to: '2100-01-01' });
   return { ...s, fake, acct, reader, tire, drawer, deps, managerPin, order, card, level, countAndClose, trail };
@@ -169,7 +169,7 @@ describe('end to end, with a simulated reader', () => {
     await expect(s.countAndClose(STARTING_CASH + 3000 - 500)).rejects.toMatchObject({ code: 'unsigned' });
     // The first counter can't sign off their own count; the manager can.
     await signOff(db, { pinCheck: s.managerPin }, { merchant: s.merchant, sessionId: s.drawer.id, staffId: s.staff.luis, signOff: { note: 'Gave $5 too much change', pin: '4321' } });
-    const closed = await closeDay(db, { card: s.fake.provider }, { merchant: s.merchant, sessionId: s.drawer.id, staffId: s.staff.luis });
+    const closed = await closeDay(db, { card: s.fake.provider }, { merchant: s.merchant, sessionId: s.drawer.id, staffId: s.staff.manager });
     expect(closed.report.drawer).toMatchObject({ expectedCents: STARTING_CASH + 3000, countedCents: STARTING_CASH + 2500, differenceCents: -500, signedOffBy: s.staff.manager });
     expect(await balance(db, s.merchant, 'cash_over_short')).toBe(500);
     // The day is locked: closing again returns the same report, and the drawer takes no more cash.

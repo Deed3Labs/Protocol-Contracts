@@ -361,7 +361,8 @@ reason for any difference, is written to `e2e/.report/index.html`.
   wave and the crew strip's scroll all finish at once.
 - **Roles.** Every screen is checked as Jen (counter), Luis (manager) and Mike (owner), on the live
   path against the mock:
-  - Close the day, Payouts, Staff and Overview send a counter shift Home.
+  - Close the day (unless Settings › Closing says anyone on shift), Payouts, Staff and Overview send
+    a counter shift Home.
   - No screen a counter shift can reach shows a payout, fee, cost or margin.
   - The nav locks Payouts, Staff and Overview for a counter shift: the pages whose routes send it
     Home. Staff was left open in the nav at first, so it looked reachable and quietly landed on Home.
@@ -486,8 +487,12 @@ reason for any difference, is written to `e2e/.report/index.html`.
   a percent or an amount, the whole charge or one category, optional dates, once per customer. The
   counter's and a manager's limits can be changed; an owner has none.
 - **Closing**: starting cash, two counts, and what happens with one person on. "Any difference
-  needs a sign-off" reads Always, because the server always requires it. Who can close lists the
-  owners and managers by name.
+  needs a sign-off" reads Always, because the server always requires it. **Who can close** is the
+  owner's choice: owners and managers (the default, the reference's), or anyone on shift. The server
+  holds it at Close the day (`not_allowed` otherwise) and for the day's figures Close the day reads
+  (`GET /drawer/:id/day`, one day of the Overview, since the Overview itself is a manager's). A
+  counter who can't close sees "An owner or manager closes the day", and the button asks for the
+  owner's sign-in.
 
 ## Settings: the shop, its hours, Counter and Devices
 

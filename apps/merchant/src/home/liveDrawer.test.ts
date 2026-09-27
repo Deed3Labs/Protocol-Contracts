@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createMockMerchantApi } from '../data/merchantApi/mock';
 import { STAFF, STAFF_ID } from '../data/merchantApi/seed';
-import { drawerPrompt, drawerStep, shiftDrawer } from './liveDrawer';
+import { drawerPrompt, drawerStep, mayCloseDay, shiftDrawer } from './liveDrawer';
 
 const names = new Map(STAFF.map((s) => [s.id, s.name]));
 
@@ -64,5 +64,25 @@ describe('the Drawer row in the shift column', () => {
 
     expect(shiftDrawer({ ...s, status: 'closed', closedAt: '2026-09-26T23:00:00Z' }, v, day)).toBeUndefined();
     expect(shiftDrawer(null, null, null)).toBeUndefined();
+  });
+});
+
+describe('who can close (Settings › Closing)', () => {
+  test('owners and managers always; a counter only when the shop says anyone on shift', () => {
+    expect(mayCloseDay('owner', { whoCanClose: 'managers' })).toBe(true);
+    expect(mayCloseDay('manager', null)).toBe(true);
+    expect(mayCloseDay('counter', { whoCanClose: 'managers' })).toBe(false);
+    expect(mayCloseDay('counter', null)).toBe(false);
+    expect(mayCloseDay('counter', { whoCanClose: 'anyone' })).toBe(true);
+    expect(mayCloseDay(undefined, { whoCanClose: 'anyone' })).toBe(false);
+  });
+
+  test('a counter who can’t close is told who does', async () => {
+    const { api } = createMockMerchantApi({ delayMs: 0, drawer: 'balanced', viewer: STAFF_ID.jen });
+    const s = (await api.drawer())!;
+    const v = await api.counts(s.id);
+    expect(drawerPrompt(s, v, STAFF_ID.jen, names, false).det).toContain('An owner or manager closes the day');
+    expect(drawerPrompt(s, v, STAFF_ID.jen, names, true).det).toContain('Close the day to lock it');
+    await expect(api.closeDay(s.id)).rejects.toMatchObject({ status: 403 });
   });
 });

@@ -155,6 +155,15 @@ export const Overview = z.object({
 export type Overview = z.infer<typeof Overview>;
 
 /**
+ * Close the day's figures for the day being closed, for whoever may close it (Settings › Closing):
+ * one day of the Overview, and the names to put to its counts and tips.
+ */
+export const CloseDayFigures = Overview.pick({ from: true, to: true, takenCents: true, orderCount: true, byMethod: true, discounts: true, tips: true, taxCents: true }).extend({
+  names: z.array(z.object({ id: Id, name: z.string() })),
+});
+export type CloseDayFigures = z.infer<typeof CloseDayFigures>;
+
+/**
  * One row of the shop's audit trail (card-processing prompt, Phase 10): who did what to the money,
  * and when. Every ledger booking (`booked.<kind>`) and every money action that books nothing itself
  * (a card hold, capture or void; a refund asked for or decided; a PIN override; a count, a sign-off,

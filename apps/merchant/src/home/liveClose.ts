@@ -1,4 +1,4 @@
-import type { AuditEntry, CloseDayResult, CountsView, DrawerSession, Order, Overview, ShopSettings, Staff } from '@clear/merchant-contracts';
+import type { AuditEntry, CloseDayFigures, CloseDayResult, CountsView, DrawerSession, Order, ShopSettings } from '@clear/merchant-contracts';
 import type { DaySummary, DrawerClose } from './drawer';
 import { clockTime, usd } from './model';
 
@@ -13,10 +13,10 @@ const dayLabel = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString('en
 export function closeDayFrom(input: {
   session: DrawerSession;
   view: CountsView;
-  overview: Overview;
+  overview: Omit<CloseDayFigures, 'names'>;
   orders: Order[];
   settings: ShopSettings | null;
-  staff: Staff[];
+  staff: { id: string; name: string }[];
   audit: AuditEntry[];
 }): { day: DaySummary; drawer: DrawerClose } | null {
   const { view, overview: o } = input;

@@ -132,6 +132,8 @@ export const ShopSettings = z.object({
   statementsEmail: z.string().trim().email('That isn’t an email address').nullable(),
   /** When only one person is on at close. */
   onePersonClose: z.enum(['owner_next_morning', 'wait_for_second']),
+  /** Who can Close the day: owners and managers, or anyone on shift. The server enforces it. */
+  whoCanClose: z.enum(['managers', 'anyone']),
   /** Store-and-forward on the M2 only; Tap to Pay is always online. */
   offlineCards: z.object({ enabled: z.boolean(), limitCents: NonNegativeCents }),
   /** Prices at the counter: before tax (added at checkout), or with tax included ("a $9.00 taco costs $9.00"). */
@@ -159,6 +161,7 @@ export const DEFAULT_SETTINGS: Omit<ShopSettings, 'updatedAt'> = {
   statementsEmail: null,
   twoCounts: true,
   onePersonClose: 'owner_next_morning',
+  whoCanClose: 'managers',
   offlineCards: { enabled: false, limitCents: 50000 },
   tax: { pricesIncludeTax: false },
   discountLimits: { counter: 10, manager: 25, owner: null },
