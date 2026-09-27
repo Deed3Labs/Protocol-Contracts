@@ -34,22 +34,25 @@ import { Lockup, PinDots, PinKeys, Sheet, cx, initials, clickOnKey } from '@/bra
 export type NavKey = 'home' | 'charges' | 'inventory' | 'payouts' | 'staff' | 'overview';
 
 /**
- * Six destinations, in the reference's order. On a counter shift Payouts and Overview stay in
- * place with a padlock rather than disappearing: a writer learns where they are, and an owner
+ * Six destinations, in the reference's order. On a counter shift Payouts, Staff and Overview stay
+ * in place with a padlock rather than disappearing: a writer learns where they are, and an owner
  * knows where to sign in. Inventory is open to everyone.
+ *
+ * `guarded` matches App's OwnerOnly routes: a page the counter can't open is a page the nav locks,
+ * or it looks open and quietly lands them back on Home.
  */
-export const NAV: { key: NavKey; to: string; label: string; icon: () => ReactNode; money?: boolean }[] = [
+export const NAV: { key: NavKey; to: string; label: string; icon: () => ReactNode; guarded?: boolean }[] = [
   { key: 'home', to: '/', label: 'Home', icon: IconHome },
   { key: 'charges', to: '/charges', label: 'Charges', icon: IconCharges },
   { key: 'inventory', to: '/inventory', label: 'Inventory', icon: IconInventory },
-  { key: 'payouts', to: '/payouts', label: 'Payouts', icon: IconPayouts, money: true },
-  { key: 'staff', to: '/staff', label: 'Staff', icon: IconStaff },
-  { key: 'overview', to: '/overview', label: 'Overview', icon: IconOverview, money: true },
+  { key: 'payouts', to: '/payouts', label: 'Payouts', icon: IconPayouts, guarded: true },
+  { key: 'staff', to: '/staff', label: 'Staff', icon: IconStaff, guarded: true },
+  { key: 'overview', to: '/overview', label: 'Overview', icon: IconOverview, guarded: true },
 ];
 
-/** Locked for this role: the money pages, for anyone who does not see money. */
+/** Locked for this role: the owner-and-manager pages, for anyone who does not see money. */
 export const isLocked = (role: StaffRole, key: NavKey) =>
-  !seesMoney(role) && NAV.some((n) => n.key === key && n.money);
+  !seesMoney(role) && NAV.some((n) => n.key === key && n.guarded);
 
 // ---- Pieces shared by the tablet and phone headers --------------------------------------------
 

@@ -11,6 +11,8 @@ describe('the drawer on a live Home', () => {
     const s = (await api.drawer())!;
     expect(drawerStep(null, null, STAFF_ID.luis)).toEqual({ kind: 'open' });
     expect(drawerStep(s, await api.counts(s.id), STAFF_ID.luis)).toEqual({ kind: 'count', which: 'first' });
+    // Straight after opening, the count is plainly the closing one.
+    expect(drawerPrompt(s, await api.counts(s.id), STAFF_ID.luis, names)).toMatchObject({ cta: 'Count to close', det: expect.stringContaining('At close') });
     await api.saveCount(s.id, { method: 'total', totalCents: 21200 });
     const after = await api.counts(s.id);
     expect(drawerStep(s, after, STAFF_ID.luis)).toEqual({ kind: 'wait' });
@@ -20,6 +22,8 @@ describe('the drawer on a live Home', () => {
     expect(drawerStep(s, await api.counts(s.id), STAFF_ID.mike)).toEqual({ kind: 'count', which: 'second' });
     await api.saveCount(s.id, { method: 'total', totalCents: 21200 });
     expect(drawerStep(s, await api.counts(s.id), STAFF_ID.mike)).toEqual({ kind: 'close' });
+    // Agreeing doesn't close the day: the panel offers it.
+    expect(drawerPrompt(s, await api.counts(s.id), STAFF_ID.mike, names).cta).toBe('Close the day');
   });
 
   test('short: a sign-off first; disagree: a recount', async () => {

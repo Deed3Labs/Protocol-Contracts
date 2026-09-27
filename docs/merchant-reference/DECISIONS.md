@@ -62,6 +62,11 @@ Decided 2026-09-24.
   up card isn't live yet. The reference scenario shows every state in development:
   `?preview=1&home=running|counter|onBreak|early|dayOne|closing` (`&as=jen` for the counter) and
   `/close?preview=1&drawer=short|signed|balanced`.
+- **The drawer's two counts are the closing count, and say so.** Opening the drawer is one step, the
+  starting cash; there is no opening count. Home offered "Count the drawer" as soon as the drawer
+  was open, which read as a check of the float, and agreeing counts then went straight into Close
+  the day. The panel now says the counts are at close ("Count to close"), and agreeing counts, or a
+  signed-off difference, come back to Home, whose panel offers Close the day; only that tap opens it.
 
 ## New Charge
 
@@ -358,7 +363,8 @@ reason for any difference, is written to `e2e/.report/index.html`.
   path against the mock:
   - Close the day, Payouts, Staff and Overview send a counter shift Home.
   - No screen a counter shift can reach shows a payout, fee, cost or margin.
-  - The nav locks Payouts and Overview for a counter shift.
+  - The nav locks Payouts, Staff and Overview for a counter shift: the pages whose routes send it
+    Home. Staff was left open in the nav at first, so it looked reachable and quietly landed on Home.
   - Settings is You alone for a counter shift and a manager.
 - **The icon is the Clear mark**, as the brand draws it, in paper on ink (the brand's dark green; switched from ink on paper at the user's request). It is drawn into
   `public/` by `scripts/icons.mjs`: the SVG, 180 for iOS, 192 and 512, and a maskable 512 that

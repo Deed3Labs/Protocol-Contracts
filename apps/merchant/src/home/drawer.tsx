@@ -352,7 +352,9 @@ export function CountSheet({
             {otherName ? ` · ${firstName(otherName)}’s count is hidden` : ''}
           </p>
           <Fig cents={typed.cents} />
-          <DrawerKeys onKey={typed.key} mid />
+          {/* The reference draws this pad `mid`, which keeps the sheet's bottom padding for what follows
+              a pad; nothing follows this one, so it left a gap above the footer. Flush, as the others are. */}
+          <DrawerKeys onKey={typed.key} />
         </>
       )}
     </Sheet>
