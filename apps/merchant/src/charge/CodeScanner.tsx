@@ -34,6 +34,8 @@ export function CodeScanner({ onCode, onState }: { onCode: (raw: string) => bool
     let active: MediaStream | null = null;
     let detector: BarcodeDetectorLike | null = null;
     let last = '';
+    let lastAt = 0;
+    let pass = 0;
     const Ctor = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
     if (Ctor) {
       try {
@@ -61,19 +63,31 @@ export function CodeScanner({ onCode, onState }: { onCode: (raw: string) => bool
         }
       }
       if (raw === null) {
-        const w = 480;
-        const h = Math.round((video.videoHeight / video.videoWidth) * w) || 480;
+        /*
+         * A member's code is a phone held up to the tablet: small in the frame. Shrunk to 480px wide
+         * it was one or two pixels a square and jsQR never read it, so nothing happened. Two passes,
+         * one a frame: the middle of the frame, where they hold it, at the camera's own resolution;
+         * then the whole frame at 960px, for a code held off to one side.
+         */
+        const vw = video.videoWidth || 640;
+        const vh = video.videoHeight || 480;
+        const centre = pass++ % 2 === 0;
+        const [sx, sy, sw, sh] = centre ? [vw * 0.2, vh * 0.15, vw * 0.6, vh * 0.7] : [0, 0, vw, vh];
+        const w = Math.min(960, Math.round(sw));
+        const h = Math.round((sh / sw) * w) || w;
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (ctx) {
-          ctx.drawImage(video, 0, 0, w, h);
+          ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
           raw = jsQR(ctx.getImageData(0, 0, w, h).data, w, h)?.data ?? null;
         }
       }
-      // The same code seen frame after frame is one scan.
-      if (raw && raw !== last) {
+      // The same code seen frame after frame is one scan -- but one turned down (not ready yet, say)
+      // is read again after a moment rather than never.
+      if (raw && (raw !== last || Date.now() - lastAt > 1500)) {
         last = raw;
+        lastAt = Date.now();
         if (onCodeRef.current(raw)) {
           active?.getTracks().forEach((t) => t.stop());
           return;
@@ -87,7 +101,8 @@ export function CodeScanner({ onCode, onState }: { onCode: (raw: string) => bool
       return;
     }
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: { ideal: 'environment' } } })
+      // As sharp as the camera gives: a phone's code is a small part of what it sees.
+      .getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } })
       .then((s) => {
         if (cancelled) {
           s.getTracks().forEach((t) => t.stop());
