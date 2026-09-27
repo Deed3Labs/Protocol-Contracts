@@ -25,6 +25,8 @@ export interface WaitingCharge {
   ago: string;
   /** First name of whoever raised it. */
   by?: string;
+  /** Resent in the last minute: the button says so and waits. */
+  resent?: boolean;
 }
 
 export interface ConfirmedCharge {

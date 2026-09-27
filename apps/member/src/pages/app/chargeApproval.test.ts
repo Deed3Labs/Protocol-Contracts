@@ -172,7 +172,7 @@ describe('the alert', () => {
   });
 
   test('respects a member who opted out', () => {
-    expect(SERVICE).toContain('if (!contact) return;');
+    expect(SERVICE).toContain('if (!contact) return true;');
   });
 });
 

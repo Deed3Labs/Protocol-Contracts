@@ -40,6 +40,9 @@ export default function HomePage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [open, setOpen] = useState<WaitingCharge | null>(null);
+  // Resend: which charges went again this minute (the server's limit), and what went wrong.
+  const [resentAt, setResentAt] = useState<Record<string, number>>({});
+  const [resendError, setResendError] = useState<string | null>(null);
   const [tillHidden, setTillHidden] = useState(() => {
     if (import.meta.env.DEV && params.get('home')) return false;
     try {
@@ -147,18 +150,33 @@ export default function HomePage() {
           },
         }
       : withDrawer;
+  const isResent = (id: string) => Date.now() - (resentAt[id] ?? 0) < 60_000;
   const liveModel: HomeModel = seeded
     ? withClock
     : {
         ...withClock,
+        waiting: withClock.waiting.map((w) => (isResent(w.id) ? { ...w, resent: true } : w)),
         till: setup.data ? tillFromSetup(setup.data) : undefined,
         runningLow: stock.data ? runningLowFrom(stock.data[0], stock.data[1]) : undefined,
       };
+  // The member's alert again: in-app, on their lock screen, and by text.
+  const resend = async (id: string) => {
+    setResendError(null);
+    if (seeded) return void setResentAt((r) => ({ ...r, [id]: Date.now() }));
+    try {
+      await api.resendCharge(id);
+      setResentAt((r) => ({ ...r, [id]: Date.now() }));
+      setTimeout(() => setResentAt((r) => ({ ...r })), 60_500);
+    } catch (e) {
+      setResendError(errorSentence(e));
+    }
+  };
 
   const a: HomeActions = {
     onNewCharge: () => navigate('/new'),
     onBuildCart: () => navigate('/new?items=1'),
     onOpenWaiting: setOpen,
+    onResend: (w) => void resend(w.id),
     onAllCharges: () => navigate('/charges'),
     onPayouts: () => navigate('/payouts'),
     onStaff: () => navigate('/staff'),
@@ -218,6 +236,11 @@ export default function HomePage() {
   return (
     <>
       <HomeView m={tillHidden ? { ...liveModel, till: undefined } : liveModel} layout={layout} a={a} />
+      {resendError && (
+        <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
+          {resendError}
+        </p>
+      )}
       {shiftError && (
         <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
           {shiftError}
@@ -309,6 +332,8 @@ export default function HomePage() {
           name={open.name}
           amountCents={open.amountCents}
           opened={open.opened}
+          resent={isResent(open.id)}
+          onResend={() => void resend(open.id)}
           steps={steps(open)}
           onClose={() => setOpen(null)}
           onCancel={async () => {
