@@ -15,7 +15,8 @@ import type {
   RegisterSmartReader,
 } from './cards';
 import type { CatalogImport, CatalogItem, DiscountCode, ImportResult, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
-import type { AuditEntry, BankDeposit, SendStatement, CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
+import type { AuditEntry, BankDeposit, SendStatement, CloseDayFigures,
+  CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
   ClearChargeSent,
@@ -180,6 +181,8 @@ export interface MerchantApi {
    * unsigned. Returns the report and any card that couldn't be captured, with why.
    */
   closeDay(sessionId: string): Promise<CloseDayResult>;
+  /** The day being closed, for whoever may close it (Settings › Closing): one day of the Overview. */
+  closeDayFigures(sessionId: string): Promise<CloseDayFigures>;
   bankDeposits(): Promise<BankDeposit[]>;
   markDeposited(depositId: string): Promise<BankDeposit>;
 

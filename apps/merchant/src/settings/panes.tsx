@@ -598,11 +598,20 @@ function liveSelling(key: Section, l: LiveSelling, a: Actions): ReactNode {
               />
             </Main>
           </Cell>
-          <Cell label="Who can close" det="Close the day">
+          {/* The server holds it at Close the day; counts and sign-offs are the same either way. */}
+          <Cell
+            label="Who can close"
+            det="Close the day"
+            foot={
+              <FootDet>
+                {s.whoCanClose === 'anyone'
+                  ? 'Whoever is on shift closes once the two counts agree. A short or over drawer still needs an owner or manager to sign it off.'
+                  : `${l.closers === '—' ? 'Only the owner' : l.closers} · Counter staff see who to ask.`}
+              </FootDet>
+            }
+          >
             <Main>
-              <Rows>
-                <Kv k="Owners and managers" v={l.closers} ink />
-              </Rows>
+              <Chips options={['Owners and managers', 'Anyone on shift']} value={s.whoCanClose === 'anyone' ? 1 : 0} onPick={(i) => set({ whoCanClose: i === 1 ? 'anyone' : 'managers' })} />
             </Main>
           </Cell>
         </>

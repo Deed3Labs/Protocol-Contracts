@@ -6,7 +6,7 @@ import { useMerchantApi } from '@/data/merchantApi';
 import { errorSentence, useApi } from '@/data/useApi';
 import { CountResultSheet, CountSheet, OpenDrawerSheet, SignOffSheet } from '@/home/drawer';
 import { HomeView, type HomeActions } from '@/home/HomeView';
-import { drawerPrompt, drawerStep, shiftDrawer } from '@/home/liveDrawer';
+import { drawerPrompt, drawerStep, mayCloseDay, shiftDrawer } from '@/home/liveDrawer';
 import { clockTime, fromApi, runningLowFrom, sees, shiftClock, tillFromSetup, type HomeModel, type TillItem, type WaitingCharge } from '@/home/model';
 import { DANA_STEPS, HOME_STATES, type HomeState } from '@/home/seed';
 import { WaitingSheet, type Milestone } from '@/home/WaitingSheet';
@@ -133,7 +133,8 @@ export default function HomePage() {
 
   if (!model) return null;
   const view = countsNow.data;
-  const withDrawer: HomeModel = seeded || drawerNow.loading ? model : { ...model, drawer: drawerPrompt(openSession ?? null, view ?? null, me, names) };
+  const canClose = mayCloseDay(session?.staff.role, shopSettings.data);
+  const withDrawer: HomeModel = seeded || drawerNow.loading ? model : { ...model, drawer: drawerPrompt(openSession ?? null, view ?? null, me, names, canClose) };
   const mine = shiftsNow.data?.find((s) => s.staffId === me);
   const withClock: HomeModel =
     !seeded && withDrawer.shift
@@ -189,7 +190,11 @@ export default function HomePage() {
       if (step.kind === 'open') setDrawerSheet({ k: 'open' });
       else if (step.kind === 'count') setDrawerSheet({ k: 'count', which: step.which });
       else if (step.kind === 'result') setDrawerSheet({ k: 'result' });
-      else if (step.kind === 'close') navigate(`/close${keep}`);
+      else if (step.kind === 'close') {
+        // Settings › Closing › Who can close: someone who can't is asked for the owner's sign-in.
+        if (canClose) navigate(`/close${keep}`);
+        else shiftActions.ownerSignIn();
+      }
       // 'wait': the panel already says the second count is someone else's.
     },
     onMarkReordered: (id) => navigate(`/inventory/${id}${seeded ? '?preview=1&screen=reorder' : ''}`),

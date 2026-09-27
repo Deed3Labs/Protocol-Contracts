@@ -18,6 +18,9 @@ import OnboardingPage from '@/pages/OnboardingPage';
 import InventoryPage from '@/pages/InventoryPage';
 import CloseDayPage from '@/pages/CloseDayPage';
 import { useLayout } from '@/lib/useBreakpoint';
+import { useMerchantApi } from '@/data/merchantApi';
+import { useApi } from '@/data/useApi';
+import { mayCloseDay } from '@/home/liveDrawer';
 
 // Dev only: every component in every state, at the three widths. `import.meta.env.DEV` is
 // statically false in a production build, so the route and this chunk fall out of it.
@@ -33,6 +36,19 @@ const Gallery = import.meta.env.DEV ? lazy(() => import('@/gallery/Gallery')) : 
 function OwnerOnly({ children }: { children: React.ReactNode }) {
   const { canSeeMoney } = useAuth();
   return canSeeMoney ? <>{children}</> : <Navigate to="/" replace />;
+}
+
+/**
+ * Close the day: owners and managers, and anyone on shift when Settings › Closing says so. The
+ * server holds the same rule; this only saves a counter a page that would refuse them.
+ */
+function CloserOnly({ children }: { children: React.ReactNode }) {
+  const { session, canSeeMoney } = useAuth();
+  const api = useMerchantApi();
+  const settings = useApi(() => (canSeeMoney ? Promise.resolve(null) : api.settings()), [canSeeMoney]);
+  if (canSeeMoney) return <>{children}</>;
+  if (settings.loading) return null;
+  return mayCloseDay(session?.staff.role, settings.data) ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 export default function App() {
@@ -125,13 +141,13 @@ export default function App() {
         <Route path="/inventory" element={<InventoryPage />} />
         <Route path="/inventory/:id" element={<InventoryPage />} />
         <Route path="/inventory/:id/:sub" element={<InventoryPage />} />
-        {/* Owners and managers close the day; the page itself says the rest. */}
+        {/* Who closes the day is the shop's call (Settings › Closing); the page itself says the rest. */}
         <Route
           path="/close"
           element={
-            <OwnerOnly>
+            <CloserOnly>
               <CloseDayPage />
-            </OwnerOnly>
+            </CloserOnly>
           }
         />
         <Route
