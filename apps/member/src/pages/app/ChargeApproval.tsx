@@ -79,8 +79,13 @@ export interface ChargeApprovalProps {
   busy?: boolean;
   error?: string | null;
   onApprove: () => void;
-  /** The sheet's close. Closing a charge at the counter is declining it for now. */
+  /** Decline it: the button under the pay button. Nothing is charged, and the shop sees it at once. */
   onDecline: () => void;
+  /**
+   * The sheet's close: leave it waiting (Shop charges and the banner find it again). It used to
+   * decline, which a member closing the screen to think didn't mean. Without it, close declines.
+   */
+  onLeave?: () => void;
   /** Set once approved over time — the screen becomes the confirmation rather than navigating away. */
   approved?: boolean;
   /**
@@ -251,9 +256,17 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
     error = null,
     onApprove,
     onDecline,
+    onLeave,
     approved = false,
     appHandoffCode = null,
   } = props;
+  const close = onLeave ?? onDecline;
+  // Under the pay button on every screen that asks: plain, full width, so it can't be mistaken for paying.
+  const declineButton = (disabled: boolean) => (
+    <Btn lg className="mt-s1 w-full" onClick={onDecline} disabled={disabled}>
+      Decline
+    </Btn>
+  );
   const [ownMode, setOwnMode] = useState<PayMode>('choose');
   const mode = props.mode ?? ownMode;
   const setMode = (m: PayMode) => (props.onModeChange ? props.onModeChange(m) : setOwnMode(m));
@@ -376,7 +389,7 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
     const working = busy || Boolean(payingLabel);
     return frame(
       <>
-        <Top title="Pay now" onBack={() => setMode('choose')} onClose={onDecline} closeLabel="Not now" busy={working} />
+        <Top title="Pay now" onBack={() => setMode('choose')} onClose={close} closeLabel="Not now" busy={working} />
         <CMain>
           {head}
           <p className="c-label c-pc-q">Pay from</p>
@@ -424,6 +437,7 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
         <CFoot>
           {errorLine}
           {short != null ? (
+            <>
             <div className="c-pc-pair">
               <Btn lg primary={overTimeOff} onClick={onAddMoney}>
                 Add money
@@ -434,11 +448,14 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
                 </Btn>
               )}
             </div>
+            {declineButton(working)}
+            </>
           ) : (
             <>
               <Btn primary lg className="mt-s2" onClick={onPayNow} disabled={!covers || working}>
                 {payingLabel ?? `Pay ${usd(amount)}`}
               </Btn>
+              {declineButton(working)}
               {!overTimeOff && (
                 <p className="c-det c-pc-alt">
                   <button type="button" className="c-pc-link" disabled={working} onClick={() => setMode('over')}>
@@ -457,7 +474,7 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
   if (mode === 'over' && !overTimeOff) {
     return frame(
       <>
-        <Top title="Pay over time" onBack={() => setMode('choose')} onClose={onDecline} closeLabel="Not now" busy={busy} />
+        <Top title="Pay over time" onBack={() => setMode('choose')} onClose={close} closeLabel="Not now" busy={busy} />
         <CMain>
           {head}
           <p className="c-label c-pc-q">Clear it in</p>
@@ -470,6 +487,7 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
           <Btn primary lg className="mt-s2" onClick={onApprove} disabled={busy}>
             {busy ? 'One moment…' : 'Approve'}
           </Btn>
+          {declineButton(busy)}
           <p className="c-det c-pc-alt">
             <button type="button" className="c-pc-link" disabled={busy} onClick={() => setMode('now')}>
               Pay now instead
@@ -501,7 +519,7 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
   const inWords = offered.length > 1 ? `${offered.slice(0, -1).join(', ')} or ${offered[offered.length - 1]}` : String(offered[0] ?? '');
   return frame(
     <>
-      <Top title="Pay a shop" onClose={onDecline} closeLabel="Not now" busy={busy} />
+      <Top title="Pay a shop" onClose={close} closeLabel="Not now" busy={busy} />
       <CMain>
         {head}
         <p className="c-label c-pc-q">How do you want to pay?</p>
@@ -550,6 +568,7 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
           {handoff}
         </div>
         {errorLine}
+        {declineButton(busy)}
       </CFoot>
     </>,
   );
