@@ -6,6 +6,7 @@ import { chainId } from './chargeService.js';
 import { chargeStore, type ChargeRow } from './chargeStore.js';
 import { notificationStore } from './notificationStore.js';
 import { usdcAddressFor } from './savingsGaslessService.js';
+import { learnLogSpan, logSpan } from './chain/logScan.js';
 
 /*
  * Paying a shop now, from the member's own Clear cash.
@@ -261,10 +262,18 @@ async function findPayment(charge: ChargeRow): Promise<string | null> {
   const back = Math.min(Math.ceil(seconds / 2) + 150, 43_200);
   const token = usdcAddressFor(charge.chainId);
   const topics = [TRANSFER, ethers.zeroPadValue(charge.memberWallet, 32), ethers.zeroPadValue(charge.merchantAddress, 32)];
-  const STEP = 2_000;
-  for (let to = latest.number; to > latest.number - back; to -= STEP) {
-    const fromBlock = Math.max(latest.number - back, to - STEP + 1, 0);
-    const logs = await rpc.getLogs({ address: token, topics, fromBlock, toBlock: to });
+  // Pages the provider will answer (logSpan learns a smaller cap from a refusal, and the page is asked again).
+  for (let to = latest.number; to > latest.number - back; ) {
+    const step = logSpan(charge.chainId);
+    const fromBlock = Math.max(latest.number - back, to - step + 1, 0);
+    let logs: ethers.Log[];
+    try {
+      logs = await rpc.getLogs({ address: token, topics, fromBlock, toBlock: to });
+    } catch (error) {
+      if (learnLogSpan(charge.chainId, error, step)) continue;
+      throw error;
+    }
+    to = fromBlock - 1;
     for (const log of logs) {
       const receipt = await rpc.getTransactionReceipt(log.transactionHash);
       if (receipt && (await receiptPays(charge, receipt))) return log.transactionHash.toLowerCase();

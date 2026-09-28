@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeEach } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { scanLogs, logStartBlock, resetLogScan } from './logScan.js';
+import { learnLogSpan, logSpan, scanLogs, logStartBlock, resetLogScan } from './logScan.js';
 import { resetReadCache } from './readCache.js';
 
 const code = (p: string) =>
@@ -101,5 +101,61 @@ describe('the earn reader no longer asks for the whole chain', () => {
     // Zero reads to a member as "you earned nothing", which is a claim, not an absence of one.
     const src = code('earnReader.ts');
     expect(src).toContain('redeemedGains !== null');
+  });
+});
+
+describe('a provider that allows fewer blocks than 10,000', () => {
+  beforeEach(() => { resetLogScan(); resetReadCache(); });
+  // The refusal the dev API's logs showed, wrapped the way ethers wraps it.
+  const refusal = (cap: string) =>
+    Object.assign(new Error(`could not coalesce error (error={ "code": -32614, "message": "eth_getLogs is limited to a ${cap} range" })`), { code: 'UNKNOWN_ERROR' });
+
+  function cappedContract(head: number, cap: number, calls: Call[]) {
+    return {
+      runner: { getBlockNumber: async () => head },
+      queryFilter: async (_f: unknown, from: number, to: number) => {
+        if (to - from + 1 > cap) throw refusal(cap.toLocaleString('en-US'));
+        calls.push({ from, to });
+        return [];
+      },
+      getAddress: async () => '0xpool',
+    } as never;
+  }
+
+  test('learns the cap from the refusal, asks again smaller, and misses no block', async () => {
+    const calls: Call[] = [];
+    const head = 45_799_000 + 5_000;
+    await scanLogs('k', cappedContract(head, 1_000, calls), 'Ev' as never, 84532);
+    for (const c of calls) expect(c.to - c.from + 1).toBeLessThanOrEqual(1_000);
+    // Contiguous, first block to head.
+    expect(calls[0]!.from).toBe(45_799_000);
+    expect(calls[calls.length - 1]!.to).toBe(head);
+    for (let i = 1; i < calls.length; i++) expect(calls[i]!.from).toBe(calls[i - 1]!.to + 1);
+    // And later scans start at the size that works.
+    expect(logSpan(84532)).toBe(900);
+  });
+
+  test('which refusals are about the range', () => {
+    expect(learnLogSpan(1, refusal('1,000'), 9_500)).toBe(true);
+    expect(logSpan(1)).toBe(900);
+    expect(learnLogSpan(2, new Error('query exceeds max block range 2000'), 9_500)).toBe(true);
+    expect(logSpan(2)).toBe(1_800);
+    // No number stated: halve it.
+    expect(learnLogSpan(3, new Error('eth_getLogs block range too large'), 9_500)).toBe(true);
+    expect(logSpan(3)).toBe(4_750);
+    // Not about the range: not a reason to shrink, so it's thrown as before.
+    expect(learnLogSpan(4, new Error('rate limited'), 9_500)).toBe(false);
+    expect(logSpan(4)).toBe(9_500);
+  });
+
+  test('any other failure is thrown, not taken as an empty page', async () => {
+    const broken = {
+      runner: { getBlockNumber: async () => 45_799_100 },
+      queryFilter: async () => {
+        throw new Error('connection reset');
+      },
+      getAddress: async () => '0xpool',
+    } as never;
+    await expect(scanLogs('k', broken, 'Ev' as never, 84532)).rejects.toThrow('connection reset');
   });
 });
