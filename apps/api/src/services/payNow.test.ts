@@ -23,6 +23,8 @@ const pool = {
   },
 };
 mock.module('../config/postgres.js', () => ({ getPostgresPool: () => pool, getPayPool: () => pool, closePostgresPool: async () => {} }));
+// A test key for members' private data (email, phone), which is stored encrypted.
+process.env.MEMBER_PRIVATE_DATA_MASTER_KEY ||= `hex:${'11'.repeat(32)}`;
 
 const { chargeStore } = await import('./chargeStore');
 const { checkReportedPayNow, quotePaidNow, receiptPays } = await import('./payNowService');
@@ -564,5 +566,19 @@ describe('the counter’s poll confirms a reported payment (checkReportedPayNow)
     let asked = false;
     expect(await checkReportedPayNow((await chargeStore.get(code))!, async () => ((asked = true), null))).toBeNull();
     expect(asked).toBe(false);
+  });
+});
+
+describe('a member’s contact, for a charge’s text or email (getContactByWallet)', () => {
+  test('email and phone from their encrypted private profile; nothing once they opt out, or for a stranger', async () => {
+    const { memberStore } = await import('./memberStore');
+    const W = '0x5555555555555555555555555555555555555555';
+    const who = 'did:privy:contact-lookup-test';
+    await memberStore.bootstrapMember({ authSubject: who, primaryWallet: W });
+    await memberStore.updateProfileByAuthSubject(who, { email: 'ana@example.com', phone: '+19095550177' });
+    expect(await memberStore.getContactByWallet(W)).toEqual({ email: 'ana@example.com', phone: '+19095550177' });
+    await memberStore.updateProfileByAuthSubject(who, { notificationsOptIn: false });
+    expect(await memberStore.getContactByWallet(W)).toBeNull();
+    expect(await memberStore.getContactByWallet('0x6666666666666666666666666666666666666666')).toBeNull();
   });
 });
