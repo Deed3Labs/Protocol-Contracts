@@ -4,6 +4,10 @@ import { registerServiceWorker } from '@/lib/pwa';
 import { ReceiptPage } from '@/receipt/ReceiptPage';
 import { applyAppearance, readAppearance } from '@/shell/appearance';
 import './index.css';
+import { stopIosFieldZoom } from '@/lib/iosViewport';
+
+// Before anything can be tapped: iOS's zoom into a field, stopped without stopping pinch-to-zoom.
+stopIosFieldZoom();
 
 registerServiceWorker();
 
