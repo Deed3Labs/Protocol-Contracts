@@ -2485,11 +2485,18 @@ export class MemberStore {
     await this.ensureReady();
     const addr = normalizeWalletAddress(walletAddress);
     const pool = this.mustPool();
+    /*
+     * The member by wallet, and whether they'll take notifications (the public profile; no profile
+     * yet is the default, which is yes). Email and phone are in the private profile, which is
+     * encrypted: they're read through loadPrivateProfile, never as columns. This used to select
+     * p.email / p.phone / p.notifications_opt_in from the private table, none of which exist, so
+     * every charge and refund text or email failed ("column p.email does not exist").
+     */
     const result = await withRetry(async () => {
-      return pool.query<{ email: string | null; phone: string | null; notifications_opt_in: boolean }>(
-        `SELECT p.email, p.phone, p.notifications_opt_in
-           FROM ${TABLE_PROFILE_PRIVATE} p
-           JOIN ${TABLE_MEMBERS} m ON m.id = p.member_id
+      return pool.query<{ member_id: number; notifications_opt_in: boolean | null }>(
+        `SELECT m.id AS member_id, pub.notifications_opt_in
+           FROM ${TABLE_MEMBERS} m
+           LEFT JOIN ${TABLE_PROFILE_PUBLIC} pub ON pub.member_id = m.id
           WHERE m.primary_wallet = $1
              OR m.id = (SELECT member_id FROM ${TABLE_WALLETS}
                          WHERE wallet_address = $1 AND status = 'ACTIVE' LIMIT 1)
@@ -2498,8 +2505,10 @@ export class MemberStore {
       );
     });
     const row = result.rows[0];
-    if (!row || !row.notifications_opt_in) return null;
-    return { email: row.email ?? null, phone: row.phone ?? null };
+    if (!row || row.notifications_opt_in === false) return null;
+    const { privateProfile } = await this.loadPrivateProfile(Number(row.member_id), false);
+    if (!privateProfile) return null;
+    return { email: privateProfile.email ?? null, phone: privateProfile.phone ?? null };
   }
 
   private async resolveMemberByAuthInput(input: ResolveMemberAuthInput): Promise<MemberRecord | null> {
