@@ -231,6 +231,22 @@ export async function confirmPayNow(code: string, member: string, txHash: string
 }
 
 /**
+ * A paid-now charge whose payment is reported but not yet confirmed, checked now: the counter's
+ * poll asks, so the tablet turns to approved seconds after the payment lands rather than at the next
+ * sweep (reconcilePayNow, every minute). Mined and pays: paid. Anything else: left as it is (the
+ * sweep still owns forgetting a bad hash and searching for a lapsed one). Null when nothing changed.
+ */
+export async function checkReportedPayNow(
+  charge: ChargeRow,
+  readReceipt: (c: ChargeRow) => Promise<ethers.TransactionReceipt | null> = (c) => chainProvider(c.chainId).getTransactionReceipt(c.txHash!),
+): Promise<ChargeRow | null> {
+  if (charge.status !== 'resolving' || !charge.payNow || !charge.txHash) return null;
+  const receipt = await readReceipt(charge);
+  if (!receipt || !(await receiptPays(charge, receipt))) return null;
+  return paid(charge, charge.txHash);
+}
+
+/**
  * The payment, looked for on chain: a USDC transfer from the member to the shop since the hold
  * began, in a transaction that also pays Clear. For a hold whose app never reported back.
  */

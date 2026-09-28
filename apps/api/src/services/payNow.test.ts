@@ -25,7 +25,7 @@ const pool = {
 mock.module('../config/postgres.js', () => ({ getPostgresPool: () => pool, getPayPool: () => pool, closePostgresPool: async () => {} }));
 
 const { chargeStore } = await import('./chargeStore');
-const { quotePaidNow, receiptPays } = await import('./payNowService');
+const { checkReportedPayNow, quotePaidNow, receiptPays } = await import('./payNowService');
 const { closePlan } = await import('./refundSettlement');
 
 const MEMBER = '0x1111111111111111111111111111111111111111';
@@ -528,5 +528,41 @@ describe('telling Clear’s team when money needs a person', async () => {
     delete process.env.OPS_ALERT_EMAIL;
     await alertOps({ key: 'x:1', subject: 'S', body: 'B' });
     expect(mails).toHaveLength(0);
+  });
+});
+
+describe('the counter’s poll confirms a reported payment (checkReportedPayNow)', () => {
+  const T = ethers.id('Transfer(address,address,uint256)');
+  const pad = (a: string) => ethers.zeroPadValue(a, 32);
+  const HASH = `0x${'ab'.repeat(32)}`;
+  const transfer = (to: string, cents: number) => ({ address: USDC, topics: [T, pad(MEMBER), pad(to)], data: ethers.toBeHex(BigInt(cents) * 10_000n, 32) });
+  const onChain = (logs: object[] | null) => async () =>
+    logs ? ({ status: 1, logs, getBlock: async () => ({ timestamp: Math.floor(Date.now() / 1000) }) } as any) : null;
+  async function reported(): Promise<string> {
+    const code = await raise();
+    await chargeStore.holdForPayNow(code, MEMBER, QUOTE);
+    await chargeStore.markSubmitted(code, HASH);
+    return code;
+  }
+
+  test('mined and paying: approved, paid now, at once (not at the next minute’s sweep)', async () => {
+    const code = await reported();
+    const done = await checkReportedPayNow((await chargeStore.get(code))!, onChain([transfer(SHOP, 92_825), transfer(CLEAR, 1_175)]));
+    expect(done).toMatchObject({ status: 'approved', paidNow: true, txHash: HASH });
+    expect((await chargeStore.get(code))!.status).toBe('approved');
+  });
+
+  test('not mined yet, or not this payment: nothing changes (the sweep still owns those)', async () => {
+    const code = await reported();
+    expect(await checkReportedPayNow((await chargeStore.get(code))!, onChain(null))).toBeNull();
+    expect(await checkReportedPayNow((await chargeStore.get(code))!, onChain([transfer(SHOP, 100)]))).toBeNull();
+    expect((await chargeStore.get(code))!.status).toBe('resolving');
+  });
+
+  test('only a held charge with a reported payment is asked about', async () => {
+    const code = await raise();
+    let asked = false;
+    expect(await checkReportedPayNow((await chargeStore.get(code))!, async () => ((asked = true), null))).toBeNull();
+    expect(asked).toBe(false);
   });
 });

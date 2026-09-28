@@ -432,13 +432,19 @@ export default function NewChargePage() {
   };
 
   // The member's answer, followed on the tender (and how far they've got, on the charge itself).
+  // Checks that keep failing are said, not swallowed: "waiting" while the tablet can't ask would
+  // hide a charge that has in fact gone through.
+  const [syncTrouble, setSyncTrouble] = useState(false);
   useEffect(() => {
     if (preview || !tender || tender.method !== 'clear' || !['code', 'waiting', 'theirs', 'phone'].includes(f.screen)) return;
     let stopped = false;
+    let failures = 0;
     const tick = async () => {
       try {
         const t = await merchant.syncTender(tender.id);
         if (stopped) return;
+        failures = 0;
+        setSyncTrouble(false);
         setTender(t);
         if (t.clearChargeCode) {
           const c = await api.watchCharge(t.clearChargeCode).catch(() => null);
@@ -453,7 +459,10 @@ export default function NewChargePage() {
         } else if (t.status === 'declined') set({ sheet: { k: 'fail', kind: 'declined' } });
         else if (t.status === 'cancelled') set({ sheet: { k: 'fail', kind: 'expired' } });
       } catch {
-        // A poll that fails changes nothing; the payment is safe on the server and the next tick asks again.
+        // A poll that fails changes nothing; the payment is safe on the server and the next tick asks
+        // again. Three in a row (about 9s) and the screen says it can't check.
+        failures += 1;
+        if (!stopped && failures >= 3) setSyncTrouble(true);
       }
     };
     void tick();
@@ -899,7 +908,13 @@ export default function NewChargePage() {
           amountCents: shownCents,
           sentTo: sentVia ? `Sent to ${sentVia.label}` : undefined,
           status: approved ? 'approved' : 'waiting',
-          waitingLine: !approved && live?.payingNow ? 'Paying now, from their Clear cash' : undefined,
+          waitingLine: approved
+            ? undefined
+            : syncTrouble
+              ? 'Can’t reach Clear to check right now. Still trying; the payment is safe either way.'
+              : live?.payingNow
+                ? 'Paying now, from their Clear cash'
+                : undefined,
           howPaid: !approved
             ? undefined
             : live?.paidNow

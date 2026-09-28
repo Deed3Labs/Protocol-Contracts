@@ -4,6 +4,7 @@ import { chargeStore } from '../../chargeStore.js';
 import type { Db } from '../../../db/db.js';
 import type { ClearCharges } from './payments.js';
 import { memberAppUrl } from '../../memberAppUrl.js';
+import { checkReportedPayNow } from '../../payNowService.js';
 
 /**
  * The Clear charge flow, as the merchant back office's Clear tenders use it: the same
@@ -18,8 +19,12 @@ export function clearChargesFor(db: Db): ClearCharges {
       return r.ok && r.charge ? { ok: true, code: r.charge.code } : { ok: false, reason: r.reason ?? 'the charge could not be raised' };
     },
     async status(code) {
-      const charge = await chargeStore.get(code);
+      let charge = await chargeStore.get(code);
       if (!charge) return null;
+      // Paid now and reported, not yet confirmed: check it on the counter's poll, not the minute's sweep.
+      if (charge.status === 'resolving' && charge.payNow && charge.txHash) {
+        charge = (await checkReportedPayNow(charge).catch(() => null)) ?? charge;
+      }
       switch (charge.status) {
         case 'pending':
         case 'resolving':
