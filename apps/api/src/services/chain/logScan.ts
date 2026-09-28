@@ -24,6 +24,36 @@ import { coalesce } from './readCache.js';
 const MAX_SPAN = 9_500;
 
 /*
+ * Not every provider allows 10,000. The API falls back between RPCs, and one caps eth_getLogs at
+ * 1,000 blocks ("eth_getLogs is limited to a 1,000 range"): every page of 9,500 was refused, on every
+ * scan. So the cap is learned from the refusal, per chain, and the page asked again at the smaller
+ * size -- nothing is skipped, and later scans start at the size that works.
+ */
+const spanByChain = new Map<number, number>();
+const MIN_SPAN = 100;
+
+/** How many blocks to ask for at once on this chain: what has worked, or the provider's usual cap. */
+export function logSpan(chainId: number): number {
+  return spanByChain.get(chainId) ?? MAX_SPAN;
+}
+
+/**
+ * A refusal that was about the range, learned from: the stated cap (less a margin), or half the span
+ * when it names none. True when there's a smaller span to try; false when this wasn't a range refusal.
+ */
+export function learnLogSpan(chainId: number, error: unknown, triedSpan: number): boolean {
+  const text = error instanceof Error ? `${error.message} ${String((error as { error?: unknown }).error ?? '')}` : String(error);
+  const stated = /limited to (?:a )?([\d,]+)[- ](?:block )?range|max(?:imum)? (?:block )?range (?:of |is )?([\d,]+)|range (?:limit|exceeds?)[^\d]{0,20}([\d,]+)/i.exec(text);
+  const aboutRange = stated || /block range|getLogs.*range|range.*too (?:large|wide)|too many blocks/i.test(text);
+  if (!aboutRange) return false;
+  const cap = stated ? Number((stated[1] ?? stated[2] ?? stated[3] ?? '').replace(/,/g, '')) : 0;
+  const next = cap > 0 ? Math.floor(cap * 0.9) : Math.floor(triedSpan / 2);
+  if (!(next >= MIN_SPAN && next < triedSpan)) return false;
+  spanByChain.set(chainId, next);
+  return true;
+}
+
+/*
  * Where to start looking, per chain.
  *
  * Scanning from genesis is 46 million blocks and thousands of requests, so a start block is not an
@@ -82,12 +112,21 @@ export async function scanLogs(
   if (from > latestBlock) return known as (ethers.Log | ethers.EventLog)[];
 
   const found: ethers.Log[] = [];
-  for (let start = from; start <= latestBlock; start += MAX_SPAN) {
-    const end = Math.min(start + MAX_SPAN - 1, latestBlock);
-    // Not caught here: a partial scan cached as complete would under-report gains for good, and the
-    // caller already treats a failure as "no figure" rather than "zero".
-    const page = await contract.queryFilter(filter, start, end);
+  for (let start = from; start <= latestBlock; ) {
+    const span = logSpan(chainId);
+    const end = Math.min(start + span - 1, latestBlock);
+    let page: (ethers.Log | ethers.EventLog)[];
+    try {
+      page = await contract.queryFilter(filter, start, end);
+    } catch (error) {
+      // Refused for the range: ask for the same blocks again, smaller. Anything else is not caught
+      // here: a partial scan cached as complete would under-report gains for good, and the caller
+      // already treats a failure as "no figure" rather than "zero".
+      if (learnLogSpan(chainId, error, span)) continue;
+      throw error;
+    }
     found.push(...page);
+    start = end + 1;
   }
 
   const events = [...known, ...found];
@@ -98,4 +137,5 @@ export async function scanLogs(
 /** Tests only. */
 export function resetLogScan(): void {
   cache.clear();
+  spanByChain.clear();
 }
