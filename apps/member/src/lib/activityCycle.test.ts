@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { categoriesFrom, cycleSpendFrom, groupsFromMerchants, merchantsFrom, type SpendRow } from './activityCycle';
-import type { CardTransaction } from '@/utils/apiClient';
+import { categoriesFrom, cycleSpendFrom, groupsFromMerchants, merchantsFrom, networkSpend, type SpendRow } from './activityCycle';
+import type { CardTransaction, MemberCharge } from '@/utils/apiClient';
 
 const START = Date.parse('2026-10-01T00:00:00Z');
 const at = (day: number) => new Date(START + day * 86_400_000).toISOString();
@@ -131,5 +131,46 @@ describe('a charge that was given back', () => {
     const tip: CardTransaction = { ...card('diner', 2, 5_000, [['cash', 5_800]], '5812'), heldCents: 5_800 };
     const merchant = merchantsFrom([tip], rows, START).find((m) => m.name === 'diner');
     expect(merchant?.amount).toBe(58);
+  });
+});
+
+describe('paying shops with Clear counts toward the cycle', () => {
+  const at = (ms: number) => new Date(ms).toISOString();
+  const charge = (code: string, over: Partial<MemberCharge>): MemberCharge => ({
+    code, merchantName: 'MiMi Crack', amountCents: 5000, status: 'approved', paidNow: true, splitInto: null,
+    createdAt: at(START + 3_600_000), resolvedAt: at(START + 3_600_000), expiresAt: at(START + 86_400_000), payingNow: false, ...over,
+  });
+  const paidNow = charge('N1', {});
+  const overTime = charge('O1', { paidNow: false, splitInto: 4, amountCents: 94000, merchantName: 'Mike’s Tire' });
+  const refunded = charge('R1', { status: 'refunded', amountCents: 1000 });
+  const declined = charge('D1', { status: 'declined', amountCents: 2000 });
+  const before = charge('B1', { resolvedAt: at(START - 86_400_000), amountCents: 7000 });
+  // The paid-now charge's two legs, as the chain lists them, and a send to another member.
+  const chain = [
+    { id: '0xabc-0', name: 'Sent USDC', ts: START + 3_600_000, amount: -48.8, internal: false, category: 'Transfer', source: '0xme' },
+    { id: '0xabc-1', name: 'Sent USDC', ts: START + 3_600_000, amount: -1.2, internal: false, category: 'Transfer', source: '0xme' },
+    { id: '0xdef-0', name: 'To @diegor', ts: START + 7_200_000, amount: -20, internal: false, category: 'Transfer', source: '0xme' },
+    { id: 'bank-1', name: 'To checking', ts: START + 7_200_000, amount: -100, internal: false, category: 'Transfer', source: 'bank' },
+  ];
+  const clear = { charges: [paidNow, overTime, refunded, declined, before], paidNowTx: ['0xABC'] };
+
+  test('paid now is cash, over time is credit; refunded, declined and last cycle count nothing; the legs aren’t counted twice', () => {
+    const spend = cycleSpendFrom([], chain, { startMs: START, daysLeft: 6, carryCost: 0 }, clear);
+    // Cash: $50 paid now + the $20 send + the $100 bank move (still money out of cash). Credit: $940.
+    expect(spend.fromCash).toBeCloseTo(50 + 20 + 100, 2);
+    expect(spend.fromCredit).toBeCloseTo(940, 2);
+    expect(spend.spent).toBeCloseTo(1110, 2);
+  });
+
+  test('a group of their own in the categories, and each shop by name', () => {
+    const groups = categoriesFrom([], chain, START, 3, clear);
+    expect(groups.find((g) => g.label === 'Clear partners')?.amount).toBeCloseTo(990, 2);
+    const merchants = merchantsFrom([], chain, START, clear);
+    expect(merchants.find((m) => m.name === 'Mike’s Tire')).toMatchObject({ group: 'Clear partners', amount: 940, payments: 1 });
+    expect(merchants.find((m) => m.name === 'MiMi Crack')).toMatchObject({ group: 'Clear partners', amount: 50 });
+  });
+
+  test('kept in the network: shops paid with Clear and members sent to, not banks or the paid-now legs', () => {
+    expect(networkSpend(chain, clear, START)).toEqual({ kept: 50 + 940 + 20, payments: 3 });
   });
 });
