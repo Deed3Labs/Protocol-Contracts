@@ -10,7 +10,11 @@ initAnalytics();
 // Buffer polyfill for XMTP — must be set before App/AppKit/XMTP modules load, so App and
 // AppKitProvider are imported dynamically below (after this runs).
 import { Buffer } from 'buffer'
+import { stopIosFieldZoom } from '@/lib/iosViewport'
 globalThis.Buffer = Buffer
+
+// Before anything can be tapped: iOS's zoom into a field, stopped without stopping pinch-to-zoom.
+stopIosFieldZoom()
 
 // Register service worker for background sync
 if (import.meta.env.PROD) {
