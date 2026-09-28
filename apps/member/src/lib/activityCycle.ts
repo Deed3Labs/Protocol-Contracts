@@ -1,6 +1,6 @@
 import { CATEGORY_LABEL, categoryForMcc } from './mccCategory';
 import type { CycleSpend, MerchantSpend, SpendCategory } from './clearModel';
-import type { CardTransaction } from '@/utils/apiClient';
+import type { CardTransaction, MemberCharge } from '@/utils/apiClient';
 
 /*
  * What the cycle was made of, from what the member actually spent.
@@ -17,6 +17,8 @@ import type { CardTransaction } from '@/utils/apiClient';
 
 /** The bit of an activity row this needs. Deliberately narrow, so a test does not need the hook. */
 export interface SpendRow {
+  /** The chain item's id, which carries its transaction hash. */
+  id?: string;
   name: string;
   ts: number;
   amount: number;
@@ -38,12 +40,49 @@ const cardAt = (tx: CardTransaction) => Date.parse(tx.at);
  */
 const cardSpend = (tx: CardTransaction) => Math.max(0, tx.heldCents ?? tx.amountCents) / 100;
 
+/**
+ * Kept in the network (Send): what the member paid Clear partners (now or over time) and sent to
+ * other members this cycle, and in how many payments. A send is a chain transfer out that isn't to
+ * their own accounts, a bank, or a shop paid now (those are counted as the shop's).
+ */
+export function networkSpend(rows: (SpendRow & { category?: string; source?: string })[], clear: ClearSpend | undefined, startMs: number): { kept: number; payments: number } {
+  const shops = clearShopSpend(clear, startMs);
+  const sends = otherOutflow(rows, startMs, clear).filter((r) => r.category === 'Transfer' && r.source !== 'bank');
+  return {
+    kept: shops.reduce((s, c) => s + c.amount, 0) + sends.reduce((s, r) => s - r.amount, 0),
+    payments: shops.length + sends.length,
+  };
+}
+
 /** The catch-all group, named once. */
 export const REST = 'Everything else';
 
-/** Outflows that did not come from a card, which are cash by definition. */
-function otherOutflow(rows: SpendRow[], startMs: number): SpendRow[] {
-  return rows.filter((row) => !row.internal && row.amount < 0 && inCycle(row.ts, startMs));
+/**
+ * Paying a shop with Clear, from the member's charges: the third source, and the one the chain can't
+ * tell apart. Paid now is cash (Ready to allocate); over time is credit, and moves none of the
+ * member's own money, so it was nowhere in these totals. Only what stands: a refunded, declined,
+ * expired or cancelled charge cost nothing.
+ */
+export interface ClearSpend {
+  charges: MemberCharge[];
+  /** The paid-now transactions, whose transfers the chain lists too: left out there, counted here. */
+  paidNowTx: string[];
+}
+
+export const CLEAR_PARTNERS = 'Clear partners';
+
+export function clearShopSpend(clear: ClearSpend | undefined, startMs: number): { name: string; amount: number; source: 'cash' | 'credit' }[] {
+  return (clear?.charges ?? [])
+    .filter((c) => c.status === 'approved' || c.status === 'disputed')
+    .filter((c) => inCycle(Date.parse(c.resolvedAt ?? c.createdAt), startMs))
+    .map((c) => ({ name: c.merchantName, amount: c.amountCents / 100, source: c.paidNow ? ('cash' as const) : ('credit' as const) }));
+}
+
+/** Outflows that did not come from a card, which are cash by definition -- less a paid-now charge's transfers. */
+function otherOutflow<T extends SpendRow>(rows: T[], startMs: number, clear?: ClearSpend): T[] {
+  const folded = (clear?.paidNowTx ?? []).map((h) => h.toLowerCase());
+  const isPaidNow = (row: T) => Boolean(row.id) && folded.some((h) => row.id!.toLowerCase().includes(h));
+  return rows.filter((row) => !row.internal && row.amount < 0 && inCycle(row.ts, startMs) && !isPaidNow(row));
 }
 
 /**
@@ -57,6 +96,7 @@ export function cycleSpendFrom(
   cards: CardTransaction[],
   rows: SpendRow[],
   { startMs, daysLeft, carryCost }: { startMs: number; daysLeft: number; carryCost: number },
+  clear?: ClearSpend,
 ): CycleSpend {
   let fromCash = 0;
   let fromCredit = 0;
@@ -68,7 +108,11 @@ export function cycleSpendFrom(
       else fromCredit += amount;
     }
   }
-  for (const row of otherOutflow(rows, startMs)) fromCash += -row.amount;
+  for (const row of otherOutflow(rows, startMs, clear)) fromCash += -row.amount;
+  for (const c of clearShopSpend(clear, startMs)) {
+    if (c.source === 'cash') fromCash += c.amount;
+    else fromCredit += c.amount;
+  }
 
   return { spent: fromCash + fromCredit, daysLeft, fromCash, fromCredit, carryCost };
 }
@@ -79,7 +123,7 @@ export function cycleSpendFrom(
  * A card purchase is grouped by the merchant category code the network sent; anything else has no
  * merchant and lands in the catch-all rather than being given a category it does not have.
  */
-export function categoriesFrom(cards: CardTransaction[], rows: SpendRow[], startMs: number, keep = 3): SpendCategory[] {
+export function categoriesFrom(cards: CardTransaction[], rows: SpendRow[], startMs: number, keep = 3, clear?: ClearSpend): SpendCategory[] {
   const totals = new Map<string, number>();
   const add = (label: string, amount: number) => totals.set(label, (totals.get(label) ?? 0) + amount);
 
@@ -87,7 +131,9 @@ export function categoriesFrom(cards: CardTransaction[], rows: SpendRow[], start
     if (!inCycle(cardAt(tx), startMs)) continue;
     add(groupOf(tx.mcc), cardSpend(tx));
   }
-  for (const row of otherOutflow(rows, startMs)) add(REST, -row.amount);
+  for (const row of otherOutflow(rows, startMs, clear)) add(REST, -row.amount);
+  // Shops paid with Clear have no card category; they're a group of their own, not "everything else".
+  for (const c of clearShopSpend(clear, startMs)) add(CLEAR_PARTNERS, c.amount);
 
   const named = [...totals.entries()]
     .filter(([label]) => label !== REST)
@@ -112,7 +158,7 @@ function groupOf(mcc: string | null): string {
  * Change groups works per merchant, not per group — nobody wants to rename Groceries, they want
  * Costco out of Everything else — so this is the list that sheet is built on.
  */
-export function merchantsFrom(cards: CardTransaction[], rows: SpendRow[], startMs: number): MerchantSpend[] {
+export function merchantsFrom(cards: CardTransaction[], rows: SpendRow[], startMs: number, clear?: ClearSpend): MerchantSpend[] {
   const byName = new Map<string, MerchantSpend>();
   const add = (name: string, group: string, amount: number) => {
     const merchant = byName.get(name) ?? { name, group, payments: 0, amount: 0 };
@@ -125,7 +171,8 @@ export function merchantsFrom(cards: CardTransaction[], rows: SpendRow[], startM
     if (!inCycle(cardAt(tx), startMs)) continue;
     add(tx.name, groupOf(tx.mcc), cardSpend(tx));
   }
-  for (const row of otherOutflow(rows, startMs)) add(row.name, REST, -row.amount);
+  for (const row of otherOutflow(rows, startMs, clear)) add(row.name, REST, -row.amount);
+  for (const c of clearShopSpend(clear, startMs)) add(c.name, CLEAR_PARTNERS, c.amount);
 
   return [...byName.values()].sort((a, b) => b.amount - a.amount);
 }

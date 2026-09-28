@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import SendPage from './SendPage';
 import { useChargeHistory } from '@/hooks/useChargeHistory';
+import { useChargePayments } from '@/hooks/useChargePayments';
+import { useClearTransactions } from '@/hooks/useClearTransactions';
+import { useCycleStart } from '@/hooks/useCycleStart';
+import { networkSpend } from '@/lib/activityCycle';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { SEND_DAY_ONE } from '@/data/clearPlaceholder';
@@ -27,15 +31,29 @@ import type { Contact, PendingClaim } from '@/lib/clearModel';
 /**
  * Live Send — the member's own handle, their real contacts, and money still waiting to be claimed.
  *
- * Partners, the kept-in-network figure and the pay-from copy stay on placeholder: the first needs
- * a partner directory that does not exist yet, and the other two are cycle-level views that want
- * the credit route.
+ * Kept in the network is this cycle's Clear partner spending (paid now and over time, from their
+ * charges) and money sent to other members (from the chain). Partners and the pay-from copy stay on
+ * placeholder: the first needs a partner directory that does not exist yet.
  */
 export default function SendRoute() {
   const { address } = useAppKitAccount();
   // Shop charges, the page's last cell: the latest few, and the way to all of them.
   const charges = useChargeHistory(address);
-  return <SendPage data={useSendData()} charges={charges} />;
+  const chargePayments = useChargePayments(address);
+  const { items, loading } = useClearTransactions();
+  const startMs = useCycleStart(address);
+  const data = useSendData();
+  const network = networkSpend(
+    items,
+    { charges, paidNowTx: chargePayments.map((p) => p.txHash).filter((h): h is string => Boolean(h)) },
+    startMs,
+  );
+  return (
+    <SendPage
+      data={loading && network.payments === 0 ? data : { ...data, keptInNetwork: network.kept, networkPayments: network.payments }}
+      charges={charges}
+    />
+  );
 }
 
 /** The live Send data — shared with the full-screen code and the contacts list. */

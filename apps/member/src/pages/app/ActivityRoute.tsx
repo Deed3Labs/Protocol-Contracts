@@ -126,13 +126,21 @@ export default function ActivityRoute() {
     cycleRow && cycleRow.expiration > 0
       ? Math.max(0, Math.ceil((cycleRow.expiration * 1000 - Date.now()) / 86_400_000))
       : 0;
-  const cycleSpend = cycleSpendFrom(cards, items, {
-    startMs,
-    daysLeft,
-    carryCost: (credit?.term?.carryOwedCents ?? 0) / 100,
-  });
-  const categories = categoriesFrom(cards, items, startMs);
-  const merchants = merchantsFrom(cards, items, startMs);
+  // Shops paid with Clear count too: paid now as cash, over time as credit (and the paid-now transfers
+  // the chain also lists are left out there, so nothing is counted twice).
+  const clear = { charges, paidNowTx: chargePayments.map((p) => p.txHash).filter((h): h is string => Boolean(h)) };
+  const cycleSpend = cycleSpendFrom(
+    cards,
+    items,
+    {
+      startMs,
+      daysLeft,
+      carryCost: (credit?.term?.carryOwedCents ?? 0) / 100,
+    },
+    clear,
+  );
+  const categories = categoriesFrom(cards, items, startMs, 3, clear);
+  const merchants = merchantsFrom(cards, items, startMs, clear);
 
   const data = loading
     ? ACTIVITY_DAY_ONE
