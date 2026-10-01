@@ -3,6 +3,13 @@ import { getChargeHistory, type MemberCharge } from '@/utils/apiClient';
 import { onChainStale } from '@/lib/chainStale';
 import { useRemembered, walletKey } from '@/lib/rememberedState';
 
+/* Two readers on one page (Send's last cell and its At partners) share one request. */
+let inFlight: Promise<MemberCharge[] | null> | null = null;
+function readHistory(): Promise<MemberCharge[] | null> {
+  if (!inFlight) inFlight = getChargeHistory().finally(() => (inFlight = null));
+  return inFlight;
+}
+
 /**
  * Every charge the member has had, for Send, the Charges page and Activity. Remembered on the device
  * (the page shows the last list at once), read again after any move and whenever the app comes back
@@ -20,7 +27,7 @@ export function useChargeHistoryState(address: string | undefined): { charges: M
     if (!address) return;
     let cancelled = false;
     const read = () => {
-      void getChargeHistory().then((list) => {
+      void readHistory().then((list) => {
         if (cancelled) return;
         if (list) setCharges(list);
         setLoaded(true);

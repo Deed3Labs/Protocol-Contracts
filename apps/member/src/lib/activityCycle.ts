@@ -40,6 +40,11 @@ const cardAt = (tx: CardTransaction) => Date.parse(tx.at);
  */
 const cardSpend = (tx: CardTransaction) => Math.max(0, tx.heldCents ?? tx.amountCents) / 100;
 
+/** At partners (under the member's code): what they paid Clear partners this cycle, now or over time. */
+export function partnerSpend(charges: MemberCharge[], startMs: number): number {
+  return clearShopSpend({ charges, paidNowTx: [] }, startMs).reduce((s, c) => s + c.amount, 0);
+}
+
 /**
  * Kept in the network (Send): what the member paid Clear partners (now or over time) and sent to
  * other members this cycle, and in how many payments. A send is a chain transfer out that isn't to

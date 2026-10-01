@@ -5,7 +5,7 @@ import { keepLastGood } from '@/lib/keepLastGood';
 import { useRemembered, walletKey } from '@/lib/rememberedState';
 import { cycleStartOf } from '@/lib/creditFigures';
 
-export { cycleStartOf, partnerCreditOf } from '@/lib/creditFigures';
+export { cycleStartOf } from '@/lib/creditFigures';
 
 /*
  * Two readers on one page (Send reads the cycle and the partner credit) share one chain read: a

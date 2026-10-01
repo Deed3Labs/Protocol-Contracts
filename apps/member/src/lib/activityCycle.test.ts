@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { categoriesFrom, cycleSpendFrom, groupsFromMerchants, merchantsFrom, networkSpend, type SpendRow } from './activityCycle';
+import { categoriesFrom, cycleSpendFrom, groupsFromMerchants, merchantsFrom, networkSpend, partnerSpend, type SpendRow } from './activityCycle';
 import type { CardTransaction, MemberCharge } from '@/utils/apiClient';
 
 const START = Date.parse('2026-10-01T00:00:00Z');
@@ -172,5 +172,25 @@ describe('paying shops with Clear counts toward the cycle', () => {
 
   test('kept in the network: shops paid with Clear and members sent to, not banks or the paid-now legs', () => {
     expect(networkSpend(chain, clear, START)).toEqual({ kept: 50 + 940 + 20, payments: 3 });
+  });
+});
+
+describe('At partners (under the member’s code)', () => {
+  const at = (ms: number) => new Date(ms).toISOString();
+  const c = (code: string, over: Partial<MemberCharge>): MemberCharge => ({
+    code, merchantName: 'MiMi Crack', amountCents: 5000, status: 'approved', paidNow: true, splitInto: null,
+    createdAt: at(START + 3_600_000), resolvedAt: at(START + 3_600_000), expiresAt: at(START + 86_400_000), payingNow: false, ...over,
+  });
+  test('this cycle’s spending at Clear partners, now or over time; not refunded, declined, waiting or last cycle', () => {
+    const charges = [
+      c('N', {}),
+      c('O', { paidNow: false, splitInto: 4, amountCents: 94000 }),
+      c('R', { status: 'refunded' }),
+      c('D', { status: 'declined' }),
+      c('W', { status: 'pending', resolvedAt: null }),
+      c('B', { resolvedAt: at(START - 86_400_000) }),
+    ];
+    expect(partnerSpend(charges, START)).toBeCloseTo(990, 2);
+    expect(partnerSpend([], START)).toBe(0);
   });
 });

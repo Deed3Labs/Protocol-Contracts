@@ -3,8 +3,8 @@ import SendPage from './SendPage';
 import { useChargeHistory } from '@/hooks/useChargeHistory';
 import { useChargePayments } from '@/hooks/useChargePayments';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
-import { cycleStartOf, partnerCreditOf, useCredit } from '@/hooks/useCycleStart';
-import { networkSpend } from '@/lib/activityCycle';
+import { cycleStartOf, useCredit } from '@/hooks/useCycleStart';
+import { networkSpend, partnerSpend } from '@/lib/activityCycle';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { SEND_DAY_ONE } from '@/data/clearPlaceholder';
@@ -61,7 +61,8 @@ export default function SendRoute() {
 export function useSendData() {
   const { cash, loading: balancesLoading } = useClearBalances();
   const { address } = useAppKitAccount();
-  const atPartners = partnerCreditOf(useCredit(address));
+  // At partners: what they've paid Clear partners this cycle (now or over time), from their charges.
+  const atPartners = partnerSpend(useChargeHistory(address), cycleStartOf(useCredit(address)));
   const profile = useMemberProfile();
   const { contacts } = useContacts();
   const [pendingClaim, setPendingClaim] = useState<PendingClaim | undefined>(undefined);
@@ -89,10 +90,9 @@ export function useSendData() {
     // worse than having none.
     ...(profile.loading ? {} : { contacts: contacts.map(toSendContact) }),
     ...(pendingClaim ? { pendingClaim } : {}),
-    // Available is Ready to allocate; At partners is what's left of the term line, what a
-    // pay-over-time plan at a partner draws on (once it's been read).
+    // Available is Ready to allocate; At partners is this cycle's spending at Clear partners.
     ...(balancesLoading ? {} : { available: cash }),
-    ...(atPartners === undefined ? {} : { atPartners }),
+    atPartners,
   };
 
   return data;
