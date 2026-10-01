@@ -1270,7 +1270,7 @@ export interface SendData {
   pendingClaim?: PendingClaim;
   /** Ready to allocate — what a send draws from. */
   available?: number;
-  /** Partner credit a member can split at partner shops. */
+  /** Spent at Clear partners this cycle, paid now or over time. */
   atPartners?: number;
   /** How many payments made up keptInNetwork this cycle. */
   networkPayments?: number;

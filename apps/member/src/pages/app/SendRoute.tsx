@@ -3,8 +3,8 @@ import SendPage from './SendPage';
 import { useChargeHistory } from '@/hooks/useChargeHistory';
 import { useChargePayments } from '@/hooks/useChargePayments';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
-import { useCycleStart } from '@/hooks/useCycleStart';
-import { networkSpend } from '@/lib/activityCycle';
+import { cycleStartOf, useCredit } from '@/hooks/useCycleStart';
+import { networkSpend, partnerSpend } from '@/lib/activityCycle';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { SEND_DAY_ONE } from '@/data/clearPlaceholder';
@@ -41,7 +41,8 @@ export default function SendRoute() {
   const charges = useChargeHistory(address);
   const chargePayments = useChargePayments(address);
   const { items, loading } = useClearTransactions();
-  const startMs = useCycleStart(address);
+  const credit = useCredit(address);
+  const startMs = cycleStartOf(credit);
   const data = useSendData();
   const network = networkSpend(
     items,
@@ -59,6 +60,9 @@ export default function SendRoute() {
 /** The live Send data — shared with the full-screen code and the contacts list. */
 export function useSendData() {
   const { cash, loading: balancesLoading } = useClearBalances();
+  const { address } = useAppKitAccount();
+  // At partners: what they've paid Clear partners this cycle (now or over time), from their charges.
+  const atPartners = partnerSpend(useChargeHistory(address), cycleStartOf(useCredit(address)));
   const profile = useMemberProfile();
   const { contacts } = useContacts();
   const [pendingClaim, setPendingClaim] = useState<PendingClaim | undefined>(undefined);
@@ -86,8 +90,9 @@ export function useSendData() {
     // worse than having none.
     ...(profile.loading ? {} : { contacts: contacts.map(toSendContact) }),
     ...(pendingClaim ? { pendingClaim } : {}),
-    // Available is Ready to allocate. At partners has no source yet, so it stays at day one's zero.
+    // Available is Ready to allocate; At partners is this cycle's spending at Clear partners.
     ...(balancesLoading ? {} : { available: cash }),
+    atPartners,
   };
 
   return data;
