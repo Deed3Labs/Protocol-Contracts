@@ -3,7 +3,7 @@ import SendPage from './SendPage';
 import { useChargeHistory } from '@/hooks/useChargeHistory';
 import { useChargePayments } from '@/hooks/useChargePayments';
 import { useClearTransactions } from '@/hooks/useClearTransactions';
-import { useCycleStart } from '@/hooks/useCycleStart';
+import { cycleStartOf, partnerCreditOf, useCredit } from '@/hooks/useCycleStart';
 import { networkSpend } from '@/lib/activityCycle';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { useClearBalances } from '@/hooks/useClearBalances';
@@ -41,7 +41,8 @@ export default function SendRoute() {
   const charges = useChargeHistory(address);
   const chargePayments = useChargePayments(address);
   const { items, loading } = useClearTransactions();
-  const startMs = useCycleStart(address);
+  const credit = useCredit(address);
+  const startMs = cycleStartOf(credit);
   const data = useSendData();
   const network = networkSpend(
     items,
@@ -59,6 +60,8 @@ export default function SendRoute() {
 /** The live Send data — shared with the full-screen code and the contacts list. */
 export function useSendData() {
   const { cash, loading: balancesLoading } = useClearBalances();
+  const { address } = useAppKitAccount();
+  const atPartners = partnerCreditOf(useCredit(address));
   const profile = useMemberProfile();
   const { contacts } = useContacts();
   const [pendingClaim, setPendingClaim] = useState<PendingClaim | undefined>(undefined);
@@ -86,8 +89,10 @@ export function useSendData() {
     // worse than having none.
     ...(profile.loading ? {} : { contacts: contacts.map(toSendContact) }),
     ...(pendingClaim ? { pendingClaim } : {}),
-    // Available is Ready to allocate. At partners has no source yet, so it stays at day one's zero.
+    // Available is Ready to allocate; At partners is what's left of the term line, what a
+    // pay-over-time plan at a partner draws on (once it's been read).
     ...(balancesLoading ? {} : { available: cash }),
+    ...(atPartners === undefined ? {} : { atPartners }),
   };
 
   return data;

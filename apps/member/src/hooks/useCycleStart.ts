@@ -3,19 +3,36 @@ import { getCredit, type CreditState } from '@/utils/apiClient';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
 import { useRemembered, walletKey } from '@/lib/rememberedState';
+import { cycleStartOf } from '@/lib/creditFigures';
+
+export { cycleStartOf, partnerCreditOf } from '@/lib/creditFigures';
+
+/*
+ * Two readers on one page (Send reads the cycle and the partner credit) share one chain read: a
+ * request already on its way for the same wallet is reused rather than sent again.
+ */
+const inFlight = new Map<string, Promise<CreditState | null>>();
+function readCredit(address: string): Promise<CreditState | null> {
+  const key = address.toLowerCase();
+  const running = inFlight.get(key);
+  if (running) return running;
+  const p = getCredit(address).finally(() => inFlight.delete(key));
+  inFlight.set(key, p);
+  return p;
+}
 
 /**
- * When this credit cycle began (ms), for "this cycle" figures: 0 when there's no readable cycle,
- * which the cycle maths reads as "everything loaded". The same remembered read as Activity and
- * Home (`credit:<wallet>`), so a page starts from whichever read it last.
+ * The member's credit line, remembered on the device and read again after any move. The same
+ * remembered read as Activity and Home (`credit:<wallet>`), so a page starts from whichever read it
+ * last. Null until something has been read.
  */
-export function useCycleStart(address: string | undefined): number {
+export function useCredit(address: string | undefined): CreditState | null {
   const [credit, setCredit] = useRemembered<CreditState | null>(`credit:${walletKey(address)}`, null);
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
     const read = () => {
-      void getCredit(address).then((result) => {
+      void readCredit(address).then((result) => {
         if (!cancelled) setCredit((prev) => keepLastGood(prev, result));
       });
     };
@@ -26,6 +43,9 @@ export function useCycleStart(address: string | undefined): number {
       stop();
     };
   }, [address]);
-  const cycle = credit?.complete ? credit.cycle : null;
-  return cycle && cycle.issuedAt > 0 ? cycle.issuedAt * 1000 : 0;
+  return credit;
+}
+
+export function useCycleStart(address: string | undefined): number {
+  return cycleStartOf(useCredit(address));
 }
