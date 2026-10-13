@@ -55,14 +55,15 @@ export default function AutoSaveDialog({
   // The projection is only drawn when there is a date behind it; nothing live holds one yet.
   const projected = data.savings.onTrackFor;
 
-  // Reopening shows what is actually set, not what was auditioned last time.
+  // Reopening shows what is actually set, not what was auditioned last time — and so does the rule
+  // arriving while it is open, which is how it opens from outside Savings before the first read lands.
   useEffect(() => {
     if (!open) return;
     setAmount(startAmount);
     setCustom(!presets.includes(startAmount));
     setCadence(running?.cadence ?? 'monthly');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, running?.amount, running?.cadence]);
 
   const unchanged = running !== undefined && amount === running.amount && cadence === running.cadence;
   // The running rule's own next run while its cadence stands; a new one starts a period from now.

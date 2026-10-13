@@ -7,6 +7,7 @@ const DIALOG = readFileSync(join(import.meta.dir, 'AutoSaveDialog.tsx'), 'utf8')
 const CONNECTED = readFileSync(join(import.meta.dir, 'ConnectedAutoSave.tsx'), 'utf8');
 const HOOK = readFileSync(join(import.meta.dir, '../../hooks/useAutoSave.ts'), 'utf8');
 const DATA = readFileSync(join(import.meta.dir, '../../hooks/useSavingsData.ts'), 'utf8');
+const ACTIONS = readFileSync(join(import.meta.dir, '../../context/MoneyActionsContext.tsx'), 'utf8');
 
 const rule = (over: Partial<Parameters<typeof autoSaveFromRules>[0][number]> = {}) => ({
   status: 'active',
@@ -28,12 +29,15 @@ describe('the auto-save Savings shows is the active autopay rule', () => {
     expect(shown).toEqual({ amount: 100, cadence: 'weekly', nextRunAt: '2026-11-13T00:00:00.000Z', runsLeft: 11 });
   });
 
-  test('nothing invents a yearly total the API does not report', () => {
+  test('the yearly total is the API\'s, and absent when it does not report one', () => {
+    expect(autoSaveFromRules([rule()], 750)?.savedThisYear).toBe(750);
+    expect(autoSaveFromRules([rule()], 0)?.savedThisYear).toBe(0);
+    expect(autoSaveFromRules([rule()], null)?.savedThisYear).toBeUndefined();
     expect(autoSaveFromRules([rule()])?.savedThisYear).toBeUndefined();
   });
 
   test('a failed read keeps the last rules instead of reading as off', () => {
-    expect(DATA).toContain('if (!cancelled && rules) setAutopay(rules)');
+    expect(DATA).toContain('if (!cancelled && summary) setAutopay(summary)');
   });
 });
 
@@ -73,5 +77,12 @@ describe('the preview harness still renders', () => {
   test('and the dialog itself stays presentational', () => {
     expect(DIALOG).not.toContain('useAutoSave');
     expect(DIALOG).not.toContain('installAutopaySession');
+  });
+});
+
+describe('one auto-save screen', () => {
+  test('every entry point outside Savings opens the same connected dialog', () => {
+    expect(ACTIONS).toContain('<ConnectedAutoSave');
+    expect(ACTIONS).not.toContain('AutoSaveModal');
   });
 });
