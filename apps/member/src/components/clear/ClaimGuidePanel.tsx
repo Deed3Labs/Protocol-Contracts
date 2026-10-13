@@ -137,7 +137,7 @@ export default function ClaimGuidePanel({
           </Btn>
           {active.length === 0 && (
             <p className="c-det mt-s1">
-              Nothing is active yet, so there is nothing to claim on. Grace cycles come first.
+              Nothing is active yet, so there is nothing to claim on. Cycle assurance comes first.
             </p>
           )}
         </CFoot>

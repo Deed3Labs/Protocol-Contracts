@@ -1,11 +1,13 @@
 import { useRemembered, walletKey } from '@/lib/rememberedState';
 import { useEffect, useState } from 'react';
-import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
+import { HOME_DAY_ONE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useAppKitAccount } from '@/lib/walletCompat';
-import { getPaySummary, type PaySummary } from '@/utils/apiClient';
+import { getCredit, getPaySummary, type CreditState, type PaySummary } from '@/utils/apiClient';
 import { onChainStale } from '@/lib/chainStale';
-import type { SavingsData } from '@/lib/clearModel';
+import { keepLastGood } from '@/lib/keepLastGood';
+import { toCredit } from '@/lib/creditMapping';
+import { creditLimit, securedUsed, type SavingsData } from '@/lib/clearModel';
 
 /*
  * Day-one, not in-use.
@@ -42,6 +44,9 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
   // Same key as Home and Earn: the pay summary is one read, remembered for the session.
   const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${walletKey(address)}`, null);
   const [payTried, setPayTried] = useState(false);
+  // Same key as Home: the credit read, for the savings standing behind spending (Savings' Paused
+  // state, the same figure the cycle card's Top off reads) and what savings add to the line.
+  const [creditState, setCreditState] = useRemembered<CreditState | null>(`credit:${walletKey(address)}`, null);
 
   useEffect(() => {
     if (!address) return;
@@ -52,6 +57,9 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
           setPay(result);
           setPayTried(true);
         }
+      });
+      void getCredit(address).then((result) => {
+        if (!cancelled) setCreditState((prev) => keepLastGood(prev, result));
       });
     };
     read();
@@ -70,6 +78,16 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
   // reads as "you have nothing saved", which is a worse lie than the placeholder.
   const haveBalance = Boolean(address) && !loading;
 
+  // Read exactly as Home reads it, so the two pages agree on what is drawn against savings.
+  const credit = creditState?.complete
+    ? toCredit(
+        creditState.tiers,
+        HOME_DAY_ONE.credit,
+        creditState.term?.carryOwedCents ?? 0,
+        creditState.pendingCardDraws ?? {},
+      )
+    : null;
+
   return {
     // Nothing to show yet: no remembered balance or credits, and the first reads still out.
     pending: loading || (pay === null && !payTried),
@@ -85,5 +103,12 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
           }
         : {}),
     },
+    ...(credit
+      ? {
+          creditLimitToday: creditLimit(credit),
+          backingSpending: securedUsed(credit),
+          creditLine: credit.tiers.find((t) => t.key === 'savings')?.limit ?? 0,
+        }
+      : {}),
   };
 }

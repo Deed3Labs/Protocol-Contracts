@@ -316,68 +316,63 @@ export const MILESTONES: Milestone[] = [
 ];
 
 /**
- * What saving unlocks, cheapest promise first.
+ * What saving unlocks, cheapest promise first — and the home path's ladder, step for step.
  *
- * The threshold tracks what the co-op stands to lose, which is why the order is what it is. Grace
- * cycles forgive timing on a balance that keeps accruing, so they cost almost nothing and sit at
- * zero, where the protection everyone actually uses belongs. A progress hold costs match funding
- * against the redemption margin and no cash. Rent protection is pure outflow with nothing owed, and
- * home repairs is an open annual cap — so those two sit at the top.
+ * One list for both on purpose: the ladder on Savings is these five protections, so a step and its
+ * chip are the same fact read twice and cannot drift. The thresholds are the Savings reference's
+ * (docs/reference/savings-reference.html), adopted 2026-10-13 in place of the earlier four protections
+ * (grace cycles, progress hold, rent protection at 8,000, home repairs at 15,000). Rent sits at the
+ * top beside the Clear Deed, which is the same 15,000 credits.
  *
- * The gap at 4,000 is deliberate. A deposit bridge was drafted for it and pulled: it is a 0% loan
- * the member repays, and every row here is something the co-op absorbs with nothing owed back. A
- * member who assumed it worked like the rest would have been taught that by the list it sat in.
- * Thresholds are product facts rather than slots to fill, so the gap stays until something belongs
- * in it.
- *
- * None of these say "assurance". The cell is already headed Assurance; a row repeating it is the
- * label stuttering, and the word does no work inside its own container.
+ * None of these names say "assurance" in the Protections list: the block is already headed
+ * Protections. The ladder's `step` names do, because a step sits alone without that heading.
  */
 const ASSURANCE: AssuranceItem[] = [
   {
-    id: 'grace-cycles',
-    name: 'Grace cycles',
-    description:
-      'Two cycles a year can close short. Your line holds and savings stay put.',
+    id: 'cycle',
+    name: 'Cycle assurance',
+    line: 'Two grace cycles a year',
+    step: 'Cycle assurance',
+    stepShort: 'Cycle',
+    description: 'Two cycles a year can close short. Your line holds and savings stay put.',
     unlocksAt: 0,
   },
   {
-    id: 'progress-hold',
-    name: 'Progress hold',
-    /*
-     * The one place the design punished correct behaviour: a member who used their ESA exactly as
-     * intended had their housing progress paused for it.
-     */
-    description:
-      'A documented hardship draw does not restart vesting or move your on-track date.',
-    unlocksAt: 1000,
+    id: 'home-repair',
+    name: 'Home repair',
+    line: 'Covered by the co-op',
+    step: 'Home repair assurance',
+    stepShort: 'Repair',
+    description: 'Qualifying home repairs, covered by the co-op. Nothing to pay back.',
+    unlocksAt: 1500,
   },
   {
-    id: 'rent-protection',
-    name: 'Rent protection',
-    /*
-     * The co-op's own words: "up to 60 days of rent paid by the co-op if crisis strikes, zero
-     * payback, zero premium."
-     *
-     * No waiting period is modelled, and that is now correct rather than a gap. The old note here
-     * said the wait was by track — immediate on Accelerated, ninety days on Standard — which is not
-     * what the co-op is doing. Accelerated and Standard are membership plans that set the
-     * equity-credit multiplier; they do not gate protections.
-     *
-     * What is expected instead is paying to accelerate a particular protection. That is a purchase
-     * against one row, not a property of the member, so it will not live in `unlocksAt` when it
-     * arrives — and nothing here should imply a timing rule until it does.
-     */
-    description:
-      'Up to 60 days of rent paid if a crisis hits. No premium, nothing to pay back.',
+    id: 'income',
+    name: 'Income',
+    line: 'Your limit holds a cycle',
+    step: 'Income assurance',
+    stepShort: 'Income',
+    description: 'If your income drops, your credit limit holds for a cycle.',
+    unlocksAt: 4000,
+  },
+  {
+    id: 'deposit',
+    name: 'Deposit',
+    line: 'Paid to your landlord',
+    step: 'Deposit assurance',
+    stepShort: 'Deposit',
+    description: 'Your security deposit, paid to your landlord by the co-op. Nothing to pay back.',
     unlocksAt: 8000,
   },
   {
-    id: 'home-repairs',
-    name: 'Home repairs',
-    // At move-in, which the milestones put at 15,000 credits. It read Active from day one for
-    // something that cannot pay out until the member has a home to repair.
-    description: 'Covers qualifying repairs on your unit once you move in, up to an annual cap.',
+    id: 'rent',
+    name: 'Rent',
+    line: 'Two months on job loss',
+    step: 'Rent assurance and your Clear Deed',
+    stepShort: 'Rent and deed',
+    // The co-op's own words: "up to 60 days of rent paid by the co-op if crisis strikes, zero
+    // payback, zero premium." No waiting period: membership plans set the credit multiplier only.
+    description: 'Up to two months of rent paid if you lose your job. No premium, nothing to pay back.',
     unlocksAt: 15000,
   },
 ];
