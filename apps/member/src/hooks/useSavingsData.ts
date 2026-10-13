@@ -7,7 +7,7 @@ import { getCredit, getPaySummary, readAutopay, type AutopaySummary, type Credit
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
 import { toCredit } from '@/lib/creditMapping';
-import { autoSaveFromRules, creditLimit, securedUsed, type SavingsData } from '@/lib/clearModel';
+import { autoSaveFromRules, creditLimit, securedUsed, withOnTrack, type SavingsData } from '@/lib/clearModel';
 
 /*
  * Day-one, not in-use.
@@ -95,22 +95,29 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
       )
     : null;
 
+  const autoSave = autopay ? autoSaveFromRules(autopay.rules, autopay.savedThisYear) : undefined;
+
   return {
     // Nothing to show yet: no remembered balance or credits, and the first reads still out.
     pending: loading || (pay === null && !payTried),
     ...SAVINGS_DAY_ONE,
-    savings: {
-      ...SAVINGS_DAY_ONE.savings,
-      ...(haveBalance ? { cash: savingsBalance } : {}),
-      ...(pay
-        ? {
-            credits: pay.totalEquity,
-            vested: pay.vestedEquity,
-            vesting: pay.pendingEquity,
-          }
-        : {}),
-    },
-    ...(autopay ? { autoSave: autoSaveFromRules(autopay.rules, autopay.savedThisYear) } : {}),
+    // The "On track for" date is the auto-save's: the credits still to earn at what it matches a
+    // month. No auto-save, no date.
+    savings: withOnTrack(
+      {
+        ...SAVINGS_DAY_ONE.savings,
+        ...(haveBalance ? { cash: savingsBalance } : {}),
+        ...(pay
+          ? {
+              credits: pay.totalEquity,
+              vested: pay.vestedEquity,
+              vesting: pay.pendingEquity,
+            }
+          : {}),
+      },
+      autoSave,
+    ),
+    ...(autoSave ? { autoSave } : {}),
     ...(credit
       ? {
           creditLimitToday: creditLimit(credit),
