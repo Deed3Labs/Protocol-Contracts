@@ -72,8 +72,11 @@ export function HomeIcon({ size = 20, strokeWidth = 1.75, ...props }: IconProps)
 export function SavingsIcon({ size = 20, strokeWidth = 1.75, ...props }: IconProps) {
   return (
     <svg {...base(size, strokeWidth, props)}>
-      <path d="M12 2v20" />
-      <path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      {/* Centred on the box: the S runs 5–19 around the middle line and the stem shows 2 beyond it at
+          each end, inside the 3–21 band the other nav glyphs keep to. The S used to sit 1.5 low
+          (6.5–20.5), so with the stem trimmed its bottom read as cut off. */}
+      <path d="M12 3v18" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
     </svg>
   );
 }

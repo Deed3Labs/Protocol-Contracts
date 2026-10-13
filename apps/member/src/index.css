@@ -601,34 +601,34 @@ body.onboarding-scroll-enabled {
 
 /* Mobile nav offset. The guide draws it 16px off the bottom (.navwrap), and this sits a further
    24px up: at the guide's own offset the bar was a stretch for a thumb on a tall phone. The
-   safe-area inset wins when it is larger, so the bar never sits under the home indicator, and it
-   lifts higher again when installed (PWA standalone). */
-.mobile-tabbar {
-  bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s3));
-}
-/* The fan sits a 12px gap above the nav's 50px. */
-.mobile-quick-actions {
-  bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s3) + 62px);
-}
-/* The page's own bottom padding clears the bar: its offset, its 50px and a 16px breath, so the last
-   row of a page is never under it. Keyed to the same offsets as .mobile-tabbar, and phone-only so
-   the desktop padding utility still applies from lg up. */
-@media (max-width: 1023px) {
-  .mobile-nav-clear {
-    padding-bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s3) + 50px + var(--s2));
-  }
+   safe-area inset wins when it is larger, so the bar never sits under the home indicator.
+
+   Installed (PWA standalone) it lifts 44px clear of the home indicator. At 28px it sat in the band
+   the indicator's swipe owns, and read as crowding the bottom edge.
+
+   One lift and one height, so the bar, the quick-actions fan above it and the page padding that
+   clears it cannot drift apart. */
+:root {
+  --nav-h: 54px;
+  --nav-lift: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s3));
 }
 @media (display-mode: standalone) {
-  .mobile-tabbar {
-    bottom: calc(env(safe-area-inset-bottom) + 1.75rem);
-  }
-  .mobile-quick-actions {
-    bottom: calc(env(safe-area-inset-bottom) + 1.75rem + 62px);
+  :root {
+    --nav-lift: calc(env(safe-area-inset-bottom) + 2.75rem);
   }
 }
-@media (display-mode: standalone) and (max-width: 1023px) {
+.mobile-tabbar {
+  bottom: var(--nav-lift);
+}
+/* The fan sits a 12px gap above the nav. */
+.mobile-quick-actions {
+  bottom: calc(var(--nav-lift) + var(--nav-h) + 12px);
+}
+/* The page's own bottom padding clears the bar: its lift, its height and a 16px breath, so the last
+   row of a page is never under it. Phone-only, so the desktop padding utility applies from lg up. */
+@media (max-width: 1023px) {
   .mobile-nav-clear {
-    padding-bottom: calc(env(safe-area-inset-bottom) + 1.75rem + 50px + var(--s2));
+    padding-bottom: calc(var(--nav-lift) + var(--nav-h) + var(--s2));
   }
 }
 
