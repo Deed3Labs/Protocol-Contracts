@@ -606,17 +606,29 @@ body.onboarding-scroll-enabled {
 .mobile-tabbar {
   bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s3));
 }
-/* The fan sits 80px off the bottom in the guide: the nav's 16px, its 52px, and
-   a 12px gap. */
+/* The fan sits a 12px gap above the nav's 50px. */
 .mobile-quick-actions {
-  bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s3) + 64px);
+  bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s3) + 62px);
+}
+/* The page's own bottom padding clears the bar: its offset, its 50px and a 16px breath, so the last
+   row of a page is never under it. Keyed to the same offsets as .mobile-tabbar, and phone-only so
+   the desktop padding utility still applies from lg up. */
+@media (max-width: 1023px) {
+  .mobile-nav-clear {
+    padding-bottom: calc(max(env(safe-area-inset-bottom), var(--s2)) + var(--s3) + 50px + var(--s2));
+  }
 }
 @media (display-mode: standalone) {
   .mobile-tabbar {
     bottom: calc(env(safe-area-inset-bottom) + 1.75rem);
   }
   .mobile-quick-actions {
-    bottom: calc(env(safe-area-inset-bottom) + 1.75rem + 64px);
+    bottom: calc(env(safe-area-inset-bottom) + 1.75rem + 62px);
+  }
+}
+@media (display-mode: standalone) and (max-width: 1023px) {
+  .mobile-nav-clear {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 1.75rem + 50px + var(--s2));
   }
 }
 
