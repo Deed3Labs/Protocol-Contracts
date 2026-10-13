@@ -27,15 +27,15 @@ const GLYPH: Record<string, typeof HomeIcon> = {
 };
 
 /**
- * Mobile nav — the guide's `.navwrap`: a square bar of destinations and a round action button.
+ * Mobile nav: the destinations in a bordered, rounded pill at the left and the action button, a
+ * rounded square, at the right, with the space between them left open.
  *
- * The bar is drawn, so it is square; the action is a button, so it is a pill. The current page is
- * ink and the rest ink-50, nothing else — no underline, no fill.
- *
- * The button opens the quick-actions fan unless the page declares an action of its own, in which
- * case it becomes the guide's wide variant with a label. The fan is right-aligned above the nav, the
- * plus rotates to a close, and the screen behind dims rather than being replaced: these are
- * shortcuts, not a destination.
+ * The selected destination sits on a light key with its glyph in the ground colour; the rest are
+ * ink-70. The action button is always icon-only. A page that declares an action of its own (Save,
+ * Scan, Buy...) names it in the button's accessible label rather than on its face, so the bar keeps
+ * one shape on every page. Without one, the button opens the quick-actions fan: right-aligned above
+ * the nav, the plus rotating to a close, the screen behind dimmed rather than replaced, because
+ * these are shortcuts, not a destination.
  *
  * Vertical offset lives in `.mobile-tabbar` (index.css) so the safe-area inset and the PWA-standalone
  * lift stay in one place.
@@ -101,16 +101,9 @@ export default function MobileTabBar() {
           aria-label={action ? action.label : open ? 'Close quick actions' : 'Quick actions'}
           aria-expanded={action ? undefined : open}
           onClick={() => (action ? action.onSelect() : setOpen((v) => !v))}
-          className={cn('c-navfab', action && 'c-wide', !action && open && 'c-open')}
+          className={cn('c-navfab', !action && open && 'c-open')}
         >
-          {action ? (
-            <>
-              <action.icon className="h-[21px] w-[21px] shrink-0" strokeWidth={2} />
-              <span>{action.label}</span>
-            </>
-          ) : (
-            <PlusIcon />
-          )}
+          {action ? <action.icon strokeWidth={2} /> : <PlusIcon />}
         </button>
       </div>
     </>

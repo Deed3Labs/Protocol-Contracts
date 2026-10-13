@@ -216,21 +216,24 @@
 .c-foot2 > :last-child{padding-left:var(--fp,14px);border-left:1px solid var(--ink-13)}
 .c-foot2 p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* The bar takes the width it needs and no more: stretched across a large phone the five glyphs sat
-   a thumb's width apart and the bar read as mostly empty. Capped and centred with the button, it
-   keeps the density the guide draws at 340px on every screen. */
-.c-navwrap{display:flex;gap:var(--s1);align-items:center;justify-content:center}
-.c-navbar{flex:1 1 auto;max-width:330px;height:52px;display:flex;align-items:center;justify-content:space-around;
-        background:var(--paper-2);border:1px solid var(--ink-28)}
-/* Each destination is a 44px target, not a stretched column: filled to the bar's width they ran
-   into each other on a large phone, and the gaps are what make five glyphs read as five buttons. */
-.c-navbar a{color:var(--ink-50);display:flex;align-items:center;justify-content:center;
-          flex:none;width:44px;height:44px}
-.c-navbar a.c-on{color:var(--ink)}
-.c-navfab.c-wide{width:auto;padding:0 var(--s2);gap:7px;font-size:var(--t-sec);font-weight:500}
-.c-navfab{height:52px;width:52px;border-radius:var(--radius-pill);background:var(--ink);color:var(--paper);
+/* The phone's bottom bar, from the Savings reference: the destinations in one bordered, rounded pill
+   at the left edge and the action as its own rounded square at the right, the space between them
+   left open. The pill takes the width its five keys need and no more; stretched across a large phone
+   the glyphs sat a thumb's width apart and the bar read as mostly empty. Both are controls, so both
+   are rounded — 17px outside, 13px on the key inside, so the curves stay concentric across the 5px
+   padding. */
+.c-navwrap{display:flex;gap:var(--s1);align-items:center;justify-content:space-between}
+.c-navbar{flex:none;height:50px;display:flex;align-items:center;gap:2px;padding:5px;border-radius:17px;
+        background:var(--paper-2);border:1px solid var(--ink-13)}
+/* Each destination is a 46 x 40 key. The selected one is a light key with the glyph in the ground
+   colour (the tokens swap in light and dusk, so it is ink on paper there). */
+.c-navbar a{color:var(--ink-70);display:flex;align-items:center;justify-content:center;
+          flex:none;width:46px;height:40px;border-radius:13px}
+.c-navbar a svg{width:21px;height:21px}
+.c-navbar a.c-on{background:var(--ink);color:var(--paper)}
+.c-navfab{height:50px;width:50px;border-radius:17px;background:var(--ink);color:var(--paper);
         border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0}
-.c-navfab svg{transition:transform .15s ease}
+.c-navfab svg{width:22px;height:22px;transition:transform .15s ease}
 .c-qa{display:grid;grid-template-columns:1fr 1fr;gap:var(--s1)}
 .c-qa .c-btn{width:100%}
 
@@ -738,3 +741,105 @@
 .c-pc-live{color:var(--settled);position:relative;width:14px;height:14px;border-radius:50%;background:var(--settled);margin-top:var(--s1);box-shadow:0 0 10px 3px color-mix(in srgb, var(--settled) 55%, transparent)}
 /* over time: "Next cycle" is the longest label, so its chip is a little wider */
 .c-qc.c-split .c-chip-q:first-child{flex:1.35}
+
+/* ================= SAVINGS =================
+   From docs/reference/savings-reference.html. The balance header, then one slab of two blocks
+   (Your home path, What you hold) that stack on a phone, then Protections. Every block is the 56px
+   header / main / footer anatomy, with one line colour for the outer border, the seam and every
+   internal rule, so the rules run wall to wall and the headers line up across the seam.
+
+   The reference is drawn on the dark ground; these are the same roles in the app's tokens, so light
+   and dusk follow. The empty track is the one value that differs by ground: the raised colour on
+   dark, as drawn, and ink-13 on the light grounds, where paper-2 sits too close to the page. */
+.c-sv{--sv-line:var(--ink-13);--sv-track:var(--ink-13);display:grid;gap:var(--s2)}
+.dark .c-sv{--sv-track:var(--paper-2)}
+.c-sv-top{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--s3)}
+.c-sv-top > div:first-child{display:grid;gap:6px;min-width:0}
+.c-sv-acts{display:none;gap:10px;flex-shrink:0}
+.c-sv-cap{font-size:var(--t-sec);color:var(--ink-50);margin:0}
+.c-sv-cap.c-warn{color:var(--underway)}
+.c-sv-cap.c-ok{color:var(--settled)}
+/* the balance: 38 on a phone, 46 from tablet up */
+.c-sv-total{font-size:38px;line-height:1;letter-spacing:-.035em;margin-top:4px}
+/* the credit count sits below the balance in weight: 26 against 38 on a phone, 40 against 46 up */
+.c-sv-count{display:flex;align-items:baseline;gap:var(--s1)}
+.c-sv-count .c-fig{font-size:26px;line-height:1;letter-spacing:-.03em}
+/* pills at the reference's sizes: 32px in a footer, 30px in the next-unlock bar, 38px in the header */
+.c-sv .c-btn{height:32px;padding:0 14px}
+.c-sv .c-btn-primary{height:32px;padding:0 14px}
+.c-sv .c-btn.c-lg{height:38px;padding:0 20px;font-size:13.5px}
+
+.c-sv-slab{display:grid;grid-template-columns:minmax(0,1fr);border:1px solid var(--sv-line)}
+.c-sv-slab > .c-sv-blk + .c-sv-blk{border-top:1px solid var(--sv-line)}
+.c-sv-blk{display:grid;grid-template-rows:auto 1fr auto;min-width:0}
+.c-sv-bh{display:flex;justify-content:space-between;align-items:center;gap:var(--s2);height:56px;
+       padding:0 20px;border-bottom:1px solid var(--sv-line)}
+.c-sv-bh > *{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.c-sv-bh .c-fig{font-size:19px}
+.c-sv-bm{padding:18px 20px;display:grid;align-content:start;gap:var(--s2);min-width:0}
+.c-sv-bf{border-top:1px solid var(--sv-line);padding:14px 20px;display:flex;justify-content:space-between;
+       align-items:center;gap:10px;font-size:var(--t-sec);line-height:1.4;color:var(--ink-70)}
+.c-sv-bf > :first-child{min-width:0}
+.c-sv-bf > :last-child{flex-shrink:0}
+.c-sv-bf b{color:var(--ink);font-weight:500}
+
+/* the ladder: five steps, a track over a threshold over a name */
+.c-sv-ladder{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:0;padding:0;list-style:none}
+.c-sv-ladder > li{display:grid;gap:var(--s1);align-content:start;min-width:0}
+.c-sv-ladder i{display:block;height:8px;background:var(--sv-track);position:relative;overflow:hidden}
+.c-sv-ladder i b{position:absolute;inset:0;background:var(--settled);transform-origin:0 50%}
+.c-sv-ladder .c-next i b{background:var(--live)}
+.c-sv-ladder .c-next.c-paused i b{background:var(--underway)}
+.c-sv-ladder em{font-style:normal;font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:var(--ink-50)}
+.c-sv-ladder span{font-size:10.5px;line-height:1.3;color:var(--ink-50);overflow-wrap:anywhere}
+.c-sv-ladder .c-got span{color:var(--ink)}
+
+.c-sv-next{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;
+         background:var(--paper-2);font-size:13.5px;min-height:46px}
+.c-sv-next > :first-child{min-width:0}
+.c-sv-next b{font-weight:600}
+.c-sv-next > :last-child{flex-shrink:0}
+.c-sv-next .c-btn,.c-sv-next .c-btn-primary{height:30px}
+.c-sv-next.c-warn{background:color-mix(in srgb, var(--underway) 10%, transparent);box-shadow:inset 2px 0 0 var(--underway)}
+.c-sv-next.c-ok{background:color-mix(in srgb, var(--settled) 10%, transparent);box-shadow:inset 2px 0 0 var(--settled)}
+
+/* what you hold: a thin composition bar, then its rows in the same order */
+.c-sv-comp{display:flex;height:6px;background:var(--sv-track)}
+.c-sv-comp > i{display:block;height:100%}
+.c-sv-rows{display:grid;gap:7px;font-size:13.5px;color:var(--ink-70)}
+.c-sv-rows > div{display:flex;justify-content:space-between;gap:12px}
+.c-sv-rows .c-fg{color:var(--ink)}
+.c-sv-rows .c-ok{color:var(--settled)}
+.c-sv-rows .c-warn{color:var(--underway)}
+.c-sv-rows span:last-child{font-variant-numeric:tabular-nums;white-space:nowrap}
+.c-sv-note{margin:0;font-size:var(--t-sec);color:var(--ink-50)}
+
+/* protections: a list on a phone, five columns from tablet up */
+.c-sv-prot{border:1px solid var(--sv-line)}
+.c-sv-prots{display:grid;grid-template-columns:minmax(0,1fr)}
+.c-sv-prots > button{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;row-gap:2px;
+                   padding:12px 16px;font-size:var(--t-sec);color:var(--ink-70);text-align:left;
+                   background:transparent;border:0;cursor:pointer;font-family:inherit;line-height:1.45}
+.c-sv-prots > button + button{border-top:1px solid var(--sv-line)}
+.c-sv-prots > button:hover b{text-decoration:underline;text-underline-offset:3px}
+.c-sv-prots b{color:var(--ink);font-weight:500;font-size:13.5px}
+.c-sv-chip{grid-column:2;grid-row:1/span 2;align-self:center;font-family:var(--font-mono);font-size:9.5px;
+         letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:var(--radius-pill);
+         border:1px solid var(--sv-line);color:var(--ink-50);line-height:1.45;white-space:nowrap}
+.c-sv-chip.c-on{color:var(--settled);border-color:color-mix(in srgb, var(--settled) 35%, transparent)}
+
+@media (min-width:768px){
+  .c-sv{gap:22px}
+  .c-sv-acts{display:flex}
+  .c-sv-total{font-size:46px}
+  .c-sv-count{gap:10px}
+  .c-sv-count .c-fig{font-size:40px;letter-spacing:-.035em}
+  .c-sv-slab{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+  .c-sv-slab > .c-sv-blk + .c-sv-blk{border-top:0;border-left:1px solid var(--sv-line)}
+  .c-sv-ladder span{font-size:var(--t-detail)}
+  .c-sv-prots{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .c-sv-prots > button{display:grid;grid-template-columns:minmax(0,1fr);align-content:start;gap:6px;
+                     padding:14px 16px 16px}
+  .c-sv-prots > button + button{border-top:0;border-left:1px solid var(--sv-line)}
+  .c-sv-chip{grid-column:auto;grid-row:auto;justify-self:start}
+}

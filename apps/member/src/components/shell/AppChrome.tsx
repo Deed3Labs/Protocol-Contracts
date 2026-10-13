@@ -106,7 +106,7 @@ function Chrome({
         </header>
 
         {/* 1168 = the top bar's 1120 plus its 24px sides, so content shares the bar's left edge. */}
-        <main className="mx-auto w-full max-w-[1168px] px-s2 pb-s6 pt-s1 lg:px-s3 lg:pb-s4 lg:pt-s3">
+        <main className="mx-auto w-full max-w-[1168px] mobile-nav-clear px-s2 pb-s6 pt-s1 lg:px-s3 lg:pb-s4 lg:pt-s3">
           {children}
         </main>
 

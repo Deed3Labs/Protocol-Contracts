@@ -563,6 +563,12 @@ export interface AssuranceItem {
   unlocksAt: number;
   /** Name still to be confirmed — rendered as-is, do not invent a replacement. */
   placeholder?: boolean;
+  /** One line under the name in Savings' Protections block, e.g. "Two grace cycles a year". */
+  line?: string;
+  /** Its step on the home-path ladder, e.g. "Home repair assurance". Falls back to `name`. */
+  step?: string;
+  /** The same step at phone width, e.g. "Repair". */
+  stepShort?: string;
 }
 
 /**
@@ -782,6 +788,13 @@ export interface SavingsData {
   milestones: Milestone[];
   assurance: AssuranceItem[];
   vesting: VestingRow[];
+  /**
+   * Savings standing behind drawn credit right now — the secured draw the cycle card's Top off is
+   * about (`securedUsed`). Above zero, the vesting clock is stopped. Absent until credit is read.
+   */
+  backingSpending?: number;
+  /** What savings add to the credit line: the savings-backed tier's limit. Absent until read. */
+  creditLine?: number;
 }
 
 export type MilestoneState = 'done' | 'current' | 'future';
@@ -806,6 +819,47 @@ export function milestoneStates(milestones: Milestone[], credits: number): Miles
 export function isAssuranceActive(item: AssuranceItem, credits: number): boolean {
   return credits >= item.unlocksAt;
 }
+
+export type LadderState = 'got' | 'next' | 'locked';
+
+export interface LadderStep {
+  item: AssuranceItem;
+  state: LadderState;
+  /** How far the next step's track is filled, 0–1. 1 for a step already unlocked, 0 for a locked one. */
+  fill: number;
+}
+
+/**
+ * The home-path ladder, one step per protection.
+ *
+ * Built from the protections themselves rather than a list of its own, so a step and its chip can
+ * never disagree: a step is unlocked exactly when `isAssuranceActive` says the protection is on. At
+ * most one step is next — the first one not yet reached — and its track fills with the member's
+ * progress from the previous threshold to this one, never less than a sliver so a new step still
+ * reads as started.
+ */
+export function ladderSteps(items: AssuranceItem[], credits: number): LadderStep[] {
+  const sorted = [...items].sort((a, b) => a.unlocksAt - b.unlocksAt);
+  let nextTaken = false;
+  return sorted.map((item, i) => {
+    if (isAssuranceActive(item, credits)) return { item, state: 'got', fill: 1 };
+    if (nextTaken) return { item, state: 'locked', fill: 0 };
+    nextTaken = true;
+    const from = i > 0 ? sorted[i - 1].unlocksAt : 0;
+    const span = item.unlocksAt - from;
+    const fill = span > 0 ? (credits - from) / span : 0;
+    return { item, state: 'next', fill: Math.min(1, Math.max(LADDER_SLIVER, fill)) };
+  });
+}
+
+/** The least a next step's track shows, so a step with no progress on it still reads as begun. */
+export const LADDER_SLIVER = 0.03;
+
+/**
+ * Days a credit takes to vest. Mirrors `VEST_DAYS` in apps/api/src/services/payLedgerStore.ts: the
+ * pay summary reports how much is vesting but not when, so the window is all the page can say.
+ */
+export const VEST_DAYS = 30;
 
 /** Credits still needed to unlock a protection. */
 export function creditsToGo(unlocksAt: number, credits: number): number {
