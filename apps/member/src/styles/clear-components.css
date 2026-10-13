@@ -754,14 +754,13 @@
 .c-sv{--sv-line:var(--ink-13);--sv-track:var(--ink-13);display:grid;gap:var(--s2)}
 .dark .c-sv{--sv-track:var(--paper-2)}
 .c-sv-top{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--s3)}
-.c-sv-top > div:first-child{display:grid;gap:6px;min-width:0}
+.c-sv-top > div:first-child{min-width:0}
 .c-sv-acts{display:none;gap:10px;flex-shrink:0}
 .c-sv-cap{font-size:var(--t-sec);color:var(--ink-50);margin:0}
 .c-sv-cap.c-warn{color:var(--underway)}
 .c-sv-cap.c-ok{color:var(--settled)}
-/* the balance: 38 on a phone, 46 from tablet up */
-.c-sv-total{font-size:38px;line-height:1;letter-spacing:-.035em;margin-top:4px}
-/* the credit count sits below the balance in weight: 26 against 38 on a phone, 40 against 46 up */
+/* The balance is the app's hero (32 on a phone, 40 on desktop), like every page's. The credit count
+   sits below it in weight: 26 until the hero grows at 1024, then the phone hero's 32. */
 .c-sv-count{display:flex;align-items:baseline;gap:var(--s1)}
 .c-sv-count .c-fig{font-size:26px;line-height:1;letter-spacing:-.03em}
 /* pills at the reference's sizes: 32px in a footer, 30px in the next-unlock bar, 38px in the header */
@@ -831,9 +830,7 @@
 @media (min-width:768px){
   .c-sv{gap:22px}
   .c-sv-acts{display:flex}
-  .c-sv-total{font-size:46px}
   .c-sv-count{gap:10px}
-  .c-sv-count .c-fig{font-size:40px;letter-spacing:-.035em}
   .c-sv-slab{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
   .c-sv-slab > .c-sv-blk + .c-sv-blk{border-top:0;border-left:1px solid var(--sv-line)}
   .c-sv-ladder span{font-size:var(--t-detail)}
@@ -842,4 +839,7 @@
                      padding:14px 16px 16px}
   .c-sv-prots > button + button{border-top:0;border-left:1px solid var(--sv-line)}
   .c-sv-chip{grid-column:auto;grid-row:auto;justify-self:start}
+}
+@media (min-width:1024px){
+  .c-sv-count .c-fig{font-size:var(--t-hero-m)}
 }

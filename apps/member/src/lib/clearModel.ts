@@ -809,6 +809,47 @@ export function autoSaveFromRules(
 }
 
 /**
+ * The most deposit-match credits a member earns in a calendar month. Mirrors
+ * `DEPOSIT_MATCH_MONTHLY_CAP` in apps/api/src/services/payLedgerStore.ts.
+ */
+export const DEPOSIT_MATCH_MONTHLY_CAP = 1500;
+
+/** An auto-save as dollars a month: weekly is 52 runs a year, payday 26. */
+export function monthlyAutoSave(a: Pick<AutoSave, 'amount' | 'cadence'>): number {
+  if (a.cadence === 'weekly') return (a.amount * 52) / 12;
+  if (a.cadence === 'payday') return (a.amount * 26) / 12;
+  return a.amount;
+}
+
+/** Credits an auto-save earns a month: matched one-for-one, up to the monthly match cap. */
+export function monthlyAutoSaveCredits(a: Pick<AutoSave, 'amount' | 'cadence'> | undefined): number {
+  return a ? Math.min(DEPOSIT_MATCH_MONTHLY_CAP, Math.max(0, monthlyAutoSave(a))) : 0;
+}
+
+/**
+ * When the member reaches `goal` credits at `perMonth`, as "Feb 2028" — the "On track for" date.
+ *
+ * The rate is auto-save's (the user's call, 2026-10-13): the one standing commitment the member has
+ * made, and the one lever the auto-save dialog offers. Rent and bill credits are not projected.
+ * Undefined when there is no rate or the goal is already reached, so nothing reads "On track" for a
+ * member who has no plan to get there.
+ */
+export function onTrackFor(credits: number, goal: number, perMonth: number, from: Date = new Date()): string | undefined {
+  if (credits >= goal || perMonth <= 0) return undefined;
+  const months = Math.ceil((goal - credits) / perMonth);
+  const d = new Date(from.getFullYear(), from.getMonth() + months, 1);
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+/** The savings with their "On track for" date worked out from the auto-save running. */
+export function withOnTrack(savings: Savings, autoSave: AutoSave | undefined, from?: Date): Savings {
+  const date = onTrackFor(savings.credits, savings.creditsGoal, monthlyAutoSaveCredits(autoSave), from);
+  const rest: Savings = { ...savings };
+  delete rest.onTrackFor;
+  return date ? { ...rest, onTrackFor: date } : rest;
+}
+
+/**
  * When a newly set rule first runs: one period from now. Mirrors `addCadence` in
  * apps/api/src/services/autopayStore.ts, which schedules the first run the same way.
  */

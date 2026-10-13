@@ -12,7 +12,7 @@ import TermLimitDialog from '@/components/clear/TermLimitDialog';
 import PendingFigures from '@/components/clear/PendingFigures';
 import { Button } from '@/components/ui/button';
 import HeaderActions from '@/components/shell/HeaderActions';
-import { unreadThreads } from '@/lib/clearModel';
+import { unreadThreads, withOnTrack } from '@/lib/clearModel';
 import HomePage from '@/pages/app/HomePage';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
@@ -98,13 +98,13 @@ function SavingsPreview({ empty }: { empty: boolean }) {
     day1: SAVINGS_DAY_ONE,
     saving: {
       ...base,
-      savings: { cash: 1500, vested: 1000, vesting: 500, credits: 1500, creditsGoal: 15000, onTrackFor: 'Dec 2027' },
+      savings: withOnTrack({ cash: 1500, vested: 1000, vesting: 500, credits: 1500, creditsGoal: 15000 }, base.autoSave),
       creditLine: 1500,
       backingSpending: 0,
     },
     paused: {
       ...base,
-      savings: { cash: 3200, vested: 2700, vesting: 500, credits: 3200, creditsGoal: 15000, onTrackFor: 'Mar 2028' },
+      savings: withOnTrack({ cash: 3200, vested: 2700, vesting: 500, credits: 3200, creditsGoal: 15000 }, base.autoSave),
       creditLine: 3200,
       backingSpending: 1240,
     },

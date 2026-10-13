@@ -2,7 +2,16 @@ import { useEffect, useState } from 'react';
 import Modal from './Modal';
 import { Btn } from './brand/anatomy';
 import { money, count } from '@clear/domain';
-import { AUTO_SAVE_RUNS, firstAutoSaveRun, type AutoSaveCadence, type SavingsData } from '@/lib/clearModel';
+import {
+  AUTO_SAVE_RUNS,
+  DEPOSIT_MATCH_MONTHLY_CAP,
+  firstAutoSaveRun,
+  monthlyAutoSave,
+  monthlyAutoSaveCredits,
+  onTrackFor,
+  type AutoSaveCadence,
+  type SavingsData,
+} from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
 /*
@@ -52,8 +61,18 @@ export default function AutoSaveDialog({
   const [custom, setCustom] = useState(false);
   const [cadence, setCadence] = useState<AutoSaveCadence>(running?.cadence ?? 'monthly');
   const presets = [data.projection.extraMonthly, data.projection.perPayday];
-  // The projection is only drawn when there is a date behind it; nothing live holds one yet.
-  const projected = data.savings.onTrackFor;
+  const { credits, creditsGoal } = data.savings;
+  // The date this choice produces, worked out as it is edited — the same rule the page's "On track
+  // for" uses, applied to what is on the screen rather than what is saved.
+  const projected = onTrackFor(credits, creditsGoal, monthlyAutoSaveCredits({ amount, cadence }));
+  // And what a little more a month would do, if it would do anything: past the match cap it would not.
+  const extra = data.projection.extraMonthly;
+  const withExtra = onTrackFor(
+    credits,
+    creditsGoal,
+    Math.min(DEPOSIT_MATCH_MONTHLY_CAP, monthlyAutoSave({ amount, cadence }) + extra),
+  );
+  const extraMoves = projected !== undefined && withExtra !== undefined && withExtra !== projected;
 
   // Reopening shows what is actually set, not what was auditioned last time — and so does the rule
   // arriving while it is open, which is how it opens from outside Savings before the first read lands.
@@ -75,10 +94,10 @@ export default function AutoSaveDialog({
   const footer = running ? (
     <>
       <div className="c-conseq">
-        {projected && (
+        {extraMoves && (
           <div className="c-earn">
-            <span>Moving to {data.projection.withExtra} needs</span>
-            <span>+{money(data.projection.extraMonthly, { cents: true })} a month</span>
+            <span>Moving to {withExtra} needs</span>
+            <span>+{money(extra, { cents: true })} a month</span>
           </div>
         )}
         {running.savedThisYear !== undefined && (
@@ -131,7 +150,7 @@ export default function AutoSaveDialog({
         </div>
         {projected && (
           <div className="c-limit">
-            <span>At this rate, {count(data.savings.creditsGoal)} credits by</span>
+            <span>At this rate, {count(creditsGoal)} credits by</span>
             <span>{projected}</span>
           </div>
         )}

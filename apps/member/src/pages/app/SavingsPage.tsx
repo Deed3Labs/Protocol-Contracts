@@ -245,10 +245,11 @@ export default function SavingsPage({ data = SAVINGS_DAY_ONE }: { data?: Savings
   return (
     <div className="c-sv">
       <div className="c-sv-top">
+        {/* The same hero as every other page's balance: label, figure, one line under it. */}
         <div>
-          <p className="c-label">Savings</p>
-          <p className="c-fig c-sv-total">{money(total, { cents: true })}</p>
-          <p className="c-sv-cap">{caption}</p>
+          <p className="c-label mb-s1">Savings</p>
+          <p className="c-fig text-hero-m leading-[1.05] lg:text-hero">{money(total, { cents: true })}</p>
+          <p className="c-sub mt-s1">{caption}</p>
         </div>
         <div className="c-sv-acts">
           {dayOne ? (

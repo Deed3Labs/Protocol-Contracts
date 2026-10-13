@@ -1,7 +1,15 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { autoSaveFromRules, firstAutoSaveRun } from '@/lib/clearModel';
+import {
+  autoSaveFromRules,
+  DEPOSIT_MATCH_MONTHLY_CAP,
+  firstAutoSaveRun,
+  monthlyAutoSave,
+  monthlyAutoSaveCredits,
+  onTrackFor,
+  withOnTrack,
+} from '@/lib/clearModel';
 
 const DIALOG = readFileSync(join(import.meta.dir, 'AutoSaveDialog.tsx'), 'utf8');
 const CONNECTED = readFileSync(join(import.meta.dir, 'ConnectedAutoSave.tsx'), 'utf8');
@@ -84,5 +92,40 @@ describe('one auto-save screen', () => {
   test('every entry point outside Savings opens the same connected dialog', () => {
     expect(ACTIONS).toContain('<ConnectedAutoSave');
     expect(ACTIONS).not.toContain('AutoSaveModal');
+  });
+});
+
+describe('the "On track for" date is the auto-save rate', () => {
+  const from = new Date(2026, 9, 13);
+
+  test('weekly is 52 runs a year; payday 26', () => {
+    expect(monthlyAutoSave({ amount: 120, cadence: 'weekly' })).toBe(520);
+    expect(monthlyAutoSave({ amount: 120, cadence: 'payday' })).toBe(260);
+    expect(monthlyAutoSave({ amount: 120, cadence: 'monthly' })).toBe(120);
+  });
+
+  test('credits a month stop at the match cap', () => {
+    expect(monthlyAutoSaveCredits({ amount: 1000, cadence: 'monthly' })).toBe(1000);
+    expect(monthlyAutoSaveCredits({ amount: 500, cadence: 'weekly' })).toBe(DEPOSIT_MATCH_MONTHLY_CAP);
+    expect(monthlyAutoSaveCredits(undefined)).toBe(0);
+  });
+
+  test('the month the last credit lands', () => {
+    // 13,500 to go at 1,000 a month is 14 months: December 2027.
+    expect(onTrackFor(1500, 15000, 1000, from)).toBe('Dec 2027');
+    // A part month still has to be waited out: 13,500 at 1,300 is 10.4 months, so 11.
+    expect(onTrackFor(1500, 15000, 1300, from)).toBe('Sep 2027');
+    expect(onTrackFor(14999, 15000, 1000, from)).toBe('Nov 2026');
+  });
+
+  test('no rate, no date; and none once the path is complete', () => {
+    expect(onTrackFor(1500, 15000, 0, from)).toBeUndefined();
+    expect(onTrackFor(15000, 15000, 1000, from)).toBeUndefined();
+  });
+
+  test('a date carried in from a fixture or memory is replaced, never kept', () => {
+    const savings = { cash: 0, vested: 0, vesting: 0, credits: 1500, creditsGoal: 15000, onTrackFor: 'Jan 2030' };
+    expect(withOnTrack(savings, undefined, from).onTrackFor).toBeUndefined();
+    expect(withOnTrack(savings, { amount: 1000, cadence: 'monthly' }, from).onTrackFor).toBe('Dec 2027');
   });
 });
