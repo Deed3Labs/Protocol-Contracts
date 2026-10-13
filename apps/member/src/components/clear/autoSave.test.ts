@@ -129,3 +129,14 @@ describe('the "On track for" date is the auto-save rate', () => {
     expect(withOnTrack(savings, { amount: 1000, cadence: 'monthly' }, from).onTrackFor).toBe('Dec 2027');
   });
 });
+
+describe('Home and Savings show one date', () => {
+  const HOME = readFileSync(join(import.meta.dir, '../../pages/app/HomeRoute.tsx'), 'utf8');
+
+  test('both work it out with the same rule, from the same remembered auto-save', () => {
+    for (const source of [HOME, DATA]) {
+      expect(source).toContain('withOnTrack(');
+      expect(source).toContain('`autosave:${walletKey(address)}`');
+    }
+  });
+});

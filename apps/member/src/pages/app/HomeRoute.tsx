@@ -18,11 +18,14 @@ import {
   getCredit,
   getLithicAccount,
   getPaySummary,
+  readAutopay,
+  type AutopaySummary,
   type CardTransaction,
   type CreditState,
   type LithicAccountResponse,
   type PaySummary,
 } from '@/utils/apiClient';
+import { autoSaveFromRules, withOnTrack } from '@/lib/clearModel';
 
 /*
  * Day-one, not in-use.
@@ -69,6 +72,8 @@ export default function HomeRoute() {
     { device: false },
   );
   const [pay, setPay] = useRemembered<PaySummary | null>(`pay:${walletKey(address)}`, null);
+  // The auto-save rule, for the savings card's "On track for" date. Same key as Savings.
+  const [autopay, setAutopay] = useRemembered<AutopaySummary | null>(`autosave:${walletKey(address)}`, null);
   const [credit, setCredit] = useRemembered<CreditState | null>(`credit:${walletKey(address)}`, null);
   const [creditTried, setCreditTried] = useState(false);
   const [cards, setCards] = useRemembered<CardTransaction[]>(`cardtx:${walletKey(address)}`, []);
@@ -120,6 +125,10 @@ export default function HomeRoute() {
       void getPaySummary(address).then((result) => {
         if (!cancelled) setPay(result);
       });
+      // A failed read keeps the last rule rather than dropping the date.
+      void readAutopay(address).then((summary) => {
+        if (!cancelled && summary) setAutopay(summary);
+      });
     };
     read();
 
@@ -149,13 +158,17 @@ export default function HomeRoute() {
     //
     // Left at zero until a card balance is actually readable. The USDC is not hidden: it appears
     // as readyToAllocate below, which is the row that exists to say "yours, not spendable here".
-    savings: {
-      ...HOME_DAY_ONE.savings,
-      ...(haveBalances ? { cash: savings } : {}),
-      ...(pay
-        ? { credits: pay.totalEquity, vested: pay.vestedEquity, vesting: pay.pendingEquity }
-        : {}),
-    },
+    // The "On track for" date is Savings' rule, from the same auto-save: one date on both pages.
+    savings: withOnTrack(
+      {
+        ...HOME_DAY_ONE.savings,
+        ...(haveBalances ? { cash: savings } : {}),
+        ...(pay
+          ? { credits: pay.totalEquity, vested: pay.vestedEquity, vesting: pay.pendingEquity }
+          : {}),
+      },
+      autopay ? autoSaveFromRules(autopay.rules, autopay.savedThisYear) : undefined,
+    ),
     cashAccount: {
       ...HOME_DAY_ONE.cashAccount,
       // USDC on the member's own smart wallet: theirs, in the cash account, and able to go to
