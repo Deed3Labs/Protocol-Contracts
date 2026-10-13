@@ -3,11 +3,11 @@ import { useEffect, useState } from 'react';
 import { HOME_DAY_ONE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useAppKitAccount } from '@/lib/walletCompat';
-import { getCredit, getPaySummary, type CreditState, type PaySummary } from '@/utils/apiClient';
+import { getCredit, getPaySummary, readAutopayRules, type AutopayRule, type CreditState, type PaySummary } from '@/utils/apiClient';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
 import { toCredit } from '@/lib/creditMapping';
-import { creditLimit, securedUsed, type SavingsData } from '@/lib/clearModel';
+import { autoSaveFromRules, creditLimit, securedUsed, type SavingsData } from '@/lib/clearModel';
 
 /*
  * Day-one, not in-use.
@@ -47,6 +47,8 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
   // Same key as Home: the credit read, for the savings standing behind spending (Savings' Paused
   // state, the same figure the cycle card's Top off reads) and what savings add to the line.
   const [creditState, setCreditState] = useRemembered<CreditState | null>(`credit:${walletKey(address)}`, null);
+  // The member's autopay rules: what the path footer reads as "Saving $X a month".
+  const [autopay, setAutopay] = useRemembered<AutopayRule[] | null>(`autopay:${walletKey(address)}`, null);
 
   useEffect(() => {
     if (!address) return;
@@ -60,6 +62,10 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
       });
       void getCredit(address).then((result) => {
         if (!cancelled) setCreditState((prev) => keepLastGood(prev, result));
+      });
+      // A failed read keeps the last rules rather than reading as "auto-save is off".
+      void readAutopayRules(address).then((rules) => {
+        if (!cancelled && rules) setAutopay(rules);
       });
     };
     read();
@@ -103,6 +109,7 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
           }
         : {}),
     },
+    ...(autopay ? { autoSave: autoSaveFromRules(autopay) } : {}),
     ...(credit
       ? {
           creditLimitToday: creditLimit(credit),
