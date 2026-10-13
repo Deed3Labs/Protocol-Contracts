@@ -72,7 +72,9 @@ export function HomeIcon({ size = 20, strokeWidth = 1.75, ...props }: IconProps)
 export function SavingsIcon({ size = 20, strokeWidth = 1.75, ...props }: IconProps) {
   return (
     <svg {...base(size, strokeWidth, props)}>
-      <path d="M12 2v20" />
+      {/* The stem stays inside 3–21, the band the other nav glyphs keep to. Running 2–22, the dollar
+          stood taller than its neighbours and its round caps came within a pixel of the clip. */}
+      <path d="M12 3v18" />
       <path d="M17 6.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
     </svg>
   );
