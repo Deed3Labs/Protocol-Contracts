@@ -30,7 +30,8 @@ router.get('/:wallet', async (req: Request, res: Response) => {
   if (!requireWalletMatch(req, res, w, 'wallet')) return;
   if (!ensureReady(res)) return;
   try {
-    res.json({ rules: await autopayStore.listForWallet(w) });
+    const [rules, savedThisYear] = await Promise.all([autopayStore.listForWallet(w), autopayStore.savedThisYear(w)]);
+    res.json({ rules, savedThisYear });
   } catch (error) {
     console.error('[autopay/list]', error);
     res.status(500).json({ error: 'Failed to load autopay rules' });

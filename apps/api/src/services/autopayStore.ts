@@ -55,6 +55,18 @@ async function ensureTable(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS autopay_rules_wallet_idx ON autopay_rules (wallet);
     CREATE INDEX IF NOT EXISTS autopay_rules_due_idx ON autopay_rules (status, next_run_at);
+
+    -- One row per deposit a rule actually made. The rules table keeps only the last run, which is
+    -- enough to schedule the next one and not enough to say what auto-save has saved. Keyed by the
+    -- transaction, so a run recorded twice is counted once.
+    CREATE TABLE IF NOT EXISTS autopay_runs (
+      tx_hash TEXT PRIMARY KEY,
+      rule_id TEXT NOT NULL,
+      wallet TEXT NOT NULL,
+      amount_usdc NUMERIC NOT NULL,
+      ran_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS autopay_runs_wallet_idx ON autopay_runs (wallet, ran_at);
   `);
   ensured = true;
 }
@@ -165,6 +177,23 @@ class AutopayStore {
     });
   }
 
+  /**
+   * What auto-save has deposited for this member since 1 January, across every rule they have had,
+   * cancelled ones included: a rule replaced in March still saved what it saved. Counts runs from the
+   * moment `autopay_runs` exists; nothing earlier was recorded per run.
+   */
+  async savedThisYear(wallet: string, now: Date = new Date()): Promise<number> {
+    await ensureTable();
+    const pool = getPayPool();
+    if (!pool) return 0;
+    const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    const r = await pool.query(
+      `SELECT COALESCE(SUM(amount_usdc), 0) AS saved FROM autopay_runs WHERE wallet = $1 AND ran_at >= $2`,
+      [wallet.toLowerCase(), yearStart.toISOString()],
+    );
+    return Number(r.rows[0]?.saved ?? 0);
+  }
+
   /** Record a successful run: advance next_run_at, decrement runs_left, mark exhausted at 0. */
   async recordSuccess(rule: AutopayRule, txHash: string): Promise<void> {
     const pool = getPayPool();
@@ -177,6 +206,18 @@ class AutopayStore {
         last_run_at = now(), last_tx = $4, last_error = NULL WHERE id = $5`,
       [next.toISOString(), runsLeft, status, txHash, rule.id],
     );
+    // After the schedule moves, and never able to stop it: a run that failed to be counted is a
+    // wrong total, but a schedule that failed to advance is a second deposit.
+    try {
+      await ensureTable();
+      await pool.query(
+        `INSERT INTO autopay_runs (tx_hash, rule_id, wallet, amount_usdc) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (tx_hash) DO NOTHING`,
+        [txHash, rule.id, rule.wallet.toLowerCase(), rule.amountUsdc],
+      );
+    } catch (error) {
+      console.error('[autopay] could not record run', txHash, error);
+    }
   }
 
   /** Record a failed run. Pushes next_run_at out by a short retry window so one failure doesn't spin. */
