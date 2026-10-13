@@ -3105,19 +3105,22 @@ export interface AutopayRule {
   createdAt: string;
 }
 
-export async function listAutopayRules(wallet: string): Promise<AutopayRule[]> {
-  return (await readAutopayRules(wallet)) ?? [];
+export interface AutopaySummary {
+  rules: AutopayRule[];
+  /** What auto-save has deposited since 1 January, in USD. Null from an API that predates it. */
+  savedThisYear: number | null;
 }
 
 /**
- * The member's autopay rules, or null when they could not be read.
+ * The member's autopay rules and what they have saved this year, or null when they could not be read.
  *
  * Null rather than an empty list, so a page can tell "no auto-save" from "the read failed" and keep
  * what it last showed instead of telling a member their auto-save stopped because a request timed out.
  */
-export async function readAutopayRules(wallet: string): Promise<AutopayRule[] | null> {
-  const r = await apiRequest<{ rules: AutopayRule[] }>(`/api/autopay/${wallet.toLowerCase()}`);
-  return r.error || !r.data ? null : r.data.rules;
+export async function readAutopay(wallet: string): Promise<AutopaySummary | null> {
+  const r = await apiRequest<{ rules: AutopayRule[]; savedThisYear?: number }>(`/api/autopay/${wallet.toLowerCase()}`);
+  if (r.error || !r.data) return null;
+  return { rules: r.data.rules, savedThisYear: typeof r.data.savedThisYear === 'number' ? r.data.savedThisYear : null };
 }
 
 export interface AutopayMandate {

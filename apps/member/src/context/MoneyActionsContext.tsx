@@ -4,7 +4,8 @@ import WithdrawModal from '@/components/app-ui/WithdrawModal';
 import SendModal from '@/components/app-ui/SendModal';
 import RequestModal from '@/components/app-ui/RequestModal';
 import TransferModal from '@/components/app-ui/TransferModal';
-import AutoSaveModal from '@/components/app-ui/AutoSaveModal';
+import ConnectedAutoSave from '@/components/clear/ConnectedAutoSave';
+import { useSavingsData } from '@/hooks/useSavingsData';
 
 interface MoneyActionsValue {
   openAddMoney: () => void;
@@ -15,6 +16,14 @@ interface MoneyActionsValue {
   openAutoSave: () => void;
 }
 const Ctx = createContext<MoneyActionsValue | null>(null);
+
+/**
+ * Auto-save from anywhere: the same dialog Savings opens, over the same figures. Mounted only once
+ * somebody asks for it, so the reads behind it are not made on every page of the app.
+ */
+function AutoSaveAnywhere({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  return <ConnectedAutoSave data={useSavingsData()} open={open} onOpenChange={onOpenChange} />;
+}
 
 /** Open the Add-money / Withdraw / Send / Request / Transfer flows from anywhere in the shell. */
 export function useMoneyActions(): MoneyActionsValue {
@@ -37,6 +46,8 @@ export function MoneyActionsProvider({ children }: { children: ReactNode }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [autoSaveOpen, setAutoSaveOpen] = useState(false);
+  // Stays mounted after the first open, so closing animates like every other sheet.
+  const [autoSaveMounted, setAutoSaveMounted] = useState(false);
   return (
     <Ctx.Provider
       value={{
@@ -48,7 +59,10 @@ export function MoneyActionsProvider({ children }: { children: ReactNode }) {
         openSend: () => setSendOpen(true),
         openRequest: () => setRequestOpen(true),
         openTransfer: () => setTransferOpen(true),
-        openAutoSave: () => setAutoSaveOpen(true),
+        openAutoSave: () => {
+          setAutoSaveMounted(true);
+          setAutoSaveOpen(true);
+        },
       }}
     >
       {children}
@@ -57,7 +71,7 @@ export function MoneyActionsProvider({ children }: { children: ReactNode }) {
       <SendModal open={sendOpen} onOpenChange={setSendOpen} />
       <RequestModal open={requestOpen} onOpenChange={setRequestOpen} />
       <TransferModal open={transferOpen} onOpenChange={setTransferOpen} />
-      <AutoSaveModal open={autoSaveOpen} onOpenChange={setAutoSaveOpen} />
+      {autoSaveMounted && <AutoSaveAnywhere open={autoSaveOpen} onOpenChange={setAutoSaveOpen} />}
     </Ctx.Provider>
   );
 }

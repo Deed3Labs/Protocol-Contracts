@@ -776,7 +776,7 @@ export type AutoSaveCadence = 'payday' | 'monthly' | 'weekly';
 export interface AutoSave {
   amount: number;
   cadence: AutoSaveCadence;
-  /** Not reported by the autopay API, so absent for live members; the design fixture sets it. */
+  /** What auto-save has deposited since 1 January (`autopay_runs`). Absent when the API doesn't say. */
   savedThisYear?: number;
   /** When the next deposit runs, as an ISO timestamp. */
   nextRunAt?: string;
@@ -794,11 +794,18 @@ export const AUTO_SAVE_RUNS = 12;
 /** The active autopay rule as the Savings page shows it, or undefined when none is running. */
 export function autoSaveFromRules(
   rules: { status: string; amountUsdc: number; cadence: 'weekly' | 'monthly'; nextRunAt: string; runsLeft: number | null }[],
+  savedThisYear: number | null = null,
 ): AutoSave | undefined {
   // The API lists newest first, so the first active rule is the one set most recently.
   const rule = rules.find((r) => r.status === 'active');
   if (!rule) return undefined;
-  return { amount: rule.amountUsdc, cadence: rule.cadence, nextRunAt: rule.nextRunAt, runsLeft: rule.runsLeft };
+  return {
+    amount: rule.amountUsdc,
+    cadence: rule.cadence,
+    nextRunAt: rule.nextRunAt,
+    runsLeft: rule.runsLeft,
+    ...(savedThisYear != null ? { savedThisYear } : {}),
+  };
 }
 
 /**

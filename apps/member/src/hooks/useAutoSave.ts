@@ -4,7 +4,7 @@ import { ACTIVE_CHAIN_ID, clearContracts } from '@/lib/clearNetwork';
 import { installAutopaySession } from '@/lib/autopay';
 import { isAaUnsupportedError } from '@/lib/aa';
 import { markChainSettled } from '@/lib/chainStale';
-import { cancelAutopayRule, readAutopayRules } from '@/utils/apiClient';
+import { cancelAutopayRule, readAutopay } from '@/utils/apiClient';
 import { AUTO_SAVE_RUNS } from '@/lib/clearModel';
 
 
@@ -20,9 +20,9 @@ export interface AutoSaveControls {
 
 /** Every active rule, read fresh at the moment of a change rather than trusted from the page. */
 async function activeRuleIds(address: string): Promise<string[]> {
-  const rules = await readAutopayRules(address);
-  if (!rules) throw new Error("Couldn't read your auto-save. Try again.");
-  return rules.filter((r) => r.status === 'active').map((r) => r.id);
+  const summary = await readAutopay(address);
+  if (!summary) throw new Error("Couldn't read your auto-save. Try again.");
+  return summary.rules.filter((r) => r.status === 'active').map((r) => r.id);
 }
 
 /**

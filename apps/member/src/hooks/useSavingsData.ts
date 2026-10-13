@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { HOME_DAY_ONE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useClearBalances } from '@/hooks/useClearBalances';
 import { useAppKitAccount } from '@/lib/walletCompat';
-import { getCredit, getPaySummary, readAutopayRules, type AutopayRule, type CreditState, type PaySummary } from '@/utils/apiClient';
+import { getCredit, getPaySummary, readAutopay, type AutopaySummary, type CreditState, type PaySummary } from '@/utils/apiClient';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
 import { toCredit } from '@/lib/creditMapping';
@@ -47,8 +47,9 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
   // Same key as Home: the credit read, for the savings standing behind spending (Savings' Paused
   // state, the same figure the cycle card's Top off reads) and what savings add to the line.
   const [creditState, setCreditState] = useRemembered<CreditState | null>(`credit:${walletKey(address)}`, null);
-  // The member's autopay rules: what the path footer reads as "Saving $X a month".
-  const [autopay, setAutopay] = useRemembered<AutopayRule[] | null>(`autopay:${walletKey(address)}`, null);
+  // The member's autopay rules, and what they have saved this year: what the path footer reads as
+  // "Saving $X a month". A new key: `autopay:` held the bare rule list.
+  const [autopay, setAutopay] = useRemembered<AutopaySummary | null>(`autosave:${walletKey(address)}`, null);
 
   useEffect(() => {
     if (!address) return;
@@ -64,8 +65,8 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
         if (!cancelled) setCreditState((prev) => keepLastGood(prev, result));
       });
       // A failed read keeps the last rules rather than reading as "auto-save is off".
-      void readAutopayRules(address).then((rules) => {
-        if (!cancelled && rules) setAutopay(rules);
+      void readAutopay(address).then((summary) => {
+        if (!cancelled && summary) setAutopay(summary);
       });
     };
     read();
@@ -109,7 +110,7 @@ export function useSavingsData(): SavingsData & { pending: boolean } {
           }
         : {}),
     },
-    ...(autopay ? { autoSave: autoSaveFromRules(autopay) } : {}),
+    ...(autopay ? { autoSave: autoSaveFromRules(autopay.rules, autopay.savedThisYear) } : {}),
     ...(credit
       ? {
           creditLimitToday: creditLimit(credit),
