@@ -3106,8 +3106,18 @@ export interface AutopayRule {
 }
 
 export async function listAutopayRules(wallet: string): Promise<AutopayRule[]> {
+  return (await readAutopayRules(wallet)) ?? [];
+}
+
+/**
+ * The member's autopay rules, or null when they could not be read.
+ *
+ * Null rather than an empty list, so a page can tell "no auto-save" from "the read failed" and keep
+ * what it last showed instead of telling a member their auto-save stopped because a request timed out.
+ */
+export async function readAutopayRules(wallet: string): Promise<AutopayRule[] | null> {
   const r = await apiRequest<{ rules: AutopayRule[] }>(`/api/autopay/${wallet.toLowerCase()}`);
-  return r.error || !r.data ? [] : r.data.rules;
+  return r.error || !r.data ? null : r.data.rules;
 }
 
 export interface AutopayMandate {

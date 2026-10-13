@@ -2,14 +2,20 @@ import { useEffect, useState } from 'react';
 import Modal from './Modal';
 import { Btn } from './brand/anatomy';
 import { money, count } from '@clear/domain';
-import type { AutoSaveCadence, SavingsData } from '@/lib/clearModel';
+import { AUTO_SAVE_RUNS, firstAutoSaveRun, type AutoSaveCadence, type SavingsData } from '@/lib/clearModel';
 import { cn } from '@/lib/utils';
 
-const CADENCES: { id: AutoSaveCadence; label: string; next: string }[] = [
-  { id: 'payday', label: 'Every payday', next: 'Nov 1' },
-  { id: 'monthly', label: 'Monthly', next: 'Nov 1' },
-  { id: 'weekly', label: 'Weekly', next: 'Nov 3' },
+/*
+ * Monthly and weekly only: these are the autopay rule's two cadences. "Every payday" is the sweep
+ * rule's (/api/sweeps/auto-save), which today books an intent on each deposit and moves nothing, so
+ * it is not offered until it does.
+ */
+const CADENCES: { id: AutoSaveCadence; label: string }[] = [
+  { id: 'monthly', label: 'Monthly' },
+  { id: 'weekly', label: 'Weekly' },
 ];
+
+const shortDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 /**
  * Auto-save — two states, because the screen a member opens the first time and the one they open a
@@ -27,6 +33,8 @@ export default function AutoSaveDialog({
   onOpenChange,
   onTurnOn,
   onTurnOff,
+  busy = false,
+  error = null,
 }: {
   data: SavingsData;
   open: boolean;
@@ -34,51 +42,75 @@ export default function AutoSaveDialog({
   /** Turn it on, or save a change to one already running. */
   onTurnOn?: (amount: number, cadence: AutoSaveCadence) => void;
   onTurnOff?: () => void;
+  /** A change is out for signature or on its way to the server. */
+  busy?: boolean;
+  error?: string | null;
 }) {
   const running = data.autoSave;
   const startAmount = running?.amount ?? data.projection.perPayday;
   const [amount, setAmount] = useState(startAmount);
   const [custom, setCustom] = useState(false);
-  const [cadence, setCadence] = useState<AutoSaveCadence>(running?.cadence ?? 'payday');
+  const [cadence, setCadence] = useState<AutoSaveCadence>(running?.cadence ?? 'monthly');
   const presets = [data.projection.extraMonthly, data.projection.perPayday];
-  const chosen = CADENCES.find((c) => c.id === cadence) ?? CADENCES[0];
+  // The projection is only drawn when there is a date behind it; nothing live holds one yet.
+  const projected = data.savings.onTrackFor;
 
   // Reopening shows what is actually set, not what was auditioned last time.
   useEffect(() => {
     if (!open) return;
     setAmount(startAmount);
     setCustom(!presets.includes(startAmount));
-    setCadence(running?.cadence ?? 'payday');
+    setCadence(running?.cadence ?? 'monthly');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const unchanged = running !== undefined && amount === running.amount && cadence === running.cadence;
+  // The running rule's own next run while its cadence stands; a new one starts a period from now.
+  const nextRun =
+    running?.nextRunAt && running.cadence === cadence
+      ? shortDate(new Date(running.nextRunAt))
+      : shortDate(firstAutoSaveRun(cadence));
 
   const footer = running ? (
     <>
       <div className="c-conseq">
-        <div className="c-earn">
-          <span>Moving to {data.projection.withExtra} needs</span>
-          <span>+{money(data.projection.extraMonthly, { cents: true })} a month</span>
-        </div>
-        <div>
-          <span>Saved so far this year</span>
-          <span>{money(running.savedThisYear, { cents: true })}</span>
-        </div>
+        {projected && (
+          <div className="c-earn">
+            <span>Moving to {data.projection.withExtra} needs</span>
+            <span>+{money(data.projection.extraMonthly, { cents: true })} a month</span>
+          </div>
+        )}
+        {running.savedThisYear !== undefined && (
+          <div>
+            <span>Saved so far this year</span>
+            <span>{money(running.savedThisYear, { cents: true })}</span>
+          </div>
+        )}
         <div>
           <span>Next run</span>
-          <span>{chosen.next}</span>
+          <span>{nextRun}</span>
         </div>
-        <div className="c-limit">
-          <span>On track for</span>
-          <span>{data.savings.onTrackFor ?? '—'}</span>
-        </div>
+        {running.runsLeft != null && (
+          <div>
+            <span>Runs left</span>
+            <span>{count(running.runsLeft)}</span>
+          </div>
+        )}
+        {projected && (
+          <div className="c-limit">
+            <span>On track for</span>
+            <span>{projected}</span>
+          </div>
+        )}
       </div>
+      {error && <p className="c-det c-errline mt-s2">{error}</p>}
       <div className="c-pair mt-s2">
-        <Btn primary disabled={amount <= 0 || unchanged} onClick={() => onTurnOn?.(amount, cadence)}>
-          Save changes
+        <Btn primary disabled={busy || amount <= 0 || unchanged} onClick={() => onTurnOn?.(amount, cadence)}>
+          {busy ? 'Waiting…' : 'Save changes'}
         </Btn>
-        <Btn onClick={onTurnOff}>Turn off</Btn>
+        <Btn disabled={busy} onClick={onTurnOff}>
+          Turn off
+        </Btn>
       </div>
     </>
   ) : (
@@ -89,23 +121,29 @@ export default function AutoSaveDialog({
           <span>+{money(amount, { cents: true })} each time</span>
         </div>
         <div>
-          <span>Next run</span>
-          <span>{chosen.next}</span>
+          <span>First run</span>
+          <span>{nextRun}</span>
         </div>
         <div>
           <span>Comes from</span>
           <span>Ready to allocate</span>
         </div>
-        <div className="c-limit">
-          <span>At this rate, {count(data.savings.creditsGoal)} credits by</span>
-          <span>{data.savings.onTrackFor ?? '—'}</span>
-        </div>
+        {projected && (
+          <div className="c-limit">
+            <span>At this rate, {count(data.savings.creditsGoal)} credits by</span>
+            <span>{projected}</span>
+          </div>
+        )}
       </div>
       <div className="c-footnote">
-        <p>Auto-save moves money already inside Clear. You can change it or stop it any time.</p>
+        <p>
+          Auto-save moves money already inside Clear. You confirm it once, it runs {AUTO_SAVE_RUNS} times, and
+          you can change it or stop it any time.
+        </p>
       </div>
-      <Btn primary lg className="mt-s2" disabled={amount <= 0} onClick={() => onTurnOn?.(amount, cadence)}>
-        Turn on auto-save
+      {error && <p className="c-det c-errline mt-s2">{error}</p>}
+      <Btn primary lg className="mt-s2" disabled={busy || amount <= 0} onClick={() => onTurnOn?.(amount, cadence)}>
+        {busy ? 'Waiting for your confirmation…' : 'Turn on auto-save'}
       </Btn>
     </>
   );

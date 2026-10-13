@@ -32,3 +32,12 @@ export function useOptionalSmartWalletClient(): ((opts: { id: number }) => Promi
     return null;
   }
 }
+
+/** Whether the signed-in wallet is a smart account, which changes how an allowance is granted. */
+export function useOptionalIsSmartAccount(): boolean {
+  try {
+    return useAppKitAccount().embeddedWalletInfo?.accountType === 'smartAccount';
+  } catch {
+    return false;
+  }
+}

@@ -4,7 +4,7 @@ import { useSetMobileAction } from '@/components/shell/MobileAction';
 import { Btn } from '@/components/clear/brand/anatomy';
 import { PlusIcon } from '@/components/clear/brand/icons';
 import ConnectedMoveMoney from '@/components/clear/ConnectedMoveMoney';
-import AutoSaveDialog from '@/components/clear/AutoSaveDialog';
+import ConnectedAutoSave from '@/components/clear/ConnectedAutoSave';
 import Modal from '@/components/clear/Modal';
 import { SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { count, money } from '@clear/domain';
@@ -361,8 +361,8 @@ export default function SavingsPage({ data = SAVINGS_DAY_ONE }: { data?: Savings
         </div>
       </section>
 
-      <ConnectedMoveMoney data={data} open={addOpen} onOpenChange={setAddOpen} />
-      <AutoSaveDialog data={data} open={autoSaveOpen} onOpenChange={setAutoSaveOpen} />
+      <ConnectedMoveMoney data={data} open={addOpen} onOpenChange={setAddOpen} onAutoSave={openAutoSave} />
+      <ConnectedAutoSave data={data} open={autoSaveOpen} onOpenChange={setAutoSaveOpen} />
       <HoldDetails data={data} open={detailsOpen} onOpenChange={setDetailsOpen} />
     </div>
   );

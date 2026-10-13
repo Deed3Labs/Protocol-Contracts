@@ -24,10 +24,13 @@ export default function ConnectedMoveMoney({
   data,
   open,
   onOpenChange,
+  onAutoSave,
 }: {
   data: SavingsData;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Where "Set up auto-save" goes. Savings opens its own; elsewhere it is the app's money action. */
+  onAutoSave?: () => void;
 }) {
   const balances = useClearBalances();
   // The empty state's two ways out, taken from the app's own money actions rather than passed down
@@ -128,7 +131,7 @@ export default function ConnectedMoveMoney({
       }}
       onAutoSave={() => {
         onOpenChange(false);
-        openAutoSave();
+        (onAutoSave ?? openAutoSave)();
       }}
     />
   );

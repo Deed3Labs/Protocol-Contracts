@@ -769,11 +769,47 @@ export interface SavingsProjection {
 
 export type AutoSaveCadence = 'payday' | 'monthly' | 'weekly';
 
-/** Auto-save as it is set up. Absent when it isn't — which is every member until it has a backend. */
+/**
+ * Auto-save as it is set up — the member's active autopay rule (`/api/autopay`), which moves USDC
+ * from Ready to allocate into savings on a schedule. Absent when there is none.
+ */
 export interface AutoSave {
   amount: number;
   cadence: AutoSaveCadence;
-  savedThisYear: number;
+  /** Not reported by the autopay API, so absent for live members; the design fixture sets it. */
+  savedThisYear?: number;
+  /** When the next deposit runs, as an ISO timestamp. */
+  nextRunAt?: string;
+  /** Deposits left on the signed mandate; null when it has no limit. */
+  runsLeft?: number | null;
+}
+
+/**
+ * How many deposits one auto-save signature covers. The mandate the member signs is bounded — amount,
+ * cadence, run count and expiry — so auto-save is set for this many runs and set again after. Twelve
+ * is the figure the original Auto-save modal used.
+ */
+export const AUTO_SAVE_RUNS = 12;
+
+/** The active autopay rule as the Savings page shows it, or undefined when none is running. */
+export function autoSaveFromRules(
+  rules: { status: string; amountUsdc: number; cadence: 'weekly' | 'monthly'; nextRunAt: string; runsLeft: number | null }[],
+): AutoSave | undefined {
+  // The API lists newest first, so the first active rule is the one set most recently.
+  const rule = rules.find((r) => r.status === 'active');
+  if (!rule) return undefined;
+  return { amount: rule.amountUsdc, cadence: rule.cadence, nextRunAt: rule.nextRunAt, runsLeft: rule.runsLeft };
+}
+
+/**
+ * When a newly set rule first runs: one period from now. Mirrors `addCadence` in
+ * apps/api/src/services/autopayStore.ts, which schedules the first run the same way.
+ */
+export function firstAutoSaveRun(cadence: AutoSaveCadence, from = new Date()): Date {
+  const d = new Date(from);
+  if (cadence === 'weekly') d.setDate(d.getDate() + 7);
+  else d.setMonth(d.getMonth() + 1);
+  return d;
 }
 
 export interface SavingsData {
