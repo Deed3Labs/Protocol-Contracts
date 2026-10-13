@@ -1,0 +1,347 @@
+<title>Savings Screen Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+:root {
+  color-scheme: light;
+  --paper: #DFE3DE; --paper-2: #E9ECE7; --ink: #16211D; --live: #24409E; --settled: #0E6B4E;
+  --ink-70: #525B57; --ink-50: #5A635F; --ink-28: #A7ADA8; --ink-13: #C5CAC5;
+  --f-display: 'Bricolage Grotesque', system-ui, sans-serif;
+  --f-text: 'Instrument Sans', system-ui, sans-serif;
+  --f-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--f-text); font-size: 16px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+h1, h2, p { margin: 0; }
+svg { display: block; }
+.wrap { max-width: 1680px; margin-inline: auto; padding: clamp(28px, 4vw, 64px) clamp(16px, 3vw, 48px) 80px; }
+.label { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-50); }
+.top { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 16px 48px; align-items: end; padding-bottom: 28px; border-bottom: 1px solid var(--ink-13); }
+.top .label { grid-column: 1 / -1; }
+.top .label b { color: var(--live); font-weight: 400; margin-right: 12px; }
+h1 { font-family: var(--f-display); font-weight: 800; font-size: clamp(36px, 4.4vw, 64px); line-height: .98; letter-spacing: -0.04em; }
+.top p { color: var(--ink-70); max-width: 52ch; }
+@media (max-width: 860px) { .top { grid-template-columns: minmax(0, 1fr); } }
+.frames { display: grid; grid-template-columns: minmax(0, 1fr) 406px; gap: clamp(24px, 3vw, 48px); align-items: start; margin-top: 36px; }
+@media (max-width: 1100px) { .frames { grid-template-columns: minmax(0, 1fr); } .frame.ph { max-width: 406px; } }
+.frame { display: grid; gap: 12px; min-width: 0; }
+.frame .cap { display: flex; justify-content: space-between; gap: 12px; }
+.device { position: relative; border: 1px solid var(--ink-28); border-radius: 14px; padding: 7px; }
+.screen { position: relative; overflow: hidden; background: #16211D; border-radius: 7px; }
+.canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+
+/* ── The app (member and merchant) — its own ground, same guide ──────── */
+.app {
+  --a-bg: #16211D; --a-2: #1E2C27; --a-line: rgb(223 227 222 / .14); --a-fg: #DFE3DE;
+  --a-70: #ABB1AC; --a-50: #939995; --a-live: #7C8CC5; --a-ok: #6FCB9F; --a-warn: #E3B667;
+  background: var(--a-bg); color: var(--a-fg); font-family: var(--f-text); font-size: 14px; line-height: 1.45;
+  -webkit-font-smoothing: antialiased; overflow: hidden;
+}
+.app .lbl { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--a-50); }
+.app .num { font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.app .bar-top { height: 56px; display: flex; align-items: center; justify-content: space-between; padding-inline: 24px; border-bottom: 1px solid var(--a-line); }
+.app .bar-top .l { display: flex; align-items: center; gap: 28px; }
+.app .lock { display: flex; align-items: center; gap: 8px; font-family: var(--f-display); font-weight: 800; font-size: 17px; letter-spacing: -0.035em; }
+.app .lock svg { width: 18px; height: 18px; }
+.app .lock i { width: 1px; height: 16px; background: var(--a-line); margin-inline: 4px; }
+.app .lock em { font-style: normal; font-family: var(--f-text); font-weight: 500; font-size: 14px; letter-spacing: 0; color: var(--a-70); }
+.app .tabs { display: flex; gap: 22px; color: var(--a-50); font-size: 14px; }
+.app .tabs .on { color: var(--a-fg); }
+.app .ava { width: 30px; height: 30px; border-radius: 999px; border: 1px solid var(--a-line); display: grid; place-items: center; font-size: 11.5px; font-weight: 600; color: var(--a-70); }
+.app .pillb { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding-inline: 14px; border-radius: 999px; border: 1px solid var(--a-line); font-size: 13px; font-weight: 500; color: var(--a-fg); white-space: nowrap; }
+.app .pillb.solid { background: var(--a-fg); color: var(--a-bg); border-color: var(--a-fg); }
+
+
+
+/* Member app, Savings, desktop canvas 1200 wide */
+.app .bar-top .r { display: flex; align-items: center; gap: 22px; }
+.app .bell { width: 17px; height: 17px; color: var(--a-70); }
+.app .cap2 { color: var(--a-50); font-size: 13px; }
+.app .pillb.lg { height: 38px; padding-inline: 20px; font-size: 13.5px; }
+.sv { padding: 30px 40px 40px; display: grid; gap: 22px; }
+.sv-top { display: flex; justify-content: space-between; align-items: end; gap: 24px; }
+.sv-top .l { display: grid; gap: 6px; }
+.sv-n { font-size: 46px; line-height: 1; letter-spacing: -0.035em; margin-top: 4px; }
+.sv-top .acts { display: flex; gap: 10px; }
+.slab { display: grid; grid-template-columns: 1.35fr 1fr; border: 1px solid var(--a-line); }
+.slab > .blk + .blk { border-left: 1px solid var(--a-line); }
+.blk { display: grid; grid-template-rows: auto 1fr auto; min-width: 0; }
+.bh { display: flex; justify-content: space-between; align-items: center; height: 56px; padding: 0 20px; border-bottom: 1px solid var(--a-line); }
+.bh .num { font-size: 19px; }
+.bh .num span { color: var(--a-50); font-weight: 500; font-size: 13px; }
+.bm { padding: 18px 20px; display: grid; align-content: start; gap: 16px; }
+.bf { border-top: 1px solid var(--a-line); padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--a-70); }
+.bf b { color: var(--a-fg); font-weight: 500; }
+.hp-n { display: flex; align-items: baseline; gap: 10px; }
+.hp-n .num { font-size: 40px; letter-spacing: -0.035em; line-height: 1; }
+.ladder5 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+.ladder5 > div { display: grid; gap: 8px; align-content: start; }
+.ladder5 i { display: block; height: 8px; background: var(--a-2); position: relative; overflow: hidden; }
+.ladder5 i b { position: absolute; inset: 0; background: var(--a-ok); transform-origin: 0 50%; }
+.ladder5 .now i b { background: var(--a-live); }
+.ladder5 span { font-size: 12px; color: var(--a-50); line-height: 1.3; }
+.ladder5 .got span { color: var(--a-fg); }
+.ladder5 em { font-style: normal; font-family: var(--f-mono); font-size: 10px; letter-spacing: .08em; color: var(--a-50); }
+.nextu { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; background: var(--a-2); font-size: 13.5px; }
+.nextu b { font-weight: 600; }
+.comp { display: flex; height: 6px; }
+.comp i { display: block; transform-origin: 0 50%; }
+.trows { display: grid; gap: 7px; font-size: 13.5px; color: var(--a-70); }
+.trows div { display: flex; justify-content: space-between; gap: 12px; }
+.trows .fg { color: var(--a-fg); } .trows .ok { color: var(--a-ok); } .trows .warn { color: var(--a-warn); }
+.prot { border: 1px solid var(--a-line); }
+.prot .bh { border-bottom: 1px solid var(--a-line); }
+.prot-rows { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.prot-rows > div { display: grid; gap: 6px; padding: 14px 16px 16px; font-size: 13px; color: var(--a-70); }
+.prot-rows > div + div { border-left: 1px solid var(--a-line); }
+.prot-rows b { color: var(--a-fg); font-weight: 500; font-size: 13.5px; }
+.chp { justify-self: start; font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--a-line); color: var(--a-50); }
+.chp.ok { color: var(--a-ok); border-color: rgb(111 203 159 / .35); }
+/* Phone canvas */
+.ph-top { height: 58px; display: flex; align-items: center; justify-content: space-between; padding-inline: 18px; border-bottom: 1px solid var(--a-line); }
+.ph-top .r { display: flex; align-items: center; gap: 16px; }
+.ph-sv { padding: 22px 18px 96px; display: grid; gap: 16px; }
+.ph-sv .sv-n { font-size: 38px; }
+.ph-sv .slab { grid-template-columns: minmax(0, 1fr); }
+.ph-sv .ladder5 span { font-size: 10.5px; }
+.navpill { position: absolute; left: 16px; bottom: 18px; height: 50px; display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 17px; background: var(--a-2); border: 1px solid var(--a-line); }
+.navpill span { height: 40px; padding-inline: 14px; display: grid; place-items: center; border-radius: 13px; font-size: 13px; color: var(--a-50); }
+.navpill span.on { background: var(--a-fg); color: var(--a-bg); font-weight: 500; }
+.navact { position: absolute; right: 16px; bottom: 18px; width: 50px; height: 50px; border-radius: 17px; background: var(--a-fg); color: var(--a-bg); display: grid; place-items: center; }
+.navact svg { width: 18px; height: 18px; }
+
+
+/* Phone, full length: the bottom bar floats over the end of the content */
+.phone-full .ph-sv { padding-bottom: 96px; }
+.phone-full .navpill, .phone-full .navact { position: absolute; }
+.prot-list > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 12px; row-gap: 2px; padding: 12px 16px; font-size: 13px; color: var(--a-70); }
+.prot-list > div + div { border-top: 1px solid var(--a-line); }
+.prot-list b { color: var(--a-fg); font-weight: 500; font-size: 13.5px; }
+.prot-list .chp { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+.ph-sv .bf { align-items: center; line-height: 1.4; }
+/* the app's real bottom bar: five icon tabs in the bordered pill, the selected one on a light key */
+.navpill.ic { gap: 2px; }
+.navpill.ic span { width: 46px; padding: 0; color: var(--a-70); }
+.navpill.ic span svg { width: 21px; height: 21px; }
+.navpill.ic span.on { color: var(--a-bg); }
+/* phone: the credit count sits below the balance in weight */
+.ph-sv .hp-n .num { font-size: 26px; letter-spacing: -0.03em; }
+.ph-sv .hp-n { gap: 8px; }
+/* states */
+[hidden] { display: none !important; }
+.switch { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px 24px; margin-top: 32px; }
+.seg { display: inline-flex; flex-wrap: wrap; padding: 3px; border: 1px solid var(--ink-28); border-radius: 999px; }
+.seg button { font: inherit; height: 36px; padding-inline: 16px; border: 0; border-radius: 999px; background: none; font-size: 14px; font-weight: 500; color: var(--ink-70); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.st-h { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 8px 40px; align-items: baseline; margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--ink-13); }
+.st-h h2 { font-family: var(--f-display); font-weight: 600; font-size: clamp(20px, 1.8vw, 26px); letter-spacing: -0.02em; line-height: 1.15; }
+.st-h p { color: var(--ink-70); font-size: 15px; max-width: 64ch; }
+@media (max-width: 860px) { .st-h { grid-template-columns: minmax(0, 1fr); } }
+.state .frames { margin-top: 22px; }
+.app .cap2.warn { color: var(--a-warn); }
+.app .cap2.ok { color: var(--a-ok); }
+.ladder5 .now.paused i b { background: var(--a-warn); }
+.nextu.warn { background: rgb(227 182 103 / .1); box-shadow: inset 2px 0 0 var(--a-warn); }
+.nextu.ok { background: rgb(111 203 159 / .1); box-shadow: inset 2px 0 0 var(--a-ok); }
+.nextu .pillb { height: 30px; }
+.hnote { margin: 0; font-size: 13px; color: var(--a-50); }
+/* the spec */
+.spec { margin-top: 56px; border: 1px solid var(--ink-28); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.spec > div { padding: 22px clamp(18px, 2vw, 28px); display: grid; gap: 10px; align-content: start; min-width: 0; }
+.spec > div + div { border-left: 1px solid var(--ink-28); }
+.spec h2 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.spec dl { margin: 0; display: grid; }
+.spec dl div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding-block: 7px; border-bottom: 1px solid var(--ink-13); font-size: 13.5px; }
+.spec dt { color: var(--ink-70); }
+.spec dd { margin: 0; font-family: var(--f-mono); font-size: 11.5px; color: var(--ink); text-align: right; }
+.spec ul { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-70); display: grid; gap: 6px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1px solid var(--ink-13); }
+@media (max-width: 1000px) { .spec { grid-template-columns: minmax(0, 1fr); } .spec > div + div { border-left: 0; border-top: 1px solid var(--ink-28); } }
+</style>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="mark" viewBox="-168 -168 336 336">
+    <path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" fill="currentColor" stroke="currentColor" stroke-width="4"/>
+    <path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor"/>
+    <circle cx="0" cy="0" r="34" fill="currentColor"/>
+    <circle cx="131.5" cy="0" r="25.25" fill="none" stroke="currentColor" stroke-width="15.5"/>
+  </symbol><symbol id="bell" viewBox="0 0 18 18"><path d="M4.5 12.5V8a4.5 4.5 0 0 1 9 0v4.5l1.5 1.5H3z M7.2 15.5a1.9 1.9 0 0 0 3.6 0" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol><symbol id="plus" viewBox="0 0 18 18"><path d="M9 2v14M2 9h14" stroke="currentColor" stroke-width="1.8"/></symbol><symbol id="n-home" viewBox="0 0 24 24"><path d="M4 11l8-6.5L20 11v8.5H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol><symbol id="n-save" viewBox="0 0 24 24"><path d="M12 3.5v17M16 7.5c-.6-1.4-2-2.2-4-2.2-2.4 0-4 1.2-4 3s1.5 2.6 4 3.2 4 1.4 4 3.3-1.6 3.1-4 3.1c-2.1 0-3.6-.9-4.2-2.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol><symbol id="n-earn" viewBox="0 0 24 24"><path d="M4 16.5l5-5 3.5 3.5L20 7.5M15 7.5h5v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol><symbol id="n-act" viewBox="0 0 24 24"><path d="M3.5 12h4l2.5-6 4 12 2.5-6h4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol><symbol id="n-card" viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="12" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 10h17" stroke="currentColor" stroke-width="1.6"/></symbol></svg>
+<main class="wrap">
+  <header class="top">
+    <span class="label"><b>Member app</b>Savings · reference screens</span>
+    <h1>Savings, with the home path up front.</h1>
+    <p>The desktop and phone layouts of the Savings tab, at real size, in each state a member can be in. Every figure is illustrative.</p>
+  </header>
+<div class="switch"><div class="seg" role="group" aria-label="State"><button type="button" data-s="day1" aria-pressed="false">Day one</button><button type="button" data-s="saving" aria-pressed="true">Saving</button><button type="button" data-s="paused" aria-pressed="false">Paused</button><button type="button" data-s="done" aria-pressed="false">Path complete</button></div><span class="label">Four states · each a full screen</span></div><section class="state" data-s="day1" hidden><div class="st-h"><h2>A new member, nothing saved yet</h2><p>The ladder is never hidden and Cycle assurance is on from day one. The header offers Add money, the real next step, and auto-save is offered once, in the path footer.</p></div><div class="frames"><section class="frame dk"><div class="cap label"><span>Desktop · 1200 canvas</span><span>Tablet scales this layout</span></div><div class="device"><div class="screen" data-w="1200"><div class="canvas app" style="width:1200px">
+  <div class="bar-top"><span class="lock"><svg><use href="#mark"/></svg>Clear</span><div class="r"><nav class="tabs"><span>Home</span><span class="on">Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav><svg class="bell" aria-hidden="true"><use href="#bell"/></svg><span class="ava">DR</span></div></div>
+  <div class="sv">
+    <div class="sv-top"><div class="l"><span class="lbl">Savings</span><span class="num sv-n">$0.00</span><span class="cap2">Nothing saved yet · every $1 saved is matched $1 in credits</span></div><div class="acts"><span class="pillb lg solid">Add money</span></div></div>
+    <div class="slab">
+      <div class="blk"><div class="bh"><span class="lbl">Your home path</span><span class="cap2">Start saving to see a date</span></div>
+        <div class="bm"><div class="hp-n"><span class="num">0</span><span class="cap2">of 15,000 credits</span></div><div class="ladder5"><div class="got"><i><b></b></i><em>DAY ONE</em><span>Cycle assurance</span></div><div class="now"><i><b style="transform:scaleX(0.030)"></b></i><em>1,500</em><span>Home repair assurance</span></div><div><i></i><em>4,000</em><span>Income assurance</span></div><div><i></i><em>8,000</em><span>Deposit assurance</span></div><div><i></i><em>15,000</em><span>Rent assurance and your Clear Deed</span></div></div><div class="nextu "><span>Next unlock · <b>Home repair assurance</b></span><span class="cap2">1,500 credits to go</span></div></div>
+        <div class="bf"><span>Not saving yet</span><span class="pillb solid">Set up auto-save</span></div></div>
+      <div class="blk"><div class="bh"><span class="lbl">What you hold</span><span class="num">$0.00</span></div>
+        <div class="bm"><span class="comp" aria-hidden="true"><i style="flex-basis:100%;background:var(--a-2)"></i></span><div class="trows"><div><span class="fg">Cash (CLRUSD)</span><span class="fg">$0.00</span></div></div><p class="hnote">Your first deposit starts your credits.</p></div>
+        <div class="bf"><span>Every $1 saved adds $1 to your credit line</span><span class="pillb">Details</span></div></div>
+    </div>
+    <div class="prot"><div class="bh"><span class="lbl">Protections</span><span class="cap2">Nothing on this list is ever paid back</span></div><div class="prot-rows"><div><b>Cycle assurance</b><span>Two grace cycles a year</span><span class="chp ok">On</span></div><div><b>Home repair</b><span>Covered by the co-op</span><span class="chp">1,500</span></div><div><b>Income</b><span>Your limit holds a cycle</span><span class="chp">4,000</span></div><div><b>Deposit</b><span>Paid to your landlord</span><span class="chp">8,000</span></div><div><b>Rent</b><span>Two months on job loss</span><span class="chp">15,000</span></div></div></div>
+  </div>
+</div></div></div></section><section class="frame ph"><div class="cap label"><span>Phone · 390</span><span>Full length</span></div><div class="device"><div class="screen" data-w="390"><div class="canvas app phone-full" style="width:390px">
+  <div class="ph-top"><span class="lock"><svg><use href="#mark"/></svg>Clear</span><span class="r"><svg class="bell" aria-hidden="true"><use href="#bell"/></svg><span class="ava">DR</span></span></div>
+  <div class="ph-sv">
+    <div class="sv-top"><div class="l"><span class="lbl">Savings</span><span class="num sv-n">$0.00</span><span class="cap2">Every $1 saved is matched $1 in credits</span></div></div>
+    <div class="slab">
+      <div class="blk"><div class="bh"><span class="lbl">Your home path</span><span class="cap2">No date yet</span></div>
+        <div class="bm"><div class="hp-n"><span class="num">0</span><span class="cap2">of 15,000 credits</span></div><div class="ladder5"><div class="got"><i><b></b></i><em>DAY 1</em><span>Cycle</span></div><div class="now"><i><b style="transform:scaleX(0.030)"></b></i><em>1,500</em><span>Repair</span></div><div><i></i><em>4,000</em><span>Income</span></div><div><i></i><em>8,000</em><span>Deposit</span></div><div><i></i><em>15,000</em><span>Rent and deed</span></div></div><div class="nextu "><span>Next · <b>Home repair</b></span><span class="cap2">1,500 to go</span></div></div>
+        <div class="bf"><span>Not saving yet</span><span class="pillb solid">Set up auto-save</span></div></div>
+      <div class="blk" style="border-top:1px solid var(--a-line)"><div class="bh"><span class="lbl">What you hold</span><span class="num">$0.00</span></div>
+        <div class="bm"><span class="comp" aria-hidden="true"><i style="flex-basis:100%;background:var(--a-2)"></i></span><div class="trows"><div><span class="fg">Cash (CLRUSD)</span><span class="fg">$0.00</span></div></div><p class="hnote">Your first deposit starts your credits.</p></div>
+        <div class="bf"><span>Each $1 saved adds $1 to your line</span><span class="pillb">Details</span></div></div>
+    </div>
+    <div class="prot"><div class="bh"><span class="lbl">Protections</span><span class="cap2">Never paid back</span></div><div class="prot-list"><div><b>Cycle assurance</b><span>Two grace cycles a year</span><span class="chp ok">On</span></div><div><b>Home repair</b><span>Covered by the co-op</span><span class="chp">1,500</span></div><div><b>Income</b><span>Your limit holds a cycle</span><span class="chp">4,000</span></div><div><b>Deposit</b><span>Paid to your landlord</span><span class="chp">8,000</span></div><div><b>Rent</b><span>Two months on job loss</span><span class="chp">15,000</span></div></div></div>
+  </div>
+  <nav class="navpill ic" aria-label="Main"><span aria-label="Home"><svg><use href="#n-home"/></svg></span><span class="on" aria-label="Savings"><svg><use href="#n-save"/></svg></span><span aria-label="Earn"><svg><use href="#n-earn"/></svg></span><span aria-label="Activity"><svg><use href="#n-act"/></svg></span><span aria-label="Card"><svg><use href="#n-card"/></svg></span></nav>
+  <span class="navact" aria-label="Move money"><svg><use href="#plus"/></svg></span>
+</div></div></div></section></div></section><section class="state" data-s="saving"><div class="st-h"><h2>Saving on schedule</h2><p>The sample account. One step is next, filled in cobalt to its progress; vesting credits sit in amber until they settle.</p></div><div class="frames"><section class="frame dk"><div class="cap label"><span>Desktop · 1200 canvas</span><span>Tablet scales this layout</span></div><div class="device"><div class="screen" data-w="1200"><div class="canvas app" style="width:1200px">
+  <div class="bar-top"><span class="lock"><svg><use href="#mark"/></svg>Clear</span><div class="r"><nav class="tabs"><span>Home</span><span class="on">Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav><svg class="bell" aria-hidden="true"><use href="#bell"/></svg><span class="ava">DR</span></div></div>
+  <div class="sv">
+    <div class="sv-top"><div class="l"><span class="lbl">Savings</span><span class="num sv-n">$3,000.00</span><span class="cap2">$1,500.00 in cash · 1,500 credits, matched one-for-one</span></div><div class="acts"><span class="pillb lg">Auto-save</span><span class="pillb lg solid">Move money</span></div></div>
+    <div class="slab">
+      <div class="blk"><div class="bh"><span class="lbl">Your home path</span><span class="cap2">On track for December 2027</span></div>
+        <div class="bm"><div class="hp-n"><span class="num">1,500</span><span class="cap2">of 15,000 credits</span></div><div class="ladder5"><div class="got"><i><b></b></i><em>DAY ONE</em><span>Cycle assurance</span></div><div class="got"><i><b></b></i><em>1,500</em><span>Home repair assurance</span></div><div class="now"><i><b style="transform:scaleX(0.030)"></b></i><em>4,000</em><span>Income assurance</span></div><div><i></i><em>8,000</em><span>Deposit assurance</span></div><div><i></i><em>15,000</em><span>Rent assurance and your Clear Deed</span></div></div><div class="nextu "><span>Next unlock · <b>Income assurance</b></span><span class="cap2">2,500 credits to go</span></div></div>
+        <div class="bf"><span>Saving <b>$1,000.00 a month</b> · matched for 36 months</span><span class="pillb">Change</span></div></div>
+      <div class="blk"><div class="bh"><span class="lbl">What you hold</span><span class="num">$3,000.00</span></div>
+        <div class="bm"><span class="comp" aria-hidden="true"><i style="flex-basis:50%;background:#DFE3DE"></i><i style="flex-basis:33.3%;background:#6FCB9F"></i><i style="flex-basis:16.7%;background:#E3B667"></i></span><div class="trows"><div><span class="fg">Cash (CLRUSD)</span><span class="fg">$1,500.00</span></div><div><span class="ok">Vested credits</span><span class="fg">$1,000</span></div><div><span class="warn">Vesting, about 30 days</span><span class="fg">$500</span></div></div></div>
+        <div class="bf"><span>Adds <b>$1,500</b> to your credit line</span><span class="pillb">Details</span></div></div>
+    </div>
+    <div class="prot"><div class="bh"><span class="lbl">Protections</span><span class="cap2">Nothing on this list is ever paid back</span></div><div class="prot-rows"><div><b>Cycle assurance</b><span>Two grace cycles a year</span><span class="chp ok">On</span></div><div><b>Home repair</b><span>Covered by the co-op</span><span class="chp ok">On</span></div><div><b>Income</b><span>Your limit holds a cycle</span><span class="chp">4,000</span></div><div><b>Deposit</b><span>Paid to your landlord</span><span class="chp">8,000</span></div><div><b>Rent</b><span>Two months on job loss</span><span class="chp">15,000</span></div></div></div>
+  </div>
+</div></div></div></section><section class="frame ph"><div class="cap label"><span>Phone · 390</span><span>Full length</span></div><div class="device"><div class="screen" data-w="390"><div class="canvas app phone-full" style="width:390px">
+  <div class="ph-top"><span class="lock"><svg><use href="#mark"/></svg>Clear</span><span class="r"><svg class="bell" aria-hidden="true"><use href="#bell"/></svg><span class="ava">DR</span></span></div>
+  <div class="ph-sv">
+    <div class="sv-top"><div class="l"><span class="lbl">Savings</span><span class="num sv-n">$3,000.00</span><span class="cap2">$1,500.00 in cash · 1,500 credits, matched one-for-one</span></div></div>
+    <div class="slab">
+      <div class="blk"><div class="bh"><span class="lbl">Your home path</span><span class="cap2">On track for Dec 2027</span></div>
+        <div class="bm"><div class="hp-n"><span class="num">1,500</span><span class="cap2">of 15,000 credits</span></div><div class="ladder5"><div class="got"><i><b></b></i><em>DAY 1</em><span>Cycle</span></div><div class="got"><i><b></b></i><em>1,500</em><span>Repair</span></div><div class="now"><i><b style="transform:scaleX(0.030)"></b></i><em>4,000</em><span>Income</span></div><div><i></i><em>8,000</em><span>Deposit</span></div><div><i></i><em>15,000</em><span>Rent and deed</span></div></div><div class="nextu "><span>Next · <b>Income assurance</b></span><span class="cap2">2,500 to go</span></div></div>
+        <div class="bf"><span>Saving <b>$1,000.00 a month</b><br>matched for 36 months</span><span class="pillb">Change</span></div></div>
+      <div class="blk" style="border-top:1px solid var(--a-line)"><div class="bh"><span class="lbl">What you hold</span><span class="num">$3,000.00</span></div>
+        <div class="bm"><span class="comp" aria-hidden="true"><i style="flex-basis:50%;background:#DFE3DE"></i><i style="flex-basis:33.3%;background:#6FCB9F"></i><i style="flex-basis:16.7%;background:#E3B667"></i></span><div class="trows"><div><span class="fg">Cash (CLRUSD)</span><span class="fg">$1,500.00</span></div><div><span class="ok">Vested credits</span><span class="fg">$1,000</span></div><div><span class="warn">Vesting, about 30 days</span><span class="fg">$500</span></div></div></div>
+        <div class="bf"><span>Adds <b>$1,500</b> to your credit line</span><span class="pillb">Details</span></div></div>
+    </div>
+    <div class="prot"><div class="bh"><span class="lbl">Protections</span><span class="cap2">Never paid back</span></div><div class="prot-list"><div><b>Cycle assurance</b><span>Two grace cycles a year</span><span class="chp ok">On</span></div><div><b>Home repair</b><span>Covered by the co-op</span><span class="chp ok">On</span></div><div><b>Income</b><span>Your limit holds a cycle</span><span class="chp">4,000</span></div><div><b>Deposit</b><span>Paid to your landlord</span><span class="chp">8,000</span></div><div><b>Rent</b><span>Two months on job loss</span><span class="chp">15,000</span></div></div></div>
+  </div>
+  <nav class="navpill ic" aria-label="Main"><span aria-label="Home"><svg><use href="#n-home"/></svg></span><span class="on" aria-label="Savings"><svg><use href="#n-save"/></svg></span><span aria-label="Earn"><svg><use href="#n-earn"/></svg></span><span aria-label="Activity"><svg><use href="#n-act"/></svg></span><span aria-label="Card"><svg><use href="#n-card"/></svg></span></nav>
+  <span class="navact" aria-label="Move money"><svg><use href="#plus"/></svg></span>
+</div></div></div></section></div></section><section class="state" data-s="paused" hidden><div class="st-h"><h2>Progress paused: savings backing spending</h2><p>Drawing on your own savings pauses the vesting clock. The next step and the vesting row turn amber, and the next-unlock bar becomes the way out: Top off.</p></div><div class="frames"><section class="frame dk"><div class="cap label"><span>Desktop · 1200 canvas</span><span>Tablet scales this layout</span></div><div class="device"><div class="screen" data-w="1200"><div class="canvas app" style="width:1200px">
+  <div class="bar-top"><span class="lock"><svg><use href="#mark"/></svg>Clear</span><div class="r"><nav class="tabs"><span>Home</span><span class="on">Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav><svg class="bell" aria-hidden="true"><use href="#bell"/></svg><span class="ava">DR</span></div></div>
+  <div class="sv">
+    <div class="sv-top"><div class="l"><span class="lbl">Savings</span><span class="num sv-n">$6,400.00</span><span class="cap2">$3,200.00 in cash · 3,200 credits, matched one-for-one</span></div><div class="acts"><span class="pillb lg">Auto-save</span><span class="pillb lg solid">Move money</span></div></div>
+    <div class="slab">
+      <div class="blk"><div class="bh"><span class="lbl">Your home path</span><span class="cap2 warn">Paused</span></div>
+        <div class="bm"><div class="hp-n"><span class="num">3,200</span><span class="cap2">of 15,000 credits</span></div><div class="ladder5"><div class="got"><i><b></b></i><em>DAY ONE</em><span>Cycle assurance</span></div><div class="got"><i><b></b></i><em>1,500</em><span>Home repair assurance</span></div><div class="now paused"><i><b style="transform:scaleX(0.680)"></b></i><em>4,000</em><span>Income assurance</span></div><div><i></i><em>8,000</em><span>Deposit assurance</span></div><div><i></i><em>15,000</em><span>Rent assurance and your Clear Deed</span></div></div><div class="nextu warn"><span>Paused · <b>$1,240.00 of your savings is backing spending</b></span><span class="pillb">Top off</span></div></div>
+        <div class="bf"><span>Saving <b>$1,000.00 a month</b> · matched for 30 months</span><span class="pillb">Change</span></div></div>
+      <div class="blk"><div class="bh"><span class="lbl">What you hold</span><span class="num">$6,400.00</span></div>
+        <div class="bm"><span class="comp" aria-hidden="true"><i style="flex-basis:50%;background:#DFE3DE"></i><i style="flex-basis:42.2%;background:#6FCB9F"></i><i style="flex-basis:7.8%;background:#E3B667"></i></span><div class="trows"><div><span class="fg">Cash (CLRUSD)</span><span class="fg">$3,200.00</span></div><div><span class="ok">Vested credits</span><span class="fg">$2,700</span></div><div><span class="warn">Vesting, paused</span><span class="fg">$500</span></div></div></div>
+        <div class="bf"><span>Adds <b>$3,200</b> to your credit line</span><span class="pillb">Details</span></div></div>
+    </div>
+    <div class="prot"><div class="bh"><span class="lbl">Protections</span><span class="cap2">Nothing on this list is ever paid back</span></div><div class="prot-rows"><div><b>Cycle assurance</b><span>Two grace cycles a year</span><span class="chp ok">On</span></div><div><b>Home repair</b><span>Covered by the co-op</span><span class="chp ok">On</span></div><div><b>Income</b><span>Your limit holds a cycle</span><span class="chp">4,000</span></div><div><b>Deposit</b><span>Paid to your landlord</span><span class="chp">8,000</span></div><div><b>Rent</b><span>Two months on job loss</span><span class="chp">15,000</span></div></div></div>
+  </div>
+</div></div></div></section><section class="frame ph"><div class="cap label"><span>Phone · 390</span><span>Full length</span></div><div class="device"><div class="screen" data-w="390"><div class="canvas app phone-full" style="width:390px">
+  <div class="ph-top"><span class="lock"><svg><use href="#mark"/></svg>Clear</span><span class="r"><svg class="bell" aria-hidden="true"><use href="#bell"/></svg><span class="ava">DR</span></span></div>
+  <div class="ph-sv">
+    <div class="sv-top"><div class="l"><span class="lbl">Savings</span><span class="num sv-n">$6,400.00</span><span class="cap2">$3,200.00 in cash · 3,200 credits</span></div></div>
+    <div class="slab">
+      <div class="blk"><div class="bh"><span class="lbl">Your home path</span><span class="cap2 warn">Paused</span></div>
+        <div class="bm"><div class="hp-n"><span class="num">3,200</span><span class="cap2">of 15,000 credits</span></div><div class="ladder5"><div class="got"><i><b></b></i><em>DAY 1</em><span>Cycle</span></div><div class="got"><i><b></b></i><em>1,500</em><span>Repair</span></div><div class="now paused"><i><b style="transform:scaleX(0.680)"></b></i><em>4,000</em><span>Income</span></div><div><i></i><em>8,000</em><span>Deposit</span></div><div><i></i><em>15,000</em><span>Rent and deed</span></div></div><div class="nextu warn"><span>Paused · <b>$1,240.00</b> backing spending</span><span class="pillb">Top off</span></div></div>
+        <div class="bf"><span>Saving <b>$1,000.00 a month</b><br>matched for 30 months</span><span class="pillb">Change</span></div></div>
+      <div class="blk" style="border-top:1px solid var(--a-line)"><div class="bh"><span class="lbl">What you hold</span><span class="num">$6,400.00</span></div>
+        <div class="bm"><span class="comp" aria-hidden="true"><i style="flex-basis:50%;background:#DFE3DE"></i><i style="flex-basis:42.2%;background:#6FCB9F"></i><i style="flex-basis:7.8%;background:#E3B667"></i></span><div class="trows"><div><span class="fg">Cash (CLRUSD)</span><span class="fg">$3,200.00</span></div><div><span class="ok">Vested credits</span><span class="fg">$2,700</span></div><div><span class="warn">Vesting, paused</span><span class="fg">$500</span></div></div></div>
+        <div class="bf"><span>Adds <b>$3,200</b> to your credit line</span><span class="pillb">Details</span></div></div>
+    </div>
+    <div class="prot"><div class="bh"><span class="lbl">Protections</span><span class="cap2">Never paid back</span></div><div class="prot-list"><div><b>Cycle assurance</b><span>Two grace cycles a year</span><span class="chp ok">On</span></div><div><b>Home repair</b><span>Covered by the co-op</span><span class="chp ok">On</span></div><div><b>Income</b><span>Your limit holds a cycle</span><span class="chp">4,000</span></div><div><b>Deposit</b><span>Paid to your landlord</span><span class="chp">8,000</span></div><div><b>Rent</b><span>Two months on job loss</span><span class="chp">15,000</span></div></div></div>
+  </div>
+  <nav class="navpill ic" aria-label="Main"><span aria-label="Home"><svg><use href="#n-home"/></svg></span><span class="on" aria-label="Savings"><svg><use href="#n-save"/></svg></span><span aria-label="Earn"><svg><use href="#n-earn"/></svg></span><span aria-label="Activity"><svg><use href="#n-act"/></svg></span><span aria-label="Card"><svg><use href="#n-card"/></svg></span></nav>
+  <span class="navact" aria-label="Move money"><svg><use href="#plus"/></svg></span>
+</div></div></div></section></div></section><section class="state" data-s="done" hidden><div class="st-h"><h2>15,000 credits: the path is complete</h2><p>All five steps and protections are on. The next-unlock bar becomes the hand-off to the Clear Deed: the Equity-Lease Participation Agreement.</p></div><div class="frames"><section class="frame dk"><div class="cap label"><span>Desktop · 1200 canvas</span><span>Tablet scales this layout</span></div><div class="device"><div class="screen" data-w="1200"><div class="canvas app" style="width:1200px">
+  <div class="bar-top"><span class="lock"><svg><use href="#mark"/></svg>Clear</span><div class="r"><nav class="tabs"><span>Home</span><span class="on">Savings</span><span>Earn</span><span>Send</span><span>Activity</span><span>Card</span></nav><svg class="bell" aria-hidden="true"><use href="#bell"/></svg><span class="ava">DR</span></div></div>
+  <div class="sv">
+    <div class="sv-top"><div class="l"><span class="lbl">Savings</span><span class="num sv-n">$30,000.00</span><span class="cap2">$15,000.00 in cash · 15,000 credits, matched one-for-one</span></div><div class="acts"><span class="pillb lg">Auto-save</span><span class="pillb lg solid">Move money</span></div></div>
+    <div class="slab">
+      <div class="blk"><div class="bh"><span class="lbl">Your home path</span><span class="cap2 ok">Path complete</span></div>
+        <div class="bm"><div class="hp-n"><span class="num">15,000</span><span class="cap2">of 15,000 credits</span></div><div class="ladder5"><div class="got"><i><b></b></i><em>DAY ONE</em><span>Cycle assurance</span></div><div class="got"><i><b></b></i><em>1,500</em><span>Home repair assurance</span></div><div class="got"><i><b></b></i><em>4,000</em><span>Income assurance</span></div><div class="got"><i><b></b></i><em>8,000</em><span>Deposit assurance</span></div><div class="got"><i><b></b></i><em>15,000</em><span>Rent assurance and your Clear Deed</span></div></div><div class="nextu ok"><span>Ready · <b>Your Clear Deed</b></span><span class="pillb solid">Start the ELPA</span></div></div>
+        <div class="bf"><span>Saving <b>$1,000.00 a month</b> · match complete</span><span class="pillb">Change</span></div></div>
+      <div class="blk"><div class="bh"><span class="lbl">What you hold</span><span class="num">$30,000.00</span></div>
+        <div class="bm"><span class="comp" aria-hidden="true"><i style="flex-basis:50%;background:#DFE3DE"></i><i style="flex-basis:50%;background:#6FCB9F"></i></span><div class="trows"><div><span class="fg">Cash (CLRUSD)</span><span class="fg">$15,000.00</span></div><div><span class="ok">Vested credits</span><span class="fg">$15,000</span></div></div></div>
+        <div class="bf"><span>Adds <b>$15,000</b> to your credit line</span><span class="pillb">Details</span></div></div>
+    </div>
+    <div class="prot"><div class="bh"><span class="lbl">Protections</span><span class="cap2">Nothing on this list is ever paid back</span></div><div class="prot-rows"><div><b>Cycle assurance</b><span>Two grace cycles a year</span><span class="chp ok">On</span></div><div><b>Home repair</b><span>Covered by the co-op</span><span class="chp ok">On</span></div><div><b>Income</b><span>Your limit holds a cycle</span><span class="chp ok">On</span></div><div><b>Deposit</b><span>Paid to your landlord</span><span class="chp ok">On</span></div><div><b>Rent</b><span>Two months on job loss</span><span class="chp ok">On</span></div></div></div>
+  </div>
+</div></div></div></section><section class="frame ph"><div class="cap label"><span>Phone · 390</span><span>Full length</span></div><div class="device"><div class="screen" data-w="390"><div class="canvas app phone-full" style="width:390px">
+  <div class="ph-top"><span class="lock"><svg><use href="#mark"/></svg>Clear</span><span class="r"><svg class="bell" aria-hidden="true"><use href="#bell"/></svg><span class="ava">DR</span></span></div>
+  <div class="ph-sv">
+    <div class="sv-top"><div class="l"><span class="lbl">Savings</span><span class="num sv-n">$30,000.00</span><span class="cap2">$15,000.00 in cash · 15,000 credits</span></div></div>
+    <div class="slab">
+      <div class="blk"><div class="bh"><span class="lbl">Your home path</span><span class="cap2 ok">Complete</span></div>
+        <div class="bm"><div class="hp-n"><span class="num">15,000</span><span class="cap2">of 15,000 credits</span></div><div class="ladder5"><div class="got"><i><b></b></i><em>DAY 1</em><span>Cycle</span></div><div class="got"><i><b></b></i><em>1,500</em><span>Repair</span></div><div class="got"><i><b></b></i><em>4,000</em><span>Income</span></div><div class="got"><i><b></b></i><em>8,000</em><span>Deposit</span></div><div class="got"><i><b></b></i><em>15,000</em><span>Rent and deed</span></div></div><div class="nextu ok"><span>Ready · <b>Your Clear Deed</b></span><span class="pillb solid">Start the ELPA</span></div></div>
+        <div class="bf"><span>Saving <b>$1,000.00 a month</b><br>match complete</span><span class="pillb">Change</span></div></div>
+      <div class="blk" style="border-top:1px solid var(--a-line)"><div class="bh"><span class="lbl">What you hold</span><span class="num">$30,000.00</span></div>
+        <div class="bm"><span class="comp" aria-hidden="true"><i style="flex-basis:50%;background:#DFE3DE"></i><i style="flex-basis:50%;background:#6FCB9F"></i></span><div class="trows"><div><span class="fg">Cash (CLRUSD)</span><span class="fg">$15,000.00</span></div><div><span class="ok">Vested credits</span><span class="fg">$15,000</span></div></div></div>
+        <div class="bf"><span>Adds <b>$15,000</b> to your credit line</span><span class="pillb">Details</span></div></div>
+    </div>
+    <div class="prot"><div class="bh"><span class="lbl">Protections</span><span class="cap2">Never paid back</span></div><div class="prot-list"><div><b>Cycle assurance</b><span>Two grace cycles a year</span><span class="chp ok">On</span></div><div><b>Home repair</b><span>Covered by the co-op</span><span class="chp ok">On</span></div><div><b>Income</b><span>Your limit holds a cycle</span><span class="chp ok">On</span></div><div><b>Deposit</b><span>Paid to your landlord</span><span class="chp ok">On</span></div><div><b>Rent</b><span>Two months on job loss</span><span class="chp ok">On</span></div></div></div>
+  </div>
+  <nav class="navpill ic" aria-label="Main"><span aria-label="Home"><svg><use href="#n-home"/></svg></span><span class="on" aria-label="Savings"><svg><use href="#n-save"/></svg></span><span aria-label="Earn"><svg><use href="#n-earn"/></svg></span><span aria-label="Activity"><svg><use href="#n-act"/></svg></span><span aria-label="Card"><svg><use href="#n-card"/></svg></span></nav>
+  <span class="navact" aria-label="Move money"><svg><use href="#plus"/></svg></span>
+</div></div></div></section></div></section>
+  <section class="spec">
+    <div>
+      <h2>Structure</h2>
+      <dl>
+        <div><dt>Top bar</dt><dd>56px · tabs, bell, avatar</dd></div>
+        <div><dt>Balance header</dt><dd>46px figure · 38px phone</dd></div>
+        <div><dt>Slab</dt><dd>1.35fr / 1fr · stacks on phone</dd></div>
+        <div><dt>Block header</dt><dd>56px · label left, figure right</dd></div>
+        <div><dt>Block footer</dt><dd>one line + one pill</dd></div>
+        <div><dt>Protections</dt><dd>5 columns · list on phone</dd></div>
+        <div><dt>Phone bottom bar</dt><dd>nav pill + move-money button</dd></div>
+      </dl>
+    </div>
+    <div>
+      <h2>States</h2>
+      <ul>
+        <li><b>Day one:</b> $0.00, ladder shown with Cycle assurance on, "Set up auto-save" in the path footer, an empty bar in what you hold.</li>
+        <li><b>Saving:</b> one next step in cobalt, filled to its progress; vesting in amber.</li>
+        <li><b>Paused:</b> savings backing spending stops the vesting clock. The date, the next step and the vesting row turn amber; the next-unlock bar offers Top off.</li>
+        <li><b>Path complete:</b> every step and protection on; the bar hands off to the Clear Deed.</li>
+        <li>Nothing vesting: drop the amber segment and row, never show $0.</li>
+        <li>Phone has no buttons under the balance. Move money is the floating button; Auto-save sits behind Change.</li>
+      </ul>
+    </div>
+    <div>
+      <h2>Colour, on the app ground</h2>
+      <dl>
+        <div><dt><span class="sw" style="background:#16211D"></span>Ground</dt><dd>#16211D</dd></div>
+        <div><dt><span class="sw" style="background:#1E2C27"></span>Raised, tracks</dt><dd>#1E2C27</dd></div>
+        <div><dt><span class="sw" style="background:#DFE3DE"></span>Text, cash</dt><dd>#DFE3DE</dd></div>
+        <div><dt><span class="sw" style="background:#6FCB9F"></span>Unlocked, vested</dt><dd>#6FCB9F</dd></div>
+        <div><dt><span class="sw" style="background:#7C8CC5"></span>Next rung</dt><dd>#7C8CC5</dd></div>
+        <div><dt><span class="sw" style="background:#E3B667"></span>Vesting</dt><dd>#E3B667</dd></div>
+        <div><dt><span class="sw" style="background:rgba(223,227,222,.14)"></span>Lines</dt><dd>paper at 14%</dd></div>
+      </dl>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const fit = () => document.querySelectorAll('.screen').forEach(sc => {
+    const c = sc.firstElementChild, w = +sc.dataset.w, s = Math.min(1, sc.clientWidth / w);
+    c.style.transform = `scale(${s})`; sc.style.height = (c.offsetHeight * s) + 'px';
+  });
+  new ResizeObserver(fit).observe(document.body); fit();
+  const btns = document.querySelectorAll('.seg button'), states = document.querySelectorAll('.state');
+  const show = k => { btns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.s === k))); states.forEach(s => s.hidden = s.dataset.s !== k); fit(); };
+  btns.forEach(b => b.addEventListener('click', () => show(b.dataset.s)));
+  const q = new URLSearchParams(location.search).get('state'); if (q) show(q);
+  document.fonts && document.fonts.ready.then(fit);
+})();
+</script>

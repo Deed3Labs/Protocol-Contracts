@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { ThemeProvider } from '@/context/ThemeContext';
 import { PreviewBalancesProvider } from '@/hooks/useClearBalances';
 import { PreviewIdentityProvider } from '@/context/IdentityContext';
@@ -84,6 +84,41 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
   'claim',
   'claimJoin',
 ];
+
+/**
+ * Savings in the reference's four states — /savings?preview=1&state=day1|saving|paused|done.
+ *
+ * The figures are the reference's own (docs/reference/savings-reference.html), so a screenshot can be
+ * laid beside it. Without a state the page follows the harness's populated/empty toggle as before.
+ */
+function SavingsPreview({ empty }: { empty: boolean }) {
+  const [params] = useSearchParams();
+  const base = { ...SAVINGS_IN_USE, autoSave: { amount: 1000, cadence: 'monthly' as const, savedThisYear: 9000 } };
+  const states: Record<string, typeof SAVINGS_IN_USE> = {
+    day1: SAVINGS_DAY_ONE,
+    saving: {
+      ...base,
+      savings: { cash: 1500, vested: 1000, vesting: 500, credits: 1500, creditsGoal: 15000, onTrackFor: 'Dec 2027' },
+      creditLine: 1500,
+      backingSpending: 0,
+    },
+    paused: {
+      ...base,
+      savings: { cash: 3200, vested: 2700, vesting: 500, credits: 3200, creditsGoal: 15000, onTrackFor: 'Mar 2028' },
+      creditLine: 3200,
+      backingSpending: 1240,
+    },
+    done: {
+      ...base,
+      savings: { cash: 15000, vested: 15000, vesting: 0, credits: 15000, creditsGoal: 15000 },
+      creditLine: 15000,
+      backingSpending: 0,
+    },
+  };
+  const state = params.get('state');
+  const data = (state && states[state]) || (empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE);
+  return <SavingsPage key={state ?? String(empty)} data={data} />;
+}
 
 /**
  * The cycle's four states — the harness equivalent of the reference's own screen.
@@ -906,7 +941,7 @@ export default function PreviewApp() {
                             />
                           }
                         />
-                        <Route path="/savings" element={<SavingsPage data={empty ? SAVINGS_DAY_ONE : SAVINGS_IN_USE} />} />
+                        <Route path="/savings" element={<SavingsPreview empty={empty} />} />
                         <Route path="/earn" element={<EarnPage data={empty ? EARN_DAY_ONE : EARN_IN_USE} />} />
                         <Route path="/send" element={<SendPage key={String(empty)} data={empty ? SEND_DAY_ONE : SEND_IN_USE} charges={empty ? [] : SHOP_CHARGES_IN_USE} />} />
                         <Route path="/charges" element={<ChargesPage key={String(empty)} charges={empty ? [] : SHOP_CHARGES_IN_USE} />} />
