@@ -1,6 +1,6 @@
 {
   "installCommand": "cd ../.. && npm install",
-  "buildCommand": "cd ../.. && npm run build:merchant",
+  "buildCommand": "cd ../.. && npx turbo run build:vercel --filter=@clear/merchant",
   "outputDirectory": "dist",
   "ignoreCommand": "bash ../../scripts/vercel-ignore.sh apps/merchant",
   "rewrites": [
