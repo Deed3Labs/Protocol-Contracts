@@ -1112,8 +1112,9 @@ amendment, approved before the API builds on them.
   landscape tablet; one column gets a back arrow.
 - **The old Add a device** (a code for another tablet) keeps its place in Security; the new one is
   the hardware sheet. A card reader keeps the pairing it already has (Settings › Payments).
-- **Printer rows don't name the make** (Clear 4-inch, Rollo): `PrinterSettings` has no model. Adding
-  `model` to the contract is proposed at Hard Stop 4.
+- **Printer rows name the make** (Clear 4-inch, Rollo) from `PrinterSettings.model`, added to the
+  contract at Hard Stop 4 (optional, so settings saved before it still parse). Adding a printer keeps
+  what it calls itself when found.
 - **A tile with no Point says "No Point".** The floor draws Table 1 as "Point shows Menu", but no
   Point at Table 1 is in the devices list; Table 14's Point idles on the Menu, as the floor draws it.
 - **Calls and bills show while one is waiting**, above the floor and on Home, with the last hour's.

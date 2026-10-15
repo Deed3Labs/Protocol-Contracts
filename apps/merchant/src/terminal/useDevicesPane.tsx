@@ -430,6 +430,7 @@ export function useDevicesPane({
                   kind: 'printer',
                   name: devices.some((x) => x.kind === 'printer') ? p.model : 'Counter printer',
                   settings: {
+                    model: p.connection === 'os' ? null : p.model,
                     connection: p.connection,
                     address: p.address,
                     language: p.connection === 'os' ? 'os' : 'tspl',

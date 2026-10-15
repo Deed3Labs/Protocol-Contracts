@@ -395,6 +395,7 @@ export function createTerminalMock(h: TerminalHost) {
       createdAt: created,
       settings: {
         connection: 'wifi',
+        model: 'Clear 4-inch',
         address: '192.168.1.40:9100',
         language: 'tspl',
         paper: 'label4x6',
@@ -407,6 +408,7 @@ export function createTerminalMock(h: TerminalHost) {
       createdAt: created,
       settings: {
         connection: 'wifi',
+        model: 'Rollo',
         address: '192.168.1.41:9100',
         language: 'tspl',
         paper: 'label4x3',

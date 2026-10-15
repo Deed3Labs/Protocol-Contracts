@@ -308,7 +308,7 @@ export const STATES: State[] = [
   { id: 'tablet-removed', page: 'sign-in', gallery: 'The removed tablet', refs: [r('sign-in', '4 · A forgotten PIN, and a lost tablet', 0, 'From the gallery, which frames the same screen component the app shows; it only appears signed out, so this is how it is reached in isolation.')] },
 
   // ---- Clear Terminal: Mi Casa Tacos (terminal reference) --------------------------------------
-  { id: 'terminal-devices', page: 'settings', clock: DINNER, url: `/settings/devices${P}${MC}`, refs: [r('terminal', '1 · Settings · Devices', 0, 'Printers name their make (Clear 4-inch, Rollo) where the contract holds one; it doesn’t yet (DECISIONS › Terminal Phase 4).')] },
+  { id: 'terminal-devices', page: 'settings', clock: DINNER, url: `/settings/devices${P}${MC}`, refs: [r('terminal', '1 · Settings · Devices', 0)] },
   { id: 'terminal-add', page: 'settings', clock: DINNER, url: `/settings/devices${P}${MC}&screen=add`, refs: [r('terminal', '2 · Add a device', 0, 'The reference draws the sheet alone; the app opens it over the Devices pane.')] },
   { id: 'terminal-add-point', page: 'settings', clock: DINNER, url: `/settings/devices${P}${MC}&screen=add-point`, refs: [r('terminal', '2 · Add a device', 1, 'The camera stands in the viewfinder the reference draws.')] },
   { id: 'terminal-add-point-wifi', page: 'settings', clock: DINNER, url: `/settings/devices${P}${MC}&screen=add-point-wifi`, refs: [r('terminal', '2 · Add a device', 2)] },

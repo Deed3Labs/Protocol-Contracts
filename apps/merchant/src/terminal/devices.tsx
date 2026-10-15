@@ -151,7 +151,7 @@ const CONN: Record<Printer['settings']['connection'], string> = {
   os: 'The print dialog',
 };
 
-/** "Wi‑Fi · 4 × 6 receipts, 4 × 3 bag labels" */
+/** "Clear 4-inch · Wi‑Fi · 4 × 6 receipts, 4 × 3 bag labels" */
 export function printerDet(p: Printer): string {
   const s = p.settings;
   const what =
@@ -160,7 +160,7 @@ export function printerDet(p: Printer): string {
       : s.paper === 'label4x6' && s.prints.bagLabel
         ? '4 × 6 receipts, 4 × 3 bag labels'
         : PAPER[s.paper];
-  return `${CONN[s.connection]} · ${what}`;
+  return [s.model, CONN[s.connection], what].filter(Boolean).join(' · ');
 }
 
 // ---- 1 · Settings › Devices ------------------------------------------------------------------------------

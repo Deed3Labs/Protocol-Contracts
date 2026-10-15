@@ -191,6 +191,8 @@ export const AutoPrint = z.enum(['ask', 'always', 'never']);
 export type AutoPrint = z.infer<typeof AutoPrint>;
 
 export const PrinterSettings = z.object({
+  /** What it is, as Settings › Devices names it: "Clear 4-inch", "Rollo". Optional so older settings still parse. */
+  model: z.string().trim().min(1).max(40).nullable().optional(),
   connection: z.enum(PRINTER_CONNECTIONS),
   /** `192.168.1.40:9100` for Wi-Fi, a Bluetooth id, or null for the OS dialog. */
   address: z.string().min(1).nullable(),
