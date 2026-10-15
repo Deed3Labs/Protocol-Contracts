@@ -9,6 +9,7 @@ import {
   IconChevron,
   IconChevronInk,
   IconCharges,
+  IconTables,
   IconCloseLg,
   IconHome,
   IconInventory,
@@ -31,7 +32,7 @@ import { Lockup, PinDots, PinKeys, Sheet, cx, initials, clickOnKey } from '@/bra
 
 // ---- Navigation -------------------------------------------------------------------------------
 
-export type NavKey = 'home' | 'charges' | 'inventory' | 'payouts' | 'staff' | 'overview';
+export type NavKey = 'home' | 'charges' | 'tables' | 'inventory' | 'payouts' | 'staff' | 'overview';
 
 /**
  * Six destinations, in the reference's order. On a counter shift Payouts, Staff and Overview stay
@@ -44,11 +45,18 @@ export type NavKey = 'home' | 'charges' | 'inventory' | 'payouts' | 'staff' | 'o
 export const NAV: { key: NavKey; to: string; label: string; icon: () => ReactNode; guarded?: boolean }[] = [
   { key: 'home', to: '/', label: 'Home', icon: IconHome },
   { key: 'charges', to: '/charges', label: 'Charges', icon: IconCharges },
+  { key: 'tables', to: '/tables', label: 'Tables', icon: IconTables },
   { key: 'inventory', to: '/inventory', label: 'Inventory', icon: IconInventory },
   { key: 'payouts', to: '/payouts', label: 'Payouts', icon: IconPayouts, guarded: true },
   { key: 'staff', to: '/staff', label: 'Staff', icon: IconStaff, guarded: true },
   { key: 'overview', to: '/overview', label: 'Overview', icon: IconOverview, guarded: true },
 ];
+
+/**
+ * The nav a shop sees. Tables is only for shops that serve at tables (Settings › Counter); a
+ * counter-service shop never sees it, so its nav stays six items (terminal reference, decisions).
+ */
+export const navFor = (tables: boolean | undefined) => NAV.filter((n) => n.key !== 'tables' || tables);
 
 /** Locked for this role: the owner-and-manager pages, for anyone who does not see money. */
 export const isLocked = (role: StaffRole, key: NavKey) =>
@@ -111,14 +119,16 @@ export interface HeaderProps {
   onLocked?: () => void;
   /** Real links in the app; plain spans in the gallery, where there is nowhere to go. */
   static?: boolean;
+  /** The shop serves at tables: Tables is in the nav. */
+  tables?: boolean;
 }
 
-export function TopBar({ shop, current, role, onShift, avatarName, ownerUntil, onChangeShift, onProfile, onLocked, static: still }: HeaderProps) {
+export function TopBar({ shop, current, role, onShift, avatarName, ownerUntil, onChangeShift, onProfile, onLocked, static: still, tables }: HeaderProps) {
   return (
     <div className="c-mc-top">
       <Lockup shop={shop} />
       <nav aria-label="Main">
-        {NAV.map((n) => {
+        {navFor(tables).map((n) => {
           if (isLocked(role, n.key)) {
             // Dimmed with a padlock, and leading to the owner's sign-in (Home reference, Open).
             return (
@@ -186,17 +196,19 @@ export function PhoneNav({
   onPlus,
   onLocked,
   static: still,
+  tables,
 }: {
   current: NavKey | null;
   role: StaffRole;
   onPlus?: () => void;
   onLocked?: () => void;
   static?: boolean;
+  tables?: boolean;
 }) {
   return (
     <div className="c-navwrap">
       <nav className="c-navbar" aria-label="Main">
-        {NAV.map((n) => {
+        {navFor(tables).map((n) => {
           const locked = isLocked(role, n.key);
           const Icon = n.icon;
           const cls = current === n.key ? 'c-on' : undefined;

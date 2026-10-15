@@ -16,4 +16,7 @@ export * from './drawer';
 export * from './shifts';
 export * from './states';
 export * from './fees';
+export * from './devices';
+export * from './floor';
+export * from './public';
 export type { MerchantApi } from './client';

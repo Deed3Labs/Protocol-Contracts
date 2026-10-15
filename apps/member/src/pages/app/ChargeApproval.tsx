@@ -44,6 +44,10 @@ export interface ChargeApprovalProps {
   items?: { name: string; quantity: number; cents: number }[] | null;
   taxCents?: number | null;
   discountCents?: number | null;
+  /** "Table 12", when it's a table's bill (Clear Terminal: the pay sheet and the receipt say so). */
+  table?: string | null;
+  /** What the shop pays Clear when it's paid now, in basis points: "the shop pays 1.25%". */
+  shopPaysBps?: number | null;
 
   mode?: PayMode;
   onModeChange?: (mode: PayMode) => void;
@@ -98,6 +102,8 @@ export interface ChargeApprovalProps {
 
 const usd = (n: number) => money(n, { cents: true });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
+/** 125 → "1.25%", 150 → "1.5%", 100 → "1%". */
+const percentOfBps = (bps: number) => `${(bps / 100).toFixed(2).replace(/\.?0+$/, '')}%`;
 
 function StoreIcon() {
   return (
@@ -141,10 +147,11 @@ function ChargeHead({
   items,
   taxCents,
   discountCents,
-}: Pick<ChargeApprovalProps, 'merchantName' | 'amount' | 'raisedBy' | 'raisedAt' | 'items' | 'taxCents' | 'discountCents'>) {
+  table,
+}: Pick<ChargeApprovalProps, 'merchantName' | 'amount' | 'raisedBy' | 'raisedAt' | 'items' | 'taxCents' | 'discountCents' | 'table'>) {
   const [open, setOpen] = useState(false);
   const count = items?.reduce((n, i) => n + i.quantity, 0) ?? 0;
-  const by = [raisedBy ? `Raised by ${raisedBy}` : null, raisedAt ? clock(raisedAt) : null].filter(Boolean).join(' · ');
+  const by = [table, raisedBy ? `Raised by ${raisedBy}` : null, raisedAt ? clock(raisedAt) : null].filter(Boolean).join(' · ');
   return (
     <>
       <div className="c-pc-shop">
@@ -166,34 +173,39 @@ function ChargeHead({
             &middot; {count} item{count === 1 ? '' : 's'}
             {taxCents ? ', tax included' : ''}
           </p>
-          {open && (
-            <div className="c-pc-items">
-              {items.map((item, i) => (
-                <div key={i}>
-                  <span>
-                    {item.quantity > 1 ? `${item.quantity} × ` : ''}
-                    {item.name}
-                  </span>
-                  <span>{usd(item.cents / 100)}</span>
-                </div>
-              ))}
-              {discountCents ? (
-                <div>
-                  <span>Discount</span>
-                  <span>−{usd(discountCents / 100)}</span>
-                </div>
-              ) : null}
-              {taxCents ? (
-                <div>
-                  <span>Tax</span>
-                  <span>{usd(taxCents / 100)}</span>
-                </div>
-              ) : null}
-            </div>
-          )}
+          {open && <Items items={items} taxCents={taxCents} discountCents={discountCents} />}
         </>
       )}
     </>
+  );
+}
+
+/** What a charge was for: its lines, then a discount and tax when there are any. */
+function Items({ items, taxCents, discountCents }: { items: NonNullable<ChargeApprovalProps['items']>; taxCents?: number | null; discountCents?: number | null }) {
+  return (
+    <div className="c-pc-items">
+      {items.map((item, i) => (
+        <div key={i}>
+          <span>
+            {item.quantity > 1 ? `${item.quantity} × ` : ''}
+            {item.name}
+          </span>
+          <span>{usd(item.cents / 100)}</span>
+        </div>
+      ))}
+      {discountCents ? (
+        <div>
+          <span>Discount</span>
+          <span>−{usd(discountCents / 100)}</span>
+        </div>
+      ) : null}
+      {taxCents ? (
+        <div>
+          <span>Tax</span>
+          <span>{usd(taxCents / 100)}</span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -298,10 +310,12 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
             <p className="c-pc-t">{paid ? `Paid to ${merchantName}` : 'Your payment is on its way'}</p>
             <p className="c-det">
               {paid
-                ? ['From Ready to allocate', paid.at ? clock(paid.at) : null, `${raisedBy ?? 'The shop'} sees it on the counter now`].filter(Boolean).join(' · ')
+                ? [props.table, 'From Ready to allocate', paid.at ? clock(paid.at) : null, `${raisedBy ?? 'The shop'} sees it on the counter now`].filter(Boolean).join(' · ')
                 : `We’ll mark it paid to ${merchantName} as soon as it lands. Don’t pay again.`}
             </p>
           </div>
+          {/* The receipt (Clear Terminal, section 13): what it was for, line by line. */}
+          {paid && props.items && props.items.length > 0 && <Items items={props.items} taxCents={props.taxCents} discountCents={props.discountCents} />}
           {paid && (
             <Sum
               rows={[
@@ -529,7 +543,9 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
           </span>
           <div>
             <p className="c-pc-t">Pay now</p>
-            <p className="c-det">From your Clear cash. Nothing to clear later.</p>
+            <p className="c-det">
+              {props.shopPaysBps != null ? `From your Clear cash · the shop pays ${percentOfBps(props.shopPaysBps)}. Nothing to clear later.` : 'From your Clear cash. Nothing to clear later.'}
+            </p>
           </div>
           <span className="c-pc-r">
             <b>{usd(amount)}</b>

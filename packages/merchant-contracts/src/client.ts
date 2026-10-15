@@ -14,11 +14,12 @@ import type {
   RecordReader,
   RegisterSmartReader,
 } from './cards';
-import type { CatalogImport, CatalogItem, DiscountCode, ImportResult, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
+import type { CatalogImport, CatalogItem, CategoryOrder, DiscountCode, ImportResult, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
 import type { AuditEntry, BankDeposit, SendStatement, CloseDayFigures,
   CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
   CreateCashTender,
+  CreateOrder,
   ClearChargeSent,
   CreateClearTender,
   DiscountRequest,
@@ -31,6 +32,22 @@ import type {
   SendClearCharge,
   Tender,
 } from './orders';
+import type {
+  AddDevice,
+  ApproveNoSale,
+  ClaimedPoint,
+  ClaimPoint,
+  Device,
+  DrawerDay,
+  DrawerEventBatch,
+  DrawerEventsSaved,
+  DrawerKey,
+  NoSaleApproval,
+  PointDevice,
+  ShowOnPoint,
+  UpdateDevice,
+} from './devices';
+import type { AddParty, Alert, CreateAlert, Floor, PartySeated, PickupOrder, SeatParty, TableInput, TableRequest, TableView, UpdateParty, Waitlist, WaitlistParty } from './floor';
 import type { PersonHours, SaveStaffHours, ShiftNow, StaffWeek } from './shifts';
 import type { AddBank, BankAccount, KybStatus, ReceiveDetails, SetupProgress, Shop, ShopHours, StartKyb, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
 
@@ -125,10 +142,16 @@ export interface MerchantApi {
   receiveReorder(id: string, input: { quantity: number }): Promise<Reorder>;
   discountCodes(): Promise<DiscountCode[]>;
   createDiscountCode(input: Omit<DiscountCode, 'id' | 'uses'>): Promise<DiscountCode>;
+  /** The order categories show in on phones and Points. Anyone on shift reads; managers save. */
+  categoryOrder(): Promise<CategoryOrder>;
+  saveCategoryOrder(input: In<typeof CategoryOrder>): Promise<CategoryOrder>;
 
   // ---- Orders --------------------------------------------------------------------------------------
-  /** Raising an order holds its stock. The server works out tax and totals. */
-  createOrder(input: { lines: In<typeof LineInput>[]; customer: string | null }): Promise<Order>;
+  /**
+   * Raising an order holds its stock. The server works out tax and totals, except for a cash sale
+   * queued offline (`CreateOrder.offline`). A key makes a retry the same order.
+   */
+  createOrder(input: In<typeof CreateOrder>): Promise<Order>;
   updateOrder(id: string, input: { lines: In<typeof LineInput>[] }): Promise<Order>;
   order(id: string): Promise<Order>;
   orders(input: { date: z.infer<typeof BusinessDate> }): Promise<Order[]>;
@@ -185,6 +208,54 @@ export interface MerchantApi {
   closeDayFigures(sessionId: string): Promise<CloseDayFigures>;
   bankDeposits(): Promise<BankDeposit[]>;
   markDeposited(depositId: string): Promise<BankDeposit>;
+
+  // ---- Counter hardware (terminal reference, 1–7) --------------------------------------------------------
+  /** Points, drawers and printers (`GET /hardware`). Anyone on shift: Show on and the drawer need them. */
+  hardware(): Promise<Device[]>;
+  /** Owners: a drawer or printer the tablet found (`POST /hardware`). */
+  addDevice(input: In<typeof AddDevice>): Promise<Device>;
+  /** Owners (`PATCH /hardware/:id`). */
+  updateDevice(id: string, input: In<typeof UpdateDevice>): Promise<Device>;
+  /** Owners: unpair (`DELETE /hardware/:id`). A Point's key stops working and it goes back to setup. */
+  removeDevice(id: string): Promise<void>;
+  /** Owners: bind an unclaimed Point to the shop (`POST /points/claim`). */
+  claimPoint(input: In<typeof ClaimPoint>): Promise<ClaimedPoint>;
+  /** Anyone on shift: put an order, an alert or the test screen on a Point, or clear it (`POST /points/:id/show`). */
+  showOnPoint(pointId: string, input: In<typeof ShowOnPoint>): Promise<PointDevice>;
+  /** An enrolled tablet, online: the drawer's signing key, kept for offline opens (`GET /drawers/:id/key`). */
+  drawerKey(drawerId: string): Promise<DrawerKey>;
+  /** The drawer's log, in order, once each however often it's sent (`POST /drawer/events`). */
+  saveDrawerEvents(input: In<typeof DrawerEventBatch>): Promise<DrawerEventsSaved>;
+  /** A No sale's reason and PIN, checked before the drawer opens (`POST /drawer/no-sale`). */
+  approveNoSale(input: In<typeof ApproveNoSale>): Promise<NoSaleApproval>;
+  /** Close the day › the drawer: every open today (`GET /drawer/:id/opens`). */
+  drawerDay(sessionId: string): Promise<DrawerDay>;
+
+  // ---- Tables, the wait list, alerts (terminal reference, 8–9) -------------------------------------------
+  /** The Floor page: tables with their tabs and Points, and the wait list (`GET /tables`). */
+  floor(): Promise<Floor>;
+  /** Owners and managers: Edit tables, replacing the set (`PUT /tables`). A table with an open tab stays. */
+  saveTables(input: { tables: (In<typeof TableInput> & { id?: string })[] }): Promise<Floor>;
+  /** Staff mark a table seated: a walk-in at a free table, or a held party who sat down (`POST /tables/:id/seat`). Clears any hold. */
+  seatTable(tableId: string): Promise<TableView>;
+  /** A paid table is free again (`POST /tables/:id/clear`). */
+  clearTable(tableId: string): Promise<TableView>;
+  waitlist(): Promise<Waitlist>;
+  addParty(input: In<typeof AddParty>): Promise<WaitlistParty>;
+  updateParty(id: string, input: In<typeof UpdateParty>): Promise<WaitlistParty>;
+  /** The Seat sheet: party seated, table and its Point held, Table ready at the door, a text if asked (`POST /waitlist/:id/seat`). */
+  seatParty(partyId: string, input: In<typeof SeatParty>): Promise<PartySeated>;
+  /** Calls and bills: open ones, and the last hour's (`GET /table-requests`). */
+  tableRequests(): Promise<TableRequest[]>;
+  /** On my way: the request closes, the ring goes off, the Point goes back (`POST /table-requests/:id/answer`). */
+  answerTableRequest(id: string): Promise<TableRequest>;
+  /** Table ready or Order ready: on a Point, and texted if there's a number (`POST /alerts`). */
+  createAlert(input: In<typeof CreateAlert>): Promise<Alert>;
+  clearAlert(id: string): Promise<Alert>;
+  /** Home's Order ready cell (`GET /pickups`). */
+  pickups(): Promise<PickupOrder[]>;
+  /** Picked up: clears its alert (`POST /orders/:id/picked-up`). */
+  markPickedUp(orderId: string): Promise<PickupOrder>;
 
   // ---- Reports -------------------------------------------------------------------------------------
   dayReports(range: Range): Promise<DayReport[]>;

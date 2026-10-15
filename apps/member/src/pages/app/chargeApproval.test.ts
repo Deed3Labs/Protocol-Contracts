@@ -317,3 +317,22 @@ describe('one question before the split', () => {
     expect(ROUTE).toContain('releasePayNow(charge.code)');
   });
 });
+
+/** Clear Terminal, section 13: a table's bill in the pay sheet, and its receipt. */
+describe('a table’s bill', () => {
+  test('the head names the table first', () => {
+    expect(SCREEN).toContain("const by = [table, raisedBy ? `Raised by ${raisedBy}` : null");
+  });
+
+  test('pay now says what the shop pays, when the server says', () => {
+    expect(SCREEN).toContain('`From your Clear cash · the shop pays ${percentOfBps(props.shopPaysBps)}. Nothing to clear later.`');
+    expect(ROUTE).toContain('shopPaysBps={charge.paidNowBps ?? null}');
+    expect(ROUTES).toContain('paidNowBps: bps,');
+  });
+
+  test('the paid receipt has its table and its lines', () => {
+    const paid = SCREEN.slice(SCREEN.indexOf('// ---- Paid now, or on its way'), SCREEN.indexOf('// ---- Approved over time'));
+    expect(paid).toContain("[props.table, 'From Ready to allocate'");
+    expect(paid).toContain('<Items items={props.items}');
+  });
+});

@@ -61,6 +61,13 @@ export const IconHome = () => (
     <path d="M5 9.5V21h14V9.5" />
   </Svg>
 );
+/** Tables: a table seen from above, with its two chairs. */
+export const IconTables = () => (
+  <Svg size={20} stroke={1.8}>
+    <rect x="5" y="8" width="14" height="8" />
+    <path d="M8 4h8M8 20h8" />
+  </Svg>
+);
 export const IconCharges = () => (
   <Svg size={20} stroke={1.8}>
     <path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" />

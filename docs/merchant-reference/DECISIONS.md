@@ -882,3 +882,406 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   the amount), and an approved charge's Paid out. A dash is left only where the figure couldn't be
   read. Against the mock: `&payday=none`.
 
+
+## Terminal: what the spec met (Phase 1, 2026-10-15)
+
+`clear-merchant-terminal.html` adds counter hardware, tables and the phone pages. Where it met the
+code or the earlier references:
+
+- **Enrolled tablets already own "devices".** `/api/merchant/devices` and `merchant.devices` are the
+  tablets signed in as the shop (Security, Settings › Devices' This tablet). Points, drawers and
+  printers are their own table and live at **`/api/merchant/hardware`**; Points and drawers keep the
+  spec's own paths (`/points/claim`, `/points/:id/show`, `/drawers/:id/key`, `/drawer/events`).
+  Readers stay in `cards.ts`. The existing "Add a device" sheet (a code for another tablet) moves to
+  Security under its own name, so the new one can have the title.
+- **The phone pages live on the member app.** `apps/member` is app.useclear.org, not the apex
+  (useclear.org is the marketing site, another repo). `/p/:code` and `/r/:code` are built there,
+  split away from Privy and the wallet providers; the apex redirects `/p/*` and `/r/*` to it. The
+  Point and the sticker still print `USECLEAR.ORG/P/A7K2`, as drawn.
+- **Receipt codes are random**, ten Crockford characters (`Receipt.code`), made once and kept in
+  `payments.receipts` with the `link` channel it already allows. The spec's `/r/0142` is only an
+  example. The merchant app's `/r/:token` links, already sent by text and email, keep working.
+- **Point codes are four characters**, as drawn. That is about a million codes, so `/api/p` is
+  rate-limited by address across all codes; today's limiter keys on the path, which would give each
+  guess its own allowance.
+- **Cash offline wasn't true yet.** The New charge line said cash still works offline, but raising
+  the order and taking the cash both needed the server. Orders now take an idempotency key and, when
+  queued offline, the tablet's own figures (below). The service worker's "there is no offline
+  queue, and there must not be one" is about the network layer and stays: the queue lives in the
+  app (IndexedDB), never in the worker.
+- **The redrawn cash screen keeps its receipt band.** Section 5 draws Change and Paid without the
+  original's Send a receipt (Text, Email, None); the prompt keeps everything the original draws, so
+  the band stays and the paper row under it becomes the printer's.
+- **A No sale's PIN is checked here, at the tablet.** "Ana or Luis can approve here or from their
+  phone": nothing sends staff an approval today (the Clear refund's "from their own device" is the
+  owner signing in and finding it). The phone half waits for a pending-approvals feed; until then the
+  line reads "Ana or Luis can approve here." A PIN needs the connection, so a No sale does too; a
+  sale's open never does.
+- **"Your table is ready" as a notification** reaches a member who joined the wait list signed in,
+  from the Clear app. A party who joined from the phone page by number gets the text only.
+- **Card on the phone page is a Stripe Checkout Session** on the shop's account, a direct charge with
+  `clearCardFee` as the application fee. It is captured at once, unlike the counter's cards, which
+  Close the day captures; the day's figures count it as a card tender like any other.
+- **Native code can't be built on this Mac** (no Xcode, Android SDK or Java, as in Phase 5). The
+  Bluetooth and raw-socket plugins get their TypeScript side behind the services; the native side
+  is written to be built on a Mac with the toolchains.
+- **The stylesheet.** `scripts/reference-css.mjs` reads every reference file; the terminal file goes
+  last in its `ORDER`, so it can't override the earlier files' rules.
+- **Not drawn, taken from the nearest drawing:** Counter's Tables switch (a Switch row like the
+  others there); adding a drawer (find, then test open) and a printer (find, then print a test
+  label), on the Point's three-step layout; Edit tables and Add a party (sheets like Edit hours);
+  Category order (rows with a handle); the 4 × 6 receipt label (the sticker receipt's layout); the
+  phone page when a Point idles on Pay here (the menu's header with "Pay here when you're done").
+  Where an order is marked To go or Delivery isn't drawn either; tables' orders are dine in, and the
+  rest have no type until it is.
+
+## Terminal Phase 2: contracts
+
+- **New files** in `packages/merchant-contracts`: `devices.ts` (Points, the drawer, printers, Point
+  state, the drawer's log and key), `floor.ts` (tables, the wait list, alerts, Order ready) and
+  `public.ts` (the phone pages, and the Point's screen from the device API).
+- **One Point state** (`PointState`: idle, bill, paid, alert, waitlist, test) for the merchant app,
+  the device API and the phone page. `pointShowing` decides what shows now: an alert covers anything
+  until it expires; a paid bill holds for three minutes (`POINT_PAID_SECONDS`), then idle. The server,
+  the mock and the fake Point all use it.
+- **By time of day** is a switch, as drawn: the Menu while the shop is open before 9pm, Pay here
+  after. The hour isn't a setting until the reference draws one.
+- **Additions to existing responses are optional** (`Order.tableId`, `serviceType`, `calledAt`,
+  `pickedUpAt`, `offline`; `CatalogItem.onMenu`, absent meaning on; `Receipt.table` and `code`; the
+  three new shop settings), as `tipsHours` was, so a response from before them still parses.
+- **An offline order carries the tablet's figures.** `CreateOrder.offline` holds the subtotal, tax
+  and total the tablet worked out from the last catalogue and rate it had; the server keeps them,
+  because the customer has paid that and had their change, and marks the order `offline`. Online,
+  figures are the server's as always. `CreateCashTender.clientCreatedAt` puts a queued tender in the
+  drawer session open at that time.
+- **Categories keep their names.** There is still no category record; `CategoryOrder` is the shop's
+  list of names, and a category not in it sorts after, A–Z. Showcase picks categories by name.
+- **A No sale is approved, then logged.** `approveNoSale` checks the reason and PIN and returns an
+  approval; the drawer opens and its `opened` event carries the approval's id.
+- **"Email me this receipt"** on the paid page is drawn, so the public API has it
+  (`POST /api/r/:code/email`), rate-limited by address and by receipt.
+- **The mock refuses the new calls** ("Not in the mock yet") until the Terminal screens fill them in
+  (Phase 4). The real client already maps each to its route.
+
+## Terminal addendum: table numbers and seating a party (2026-10-15)
+
+The terminal reference was replaced with the version that draws section 8b (Seating a party), the
+held tile and the Number idle screen. It arrived after Hard Stop 2, so its contract changes are an
+amendment, approved before the API builds on them.
+
+- **Idle modes are Number, Menu, Showcase and Pay here**, Number first, as the pane draws them. A door
+  Point idles on the wait list, which the pane doesn't offer, so `PointIdleMode` has a fifth value,
+  `waitlist`, and `PointState` no longer has its own wait-list state. Defaults by placement
+  (`DEFAULT_IDLE_MODE`): table → number, counter → pay, door → waitlist.
+- **Held is a layer, not a replacement.** `pointShowing` now takes the last thing sent (idle, bill,
+  paid, test), a hold, a Call or Bill request and an alert, and shows the top one that's live:
+  alert, then request, then bill/paid/test, then held, then idle. So a bill sent to a held table
+  wins (the server also clears the hold), and a hold that lapses falls back to the number by
+  itself, on the Point too.
+- **The phone page carries no Point state.** `PublicPoint` has only its `view`; a held table is
+  `menu`. The state (with the party's first name) is in `PointScreen`, for the Point alone. The
+  public schema drops anything it doesn't name, and a test parses a held screen through it and
+  checks the name is gone.
+- **Tables have seats and a hold.** `Table.seats`; `TableHold` (party, show name, seated at,
+  expires at); a `held` tile status, with the party's name for staff ("Held for Ana").
+- **Seat is one call**, `seatParty(partyId, {tableId, showName, text})` → `POST /waitlist/:id/seat`:
+  party seated, table and its Point held, Table ready on the door Point, the text if asked. The same
+  seat again changes nothing. `seatTable(tableId)` is now staff marking a table seated (a walk-in, or
+  the held party sitting down), which clears the hold. A party is no longer seated through
+  `updateParty`.
+- **A hold clears** on the first item on the tab, staff marking the table seated, or
+  `HOLD_SECONDS` (15 minutes), whichever is first; the timeout runs in the existing jobs.
+- **Mock seed, for Phase 4:** Table 6 held for Ana (2, seated 7:58 PM); the wait list Lee, Marco,
+  Priya; tables 1 and 6 seat 2, 14 seats 4.
+
+## Terminal addendum 2: the Pay case (2026-10-15)
+
+- **A Point can be a card terminal; the tablet does the work.** The Pay case holds a Stripe M2 under
+  the Point with two buttons. Only the Stripe Terminal SDK on a tablet or phone can drive an M2. **The
+  Point never talks to the reader**: it detects the case, sends button presses, and shows the
+  screens. Don't build a path where it does.
+- **One reader at a time.** Stripe's SDK connects an app to one reader and one operation at a time.
+  The tablet connects to a table's reader when that table's bill is sent to a Point with a linked
+  reader, lets go when the payment succeeds, fails or is cancelled, when the bill is withdrawn, or
+  after 5 minutes idle, and returns to the counter's reader. A second table waits in a queue (the
+  "Next" row); a payment in progress is never interrupted.
+- **Contracts:** `PointHealth.case` (`{kind: 'pay', buttons: 'ok' | 'fault'}` or null);
+  `PointSettings.readerId` (one reader to one Point) and `buttons` (`call`, `bill: 'send_bill' |
+  'notify'`); `PointState` gains `called` and `bill_asked` (`TABLE_REQUEST_SECONDS`, 10 minutes);
+  `TableRequest`; `PointEvent` for `POST /api/device/point/event`; `tableRequests()` and
+  `answerTableRequest(id)`; the Floor read carries the last hour's requests.
+- **Lit** (`pointLit`): held, called and bill asked light the screen; the ring lights share the
+  ready light's pin, so one flag drives both.
+- **Live updates to tablets:** the tablet polls the floor and requests every 4 seconds while Home or
+  Tables is open, the rate the "waiting" screens already use. A stream can replace it later.
+- **Measured on a real M2: not yet.** How long connecting and letting go take decides whether the
+  background connect is fast enough. There's no M2 on this Mac; the figure goes here once measured.
+- **Mock seed, for Phase 4:** Table 12 in a Pay case with M2 1A3F; an open Call on 12 from a minute
+  ago; Table 4's bill just sent ($62.00); Table 9's call answered by Luis at 8:01pm.
+
+## Terminal Phase 3: the API (2026-10-15)
+
+- **Where it lives.** `services/merchant/terminal/` (hardware, Point state, the drawer's log, the
+  floor, the phone pages); `routes/merchantTerminal.ts` on `/api/merchant`; `routes/devicePoint.ts`
+  on `/api/device/point`; `routes/phonePages.ts` on `/api/p` and `/api/r`. Migrations 0023 (hardware,
+  Point keys and states, the drawer's key and log, No sale approvals), 0024 (tables, holds, orders'
+  table and service type, the wait list, Call and Bill, alerts) and 0025 (on the menu, category
+  order, receipt codes, a checkout's session, the three settings).
+- **What a Point shows is worked out when asked** (`pointStateFor`), from what was last sent, the
+  table's hold, an open Call or Bill and an alert, through the contracts' `pointShowing`. So a paid
+  bill, a hold or a Call lapses on time with nothing running; the 30-second sweep
+  (`jobs/terminalSweep.ts`) only tidies the rows (a lapsed hold's table counts as seated) and wakes
+  the shop's Points.
+- **Points are woken, not pushed to.** Any merchant write that succeeds, a Clear tender the sync job
+  moves, and a checkout's webhook "touch" the shop; a Point's long poll or stream then asks
+  `pointStateFor` again. The wake is in-process: with more than one API instance, a Point on another
+  catches up when its wait ends (25 seconds at most).
+- **A Point on battery** asks `GET /state` with the ETag it has; the answer waits until the shop
+  changes or what it shows lapses by itself, else 304 after 25 seconds. **Plugged in**, it holds
+  `GET /stream` (server-sent events, a comment every 20 seconds).
+- **Points exist before they're sold.** `merchant.point_keys` has a row per Point made, so a typed code
+  can only claim a real, unclaimed one. Nothing adds those rows yet: the factory's list goes in with a
+  script like `terms-code.ts`, still to write. Claim gives a one-time secret (ten minutes); the Point
+  trades it for its device key at `POST /api/device/point/activate`. Only hashes are kept. Unpairing
+  drops the key, and the Point can be claimed again.
+- **The drawer's key** is sealed with the member data's envelope keyring when that is configured, and
+  stored as is when it isn't (so a development API works). Production should have the keyring set.
+- **A No sale's approval lasts two minutes** and opens the drawer once (`approval_id` is unique on
+  the log). A No sale needs the connection; a sale's open never does.
+- **Drawer events that arrive with the same time** keep the order they arrived in (a `seq` column):
+  a batch is in the order things happened.
+- **Offline cash sales.** The order's lines are priced here; its subtotal, tax and total are the
+  tablet's, its tax spread across the lines; its stock isn't checked (it's already gone); its
+  business date is the tablet's. The audit trail keeps what the server would have priced it at
+  beside the tablet's figure. The cash tender joins the drawer session open at the tablet's time.
+- **Call pressed again.** The Point's screen says "Press it again to cancel"; the addendum says one
+  request per table. Both hold: a press within three seconds of the first is the same press; a later
+  one cancels it. A press made offline counts if it arrives within two minutes.
+- **Bill with "Send the bill to the Point"** and a tab with items sends the bill through the same path
+  as staff (the hold clears, the request is recorded as `bill_sent` with its amount). Otherwise it
+  tells staff.
+- **The wait list's quote** is five minutes a party: "3 waiting · about 15 min".
+- **By time of day** shows Pay here from 9pm to 5am in the shop's time zone, the Menu otherwise. The
+  **test screen** goes back by itself after a minute.
+- **Texts.** Table ready says the spec's "Your table is ready: 6, by the window". Order ready isn't
+  drawn as a text; it takes the Point's words: "Mi Casa Tacos: order 27 is ready. Pick up at the
+  counter." Both go by the receipts' Twilio path (a new `shop_text` kind), and only to a number the
+  party agreed to be texted at, or an order's customer when that's a phone number.
+- **Receipt codes** are made the first time a paid order's receipt is read to print
+  (`GET /orders/:id/receipt`), and the receipt now carries its table ("Table 6, by the window").
+- **The phone pages** answer with `Cache-Control: no-store` (the member app's worker caches GETs to
+  `/api/`). Reads are limited to 120 a minute per address across every code, and paying, joining
+  and emailing to 10. The page is built from the Point's screen and parsed through `PublicPoint`,
+  which drops the Point's state, and the party's name with it.
+- **Card from the phone page** is a Stripe Checkout Session on the shop's account (`createCheckout`
+  on the connector, optional so a processor without it simply doesn't offer card there), captured at
+  once with `clearCardFee` as the application fee. The tender follows `checkout.session.completed`
+  (and `async_payment_succeeded`, `expired`), which **the Connect webhook endpoint in Stripe must be
+  subscribed to**. A paid card's details come from the charge's `card`, as the counter's come from
+  `card_present`.
+- **Where links point:** `POINT_PUBLIC_HOST` (default `useclear.org`) is what a Point prints;
+  `PHONE_PAGE_BASE_URL` (default the member app) is where Checkout returns and receipt emails link;
+  `POINT_API_BASE_URL` is what a claimed Point is told; `POINT_FIRMWARE_LATEST` marks firmware
+  current.
+- **Not yet:** the "Your table is ready" notification for a member who joined signed in (the wait
+  list keeps their wallet; Phase 5 sends it); the contract conformance run against a real Postgres
+  (`apps/api/e2e/contract.ts`).
+
+## Terminal Phase 4: the merchant app (2026-10-15)
+
+- **The terminal file adds to reference.css; it doesn't vote.** `scripts/reference-css.mjs` reads it
+  as an addendum (ADDENDA): a rule of its own is added, a rule the ten draw differently is kept for
+  its own screens under `.c-page-terminal`, and a rule the ten keep only for their pages (Settings'
+  selected chip) is added for its screens too. The ten files' output is unchanged, line for line.
+- **Mi Casa Tacos in the preview** is `&shop=micasa`: the mock's seed (`seedMiCasa.ts`, re-exporting
+  what Mike's Tire's has that the terminal screens don't draw) and its Terminal state
+  (`terminalMock.ts`, at dinner on Oct 15). The preview's three roles keep their ids, so `&as=jen`
+  is the counter at either shop. `&calls=open` opens Table 12's Call (13b); `&seat=before` is the
+  moment before Ana is seated (8b); `&drawerHw=stuck` is a drawer that doesn't answer.
+- **One tax rate at Mi Casa.** The reference's bills don't agree: Table 12's $3.70 on $44.50 is
+  8.32%; order 0142's $3.45 on $42.25 is 8.17%. Table 12's, which five sections draw, sets it, so
+  order 0142 is **$3.51 tax, $45.76, $4.24 change** from $50.00.
+- **Terminal screens read the API in the preview too.** Devices, Tables, On the menu and the Home
+  cells take their figures from the mock, seeded with the reference's, rather than from constants;
+  so `?preview=1` and `&live=1` show the same dinner. New Charge's cash and Show on frames, and Close
+  the day's opens, keep the pages' own preview constants.
+- **Settings › Devices is the terminal reference's pane for every shop.** Mike's Tire has nothing
+  paired, so it shows the empty rows. Each device's pane is `/settings/devices/<id>`, and the
+  printers share `/settings/devices/printers`, as the reference draws them on one pane. The M2 inside
+  a Pay case shows on its Point's pane, not under Card readers. The rail is the way back on a
+  landscape tablet; one column gets a back arrow.
+- **The old Add a device** (a code for another tablet) keeps its place in Security; the new one is
+  the hardware sheet. A card reader keeps the pairing it already has (Settings › Payments).
+- **Printer rows name the make** (Clear 4-inch, Rollo) from `PrinterSettings.model`, added to the
+  contract at Hard Stop 4 (optional, so settings saved before it still parse). Adding a printer keeps
+  what it calls itself when found.
+- **A tile with no Point says "No Point".** The floor draws Table 1 as "Point shows Menu", but no
+  Point at Table 1 is in the devices list; Table 14's Point idles on the Menu, as the floor draws it.
+- **Calls and bills show while one is waiting**, above the floor and on Home, with the last hour's.
+  A Call turns its tile amber (`.c-tm-tile.c-call` in app.css: the reference names the colour, not
+  a rule).
+- **Order ready is on Home for any shop with a counter Point**, counter service or a restaurant's
+  to-go orders. Mi Casa has both, so its Home has both cells.
+- **The drawings beside the sheets are notes.** The Point screens drawn next to the Seat, tab and
+  Show on sheets explain them; the sheets don't carry them. The drawings inside a pane or a sheet
+  (a Point's pane, the Pay case, Add a Point's "It will show", the printers' labels) are on screen.
+- **No sale's keypad.** The reference draws four dots and no keypad; a tablet has no keyboard, so the
+  sheet adds the PIN keypad the refund override uses. "Ana or Luis can approve here."
+- **The cash screen's paper row is the printer's** once a printer prints the receipt (Send a receipt
+  stays above it); with no printer it's the print dialog, as before. A cash sale's drawer opens as the
+  change screen comes up; "Drawer didn't open" shows if it hasn't said so in two seconds, and "I used
+  the key" logs a key open against the sale.
+- **Offline cash.** Checkout prices the cart on the tablet with the shop's tax rates as it last read
+  them (kept from Settings › Tax); with none read yet, it says so. Card, Clear and split wait. The
+  order and its cash go into one IndexedDB queue with the drawer's events, synced in order when the
+  connection is back; the Point only catches up then.
+- **Tables' Add items and Take payment open New charge on the tab** (`/new?order=…&table=…`): the
+  tab's lines in the cart, its own Point shown the bill. A seated table with no tab raises one with
+  its table. Edit tables is on the floor for everyone; saving needs a manager (the server's rule).
+- **Not drawn, built from the nearest drawing:** Add a party and Edit tables (sheets like the join
+  page and Edit hours), Category order (rows that move up and down), Settings › Counter's Tables
+  switch (a Switch row in a Service cell), adding a drawer or printer (find, then test, in two steps).
+- **Reader switching** (the Pay case addendum) is `readerQueue` in `src/reader/tables.ts`, on the
+  existing single-reader service: connect a table's M2 when its bill goes to its Point, wait behind
+  a payment in progress, give the reader back after the payment or five idle minutes. The card screen
+  shows "Card · Table 12" while it connects or while another table waits.
+- **Native code is the Phase 6 seam.** The drawer's and printers' native sides say what's coming
+  with the app update; the web drawer uses Web Bluetooth (Chrome), the web printer the print dialog.
+- **Visual checks.** `e2e/states.ts` has 23 `terminal-*` states, each at its reference moment
+  (`clock`: dinner at 8pm, lunch at 12:42pm). The terminal file's sheets count as frames when the
+  reference is captured (`e2e/reference.spec.ts`), which no other file's do.
+
+## Terminal Phase 5: the phone pages and the member app (2026-10-15)
+
+- **The phone pages are their own entry.** `apps/member/phone.html` and `src/phone/` (no router, no
+  Privy, no wallet, no service worker): React and 4 kB of their own, about 66 kB gzipped in all.
+  Vercel serves `phone.html` for `/p/(.*)` and `/r/(.*)` before the app's catch-all; `main.tsx`
+  renders the same pages for those paths when the app's shell answers instead (`vite dev`, or the
+  service worker's offline shell). A test keeps the entry free of app imports.
+- **Never cached, never with cookies.** Calls are `cache: 'no-store'` and `credentials: 'omit'`; the
+  service worker sends `/api/p` and `/api/r` to the network only (a bill changes by the second, and a
+  receipt is someone else's on a shared phone).
+- **The page follows the Point by asking.** Every 4 seconds while a bill is open (so Paid shows at
+  once, including a card coming back from Stripe), every 15 otherwise, not while the phone is
+  hidden. A paid page stops asking, so the receipt stays when the Point goes back to its number. A
+  dining room on the guest Wi-Fi shares one address and the phone pages' 120 reads a minute, which
+  is why the slow rate is the common one.
+- **The drawn address bar is the browser's**, so it isn't built. The menu shows names and prices as
+  drawn (an item's detail isn't on the phone drawing). The Pay here view is the menu page with no
+  rows: the shop, where the Point is, and "Pay here when you're done".
+- **Pay with Clear raises the counter's own Clear tender** and opens it on app.useclear.org/c/…; a
+  second tap, or a member scanning after the page started one, opens the Clear charge already
+  waiting rather than failing with "being paid already". Pay by card is Stripe Checkout and returns
+  to `/p/:code?paid=1`.
+- **The paid page makes the receipt's code** (`publicPoint`), so "Email me this receipt" has one to
+  send. The button opens an Email field above itself and the same button sends; then "Sent to …".
+- **The sticker receipt** shows Cash as what was handed over and Change under it, a card by its name,
+  and Clear as Clear. "Next time, pay with Clear…" shows only when Clear didn't pay it. Times are the
+  phone's own: the customer is at the shop.
+- **The wait list's consent line** (the reference's Open note) sits under the drawn "We'll text you"
+  line: leaving a number is agreeing to the shop's texts about the table, with STOP. A party with no
+  number joins without one. "5+" sends five; the host changes it if it's more.
+- **The scanner knows a Point.** `pointCodeFrom` reads `…/p/A7K2` (any host, as printed or as a
+  link), never four bare characters, which are a mistyped charge code far more often. A bill opens
+  as a Clear charge in the pay sheet the app already has; anything else (the menu, the wait list)
+  opens the Point's own page. A Point that can't be opened says why and the camera keeps scanning.
+- **The pay sheet names the table** first in its head ("Table 12 · Raised by Jen · 7:42pm"). Pay now
+  says what the shop pays when the server says (`paidNowBps` on the member's charge view): "From your
+  Clear cash · the shop pays 1.25%. Nothing to clear later." The reference says "Clear balance"; the
+  app calls it Clear cash everywhere else.
+- **The receipt in Activity** is the pay sheet's Paid view, which a paid charge opens: it now carries
+  the table and the lines, discount and tax. `chargeContents` reads the table from the order.
+- **Table ready reaches members too.** Where a text goes (so only with the party's consent), the
+  `Texter` also posts "Your table is ready" · "Mi Casa Tacos · Table 12, back patio" to the member's
+  notifications, with a push: the party's own wallet if they joined from the app, else the member
+  their number finds, unless that member opted out of being found. Keyed on the alert, so never twice.
+- **Not drawn, built from the nearest drawing:** the joined wait-list page (the Paid page's tick and
+  "You're on the list."), the Email field, a code that finds nothing (one muted line), and errors
+  (a line under the buttons).
+- **Previews.** `?preview=1` on `/p/A7K2` (`&view=menu|bill|paid|pay_here`), `/p/D00R` and
+  `/r/<code>` shows the reference's dinner without a Point; the pay sheet preview takes
+  `&shop=micasa` for Table 12. Both are dev only and absent from the build.
+
+## Terminal Phase 6: native (2026-10-15)
+
+- **One Bluetooth layer.** `src/hardware/ble/central.ts` wraps `@capacitor-community/bluetooth-le`
+  8.3 (Capacitor 8, with a Swift package), which is the platform's Bluetooth in the app and Web
+  Bluetooth in Chrome. The drawer, Points and Bluetooth printers all go through it; the fakes
+  implement the same interface in memory (`hardware/fakes/peripheral.ts`). The separate web and
+  native drawers are gone.
+- **The drawer is paired on Test open.** Add a device › Cash drawer's Test open adds the drawer,
+  fetches its key and writes the pairing message (its Clear id, the key, the time, which sets its
+  clock), then opens it signed. Done adds nothing more. A drawer takes a key once; one keyed already
+  refuses the write, and the tablet says to hold its button for ten seconds to reset it (the reset is
+  the firmware's, Phase 7).
+- **Signed opens.** `open`, a 4-byte counter, the tablet's time in seconds, and the first 16 bytes of
+  an HMAC-SHA256 over the drawer's id and those, in one write. The drawer opens when the MAC is
+  right, the counter is past its last and the time is within five minutes of its clock; anything else
+  does nothing, with no error. The counter is `max(last + 1, the clock in seconds)`, so a tablet that
+  loses its count (reinstalled, storage cleared) is still ahead of it.
+- **Where the key lives.** Fetched while online whenever the shell loads the hardware, and kept for
+  this tablet's enrollment: secure storage (`@aparajita/capacitor-secure-storage`, Keychain and
+  Keystore) in the app, a non-extractable key in IndexedDB in a browser, so page script can use it
+  and never read it. Keys from another enrollment are dropped; a tablet removed or enrolled again
+  keeps none. Signing out of a shift keeps them: the tablet is still the shop's.
+- **A drawer cabled to a printer** gets ESC p from that printer (`PrinterService.kickDrawer`), the
+  ESC/POS receipt printers only.
+- **Points use ESP32 unified provisioning, Security 1**, so the firmware runs Espressif's component:
+  X25519, the shared secret XORed with SHA-256 of the Point's code as proof of possession, then one
+  AES-256-CTR stream for the session. The message field numbers are ESP-IDF's (`messages.ts`). The
+  Point advertises as `CLEAR-<code>` with Clear's provisioning service; `proto-ver` also carries its
+  code, firmware and battery. Two Clear endpoints, both encrypted: `clear-claim` (the setup secret and
+  the API to activate with) and `clear-reach` (once joined: Clear, a sign-in page, or nothing).
+- **Choosing the network.** The reference's "This tablet's network · strong" needs the tablet's own
+  Wi-Fi name, which neither platform hands a web view, so a network's line is its signal ("Strong
+  signal", "Good signal", "Weak signal"). Enterprise networks are listed as "Asks for a username, so a
+  Point can't use it". "Has a sign-in page, so a Point can't use it" is known only after joining, so
+  it's what Connect says when `clear-reach` finds one. A wrong password and a network the Point can't
+  see each say so.
+- **Wi-Fi printers use Clear's own plugin**, `native/socket` (`@clear/capacitor-socket`, a `file:`
+  dependency): bytes to port 9100, whether a printer answers there, and printers found by Bonjour
+  (`_pdl-datastream._tcp`), on iOS with the Network framework and on Android with a socket and
+  NsdManager. The community TCP plugin has no Swift package, which this app's iOS project needs. iOS
+  gains the local network usage string and the Bonjour service it browses.
+- **Bluetooth printers** are written on the vendor service they offer (Zebra's, the common ESC/POS
+  ones, Microchip's serial), in pieces the link carries.
+- **Fakes, for e2e with no hardware.** `scripts/fake-point.ts` is a Point on the device API: it
+  activates with the claim's secret, reports health, follows its screen by long poll or the stream,
+  and presses Call or Bill, checking every answer against the contract. `scripts/fake-drawer.ts`
+  speaks the drawer's messages as hex lines (and `--sign` prints the open a tablet would send). The
+  API's route test runs the fake Point as its own process against the real routes. The fake Point's
+  radio and the fake drawer run the tablet's own code in the merchant tests.
+- **A Phase 3 bug the fake Point found.** Saving Edit tables with any table kept answered 500: kept
+  tables were renumbered negative for a moment, which the 1 to 999 check refuses. They now step out
+  of the number index by being marked removed inside the transaction. A test swaps two numbers.
+- **Cost.** The three libraries add about 22 kB gzipped to the counter app (1.09 MB).
+- **Not tried yet.** No Xcode iOS SDK or JDK on this Mac: the Swift plugin typechecks against
+  stand-ins for Capacitor's types, the Java side isn't compiled, and nothing has run on an iPad, an
+  Android tablet, a drawer, a Point or a printer. The provisioning messages match ESP-IDF's protos as
+  written and are checked only against our fake. An M2's connect and let-go times are still to
+  measure (the Pay case addendum).
+
+## Terminal Phase 7: the firmware contract (2026-10-15)
+
+- **Two files the firmware is built from**, `docs/hardware/point-device-api.md` and
+  `docs/hardware/drawer-protocol.md`. They describe what the code already does; the contracts
+  package stays the source where they differ. `apps/merchant/src/hardware/docs.test.ts` checks the
+  UUIDs, endpoint names, routes, byte layouts and timings in them against the code.
+- **Two parts are proposals**, marked so in the Point file, because nothing in the reference or the
+  API covers them yet:
+  - *When a Point can't reach Clear:* it keeps its screen; after ten minutes a bill, paid, Call or
+    alert screen gives way to its last idle screen (its number and QR), a hold keeps its name until
+    it expires, and nothing new is written on the screen.
+  - *Firmware updates:* a signed manifest per model at a fixed URL (Ed25519, the image's SHA-256),
+    installed only after 30 minutes idle and plugged in or charged enough, with ESP-IDF's rollback.
+    Signing keys, hosting and releases aren't built.
+- **The drawer's clock** follows the tablet: set at pairing and by every open it accepts (a signed
+  time is trusted). After a power loss it's unset, and until the next open the counter alone guards
+  the drawer. The fake drawer does this now, with a test.
+- **A refused pairing** fails the write with ATT error `0x03`; a refused open does nothing and its
+  write succeeds, so a replay looks the same as a heard command.
+- **The drawer's shut is logged.** The tablet now sends a `shut` drawer event when the drawer says
+  it was pushed shut; nothing logged it before, so Settings › Devices could only know from opens.
+  Opens are logged by what opened them, never from the notification, so there's no second record.
+- **The RJ12 port** takes the standard kick (pin 2 or 5 against +24 V on pin 4, at least 30 ms) with
+  no key, because the cable is the trust; pin 3 is the switch back to the printer.

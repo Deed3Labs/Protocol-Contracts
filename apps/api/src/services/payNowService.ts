@@ -64,7 +64,7 @@ export interface PayNowResult {
 }
 
 /** The shop's paid-now rate, from its Clear tier. */
-async function paidNowBps(merchant: string): Promise<number> {
+export async function paidNowBps(merchant: string): Promise<number> {
   const db = await merchantDb();
   if (!db) return FALLBACK_PAID_NOW_BPS;
   const { rows } = await db.query<{ paid_now_bps: number }>(
@@ -76,6 +76,9 @@ async function paidNowBps(merchant: string): Promise<number> {
   const { rows: std } = await db.query<{ paid_now_bps: number }>(`SELECT paid_now_bps FROM merchant.clear_tiers WHERE tier = 'standard'`);
   return std[0] ? Number(std[0].paid_now_bps) : FALLBACK_PAID_NOW_BPS;
 }
+
+/** The paid-now rate for a charge's shop: "the shop pays 1.25%" on the member's pay sheet. */
+export const paidNowBpsFor = (charge: Pick<ChargeRow, 'merchantAddress'>) => paidNowBps(charge.merchantAddress);
 
 /** Where Clear's fee goes: the term issuer's fee recipient, else its carry treasury, as the contract does. */
 async function feeRecipient(): Promise<string | null> {

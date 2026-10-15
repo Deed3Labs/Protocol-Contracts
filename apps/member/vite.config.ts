@@ -46,6 +46,8 @@ export default defineConfig({
         /^@abstract-foundation\/agw-client/,
         /^@stripe\/crypto/,
       ],
+      // Two pages: the app, and the phone pages (/p/:code, /r/:code), which carry none of the app.
+      input: { main: resolve(__dirname, 'index.html'), phone: resolve(__dirname, 'phone.html') },
       output: {
         manualChunks: undefined,
       },

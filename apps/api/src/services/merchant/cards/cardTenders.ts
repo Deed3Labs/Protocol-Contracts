@@ -261,6 +261,64 @@ export async function createCardTender(
 }
 
 /**
+ * A card paid from the phone page (Clear Terminal): what is left on the order, as a hosted checkout
+ * on the shop's account. The tender waits until the checkout's payment comes back by webhook; it
+ * is captured at once, so Close the day finds nothing to capture. Idempotent on the page's key.
+ */
+export async function createCheckoutTender(
+  db: Db,
+  provider: CardConnectorProvider,
+  input: { merchant: string; orderId: string; amountCents: number; lineName: string; successUrl: string; cancelUrl: string; idempotencyKey: string },
+): Promise<{ tenderId: string; url: string }> {
+  if (!provider.createCheckout) throw new TenderError('Card payments from a phone aren’t available for this shop', 'method_off');
+  const requestHash = createHash('sha256').update(JSON.stringify([input.orderId, input.amountCents, 'checkout'])).digest('hex');
+  const tender = await db.transaction(async (tx) => {
+    const { rows: existing } = await tx.query<TenderRow>('SELECT * FROM payments.tenders WHERE merchant = $1 AND idempotency_key = $2', [input.merchant, input.idempotencyKey]);
+    if (existing[0]) {
+      if (existing[0].request_hash !== requestHash) throw new TenderError('That retry key was used for a different payment', 'key_reused');
+      return existing[0];
+    }
+    const order = await checkNewTender(tx, { merchant: input.merchant, orderId: input.orderId, method: 'card', amountCents: input.amountCents }).catch((error) => {
+      if (error instanceof PaymentError) throw new TenderError(error.message, error.code === 'method_off' ? 'method_off' : error.code === 'over_remaining' || error.code === 'split_off' ? 'over_remaining' : 'order_closed');
+      throw error;
+    });
+    const connector = await takingCards(tx, input.merchant);
+    if (connector.provider !== provider.provider) throw new Error(`This shop takes cards through ${connector.provider}, not ${provider.provider}`);
+    const { plan } = await cardPlan(tx, input.merchant);
+    const fee = processorFee(provider, input.amountCents, plan);
+    const { rows } = await tx.query<TenderRow>(
+      `INSERT INTO payments.tenders
+         (id, merchant, order_id, method, amount_cents, tip_cents, status, idempotency_key, request_hash, tip_staff_id, created_by, connector_id, application_fee_cents, fee_billed)
+       VALUES ($1, $2, $3, 'card', $4, 0, 'pending', $5, $6, $7, $7, $8, $9, $10)
+       RETURNING *`,
+      [`tnd_${randomUUID()}`, input.merchant, order.id, input.amountCents, input.idempotencyKey, requestHash, order.raised_by, connector.id, fee, !provider.supportsPlatformFee],
+    );
+    await audit(tx, {
+      merchant: input.merchant,
+      actor: null,
+      action: 'tender.card_checkout_started',
+      ref: { type: 'tender', id: rows[0]!.id },
+      amountCents: input.amountCents,
+      detail: { orderId: order.id, applicationFeeCents: fee, from: 'phone page' },
+    });
+    await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: null });
+    return rows[0]!;
+  });
+  const withAccount = await cardTender(db, provider, input.merchant, tender.id);
+  const session = await provider.createCheckout(withAccount.account, {
+    amountCents: Number(tender.amount_cents),
+    applicationFeeCents: Number(tender.application_fee_cents ?? 0),
+    lineName: input.lineName,
+    successUrl: input.successUrl,
+    cancelUrl: input.cancelUrl,
+    metadata: { clear_merchant: input.merchant, clear_order_id: tender.order_id, clear_tender_id: tender.id },
+    idempotencyKey: `clear-checkout:${tender.id}`,
+  });
+  await db.query('UPDATE payments.tenders SET checkout_session_id = $2, updated_at = now() WHERE id = $1 AND checkout_session_id IS NULL', [tender.id, session.sessionId]);
+  return { tenderId: tender.id, url: session.url };
+}
+
+/**
  * Moves a tender to match what the processor says, inside the caller's transaction. Returns the
  * tender after, and whether it was newly declined (the caller then voids the PaymentIntent so the
  * declined attempt can't be confirmed later).

@@ -2,5 +2,14 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../../../node_modules/@capacitor/android/capacitor')
 
+include ':aparajita-capacitor-secure-storage'
+project(':aparajita-capacitor-secure-storage').projectDir = new File('../../../node_modules/@aparajita/capacitor-secure-storage/android')
+
+include ':capacitor-community-bluetooth-le'
+project(':capacitor-community-bluetooth-le').projectDir = new File('../../../node_modules/@capacitor-community/bluetooth-le/android')
+
 include ':capacitor-community-stripe-terminal'
 project(':capacitor-community-stripe-terminal').projectDir = new File('../../../node_modules/@capacitor-community/stripe-terminal/android')
+
+include ':clear-capacitor-socket'
+project(':clear-capacitor-socket').projectDir = new File('../native/socket/android')

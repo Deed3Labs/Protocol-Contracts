@@ -163,6 +163,9 @@ interface SettingsRow {
   discount_limit_counter: number;
   discount_limit_manager: number;
   discount_limit_owner: number | null;
+  drawer_no_sale_roles?: 'managers' | 'anyone';
+  no_sale_needs_pin?: boolean;
+  table_service?: boolean;
   updated_at: Date | string;
 }
 
@@ -179,6 +182,9 @@ const fromRow = (r: SettingsRow): ShopSettings => ({
   offlineCards: { enabled: r.offline_cards_enabled, limitCents: Number(r.offline_cards_limit_cents) },
   tax: { pricesIncludeTax: r.prices_include_tax },
   discountLimits: { counter: r.discount_limit_counter, manager: r.discount_limit_manager, owner: r.discount_limit_owner },
+  drawerNoSaleRoles: r.drawer_no_sale_roles ?? 'managers',
+  noSaleNeedsPin: r.no_sale_needs_pin ?? true,
+  tableService: r.table_service ?? false,
   updatedAt: new Date(r.updated_at).toISOString(),
 });
 
@@ -221,8 +227,9 @@ export async function updateSettings(db: Db, input: { merchant: string; staffId:
   const { rows } = await db.query<SettingsRow>(
     `INSERT INTO merchant.shop_settings (merchant, accept_card, accept_cash, accept_split, tips_enabled, tips_mode, tips_presets, tips_go_to,
        starting_cash_cents, two_counts, one_person_close, offline_cards_enabled, offline_cards_limit_cents,
-       discount_limit_counter, discount_limit_manager, discount_limit_owner, updated_by, prices_include_tax, break_minutes, break_after_minutes, notify_end_of_day, notify_email, statements_email, who_can_close, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24, now())
+       discount_limit_counter, discount_limit_manager, discount_limit_owner, updated_by, prices_include_tax, break_minutes, break_after_minutes, notify_end_of_day, notify_email, statements_email, who_can_close,
+       drawer_no_sale_roles, no_sale_needs_pin, table_service, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27, now())
      ON CONFLICT (merchant) DO UPDATE SET
        accept_card = EXCLUDED.accept_card, accept_cash = EXCLUDED.accept_cash, accept_split = EXCLUDED.accept_split,
        tips_enabled = EXCLUDED.tips_enabled, tips_mode = EXCLUDED.tips_mode, tips_presets = EXCLUDED.tips_presets, tips_go_to = EXCLUDED.tips_go_to,
@@ -233,7 +240,8 @@ export async function updateSettings(db: Db, input: { merchant: string; staffId:
        prices_include_tax = EXCLUDED.prices_include_tax, break_minutes = EXCLUDED.break_minutes,
        break_after_minutes = EXCLUDED.break_after_minutes, notify_end_of_day = EXCLUDED.notify_end_of_day,
        notify_email = EXCLUDED.notify_email, statements_email = EXCLUDED.statements_email,
-       who_can_close = EXCLUDED.who_can_close, updated_at = now()
+       who_can_close = EXCLUDED.who_can_close, drawer_no_sale_roles = EXCLUDED.drawer_no_sale_roles,
+       no_sale_needs_pin = EXCLUDED.no_sale_needs_pin, table_service = EXCLUDED.table_service, updated_at = now()
      RETURNING *`,
     [
       input.merchant,
@@ -260,6 +268,9 @@ export async function updateSettings(db: Db, input: { merchant: string; staffId:
       s.notifications.email,
       s.statementsEmail,
       s.whoCanClose,
+      s.drawerNoSaleRoles ?? 'managers',
+      s.noSaleNeedsPin ?? true,
+      s.tableService ?? false,
     ],
   );
   // Set up the till: starting cash, and tips and discounts, count as done once saved.

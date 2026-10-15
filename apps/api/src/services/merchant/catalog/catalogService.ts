@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
+  CategoryOrder as CategoryOrderInput,
+  type CategoryOrder,
   type CatalogItem,
   DiscountCode,
   ItemInput,
@@ -48,6 +50,7 @@ interface ItemRow {
   stock_tracked: boolean;
   reorder_at: number | null;
   archived_at: Date | string | null;
+  on_menu?: boolean;
   on_hand: number | null;
   held: number | null;
   free: number | null;
@@ -98,6 +101,7 @@ function toItem(r: ItemRow, groups: OptionGroup[], seesCost: boolean): CatalogIt
     reorderAt: r.reorder_at,
     optionGroups: groups,
     archivedAt: r.archived_at ? new Date(r.archived_at).toISOString() : null,
+    onMenu: r.on_menu ?? true,
   };
 }
 
@@ -138,9 +142,9 @@ export async function createItem(db: Db, input: { merchant: string; staffId: str
   const i = parsed.data;
   const id = `itm_${randomUUID()}`;
   await db.query(
-    `INSERT INTO commerce.catalog_items (id, merchant, name, detail, category, price_cents, cost_cents, tax_kind, stock_tracked, reorder_at, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-    [id, input.merchant, i.name.trim(), i.detail, i.category.trim(), i.priceCents, i.costCents, i.taxKind, i.stockTracked, i.stockTracked ? i.reorderAt : null, input.staffId],
+    `INSERT INTO commerce.catalog_items (id, merchant, name, detail, category, price_cents, cost_cents, tax_kind, stock_tracked, reorder_at, created_by, on_menu)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [id, input.merchant, i.name.trim(), i.detail, i.category.trim(), i.priceCents, i.costCents, i.taxKind, i.stockTracked, i.stockTracked ? i.reorderAt : null, input.staffId, i.onMenu ?? true],
   );
   return getItem(db, input.merchant, id, true);
 }
@@ -156,7 +160,7 @@ export async function updateItem(db: Db, input: { merchant: string; itemId: stri
   await db.query(
     `UPDATE commerce.catalog_items SET
        name = $3, detail = $4, category = $5, price_cents = $6, cost_cents = $7, tax_kind = $8,
-       stock_tracked = $9, reorder_at = $10, updated_at = now()
+       stock_tracked = $9, reorder_at = $10, on_menu = $11, updated_at = now()
      WHERE id = $1 AND merchant = $2`,
     [
       input.itemId,
@@ -169,9 +173,30 @@ export async function updateItem(db: Db, input: { merchant: string; itemId: stri
       p.taxKind ?? current.taxKind,
       tracked,
       tracked ? (p.reorderAt !== undefined ? p.reorderAt : current.reorderAt) : null,
+      p.onMenu ?? current.onMenu ?? true,
     ],
   );
   return getItem(db, input.merchant, input.itemId, true);
+}
+
+/** Inventory › Category order: the order categories show in on phones and Points. */
+export async function categoryOrder(q: Queryable, merchant: string): Promise<CategoryOrder> {
+  const { rows } = await q.query<{ names: string[] }>('SELECT names FROM commerce.category_order WHERE merchant = $1', [merchant]);
+  return { names: rows[0]?.names ?? [] };
+}
+
+/** Owners and managers. Each name once; a name with no items yet is kept for when it has some. */
+export async function saveCategoryOrder(db: Db, input: { merchant: string; order: unknown }): Promise<CategoryOrder> {
+  const parsed = CategoryOrderInput.safeParse(input.order);
+  if (!parsed.success) throw new CatalogError(parsed.error.issues[0]?.message ?? 'The categories, in order', 'invalid');
+  const names = parsed.data.names.map((n) => n.trim());
+  if (new Set(names.map((n) => n.toLowerCase())).size !== names.length) throw new CatalogError('Each category once', 'invalid');
+  await db.query(
+    `INSERT INTO commerce.category_order (merchant, names, updated_at) VALUES ($1, $2, now())
+     ON CONFLICT (merchant) DO UPDATE SET names = EXCLUDED.names, updated_at = now()`,
+    [input.merchant, names],
+  );
+  return { names };
 }
 
 /** Archived, never deleted: past orders still point at it. */

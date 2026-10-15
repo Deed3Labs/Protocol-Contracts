@@ -54,3 +54,25 @@ describe('the scan loop stops when the screen goes', () => {
     expect(cb).toContain('stream.getTracks().forEach((t) => t.stop());');
   });
 });
+
+/** Clear Terminal, section 13: the scanner knows a Point's code and opens its bill in the pay sheet. */
+describe('a Point’s code', () => {
+  test('a charge is read first, then a Point', () => {
+    const tick = SOURCE.slice(SOURCE.indexOf('if (raw) {'), SOURCE.indexOf('setNotACode(true)'));
+    expect(tick.indexOf('chargeCodeFrom(raw)')).toBeLessThan(tick.indexOf('pointCodeFrom(raw)'));
+  });
+
+  test('a bill becomes the Clear charge the pay sheet opens; anything else is the Point’s own page', () => {
+    const open = SOURCE.slice(SOURCE.indexOf('const openPoint'), SOURCE.indexOf('useEffect(() => {', SOURCE.indexOf('const openPoint')));
+    expect(open).toContain("if (page.view !== 'bill')");
+    expect(open).toContain('window.location.assign(`/p/${point}`)');
+    expect(open).toContain("phoneApi.pay(point, 'clear', intentKey())");
+    expect(open).toContain('navigate(`/c/${started.chargeCode}`)');
+  });
+
+  test('a Point that can’t be opened says why and keeps scanning', () => {
+    const open = SOURCE.slice(SOURCE.indexOf('const openPoint'), SOURCE.indexOf('useEffect(() => {', SOURCE.indexOf('const openPoint')));
+    expect(open).toContain('doneRef.current = false;');
+    expect(open).toContain('resumeRef.current();');
+  });
+});

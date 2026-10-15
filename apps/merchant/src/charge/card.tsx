@@ -244,7 +244,10 @@ export function ReceiptGroups({
   onPrint,
   icons = true,
   none,
+  paper = true,
 }: {
+  /** Off when a printer prints the receipt by itself: the paper row is the printer's then (terminal reference, section 5). */
+  paper?: boolean;
   /** The card screen draws Text and Email with icons; the cash screen without. */
   icons?: boolean;
   /** Why None is picked: "No number for this customer". */
@@ -304,14 +307,16 @@ export function ReceiptGroups({
           )}
         </p>
       </div>
-      <div className="c-grp">
-        <p className="c-label">On paper</p>
-        <button type="button" className="c-btn c-cc-print" onClick={onPrint}>
-          {icons && <IconPrint />}
-          Print receipt
-        </button>
-        <p className="c-det">Counter printer</p>
-      </div>
+      {paper && (
+        <div className="c-grp">
+          <p className="c-label">On paper</p>
+          <button type="button" className="c-btn c-cc-print" onClick={onPrint}>
+            {icons && <IconPrint />}
+            Print receipt
+          </button>
+          <p className="c-det">Counter printer</p>
+        </div>
+      )}
     </div>
   );
 }

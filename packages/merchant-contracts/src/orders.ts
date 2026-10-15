@@ -14,6 +14,11 @@ export const ORDER_STATUSES = ['open', 'paying', 'paid', 'voided', 'refunded', '
 export const OrderStatus = z.enum(ORDER_STATUSES);
 export type OrderStatus = z.infer<typeof OrderStatus>;
 
+/** How the order leaves: a table's, to go, or a delivery app's (bag labels print for the last two). */
+export const SERVICE_TYPES = ['dine_in', 'to_go', 'delivery'] as const;
+export const ServiceType = z.enum(SERVICE_TYPES);
+export type ServiceType = z.infer<typeof ServiceType>;
+
 export const ChosenOption = z.object({
   groupId: Id,
   optionId: Id,
@@ -111,8 +116,39 @@ export const Order = z.object({
   remainingCents: NonNegativeCents,
   businessDate: BusinessDate,
   createdAt: Timestamp,
+  /**
+   * Terminal additions (optional so older responses still parse). The table whose tab this is; how
+   * it leaves, and which delivery app ("DoorDash"); when Order ready called it and when it was
+   * picked up; and whether it was rung up offline, when its tax is the tablet's (below).
+   */
+  tableId: Id.nullable().optional(),
+  serviceType: ServiceType.nullable().optional(),
+  deliveryPartner: z.string().nullable().optional(),
+  calledAt: Timestamp.nullable().optional(),
+  pickedUpAt: Timestamp.nullable().optional(),
+  offline: z.boolean().optional(),
 });
 export type Order = z.infer<typeof Order>;
+
+/**
+ * Raising an order. The server works out the figures, except for an order rung up offline: a cash
+ * sale the tablet queued while the connection was down. Its tax and total are what the tablet
+ * worked out from the last catalogue and rate it had, because the customer has already paid that
+ * and had their change. The idempotency key makes the queue's retries one order.
+ */
+export const CreateOrder = z.object({
+  lines: z.array(LineInput),
+  customer: z.string().nullable(),
+  name: z.string().trim().max(40).nullable().optional(),
+  tableId: Id.nullable().optional(),
+  serviceType: ServiceType.nullable().optional(),
+  deliveryPartner: z.string().trim().max(40).nullable().optional(),
+  idempotencyKey: IdempotencyKey.optional(),
+  offline: z
+    .object({ createdAt: Timestamp, subtotalCents: NonNegativeCents, taxCents: NonNegativeCents, totalCents: NonNegativeCents })
+    .optional(),
+});
+export type CreateOrder = z.infer<typeof CreateOrder>;
 
 export const TENDER_METHODS = ['clear', 'card', 'cash'] as const;
 export const TenderMethod = z.enum(TENDER_METHODS);
@@ -163,6 +199,8 @@ export const CreateCashTender = z.object({
   tipCents: NonNegativeCents,
   handedOverCents: PositiveCents,
   idempotencyKey: IdempotencyKey,
+  /** Queued offline: when the cash was taken, by the tablet's clock. The tender joins that drawer session. */
+  clientCreatedAt: Timestamp.optional(),
 });
 
 export const CreateClearTender = z.object({
@@ -244,6 +282,13 @@ export const Receipt = z.object({
     }),
   ),
   refundedCents: NonNegativeCents,
+  /** "Table 12, back patio", for a table's tab. */
+  table: z.string().nullable().optional(),
+  /**
+   * The receipt's own code, for the sticker's QR: `useclear.org/r/<code>`. Random, never the order
+   * number, and the same for good once made.
+   */
+  code: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{10}$/).nullable().optional(),
 });
 export type Receipt = z.infer<typeof Receipt>;
 

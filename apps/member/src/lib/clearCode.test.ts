@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { chargeCodeFrom } from './clearCode';
+import { chargeCodeFrom, pointCodeFrom } from './clearCode';
 
 describe('reading a merchant code', () => {
   it('takes the code out of the URL the QR actually carries', () => {
@@ -27,5 +27,23 @@ describe('reading a merchant code', () => {
     expect(chargeCodeFrom('55DCQ9P')).toBeNull();
     expect(chargeCodeFrom('55DCQ9PRX')).toBeNull();
     expect(chargeCodeFrom('')).toBeNull();
+  });
+});
+
+describe('reading a Point', () => {
+  it('takes the code out of the link under the Point, however it was written', () => {
+    expect(pointCodeFrom('https://useclear.org/p/A7K2')).toBe('A7K2');
+    expect(pointCodeFrom('USECLEAR.ORG/P/A7K2')).toBe('A7K2');
+    expect(pointCodeFrom('https://app.useclear.org/p/a7k2?paid=1')).toBe('A7K2');
+    expect(pointCodeFrom('/p/D00R')).toBe('D00R');
+    expect(pointCodeFrom('useclear.org/p/DOOR')).toBe('D00R');
+  });
+
+  it('is never a charge, and a charge is never a Point', () => {
+    expect(pointCodeFrom('https://app.useclear.org/c/55DCQ9PR')).toBeNull();
+    expect(chargeCodeFrom('https://useclear.org/p/A7K2')).toBeNull();
+    expect(pointCodeFrom('A7K2')).toBeNull();
+    expect(pointCodeFrom('https://useclear.org/p/A7K2X')).toBeNull();
+    expect(pointCodeFrom('https://example.com/shop/p/A7K2/menu')).toBeNull();
   });
 });

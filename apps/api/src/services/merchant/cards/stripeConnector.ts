@@ -79,7 +79,8 @@ const STATE: Record<Stripe.PaymentIntent.Status, PaymentSnapshot['state']> = {
 /** A PaymentIntent retrieved with `expand: ['latest_charge']`, as the connector's snapshot. */
 export function paymentSnapshot(pi: Stripe.PaymentIntent): PaymentSnapshot {
   const charge = typeof pi.latest_charge === 'object' && pi.latest_charge ? pi.latest_charge : null;
-  const present = charge?.payment_method_details?.card_present ?? null;
+  // A card at the counter is card_present; one paid from the phone page (Checkout) is card.
+  const present = charge?.payment_method_details?.card_present ?? charge?.payment_method_details?.card ?? null;
   return {
     paymentId: pi.id,
     state: STATE[pi.status] ?? 'processing',
@@ -87,7 +88,7 @@ export function paymentSnapshot(pi: Stripe.PaymentIntent): PaymentSnapshot {
     capturableCents: pi.amount_capturable ?? 0,
     declineCode: pi.status === 'requires_payment_method' && pi.last_payment_error ? (pi.last_payment_error.decline_code ?? pi.last_payment_error.code ?? 'declined') : null,
     card: present ? { brand: present.brand ?? null, last4: present.last4 ?? null } : null,
-    incrementalSupported: Boolean(present?.incremental_authorization_supported),
+    incrementalSupported: Boolean(present && 'incremental_authorization_supported' in present && present.incremental_authorization_supported),
   };
 }
 
@@ -213,6 +214,23 @@ export function stripeConnector(stripe: Stripe): CardConnectorProvider {
       );
       if (!pi.client_secret) throw new Error(`PaymentIntent ${pi.id} came back without a client secret`);
       return { snapshot: paymentSnapshot(pi), clientSecret: pi.client_secret };
+    },
+
+    async createCheckout(account, { amountCents, applicationFeeCents, lineName, successUrl, cancelUrl, metadata, idempotencyKey }) {
+      // Apple Pay, Google Pay, Link and a typed card come with Checkout; captured when paid.
+      const session = await stripe.checkout.sessions.create(
+        {
+          mode: 'payment',
+          line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: amountCents, product_data: { name: lineName } } }],
+          payment_intent_data: { ...(applicationFeeCents > 0 ? { application_fee_amount: applicationFeeCents } : {}), metadata },
+          metadata,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+        },
+        { stripeAccount: account, idempotencyKey },
+      );
+      if (!session.url) throw new Error(`Checkout session ${session.id} came back without a URL`);
+      return { sessionId: session.id, url: session.url };
     },
 
     async getPayment(account, paymentId) {

@@ -1,4 +1,6 @@
 import { useContext, useEffect, useState } from 'react';
+import { DevicesSection } from '@/terminal/useDevicesPane';
+import { MI_CASA, miCasa } from '@/terminal/reference';
 import type { MerchantApi, Reader, Shop, ShopHours, ShopSettings, ShopSettingsPatch, TaxKind } from '@clear/merchant-contracts';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { seesMoney } from '@clear/domain';
@@ -177,7 +179,7 @@ export default function SettingsPage() {
   // The preview is the installed app, as the reference draws it; `&platform=web` shows a browser's list.
   const platform = preview ? (previewPlatform(params) ?? 'ios') : currentPlatform();
   const d: SettingsData = preview
-    ? { ...REFERENCE, platform, stripe: screen === 'payments-connected', owner: screen === 'counter' ? REFERENCE.owner : (session?.staff.name ?? REFERENCE.owner) }
+    ? { ...REFERENCE, ...(miCasa() ? { shop: MI_CASA.shop, owner: MI_CASA.owner } : {}), platform, stripe: screen === 'payments-connected', owner: screen === 'counter' ? REFERENCE.owner : (session?.staff.name ?? REFERENCE.owner) }
     : {
         ...fromApi(profile, position, devices, me, device?.id ?? null),
         // The reference's legal name must never stand in for a live shop's.
@@ -247,7 +249,9 @@ export default function SettingsPage() {
   const go = (k: string) => navigate(`/settings/${k}${q}`);
 
   const since = preview
-    ? { long: 'August 2026', short: 'Aug 2026' }
+    ? miCasa()
+      ? MI_CASA.since
+      : { long: 'August 2026', short: 'Aug 2026' }
     : { long: monthYear(profile?.partnerSince ?? null, false) ?? '—', short: monthYear(profile?.partnerSince ?? null, true) ?? '—' };
   const kind = preview || profile?.founding ? 'Founding partner' : 'Partner';
   const who = owner ? (
@@ -315,6 +319,7 @@ export default function SettingsPage() {
     onAddReader: () => setOpen('reader'),
     onEditShop: liveOwner ? (f: ShopField) => (setEditError(null), setTextEdit(f)) : undefined,
     onBreaks: liveOwner ? () => (setEditError(null), setTextEdit('breaks')) : undefined,
+    onTables: liveOwner ? (on: boolean) => void change(() => merchant.updateSettings({ tableService: on })) : undefined,
     onNotifyEmail: liveOwner ? () => (setEditError(null), setTextEdit('notifyEmail')) : undefined,
     onVerifyBusiness: liveOwner ? () => (setEditError(null), setTextEdit('kyb')) : undefined,
     onIdle: liveOwner && device ? (seconds: number) => void change(() => api.setIdleLock(device.id, seconds), () => void refresh()) : undefined,
@@ -358,6 +363,12 @@ export default function SettingsPage() {
     <PaneHead title="Shop hours" det={HOURS_DET} back={() => navigate(`/settings/shop${q}`)} small={phone} />
   ) : meta ? (
     <PaneHead title={meta.label} det={meta.det} back={one ? () => navigate(`/settings${q}`) : undefined} small={phone} />
+  ) : null;
+
+  // Settings › Devices is Clear Terminal's: Points, readers, the drawer, printers and this tablet.
+  const devicesHere = current === 'devices' && owner;
+  const devicesSection = devicesHere ? (
+    <DevicesSection sub={sub} preview={import.meta.env.DEV && params.get('preview') === '1'} navigate={navigate} q={q} phone={phone} one={one} onRenameTablet={preview ? undefined : () => (setEditError(null), setTextEdit('device'))} />
   ) : null;
 
   const sheets = (
@@ -445,8 +456,12 @@ export default function SettingsPage() {
       );
     return (
       <>
-        {head}
-        <div className="c-panebody">{body}</div>
+        {devicesHere ? devicesSection : (
+          <>
+            {head}
+            <div className="c-panebody">{body}</div>
+          </>
+        )}
         {sheets}
       </>
     );
@@ -459,8 +474,12 @@ export default function SettingsPage() {
       <div className="c-pane">
         <Rail items={railItems} help={helpItem} on={current ?? fallback} onPick={go} />
         <div>
-          {head}
-          <div className="c-panebody">{body}</div>
+          {devicesHere ? devicesSection : (
+            <>
+              {head}
+              <div className="c-panebody">{body}</div>
+            </>
+          )}
         </div>
       </div>
       {sheets}

@@ -309,6 +309,8 @@ function ChargeApprovalScreen() {
       items={charge.items}
       taxCents={charge.taxCents}
       discountCents={charge.discountCents}
+      table={charge.table ?? null}
+      shopPaysBps={charge.paidNowBps ?? null}
       mode={mode}
       onModeChange={onModeChange}
       overTimeMinimum={payNowOnly ? PAY_OVER_TIME_MIN_CENTS / 100 : null}

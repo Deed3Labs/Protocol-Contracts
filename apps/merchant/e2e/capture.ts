@@ -9,6 +9,9 @@ export const REPORT_DIR = path.join(E2E, '.report');
 
 /** 4:41pm on the reference day, when the reference's card walk-in is at the counter. */
 export const REFERENCE_NOW = new Date('2026-09-22T16:41:00-07:00');
+/** Clear Terminal's reference: Mi Casa Tacos at dinner, Thu Oct 15, 8:00pm; and at lunch, 12:42pm. */
+export const DINNER = '2026-10-15T20:00:00-07:00';
+export const LUNCH = '2026-10-15T12:42:00-07:00';
 
 export const refKey = (ref: Ref) => `${ref.file}__${ref.h2.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase()}__${ref.i}`;
 
@@ -30,7 +33,7 @@ export async function settle(page: Page) {
 export async function openState(page: Page, s: State): Promise<{ target: Page | Locator; errors: string[] }> {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.clock.setFixedTime(REFERENCE_NOW);
+  await page.clock.setFixedTime(s.clock ? new Date(s.clock) : REFERENCE_NOW);
   if (s.gallery) {
     await page.goto('/_gallery');
     await settle(page);

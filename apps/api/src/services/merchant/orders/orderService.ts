@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   type ChosenOption,
+  CreateOrder,
   DiscountRequest,
   LineInput,
   type Order,
@@ -12,7 +13,6 @@ import {
   type Tender,
   type TenderState,
 } from '@clear/merchant-contracts';
-import { z } from 'zod';
 import type { Db, Queryable } from '../../../db/db.js';
 import { getSettings } from '../shop/shopService.js';
 import type { TaxApi } from '../tax/taxApi.js';
@@ -20,6 +20,8 @@ import { type OrderTax, taxForOrder } from '../tax/taxService.js';
 import { settleOrder } from './settle.js';
 import { audit } from '../security/audit.js';
 import { type TenderRow, toTender } from '../cards/cardTenders.js';
+import { attachTab } from '../terminal/tabs.js';
+import { TerminalError } from '../terminal/errors.js';
 
 /**
  * Orders (card-processing prompt, Phase 6: the order service). The app sends lines and a discount
@@ -222,6 +224,12 @@ interface OrderRow {
   voided_at: unknown;
   tax_included: boolean;
   tax_source: Order['taxSource'];
+  table_id?: string | null;
+  service_type?: Order['serviceType'];
+  delivery_partner?: string | null;
+  called_at?: Date | string | null;
+  picked_up_at?: Date | string | null;
+  offline?: boolean;
 }
 
 const day = (d: Date | string) => (typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10));
@@ -289,6 +297,12 @@ async function toOrder(q: Queryable, r: OrderRow): Promise<Order> {
     remainingCents: summary.remainingCents,
     businessDate: day(r.business_date),
     createdAt: new Date(r.created_at).toISOString(),
+    tableId: r.table_id ?? null,
+    serviceType: r.service_type ?? null,
+    deliveryPartner: r.delivery_partner ?? null,
+    calledAt: r.called_at ? new Date(r.called_at).toISOString() : null,
+    pickedUpAt: r.picked_up_at ? new Date(r.picked_up_at).toISOString() : null,
+    offline: Boolean(r.offline),
   };
 }
 
@@ -352,29 +366,101 @@ async function checkStock(tx: Queryable, lines: PreparedLine[]): Promise<void> {
   }
 }
 
-const OrderStart = z.object({ customer: z.string().trim().max(120).nullable().optional(), name: z.string().trim().max(60).nullable().optional() });
-
-/** Raising an order: prices, tax and totals worked out here, and its stock held. */
-export async function createOrder(db: Db, deps: OrderDeps, input: { merchant: string; staffId: string; lines: unknown; customer?: unknown; name?: unknown }): Promise<Order> {
-  const meta = OrderStart.safeParse({ customer: input.customer ?? null, name: input.name ?? null });
-  if (!meta.success) throw new OrderError('That customer or order name isn’t valid', 'invalid');
+/**
+ * Raising an order: prices, tax and totals worked out here, and its stock held. A table's order
+ * becomes its tab. With a key, a retry is the same order. An order rung up offline keeps the
+ * tablet's subtotal, tax and total (the customer paid that and had their change): its lines are
+ * priced here, its tax is the tablet's spread across them, and stock is taken without the check.
+ */
+export async function createOrder(
+  db: Db,
+  deps: OrderDeps,
+  input: { merchant: string; staffId: string; lines: unknown; customer?: unknown; name?: unknown; request?: Record<string, unknown>; now?: Date },
+): Promise<Order> {
+  // The lines go through prepareLines, which says what's wrong with one; the rest through the contract.
+  const parsed = CreateOrder.omit({ lines: true }).safeParse({ customer: input.customer ?? null, name: input.name ?? null, ...(input.request ?? {}) });
+  if (!parsed.success) throw new OrderError(parsed.error.issues[0]?.message ?? 'That customer or order name isn’t valid', 'invalid');
+  const r = parsed.data;
+  if (r.customer !== null && r.customer.trim().length > 120) throw new OrderError('That customer or order name isn’t valid', 'invalid');
+  if (r.idempotencyKey) {
+    const { rows } = await db.query<{ id: string }>('SELECT id FROM commerce.orders WHERE merchant = $1 AND idempotency_key = $2', [input.merchant, r.idempotencyKey]);
+    if (rows[0]) return getOrder(db, input.merchant, rows[0].id);
+  }
   const lines = await prepareLines(db, input.merchant, input.lines);
-  const priced = await price(db, deps, input.merchant, lines, null);
+  const off = r.offline;
+  let priced: Priced;
+  if (off) {
+    if (off.totalCents !== off.subtotalCents + off.taxCents) throw new OrderError('An offline order’s total is its subtotal and tax', 'invalid');
+    const settings = await getSettings(db, input.merchant);
+    const shares = allocate(lines.map((l) => l.lineCents), off.taxCents);
+    priced = {
+      lines: lines.map((l, i) => ({ ...l, discountCents: 0, taxCents: shares[i]! })),
+      subtotal: off.subtotalCents,
+      discount: 0,
+      tax: off.taxCents,
+      total: off.totalCents,
+      inclusive: settings.tax.pricesIncludeTax,
+      taxSource: 'none',
+      calculationId: null,
+    };
+  } else {
+    priced = await price(db, deps, input.merchant, lines, null);
+  }
   const { rows: shop } = await db.query<{ timezone: string }>('SELECT timezone FROM merchant.profiles WHERE merchant = $1', [input.merchant]);
-  const date = businessDate(shop[0]!.timezone);
+  const at = off ? new Date(off.createdAt) : (input.now ?? new Date());
+  const date = businessDate(shop[0]!.timezone, at);
   const id = `ord_${randomUUID()}`;
   await db.transaction(async (tx) => {
-    await checkStock(tx, lines);
+    if (!off) await checkStock(tx, lines);
     // The next number for call-outs, one sequence per shop per day.
     await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`order_number:${input.merchant}:${date}`]);
     const { rows: n } = await tx.query<{ next: number }>('SELECT COALESCE(max(number), 0) + 1 AS next FROM commerce.orders WHERE merchant = $1 AND business_date = $2', [input.merchant, date]);
     await tx.query(
-      `INSERT INTO commerce.orders (id, merchant, number, name, raised_by, customer, subtotal_cents, discount_cents, tax_cents, total_cents, business_date, tax_included, tax_source, tax_calculation_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [id, input.merchant, n[0]!.next, meta.data.name || null, input.staffId, meta.data.customer || null, priced.subtotal, priced.discount, priced.tax, priced.total, date, priced.inclusive, priced.taxSource, priced.calculationId],
+      `INSERT INTO commerce.orders (id, merchant, number, name, raised_by, customer, subtotal_cents, discount_cents, tax_cents, total_cents, business_date, tax_included, tax_source, tax_calculation_id,
+          table_id, service_type, delivery_partner, idempotency_key, offline, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+      [
+        id,
+        input.merchant,
+        n[0]!.next,
+        r.name || null,
+        input.staffId,
+        r.customer?.trim() || null,
+        priced.subtotal,
+        priced.discount,
+        priced.tax,
+        priced.total,
+        date,
+        priced.inclusive,
+        priced.taxSource,
+        priced.calculationId,
+        r.tableId ?? null,
+        r.serviceType ?? (r.tableId ? 'dine_in' : null),
+        r.deliveryPartner ?? null,
+        r.idempotencyKey ?? null,
+        Boolean(off),
+        at,
+      ],
     );
+    if (r.tableId) {
+      await attachTab(tx, { merchant: input.merchant, tableId: r.tableId, orderId: id, now: at }).catch((error) => {
+        if (error instanceof TerminalError) throw new OrderError(error.message, error.code === 'not_found' ? 'invalid' : 'locked');
+        throw error;
+      });
+    }
     await writeLines(tx, id, priced.lines);
     await settleOrder(tx, { merchant: input.merchant, orderId: id, actor: input.staffId });
+    if (off) {
+      const gross = lines.reduce((s, l) => s + l.lineCents, 0);
+      await audit(tx, {
+        merchant: input.merchant,
+        actor: input.staffId,
+        action: 'order.offline_synced',
+        ref: { type: 'order', id },
+        amountCents: off.totalCents,
+        detail: { rungUpAt: off.createdAt, pricedHere: gross, tabletSubtotal: off.subtotalCents },
+      });
+    }
   });
   return getOrder(db, input.merchant, id);
 }

@@ -1,4 +1,5 @@
 import { merchantDb } from '../config/merchantDb.js';
+import type { Queryable } from '../db/db.js';
 import type { ChargeRow } from './chargeStore.js';
 
 /**
@@ -18,21 +19,27 @@ export interface ChargeContents {
   discountCents: number | null;
   /** The order's whole total, when this charge is only part of it (the rest paid another way). */
   orderTotalCents: number | null;
+  /** "Table 12", when the order is a table's tab (Clear Terminal: the pay sheet and the receipt say so). */
+  table: string | null;
 }
 
-const EMPTY: ChargeContents = { raisedBy: null, items: null, taxCents: null, discountCents: null, orderTotalCents: null };
+const EMPTY: ChargeContents = { raisedBy: null, items: null, taxCents: null, discountCents: null, orderTotalCents: null, table: null };
 
 export async function chargeContents(charge: ChargeRow): Promise<ChargeContents> {
   const db = await merchantDb().catch(() => null);
-  if (!db) return EMPTY;
+  return db ? chargeContentsFrom(db, charge) : EMPTY;
+}
+
+export async function chargeContentsFrom(db: Queryable, charge: Pick<ChargeRow, 'code' | 'raisedBy' | 'amountCents'>): Promise<ChargeContents> {
   try {
     const [staff, orders] = await Promise.all([
       charge.raisedBy
         ? db.query<{ name: string }>('SELECT name FROM merchant.staff WHERE id = $1', [charge.raisedBy])
         : Promise.resolve({ rows: [] as { name: string }[] }),
-      db.query<{ id: string; tax_cents: string; discount_cents: string; total_cents: string }>(
-        `SELECT o.id, o.tax_cents, o.discount_cents, o.total_cents FROM payments.tenders t
+      db.query<{ id: string; tax_cents: string; discount_cents: string; total_cents: string; table_number: number | null; table_label: string | null }>(
+        `SELECT o.id, o.tax_cents, o.discount_cents, o.total_cents, tb.number AS table_number, tb.label AS table_label FROM payments.tenders t
            JOIN commerce.orders o ON o.id = t.order_id
+           LEFT JOIN merchant.tables tb ON tb.id = o.table_id
           WHERE t.clear_charge_code = $1
           LIMIT 1`,
         [charge.code],
@@ -54,6 +61,7 @@ export async function chargeContents(charge: ChargeRow): Promise<ChargeContents>
       taxCents: Number(order.tax_cents),
       discountCents: Number(order.discount_cents),
       orderTotalCents: total !== charge.amountCents ? total : null,
+      table: order.table_number !== null ? (order.table_label ?? `Table ${order.table_number}`) : null,
     };
   } catch (error) {
     console.error('[charge] contents read failed for', charge.code, error instanceof Error ? error.message : error);

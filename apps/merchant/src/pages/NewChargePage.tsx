@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { CardTableSheet } from '@/terminal/cardTable';
+import { readerQueue, type ReaderQueue, type TableReaderState } from '@/reader';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { Order, Tender } from '@clear/merchant-contracts';
 import { seesMoney } from '@clear/domain';
@@ -60,6 +62,10 @@ import { FailureSheet, PhoneAmount, PhoneCart, PhoneCode, PhoneItems, PhoneStatu
 import { CodeScanner } from '@/charge/CodeScanner';
 import { memberWalletFrom } from '@/charge/memberCode';
 import { useOnline } from '@/lib/useOnline';
+import { printAfterCash, useCounterHardware, useDrawerForSale, useQueueSync, type PrintRow } from '@/terminal/counter';
+import { isOffline, offlineOrder, queueCashSale, rememberRates, type OfflineLine } from '@/terminal/offlineSale';
+import { miCasa, ORDER_0142 } from '@/terminal/reference';
+import { ShowOnRow, ShowOnSheet, useShowOn } from '@/terminal/showOn';
 
 /**
  * New charge — docs/merchant-reference/clear-merchant-new-charge.html.
@@ -220,6 +226,10 @@ export const SCREENS: Record<string, Partial<Flow>> = {
   'print-offline': { ...cart, screen: 'card', method: 'card', reader: 'approved', tip: TEN, sheet: { k: 'print', printer: 'offline' } },
   cash: { ...cart, screen: 'cash', method: 'cash', tip: { kind: 'none' }, given: '940' },
   'cash-paid': { ...cart, screen: 'cashPaid', method: 'cash', tip: { kind: 'none' }, given: '940', sendBy: 'none' },
+  // Clear Terminal, section 7: Checkout with Show it on open (with `&shop=micasa`).
+  'show-on': { ...cart, screen: 'checkout' },
+  // 13b: a card on Table 12's own reader, connecting, with Table 4 next (with `&shop=micasa`).
+  'card-table': { ...cart, screen: 'card', method: 'card', reader: 'ready', tip: TEN },
   split: { ...cart, screen: 'split', method: 'split', tip: { kind: 'none' }, legs: [{ method: 'cash', amountCents: 20000, det: '4:38pm · no change', state: 'paid' }], legMethod: 'card' },
   'split-declined': {
     ...cart,
@@ -339,6 +349,49 @@ export default function NewChargePage() {
   const [raiseError, setRaiseError] = useState<string | null>(null);
   // A waiting Clear charge sent on: to a member whose code was scanned, or as a text to a number.
   const online = useOnline();
+
+  // ---- Clear Terminal: the drawer, the Points, the printers, the offline queue (sections 5, 7, 8) ----
+  const hwPreview = import.meta.env.DEV && params.get('preview') === '1';
+  const counterHw = useCounterHardware({ preview: hwPreview });
+  const drawerSale = useDrawerForSale({ api: merchant, drawer: counterHw.drawer, service: counterHw.service, staffId: session?.staff.id ?? '' });
+  const [showOn, setShowOn] = useShowOn(counterHw.points);
+  const [showOnSheet, setShowOnSheet] = useState(() => preview && params.get('screen') === 'show-on');
+  const showOnPoint = counterHw.points.find((p) => p.id === showOn) ?? null;
+  const showOnTables = useApi(() => (showOnSheet ? merchant.floor().catch(() => null) : Promise.resolve(null)), [showOnSheet]);
+  const [prints, setPrints] = useState<Record<string, PrintRow>>({});
+  const drawerOpenedFor = useRef<string | null>(null);
+  useQueueSync(merchant, online, !preview);
+  // The shop's tax rates, kept on the tablet so a cash sale can be priced with the connection down.
+  useEffect(() => {
+    if (!preview && online) void merchant.taxStatus().then(rememberRates, () => undefined);
+  }, [preview, online, merchant]);
+  // A table's tab (Tables › Add items, Take payment): its order, and the table it's on.
+  const tabTable = params.get('table');
+  const tabOrder = params.get('order');
+  useEffect(() => {
+    if (preview || !tabOrder) return;
+    void merchant.order(tabOrder).then(
+      (o) => {
+        setOrder(o);
+        const lines: CartLine[] = o.lines.map((l) => ({
+          key: l.id,
+          itemId: l.itemId ?? undefined,
+          name: l.name,
+          chosen: l.options.map((x) => x.name).join(', ') || undefined,
+          qty: l.quantity,
+          unitCents: l.unitCents,
+          tax: l.taxKind,
+          optionIds: l.options.map((x) => x.optionId),
+        }));
+        set(params.get('items') ? { mode: 'items', lines } : { mode: 'items', lines, screen: 'checkout' });
+        // Taking payment at a table: its own Point shows the bill (section 8).
+        const point = counterHw.points.find((p) => p.settings.tableId === o.tableId);
+        if (!params.get('items') && point) void merchant.showOnPoint(point.id, { kind: 'order', orderId: o.id }).catch(() => undefined);
+      },
+      (e) => setPayError(errorSentence(e)),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, tabOrder, counterHw.points.length]);
   const [sentVia, setSentVia] = useState<{ how: 'App' | 'Text'; label: string; at: Date; to: { to: 'member'; wallet: string } | { to: 'phone'; phone: string } } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -384,9 +437,31 @@ export default function NewChargePage() {
     if (preview) return set({ screen: 'checkout' });
     const lines = toLineInputs(f.mode === 'items' ? f.lines : [], f.mode === 'items' ? 0 : typedCents);
     if (!lines.length) return;
+    // Offline: the tablet prices it, and only cash can take it (the queue sends it later).
+    if (!online) {
+      const cart = f.mode === 'items' ? f.lines : [];
+      const offline: OfflineLine[] = cart.length
+        ? cart.map((l, i) => ({ input: lines[i]!, name: l.name, quantity: l.qty, unitCents: l.unitCents, taxKind: l.tax }))
+        : [{ input: lines[0]!, name: 'Amount', quantity: 1, unitCents: typedCents, taxKind: 'exempt' }];
+      try {
+        setOrder(offlineOrder(offline, { shop: shop || 'shop', raisedBy: session?.staff.id ?? '' }));
+        set({ screen: 'checkout' });
+      } catch (e) {
+        setPayError(e instanceof Error ? e.message : errorSentence(e));
+      }
+      return;
+    }
     void attempt(async () => {
-      const o = order && order.status === 'open' ? await merchant.updateOrder(order.id, { lines }) : order ? order : await merchant.createOrder({ lines, customer: null });
+      const o =
+        order && order.status === 'open' && !isOffline(order)
+          ? await merchant.updateOrder(order.id, { lines })
+          : order && !isOffline(order)
+            ? order
+            : await merchant.createOrder({ lines, customer: null, tableId: tabTable });
       setOrder(o);
+      // Section 7: the customer sees it on the Point it's shown on, and can pay there too. A table's
+      // order goes to its own Point when payment is taken.
+      if (showOn && !tabTable) void merchant.showOnPoint(showOn, { kind: 'order', orderId: o.id }).catch(() => undefined);
       set({ screen: 'checkout' });
     });
   };
@@ -478,6 +553,14 @@ export default function NewChargePage() {
   const takeCash = () => {
     if (preview || !order) return set({ screen: 'cashPaid', sendBy: 'none' });
     const given = Math.round(parseFloat(f.given || '0') * 100);
+    if (isOffline(order)) {
+      // The sale is the tablet's until the queue sends it: the order and its cash, once.
+      return void attempt(async () => {
+        const t = await queueCashSale(order, toLineInputs(f.mode === 'items' ? f.lines : [], f.mode === 'items' ? 0 : typedCents), { amountCents: partCents, tipCents, handedOverCents: given });
+        setTender(t);
+        set({ screen: 'cashPaid', sendBy: 'none' });
+      });
+    }
     void attempt(async () => {
       const t = await merchant.createCashTender(order.id, { amountCents: partCents, tipCents, handedOverCents: given, idempotencyKey: payKey() });
       setTender(t);
@@ -485,6 +568,27 @@ export default function NewChargePage() {
       set(o.remainingCents > 0 ? { screen: 'split', given: '', part: '' } : { screen: 'cashPaid', sendBy: 'none' });
     });
   };
+
+  // The drawer opens as the change screen comes up, and the printers print what they print by
+  // themselves (section 5). The tender never waited on either.
+  useEffect(() => {
+    if (f.screen !== 'cashPaid') return;
+    const key = tender?.id ?? 'preview';
+    if (drawerOpenedFor.current === key) return;
+    drawerOpenedFor.current = key;
+    const offline = isOffline(order);
+    void drawerSale.open(order?.id ?? null, offline ? order!.id : null);
+    if (!preview && order && !offline) {
+      void printAfterCash({
+        printers: counterHw.printers,
+        preview: hwPreview,
+        receipt: () => merchant.receipt(order.id),
+        order,
+        onRow: (k, row) => setPrints((cur) => ({ ...cur, [k]: row })),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.screen, tender?.id]);
 
   /** Leaving: an order nothing was paid on is discarded, so its stock isn't held for nobody. */
   const discardIfUnpaid = async (o: Order | null) => {
@@ -531,6 +635,18 @@ export default function NewChargePage() {
     error: null,
   });
   const readerOpts = preview ? { preview: { platform: readerPlatform, decline: params.get('decline') === '1' } } : {};
+  // Clear Terminal's Pay case (13b): a table's order is paid on its own Point's reader, borrowed
+  // for the payment. One reader at a time; another table waits its turn.
+  const tablePoint = order?.tableId ? (counterHw.points.find((p) => p.settings.tableId === order.tableId && p.settings.readerId) ?? null) : null;
+  const shopReaders = useApi(() => (tablePoint && !preview ? merchant.readers() : Promise.resolve(null)), [tablePoint?.id, preview]);
+  const [tableReader, setTableReader] = useState<TableReaderState>(() =>
+    preview && params.get('screen') === 'card-table' ? { active: 'hw_t12', phase: 'connecting', queue: ['hw_t4'] } : sharedQueue(() => readerService(readerOpts)).state(),
+  );
+  useEffect(() => {
+    const stop = sharedQueue(() => readerService(readerOpts)).subscribe(setTableReader);
+    return () => void stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (f.screen !== 'card' || preset?.reader) return;
     let on = true;
@@ -542,6 +658,10 @@ export default function NewChargePage() {
         svc = service;
         // Live, a reader to collect on: the one connected, else the shop's only (or, in a browser,
         // first) smart reader; with nothing to choose between, the reader list opens instead.
+        // A table's own reader: connect it for this payment, behind any table paying now.
+        const linked = tablePoint ? shopReaders.data?.find((r) => r.id === tablePoint.settings.readerId) : undefined;
+        const queue = sharedQueue(() => readerService(readerOpts));
+        if (!preview && tablePoint && linked) await queue.connectFor({ pointId: tablePoint.id, externalReaderId: linked.externalReaderId });
         if (!preview && !service.connected()) {
           const found = (await Promise.all(service.kinds.map((k) => service.discover(k).catch(() => [])))).flat();
           if (!on) return;
@@ -553,6 +673,7 @@ export default function NewChargePage() {
           }
         }
         setReaderLabel(service.connected()?.label);
+        if (tablePoint) queue.paying(tablePoint.id);
         const result = await service.collect(
           preview ? dueCents : partCents,
           (e) => {
@@ -561,6 +682,8 @@ export default function NewChargePage() {
           },
           preview || !order ? undefined : { orderId: order.id, tipCents },
         );
+        // Done, declined or cancelled: the table's reader goes back, and the next table gets it.
+        if (tablePoint) void queue.done(tablePoint.id);
         // A card that went through on part of a split: back to the split for the rest.
         if (!preview && order && on && result.outcome === 'approved') {
           const o = await refresh(order.id);
@@ -785,9 +908,11 @@ export default function NewChargePage() {
         // Live, cards open once Stripe is connected and cards are on in Settings › Payments.
         cardLocked={preview ? params.get('screen') === 'checkout-nostripe' : !cardsOn}
         unavailable={
-          preview
-            ? []
-            : ([!liveSettings.data?.paymentMethods.cash && 'cash', !liveSettings.data?.paymentMethods.split && 'split'].filter(Boolean) as Method[])
+          isOffline(order)
+            ? (['card', 'clear', 'split'] as Method[])
+            : preview
+              ? []
+              : ([!liveSettings.data?.paymentMethods.cash && 'cash', !liveSettings.data?.paymentMethods.split && 'split'].filter(Boolean) as Method[])
         }
         onEditCart={() => set({ screen: 'start' })}
         onDiscount={() => set({ sheet: { k: 'discount' } })}
@@ -800,6 +925,7 @@ export default function NewChargePage() {
               })
         }
         onPick={pick}
+        rows={counterHw.points.length > 0 && !isOffline(order) ? <ShowOnRow name={showOnPoint?.name ?? 'Just this tablet'} onChange={() => setShowOnSheet(true)} /> : null}
       />
     );
   } else if (f.screen === 'tip') {
@@ -1037,16 +1163,40 @@ export default function NewChargePage() {
     const paidCents = tender && tender.method === 'cash' ? tender.amountCents + tender.tipCents : dueCents;
     top = flowTop(`Cash · ${usd(paidCents)}`);
     const given = tender && tender.method === 'cash' ? (tender.handedOverCents ?? paidCents) : Math.round(parseFloat(f.given || '0') * 100);
+    // Mi Casa's order 0142 (section 5), in the preview: the reference's change, Point and printers.
+    const mc = preview && miCasa();
+    const drawerShown = drawerSale.state === 'none' ? 'static' : drawerSale.state;
+    const printRows = mc
+      ? [
+          { t: 'Receipt', det: 'Printing on Counter printer · 4 × 6', state: 'printing' as const },
+          { t: 'Bag label', det: 'Order 27 · To go', state: 'printed' as const },
+        ]
+      : Object.values(prints);
+    if (mc) top = flowTop(`Cash · ${usd(ORDER_0142.totalCents)}`);
     main = (
       <CashPaidView
-        dueCents={paidCents}
-        givenCents={given}
-        at={preview ? '4:41pm' : nowTime()}
+        dueCents={mc ? ORDER_0142.totalCents : paidCents}
+        givenCents={mc ? ORDER_0142.handedOverCents : given}
+        drawer={drawerShown}
+        detail={mc ? `order ${String(ORDER_0142.number).padStart(4, '0')}` : order?.number && !preview ? `order ${String(order.number).padStart(4, '0')}` : undefined}
+        onPoint={mc ? 'Counter' : online && showOnPoint && order && !isOffline(order) ? showOnPoint.name : null}
+        prints={printRows}
+        onRetry={() => void drawerSale.open(order?.id ?? null, isOffline(order) ? order!.id : null)}
+        onKey={() => void drawerSale.usedKey(order?.id ?? null, isOffline(order) ? order!.id : null)}
+        at={mc ? ORDER_0142.at : preview ? '4:41pm' : nowTime()}
         receipt={
           preview ? (
-            <ReceiptGroups icons={false} by={f.sendBy} onBy={(sendBy) => set({ sendBy })} none="No number for this customer" onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />
+            <ReceiptGroups icons={false} paper={!mc} by={f.sendBy} onBy={(sendBy) => set({ sendBy })} none="No number for this customer" onPrint={() => set({ sheet: { k: 'print', printer: 'ready' } })} />
           ) : (
-            <ReceiptGroups icons={false} by={f.sendBy} to={f.sentTo} onBy={pickSend} onChange={() => set({ sheet: { k: 'send', by: f.sendBy === 'email' ? 'email' : 'text', to: '' } })} onPrint={openPrint} />
+            <ReceiptGroups
+              icons={false}
+              paper={!prints.receipt}
+              by={f.sendBy}
+              to={f.sentTo}
+              onBy={pickSend}
+              onChange={() => set({ sheet: { k: 'send', by: f.sendBy === 'email' ? 'email' : 'text', to: '' } })}
+              onPrint={openPrint}
+            />
           )
         }
         onDone={exit}
@@ -1262,6 +1412,35 @@ export default function NewChargePage() {
         </p>
       )}
       {sheet}
+      {((preview && miCasa() && params.get('screen') === 'card-table') || (f.screen === 'card' && tablePoint && tableReader.active === tablePoint.id && (tableReader.phase === 'connecting' || tableReader.queue.length > 0))) && (
+        <CardTableSheet
+          table={preview ? 'Table 12' : (counterHw.points.find((p) => p.id === tableReader.active)?.name ?? 'the table')}
+          reader={preview ? 'M2 1A3F' : (shopReaders.data?.find((r) => r.id === tablePoint?.settings.readerId)?.label ?? 'its reader')}
+          amountCents={preview ? 4820 : dueCents}
+          state={tableReader}
+          waiting={tableReader.queue.map((id) => (preview && id === 'hw_t4' ? 'Table 4' : (counterHw.points.find((p) => p.id === id)?.name ?? 'Another table')))}
+          onClose={() => setTableReader((t) => ({ ...t, phase: t.phase === 'connecting' ? 'ready' : t.phase }))}
+        />
+      )}
+      {showOnSheet && (
+        <ShowOnSheet
+          points={counterHw.points}
+          tables={showOnTables.data?.tables ?? []}
+          value={showOn}
+          onPick={(id) => {
+            setShowOn(id);
+            setShowOnSheet(false);
+            if (id && order && !preview && !isOffline(order)) void merchant.showOnPoint(id, { kind: 'order', orderId: order.id }).catch(() => undefined);
+          }}
+          onClose={() => setShowOnSheet(false)}
+        />
+      )}
     </div>
   );
+}
+
+/** One reader queue for the tablet: the SDK holds one reader, whichever screen asks. */
+let queueOnce: ReaderQueue | null = null;
+function sharedQueue(service: () => ReturnType<typeof readerService>): ReaderQueue {
+  return (queueOnce ??= readerQueue(service));
 }

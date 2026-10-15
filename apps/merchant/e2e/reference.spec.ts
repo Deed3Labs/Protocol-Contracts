@@ -31,20 +31,23 @@ for (const [file, refs] of byFile) {
     await page.setViewportSize({ width: 1400, height: 1000 });
     await page.goto(`file://${REFERENCE_DIR}/clear-merchant-${file}.html`);
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    // The terminal file draws most of its states as sheets on their own, so its sheets are frames too.
+    const kinds = file === 'terminal' ? [HAS('mc-tablet'), HAS('phone'), HAS('sheet')] : [HAS('mc-tablet'), HAS('phone')];
+    const any = kinds.join(' or ');
     const frameOf = (ref: Ref) =>
       page
         .locator('h2', { hasText: new RegExp(`^${ref.h2.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) })
-        .locator(`xpath=following::*[(${HAS('mc-tablet')} or ${HAS('phone')}) and not(ancestor::*[${HAS('mc-tablet')} or ${HAS('phone')}])]`)
+        .locator(`xpath=following::*[(${any}) and not(ancestor::*[${any}])]`)
         .nth(ref.i);
     // What each frame is, from its classes and the width the reference drew it at: a frame drawn
     // narrower than a tablet is a detail of one (a cell, a row), and keeps its own size.
-    const kinds = new Map<string, string>();
+    const sizes = new Map<string, string>();
     for (const ref of refs) {
       const frame = frameOf(ref);
       const cls = (await frame.getAttribute('class')) ?? '';
       const w = (await frame.boundingBox())!.width;
       const kind = cls.includes('phone') ? (cls.includes('ps-phone') ? 'detail' : 'phone') : cls.includes('mc-portrait') ? 'portrait' : cls.includes('snip') || w < 900 ? 'detail' : 'landscape';
-      kinds.set(refKey(ref), kind);
+      sizes.set(refKey(ref), kind);
       if (kind === 'detail') await frame.evaluate((e) => e.setAttribute('data-detail', ''));
     }
     await page.addStyleTag({ content: WIDEN });
@@ -57,7 +60,7 @@ for (const [file, refs] of byFile) {
       const out = path.join(REPORT_DIR, 'ref', `${key}.png`);
       fs.mkdirSync(path.dirname(out), { recursive: true });
       await frame.screenshot({ path: out, animations: 'disabled' });
-      index[key] = { size: kinds.get(key)!, w: Math.round(box.width), h: Math.round(box.height) };
+      index[key] = { size: sizes.get(key)!, w: Math.round(box.width), h: Math.round(box.height) };
     }
     fs.writeFileSync(path.join(REPORT_DIR, 'ref', `${file}.json`), JSON.stringify(index, null, 2));
   });

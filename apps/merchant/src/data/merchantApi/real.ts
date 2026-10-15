@@ -82,6 +82,8 @@ export function realMerchantApi(request: Transport): MerchantApi {
     receiveReorder: (reorderId, input) => post(`/reorders/${id(reorderId)}/receive`, input),
     discountCodes: () => get('/discount-codes'),
     createDiscountCode: (input) => post('/discount-codes', input),
+    categoryOrder: () => get('/catalog/categories'),
+    saveCategoryOrder: (input) => send('PUT', '/catalog/categories', input),
 
     // ---- Orders
     createOrder: (input) => post('/orders', input),
@@ -124,6 +126,36 @@ export function realMerchantApi(request: Transport): MerchantApi {
     closeDayFigures: (sessionId) => get(`/drawer/${id(sessionId)}/day`),
     bankDeposits: () => get('/bank-deposits'),
     markDeposited: (depositId) => post(`/bank-deposits/${id(depositId)}/deposited`),
+
+    // ---- Counter hardware (terminal reference)
+    hardware: () => get('/hardware'),
+    addDevice: (input) => post('/hardware', input),
+    updateDevice: (deviceId, input) => send('PATCH', `/hardware/${id(deviceId)}`, input),
+    removeDevice: async (deviceId) => {
+      await send('DELETE', `/hardware/${id(deviceId)}`);
+    },
+    claimPoint: (input) => post('/points/claim', input),
+    showOnPoint: (pointId, input) => post(`/points/${id(pointId)}/show`, input),
+    drawerKey: (drawerId) => get(`/drawers/${id(drawerId)}/key`),
+    saveDrawerEvents: (input) => post('/drawer/events', input),
+    approveNoSale: (input) => post('/drawer/no-sale', input),
+    drawerDay: (sessionId) => get(`/drawer/${id(sessionId)}/opens`),
+
+    // ---- Tables, the wait list, alerts
+    floor: () => get('/tables'),
+    saveTables: (input) => send('PUT', '/tables', input),
+    seatTable: (tableId) => post(`/tables/${id(tableId)}/seat`),
+    clearTable: (tableId) => post(`/tables/${id(tableId)}/clear`),
+    waitlist: () => get('/waitlist'),
+    addParty: (input) => post('/waitlist', input),
+    updateParty: (partyId, input) => send('PATCH', `/waitlist/${id(partyId)}`, input),
+    seatParty: (partyId, input) => post(`/waitlist/${id(partyId)}/seat`, input),
+    tableRequests: () => get('/table-requests'),
+    answerTableRequest: (requestId) => post(`/table-requests/${id(requestId)}/answer`),
+    createAlert: (input) => post('/alerts', input),
+    clearAlert: (alertId) => post(`/alerts/${id(alertId)}/clear`),
+    pickups: () => get('/pickups'),
+    markPickedUp: (orderId) => post(`/orders/${id(orderId)}/picked-up`),
 
     // ---- Reports
     dayReports: (r) => get(`/day-reports?${range(r)}`),

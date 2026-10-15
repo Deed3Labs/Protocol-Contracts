@@ -6,7 +6,7 @@ import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
 import { requireMerchant } from '../middleware/merchantAuth.js';
 import { type RefundRow } from '../services/merchant/cards/cardTenders.js';
 import { connectorForShop } from '../services/merchant/cards/registry.js';
-import { buildReceipt, ReceiptError, receiptByToken, sendReceipt } from '../services/merchant/orders/receipts.js';
+import { buildReceipt, ensureReceiptCode, ReceiptError, receiptByToken, sendReceipt } from '../services/merchant/orders/receipts.js';
 import { decideRefund, RefundError, requestRefund, toRefund } from '../services/merchant/orders/refunds.js';
 import { staffStore } from '../services/merchant/staffStore.js';
 import { sendNotificationService } from '../services/sendNotificationService.js';
@@ -36,7 +36,7 @@ const REFUND_STATUS: Record<RefundError['code'], number> = {
   wrong_state: 409,
   drawer_closed: 409,
 };
-const RECEIPT_STATUS: Record<ReceiptError['code'], number> = { not_found: 404, invalid: 422, not_paid: 409 };
+const RECEIPT_STATUS: Record<ReceiptError['code'], number> = { not_found: 404, invalid: 422, not_paid: 409, too_many: 429 };
 
 function refuse(res: Response, error: unknown) {
   if (error instanceof RefundError) return res.status(REFUND_STATUS[error.code]).json({ error: error.code, message: error.message });
@@ -90,7 +90,13 @@ router.get('/orders/:id/refunds', requireMerchant, (req, res) =>
     return rows.map(toRefund);
   }),
 );
-router.get('/orders/:id/receipt', requireMerchant, (req, res) => run(res, (db) => buildReceipt(db, req.merchant!.merchant, String(req.params.id))));
+// Reading a paid order's receipt to print makes its sticker code, once (Clear Terminal).
+router.get('/orders/:id/receipt', requireMerchant, (req, res) =>
+  run(res, async (db) => {
+    await ensureReceiptCode(db, { merchant: req.merchant!.merchant, orderId: String(req.params.id), staffId: req.merchant!.staff.id });
+    return buildReceipt(db, req.merchant!.merchant, String(req.params.id));
+  }),
+);
 router.post('/orders/:id/receipt', requireMerchant, (req, res) =>
   run(res, (db) =>
     sendReceipt(

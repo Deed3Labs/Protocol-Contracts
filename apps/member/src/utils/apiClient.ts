@@ -3624,6 +3624,10 @@ export interface ChargeView {
   discountCents?: number | null;
   /** The whole order, when this charge is only part of it. */
   orderTotalCents?: number | null;
+  /** "Table 12", when it's a table's bill (Clear Terminal). */
+  table?: string | null;
+  /** What the shop pays Clear if it's paid now, in basis points: 125 is 1.25%. */
+  paidNowBps?: number | null;
 }
 
 /** What the member's wallet sends to pay now: USDC token units (6dp), to the shop and Clear's fee. */

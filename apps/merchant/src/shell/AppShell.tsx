@@ -1,4 +1,8 @@
 import { clockAt, toShiftPerson } from '@/auth/shiftLines';
+import { useDrawerSetup } from '@/terminal/counter';
+import { NoSaleSheet, noSalePin, runNoSale } from '@/terminal/noSale';
+import { merchantApi } from '@/data/merchantApi';
+import { MI_CASA, miCasa } from '@/terminal/reference';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/authContext';
@@ -43,10 +47,11 @@ import { ShiftActionsContext } from '@/shell/shiftActions';
 /** Routes that are flows rather than pages. */
 const FLOWS = ['/close', '/new', '/onboarding'];
 
-type Open = 'profile' | 'who' | 'pin' | 'owner' | 'plus' | null;
+type Open = 'profile' | 'who' | 'pin' | 'owner' | 'plus' | 'nosale' | null;
 
 const SECTION: [string, NavKey][] = [
   ['/charges', 'charges'],
+  ['/tables', 'tables'],
   ['/inventory', 'inventory'],
   ['/payouts', 'payouts'],
   ['/staff', 'staff'],
@@ -79,10 +84,19 @@ export function AppShell({ children }: { children: ReactNode }) {
   // The shop's name, in the one place it appears on every screen. Remembered on the tablet too, so
   // the shift screen can show it before anyone is on.
   const { data: profile } = useApi(() => api.profile(), []);
+  // Whether the shop serves at tables: Tables is in the nav (Settings › Counter).
+  const { data: shopSettings } = useApi(() => merchantApi().settings(), []);
+  // Clear Terminal: a paired drawer puts No sale in the shift menu (section 6).
+  const { data: hardware } = useApi(() => merchantApi().hardware().catch(() => []), []);
+  const drawerDevice = hardware?.find((d) => d.kind === 'drawer') ?? null;
+  useDrawerSetup({ api: merchantApi(), devices: hardware ?? null, preview: import.meta.env.DEV && device?.id === 'preview', staffId: session?.staff.id ?? null });
+  const { data: staffList } = useApi(() => merchantApi().staff().catch(() => []), []);
+  const [noSaleBusy, setNoSaleBusy] = useState(false);
+  const [noSaleError, setNoSaleError] = useState<string | null>(null);
   useEffect(() => rememberShop(profile?.name), [profile?.name]);
   // The dev preview (`?preview=1`) stands up a session with no API behind it; it is the
   // reference scenario's shop.
-  const shop = profile?.name ?? (import.meta.env.DEV && device?.id === 'preview' ? 'Mike\u2019s Tire' : '');
+  const shop = profile?.name ?? (import.meta.env.DEV && device?.id === 'preview' ? (miCasa() ? MI_CASA.shop : 'Mike\u2019s Tire') : '');
 
   // ---- Changing who is on the counter --------------------------------------------------------
   const [roster, setRoster] = useState<RosterPerson[]>([]);
@@ -260,6 +274,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     onChangeShift: () => setOpen('who'),
     onProfile: () => setOpen('profile'),
     onLocked: () => setOpen('owner'),
+    tables: shopSettings?.tableService,
   };
 
   // What the profile sheet lists. The owner's rows (terms, the cash account) appear only for
@@ -269,16 +284,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate(to);
   };
   const tablet: ProfileRow = { label: 'This tablet', value: `${device?.label ?? 'This tablet'} · enrolled` };
+  const noSale: ProfileRow[] = drawerDevice ? [{ label: 'No sale', onClick: () => (setNoSaleError(null), setOpen('nosale')) }] : [];
   const rows: ProfileRow[] = canSeeMoney
     ? [
         { label: 'Settings', onClick: go('/settings') },
         { label: 'Your terms', onClick: go('/overview') },
         { label: 'Cash account', onClick: go('/payouts') },
         { label: 'Counter materials' },
+        ...noSale,
         tablet,
         { label: 'Help' },
       ]
-    : [tablet, { label: 'Help' }];
+    : [...noSale, tablet, { label: 'Help' }];
 
   return (
     // `@container`: the pages not yet converted size themselves with container queries.
@@ -291,8 +308,25 @@ export function AppShell({ children }: { children: ReactNode }) {
         <OneColumn.Provider value={one}>{children}</OneColumn.Provider>
       </ShiftActionsContext.Provider>
 
-      {layout === 'phone' && <PhoneNav current={current} role={role} onPlus={() => setOpen('plus')} onLocked={() => setOpen('owner')} />}
+      {layout === 'phone' && <PhoneNav current={current} role={role} tables={shopSettings?.tableService} onPlus={() => setOpen('plus')} onLocked={() => setOpen('owner')} />}
 
+      {open === 'nosale' && drawerDevice && (
+        <NoSaleSheet
+          asker={staff.name.split(' ')[0] ?? ''}
+          approvers={(staffList ?? []).filter((x) => x.role !== 'counter' && x.active).map((x) => x.name)}
+          pinFrom={noSalePin(shopSettings ?? {}, role)}
+          busy={noSaleBusy}
+          error={noSaleError}
+          onClose={closeSheets}
+          onOpen={(input) => {
+            setNoSaleBusy(true);
+            setNoSaleError(null);
+            runNoSale(merchantApi(), { drawerId: drawerDevice.id, staffId: staff.id, preview: import.meta.env.DEV && device?.id === 'preview', ...input })
+              .then(closeSheets, (e) => setNoSaleError(e instanceof Error ? e.message : 'Couldn’t open it'))
+              .finally(() => setNoSaleBusy(false));
+          }}
+        />
+      )}
       {open === 'plus' && (
         <PlusSheet onClose={closeSheets} onAmount={go('/new')} onCart={go('/new?items=1')} />
       )}

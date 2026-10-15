@@ -3,6 +3,14 @@
   "ignoreCommand": "bash ../../scripts/vercel-ignore.sh apps/member",
   "rewrites": [
     {
+      "source": "/p/(.*)",
+      "destination": "/phone.html"
+    },
+    {
+      "source": "/r/(.*)",
+      "destination": "/phone.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

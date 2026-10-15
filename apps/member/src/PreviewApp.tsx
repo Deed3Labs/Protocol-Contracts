@@ -496,12 +496,21 @@ type ChargeFrame = 'choose' | 'now' | 'short' | 'paid' | 'paying' | 'over' | 'ap
 const CHARGE_FRAMES: ChargeFrame[] = ['choose', 'now', 'short', 'paid', 'paying', 'over', 'approved', 'under'];
 
 function ChargeApprovalPreview() {
-  const asked = new URLSearchParams(window.location.search).get('frame') as ChargeFrame | null;
+  const params = new URLSearchParams(window.location.search);
+  const asked = params.get('frame') as ChargeFrame | null;
+  // `&shop=micasa`: Clear Terminal's Table 12, scanned from its Point (terminal reference, section 13).
+  const micasa = params.get('shop') === 'micasa';
   const [frame, setFrame] = useState<ChargeFrame>(asked && CHARGE_FRAMES.includes(asked) ? asked : 'choose');
   const [splitInto, setSplitInto] = useState(4);
   const under = frame === 'under';
   const mode = frame === 'now' || frame === 'short' ? 'now' : frame === 'over' ? 'over' : 'choose';
-  const items = under
+  const items = micasa
+    ? [
+        { name: 'Al pastor', quantity: 4, cents: 1800 },
+        { name: 'Horchata', quantity: 2, cents: 700 },
+        { name: 'Nachos grande', quantity: 1, cents: 1950 },
+      ]
+    : under
     ? [{ name: 'Tire patch', quantity: 1, cents: 3520 }]
     : [
         { name: 'All-season tire 225/65R17', quantity: 4, cents: 72000 },
@@ -512,12 +521,14 @@ function ChargeApprovalPreview() {
   return (
     <div className="min-h-screen bg-background">
       <ChargeApproval
-        merchantName="Mike's Tire"
-        amount={under ? 38 : 940}
+        merchantName={micasa ? 'Mi Casa Tacos' : "Mike's Tire"}
+        amount={micasa ? 48.2 : under ? 38 : 940}
         raisedBy="Jen"
-        raisedAt={new Date(2026, 8, 26, under ? 15 : 14, under ? 5 : 14).toISOString()}
+        raisedAt={micasa ? new Date(2026, 9, 15, 19, 42).toISOString() : new Date(2026, 8, 26, under ? 15 : 14, under ? 5 : 14).toISOString()}
         items={items}
-        taxCents={under ? 280 : 6800}
+        taxCents={micasa ? 370 : under ? 280 : 6800}
+        table={micasa ? 'Table 12' : null}
+        shopPaysBps={micasa ? 125 : null}
         mode={mode}
         onModeChange={(m) => setFrame(m === 'now' ? 'now' : m === 'over' ? 'over' : 'choose')}
         overTimeMinimum={under ? 50 : null}
@@ -525,7 +536,7 @@ function ChargeApprovalPreview() {
         spendable={null}
         onPayNow={() => setFrame('paid')}
         onAddMoney={() => {}}
-        paid={frame === 'paid' ? { at: new Date(2026, 8, 26, 14, 16).toISOString(), left: 246.4, receiptUrl: '#' } : null}
+        paid={frame === 'paid' ? { at: (micasa ? new Date(2026, 9, 15, 19, 46) : new Date(2026, 8, 26, 14, 16)).toISOString(), left: 246.4, receiptUrl: '#' } : null}
         onItsWay={frame === 'paying'}
         onDone={() => setFrame('choose')}
         splitInto={splitInto}

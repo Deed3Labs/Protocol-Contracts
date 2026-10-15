@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import jsQR from 'jsqr';
 import { Btn, CFoot, CMain, Cell, Line } from '@/components/clear/brand/anatomy';
-import { chargeCodeFrom } from '@/lib/clearCode';
+import { chargeCodeFrom, pointCodeFrom } from '@/lib/clearCode';
+import { intentKey, phoneApi } from '@/phone/api';
 
 /**
  * Scan to pay — design spec §7.
@@ -57,6 +58,41 @@ export default function ScanPage() {
       doneRef.current = true;
       streamRef.current?.getTracks().forEach((t) => t.stop());
       navigate(`/c/${found}`);
+    },
+    [navigate],
+  );
+
+  /** Restarts the scan after a Point that couldn't be opened. Set by the camera effect. */
+  const resumeRef = useRef<() => void>(() => undefined);
+  const [pointNote, setPointNote] = useState<string | null>(null);
+
+  /**
+   * A Clear Point's code (Clear Terminal, section 13): its bill opens in the pay sheet this app
+   * already has, with pay now and over time. The bill becomes a Clear charge for what's left, as the
+   * phone page's Pay with Clear does, and a second scan opens the same one. With no bill on it, the
+   * Point's own page (the menu, the wait list) is the answer.
+   */
+  const openPoint = useCallback(
+    async (point: string) => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      setPointNote(null);
+      try {
+        const page = await phoneApi.point(point);
+        if (page.view !== 'bill') {
+          streamRef.current?.getTracks().forEach((t) => t.stop());
+          window.location.assign(`/p/${point}`);
+          return;
+        }
+        const started = await phoneApi.pay(point, 'clear', intentKey());
+        if (started.method !== 'clear') throw new Error('Clear couldn’t take this one');
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        navigate(`/c/${started.chargeCode}`);
+      } catch (e) {
+        doneRef.current = false;
+        setPointNote(e instanceof Error ? e.message : String(e));
+        resumeRef.current();
+      }
     },
     [navigate],
   );
@@ -116,6 +152,11 @@ export default function ScanPage() {
           finish(found);
           return;
         }
+        const point = pointCodeFrom(raw);
+        if (point) {
+          void openPoint(point);
+          return;
+        }
         // Something scanned and it was not ours. Say so rather than looking broken.
         setNotACode(true);
       }
@@ -152,13 +193,17 @@ export default function ScanPage() {
         setManual(true);
       });
 
+    resumeRef.current = () => {
+      if (!cancelled) raf = requestAnimationFrame(tick);
+    };
+
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     };
-  }, [finish]);
+  }, [finish, openPoint]);
 
   /**
    * Point the element at the stream, once both exist.
@@ -185,6 +230,8 @@ export default function ScanPage() {
   }, [stream, status]);
 
   const typed = chargeCodeFrom(code);
+  const typedPoint = typed ? null : pointCodeFrom(code);
+  const go = () => (typed ? finish(typed) : typedPoint && void openPoint(typedPoint));
 
   return (
     <div className="lg:mx-auto lg:max-w-[420px]">
@@ -212,7 +259,9 @@ export default function ScanPage() {
         <Cell>
           <CMain>
             <p className="c-det">
-              {notACode
+              {pointNote
+                ? pointNote
+                : notACode
                 ? 'That is not a Clear code. Point it at the shop code.'
                 : 'Point it at the shop code. Nothing is charged until you see the amount and approve it.'}
             </p>
@@ -225,12 +274,12 @@ export default function ScanPage() {
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && typed) finish(typed);
+                    if (e.key === 'Enter') go();
                   }}
                   placeholder="Clear code, 8 characters"
                   aria-label="Clear code"
                 />
-                <Btn primary disabled={!typed} onClick={() => typed && finish(typed)}>
+                <Btn primary disabled={!typed && !typedPoint} onClick={go}>
                   Continue
                 </Btn>
               </div>
