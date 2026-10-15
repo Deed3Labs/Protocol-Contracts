@@ -66,7 +66,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.6
-      - run: npm ci --no-audit --no-fund
+      # Only the workspaces: the root package is the Hardhat toolchain, which no app or package uses.
+      - run: npm ci --workspaces --no-audit --no-fund
       - run: npx turbo run typecheck test --affected
         env:
           # turbo reads GITHUB_BASE_REF as a local branch (`dev`), which the checkout doesn't
