@@ -1,3 +1,4 @@
+import { DINNER, LUNCH } from './capture';
 /**
  * Every state the app can be put in without a backend, and the reference frame each one is drawn
  * from (docs/merchant-reference/clear-merchant-<file>.html: the frame is the `i`th `.mc-tablet` or
@@ -13,7 +14,7 @@
  * or the manager (luis) on shift instead of the owner.
  */
 
-export type File = 'home' | 'charges' | 'inventory' | 'new-charge' | 'onboarding' | 'overview' | 'payouts' | 'settings' | 'sign-in' | 'staff';
+export type File = 'home' | 'charges' | 'inventory' | 'new-charge' | 'onboarding' | 'overview' | 'payouts' | 'settings' | 'sign-in' | 'staff' | 'terminal';
 
 export interface Ref {
   file: File;
@@ -38,9 +39,13 @@ export interface State {
   pending?: string;
   /** Only at these sizes: a gallery frame drawn for one layout. */
   sizes?: SizeName[];
+  /** The moment the state is drawn at, when it isn't the reference day's 4:41pm (Clear Terminal's dinner). */
+  clock?: string;
 }
 
 const P = '?preview=1';
+/** Clear Terminal's restaurant. */
+const MC = '&shop=micasa';
 const r = (file: File, h2: string, i = 0, note?: string, at?: SizeName): Ref => ({ file, h2, i, note, at });
 
 export const STATES: State[] = [
@@ -253,7 +258,7 @@ export const STATES: State[] = [
   { id: 'settings-tax', page: 'settings', url: `/settings/tax${P}`, refs: [r('settings', 'Selling', 2)] },
   { id: 'settings-tips', page: 'settings', url: `/settings/tips${P}`, refs: [r('settings', 'Selling', 3)] },
   { id: 'settings-discounts', page: 'settings', url: `/settings/discounts${P}`, refs: [r('settings', 'Selling', 4)] },
-  { id: 'settings-devices', page: 'settings', url: `/settings/devices${P}`, refs: [r('settings', 'Selling', 5)] },
+  { id: 'settings-devices', page: 'settings', url: `/settings/devices${P}`, refs: [r('settings', 'Selling', 5, 'Devices is Clear Terminal’s pane now (the terminal reference, section 1): Mike’s Tire has nothing paired yet, and receipts use the print dialog.')] },
   { id: 'settings-closing', page: 'settings', url: `/settings/closing${P}`, refs: [r('settings', 'Selling', 6)] },
   { id: 'settings-security', page: 'settings', url: `/settings/security${P}`, refs: [r('settings', 'Security')] },
   { id: 'settings-notifications', page: 'settings', url: `/settings/notifications${P}`, refs: [r('settings', 'Notifications')] },
@@ -301,6 +306,18 @@ export const STATES: State[] = [
   { id: 'owner-signed-in', page: 'sign-in', gallery: 'Signed in', refs: [r('sign-in', '3 · The owner, for anything that moves money', 4, 'From the gallery, which frames the same screen component the app shows; it only appears signed out, so this is how it is reached in isolation.')] },
   { id: 'owner-beside-shift', page: 'sign-in', gallery: "Owner signed in beside Jen's shift", sizes: ['landscape', 'portrait'], refs: [r('sign-in', '3 · The owner, for anything that moves money', 5, 'From the gallery, which frames the same screen component the app shows; it only appears signed out, so this is how it is reached in isolation. A detail: the header alone.')] },
   { id: 'tablet-removed', page: 'sign-in', gallery: 'The removed tablet', refs: [r('sign-in', '4 · A forgotten PIN, and a lost tablet', 0, 'From the gallery, which frames the same screen component the app shows; it only appears signed out, so this is how it is reached in isolation.')] },
+
+  // ---- Clear Terminal: Mi Casa Tacos (terminal reference) --------------------------------------
+  { id: 'terminal-devices', page: 'settings', clock: DINNER, url: `/settings/devices${P}${MC}`, refs: [r('terminal', '1 · Settings · Devices', 0, 'Printers name their make (Clear 4-inch, Rollo) where the contract holds one; it doesn’t yet (DECISIONS › Terminal Phase 4).')] },
+  { id: 'terminal-add', page: 'settings', clock: DINNER, url: `/settings/devices${P}${MC}&screen=add`, refs: [r('terminal', '2 · Add a device', 0, 'The reference draws the sheet alone; the app opens it over the Devices pane.')] },
+  { id: 'terminal-add-point', page: 'settings', clock: DINNER, url: `/settings/devices${P}${MC}&screen=add-point`, refs: [r('terminal', '2 · Add a device', 1, 'The camera stands in the viewfinder the reference draws.')] },
+  { id: 'terminal-add-point-wifi', page: 'settings', clock: DINNER, url: `/settings/devices${P}${MC}&screen=add-point-wifi`, refs: [r('terminal', '2 · Add a device', 2)] },
+  { id: 'terminal-add-point-place', page: 'settings', clock: DINNER, url: `/settings/devices${P}${MC}&screen=add-point-place`, refs: [r('terminal', '2 · Add a device', 3)] },
+  { id: 'terminal-point', page: 'settings', clock: DINNER, url: `/settings/devices/hw_t12${P}${MC}`, refs: [r('terminal', '3 · A Point’s pane', 0, 'Table 12 is in a Pay case, so its pane also has the Pay case cell (13b).')] },
+  { id: 'terminal-point-paycase', page: 'settings', clock: DINNER, url: `/settings/devices/hw_t12${P}${MC}`, refs: [r('terminal', '13b · The Pay case', 0, 'The app draws the whole pane; the reference draws the Pay case cell under the head alone.')] },
+  { id: 'terminal-drawer', page: 'settings', clock: DINNER, url: `/settings/devices/hw_drawer${P}${MC}`, refs: [r('terminal', '4 · Drawer and printers', 0)] },
+  { id: 'terminal-printers', page: 'settings', clock: DINNER, url: `/settings/devices/printers${P}${MC}`, refs: [r('terminal', '4 · Drawer and printers', 1)] },
+  { id: 'terminal-nosale', page: 'settings', clock: DINNER, url: `/settings/devices/hw_drawer${P}${MC}&screen=nosale&as=jen`, refs: [r('terminal', '6 · No sale', 0, 'A keypad under the dots: a tablet has no keyboard (DECISIONS › Terminal Phase 4). “or from their phone” is left off until approving from a phone is built (DECISIONS › Terminal: what the spec met).')] },
 ];
 
 /** A frame's size, from its classes: which of the three captures it pairs with. */

@@ -94,7 +94,10 @@ export function CheckoutView({
   onDiscount,
   onRemoveDiscount,
   onPick,
+  rows,
 }: {
+  /** More rows under the tip: where the customer sees it (Show on, Clear Terminal section 7). */
+  rows?: ReactNode;
   body: ChargeBody;
   /** A live shop: the order's totals, from the server, in place of the local estimate. */
   server?: Totals | null;
@@ -183,6 +186,7 @@ export function CheckoutView({
               <span className="c-k">Tip</span>
               <span className="c-det">Asked on their screen next</span>
             </div>
+            {rows}
           </div>
           {t && <Breakdown t={t} after={!!body.discount} />}
         </div>

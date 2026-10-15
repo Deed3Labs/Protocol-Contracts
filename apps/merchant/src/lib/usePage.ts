@@ -11,7 +11,9 @@ export type ReferencePage =
   | 'payouts'
   | 'overview'
   | 'onboarding'
-  | 'sign-in';
+  | 'sign-in'
+  /** Clear Terminal's screens: its rules that differ from the ten files' (scripts/reference-css.mjs, ADDENDA). */
+  | 'terminal';
 
 /**
  * Marks which reference page is on screen, as `c-page-<name>` on <html>.

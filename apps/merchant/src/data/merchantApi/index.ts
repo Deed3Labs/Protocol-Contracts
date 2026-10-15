@@ -15,7 +15,8 @@ import { realMerchantApi } from './real';
  *
  * The mock reads its switches from the URL, so a state in the reference files is a link:
  * `&stripe=not_connected`, `&drawer=none|open|balanced|short|disagree|closed`, `&card=decline`,
- * `&clear=approve|decline|wait`, `&delay=800`.
+ * `&clear=approve|decline|wait`, `&delay=800`, and `&shop=micasa` for the Clear Terminal reference's
+ * restaurant.
  */
 
 export type MerchantApiMode = 'mock' | 'real';
@@ -42,6 +43,9 @@ function switchesFromUrl(): Partial<MockSwitches> & { viewer?: string } {
     ...pick('receive', ['open', 'new'] as const),
     ...pick('payday', ['set', 'none'] as const),
     ...pick('shopHours', ['set', 'none'] as const),
+    ...pick('shop', ['mikes', 'micasa'] as const),
+    ...pick('calls', ['open', 'none'] as const),
+    ...pick('seat', ['before'] as const),
     ...(Number.isFinite(delay) && q.has('delay') ? { delayMs: delay } : {}),
     // Who's on shift in the preview (AuthProvider's `&as=`): the mock sees the same person.
     viewer: q.get('as') === 'jen' ? 'stf_jen' : q.get('as') === 'luis' ? 'stf_luis' : 'stf_mike',

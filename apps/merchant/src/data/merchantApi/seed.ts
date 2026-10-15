@@ -8,6 +8,9 @@ import { GOODYEAR_ON_ORDER, INVENTORY } from '../../inventory/model';
  * (inventory/model.ts), so a number lives in one place.
  */
 
+/** Mike's Tire's sales tax (pricing.ts). */
+export { REFERENCE_RATES_PPM as RATES_PPM } from './pricing';
+
 export const REFERENCE_DAY = '2026-09-22';
 export const YESTERDAY = '2026-09-21';
 /** 4:41pm on the reference day, in Los Angeles (UTC−7 in September). */

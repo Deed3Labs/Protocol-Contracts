@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { MI_CASA, miCasa } from '@/terminal/reference';
 import { canAuthoriseRefund, seesMoney, type Staff } from '@clear/domain';
 import { api, storeToken } from '@/data/apiClient';
 import { AuthContext, type AuthValue, type DeviceState, type Session } from '@/auth/authContext';
@@ -72,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? { id: 'stf_jen', name: 'Jen R.', role: 'counter' }
           : as === 'luis'
             ? { id: 'stf_luis', name: 'Luis M.', role: 'manager' }
-            : { id: 'stf_mike', name: 'Mike R.', role: 'owner' };
+            : { id: 'stf_mike', name: miCasa() ? MI_CASA.owner : 'Mike R.', role: 'owner' };
       // The same people as the mock API's seed (data/merchantApi/seed.ts), so "whose count is
       // this" means the same thing on both sides of the preview.
       setSession({

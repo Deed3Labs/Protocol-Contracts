@@ -74,7 +74,7 @@ async function toDevice(q: Queryable, row: HardwareRow, now: Date): Promise<Devi
       [row.id],
     );
     const { rows: today } = await q.query<{ n: string | number }>(
-      `SELECT count(*) AS n FROM payments.drawer_events WHERE drawer_id = $1 AND kind = 'opened' AND (at AT TIME ZONE $2)::date = $3::date`,
+      `SELECT count(*) AS n FROM payments.drawer_events WHERE drawer_id = $1 AND kind = 'opened' AND reason <> 'key' AND (at AT TIME ZONE $2)::date = $3::date`,
       [row.id, tz, businessDate(tz, now)],
     );
     return {

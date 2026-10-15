@@ -100,11 +100,26 @@ export function CashView({
   );
 }
 
+/** The drawer as the change screen shows it (terminal reference, section 5). `static` is no drawer paired: the chip as drawn before. */
+export type CashDrawer = 'static' | 'opening' | 'open' | 'stuck';
+
+export interface CashPrint {
+  t: string;
+  det: string;
+  state: 'printing' | 'printed' | 'failed';
+}
+
 export function CashPaidView({
   dueCents,
   givenCents,
   at,
+  detail = 'stock came off the shelf',
   receipt,
+  drawer = 'static',
+  onPoint,
+  prints = [],
+  onRetry,
+  onKey,
   onDone,
   onNew,
 }: {
@@ -112,47 +127,105 @@ export function CashPaidView({
   givenCents: number;
   /** "4:41pm" */
   at: string;
+  /** After the time: "order 0142", or what happened to the stock. */
+  detail?: string;
   receipt: ReactNode;
+  /** Whether the drawer said it opened. A sale never waits on it. */
+  drawer?: CashDrawer;
+  /** The Point the change shows on: "Counter". */
+  onPoint?: string | null;
+  /** What's printing by itself, on which printer. */
+  prints?: CashPrint[];
+  onRetry?: () => void;
+  onKey?: () => void;
   onDone?: () => void;
   onNew?: () => void;
 }) {
   const change = givenCents - dueCents;
+  const stuck = drawer === 'stuck';
   return (
     <Slab>
       <div className="c-cell">
         <div className="c-chead">
           <div className="c-sechead">
             <p className="c-label">Change</p>
-            <Chip tone="settled" dot>
-              Drawer open
-            </Chip>
+            {stuck ? (
+              <Chip tone="absent" dot>
+                Drawer didn’t open
+              </Chip>
+            ) : drawer === 'opening' ? (
+              <Chip tone="underway" dot>
+                Opening the drawer
+              </Chip>
+            ) : (
+              <Chip tone="settled" dot>
+                Drawer open
+              </Chip>
+            )}
           </div>
         </div>
         <div className="c-cmain c-ci-sum">
           <div className="c-ci-hero">
             <p className="c-label">Give back</p>
             <p className="c-f c-ck-chg">{usd(change)}</p>
-            <p className="c-det">
-              From {usd(givenCents)} handed over, for {usd(dueCents)}
-            </p>
+            <p className="c-det">{stuck ? 'The sale is saved. Only the drawer is stuck.' : `From ${usd(givenCents)} handed over, for ${usd(dueCents)}`}</p>
           </div>
-          <div className="c-ci-small">
-            <div className="c-kv">
-              <span>Handed over</span>
-              <span className="c-v">{usd(givenCents)}</span>
+          {stuck ? (
+            <div className="c-rows">
+              <div>
+                <div className="c-r2">
+                  <div>
+                    <p className="c-t">Try again</p>
+                    <p className="c-det">Usually Bluetooth waking up</p>
+                  </div>
+                  <span className="c-end">
+                    <button type="button" className="c-btn" onClick={onRetry}>
+                      Open again
+                    </button>
+                  </span>
+                </div>
+              </div>
+              <div>
+                <div className="c-r2">
+                  <div>
+                    <p className="c-t">Open it with the key</p>
+                    <p className="c-det">We’ll log it against this sale</p>
+                  </div>
+                  <span className="c-end">
+                    <button type="button" className="c-btn" onClick={onKey}>
+                      I used the key
+                    </button>
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="c-kv">
-              <span>Charge</span>
-              <span className="c-v">{usd(dueCents)}</span>
+          ) : (
+            <div className="c-ci-small">
+              <div className="c-kv">
+                <span>Handed over</span>
+                <span className="c-v">{usd(givenCents)}</span>
+              </div>
+              <div className="c-kv">
+                <span>Charge</span>
+                <span className="c-v">{usd(dueCents)}</span>
+              </div>
+              <div className="c-kv c-strong">
+                <span>Change</span>
+                <span className="c-v">{usd(change)}</span>
+              </div>
+              {onPoint && (
+                <div className="c-tm-onpoint">
+                  <span className="c-label">On the Point</span>
+                  <span>
+                    {onPoint} · Your change {usd(change)}
+                  </span>
+                </div>
+              )}
             </div>
-            <div className="c-kv c-strong">
-              <span>Change</span>
-              <span className="c-v">{usd(change)}</span>
-            </div>
-          </div>
+          )}
         </div>
         <div className="c-cfoot">
-          <p className="c-det">Close the drawer once the change is given.</p>
+          <p className="c-det">{stuck ? 'The drawer is out of reach or off. Settings › Devices shows which.' : 'Close the drawer once the change is given.'}</p>
         </div>
       </div>
       <div className="c-cell">
@@ -168,9 +241,40 @@ export function CashPaidView({
           <div className="c-cc-wait c-ok">
             <IconReaderApproved />
             <p className="c-cc-h">Paid in cash</p>
-            <p className="c-det">{at} &middot; stock came off the shelf</p>
+            <p className="c-det">
+              {at} &middot; {detail}
+            </p>
           </div>
           {receipt}
+          {prints.length > 0 && (
+            <div className="c-rows" style={{ marginTop: 'var(--s2)' }}>
+              {prints.map((p) => (
+                <div key={p.t}>
+                  <div className="c-r2">
+                    <div>
+                      <p className="c-t">{p.t}</p>
+                      <p className="c-det">{p.det}</p>
+                    </div>
+                    <span className="c-end">
+                      {p.state === 'printing' ? (
+                        <Chip tone="underway" dot>
+                          Printing
+                        </Chip>
+                      ) : p.state === 'printed' ? (
+                        <Chip tone="settled" dot>
+                          Printed
+                        </Chip>
+                      ) : (
+                        <Chip tone="absent" dot>
+                          Didn’t print
+                        </Chip>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="c-cfoot">
           <div className="c-line" style={{ alignItems: 'center' }}>

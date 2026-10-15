@@ -642,3 +642,10 @@ input.c-st-time {
 .c-trk i.c-out {
   background: repeating-linear-gradient(135deg, var(--ink-28) 0 1px, transparent 1px 5px);
 }
+
+/* Clear Terminal › Tables: a Call from a table's Pay case turns its tile amber until it's answered
+   (terminal reference, 13b). The reference names the colour, not a rule. */
+.c-tm-tile.c-call {
+  background: color-mix(in srgb, var(--underway) 16%, var(--paper));
+  box-shadow: inset 0 3px 0 var(--underway);
+}

@@ -3,7 +3,9 @@ import type { AuditEntry, BankAccount, BankDeposit, CardAvailability, CardDeposi
 import { refundQuote, seesMoney, type ChargeState } from '@clear/domain';
 import type { api as ApiClient, EnrolledDevice, MerchantCharge, MerchantProfile, PayoutPosition, Refund as ClearRefund, StaffMember } from '../apiClient';
 import { price } from './pricing';
-import * as seed from './seed';
+import * as mikesTire from './seed';
+import * as miCasaTacos from './seedMiCasa';
+import { createTerminalMock } from './terminalMock';
 
 /**
  * The older client's Clear-side calls (`api` in ../apiClient.ts), which the Charges pages, the
@@ -71,6 +73,12 @@ export interface MockSwitches {
   /** The shop's opening hours: `none` is a shop that hasn't set any (closed every day). */
   shopHours: 'set' | 'none';
   delayMs: number;
+  /** Which reference shop: Mike's Tire, or the Clear Terminal reference's Mi Casa Tacos (`&shop=micasa`). */
+  shop?: 'mikes' | 'micasa';
+  /** Mi Casa: `open` is Table 12's Call waiting to be answered (terminal reference, 13b). */
+  calls?: 'open' | 'none';
+  /** Mi Casa: `before` is the moment before Ana is seated (8b's Seat sheet). */
+  seat?: 'before';
 }
 
 export class MockApiError extends Error {
@@ -93,17 +101,23 @@ interface OrderRec {
   voided: boolean;
   inputs: LineInput[];
   discount: (OrderDiscount & { percent: number | null; fixedCents: number | null }) | null;
+  /** A retry key: the same key is the same order. */
+  key?: string | null;
+  offline?: boolean;
 }
 
-const TODAY = seed.REFERENCE_DAY;
-
 export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?: string } = {}) {
+  // Mi Casa's seed has every name Mike's Tire's has (it re-exports what it doesn't change).
+  const seed = (initial.shop === 'micasa' ? miCasaTacos : mikesTire) as typeof mikesTire & { RATES_PPM?: typeof miCasaTacos.RATES_PPM };
+  const TODAY = seed.REFERENCE_DAY;
   const switches: MockSwitches = { stripe: 'connected', drawer: 'open', card: 'approve', clear: 'wait', setup: 'done', kyb: 'done', receive: 'open', shopHours: 'set', payday: 'set', delayMs: 250, ...initial };
   let viewer = initial.viewer ?? seed.STAFF_ID.mike;
   let failNext: { method: string; message: string; status: number } | null = null;
   let n = 1000;
   const id = (p: string) => `${p}_mock_${++n}`;
   const now = () => new Date().toISOString();
+  // Clear Terminal's state (below). Declared first: seeding reads orders back before it's made.
+  let terminal: ReturnType<typeof createTerminalMock> | null = null;
 
   // ---- State -------------------------------------------------------------------------------------
   let settings: ShopSettings = { ...seed.SETTINGS };
@@ -139,7 +153,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     if (!receiveOpen) return { state: 'not_opened', account: null, email: kyb.email };
     return {
       state: 'ready',
-      account: { beneficiary: 'Mike’s Tire LLC', bankName: 'Lead Bank', routingNumber: '101019644', accountNumber: '900123456789', rails: ['ach_push', 'wire'] },
+      account: { beneficiary: `${shop.name} LLC`, bankName: 'Lead Bank', routingNumber: '101019644', accountNumber: '900123456789', rails: ['ach_push', 'wire'] },
       email: kyb.email,
     };
   };
@@ -218,7 +232,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   function toOrder(rec: OrderRec): Order {
     const lines = linesOf(rec);
     const spec = rec.discount ? { percent: rec.discount.percent, amountCents: rec.discount.fixedCents, categories: null } : null;
-    const p = price(lines.map((l) => ({ lineCents: l.unitCents * l.quantity, taxKind: l.taxKind, category: l.category })), spec, { inclusive: settings.tax.pricesIncludeTax });
+    const p = price(lines.map((l) => ({ lineCents: l.unitCents * l.quantity, taxKind: l.taxKind, category: l.category })), spec, { inclusive: settings.tax.pricesIncludeTax, rates: seed.RATES_PPM });
     const ts = [...tenders.values()].filter((t) => t.orderId === rec.id);
     const summary = orderStatus({ totalCents: p.total, voided: rec.voided }, ts);
     const orderLines: OrderLine[] = lines.map((l, i) => ({
@@ -254,6 +268,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       remainingCents: summary.remainingCents,
       businessDate: rec.businessDate,
       createdAt: rec.createdAt,
+      ...terminalFields(rec),
     };
   }
   const orderRec = (orderId: string) => orders.get(orderId) ?? refuse('No such order', 404, 'not_found');
@@ -440,9 +455,42 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
 
   seedDay();
 
+  // ---- Clear Terminal (terminalMock.ts): hardware, Points, tables, the wait list -------------------
+  terminal = createTerminalMock({
+    micasa: initial.shop === 'micasa',
+    callOpen: initial.calls === 'open',
+    anaWaiting: initial.seat === 'before',
+    shopId: shop.id,
+    day: TODAY,
+    at: seed.at,
+    now,
+    id,
+    viewer: () => viewer,
+    roleOf: (staffId) => roles.get(staffId) ?? who(staffId)?.role,
+    nameOf: (staffId) => who(staffId)?.name ?? '—',
+    pinOf,
+    refuse,
+    raise: (lines, o) => {
+      const rec = newOrder({ lines, customer: o.customer ?? null }, { by: o.by, createdAt: o.createdAt, moveStock: false });
+      if (o.number !== undefined) rec.number = o.number;
+      return rec.id;
+    },
+    order: (orderId) => toOrder(orderRec(orderId)),
+    payCash: (orderId, o) => {
+      const total = toOrder(orderRec(orderId)).totalCents;
+      const handed = o.handedOverCents ?? total;
+      addTender({ orderId, method: 'cash', amountCents: total, tipCents: 0, status: 'approved', handedOverCents: handed, changeCents: handed - total, createdAt: o.at }, id('seed'), o.by);
+    },
+    settings: () => settings,
+    openDrawerSession: () => [...sessions.values()].find((x) => x.status !== 'closed') ?? null,
+  });
+  function terminalFields(rec: OrderRec) {
+    const m = terminal?.metaOf(rec.id) ?? { tableId: null, serviceType: null, deliveryPartner: null, calledAt: null, pickedUpAt: null };
+    return { tableId: m.tableId, serviceType: m.serviceType, deliveryPartner: m.deliveryPartner, calledAt: m.calledAt, pickedUpAt: m.pickedUpAt, offline: Boolean(rec.offline) };
+  }
+
   // ---- The API -------------------------------------------------------------------------------------
   const wait = () => new Promise((r) => setTimeout(r, switches.delayMs));
-  const soon = async (): Promise<never> => refuse('Not in the mock yet', 501, 'not_built');
   const api: MerchantApi = {
     shop: async () => shop,
     updateShop: async (patch) => {
@@ -717,7 +765,14 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
 
     createOrder: async (input) => {
-      const rec = newOrder(input);
+      // A retry with the same key is the same order (an offline queue's sync, sent twice).
+      const again = input.idempotencyKey ? [...orders.values()].find((o) => o.key === input.idempotencyKey) : undefined;
+      if (again) return toOrder(again);
+      const rec = newOrder({ lines: input.lines, customer: input.customer ?? null }, input.offline ? { createdAt: input.offline.createdAt, moveStock: false } : {});
+      rec.key = input.idempotencyKey ?? null;
+      rec.offline = Boolean(input.offline);
+      if (input.tableId) terminal!.attachTab(input.tableId, rec.id);
+      else if (input.serviceType || input.deliveryPartner) terminal!.setMeta(rec.id, { serviceType: input.serviceType ?? null, deliveryPartner: input.deliveryPartner ?? null });
       log('order.raised', { ref: { type: 'order', id: rec.id } });
       return toOrder(rec);
     },
@@ -1062,33 +1117,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       return { sentTo: input.email.trim() };
     },
 
-    // Counter hardware, tables and the menu: the Terminal screens (UI Phase 4) fill these in.
-    categoryOrder: soon,
-    saveCategoryOrder: soon,
-    hardware: soon,
-    addDevice: soon,
-    updateDevice: soon,
-    removeDevice: soon,
-    claimPoint: soon,
-    showOnPoint: soon,
-    drawerKey: soon,
-    saveDrawerEvents: soon,
-    approveNoSale: soon,
-    drawerDay: soon,
-    floor: soon,
-    saveTables: soon,
-    seatTable: soon,
-    clearTable: soon,
-    waitlist: soon,
-    addParty: soon,
-    updateParty: soon,
-    seatParty: soon,
-    tableRequests: soon,
-    answerTableRequest: soon,
-    createAlert: soon,
-    clearAlert: soon,
-    pickups: soon,
-    markPickedUp: soon,
+    // Clear Terminal: hardware, Points, the drawer's log, tables, the wait list (terminalMock.ts).
+    ...terminal!.api,
   };
 
   // ---- The Clear side (the older client's calls) ----------------------------------------------------

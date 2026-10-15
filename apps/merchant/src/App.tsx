@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import TablesPage from '@/pages/TablesPage';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { AppShell } from '@/shell/AppShell';
 import { SignIn } from '@/auth/SignIn';
@@ -136,6 +137,8 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/new" element={<NewChargePage />} />
         <Route path="/charges" element={<ChargesPage />} />
+        {/* Clear Terminal: only in the nav for shops that serve at tables; the page itself works for anyone on shift. */}
+        <Route path="/tables" element={<TablesPage />} />
         <Route path="/charges/:id" element={<ChargeDetailPage />} />
         <Route path="/charges/:id/refund" element={<ChargeDetailPage />} />
         <Route path="/inventory" element={<InventoryPage />} />

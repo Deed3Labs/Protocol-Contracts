@@ -1,4 +1,6 @@
 import { clockAt, toShiftPerson } from '@/auth/shiftLines';
+import { merchantApi } from '@/data/merchantApi';
+import { MI_CASA, miCasa } from '@/terminal/reference';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/auth/authContext';
@@ -47,6 +49,7 @@ type Open = 'profile' | 'who' | 'pin' | 'owner' | 'plus' | null;
 
 const SECTION: [string, NavKey][] = [
   ['/charges', 'charges'],
+  ['/tables', 'tables'],
   ['/inventory', 'inventory'],
   ['/payouts', 'payouts'],
   ['/staff', 'staff'],
@@ -79,10 +82,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   // The shop's name, in the one place it appears on every screen. Remembered on the tablet too, so
   // the shift screen can show it before anyone is on.
   const { data: profile } = useApi(() => api.profile(), []);
+  // Whether the shop serves at tables: Tables is in the nav (Settings › Counter).
+  const { data: shopSettings } = useApi(() => merchantApi().settings(), []);
   useEffect(() => rememberShop(profile?.name), [profile?.name]);
   // The dev preview (`?preview=1`) stands up a session with no API behind it; it is the
   // reference scenario's shop.
-  const shop = profile?.name ?? (import.meta.env.DEV && device?.id === 'preview' ? 'Mike\u2019s Tire' : '');
+  const shop = profile?.name ?? (import.meta.env.DEV && device?.id === 'preview' ? (miCasa() ? MI_CASA.shop : 'Mike\u2019s Tire') : '');
 
   // ---- Changing who is on the counter --------------------------------------------------------
   const [roster, setRoster] = useState<RosterPerson[]>([]);
@@ -260,6 +265,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     onChangeShift: () => setOpen('who'),
     onProfile: () => setOpen('profile'),
     onLocked: () => setOpen('owner'),
+    tables: shopSettings?.tableService,
   };
 
   // What the profile sheet lists. The owner's rows (terms, the cash account) appear only for
@@ -291,7 +297,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <OneColumn.Provider value={one}>{children}</OneColumn.Provider>
       </ShiftActionsContext.Provider>
 
-      {layout === 'phone' && <PhoneNav current={current} role={role} onPlus={() => setOpen('plus')} onLocked={() => setOpen('owner')} />}
+      {layout === 'phone' && <PhoneNav current={current} role={role} tables={shopSettings?.tableService} onPlus={() => setOpen('plus')} onLocked={() => setOpen('owner')} />}
 
       {open === 'plus' && (
         <PlusSheet onClose={closeSheets} onAmount={go('/new')} onCart={go('/new?items=1')} />

@@ -171,7 +171,8 @@ export async function drawerDay(q: Queryable, input: { merchant: string; session
   );
   const iso = (d: Date | string) => new Date(d).toISOString();
   return {
-    opens: rows.length,
+    // The drawer's own opens: with the key it didn't open, and those are listed apart (section 6).
+    opens: rows.filter((r) => r.reason !== 'key').length,
     withSale: rows.filter((r) => r.reason === 'sale' || r.reason === 'refund').length,
     noSales: rows
       .filter((r) => r.reason === 'no_sale')
