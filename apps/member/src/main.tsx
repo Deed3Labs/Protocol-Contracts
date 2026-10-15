@@ -25,13 +25,26 @@ if (import.meta.env.PROD) {
 
 const root = createRoot(document.getElementById('root')!);
 
+// The phone pages (/p/:code, /r/:code) have their own entry (phone.html), which Vercel serves. This
+// is the same page for when the app's shell answers instead: `vite dev`, or the service worker's
+// offline shell for a member who has the app.
+const phonePage = /^\/[pr]\//.test(window.location.pathname);
+
 // Dev-only visual harness for the rebuild (`/?preview=1`): renders the shell and
 // pages without AppKit or auth, which otherwise gate everything behind a wallet.
 // The import is inside the DEV branch, so it never reaches a production bundle.
 const previewMode =
   import.meta.env.DEV && new URLSearchParams(window.location.search).get('preview') === '1';
 
-if (previewMode) {
+if (phonePage) {
+  void import('./phone/PhoneApp.tsx').then(({ default: PhoneApp }) => {
+    root.render(
+      <StrictMode>
+        <PhoneApp />
+      </StrictMode>,
+    );
+  });
+} else if (previewMode) {
   void import('./PreviewApp.tsx').then(({ default: PreviewApp }) => {
     root.render(
       <StrictMode>

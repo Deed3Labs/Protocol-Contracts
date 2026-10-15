@@ -64,7 +64,7 @@ export interface PayNowResult {
 }
 
 /** The shop's paid-now rate, from its Clear tier. */
-async function paidNowBps(merchant: string): Promise<number> {
+export async function paidNowBps(merchant: string): Promise<number> {
   const db = await merchantDb();
   if (!db) return FALLBACK_PAID_NOW_BPS;
   const { rows } = await db.query<{ paid_now_bps: number }>(

@@ -101,6 +101,12 @@ self.addEventListener('fetch', (event) => {
       event.respondWith(networkOnly(request));
       return;
     }
+    // The phone pages' bills and receipts (/api/p, /api/r): a bill changes by the second, and a
+    // receipt is someone else's on a shared phone. Never kept.
+    if (isPhonePageAPI(url)) {
+      event.respondWith(networkOnly(request));
+      return;
+    }
     if (isReferenceAPI(url)) {
       event.respondWith(staleWhileRevalidate(request, API_CACHE));
       return;
@@ -291,6 +297,10 @@ function isAPI(url) {
 /** Reference data that changes slowly enough to answer from cache first. Everything else is state. */
 function isReferenceAPI(url) {
   return url.pathname.startsWith('/api/prices') || url.pathname.startsWith('/api/nfts');
+}
+
+function isPhonePageAPI(url) {
+  return url.pathname.startsWith('/api/p/') || url.pathname.startsWith('/api/r/');
 }
 
 function isPlaidAPI(url) {

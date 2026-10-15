@@ -14,7 +14,7 @@ import {
 import type { Db, Queryable } from '../../../db/db.js';
 import { cardAvailability } from '../cards/availability.js';
 import { connectorStore } from '../cards/connectorStore.js';
-import { buildReceipt } from '../orders/receipts.js';
+import { buildReceipt, ensureReceiptCode } from '../orders/receipts.js';
 import { getSettings } from '../shop/shopService.js';
 import { touchShop } from './bus.js';
 import { TerminalError } from './errors.js';
@@ -352,10 +352,15 @@ export async function pointByCode(q: Queryable, code: string): Promise<{ deviceI
  * schema, which keeps only what it names: the Point's state, and a held party's name with it, never
  * leave.
  */
-export async function publicPoint(q: Queryable, code: string, now = new Date()) {
-  const p = await pointByCode(q, code);
+export async function publicPoint(db: Db, code: string, now = new Date()) {
+  const p = await pointByCode(db, code);
   if (!p) throw new TerminalError('No Point has that code', 'not_found');
-  const { screen } = await screenFor(q, p.deviceId, now);
+  const { screen } = await screenFor(db, p.deviceId, now);
+  // The paid page offers "Email me this receipt", which goes by the receipt's own code: make it now.
+  if (screen.paid && !screen.paid.receipt.code && screen.state.kind === 'paid') {
+    const made = await ensureReceiptCode(db, { merchant: p.merchant, orderId: screen.state.orderId, staffId: null });
+    screen.paid.receipt.code = made;
+  }
   return PublicPoint.parse(screen);
 }
 

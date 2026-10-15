@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test } from 'bun:test';
 import type Stripe from 'stripe';
 import type { Db } from '../../../db/db.js';
 import { seedShop, testDb } from '../../../db/testDb.js';
+import { chargeContentsFrom } from '../../chargeContents.js';
 import { createItem, updateItem, saveCategoryOrder } from '../catalog/catalogService.js';
 import { connectorStore } from '../cards/connectorStore.js';
 import { fakeProvider } from '../cards/fakeProvider.js';
@@ -134,7 +135,11 @@ describe('what a Point shows, from one place', () => {
     expect((await publicPoint(db, t.at14.code, now)).view).toBe('bill');
     await createCashTender(db, { merchant: t.merchant, orderId: order.id, staffId: t.staff.jen, tender: { amountCents: order.totalCents, tipCents: 0, handedOverCents: order.totalCents, idempotencyKey: key() } });
     expect((await pointStateFor(db, t.at14.id)).state).toMatchObject({ kind: 'paid', orderId: order.id });
-    expect((await publicPoint(db, t.at14.code)).paid?.receipt.totalCents).toBe(order.totalCents);
+    const paidPage = await publicPoint(db, t.at14.code);
+    expect(paidPage.paid?.receipt.totalCents).toBe(order.totalCents);
+    // "Email me this receipt" goes by the receipt's code, so the paid page makes it, once.
+    expect(paidPage.paid?.receipt.code).toMatch(/^[0-9A-HJKMNP-TV-Z]{10}$/);
+    expect((await publicPoint(db, t.at14.code)).paid?.receipt.code).toBe(paidPage.paid?.receipt.code);
     expect((await pointStateFor(db, t.at14.id, later(new Date(), 181))).state).toEqual({ kind: 'idle', mode: 'number' });
   });
 
@@ -431,6 +436,8 @@ describe('the menu, receipts and the phone page', () => {
     const started = await publicPay(db, { clear, card: async () => null }, { code: t.at14.code, request: { method: 'clear', idempotencyKey: 'phone-pay-1' } });
     expect(started).toMatchObject({ method: 'clear', chargeCode: 'K7Q2M9XH' });
     expect(started.method === 'clear' && started.url).toEndWith('/c/K7Q2M9XH');
+    // The member's pay sheet says which table it is.
+    expect((await chargeContentsFrom(db, { code: 'K7Q2M9XH', raisedBy: null, amountCents: order.totalCents })).table).toBe('Table 14');
     await expect(publicPay(db, { clear, card: async () => null }, { code: t.at14.code, request: { method: 'card', idempotencyKey: 'phone-pay-2' } })).rejects.toMatchObject({ code: 'conflict' });
     await expect(publicPay(db, { clear, card: async () => null }, { code: t.at6.code, request: { method: 'clear', idempotencyKey: 'phone-pay-3' } })).rejects.toMatchObject({ code: 'conflict' });
   });
