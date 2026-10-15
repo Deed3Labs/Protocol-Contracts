@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { IdempotencyKey, NonNegativeCents, Timestamp } from './common';
 import { PointCode, PointState } from './devices';
+import { Table } from './floor';
 import { Receipt } from './orders';
 
 /**
@@ -37,7 +38,8 @@ export type PublicBill = z.infer<typeof PublicBill>;
 /**
  * `GET /api/p/:code`. The page shows one of four states (menu, bill, paid, wait list), from the
  * Point's state: a bill or a paid bill when there is one; the wait list at a door Point; otherwise
- * the menu, or the Pay here line when the shop has nothing on the menu.
+ * the menu, or the Pay here line when the shop has nothing on the menu. A held table is the menu:
+ * the party's name is never on this page, so the Point's state isn't either, only its `view`.
  */
 export const PublicPoint = z.object({
   code: PointCode,
@@ -45,7 +47,6 @@ export const PublicPoint = z.object({
   /** "Table 12". Null at the counter or the door. */
   table: z.string().nullable(),
   placement: z.enum(['counter', 'table', 'door']),
-  state: PointState,
   view: z.enum(['menu', 'pay_here', 'bill', 'paid', 'waitlist']),
   bill: PublicBill.nullable(),
   /** When `paid`: the receipt, and when it was paid. */
@@ -95,6 +96,11 @@ export const EmailReceipt = z.object({ email: z.string().trim().email('That isnâ
  * asks with If-None-Match and the server holds the request until something changes.
  */
 export const PointScreen = PublicPoint.extend({
+  state: PointState,
+  /** Held, called and bill asked light the screen and the ring. */
+  lit: z.boolean(),
+  /** The table's number, drawn large in Number and Held. */
+  tableNumber: Table.shape.number.nullable(),
   /** The inverted screen: "27 Â· ORDER Ready." or "Your table is ready". */
   alert: z.object({ kind: z.enum(['table_ready', 'order_ready']), label: z.string() }).nullable(),
   /** Idle in Showcase: the groups, already mixed up if the shop asked for it. */

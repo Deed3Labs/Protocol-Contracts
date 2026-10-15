@@ -47,7 +47,7 @@ import type {
   ShowOnPoint,
   UpdateDevice,
 } from './devices';
-import type { AddParty, Alert, CreateAlert, Floor, PickupOrder, TableInput, TableView, UpdateParty, Waitlist, WaitlistParty } from './floor';
+import type { AddParty, Alert, CreateAlert, Floor, PartySeated, PickupOrder, SeatParty, TableInput, TableRequest, TableView, UpdateParty, Waitlist, WaitlistParty } from './floor';
 import type { PersonHours, SaveStaffHours, ShiftNow, StaffWeek } from './shifts';
 import type { AddBank, BankAccount, KybStatus, ReceiveDetails, SetupProgress, Shop, ShopHours, StartKyb, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
 
@@ -236,13 +236,19 @@ export interface MerchantApi {
   floor(): Promise<Floor>;
   /** Owners and managers: Edit tables, replacing the set (`PUT /tables`). A table with an open tab stays. */
   saveTables(input: { tables: (In<typeof TableInput> & { id?: string })[] }): Promise<Floor>;
-  /** Seat a table: its tab opens, empty, with the party if one was waiting (`POST /tables/:id/seat`). */
-  seatTable(tableId: string, input: { partyId: string | null }): Promise<TableView>;
+  /** Staff mark a table seated: a walk-in at a free table, or a held party who sat down (`POST /tables/:id/seat`). Clears any hold. */
+  seatTable(tableId: string): Promise<TableView>;
   /** A paid table is free again (`POST /tables/:id/clear`). */
   clearTable(tableId: string): Promise<TableView>;
   waitlist(): Promise<Waitlist>;
   addParty(input: In<typeof AddParty>): Promise<WaitlistParty>;
   updateParty(id: string, input: In<typeof UpdateParty>): Promise<WaitlistParty>;
+  /** The Seat sheet: party seated, table and its Point held, Table ready at the door, a text if asked (`POST /waitlist/:id/seat`). */
+  seatParty(partyId: string, input: In<typeof SeatParty>): Promise<PartySeated>;
+  /** Calls and bills: open ones, and the last hour's (`GET /table-requests`). */
+  tableRequests(): Promise<TableRequest[]>;
+  /** On my way: the request closes, the ring goes off, the Point goes back (`POST /table-requests/:id/answer`). */
+  answerTableRequest(id: string): Promise<TableRequest>;
   /** Table ready or Order ready: on a Point, and texted if there's a number (`POST /alerts`). */
   createAlert(input: In<typeof CreateAlert>): Promise<Alert>;
   clearAlert(id: string): Promise<Alert>;

@@ -16,19 +16,52 @@ export const Table = z.object({
   number: z.number().int().min(1).max(999),
   /** Set when the shop calls it something else: "Bar 3". Null shows "Table 12". */
   label: z.string().trim().max(40).nullable(),
-  /** "back patio". */
+  /** "back patio", "by the window". */
   area: z.string().trim().max(40).nullable(),
+  /** How many it seats: the Seat sheet offers tables that fit first. */
+  seats: z.number().int().min(1).max(40),
 });
 export type Table = z.infer<typeof Table>;
 
-export const TableInput = Table.pick({ number: true, label: true, area: true });
+export const TableInput = Table.pick({ number: true, label: true, area: true, seats: true });
 
 /**
- * A tile on Floor. Its tab is the table's open order. `ordering` is a tab with items; `bill_sent`
- * once its bill is on the table's Point; `paid` until the table is cleared.
+ * A table held for a party just seated (seating addendum). Its Point shows their first name, or
+ * Reserved when `showName` is off, until the first item lands on the tab, staff mark them seated,
+ * or `HOLD_SECONDS` pass.
+ */
+export const TableHold = z.object({ partyId: Id, showName: z.boolean(), seatedAt: Timestamp, expiresAt: Timestamp });
+export type TableHold = z.infer<typeof TableHold>;
+
+/**
+ * Call or Bill, pressed on a table's Pay case. One open request of each kind per table: a second
+ * press while one is open changes nothing. `bill_sent` is a Bill answered by sending the bill.
+ */
+export const TableRequest = z.object({
+  id: Id,
+  tableId: Id,
+  pointId: Id,
+  kind: z.enum(['call', 'bill']),
+  at: Timestamp,
+  state: z.enum(['open', 'answered', 'bill_sent']),
+  answeredBy: Id.nullable(),
+  answeredAt: Timestamp.nullable(),
+  /** "$62.00" on the strip, when the bill was sent. */
+  billCents: z.number().int().min(0).nullable(),
+});
+export type TableRequest = z.infer<typeof TableRequest>;
+
+/**
+ * A tile on Floor. Its tab is the table's open order. `held` while it waits for its party;
+ * `ordering` is a tab with items; `bill_sent` once its bill is on the table's Point; `paid` until
+ * the table is cleared. An open Call turns the tile amber whatever its status.
  */
 export const TableView = Table.extend({
-  status: z.enum(['free', 'seated', 'ordering', 'bill_sent', 'paid']),
+  status: z.enum(['free', 'held', 'seated', 'ordering', 'bill_sent', 'paid']),
+  /** "Held for Ana": the party's first name, for staff. Null when not held. */
+  hold: TableHold.extend({ partyName: z.string() }).nullable(),
+  /** Its open Call or Bill, if any. */
+  request: TableRequest.nullable(),
   /** Set from seated to paid. */
   seatedAt: Timestamp.nullable(),
   orderId: Id.nullable(),
@@ -79,12 +112,21 @@ export const AddParty = z.object({
 
 export const UpdateParty = z.object({
   tableId: Id.nullable().optional(),
-  state: z.enum(['waiting', 'seated', 'left']).optional(),
+  state: z.enum(['waiting', 'left']).optional(),
   position: z.number().int().min(1).optional(),
 });
 
-/** The Floor page in one read. */
-export const Floor = z.object({ tables: z.array(TableView), waitlist: Waitlist });
+/**
+ * Seat a party (`POST /waitlist/:partyId/seat`): seated, the table held, its Point held, Table ready
+ * on the door's Point, and a text if asked (and they left a number). Seating them again at the same
+ * table changes nothing.
+ */
+export const SeatParty = z.object({ tableId: Id, showName: z.boolean(), text: z.boolean() });
+export const PartySeated = z.object({ party: WaitlistParty, table: TableView });
+export type PartySeated = z.infer<typeof PartySeated>;
+
+/** The Floor page in one read, with Calls and bills from the last hour. */
+export const Floor = z.object({ tables: z.array(TableView), waitlist: Waitlist, requests: z.array(TableRequest) });
 export type Floor = z.infer<typeof Floor>;
 
 // ---- Alerts --------------------------------------------------------------------------------------------

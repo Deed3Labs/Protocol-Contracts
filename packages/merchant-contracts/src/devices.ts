@@ -24,10 +24,21 @@ export const POINT_PLACEMENTS = ['counter', 'table', 'door'] as const;
 export const PointPlacement = z.enum(POINT_PLACEMENTS);
 export type PointPlacement = z.infer<typeof PointPlacement>;
 
-/** What a Point shows when nothing is open: Pay here, the Menu, or a Showcase of some groups. */
-export const POINT_IDLE_MODES = ['pay', 'menu', 'showcase'] as const;
+/**
+ * What a Point shows when nothing is open: its table's Number (large, with the menu code), the
+ * Menu, a Showcase of some groups, or Pay here. A door Point shows the wait list, which isn't one of
+ * the pane's four.
+ */
+export const POINT_IDLE_MODES = ['number', 'menu', 'showcase', 'pay', 'waitlist'] as const;
 export const PointIdleMode = z.enum(POINT_IDLE_MODES);
 export type PointIdleMode = z.infer<typeof PointIdleMode>;
+
+/** The idle mode a Point starts with, by where it goes (seating addendum). */
+export const DEFAULT_IDLE_MODE: Record<z.infer<typeof PointPlacement>, PointIdleMode> = { table: 'number', counter: 'pay', door: 'waitlist' };
+
+/** The Pay case's Bill button: send the table's bill to its Point, or just tell staff. */
+export const BillButton = z.enum(['send_bill', 'notify']);
+export type BillButton = z.infer<typeof BillButton>;
 
 export const PointSettings = z.object({
   placement: PointPlacement,
@@ -40,6 +51,13 @@ export const PointSettings = z.object({
   mixUp: z.boolean(),
   /** "Menu at lunch, Pay here after 9pm." */
   byTimeOfDay: z.boolean(),
+  /**
+   * The M2 in this Point's Pay case (a `Reader` id), linked once in its pane. One reader links to one
+   * Point. The tablet borrows it while this table pays; the Point itself never drives it.
+   */
+  readerId: Id.nullable(),
+  /** The Pay case's buttons: Call pages whoever is on shift; Bill sends the bill or tells staff. */
+  buttons: z.object({ call: z.boolean(), bill: BillButton }),
   /** Drawn off with "Coming later": they need ordering from the phone. Fixed false until then. */
   suggestBeforePaying: z.literal(false),
   oneMoreRound: z.literal(false),
@@ -56,6 +74,8 @@ export const PointHealth = z.object({
   rssi: z.number().int().min(-127).max(0),
   ssid: z.string().nullable(),
   firmware: z.string().min(1),
+  /** A Pay case, detected through the pogo pins, and whether its buttons answer. Null: no case. */
+  case: z.object({ kind: z.literal('pay'), buttons: z.enum(['ok', 'fault']) }).nullable(),
   /** Whether a newer firmware is published for it. */
   firmwareCurrent: z.boolean(),
   lastSeenAt: Timestamp,
@@ -63,21 +83,33 @@ export const PointHealth = z.object({
 export type PointHealth = z.infer<typeof PointHealth>;
 
 /**
- * What a Point is showing, as the server owns it. One schema for the merchant app, the device API
- * and the phone page, so the three can't disagree (`pointStateFor` on the server).
+ * What a Point is showing, as the server owns it. One schema for the merchant app and the device
+ * API (`pointStateFor` on the server); the phone page gets only a `view` from it, never a name.
  *
  * - `idle`: nothing open; it shows its idle mode.
+ * - `held`: its table is held for a party just seated: inverted, their first name (null shows
+ *   Reserved), the ready light on, until the first item, staff marking them seated, or 15 minutes.
  * - `bill`: an order sent to it and not yet paid. `paid` once the order is paid, for a while.
+ * - `called`, `bill_asked`: the Pay case's Call or Bill was pressed and staff are told; until it is
+ *   answered, or 10 minutes. Then back to what it showed before.
  * - `alert`: Table ready or Order ready, over anything, until it expires or is cleared.
- * - `waitlist`: a door Point, taking names.
  * - `test`: the test screen from its pane.
  */
 export const PointState = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('idle'), mode: PointIdleMode }),
+  z.object({
+    kind: z.literal('held'),
+    tableId: Id,
+    partyName: z.string().nullable(),
+    partySize: z.number().int().min(1),
+    seatedAt: Timestamp,
+    expiresAt: Timestamp,
+  }),
   z.object({ kind: z.literal('bill'), orderId: Id, since: Timestamp }),
   z.object({ kind: z.literal('paid'), orderId: Id, since: Timestamp }),
+  z.object({ kind: z.literal('called'), requestId: Id, since: Timestamp, expiresAt: Timestamp }),
+  z.object({ kind: z.literal('bill_asked'), requestId: Id, since: Timestamp, expiresAt: Timestamp }),
   z.object({ kind: z.literal('alert'), alertId: Id, since: Timestamp, expiresAt: Timestamp }),
-  z.object({ kind: z.literal('waitlist'), since: Timestamp }),
   z.object({ kind: z.literal('test'), since: Timestamp }),
 ]);
 export type PointState = z.infer<typeof PointState>;
@@ -93,23 +125,46 @@ export type ShowOnPoint = z.infer<typeof ShowOnPoint>;
 
 /** How long a paid bill stays on a Point before it goes back to idle. */
 export const POINT_PAID_SECONDS = 180;
+/** A hold clears by itself after 15 minutes (seating addendum). */
+export const HOLD_SECONDS = 900;
+/** Call and Bill fall back after 10 minutes unanswered (Pay case addendum). */
+export const TABLE_REQUEST_SECONDS = 600;
+
+type Kind<K extends PointState['kind']> = Extract<PointState, { kind: K }>;
 
 /**
- * What a Point shows at `now`, from what was last sent to it and any alert over it. Pure, so the
- * server, the mock and the fake Point agree: an alert covers anything until it expires; a paid bill
- * holds for `POINT_PAID_SECONDS`, then idle.
+ * What a Point shows at `now`. Pure, so the server, the mock and the fake Point agree. Each layer
+ * covers the ones under it while it lasts:
+ *
+ *   alert  >  called / bill_asked  >  bill / paid / test  >  held  >  idle
+ *
+ * So a Call over a bill falls back to the bill when answered, a bill sent to a held table wins (the
+ * server clears the hold too), and a paid bill holds for `POINT_PAID_SECONDS`, then idle.
  */
 export function pointShowing(
-  input: { base: PointState; alert: Extract<PointState, { kind: 'alert' }> | null; idleMode: PointIdleMode },
+  input: {
+    /** The last thing sent to it; idle when nothing was. */
+    base: Kind<'idle'> | Kind<'bill'> | Kind<'paid'> | Kind<'test'>;
+    hold: Kind<'held'> | null;
+    request: Kind<'called'> | Kind<'bill_asked'> | null;
+    alert: Kind<'alert'> | null;
+    idleMode: PointIdleMode;
+  },
   now: Date,
 ): PointState {
   const t = now.getTime();
-  if (input.alert && Date.parse(input.alert.expiresAt) > t) return input.alert;
+  const live = (x: { expiresAt: string } | null) => x !== null && Date.parse(x.expiresAt) > t;
+  if (live(input.alert)) return input.alert!;
+  if (live(input.request)) return input.request!;
   const b = input.base;
-  if (b.kind === 'paid' && t - Date.parse(b.since) >= POINT_PAID_SECONDS * 1000) return { kind: 'idle', mode: input.idleMode };
-  if (b.kind === 'idle' || b.kind === 'alert') return { kind: 'idle', mode: input.idleMode };
-  return b;
+  if (b.kind === 'bill' || b.kind === 'test') return b;
+  if (b.kind === 'paid' && t - Date.parse(b.since) < POINT_PAID_SECONDS * 1000) return b;
+  if (live(input.hold)) return input.hold!;
+  return { kind: 'idle', mode: input.idleMode };
 }
+
+/** Whether a Point's screen is lit: held, called or bill asked. The ring lights share the pin. */
+export const pointLit = (s: PointState) => s.kind === 'held' || s.kind === 'called' || s.kind === 'bill_asked';
 
 // ---- A cash drawer -------------------------------------------------------------------------------
 
@@ -230,6 +285,13 @@ export type PointKey = z.infer<typeof PointKey>;
 /** `POST /api/device/point/health`. */
 export const PointHealthReport = PointHealth.omit({ lastSeenAt: true, firmwareCurrent: true });
 export type PointHealthReport = z.infer<typeof PointHealthReport>;
+
+/**
+ * `POST /api/device/point/event`: a Pay case button. Pressed offline, it is sent when the connection
+ * returns if it's under two minutes old, otherwise dropped.
+ */
+export const PointEvent = z.object({ kind: z.literal('button'), button: z.enum(['call', 'bill']), at: Timestamp });
+export type PointEvent = z.infer<typeof PointEvent>;
 
 // ---- The drawer's log --------------------------------------------------------------------------------
 

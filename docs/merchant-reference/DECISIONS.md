@@ -962,3 +962,59 @@ code or the earlier references:
   (`POST /api/r/:code/email`), rate-limited by address and by receipt.
 - **The mock refuses the new calls** ("Not in the mock yet") until the Terminal screens fill them in
   (Phase 4). The real client already maps each to its route.
+
+## Terminal addendum: table numbers and seating a party (2026-10-15)
+
+The terminal reference was replaced with the version that draws section 8b (Seating a party), the
+held tile and the Number idle screen. It arrived after Hard Stop 2, so its contract changes are an
+amendment, approved before the API builds on them.
+
+- **Idle modes are Number, Menu, Showcase and Pay here**, Number first, as the pane draws them. A door
+  Point idles on the wait list, which the pane doesn't offer, so `PointIdleMode` has a fifth value,
+  `waitlist`, and `PointState` no longer has its own wait-list state. Defaults by placement
+  (`DEFAULT_IDLE_MODE`): table → number, counter → pay, door → waitlist.
+- **Held is a layer, not a replacement.** `pointShowing` now takes the last thing sent (idle, bill,
+  paid, test), a hold, a Call or Bill request and an alert, and shows the top one that's live:
+  alert, then request, then bill/paid/test, then held, then idle. So a bill sent to a held table
+  wins (the server also clears the hold), and a hold that lapses falls back to the number by
+  itself, on the Point too.
+- **The phone page carries no Point state.** `PublicPoint` has only its `view`; a held table is
+  `menu`. The state (with the party's first name) is in `PointScreen`, for the Point alone. The
+  public schema drops anything it doesn't name, and a test parses a held screen through it and
+  checks the name is gone.
+- **Tables have seats and a hold.** `Table.seats`; `TableHold` (party, show name, seated at,
+  expires at); a `held` tile status, with the party's name for staff ("Held for Ana").
+- **Seat is one call**, `seatParty(partyId, {tableId, showName, text})` → `POST /waitlist/:id/seat`:
+  party seated, table and its Point held, Table ready on the door Point, the text if asked. The same
+  seat again changes nothing. `seatTable(tableId)` is now staff marking a table seated (a walk-in, or
+  the held party sitting down), which clears the hold. A party is no longer seated through
+  `updateParty`.
+- **A hold clears** on the first item on the tab, staff marking the table seated, or
+  `HOLD_SECONDS` (15 minutes), whichever is first; the timeout runs in the existing jobs.
+- **Mock seed, for Phase 4:** Table 6 held for Ana (2, seated 7:58 PM); the wait list Lee, Marco,
+  Priya; tables 1 and 6 seat 2, 14 seats 4.
+
+## Terminal addendum 2: the Pay case (2026-10-15)
+
+- **A Point can be a card terminal; the tablet does the work.** The Pay case holds a Stripe M2 under
+  the Point with two buttons. Only the Stripe Terminal SDK on a tablet or phone can drive an M2. **The
+  Point never talks to the reader**: it detects the case, sends button presses, and shows the
+  screens. Don't build a path where it does.
+- **One reader at a time.** Stripe's SDK connects an app to one reader and one operation at a time.
+  The tablet connects to a table's reader when that table's bill is sent to a Point with a linked
+  reader, lets go when the payment succeeds, fails or is cancelled, when the bill is withdrawn, or
+  after 5 minutes idle, and returns to the counter's reader. A second table waits in a queue (the
+  "Next" row); a payment in progress is never interrupted.
+- **Contracts:** `PointHealth.case` (`{kind: 'pay', buttons: 'ok' | 'fault'}` or null);
+  `PointSettings.readerId` (one reader to one Point) and `buttons` (`call`, `bill: 'send_bill' |
+  'notify'`); `PointState` gains `called` and `bill_asked` (`TABLE_REQUEST_SECONDS`, 10 minutes);
+  `TableRequest`; `PointEvent` for `POST /api/device/point/event`; `tableRequests()` and
+  `answerTableRequest(id)`; the Floor read carries the last hour's requests.
+- **Lit** (`pointLit`): held, called and bill asked light the screen; the ring lights share the
+  ready light's pin, so one flag drives both.
+- **Live updates to tablets:** the tablet polls the floor and requests every 4 seconds while Home or
+  Tables is open, the rate the "waiting" screens already use. A stream can replace it later.
+- **Measured on a real M2: not yet.** How long connecting and letting go take decides whether the
+  background connect is fast enough. There's no M2 on this Mac; the figure goes here once measured.
+- **Mock seed, for Phase 4:** Table 12 in a Pay case with M2 1A3F; an open Call on 12 from a minute
+  ago; Table 4's bill just sent ($62.00); Table 9's call answered by Luis at 8:01pm.
