@@ -1,0 +1,107 @@
+# Type checking, tests and the Hardhat suite for pull requests.
+#
+# Vercel only produces the sites (`build:vercel`); this is what keeps a type error out of `dev`.
+# Make the `ci` job a required check on `dev` (and `main`): it always reports, and it fails if any
+# job that had to run failed.
+#
+# Path filtering happens in the `changes` job rather than in `on.pull_request.paths`. A workflow
+# filtered out by `paths` never reports, and a required check that never reports blocks the PR
+# forever; a skipped job inside a workflow that ran counts as passed.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.filter.outputs.apps }}
+      api: ${{ steps.filter.outputs.api }}
+      contracts: ${{ steps.filter.outputs.contracts }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+      - id: filter
+        # The checkout is GitHub's merge of the PR into its base, so the first parent is the base.
+        run: |
+          git diff --name-only HEAD^1 HEAD > changed.txt
+          match() { grep -qE "$1" changed.txt && echo true || echo false; }
+          root='^(package\.json|package-lock\.json|\.github/workflows/ci\.yml)$'
+          {
+            # apps/api counts: the member tests read API source.
+            echo "apps=$(match "^(apps/(member|merchant|api)|packages)/|^(turbo\.json|tsconfig\.json|\.npmrc)$|$root")"
+            echo "api=$(match '^apps/api/')"
+            echo "contracts=$(match "^(contracts|test|deploy)/|^hardhat\.config\.ts$|$root")"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
+
+  apps:
+    name: Apps (typecheck, test)
+    needs: changes
+    if: needs.changes.outputs.apps == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # turbo --affected compares with the base branch, so it needs the history to find it.
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.6
+      - run: npm ci --no-audit --no-fund
+      - run: npx turbo run typecheck test --affected
+      - name: Member tests (they read apps/api source, which turbo can't see)
+        if: needs.changes.outputs.api == 'true'
+        run: npx turbo run test --filter=@clear/member
+      - name: Lint (advisory until the existing errors are fixed)
+        continue-on-error: true
+        run: npx turbo run lint --affected
+
+  contracts:
+    name: Contracts (hardhat test)
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: solc-${{ hashFiles('hardhat.config.ts') }}
+      - run: npm ci --no-audit --no-fund
+      - run: npx hardhat test
+
+  ci:
+    name: ci
+    needs: [changes, apps, contracts]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job that had to run passed
+        run: |
+          echo "changes=${{ needs.changes.result }} apps=${{ needs.apps.result }} contracts=${{ needs.contracts.result }}"
+          case "${{ needs.changes.result }} ${{ needs.apps.result }} ${{ needs.contracts.result }}" in
+            *failure*|*cancelled*) exit 1 ;;
+          esac

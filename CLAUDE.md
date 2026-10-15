@@ -13,3 +13,7 @@ So:
 - Commit as often as you like, but push at the end of a phase or a hard stop, not after every commit.
 - The first push of a new branch happens before its PR exists, so it gets no preview. If you need one straight away, open the PR and push again.
 - For pushes that only touch docs or prompts, put `[skip preview]` in the commit message.
+
+## CI
+
+Vercel only builds the sites (`build:vercel`, no `tsc`). Type checking and tests run in GitHub Actions (`.github/workflows/ci.yml`) on pull requests, and the `ci` check is what blocks a merge. Before pushing, run `npx turbo run typecheck test --affected` (Node 22, with bun installed).
