@@ -1,4 +1,5 @@
 {
+  "ignoreCommand": "bash ../../scripts/vercel-ignore.sh apps/member",
   "rewrites": [
     {
       "source": "/(.*)",
@@ -16,4 +17,4 @@
       ]
     }
   ]
-} 
+}

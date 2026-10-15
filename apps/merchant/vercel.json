@@ -2,6 +2,7 @@
   "installCommand": "cd ../.. && npm install",
   "buildCommand": "cd ../.. && npm run build:merchant",
   "outputDirectory": "dist",
+  "ignoreCommand": "bash ../../scripts/vercel-ignore.sh apps/merchant",
   "rewrites": [
     {
       "source": "/(.*)",
