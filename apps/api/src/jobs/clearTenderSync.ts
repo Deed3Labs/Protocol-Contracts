@@ -2,6 +2,7 @@ import { merchantDb } from '../config/merchantDb.js';
 import { chargeEvents } from '../services/chargeStore.js';
 import { clearChargesFor } from '../services/merchant/orders/clearCharges.js';
 import { syncClearTender } from '../services/merchant/orders/payments.js';
+import { touchShop } from '../services/merchant/terminal/bus.js';
 
 /*
  * Keeps Clear tenders in step with their charges.
@@ -21,7 +22,11 @@ async function syncByCode(code: string): Promise<void> {
   const db = await merchantDb();
   if (!db) return;
   const { rows } = await db.query<{ id: string; merchant: string }>(`SELECT id, merchant FROM payments.tenders WHERE clear_charge_code = $1 AND status = 'pending'`, [code]);
-  for (const t of rows) await syncClearTender(db, clearChargesFor(db), { merchant: t.merchant, tenderId: t.id, actor: null });
+  for (const t of rows) {
+    await syncClearTender(db, clearChargesFor(db), { merchant: t.merchant, tenderId: t.id, actor: null });
+    // A member who paid from a Point: the bill turns to Paid there.
+    touchShop(t.merchant);
+  }
 }
 
 export async function sweepClearTenders(): Promise<void> {
@@ -35,9 +40,9 @@ export async function sweepClearTenders(): Promise<void> {
     );
     const clear = clearChargesFor(db);
     for (const t of rows) {
-      await syncClearTender(db, clear, { merchant: t.merchant, tenderId: t.id, actor: null }).catch((error) =>
-        console.error(`[clear-tenders] ${t.id}:`, error instanceof Error ? error.message : error),
-      );
+      await syncClearTender(db, clear, { merchant: t.merchant, tenderId: t.id, actor: null })
+        .then(() => touchShop(t.merchant))
+        .catch((error) => console.error(`[clear-tenders] ${t.id}:`, error instanceof Error ? error.message : error));
     }
   } catch (error) {
     console.error('[clear-tenders] sweep failed:', (error as Error)?.message);

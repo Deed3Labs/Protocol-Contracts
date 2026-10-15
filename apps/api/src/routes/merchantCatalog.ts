@@ -56,6 +56,8 @@ router.post('/reorders', requireMerchant, requireManager, (req, res) => run(res,
 router.post('/reorders/:id/receive', requireMerchant, requireManager, (req, res) =>
   run(res, (db) => catalog.receiveReorder(db, { merchant: m(req), staffId: staff(req), reorderId: String(req.params.id), quantity: Number(req.body?.quantity) })),
 );
+router.get('/catalog/categories', requireMerchant, (req, res) => run(res, (db) => catalog.categoryOrder(db, m(req))));
+router.put('/catalog/categories', requireMerchant, requireManager, (req, res) => run(res, (db) => catalog.saveCategoryOrder(db, { merchant: m(req), order: req.body })));
 router.get('/discount-codes', requireMerchant, (req, res) => run(res, (db) => catalog.listDiscountCodes(db, m(req))));
 router.post('/discount-codes', requireMerchant, requireManager, (req, res) => run(res, (db) => catalog.createDiscountCode(db, { merchant: m(req), staffId: staff(req), code: req.body })));
 

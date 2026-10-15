@@ -38,6 +38,8 @@ import merchantCloseRouter from './merchantClose.js';
 import merchantReportsRouter from './merchantReports.js';
 import merchantShiftsRouter from './merchantShifts.js';
 import merchantBankRouter from './merchantBank.js';
+import { merchantTerminalRouter } from './merchantTerminal.js';
+import { touchShop } from '../services/merchant/terminal/bus.js';
 
 /**
  * The merchant surface.
@@ -56,6 +58,13 @@ import merchantBankRouter from './merchantBank.js';
 // Every handler below is async, and Express 4 lets a rejected one hang the request forever rather
 // than answering. This makes them fail loudly instead — including the ones added after today.
 const merchantRouter = forwardAsyncErrors(Router());
+
+// Clear Terminal: a change that went through tells the shop's Points to look again, so a bill turns
+// to Paid on the table the moment the tender lands (services/merchant/terminal/bus.ts).
+merchantRouter.use((req, res, next) => {
+  if (req.method !== 'GET') res.on('finish', () => req.merchant && res.statusCode < 400 && touchShop(req.merchant.merchant));
+  next();
+});
 
 // Card processing: availability and connecting the shop's processor (routes/merchantCards.ts).
 merchantRouter.use('/cards', merchantCardsRouter);
@@ -77,6 +86,8 @@ merchantRouter.use(merchantRefundsReceiptsRouter);
 merchantRouter.use(merchantCloseRouter);
 // Card deposits, Overview, reconciliation (routes/merchantReports.ts).
 merchantRouter.use(merchantReportsRouter);
+// Clear Terminal: hardware, Points, the drawer's log, tables, the wait list (routes/merchantTerminal.ts).
+merchantRouter.use(merchantTerminalRouter());
 
 /** Sign-in is scoped to one shop: a four-digit PIN only means anything against a merchant. */
 function merchantOf(req: Request): string {

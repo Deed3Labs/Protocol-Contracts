@@ -68,10 +68,21 @@ export async function createCashTender(db: Db, input: { merchant: string; orderI
     if (again) return again;
     if (change < 0) throw new PaymentError(`That’s ${-change} cents short`, 'short');
     const order = await checkNewTender(tx, { merchant: input.merchant, orderId: input.orderId, method: 'cash', amountCents: t.amountCents });
-    const drawer = await lockOpenDrawer(tx, input.merchant).catch((error) => {
-      if (error instanceof DrawerError) throw new PaymentError(error.message, 'drawer_closed');
-      throw error;
-    });
+    // Queued offline: the drawer session open when the cash was taken, by the tablet's clock.
+    const takenOffline = t.clientCreatedAt
+      ? (
+          await tx.query<{ id: string }>(
+            `SELECT id FROM payments.drawer_sessions WHERE merchant = $1 AND opened_at <= $2 AND (closed_at IS NULL OR closed_at > $2) ORDER BY opened_at DESC LIMIT 1`,
+            [input.merchant, t.clientCreatedAt],
+          )
+        ).rows[0]
+      : undefined;
+    const drawer =
+      takenOffline ??
+      (await lockOpenDrawer(tx, input.merchant).catch((error) => {
+        if (error instanceof DrawerError) throw new PaymentError(error.message, 'drawer_closed');
+        throw error;
+      }));
     const { rows } = await tx.query<TenderRow>(
       `INSERT INTO payments.tenders (id, merchant, order_id, method, amount_cents, tip_cents, status, idempotency_key, request_hash, tip_staff_id, created_by,
           drawer_session_id, handed_over_cents, change_cents)
@@ -84,7 +95,7 @@ export async function createCashTender(db: Db, input: { merchant: string; orderI
       action: 'tender.cash_taken',
       ref: { type: 'tender', id: rows[0]!.id },
       amountCents: t.amountCents + t.tipCents,
-      detail: { orderId: order.id, tipCents: t.tipCents, handedOverCents: t.handedOverCents, changeCents: change, drawerSessionId: drawer.id },
+      detail: { orderId: order.id, tipCents: t.tipCents, handedOverCents: t.handedOverCents, changeCents: change, drawerSessionId: drawer.id, ...(t.clientCreatedAt ? { takenAt: t.clientCreatedAt } : {}) },
     });
     await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: input.staffId });
     return rows[0]!;

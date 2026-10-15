@@ -36,6 +36,8 @@ export function fakeProvider(opts: { provider?: CardProviderName; platformFee?: 
   const id = (p: string) => `${p}_fake_${++seq}_${Math.random().toString(36).slice(2, 6)}`;
   const payments = new Map<string, FakePayment>();
   const byKey = new Map<string, string>();
+  const checkouts = new Map<string, { paymentId: string; successUrl: string }>();
+  const checkoutByKey = new Map<string, string>();
   const status = new Map<string, ConnectorAccountStatus>();
   const refundByKey = new Map<string, RefundSnapshot>();
   const calls = {
@@ -117,6 +119,17 @@ export function fakeProvider(opts: { provider?: CardProviderName; platformFee?: 
       payments.set(p.id, p);
       byKey.set(idempotencyKey, p.id);
       return { snapshot: snap(p), clientSecret: `${p.id}_secret` };
+    },
+    async createCheckout(account, { amountCents, applicationFeeCents, metadata, idempotencyKey, successUrl }) {
+      noFee(applicationFeeCents);
+      const again = checkoutByKey.get(idempotencyKey);
+      if (again) return { sessionId: again, url: `https://checkout.example/${again}` };
+      const p: FakePayment = { id: id('pi'), account, amount: amountCents, capturable: 0, fee: applicationFeeCents, state: 'waiting', declineCode: null, card: null, incremental: false, metadata, captured: 0, refunded: 0 };
+      payments.set(p.id, p);
+      const sessionId = id('cs');
+      checkouts.set(sessionId, { paymentId: p.id, successUrl });
+      checkoutByKey.set(idempotencyKey, sessionId);
+      return { sessionId, url: `https://checkout.example/${sessionId}` };
     },
     async getPayment(_account, paymentId) {
       return snap(get(paymentId));
@@ -219,5 +232,16 @@ export function fakeProvider(opts: { provider?: CardProviderName; platformFee?: 
     payoutsById.get(payoutId)!.status = status;
   };
 
-  return { provider, calls, status, payments, knobs, tap, decline, balance, payout, adjust, setPayoutStatus };
+  /** The customer pays a checkout on their phone: captured at once. Returns the payment's id. */
+  const payCheckout = (sessionId: string, opts: { brand?: string; last4?: string } = {}) => {
+    const c = checkouts.get(sessionId);
+    if (!c) throw new Error(`No checkout ${sessionId}`);
+    const p = get(c.paymentId);
+    p.state = 'captured';
+    p.captured = p.amount;
+    p.card = { brand: opts.brand ?? 'visa', last4: opts.last4 ?? '4242' };
+    return p.id;
+  };
+
+  return { provider, calls, status, payments, knobs, tap, decline, balance, payout, adjust, setPayoutStatus, checkouts, payCheckout };
 }

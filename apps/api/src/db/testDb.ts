@@ -32,7 +32,7 @@ export const LAZY_MERCHANT_TABLES = `
     secret TEXT NOT NULL DEFAULT 'x', active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
-  CREATE TABLE merchant.devices (id TEXT PRIMARY KEY, merchant TEXT NOT NULL, label TEXT NOT NULL);
+  CREATE TABLE merchant.devices (id TEXT PRIMARY KEY, merchant TEXT NOT NULL, label TEXT NOT NULL, revoked_at TIMESTAMPTZ);
   CREATE TABLE merchant.profiles (
     merchant TEXT PRIMARY KEY, name TEXT NOT NULL,
     founding BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMPTZ NOT NULL DEFAULT now()

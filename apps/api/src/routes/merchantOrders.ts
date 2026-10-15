@@ -13,7 +13,8 @@ import { taxStatus } from '../services/merchant/tax/taxService.js';
  *
  *   GET    /orders?date=YYYY-MM-DD        the day's orders (default today)
  *   GET    /orders/history?from=&to=      orders over a range of days (93 at most), each with its tenders
- *   POST   /orders                        raise one: lines (items with options, or quick sales), customer
+ *   POST   /orders                        raise one: lines (items with options, or quick sales), customer; a
+ *                                        table's tab, how it leaves, a retry key, or a cash sale rung up offline
  *   GET    /orders/:id
  *   PUT    /orders/:id/lines              change the lines while nothing is paid or being paid
  *   POST   /orders/:id/discount           one per order: a code, or manual with a reason (PIN over the limit)
@@ -79,7 +80,10 @@ router.get('/orders/history', requireMerchant, (req, res) =>
   }),
 );
 router.post('/orders', requireMerchant, (req, res) =>
-  run(res, (db) => orders.createOrder(db, deps(), { merchant: m(req), staffId: req.merchant!.staff.id, lines: req.body?.lines, customer: req.body?.customer, name: req.body?.name })),
+  run(res, (db) => {
+    const { lines, ...rest } = (req.body ?? {}) as Record<string, unknown>;
+    return orders.createOrder(db, deps(), { merchant: m(req), staffId: req.merchant!.staff.id, lines, request: rest });
+  }),
 );
 router.get('/orders/:id', requireMerchant, (req, res) => run(res, (db) => orders.getOrder(db, m(req), String(req.params.id))));
 router.put('/orders/:id/lines', requireMerchant, (req, res) =>

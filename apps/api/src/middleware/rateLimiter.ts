@@ -8,7 +8,12 @@ const cacheServicePromise = getRedisClient().then((client) => new CacheService(c
  */
 export async function rateLimiter(
   windowMs: number = 60000,
-  maxRequests: number = 100
+  maxRequests: number = 100,
+  /**
+   * Count every path under one name per address, instead of each path on its own. For routes keyed
+   * by a short code (the phone pages), where a path per guess would give each guess its own allowance.
+   */
+  bucket?: string,
 ) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -17,8 +22,9 @@ export async function rateLimiter(
       // req.ip is proxy-aware because app.set('trust proxy', 1) is enabled in index.ts.
       const identifier = req.ip || req.socket.remoteAddress || 'unknown';
       const scope = (process.env.RATE_LIMIT_SCOPE || 'path').trim().toLowerCase();
-      const scopedIdentifier =
-        scope === 'ip'
+      const scopedIdentifier = bucket
+        ? `${identifier}:${bucket}`
+        : scope === 'ip'
           ? identifier
           : `${identifier}:${req.method}:${(req.baseUrl || '')}${req.path || ''}`;
       const window = Math.floor(Date.now() / windowMs).toString();
@@ -56,4 +62,12 @@ export function createRateLimiter(
   maxRequests: number = 100
 ) {
   return rateLimiter(windowMs, maxRequests);
+}
+
+/** A limiter by address under one bucket, usable where a router is built (the async setup runs once). */
+export function limitByAddress(bucket: string, windowMs: number, maxRequests: number) {
+  const ready = rateLimiter(windowMs, maxRequests, bucket);
+  return (req: Request, res: Response, next: NextFunction) => {
+    void ready.then((mw) => mw(req, res, next), () => next());
+  };
 }

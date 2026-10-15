@@ -139,6 +139,15 @@ export interface CardConnectorProvider {
     account: string,
     input: { amountCents: number; applicationFeeCents: number; metadata: Record<string, string>; idempotencyKey: string },
   ): Promise<{ snapshot: PaymentSnapshot; clientSecret: string }>;
+  /**
+   * A card paid from the phone page (Clear Terminal): a hosted checkout on the shop's own account,
+   * captured when paid, with Clear's fee taken as on any card sale. Optional: a processor without
+   * one simply doesn't offer card on the phone page.
+   */
+  createCheckout?(
+    account: string,
+    input: { amountCents: number; applicationFeeCents: number; lineName: string; successUrl: string; cancelUrl: string; metadata: Record<string, string>; idempotencyKey: string },
+  ): Promise<{ sessionId: string; url: string }>;
   getPayment(account: string, paymentId: string): Promise<PaymentSnapshot>;
   /** Raise the hold to a new total. Throws CardDeclined if the card won't take it; the old hold stands. */
   raiseAuthorisation(account: string, paymentId: string, input: { amountCents: number; applicationFeeCents: number }): Promise<PaymentSnapshot>;

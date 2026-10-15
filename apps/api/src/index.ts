@@ -63,6 +63,9 @@ import { startSessionCleanup } from './jobs/sessionCleanup.js';
 import { startStripeEventProcessor } from './jobs/stripeEventProcessor.js';
 import { startCardCaptureSafety } from './jobs/cardCaptureSafety.js';
 import { startClearTenderSync } from './jobs/clearTenderSync.js';
+import { startTerminalSweep } from './jobs/terminalSweep.js';
+import { devicePointRouter } from './routes/devicePoint.js';
+import { pointPageRouter, receiptPageRouter } from './routes/phonePages.js';
 import { startOutboxProcessor } from './jobs/outboxProcessor.js';
 import { startCardReconciliation } from './jobs/cardReconciliation.js';
 import { startClearFeeBilling } from './jobs/clearFeeBilling.js';
@@ -279,6 +282,11 @@ async function startServer() {
     // threat model. Individual routes attach requireMerchant/requireOwner; the mount does not,
     // because POST /session is how a shift starts and has no session yet.
     app.use('/api/merchant', merchantRouter);
+    // Clear Terminal: a Point's own API (its device key), and the public phone pages (no sign-in,
+    // limited by address). See routes/devicePoint.ts and routes/phonePages.ts.
+    app.use('/api/device/point', devicePointRouter());
+    app.use('/api/p', pointPageRouter());
+    app.use('/api/r', receiptPageRouter());
     app.use('/api/withdraw', requireAuth, withdrawRouter);
     app.use('/api/autopay', requireAuth, autopayRouter);
     app.use('/api/contacts', requireAuth, contactsRouter);
@@ -409,6 +417,8 @@ async function startServer() {
     startCardCaptureSafety();
     // Clear tenders follow their charges: approved, declined, expired, withdrawn.
     startClearTenderSync();
+    // Clear Terminal: holds, Calls and Bills that lapse.
+    startTerminalSweep();
     // Acts on what the back office announced: recording and reversing tax at Stripe.
     startOutboxProcessor();
     // Nightly: card payouts brought up to date, then our books checked against the processor's.

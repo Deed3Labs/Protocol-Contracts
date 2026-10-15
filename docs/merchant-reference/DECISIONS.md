@@ -1018,3 +1018,71 @@ amendment, approved before the API builds on them.
   background connect is fast enough. There's no M2 on this Mac; the figure goes here once measured.
 - **Mock seed, for Phase 4:** Table 12 in a Pay case with M2 1A3F; an open Call on 12 from a minute
   ago; Table 4's bill just sent ($62.00); Table 9's call answered by Luis at 8:01pm.
+
+## Terminal Phase 3: the API (2026-10-15)
+
+- **Where it lives.** `services/merchant/terminal/` (hardware, Point state, the drawer's log, the
+  floor, the phone pages); `routes/merchantTerminal.ts` on `/api/merchant`; `routes/devicePoint.ts`
+  on `/api/device/point`; `routes/phonePages.ts` on `/api/p` and `/api/r`. Migrations 0023 (hardware,
+  Point keys and states, the drawer's key and log, No sale approvals), 0024 (tables, holds, orders'
+  table and service type, the wait list, Call and Bill, alerts) and 0025 (on the menu, category
+  order, receipt codes, a checkout's session, the three settings).
+- **What a Point shows is worked out when asked** (`pointStateFor`), from what was last sent, the
+  table's hold, an open Call or Bill and an alert, through the contracts' `pointShowing`. So a paid
+  bill, a hold or a Call lapses on time with nothing running; the 30-second sweep
+  (`jobs/terminalSweep.ts`) only tidies the rows (a lapsed hold's table counts as seated) and wakes
+  the shop's Points.
+- **Points are woken, not pushed to.** Any merchant write that succeeds, a Clear tender the sync job
+  moves, and a checkout's webhook "touch" the shop; a Point's long poll or stream then asks
+  `pointStateFor` again. The wake is in-process: with more than one API instance, a Point on another
+  catches up when its wait ends (25 seconds at most).
+- **A Point on battery** asks `GET /state` with the ETag it has; the answer waits until the shop
+  changes or what it shows lapses by itself, else 304 after 25 seconds. **Plugged in**, it holds
+  `GET /stream` (server-sent events, a comment every 20 seconds).
+- **Points exist before they're sold.** `merchant.point_keys` has a row per Point made, so a typed code
+  can only claim a real, unclaimed one. Nothing adds those rows yet: the factory's list goes in with a
+  script like `terms-code.ts`, still to write. Claim gives a one-time secret (ten minutes); the Point
+  trades it for its device key at `POST /api/device/point/activate`. Only hashes are kept. Unpairing
+  drops the key, and the Point can be claimed again.
+- **The drawer's key** is sealed with the member data's envelope keyring when that is configured, and
+  stored as is when it isn't (so a development API works). Production should have the keyring set.
+- **A No sale's approval lasts two minutes** and opens the drawer once (`approval_id` is unique on
+  the log). A No sale needs the connection; a sale's open never does.
+- **Drawer events that arrive with the same time** keep the order they arrived in (a `seq` column):
+  a batch is in the order things happened.
+- **Offline cash sales.** The order's lines are priced here; its subtotal, tax and total are the
+  tablet's, its tax spread across the lines; its stock isn't checked (it's already gone); its
+  business date is the tablet's. The audit trail keeps what the server would have priced it at
+  beside the tablet's figure. The cash tender joins the drawer session open at the tablet's time.
+- **Call pressed again.** The Point's screen says "Press it again to cancel"; the addendum says one
+  request per table. Both hold: a press within three seconds of the first is the same press; a later
+  one cancels it. A press made offline counts if it arrives within two minutes.
+- **Bill with "Send the bill to the Point"** and a tab with items sends the bill through the same path
+  as staff (the hold clears, the request is recorded as `bill_sent` with its amount). Otherwise it
+  tells staff.
+- **The wait list's quote** is five minutes a party: "3 waiting · about 15 min".
+- **By time of day** shows Pay here from 9pm to 5am in the shop's time zone, the Menu otherwise. The
+  **test screen** goes back by itself after a minute.
+- **Texts.** Table ready says the spec's "Your table is ready: 6, by the window". Order ready isn't
+  drawn as a text; it takes the Point's words: "Mi Casa Tacos: order 27 is ready. Pick up at the
+  counter." Both go by the receipts' Twilio path (a new `shop_text` kind), and only to a number the
+  party agreed to be texted at, or an order's customer when that's a phone number.
+- **Receipt codes** are made the first time a paid order's receipt is read to print
+  (`GET /orders/:id/receipt`), and the receipt now carries its table ("Table 6, by the window").
+- **The phone pages** answer with `Cache-Control: no-store` (the member app's worker caches GETs to
+  `/api/`). Reads are limited to 120 a minute per address across every code, and paying, joining
+  and emailing to 10. The page is built from the Point's screen and parsed through `PublicPoint`,
+  which drops the Point's state, and the party's name with it.
+- **Card from the phone page** is a Stripe Checkout Session on the shop's account (`createCheckout`
+  on the connector, optional so a processor without it simply doesn't offer card there), captured at
+  once with `clearCardFee` as the application fee. The tender follows `checkout.session.completed`
+  (and `async_payment_succeeded`, `expired`), which **the Connect webhook endpoint in Stripe must be
+  subscribed to**. A paid card's details come from the charge's `card`, as the counter's come from
+  `card_present`.
+- **Where links point:** `POINT_PUBLIC_HOST` (default `useclear.org`) is what a Point prints;
+  `PHONE_PAGE_BASE_URL` (default the member app) is where Checkout returns and receipt emails link;
+  `POINT_API_BASE_URL` is what a claimed Point is told; `POINT_FIRMWARE_LATEST` marks firmware
+  current.
+- **Not yet:** the "Your table is ready" notification for a member who joined signed in (the wait
+  list keeps their wallet; Phase 5 sends it); the contract conformance run against a real Postgres
+  (`apps/api/e2e/contract.ts`).

@@ -3,6 +3,8 @@ import { applyPaymentSnapshot, applyRefundSnapshot } from '../cards/cardTenders.
 import type { CardConnectorProvider } from '../cards/connector.js';
 import { refundSnapshot } from '../cards/stripeConnector.js';
 import { syncPayout } from '../payouts/payoutSync.js';
+import { settleOrder } from '../orders/settle.js';
+import { touchShop } from '../terminal/bus.js';
 import type { Handlers } from './inbox.js';
 
 /**
@@ -46,6 +48,33 @@ export function cardPaymentHandlers(provider: () => CardConnectorProvider | null
     return catchUp(tx, event, typeof target === 'string' ? target : (target?.id ?? null));
   };
 
+  /**
+   * A phone page's checkout finished: its payment is the tender's from now on, and is applied as any
+   * card payment is. An expired one withdraws the tender, so the bill shows what's owed again.
+   */
+  const onCheckout: Handlers[string] = async (tx, event) => {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const { rows } = await tx.query<{ id: string; merchant: string; order_id: string; status: string }>(
+      'SELECT id, merchant, order_id, status FROM payments.tenders WHERE checkout_session_id = $1',
+      [session.id],
+    );
+    const t = rows[0];
+    if (!t) return;
+    // The event's transaction commits after this returns; the Points look again once it has.
+    setTimeout(() => touchShop(t.merchant), 500).unref?.();
+    if (event.type === 'checkout.session.expired') {
+      if (t.status === 'pending') {
+        await tx.query(`UPDATE payments.tenders SET status = 'cancelled', updated_at = now() WHERE id = $1 AND status = 'pending'`, [t.id]);
+        await settleOrder(tx, { merchant: t.merchant, orderId: t.order_id, actor: null });
+      }
+      return;
+    }
+    const paymentId = typeof session.payment_intent === 'string' ? session.payment_intent : (session.payment_intent?.id ?? null);
+    if (!paymentId) return;
+    await tx.query('UPDATE payments.tenders SET payment_intent_id = $2, updated_at = now() WHERE id = $1 AND payment_intent_id IS NULL', [t.id, paymentId]);
+    await catchUp(tx, event, paymentId);
+  };
+
   const onRefund: Handlers[string] = async (tx, event) => {
     const refund = event.data.object as Stripe.Refund;
     const { rows } = await tx.query<{ id: string; merchant: string }>('SELECT id, merchant FROM payments.refunds WHERE external_refund_id = $1', [refund.id]);
@@ -55,6 +84,9 @@ export function cardPaymentHandlers(provider: () => CardConnectorProvider | null
 
   return {
     ...Object.fromEntries(PAYMENT_EVENTS.map((type) => [type, onPayment])),
+    'checkout.session.completed': onCheckout,
+    'checkout.session.async_payment_succeeded': onCheckout,
+    'checkout.session.expired': onCheckout,
     'terminal.reader.action_succeeded': onReader,
     'terminal.reader.action_failed': onReader,
     'refund.updated': onRefund,

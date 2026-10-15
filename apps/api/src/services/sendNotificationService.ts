@@ -9,7 +9,7 @@ export interface SendNotificationResult {
 }
 
 type NotificationChannel = 'email' | 'sms';
-type NotificationKind = 'claim_link' | 'otp' | 'charge_alert' | 'refund_alert' | 'receipt' | 'statement';
+type NotificationKind = 'claim_link' | 'otp' | 'charge_alert' | 'refund_alert' | 'receipt' | 'statement' | 'shop_text';
 
 type GenericWebhookResponse = {
   provider?: string;
@@ -195,6 +195,20 @@ class SendNotificationService {
     return { provider: r.provider, providerMessageId: r.providerMessageId, destinationHash: hashDestination(params.to.trim().toLowerCase()), status: r.status };
   }
 
+  /**
+   * A shop's own short text to a customer who left a number: Table ready, Order ready (Clear
+   * Terminal). The words are the shop's screens'; null when it couldn't go.
+   */
+  async sendShopText(params: { to: string; message: string }): Promise<SendNotificationResult | null> {
+    try {
+      const r = await this.dispatchNotification({ channel: 'sms', kind: 'shop_text', destination: params.to, payload: { message: params.message } });
+      return { provider: r.provider, providerMessageId: r.providerMessageId, destinationHash: hashDestination(params.to.trim()), status: r.status };
+    } catch (error) {
+      console.error('[shop-text] dispatch failed', error instanceof Error ? error.message : error);
+      return null;
+    }
+  }
+
   /** A shop's receipt, by text or email: who, how much, and the link to the whole of it. */
   async sendReceipt(params: {
     recipientType: RecipientType;
@@ -306,6 +320,8 @@ class SendNotificationService {
       const { merchantName = '', amount = '' } = params.payload;
       return `${merchantName} refunded ${amount} to your Clear account.\n\nIt has been taken off what you owe. Nothing more is due on it.`;
     }
+
+    if (params.kind === 'shop_text') return params.payload.message || '';
 
     if (params.kind === 'receipt') {
       const { merchantName = '', total = '', receiptUrl = '' } = params.payload;
