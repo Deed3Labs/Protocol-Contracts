@@ -7,7 +7,12 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"],
-      "env": ["VITE_*"]
+      "env": ["VITE_*", "!VITE_VERCEL_*"]
+    },
+    "build:vercel": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"],
+      "env": ["VITE_*", "!VITE_VERCEL_*"]
     },
     "dev": {
       "cache": false,
