@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, test } from 'bun:test';
 import { compactMoney, count, credits, dollars, money, signedMoney } from './money';
 
 describe('the merchant convention: transactions are exact', () => {

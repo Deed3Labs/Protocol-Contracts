@@ -8,7 +8,17 @@
  */
 export function money(value: number, opts: { cents?: boolean } = {}): string {
   const n = Math.abs(value);
-  const cents = opts.cents ?? !Number.isInteger(n);
+  /*
+   * Something is never nothing.
+   *
+   * A figure that is not zero must not print as "$0" or "$0.00". A member reading "nothing due"
+   * beside a line the ledger considers unpaid cannot act on what they cannot see -- and a fifth of
+   * a cent left on a credit line is enough for the chain to hold it uncleared. So dust says so, and
+   * a small amount keeps its cents even where the surrounding figures are round.
+   */
+  if (n > 0 && n < 0.005) return 'under $0.01';
+  // Zero is a round figure like any other; only a real amount under a dollar keeps its cents.
+  const cents = (opts.cents ?? !Number.isInteger(n)) || (n > 0 && n < 1);
   return `$${n.toLocaleString('en-US', {
     minimumFractionDigits: cents ? 2 : 0,
     maximumFractionDigits: cents ? 2 : 0,
