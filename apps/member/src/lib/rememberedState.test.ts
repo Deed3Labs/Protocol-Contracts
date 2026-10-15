@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { forgetRemembered, hasRemembered, walletKey } from './rememberedState';
@@ -25,7 +25,19 @@ class MemoryStorage {
   }
 }
 const local = new MemoryStorage();
-(globalThis as unknown as { window: unknown }).window = { localStorage: local };
+/*
+ * Bun runs every test file in one process, so a stub window left behind is the window the next
+ * file's modules see: clearNetwork reads window.location and installPrompt calls addEventListener
+ * on it at import, and both broke on CI's file order. Put back whatever was there.
+ */
+const scope = globalThis as unknown as { window?: unknown };
+const hadWindow = 'window' in scope;
+const previousWindow = scope.window;
+scope.window = { localStorage: local };
+afterAll(() => {
+  if (hadWindow) scope.window = previousWindow;
+  else delete scope.window;
+});
 
 describe('what a reopened app starts from', () => {
   beforeEach(() => forgetRemembered());
