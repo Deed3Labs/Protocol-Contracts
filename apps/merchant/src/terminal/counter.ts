@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Device, MerchantApi, Order, Receipt } from '@clear/merchant-contracts';
 import { useMerchantApi } from '@/data/merchantApi';
 import { useApi } from '@/data/useApi';
@@ -43,7 +43,7 @@ export const drawerTargetOf = (d: Drawer): DrawerTarget => ({
  * the tablet opens it with or without a connection). Mounted by the shell, so No sale and every
  * sale find it. A drawer cabled to a printer opens with the printer's pulse.
  */
-export function useDrawerSetup(input: { api: Pick<MerchantApi, 'drawerKey'>; devices: Device[] | null; preview: boolean }) {
+export function useDrawerSetup(input: { api: Pick<MerchantApi, 'drawerKey' | 'saveDrawerEvents'>; devices: Device[] | null; preview: boolean; staffId: string | null }) {
   const drawer = input.devices?.find((d): d is Drawer => d.kind === 'drawer') ?? null;
   const printers = (input.devices ?? []).filter((d): d is Printer => d.kind === 'printer');
   const sig = drawer ? JSON.stringify(drawerTargetOf(drawer)) : '';
@@ -66,6 +66,20 @@ export function useDrawerSetup(input: { api: Pick<MerchantApi, 'drawerKey'>; dev
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, printerSig, input.preview]);
+
+  // The drawer says when it's pushed shut (docs/hardware/drawer-protocol.md); the log keeps it, so
+  // Settings › Devices and Close the day know it's shut. Queued like any drawer event when offline.
+  const staffRef = useRef(input.staffId);
+  staffRef.current = input.staffId;
+  const drawerId = drawer?.id ?? null;
+  useEffect(() => {
+    if (input.preview || !drawerId) return;
+    return drawerService().events((s) => {
+      if (s.kind !== 'shut' || !staffRef.current) return;
+      void logDrawer(input.api, { kind: 'shut', drawerId, staffId: staffRef.current, at: s.at }).catch(() => undefined);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawerId, input.preview]);
 }
 
 export function useCounterHardware(opts: { preview: boolean }) {

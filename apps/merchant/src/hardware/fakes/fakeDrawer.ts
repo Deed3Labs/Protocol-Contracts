@@ -17,16 +17,19 @@ export interface FakeDrawer {
   reset(): void;
   /** Shut it now (the till pushed closed). */
   shut(): void;
+  /** Power lost and back: the key and the counter are in flash; the clock is gone until the next open. */
+  powerCycle(): void;
 }
 
 export function fakeDrawer(opts: { bluetoothId?: string; now?: () => number; shutAfterMs?: number | null } = {}): FakeDrawer {
   const now = opts.now ?? Date.now;
   let paired: { id: string; key: Uint8Array } | null = null;
   let lastCounter = 0;
-  let clockOffsetS = 0;
+  /** The drawer's clock against ours; null after a power loss, until a signed open sets it. */
+  let clockOffsetS: number | null = 0;
   let open = false;
   const peripheral = new FakePeripheral(opts.bluetoothId ?? 'C1:EA:4F:2A', 'Clear Drawer', [DRAWER_SERVICE]);
-  const nowS = () => Math.floor(now() / 1000) + clockOffsetS;
+  const nowS = () => (clockOffsetS === null ? null : Math.floor(now() / 1000) + clockOffsetS);
   const setOpen = (o: boolean) => {
     open = o;
     peripheral.notify(DRAWER_STATE, new Uint8Array([o ? 1 : 0]));
@@ -40,6 +43,10 @@ export function fakeDrawer(opts: { bluetoothId?: string; now?: () => number; shu
       lastCounter = 0;
     },
     shut: () => setOpen(false),
+    powerCycle: () => {
+      clockOffsetS = null;
+      open = false;
+    },
   };
   const refuse = (why: string) => void (drawer.lastRefusal = why);
 
@@ -71,8 +78,11 @@ export function fakeDrawer(opts: { bluetoothId?: string; now?: () => number; shu
       const counter = dv.getUint32(1);
       const at = Number(dv.getBigUint64(5));
       if (counter <= lastCounter) return refuse('replay');
-      if (Math.abs(at - nowS()) > DRAWER_CLOCK_SKEW_S) return refuse('stale');
+      const clock = nowS();
+      if (clock !== null && Math.abs(at - clock) > DRAWER_CLOCK_SKEW_S) return refuse('stale');
       lastCounter = counter;
+      // An accepted open is signed, so its time is trusted: the drawer's clock follows the tablet's.
+      clockOffsetS = at - Math.floor(now() / 1000);
       drawer.opens += 1;
       setOpen(true);
       if (opts.shutAfterMs !== null) setTimeout(() => open && setOpen(false), opts.shutAfterMs ?? 50);

@@ -1260,3 +1260,28 @@ amendment, approved before the API builds on them.
   Android tablet, a drawer, a Point or a printer. The provisioning messages match ESP-IDF's protos as
   written and are checked only against our fake. An M2's connect and let-go times are still to
   measure (the Pay case addendum).
+
+## Terminal Phase 7: the firmware contract (2026-10-15)
+
+- **Two files the firmware is built from**, `docs/hardware/point-device-api.md` and
+  `docs/hardware/drawer-protocol.md`. They describe what the code already does; the contracts
+  package stays the source where they differ. `apps/merchant/src/hardware/docs.test.ts` checks the
+  UUIDs, endpoint names, routes, byte layouts and timings in them against the code.
+- **Two parts are proposals**, marked so in the Point file, because nothing in the reference or the
+  API covers them yet:
+  - *When a Point can't reach Clear:* it keeps its screen; after ten minutes a bill, paid, Call or
+    alert screen gives way to its last idle screen (its number and QR), a hold keeps its name until
+    it expires, and nothing new is written on the screen.
+  - *Firmware updates:* a signed manifest per model at a fixed URL (Ed25519, the image's SHA-256),
+    installed only after 30 minutes idle and plugged in or charged enough, with ESP-IDF's rollback.
+    Signing keys, hosting and releases aren't built.
+- **The drawer's clock** follows the tablet: set at pairing and by every open it accepts (a signed
+  time is trusted). After a power loss it's unset, and until the next open the counter alone guards
+  the drawer. The fake drawer does this now, with a test.
+- **A refused pairing** fails the write with ATT error `0x03`; a refused open does nothing and its
+  write succeeds, so a replay looks the same as a heard command.
+- **The drawer's shut is logged.** The tablet now sends a `shut` drawer event when the drawer says
+  it was pushed shut; nothing logged it before, so Settings › Devices could only know from opens.
+  Opens are logged by what opened them, never from the notification, so there's no second record.
+- **The RJ12 port** takes the standard kick (pin 2 or 5 against +24 V on pin 4, at least 30 ms) with
+  no key, because the cable is the trust; pin 3 is the switch back to the printer.

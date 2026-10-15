@@ -83,6 +83,29 @@ describe('the drawer opens for the tablet that paired it, and nothing else', () 
     expect(r.device.lastRefusal).toBe('stale');
   });
 
+  test('the clock follows each open; after a power loss the counter alone guards it until one sets it', async () => {
+    let t = Date.now();
+    const device = fakeDrawer({ shutAfterMs: null, now: () => t });
+    const key = new Uint8Array(32).map((_, i) => i + 1);
+    const link = device.peripheral.link();
+    const { pairingMessage } = await import('./protocol');
+    await link.write(DRAWER_SERVICE, '6c3a0004-7b52-4c1f-9d3e-5c6c65617201', pairingMessage({ drawerId: TARGET.id, key, at: t }));
+    // The drawer's clock runs ten minutes slow over a long quiet spell: an open from the tablet's
+    // time is refused as stale.
+    t += 600_000;
+    const tablet = Date.now() + 1_200_000;
+    await link.write(DRAWER_SERVICE, DRAWER_COMMAND, await signedOpen({ drawerId: TARGET.id, key, counter: 10, at: tablet }));
+    expect(device.lastRefusal).toBe('stale');
+    // Power lost: no clock, so a properly signed, newer open is taken, and sets the clock.
+    device.powerCycle();
+    await link.write(DRAWER_SERVICE, DRAWER_COMMAND, await signedOpen({ drawerId: TARGET.id, key, counter: 11, at: tablet }));
+    expect(device.lastRefusal).toBeNull();
+    // A replay is still a replay without a clock.
+    device.powerCycle();
+    await link.write(DRAWER_SERVICE, DRAWER_COMMAND, await signedOpen({ drawerId: TARGET.id, key, counter: 11, at: tablet }));
+    expect(device.lastRefusal).toBe('replay');
+  });
+
   test('a drawer keyed already refuses a new key until its button resets it', async () => {
     const r = rig();
     await r.service.keyDrawer(TARGET, KEY);
