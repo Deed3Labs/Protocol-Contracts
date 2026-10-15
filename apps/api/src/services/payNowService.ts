@@ -77,6 +77,9 @@ export async function paidNowBps(merchant: string): Promise<number> {
   return std[0] ? Number(std[0].paid_now_bps) : FALLBACK_PAID_NOW_BPS;
 }
 
+/** The paid-now rate for a charge's shop: "the shop pays 1.25%" on the member's pay sheet. */
+export const paidNowBpsFor = (charge: Pick<ChargeRow, 'merchantAddress'>) => paidNowBps(charge.merchantAddress);
+
 /** Where Clear's fee goes: the term issuer's fee recipient, else its carry treasury, as the contract does. */
 async function feeRecipient(): Promise<string | null> {
   const address = getContractAddress(chainId(), 'TermIssuer');

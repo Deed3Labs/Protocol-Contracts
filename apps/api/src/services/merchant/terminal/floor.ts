@@ -30,7 +30,7 @@ import { touchShop } from './bus.js';
 import { TerminalError } from './errors.js';
 import type { PointIdentity } from './hardware.js';
 import { pointStateFor, setBase, showOnPoint } from './pointState.js';
-import { lastFour, orderReadyText, tableReadyText, type Texter } from './texts.js';
+import { lastFour, orderReadyText, tableReadyNotice, tableReadyText, type Texter } from './texts.js';
 
 /**
  * Tables, the wait list, seating, Call and Bill, alerts and Order ready (terminal reference,
@@ -425,9 +425,19 @@ export async function seatParty(db: Db, texter: Texter, input: { merchant: strin
   if (!outcome.again && r.text && outcome.party.phone) {
     const ok = await texter.send({ to: outcome.party.phone, message: tableReadyText(outcome.table!) }).catch(() => false);
     if (ok) await db.query('UPDATE merchant.alerts SET texted_to = $2 WHERE id = $1', [outcome.alertId, lastFour(outcome.party.phone)]);
+    await notifyMember(db, texter, { merchant: input.merchant, party: outcome.party, table: outcome.table, alertId: outcome.alertId! });
   }
   touchShop(input.merchant);
   return { party: await partyView(db, input.merchant, input.partyId), table: await getTable(db, input.merchant, r.tableId, now) };
+}
+
+/** Table ready in the Clear app too, for a party whose number is a member's. Best effort, like the text. */
+async function notifyMember(db: Db, texter: Texter, input: { merchant: string; party: PartyRow; table: { number: number; label: string | null; area: string | null } | null; alertId: string }) {
+  if (!texter.notifyMember || !input.party.phone) return;
+  const { rows } = await db.query<{ name: string }>('SELECT name FROM merchant.profiles WHERE merchant = $1', [input.merchant]);
+  await texter
+    .notifyMember({ phone: input.party.phone, wallet: input.party.member_wallet, ...tableReadyNotice(rows[0]?.name ?? '', input.table), dedupeKey: `table_ready:${input.alertId}` })
+    .catch(() => false);
 }
 
 // ---- Alerts ---------------------------------------------------------------------------------------------
@@ -466,6 +476,8 @@ export async function createAlert(db: Db, texter: Texter, input: { merchant: str
   const now = input.now ?? new Date();
   let phone: string | null = null;
   let message = '';
+  // Set inside the transaction; `as` so the null it starts with isn't all the compiler sees.
+  let member = null as { party: PartyRow; table: { number: number; label: string | null; area: string | null } | null } | null;
   const id = `alr_${randomUUID()}`;
   await db.transaction(async (tx) => {
     if (a.pointId) {
@@ -487,8 +499,11 @@ export async function createAlert(db: Db, texter: Texter, input: { merchant: str
       ]);
       if (party.phone && party.text_consent) {
         phone = party.phone;
-        const { rows: t } = party.table_id ? await tx.query<{ number: number; area: string | null }>('SELECT number, area FROM merchant.tables WHERE id = $1', [party.table_id]) : { rows: [] };
+        const { rows: t } = party.table_id
+          ? await tx.query<{ number: number; label: string | null; area: string | null }>('SELECT number, label, area FROM merchant.tables WHERE id = $1', [party.table_id])
+          : { rows: [] };
         message = t[0] ? tableReadyText(t[0]) : 'Your table is ready';
+        member = { party, table: t[0] ?? null };
       }
     } else {
       const { rows } = await tx.query<{ status: string; number: number | null; name: string | null; customer: string | null }>(
@@ -523,6 +538,7 @@ export async function createAlert(db: Db, texter: Texter, input: { merchant: str
     const ok = await texter.send({ to: phone, message }).catch(() => false);
     if (ok) await db.query('UPDATE merchant.alerts SET texted_to = $2 WHERE id = $1', [id, lastFour(phone)]);
   }
+  if (member) await notifyMember(db, texter, { merchant: input.merchant, ...member, alertId: id });
   touchShop(input.merchant);
   const { rows } = await db.query<AlertRow>('SELECT * FROM merchant.alerts WHERE id = $1', [id]);
   return toAlert(rows[0]!);

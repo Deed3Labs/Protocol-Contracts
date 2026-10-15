@@ -41,3 +41,17 @@ export function chargeCodeFrom(payload: string): string | null {
 
   return CODE.test(candidate) ? candidate : null;
 }
+
+const POINT = new RegExp(`^[${ALPHABET}]{4}$`);
+
+/**
+ * A Clear Point's code (Clear Terminal): the QR under a table's Point carries
+ * `useclear.org/p/A7K2`, and the Point prints it. Only from a link, never four characters alone:
+ * typed by hand, those are a mistyped charge code far more often than a Point.
+ */
+export function pointCodeFrom(payload: string): string | null {
+  const fromPath = /(?:^|\/)p\/([^/?#\s]+)\/?(?:[?#].*)?$/i.exec(payload.trim());
+  if (!fromPath) return null;
+  const candidate = repair(fromPath[1]);
+  return POINT.test(candidate) ? candidate : null;
+}

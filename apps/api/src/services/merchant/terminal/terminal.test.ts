@@ -44,8 +44,9 @@ async function madePoint(): Promise<string> {
 
 function texts() {
   const sent: Array<{ to: string; message: string }> = [];
-  const texter: Texter = { send: async (m) => (sent.push(m), true) };
-  return { sent, texter };
+  const notices: Array<Parameters<NonNullable<Texter['notifyMember']>>[0]> = [];
+  const texter: Texter = { send: async (m) => (sent.push(m), true), notifyMember: async (n) => (notices.push(n), true) };
+  return { sent, notices, texter };
 }
 
 /** Mi Casa Tacos at dinner: tables 1 and 6 seat two, 14 seats four; a Point at 6 and 14, one at the door and one at the counter. */
@@ -158,7 +159,7 @@ describe('what a Point shows, from one place', () => {
 describe('seating a party (the seating addendum)', () => {
   test('Seat holds the table and its Point, Table ready goes to the door, and the text says where', async () => {
     const t = await tacos();
-    const { sent, texter } = texts();
+    const { sent, notices, texter } = texts();
     const ana = await waiting(t, 'Ana Ruiz', 2, '(909) 555-0142');
     const now = new Date();
     const seated = await floor.seatParty(db, texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: ana.id, request: { tableId: t.table(6), showName: true, text: true }, now });
@@ -169,15 +170,21 @@ describe('seating a party (the seating addendum)', () => {
     expect(screen.lit).toBe(true);
     expect((await pointStateFor(db, t.door.id, now)).state.kind).toBe('alert');
     expect(sent).toEqual([{ to: '+19095550142', message: 'Your table is ready: 6, by the window' }]);
+    // And in the Clear app, if the number is a member's (section 13).
+    expect(notices).toEqual([{ phone: '+19095550142', wallet: null, title: 'Your table is ready', body: expect.stringMatching(/ · Table 6, by the window$/), dedupeKey: expect.stringMatching(/^table_ready:alr_/) }]);
     // The same seat again changes nothing, and texts nobody twice.
     await floor.seatParty(db, texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: ana.id, request: { tableId: t.table(6), showName: true, text: true }, now });
     expect(sent).toHaveLength(1);
+    expect(notices).toHaveLength(1);
   });
 
   test('the name is off: Reserved; and the phone page never shows a name', async () => {
     const t = await tacos();
     const ana = await waiting(t, 'Ana', 2);
-    await floor.seatParty(db, texts().texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: ana.id, request: { tableId: t.table(6), showName: false, text: false } });
+    const quiet = texts();
+    await floor.seatParty(db, quiet.texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: ana.id, request: { tableId: t.table(6), showName: false, text: false } });
+    // No text, so no notice either: the app's is the text's twin, never more.
+    expect(quiet.notices).toEqual([]);
     expect((await pointStateFor(db, t.at6.id)).state).toMatchObject({ kind: 'held', partyName: null });
     const lee = await waiting(t, 'Lee', 4);
     await floor.seatParty(db, texts().texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: lee.id, request: { tableId: t.table(14), showName: true, text: false } });
@@ -427,8 +434,9 @@ describe('the menu, receipts and the phone page', () => {
     const t = await tacos();
     const order = await tab(t, t.table(14));
     await showOnPoint(db, { merchant: t.merchant, staffId: t.staff.jen, pointId: t.at14.id, request: { kind: 'order', orderId: order.id } });
+    let raised = 0;
     const clear: ClearCharges = {
-      raise: async () => ({ ok: true, code: 'K7Q2M9XH' }),
+      raise: async () => (raised++, { ok: true, code: 'K7Q2M9XH' }),
       status: async () => 'pending',
       cancel: async () => true,
       sendTo: async () => ({ ok: true, label: '' }),
@@ -436,6 +444,9 @@ describe('the menu, receipts and the phone page', () => {
     const started = await publicPay(db, { clear, card: async () => null }, { code: t.at14.code, request: { method: 'clear', idempotencyKey: 'phone-pay-1' } });
     expect(started).toMatchObject({ method: 'clear', chargeCode: 'K7Q2M9XH' });
     expect(started.method === 'clear' && started.url).toEndWith('/c/K7Q2M9XH');
+    // A second tap (or a member's scan) opens the Clear charge already waiting, not a new one.
+    expect(await publicPay(db, { clear, card: async () => null }, { code: t.at14.code, request: { method: 'clear', idempotencyKey: 'phone-pay-9' } })).toMatchObject({ chargeCode: 'K7Q2M9XH' });
+    expect(raised).toBe(1);
     // The member's pay sheet says which table it is.
     expect((await chargeContentsFrom(db, { code: 'K7Q2M9XH', raisedBy: null, amountCents: order.totalCents })).table).toBe('Table 14');
     await expect(publicPay(db, { clear, card: async () => null }, { code: t.at14.code, request: { method: 'card', idempotencyKey: 'phone-pay-2' } })).rejects.toMatchObject({ code: 'conflict' });

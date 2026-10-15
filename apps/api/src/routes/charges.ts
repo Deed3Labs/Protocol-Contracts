@@ -3,7 +3,7 @@ import { requireAuth, requireVerifiedWallet } from '../middleware/auth.js';
 import { requireStepUp } from '../middleware/stepUp.js';
 import { chargeContents } from '../services/chargeContents.js';
 import { chargeStore, type ChargeRow } from '../services/chargeStore.js';
-import { confirmPayNow, paidNowBps, releasePayNowFor, startPayNow, type PayNowResult } from '../services/payNowService.js';
+import { confirmPayNow, paidNowBpsFor, releasePayNowFor, startPayNow, type PayNowResult } from '../services/payNowService.js';
 import {
   approveCharge,
   declineCharge,
@@ -33,7 +33,7 @@ const chargesRouter = Router();
  * while they are paying now, when their own wallet is sending to it (`pay`, from the pay-now routes).
  */
 async function memberView(charge: ChargeRow) {
-  const [contents, bps] = await Promise.all([chargeContents(charge), paidNowBps(charge.merchantAddress).catch(() => null)]);
+  const [contents, bps] = await Promise.all([chargeContents(charge), paidNowBpsFor(charge).catch(() => null)]);
   return {
     code: charge.code,
     merchantName: charge.merchantName,

@@ -1150,3 +1150,54 @@ amendment, approved before the API builds on them.
 - **Visual checks.** `e2e/states.ts` has 23 `terminal-*` states, each at its reference moment
   (`clock`: dinner at 8pm, lunch at 12:42pm). The terminal file's sheets count as frames when the
   reference is captured (`e2e/reference.spec.ts`), which no other file's do.
+
+## Terminal Phase 5: the phone pages and the member app (2026-10-15)
+
+- **The phone pages are their own entry.** `apps/member/phone.html` and `src/phone/` (no router, no
+  Privy, no wallet, no service worker): React and 4 kB of their own, about 66 kB gzipped in all.
+  Vercel serves `phone.html` for `/p/(.*)` and `/r/(.*)` before the app's catch-all; `main.tsx`
+  renders the same pages for those paths when the app's shell answers instead (`vite dev`, or the
+  service worker's offline shell). A test keeps the entry free of app imports.
+- **Never cached, never with cookies.** Calls are `cache: 'no-store'` and `credentials: 'omit'`; the
+  service worker sends `/api/p` and `/api/r` to the network only (a bill changes by the second, and a
+  receipt is someone else's on a shared phone).
+- **The page follows the Point by asking.** Every 4 seconds while a bill is open (so Paid shows at
+  once, including a card coming back from Stripe), every 15 otherwise, not while the phone is
+  hidden. A paid page stops asking, so the receipt stays when the Point goes back to its number. A
+  dining room on the guest Wi-Fi shares one address and the phone pages' 120 reads a minute, which
+  is why the slow rate is the common one.
+- **The drawn address bar is the browser's**, so it isn't built. The menu shows names and prices as
+  drawn (an item's detail isn't on the phone drawing). The Pay here view is the menu page with no
+  rows: the shop, where the Point is, and "Pay here when you're done".
+- **Pay with Clear raises the counter's own Clear tender** and opens it on app.useclear.org/c/…; a
+  second tap, or a member scanning after the page started one, opens the Clear charge already
+  waiting rather than failing with "being paid already". Pay by card is Stripe Checkout and returns
+  to `/p/:code?paid=1`.
+- **The paid page makes the receipt's code** (`publicPoint`), so "Email me this receipt" has one to
+  send. The button opens an Email field above itself and the same button sends; then "Sent to …".
+- **The sticker receipt** shows Cash as what was handed over and Change under it, a card by its name,
+  and Clear as Clear. "Next time, pay with Clear…" shows only when Clear didn't pay it. Times are the
+  phone's own: the customer is at the shop.
+- **The wait list's consent line** (the reference's Open note) sits under the drawn "We'll text you"
+  line: leaving a number is agreeing to the shop's texts about the table, with STOP. A party with no
+  number joins without one. "5+" sends five; the host changes it if it's more.
+- **The scanner knows a Point.** `pointCodeFrom` reads `…/p/A7K2` (any host, as printed or as a
+  link), never four bare characters, which are a mistyped charge code far more often. A bill opens
+  as a Clear charge in the pay sheet the app already has; anything else (the menu, the wait list)
+  opens the Point's own page. A Point that can't be opened says why and the camera keeps scanning.
+- **The pay sheet names the table** first in its head ("Table 12 · Raised by Jen · 7:42pm"). Pay now
+  says what the shop pays when the server says (`paidNowBps` on the member's charge view): "From your
+  Clear cash · the shop pays 1.25%. Nothing to clear later." The reference says "Clear balance"; the
+  app calls it Clear cash everywhere else.
+- **The receipt in Activity** is the pay sheet's Paid view, which a paid charge opens: it now carries
+  the table and the lines, discount and tax. `chargeContents` reads the table from the order.
+- **Table ready reaches members too.** Where a text goes (so only with the party's consent), the
+  `Texter` also posts "Your table is ready" · "Mi Casa Tacos · Table 12, back patio" to the member's
+  notifications, with a push: the party's own wallet if they joined from the app, else the member
+  their number finds, unless that member opted out of being found. Keyed on the alert, so never twice.
+- **Not drawn, built from the nearest drawing:** the joined wait-list page (the Paid page's tick and
+  "You're on the list."), the Email field, a code that finds nothing (one muted line), and errors
+  (a line under the buttons).
+- **Previews.** `?preview=1` on `/p/A7K2` (`&view=menu|bill|paid|pay_here`), `/p/D00R` and
+  `/r/<code>` shows the reference's dinner without a Point; the pay sheet preview takes
+  `&shop=micasa` for Table 12. Both are dev only and absent from the build.

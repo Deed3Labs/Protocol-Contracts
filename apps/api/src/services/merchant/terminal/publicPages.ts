@@ -46,6 +46,12 @@ export async function publicPay(db: Db, deps: PublicPayDeps, input: { code: stri
   const key = `phone:${parsed.data.idempotencyKey}`;
 
   if (parsed.data.method === 'clear') {
+    // A second tap, or a member scanning after the page started it: the Clear charge already waiting.
+    const { rows: waiting } = await db.query<{ clear_charge_code: string }>(
+      `SELECT clear_charge_code FROM payments.tenders WHERE order_id = $1 AND method = 'clear' AND status = 'pending' AND clear_charge_code IS NOT NULL ORDER BY created_at DESC LIMIT 1`,
+      [state.orderId],
+    );
+    if (waiting[0]) return { method: 'clear', chargeCode: waiting[0].clear_charge_code, url: `${memberAppUrl().replace(/\/+$/, '')}/c/${waiting[0].clear_charge_code}` };
     if (left <= 0) throw new TerminalError('This bill is being paid already', 'conflict');
     const tender = await createClearTender(db, deps.clear, {
       merchant: p.merchant,
