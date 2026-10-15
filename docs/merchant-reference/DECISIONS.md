@@ -1040,8 +1040,8 @@ amendment, approved before the API builds on them.
   changes or what it shows lapses by itself, else 304 after 25 seconds. **Plugged in**, it holds
   `GET /stream` (server-sent events, a comment every 20 seconds).
 - **Points exist before they're sold.** `merchant.point_keys` has a row per Point made, so a typed code
-  can only claim a real, unclaimed one. Nothing adds those rows yet: the factory's list goes in with a
-  script like `terms-code.ts`, still to write. Claim gives a one-time secret (ten minutes); the Point
+  can only claim a real, unclaimed one. The factory's list goes in with `scripts/point-codes.ts`
+  (see "Terminal: the factory's list of Points" below). Claim gives a one-time secret (ten minutes); the Point
   trades it for its device key at `POST /api/device/point/activate`. Only hashes are kept. Unpairing
   drops the key, and the Point can be claimed again.
 - **The drawer's key** is sealed with the member data's envelope keyring when that is configured, and
@@ -1285,3 +1285,20 @@ amendment, approved before the API builds on them.
   Opens are logged by what opened them, never from the notification, so there's no second record.
 - **The RJ12 port** takes the standard kick (pin 2 or 5 against +24 V on pin 4, at least 30 ms) with
   no key, because the cable is the trust; pin 3 is the switch back to the printer.
+
+## Terminal: the factory's list of Points (2026-10-15)
+
+- **`apps/api/scripts/point-codes.ts`** puts made Points into `merchant.point_keys`, so their codes
+  can be claimed: `railway run -s Protocol-Contracts -e dev bun scripts/point-codes.ts add <point|point_large>
+  [--dry-run] (--file <path> | <CODE> …)`. A file has a code per line (spaces or commas also
+  separate; `#` starts a comment). The work is `addPointCodes` in `services/merchant/terminal/pointCodes.ts`.
+- **One model a run.** `point_keys.model` (migration 0023) already holds Point or Point Large, so no
+  migration: a batch of each is its own run.
+- **All or nothing on the list's shape.** Every code is parsed as the contracts' `PointCode` (four
+  Crockford base32 characters, upper-cased); one that isn't, and nothing is added, so a bad file is
+  fixed and run again rather than half loaded.
+- **A code already made is reported, never changed**: not its model, not its claim, even when the
+  run names the other model (the script says "left as it is"). Running a list twice adds nothing; a
+  code twice in one list goes in once and is reported. The insert is `ON CONFLICT DO NOTHING`, so
+  two runs at once can't double one either.
+- **A dry run** says what would be added and skipped, and writes nothing.
