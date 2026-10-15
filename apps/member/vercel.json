@@ -1,4 +1,5 @@
 {
+  "installCommand": "cd ../.. && npm ci --workspace=@clear/member --no-audit --no-fund",
   "buildCommand": "cd ../.. && npx turbo run build:vercel --filter=@clear/member",
   "ignoreCommand": "bash ../../scripts/vercel-ignore.sh apps/member",
   "rewrites": [
