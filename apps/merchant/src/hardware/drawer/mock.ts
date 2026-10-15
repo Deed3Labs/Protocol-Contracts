@@ -10,6 +10,9 @@ export function mockDrawer(opts: { stuck?: boolean } = {}): DrawerService {
   const now = () => new Date().toISOString();
   return {
     pair: async () => ({ bluetoothId: 'C1:EA:4F:2A', name: 'Clear Drawer' }),
+    keyDrawer: async () => undefined,
+    rememberKey: async () => undefined,
+    use: () => undefined,
     open: async () => {
       if (opts.stuck) {
         setTimeout(() => emit({ kind: 'unreachable', at: now(), why: 'No answer' }), 100);

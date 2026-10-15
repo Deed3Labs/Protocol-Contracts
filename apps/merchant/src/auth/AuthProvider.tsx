@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { forgetDrawerKeys, setDrawerEnrollment } from '@/hardware/drawer';
 import { MI_CASA, miCasa } from '@/terminal/reference';
 import { canAuthoriseRefund, seesMoney, type Staff } from '@clear/domain';
 import { api, storeToken } from '@/data/apiClient';
@@ -40,6 +41,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [device, setDevice] = useState<DeviceState | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Drawer keys are this enrollment's. A tablet removed or enrolled again keeps none from before.
+  const enrolledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading) return;
+    const id = device?.id ?? null;
+    setDrawerEnrollment(id);
+    if (enrolledRef.current && enrolledRef.current !== id) void forgetDrawerKeys();
+    enrolledRef.current = id;
+  }, [device?.id, loading]);
 
   // Two questions on load, in order: what is this tablet, and who is on shift. The device answer
   // comes first because it decides which screen the app can even show — an unenrolled tablet has

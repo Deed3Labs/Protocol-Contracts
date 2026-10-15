@@ -1,4 +1,5 @@
 import { clockAt, toShiftPerson } from '@/auth/shiftLines';
+import { useDrawerSetup } from '@/terminal/counter';
 import { NoSaleSheet, noSalePin, runNoSale } from '@/terminal/noSale';
 import { merchantApi } from '@/data/merchantApi';
 import { MI_CASA, miCasa } from '@/terminal/reference';
@@ -88,6 +89,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Clear Terminal: a paired drawer puts No sale in the shift menu (section 6).
   const { data: hardware } = useApi(() => merchantApi().hardware().catch(() => []), []);
   const drawerDevice = hardware?.find((d) => d.kind === 'drawer') ?? null;
+  useDrawerSetup({ api: merchantApi(), devices: hardware ?? null, preview: import.meta.env.DEV && device?.id === 'preview' });
   const { data: staffList } = useApi(() => merchantApi().staff().catch(() => []), []);
   const [noSaleBusy, setNoSaleBusy] = useState(false);
   const [noSaleError, setNoSaleError] = useState<string | null>(null);

@@ -1,5 +1,6 @@
 import type { PrinterSettings } from '@clear/merchant-contracts';
 import { printReceipt } from '@/lib/printReceipt';
+import { DRAWER_PULSE } from '../print/encoders';
 import { jobBytes } from '../print/printJobs';
 import { browserCanvas } from './canvas';
 import { PrinterUnavailable, type PrinterService } from './types';
@@ -51,6 +52,12 @@ export function nativePrinters(transport: { wifi: RawTransport | null; bluetooth
       const bytes = jobBytes(job, printer, browserCanvas);
       if (!bytes) throw new PrinterUnavailable('That printer’s language isn’t one Clear speaks');
       await t.send(printer.address, bytes);
+    },
+    kickDrawer: async (printer) => {
+      const t = via(printer);
+      if (!t || !printer.address) throw new PrinterUnavailable('That printer can’t be reached from this tablet');
+      if (printer.language !== 'escpos') throw new PrinterUnavailable('Only a receipt printer has a drawer port');
+      await t.send(printer.address, new Uint8Array(DRAWER_PULSE));
     },
     status: async (printer) => {
       const t = via(printer);

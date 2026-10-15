@@ -17,5 +17,8 @@ export function webPrinters(): PrinterService {
       throw new PrinterUnavailable('Labels print from the Clear app on this tablet');
     },
     status: async (printer) => (printer.connection === 'os' ? 'unknown' : 'offline'),
+    kickDrawer: async () => {
+      throw new PrinterUnavailable('A drawer cabled to a printer opens from the Clear app on this tablet');
+    },
   };
 }

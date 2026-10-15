@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Device, MerchantApi, Order, Receipt } from '@clear/merchant-contracts';
 import { useMerchantApi } from '@/data/merchantApi';
 import { useApi } from '@/data/useApi';
-import { drawerService, DRAWER_ANSWER_MS } from '@/hardware/drawer';
+import { drawerService, setDrawerKick, DRAWER_ANSWER_MS, type DrawerTarget } from '@/hardware/drawer';
 import { indexedDbStore, syncQueue } from '@/hardware/queue';
 import { printerService } from '@/hardware/printer';
 import { logDrawer } from './noSale';
@@ -30,6 +30,43 @@ const PAPER = {
   label4x3: '4 × 3',
   receipt80: '80mm',
 } as const;
+
+export const drawerTargetOf = (d: Drawer): DrawerTarget => ({
+  id: d.id,
+  bluetoothId: d.settings.bluetoothId,
+  cabledToPrinter: d.settings.cabledToPrinter,
+  printerId: d.settings.printerId,
+});
+
+/**
+ * Which drawer this tablet opens, and its key kept while online (terminal reference, the one rule:
+ * the tablet opens it with or without a connection). Mounted by the shell, so No sale and every
+ * sale find it. A drawer cabled to a printer opens with the printer's pulse.
+ */
+export function useDrawerSetup(input: { api: Pick<MerchantApi, 'drawerKey'>; devices: Device[] | null; preview: boolean }) {
+  const drawer = input.devices?.find((d): d is Drawer => d.kind === 'drawer') ?? null;
+  const printers = (input.devices ?? []).filter((d): d is Printer => d.kind === 'printer');
+  const sig = drawer ? JSON.stringify(drawerTargetOf(drawer)) : '';
+  const printerSig = printers.map((p) => `${p.id}:${p.settings.address}`).join(',');
+  useEffect(() => {
+    if (input.preview) return;
+    const svc = drawerService();
+    const target = drawer ? drawerTargetOf(drawer) : null;
+    svc.use(target);
+    setDrawerKick(async (printerId) => {
+      const p = printers.find((x) => x.id === printerId);
+      if (!p) throw new Error('That printer isn’t set up');
+      await printerService().kickDrawer(p.settings);
+    });
+    if (target && target.bluetoothId && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+      input.api
+        .drawerKey(target.id)
+        .then((k) => svc.rememberKey(target, k.key))
+        .catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig, printerSig, input.preview]);
+}
 
 export function useCounterHardware(opts: { preview: boolean }) {
   const api = useMerchantApi();

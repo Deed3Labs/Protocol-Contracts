@@ -23,6 +23,8 @@ export interface PrinterService {
   /** Draw and send one job. Rejects with a sentence when it can't. */
   print(job: PrintJob, printer: PrinterSettings): Promise<void>;
   status(printer: PrinterSettings): Promise<PrinterStatus>;
+  /** The drawer pulse (ESC p), for a drawer cabled to this receipt printer. */
+  kickDrawer(printer: PrinterSettings): Promise<void>;
 }
 
 export class PrinterUnavailable extends Error {}

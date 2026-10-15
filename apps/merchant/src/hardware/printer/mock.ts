@@ -17,5 +17,6 @@ export function mockPrinters(): PrinterService & { printed: string[] } {
       printed.push(job.kind);
     },
     status: async () => 'ready',
+    kickDrawer: async () => void printed.push('kick'),
   };
 }

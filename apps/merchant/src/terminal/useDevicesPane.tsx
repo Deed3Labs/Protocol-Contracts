@@ -103,6 +103,8 @@ export function useDevicesPane({
   const [found, setFound] = useState<{ id: string; t: string; det: string; raw: unknown }[] | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [tested, setTested] = useState(false);
+  /** The drawer added by its Test open, so Done doesn't add it twice. */
+  const [addedDrawer, setAddedDrawer] = useState<string | null>(null);
 
   const shop = miCasa() ? MI_CASA.shop : 'Your shop';
   const devices = hw.data ?? [];
@@ -133,6 +135,7 @@ export function useDevicesPane({
     setFound(null);
     setPicked(null);
     setTested(false);
+    setAddedDrawer(null);
   };
 
   // ---- The pane ----------------------------------------------------------------------------------
@@ -382,8 +385,21 @@ export function useDevicesPane({
             void run(async () => {
               const f = found?.find((x) => x.id === picked);
               if (!f) return;
-              if (open.what === 'drawer') await drawerService({ preview }).open('test');
-              else {
+              if (open.what === 'drawer') {
+                // Testing a drawer is pairing it: added, given its id and key, then opened with them.
+                const d = f.raw as { bluetoothId: string; name: string };
+                const svc = drawerService({ preview });
+                let id = addedDrawer;
+                if (!id) {
+                  const settings: DrawerSettings = { bluetoothId: d.bluetoothId, pairedTabletId: device?.id ?? null, cabledToPrinter: false, printerId: null };
+                  id = (await api.addDevice({ kind: 'drawer', name: d.name, settings })).id;
+                  setAddedDrawer(id);
+                }
+                const target = { id, bluetoothId: d.bluetoothId, cabledToPrinter: false, printerId: null };
+                await svc.keyDrawer(target, (await api.drawerKey(id)).key);
+                svc.use(target);
+                await svc.open('test');
+              } else {
                 const p = f.raw as {
                   address: string | null;
                   connection: PrinterSettings['connection'];
@@ -412,13 +428,10 @@ export function useDevicesPane({
               const f = found?.find((x) => x.id === picked);
               if (!f) return;
               if (open.what === 'drawer') {
+                // Added and keyed by its Test open.
+                if (addedDrawer) return;
                 const d = f.raw as { bluetoothId: string; name: string };
-                const settings: DrawerSettings = {
-                  bluetoothId: d.bluetoothId,
-                  pairedTabletId: device?.id ?? null,
-                  cabledToPrinter: false,
-                  printerId: null,
-                };
+                const settings: DrawerSettings = { bluetoothId: d.bluetoothId, pairedTabletId: device?.id ?? null, cabledToPrinter: false, printerId: null };
                 await api.addDevice({ kind: 'drawer', name: d.name, settings });
               } else {
                 const p = f.raw as {

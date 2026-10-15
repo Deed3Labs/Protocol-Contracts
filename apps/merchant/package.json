@@ -18,6 +18,8 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@aparajita/capacitor-secure-storage": "^8.0.1",
+    "@capacitor-community/bluetooth-le": "^8.3.0",
     "@capacitor-community/stripe-terminal": "^8.2.1",
     "@capacitor/android": "^8.5.2",
     "@capacitor/core": "^8.5.2",
@@ -25,6 +27,7 @@
     "@clear/domain": "*",
     "@clear/merchant-contracts": "*",
     "@clear/tokens": "*",
+    "@noble/curves": "^1.9.7",
     "@privy-io/react-auth": "^3.32.2",
     "@tailwindcss/vite": "^4.1.11",
     "jsqr": "^1.4.0",
