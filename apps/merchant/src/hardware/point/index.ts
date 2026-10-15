@@ -1,4 +1,7 @@
 import type { ClaimedPoint, MerchantApi } from '@clear/merchant-contracts';
+import { currentPlatform } from '@/reader/platform';
+import { capacitorCentral } from '../ble/central';
+import { blePoints } from './ble';
 
 /**
  * Adding a Point (terminal reference, section 2): claim it on the server by its code, then hand it
@@ -6,30 +9,8 @@ import type { ClaimedPoint, MerchantApi } from '@clear/merchant-contracts';
  * Sending to a Point is the API (`showOnPoint`): only the Point listens to the server.
  */
 
-export interface NearbyPoint {
-  code: string;
-  firmware: string;
-  battery: number;
-}
-
-export interface WifiNetwork {
-  ssid: string;
-  /** "This tablet's network · strong" */
-  det: string;
-  /** A network with a sign-in page can't take a Point. */
-  usable: boolean;
-}
-
-export interface PointService {
-  /** The Point with this code, over Bluetooth, once claimed. */
-  find(code: string): Promise<NearbyPoint>;
-  /** Networks the Point can see. */
-  networks(code: string): Promise<WifiNetwork[]>;
-  /** The Wi-Fi and the secret, over Bluetooth (ESP32 unified provisioning). Resolves when it's online. */
-  provision(code: string, input: { ssid: string; password: string; claimed: ClaimedPoint }): Promise<void>;
-}
-
-export class PointUnavailable extends Error {}
+export * from './types';
+import { PointUnavailable, type PointService } from './types';
 
 /** The preview's Point A7K2, fresh out of the box. */
 export function mockPoints(): PointService {
@@ -51,7 +32,7 @@ export function mockPoints(): PointService {
   };
 }
 
-/** Bluetooth provisioning needs the installed app's plugin (Phase 6). */
+/** A browser with no Bluetooth (Safari, Firefox): set it up from the app. */
 export function unavailablePoints(): PointService {
   const no = async (): Promise<never> => {
     throw new PointUnavailable('Setting up a Point needs the Clear app on this tablet');
@@ -59,7 +40,13 @@ export function unavailablePoints(): PointService {
   return { find: no, networks: no, provision: no };
 }
 
-export const pointService = (opts: { preview?: boolean } = {}): PointService => (opts.preview ? mockPoints() : unavailablePoints());
+let live: PointService | null = null;
+
+/** The preview's Point; everywhere else Bluetooth (the app's, or Chrome's Web Bluetooth). */
+export function pointService(opts: { preview?: boolean } = {}): PointService {
+  if (opts.preview) return mockPoints();
+  return (live ??= blePoints(() => capacitorCentral(currentPlatform())));
+}
 
 /** Claim, then provision: the whole of steps 1 and 2. */
 export async function addPoint(api: MerchantApi, points: PointService, input: { code: string; ssid: string; password: string }): Promise<ClaimedPoint> {

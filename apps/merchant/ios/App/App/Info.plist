@@ -25,9 +25,15 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Clear uses Bluetooth to connect to your card reader.</string>
+	<string>Clear uses Bluetooth to connect to your card reader, cash drawer, printers and Points.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Clear uses Bluetooth to connect to your card reader.</string>
+	<string>Clear uses Bluetooth to connect to your card reader, cash drawer, printers and Points.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Clear finds and prints to the printers on your shop’s network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_pdl-datastream._tcp</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Stripe needs this tablet’s location to take card payments, to help prevent fraud.</string>
 	<key>UIApplicationSceneManifest</key>
