@@ -144,6 +144,12 @@ export const ShopSettings = z.object({
     manager: z.number().int().min(0).max(100),
     owner: z.number().int().min(0).max(100).nullable(),
   }),
+  /** Who can open the drawer without a sale (Devices › Cash drawer): owners and managers, or anyone on shift. */
+  drawerNoSaleRoles: z.enum(['managers', 'anyone']).optional(),
+  /** A No sale asks for a PIN and a reason. */
+  noSaleNeedsPin: z.boolean().optional(),
+  /** Tables, for shops that serve at tables (Settings › Counter). Off by default. */
+  tableService: z.boolean().optional(),
   updatedAt: Timestamp,
 });
 export type ShopSettings = z.infer<typeof ShopSettings>;
@@ -165,6 +171,9 @@ export const DEFAULT_SETTINGS: Omit<ShopSettings, 'updatedAt'> = {
   offlineCards: { enabled: false, limitCents: 50000 },
   tax: { pricesIncludeTax: false },
   discountLimits: { counter: 10, manager: 25, owner: null },
+  drawerNoSaleRoles: 'managers',
+  noSaleNeedsPin: true,
+  tableService: false,
 };
 
 /**

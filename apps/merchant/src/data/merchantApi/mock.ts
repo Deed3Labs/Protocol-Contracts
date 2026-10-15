@@ -442,6 +442,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
 
   // ---- The API -------------------------------------------------------------------------------------
   const wait = () => new Promise((r) => setTimeout(r, switches.delayMs));
+  const soon = async (): Promise<never> => refuse('Not in the mock yet', 501, 'not_built');
   const api: MerchantApi = {
     shop: async () => shop,
     updateShop: async (patch) => {
@@ -1060,6 +1061,31 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) refuse('That isn’t an email address', 422, 'invalid');
       return { sentTo: input.email.trim() };
     },
+
+    // Counter hardware, tables and the menu: the Terminal screens (UI Phase 4) fill these in.
+    categoryOrder: soon,
+    saveCategoryOrder: soon,
+    hardware: soon,
+    addDevice: soon,
+    updateDevice: soon,
+    removeDevice: soon,
+    claimPoint: soon,
+    showOnPoint: soon,
+    drawerKey: soon,
+    saveDrawerEvents: soon,
+    approveNoSale: soon,
+    drawerDay: soon,
+    floor: soon,
+    saveTables: soon,
+    seatTable: soon,
+    clearTable: soon,
+    waitlist: soon,
+    addParty: soon,
+    updateParty: soon,
+    createAlert: soon,
+    clearAlert: soon,
+    pickups: soon,
+    markPickedUp: soon,
   };
 
   // ---- The Clear side (the older client's calls) ----------------------------------------------------

@@ -882,3 +882,83 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   the amount), and an approved charge's Paid out. A dash is left only where the figure couldn't be
   read. Against the mock: `&payday=none`.
 
+
+## Terminal: what the spec met (Phase 1, 2026-10-15)
+
+`clear-merchant-terminal.html` adds counter hardware, tables and the phone pages. Where it met the
+code or the earlier references:
+
+- **Enrolled tablets already own "devices".** `/api/merchant/devices` and `merchant.devices` are the
+  tablets signed in as the shop (Security, Settings › Devices' This tablet). Points, drawers and
+  printers are their own table and live at **`/api/merchant/hardware`**; Points and drawers keep the
+  spec's own paths (`/points/claim`, `/points/:id/show`, `/drawers/:id/key`, `/drawer/events`).
+  Readers stay in `cards.ts`. The existing "Add a device" sheet (a code for another tablet) moves to
+  Security under its own name, so the new one can have the title.
+- **The phone pages live on the member app.** `apps/member` is app.useclear.org, not the apex
+  (useclear.org is the marketing site, another repo). `/p/:code` and `/r/:code` are built there,
+  split away from Privy and the wallet providers; the apex redirects `/p/*` and `/r/*` to it. The
+  Point and the sticker still print `USECLEAR.ORG/P/A7K2`, as drawn.
+- **Receipt codes are random**, ten Crockford characters (`Receipt.code`), made once and kept in
+  `payments.receipts` with the `link` channel it already allows. The spec's `/r/0142` is only an
+  example. The merchant app's `/r/:token` links, already sent by text and email, keep working.
+- **Point codes are four characters**, as drawn. That is about a million codes, so `/api/p` is
+  rate-limited by address across all codes; today's limiter keys on the path, which would give each
+  guess its own allowance.
+- **Cash offline wasn't true yet.** The New charge line said cash still works offline, but raising
+  the order and taking the cash both needed the server. Orders now take an idempotency key and, when
+  queued offline, the tablet's own figures (below). The service worker's "there is no offline
+  queue, and there must not be one" is about the network layer and stays: the queue lives in the
+  app (IndexedDB), never in the worker.
+- **The redrawn cash screen keeps its receipt band.** Section 5 draws Change and Paid without the
+  original's Send a receipt (Text, Email, None); the prompt keeps everything the original draws, so
+  the band stays and the paper row under it becomes the printer's.
+- **A No sale's PIN is checked here, at the tablet.** "Ana or Luis can approve here or from their
+  phone": nothing sends staff an approval today (the Clear refund's "from their own device" is the
+  owner signing in and finding it). The phone half waits for a pending-approvals feed; until then the
+  line reads "Ana or Luis can approve here." A PIN needs the connection, so a No sale does too; a
+  sale's open never does.
+- **"Your table is ready" as a notification** reaches a member who joined the wait list signed in,
+  from the Clear app. A party who joined from the phone page by number gets the text only.
+- **Card on the phone page is a Stripe Checkout Session** on the shop's account, a direct charge with
+  `clearCardFee` as the application fee. It is captured at once, unlike the counter's cards, which
+  Close the day captures; the day's figures count it as a card tender like any other.
+- **Native code can't be built on this Mac** (no Xcode, Android SDK or Java, as in Phase 5). The
+  Bluetooth and raw-socket plugins get their TypeScript side behind the services; the native side
+  is written to be built on a Mac with the toolchains.
+- **The stylesheet.** `scripts/reference-css.mjs` reads every reference file; the terminal file goes
+  last in its `ORDER`, so it can't override the earlier files' rules.
+- **Not drawn, taken from the nearest drawing:** Counter's Tables switch (a Switch row like the
+  others there); adding a drawer (find, then test open) and a printer (find, then print a test
+  label), on the Point's three-step layout; Edit tables and Add a party (sheets like Edit hours);
+  Category order (rows with a handle); the 4 × 6 receipt label (the sticker receipt's layout); the
+  phone page when a Point idles on Pay here (the menu's header with "Pay here when you're done").
+  Where an order is marked To go or Delivery isn't drawn either; tables' orders are dine in, and the
+  rest have no type until it is.
+
+## Terminal Phase 2: contracts
+
+- **New files** in `packages/merchant-contracts`: `devices.ts` (Points, the drawer, printers, Point
+  state, the drawer's log and key), `floor.ts` (tables, the wait list, alerts, Order ready) and
+  `public.ts` (the phone pages, and the Point's screen from the device API).
+- **One Point state** (`PointState`: idle, bill, paid, alert, waitlist, test) for the merchant app,
+  the device API and the phone page. `pointShowing` decides what shows now: an alert covers anything
+  until it expires; a paid bill holds for three minutes (`POINT_PAID_SECONDS`), then idle. The server,
+  the mock and the fake Point all use it.
+- **By time of day** is a switch, as drawn: the Menu while the shop is open before 9pm, Pay here
+  after. The hour isn't a setting until the reference draws one.
+- **Additions to existing responses are optional** (`Order.tableId`, `serviceType`, `calledAt`,
+  `pickedUpAt`, `offline`; `CatalogItem.onMenu`, absent meaning on; `Receipt.table` and `code`; the
+  three new shop settings), as `tipsHours` was, so a response from before them still parses.
+- **An offline order carries the tablet's figures.** `CreateOrder.offline` holds the subtotal, tax
+  and total the tablet worked out from the last catalogue and rate it had; the server keeps them,
+  because the customer has paid that and had their change, and marks the order `offline`. Online,
+  figures are the server's as always. `CreateCashTender.clientCreatedAt` puts a queued tender in the
+  drawer session open at that time.
+- **Categories keep their names.** There is still no category record; `CategoryOrder` is the shop's
+  list of names, and a category not in it sorts after, A–Z. Showcase picks categories by name.
+- **A No sale is approved, then logged.** `approveNoSale` checks the reason and PIN and returns an
+  approval; the drawer opens and its `opened` event carries the approval's id.
+- **"Email me this receipt"** on the paid page is drawn, so the public API has it
+  (`POST /api/r/:code/email`), rate-limited by address and by receipt.
+- **The mock refuses the new calls** ("Not in the mock yet") until the Terminal screens fill them in
+  (Phase 4). The real client already maps each to its route.

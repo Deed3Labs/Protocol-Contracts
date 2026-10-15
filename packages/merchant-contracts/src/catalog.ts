@@ -57,6 +57,11 @@ export const CatalogItem = z.object({
   reorderAt: z.number().int().min(0).nullable(),
   optionGroups: z.array(OptionGroup),
   archivedAt: Timestamp.nullable(),
+  /**
+   * On the menu: what phones and Points show (Inventory › On the menu). Off still sells at the
+   * counter. Optional so older responses still parse; absent is on.
+   */
+  onMenu: z.boolean().optional(),
 });
 export type CatalogItem = z.infer<typeof CatalogItem>;
 
@@ -68,8 +73,15 @@ export const ItemInput = CatalogItem.pick({
   taxKind: true,
   stockTracked: true,
   reorderAt: true,
-}).extend({ costCents: NonNegativeCents.nullable() });
+}).extend({ costCents: NonNegativeCents.nullable(), onMenu: z.boolean().optional() });
 export type ItemInput = z.infer<typeof ItemInput>;
+
+/**
+ * The order categories show in, on the phone's menu and a Point's showcase (Inventory › Category
+ * order). Categories are still the items' own names; a category not listed goes after, A–Z.
+ */
+export const CategoryOrder = z.object({ names: z.array(z.string().trim().min(1).max(60)).max(100) });
+export type CategoryOrder = z.infer<typeof CategoryOrder>;
 
 export const STOCK_MOVEMENT_KINDS = ['receive', 'count', 'damage', 'hold', 'release', 'sell', 'return'] as const;
 export const StockMovementKind = z.enum(STOCK_MOVEMENT_KINDS);
