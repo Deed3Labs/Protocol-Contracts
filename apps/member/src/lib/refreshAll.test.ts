@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -23,6 +23,15 @@ const code = (p: string) =>
  * fresh credit limit short of a hard reload.
  */
 describe('refreshAllNow', () => {
+  // The stub window below must not outlive this file: bun shares globals across test files.
+  const scope = globalThis as unknown as { window?: unknown };
+  const hadWindow = 'window' in scope;
+  const previousWindow = scope.window;
+  afterAll(() => {
+    if (hadWindow) scope.window = previousWindow;
+    else delete scope.window;
+  });
+
   test('fires both refresh channels, not just one', async () => {
     const win = new EventTarget() as EventTarget & { location: { search: string } };
     win.location = { search: '' };
