@@ -1,4 +1,7 @@
 import { useState } from 'react';
+import type { DrawerDay } from '@clear/merchant-contracts';
+import { DrawerOpens } from '@/terminal/noSale';
+import { miCasa } from '@/terminal/reference';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import type { CloseDayResult } from '@clear/merchant-contracts';
 import { useAuth } from '@/auth/authContext';
@@ -31,6 +34,8 @@ export default function CloseDayPage() {
   const api = useMerchantApi();
   const drawer = useApi(() => (reference ? Promise.resolve(null) : api.drawer()), [reference]);
   const s = drawer.data;
+  // Clear Terminal: the drawer's opens today, from its log (section 6).
+  const opens = useApi(() => (s ? api.drawerDay(s.id).catch(() => null) : Promise.resolve(null)), [s?.id]);
   const day = s?.businessDate ?? null;
   const counts = useApi(() => (s ? api.counts(s.id) : Promise.resolve(null)), [s?.id]);
   // The day's figures come from Close the day's own endpoint, which anyone who may close can read
@@ -53,6 +58,7 @@ export default function CloseDayPage() {
       <CloseDayView
         day={DAY}
         drawer={DRAWERS[which!]}
+        opens={miCasa() ? <DrawerOpens day={REFERENCE_OPENS} nameOf={(id) => REFERENCE_NAMES[id] ?? '—'} /> : undefined}
         onShift={me}
         twoColumn={layout === 'two-column'}
         onExit={() => navigate('/')}
@@ -134,6 +140,7 @@ export default function CloseDayPage() {
       <CloseDayView
         day={built.day}
         drawer={built.drawer}
+        opens={opens.data && opens.data.opens + opens.data.withKey.length > 0 ? <DrawerOpens day={opens.data} nameOf={(id) => overview.data?.names.find((n) => n.id === id)?.name ?? '—'} /> : undefined}
         onShift={me}
         twoColumn={layout === 'two-column'}
         onExit={home}
@@ -161,3 +168,15 @@ export default function CloseDayPage() {
     </>
   );
 }
+
+/** Mi Casa's drawer on the reference's day (terminal reference, section 6). */
+const REFERENCE_OPENS: DrawerDay = {
+  opens: 23,
+  withSale: 21,
+  noSales: [
+    { at: '2026-10-15T11:04:00-07:00', staffId: 'stf_jen', reason: 'change_for_note', note: 'a $50', approvedBy: 'stf_ana' },
+    { at: '2026-10-15T14:15:00-07:00', staffId: 'stf_luis', reason: 'counting', note: null, approvedBy: null },
+  ],
+  withKey: [{ at: '2026-10-15T12:41:00-07:00', orderId: null, orderNumber: 142 }],
+};
+const REFERENCE_NAMES: Record<string, string> = { stf_jen: 'Jen R.', stf_luis: 'Luis M.', stf_ana: 'Ana R.' };

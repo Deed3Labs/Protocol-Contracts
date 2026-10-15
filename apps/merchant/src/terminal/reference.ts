@@ -185,7 +185,7 @@ export const MENU: {
   {
     ref: 'burrito',
     name: 'Carne asada burrito',
-    category: 'Burritos',
+    category: 'Specials',
     cents: 1250,
     detail: null,
     onMenu: true,

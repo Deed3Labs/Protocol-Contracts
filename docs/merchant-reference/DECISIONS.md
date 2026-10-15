@@ -1086,3 +1086,66 @@ amendment, approved before the API builds on them.
 - **Not yet:** the "Your table is ready" notification for a member who joined signed in (the wait
   list keeps their wallet; Phase 5 sends it); the contract conformance run against a real Postgres
   (`apps/api/e2e/contract.ts`).
+
+## Terminal Phase 4: the merchant app (2026-10-15)
+
+- **The terminal file adds to reference.css; it doesn't vote.** `scripts/reference-css.mjs` reads it
+  as an addendum (ADDENDA): a rule of its own is added, a rule the ten draw differently is kept for
+  its own screens under `.c-page-terminal`, and a rule the ten keep only for their pages (Settings'
+  selected chip) is added for its screens too. The ten files' output is unchanged, line for line.
+- **Mi Casa Tacos in the preview** is `&shop=micasa`: the mock's seed (`seedMiCasa.ts`, re-exporting
+  what Mike's Tire's has that the terminal screens don't draw) and its Terminal state
+  (`terminalMock.ts`, at dinner on Oct 15). The preview's three roles keep their ids, so `&as=jen`
+  is the counter at either shop. `&calls=open` opens Table 12's Call (13b); `&seat=before` is the
+  moment before Ana is seated (8b); `&drawerHw=stuck` is a drawer that doesn't answer.
+- **One tax rate at Mi Casa.** The reference's bills don't agree: Table 12's $3.70 on $44.50 is
+  8.32%; order 0142's $3.45 on $42.25 is 8.17%. Table 12's, which five sections draw, sets it, so
+  order 0142 is **$3.51 tax, $45.76, $4.24 change** from $50.00.
+- **Terminal screens read the API in the preview too.** Devices, Tables, On the menu and the Home
+  cells take their figures from the mock, seeded with the reference's, rather than from constants;
+  so `?preview=1` and `&live=1` show the same dinner. New Charge's cash and Show on frames, and Close
+  the day's opens, keep the pages' own preview constants.
+- **Settings › Devices is the terminal reference's pane for every shop.** Mike's Tire has nothing
+  paired, so it shows the empty rows. Each device's pane is `/settings/devices/<id>`, and the
+  printers share `/settings/devices/printers`, as the reference draws them on one pane. The M2 inside
+  a Pay case shows on its Point's pane, not under Card readers. The rail is the way back on a
+  landscape tablet; one column gets a back arrow.
+- **The old Add a device** (a code for another tablet) keeps its place in Security; the new one is
+  the hardware sheet. A card reader keeps the pairing it already has (Settings › Payments).
+- **Printer rows don't name the make** (Clear 4-inch, Rollo): `PrinterSettings` has no model. Adding
+  `model` to the contract is proposed at Hard Stop 4.
+- **A tile with no Point says "No Point".** The floor draws Table 1 as "Point shows Menu", but no
+  Point at Table 1 is in the devices list; Table 14's Point idles on the Menu, as the floor draws it.
+- **Calls and bills show while one is waiting**, above the floor and on Home, with the last hour's.
+  A Call turns its tile amber (`.c-tm-tile.c-call` in app.css: the reference names the colour, not
+  a rule).
+- **Order ready is on Home for any shop with a counter Point**, counter service or a restaurant's
+  to-go orders. Mi Casa has both, so its Home has both cells.
+- **The drawings beside the sheets are notes.** The Point screens drawn next to the Seat, tab and
+  Show on sheets explain them; the sheets don't carry them. The drawings inside a pane or a sheet
+  (a Point's pane, the Pay case, Add a Point's "It will show", the printers' labels) are on screen.
+- **No sale's keypad.** The reference draws four dots and no keypad; a tablet has no keyboard, so the
+  sheet adds the PIN keypad the refund override uses. "Ana or Luis can approve here."
+- **The cash screen's paper row is the printer's** once a printer prints the receipt (Send a receipt
+  stays above it); with no printer it's the print dialog, as before. A cash sale's drawer opens as the
+  change screen comes up; "Drawer didn't open" shows if it hasn't said so in two seconds, and "I used
+  the key" logs a key open against the sale.
+- **Offline cash.** Checkout prices the cart on the tablet with the shop's tax rates as it last read
+  them (kept from Settings › Tax); with none read yet, it says so. Card, Clear and split wait. The
+  order and its cash go into one IndexedDB queue with the drawer's events, synced in order when the
+  connection is back; the Point only catches up then.
+- **Tables' Add items and Take payment open New charge on the tab** (`/new?order=…&table=…`): the
+  tab's lines in the cart, its own Point shown the bill. A seated table with no tab raises one with
+  its table. Edit tables is on the floor for everyone; saving needs a manager (the server's rule).
+- **Not drawn, built from the nearest drawing:** Add a party and Edit tables (sheets like the join
+  page and Edit hours), Category order (rows that move up and down), Settings › Counter's Tables
+  switch (a Switch row in a Service cell), adding a drawer or printer (find, then test, in two steps).
+- **Reader switching** (the Pay case addendum) is `readerQueue` in `src/reader/tables.ts`, on the
+  existing single-reader service: connect a table's M2 when its bill goes to its Point, wait behind
+  a payment in progress, give the reader back after the payment or five idle minutes. The card screen
+  shows "Card · Table 12" while it connects or while another table waits.
+- **Native code is the Phase 6 seam.** The drawer's and printers' native sides say what's coming
+  with the app update; the web drawer uses Web Bluetooth (Chrome), the web printer the print dialog.
+- **Visual checks.** `e2e/states.ts` has 23 `terminal-*` states, each at its reference moment
+  (`clock`: dinner at 8pm, lunch at 12:42pm). The terminal file's sheets count as frames when the
+  reference is captured (`e2e/reference.spec.ts`), which no other file's do.

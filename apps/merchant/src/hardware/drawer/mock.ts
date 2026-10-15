@@ -1,4 +1,4 @@
-import { DRAWER_ANSWER_MS, type DrawerService, type DrawerSignal } from './types';
+import type { DrawerService, DrawerSignal } from './types';
 
 /**
  * The preview's drawer: opens a moment after it's told to and shuts a few seconds later, or, with
@@ -12,7 +12,7 @@ export function mockDrawer(opts: { stuck?: boolean } = {}): DrawerService {
     pair: async () => ({ bluetoothId: 'C1:EA:4F:2A', name: 'Clear Drawer' }),
     open: async () => {
       if (opts.stuck) {
-        setTimeout(() => emit({ kind: 'unreachable', at: now(), why: 'No answer' }), DRAWER_ANSWER_MS);
+        setTimeout(() => emit({ kind: 'unreachable', at: now(), why: 'No answer' }), 100);
         return;
       }
       setTimeout(() => emit({ kind: 'opened', at: now() }), 300);

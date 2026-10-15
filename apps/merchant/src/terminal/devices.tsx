@@ -774,7 +774,7 @@ const KINDS: { kind: AddKind; t: string; det: string }[] = [
 
 export function AddDeviceKindSheet({ onPick, onClose }: { onPick: (k: AddKind) => void; onClose: () => void }) {
   return (
-    <Sheet className="c-st-sheet c-tm-sheet" title="Add a device" onClose={onClose} foot={<p className="c-det">Signing in another tablet is in Security.</p>}>
+    <Sheet className="c-st-sheet c-tm-sheet c-w420" title="Add a device" onClose={onClose} foot={<p className="c-det">Signing in another tablet is in Security.</p>}>
       <Rows link>
         {KINDS.map((k) => (
           <div key={k.kind}>
@@ -875,7 +875,7 @@ export function AddPointSheet({
   if (state.step === 'scan' || state.step === 'type') {
     return (
       <Sheet
-        className="c-st-sheet c-tm-sheet"
+        className="c-st-sheet c-tm-sheet c-w420"
         head={head}
         onClose={onClose}
         label="Add a Point"
@@ -920,7 +920,7 @@ export function AddPointSheet({
   if (state.step === 'wifi') {
     return (
       <Sheet
-        className="c-st-sheet c-tm-sheet"
+        className="c-st-sheet c-tm-sheet c-w420"
         head={head}
         onClose={onClose}
         label="Add a Point"
@@ -966,7 +966,7 @@ export function AddPointSheet({
   const table = Number(state.table);
   return (
     <Sheet
-      className="c-st-sheet c-tm-sheet"
+      className="c-st-sheet c-tm-sheet c-w420"
       head={head}
       onClose={onClose}
       label="Add a Point"
@@ -1047,7 +1047,7 @@ export function FindSheet({
   const title = kind === 'drawer' ? 'Add a cash drawer' : 'Add a printer';
   return (
     <Sheet
-      className="c-st-sheet c-tm-sheet"
+      className="c-st-sheet c-tm-sheet c-w420"
       head={<StepHead title={title} onBack={onBack} onClose={onClose} />}
       onClose={onClose}
       label={title}
@@ -1106,7 +1106,7 @@ export function ReaderPickSheet({
   onClose: () => void;
 }) {
   return (
-    <Sheet className="c-st-sheet c-tm-sheet" title="Reader inside" onClose={onClose} foot={<p className="c-det">One reader links to one Point.</p>}>
+    <Sheet className="c-st-sheet c-tm-sheet c-w420" title="Reader inside" onClose={onClose} foot={<p className="c-det">One reader links to one Point.</p>}>
       <Rows link>
         {readers.map((r) => (
           <div key={r.id}>

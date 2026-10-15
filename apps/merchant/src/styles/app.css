@@ -649,3 +649,22 @@ input.c-st-time {
   background: color-mix(in srgb, var(--underway) 16%, var(--paper));
   box-shadow: inset 0 3px 0 var(--underway);
 }
+
+/* Clear Terminal's sheets: the reference sets each one's width inline (420, 440 or 460). */
+.c-sheet.c-tm-sheet {
+  max-width: 440px;
+}
+.c-sheet.c-tm-sheet.c-w420 {
+  max-width: 420px;
+}
+.c-sheet.c-tm-sheet.c-w460 {
+  max-width: 460px;
+}
+
+/* Clear Terminal › Tables on a phone: two tiles a row, so a tile's lines don't wrap a word at a time
+   (the reference draws the floor on a tablet only). */
+@media (max-width: 519.98px) {
+  .c-tm-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

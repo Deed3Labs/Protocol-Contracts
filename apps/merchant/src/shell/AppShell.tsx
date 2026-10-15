@@ -1,4 +1,5 @@
 import { clockAt, toShiftPerson } from '@/auth/shiftLines';
+import { NoSaleSheet, noSalePin, runNoSale } from '@/terminal/noSale';
 import { merchantApi } from '@/data/merchantApi';
 import { MI_CASA, miCasa } from '@/terminal/reference';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
@@ -45,7 +46,7 @@ import { ShiftActionsContext } from '@/shell/shiftActions';
 /** Routes that are flows rather than pages. */
 const FLOWS = ['/close', '/new', '/onboarding'];
 
-type Open = 'profile' | 'who' | 'pin' | 'owner' | 'plus' | null;
+type Open = 'profile' | 'who' | 'pin' | 'owner' | 'plus' | 'nosale' | null;
 
 const SECTION: [string, NavKey][] = [
   ['/charges', 'charges'],
@@ -84,6 +85,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { data: profile } = useApi(() => api.profile(), []);
   // Whether the shop serves at tables: Tables is in the nav (Settings › Counter).
   const { data: shopSettings } = useApi(() => merchantApi().settings(), []);
+  // Clear Terminal: a paired drawer puts No sale in the shift menu (section 6).
+  const { data: hardware } = useApi(() => merchantApi().hardware().catch(() => []), []);
+  const drawerDevice = hardware?.find((d) => d.kind === 'drawer') ?? null;
+  const { data: staffList } = useApi(() => merchantApi().staff().catch(() => []), []);
+  const [noSaleBusy, setNoSaleBusy] = useState(false);
+  const [noSaleError, setNoSaleError] = useState<string | null>(null);
   useEffect(() => rememberShop(profile?.name), [profile?.name]);
   // The dev preview (`?preview=1`) stands up a session with no API behind it; it is the
   // reference scenario's shop.
@@ -275,16 +282,18 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigate(to);
   };
   const tablet: ProfileRow = { label: 'This tablet', value: `${device?.label ?? 'This tablet'} · enrolled` };
+  const noSale: ProfileRow[] = drawerDevice ? [{ label: 'No sale', onClick: () => (setNoSaleError(null), setOpen('nosale')) }] : [];
   const rows: ProfileRow[] = canSeeMoney
     ? [
         { label: 'Settings', onClick: go('/settings') },
         { label: 'Your terms', onClick: go('/overview') },
         { label: 'Cash account', onClick: go('/payouts') },
         { label: 'Counter materials' },
+        ...noSale,
         tablet,
         { label: 'Help' },
       ]
-    : [tablet, { label: 'Help' }];
+    : [...noSale, tablet, { label: 'Help' }];
 
   return (
     // `@container`: the pages not yet converted size themselves with container queries.
@@ -299,6 +308,23 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {layout === 'phone' && <PhoneNav current={current} role={role} tables={shopSettings?.tableService} onPlus={() => setOpen('plus')} onLocked={() => setOpen('owner')} />}
 
+      {open === 'nosale' && drawerDevice && (
+        <NoSaleSheet
+          asker={staff.name.split(' ')[0] ?? ''}
+          approvers={(staffList ?? []).filter((x) => x.role !== 'counter' && x.active).map((x) => x.name)}
+          pinFrom={noSalePin(shopSettings ?? {}, role)}
+          busy={noSaleBusy}
+          error={noSaleError}
+          onClose={closeSheets}
+          onOpen={(input) => {
+            setNoSaleBusy(true);
+            setNoSaleError(null);
+            runNoSale(merchantApi(), { drawerId: drawerDevice.id, staffId: staff.id, preview: import.meta.env.DEV && device?.id === 'preview', ...input })
+              .then(closeSheets, (e) => setNoSaleError(e instanceof Error ? e.message : 'Couldn’t open it'))
+              .finally(() => setNoSaleBusy(false));
+          }}
+        />
+      )}
       {open === 'plus' && (
         <PlusSheet onClose={closeSheets} onAmount={go('/new')} onCart={go('/new?items=1')} />
       )}

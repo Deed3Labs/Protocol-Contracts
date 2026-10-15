@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import type { TableView, WaitlistParty } from '@clear/merchant-contracts';
-import { seesMoney } from '@clear/domain';
-import { useAuth } from '@/auth/authContext';
 import { useMerchantApi } from '@/data/merchantApi';
 import { errorSentence, useApi } from '@/data/useApi';
 import { useLive } from '@/data/useLive';
 import { usePage } from '@/lib/usePage';
-import { MI_CASA, miCasa } from '@/terminal/reference';
+import { miCasa } from '@/terminal/reference';
 import { AddPartySheet, CallsStrip, EditTablesSheet, FloorView, SeatSheet, TabSheet } from '@/terminal/tables';
 
 /**
@@ -26,8 +24,6 @@ export default function TablesPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const api = useMerchantApi();
-  const { session } = useAuth();
-  const role = session?.staff.role ?? 'counter';
   const preview = import.meta.env.DEV && params.get('preview') === '1';
   const q = preview ? `?preview=1${miCasa() ? '&shop=micasa' : ''}` : '';
   const floor = useApi(() => api.floor(), []);
@@ -39,7 +35,6 @@ export default function TablesPage() {
   const tabOrderId = open?.kind === 'tab' ? floor.data?.tables.find((t) => t.id === open.tableId)?.orderId : null;
   const tab = useApi(() => (tabOrderId ? api.order(tabOrderId) : Promise.resolve(null)), [tabOrderId]);
   const now = Date.now();
-  const shop = miCasa() ? MI_CASA.shop : '';
 
   const run = async (fn: () => Promise<unknown>, after?: () => void) => {
     setBusy(true);
@@ -69,16 +64,15 @@ export default function TablesPage() {
         waitlist={waitlist}
         now={now}
         onTable={(t: TableView) => setOpen({ kind: 'tab', tableId: t.id })}
-        onEdit={seesMoney(role) ? () => setOpen({ kind: 'edit' }) : undefined}
+        onEdit={() => setOpen({ kind: 'edit' })}
         onAddParty={() => setOpen({ kind: 'party' })}
         onSeat={(p: WaitlistParty) => setOpen({ kind: 'seat', partyId: p.id })}
-        strip={recent.length ? <CallsStrip requests={recent} tables={tables} nameOf={nameOf} now={now} onAnswer={(id) => void run(() => api.answerTableRequest(id))} /> : null}
+        strip={recent.some((r) => r.state === 'open') ? <CallsStrip requests={recent} tables={tables} nameOf={nameOf} now={now} onAnswer={(id) => void run(() => api.answerTableRequest(id))} /> : null}
       />
       {open?.kind === 'tab' && (
         <TabSheet
           t={table(open.tableId)}
           order={tab.data}
-          shop={shop}
           now={now}
           onClose={close}
           onSeat={() => void run(() => api.seatTable(open.tableId), close)}
@@ -91,7 +85,6 @@ export default function TablesPage() {
         <SeatSheet
           party={party(open.partyId)}
           tables={tables}
-          shop={shop}
           now={now}
           busy={busy}
           error={error}

@@ -256,6 +256,8 @@ export interface Actions {
   onEditShop?: (field: ShopField) => void;
   /** Owners, live: the break length and when it's due. */
   onBreaks?: () => void;
+  /** Clear Terminal: Tables on or off (the nav's Tables, for shops that serve at tables). */
+  onTables?: (on: boolean) => void;
   /** Owners, live: how long this tablet waits before asking for a PIN. */
   onIdle?: (seconds: number) => void;
   /** Owners, live: rename this tablet. */
@@ -323,23 +325,26 @@ function liveCounterDevices(key: 'counter' | 'devices', l: LiveShop, a: Actions)
   if (key === 'counter') {
     const b = l.settings?.breaks;
     return (
-      <Cell label="Shifts" det="Shop-wide" foot={<FootDet>Home shows who is due a break from this. It is not a timesheet.</FootDet>}>
-        <Main>
-          <Rows link>
-            <Kv k="Break" v={b ? `${b.minutes} minutes, over ${b.afterMinutes % 60 ? `${b.afterMinutes} minutes` : `${b.afterMinutes / 60} hours`}` : '—'} go onTap={a.onBreaks} />
-          </Rows>
-          {l.device && (
-            <>
-              <p className="c-label c-st-fl">This tablet asks for a PIN after</p>
-              <Chips
-                options={IDLE.map((s) => minutes(s))}
-                value={Math.max(0, IDLE.indexOf(l.device.idleLockSeconds))}
-                onPick={(i) => a.onIdle?.(IDLE[i]!)}
-              />
-            </>
-          )}
-        </Main>
-      </Cell>
+      <>
+        <Cell label="Shifts" det="Shop-wide" foot={<FootDet>Home shows who is due a break from this. It is not a timesheet.</FootDet>}>
+          <Main>
+            <Rows link>
+              <Kv k="Break" v={b ? `${b.minutes} minutes, over ${b.afterMinutes % 60 ? `${b.afterMinutes} minutes` : `${b.afterMinutes / 60} hours`}` : '—'} go onTap={a.onBreaks} />
+            </Rows>
+            {l.device && (
+              <>
+                <p className="c-label c-st-fl">This tablet asks for a PIN after</p>
+                <Chips
+                  options={IDLE.map((s) => minutes(s))}
+                  value={Math.max(0, IDLE.indexOf(l.device.idleLockSeconds))}
+                  onPick={(i) => a.onIdle?.(IDLE[i]!)}
+                />
+              </>
+            )}
+          </Main>
+        </Cell>
+        <TablesCell on={l.settings?.tableService ?? false} onChange={a.onTables} />
+      </>
     );
   }
   const readers = l.readers ?? [];
@@ -974,6 +979,7 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
               </Rows>
             </Main>
           </Cell>
+          <TablesCell on={false} />
         </>
       );
     case 'payments': {
@@ -1481,5 +1487,22 @@ export function hoursBody(d: SettingsData, onSave?: () => void): ReactNode {
         </Main>
       </Cell>
     </>
+  );
+}
+
+/**
+ * Clear Terminal: Tables, for shops that serve at tables. Off by default; a counter-service shop never
+ * sees the page, so its nav stays six items (terminal reference, decisions). Not drawn: a Switch row
+ * like the others in Counter.
+ */
+function TablesCell({ on, onChange }: { on: boolean; onChange?: (on: boolean) => void }) {
+  return (
+    <Cell label="Service" det="At the counter or at tables">
+      <Main>
+        <Rows>
+          <Switch t="Tables" det="For a shop that serves at tables: the floor, the wait list and its Points" on={on} onChange={onChange} initial={on} />
+        </Rows>
+      </Main>
+    </Cell>
   );
 }

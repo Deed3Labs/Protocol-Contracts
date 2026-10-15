@@ -53,7 +53,7 @@ export function NoSaleSheet({
   const ready = (!needsPin || pin.length === 4) && (reason !== 'other' || note.trim().length > 0);
   return (
     <Sheet
-      className="c-st-sheet c-tm-sheet"
+      className="c-st-sheet c-tm-sheet c-w420"
       title="Open the drawer"
       onClose={onClose}
       foot={

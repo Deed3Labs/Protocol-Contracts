@@ -614,9 +614,12 @@ export function CloseDayView({
   onClose,
   onChangeShift,
   twoColumn = true,
+  opens,
 }: {
   day: DaySummary;
   drawer: DrawerClose;
+  /** Clear Terminal: every time the drawer opened today, above the counts (terminal reference, section 6). */
+  opens?: ReactNode;
   onShift: string;
   onExit?: () => void;
   onSignOff?: () => void;
@@ -714,6 +717,7 @@ export function CloseDayView({
             </div>
           </div>
           <div className="c-cmain c-dr-col">
+            {opens}
             <Strip
               cells={[
                 { label: 'Expected', cents: drawer.expectedCents },

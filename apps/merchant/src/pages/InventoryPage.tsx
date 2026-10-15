@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { CategoryOrderSheet, OnTheMenuCell } from '@/terminal/menu';
+import { MENU, miCasa } from '@/terminal/reference';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import type { OptionGroup as ApiOptionGroup, StockAdjustment } from '@clear/merchant-contracts';
 import { seesMoney } from '@clear/domain';
@@ -98,6 +100,16 @@ export default function InventoryPage() {
   const history = useApi(() => (preview || !owner || !id ? Promise.resolve(null) : api.stockHistory(id)), [preview, owner, id]);
   const liveItems = (catalog.data ?? []).map((c) => fromCatalog(c, reorders.data ?? [], c.id === id ? history.data : null));
   const items: InvItem[] = preview ? (screen !== 'empty' ? INVENTORY : []) : liveItems;
+  // Clear Terminal › On the menu: for a shop with Points (or a phone page), what they show.
+  const hardware = useApi(() => (preview ? Promise.resolve([]) : api.hardware().catch(() => [])), [preview]);
+  const order = useApi(() => (preview ? Promise.resolve(null) : api.categoryOrder().catch(() => null)), [preview]);
+  const hasPoints = (hardware.data ?? []).some((d) => d.kind === 'point');
+  const [orderSheet, setOrderSheet] = useState(false);
+  const [menuBusy, setMenuBusy] = useState(false);
+  const menuItems = (catalog.data ?? []).filter((c) => !c.archivedAt);
+  const categories = [...new Set(menuItems.map((c) => c.category))];
+  const orderedCategories = [...(order.data?.names ?? []).filter((c) => categories.includes(c)), ...categories.filter((c) => !(order.data?.names ?? []).includes(c)).sort()];
+  const sold = miCasa() ? Object.fromEntries(MENU.filter((m) => m.soldThisWeek).map((m) => [`itm_${m.ref}`, m.soldThisWeek!])) : {};
 
   const [show, setShow] = useState<Show>('all');
   const [sort, setSort] = useState<SortBy>('category');
@@ -313,6 +325,29 @@ export default function InventoryPage() {
   }
   return (
     <>
+      {hasPoints && (
+        <OnTheMenuCell
+          items={menuItems}
+          sold={sold}
+          canEdit={owner}
+          onToggle={(i, on) => void api.updateItem(i.id, { onMenu: on }).then(() => catalog.reload(), (e) => setError(errorSentence(e)))}
+          onOrder={() => setOrderSheet(true)}
+        />
+      )}
+      {orderSheet && (
+        <CategoryOrderSheet
+          categories={orderedCategories}
+          busy={menuBusy}
+          onClose={() => setOrderSheet(false)}
+          onSave={(names) => {
+            setMenuBusy(true);
+            void api.saveCategoryOrder({ names }).then(
+              () => (setOrderSheet(false), setMenuBusy(false), order.reload()),
+              (e) => (setError(errorSentence(e)), setMenuBusy(false)),
+            );
+          }}
+        />
+      )}
       <InventorySummary items={items} atCostCents={preview ? SHELF_AT_COST_CENTS : shelfAtCost(items)} owner={owner} />
       <InventoryList
         items={items}

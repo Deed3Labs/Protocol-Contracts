@@ -276,7 +276,10 @@ for (const f of addenda) {
   const done = new Set();
   for (const { key, media, sel, body } of addendumRules.get(f)) {
     const base = perFile.get(key);
-    if (base && [...base.values()].some((bodies) => bodies.includes(body))) continue;
+    // Already everywhere: the ten's winning version, unscoped (most files have it). A version the ten
+    // keep for their own pages (the selected chip, scoped to Settings) still needs adding here.
+    const w = winner.get(key);
+    if (w && w.files.length >= files.length / 2 && w.bodies.includes(body)) continue;
     if (done.has(`${key}|${body}`)) continue;
     done.add(`${key}|${body}`);
     const ok = emit(media, sel, body, [page], Boolean(base), '');

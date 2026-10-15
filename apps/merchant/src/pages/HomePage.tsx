@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { TerminalHomeCells } from '@/terminal/homeCells';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/auth/authContext';
 import { api } from '@/data/apiClient';
@@ -245,6 +246,7 @@ export default function HomePage() {
   return (
     <>
       <HomeView m={tillHidden ? { ...liveModel, till: undefined } : liveModel} layout={layout} a={a} />
+      {!seeded && <TerminalHomeCells />}
       {resendError && (
         <p className="c-det" role="alert" style={{ color: 'var(--absent)', margin: 'var(--s2) 0' }}>
           {resendError}

@@ -8,6 +8,7 @@ export * from './types';
 export { currentPlatform, kindsFor, offlineFor, OFFLINE_BUILT, previewPlatform, thisDevice } from './platform';
 export { mockReader, mockReaders } from './mock';
 export { merchantTerminalBackend, unavailableBackend } from './backend';
+export { readerQueue, IDLE_RELEASE_MS, type ReaderQueue, type TableReaderState } from './tables';
 
 /**
  * The one way a screen reaches a card reader. The installed app gets the native plugin, a browser

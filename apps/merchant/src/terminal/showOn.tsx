@@ -3,7 +3,6 @@ import type { Device, TableView } from '@clear/merchant-contracts';
 import { Chip } from '@/brand/controls';
 import { Sheet } from '@/brand/ui';
 import { Rows } from '@/settings/views';
-import { PointCounterBill, type BillLine } from './drawings';
 
 /**
  * Show it on (terminal reference, section 7): where the customer sees the charge. The counter Point
@@ -56,7 +55,6 @@ export function ShowOnSheet({
   tables,
   value,
   tabItems = {},
-  preview,
   onPick,
   onClose,
 }: {
@@ -65,20 +63,10 @@ export function ShowOnSheet({
   value: string | null;
   /** Items on each table's tab, by table id: "Its tab: 3 items, $48.20". */
   tabItems?: Record<string, number>;
-  /** What the counter Point will show: this order. */
-  preview?: {
-    shop: string;
-    order: string;
-    lines: BillLine[];
-    taxCents: number;
-    totalCents: number;
-    rungUpBy: string;
-  } | null;
   onPick: (id: string | null) => void;
   onClose: () => void;
 }) {
   const shown = points.filter((p) => p.settings.placement !== 'door');
-  const counter = shown.find((p) => p.id === value && p.settings.placement === 'counter') ?? (value === null ? null : shown.find((p) => p.settings.placement === 'counter'));
   const det = (p: Point) => {
     if (p.settings.placement === 'counter') return `${p.model === 'point_large' ? 'Point Large' : 'Point'} · the default`;
     const t = tables.find((x) => x.id === p.settings.tableId);
@@ -98,21 +86,11 @@ export function ShowOnSheet({
     </div>
   );
   return (
-    <Sheet className="c-st-sheet c-tm-sheet" title="Show it on" onClose={onClose} foot={<p className="c-det">Saved for the next sale until you change it.</p>}>
+    <Sheet className="c-st-sheet c-tm-sheet c-w420" title="Show it on" onClose={onClose} foot={<p className="c-det">Saved for the next sale until you change it.</p>}>
       <Rows link>
         {shown.map((p) => row(p.id, p.name, det(p)))}
         {row(null, 'Just this tablet', 'Nothing on a Point')}
       </Rows>
-      {preview && counter && value === counter.id && (
-        <>
-          <div className="c-tm-mini" style={{ marginTop: 'var(--s2)' }}>
-            <PointCounterBill {...preview} />
-          </div>
-          <p className="c-det" style={{ marginTop: 'var(--s1)' }}>
-            What {counter.name} shows once the order is sent: the lines as they are rung up, the code to pay.
-          </p>
-        </>
-      )}
     </Sheet>
   );
 }

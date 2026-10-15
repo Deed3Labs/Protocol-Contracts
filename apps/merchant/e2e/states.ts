@@ -318,6 +318,18 @@ export const STATES: State[] = [
   { id: 'terminal-drawer', page: 'settings', clock: DINNER, url: `/settings/devices/hw_drawer${P}${MC}`, refs: [r('terminal', '4 · Drawer and printers', 0)] },
   { id: 'terminal-printers', page: 'settings', clock: DINNER, url: `/settings/devices/printers${P}${MC}`, refs: [r('terminal', '4 · Drawer and printers', 1)] },
   { id: 'terminal-nosale', page: 'settings', clock: DINNER, url: `/settings/devices/hw_drawer${P}${MC}&screen=nosale&as=jen`, refs: [r('terminal', '6 · No sale', 0, 'A keypad under the dots: a tablet has no keyboard (DECISIONS › Terminal Phase 4). “or from their phone” is left off until approving from a phone is built (DECISIONS › Terminal: what the spec met).')] },
+  { id: 'terminal-cash-paid', page: 'new', clock: LUNCH, url: `/new${P}${MC}&screen=cash-paid&as=jen`, refs: [r('terminal', '5 · A cash sale, with the drawer and the Point', 0, 'Order 0142 is $45.76 at the one tax rate the reference’s bills share (DECISIONS › Terminal Phase 4). Send a receipt stays above the printer’s rows, as New Charge draws it.')] },
+  { id: 'terminal-cash-stuck', page: 'new', clock: LUNCH, url: `/new${P}${MC}&screen=cash-paid&as=jen&drawerHw=stuck`, refs: [r('terminal', '5 · A cash sale, with the drawer and the Point', 1, 'Order 0142 is $45.76 (DECISIONS › Terminal Phase 4).')] },
+  { id: 'terminal-close-drawer', page: 'close', clock: DINNER, url: `/close${P}${MC}&drawer=signed`, refs: [r('terminal', '6 · No sale', 1, 'A detail: the reference draws the drawer’s opens alone; the app puts them above the counts on Close the day.')] },
+  { id: 'terminal-show-on', page: 'new', clock: LUNCH, url: `/new${P}${MC}&screen=show-on&as=jen`, refs: [r('terminal', '7 · Show on a Point', 0, 'The sheet opens over Checkout. Table 12’s tab reads its total; the counter’s order is $45.76.')] },
+  { id: 'terminal-tables', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&as=jen`, refs: [r('terminal', '8 · Tables', 0, 'Table 1 has no Point in the reference’s devices, so its tile says so; Table 4 and 9 show Calls and bills above the floor (13b).')] },
+  { id: 'terminal-tab', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&as=jen&screen=tab&table=12`, refs: [r('terminal', '8 · Tables', 1)] },
+  { id: 'terminal-seat', page: 'tables', clock: '2026-10-15T19:58:00-07:00', url: `/tables${P}${MC}&seat=before&screen=seat&party=ana&table=6`, refs: [r('terminal', '8b · Seating a party', 0)] },
+  { id: 'terminal-order-ready', page: 'home', clock: LUNCH, url: `/${P}${MC}&as=jen`, refs: [r('terminal', '9 · Order ready', 0, 'A cell on Home, under the rest of it.')] },
+  { id: 'terminal-menu', page: 'inventory', clock: DINNER, url: `/inventory${P}${MC}&live=1`, refs: [r('terminal', '10 · Inventory · on the Point', 0, 'Every item on the menu is listed; the reference draws five.')] },
+  { id: 'terminal-calls', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&calls=open&as=jen`, refs: [r('terminal', '13b · The Pay case', 1, 'Calls and bills sit above the floor; Table 12’s tile turns amber.')] },
+  { id: 'terminal-card-table', page: 'new', clock: DINNER, url: `/new${P}${MC}&screen=card-table&as=jen`, refs: [r('terminal', '13b · The Pay case', 2)] },
+  { id: 'terminal-counter', page: 'settings', clock: DINNER, url: `/settings/counter${P}${MC}`, refs: [] },
 ];
 
 /** A frame's size, from its classes: which of the three captures it pairs with. */

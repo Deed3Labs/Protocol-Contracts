@@ -3,7 +3,7 @@ import type { Order, PickupOrder, TableRequest, TableView, Waitlist, WaitlistPar
 import { Chip } from '@/brand/controls';
 import { cx, Sheet, Slab } from '@/brand/ui';
 import { R2, Rows, Tg } from '@/settings/views';
-import { money, PointBill, PointHeld, PointNumber } from './drawings';
+import { money } from './drawings';
 
 /**
  * Tables (terminal reference, sections 8, 8b, 9 and 13b): the floor and the wait list side by side,
@@ -14,7 +14,6 @@ import { money, PointBill, PointHeld, PointNumber } from './drawings';
 const usd = (c: number) => `$${(c / 100).toFixed(2)}`;
 const mins = (from: string, now: number) => Math.max(0, Math.round((now - Date.parse(from)) / 60_000));
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '');
-const CLOCK = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toUpperCase();
 const WORDS = ['none', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 const word = (n: number) => WORDS[n] ?? String(n);
 const IDLE: Record<string, string> = { number: 'its number', menu: 'Menu', showcase: 'Showcase', pay: 'Pay here', waitlist: 'the wait list' };
@@ -104,7 +103,7 @@ export function FloorView({
   /** Calls and bills, above the floor when there are any. */
   strip?: ReactNode;
 }) {
-  const seated = tables.filter((t) => t.status !== 'free').length;
+  const seated = tables.filter((t) => t.status !== 'free' && t.status !== 'held').length;
   const waiting = waitlist.parties.filter((p) => p.state === 'waiting' || p.state === 'ready');
   const next = waiting[0] ?? null;
   const tableOf = (p: WaitlistParty) => tables.find((t) => t.id === p.tableId);
@@ -188,7 +187,6 @@ export function FloorView({
 export function TabSheet({
   t,
   order,
-  shop,
   now,
   onAddItems,
   onPay,
@@ -198,7 +196,6 @@ export function TabSheet({
 }: {
   t: TableView;
   order: Order | null;
-  shop: string;
   now: number;
   onAddItems: () => void;
   onPay: () => void;
@@ -217,7 +214,7 @@ export function TabSheet({
   return (
     <>
       <Sheet
-        className="c-st-sheet c-tm-sheet"
+        className="c-st-sheet c-tm-sheet c-w460"
         title={title}
         onClose={onClose}
         foot={
@@ -275,23 +272,6 @@ export function TabSheet({
           <span>Tab</span>
           <b>{usd(order?.totalCents ?? 0)}</b>
         </div>
-        {order && t.billSentAt && (
-          <>
-            <div className="c-tm-mini" style={{ marginTop: 'var(--s2)' }}>
-              <PointBill
-                shop={shop}
-                table={t.number}
-                lines={lines.map((l) => ({ qty: l.quantity, name: l.name, cents: l.lineCents }))}
-                taxCents={order.taxCents}
-                totalCents={order.totalCents}
-                sentAt={CLOCK(t.billSentAt)}
-              />
-            </div>
-            <p className="c-det" style={{ marginTop: 'var(--s1)' }}>
-              Table {t.number}’s Point, from the moment the bill is sent.
-            </p>
-          </>
-        )}
       </Sheet>
     </>
   );
@@ -310,7 +290,6 @@ export function seatOrder(tables: TableView[], size: number): TableView[] {
 export function SeatSheet({
   party,
   tables,
-  shop: _shop,
   now,
   busy,
   error,
@@ -320,7 +299,6 @@ export function SeatSheet({
 }: {
   party: WaitlistParty;
   tables: TableView[];
-  shop: string;
   now: number;
   busy?: boolean;
   error?: string | null;
@@ -375,22 +353,11 @@ export function SeatSheet({
           {error}
         </p>
       )}
-      {table && (
-        <>
-          <div className="c-tm-mini" style={{ marginTop: 'var(--s2)', width: 300 }}>
-            <PointHeld table={table.number} name={showName ? (party.name.split(/\s+/)[0] ?? party.name) : null} size={party.size} seatedAt={CLOCK(new Date(now).toISOString())} />
-          </div>
-          <p className="c-det" style={{ marginTop: 'var(--s1)' }}>
-            Table {table.label ?? table.number}’s Point the moment {party.name} is seated.
-          </p>
-        </>
-      )}
     </Sheet>
   );
 }
 
-/** The free table's own screen, for the Seat sheet's second drawing and the floor's preview. */
-export const FreeScreen = ({ table, shop, code }: { table: number; shop: string; code: string }) => <PointNumber table={table} shop={shop} code={code} />;
+
 
 /** Add a party, at the door (not drawn: the join page's fields, on a sheet). */
 export function AddPartySheet({
@@ -591,7 +558,7 @@ export function CallsStrip({
   });
   if (sheet)
     return (
-      <Sheet className="c-st-sheet c-tm-sheet" title="Calls and bills" onClose={onClose}>
+      <Sheet className="c-st-sheet c-tm-sheet c-w460" title="Calls and bills" onClose={onClose}>
         <Rows>{rows}</Rows>
       </Sheet>
     );

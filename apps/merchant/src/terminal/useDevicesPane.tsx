@@ -167,8 +167,7 @@ export function useDevicesPane({
     const items = catalog.data ?? [];
     const cats = [...new Set(items.filter((i) => i.onMenu !== false && !i.archivedAt).map((i) => i.category))];
     const ordered = [...(order.data?.names ?? []).filter((c) => cats.includes(c)), ...cats.filter((c) => !(order.data?.names ?? []).includes(c)).sort()];
-    // Inventory's categories, and the reference's Specials that it draws before there are any.
-    const categories = miCasa() ? [...ordered, ...['Specials'].filter((c) => !ordered.includes(c))] : ordered;
+    const categories = ordered;
     const menu = Object.fromEntries(
       categories.map((c) => [
         c,
@@ -493,7 +492,8 @@ export function useDevicesPane({
 /** The Devices section of Settings: its head, its pane and its sheets. */
 export function DevicesSection(props: { sub: string | undefined; preview: boolean; navigate: (to: string) => void; q: string; phone: boolean; one: boolean; onRenameTablet?: () => void }) {
   const pane = useDevicesPane(props);
-  const back = pane.back ?? (props.one ? () => props.navigate(`/settings${props.q}`) : undefined);
+  // One column has no rail: back goes to the list, or to Settings. With the rail, the rail is the way back.
+  const back = props.one ? (pane.back ?? (() => props.navigate(`/settings${props.q}`))) : undefined;
   return (
     <>
       <PaneHead title={pane.title} det={pane.det} back={back} small={props.phone} />
