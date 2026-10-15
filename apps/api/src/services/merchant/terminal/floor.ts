@@ -211,14 +211,17 @@ export async function saveTables(db: Db, input: { merchant: string; staffId: str
       // Its number is free again straight away.
       await tx.query('UPDATE merchant.tables SET removed_at = now() WHERE id = $1', [t.id]);
     }
+    // Numbers can swap (6 and 7 trade places), so every kept table steps out of the number index
+    // first, by being marked removed for the length of this transaction, and steps back in with its
+    // new number. Its number can't go negative: the table's check is 1 to 999.
     for (const t of wanted) {
       if (t.id) {
         if (!current.some((c) => c.id === t.id)) throw new TerminalError('No such table', 'not_found');
-        await tx.query('UPDATE merchant.tables SET number = -number WHERE id = $1', [t.id]);
+        await tx.query('UPDATE merchant.tables SET removed_at = now() WHERE id = $1', [t.id]);
       }
     }
     for (const t of wanted) {
-      if (t.id) await tx.query('UPDATE merchant.tables SET number = $2, label = $3, area = $4, seats = $5 WHERE id = $1', [t.id, t.number, t.label, t.area, t.seats]);
+      if (t.id) await tx.query('UPDATE merchant.tables SET number = $2, label = $3, area = $4, seats = $5, removed_at = NULL WHERE id = $1', [t.id, t.number, t.label, t.area, t.seats]);
       else await tx.query('INSERT INTO merchant.tables (id, merchant, number, label, area, seats) VALUES ($1,$2,$3,$4,$5,$6)', [`tbl_${randomUUID()}`, input.merchant, t.number, t.label, t.area, t.seats]);
     }
     await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tables.saved', detail: { count: wanted.length } });

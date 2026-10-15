@@ -505,6 +505,22 @@ describe('Edit tables', () => {
     await expect(floor.saveTables(db, { merchant: t.merchant, staffId: t.staff.owner, tables: [{ number: 2, label: null, area: null, seats: 2 }, { number: 2, label: null, area: null, seats: 4 }] })).rejects.toMatchObject({ code: 'invalid' });
   });
 
+  test('saving keeps a table, held or not, and two tables can trade numbers', async () => {
+    const t = await tacos();
+    const p = await waiting(t, 'Ana', 2);
+    await floor.seatParty(db, texts().texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: p.id, request: { tableId: t.table(6), showName: true, text: false } });
+    const rows = (await floor.floor(db, t.merchant)).tables.map(({ id, number, label, area, seats }) => ({ id, number, label, area, seats }));
+    const six = rows.find((r) => r.number === 6)!;
+    const fourteen = rows.find((r) => r.number === 14)!;
+    const swapped = rows.map((r) => (r.id === six.id ? { ...r, number: 14 } : r.id === fourteen.id ? { ...r, number: 6 } : r));
+    await floor.saveTables(db, { merchant: t.merchant, staffId: t.staff.owner, tables: [...swapped, { number: 15, label: null, area: null, seats: 2 }] });
+    const after = (await floor.floor(db, t.merchant)).tables;
+    expect(after.find((x) => x.id === six.id)).toMatchObject({ number: 14, status: 'held' });
+    expect(after.find((x) => x.id === fourteen.id)?.number).toBe(6);
+    expect(after.map((x) => x.number)).toContain(15);
+    expect(after).toHaveLength(rows.length + 1);
+  });
+
   test('changing to a dine-in tab adds to the tab; a second order on a seated table is refused', async () => {
     const t = await tacos();
     const first = await tab(t, t.table(14));

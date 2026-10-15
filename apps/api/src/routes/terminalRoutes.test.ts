@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
+import { join } from 'node:path';
 import type { Db } from '../db/db.js';
 import { seedShop, testDb } from '../db/testDb.js';
 import type { MerchantSession } from '../services/merchant/sessionStore.js';
@@ -131,6 +132,39 @@ describe('the Point’s own API', () => {
     const list = await call('/api/merchant/hardware', { headers: as('owner') });
     expect(list.body[0].health).toMatchObject({ batteryPercent: 82, case: { kind: 'pay', buttons: 'ok' } });
   });
+});
+
+/*
+ * The fake Point (apps/merchant/scripts/fake-point.ts), run as its own process against these routes:
+ * the e2e path with no hardware. It activates with the claim's secret, reports health, follows its
+ * screen by long poll, and presses Call; every answer is parsed with the contract.
+ */
+describe('the fake Point, end to end', () => {
+  test('claimed, activated, idle on its number, then Call lights it', async () => {
+    const tables = (await call('/api/merchant/tables', { headers: as('jen') })).body.tables;
+    const saved = await call('/api/merchant/tables', { method: 'PUT', headers: as('manager'), body: { tables: [...tables.map((t: { id: string; number: number; label: string | null; area: string | null; seats: number }) => ({ id: t.id, number: t.number, label: t.label, area: t.area, seats: t.seats })), { number: 9, label: null, area: null, seats: 4 }] } });
+    expect(saved.status).toBe(200);
+    const nine = (await call('/api/merchant/tables', { headers: as('jen') })).body.tables.find((t: { number: number }) => t.number === 9).id;
+    await db.query(`INSERT INTO merchant.point_keys (code) VALUES ('N9N9')`);
+    const claimed = await call('/api/merchant/points/claim', { headers: as('owner'), body: { code: 'N9N9' } });
+    await call(`/api/merchant/hardware/${claimed.body.device.id}`, { method: 'PATCH', headers: as('owner'), body: { name: 'Table 9', point: { placement: 'table', tableId: nine } } });
+
+    const proc = Bun.spawn(['bun', join(import.meta.dir, '../../../merchant/scripts/fake-point.ts'), '--api', base, '--code', 'N9N9', '--secret', claimed.body.provisioning.secret, '--health', '--press', 'call', '--screens', '2'], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const timer = setTimeout(() => proc.kill(), 15_000);
+    const out = await new Response(proc.stdout).text();
+    clearTimeout(timer);
+    expect(await proc.exited).toBe(0);
+    const lines = out.trim().split('\n').map((l) => JSON.parse(l));
+    expect(lines.map((l) => l.event)).toEqual(['activated', 'health', 'state', 'pressed', 'state']);
+    expect(lines[2].screen).toMatchObject({ code: 'N9N9', table: 'Table 9', state: { kind: 'idle', mode: 'number' }, lit: false });
+    expect(lines[3].request).toMatchObject({ kind: 'call', state: 'open' });
+    expect(lines[4].screen).toMatchObject({ state: { kind: 'called' }, lit: true });
+    const health = (await call('/api/merchant/hardware', { headers: as('owner') })).body.find((d: { id: string }) => d.id === claimed.body.device.id).health;
+    expect(health).toMatchObject({ batteryPercent: 82, firmware: '1.0.3', case: { kind: 'pay', buttons: 'ok' } });
+  }, 20_000);
 });
 
 describe('the phone pages', () => {

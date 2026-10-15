@@ -1201,3 +1201,62 @@ amendment, approved before the API builds on them.
 - **Previews.** `?preview=1` on `/p/A7K2` (`&view=menu|bill|paid|pay_here`), `/p/D00R` and
   `/r/<code>` shows the reference's dinner without a Point; the pay sheet preview takes
   `&shop=micasa` for Table 12. Both are dev only and absent from the build.
+
+## Terminal Phase 6: native (2026-10-15)
+
+- **One Bluetooth layer.** `src/hardware/ble/central.ts` wraps `@capacitor-community/bluetooth-le`
+  8.3 (Capacitor 8, with a Swift package), which is the platform's Bluetooth in the app and Web
+  Bluetooth in Chrome. The drawer, Points and Bluetooth printers all go through it; the fakes
+  implement the same interface in memory (`hardware/fakes/peripheral.ts`). The separate web and
+  native drawers are gone.
+- **The drawer is paired on Test open.** Add a device › Cash drawer's Test open adds the drawer,
+  fetches its key and writes the pairing message (its Clear id, the key, the time, which sets its
+  clock), then opens it signed. Done adds nothing more. A drawer takes a key once; one keyed already
+  refuses the write, and the tablet says to hold its button for ten seconds to reset it (the reset is
+  the firmware's, Phase 7).
+- **Signed opens.** `open`, a 4-byte counter, the tablet's time in seconds, and the first 16 bytes of
+  an HMAC-SHA256 over the drawer's id and those, in one write. The drawer opens when the MAC is
+  right, the counter is past its last and the time is within five minutes of its clock; anything else
+  does nothing, with no error. The counter is `max(last + 1, the clock in seconds)`, so a tablet that
+  loses its count (reinstalled, storage cleared) is still ahead of it.
+- **Where the key lives.** Fetched while online whenever the shell loads the hardware, and kept for
+  this tablet's enrollment: secure storage (`@aparajita/capacitor-secure-storage`, Keychain and
+  Keystore) in the app, a non-extractable key in IndexedDB in a browser, so page script can use it
+  and never read it. Keys from another enrollment are dropped; a tablet removed or enrolled again
+  keeps none. Signing out of a shift keeps them: the tablet is still the shop's.
+- **A drawer cabled to a printer** gets ESC p from that printer (`PrinterService.kickDrawer`), the
+  ESC/POS receipt printers only.
+- **Points use ESP32 unified provisioning, Security 1**, so the firmware runs Espressif's component:
+  X25519, the shared secret XORed with SHA-256 of the Point's code as proof of possession, then one
+  AES-256-CTR stream for the session. The message field numbers are ESP-IDF's (`messages.ts`). The
+  Point advertises as `CLEAR-<code>` with Clear's provisioning service; `proto-ver` also carries its
+  code, firmware and battery. Two Clear endpoints, both encrypted: `clear-claim` (the setup secret and
+  the API to activate with) and `clear-reach` (once joined: Clear, a sign-in page, or nothing).
+- **Choosing the network.** The reference's "This tablet's network · strong" needs the tablet's own
+  Wi-Fi name, which neither platform hands a web view, so a network's line is its signal ("Strong
+  signal", "Good signal", "Weak signal"). Enterprise networks are listed as "Asks for a username, so a
+  Point can't use it". "Has a sign-in page, so a Point can't use it" is known only after joining, so
+  it's what Connect says when `clear-reach` finds one. A wrong password and a network the Point can't
+  see each say so.
+- **Wi-Fi printers use Clear's own plugin**, `native/socket` (`@clear/capacitor-socket`, a `file:`
+  dependency): bytes to port 9100, whether a printer answers there, and printers found by Bonjour
+  (`_pdl-datastream._tcp`), on iOS with the Network framework and on Android with a socket and
+  NsdManager. The community TCP plugin has no Swift package, which this app's iOS project needs. iOS
+  gains the local network usage string and the Bonjour service it browses.
+- **Bluetooth printers** are written on the vendor service they offer (Zebra's, the common ESC/POS
+  ones, Microchip's serial), in pieces the link carries.
+- **Fakes, for e2e with no hardware.** `scripts/fake-point.ts` is a Point on the device API: it
+  activates with the claim's secret, reports health, follows its screen by long poll or the stream,
+  and presses Call or Bill, checking every answer against the contract. `scripts/fake-drawer.ts`
+  speaks the drawer's messages as hex lines (and `--sign` prints the open a tablet would send). The
+  API's route test runs the fake Point as its own process against the real routes. The fake Point's
+  radio and the fake drawer run the tablet's own code in the merchant tests.
+- **A Phase 3 bug the fake Point found.** Saving Edit tables with any table kept answered 500: kept
+  tables were renumbered negative for a moment, which the 1 to 999 check refuses. They now step out
+  of the number index by being marked removed inside the transaction. A test swaps two numbers.
+- **Cost.** The three libraries add about 22 kB gzipped to the counter app (1.09 MB).
+- **Not tried yet.** No Xcode iOS SDK or JDK on this Mac: the Swift plugin typechecks against
+  stand-ins for Capacitor's types, the Java side isn't compiled, and nothing has run on an iPad, an
+  Android tablet, a drawer, a Point or a printer. The provisioning messages match ESP-IDF's protos as
+  written and are checked only against our fake. An M2's connect and let-go times are still to
+  measure (the Pay case addendum).
