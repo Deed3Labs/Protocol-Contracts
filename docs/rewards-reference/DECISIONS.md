@@ -295,3 +295,6 @@ staff id there always.
   a member's activity through any authenticated route, but on-chain history is public anyway.
 - **`apps/api/package-lock.json` was already behind `package.json`** (PGlite, the contracts package,
   zod 4). Only `bun.lock`, which the image installs from, was updated.
+
+Approved at Hard Stop 3, 2026-10-16: Phase 3 as built, and the `OrderCustomer` change (`addedBy`
+nullable, `addedVia` gains `'app'`). `/api/transactions` stays public for now.
