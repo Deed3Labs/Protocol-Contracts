@@ -79,3 +79,6 @@ apps/rewards/public/_ref/
 
 # The pay app's dev copy of the spec, for comparing frames, not shipped.
 apps/pay/public/_ref/
+
+# The browser script, copied in by apps/pay's prebuild for js.useclear.org (packages/clear-js), not committed.
+apps/pay/public/js/

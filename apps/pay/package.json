@@ -6,15 +6,19 @@
   "license": "UNLICENSED",
   "scripts": {
     "dev": "vite --port 5195",
+    "prebuild": "npm run clear-js",
     "build": "tsc -b && vite build",
+    "prebuild:vercel": "npm run clear-js",
     "build:vercel": "vite build",
     "preview": "vite preview",
     "test": "bun test src",
     "typecheck": "tsc -b --noEmit",
-    "reference-css": "node scripts/reference-css.mjs"
+    "reference-css": "node scripts/reference-css.mjs",
+    "clear-js": "node ../../packages/clear-js/scripts/build.mjs --copy-to public/js"
   },
   "dependencies": {
     "@clear/merchant-contracts": "*",
+    "@useclear/js": "*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.7.1"

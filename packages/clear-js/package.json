@@ -1,0 +1,33 @@
+{
+  "name": "@useclear/js",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "Pay with Clear for the browser: the shop's own button opens Clear's modal. Also served at https://js.useclear.org/v1.",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "src/*.ts",
+    "!src/*.test.ts",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@clear/public-api-contracts": "file:../public-api-contracts",
+    "typescript": "~5.8.3"
+  }
+}
