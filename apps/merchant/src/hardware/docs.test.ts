@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DRAWER_ANSWER_MS } from './drawer/types';
 import { DRAWER_CLOCK_SKEW_S, DRAWER_COMMAND, DRAWER_PAIR, DRAWER_SERVICE, DRAWER_STATE, MAC_BYTES, OP_OPEN, OP_PAIR, pairingMessage, signedOpen } from './drawer/protocol';
 import { fakePointRadio } from './fakes/fakePointRadio';
+import { firmwareSigningPayload, POINT_FIRMWARE_CONTEXT } from '@clear/merchant-contracts';
 import { DRAWER_PULSE } from './print/encoders';
 import { POINT_PROV_SERVICE, pointName } from './point/ble';
 
@@ -52,8 +53,15 @@ describe('point-device-api.md', () => {
   });
 
   test('the device API routes', () => {
-    for (const route of ['POST /api/device/point/activate', 'GET /api/device/point/state', 'GET /api/device/point/stream', 'POST /api/device/point/health', 'POST /api/device/point/event']) {
+    for (const route of ['POST /api/device/point/activate', 'GET /api/device/point/state', 'GET /api/device/point/stream', 'POST /api/device/point/health', 'POST /api/device/point/event', 'GET /api/device/point/firmware']) {
       expect(pointDoc).toContain(route);
     }
+  });
+
+  test('what a firmware release signs, line by line', () => {
+    const lines = firmwareSigningPayload({ model: 'point', version: '1.0.4', url: '<url>', sha256: '<sha256>', sizeBytes: 1, minBattery: 40, keyId: '<keyId>' }).split('\n');
+    expect(lines[0]).toBe(POINT_FIRMWARE_CONTEXT);
+    expect(pointDoc).toContain(['clear-point-firmware/v1', '<model>', '<version>', '<url>', '<sha256>', '<sizeBytes>', '<minBattery>', '<keyId>'].join('\n'));
+    expect(lines).toHaveLength(8);
   });
 });

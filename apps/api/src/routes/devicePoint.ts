@@ -8,6 +8,7 @@ import { limitByAddress } from '../middleware/rateLimiter.js';
 import { nextChange, onShopChange, WAIT_MS } from '../services/merchant/terminal/bus.js';
 import { TERMINAL_STATUS, TerminalError } from '../services/merchant/terminal/errors.js';
 import { pointButton } from '../services/merchant/terminal/floor.js';
+import { firmwareForPoint } from '../services/merchant/terminal/firmware.js';
 import { activatePoint, pointByKey, recordHealth, sawPoint, type PointIdentity } from '../services/merchant/terminal/hardware.js';
 import { screenFor } from '../services/merchant/terminal/pointState.js';
 
@@ -22,6 +23,7 @@ import { screenFor } from '../services/merchant/terminal/pointState.js';
  *   GET  /api/device/point/stream     plugged in: the same, as server-sent events
  *   POST /api/device/point/health     battery, signal, firmware, the case
  *   POST /api/device/point/event      a Pay case button
+ *   GET  /api/device/point/firmware   its model's newest signed firmware (204: none)
  */
 
 declare global {
@@ -121,6 +123,14 @@ export function devicePointRouter(deps: DevicePointDeps = defaultDevicePointDeps
       if (timer) clearTimeout(timer);
     });
     await send();
+  });
+
+  // The newest firmware for this Point's model, signed; 204 when none is published (docs, 7).
+  router.get('/firmware', asPoint, async (req, res) => {
+    const m = await firmwareForPoint((await deps.db())!, req.point!.deviceId);
+    res.setHeader('Cache-Control', 'no-store');
+    if (!m) return res.status(204).end();
+    res.json(m);
   });
 
   router.post('/health', asPoint, async (req, res) => {
