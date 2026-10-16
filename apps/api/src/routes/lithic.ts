@@ -7,6 +7,7 @@ import {
   getDepositInstructions,
   type ProvisionKycInput,
 } from '../services/lithic/provisioningService.js';
+import { grantStarterLimit } from '../services/credit/termLimitService.js';
 import { lithicStore } from '../services/lithic/lithicStore.js';
 
 const router = express.Router();
@@ -118,6 +119,10 @@ router.post('/account', async (req: Request, res: Response) => {
         country: body.address!.country || 'USA',
       },
     });
+
+    // Verified on the spot: give them their starter term limit now rather than at the next hourly
+    // review. Fire-and-forget -- it waits for a transaction, and never throws.
+    if (result.record?.status === 'ACCEPTED') void grantStarterLimit(wallet);
 
     res.json({
       status: result.status,

@@ -29,6 +29,7 @@ const sent: Array<{ to: string; code: string; link: string }> = [];
 const pushed: Array<{ wallet: string; link: string }> = [];
 const attached: Array<{ code: string; wallet: string }> = [];
 const approved: Array<{ code: string; wallet: string; installments: number }> = [];
+const granted: string[] = [];
 const members = new Map<string, PayMember>([
   ['+19095550142', { wallet: '0x' + 'a'.repeat(40), firstName: 'Sofia', hasPasskey: false }],
   ['+19095550177', { wallet: '0x' + 'b'.repeat(40), firstName: 'Dana', hasPasskey: true }],
@@ -62,6 +63,7 @@ const frameDeps = (): FrameDeps => ({
   creditAvailable: async () => 300_000,
   bankLabel: async () => 'Chase •••• 4471',
   planOf: async (code) => ({ installments: approved.find((a) => a.code === code)?.installments ?? null }),
+  grantStarterLimit: async (wallet) => (granted.push(wallet), { termLimitCents: 50_000 }),
 });
 
 beforeAll(async () => {
@@ -201,7 +203,8 @@ describe('one screen for everyone (live)', () => {
     sent.length = 0;
     await post(`/api/checkout/${session}/contact`, { contact: '(909) 555-0188' });
     const verified = await json<{ person: unknown }>(await post(`/api/checkout/${session}/code`, { code: sent[0]!.code }));
-    expect(verified.person).toEqual({ kind: 'new', contact: '(909) 555-0188' });
+    // Joining is offered; over time online is off in live here, so it says nothing about splitting.
+    expect(verified.person).toEqual({ kind: 'new', contact: '(909) 555-0188', join: { split: null } });
   });
 
   test('a member with Face ID approves in the Clear app’s window, not the frame', async () => {

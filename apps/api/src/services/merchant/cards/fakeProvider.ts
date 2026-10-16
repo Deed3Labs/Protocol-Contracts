@@ -27,7 +27,7 @@ interface FakePayment {
  * `platformFee: false` plays a processor that can't take Clear's fee off a sale: it refuses any
  * payment, raise or capture that asks it to, so a test proves the fee went to the monthly bill.
  */
-export function fakeProvider(opts: { provider?: CardProviderName; platformFee?: boolean } = {}) {
+export function fakeProvider(opts: { provider?: CardProviderName; platformFee?: boolean; livemode?: boolean } = {}) {
   const platformFee = opts.platformFee ?? true;
   const noFee = (cents: number) => {
     if (!platformFee && cents !== 0) throw new Error('This processor can’t take a platform fee');
@@ -53,6 +53,7 @@ export function fakeProvider(opts: { provider?: CardProviderName; platformFee?: 
     refunds: [] as Array<{ paymentId: string; amountCents: number; refundApplicationFee: boolean }>,
     presented: [] as Array<{ reader: string; paymentId: string }>,
     cleared: [] as string[],
+    domains: [] as Array<{ account: string; domain: string }>,
   };
   /** The shop's processor balance: charges on capture (Stripe's in-person 2.7% + 5¢), refunds, and anything a test adds. */
   const balance: Array<BalanceItem & { payoutId: string | null }> = [];
@@ -131,6 +132,23 @@ export function fakeProvider(opts: { provider?: CardProviderName; platformFee?: 
       checkoutByKey.set(idempotencyKey, sessionId);
       return { sessionId, url: `https://checkout.example/${sessionId}` };
     },
+    async createOnlinePayment(account, { amountCents, applicationFeeCents, metadata, idempotencyKey }) {
+      noFee(applicationFeeCents);
+      const existing = byKey.get(idempotencyKey);
+      if (existing) return { snapshot: snap(get(existing)), clientSecret: `${existing}_secret_online` };
+      const p: FakePayment = { id: id('pi'), account, amount: amountCents, capturable: 0, fee: applicationFeeCents, state: 'waiting', declineCode: null, card: null, incremental: false, metadata, captured: 0, refunded: 0 };
+      payments.set(p.id, p);
+      byKey.set(idempotencyKey, p.id);
+      return { snapshot: snap(p), clientSecret: `${p.id}_secret_online` };
+    },
+    async onlinePaymentSecret(_account, paymentId) {
+      return `${get(paymentId).id}_secret_online`;
+    },
+    async registerPaymentDomain(account, domain) {
+      calls.domains.push({ account, domain });
+    },
+    // A test key unless a test says otherwise: test-mode sessions may use it.
+    livemode: opts.livemode ?? false,
     async getPayment(_account, paymentId) {
       return snap(get(paymentId));
     },
@@ -243,5 +261,18 @@ export function fakeProvider(opts: { provider?: CardProviderName; platformFee?: 
     return p.id;
   };
 
-  return { provider, calls, status, payments, knobs, tap, decline, balance, payout, adjust, setPayoutStatus, checkouts, payCheckout };
+  /** The customer pays in the card fields: captured at once, as automatic capture does. */
+  const payOnline = (paymentId: string, opts: { brand?: string; last4?: string } = {}) => {
+    const p = get(paymentId);
+    p.state = 'captured';
+    p.captured = p.amount;
+    p.declineCode = null;
+    p.card = { brand: opts.brand ?? 'visa', last4: opts.last4 ?? '4242' };
+    // Online it's Stripe's 2.9% + 30¢, and the money lands in the balance a payout settles.
+    const sf = Math.round(p.amount * 0.029) + 30;
+    balance.push({ id: id('txn'), type: 'charge', amountCents: p.amount, processorFeeCents: sf, platformFeeCents: p.fee, netCents: p.amount - sf - p.fee, paymentId: p.id, createdAt: new Date().toISOString(), payoutId: null });
+    return p.id;
+  };
+
+  return { provider, calls, status, payments, knobs, tap, decline, balance, payout, adjust, setPayoutStatus, checkouts, payCheckout, payOnline };
 }

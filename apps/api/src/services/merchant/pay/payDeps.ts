@@ -3,6 +3,7 @@ import { getPostgresPool } from '../../../config/postgres.js';
 import type { Db } from '../../../db/db.js';
 import { approveCharge } from '../../chargeService.js';
 import { chargeStore } from '../../chargeStore.js';
+import { grantStarterLimit } from '../../credit/termLimitService.js';
 import { readChainCredit } from '../../chain/creditReader.js';
 import { notificationStore } from '../../notificationStore.js';
 import { sendNotificationService } from '../../sendNotificationService.js';
@@ -93,6 +94,7 @@ export function defaultFrameDeps(db: Db, orders: OrderDeps): FrameDeps {
     },
     // A linked bank's name isn't kept with its Plaid item yet, so "Clears from" waits for it.
     bankLabel: async () => null,
+    grantStarterLimit: (wallet) => grantStarterLimit(wallet),
     planOf: async (code) => {
       const charge = await chargeStore.get(code);
       return charge ? { installments: charge.splitInto } : null;

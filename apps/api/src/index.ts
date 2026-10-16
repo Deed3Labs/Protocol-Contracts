@@ -77,6 +77,7 @@ import { startClearFeeBilling } from './jobs/clearFeeBilling.js';
 import { startMonthlyStatements } from './jobs/monthlyStatements.js';
 import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
+import { startTermLimitReviewer } from './jobs/termLimitReviewer.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
 import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
@@ -408,6 +409,8 @@ async function startServer() {
     startSessionCleanup();
     // Nothing else rolls a cycle over: without this every member's period runs out and stays out.
     startCreditPeriodRenewer();
+    // Nothing else sets a term limit: without this a member's split plans all revert at zero.
+    startTermLimitReviewer();
 
     startReconciler().catch((error) => {
       console.error('Failed to start reconciler:', error);

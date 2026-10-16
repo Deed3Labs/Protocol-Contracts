@@ -3,6 +3,7 @@ import { pasteInPrompt, type DevelopersView, type Role } from '@clear/merchant-c
 import { merchantDb } from '../config/merchantDb.js';
 import type { Db } from '../db/db.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
+import { requireAuth } from '../middleware/auth.js';
 import { requireManager, requireMerchant } from '../middleware/merchantAuth.js';
 import { limitByAddress } from '../middleware/rateLimiter.js';
 import { TenderError } from '../services/merchant/cards/cardTenders.js';
@@ -13,7 +14,9 @@ import { PaymentError } from '../services/merchant/orders/payments.js';
 import { addSite, createKeys, listKeys, listSites, removeSite, rollSecretKey } from '../services/merchant/pay/keys.js';
 import { cardsOn, createPaymentLink, deactivatePaymentLink, listPaymentLinks, PAY_STATUS, PayError, publicLink } from '../services/merchant/pay/links.js';
 import { addEndpointFromApp, deleteEndpoint, merchantEndpoints, recentDeliveries } from '../services/merchant/pay/webhooks.js';
-import { approvalPage, approvalView, approveInFrame, frameOrigin, frameStatus, memberQuote, sendContact, TOKEN_HEADER, verifyCode, type FrameDeps } from '../services/merchant/pay/frame.js';
+import { approvalPage, approvalView, approveInFrame, claimsFrom, frameOrigin, frameStatus, memberQuote, sendContact, TOKEN_HEADER, verifyCode, type FrameDeps } from '../services/merchant/pay/frame.js';
+import { finishJoin, joinState, joinWindow, startJoin } from '../services/merchant/pay/join.js';
+import { registerWalletDomains, startCard } from '../services/merchant/pay/card.js';
 import { defaultFrameDeps } from '../services/merchant/pay/payDeps.js';
 import { payInSession, paySessionView, startLinkSession, type PaySessionDeps } from '../services/merchant/pay/sessions.js';
 import { staffStore } from '../services/merchant/staffStore.js';
@@ -45,6 +48,8 @@ export interface PayRouteDeps {
   /** The modal's sign-in and approvals; the session's deps with Clear's members, texts and chain. */
   frame?: (db: Db) => FrameDeps;
   limits: { read: RequestHandler; act: RequestHandler };
+  /** The Clear window's member session (Privy), for joining's hand-back. requireAuth unless a test says. */
+  memberAuth?: RequestHandler;
 }
 
 export const defaultPayRouteDeps = (): PayRouteDeps => ({
@@ -95,7 +100,14 @@ export function merchantPayLinksRouter(deps: PayRouteDeps = defaultPayRouteDeps(
   router.get('/developers', requireMerchant, requireManager, run((db, req) => developersView(db, req.merchant!.merchant)));
   router.post('/developers/keys', requireMerchant, requireManager, run((db, req) => createKeys(db, { ...who(req), livemode: req.body?.livemode === true })));
   router.post('/developers/keys/:id/roll', requireMerchant, requireManager, run((db, req) => rollSecretKey(db, { ...who(req), keyId: String(req.params.id) })));
-  router.post('/developers/sites', requireMerchant, requireManager, run((db, req) => addSite(db, { ...who(req), request: req.body })));
+  router.post('/developers/sites', requireMerchant, requireManager, run(async (db, req) => {
+    const site = await addSite(db, { ...who(req), request: req.body });
+    // Wallets in the card fields need the site's domain on the shop's account; it doesn't hold this up.
+    void connectorForShop(db, req.merchant!.merchant)
+      .then((provider) => registerWalletDomains(db, provider, { merchant: req.merchant!.merchant, origin: site.origin }))
+      .catch(() => undefined);
+    return site;
+  }));
   router.delete('/developers/sites', requireMerchant, requireManager, run(async (db, req) => {
     await removeSite(db, { ...who(req), origin: String(req.query.origin ?? '') });
     return undefined;
@@ -145,6 +157,11 @@ export function linkPageRouter(deps: PayRouteDeps = defaultPayRouteDeps()): Rout
  *   GET  /:session/member       Hi Sofia: the choices and their figures (X-Pay-Session)
  *   POST /:session/approve      over time, in the frame (X-Pay-Session)
  *   POST /:session/approval     the approval page's address, for window.open
+ *   POST /:session/card         {idempotencyKey}: Stripe's fields' PaymentIntent (X-Pay-Session when signed in)
+ *   POST /:session/join         step 1 of joining (a new person's X-Pay-Session): the window's address
+ *   GET  /:session/join         polled while the window is open; a member's token once it's done
+ *   GET  /join/:handoff         the Clear window, signed in: step 1 and the confirmed contact
+ *   POST /join/:handoff/done    the Clear window, signed in: joined; the starting term limit
  */
 export function checkoutRouter(deps: PayRouteDeps = defaultPayRouteDeps()): Router {
   const router = forwardAsyncErrors(Router());
@@ -152,7 +169,13 @@ export function checkoutRouter(deps: PayRouteDeps = defaultPayRouteDeps()): Rout
   const frame = (db: Db) => (deps.frame ?? ((d: Db) => defaultFrameDeps(d, deps.session(d).orders)))(db);
   const token = (req: Request) => req.header(TOKEN_HEADER) ?? undefined;
   const session = (req: Request) => String(req.params.session);
+  // The member's wallet comes from their verified session, never from the request.
+  const memberWallet = (req: Request) => String(req.auth?.smartWallet || req.auth?.walletAddress || '').trim().toLowerCase();
+  const memberAuth = deps.memberAuth ?? requireAuth;
+  const who = (req: Request) => ({ phone: req.auth?.phone ?? null, emails: [...(req.auth?.emails ?? []), ...(req.auth?.email ? [req.auth.email] : [])] });
   router.use(deps.limits.read);
+  router.get('/join/:handoff', memberAuth, run((db, req) => joinWindow(db, deps.session(db), { handoff: String(req.params.handoff), who: who(req) })));
+  router.post('/join/:handoff/done', memberAuth, deps.limits.act, run((db, req) => finishJoin(db, frame(db), { handoff: String(req.params.handoff), wallet: memberWallet(req), who: who(req) })));
   router.get('/approval/:id', run((db, req) => approvalView(db, frame(db), { id: String(req.params.id) })));
   router.get('/:session', run((db, req) => paySessionView(db, deps.session(db), { session: session(req) })));
   router.get('/:session/frame', run((db, req) => frameOrigin(db, { session: session(req) })));
@@ -163,5 +186,8 @@ export function checkoutRouter(deps: PayRouteDeps = defaultPayRouteDeps()): Rout
   router.get('/:session/member', run((db, req) => memberQuote(db, frame(db), { session: session(req), token: token(req) })));
   router.post('/:session/approve', deps.limits.act, run((db, req) => approveInFrame(db, frame(db), { session: session(req), token: token(req), request: req.body })));
   router.post('/:session/approval', deps.limits.act, run((db, req) => approvalPage(db, frame(db), { session: session(req) })));
+  router.post('/:session/card', deps.limits.act, run((db, req) => startCard(db, deps.session(db), { session: session(req), claims: token(req) ? claimsFrom(session(req), token(req)) : null, request: req.body })));
+  router.post('/:session/join', deps.limits.act, run((db, req) => startJoin(db, { session: session(req), claims: claimsFrom(session(req), token(req)), request: req.body })));
+  router.get('/:session/join', run((db, req) => joinState(db, { session: session(req), claims: claimsFrom(session(req), token(req)) })));
   return router;
 }

@@ -148,6 +148,24 @@ export interface CardConnectorProvider {
     account: string,
     input: { amountCents: number; applicationFeeCents: number; lineName: string; successUrl: string; cancelUrl: string; metadata: Record<string, string>; idempotencyKey: string },
   ): Promise<{ sessionId: string; url: string }>;
+  /**
+   * A card paid online (Pay with Clear's modal and link page): a PaymentIntent on the shop's own
+   * account for the processor's fields in Clear's frame, captured when the customer confirms. Clear's
+   * fee is taken as on any card sale. Optional: a processor without it doesn't offer card online.
+   */
+  createOnlinePayment?(
+    account: string,
+    input: { amountCents: number; applicationFeeCents: number; metadata: Record<string, string>; idempotencyKey: string },
+  ): Promise<{ snapshot: PaymentSnapshot; clientSecret: string }>;
+  /** The client secret of an online payment already started, so the fields can pick it back up. */
+  onlinePaymentSecret?(account: string, paymentId: string): Promise<string>;
+  /**
+   * Lets wallets (Apple Pay, Google Pay) show for a domain on the shop's account: the shop's website
+   * and Clear's pay host. Safe to repeat.
+   */
+  registerPaymentDomain?(account: string, domain: string): Promise<void>;
+  /** Whether the processor key here takes real money. Test-mode payments never run on a live key. */
+  readonly livemode?: boolean;
   getPayment(account: string, paymentId: string): Promise<PaymentSnapshot>;
   /** Raise the hold to a new total. Throws CardDeclined if the card won't take it; the old hold stands. */
   raiseAuthorisation(account: string, paymentId: string, input: { amountCents: number; applicationFeeCents: number }): Promise<PaymentSnapshot>;

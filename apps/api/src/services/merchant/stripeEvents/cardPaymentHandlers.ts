@@ -1,5 +1,5 @@
 import type Stripe from 'stripe';
-import { applyPaymentSnapshot, applyRefundSnapshot } from '../cards/cardTenders.js';
+import { applyPaymentSnapshot, applyRefundSnapshot, isOnlineCardTender } from '../cards/cardTenders.js';
 import type { CardConnectorProvider } from '../cards/connector.js';
 import { refundSnapshot } from '../cards/stripeConnector.js';
 import { syncPayout } from '../payouts/payoutSync.js';
@@ -26,12 +26,18 @@ export function cardPaymentHandlers(provider: () => CardConnectorProvider | null
   const catchUp = async (tx: Parameters<NonNullable<Handlers[string]>>[0], event: Stripe.Event, paymentId: string | null) => {
     if (!paymentId) return;
     const pi = { id: paymentId };
-    const { rows } = await tx.query<{ id: string; merchant: string }>('SELECT id, merchant FROM payments.tenders WHERE payment_intent_id = $1', [pi.id]);
+    const { rows } = await tx.query<{ id: string; merchant: string; method: 'card'; reader_id: string | null; checkout_session_id: string | null }>(
+      'SELECT id, merchant, method, reader_id, checkout_session_id FROM payments.tenders WHERE payment_intent_id = $1',
+      [pi.id],
+    );
     // Not one of ours: a payment the shop took some other way on its own account.
     if (!rows[0] || !event.account) return;
     const p = provider();
     if (!p) throw new Error('Card processing is not configured here; will retry');
     const snapshot = await p.getPayment(event.account, pi.id);
+    // Online, a declined card isn't the end: the customer is still in the fields and can try another
+    // on the same payment. It stays pending until it's paid, or the session ends.
+    if (isOnlineCardTender(rows[0]) && snapshot.state === 'waiting') return;
     const r = await applyPaymentSnapshot(tx, { merchant: rows[0].merchant, tenderId: rows[0].id, snapshot, actor: null });
     // A declined attempt is voided so it can't be confirmed later; the counter starts a new tender.
     if (r.declined) await p.cancel(event.account, pi.id).catch(() => undefined);

@@ -78,6 +78,7 @@ export interface TenderRow {
   connector_id: string | null;
   payment_intent_id: string | null;
   reader_id: string | null;
+  checkout_session_id?: string | null;
   card_brand: string | null;
   card_last4: string | null;
   application_fee_cents: string | number | null;
@@ -318,6 +319,74 @@ export async function createCheckoutTender(
   await db.query('UPDATE payments.tenders SET checkout_session_id = $2, updated_at = now() WHERE id = $1 AND checkout_session_id IS NULL', [tender.id, session.sessionId]);
   return { tenderId: tender.id, url: session.url };
 }
+
+/**
+ * A card paid online (Pay with Clear's modal and link page): what's left on the order, as a
+ * PaymentIntent on the shop's own account for the processor's fields in Clear's frame. Clear's fee is
+ * worked out as at the counter. One per order at a time: asking again picks the same one back up, so
+ * a customer who closes the fields and comes back (or whose card was declined) carries on with it.
+ */
+export async function createOnlineCardTender(
+  db: Db,
+  provider: CardConnectorProvider,
+  input: { merchant: string; orderId: string; amountCents: number; idempotencyKey: string; source: 'online' | 'link' },
+): Promise<{ tenderId: string; clientSecret: string; account: string; amountCents: number }> {
+  if (!provider.createOnlinePayment || !provider.onlinePaymentSecret) throw new TenderError('Card payments online aren’t available for this shop', 'method_off');
+  const tender = await db.transaction(async (tx) => {
+    await tx.query('SELECT id FROM commerce.orders WHERE id = $1 AND merchant = $2 FOR UPDATE', [input.orderId, input.merchant]);
+    // An online card already under way for this order: the same one.
+    const { rows: open } = await tx.query<TenderRow>(
+      `SELECT * FROM payments.tenders
+        WHERE order_id = $1 AND method = 'card' AND status = 'pending' AND reader_id IS NULL AND checkout_session_id IS NULL
+        ORDER BY created_at DESC LIMIT 1`,
+      [input.orderId],
+    );
+    if (open[0]) return open[0];
+    const requestHash = createHash('sha256').update(JSON.stringify([input.orderId, input.amountCents, 'online'])).digest('hex');
+    const order = await checkNewTender(tx, { merchant: input.merchant, orderId: input.orderId, method: 'card', amountCents: input.amountCents }).catch((error) => {
+      if (error instanceof PaymentError) throw new TenderError(error.message, error.code === 'method_off' ? 'method_off' : error.code === 'over_remaining' || error.code === 'split_off' ? 'over_remaining' : 'order_closed');
+      throw error;
+    });
+    const connector = await takingCards(tx, input.merchant);
+    if (connector.provider !== provider.provider) throw new Error(`This shop takes cards through ${connector.provider}, not ${provider.provider}`);
+    const { plan } = await cardPlan(tx, input.merchant);
+    const fee = processorFee(provider, input.amountCents, plan);
+    const { rows } = await tx.query<TenderRow>(
+      `INSERT INTO payments.tenders
+         (id, merchant, order_id, method, amount_cents, tip_cents, status, idempotency_key, request_hash, tip_staff_id, created_by, connector_id, application_fee_cents, fee_billed)
+       VALUES ($1, $2, $3, 'card', $4, 0, 'pending', $5, $6, $7, $7, $8, $9, $10)
+       RETURNING *`,
+      [`tnd_${randomUUID()}`, input.merchant, order.id, input.amountCents, input.idempotencyKey, requestHash, order.raised_by, connector.id, fee, !provider.supportsPlatformFee],
+    );
+    await audit(tx, {
+      merchant: input.merchant,
+      actor: null,
+      action: 'tender.card_online_started',
+      ref: { type: 'tender', id: rows[0]!.id },
+      amountCents: input.amountCents,
+      detail: { orderId: order.id, applicationFeeCents: fee, from: `${input.source} page` },
+      source: input.source,
+    });
+    await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: null });
+    return rows[0]!;
+  });
+  const withAccount = await cardTender(db, provider, input.merchant, tender.id);
+  if (tender.payment_intent_id) {
+    return { tenderId: tender.id, clientSecret: await provider.onlinePaymentSecret(withAccount.account, tender.payment_intent_id), account: withAccount.account, amountCents: Number(tender.amount_cents) };
+  }
+  const { snapshot, clientSecret } = await provider.createOnlinePayment(withAccount.account, {
+    amountCents: Number(tender.amount_cents),
+    applicationFeeCents: Number(tender.application_fee_cents ?? 0),
+    metadata: { clear_merchant: input.merchant, clear_order_id: tender.order_id, clear_tender_id: tender.id },
+    idempotencyKey: `clear-online:${tender.id}`,
+  });
+  // Kept now, not at completion: the payment's events and the nightly reconciliation find it by this.
+  await db.query('UPDATE payments.tenders SET payment_intent_id = $2, updated_at = now() WHERE id = $1 AND payment_intent_id IS NULL', [tender.id, snapshot.paymentId]);
+  return { tenderId: tender.id, clientSecret, account: withAccount.account, amountCents: Number(tender.amount_cents) };
+}
+
+/** An online card (no reader, no hosted checkout): its fields let the customer try another card. */
+export const isOnlineCardTender = (t: Pick<TenderRow, 'method' | 'reader_id' | 'checkout_session_id'>) => t.method === 'card' && !t.reader_id && !t.checkout_session_id;
 
 /**
  * Moves a tender to match what the processor says, inside the caller's transaction. Returns the

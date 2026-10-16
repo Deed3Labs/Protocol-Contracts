@@ -720,3 +720,22 @@ the Clear app's approval page (`apps/member` `/approve/:id`); Charges' Online li
   - a real member's approval through `app.useclear.org` (it needs Privy);
   - the edge function on Vercel itself;
   - Safari's and Firefox's handling of the frame.
+
+Approved at Hard Stop 5, 2026-10-16:
+
+- Phase 5 as built, including the `approveIn` window rule, the three contract additions and the layout fragment.
+
+## Phase 6 · New to Clear, and card
+
+### D2, decided 2026-10-16: what joining ends in
+
+The user's answer was both (i) and (ii):
+
+- **Every member gets a starting term limit**, "maybe like 500".
+- **It increases automatically** with payment and cycle history.
+- **The income limit bounds it**: the existing income rule, half the trailing 90-day monthly deposit
+  (`INCOME_SHARE`, `estimateMonthlyDeposit`).
+- **Card stays the fallback.** Where the limit isn't there yet (checks not passed, or the order doesn't fit), joining
+  finishes by card for this order, and the points are credited on joining.
+
+The rule as built, and its figures, are below for approval.

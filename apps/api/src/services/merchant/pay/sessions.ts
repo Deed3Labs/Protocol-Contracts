@@ -9,6 +9,7 @@ import { createOrder, getOrder, type OrderDeps, OrderError, quoteLines } from '.
 import { type ClearCharges, createClearTender, discardOrder } from '../orders/payments.js';
 import { touchShop } from '../terminal/bus.js';
 import { cardsOn, type LinkRow, linkBySlug, linkLines, linkQuote, linkState, orderSummary, payBase, PayError, payShop } from './links.js';
+import { cardOnline } from './card.js';
 import { testClearCharges } from './testMode.js';
 import { itemForPrice } from './v1.js';
 import { insertApiPayment, paymentForOrder } from './events.js';
@@ -182,8 +183,9 @@ export async function paySessionView(db: Db, deps: PaySessionDeps, input: { sess
   const paid = status === 'paid' || status === 'partly_refunded' || status === 'refunded';
   const ended = new Date(s.expires_at).getTime() <= now.getTime() || (link !== null && linkState(link, now) !== 'open');
   const state: PaySession['state'] = paid ? 'paid' : status === 'voided' ? 'canceled' : ended ? 'expired' : 'open';
-  const card = await cardsOn(db, s.merchant);
-  const methods = s.kind === 'modal' ? { clear: (o.methods ?? ['clear']).includes('clear'), card: card && (o.methods ?? []).includes('card') } : { clear: true, card };
+  // Card is Stripe's fields in the frame: on when the shop takes cards, the mode fits and they can load.
+  const card = await cardOnline(db, deps, s);
+  const methods = s.kind === 'modal' ? { clear: (o.methods ?? ['clear']).includes('clear'), card } : { clear: true, card };
   const shop = await payShop(db, s.merchant);
   const allowsOverTime = s.kind === 'link' ? Boolean(link?.allow_over_time) : methods.clear;
   return {
@@ -199,7 +201,16 @@ export async function paySessionView(db: Db, deps: PaySessionDeps, input: { sess
     expiresAt: new Date(s.expires_at).toISOString(),
     payment: s.order_id ? await paymentForOrder(db, s.order_id).then((p) => (p ? { id: p.id, reference: p.reference } : null)) : null,
     prefillEmail: o.email ?? null,
+    rewardsName: await rewardsName(db, s.merchant, shop.name),
   };
+}
+
+/** "Mi Casa Rewards": the shop's everyday name (as rewards derives it), when its rewards app is on. */
+async function rewardsName(db: Db, merchant: string, shopName: string): Promise<string | null> {
+  const { rows } = await db.query<{ enabled: boolean }>('SELECT enabled FROM rewards.shop_apps WHERE merchant = $1', [merchant]).catch(() => ({ rows: [] as Array<{ enabled: boolean }> }));
+  if (!rows[0]?.enabled) return null;
+  const words = shopName.trim().split(/\s+/).filter(Boolean);
+  return `${(words.length >= 3 ? words.slice(0, -1) : words).join(' ')} Rewards`;
 }
 
 /**

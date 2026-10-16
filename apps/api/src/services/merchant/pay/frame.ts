@@ -23,7 +23,8 @@ import { paymentForOrder, paymentView } from './events.js';
 import { payBase, PayError, payShop } from './links.js';
 import { overTimeOnline } from './overTime.js';
 import { decryptSecret, encryptSecret, mintPayToken, randomBase62, readPayToken, sha256, type PayClaims } from './secrets.js';
-import { clearFor, ensureSessionOrder, optionsOf, sessionRow, type PaySessionDeps, type SessionRow } from './sessions.js';
+import { joinOffer, keepJoinContact, type JoinDeps } from './join.js';
+import { clearFor, ensureSessionOrder, optionsOf, sessionRow, type SessionRow } from './sessions.js';
 import { approveTestCharge, ensureTestMemberAt, isTestMemberPhone, TEST_MEMBER_BANK, TEST_MEMBER_FIRST_NAME, TEST_MEMBER_LIMIT_CENTS, TEST_MEMBER_WALLET, testChargeInstallments } from './testMode.js';
 
 /**
@@ -56,7 +57,7 @@ export interface PayMember {
   hasPasskey: boolean;
 }
 
-export interface FrameDeps extends PaySessionDeps {
+export interface FrameDeps extends JoinDeps {
   /** The member with this verified phone (E.164) or email, if any. */
   findMember: (contact: Contact) => Promise<PayMember | null>;
   /** Their member data by wallet, after the code: what Hi Sofia shows. */
@@ -230,17 +231,18 @@ export async function verifyCode(db: Db, deps: FrameDeps, input: { session: stri
     throw new PayError(c.attempts + 1 >= MAX_TRIES ? 'Too many tries. Send a new code.' : 'That code isn’t right', c.attempts + 1 >= MAX_TRIES ? 'too_many' : 'invalid');
   }
   await db.query('UPDATE payments.pay_codes SET used_at = $2 WHERE id = $1', [c.id, now]);
-  // Who it is, now that they've shown it's their phone or email. The contact itself isn't kept.
+  // Who it is, now that they've shown it's their phone or email. The code's copy of the contact goes;
+  // for someone with no account it stays on the session, encrypted, until they join or it ends.
   const contact = JSON.parse(decryptSecret(c.contact_enc)) as Contact;
   await db.query(`UPDATE payments.pay_codes SET contact_enc = '' WHERE id = $1`, [c.id]);
   const member = !s.livemode
     ? { wallet: TEST_MEMBER_WALLET, firstName: TEST_MEMBER_FIRST_NAME, hasPasskey: false }
     : await deps.findMember(contact).catch(() => null);
   const claims: PayClaims = { s: s.id, c: c.contact_hash, w: member?.wallet ?? null, n: member?.firstName ?? null, exp: now.getTime() + TOKEN_MS };
-  return {
-    token: mintPayToken(claims),
-    person: member ? { kind: 'member', firstName: member.firstName } : { kind: 'new', contact: showContact(contact) },
-  };
+  if (member) return { token: mintPayToken(claims), person: { kind: 'member', firstName: member.firstName } };
+  // No account: they may join, and the window signs up with the contact they just confirmed.
+  await keepJoinContact(db, s.id, contact);
+  return { token: mintPayToken(claims), person: { kind: 'new', contact: showContact(contact), join: await joinOffer(db, deps, s, now) } };
 }
 
 // ---- Who's paying ------------------------------------------------------------------------------------
@@ -394,7 +396,10 @@ export async function frameStatus(db: Db, deps: FrameDeps, input: { session: str
   const installments = code ? (s.livemode ? ((await deps.planOf(code).catch(() => null))?.installments ?? null) : await testChargeInstallments(db, code)) : null;
   const { rows: tz } = await db.query<{ timezone: string }>('SELECT timezone FROM merchant.profiles WHERE merchant = $1', [s.merchant]);
   const quote = installments && installments > 1 ? splitQuote(order.totalCents / 100, installments, 0.02) : null;
-  const person = code ? await personByWallet(db, (await clearFor(db, deps, s).payer?.(code).catch(() => null)) ?? '') : null;
+  // The payer: Clear's member, or for a card, whoever the order was put on (a signed-in member).
+  const clearPayer = code ? await personByWallet(db, (await clearFor(db, deps, s).payer?.(code).catch(() => null)) ?? '') : null;
+  const { rows: onOrder } = await db.query<{ member_person: string | null }>('SELECT member_person FROM commerce.orders WHERE id = $1', [s.order_id]);
+  const person = clearPayer ?? (onOrder[0]?.member_person ? { id: onOrder[0].member_person } : null);
   const { rows: earned } = person
     ? await db.query<{ points: string | number }>(`SELECT COALESCE(sum(points), 0) AS points FROM rewards.loyalty_entries WHERE merchant = $1 AND person_id = $2 AND order_id = $3 AND kind = 'earn'`, [s.merchant, person.id, s.order_id]).catch(() => ({ rows: [] as Array<{ points: string | number }> }))
     : { rows: [] as Array<{ points: string | number }> };
@@ -406,7 +411,8 @@ export async function frameStatus(db: Db, deps: FrameDeps, input: { session: str
       installments: view?.method === 'card' ? null : (installments ?? 1),
       firstCycle: quote ? { amountCents: Math.round(quote.perCycle * 100), on: firstCycleDate(now, tz[0]?.timezone ?? 'America/Los_Angeles') } : null,
       points: points && points.earned > 0 ? points : null,
-      receipt: 'In Clear and by email',
+      // A card payer may have no Clear account: their card statement is the record, and the shop's.
+      receipt: view?.method === 'card' ? (person ? 'In Clear' : 'On your card statement') : 'In Clear and by email',
     },
   };
 }

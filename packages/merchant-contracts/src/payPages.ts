@@ -59,6 +59,8 @@ export const PaySession = z.object({
   payment: z.object({ id: z.string(), reference: z.string().nullable() }).nullable().optional(),
   /** The email the shop's page passed (`attach(…, { email })`), to fill in "Email or phone". */
   prefillEmail: z.string().nullable().optional(),
+  /** "Mi Casa Rewards", when the shop has a rewards app: a card's points come with joining it after. */
+  rewardsName: z.string().nullable().optional(),
 });
 export type PaySession = z.infer<typeof PaySession>;
 
@@ -103,7 +105,16 @@ export const CodeVerified = z.object({
   token: z.string(),
   person: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('member'), firstName: z.string() }),
-    z.object({ kind: z.literal('new'), contact: z.string() }),
+    z.object({
+      kind: z.literal('new'),
+      contact: z.string(),
+      /**
+       * Joining, when it's offered here (live, and Clear is a choice). `split` is "In 4 is about $48.65 a
+       * cycle" when a new member's starting limit covers this order; null when it doesn't, and joining
+       * then finishes by card for this one.
+       */
+      join: z.object({ split: z.object({ installments: z.number().int().min(2), perCycleCents: PositiveCents }).nullable() }).nullable(),
+    }),
   ]),
 });
 export type CodeVerified = z.infer<typeof CodeVerified>;
@@ -192,8 +203,43 @@ export const JoinBasics = z.object({
 });
 /** Step 2: the window's address (single use, 15 minutes), also drawn as a QR on a computer. */
 export const JoinHandoff = z.object({ url: z.string().url(), expiresAt: Timestamp });
-/** `GET /api/checkout/:session/join`: polled while the window is open. */
-export const JoinState = z.object({ state: z.enum(['waiting', 'done', 'failed', 'expired']) });
+export type JoinBasics = z.infer<typeof JoinBasics>;
+export type JoinHandoff = z.infer<typeof JoinHandoff>;
+/**
+ * `GET /api/checkout/:session/join`: polled while the window is open. Once it's done, `token` is a
+ * member's token for this session (the new member's wallet), so step 3 is the member's own screen.
+ */
+export const JoinState = z.object({ state: z.enum(['waiting', 'done', 'failed', 'expired']), token: z.string().nullable() });
+export type JoinState = z.infer<typeof JoinState>;
+
+/**
+ * The Clear window's side (`app.useclear.org/join/pay?h=<handoff>`), signed in with Privy:
+ * `GET /api/checkout/join/:handoff` fills in what step 1 took and the confirmed contact, so nothing
+ * is typed twice. Single use: it reads only while the hand-off is `waiting` and unexpired.
+ */
+export const JoinWindow = z.object({
+  shop: z.object({ name: z.string(), initials: z.string() }),
+  order: z.object({ totalCents: PositiveCents, summary: z.string() }),
+  /** "micasatacos.com": where they go back to. Null for a payment link. */
+  shopHost: z.string().nullable(),
+  basics: JoinBasics,
+  /** The phone or email the code confirmed: Privy signs up with it. */
+  contact: z.object({ channel: z.enum(['phone', 'email']), value: z.string() }),
+  expiresAt: Timestamp,
+});
+export type JoinWindow = z.infer<typeof JoinWindow>;
+
+/**
+ * `POST /api/checkout/join/:handoff/done`: the window finished (onboarding submitted, identity and
+ * bank checked as far as they go). The session's wallet becomes the payer, and the starting term
+ * limit is granted when the identity check passed.
+ */
+export const JoinFinished = z.object({
+  state: z.literal('done'),
+  /** The term limit now on the member's line, in cents; null when checks haven't passed yet. */
+  termLimitCents: z.number().int().min(0).nullable(),
+});
+export type JoinFinished = z.infer<typeof JoinFinished>;
 
 // ---- Card (§3) ------------------------------------------------------------------------------------
 

@@ -233,6 +233,42 @@ export function stripeConnector(stripe: Stripe): CardConnectorProvider {
       return { sessionId: session.id, url: session.url };
     },
 
+    async createOnlinePayment(account, { amountCents, applicationFeeCents, metadata, idempotencyKey }) {
+      // Card, Apple Pay, Google Pay and Link, as the shop's account allows; captured on confirming.
+      const pi = await stripe.paymentIntents.create(
+        {
+          amount: amountCents,
+          currency: 'usd',
+          automatic_payment_methods: { enabled: true },
+          ...(applicationFeeCents > 0 ? { application_fee_amount: applicationFeeCents } : {}),
+          metadata,
+          expand: EXPAND,
+        },
+        { stripeAccount: account, idempotencyKey },
+      );
+      if (!pi.client_secret) throw new Error(`PaymentIntent ${pi.id} came back without a client secret`);
+      return { snapshot: paymentSnapshot(pi), clientSecret: pi.client_secret };
+    },
+
+    async onlinePaymentSecret(account, paymentId) {
+      const pi = await stripe.paymentIntents.retrieve(paymentId, {}, { stripeAccount: account });
+      if (!pi.client_secret) throw new Error(`PaymentIntent ${pi.id} has no client secret`);
+      return pi.client_secret;
+    },
+
+    async registerPaymentDomain(account, domain) {
+      try {
+        await stripe.paymentMethodDomains.create({ domain_name: domain }, { stripeAccount: account });
+      } catch (error) {
+        // Already registered is the outcome we wanted.
+        if (!/already/i.test((error as Error).message)) throw error;
+      }
+    },
+
+    get livemode() {
+      return stripeLivemode();
+    },
+
     async getPayment(account, paymentId) {
       return paymentSnapshot(await stripe.paymentIntents.retrieve(paymentId, { expand: EXPAND }, { stripeAccount: account }));
     },
