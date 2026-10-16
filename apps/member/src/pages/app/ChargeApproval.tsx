@@ -5,6 +5,8 @@ import { Btn, CFoot, CHead, CMain, Line } from '@/components/clear/brand/anatomy
 import { ChevronIcon, CloseIcon } from '@/components/clear/brand/icons';
 import { Tick } from '@/components/clear/MoveProgress';
 import { splitQuote } from '@/lib/clearModel';
+import { approveLabel, askingLine, backOnLine, type OnlineChannel } from '@/lib/approvalPage';
+import { cn } from '@/lib/utils';
 import { money } from '@clear/domain';
 
 /**
@@ -25,6 +27,12 @@ import { money } from '@clear/domain';
  * **The split is chosen here, on the member's phone, and nowhere else.** A service writer must not be
  * picking somebody's repayment terms, which is why the merchant's request carries an amount and
  * nothing about repayment.
+ *
+ * **Paid online** (Pay with Clear, pay spec §4's approve sheet): the same screens, drawn as one sheet.
+ * The head is the spec's mono line ("MI CASA TACOS IS ASKING · ONLINE") over the amount and the lines;
+ * Pay now and Over time are a switch on the sheet rather than a question before it; the button says
+ * what it does ("Approve $185.32 in 4") and the line under it where it leaves you ("Then you're back
+ * on micasatacos.com"). A shop that offers Pay now only has no switch at all.
  *
  * Presentational, like the onboarding flows. `ChargeApprovalRoute` fetches, pays, approves and
  * declines.
@@ -53,6 +61,15 @@ export interface ChargeApprovalProps {
   onModeChange?: (mode: PayMode) => void;
   /** Set under the pay-over-time minimum (units): over time is shown greyed, with this as the reason. */
   overTimeMinimum?: number | null;
+  /**
+   * False when the shop offers Pay now only (a link's choice, or over time online still off): Over
+   * time isn't greyed, it isn't there. The server refuses a plan on such a charge either way.
+   */
+  overTimeShown?: boolean;
+  /** Paid through a shop's website or a payment link: the approve sheet's online line, and its site. */
+  online?: { channel: OnlineChannel; host: string | null } | null;
+  /** The approval page couldn't close itself: "Done. Go back to micasatacos.com". */
+  doneLine?: string | null;
 
   // ---- Pay now
   /** The member's USDC: what pays now. Null while it is being read. */
@@ -148,8 +165,20 @@ function ChargeHead({
   taxCents,
   discountCents,
   table,
-}: Pick<ChargeApprovalProps, 'merchantName' | 'amount' | 'raisedBy' | 'raisedAt' | 'items' | 'taxCents' | 'discountCents' | 'table'>) {
+  online,
+}: Pick<ChargeApprovalProps, 'merchantName' | 'amount' | 'raisedBy' | 'raisedAt' | 'items' | 'taxCents' | 'discountCents' | 'table' | 'online'>) {
   const [open, setOpen] = useState(false);
+  if (online) {
+    // The spec's head: who is asking and from where, the amount, and the lines already open. Nobody
+    // raised it at a counter, so there is no "Raised by" to say.
+    return (
+      <>
+        <p className="c-label">{askingLine(merchantName, online.channel)}</p>
+        <p className="c-fig c-pc-amt">{usd(amount)}</p>
+        {items && items.length > 0 && <Items items={items} taxCents={taxCents} discountCents={discountCents} />}
+      </>
+    );
+  }
   const count = items?.reduce((n, i) => n + i.quantity, 0) ?? 0;
   const by = [table, raisedBy ? `Raised by ${raisedBy}` : null, raisedAt ? clock(raisedAt) : null].filter(Boolean).join(' · ');
   return (
@@ -271,6 +300,9 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
     onLeave,
     approved = false,
     appHandoffCode = null,
+    overTimeShown = true,
+    online = null,
+    doneLine = null,
   } = props;
   const close = onLeave ?? onDecline;
   // Under the pay button on every screen that asks: plain, full width, so it can't be mistaken for paying.
@@ -280,10 +312,38 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
     </Btn>
   );
   const [ownMode, setOwnMode] = useState<PayMode>('choose');
-  const mode = props.mode ?? ownMode;
-  const setMode = (m: PayMode) => (props.onModeChange ? props.onModeChange(m) : setOwnMode(m));
+  const asked = props.mode ?? ownMode;
+  /*
+   * Online there is no question before the sheet: it opens on Pay now, the cheaper way for both
+   * sides. And where Over time isn't offered, nothing can land on it.
+   */
   const overTimeOff = overTimeMinimum != null;
+  // Somewhere to send a member over time from: offered, and the charge is big enough.
+  const offerOverTime = overTimeShown && !overTimeOff;
+  const mode: PayMode = (online && (asked === 'choose' || (asked === 'over' && !offerOverTime))) || (!overTimeShown && asked === 'over') ? 'now' : asked;
+  const setMode = (m: PayMode) => (props.onModeChange ? props.onModeChange(m) : setOwnMode(m));
   const head = <ChargeHead {...props} />;
+  const backOn = online ? backOnLine(online.host) : null;
+  const backOnText = backOn && <p className="c-det c-pc-alt">{backOn}</p>;
+  const doneText = doneLine && <p className="c-pc-t c-pc-alt">{doneLine}</p>;
+  /*
+   * The online sheet's switch, where the drawing has it: under the lines, over the button. Under the
+   * minimum Over time is there and greyed, with the reason, as the counter's choice shows it.
+   */
+  const onlineSwitch = (disabled: boolean) =>
+    online && overTimeShown ? (
+      <>
+        <div className="c-qc" role="group" aria-label="How to pay">
+          <Btn aria-pressed={mode === 'now'} className={cn('c-chip-q', mode === 'now' && 'c-on')} onClick={() => setMode('now')} disabled={disabled}>
+            Pay now
+          </Btn>
+          <Btn aria-pressed={mode === 'over'} className={cn('c-chip-q', mode === 'over' && 'c-on')} onClick={() => setMode('over')} disabled={disabled || overTimeOff}>
+            Over time
+          </Btn>
+        </div>
+        {overTimeOff && <p className="c-det mt-s1">Over time is for charges of {usd(overTimeMinimum!)} or more</p>}
+      </>
+    ) : null;
   const rate = `${Math.round(ratePerCycle * 1000) / 10}% a cycle on what you still owe`;
 
   /*
@@ -310,7 +370,8 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
             <p className="c-pc-t">{paid ? `Paid to ${merchantName}` : 'Your payment is on its way'}</p>
             <p className="c-det">
               {paid
-                ? [props.table, 'From Ready to allocate', paid.at ? clock(paid.at) : null, `${raisedBy ?? 'The shop'} sees it on the counter now`].filter(Boolean).join(' · ')
+                ? // Online there is no counter: the shop has the order, as the link page says.
+                  [props.table, 'From Ready to allocate', paid.at ? clock(paid.at) : null, online ? `${merchantName} has your order` : `${raisedBy ?? 'The shop'} sees it on the counter now`].filter(Boolean).join(' · ')
                 : `We’ll mark it paid to ${merchantName} as soon as it lands. Don’t pay again.`}
             </p>
           </div>
@@ -327,7 +388,8 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
           )}
         </CMain>
         <CFoot>
-          <Btn lg onClick={onDone ?? onDecline}>
+          {doneText}
+          <Btn lg className={doneText ? 'mt-s2' : undefined} onClick={onDone ?? onDecline}>
             Done
           </Btn>
           {paid?.receiptUrl && (
@@ -353,6 +415,7 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
             <p className="c-sub mt-s1">
               {merchantName} &middot; {splitInto === 1 ? 'next cycle' : `split in ${splitInto}`}
             </p>
+            {doneText}
           </div>
         </CMain>
         <CFoot>
@@ -403,9 +466,10 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
     const working = busy || Boolean(payingLabel);
     return frame(
       <>
-        <Top title="Pay now" onBack={() => setMode('choose')} onClose={close} closeLabel="Not now" busy={working} />
+        <Top title={online ? 'Approve' : 'Pay now'} onBack={online ? undefined : () => setMode('choose')} onClose={close} closeLabel="Not now" busy={working} />
         <CMain>
           {head}
+          {onlineSwitch(working)}
           <p className="c-label c-pc-q">Pay from</p>
           {/* Card cash can't pay a shop yet: shown so the member knows where it stands, never picked. */}
           <div className="c-pc-src c-off" aria-disabled="true">
@@ -441,7 +505,7 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
             <div className="c-pc-note">
               <p className="c-pc-t">Not enough in your Clear cash to pay now</p>
               <p className="c-det">
-                {overTimeOff
+                {!offerOverTime
                   ? `Add ${usd(short)} to pay it.`
                   : `Add ${usd(short)}, or pay over time and clear it from what you have.`}
               </p>
@@ -453,10 +517,10 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
           {short != null ? (
             <>
             <div className="c-pc-pair">
-              <Btn lg primary={overTimeOff} onClick={onAddMoney}>
+              <Btn lg primary={!offerOverTime} onClick={onAddMoney}>
                 Add money
               </Btn>
-              {!overTimeOff && (
+              {offerOverTime && (
                 <Btn primary lg onClick={() => setMode('over')}>
                   Pay over time
                 </Btn>
@@ -469,8 +533,10 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
               <Btn primary lg className="mt-s2" onClick={onPayNow} disabled={!covers || working}>
                 {payingLabel ?? `Pay ${usd(amount)}`}
               </Btn>
+              {backOnText}
               {declineButton(working)}
-              {!overTimeOff && (
+              {/* Online, the switch on the sheet is the way across. */}
+              {offerOverTime && !online && (
                 <p className="c-det c-pc-alt">
                   <button type="button" className="c-pc-link" disabled={working} onClick={() => setMode('over')}>
                     Pay over time instead
@@ -485,12 +551,13 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
   }
 
   // ---- Pay over time ----------------------------------------------------------------------------
-  if (mode === 'over' && !overTimeOff) {
+  if (mode === 'over' && offerOverTime) {
     return frame(
       <>
-        <Top title="Pay over time" onBack={() => setMode('choose')} onClose={close} closeLabel="Not now" busy={busy} />
+        <Top title={online ? 'Approve' : 'Pay over time'} onBack={online ? undefined : () => setMode('choose')} onClose={close} closeLabel="Not now" busy={busy} />
         <CMain>
           {head}
+          {onlineSwitch(busy)}
           <p className="c-label c-pc-q">Clear it in</p>
           <SplitControl amount={amount} options={splitOptions} ratePerCycle={ratePerCycle} splitInto={splitInto} onChange={onSplitChange} />
         </CMain>
@@ -499,14 +566,17 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
           <p className="c-det mt-s1">{rate[0]!.toUpperCase() + rate.slice(1)}. Clearing early always costs less. You can change this any time.</p>
           {errorLine}
           <Btn primary lg className="mt-s2" onClick={onApprove} disabled={busy}>
-            {busy ? 'One moment…' : 'Approve'}
+            {busy ? 'One moment…' : online ? approveLabel(usd(amount), splitInto) : 'Approve'}
           </Btn>
+          {backOnText}
           {declineButton(busy)}
-          <p className="c-det c-pc-alt">
-            <button type="button" className="c-pc-link" disabled={busy} onClick={() => setMode('now')}>
-              Pay now instead
-            </button>
-          </p>
+          {!online && (
+            <p className="c-det c-pc-alt">
+              <button type="button" className="c-pc-link" disabled={busy} onClick={() => setMode('now')}>
+                Pay now instead
+              </button>
+            </p>
+          )}
           <div className="c-foot2 mt-s2 border-t border-ink-13 pt-s2 [--fp:12px]">
             <div>
               <p className="c-det">
@@ -551,7 +621,7 @@ export default function ChargeApproval(props: ChargeApprovalProps) {
             <b>{usd(amount)}</b>
           </span>
         </button>
-        {overTimeOff ? (
+        {!overTimeShown ? null : overTimeOff ? (
           <div className="c-pc-opt c-off" aria-disabled="true">
             <span className="c-pc-ic">
               <OverTimeIcon />

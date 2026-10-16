@@ -30,6 +30,10 @@ export interface ChargeView {
   reward: (ChargeReward & { amountCents: number }) | null;
   earnsPoints: number | null;
   status: 'pending' | 'approved' | 'declined' | 'expired' | 'cancelled';
+  /** Paid online (Pay with Clear): false when the shop offers Pay now only. Null or absent at the counter. */
+  overTime?: boolean | null;
+  /** A website's or a payment link's charge, and the shop's site: "micasatacos.com". Absent at the counter. */
+  online?: { channel: 'online' | 'link'; shopHost: string | null } | null;
 }
 
 /** What a screen can read and do. The preview reads a seeded mock; the live app, the API. */

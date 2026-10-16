@@ -57,6 +57,8 @@ export const PaySession = z.object({
    * its status). Never more than its id and the shop's own reference.
    */
   payment: z.object({ id: z.string(), reference: z.string().nullable() }).nullable().optional(),
+  /** The email the shop's page passed (`attach(…, { email })`), to fill in "Email or phone". */
+  prefillEmail: z.string().nullable().optional(),
 });
 export type PaySession = z.infer<typeof PaySession>;
 

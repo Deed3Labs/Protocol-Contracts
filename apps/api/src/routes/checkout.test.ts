@@ -272,8 +272,8 @@ describe('a payment-scoped session', () => {
   test('which website may frame it: its own, while it’s open', async () => {
     const shop = await miCasa();
     const { session } = await modalFor(shop, 'live');
-    expect(await json(await fetch(`${base}/api/checkout/${session}/frame`))).toEqual({ origin: 'https://micasatacos.com' });
-    expect(await json(await fetch(`${base}/api/checkout/ms_${'0'.repeat(32)}/frame`))).toEqual({ origin: null });
+    expect(await json<unknown>(await fetch(`${base}/api/checkout/${session}/frame`))).toEqual({ origin: 'https://micasatacos.com' });
+    expect(await json<unknown>(await fetch(`${base}/api/checkout/ms_${'0'.repeat(32)}/frame`))).toEqual({ origin: null });
   });
 });
 

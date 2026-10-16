@@ -198,6 +198,7 @@ export async function paySessionView(db: Db, deps: PaySessionDeps, input: { sess
     state,
     expiresAt: new Date(s.expires_at).toISOString(),
     payment: s.order_id ? await paymentForOrder(db, s.order_id).then((p) => (p ? { id: p.id, reference: p.reference } : null)) : null,
+    prefillEmail: o.email ?? null,
   };
 }
 

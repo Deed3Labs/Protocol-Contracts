@@ -433,6 +433,9 @@ export function ApproveScreen({ shop }: { shop: PublicShopApp }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const c = charge.data;
+  // A shop that offers Pay now only (Pay with Clear's links and websites): no Over time to pick.
+  const overTime = c?.overTime !== false;
+  const paying = overTime ? mode : 'now';
   return (
     <Screen look={shopLook(shop)}>
       <TitleTop title={c?.table ?? shop.name} back={base} initials={initials} />
@@ -441,7 +444,8 @@ export function ApproveScreen({ shop }: { shop: PublicShopApp }) {
           <>
             <div className="sa-m">
               <p className="sa-mono">
-                {c.shopName.toUpperCase()} IS ASKING{c.table ? ` · ${c.table.toUpperCase()}` : ''}
+                {c.shopName.toUpperCase()} IS ASKING
+                {c.online ? ` · ${c.online.channel === 'online' ? 'ONLINE' : 'LINK'}` : c.table ? ` · ${c.table.toUpperCase()}` : ''}
               </p>
               <p className="sa-amt big">{usd(c.amountCents)}</p>
             </div>
@@ -453,14 +457,16 @@ export function ApproveScreen({ shop }: { shop: PublicShopApp }) {
               <Row className="mute" t="Tax" v={plain(c.taxCents)} />
             </div>
             <div className="sa-m">
-              <div className="tm-seg">
-                <b className={mode === 'now' ? 'on' : ''} onClick={() => setMode('now')} role="button">
-                  Pay now
-                </b>
-                <b className={mode === 'over_time' ? 'on' : ''} onClick={() => setMode('over_time')} role="button">
-                  Over time
-                </b>
-              </div>
+              {overTime ? (
+                <div className="tm-seg">
+                  <b className={mode === 'now' ? 'on' : ''} onClick={() => setMode('now')} role="button">
+                    Pay now
+                  </b>
+                  <b className={mode === 'over_time' ? 'on' : ''} onClick={() => setMode('over_time')} role="button">
+                    Over time
+                  </b>
+                </div>
+              ) : null}
               <button
                 className="sa-btn k wide"
                 disabled={busy}
@@ -468,7 +474,7 @@ export function ApproveScreen({ shop }: { shop: PublicShopApp }) {
                   setBusy(true);
                   setError(null);
                   try {
-                    const done = await data.approve(c.code, mode);
+                    const done = await data.approve(c.code, paying);
                     navigate(done.orderId ? `${base}/paid/${encodeURIComponent(done.orderId)}` : base);
                   } catch (e) {
                     setError(e instanceof Error ? e.message : 'That didn’t go through. Nothing was paid.');
@@ -480,9 +486,10 @@ export function ApproveScreen({ shop }: { shop: PublicShopApp }) {
                 Approve {usd(c.amountCents)}
               </button>
               <p className="sa-sub">
-                {mode === 'now' ? 'From your Clear balance' : 'Over time, in 4 payments'}
+                {paying === 'now' ? 'From your Clear balance' : 'Over time, in 4 payments'}
                 {c.earnsPoints !== null ? ` · earns ${c.earnsPoints} ${word(shop.pointsName, c.earnsPoints)}` : ''}
               </p>
+              {c.online?.shopHost ? <p className="sa-sub">Then you’re back on {c.online.shopHost}</p> : null}
               {error ? <p className="r-err">{error}</p> : null}
             </div>
           </>

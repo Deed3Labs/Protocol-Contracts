@@ -21,7 +21,9 @@ import AddMoneyModal from '@/components/app-ui/AddMoneyModal';
 import { getNetworkByChainId } from '@/config/networks';
 import { ACTIVE_CHAIN_ID } from '@/lib/clearNetwork';
 import { PAY_OVER_TIME_MIN_CENTS, shopSlug, splitsOffered } from '@clear/domain';
+import { closeOrFallback, doneLine, hasNoClearAccount, overTimeShown as showsOverTime, shopHostFor, type ApprovalView } from '@/lib/approvalPage';
 import ChargeApproval, { type PayMode } from './ChargeApproval';
+import { NoClearAccount } from './ApprovalPage';
 
 /**
  * `/c/<code>` — the link in the text a member gets when a merchant raises a charge.
@@ -59,16 +61,22 @@ function PayNowProviders({ children }: { children: ReactNode }) {
 
 const PAYING: Record<PayNowStep, string> = { 1: 'Confirm with Face ID…', 2: 'Paying…', 3: 'Checking…' };
 
-export default function ChargeApprovalRoute() {
+/**
+ * `approval`: opened as Pay with Clear's approval page (`/approve/:id`, ApprovalPageRoute), which has
+ * already read the payment. The charge is its `chargeCode`, and the screen is the online sheet; when
+ * it is done the page closes itself, back to the shop's tab.
+ */
+export default function ChargeApprovalRoute({ approval }: { approval?: ApprovalView } = {}) {
   return (
     <PayNowProviders>
-      <ChargeApprovalScreen />
+      <ChargeApprovalScreen approval={approval ?? null} />
     </PayNowProviders>
   );
 }
 
-function ChargeApprovalScreen() {
-  const { code = '' } = useParams<{ code: string }>();
+function ChargeApprovalScreen({ approval }: { approval: ApprovalView | null }) {
+  const params = useParams<{ code: string }>();
+  const code = approval?.chargeCode ?? params.code ?? '';
   const { isAuthenticated, address } = useAppKitAuth();
   const { memberStatus, loaded: profileLoaded } = useMemberProfile();
   const installMode = useInstallMode();
@@ -84,6 +92,10 @@ function ChargeApprovalScreen() {
   const [mode, setMode] = useState<PayMode>('choose');
   const [paying, setPaying] = useState<PayNowStep | null>(null);
   const [addMoneyOpen, setAddMoneyOpen] = useState(false);
+  /** The approval page found no Clear account behind this sign-in. */
+  const [noAccount, setNoAccount] = useState(false);
+  /** Done, and the window wouldn't close itself: say where to go instead. */
+  const [stillOpen, setStillOpen] = useState(false);
   const payNow = usePayNow();
   const { cash, loading: balancesLoading, applyOptimistic } = useClearBalances();
 
@@ -105,6 +117,17 @@ function ChargeApprovalScreen() {
      * it should happen once, after there is enough known to say where it belongs.
      */
     if (!profileLoaded) return;
+
+    /*
+     * The approval page, signed in with no Clear account behind it (a rewards-only sign-in, or
+     * nobody yet). There's nothing here they can approve, and opening the charge would claim it, so
+     * it isn't opened: the code they were sent works on the shop's page, and so does a card.
+     */
+    if (approval && hasNoClearAccount(memberStatus)) {
+      setNoAccount(true);
+      setLoading(false);
+      return;
+    }
 
     let cancelled = false;
     void getCharge(code)
@@ -143,7 +166,7 @@ function ChargeApprovalScreen() {
     return () => {
       cancelled = true;
     };
-  }, [code, isAuthenticated, memberStatus, profileLoaded, navigate, location]);
+  }, [code, approval, isAuthenticated, memberStatus, profileLoaded, navigate, location]);
 
   /**
    * The limit shown on the footer — the one this decision is checked against.
@@ -177,6 +200,24 @@ function ChargeApprovalScreen() {
     if (payNowOnly) setSplitInto(1);
   }, [payNowOnly]);
 
+  /*
+   * Online: the charge says so itself (`online`), or the approval page knows it from the payment.
+   * The site it names is the charge's, else the approval page's return address.
+   */
+  const online = charge?.online ?? (approval ? { channel: approval.channel, shopHost: null } : null);
+  const host = shopHostFor(charge?.online, approval?.returnUrl);
+
+  /*
+   * Paid, or approved over time: the approval page closes itself, and the shop's tab, which has been
+   * polling, moves on. A window the browser won't close (a texted link) says where to go instead.
+   * Never a redirect to the shop: the shop's tab is still there.
+   */
+  const finished = Boolean(charge && charge.status === 'approved');
+  useEffect(() => {
+    if (!approval || !finished) return;
+    closeOrFallback(window, () => setStillOpen(true));
+  }, [approval, finished]);
+
   /**
    * A payment on its way: asked again every few seconds until the server has seen it land. The
    * server marks it paid on its own (its reconciliation finds it), so this is only the screen
@@ -192,6 +233,18 @@ function ChargeApprovalScreen() {
     }, 4000);
     return () => clearInterval(timer);
   }, [onItsWay, code]);
+
+  /**
+   * Leaving: home, as ever. The approval page was opened over the shop's page, so it closes, back to
+   * the shop's tab, and goes home only when the browser won't let it.
+   */
+  const leave = useCallback(() => {
+    if (!approval) {
+      navigate('/', { replace: true });
+      return;
+    }
+    closeOrFallback(window, () => navigate('/', { replace: true }));
+  }, [approval, navigate]);
 
   const onPayNow = useCallback(async () => {
     if (!charge) return;
@@ -246,8 +299,8 @@ function ChargeApprovalScreen() {
       return;
     }
     track('charge_declined', {});
-    navigate('/', { replace: true });
-  }, [charge, navigate]);
+    leave();
+  }, [charge, leave]);
 
   /**
    * Hold until the profile has answered, because the answer decides whose screen this is.
@@ -259,6 +312,10 @@ function ChargeApprovalScreen() {
    */
   if (loading || (isAuthenticated && !profileLoaded)) {
     return <p className="px-5 py-8 text-center text-[13px] text-muted-foreground">Loading…</p>;
+  }
+
+  if (noAccount && approval) {
+    return <NoClearAccount shopName={approval.shop.name} host={host} />;
   }
 
   if (!charge) {
@@ -306,7 +363,7 @@ function ChargeApprovalScreen() {
       amount={amount}
       raisedBy={charge.raisedBy}
       raisedAt={charge.createdAt}
-      items={charge.items}
+      items={charge.items ?? approval?.order.lines.map((l) => ({ name: l.name, quantity: l.quantity, cents: l.lineCents })) ?? null}
       taxCents={charge.taxCents}
       discountCents={charge.discountCents}
       table={charge.table ?? null}
@@ -314,6 +371,10 @@ function ChargeApprovalScreen() {
       mode={mode}
       onModeChange={onModeChange}
       overTimeMinimum={payNowOnly ? PAY_OVER_TIME_MIN_CENTS / 100 : null}
+      // A shop's Pay now only: no Over time at all (the server refuses a plan on it either way).
+      overTimeShown={showsOverTime(charge.overTime)}
+      online={online ? { channel: online.channel, host } : null}
+      doneLine={stillOpen ? doneLine(host) : null}
       readyToAllocate={balancesLoading ? null : cash}
       spendable={null}
       onPayNow={onPayNow}
@@ -329,7 +390,7 @@ function ChargeApprovalScreen() {
           : null
       }
       onItsWay={onItsWay}
-      onDone={() => navigate('/', { replace: true })}
+      onDone={leave}
       splitInto={charge.splitInto ?? splitInto}
       onSplitChange={setSplitInto}
       splitOptions={splitOptions}
@@ -340,7 +401,7 @@ function ChargeApprovalScreen() {
       onApprove={onApprove}
       onDecline={onDecline}
       // Closing leaves it waiting: Shop charges and the banner on Send and Activity bring it back.
-      onLeave={() => navigate('/', { replace: true })}
+      onLeave={leave}
       approved={charge.status === 'approved' && !charge.paidNow}
       /*
        * Only on iOS, and only outside the installed app.

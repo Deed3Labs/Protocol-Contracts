@@ -38,6 +38,8 @@ import OnboardingFlow, { type OnboardingStep } from '@/pages/auth/OnboardingFlow
 import CounterOnboarding, { COUNTER_STEPS, type CounterStep } from '@/pages/auth/CounterOnboarding';
 import { useInstallMode } from '@/hooks/useInstallMode';
 import ChargeApproval from '@/pages/app/ChargeApproval';
+import { NoClearAccount } from '@/pages/app/ApprovalPage';
+import { doneLine } from '@/lib/approvalPage';
 import MoveMoneyDialog, { type MoveDirection } from '@/components/clear/MoveMoneyDialog';
 
 /** The shops section 6 draws: Mi Casa (128 points, a reward ready), Mike's Tire, La Bonita (stamps). */
@@ -578,6 +580,87 @@ function ChargeApprovalPreview() {
 }
 
 /**
+ * Pay with Clear's approval page, `/approve/<anything>?preview=1`: pay spec §4's approve sheet for Mi
+ * Casa Tacos ($185.32, Over time, In 4). `&screen=` picks the undrawn ones: done-fallback (paid, and the
+ * window wouldn't close), pay-now-only (the shop offers no Over time), no-account. `&channel=link`
+ * shows a payment link's line.
+ */
+type ApprovalScreen = 'sheet' | 'done-fallback' | 'pay-now-only' | 'no-account';
+const APPROVAL_SCREENS: ApprovalScreen[] = ['sheet', 'done-fallback', 'pay-now-only', 'no-account'];
+
+function ApprovalPagePreview() {
+  const params = new URLSearchParams(window.location.search);
+  const asked = params.get('screen') as ApprovalScreen | null;
+  const channel = params.get('channel') === 'link' ? 'link' : 'online';
+  const [screen, setScreen] = useState<ApprovalScreen>(asked && APPROVAL_SCREENS.includes(asked) ? asked : 'sheet');
+  const [mode, setMode] = useState<'choose' | 'now' | 'over'>(screen === 'pay-now-only' ? 'now' : 'over');
+  const [splitInto, setSplitInto] = useState(4);
+  const [approved, setApproved] = useState(false);
+  const host = 'micasatacos.com';
+  const pick = (next: ApprovalScreen) => {
+    setScreen(next);
+    setApproved(false);
+    setMode(next === 'pay-now-only' ? 'now' : 'over');
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      {screen === 'no-account' ? (
+        <NoClearAccount shopName="Mi Casa Tacos" host={host} />
+      ) : (
+        <ChargeApproval
+          merchantName="Mi Casa Tacos"
+          amount={185.32}
+          items={[
+            { name: 'Taco tray for 12', quantity: 1, cents: 14900 },
+            { name: 'Agua fresca, gallon', quantity: 2, cents: 2200 },
+          ]}
+          taxCents={1432}
+          shopPaysBps={125}
+          mode={mode}
+          onModeChange={setMode}
+          overTimeShown={screen !== 'pay-now-only'}
+          online={{ channel, host }}
+          readyToAllocate={412.6}
+          spendable={null}
+          onPayNow={() => setScreen('done-fallback')}
+          onAddMoney={() => {}}
+          paid={screen === 'done-fallback' ? { at: new Date(2026, 9, 16, 12, 4).toISOString(), left: 227.28 } : null}
+          doneLine={screen === 'done-fallback' || approved ? doneLine(host) : null}
+          onDone={() => pick('sheet')}
+          splitInto={splitInto}
+          onSplitChange={setSplitInto}
+          splitOptions={[1, 2, 4, 12]}
+          perCycleLimit={850}
+          clearsFromLabel="Chase ····4471"
+          firstPaymentOn="Nov 1"
+          doneBy={() => 'Feb 1'}
+          onApprove={() => setApproved(true)}
+          onDecline={() => pick('sheet')}
+          onLeave={() => pick('sheet')}
+          approved={approved}
+        />
+      )}
+
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        {APPROVAL_SCREENS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => pick(f)}
+            className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+              screen === f ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The counter path — five steps, outside the app chrome like the direct one.
  *
  * Driven the way `CounterOnboardingRoute` drives it rather than on the component's own defaults,
@@ -918,6 +1001,7 @@ export default function PreviewApp() {
               <Route path="/onboarding" element={<OnboardingPreview />} />
               <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
               <Route path="/charge" element={<ChargeApprovalPreview />} />
+              <Route path="/approve/:id" element={<ApprovalPagePreview />} />
               <Route path="/move-money" element={<MoveMoneyPreview />} />
               <Route path="/pool" element={<PoolMovePreview />} />
               <Route path="/bond" element={<BondPreview />} />

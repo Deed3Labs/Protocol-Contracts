@@ -25,6 +25,7 @@ import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSe
 import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
 import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
 import { notifyServerLocked } from '@/lib/appLock';
+import { readApproval, type ApprovalRead } from '@/lib/approvalPage';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
@@ -3628,6 +3629,13 @@ export interface ChargeView {
   table?: string | null;
   /** What the shop pays Clear if it's paid now, in basis points: 125 is 1.25%. */
   paidNowBps?: number | null;
+  /**
+   * Paid online (a link or a website): false when only paying now is offered. Null at the counter,
+   * whose rules (the $50 minimum) are the app's own.
+   */
+  overTime?: boolean | null;
+  /** Where an online charge came from, and the shop's site to name: "micasatacos.com". Null at the counter. */
+  online?: { channel: 'online' | 'link'; shopHost: string | null } | null;
 }
 
 /** What the member's wallet sends to pay now: USDC token units (6dp), to the shop and Clear's fee. */
@@ -3643,6 +3651,14 @@ export interface PayNowInstructions {
 export async function getCharge(code: string): Promise<ChargeView | null> {
   const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}`);
   return r.error || !r.data ? null : r.data;
+}
+
+/**
+ * The approval page's payment (`/approve/:id`): no session, no cookies, nothing cached. It names the
+ * shop and the order; which member pays is the charge's business, behind sign-in.
+ */
+export function getApprovalView(id: string): Promise<ApprovalRead> {
+  return readApproval(id, API_BASE_URL);
 }
 
 export interface ChargeActionResult {
