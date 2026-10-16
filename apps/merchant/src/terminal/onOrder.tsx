@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { HardwareOrder } from '@clear/merchant-contracts';
 import { Btn, Cell, FootLine, Main, Rows } from '@/settings/views';
 import { DevRow, IconPoint } from './devices';
-import { lineDet, lineName, openLines, statusChip, usd } from './onOrderLines';
+import { day, lineDet, lineName, openLines, statusChip, usd } from './onOrderLines';
 
 export { lineDet, lineName, openLines, statusChip, usd };
 

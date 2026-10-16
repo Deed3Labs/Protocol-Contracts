@@ -12,7 +12,7 @@ export const usd = (cents: number) => {
 /** "4 × Clear Point, Table" */
 export const lineName = (l: HardwareOrderLine) => `${l.qty > 1 ? `${l.qty} × ` : ''}${l.name}`;
 
-const day = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+export const day = (iso: string) => new Date(`${iso.slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 export function statusChip(l: HardwareOrderLine): { tone: ChipTone; dot?: boolean; text: string } {
   switch (l.status) {
