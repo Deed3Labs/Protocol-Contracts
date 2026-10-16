@@ -6,7 +6,7 @@ const manifest = JSON.parse(
 );
 const APP = readFileSync(new URL('./App.tsx', import.meta.url), 'utf8');
 const INDEX = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const SPLASH_CSS = readFileSync(new URL('./styles/clear-components.css', import.meta.url), 'utf8');
+const SPLASH_CSS = readFileSync(new URL('../../../packages/member-kit/src/styles/clear-components.css', import.meta.url), 'utf8');
 
 /**
  * The manifest is the only part of the app the browser reads before there is an app, and the last

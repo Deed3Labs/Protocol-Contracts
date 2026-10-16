@@ -12,6 +12,8 @@ export default defineConfig({
       // Ships TypeScript source, not a build. Aliasing it keeps vite treating it as first-party
       // source rather than trying to pre-bundle a package with no dist/.
       '@clear/domain': resolve(__dirname, '../../packages/domain/src/index.ts'),
+      // The same for the components and onboarding the rewards app shares (subpaths are its files).
+      '@clear/member-kit': resolve(__dirname, '../../packages/member-kit/src'),
     },
   },
   optimizeDeps: {

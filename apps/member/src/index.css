@@ -1,7 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "./styles/clear-tokens.css";
-@import "./styles/clear-components.css" layer(components);
+@import "@clear/member-kit/styles/clear-tokens.css";
+@import "@clear/member-kit/styles/clear-components.css" layer(components);
+/* The shared components (packages/member-kit) use Tailwind classes too. */
+@source "../../../packages/member-kit/src";
 
 @custom-variant dark (&:is(.dark *));
 
