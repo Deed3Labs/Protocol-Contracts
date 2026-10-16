@@ -41,6 +41,7 @@ import merchantBankRouter from './merchantBank.js';
 import { merchantTerminalRouter } from './merchantTerminal.js';
 import { touchShop } from '../services/merchant/terminal/bus.js';
 import { merchantRewardsRouter } from './rewards.js';
+import { merchantConnectRouter } from './merchantConnect.js';
 
 /**
  * The merchant surface.
@@ -91,6 +92,8 @@ merchantRouter.use(merchantReportsRouter);
 merchantRouter.use(merchantTerminalRouter());
 // Rewards: Settings › Shop app, and adding a member at the cart (routes/rewards.ts).
 merchantRouter.use(merchantRewardsRouter());
+// Shop sign-in for useclear.org: a token the site verifies, for hardware pre-orders.
+merchantRouter.use(merchantConnectRouter());
 
 /** Sign-in is scoped to one shop: a four-digit PIN only means anything against a merchant. */
 function merchantOf(req: Request): string {
