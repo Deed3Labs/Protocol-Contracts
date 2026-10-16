@@ -343,6 +343,7 @@ export default function NewChargePage() {
   // on Home meanwhile counts. Unread (offline), cash stays open: the queue files it into the session
   // open when it was taken.
   const liveDrawer = useApi(() => (preview ? Promise.resolve(null) : merchant.drawer()), [preview, f.screen === 'checkout']);
+  const cashLocked = preview ? params.get('screen') === 'checkout-nodrawer' : !liveDrawer.loading && !liveDrawer.error && liveDrawer.data?.status !== 'open';
   const set = useCallback((p: Partial<Flow>) => setF((cur) => ({ ...cur, ...p })), []);
   // A receipt on a live shop: Text or Email asks where; paper prints from the order's own receipt.
   const pickSend = (sendBy: SendBy) => set(sendBy === 'none' ? { sendBy } : { sendBy, sheet: { k: 'send', by: sendBy, to: '' } });
@@ -913,7 +914,7 @@ export default function NewChargePage() {
         server={order ? totalsFromOrder(order) : null}
         // Live, cards open once Stripe is connected and cards are on in Settings › Payments.
         cardLocked={preview ? params.get('screen') === 'checkout-nostripe' : !cardsOn}
-        cashLocked={preview ? params.get('screen') === 'checkout-nodrawer' : !liveDrawer.loading && !liveDrawer.error && liveDrawer.data?.status !== 'open'}
+        cashLocked={cashLocked}
         unavailable={
           isOffline(order)
             ? (['card', 'clear', 'split'] as Method[])
@@ -1222,7 +1223,7 @@ export default function NewChargePage() {
     const legs: Leg[] = declined ? done : [...done, { method: f.legMethod, amountCents: next, det: 'Choose below', state: 'next' }];
     const chargeLeg = () => {
       if (preview) return set({ screen: f.legMethod === 'card' ? 'card' : f.legMethod === 'cash' ? 'cash' : 'code', code: '8QK2' });
-      if (f.legMethod === 'cash') return set({ screen: 'cash', given: '' });
+      if (f.legMethod === 'cash') return cashLocked ? setPayError('Open the drawer on Home to take cash') : set({ screen: 'cash', given: '' });
       if (f.legMethod === 'clear') return void raise();
       if (!cardsOn) return setPayError('Cards aren’t available for this shop yet. Take this part by Clear or cash.');
       setF((cur) => ({ ...cur, screen: 'card', reader: 'ready', run: cur.run + 1 }));
@@ -1239,6 +1240,7 @@ export default function NewChargePage() {
         method={f.legMethod}
         onMethod={(legMethod) => set({ legMethod })}
         onCharge={chargeLeg}
+        cashLocked={cashLocked}
         {...(preview ? {} : { typed: f.part, onAmount: (part: string) => set({ part }) })}
       />
     );
