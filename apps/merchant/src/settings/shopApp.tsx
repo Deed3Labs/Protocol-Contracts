@@ -693,7 +693,7 @@ export function ShopAppSection({ head, screen, onDiscounts }: { head: ReactNode;
       </div>
 
       {open?.kind === 'domain' && <DomainSheet s={s} merchant={merchant} suggest={emailDomain ? `rewards.${emailDomain}` : ''} onSaved={() => settings.reload()} onClose={() => setOpen(null)} />}
-      {open?.kind === 'store' && <StoreSheet shop={shopName} onClose={() => setOpen(null)} />}
+      {open?.kind === 'store' && <StoreSheet shop={shopName} builds={s.storeBuilds} onClose={() => setOpen(null)} />}
       {open?.kind === 'reward' && (
         <RewardSheet
           s={s}
@@ -867,6 +867,14 @@ function DomainSheet({ s, merchant, suggest, onSaved, onClose }: { s: ShopAppSet
         <b>{record.type}</b>
         <b>{record.name}</b>
         <b>{record.value}</b>
+        {/* The domain is on another Vercel account too: a TXT proves it's the shop's. */}
+        {saved && domain?.verification && (
+          <>
+            <b>{domain.verification.type}</b>
+            <b>{domain.verification.name}</b>
+            <b style={{ wordBreak: 'break-all' }}>{domain.verification.value}</b>
+          </>
+        )}
       </div>
       <Rows style={{ marginTop: 'var(--s2)' }}>
         <R2
@@ -897,7 +905,9 @@ function DomainSheet({ s, merchant, suggest, onSaved, onClose }: { s: ShopAppSet
 
 // ---- Your own app in the stores -------------------------------------------------------------------
 
-function StoreSheet({ shop, onClose }: { shop: string; onClose: () => void }) {
+const REVIEW: Record<ShopAppSettings['storeBuilds'][number]['review'], string> = { not_submitted: 'Not submitted', in_review: 'In review', approved: 'Approved', rejected: 'Rejected', live: 'Live' };
+
+function StoreSheet({ shop, builds, onClose }: { shop: string; builds: ShopAppSettings['storeBuilds']; onClose: () => void }) {
   return (
     <Sheet
       className="c-st-sheet c-tm-sheet c-w460"
@@ -931,6 +941,10 @@ function StoreSheet({ shop, onClose }: { shop: string; onClose: () => void }) {
       </div>
       <Rows style={{ marginTop: 'var(--s2)' }}>
         <R2 t="In the store app" det="Push notifications, your rewards card in Apple Wallet and Google Wallet, and the scanner" end={null} />
+        {/* Where each build stands, as Clear records it from the shop's own accounts. */}
+        {builds.map((b) => (
+          <R2 key={b.id} t={`${b.platform === 'ios' ? 'App Store' : 'Google Play'} · ${b.version}`} det={`${REVIEW[b.review]}${b.note ? ` · ${b.note}` : ''}`} end={null} />
+        ))}
       </Rows>
     </Sheet>
   );

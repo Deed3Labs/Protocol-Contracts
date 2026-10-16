@@ -1,11 +1,14 @@
 import type { PublicShopApp } from '@clear/merchant-contracts';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { useAuth } from './auth/auth';
 import { useRead } from './data/context';
 import { Frames } from './preview/Frames';
-import { PREVIEW } from './lib/env';
-import { ShopScope } from './shell/ui';
+import { API_BASE, PREVIEW } from './lib/env';
+import { isClearHost } from './lib/hosts';
+import { NATIVE_SHOP } from './lib/native';
+import { HostShop, useScope } from './shell/scope';
+import { Missing, ShopScope } from './shell/ui';
 import { HubHome, HubScan, HubYou } from './screens/hub';
 import { ActivityScreen, ApproveScreen, BillScreen, ClaimScreen, PaidScreen, PayScreen, RewardsTab, ShopHome, ShopYou, ShowCode } from './screens/shop';
 import { HubSignIn, ShopJoin, ShopJoinTap, Welcome, useJoined } from './screens/signin';
@@ -34,8 +37,9 @@ function ShopGate({ shop, children }: { shop: PublicShopApp; children: ReactNode
 }
 
 /** The same screens at `/s/:slug/…` (a shop's own link) and `/shops/:slug/…` (inside the hub). */
-function ShopRoutes({ hub }: { hub?: boolean }) {
-  const { slug = '' } = useParams();
+function ShopRoutes({ hub, slug: fixed }: { hub?: boolean; slug?: string }) {
+  const params = useParams();
+  const slug = fixed ?? params.slug ?? '';
   const screen = (S: (p: { shop: PublicShopApp }) => ReactNode, open = false) => (
     <ShopScope slug={slug}>{(shop) => (open ? <S shop={shop} /> : <ShopGate shop={shop}><S shop={shop} /></ShopGate>)}</ShopScope>
   );
@@ -60,11 +64,42 @@ function ShopRoutes({ hub }: { hub?: boolean }) {
 
 /** A shop's join link (its counter card) is its Home: signed out, Home is the Join screen. */
 function JoinRedirect() {
-  const { slug = '' } = useParams();
-  return <Navigate to={`/s/${slug}`} replace />;
+  const { base } = useScope();
+  return <Navigate to={base || '/'} replace />;
+}
+
+/**
+ * A shop's own domain (Phase 7): which shop it is, asked once, then only that shop's screens, at `/`.
+ * Clear's hosts skip this.
+ */
+function useHostShop(): { ready: boolean; slug: string | null; error: boolean } {
+  const custom = !PREVIEW && !NATIVE_SHOP && !isClearHost(window.location.hostname);
+  // A store build is one shop's, by its build (apps/rewards/native): no lookup.
+  const [state, setState] = useState<{ ready: boolean; slug: string | null; error: boolean }>({ ready: !custom, slug: NATIVE_SHOP, error: false });
+  useEffect(() => {
+    if (!custom) return;
+    void fetch(`${API_BASE}/api/rewards/domain/${encodeURIComponent(window.location.hostname)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ slug: string }>) : Promise.reject(new Error(String(r.status)))))
+      .then((d) => setState({ ready: true, slug: d.slug, error: false }))
+      .catch(() => setState({ ready: true, slug: null, error: true }));
+  }, [custom]);
+  return state;
 }
 
 export default function App() {
+  const host = useHostShop();
+  if (!host.ready) return null;
+  if (host.error) return <Missing message="No shop’s app is on this address yet. If it’s yours, check its DNS record in Settings › Shop app." />;
+  if (host.slug)
+    return (
+      <HostShop.Provider value={host.slug}>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/*" element={<ShopRoutes slug={host.slug} />} />
+          </Routes>
+        </BrowserRouter>
+      </HostShop.Provider>
+    );
   return (
     <BrowserRouter>
       <Routes>

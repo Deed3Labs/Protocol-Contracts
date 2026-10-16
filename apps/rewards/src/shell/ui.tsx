@@ -4,7 +4,9 @@ import type { PublicShopApp } from '@clear/merchant-contracts';
 import { Back, Caret, ClearMark, GiftIcon, HomeIcon, PersonIcon, ScanIcon } from '../icons';
 import { brandStyle, CLEAR_LOOK, loadShopFonts } from '../lib/brand';
 import { useRead } from '../data/context';
-import { useScope } from './scope';
+import { HostShop, useScope } from './scope';
+import { PREVIEW } from '../lib/env';
+import { forwardUrl, isClearHost } from '../lib/hosts';
 import { setHead } from './headTags';
 
 /**
@@ -29,8 +31,14 @@ export const useShop = () => useContext(ShopContext);
 export function ShopScope({ slug, children }: { slug: string; children: (shop: PublicShopApp) => ReactNode }) {
   const { data, error } = useRead((d) => d.shop(slug), [slug]);
   const { mode } = useScope();
+  const host = useContext(HostShop);
   useEffect(() => {
     if (!data) return;
+    // A verified own domain: the shop's useclear.org link forwards there (Phase 7). Never in the hub.
+    if (mode === 'shop' && !host && data.domain && !PREVIEW && isClearHost(window.location.hostname)) {
+      window.location.replace(forwardUrl(data.domain, data.slug, window.location.pathname, window.location.search));
+      return;
+    }
     loadShopFonts(data.fonts);
     // A shop's own link installs as its own app; inside the hub the page stays the hub's.
     if (mode === 'shop') setHead({ title: data.name, manifest: `/s/${data.slug}/manifest.webmanifest`, themeColor: data.brand.colour, icon: data.brand.logoUrl });

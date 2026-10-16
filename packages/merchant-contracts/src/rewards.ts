@@ -400,6 +400,11 @@ export const ShopDomain = z.object({
   status: z.enum(['pending', 'verified', 'failed']),
   /** The record the shop adds where it bought the domain. */
   record: z.object({ type: z.enum(['CNAME', 'A']), name: z.string(), value: z.string() }),
+  /**
+   * A second record Vercel asks for when the domain is already on another Vercel account: a TXT
+   * that proves it's the shop's. Optional so older responses still parse.
+   */
+  verification: z.object({ type: z.literal('TXT'), name: z.string(), value: z.string() }).nullable().optional(),
   checkedAt: Timestamp.nullable(),
   verifiedAt: Timestamp.nullable(),
 });
@@ -476,8 +481,14 @@ export const PublicShopApp = z.object({
   rewards: z.array(RewardView),
   offers: z.array(OfferView),
   configVersion: z.number().int().min(1),
+  /** The shop's own domain once it's verified: `useclear.org/s/:slug` forwards there. */
+  domain: z.string().nullable().optional(),
 });
 export type PublicShopApp = z.infer<typeof PublicShopApp>;
+
+/** `GET /api/rewards/domain/:host`: which shop a verified own domain is, so the app opens it at `/`. */
+export const DomainShop = z.object({ slug: ShopSlug });
+export type DomainShop = z.infer<typeof DomainShop>;
 
 /** A person in rewards, as their own app shows them. */
 export const Person = z.object({

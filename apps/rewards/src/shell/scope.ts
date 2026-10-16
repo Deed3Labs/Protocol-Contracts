@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 
 /**
@@ -22,8 +23,12 @@ export function scopeOf(pathname: string): Scope {
   return { mode: 'hub', slug: null, base: '' };
 }
 
+/** On a shop's own domain (Phase 7): that shop, at `/`. Null on Clear's hosts. */
+export const HostShop = createContext<string | null>(null);
+
 export function useScope(): Scope {
   const { pathname } = useLocation();
   useParams();
-  return scopeOf(pathname);
+  const host = useContext(HostShop);
+  return host ? { mode: 'shop', slug: host, base: '' } : scopeOf(pathname);
 }

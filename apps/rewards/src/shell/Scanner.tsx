@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { PREVIEW } from '../lib/env';
+import { hasNativeScanner, scanNative } from '../lib/native';
 
 /**
  * The camera, reading Clear's QR codes (a Point, a counter charge, a shop's join code). The browser's
@@ -15,8 +16,19 @@ export function Scanner({ prompt, onCode, height, box }: { prompt: string; onCod
   const handler = useRef(onCode);
   handler.current = onCode;
 
+  // In the store build, the phone's own scanner (Apple's 4.2: native value), once, as it opens.
   useEffect(() => {
-    if (PREVIEW || !navigator.mediaDevices?.getUserMedia) return;
+    if (PREVIEW || !hasNativeScanner()) return;
+    void scanNative().then((raw) => {
+      if (raw && !done.current) {
+        done.current = true;
+        handler.current(raw);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (PREVIEW || hasNativeScanner() || !navigator.mediaDevices?.getUserMedia) return;
     let stream: MediaStream | null = null;
     let raf = 0;
     let stopped = false;

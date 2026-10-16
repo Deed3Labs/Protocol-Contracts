@@ -66,6 +66,8 @@ CREATE TABLE rewards.shop_domains (
   status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','failed')),
   -- {type, name, value}: what the shop adds where it bought the domain.
   record       JSONB NOT NULL,
+  -- {type: 'TXT', name, value}: Vercel's challenge, when another Vercel account has the domain.
+  verification JSONB,
   checked_at   TIMESTAMPTZ,
   verified_at  TIMESTAMPTZ,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),

@@ -611,3 +611,86 @@ As Phase 1 found, `useclear.org` is the marketing site, so the rewrite is there,
 
 - Tests: API 949, member 783, merchant 201, rewards 5, contracts 71.
 - Builds: member and rewards on Node 22, the merchant typecheck, and the site's `next build`.
+
+Approved at Hard Stop 6, 2026-10-16: Phase 6 as built, `GET /api/rewards/purchases`, and the apex
+rewrites branch.
+
+## Phase 7 · Add-ons
+
+### Own domain
+
+- **Using a domain adds it to the rewards Vercel project** through Vercel's REST API
+  (`services/merchant/rewards/vercel.ts`):
+  - `POST /v10/projects/:id/domains`;
+  - `GET /v9/…/domains/:domain`, with `POST …/verify` when there's a TXT challenge;
+  - `GET /v6/domains/:domain/config` for whether the DNS points at Vercel.
+
+  It reads `VERCEL_TOKEN`, `VERCEL_REWARDS_PROJECT_ID` and `VERCEL_TEAM_ID` (if the project is a
+  team's). Without them a domain is only a record, as before, and nothing calls Vercel.
+- **The record the shop adds:** `cname.vercel-dns.com` for a subdomain, Vercel's A record at the root.
+  When Vercel asks for a TXT (another Vercel account has the domain), Own domain shows it as a second
+  row.
+- **Live means Vercel accepts the domain and the DNS points at it.** The job (every 10 minutes, in
+  `jobs/rewardsJobs.ts`) and Check again both ask. A domain still pending after a week is looked at
+  hourly.
+- **Choosing a new domain takes the old one off the project.** A domain Vercel refuses is marked
+  `failed`, with Vercel's reason. Clear's own addresses (`*.useclear.org`) are refused.
+- **Going live (or dropping off) bumps the shop's config version**, because the public config is
+  cached by it.
+- **Forwarding:**
+  - The public config names the verified domain (`PublicShopApp.domain`). The rewards app on
+    Clear's hosts forwards `/s/:slug/…` there, path and query kept. The hub's `/shops/:slug` doesn't
+    forward.
+  - On the shop's domain, the app asks `GET /api/rewards/domain/:host` which shop it is, and serves
+    that shop alone at `/`. A domain no shop has verified says so.
+  - The manifest installs at `/` there.
+- **Sign-in on a shop's domain:** the customer confirms their number once, because the session can't
+  cross domains. **Each verified domain has to be added to Privy's allowed origins** (a dashboard
+  step, per domain); until it is, Privy refuses to sign in on it. That's a step to fold into the
+  add-on's setup.
+
+### Store app
+
+- **`rewards.store_builds` records:** one per shop and platform, keeping the config version it was
+  built from (`storeBuilds.ts`).
+  - Clear writes them with `scripts/store-build.ts record|list`.
+  - Settings › Shop app's store sheet lists them under the steps.
+  - Nothing builds or submits.
+- **The runbook is `docs/rewards-reference/store-builds.md`.** It covers:
+  - why the shop's accounts publish (Apple 4.2.6; Google Play's spam policy);
+  - what the shop does: business developer accounts with a D-U-N-S number, then inviting Clear as an
+    admin;
+  - the native value Apple's 4.2 needs;
+  - building, submitting by hand, the records, and keeping the app current.
+- **`apps/rewards/native` is a Capacitor wrapper**, outside the workspaces, with nothing installed in
+  the repo:
+  - `npm run config` writes `shop.json` from a shop's public config (name, bundle id
+    `org.useclear.shops.<slug>`, colours);
+  - `npm run build:web` builds the rewards app for that shop alone at `/` (`VITE_NATIVE_SHOP`) into
+    `www/`, and drops the dev-only comparator;
+  - `cap sync` and the platform projects follow, on a Mac with Xcode, which this one doesn't have.
+
+  The web step was run once, here, for Mi Casa.
+- **The native scanner is wired.** In the store app the rewards scanner uses ML Kit through
+  Capacitor's injected plugins, so the web build carries no native packages. Everywhere else it uses
+  the web camera.
+- **Not built: push and the Wallet card.**
+  - Push needs a device-token endpoint, and each shop's APNs and FCM keys.
+  - The Wallet card needs pass signing per shop.
+
+  The runbook says not to submit until both exist, since Apple would reject the app under 4.2.
+
+### Contract and API additions, for approval
+
+- `ShopDomain.verification` (optional): Vercel's TXT challenge. Migration 0029 gains the column. It
+  hasn't run anywhere outside this branch, so it's edited in place rather than adding a 0030.
+- `PublicShopApp.domain` (optional): the verified domain.
+- `GET /api/rewards/domain/:host` → `DomainShop { slug }`: public, verified domains only.
+- `RewardsDeps.vercel`.
+
+### Checks
+
+- Tests: API 953, merchant 201, member 783, rewards 7, contracts 71.
+- Builds: rewards, the merchant typecheck, and the store build's web step.
+- Vercel's API itself isn't called in tests. A fake stands in, and the client's requests are checked
+  against Vercel's documented routes; it needs the real token to be tried live.

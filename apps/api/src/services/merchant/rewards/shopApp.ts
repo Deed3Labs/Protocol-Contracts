@@ -354,6 +354,8 @@ export async function publicShopApp(q: Queryable, slug: string, now = new Date()
     rewards: rewards.map((r) => rewardView(r, app.pointsName)),
     offers: await offersFor(q, shop, shop.timezone, { member: false, clearMember: false }, now),
     configVersion: app.configVersion,
+    // Its own domain, once verified: the shop's useclear.org link forwards there.
+    domain: (await q.query<{ domain: string }>(`SELECT domain FROM rewards.shop_domains WHERE merchant = $1 AND removed_at IS NULL AND status = 'verified'`, [shop.merchant])).rows[0]?.domain ?? null,
   };
 }
 

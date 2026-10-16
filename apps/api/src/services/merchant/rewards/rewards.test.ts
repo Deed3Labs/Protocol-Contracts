@@ -18,8 +18,10 @@ import { addCustomer, answerCounterConfirm, claimReward, counterCustomer, openCl
 import { joinShop, leaveShop, memberShopPurchases, shopPaid } from './customerApp.js';
 import { addEntry, balance, expirePoints, onOrderPaid, onOrderRefunded } from './ledger.js';
 import { createPerson, personByDid, resolvePerson } from './people.js';
-import { checkDomain, setDomain } from './domains.js';
-import { createReward, ensureShopApp, offersFor, patchShopApp, rulesAt, shopAppRow, updateOffer } from './shopApp.js';
+import { checkDomain, checkPendingDomains, domainShop, setDomain } from './domains.js';
+import { recordStoreBuild, storeBuilds } from './storeBuilds.js';
+import { vercelDomains, VercelError, type VercelDomains, type VercelDomainState } from './vercel.js';
+import { createReward, ensureShopApp, offersFor, patchShopApp, publicShopApp, rulesAt, shopAppRow, updateOffer } from './shopApp.js';
 import { mintIdentityId, mintSession } from './tokens.js';
 import { rewardsRouter, shopRouter, type RewardsDeps } from '../../../routes/rewards.js';
 
@@ -501,6 +503,7 @@ describe('a token that sees one shop', () => {
       limits: { read: pass, act: pass },
       apiUrl: '',
       onboarded: async () => null,
+      vercel: null,
     };
     const app = express();
     app.use(express.json());
@@ -575,10 +578,10 @@ describe('Settings › Discounts and Own domain', () => {
 
   test('Check again stamps the domain and keeps it pending until it’s verified', async () => {
     const shop = await miCasa();
-    await expect(checkDomain(db, shop.merchant)).rejects.toMatchObject({ code: 'not_found' });
-    const set = await setDomain(db, { merchant: shop.merchant, body: { domain: `rewards-${seq++}.micasatacos.com` } });
+    await expect(checkDomain(db, shop.merchant, null)).rejects.toMatchObject({ code: 'not_found' });
+    const set = await setDomain(db, { merchant: shop.merchant, body: { domain: `rewards-${seq++}.micasatacos.com` }, vercel: null });
     expect(set).toMatchObject({ status: 'pending', record: { type: 'CNAME', name: set.domain.split('.')[0], value: 'cname.vercel-dns.com' }, checkedAt: null });
-    const checked = await checkDomain(db, shop.merchant);
+    const checked = await checkDomain(db, shop.merchant, null);
     expect(checked).toMatchObject({ domain: set.domain, status: 'pending', record: set.record });
     expect(checked.checkedAt).not.toBeNull();
   });
@@ -635,6 +638,7 @@ describe('history after onboarding (Phase 6)', () => {
       limits: { read: pass, act: pass },
       apiUrl: '',
       onboarded: async () => null,
+      vercel: null,
     };
     const serve = async (deps: RewardsDeps) => {
       const app = express();
@@ -646,5 +650,97 @@ describe('history after onboarding (Phase 6)', () => {
     };
     expect(await serve(base)).toMatchObject({ status: 403, body: { message: 'Complete account onboarding before using this feature' } });
     expect(await serve({ ...base, onboarded: async () => 'member-nobody' })).toEqual({ status: 200, body: { items: [] } });
+  });
+});
+
+describe('own domains on Vercel (Phase 7)', () => {
+  /** Vercel, as far as the domains need it: a project's domains and whether their DNS points at it. */
+  function fakeVercel() {
+    const domains = new Map<string, VercelDomainState>();
+    const removed: string[] = [];
+    const v: VercelDomains = {
+      add: async (d) => {
+        if (d.startsWith('taken.')) throw new VercelError('The domain is already in use by another project', 400);
+        if (!domains.has(d)) domains.set(d, { verified: true, misconfigured: true, verification: null });
+        return domains.get(d)!;
+      },
+      state: async (d) => domains.get(d)!,
+      remove: async (d) => void removed.push(d),
+    };
+    return { v, domains, removed, dnsAdded: (d: string) => domains.set(d, { ...domains.get(d)!, misconfigured: false }) };
+  }
+
+  test('added to the project, pending until the record is seen, then live: the public config names it', async () => {
+    const shop = await miCasa();
+    const vc = fakeVercel();
+    const domain = `rewards-${seq++}.micasatacos.com`;
+    const set = await setDomain(db, { merchant: shop.merchant, body: { domain }, vercel: vc.v });
+    expect(set).toMatchObject({ status: 'pending', record: { type: 'CNAME', value: 'cname.vercel-dns.com' }, verification: null });
+    expect(set.checkedAt).not.toBeNull();
+    expect(vc.domains.has(domain)).toBe(true);
+    expect(await checkPendingDomains(db, vc.v)).toBe(0);
+    await expect(domainShop(db, domain)).rejects.toMatchObject({ code: 'not_found' });
+
+    const before = (await publicShopApp(db, shop.slug)).configVersion;
+    vc.dnsAdded(domain);
+    expect(await checkPendingDomains(db, vc.v)).toBeGreaterThanOrEqual(1);
+    const app = await publicShopApp(db, shop.slug);
+    expect(app.domain).toBe(domain);
+    // The public config is cached by version: going live is a new one.
+    expect(app.configVersion).toBe(before + 1);
+    expect(await domainShop(db, `${domain.toUpperCase()}:443`)).toEqual({ slug: shop.slug });
+    expect(await checkDomain(db, shop.merchant, vc.v)).toMatchObject({ status: 'verified' });
+  });
+
+  test('a new domain takes the old one off the project; a refused one is failed; Clear’s own are refused', async () => {
+    const shop = await miCasa();
+    const vc = fakeVercel();
+    const first = `a-${seq++}.micasatacos.com`;
+    await setDomain(db, { merchant: shop.merchant, body: { domain: first }, vercel: vc.v });
+    await setDomain(db, { merchant: shop.merchant, body: { domain: `micasa-${seq++}.com` }, vercel: vc.v });
+    expect(vc.removed).toEqual([first]);
+    await expect(setDomain(db, { merchant: shop.merchant, body: { domain: `taken.micasa-${seq++}.com` }, vercel: vc.v })).rejects.toMatchObject({ code: 'unavailable' });
+    await expect(setDomain(db, { merchant: shop.merchant, body: { domain: 'micasa.useclear.org' }, vercel: vc.v })).rejects.toMatchObject({ code: 'invalid' });
+  });
+
+  test('the client calls Vercel’s domain routes, with the team, and asks it to verify a TXT challenge', async () => {
+    const calls: string[] = [];
+    const answers: Record<string, unknown> = {
+      'POST /v10/projects/prj_1/domains': { name: 'rewards.shop.com', verified: false },
+      'GET /v9/projects/prj_1/domains/rewards.shop.com': { name: 'rewards.shop.com', verified: false, verification: [{ type: 'TXT', domain: '_vercel.shop.com', value: 'vc-domain-verify=abc' }] },
+      'POST /v9/projects/prj_1/domains/rewards.shop.com/verify': { name: 'rewards.shop.com', verified: false, verification: [{ type: 'TXT', domain: '_vercel.shop.com', value: 'vc-domain-verify=abc' }] },
+      'GET /v6/domains/rewards.shop.com/config': { misconfigured: true },
+    };
+    const v = vercelDomains({
+      token: 't',
+      projectId: 'prj_1',
+      teamId: 'team_1',
+      fetch: async (url, init) => {
+        const u = new URL(url);
+        expect(u.searchParams.get('teamId')).toBe('team_1');
+        expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer t');
+        const key = `${init?.method} ${u.pathname}`;
+        calls.push(key);
+        return new Response(JSON.stringify(answers[key] ?? {}), { status: key in answers ? 200 : 404 });
+      },
+    });
+    expect(await v.add('rewards.shop.com')).toEqual({ verified: false, misconfigured: true, verification: { type: 'TXT', name: '_vercel.shop.com', value: 'vc-domain-verify=abc' } });
+    expect(calls).toEqual(['POST /v10/projects/prj_1/domains', 'GET /v9/projects/prj_1/domains/rewards.shop.com', 'POST /v9/projects/prj_1/domains/rewards.shop.com/verify', 'GET /v6/domains/rewards.shop.com/config']);
+  });
+});
+
+describe('store app builds (Phase 7): records only', () => {
+  test('one per shop and platform, carrying the config it was built from', async () => {
+    const shop = await miCasa();
+    const ios = await recordStoreBuild(db, { slug: shop.slug, platform: 'ios', bundleId: 'org.useclear.shops.micasa', version: '1.0.0', review: 'not_submitted' });
+    const again = await recordStoreBuild(db, { slug: shop.slug, platform: 'ios', bundleId: 'org.useclear.shops.micasa', version: '1.0.0', review: 'in_review', note: 'Submitted from the shop’s account' });
+    expect(again.id).toBe(ios.id);
+    await recordStoreBuild(db, { slug: shop.slug, platform: 'android', bundleId: 'org.useclear.shops.micasa', version: '1.0.0', review: 'live' });
+    expect((await storeBuilds(db, shop.slug)).map((b) => [b.platform, b.review])).toEqual([
+      ['android', 'live'],
+      ['ios', 'in_review'],
+    ]);
+    expect(again.configVersion).toBe((await publicShopApp(db, shop.slug)).configVersion);
+    await expect(recordStoreBuild(db, { slug: shop.slug, platform: 'ios', bundleId: 'not a bundle', version: '1', review: 'live' })).rejects.toMatchObject({ code: 'invalid' });
   });
 });

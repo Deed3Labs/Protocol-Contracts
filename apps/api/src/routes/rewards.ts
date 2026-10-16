@@ -37,7 +37,8 @@ import {
   updateMembership,
   type CustomerDeps,
 } from '../services/merchant/rewards/customerApp.js';
-import { checkDomain, setDomain } from '../services/merchant/rewards/domains.js';
+import { checkDomain, domainShop, setDomain } from '../services/merchant/rewards/domains.js';
+import { vercelDomainsFromEnv, type VercelDomains } from '../services/merchant/rewards/vercel.js';
 import { REWARDS_STATUS, RewardsError } from '../services/merchant/rewards/errors.js';
 import { resolveMemberAuthSubject } from '../middleware/memberCapabilities.js';
 import { memberStore } from '../services/memberStore.js';
@@ -91,6 +92,8 @@ export interface RewardsDeps {
   apiUrl: string;
   /** The member's auth subject once onboarding is submitted, or null (`GET /api/rewards/purchases`). */
   onboarded: (req: Request) => Promise<string | null>;
+  /** The rewards Vercel project's domains (Phase 7), or null without its token and project. */
+  vercel: VercelDomains | null;
 }
 
 const pinCheck: OrderDeps['pinCheck'] = async (merchant, pin) => {
@@ -116,6 +119,7 @@ export const defaultRewardsDeps = (): RewardsDeps => ({
   privy: requireAuth,
   limits: { read: limitByAddress('rewards', 60_000, 240), act: limitByAddress('rewards-act', 60_000, 30) },
   apiUrl: (process.env.API_PUBLIC_URL || '').replace(/\/+$/, ''),
+  vercel: vercelDomainsFromEnv(),
   onboarded: async (req) => {
     if (!memberStore.isConfigured()) return null;
     await memberStore.ensureReady();
@@ -293,6 +297,9 @@ export function rewardsRouter(deps: RewardsDeps = defaultRewardsDeps()): Router 
     const p = await resolvePerson(db, deps.clear, callerOf(req.rewards!));
     return p ? myShops(db, { person: p }) : { shops: [] };
   }));
+  // A shop's own domain, as the app on it asks which shop it is (Phase 7). Public: it names a shop
+  // whose link is public anyway.
+  router.get('/domain/:host', run(async (db, req) => domainShop(db, String(req.params.host))));
   // Activity's card and cash purchases at shops, once they've set up Clear (Phase 6).
   router.get('/purchases', deps.privy, run(async (db, req) => {
     const subject = await deps.onboarded(req);
@@ -400,8 +407,8 @@ export function merchantRewardsRouter(deps: RewardsDeps = defaultRewardsDeps()):
       urlFor: fontUrl(toShopApp(row).slug),
     });
   }));
-  router.post('/shop-app/domain', requireMerchant, requireManager, run(async (db, req) => setDomain(db, { merchant: who(req).merchant, body: req.body })));
-  router.post('/shop-app/domain/check', requireMerchant, requireManager, run(async (db, req) => checkDomain(db, who(req).merchant)));
+  router.post('/shop-app/domain', requireMerchant, requireManager, run(async (db, req) => setDomain(db, { merchant: who(req).merchant, body: req.body, vercel: deps.vercel })));
+  router.post('/shop-app/domain/check', requireMerchant, requireManager, run(async (db, req) => checkDomain(db, who(req).merchant, deps.vercel)));
   router.patch('/shop-app/offers/:codeId', requireMerchant, requireManager, run(async (db, req) =>
     db.transaction((tx) => updateOffer(tx, who(req).merchant, who(req).staff.id, String(req.params.codeId), req.body)),
   ));
