@@ -172,6 +172,12 @@ input.c-field.c-si-in {
 .c-field {
   max-height: 44px;
 }
+/* The phone sign-in's screen keeps the tablet's shape, so its column has no spare height to grow
+   into, and a growing field collapsed to its text (about 20px). There it takes its drawn height. */
+.c-si-ph .c-field {
+  flex: none;
+  height: 44px;
+}
 
 /* The + sheet's options and the flow header's close are buttons, so they can be reached by
    keyboard and heard by a screen reader. A button centres its text; the reference's divs did not. */

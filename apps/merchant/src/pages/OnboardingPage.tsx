@@ -7,6 +7,7 @@ import { cx, initials } from '@/brand/ui';
 import type { TermsCodeCheck } from '@clear/merchant-contracts';
 import { api } from '@/data/apiClient';
 import { useLayout } from '@/lib/useBreakpoint';
+import { connectPath, pendingConnect, siteName } from '@/connect/connectFlow';
 import { usePage } from '@/lib/usePage';
 import { CashAccountCell, LivePayouts } from '@/onboarding/LivePayouts';
 import { Chip, Chips, Drop, Field, Foot, Frame, Kvs, ObCell, PhoneFrame, StepHead, STEPS, Tick } from '@/onboarding/views';
@@ -121,6 +122,8 @@ export default function OnboardingPage() {
   const { session, refresh } = useAuth();
   const [step, setStep] = useState(() => (preview || mockLive ? Math.max(0, Math.min(6, Number(params.get('step') ?? 1) - 1)) : 0));
   const [done, setDone] = useState(preview && params.get('done') === '1');
+  // Arrived from useclear.org's bag to set the shop up (connect/): the done screen offers the way back.
+  const [connect] = useState(pendingConnect);
   const [f, setF] = useState<Form>(() => (preview ? REFERENCE_FORM : remembered()));
   const [codeState, setCodeState] = useState<keyof typeof CODE_MSG | null>(preview ? ((params.get('code') as 'warn' | 'bad') ?? 'ok') : null);
   const [agree, setAgree] = useState(preview);
@@ -669,7 +672,13 @@ export default function OnboardingPage() {
               : `You can take a Clear charge now.${shop && !shop.signerReady ? ' Payouts switch on before your first one.' : ''}`}
           </p>
           <div className="c-ob-next">
-            <button type="button" className="c-btn c-btn-primary" onClick={() => navigate(`/new${preview ? '?preview=1' : ''}`)}>
+            {/* Arrived from useclear.org's bag to set the shop up: the way back comes first. */}
+            {connect && (
+              <button type="button" className="c-btn c-btn-primary" onClick={() => navigate(connectPath(connect))}>
+                Back to {siteName(connect.return)}
+              </button>
+            )}
+            <button type="button" className={connect ? 'c-btn' : 'c-btn c-btn-primary'} onClick={() => navigate(`/new${preview ? '?preview=1' : ''}`)}>
               Take your first charge
             </button>
             <button type="button" className="c-btn" onClick={() => navigate(preview ? '/?preview=1' : '/')}>
