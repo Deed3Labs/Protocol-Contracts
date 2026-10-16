@@ -171,6 +171,11 @@ export function realMerchantApi(request: Transport): MerchantApi {
     explainFlag: (flagId, input) => post(`/reconciliation/${id(flagId)}/explain`, input),
     sendStatement: (input) => post('/statements/send', input),
 
+    // ---- Pay with Clear: payment links (pay spec §5)
+    paymentLinks: () => get('/payment-links'),
+    createPaymentLink: (input) => post('/payment-links', input),
+    deactivatePaymentLink: (linkId) => post(`/payment-links/${id(linkId)}/deactivate`),
+
     // ---- The shop's app and its customers (rewards spec, sections 8 and 9)
     shopApp: () => get('/shop-app'),
     updateShopApp: (input) => send('PATCH', '/shop-app', input),

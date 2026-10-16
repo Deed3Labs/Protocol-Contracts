@@ -15,6 +15,7 @@ import type {
   RegisterSmartReader,
 } from './cards';
 import type { CatalogImport, CatalogItem, CategoryOrder, DiscountCode, ImportResult, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
+import type { MerchantPayApi } from './pay';
 import type { MerchantRewardsApi } from './rewards';
 import type { AuditEntry, BankDeposit, SendStatement, CloseDayFigures,
   CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
@@ -65,7 +66,10 @@ type Range = { from: z.infer<typeof BusinessDate>; to: z.infer<typeof BusinessDa
  *
  * **Changing this interface changes the UI's mock layer.** Flag any change in the PR.
  */
-export interface MerchantApi extends MerchantRewardsApi {
+/** Pay with Clear's links join now; Developers' calls join in Phase 4, when the mock has them. */
+type MerchantPayLinksApi = Pick<MerchantPayApi, 'paymentLinks' | 'createPaymentLink' | 'deactivatePaymentLink'>;
+
+export interface MerchantApi extends MerchantRewardsApi, MerchantPayLinksApi {
   // ---- The shop ------------------------------------------------------------------------------------
   shop(): Promise<Shop>;
   /** Owners only. The address sets sales tax and the card reader location. */

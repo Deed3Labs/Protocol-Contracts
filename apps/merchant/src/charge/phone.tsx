@@ -36,6 +36,7 @@ export function PhoneAmount({
   onContinue,
   onExit,
   modeSwitch,
+  foot,
 }: {
   cents: number;
   fees?: FeeTerms | null;
@@ -44,6 +45,8 @@ export function PhoneAmount({
   onContinue?: () => void;
   onExit?: () => void;
   modeSwitch?: ReactNode;
+  /** Under Continue: "Send a link", for owners and managers. */
+  foot?: ReactNode;
 }) {
   const fee = (p: number) => Math.round((cents * p) / 100);
   const pct = (p: number) => `${p % 1 ? p.toFixed(2).replace(/0$/, '') : p.toFixed(1)}%`;
@@ -101,6 +104,7 @@ export function PhoneAmount({
       <button type="button" className="c-btn c-btn-primary c-btn-lg" style={{ marginTop: 'var(--s2)' }} disabled={cents <= 0} onClick={onContinue}>
         Continue to checkout
       </button>
+      {foot}
     </>
   );
 }

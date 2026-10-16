@@ -631,6 +631,15 @@ interface WireCharge {
   expiresAt: string;
   openedAt: string | null;
   resolvedAt: string | null;
+  /** Pay with Clear: a link's or a website's charge. Absent from an older API. */
+  source?: ChargeSource | null;
+}
+
+/** Where an online charge came from: "Link · Taco tray for 12", "Online · micasatacos.com". */
+export interface ChargeSource {
+  kind: 'link' | 'online';
+  label: string;
+  livemode: boolean;
 }
 
 export interface MerchantCharge {
@@ -650,6 +659,8 @@ export interface MerchantCharge {
   expiresAt: string;
   openedAt: string | null;
   resolvedAt: string | null;
+  /** Pay with Clear: a link's or a website's charge. */
+  source?: ChargeSource | null;
 }
 
 /** Cents on the wire, units in the app — converted once, here. */
@@ -667,6 +678,7 @@ const toCharge = (c: WireCharge): MerchantCharge => ({
   expiresAt: c.expiresAt,
   openedAt: c.openedAt,
   resolvedAt: c.resolvedAt,
+  source: c.source ?? null,
 });
 
 export interface Refund {

@@ -282,3 +282,142 @@ amount being what the customer pays, with no tax added.
   - merchant and rewards are clean;
   - the API's only error in `src` is `coinbaseOnrampService.ts`'s module resolution, unrelated.
 - The API's one test error is Redis refusing a connection, because no Redis runs on this Mac.
+
+## Phase 3 · Payment links
+
+Built 2026-10-16. Migration `0030_pay.sql`; `apps/api/src/services/merchant/pay/` (links, sessions, over time);
+`apps/api/src/routes/payLinks.ts`; the new app `apps/pay`; New charge › Send a link and the Link mark in Charges.
+
+### The database
+
+- **`0030_pay.sql` is the next number.** `0029_rewards` is still the latest on `dev`.
+- **Orders gain three columns:**
+  - `source`: counter by default, so every older order is the counter's;
+  - `source_detail`;
+  - `livemode`.
+- **Orders without staff.**
+  - `raised_by` may be empty only for `online` and `link` orders (`orders_staff_unless_online`).
+  - A tender's `created_by` follows its order's source, held by a trigger, since a CHECK can't see the order.
+  - `payments.audit_log` gains `source`.
+- **All eight tables the prompt lists are made now:**
+  - `payment_links`, `api_keys`, `allowed_sites`, `webhook_endpoints`, `webhook_events`, `webhook_deliveries`,
+    `pay_sessions`, `pay_codes`;
+  - Phases 4–6 fill them;
+  - nothing has run outside this branch, so they can still be edited in place.
+
+### Links in the API
+
+- **A link's address** is the shop's slug and six random characters: `micasa-k7m2qd`.
+  - The slug is the shop app's, or else its everyday name, which rewards derives the same way ("Mi Casa").
+  - The spec's `micasa-tray12` is drawn short.
+- **An item link:**
+  - it is priced and taxed when it's paid, as the counter would (`quoteLines`), so a price change follows;
+  - items with options to choose can't be links yet.
+- **An amount link** is a quick sale taxed as `exempt`: its amount is what the customer pays (Hard Stop 2).
+- **Paying makes the link's order**, with:
+  - `source: 'link'` and `source_detail` its slug;
+  - no staff member;
+  - figures from the link alone.
+
+  The request's body is never read for an amount.
+- **A payment-scoped session (`payments.pay_sessions`) follows each order.**
+  - The link page starts one on the first tap, so a visit that never pays makes no order.
+  - It lasts 24 hours, as long as its Clear charge can wait.
+  - An order nobody pays is let go by the existing stale-order sweep after 2 hours.
+- **Paying goes the phone page's way, until Phases 5 and 6:**
+  - Clear raises the counter's own Clear tender, which the Clear app opens at `/c/<code>`;
+  - card is the shop's hosted checkout, which comes back to the link.
+  - The audit rows say `source: 'link'`.
+- **The session routes are `/api/checkout/:session`, not `/api/pay/:session`.** Bill pay already has `/api/pay`,
+  behind member sign-in, so it would refuse the link page. The contract's comments are updated; no type changed.
+- **Error codes:**
+  - expired and turned-off links answer 410 (`expired`, `inactive`);
+  - a shop with no card processor answers 409 (`unavailable`).
+
+### Over time online (rule 9)
+
+- **A link's Clear charge offers over time only when both hold:**
+  - the link allows it;
+  - over time online is on (`PAY_OVER_TIME_ONLINE=on` in live; always on in test).
+- **The Clear app learns this from the charge it reads.** `overTime: false | true | null` is on the member's charge
+  view; null is the counter.
+- **`approveCharge` refuses any plan on a charge that says false.** That includes "in full", which is also a
+  plan. Such a charge is paid now.
+- **The Clear app hiding Over time is Phase 5's** (its approve sheet's online line). Until then, the server's
+  refusal is what holds.
+
+### The link page (`apps/pay`)
+
+- **Set up like `apps/rewards`.**
+  - It is `@clear/pay`, on Vite and React, with no Privy and no wallet.
+  - Its stylesheet is generated from the spec's frames (`scripts/reference-css.mjs`).
+  - It is a root workspace with a `build:pay` script, and is in CI's path filter.
+  - `vercel-ignore.sh` needs no change: it reads the app's dependencies.
+- **The shop's colour and logo only.**
+  - The drawing gives the link page Mi Casa's paper and serif. The prompt's rule (the shop sets an accent and a
+    logo, so a fake is easier to spot) wins.
+  - So the shop's colour is on its mark, from its shop app when it has one and the colour reads on Clear's paper
+    (3:1), and everything else is Clear's.
+- **Square corners.** The drawn phone is the screen: full width on a phone, phone-width in the middle of a computer.
+- **No status bar** (as rewards decided).
+- **`/l/*` can't be framed** (`frame-ancestors 'none'`).
+- **Not drawn, built from the nearest drawing:**
+  - waiting for Clear: "Waiting for Clear", "Approve it in the Clear tab that opened. This page moves on by
+    itself.", and Open Clear again;
+  - back from card: "Confirming your card";
+  - paid: Paid, "You're all set", "Mi Casa Tacos has your order." (the modal's Done);
+  - expired: "This link has expired";
+  - turned off: "This link has been turned off";
+  - "Ask Mi Casa Tacos for a new one.";
+  - an address with no link: "There's no payment at this address".
+- **While a Clear charge waits, card isn't offered.** A pending tender covers the order, so a card would be
+  refused. Phase 5's flow lets someone switch.
+- **Opening Clear:** in a new tab opened on the tap, or in the same tab when the browser blocks one, as the phone
+  page does. The page polls every 3 seconds while it waits.
+- **The preview:** `?preview=1&state=open|waiting|card|paid|expired|inactive` and `/_frames?preview=1`, on the
+  spec's Mi Casa, in development only.
+- **`apps/api` `bun run pay:dev`:** the routes on PGlite, seeded with the spec's link, and a pretend Clear that
+  approves after 6 seconds. It runs the page live on this machine, which has no Postgres.
+
+### New charge › Send a link
+
+- **Drawn as the spec draws it**, from the merchant app's own `c-` classes: For, the price and how many, Note to the
+  customer, Expires, Allow paying over time, and Create link.
+- **Where it opens (not drawn):**
+  - "Send a link" beside the shift in New charge's header;
+  - on a phone, under Continue to checkout.
+  - Owners and managers only, as the API requires.
+- **The address isn't known before Create link.** Once made, the sheet shows it with Copy (the drawn row), its QR,
+  and Done in place of Create link. The form is then fixed.
+- **Before a price is picked,** the row reads "Choose a price · From Inventory"; tapping it lists Inventory's prices.
+- **An amount's row is "Amount · What they pay. No tax is added."** It isn't drawn.
+- **The mock's Mi Casa has the spec's catering items**: the taco tray for 12 at $149.00 and the gallon of agua
+  fresca at $11.00. They are off the Points' menu, which is the terminal reference's.
+- **Previews:**
+  - `/new?preview=1&shop=micasa&screen=link` (the drawn sheet) and `&screen=link-made`;
+  - `/charges?preview=1&screen=links`.
+- **Contract:** `MerchantApi` now extends the three link methods of `MerchantPayApi`, as Phase 2 planned. Developers'
+  calls join in Phase 4.
+
+### Charges
+
+- **A link's or a website's sale says where it came from in place of who raised it:** "Link · Taco tray for 12",
+  "Online · micasatacos.com".
+- **For a Clear charge,** the API's charge list gains `source` (`kind`, `label`, `livemode`), read from the order
+  behind the tender.
+- **For a card or cash sale,** the order's `source` is used, and the link's name comes from the shop's links (owners
+  and managers), falling back to its first line.
+
+### Checks
+
+- **Tests:**
+  - API 981 (953 before), with 22 for links and 6 over HTTP;
+  - merchant 211;
+  - member 783;
+  - pay 6;
+  - rewards 7;
+  - contracts 83 and 31.
+- **Builds:** pay and merchant build, rewards typechecks, and the API's `src` typechecks apart from the known
+  Coinbase import.
+- **Run live:** the link page against `pay:dev`, from $161.48 through the Clear charge to "You're all set".
+- **Not run:** a real card checkout (no Stripe keys here), and the deployed apps.

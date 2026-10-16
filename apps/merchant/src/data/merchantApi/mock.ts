@@ -5,6 +5,7 @@ import type { api as ApiClient, EnrolledDevice, MerchantCharge, MerchantProfile,
 import { price } from './pricing';
 import * as mikesTire from './seed';
 import * as miCasaTacos from './seedMiCasa';
+import { createPayLinksMock } from './payMock';
 import { createRewardsMock } from './rewardsMock';
 import { createTerminalMock } from './terminalMock';
 
@@ -499,6 +500,18 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
     settings: () => settings,
     openDrawerSession: () => [...sessions.values()].find((x) => x.status !== 'closed') ?? null,
+  });
+  // ---- Pay with Clear's links (payMock.ts) ------------------------------------------------------------
+  const payLinks = createPayLinksMock({
+    shopName: shop.name,
+    now,
+    id,
+    viewer: () => viewer,
+    isManager,
+    refuse,
+    items: () => [...items.values()],
+    rates: seed.RATES_PPM,
+    inclusive: () => settings.tax.pricesIncludeTax,
   });
   // ---- Rewards (rewardsMock.ts): the shop's app and the customer at the cart ---------------------
   rewards = createRewardsMock({
@@ -1178,6 +1191,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     ...terminal!.api,
     // Rewards: Settings › Shop app and the customer at the cart (rewardsMock.ts).
     ...rewards!.api,
+    // Pay with Clear: New charge › Send a link (payMock.ts).
+    ...payLinks.api,
   };
 
   // ---- The Clear side (the older client's calls) ----------------------------------------------------

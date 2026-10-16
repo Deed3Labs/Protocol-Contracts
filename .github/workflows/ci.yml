@@ -43,7 +43,7 @@ jobs:
           root='^(package\.json|package-lock\.json|\.github/workflows/ci\.yml)$'
           {
             # apps/api counts: the member tests read API source.
-            echo "apps=$(match "^(apps/(member|merchant|api|rewards)|packages)/|^(turbo\.json|tsconfig\.json|\.npmrc)$|$root")"
+            echo "apps=$(match "^(apps/(member|merchant|api|rewards|pay)|packages)/|^(turbo\.json|tsconfig\.json|\.npmrc)$|$root")"
             echo "api=$(match '^apps/api/')"
             echo "contracts=$(match "^(contracts|test|deploy)/|^hardhat\.config\.ts$|$root")"
           } >> "$GITHUB_OUTPUT"

@@ -8,6 +8,7 @@
     "dev": "bun --watch src/index.ts",
     "build": "bun build src/index.ts --outdir dist",
     "start": "bun src/index.ts",
+    "pay:dev": "bun scripts/pay-dev.ts",
     "lint": "eslint src --ext .ts",
     "test": "bun test-api.ts",
     "plaid:backfill-member-ownership": "node scripts/backfill-plaid-member-ownership.mjs",

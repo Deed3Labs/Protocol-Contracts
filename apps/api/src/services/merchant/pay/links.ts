@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { CreatePaymentLink, type MerchantPaymentLink, type PayOrder, type PayShop, type PublicLink } from '@clear/merchant-contracts';
+import { contrastRatio, CreatePaymentLink, type MerchantPaymentLink, type PayOrder, type PayShop, type PublicLink } from '@clear/merchant-contracts';
 import type { Db, Queryable } from '../../../db/db.js';
 import { cardAvailability } from '../cards/availability.js';
 import { connectorStore } from '../cards/connectorStore.js';
@@ -86,17 +86,26 @@ export const initialsOf = (name: string) =>
     .map((w) => w[0]!.toUpperCase())
     .join('');
 
+/** Clear's paper: a shop's colour has to stand out on it to be used (rewards' 3:1, `brandContrast`). */
+const CLEAR_PAPER = '#DFE3DE';
+
+/**
+ * The shop as Clear's pages show it: its name, its logo, and its colour as the accent where it has a
+ * shop app and the colour reads on Clear's paper. Everything else on the page is Clear's, so a fake is
+ * easier to spot (pay DECISIONS, Phase 3).
+ */
 export async function payShop(q: Queryable, merchant: string): Promise<PayShop> {
-  const { rows } = await q.query<{ name: string; brand: { logoUrl?: string | null } | string | null }>(
-    `SELECT p.name, a.brand FROM merchant.profiles p LEFT JOIN rewards.shop_apps a ON a.merchant = p.merchant WHERE p.merchant = $1`,
+  type Brand = { logoUrl?: string | null; colour?: string };
+  const { rows } = await q.query<{ name: string; enabled: boolean | null; brand: Brand | string | null }>(
+    `SELECT p.name, a.enabled, a.brand FROM merchant.profiles p LEFT JOIN rewards.shop_apps a ON a.merchant = p.merchant WHERE p.merchant = $1`,
     [merchant],
   );
   const r = rows[0];
   if (!r) throw new PayError('No such shop', 'not_found');
-  const brand = typeof r.brand === 'string' ? (JSON.parse(r.brand) as { logoUrl?: string | null }) : r.brand;
+  const brand: Brand | null = r.enabled ? (typeof r.brand === 'string' ? (JSON.parse(r.brand) as Brand) : r.brand) : null;
   const logo = brand?.logoUrl && /^https:\/\//.test(brand.logoUrl) ? brand.logoUrl : null;
-  // The accent is the modal's, set by the shop's page; a link page is Clear's ink.
-  return { name: r.name, initials: initialsOf(r.name), logoUrl: logo, accent: null };
+  const colour = brand?.colour && /^#[0-9A-Fa-f]{6}$/.test(brand.colour) && contrastRatio(brand.colour, CLEAR_PAPER) >= 3 ? brand.colour : null;
+  return { name: r.name, initials: initialsOf(r.name), logoUrl: logo, accent: colour };
 }
 
 /** "Taco tray for 12, 2 × Agua fresca, gallon": the member screen's one line. */

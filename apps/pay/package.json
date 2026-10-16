@@ -1,0 +1,30 @@
+{
+  "name": "@clear/pay",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "vite --port 5195",
+    "build": "tsc -b && vite build",
+    "build:vercel": "vite build",
+    "preview": "vite preview",
+    "test": "bun test src",
+    "typecheck": "tsc -b --noEmit",
+    "reference-css": "node scripts/reference-css.mjs"
+  },
+  "dependencies": {
+    "@clear/merchant-contracts": "*",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.7.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "turbo": "^2.3.3",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}

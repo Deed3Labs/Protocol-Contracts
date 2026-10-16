@@ -8,6 +8,7 @@
     "apps/member",
     "apps/merchant",
     "apps/rewards",
+    "apps/pay",
     "packages/*"
   ],
   "scripts": {
@@ -52,7 +53,8 @@
     "test:apps": "turbo run test",
     "build:member": "turbo run build --filter=@clear/member",
     "build:merchant": "turbo run build --filter=@clear/merchant",
-    "build:rewards": "turbo run build --filter=@clear/rewards"
+    "build:rewards": "turbo run build --filter=@clear/rewards",
+    "build:pay": "turbo run build --filter=@clear/pay"
   },
   "repository": {
     "type": "git",

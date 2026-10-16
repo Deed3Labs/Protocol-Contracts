@@ -11,6 +11,7 @@ import { firstName } from '@/home/model';
 import {
   filterRows,
   LATE_ROWS,
+  LINK_ROWS,
   raisedToday,
   REFERENCE_ROWS,
   rowFromApi,
@@ -64,13 +65,16 @@ export default function ChargesPage() {
   const merchant = useMerchantApi();
   const sales = useApi(() => (preview ? Promise.resolve(null) : merchant.orderHistory(historyRange())), [preview]);
   const roster = useApi(() => (preview ? Promise.resolve(null) : api.roster()), [preview]);
+  // A link sale is named by its link; the shop's links are read by owners and managers.
+  const links = useApi(() => (preview || !owner ? Promise.resolve(null) : merchant.paymentLinks().catch(() => null)), [preview, owner]);
   const all: ChargeRow[] = useMemo(() => {
-    if (preview) return screen === 'late' ? LATE_ROWS : REFERENCE_ROWS;
+    if (preview) return screen === 'late' ? LATE_ROWS : screen === 'links' ? [...LINK_ROWS, ...REFERENCE_ROWS] : REFERENCE_ROWS;
     const nameOf = (id: string) => roster.data?.find((p) => p.id === id)?.name ?? '—';
+    const linkName = (slug: string) => links.data?.find((l) => l.slug === slug)?.name;
     const clear = (data ?? []).map((c) => rowFromApi(c));
-    const sold = (sales.data ?? []).flatMap((o) => rowFromOrder(o, nameOf) ?? []);
+    const sold = (sales.data ?? []).flatMap((o) => rowFromOrder(o, nameOf, Date.now(), linkName) ?? []);
     return [...clear, ...sold];
-  }, [preview, screen, data, sales.data, roster.data]);
+  }, [preview, screen, data, sales.data, roster.data, links.data]);
 
   const [filters, setFilters] = useState<Filters>({ when: owner ? 'month' : 'both', status: 'all', method: 'any', by: 'anyone' });
   const [sort, setSort] = useState<SortBy>('newest');

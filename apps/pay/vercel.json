@@ -1,0 +1,21 @@
+{
+  "installCommand": "cd ../.. && npm install --workspace=@clear/pay --no-audit --no-fund",
+  "buildCommand": "cd ../.. && npx turbo run build:vercel --filter=@clear/pay",
+  "outputDirectory": "dist",
+  "ignoreCommand": "bash ../../scripts/vercel-ignore.sh apps/pay",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "headers": [
+    {
+      "source": "/l/(.*)",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
+}

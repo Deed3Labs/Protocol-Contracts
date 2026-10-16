@@ -1,0 +1,97 @@
+/*
+ * apps/pay's decisions over the spec's frames (pay DECISIONS, Phase 3). reference.css is generated;
+ * every override is here.
+ */
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-text);
+  -webkit-font-smoothing: antialiased;
+}
+button,
+a {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+:focus-visible {
+  outline: 2px solid var(--live);
+  outline-offset: 2px;
+}
+
+/*
+ * The drawn phone is the screen: full width on a phone, a phone's width in the middle of a computer.
+ * Square corners everywhere (the prompt's rule over the drawing's rounded phone). Clear's paper, not
+ * the shop's: the shop sets only its colour and logo, so a fake is easier to spot.
+ */
+.sa-ph.pay-page {
+  width: 100%;
+  max-width: 440px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  border: 0;
+  border-radius: 0;
+  background: var(--paper);
+}
+@media (min-width: 640px) {
+  .sa-ph.pay-page {
+    min-height: 600px;
+    margin: 48px auto;
+    border: 1px solid var(--seam);
+  }
+}
+.sa-ph.pay-page .sa-top {
+  padding-top: 12px;
+}
+img.pay-logo {
+  object-fit: cover;
+  background: var(--paper-2);
+}
+
+/* A link styled as the drawn button: "Open Clear again". */
+a.pay-a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+.pay-gap {
+  margin-top: 8px;
+}
+.pay-err {
+  color: var(--absent);
+  margin-top: 12px;
+}
+.sa-title {
+  margin: 0 0 4px;
+}
+
+/* /_frames: every state side by side, for comparing with the spec. */
+.pay-frames {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 24px;
+  align-items: flex-start;
+}
+.pay-frames figure {
+  margin: 0;
+  width: 320px;
+}
+.pay-frames .sa-ph.pay-page {
+  min-height: 560px;
+  margin: 0;
+  border: 1px solid var(--seam);
+}
+.pay-frames figcaption {
+  font: 12px var(--font-mono);
+  color: var(--ink-50);
+  margin-top: 8px;
+}
