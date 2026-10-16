@@ -16,6 +16,8 @@ export interface LinkViewProps {
   busy?: 'clear' | 'card' | null;
   error?: string | null;
   onPay?: (method: 'clear' | 'card') => void;
+  /** Paying with Clear: the modal's own steps, here on the page (pay prompt, Phase 5). */
+  clear?: ReactNode;
 }
 
 export function ShopFrame({ shop, children }: { shop: PublicLink['shop'] | null; children: ReactNode }) {
@@ -44,7 +46,7 @@ export function ShopFrame({ shop, children }: { shop: PublicLink['shop'] | null;
   );
 }
 
-export function LinkView({ link, step, waitingOn = null, clearUrl = null, busy = null, error = null, onPay }: LinkViewProps) {
+export function LinkView({ link, step, waitingOn = null, clearUrl = null, busy = null, error = null, onPay, clear }: LinkViewProps) {
   const total = money(link.order.totalCents);
   const head = (label: string) => (
     <div className="sa-m">
@@ -102,6 +104,15 @@ export function LinkView({ link, step, waitingOn = null, clearUrl = null, busy =
           ) : null}
           {err}
         </div>
+      </ShopFrame>
+    );
+  }
+
+  if (clear) {
+    return (
+      <ShopFrame shop={link.shop}>
+        {head(`Pay ${link.shop.name}`)}
+        <div className="pay-steps">{clear}</div>
       </ShopFrame>
     );
   }

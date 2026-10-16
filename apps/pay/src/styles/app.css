@@ -95,3 +95,108 @@ a.pay-a {
   color: var(--ink-50);
   margin-top: 8px;
 }
+
+/* ---- The modal (pay DECISIONS, Phase 5) --------------------------------------------------------- */
+
+/*
+ * In the iframe the modal is the whole page: the script draws the scrim and sizes the frame to the
+ * modal's height. Square corners (the prompt's rule over the drawing's 18px); pills for controls only.
+ */
+.pay-modal-page {
+  background: transparent;
+}
+.pay-modal.pw-modal {
+  border-radius: 0;
+  box-shadow: none;
+  width: 100%;
+}
+.pay-sheet.pw-modal {
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+.pay-grab {
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 0;
+  background: var(--ink-28);
+}
+.pw-splits span {
+  border-radius: 0;
+  cursor: pointer;
+}
+.tm-seg.pw-seg b {
+  cursor: pointer;
+}
+.pay-test {
+  color: var(--underway);
+}
+.pw-x {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+img.pay-logo {
+  width: 26px;
+  height: 26px;
+}
+
+/* Real controls drawn as the spec's text and boxes. */
+.pay-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+input.pay-in {
+  width: 100%;
+  font: 15px var(--font-text);
+  color: var(--ink);
+  border-radius: 0;
+}
+.pay-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.pay-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.pay-choice {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  font: inherit;
+}
+.pay-code {
+  position: relative;
+}
+/* One real input over the six boxes: a phone's keyboard and its code autofill both reach it. 16px keeps iOS from zooming. */
+.pay-code-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  font-size: 16px;
+  border: 0;
+  caret-color: transparent;
+}
+.pay-err {
+  color: var(--absent);
+}
+/* The link page carries the same steps inside its own frame. */
+.pay-steps .pw-mbody {
+  padding-top: 8px;
+}
+
+/* /_frames?preview=1&modal=1: the modal at its computer width, and the phone's sheet. */
+.pay-frames-modal figure {
+  width: 440px;
+}
+.pay-frames-sheet figure {
+  width: 390px;
+}

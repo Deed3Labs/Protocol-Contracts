@@ -2,6 +2,7 @@ import type { PaySession, PublicLink } from '@clear/merchant-contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { type PayApi, PayApiError } from '@/lib/api';
+import { ClearSteps } from '@/clear/Steps';
 import { LinkView, NoLink, ShopFrame } from './LinkView';
 import { linkStep, rememberedSession, rememberSession } from './model';
 
@@ -80,12 +81,11 @@ export function LinkPage({ api }: { api: PayApi }) {
     return () => window.clearInterval(timer);
   }, [sessionId, waitingOn, refresh]);
 
+  const [steps, setSteps] = useState<PaySession | null>(null);
+
   const pay = async (method: 'clear' | 'card') => {
     setError(null);
     setBusy(method);
-    // Clear's tab is opened on the tap itself, so the browser doesn't block it, and pointed at the
-    // charge once there is one.
-    const tab = method === 'clear' ? window.open('', '_blank') : null;
     try {
       let id = sessionId && (!session || session.state === 'open') ? sessionId : null;
       if (!id) {
@@ -93,21 +93,19 @@ export function LinkPage({ api }: { api: PayApi }) {
         rememberSession(slug, id);
         setSessionId(id);
       }
+      if (method === 'clear') {
+        // The modal's steps, here: Approve with Clear, or email or phone and a code.
+        setSteps(await api.session(id));
+        return;
+      }
       const started = await api.pay(id, method, crypto.randomUUID());
       if (started.method === 'card') {
         window.location.assign(started.checkoutUrl);
         return;
       }
       setClearUrl(started.url);
-      if (tab) {
-        tab.opener = null;
-        tab.location.href = started.url;
-        setWaitingOn('clear');
-      } else {
-        window.location.assign(started.url);
-      }
+      window.location.assign(started.url);
     } catch (e) {
-      tab?.close();
       if (e instanceof PayApiError && (e.code === 'expired' || e.code === 'inactive')) {
         // The link itself ended while the page was open: show it as it is now.
         api.link(slug).then(setLink, () => undefined);
@@ -128,5 +126,17 @@ export function LinkPage({ api }: { api: PayApi }) {
       </ShopFrame>
     );
   }
-  return <LinkView link={link} step={linkStep(link, session, waitingOn !== null)} waitingOn={waitingOn} clearUrl={clearUrl} busy={busy} error={error} onPay={pay} />;
+  const step = linkStep(link, session, waitingOn !== null);
+  const clear =
+    steps && step === 'start' ? (
+      <ClearSteps
+        api={api}
+        session={steps}
+        layout="sheet"
+        onPaid={() => {
+          if (sessionId) void refresh(sessionId);
+        }}
+      />
+    ) : undefined;
+  return <LinkView link={link} step={step} waitingOn={waitingOn} clearUrl={clearUrl} busy={busy} error={error} onPay={pay} clear={clear} />;
 }

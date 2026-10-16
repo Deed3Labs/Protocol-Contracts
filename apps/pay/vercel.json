@@ -6,6 +6,8 @@
   "rewrites": [
     { "source": "/v1", "has": [{ "type": "host", "value": "js.useclear.org" }], "destination": "/js/v1.js" },
     { "source": "/v1.:v.js", "has": [{ "type": "host", "value": "js.useclear.org" }], "destination": "/js/v1.:v.js" },
+    { "source": "/m/:session", "destination": "/api/frame?session=:session" },
+    { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
