@@ -298,3 +298,104 @@ staff id there always.
 
 Approved at Hard Stop 3, 2026-10-16: Phase 3 as built, and the `OrderCustomer` change (`addedBy`
 nullable, `addedVia` gains `'app'`). `/api/transactions` stays public for now.
+
+## Phase 4 · `apps/rewards`
+
+Built 2026-10-16. `packages/member-kit` was extracted first, on its own branch `feat/member-kit`
+(merged into `feat/rewards`), so it can be its own PR.
+
+### What the Clear app shares
+
+- **`packages/member-kit`** holds:
+  - Clear's tokens and component CSS;
+  - the anatomy and icons;
+  - AuthShell (with an unlinked lockup in place of member's router-linked Wordmark) and PinBox;
+  - the onboarding steps, the bank-link step, and the onboarding submit chain (`submitClearOnboarding`);
+  - the pay-a-shop call builder (`payShopCalls`).
+- **`apps/member` keeps one-line re-exports at the old paths**, imports the CSS from the package, and
+  adds the package to Tailwind's sources.
+  - Its built CSS is byte-identical to dev's, for both entries.
+  - Its tests that read these files as text now read them in the package.
+  - Its counter sign-up keeps its own copy of the submit chain, which its tests check line by line.
+
+### The app
+
+- **Styles are generated** (`scripts/reference-css.mjs`) from the spec's own stylesheet: the rules
+  whose classes all appear in a phone frame, in the spec's order, without dark mode or exact repeats.
+  `app.css` holds every decision over them:
+  - a phone frame is the screen, full width, phone-width on a desktop;
+  - no fake status bar;
+  - real inputs, links and switches;
+  - sheets over a scrim, square;
+  - the shop's text font, with Clear's parts in Clear's.
+- **Scope from the address:** `/s/:slug` is one shop and has no switcher; anything else is the hub,
+  and a shop inside it is `/shops/:slug`, with the name as the switcher and Shops lit in the bar.
+- **The network comes from `VITE_CLEAR_NETWORK`**, never the hostname.
+- **A shop's install** (Phase 1's answer, corrected):
+  - The manifest, `apple-touch-icon`, title and theme colour are set from the shop's config when the
+    page loads.
+  - Chrome and Safari read them when the page is added to a home screen, which is after that has
+    run, so a script is enough; no server-rendered head is needed.
+  - The manifest is served on the page's own origin by a Vercel edge function
+    (`apps/rewards/api/manifest.ts`, `REWARDS_API_URL`), because a manifest from another host
+    can't start an app on this one.
+- **Sign-in is Privy's SMS login with signups off** (`PrivyAuth.tsx`).
+  - A number on no account answers `user_does_not_exist` after its code, which is when Already have
+    Clear? appears.
+  - Yes: they sign in their usual way, then `linkPhone`.
+  - No: the same code is tried again with signups on. If Privy refuses it, a new code is sent.
+  - Email opens Privy's own email sign-in; Google and Apple are its OAuth. Apple shows only with
+    `VITE_APPLE_SIGN_IN=on`, as in the Clear app.
+- **Paying from the balance** is the Clear app's three steps (hold, pay from the smart wallet,
+  confirm), with the same calls and the shared `payShopCalls`. **Over time** is 4 payments until a
+  split choice is drawn.
+- **Set up Clear** runs the Clear app's onboarding steps from the ZIP step and submits with
+  `referralSource: 'rewards'`, then returns to the screen it started from.
+- **The preview** (`?preview=1`, dev only, `&as=sofia|marco|new|out`) runs on a seeded mock. Privy
+  isn't loaded at all. `/_frames?preview=1` shows every frame. `public/_ref/cmp.html` (git-ignored)
+  shows spec beside app, with a per-text style and position diff.
+
+### Over the drawings
+
+- **No status bar.** The spec's `9:41` is the phone's own, so the app doesn't draw one.
+- **One wording per offer.** The Rewards tab and Marco's Home draw shorter offer lines ("Two tacos
+  for $7", "Catering over $60") than Home does. A discount code has one detail line, so every screen
+  shows it.
+- **Home's rewards block lists what's ready, then what's next, two rows at most, in the Rewards
+  tab's order.**
+  - Marco's Home shows Free churros under the agua fresca; the drawing has only the agua fresca.
+  - La Bonita lists Free coffee (Ready) before Box of pan dulce; the drawing has them the other way.
+  - Marco's Home shows both offers, as its count of 2 says.
+- **A shop's everyday name is derived:** a three-word name drops its last word ("Mi Casa", "La
+  Bonita"), and a two-word name stays whole ("Mike’s Tire", "Peña Coffee"). That's until shops can
+  set one.
+- **"340 points · 160 to a free tire rotation".** The next reward's own name; the drawing shortens it
+  to "a free rotation".
+- **The join pitch** is the shop's: the API writes "A point for every dollar, and a free agua fresca
+  at 75." The drawings word Peña's differently ("A point for every $1, a free drink at 60."), and the
+  preview keeps each as drawn.
+- **Paid somewhere new** keeps the hub's top bar and Clear's look, because the shop's look starts
+  after joining.
+- **Not drawn, built from the nearest drawing:**
+  - Show my code: the claim layout, with the person's name;
+  - Activity here;
+  - a card-only bill for someone without Clear ("Pay $17.33 by card");
+  - the one-tap Join for a signed-in person on a shop's link.
+
+### Contract and API additions, for approval
+
+- **`PublicPoint.shop.slug`** (optional): a Point's public view names its shop's app, so the hub's
+  scanner opens the bill inside the right shop. It's set only when the shop's app is on.
+- **`MyShops` and `Partners` tiles carry `brand.headingFont`** (plus an optional `fonts` map), so a
+  shop's tile in a list wears its own type, as drawn.
+- **The Clear charge view gains `orderId` and `reward`** (`chargeContents`), so the approve sheet
+  says "Applied at the counter · 75 points" and opens the order's Paid screen. That's an addition to
+  an existing response, with no new route.
+
+### Not done in this phase
+
+- **The bank-link step of Set up Clear.** The spec's sheet lists "Confirm it's you" and "Link your
+  bank", but the Clear app defers both to the first deposit, so the shared steps do too.
+- **Live mode is built and type-checked, not run end to end.** The API branch isn't deployed, and the
+  preview covers every frame.
+- **Logo icons at 192 and 512, geocoding for Near you, Web Push per origin.**

@@ -526,7 +526,10 @@ export const MyShops = z.object({
     z.object({
       slug: ShopSlug,
       name: z.string(),
-      brand: Brand.pick({ logoUrl: true, monogram: true, colour: true, onColour: true }),
+      /** The tile: the shop's logo or monogram, in its colours and heading font. */
+      brand: Brand.pick({ logoUrl: true, monogram: true, colour: true, onColour: true, headingFont: true }),
+      /** Where an uploaded heading font is served from, when the tile uses one. */
+      fonts: z.record(z.string(), z.url()).optional(),
       pointsName: PointsName,
       unit: z.enum(['dollars', 'visits']),
       points: z.number().int(),
@@ -547,7 +550,7 @@ export const Partners = z.object({
     z.object({
       slug: ShopSlug,
       name: z.string(),
-      brand: Brand.pick({ logoUrl: true, monogram: true, colour: true, onColour: true }),
+      brand: Brand.pick({ logoUrl: true, monogram: true, colour: true, onColour: true, headingFont: true }),
       /** Null without a location. */
       distanceMeters: z.number().int().min(0).nullable(),
       /** "1 point per $1", "stamps" */

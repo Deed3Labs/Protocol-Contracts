@@ -43,7 +43,8 @@ export type PublicBill = z.infer<typeof PublicBill>;
  */
 export const PublicPoint = z.object({
   code: PointCode,
-  shop: z.object({ name: z.string() }),
+  /** `slug` when the shop has an app, so a rewards app's scanner opens the bill inside it. */
+  shop: z.object({ name: z.string(), slug: z.string().optional() }),
   /** "Table 12". Null at the counter or the door. */
   table: z.string().nullable(),
   placement: z.enum(['counter', 'table', 'door']),

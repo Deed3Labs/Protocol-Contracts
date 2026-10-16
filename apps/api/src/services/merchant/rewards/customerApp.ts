@@ -110,7 +110,7 @@ export async function myShops(q: Queryable, input: { person: PersonRow }): Promi
     shops.push({
       slug: app.slug,
       name: r.name,
-      brand: { logoUrl: app.brand.logoUrl, monogram: app.brand.monogram, colour: app.brand.colour, onColour: app.brand.onColour },
+      brand: { logoUrl: app.brand.logoUrl, monogram: app.brand.monogram, colour: app.brand.colour, onColour: app.brand.onColour, headingFont: app.brand.headingFont },
       pointsName: app.pointsName,
       unit: rules.unit,
       points,
@@ -145,7 +145,7 @@ export async function partners(q: Queryable, input: { near: { lat: number; lng: 
     out.push({
       slug: app.slug,
       name: r.name,
-      brand: { logoUrl: app.brand.logoUrl, monogram: app.brand.monogram, colour: app.brand.colour, onColour: app.brand.onColour },
+      brand: { logoUrl: app.brand.logoUrl, monogram: app.brand.monogram, colour: app.brand.colour, onColour: app.brand.onColour, headingFont: app.brand.headingFont },
       distanceMeters: input.near && r.lat !== null && r.lng !== null ? distance(input.near, { lat: r.lat, lng: r.lng }) : null,
       earns: rules.unit === 'visits' ? pointsWord(app.pointsName, 2) : summary.rate,
       joined: Boolean(r.joined),

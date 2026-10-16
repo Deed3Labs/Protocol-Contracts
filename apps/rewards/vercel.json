@@ -1,0 +1,31 @@
+{
+  "installCommand": "cd ../.. && npm install --workspace=@clear/rewards --no-audit --no-fund",
+  "buildCommand": "cd ../.. && npx turbo run build:vercel --filter=@clear/rewards",
+  "outputDirectory": "dist",
+  "ignoreCommand": "bash ../../scripts/vercel-ignore.sh apps/rewards",
+  "rewrites": [
+    {
+      "source": "/s/:slug/manifest.webmanifest",
+      "destination": "/api/manifest?slug=:slug"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ]
+}

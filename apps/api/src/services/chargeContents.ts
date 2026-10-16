@@ -21,9 +21,16 @@ export interface ChargeContents {
   orderTotalCents: number | null;
   /** "Table 12", when the order is a table's tab (Clear Terminal: the pay sheet and the receipt say so). */
   table: string | null;
+  /** The order behind it, so the rewards app can open its Paid screen. */
+  orderId?: string | null;
+  /**
+   * The reward that's the order's discount, when it is one: "Free agua fresca · Applied at the
+   * counter · 75 points" (rewards spec, section 9). Points come off when it's paid.
+   */
+  reward?: { name: string; points: number; appliedBy: 'counter' | 'customer' } | null;
 }
 
-const EMPTY: ChargeContents = { raisedBy: null, items: null, taxCents: null, discountCents: null, orderTotalCents: null, table: null };
+const EMPTY: ChargeContents = { raisedBy: null, items: null, taxCents: null, discountCents: null, orderTotalCents: null, table: null, orderId: null, reward: null };
 
 export async function chargeContents(charge: ChargeRow): Promise<ChargeContents> {
   const db = await merchantDb().catch(() => null);
@@ -55,6 +62,11 @@ export async function chargeContentsFrom(db: Queryable, charge: Pick<ChargeRow, 
       [order.id],
     );
     const total = Number(order.total_cents);
+    const { rows: rewards } = await db.query<{ label: string; reward_points: number; applied_by: string | null }>(
+      `SELECT label, reward_points, applied_by FROM commerce.order_discounts WHERE order_id = $1 AND kind = 'reward' AND removed_at IS NULL LIMIT 1`,
+      [order.id],
+    );
+    const reward = rewards[0] ? { name: rewards[0].label, points: Number(rewards[0].reward_points), appliedBy: rewards[0].applied_by ? ('counter' as const) : ('customer' as const) } : null;
     return {
       raisedBy: first,
       items: lines.map((l) => ({ name: l.name, quantity: Number(l.quantity), cents: Number(l.line_cents) })),
@@ -62,6 +74,8 @@ export async function chargeContentsFrom(db: Queryable, charge: Pick<ChargeRow, 
       discountCents: Number(order.discount_cents),
       orderTotalCents: total !== charge.amountCents ? total : null,
       table: order.table_number !== null ? (order.table_label ?? `Table ${order.table_number}`) : null,
+      orderId: order.id,
+      reward,
     };
   } catch (error) {
     console.error('[charge] contents read failed for', charge.code, error instanceof Error ? error.message : error);

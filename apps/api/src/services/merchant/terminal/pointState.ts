@@ -322,9 +322,11 @@ export async function screenFor(q: Queryable, pointId: string, now = new Date())
   const showcase = state.kind === 'idle' && point.settings.idleMode === 'showcase' ? await menuFor(q, merchant, point.settings.showcaseCategories) : null;
 
   const t = table[0];
+  // A shop with an app: where a rewards app opens this bill (rewards DECISIONS, Phase 4).
+  const { rows: app } = await q.query<{ slug: string }>('SELECT slug FROM rewards.shop_apps WHERE merchant = $1 AND enabled', [merchant]);
   const screen: PointScreen = {
     code: code[0]!.code,
-    shop: { name: shop[0]?.name ?? '' },
+    shop: app[0] ? { name: shop[0]?.name ?? '', slug: app[0].slug } : { name: shop[0]?.name ?? '' },
     table: t ? (t.label ?? `Table ${t.number}`) : null,
     placement: point.settings.placement,
     view,
