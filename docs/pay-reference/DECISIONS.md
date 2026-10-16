@@ -957,3 +957,19 @@ Built 2026-10-16. `packages/pay-docs` (`@clear/pay-docs`, private), served from 
   - an agent using the MCP server against a live API;
   - `npm publish` (the user's);
   - tsup builds.
+
+Approved at Hard Stop 7, 2026-10-16:
+
+- Phase 7 as built.
+- `GET /v1/webhook_deliveries`.
+- The published route list.
+- The MCP page under Optional in `llms.txt`.
+
+All seven phases of the Pay with Clear prompt are built and approved. What's left is the user's:
+- claim `@useclear` on npm and publish;
+- the `pay` Vercel project, with `pay.useclear.org` and `js.useclear.org`;
+- `STRIPE_PUBLISHABLE_KEY`, `PAY_SECRETS_KEY`, `PAY_API_URL` and, when wanted, `AUTO_TERM_LIMITS` and
+  `PAY_OVER_TIME_ONLINE`;
+- the website's rewrites for `/approve`, `/llms.txt` and `/docs`;
+- counsel on paying over time online;
+- payout timing for online shops.
