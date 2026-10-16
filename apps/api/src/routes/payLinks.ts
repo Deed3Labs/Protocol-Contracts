@@ -130,7 +130,7 @@ export async function developersView(db: Db, merchant: string): Promise<Develope
     endpoints: await merchantEndpoints(db, merchant),
     deliveries: await recentDeliveries(db, merchant),
     cardsConnected: await cardsOn(db, merchant),
-    ai: { llmsUrl: 'https://useclear.org/llms.txt', prompt: pasteInPrompt(publishable(true) ?? publishable(false) ?? 'pk_test_…'), mcpUrl: 'https://useclear.org/docs/mcp.md' },
+    ai: { llmsUrl: 'https://useclear.org/llms.txt', prompt: pasteInPrompt(publishable(true) ?? publishable(false) ?? 'clear_pk_test_…'), mcpUrl: 'https://useclear.org/docs/mcp.md' },
   };
 }
 
