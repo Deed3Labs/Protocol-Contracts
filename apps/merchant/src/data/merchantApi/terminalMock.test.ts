@@ -1,8 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import { createMockMerchantApi } from './mock';
 
-/** The mock at Mi Casa's dinner draws what the terminal reference draws. */
-const dinner = () => createMockMerchantApi({ shop: 'micasa', calls: 'open', delayMs: 0 }).api;
+/**
+ * The mock at Mi Casa's dinner draws what the terminal reference draws. Its clock stands at 8:01pm on
+ * the reference day, as the visual states do: on the real clock the Call seeded at 7:59pm has lapsed
+ * ten minutes later, and every day after.
+ */
+const DINNER = '2026-10-16T03:01:00.000Z';
+const dinner = () => createMockMerchantApi({ shop: 'micasa', calls: 'open', delayMs: 0, now: () => DINNER }).api;
 
 describe('Mi Casa Tacos at dinner', () => {
   test('the floor: who is where, and what each tab comes to', async () => {
