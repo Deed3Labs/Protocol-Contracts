@@ -245,6 +245,11 @@ export interface MerchantApi {
   moveTable(tableId: string, input: In<typeof MoveTable>): Promise<TableMoved>;
   /** A paid table is free again (`POST /tables/:id/clear`), by hand or after the shop's delay. */
   clearTable(tableId: string): Promise<TableView>;
+  /**
+   * Undo a seat (`POST /tables/:id/unseat`): a seated or held table with nothing on its tab is free again;
+   * a party from the wait list goes back on it in their old place.
+   */
+  unseatTable(tableId: string): Promise<TableView>;
   waitlist(): Promise<Waitlist>;
   addParty(input: In<typeof AddParty>): Promise<WaitlistParty>;
   updateParty(id: string, input: In<typeof UpdateParty>): Promise<WaitlistParty>;

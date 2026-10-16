@@ -93,6 +93,20 @@ describe('Tables v2 in the mock (the reference, 8b–8c)', () => {
     await expect(api.moveTable(fourteen.id, { toTableId: tables.find((t) => t.number === 4)!.id })).rejects.toMatchObject({ status: 409 });
   });
 
+  test('Unseat: Ana goes back on the list in her place, the walk-in at 7 just leaves; a tab stays', async () => {
+    const api = dinner();
+    expect(await api.unseatTable('tbl_6')).toMatchObject({ status: 'free', hold: null, party: null });
+    expect((await api.floor()).waitlist.parties.map((p) => [p.name, p.state])).toEqual([
+      ['Ana', 'waiting'],
+      ['Lee', 'waiting'],
+      ['Marco', 'waiting'],
+      ['Priya', 'waiting'],
+    ]);
+    expect((await api.unseatTable('tbl_7')).status).toBe('free');
+    await expect(api.unseatTable('tbl_7')).rejects.toThrow('nobody to unseat');
+    await expect(api.unseatTable('tbl_2')).rejects.toThrow('It has a tab');
+  });
+
   test('the wait list: told a wait, texted almost ready, no show', async () => {
     const api = dinner();
     const priya = await api.addParty({ name: 'Priya', size: 2, phone: '(909) 555-0142', textConsent: true, quotedMinutes: 15 });

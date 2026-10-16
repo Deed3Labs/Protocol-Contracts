@@ -541,6 +541,37 @@ describe('Tables v2 (the reference, 8b–8c and 14)', () => {
     await expect(floor.seatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(14), request: { size: 0 } })).rejects.toMatchObject({ code: 'invalid' });
   });
 
+  test('Unseat: a party goes back on the list in their place, a walk-in just leaves, and no visit is kept', async () => {
+    const t = await tacos();
+    const ana = await waiting(t, 'Ana Ruiz', 2);
+    const lee = await waiting(t, 'Lee', 4);
+    const before = (await floor.waitlist(db, t.merchant)).parties.map((p) => p.id);
+    await floor.seatParty(db, texts().texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: ana.id, request: { tableId: t.table(6), showName: true, text: false } });
+    expect((await pointStateFor(db, t.door.id)).state.kind).toBe('alert');
+    expect(await floor.unseatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(6) })).toMatchObject({ status: 'free', hold: null, party: null });
+    const list = await floor.waitlist(db, t.merchant);
+    expect(list.parties.find((p) => p.id === ana.id)).toMatchObject({ state: 'waiting', tableId: null });
+    expect(list.parties.map((p) => p.id)).toEqual(before);
+    expect((await pointStateFor(db, t.door.id)).state.kind).not.toBe('alert');
+    expect((await pointStateFor(db, t.at6.id)).state.kind).toBe('idle');
+
+    // Seated after the hold, the same; and a walk-in's table is just free.
+    await floor.seatParty(db, texts().texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: lee.id, request: { tableId: t.table(14), showName: true, text: false } });
+    await floor.seatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(14), request: {} });
+    await floor.unseatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(14) });
+    expect((await floor.waitlist(db, t.merchant)).parties.find((p) => p.id === lee.id)?.state).toBe('waiting');
+    await floor.seatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(1), request: { size: 2, name: null } });
+    expect((await floor.unseatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(1) })).status).toBe('free');
+    const { rows } = await db.query<{ n: string | number }>('SELECT count(*) AS n FROM merchant.table_visits WHERE merchant = $1', [t.merchant]);
+    expect(Number(rows[0]!.n)).toBe(0);
+
+    // Nobody there, or a tab on it: refused.
+    await expect(floor.unseatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(1) })).rejects.toMatchObject({ code: 'conflict' });
+    await openDrawer(db, { merchant: t.merchant, staffId: t.staff.jen });
+    await tab(t, t.table(1));
+    await expect(floor.unseatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(1) })).rejects.toMatchObject({ code: 'conflict' });
+  });
+
   test('Move: the tab, the bill on its Point and the party go to a free table; the old one is free', async () => {
     const t = await tacos();
     await openDrawer(db, { merchant: t.merchant, staffId: t.staff.jen });

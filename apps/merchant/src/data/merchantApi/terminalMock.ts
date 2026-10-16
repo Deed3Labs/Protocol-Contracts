@@ -646,6 +646,7 @@ export function createTerminalMock(h: TerminalHost) {
     | 'seatTable'
     | 'moveTable'
     | 'clearTable'
+    | 'unseatTable'
     | 'waitlist'
     | 'addParty'
     | 'updateParty'
@@ -917,6 +918,21 @@ export function createTerminalMock(h: TerminalHost) {
             answeredBy: h.viewer(),
             answeredAt: h.now(),
           });
+      for (const p of points.values()) if (p.settings.tableId === t.id) p.base = { kind: 'idle', mode: p.settings.idleMode };
+      return tableView(t);
+    },
+    unseatTable: async (tableId) => {
+      const t = table(tableId);
+      if (t.tabOrderId && h.order(t.tabOrderId).status !== 'voided') h.refuse('It has a tab. Move them, or take payment', 409, 'conflict');
+      if (!t.seatedAt && !t.hold) h.refuse(`Table ${t.number} has nobody to unseat`, 409, 'conflict');
+      // Free again with no visit kept; a party from the wait list goes back on it in their old place.
+      for (const p of parties.values())
+        if (p.tableId === t.id && p.state === 'seated') {
+          Object.assign(p, { state: 'waiting', seatedAt: null, tableId: null });
+          for (const al of alerts.values()) if (al.partyId === p.id && al.kind === 'table_ready' && Date.parse(al.expiresAt) > Date.parse(h.now())) al.expiresAt = h.now();
+        }
+      Object.assign(t, { seatedAt: null, tabOrderId: null, hold: null, party: null });
+      for (const r of requests.values()) if (r.tableId === t.id && r.state === 'open') Object.assign(r, { state: 'answered', answeredBy: h.viewer(), answeredAt: h.now() });
       for (const p of points.values()) if (p.settings.tableId === t.id) p.base = { kind: 'idle', mode: p.settings.idleMode };
       return tableView(t);
     },

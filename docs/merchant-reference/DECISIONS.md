@@ -1461,3 +1461,13 @@ Where the app differs from the drawing, or adds what it doesn't draw:
   sentence rather than a field label (8px).
 - **Not done:** new items on a tab aren't sent to the kitchen printer; on a phone, Add items shows the
   items and the tab as stacked cells rather than a drawn phone frame.
+
+## Terminal: Unseat (2026-10-15, not drawn)
+
+- Asked for after Tables v2: a table seated or held by mistake can be unseated. **Unseat** sits beside
+  Move on a seated or held table's sheet, and only while nothing is on its tab; after that it's Move or
+  payment. `POST /tables/:id/unseat`.
+- The table is free again with **no visit kept**, so wait estimates don't count it. A party from the
+  wait list goes **back on it in their old place** (state waiting, same rank), and the door's "table
+  ready" for them ends; a "table ready" text already sent can't be taken back. A walk-in just leaves.
+  Its Point goes back to the number; open Calls on it close.

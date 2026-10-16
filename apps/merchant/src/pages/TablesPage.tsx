@@ -145,6 +145,7 @@ export default function TablesPage() {
             onSendBill: () => openTable.point && openTable.orderId && void run(() => api.showOnPoint(openTable.point!.id, { kind: 'order', orderId: openTable.orderId! })),
             onTakeBack: () => openTable.point && void run(() => api.showOnPoint(openTable.point!.id, { kind: 'clear' })),
             onMove: () => setOpen({ kind: 'move', tableId: openTable.id }),
+            onUnseat: () => void run(() => api.unseatTable(openTable.id), close),
             // Card and cash open Checkout for this bill; Clear and Split are Checkout's own.
             onPay: () => toNew(openTable, false),
             onTakePayment: () => toNew(openTable, false),
