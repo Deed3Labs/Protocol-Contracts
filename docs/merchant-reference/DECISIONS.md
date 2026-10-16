@@ -1386,3 +1386,36 @@ with it is unchanged and already built. The contract amendment, approved:
 - **Not yet:** the API's routes and jobs (Move, walk-in seating, notify, no show, auto-clear, the
   estimate from this week's table times) and the merchant app's screens are the next two steps. The
   mock already does Move, walk-ins, notify and no show, so the screens can be built against it.
+
+## Terminal: Tables v2, the API (2026-10-15)
+
+- **Who's at a table** is written down when they sit: `tables.party_name` and `party_size`
+  (migration 0028). Seating from the wait list writes the party's first name and size with the hold;
+  a walk-in is seated with `{ size, name }` (a null name says "Walk-in"); a held party sitting down
+  keeps theirs. A free table has nobody.
+- **Move** (`POST /tables/:id/move`) takes the tab, the hold, the party and the order's table to a free
+  table; the bill on the old table's Point follows them to the new one's (anything else and the new
+  Point starts from idle); the old Point goes back to idle; open Calls on the old table close. Moving to
+  the same table, from an empty one or onto a busy one is refused.
+- **Clearing keeps the visit** (`merchant.table_visits`, seated to cleared): wait estimates read them.
+  A paid table clears itself `clearPaidAfterMinutes` after it was paid, in the existing 30-second sweep;
+  `TableView.clearsAt` says when. By hand, it never does.
+- **Wait estimates.** From this week: the median visit, times the parties up to and including them,
+  spread over the shop's tables, up to the next five minutes; until a week has three visits, five
+  minutes a party (as before). A set time is that, whatever the list. "Tell them" overrides it per
+  party. The list's own quote is for someone joining now.
+- **The three texts** go only with a number, consent and Text the wait list on:
+  - joined: "{shop}: you're on the wait list, about {n} min. We'll text when your table is almost
+    ready. Reply STOP to stop." (the door Point's join page sends it too);
+  - almost ready (`POST /waitlist/:id/notify`): "{shop}: your table is almost ready. Head back when
+    you can.";
+  - ready: the existing "Your table is ready: 14, on the patio", with Seat's Text them.
+
+  The reference draws the third; the first two are not drawn and are written to match it. With texts
+  off, Notify and Seat's Text them say "Texting the wait list is off in Settings › Counter"; a joined
+  text is simply not sent. A notify whose text doesn't go isn't marked.
+- **No show** (`POST /waitlist/:id/no-show`) and Remove keep the row for the day's figures; a seated
+  party can't be a no show.
+- **Edit tables links Points**: a Point linked to a table is placed there; the Point that was there
+  lets go; null unlinks.
+- Migration 0028 also holds Settings › Counter's three columns.

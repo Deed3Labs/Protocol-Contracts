@@ -529,3 +529,116 @@ describe('Edit tables', () => {
     expect(more).toMatchObject({ tableId: t.table(14), serviceType: 'dine_in' });
   });
 });
+
+describe('Tables v2 (the reference, 8b–8c and 14)', () => {
+  test('a walk-in is seated with how many and a name; a held party sits down as themselves', async () => {
+    const t = await tacos();
+    expect(await floor.seatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(1), request: { size: 2, name: null } })).toMatchObject({ status: 'seated', party: { name: null, size: 2 } });
+    const ana = await waiting(t, 'Ana Ruiz', 2);
+    await floor.seatParty(db, texts().texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: ana.id, request: { tableId: t.table(6), showName: true, text: false } });
+    expect((await floor.getTable(db, t.merchant, t.table(6))).party).toEqual({ name: 'Ana', size: 2 });
+    expect(await floor.seatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(6), request: {} })).toMatchObject({ status: 'seated', hold: null, party: { name: 'Ana', size: 2 } });
+    await expect(floor.seatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(14), request: { size: 0 } })).rejects.toMatchObject({ code: 'invalid' });
+  });
+
+  test('Move: the tab, the bill on its Point and the party go to a free table; the old one is free', async () => {
+    const t = await tacos();
+    await openDrawer(db, { merchant: t.merchant, staffId: t.staff.jen });
+    await floor.seatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(14), request: { size: 4, name: 'Diaz' } });
+    const order = await tab(t, t.table(14));
+    await showOnPoint(db, { merchant: t.merchant, staffId: t.staff.jen, pointId: t.at14.id, request: { kind: 'order', orderId: order.id } });
+    await expect(floor.moveTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(1), request: { toTableId: t.table(6) } })).rejects.toMatchObject({ code: 'conflict' });
+    const moved = await floor.moveTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(14), request: { toTableId: t.table(6) } });
+    expect(moved.from).toMatchObject({ status: 'free', orderId: null, party: null });
+    expect(moved.to).toMatchObject({ orderId: order.id, party: { name: 'Diaz', size: 4 }, tabCents: order.totalCents });
+    expect((await pointStateFor(db, t.at6.id)).state).toMatchObject({ kind: 'bill', orderId: order.id });
+    expect((await pointStateFor(db, t.at14.id)).state.kind).toBe('idle');
+    expect((await getOrder(db, t.merchant, order.id)).tableId).toBe(t.table(6));
+    await expect(floor.moveTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(6), request: { toTableId: t.table(6) } })).rejects.toMatchObject({ code: 'invalid' });
+  });
+
+  test('a paid table says when it clears itself, and the jobs clear it then; by hand, never', async () => {
+    const t = await tacos();
+    await openDrawer(db, { merchant: t.merchant, staffId: t.staff.jen });
+    const order = await tab(t, t.table(14));
+    await createCashTender(db, { merchant: t.merchant, orderId: order.id, staffId: t.staff.jen, tender: { amountCents: order.totalCents, tipCents: 0, handedOverCents: order.totalCents, idempotencyKey: key() } });
+    const paid = await floor.getTable(db, t.merchant, t.table(14));
+    expect(paid.status).toBe('paid');
+    expect(Date.parse(paid.clearsAt!) - Date.parse(paid.paidAt!)).toBe(10 * 60_000);
+    await floor.sweepLapsed(db, new Date(Date.parse(paid.paidAt!) + 9 * 60_000));
+    expect((await floor.getTable(db, t.merchant, t.table(14))).status).toBe('paid');
+    await floor.sweepLapsed(db, new Date(Date.parse(paid.paidAt!) + 10 * 60_000 + 1000));
+    expect((await floor.getTable(db, t.merchant, t.table(14))).status).toBe('free');
+
+    const u = await tacos();
+    await updateSettings(db, { merchant: u.merchant, staffId: u.staff.owner, patch: { clearPaidAfterMinutes: null } });
+    await openDrawer(db, { merchant: u.merchant, staffId: u.staff.jen });
+    const o2 = await tab(u, u.table(14));
+    await createCashTender(db, { merchant: u.merchant, orderId: o2.id, staffId: u.staff.jen, tender: { amountCents: o2.totalCents, tipCents: 0, handedOverCents: o2.totalCents, idempotencyKey: key() } });
+    expect((await floor.getTable(db, u.merchant, u.table(14))).clearsAt).toBeNull();
+    await floor.sweepLapsed(db, new Date(Date.now() + 60 * 60_000));
+    expect((await floor.getTable(db, u.merchant, u.table(14))).status).toBe('paid');
+  });
+
+  test('wait estimates: five minutes a party until a week has three visits, then from table times; or a set time', async () => {
+    const t = await tacos();
+    await waiting(t, 'Lee', 4);
+    expect((await floor.waitlist(db, t.merchant)).quotedMinutes).toBe(10);
+    // Three visits of 45 minutes this week, over three tables: two parties (Lee, then whoever joins) is 2 × 45 / 3 = 30.
+    const now = new Date();
+    for (let i = 0; i < 3; i += 1) {
+      await floor.seatTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(1), request: { size: 2, name: null }, now: new Date(now.getTime() - (i + 1) * 3 * 3600_000) });
+      await floor.clearTable(db, { merchant: t.merchant, staffId: t.staff.jen, tableId: t.table(1), now: new Date(now.getTime() - (i + 1) * 3 * 3600_000 + 45 * 60_000) });
+    }
+    expect(await floor.waitEstimate(db, t.merchant, 1)).toBe(30);
+    expect((await floor.waitlist(db, t.merchant)).quotedMinutes).toBe(30);
+    await updateSettings(db, { merchant: t.merchant, staffId: t.staff.owner, patch: { waitEstimate: 20 } });
+    expect((await floor.waitlist(db, t.merchant)).quotedMinutes).toBe(20);
+    const told = await floor.addParty(db, { merchant: t.merchant, staffId: t.staff.jen, party: { name: 'Priya', size: 2, phone: null, textConsent: false, quotedMinutes: 15 } });
+    expect(told.quotedMinutes).toBe(15);
+  });
+
+  test('the wait list’s texts: joined, almost ready, ready; only with consent, only while the shop texts', async () => {
+    const t = await tacos();
+    const { sent, texter } = texts();
+    const priya = await floor.addParty(db, { merchant: t.merchant, staffId: t.staff.jen, party: { name: 'Priya', size: 2, phone: '(909) 555-0142', textConsent: true, quotedMinutes: 15 }, texter });
+    expect(sent.at(-1)?.message).toMatch(/: you’re on the wait list, about 15 min\. We’ll text when your table is almost ready\. Reply STOP to stop\.$/);
+    expect(await floor.notifyParty(db, texter, { merchant: t.merchant, staffId: t.staff.jen, partyId: priya.id })).toMatchObject({ state: 'notified', notifiedAt: expect.any(String) });
+    expect(sent.at(-1)?.message).toMatch(/: your table is almost ready\. Head back when you can\.$/);
+    const marco = await floor.addParty(db, { merchant: t.merchant, staffId: t.staff.jen, party: { name: 'Marco', size: 3, phone: null, textConsent: false }, texter });
+    expect(sent).toHaveLength(2);
+    await expect(floor.notifyParty(db, texter, { merchant: t.merchant, staffId: t.staff.jen, partyId: marco.id })).rejects.toMatchObject({ code: 'invalid' });
+
+    await updateSettings(db, { merchant: t.merchant, staffId: t.staff.owner, patch: { textWaitlist: false } });
+    await floor.addParty(db, { merchant: t.merchant, staffId: t.staff.jen, party: { name: 'Lee', size: 4, phone: '(909) 555-0177', textConsent: true }, texter });
+    expect(sent).toHaveLength(2);
+    await expect(floor.notifyParty(db, texter, { merchant: t.merchant, staffId: t.staff.jen, partyId: priya.id })).rejects.toMatchObject({ code: 'conflict', message: 'Texting the wait list is off in Settings › Counter' });
+    await expect(floor.seatParty(db, texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: priya.id, request: { tableId: t.table(6), showName: true, text: true } })).rejects.toMatchObject({ code: 'conflict' });
+  });
+
+  test('No show and Remove take a party off the list; a seated party can’t be a no show', async () => {
+    const t = await tacos();
+    const lee = await waiting(t, 'Lee', 4);
+    const marco = await waiting(t, 'Marco', 3);
+    expect(await floor.noShowParty(db, { merchant: t.merchant, staffId: t.staff.jen, partyId: lee.id })).toMatchObject({ state: 'no_show' });
+    expect(await floor.updateParty(db, { merchant: t.merchant, staffId: t.staff.jen, partyId: marco.id, patch: { state: 'removed' } })).toMatchObject({ state: 'removed' });
+    expect((await floor.waitlist(db, t.merchant)).parties).toEqual([]);
+    const ana = await waiting(t, 'Ana', 2);
+    await floor.seatParty(db, texts().texter, { merchant: t.merchant, staffId: t.staff.manager, partyId: ana.id, request: { tableId: t.table(1), showName: true, text: false } });
+    await expect(floor.noShowParty(db, { merchant: t.merchant, staffId: t.staff.jen, partyId: ana.id })).rejects.toMatchObject({ code: 'conflict' });
+  });
+
+  test('Edit tables links a Point to a table, and the one that was there lets go', async () => {
+    const t = await tacos();
+    const rows = (await floor.floor(db, t.merchant)).tables.map(({ id, number, label, area, seats }) => ({ id, number, label, area, seats }));
+    await floor.saveTables(db, { merchant: t.merchant, staffId: t.staff.owner, tables: rows.map((r) => (r.number === 6 ? { ...r, pointId: t.at14.id } : r)) });
+    const f = await floor.floor(db, t.merchant);
+    expect(f.tables.find((x) => x.number === 6)?.point?.id).toBe(t.at14.id);
+    expect(f.tables.find((x) => x.number === 14)?.point).toBeNull();
+    const hw = await listHardware(db, t.merchant);
+    expect(hw.find((d) => d.id === t.at6.id)).toMatchObject({ settings: { tableId: null } });
+    expect(hw.find((d) => d.id === t.at14.id)).toMatchObject({ settings: { tableId: t.table(6), placement: 'table' } });
+    await floor.saveTables(db, { merchant: t.merchant, staffId: t.staff.owner, tables: rows.map((r) => (r.number === 6 ? { ...r, pointId: null } : r)) });
+    expect((await floor.floor(db, t.merchant)).tables.find((x) => x.number === 6)?.point).toBeNull();
+  });
+});

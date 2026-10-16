@@ -104,12 +104,15 @@ export function merchantTerminalRouter(deps: TerminalRouteDeps = defaultTerminal
     await floor.saveTables(db, { merchant: m(req), staffId: staff(req), tables: req.body?.tables });
     return floor.floor(db, m(req));
   }));
-  router.post('/tables/:id/seat', signedIn, run((db, req) => floor.seatTable(db, { merchant: m(req), staffId: staff(req), tableId: id(req) })));
+  router.post('/tables/:id/seat', signedIn, run((db, req) => floor.seatTable(db, { merchant: m(req), staffId: staff(req), tableId: id(req), request: req.body })));
+  router.post('/tables/:id/move', signedIn, run((db, req) => floor.moveTable(db, { merchant: m(req), staffId: staff(req), tableId: id(req), request: req.body })));
   router.post('/tables/:id/clear', signedIn, run((db, req) => floor.clearTable(db, { merchant: m(req), staffId: staff(req), tableId: id(req) })));
   router.get('/waitlist', signedIn, run((db, req) => floor.waitlist(db, m(req))));
-  router.post('/waitlist', signedIn, run((db, req) => floor.addParty(db, { merchant: m(req), staffId: staff(req), party: req.body }), 201));
+  router.post('/waitlist', signedIn, run((db, req) => floor.addParty(db, { merchant: m(req), staffId: staff(req), party: req.body, texter: deps.texter }), 201));
   router.patch('/waitlist/:id', signedIn, run((db, req) => floor.updateParty(db, { merchant: m(req), staffId: staff(req), partyId: id(req), patch: req.body })));
   router.post('/waitlist/:id/seat', signedIn, run((db, req) => floor.seatParty(db, deps.texter, { merchant: m(req), staffId: staff(req), partyId: id(req), request: req.body })));
+  router.post('/waitlist/:id/notify', signedIn, run((db, req) => floor.notifyParty(db, deps.texter, { merchant: m(req), staffId: staff(req), partyId: id(req) })));
+  router.post('/waitlist/:id/no-show', signedIn, run((db, req) => floor.noShowParty(db, { merchant: m(req), staffId: staff(req), partyId: id(req) })));
 
   // ---- Alerts, Order ready, Calls and bills
   router.post('/alerts', signedIn, run((db, req) => floor.createAlert(db, deps.texter, { merchant: m(req), staffId: staff(req), request: req.body }), 201));

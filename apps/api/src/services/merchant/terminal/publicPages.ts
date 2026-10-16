@@ -7,6 +7,7 @@ import { type ClearCharges, createClearTender } from '../orders/payments.js';
 import { touchShop } from './bus.js';
 import { TerminalError } from './errors.js';
 import { joinWaitlist } from './floor.js';
+import type { Texter } from './texts.js';
 import { pointByCode, pointStateFor } from './pointState.js';
 
 /**
@@ -82,10 +83,10 @@ export async function publicPay(db: Db, deps: PublicPayDeps, input: { code: stri
 }
 
 /** Join the wait list from a door Point's page. */
-export async function publicJoinWaitlist(db: Db, input: { code: string; request: unknown; memberWallet?: string | null; now?: Date }): Promise<WaitlistJoined> {
+export async function publicJoinWaitlist(db: Db, input: { code: string; request: unknown; memberWallet?: string | null; texter?: Texter; now?: Date }): Promise<WaitlistJoined> {
   const p = await pointByCode(db, input.code);
   if (!p) throw new TerminalError('No Point has that code', 'not_found');
   const { point } = await pointStateFor(db, p.deviceId, input.now ?? new Date());
   if (point.settings.placement !== 'door') throw new TerminalError('This Point doesn’t take names', 'conflict');
-  return joinWaitlist(db, { merchant: p.merchant, request: input.request, memberWallet: input.memberWallet ?? null, now: input.now });
+  return joinWaitlist(db, { merchant: p.merchant, request: input.request, memberWallet: input.memberWallet ?? null, texter: input.texter, now: input.now });
 }

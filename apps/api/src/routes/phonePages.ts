@@ -12,6 +12,7 @@ import { sendNotificationService } from '../services/sendNotificationService.js'
 import { TERMINAL_STATUS, TerminalError } from '../services/merchant/terminal/errors.js';
 import { menuFor, pointByCode, publicPoint } from '../services/merchant/terminal/pointState.js';
 import { phonePageBase, publicJoinWaitlist, publicPay, type PublicPayDeps } from '../services/merchant/terminal/publicPages.js';
+import { defaultTexter, type Texter } from '../services/merchant/terminal/texts.js';
 
 /**
  * The phone pages' API (terminal reference, sections 11 and 12). No sign-in. Every request is
@@ -31,6 +32,8 @@ export interface PhonePageDeps {
   pay: (db: Db) => PublicPayDeps;
   sendEmail: (input: { to: string; merchantName: string; total: string; url: string }) => Promise<boolean>;
   limits: { read: RequestHandler; act: RequestHandler };
+  /** The wait list's "joined" text, for a party who left a number (Settings › Counter › Text the wait list). */
+  texter?: Texter;
 }
 
 export const defaultPhonePageDeps = (): PhonePageDeps => ({
@@ -38,6 +41,7 @@ export const defaultPhonePageDeps = (): PhonePageDeps => ({
   pay: (db) => ({ clear: clearChargesFor(db), card: (merchant) => connectorForShop(db, merchant) }),
   sendEmail: async ({ to, merchantName, total, url }) =>
     Boolean(await sendNotificationService.sendReceipt({ recipientType: 'email', recipientContact: to, merchantName, total, receiptUrl: url })),
+  texter: defaultTexter(),
   limits: { read: limitByAddress('phone-pages', 60_000, 120), act: limitByAddress('phone-pages-act', 60_000, 10) },
 });
 
@@ -72,7 +76,7 @@ export function pointPageRouter(deps: PhonePageDeps = defaultPhonePageDeps()): R
     return menuFor(db, p.merchant);
   }));
   router.post('/:code/pay', deps.limits.act, run((db, req) => publicPay(db, deps.pay(db), { code: code(req), request: req.body })));
-  router.post('/:code/waitlist', deps.limits.act, run((db, req) => publicJoinWaitlist(db, { code: code(req), request: req.body })));
+  router.post('/:code/waitlist', deps.limits.act, run((db, req) => publicJoinWaitlist(db, { code: code(req), request: req.body, texter: deps.texter })));
   return router;
 }
 
