@@ -22,6 +22,8 @@ WORKDIR /app
 # node_modules, so a contract change has to invalidate the install layer to reach the image.
 COPY packages/domain ./packages/domain
 COPY packages/merchant-contracts ./packages/merchant-contracts
+# Pay with Clear's public /v1 contract; merchant-contracts links to it too.
+COPY packages/public-api-contracts ./packages/public-api-contracts
 
 # Dependencies first, so a source-only change reuses this layer instead of reinstalling.
 # Deliberately not --frozen-lockfile: bun.lock is currently stale against package.json, and

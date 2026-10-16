@@ -1,5 +1,6 @@
 import type { OrderWithTenders } from '@clear/merchant-contracts';
 import type { MerchantCharge } from '../data/apiClient';
+import { raisedByName } from '../lib/raisedBy';
 
 /**
  * Overview › Export: the month's sales as a spreadsheet (CSV), one row a sale, every way it was
@@ -41,7 +42,7 @@ export function salesCsv(input: {
       time(o.createdAt, input.timeZone),
       o.number ? `#${o.number}` : o.id,
       o.customer ?? '',
-      input.nameOf(o.raisedBy),
+      raisedByName(o.raisedBy, input.nameOf),
       o.status,
       o.lines.map((l) => `${l.quantity} × ${l.name}`).join('; '),
       dollars(o.subtotalCents),

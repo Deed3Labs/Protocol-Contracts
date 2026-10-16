@@ -2,6 +2,7 @@ import { isPending, type ChargeState } from '@clear/domain';
 import { canVoidOrder, type OrderWithTenders, type Tender } from '@clear/merchant-contracts';
 import type { MerchantCharge } from '@/data/apiClient';
 import { ago, clockTime, firstName } from '../home/model';
+import { raisedByName } from '../lib/raisedBy';
 
 /**
  * Charges, as data — docs/merchant-reference/clear-merchant-charges.html.
@@ -128,8 +129,8 @@ export function rowFromOrder(o: OrderWithTenders, nameOf: (staffId: string) => s
     date: day > 1 ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : undefined,
     time: clockTime(o.createdAt),
     at: d.getHours() * 60 + d.getMinutes() - day * 1440,
-    by: firstName(nameOf(o.raisedBy)),
-    byId: o.raisedBy,
+    by: firstName(raisedByName(o.raisedBy, nameOf)),
+    byId: o.raisedBy ?? undefined,
     note: o.status === 'partly_refunded' ? 'part refunded' : undefined,
     pay: method === 'split' ? 'Split' : method === 'card' ? cardLabel(legs[0]!) : 'Cash',
     sold: o.lines[0]?.name,
@@ -422,7 +423,7 @@ export function saleFromOrder(o: OrderWithTenders, nameOf: (staffId: string) => 
   return {
     id: o.id,
     name: o.customer ?? 'Walk-in',
-    when: `${day} · ${clockTime(o.createdAt)} · ${firstName(nameOf(o.raisedBy))}`,
+    when: `${day} · ${clockTime(o.createdAt)} · ${firstName(raisedByName(o.raisedBy, nameOf))}`,
     count: o.lines.reduce((s, l) => s + l.quantity, 0),
     totalCents: o.totalCents + o.tipCents,
     lines: o.lines.map((l) => ({ t: `${l.quantity} × ${l.name}${l.options.length ? ` · ${l.options.map((x) => x.name.toLowerCase()).join(', ')}` : ''}`, cents: net(l) })),

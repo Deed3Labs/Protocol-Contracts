@@ -27,6 +27,7 @@
   "dependencies": {
     "@clear/domain": "file:../../packages/domain",
     "@clear/merchant-contracts": "file:../../packages/merchant-contracts",
+    "@clear/public-api-contracts": "file:../../packages/public-api-contracts",
     "@coinbase/cdp-sdk": "^1.41.0",
     "@privy-io/node": "0.34.0",
     "@privy-io/server-auth": "^1.32.5",

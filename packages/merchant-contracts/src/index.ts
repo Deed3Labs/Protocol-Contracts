@@ -20,4 +20,6 @@ export * from './devices';
 export * from './floor';
 export * from './public';
 export * from './rewards';
+export * from './pay';
+export * from './payPages';
 export type { MerchantApi } from './client';
