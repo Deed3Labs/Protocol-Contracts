@@ -204,6 +204,14 @@ export const api = {
   },
 
 
+  /**
+   * Shop sign-in for useclear.org (connect/connectFlow): a short token naming this shop, signed by
+   * the API, and the site's address to carry it back to. Owners only; the API checks the address.
+   */
+  async connectToken(input: { return: string; state: string }): Promise<{ redirect: string }> {
+    return request('/api/merchant/connect/token', { method: 'POST', body: JSON.stringify(input) });
+  },
+
   /* ----------------------------------------------------------- onboarding */
 
   /**

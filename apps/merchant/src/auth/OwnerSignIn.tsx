@@ -357,7 +357,7 @@ function OwnerSignInForm({
     if (awaitingPasskey && !sent) {
       return <PasskeyScreen onRetry={startPasskey} onEmail={() => (setError(null), setAwaitingPasskey(false))} error={busy ? null : error} />;
     }
-    return sent ? <CheckEmailScreen {...codeStep} /> : <OwnerSignInScreen {...form} phone={phone} onSetUpShop={onSetUpShop} />;
+    return sent ? <CheckEmailScreen {...codeStep} /> : <OwnerSignInScreen {...form} phone={phone} onSetUpShop={onSetUpShop} title={title} sub={blurb} />;
   }
 
   return (
