@@ -1,5 +1,5 @@
 {
-  "installCommand": "cd ../.. && npm ci --workspace=@clear/merchant --no-audit --no-fund",
+  "installCommand": "cd ../.. && npm install --workspace=@clear/merchant --no-audit --no-fund",
   "buildCommand": "cd ../.. && npx turbo run build:vercel --filter=@clear/merchant",
   "outputDirectory": "dist",
   "ignoreCommand": "bash ../../scripts/vercel-ignore.sh apps/merchant",
