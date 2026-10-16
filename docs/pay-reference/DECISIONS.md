@@ -874,3 +874,86 @@ Approved at Hard Stop 6, 2026-10-16:
 - D2's rule: $500 to start, $250 more for every 3 clean installments, bounded by income, with a $5,000 ceiling.
 - The card fallback's copy.
 - The join window's first read answering signed out.
+
+## Phase 7 · Docs for AI and the MCP server
+
+Built 2026-10-16. `packages/pay-docs` (`@clear/pay-docs`, private), served from `apps/member/public`;
+`packages/clear-mcp` (`@useclear/mcp`, private, not published); `GET /v1/webhook_deliveries`.
+
+### For approval
+
+- **`GET /v1/webhook_deliveries`, added to `/v1`** (an addition; the snapshot only grew).
+  - The MCP's `list_webhook_deliveries` needs a route a secret key can read. Until now only Developers could, with a
+    staff sign-in.
+  - It is filtered by `endpoint` and `status`, paged with `startingAfter`, in the key's mode.
+  - `@useclear/node` has `webhookDeliveries.list`.
+- **The routes are published too.** `ENDPOINTS` in the public contracts lists each route with its key, request and
+  answer.
+  - It is what `api.md` is generated from.
+  - The API's test checks every listed route exists.
+  - Its method-and-path strings are in the snapshot, so a route can be added but never removed within a version.
+- **`llms.txt` is as drawn, plus one section:** "## Optional" with the MCP page, since Developers' "MCP server · Set
+  up" links to `useclear.org/docs/mcp.md`.
+- **The paste-in prompt was already served from Developers in Phase 4,** with the shop's publishable key. Its
+  fallback, used when a shop has no keys yet, now uses the `clear_pk_` form.
+- **`refund_payment` always asks for approval.** It always sends `requireApproval: true`, so a card refund waits in
+  Charges for an owner or manager, with the existing refund approval. A Clear payment answers `refund_in_app`, and
+  the tool says it's refunded from Charges and that nothing changed.
+- **The MCP server takes the secret key from its environment only.** No flag, so the key never lands in shell
+  history or in a config the agent reads back. A publishable or malformed key refuses to start, and every result
+  passes through a filter that cuts anything shaped like a secret key.
+
+### The docs (`@clear/pay-docs`)
+
+| Page | What |
+|---|---|
+| `/llms.txt` | As drawn, plus the MCP page under Optional |
+| `/docs/quickstart.md` | No server: the price snippet, what the page hears, CSP, test mode, the rules |
+| `/docs/server.md` | The server snippet, the webhook snippet, the rest of `@useclear/node`, errors, versions |
+| `/docs/webhooks.md` | Endpoints, verifying, the event, the signature without the SDK, retries, testing a handler |
+| `/docs/mcp.md` | Setting up `@useclear/mcp`, and its five tools |
+| `/docs/api.md` | Generated: the headers every request takes, routes, every request and object as a field table, error codes, lists |
+
+- **Every example is one of the spec's §1 snippets**, written once (`src/snippets.ts`), with `clear_pk_live_mc8Q2v`.
+- **The docs can't drift.** The test fails when the committed files differ from what renders. The docs depend on
+  the contracts, so CI (`turbo --affected`) reruns the test when a contract changes.
+- **Served from `apps/member/public`,** as plain text with any origin allowed and a 5-minute cache. On
+  `useclear.org` they need the website's rewrites, per Hard Stop 1, conflict 3.
+
+### `@useclear/mcp`
+
+- **The SDK:** `@modelcontextprotocol/sdk` 1.31.0 (published 2026-09-28), over stdio. The bin is `useclear-mcp`,
+  run with `npx @useclear/mcp` once published.
+- **Tools:**
+  - `create_payment_link`: by amount, with an optional note and expiry, or by price.
+  - `get_payment`: by id or by reference.
+  - `list_payments`: a date range, where a bare date is the whole UTC day.
+  - `refund_payment`: waits for approval, as above.
+  - `list_webhook_deliveries`.
+- **Results** give money as cents plus "$185.32", and never `clientSecret`. Errors come back as results with Clear's
+  `code` and `message`, never as a crash.
+- **The README** covers Claude Desktop, Claude Code and Cursor, and says "When published:".
+
+### For the user
+
+- **Claim the npm scope `@useclear`** before publishing `@useclear/js`, `@useclear/node` and `@useclear/mcp`.
+  - Their `build` (tsup) isn't installed in the repo yet.
+  - `@useclear/mcp` bundles `@useclear/node` and the contracts, since neither is on npm.
+- **The website rewrites** `useclear.org/llms.txt` and `/docs/*.md` to the member app, in the website work.
+
+### Checks
+
+- **Tests:**
+  - API 1058, with the deliveries route over HTTP and every listed route existing; one file died on the local
+    Redis noise and passes on its own;
+  - pay-docs 10;
+  - mcp 27, with the tools over the real SDK on a fake `fetch`, the five tools through the MCP in-memory transport,
+    and the key refusals;
+  - `@useclear/node` 31; `@useclear/js` 58; public contracts 31; merchant contracts 83; domain 75; member-kit 2;
+  - member 843; merchant 227; rewards 11; pay 42.
+- **Builds:** pay, member, merchant and rewards all build. Every package typechecks; the API's `src` does too, apart
+  from the known Coinbase import.
+- **Not run:**
+  - an agent using the MCP server against a live API;
+  - `npm publish` (the user's);
+  - tsup builds.
