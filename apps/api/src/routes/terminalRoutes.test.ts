@@ -140,6 +140,30 @@ describe('the Point’s own API', () => {
  * the e2e path with no hardware. It activates with the claim's secret, reports health, follows its
  * screen by long poll, and presses Call; every answer is parsed with the contract.
  */
+describe('Tables v2 over HTTP', () => {
+  test('seat a walk-in, move them, a no show, and notify needing a number', async () => {
+    const before = (await call('/api/merchant/tables', { headers: as('jen') })).body.tables;
+    await call('/api/merchant/tables', {
+      method: 'PUT',
+      headers: as('manager'),
+      body: { tables: [...before.map((t: { id: string; number: number; label: string | null; area: string | null; seats: number }) => ({ id: t.id, number: t.number, label: t.label, area: t.area, seats: t.seats })), { number: 21, label: null, area: 'Patio', seats: 2 }, { number: 22, label: null, area: 'Patio', seats: 4 }] },
+    });
+    const all = (await call('/api/merchant/tables', { headers: as('jen') })).body.tables;
+    const t21 = all.find((t: { number: number }) => t.number === 21).id;
+    const t22 = all.find((t: { number: number }) => t.number === 22).id;
+    const seated = await call(`/api/merchant/tables/${t21}/seat`, { headers: as('jen'), body: { size: 2, name: 'Reyes' } });
+    expect(seated.body).toMatchObject({ status: 'seated', party: { name: 'Reyes', size: 2 } });
+    const moved = await call(`/api/merchant/tables/${t21}/move`, { headers: as('jen'), body: { toTableId: t22 } });
+    expect(moved.status).toBe(200);
+    expect(moved.body.to).toMatchObject({ number: 22, party: { name: 'Reyes', size: 2 } });
+    expect((await call(`/api/merchant/tables/${t21}/move`, { headers: as('jen'), body: { toTableId: t22 } })).status).toBe(409);
+    const party = (await call('/api/merchant/waitlist', { headers: as('jen'), body: { name: 'Sam', size: 2, phone: null, textConsent: false, quotedMinutes: 20 } })).body;
+    expect(party.quotedMinutes).toBe(20);
+    expect((await call(`/api/merchant/waitlist/${party.id}/notify`, { headers: as('jen'), body: {} })).status).toBe(422);
+    expect((await call(`/api/merchant/waitlist/${party.id}/no-show`, { headers: as('jen'), body: {} })).body).toMatchObject({ state: 'no_show' });
+  });
+});
+
 const routeKey = newSigningKey('clear-route');
 const trustedKey = routeKey.publicKey;
 

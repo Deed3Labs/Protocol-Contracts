@@ -222,3 +222,47 @@ describe('Point firmware (docs/hardware/point-device-api.md, 7)', () => {
     expect(compareFirmware('1.0.10', '1.0.9')).toBeGreaterThan(0);
   });
 });
+
+describe('Tables v2 (the terminal reference, 8–8d and 14)', () => {
+  test('a walk-in is seated with how many and an optional name; a held party with nothing', async () => {
+    const { SeatTable } = await import('./floor');
+    expect(SeatTable.parse({ size: 2, name: null })).toEqual({ size: 2, name: null });
+    expect(SeatTable.parse({})).toEqual({});
+    expect(SeatTable.safeParse({ size: 0 }).success).toBe(false);
+  });
+
+  test('a tile says who is there and when a paid table clears itself; older answers still parse', async () => {
+    const { TableView } = await import('./floor');
+    const base = {
+      id: 'tbl_2', shop: '0xshop', number: 2, label: null, area: 'Inside', seats: 4, status: 'ordering', hold: null, request: null,
+      seatedAt: T0, orderId: 'ord_1', tabCents: 3576, billSentAt: null, paidAt: null, point: null,
+    };
+    expect(TableView.parse({ ...base, party: { name: 'Diaz', size: 4 }, clearsAt: null }).party).toEqual({ name: 'Diaz', size: 4 });
+    expect(TableView.parse({ ...base, party: { name: null, size: 2 } }).party?.name).toBeNull();
+    expect(TableView.parse(base).party).toBeUndefined();
+  });
+
+  test('Move names the table it goes to; Edit tables can link a Point', async () => {
+    const { MoveTable, TableInput } = await import('./floor');
+    expect(MoveTable.parse({ toTableId: 'tbl_14' })).toEqual({ toTableId: 'tbl_14' });
+    expect(TableInput.parse({ number: 1, label: null, area: 'Inside', seats: 2, pointId: 'hw_1' }).pointId).toBe('hw_1');
+    expect(TableInput.parse({ number: 1, label: null, area: null, seats: 2 }).pointId).toBeUndefined();
+  });
+
+  test('the wait list: told a wait, notified, no show and removed', async () => {
+    const { AddParty, UpdateParty, WaitlistParty } = await import('./floor');
+    expect(AddParty.parse({ name: 'Priya', size: 2, phone: '(909) 555-0142', textConsent: true, quotedMinutes: 15 }).quotedMinutes).toBe(15);
+    expect(UpdateParty.parse({ state: 'removed' }).state).toBe('removed');
+    expect(UpdateParty.safeParse({ state: 'left' }).success).toBe(false);
+    const party = { id: 'pty_1', name: 'Lee', size: 4, phone: null, textConsent: false, position: 1, quotedMinutes: 20, tableId: null, joinedAt: T0, readyAt: null };
+    for (const state of ['waiting', 'notified', 'seated', 'no_show', 'removed']) expect(WaitlistParty.safeParse({ ...party, state }).success).toBe(true);
+    for (const state of ['ready', 'left']) expect(WaitlistParty.safeParse({ ...party, state }).success).toBe(false);
+  });
+
+  test('Settings › Counter: clear paid tables, wait estimates, texting the list', async () => {
+    const { DEFAULT_SETTINGS, ShopSettingsPatch } = await import('./shop');
+    expect(DEFAULT_SETTINGS).toMatchObject({ clearPaidAfterMinutes: 10, waitEstimate: 'this_week', textWaitlist: true });
+    expect(ShopSettingsPatch.parse({ clearPaidAfterMinutes: null, waitEstimate: 15, textWaitlist: false })).toEqual({ clearPaidAfterMinutes: null, waitEstimate: 15, textWaitlist: false });
+    expect(ShopSettingsPatch.safeParse({ waitEstimate: 'last_week' }).success).toBe(false);
+  });
+});

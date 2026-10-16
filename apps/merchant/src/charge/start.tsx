@@ -632,6 +632,99 @@ export function CartCell({
   );
 }
 
+/** The shop's sales tax by kind of item (fractions), and the rate the tab names: "8.375". */
+export interface TabRates {
+  goods: number;
+  labour: number;
+  food: number;
+  label: string;
+  inclusive: boolean;
+}
+
+/** A tab with lines being added: what's on it, what's added, the tax on all of it, and the tab after. */
+export function tabTotals(onTab: CartLine[], adding: CartLine[], r: TabRates) {
+  const sum = (ls: CartLine[]) => ls.reduce((s, l) => s + l.qty * l.unitCents, 0);
+  const all = [...onTab, ...adding];
+  // Per line, rounded half up, as the server prices an order (taxAtRate): so a tab with nothing
+  // added reads the same total as its table.
+  const tax = all.reduce((s, l) => {
+    if (l.tax === 'exempt') return s;
+    const base = l.qty * l.unitCents;
+    const ppm = Math.round(r[l.tax] * 1_000_000);
+    return s + Math.round(r.inclusive ? (base * ppm) / (1_000_000 + ppm) : (base * ppm) / 1_000_000);
+  }, 0);
+  const onTabCents = sum(onTab);
+  const addingCents = sum(adding);
+  return {
+    count: all.reduce((s, l) => s + l.qty, 0),
+    added: adding.reduce((s, l) => s + l.qty, 0),
+    onTabCents,
+    addingCents,
+    taxCents: tax,
+    totalCents: onTabCents + addingCents + (r.inclusive ? 0 : tax),
+  };
+}
+
+/**
+ * Tables › Add items (terminal reference, 8b): the cart's place, as the table's tab. What's on it
+ * first, then what's being added, marked New; the button adds them to the tab instead of checking out.
+ */
+export function TabCell({ heading, onTab, adding, rates, busy, onAdd }: { heading: string; onTab: CartLine[]; adding: CartLine[]; rates: TabRates; busy?: boolean; onAdd: () => void }) {
+  const t = tabTotals(onTab, adding, rates);
+  return (
+    <div className="c-cell">
+      <div className="c-chead">
+        <div className="c-sechead">
+          <p className="c-label">{heading}</p>
+          <span className="c-det">Tab</span>
+        </div>
+      </div>
+      <div className="c-cmain c-ci-sum" tabIndex={0} role="region" aria-label="Tab">
+        <div className="c-ci-hero">
+          <p className="c-label">Tab after this</p>
+          <p className="c-f">{usd(t.totalCents)}</p>
+          <p className="c-det">{itemCount(t.count)} &middot; tax included</p>
+        </div>
+        <div className="c-ci-lns">
+          {onTab.map((l) => (
+            <div key={l.key} className="c-kv">
+              <span>{lineLabel(l)}</span>
+              <span className="c-v">{usd(l.qty * l.unitCents)}</span>
+            </div>
+          ))}
+          {adding.map((l) => (
+            <div key={`new:${l.key}`} className="c-kv c-tm-newln">
+              <span>
+                {lineLabel(l)} <em>New</em>
+              </span>
+              <span className="c-v">{usd(l.qty * l.unitCents)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="c-ci-small">
+          <div className="c-kv">
+            <span>Already on the tab</span>
+            <span className="c-v">{usd(t.onTabCents)}</span>
+          </div>
+          <div className="c-kv">
+            <span>Adding</span>
+            <span className="c-v">{usd(t.addingCents)}</span>
+          </div>
+          <div className="c-kv">
+            <span>Sales tax &middot; {rates.label}%</span>
+            <span className="c-v">{usd(t.taxCents)}</span>
+          </div>
+        </div>
+      </div>
+      <div className="c-cfoot">
+        <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={!t.added || busy} onClick={onAdd}>
+          Add {t.added} to the tab
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** The cart's lines drawn large, as on the phone's cart and the not-enough-stock state. */
 export function BigLines({
   lines,

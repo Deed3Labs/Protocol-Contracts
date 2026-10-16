@@ -38,5 +38,12 @@ export const tableReadyText = (table: { number: number; area: string | null }) =
 /** The Point's own words for Order ready (section 9): "Order 27 · Ready. Pick up at the counter." */
 export const orderReadyText = (shop: string, label: string) => `${shop}: order ${label} is ready. Pick up at the counter.`;
 
+/** On joining the wait list (section 8c): the wait they were told, and how to stop. */
+export const waitlistJoinedText = (shop: string, minutes: number) =>
+  `${shop}: you’re on the wait list, about ${minutes} min. We’ll text when your table is almost ready. Reply STOP to stop.`;
+
+/** Text: almost ready (section 8c). */
+export const waitlistAlmostText = (shop: string) => `${shop}: your table is almost ready. Head back when you can.`;
+
 /** The last four, as an alert keeps it: "··0142". */
 export const lastFour = (phone: string) => `··${phone.replace(/\D/g, '').slice(-4)}`;

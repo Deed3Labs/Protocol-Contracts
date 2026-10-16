@@ -23,7 +23,11 @@ export const Table = z.object({
 });
 export type Table = z.infer<typeof Table>;
 
-export const TableInput = Table.pick({ number: true, label: true, area: true, seats: true });
+/**
+ * Edit tables: a table as the owner sets it. `pointId` links a Point to it (the Point column's Link);
+ * null unlinks it; absent leaves the link as it is.
+ */
+export const TableInput = Table.pick({ number: true, label: true, area: true, seats: true }).extend({ pointId: Id.nullable().optional() });
 
 /**
  * A table held for a party just seated (seating addendum). Its Point shows their first name, or
@@ -53,8 +57,9 @@ export type TableRequest = z.infer<typeof TableRequest>;
 
 /**
  * A tile on Floor. Its tab is the table's open order. `held` while it waits for its party;
- * `ordering` is a tab with items; `bill_sent` once its bill is on the table's Point; `paid` until
- * the table is cleared. An open Call turns the tile amber whatever its status.
+ * `ordering` is a tab with items (the tile says "Ordered"); `bill_sent` once its bill is on the
+ * table's Point; `paid` until the table is cleared. An open Call turns the tile amber whatever its
+ * status. The status is worked out from the table and its tab, never set by hand (Tables v2).
  */
 export const TableView = Table.extend({
   status: z.enum(['free', 'held', 'seated', 'ordering', 'bill_sent', 'paid']),
@@ -70,8 +75,24 @@ export const TableView = Table.extend({
   paidAt: Timestamp.nullable(),
   /** The table's Point, and what it shows: "Point shows Menu". */
   point: z.object({ id: Id, showing: PointState }).nullable(),
+  /** Who is there, from seated until cleared: "Diaz, 4", "Walk-in, 2". A null name is a walk-in (Tables v2). */
+  party: z.object({ name: z.string().nullable(), size: z.number().int().min(1) }).nullable().optional(),
+  /** A paid table clears itself then, under the shop's rule: "Clears itself in 8 minutes". Null: by hand. */
+  clearsAt: Timestamp.nullable().optional(),
 });
 export type TableView = z.infer<typeof TableView>;
+
+/**
+ * Seat a table (`POST /tables/:id/seat`). A held table: its party sits down and the hold ends. A free
+ * one: a walk-in, with how many and an optional name (Tables v2).
+ */
+export const SeatTable = z.object({ size: z.number().int().min(1).max(20), name: z.string().trim().max(40).nullable() }).partial();
+export type SeatTable = z.infer<typeof SeatTable>;
+
+/** Move (`POST /tables/:id/move`): the tab, the bill if sent, the party and their name on the Point go to another free table. */
+export const MoveTable = z.object({ toTableId: Id });
+export const TableMoved = z.object({ from: TableView, to: TableView });
+export type TableMoved = z.infer<typeof TableMoved>;
 
 // ---- The wait list -----------------------------------------------------------------------------------
 
@@ -87,11 +108,17 @@ export const WaitlistParty = z.object({
   position: z.number().int().min(1),
   /** "about 15 min", when they joined. */
   quotedMinutes: z.number().int().min(0),
-  state: z.enum(['waiting', 'ready', 'seated', 'left']),
+  /**
+   * `notified` once the almost-ready text has gone (Tables v2); `no_show` and `removed` are off the
+   * list, kept for the day's figures. Was waiting, ready, seated, left.
+   */
+  state: z.enum(['waiting', 'notified', 'seated', 'no_show', 'removed']),
   /** "Ana's table is 12 when it clears." */
   tableId: Id.nullable(),
   joinedAt: Timestamp,
   readyAt: Timestamp.nullable(),
+  /** When the almost-ready text went. */
+  notifiedAt: Timestamp.nullable().optional(),
 });
 export type WaitlistParty = z.infer<typeof WaitlistParty>;
 
@@ -108,11 +135,14 @@ export const AddParty = z.object({
   size: z.number().int().min(1).max(20),
   phone: z.string().trim().min(7).max(24).nullable(),
   textConsent: z.boolean(),
+  /** "Tell them": the wait they were told (10, about 15, 20, 30). Absent: the shop's estimate. */
+  quotedMinutes: z.number().int().min(0).max(240).optional(),
 });
 
 export const UpdateParty = z.object({
   tableId: Id.nullable().optional(),
-  state: z.enum(['waiting', 'left']).optional(),
+  /** `removed` is Remove on the party's sheet. No show is its own call (`noShowParty`). */
+  state: z.enum(['waiting', 'removed']).optional(),
   position: z.number().int().min(1).optional(),
 });
 

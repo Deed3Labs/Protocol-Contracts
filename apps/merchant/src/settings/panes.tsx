@@ -258,6 +258,8 @@ export interface Actions {
   onBreaks?: () => void;
   /** Clear Terminal: Tables on or off (the nav's Tables, for shops that serve at tables). */
   onTables?: (on: boolean) => void;
+  /** Owners, live: Tables' rules (when a paid table clears, wait estimates, texting the wait list). */
+  onTableRules?: (patch: ShopSettingsPatch) => void;
   /** Owners, live: how long this tablet waits before asking for a PIN. */
   onIdle?: (seconds: number) => void;
   /** Owners, live: rename this tablet. */
@@ -343,7 +345,7 @@ function liveCounterDevices(key: 'counter' | 'devices', l: LiveShop, a: Actions)
             )}
           </Main>
         </Cell>
-        <TablesCell on={l.settings?.tableService ?? false} onChange={a.onTables} />
+        <TablesCell s={l.settings} onTables={a.onTables} onRules={a.onTableRules} />
       </>
     );
   }
@@ -979,7 +981,7 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
               </Rows>
             </Main>
           </Cell>
-          <TablesCell on={false} />
+          <TablesCell />
         </>
       );
     case 'payments': {
@@ -1492,17 +1494,67 @@ export function hoursBody(d: SettingsData, onSave?: () => void): ReactNode {
 
 /**
  * Clear Terminal: Tables, for shops that serve at tables. Off by default; a counter-service shop never
- * sees the page, so its nav stays six items (terminal reference, decisions). Not drawn: a Switch row
- * like the others in Counter.
+ * sees the page, so its nav stays six items (terminal reference, decisions). On, it has the three rules a
+ * floor needs: when a paid table clears, how wait times are estimated, and whether the wait list texts
+ * (terminal reference, 8). A live shop's come from its settings and change only for an owner; the
+ * preview's are the tablet's own.
  */
-function TablesCell({ on, onChange }: { on: boolean; onChange?: (on: boolean) => void }) {
+type TableRules = Pick<ShopSettings, 'tableService' | 'clearPaidAfterMinutes' | 'waitEstimate' | 'textWaitlist'>;
+const TABLE_RULES: TableRules = { tableService: false, clearPaidAfterMinutes: 10, waitEstimate: 'this_week', textWaitlist: true };
+
+function TablesCell({ s, onTables, onRules }: { s?: TableRules | null; onTables?: (on: boolean) => void; onRules?: (patch: ShopSettingsPatch) => void }) {
+  const [own, setOwn] = useState(TABLE_RULES);
+  const live = s !== undefined;
+  const r = live ? { ...TABLE_RULES, ...s } : own;
+  const set = (patch: Partial<TableRules>) => (live ? onRules?.(patch) : setOwn((o) => ({ ...o, ...patch })));
+  // A saved time other than the drawn one reads as itself: "After 20 min", "20 min".
+  const after = r.clearPaidAfterMinutes ?? 10;
+  const wait = r.waitEstimate === 'this_week' ? 15 : r.waitEstimate;
   return (
-    <Cell label="Service" det="At the counter or at tables">
+    <Cell label="Tables" det="Table service">
       <Main>
         <Rows>
-          <Switch t="Tables" det="For a shop that serves at tables: the floor, the wait list and its Points" on={on} onChange={onChange} initial={on} />
+          <Switch t="Table service" det="Adds Tables to the nav. Off for counter service" on={r.tableService} onChange={live ? onTables : (on) => set({ tableService: on })} />
+          {r.tableService && (
+            <>
+              <R2
+                t="Clear paid tables"
+                det="Or tap Clear on the tile"
+                end={<TwoWay label="Clear paid tables" first={`After ${after} min`} second="By hand" on={r.clearPaidAfterMinutes !== null} onPick={live && !onRules ? undefined : (first) => set({ clearPaidAfterMinutes: first ? after : null })} />}
+              />
+              <R2
+                t="Wait estimates"
+                det="From how long tables took this week, or a set time"
+                end={<TwoWay label="Wait estimates" first="From this week" second={`${wait} min`} on={r.waitEstimate === 'this_week'} onPick={live && !onRules ? undefined : (first) => set({ waitEstimate: first ? 'this_week' : wait })} />}
+              />
+              <Switch t="Text the wait list" det="Joined, almost ready, table ready. Twilio, like receipts" on={r.textWaitlist} onChange={live && !onRules ? undefined : (on) => set({ textWaitlist: on })} />
+            </>
+          )}
         </Rows>
       </Main>
     </Cell>
+  );
+}
+
+/** Tables' two-way choices (`st-seg tm-seg`): `on` is the first. Without `onPick` it only shows. */
+function TwoWay({ label, first, second, on, onPick }: { label: string; first: string; second: string; on: boolean; onPick?: (first: boolean) => void }) {
+  const b = (isFirst: boolean, text: string) => (
+    <b
+      className={on === isFirst ? 'c-on' : undefined}
+      role="radio"
+      aria-checked={on === isFirst}
+      aria-disabled={onPick ? undefined : true}
+      tabIndex={onPick ? 0 : -1}
+      onKeyDown={onPick ? clickOnKey : undefined}
+      onClick={onPick && on !== isFirst ? () => onPick(isFirst) : undefined}
+    >
+      {text}
+    </b>
+  );
+  return (
+    <div className="c-st-seg c-tm-seg" role="radiogroup" aria-label={label}>
+      {b(true, first)}
+      {b(false, second)}
+    </div>
   );
 }

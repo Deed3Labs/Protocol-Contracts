@@ -4,9 +4,11 @@ import {
   CreateAlert,
   HOLD_SECONDS,
   JoinWaitlist,
+  MoveTable,
   ORDER_READY_SECONDS,
   PointEvent,
   SeatParty,
+  SeatTable,
   TABLE_READY_SECONDS,
   TABLE_REQUEST_SECONDS,
   TableInput,
@@ -16,6 +18,8 @@ import {
   type PartySeated,
   type PickupOrder,
   type PointSettings,
+  type ShopSettings,
+  type TableMoved,
   type TableRequest,
   type TableView,
   type Waitlist,
@@ -26,11 +30,12 @@ import type { Db, Queryable } from '../../../db/db.js';
 import { phoneE164 } from '../orders/payments.js';
 import { businessDate } from '../orders/orderService.js';
 import { audit } from '../security/audit.js';
+import { getSettings } from '../shop/shopService.js';
 import { touchShop } from './bus.js';
 import { TerminalError } from './errors.js';
 import type { PointIdentity } from './hardware.js';
 import { pointStateFor, setBase, showOnPoint } from './pointState.js';
-import { lastFour, orderReadyText, tableReadyNotice, tableReadyText, type Texter } from './texts.js';
+import { lastFour, orderReadyText, tableReadyNotice, tableReadyText, waitlistAlmostText, waitlistJoinedText, type Texter } from './texts.js';
 
 /**
  * Tables, the wait list, seating, Call and Bill, alerts and Order ready (terminal reference,
@@ -43,8 +48,12 @@ const plus = (now: Date, s: number) => new Date(now.getTime() + s * 1000);
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name.trim();
 const issue = (r: { error: { issues: Array<{ message: string }> } }, fallback: string) => r.error.issues[0]?.message ?? fallback;
 const PAID = ['paid', 'refunded', 'partly_refunded'];
-/** Five minutes a party: "3 waiting · about 15 min"; a party joining behind them is quoted 20. */
+/** Before a week has three visits to go on: five minutes a party ahead, and theirs. */
 const MINUTES_PER_PARTY = 5;
+/** Visits a week needs before its table times set the estimate. */
+const VISITS_FOR_ESTIMATE = 3;
+const WEEK_MS = 7 * 24 * 60 * 60_000;
+const TEXTS_OFF = 'Texting the wait list is off in Settings › Counter';
 /** A second press of Call within this long is the same press (the firmware debounces 50ms; people press twice). */
 const REPEAT_PRESS_MS = 3_000;
 /** A press made offline is kept if it reaches us within two minutes. */
@@ -65,6 +74,8 @@ interface TableRow {
   hold_show_name: boolean | null;
   hold_seated_at: Date | string | null;
   hold_expires_at: Date | string | null;
+  party_name: string | null;
+  party_size: number | null;
 }
 
 interface RequestRow {
@@ -116,7 +127,7 @@ async function pointAt(q: Queryable, merchant: string, placement: 'door' | 'coun
   return rows[0]?.id ?? null;
 }
 
-async function tableView(q: Queryable, t: TableRow, now: Date): Promise<TableView> {
+async function tableView(q: Queryable, t: TableRow, now: Date, settings?: ShopSettings): Promise<TableView> {
   const tNow = now.getTime();
   let order: { status: string; total_cents: string | number; bill_sent_at: Date | string | null; lines: string | number } | null = null;
   if (t.tab_order_id) {
@@ -130,9 +141,11 @@ async function tableView(q: Queryable, t: TableRow, now: Date): Promise<TableVie
   const lines = Number(order?.lines ?? 0);
   const holdLive = Boolean(t.hold_party_id && t.hold_expires_at && new Date(t.hold_expires_at).getTime() > tNow && lines === 0);
   let partyName = '';
+  let heldSize: number | null = null;
   if (holdLive) {
-    const { rows } = await q.query<{ name: string }>('SELECT name FROM merchant.waitlist_parties WHERE id = $1', [t.hold_party_id]);
+    const { rows } = await q.query<{ name: string; size: number }>('SELECT name, size FROM merchant.waitlist_parties WHERE id = $1', [t.hold_party_id]);
     partyName = firstName(rows[0]?.name ?? '');
+    heldSize = rows[0] ? Number(rows[0].size) : null;
   }
   let paidAt: string | null = null;
   if (order && PAID.includes(order.status)) {
@@ -158,6 +171,11 @@ async function tableView(q: Queryable, t: TableRow, now: Date): Promise<TableVie
     [t.id, now],
   );
   const pointId = await pointAtTable(q, t.merchant, t.id);
+  // Who is there: what seating wrote down, or the held party. A free table has nobody.
+  const party = status === 'free' ? null : t.party_size ? { name: t.party_name, size: Number(t.party_size) } : heldSize ? { name: partyName || null, size: heldSize } : null;
+  // A paid table clears itself under the shop's rule (Settings › Counter); by hand, it never does.
+  const clearAfter = status === 'paid' && paidAt ? (settings ?? (await getSettings(q, t.merchant))).clearPaidAfterMinutes : null;
+  const clearsAt = clearAfter && paidAt ? new Date(Date.parse(paidAt) + clearAfter * 60_000).toISOString() : null;
   return {
     id: t.id,
     shop: t.merchant,
@@ -176,6 +194,8 @@ async function tableView(q: Queryable, t: TableRow, now: Date): Promise<TableVie
     billSentAt: isoOrNull(order?.bill_sent_at),
     paidAt,
     point: pointId ? { id: pointId, showing: (await pointStateFor(q, pointId, now)).state } : null,
+    party,
+    clearsAt,
   };
 }
 
@@ -187,7 +207,8 @@ export async function getTable(q: Queryable, merchant: string, tableId: string, 
 export async function floor(q: Queryable, merchant: string, now = new Date()): Promise<Floor> {
   const { rows } = await q.query<TableRow>('SELECT * FROM merchant.tables WHERE merchant = $1 AND removed_at IS NULL ORDER BY number', [merchant]);
   const tables = [];
-  for (const t of rows) tables.push(await tableView(q, t, now));
+  const settings = await getSettings(q, merchant);
+  for (const t of rows) tables.push(await tableView(q, t, now, settings));
   return { tables, waitlist: await waitlist(q, merchant), requests: await tableRequests(q, merchant, now) };
 }
 
@@ -221,30 +242,116 @@ export async function saveTables(db: Db, input: { merchant: string; staffId: str
       }
     }
     for (const t of wanted) {
+      const tableId = t.id ?? `tbl_${randomUUID()}`;
       if (t.id) await tx.query('UPDATE merchant.tables SET number = $2, label = $3, area = $4, seats = $5, removed_at = NULL WHERE id = $1', [t.id, t.number, t.label, t.area, t.seats]);
-      else await tx.query('INSERT INTO merchant.tables (id, merchant, number, label, area, seats) VALUES ($1,$2,$3,$4,$5,$6)', [`tbl_${randomUUID()}`, input.merchant, t.number, t.label, t.area, t.seats]);
+      else await tx.query('INSERT INTO merchant.tables (id, merchant, number, label, area, seats) VALUES ($1,$2,$3,$4,$5,$6)', [tableId, input.merchant, t.number, t.label, t.area, t.seats]);
+      if (t.pointId !== undefined) await linkPoint(tx, input.merchant, tableId, t.pointId);
     }
     await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tables.saved', detail: { count: wanted.length } });
   });
   touchShop(input.merchant);
 }
 
-/** Staff mark a table seated: a walk-in, or the held party sitting down. Clears any hold. */
-export async function seatTable(db: Db, input: { merchant: string; staffId: string; tableId: string; now?: Date }): Promise<TableView> {
+/**
+ * Edit tables' Point column (section 8): a Point linked to a table is placed there (it shows the
+ * table's number and bills); the Point that was there, if another, is unlinked. A Point linked to a
+ * table it wasn't at leaves that one. Null unlinks.
+ */
+async function linkPoint(tx: Queryable, merchant: string, tableId: string, pointId: string | null): Promise<void> {
+  const current = await pointAtTable(tx, merchant, tableId);
+  if (current && current !== pointId) {
+    await tx.query(`UPDATE merchant.hardware SET settings = jsonb_set(settings::jsonb, '{tableId}', 'null'::jsonb) WHERE id = $1`, [current]);
+  }
+  if (!pointId || current === pointId) return;
+  const { rows } = await tx.query<{ id: string }>(`SELECT id FROM merchant.hardware WHERE id = $1 AND merchant = $2 AND kind = 'point' AND removed_at IS NULL`, [pointId, merchant]);
+  if (!rows[0]) throw new TerminalError('No such Point', 'not_found');
+  await tx.query(
+    `UPDATE merchant.hardware SET settings = jsonb_set(jsonb_set(settings::jsonb, '{tableId}', to_jsonb($2::text)), '{placement}', '"table"'::jsonb) WHERE id = $1`,
+    [pointId, tableId],
+  );
+}
+
+/**
+ * Seat a table (section 8b): a held party sits down (the hold ends, their name and size stay), or a
+ * walk-in at a free table, with how many and an optional name. Seating a seated table changes nothing.
+ */
+export async function seatTable(db: Db, input: { merchant: string; staffId: string; tableId: string; request?: unknown; now?: Date }): Promise<TableView> {
+  const parsed = SeatTable.safeParse(input.request ?? {});
+  if (!parsed.success) throw new TerminalError(issue(parsed, 'How many, and a name if they gave one'), 'invalid');
+  const r = parsed.data;
   const now = input.now ?? new Date();
   await db.transaction(async (tx) => {
     const t = await tableRow(tx, input.merchant, input.tableId, true);
+    let name: string | null = r.name?.trim() || null;
+    let size: number | null = r.size ?? null;
+    if (t.hold_party_id) {
+      const { rows } = await tx.query<{ name: string; size: number }>('SELECT name, size FROM merchant.waitlist_parties WHERE id = $1', [t.hold_party_id]);
+      if (rows[0]) [name, size] = [firstName(rows[0].name), Number(rows[0].size)];
+    }
     await tx.query(
-      `UPDATE merchant.tables SET seated_at = COALESCE(seated_at, hold_seated_at, $2), hold_party_id = NULL, hold_show_name = NULL, hold_seated_at = NULL, hold_expires_at = NULL WHERE id = $1`,
-      [t.id, now],
+      `UPDATE merchant.tables SET seated_at = COALESCE(seated_at, hold_seated_at, $2), party_name = CASE WHEN party_size IS NULL THEN $3 ELSE party_name END,
+         party_size = COALESCE(party_size, $4), hold_party_id = NULL, hold_show_name = NULL, hold_seated_at = NULL, hold_expires_at = NULL WHERE id = $1`,
+      [t.id, now, name, size],
     );
+    if (!t.seated_at && !t.hold_party_id) await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tables.walk_in', ref: { type: 'table', id: t.id }, detail: { size, named: Boolean(name) } });
   });
   touchShop(input.merchant);
   return getTable(db, input.merchant, input.tableId, now);
 }
 
-/** A table is free again: its tab is done with, its Point back to idle. */
-export async function clearTable(db: Db, input: { merchant: string; staffId: string; tableId: string; now?: Date }): Promise<TableView> {
+/**
+ * Move (section 8b): the tab, the bill if sent, the party and their name on the Point go to a free
+ * table; the one they left is free, its Point back to idle. The Point at the new table shows what the
+ * old one did.
+ */
+export async function moveTable(db: Db, input: { merchant: string; staffId: string; tableId: string; request: unknown; now?: Date }): Promise<TableMoved> {
+  const parsed = MoveTable.safeParse(input.request);
+  if (!parsed.success) throw new TerminalError(issue(parsed, 'Which table to move to'), 'invalid');
+  const now = input.now ?? new Date();
+  const to = parsed.data.toTableId;
+  if (to === input.tableId) throw new TerminalError('That’s the table they’re at', 'invalid');
+  await db.transaction(async (tx) => {
+    // Locked in id order, so two moves between the same tables can't wait on each other.
+    const [a, b] = [input.tableId, to].sort();
+    const first = await tableRow(tx, input.merchant, a!, true);
+    const second = await tableRow(tx, input.merchant, b!, true);
+    const from = first.id === input.tableId ? first : second;
+    const dest = first.id === to ? first : second;
+    const holdLive = (t: TableRow) => Boolean(t.hold_party_id && t.hold_expires_at && new Date(t.hold_expires_at).getTime() > now.getTime());
+    if (!from.tab_order_id && !from.seated_at && !holdLive(from)) throw new TerminalError(`Table ${from.number} has nobody to move`, 'conflict');
+    if (dest.tab_order_id || dest.seated_at || holdLive(dest)) throw new TerminalError(`Table ${dest.number} isn’t free`, 'conflict');
+    await tx.query(
+      `UPDATE merchant.tables SET seated_at = $2, tab_order_id = $3, hold_party_id = $4, hold_show_name = $5, hold_seated_at = $6, hold_expires_at = $7, party_name = $8, party_size = $9 WHERE id = $1`,
+      [dest.id, from.seated_at, from.tab_order_id, from.hold_party_id, from.hold_show_name, from.hold_seated_at, from.hold_expires_at, from.party_name, from.party_size],
+    );
+    await tx.query(
+      `UPDATE merchant.tables SET seated_at = NULL, tab_order_id = NULL, hold_party_id = NULL, hold_show_name = NULL, hold_seated_at = NULL, hold_expires_at = NULL, party_name = NULL, party_size = NULL WHERE id = $1`,
+      [from.id],
+    );
+    if (from.tab_order_id) await tx.query('UPDATE commerce.orders SET table_id = $2 WHERE id = $1', [from.tab_order_id, dest.id]);
+    await tx.query(`UPDATE merchant.waitlist_parties SET table_id = $2 WHERE table_id = $1 AND state = 'seated'`, [from.id, dest.id]);
+    await tx.query(`UPDATE merchant.table_requests SET state = 'answered', answered_by = $2, answered_at = $3 WHERE table_id = $1 AND state = 'open'`, [from.id, input.staffId, now]);
+    const fromPoint = await pointAtTable(tx, input.merchant, from.id);
+    const destPoint = await pointAtTable(tx, input.merchant, dest.id);
+    if (destPoint) {
+      const { rows } = fromPoint ? await tx.query<{ kind: 'idle' | 'bill' | 'paid' | 'test'; order_id: string | null }>('SELECT kind, order_id FROM merchant.point_states WHERE device_id = $1', [fromPoint]) : { rows: [] };
+      const base = rows[0];
+      // The bill, if it was out, follows them; anything else, the new table's Point starts from idle.
+      if (base && (base.kind === 'bill' || base.kind === 'paid') && base.order_id === from.tab_order_id) await setBase(tx, destPoint, base.kind, base.order_id, now);
+      else await setBase(tx, destPoint, 'idle', null, now);
+    }
+    if (fromPoint) await setBase(tx, fromPoint, 'idle', null, now);
+    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tables.moved', ref: { type: 'table', id: from.id }, detail: { to: dest.id, orderId: from.tab_order_id } });
+  });
+  touchShop(input.merchant);
+  return { from: await getTable(db, input.merchant, input.tableId, now), to: await getTable(db, input.merchant, to, now) };
+}
+
+/**
+ * A table is free again: its tab is done with, its Point back to idle, and the visit kept for wait
+ * estimates. By hand (staff), or by the jobs once a paid table's time is up (`staffId` null).
+ */
+export async function clearTable(db: Db, input: { merchant: string; staffId: string | null; tableId: string; now?: Date }): Promise<TableView> {
   const now = input.now ?? new Date();
   await db.transaction(async (tx) => {
     const t = await tableRow(tx, input.merchant, input.tableId, true);
@@ -253,8 +360,18 @@ export async function clearTable(db: Db, input: { merchant: string; staffId: str
       const s = rows[0]?.status;
       if (s && !PAID.includes(s) && s !== 'voided') throw new TerminalError('Its tab isn’t paid yet', 'conflict');
     }
+    const seatedAt = t.seated_at ?? t.hold_seated_at;
+    if (seatedAt)
+      await tx.query('INSERT INTO merchant.table_visits (id, merchant, table_id, party_size, seated_at, cleared_at) VALUES ($1,$2,$3,$4,$5,$6)', [
+        `vis_${randomUUID()}`,
+        input.merchant,
+        t.id,
+        t.party_size,
+        seatedAt,
+        now,
+      ]);
     await tx.query(
-      `UPDATE merchant.tables SET seated_at = NULL, tab_order_id = NULL, hold_party_id = NULL, hold_show_name = NULL, hold_seated_at = NULL, hold_expires_at = NULL WHERE id = $1`,
+      `UPDATE merchant.tables SET seated_at = NULL, tab_order_id = NULL, hold_party_id = NULL, hold_show_name = NULL, hold_seated_at = NULL, hold_expires_at = NULL, party_name = NULL, party_size = NULL WHERE id = $1`,
       [t.id],
     );
     await tx.query(`UPDATE merchant.table_requests SET state = 'answered', answered_by = $2, answered_at = $3 WHERE table_id = $1 AND state = 'open'`, [t.id, input.staffId, now]);
@@ -282,6 +399,7 @@ interface PartyRow {
   joined_at: Date | string;
   ready_at: Date | string | null;
   seated_at: Date | string | null;
+  notified_at: Date | string | null;
 }
 
 const toParty = (r: PartyRow, position: number): WaitlistParty => ({
@@ -296,18 +414,40 @@ const toParty = (r: PartyRow, position: number): WaitlistParty => ({
   tableId: r.table_id,
   joinedAt: iso(r.joined_at),
   readyAt: isoOrNull(r.ready_at),
+  notifiedAt: isoOrNull(r.notified_at),
 });
 
+/**
+ * The wait to tell a party with `ahead` parties in front of them (Settings › Counter › Wait
+ * estimates). "From this week": the median visit this week (seated to cleared), times the parties
+ * up to and including them, spread over the shop's tables, to the next five minutes. With fewer
+ * than three visits to go on, five minutes a party. "A set time": that, whatever the list.
+ */
+export async function waitEstimate(q: Queryable, merchant: string, ahead: number, now = new Date()): Promise<number> {
+  const s = await getSettings(q, merchant);
+  if (typeof s.waitEstimate === 'number') return s.waitEstimate;
+  const { rows } = await q.query<{ mins: string | number }>(
+    'SELECT EXTRACT(EPOCH FROM (cleared_at - seated_at)) / 60 AS mins FROM merchant.table_visits WHERE merchant = $1 AND cleared_at > $2 AND cleared_at <= $3',
+    [merchant, new Date(now.getTime() - WEEK_MS), now],
+  );
+  if (rows.length < VISITS_FOR_ESTIMATE) return (ahead + 1) * MINUTES_PER_PARTY;
+  const mins = rows.map((r) => Number(r.mins)).sort((a, b) => a - b);
+  const median = mins[Math.floor(mins.length / 2)]!;
+  const { rows: t } = await q.query<{ n: string | number }>('SELECT count(*) AS n FROM merchant.tables WHERE merchant = $1 AND removed_at IS NULL', [merchant]);
+  const tables = Math.max(1, Number(t[0]?.n ?? 1));
+  return Math.max(5, Math.ceil(((ahead + 1) * median) / tables / 5) * 5);
+}
+
 /** Who is waiting, in order, and seated today; and the quote for someone joining now. */
-export async function waitlist(q: Queryable, merchant: string): Promise<Waitlist> {
+export async function waitlist(q: Queryable, merchant: string, now = new Date()): Promise<Waitlist> {
   const { rows } = await q.query<PartyRow>(
-    `SELECT * FROM merchant.waitlist_parties WHERE merchant = $1 AND (state IN ('waiting','ready') OR (state = 'seated' AND seated_at > now() - interval '12 hours'))
+    `SELECT * FROM merchant.waitlist_parties WHERE merchant = $1 AND (state IN ('waiting','notified') OR (state = 'seated' AND seated_at > now() - interval '12 hours'))
       ORDER BY (state = 'seated') DESC, seated_at DESC NULLS LAST, rank`,
     [merchant],
   );
   let n = 0;
   const parties = rows.map((r) => toParty(r, r.state === 'seated' ? 1 : ++n));
-  return { parties, quotedMinutes: n * MINUTES_PER_PARTY };
+  return { parties, quotedMinutes: await waitEstimate(q, merchant, n, now) };
 }
 
 async function partyRow(q: Queryable, merchant: string, id: string, lock = false): Promise<PartyRow> {
@@ -325,37 +465,48 @@ async function partyView(q: Queryable, merchant: string, id: string): Promise<Wa
 
 async function insertParty(
   db: Db,
-  input: { merchant: string; name: string; size: number; phone: string | null; textConsent: boolean; memberWallet?: string | null; now: Date },
+  input: { merchant: string; name: string; size: number; phone: string | null; textConsent: boolean; quotedMinutes?: number; memberWallet?: string | null; now: Date; texter?: Texter },
 ): Promise<PartyRow> {
   let phone: string | null = null;
   if (input.phone) {
     phone = phoneE164(input.phone);
     if (!phone) throw new TerminalError('That isn’t a phone number', 'invalid');
   }
-  const { rows: ahead } = await db.query<{ n: string | number }>(`SELECT count(*) AS n FROM merchant.waitlist_parties WHERE merchant = $1 AND state = 'waiting'`, [input.merchant]);
-  const quoted = (Number(ahead[0]?.n ?? 0) + 1) * MINUTES_PER_PARTY;
+  const { rows: ahead } = await db.query<{ n: string | number }>(`SELECT count(*) AS n FROM merchant.waitlist_parties WHERE merchant = $1 AND state IN ('waiting','notified')`, [input.merchant]);
+  // "Tell them" (section 8c), or the shop's estimate for where they are in the line.
+  const quoted = input.quotedMinutes ?? (await waitEstimate(db, input.merchant, Number(ahead[0]?.n ?? 0), input.now));
   const { rows } = await db.query<PartyRow>(
     `INSERT INTO merchant.waitlist_parties (id, merchant, name, size, phone, text_consent, member_wallet, rank, quoted_minutes, joined_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
     [`pty_${randomUUID()}`, input.merchant, input.name.trim(), input.size, phone, Boolean(phone) && input.textConsent, input.memberWallet ?? null, input.now.getTime(), quoted, input.now],
   );
   touchShop(input.merchant);
-  return rows[0]!;
+  const party = rows[0]!;
+  // "They get one text now": with a number, their consent and the shop's texts on. Best effort.
+  if (input.texter && party.phone && party.text_consent && (await getSettings(db, input.merchant)).textWaitlist) {
+    await input.texter.send({ to: party.phone, message: waitlistJoinedText(await shopName(db, input.merchant), quoted) }).catch(() => false);
+  }
+  return party;
 }
 
-/** Add a party, at the door. */
-export async function addParty(db: Db, input: { merchant: string; staffId: string; party: unknown; now?: Date }): Promise<WaitlistParty> {
+async function shopName(q: Queryable, merchant: string): Promise<string> {
+  const { rows } = await q.query<{ name: string }>('SELECT name FROM merchant.profiles WHERE merchant = $1', [merchant]);
+  return rows[0]?.name ?? '';
+}
+
+/** Add a party, at the door (section 8c): told a wait, and texted if they left a number. */
+export async function addParty(db: Db, input: { merchant: string; staffId: string; party: unknown; texter?: Texter; now?: Date }): Promise<WaitlistParty> {
   const parsed = AddParty.safeParse(input.party);
   if (!parsed.success) throw new TerminalError(issue(parsed, 'A name and how many'), 'invalid');
-  const row = await insertParty(db, { merchant: input.merchant, ...parsed.data, now: input.now ?? new Date() });
+  const row = await insertParty(db, { merchant: input.merchant, ...parsed.data, now: input.now ?? new Date(), texter: input.texter });
   return partyView(db, input.merchant, row.id);
 }
 
 /** From a door Point's phone page: their place, and the quote. */
-export async function joinWaitlist(db: Db, input: { merchant: string; request: unknown; memberWallet?: string | null; now?: Date }): Promise<WaitlistJoined> {
+export async function joinWaitlist(db: Db, input: { merchant: string; request: unknown; memberWallet?: string | null; texter?: Texter; now?: Date }): Promise<WaitlistJoined> {
   const parsed = JoinWaitlist.safeParse(input.request);
   if (!parsed.success) throw new TerminalError(issue(parsed, 'A name and how many'), 'invalid');
-  const row = await insertParty(db, { merchant: input.merchant, ...parsed.data, memberWallet: input.memberWallet ?? null, now: input.now ?? new Date() });
+  const row = await insertParty(db, { merchant: input.merchant, ...parsed.data, memberWallet: input.memberWallet ?? null, now: input.now ?? new Date(), texter: input.texter });
   const list = await waitlist(db, input.merchant);
   const p = list.parties.find((x) => x.id === row.id)!;
   return { position: p.position, quotedMinutes: row.quoted_minutes };
@@ -370,11 +521,11 @@ export async function updateParty(db: Db, input: { merchant: string; staffId: st
     const party = await partyRow(tx, input.merchant, input.partyId, true);
     if (p.tableId) await tableRow(tx, input.merchant, p.tableId);
     if (p.tableId !== undefined) await tx.query('UPDATE merchant.waitlist_parties SET table_id = $2 WHERE id = $1', [party.id, p.tableId]);
-    if (p.state === 'left') await tx.query(`UPDATE merchant.waitlist_parties SET state = 'left', left_at = $2 WHERE id = $1`, [party.id, input.now ?? new Date()]);
+    if (p.state === 'removed') await tx.query(`UPDATE merchant.waitlist_parties SET state = 'removed', left_at = $2 WHERE id = $1`, [party.id, input.now ?? new Date()]);
     if (p.state === 'waiting') await tx.query(`UPDATE merchant.waitlist_parties SET state = 'waiting', left_at = NULL WHERE id = $1`, [party.id]);
     if (p.position !== undefined) {
       const { rows } = await tx.query<{ id: string; rank: number }>(
-        `SELECT id, rank FROM merchant.waitlist_parties WHERE merchant = $1 AND state IN ('waiting','ready') AND id <> $2 ORDER BY rank`,
+        `SELECT id, rank FROM merchant.waitlist_parties WHERE merchant = $1 AND state IN ('waiting','notified') AND id <> $2 ORDER BY rank`,
         [input.merchant, party.id],
       );
       const i = Math.min(p.position - 1, rows.length);
@@ -403,16 +554,25 @@ export async function seatParty(db: Db, texter: Texter, input: { merchant: strin
       if (party.table_id === r.tableId) return { again: true as const, party, table: null };
       throw new TerminalError('They’re already seated at another table', 'conflict');
     }
-    if (party.state === 'left') throw new TerminalError('They left the list', 'conflict');
+    if (party.state === 'removed' || party.state === 'no_show') throw new TerminalError('They’re off the list', 'conflict');
     const table = await tableRow(tx, input.merchant, r.tableId, true);
     if (table.tab_order_id || table.seated_at || (table.hold_party_id && table.hold_expires_at && new Date(table.hold_expires_at).getTime() > now.getTime())) {
       throw new TerminalError(`Table ${table.number} isn’t free`, 'conflict');
     }
     if (r.text && !party.phone) throw new TerminalError('They didn’t leave a number', 'invalid');
     if (r.text && !party.text_consent) throw new TerminalError('They didn’t agree to a text', 'invalid');
+    if (r.text && !(await getSettings(tx, input.merchant)).textWaitlist) throw new TerminalError(TEXTS_OFF, 'conflict');
     const expires = plus(now, HOLD_SECONDS);
     await tx.query(`UPDATE merchant.waitlist_parties SET state = 'seated', seated_at = $2, table_id = $3 WHERE id = $1`, [party.id, now, table.id]);
-    await tx.query('UPDATE merchant.tables SET hold_party_id = $2, hold_show_name = $3, hold_seated_at = $4, hold_expires_at = $5 WHERE id = $1', [table.id, party.id, r.showName, now, expires]);
+    await tx.query('UPDATE merchant.tables SET hold_party_id = $2, hold_show_name = $3, hold_seated_at = $4, hold_expires_at = $5, party_name = $6, party_size = $7 WHERE id = $1', [
+      table.id,
+      party.id,
+      r.showName,
+      now,
+      expires,
+      firstName(party.name),
+      party.size,
+    ]);
     // A table Point left on a paid bill or the test screen goes back so the hold shows.
     const tablePoint = await pointAtTable(tx, input.merchant, table.id);
     if (tablePoint) await setBase(tx, tablePoint, 'idle', null, now);
@@ -432,6 +592,33 @@ export async function seatParty(db: Db, texter: Texter, input: { merchant: strin
   }
   touchShop(input.merchant);
   return { party: await partyView(db, input.merchant, input.partyId), table: await getTable(db, input.merchant, r.tableId, now) };
+}
+
+/** Text: almost ready (section 8c). Only with their number, their consent and the shop's texts on. */
+export async function notifyParty(db: Db, texter: Texter, input: { merchant: string; staffId: string; partyId: string; now?: Date }): Promise<WaitlistParty> {
+  const now = input.now ?? new Date();
+  const party = await partyRow(db, input.merchant, input.partyId);
+  if (party.state !== 'waiting' && party.state !== 'notified') throw new TerminalError('They’re not waiting', 'conflict');
+  if (!party.phone || !party.text_consent) throw new TerminalError('They didn’t leave a number to text', 'invalid');
+  if (!(await getSettings(db, input.merchant)).textWaitlist) throw new TerminalError(TEXTS_OFF, 'conflict');
+  const ok = await texter.send({ to: party.phone, message: waitlistAlmostText(await shopName(db, input.merchant)) }).catch(() => false);
+  if (!ok) throw new TerminalError('The text didn’t go. Try again', 'conflict');
+  await db.query(`UPDATE merchant.waitlist_parties SET state = 'notified', notified_at = $2 WHERE id = $1`, [party.id, now]);
+  await audit(db, { merchant: input.merchant, actor: input.staffId, action: 'waitlist.notified', ref: { type: 'waitlist_party', id: party.id } });
+  touchShop(input.merchant);
+  return partyView(db, input.merchant, party.id);
+}
+
+/** No show (section 8c): off the list, kept for the day's figures. */
+export async function noShowParty(db: Db, input: { merchant: string; staffId: string; partyId: string; now?: Date }): Promise<WaitlistParty> {
+  const party = await partyRow(db, input.merchant, input.partyId);
+  if (party.state === 'seated') throw new TerminalError('They’re seated', 'conflict');
+  if (party.state === 'waiting' || party.state === 'notified') {
+    await db.query(`UPDATE merchant.waitlist_parties SET state = 'no_show', left_at = $2 WHERE id = $1`, [party.id, input.now ?? new Date()]);
+    await audit(db, { merchant: input.merchant, actor: input.staffId, action: 'waitlist.no_show', ref: { type: 'waitlist_party', id: party.id } });
+    touchShop(input.merchant);
+  }
+  return partyView(db, input.merchant, party.id);
 }
 
 /** Table ready in the Clear app too, for a party whose number is a member's. Best effort, like the text. */
@@ -490,7 +677,7 @@ export async function createAlert(db: Db, texter: Texter, input: { merchant: str
     if (a.kind === 'table_ready') {
       const party = await partyRow(tx, input.merchant, a.partyId, true);
       const point = a.pointId ?? (await pointAt(tx, input.merchant, 'door'));
-      await tx.query(`UPDATE merchant.waitlist_parties SET state = CASE WHEN state = 'waiting' THEN 'ready' ELSE state END, ready_at = $2 WHERE id = $1`, [party.id, now]);
+      await tx.query(`UPDATE merchant.waitlist_parties SET state = CASE WHEN state = 'waiting' THEN 'notified' ELSE state END, ready_at = $2 WHERE id = $1`, [party.id, now]);
       await tx.query(`INSERT INTO merchant.alerts (id, merchant, kind, point_id, party_id, label, created_at, expires_at) VALUES ($1,$2,'table_ready',$3,$4,$5,$6,$7)`, [
         id,
         input.merchant,
@@ -717,7 +904,31 @@ export async function sweepLapsed(db: Db, now = new Date()): Promise<number> {
     [now],
   );
   const { rows: reqs } = await db.query<{ merchant: string }>(`UPDATE merchant.table_requests SET state = 'answered' WHERE state = 'open' AND expires_at <= $1 RETURNING merchant`, [now]);
+  const cleared = await clearPaidTables(db, now);
   const shops = new Set([...holds, ...reqs].map((r) => r.merchant));
   for (const m of shops) touchShop(m);
-  return holds.length + reqs.length;
+  return holds.length + reqs.length + cleared;
+}
+
+/**
+ * Settings › Counter › Clear paid tables: a paid table clears itself this many minutes after it was
+ * paid ("Clears itself in 8 minutes"). Shops that clear by hand are left alone.
+ */
+async function clearPaidTables(db: Db, now: Date): Promise<number> {
+  const { rows } = await db.query<{ id: string; merchant: string; minutes: number; paid_at: Date | string }>(
+    `SELECT t.id, t.merchant, COALESCE(s.clear_paid_after_minutes, 10) AS minutes, max(tn.updated_at) AS paid_at
+       FROM merchant.tables t
+       JOIN commerce.orders o ON o.id = t.tab_order_id AND o.status IN ('paid','refunded','partly_refunded')
+       JOIN payments.tenders tn ON tn.order_id = o.id AND tn.status IN ('approved','authorised','captured','partly_refunded','refunded')
+       LEFT JOIN merchant.shop_settings s ON s.merchant = t.merchant
+      WHERE t.removed_at IS NULL AND (s.merchant IS NULL OR s.clear_paid_after_minutes IS NOT NULL)
+      GROUP BY t.id, t.merchant, s.clear_paid_after_minutes`,
+  );
+  let n = 0;
+  for (const r of rows) {
+    if (new Date(r.paid_at).getTime() + Number(r.minutes) * 60_000 > now.getTime()) continue;
+    await clearTable(db, { merchant: r.merchant, staffId: null, tableId: r.id, now }).catch(() => undefined);
+    n += 1;
+  }
+  return n;
 }

@@ -47,7 +47,7 @@ import type {
   ShowOnPoint,
   UpdateDevice,
 } from './devices';
-import type { AddParty, Alert, CreateAlert, Floor, PartySeated, PickupOrder, SeatParty, TableInput, TableRequest, TableView, UpdateParty, Waitlist, WaitlistParty } from './floor';
+import type { AddParty, Alert, CreateAlert, Floor, MoveTable, PartySeated, PickupOrder, SeatParty, SeatTable, TableInput, TableMoved, TableRequest, TableView, UpdateParty, Waitlist, WaitlistParty } from './floor';
 import type { PersonHours, SaveStaffHours, ShiftNow, StaffWeek } from './shifts';
 import type { AddBank, BankAccount, KybStatus, ReceiveDetails, SetupProgress, Shop, ShopHours, StartKyb, ShopPatch, ShopSettings, ShopSettingsPatch, Staff, TaxStatus } from './shop';
 
@@ -236,15 +236,24 @@ export interface MerchantApi {
   floor(): Promise<Floor>;
   /** Owners and managers: Edit tables, replacing the set (`PUT /tables`). A table with an open tab stays. */
   saveTables(input: { tables: (In<typeof TableInput> & { id?: string })[] }): Promise<Floor>;
-  /** Staff mark a table seated: a walk-in at a free table, or a held party who sat down (`POST /tables/:id/seat`). Clears any hold. */
-  seatTable(tableId: string): Promise<TableView>;
-  /** A paid table is free again (`POST /tables/:id/clear`). */
+  /**
+   * Seat a table (`POST /tables/:id/seat`): a held party who sat down (the hold ends), or a walk-in at a
+   * free table, with how many and an optional name.
+   */
+  seatTable(tableId: string, input?: In<typeof SeatTable>): Promise<TableView>;
+  /** Move a seated table to a free one: its tab, bill, party and name on the Point (`POST /tables/:id/move`). */
+  moveTable(tableId: string, input: In<typeof MoveTable>): Promise<TableMoved>;
+  /** A paid table is free again (`POST /tables/:id/clear`), by hand or after the shop's delay. */
   clearTable(tableId: string): Promise<TableView>;
   waitlist(): Promise<Waitlist>;
   addParty(input: In<typeof AddParty>): Promise<WaitlistParty>;
   updateParty(id: string, input: In<typeof UpdateParty>): Promise<WaitlistParty>;
   /** The Seat sheet: party seated, table and its Point held, Table ready at the door, a text if asked (`POST /waitlist/:id/seat`). */
   seatParty(partyId: string, input: In<typeof SeatParty>): Promise<PartySeated>;
+  /** Text: almost ready (`POST /waitlist/:id/notify`). Only with their number and consent. */
+  notifyParty(partyId: string): Promise<WaitlistParty>;
+  /** No show: off the list, counted as one (`POST /waitlist/:id/no-show`). */
+  noShowParty(partyId: string): Promise<WaitlistParty>;
   /** Calls and bills: open ones, and the last hour's (`GET /table-requests`). */
   tableRequests(): Promise<TableRequest[]>;
   /** On my way: the request closes, the ring goes off, the Point goes back (`POST /table-requests/:id/answer`). */

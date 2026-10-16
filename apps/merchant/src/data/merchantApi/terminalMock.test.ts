@@ -15,7 +15,8 @@ describe('Mi Casa Tacos at dinner', () => {
     const tile = (n: number) => f.tables.find((t) => t.number === n)!;
     expect(f.tables.map((t) => t.number)).toEqual([1, 2, 4, 6, 7, 9, 12, 14]);
     expect([1, 2, 4, 6, 7, 9, 12, 14].map((n) => tile(n).status)).toEqual(['free', 'ordering', 'bill_sent', 'held', 'seated', 'paid', 'bill_sent', 'free']);
-    expect([2, 4, 7, 9, 12].map((n) => tile(n).tabCents)).toEqual([3150, 6200, null, 2740, 4820]);
+    expect([2, 4, 7, 9, 12].map((n) => tile(n).tabCents)).toEqual([3574, 6200, null, 2740, 4820]);
+    expect([2, 4, 6, 7, 9, 12].map((n) => tile(n).party)).toEqual([{ name: "Diaz", size: 4 }, { name: "Okafor", size: 3 }, { name: "Ana", size: 2 }, { name: null, size: 2 }, { name: "Reyes", size: 2 }, { name: "Kim", size: 2 }]);
     expect(tile(6).hold).toMatchObject({ partyName: 'Ana', showName: true });
     expect(tile(12).request).toMatchObject({ kind: 'call', state: 'open' });
     expect(f.waitlist.quotedMinutes).toBe(15);
@@ -70,3 +71,37 @@ describe('Mi Casa Tacos at dinner', () => {
     expect(door.kind === 'point' && door.showing.kind).toBe('alert');
   });
 });
+
+describe('Tables v2 in the mock (the reference, 8b–8c)', () => {
+  test('a walk-in is seated with how many and a name; a held party sits down as themselves', async () => {
+    const api = dinner();
+    const one = (await api.floor()).tables.find((t) => t.number === 1)!;
+    expect(await api.seatTable(one.id, { size: 2, name: null })).toMatchObject({ status: 'seated', party: { name: null, size: 2 } });
+    const six = (await api.floor()).tables.find((t) => t.number === 6)!;
+    expect(await api.seatTable(six.id)).toMatchObject({ status: 'seated', party: { name: 'Ana', size: 2 }, hold: null });
+  });
+
+  test('Move takes the tab and the party to a free table, and frees the one they left', async () => {
+    const api = dinner();
+    const tables = (await api.floor()).tables;
+    const two = tables.find((t) => t.number === 2)!;
+    const fourteen = tables.find((t) => t.number === 14)!;
+    const moved = await api.moveTable(two.id, { toTableId: fourteen.id });
+    expect(moved.from.status).toBe('free');
+    expect(moved.to).toMatchObject({ status: 'ordering', orderId: two.orderId, tabCents: two.tabCents });
+    await expect(api.moveTable(two.id, { toTableId: tables.find((t) => t.number === 1)!.id })).rejects.toMatchObject({ status: 409 });
+    await expect(api.moveTable(fourteen.id, { toTableId: tables.find((t) => t.number === 4)!.id })).rejects.toMatchObject({ status: 409 });
+  });
+
+  test('the wait list: told a wait, texted almost ready, no show', async () => {
+    const api = dinner();
+    const priya = await api.addParty({ name: 'Priya', size: 2, phone: '(909) 555-0142', textConsent: true, quotedMinutes: 15 });
+    expect(priya.quotedMinutes).toBe(15);
+    expect(await api.notifyParty(priya.id)).toMatchObject({ state: 'notified' });
+    const marco = (await api.waitlist()).parties.find((p) => p.name === 'Marco')!;
+    await expect(api.notifyParty(marco.id)).rejects.toMatchObject({ status: 422 });
+    expect(await api.noShowParty(marco.id)).toMatchObject({ state: 'no_show' });
+    expect((await api.waitlist()).parties.map((p) => p.name)).not.toContain('Marco');
+  });
+});
+

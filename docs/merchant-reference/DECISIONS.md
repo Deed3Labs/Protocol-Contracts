@@ -1360,3 +1360,104 @@ amendment, approved before the API builds on them.
   only into an open drawer, so it used to fail after the amount was typed. It locks only when the
   drawer is known not to be open; offline, unread, cash stays open and the queue files it into the
   session open when it was taken. Preview: `/new?preview=1&screen=checkout-nodrawer`.
+
+## Terminal: Tables v2, the contracts (2026-10-15)
+
+The terminal reference was replaced again (8:24pm): section 8 is redrawn, 8b is now "A table, from
+seated to cleared", and 8c (the wait list) and 8d (Tables on a phone) are new; section 14 adds Move,
+Clear after a delay, wait-list statuses and estimates; a new decision says a table's sheet always
+leads with its next step and Tables adds no new way to take money. The seating addendum sent again
+with it is unchanged and already built. The contract amendment, approved:
+
+- **Who's at a table.** `TableView.party` (`{ name | null, size }`): "Diaz, 4", or "Walk-in, 2" when
+  the name is null. `TableView.clearsAt`: when a paid table clears itself under the shop's rule.
+  Both optional, so a response from before parses. The status stays `ordering`; the tile says
+  "Ordered". A status is worked out, never set.
+- **Seating and moving.** `seatTable(tableId, { size, name })` seats a walk-in at a free table (a held
+  party sits down with no input, as before). `moveTable(tableId, { toTableId })` takes the tab, the
+  bill if sent, the party and their name on the Point to a free table.
+- **Edit tables** can link a Point: `TableInput.pointId` (null unlinks, absent leaves it).
+- **The wait list.** States are `waiting | notified | seated | no_show | removed`; migration 0027 maps
+  `ready` → `notified` and `left` → `removed`. `AddParty.quotedMinutes` is "Tell them".
+  `notifyParty` is Text: almost ready (needs their number and consent); `noShowParty` is No show;
+  Remove is `updateParty({ state: 'removed' })`. A party off the list is still answered for.
+- **Settings › Counter.** `clearPaidAfterMinutes` (default 10; null is by hand), `waitEstimate`
+  (`'this_week'` or minutes; default this week), `textWaitlist` (default on).
+- **Not yet:** the API's routes and jobs (Move, walk-in seating, notify, no show, auto-clear, the
+  estimate from this week's table times) and the merchant app's screens are the next two steps. The
+  mock already does Move, walk-ins, notify and no show, so the screens can be built against it.
+
+## Terminal: Tables v2, the API (2026-10-15)
+
+- **Who's at a table** is written down when they sit: `tables.party_name` and `party_size`
+  (migration 0028). Seating from the wait list writes the party's first name and size with the hold;
+  a walk-in is seated with `{ size, name }` (a null name says "Walk-in"); a held party sitting down
+  keeps theirs. A free table has nobody.
+- **Move** (`POST /tables/:id/move`) takes the tab, the hold, the party and the order's table to a free
+  table; the bill on the old table's Point follows them to the new one's (anything else and the new
+  Point starts from idle); the old Point goes back to idle; open Calls on the old table close. Moving to
+  the same table, from an empty one or onto a busy one is refused.
+- **Clearing keeps the visit** (`merchant.table_visits`, seated to cleared): wait estimates read them.
+  A paid table clears itself `clearPaidAfterMinutes` after it was paid, in the existing 30-second sweep;
+  `TableView.clearsAt` says when. By hand, it never does.
+- **Wait estimates.** From this week: the median visit, times the parties up to and including them,
+  spread over the shop's tables, up to the next five minutes; until a week has three visits, five
+  minutes a party (as before). A set time is that, whatever the list. "Tell them" overrides it per
+  party. The list's own quote is for someone joining now.
+- **The three texts** go only with a number, consent and Text the wait list on:
+  - joined: "{shop}: you're on the wait list, about {n} min. We'll text when your table is almost
+    ready. Reply STOP to stop." (the door Point's join page sends it too);
+  - almost ready (`POST /waitlist/:id/notify`): "{shop}: your table is almost ready. Head back when
+    you can.";
+  - ready: the existing "Your table is ready: 14, on the patio", with Seat's Text them.
+
+  The reference draws the third; the first two are not drawn and are written to match it. With texts
+  off, Notify and Seat's Text them say "Texting the wait list is off in Settings › Counter"; a joined
+  text is simply not sent. A notify whose text doesn't go isn't marked.
+- **No show** (`POST /waitlist/:id/no-show`) and Remove keep the row for the day's figures; a seated
+  party can't be a no show.
+- **Edit tables links Points**: a Point linked to a table is placed there; the Point that was there
+  lets go; null unlinks.
+- Migration 0028 also holds Settings › Counter's three columns.
+
+## Terminal: Tables v2, the merchant app (2026-10-15)
+
+- **The floor** (8): Asking along the top, two requests at a time with its own pager; the floor by
+  area (All, then the shop's areas) beside the wait list; one tile per table, each saying the next
+  step. On a phone (8d) it is the same floor as a list grouped by state, with the wait list a tab
+  away. The first time (8, empty) offers Set up tables to managers and owners only; Counter staff see
+  the line without the button.
+- **One sheet per table** (8a): free (seat a walk-in, or a party from the list), seated / held /
+  ordered / calling (Add items, Send the bill, Move), bill sent (Take back, Take payment), paid
+  (Clear). The main button is the next step. Card and cash open Checkout for that bill; Clear and
+  Split are Checkout's own.
+- **Take back** clears the table's Point and un-sends the bill (`bill_sent_at` back to null), so the
+  table reads Ordered again. That is a small API change on top of step 2; it has a test.
+- **Add items** (8b) is New charge with the cart's place showing the table's tab: what's on it, what's
+  being added, and Add N to the tab. Its tax estimate rounds per line, as the server prices an order,
+  so a tab with nothing added reads the same total as its table. Leaving Take payment never voids a
+  table's tab; a counter sale's unpaid order is still dropped as before.
+- **Move** (8c) lists free tables that seat the party first, then the rest; the bill on the Point
+  follows (step 2).
+- **Wait list** (8c): Add a party (name, how many, a number to text, Tell them), and a party's sheet
+  (Seat at, show their name on the Point, Text them, Text: almost ready, No show, Remove). The next
+  party to fit is marked Next. Texting follows Settings › Counter's Text the wait list.
+- **Set up and Edit tables** (14) are for managers and owners. Set up makes N numbered tables, then
+  opens Edit, where areas, seats and Points are set.
+- **Settings › Counter** holds the three table rules (Clear paid tables, Wait estimates, Text the
+  wait list).
+
+Where the app differs from the drawing, or adds what it doesn't draw:
+
+- **Tax.** Mi Casa's mock stays at 8.32%, because Table 12's $48.20 appears in six frames. Add items
+  draws 8.375%. So Table 2 reads $35.74, not the drawn $35.76.
+- **Ready text** reads "14, Patio": the area is the shop's own name for it ("Patio"), not the drawn
+  "on the patio". A shop that names its area "on the patio" gets the drawn line.
+- **Edit tables' Points** come from the shop's own devices (section 1). Remove and Unlink are not
+  drawn; Link opens a picker that is not drawn either.
+- **Set up** starts at 10 tables, 2 seats each; the drawing doesn't give a starting number.
+- **"Clears soon"** tables are listed in a party's Seat at but can't be picked until they're free.
+- **Spacing:** Move's "Free tables that seat four first." has a 16px gap above the table buttons, as a
+  sentence rather than a field label (8px).
+- **Not done:** new items on a tab aren't sent to the kitchen printer; on a phone, Add items shows the
+  items and the tab as stacked cells rather than a drawn phone frame.

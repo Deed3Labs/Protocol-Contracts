@@ -643,13 +643,6 @@ input.c-st-time {
   background: repeating-linear-gradient(135deg, var(--ink-28) 0 1px, transparent 1px 5px);
 }
 
-/* Clear Terminal › Tables: a Call from a table's Pay case turns its tile amber until it's answered
-   (terminal reference, 13b). The reference names the colour, not a rule. */
-.c-tm-tile.c-call {
-  background: color-mix(in srgb, var(--underway) 16%, var(--paper));
-  box-shadow: inset 0 3px 0 var(--underway);
-}
-
 /* Clear Terminal's sheets: the reference sets each one's width inline (420, 440 or 460). */
 .c-sheet.c-tm-sheet {
   max-width: 440px;
@@ -660,11 +653,26 @@ input.c-st-time {
 .c-sheet.c-tm-sheet.c-w460 {
   max-width: 460px;
 }
+.c-sheet.c-tm-sheet.c-w440 {
+  max-width: 440px;
+}
+.c-sheet.c-tm-sheet.c-w520 {
+  max-width: 520px;
+}
 
-/* Clear Terminal › Tables on a phone: two tiles a row, so a tile's lines don't wrap a word at a time
-   (the reference draws the floor on a tablet only). */
-@media (max-width: 519.98px) {
-  .c-tm-tiles {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+/* Tables v2: with Asking along the top the slab has two bands. Asking takes its own height and the
+   floor and wait list the rest; the reference's frame is a fixed height, so it never showed. */
+.c-mc-tablet > .c-slab.c-tm-tslab:has(> .c-tm-askcell) {
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+}
+
+/* Edit tables' area is tapped to move the table to the next area (not drawn as a control). */
+.c-tm-area {
+  cursor: pointer;
+}
+
+/* Clear Terminal › Tables on a phone (section 8d) is its own list; the drawn phone frame's padding
+   is the page's here. */
+.c-tm-plist {
+  padding: 0;
 }

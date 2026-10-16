@@ -480,8 +480,12 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     order: (orderId) => toOrder(orderRec(orderId)),
     payCash: (orderId, o) => {
       const total = toOrder(orderRec(orderId)).totalCents;
+      if (o.method === 'clear') {
+        addTender({ orderId, method: 'clear', amountCents: total, tipCents: o.tipCents ?? 0, status: 'approved', createdAt: o.at }, id('seed'), o.by);
+        return;
+      }
       const handed = o.handedOverCents ?? total;
-      addTender({ orderId, method: 'cash', amountCents: total, tipCents: 0, status: 'approved', handedOverCents: handed, changeCents: handed - total, createdAt: o.at }, id('seed'), o.by);
+      addTender({ orderId, method: 'cash', amountCents: total, tipCents: o.tipCents ?? 0, status: 'approved', handedOverCents: handed, changeCents: handed - total, createdAt: o.at }, id('seed'), o.by);
     },
     settings: () => settings,
     openDrawerSession: () => [...sessions.values()].find((x) => x.status !== 'closed') ?? null,
@@ -641,7 +645,11 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       staffHours.set(staffId, h);
       return personHours(staffId);
     },
-    taxStatus: async () => ({ source: 'address_rate', stripe: switches.stripe === 'connected' ? 'setup_needed' : 'not_connected', rates: { goods: '7.75', labour: null, food: '7.75' }, pricesIncludeTax: settings.tax.pricesIncludeTax }),
+    // The rate the mock prices orders at: Mi Casa's 8.32% (seedMiCasa), or 7.75%.
+    taxStatus: async () => {
+      const pct = (ppm: number | undefined) => (ppm === undefined ? '7.75' : String(ppm / 10_000));
+      return { source: 'address_rate', stripe: switches.stripe === 'connected' ? 'setup_needed' : 'not_connected', rates: { goods: pct(seed.RATES_PPM?.goods), labour: null, food: pct(seed.RATES_PPM?.food) }, pricesIncludeTax: settings.tax.pricesIncludeTax };
+    },
 
     cardAvailability: async (): Promise<CardAvailability> => (switches.stripe === 'connected' ? { available: true } : { available: false, reason: 'not_connected' }),
     connectCards: async () => {
