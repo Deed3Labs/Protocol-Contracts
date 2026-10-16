@@ -17,14 +17,14 @@ import { getSettings } from '../shop/shopService.js';
 export class PayError extends Error {
   constructor(
     message: string,
-    readonly code: 'invalid' | 'not_found' | 'expired' | 'inactive' | 'conflict' | 'unavailable',
+    readonly code: 'invalid' | 'not_found' | 'expired' | 'inactive' | 'conflict' | 'unavailable' | 'forbidden' | 'too_many',
   ) {
     super(message);
     this.name = 'PayError';
   }
 }
 
-export const PAY_STATUS: Record<PayError['code'], number> = { invalid: 422, not_found: 404, expired: 410, inactive: 410, conflict: 409, unavailable: 409 };
+export const PAY_STATUS: Record<PayError['code'], number> = { invalid: 422, not_found: 404, expired: 410, inactive: 410, conflict: 409, unavailable: 409, forbidden: 403, too_many: 429 };
 
 /** Where the link pages and the modal live. */
 export const payBase = () => (process.env.PAY_BASE_URL || 'https://pay.useclear.org').replace(/\/+$/, '');

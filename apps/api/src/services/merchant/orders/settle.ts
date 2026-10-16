@@ -76,6 +76,16 @@ export async function settleOrder(tx: Queryable, input: { merchant: string; orde
   }));
   const summary = orderStatus({ totalCents: n(order.total_cents), voided: Boolean(order.voided_at) }, states);
 
+  // A test payment (Pay with Clear's test mode) never reaches the books, stock, tax, rewards or payouts
+  // (rule 11): it moves through its states, and its webhooks go to the shop's test endpoints.
+  if ((order as { livemode?: boolean }).livemode === false) {
+    // Points are the one thing a test payment earns, and only the test member can be on one.
+    if (summary.status === 'paid' && order.status !== 'paid') await rewardsOn(tx, input.merchant, { kind: 'paid', orderId: order.id, attempt: 1 });
+    await tx.query('UPDATE commerce.orders SET status = $2, tip_cents = $3, updated_at = now() WHERE id = $1', [order.id, summary.status, summary.tipCents]);
+    await paymentEvents(tx, order.id);
+    return summary.status;
+  }
+
   const live = await liveSaleEntries(tx, input.merchant, order.id, tenders.map((t) => t.id));
   const shouldHaveSale = KEEPS_SALE.includes(summary.status);
 

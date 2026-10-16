@@ -4,7 +4,7 @@ import { requireStepUp } from '../middleware/stepUp.js';
 import { chargeContents } from '../services/chargeContents.js';
 import { chargeStore, type ChargeRow } from '../services/chargeStore.js';
 import { confirmPayNow, paidNowBpsFor, releasePayNowFor, startPayNow, type PayNowResult } from '../services/payNowService.js';
-import { onlineOverTime } from '../services/merchant/pay/overTime.js';
+import { onlineForCharge, onlineOverTime } from '../services/merchant/pay/overTime.js';
 import {
   approveCharge,
   declineCharge,
@@ -34,7 +34,12 @@ const chargesRouter = Router();
  * while they are paying now, when their own wallet is sending to it (`pay`, from the pay-now routes).
  */
 async function memberView(charge: ChargeRow) {
-  const [contents, bps, online] = await Promise.all([chargeContents(charge), paidNowBpsFor(charge).catch(() => null), onlineOverTime(charge.code).catch(() => null)]);
+  const [contents, bps, overTime, online] = await Promise.all([
+    chargeContents(charge),
+    paidNowBpsFor(charge).catch(() => null),
+    onlineOverTime(charge.code).catch(() => null),
+    onlineForCharge(charge.code).catch(() => null),
+  ]);
   return {
     code: charge.code,
     merchantName: charge.merchantName,
@@ -56,7 +61,9 @@ async function memberView(charge: ChargeRow) {
      * Paid online, through a link or a website: false when only paying now is offered (the link's
      * choice, or over time online still off). Null at the counter, whose rules are the app's own.
      */
-    overTime: online,
+    overTime,
+    /** A website's or a link's charge: the sheet's "· ONLINE" line and "Then you're back on …". */
+    online,
   };
 }
 

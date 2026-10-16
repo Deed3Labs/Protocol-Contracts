@@ -13,6 +13,8 @@ import { PaymentError } from '../services/merchant/orders/payments.js';
 import { addSite, createKeys, listKeys, listSites, removeSite, rollSecretKey } from '../services/merchant/pay/keys.js';
 import { cardsOn, createPaymentLink, deactivatePaymentLink, listPaymentLinks, PAY_STATUS, PayError, publicLink } from '../services/merchant/pay/links.js';
 import { addEndpointFromApp, deleteEndpoint, merchantEndpoints, recentDeliveries } from '../services/merchant/pay/webhooks.js';
+import { approvalPage, approvalView, approveInFrame, frameOrigin, frameStatus, memberQuote, sendContact, TOKEN_HEADER, verifyCode, type FrameDeps } from '../services/merchant/pay/frame.js';
+import { defaultFrameDeps } from '../services/merchant/pay/payDeps.js';
 import { payInSession, paySessionView, startLinkSession, type PaySessionDeps } from '../services/merchant/pay/sessions.js';
 import { staffStore } from '../services/merchant/staffStore.js';
 import { defaultTaxApi } from '../services/merchant/tax/taxApi.js';
@@ -40,6 +42,8 @@ const pinCheck: OrderDeps['pinCheck'] = async (merchant, pin) => {
 export interface PayRouteDeps {
   db: () => Promise<Db | null>;
   session: (db: Db) => PaySessionDeps;
+  /** The modal's sign-in and approvals; the session's deps with Clear's members, texts and chain. */
+  frame?: (db: Db) => FrameDeps;
   limits: { read: RequestHandler; act: RequestHandler };
 }
 
@@ -50,6 +54,7 @@ export const defaultPayRouteDeps = (): PayRouteDeps => ({
     clear: clearChargesFor(db),
     card: (merchant) => connectorForShop(db, merchant),
   }),
+  frame: (db) => defaultFrameDeps(db, { taxApi: defaultTaxApi(), pinCheck }),
   limits: { read: limitByAddress('pay-pages', 60_000, 120), act: limitByAddress('pay-pages-act', 60_000, 10) },
 });
 
@@ -127,12 +132,36 @@ export function linkPageRouter(deps: PayRouteDeps = defaultPayRouteDeps()): Rout
   return router;
 }
 
-/** `/api/checkout`: a payment-scoped session, from a link (and, in Phase 5, a website). */
+/**
+ * `/api/checkout`: a payment-scoped session, from a link or a website (the modal).
+ *
+ *   GET  /approval/:id          the approval page's read (the Clear app, app.useclear.org/approve/:id)
+ *   GET  /:session              what the page or the frame shows
+ *   GET  /:session/frame        which website may frame it (apps/pay's frame-ancestors)
+ *   POST /:session/pay          {method, idempotencyKey}: a Clear charge, or a card checkout
+ *   POST /:session/contact      {contact}: a code and a link, the same for everyone
+ *   POST /:session/code         {code}: a token for this payment (X-Pay-Session)
+ *   GET  /:session/status       where it stands, polled while a screen waits
+ *   GET  /:session/member       Hi Sofia: the choices and their figures (X-Pay-Session)
+ *   POST /:session/approve      over time, in the frame (X-Pay-Session)
+ *   POST /:session/approval     the approval page's address, for window.open
+ */
 export function checkoutRouter(deps: PayRouteDeps = defaultPayRouteDeps()): Router {
   const router = forwardAsyncErrors(Router());
   const run = runWith(deps, { noStore: true });
+  const frame = (db: Db) => (deps.frame ?? ((d: Db) => defaultFrameDeps(d, deps.session(d).orders)))(db);
+  const token = (req: Request) => req.header(TOKEN_HEADER) ?? undefined;
+  const session = (req: Request) => String(req.params.session);
   router.use(deps.limits.read);
-  router.get('/:session', run((db, req) => paySessionView(db, deps.session(db), { session: String(req.params.session) })));
-  router.post('/:session/pay', deps.limits.act, run((db, req) => payInSession(db, deps.session(db), { session: String(req.params.session), request: req.body })));
+  router.get('/approval/:id', run((db, req) => approvalView(db, frame(db), { id: String(req.params.id) })));
+  router.get('/:session', run((db, req) => paySessionView(db, deps.session(db), { session: session(req) })));
+  router.get('/:session/frame', run((db, req) => frameOrigin(db, { session: session(req) })));
+  router.post('/:session/pay', deps.limits.act, run((db, req) => payInSession(db, deps.session(db), { session: session(req), request: req.body })));
+  router.post('/:session/contact', deps.limits.act, run((db, req) => sendContact(db, frame(db), { session: session(req), request: req.body })));
+  router.post('/:session/code', deps.limits.act, run((db, req) => verifyCode(db, frame(db), { session: session(req), request: req.body })));
+  router.get('/:session/status', run((db, req) => frameStatus(db, frame(db), { session: session(req) })));
+  router.get('/:session/member', run((db, req) => memberQuote(db, frame(db), { session: session(req), token: token(req) })));
+  router.post('/:session/approve', deps.limits.act, run((db, req) => approveInFrame(db, frame(db), { session: session(req), token: token(req), request: req.body })));
+  router.post('/:session/approval', deps.limits.act, run((db, req) => approvalPage(db, frame(db), { session: session(req) })));
   return router;
 }

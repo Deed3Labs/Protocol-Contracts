@@ -174,6 +174,8 @@ const corsOptions = {
     'X-Clear-Device',
     // A fresh server-verified Face ID (routes/stepUp), on the requests that need one.
     'X-Step-Up',
+    // Pay with Clear's modal: its payment-scoped sign-in (routes/payLinks.ts).
+    'X-Pay-Session',
   ],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   maxAge: 86400, // 24 hours

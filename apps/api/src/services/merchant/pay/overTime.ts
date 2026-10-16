@@ -38,3 +38,28 @@ export async function onlineOverTime(chargeCode: string): Promise<boolean | null
   const db = await merchantDb();
   return db ? onlineOverTimeForCharge(db, chargeCode) : null;
 }
+
+/**
+ * For the Clear app's approve sheet: whether the charge is a website's or a link's ("MI CASA TACOS IS
+ * ASKING · ONLINE"), and the website's host for "Then you're back on micasatacos.com". Null at the
+ * counter, or with no merchant database.
+ */
+export async function onlineForCharge(chargeCode: string): Promise<{ channel: 'online' | 'link'; shopHost: string | null } | null> {
+  const db = await merchantDb();
+  if (!db) return null;
+  const { rows } = await db.query<{ source: string; source_detail: string | null }>(
+    `SELECT o.source, o.source_detail FROM payments.tenders t JOIN commerce.orders o ON o.id = t.order_id WHERE t.clear_charge_code = $1 LIMIT 1`,
+    [chargeCode],
+  );
+  const r = rows[0];
+  if (!r || (r.source !== 'online' && r.source !== 'link')) return null;
+  let host: string | null = null;
+  if (r.source === 'online' && r.source_detail) {
+    try {
+      host = new URL(r.source_detail).host;
+    } catch {
+      host = null;
+    }
+  }
+  return { channel: r.source, shopHost: host };
+}

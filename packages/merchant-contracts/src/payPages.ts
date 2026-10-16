@@ -52,6 +52,11 @@ export const PaySession = z.object({
   link: z.object({ note: z.string().nullable(), expiresAt: Timestamp.nullable() }).nullable(),
   state: z.enum(PAY_STATES),
   expiresAt: Timestamp,
+  /**
+   * The payment, once there is one: what the frame posts to the page when it's paid (`success`, with
+   * its status). Never more than its id and the shop's own reference.
+   */
+  payment: z.object({ id: z.string(), reference: z.string().nullable() }).nullable().optional(),
 });
 export type PaySession = z.infer<typeof PaySession>;
 
@@ -134,6 +139,11 @@ export const MemberQuote = z.object({
   ),
   /** "Chase •••• 4471"; null when no bank is linked. */
   clearsFrom: z.string().nullable(),
+  /**
+   * Where Over time is approved: in the frame, or in the Clear app's window, for a member with Face ID
+   * (the frame can't ask for it) (pay DECISIONS, Phase 5). Pay now is always the window.
+   */
+  approveIn: z.enum(['frame', 'window']).optional(),
   /** "Earns 256 points at Mi Casa · 1.5× for paying with Clear"; null when the shop has no app or they haven't joined. */
   points: z
     .object({ earns: z.number().int().min(0), shopName: z.string(), multiplierLabel: z.string().nullable(), before: z.number().int(), after: z.number().int() })

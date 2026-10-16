@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 /**
  * Pay with Clear's secrets at rest (pay prompt, Phase 3's tables).
@@ -52,4 +52,40 @@ export function decryptSecret(stored: string): string {
   const decipher = createDecipheriv('aes-256-gcm', key(), Buffer.from(iv, 'base64'));
   decipher.setAuthTag(Buffer.from(tag, 'base64'));
   return Buffer.concat([decipher.update(Buffer.from(ct, 'base64')), decipher.final()]).toString('utf8');
+}
+
+// ---- Payment-scoped tokens ---------------------------------------------------------------------------
+
+/**
+ * The frame's sign-in (`X-Pay-Session`): good for one session, for 30 minutes, kept in the frame's
+ * memory. `pt.<claims>.<HMAC>`, keyed from `PAY_SECRETS_KEY`. Never a cookie.
+ */
+export interface PayClaims {
+  /** The session. */
+  s: string;
+  /** sha256 of the confirmed phone or email. */
+  c: string;
+  /** The member's wallet, when the contact is a member's. */
+  w: string | null;
+  /** Their first name, for "Hi Sofia". */
+  n: string | null;
+  exp: number;
+}
+
+const macKey = () => createHash('sha256').update('pay-token:').update(key()).digest();
+const b64u = (b: Buffer | string) => Buffer.from(b).toString('base64url');
+
+export function mintPayToken(claims: PayClaims): string {
+  const body = b64u(JSON.stringify(claims));
+  return `pt.${body}.${createHmac('sha256', macKey()).update(body).digest('base64url')}`;
+}
+
+export function readPayToken(token: string | undefined, session: string, now = Date.now()): PayClaims | null {
+  const m = /^pt\.([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(token ?? '');
+  if (!m) return null;
+  const want = createHmac('sha256', macKey()).update(m[1]!).digest();
+  const got = Buffer.from(m[2]!, 'base64url');
+  if (got.length !== want.length || !timingSafeEqual(got, want)) return null;
+  const claims = JSON.parse(Buffer.from(m[1]!, 'base64url').toString('utf8')) as PayClaims;
+  return claims.s === session && claims.exp > now ? claims : null;
 }

@@ -217,6 +217,8 @@ CREATE TABLE payments.pay_sessions (
   -- What the shop set: accent, logo, locale, methods, email.
   options         JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(options) = 'object'),
   -- Step 1 of joining, encrypted, for 30 minutes. Never an SSN.
+  -- The approval page's address (`app.useclear.org/approve/<id>`): random, once per session.
+  approval_id     TEXT UNIQUE,
   join_basics_enc TEXT,
   join_handoff    TEXT UNIQUE,
   join_state      TEXT CHECK (join_state IN ('waiting','done','failed','expired')),
@@ -227,6 +229,17 @@ CREATE TABLE payments.pay_sessions (
 );
 CREATE INDEX pay_sessions_order ON payments.pay_sessions (order_id);
 
+-- Test mode's Clear charges (rule 11): the test member's approvals, which never touch the chain.
+CREATE TABLE payments.test_charges (
+  code          TEXT PRIMARY KEY,
+  merchant      TEXT NOT NULL REFERENCES merchant.profiles (merchant),
+  amount_cents  BIGINT NOT NULL CHECK (amount_cents > 0),
+  status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','declined','cancelled')),
+  member_wallet TEXT,
+  installments  INTEGER CHECK (installments BETWEEN 1 AND 12),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- A one-time code, kept hashed: six digits, five tries, ten minutes.
 CREATE TABLE payments.pay_codes (
   id            TEXT PRIMARY KEY,
@@ -235,6 +248,9 @@ CREATE TABLE payments.pay_codes (
   -- sha256 of the E.164 number or the lower-cased email, for rate limits and finding the member.
   contact_hash  TEXT NOT NULL,
   code_hash     TEXT NOT NULL,
+  -- The phone or email itself, encrypted, for finding the member once the code is typed; it goes with
+  -- the code (ten minutes), and nothing else keeps it.
+  contact_enc   TEXT NOT NULL,
   attempts      INTEGER NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 5),
   sent_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   expires_at    TIMESTAMPTZ NOT NULL,
