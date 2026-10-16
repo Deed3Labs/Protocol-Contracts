@@ -106,7 +106,7 @@ describe('placeholders only while nothing is known', () => {
 
   test('the pool rate is a figure too, so it gets a placeholder', () => {
     expect(read('components/clear/YieldPoolCard.tsx')).toContain('<p className="c-apy">');
-    expect(read('styles/clear-components.css')).toContain('[data-pending] .c-fig,[data-pending] .c-apy{width:fit-content;opacity:.55}');
+    expect(read('../../../packages/member-kit/src/styles/clear-components.css')).toContain('[data-pending] .c-fig,[data-pending] .c-apy{width:fit-content;opacity:.55}');
   });
 
   test('each page marks itself pending until it has a figure or its first read has answered', () => {
@@ -122,7 +122,7 @@ describe('placeholders only while nothing is known', () => {
   });
 
   test('figures keep their size as placeholders, and hold still for reduced motion', () => {
-    const css = read('styles/clear-components.css');
+    const css = read('../../../packages/member-kit/src/styles/clear-components.css');
     expect(css).toContain('[data-pending] .c-fig,[data-pending] .c-apy,.c-skel{');
     expect(css).toContain('@media (prefers-reduced-motion:reduce){[data-pending] .c-fig,[data-pending] .c-apy,.c-skel{animation:none}[data-pending] .c-det,[data-pending] .c-sub{animation:none}}');
   });

@@ -68,7 +68,7 @@ describe('the service worker stays installed, and forgets what it should', () =>
 });
 
 describe('the opening screen', () => {
-  const css = readFileSync(join(import.meta.dirname, 'styles', 'clear-components.css'), 'utf8');
+  const css = readFileSync(join(import.meta.dirname, '..', '..', '..', 'packages', 'member-kit', 'src', 'styles', 'clear-components.css'), 'utf8');
   test('the slow-connection note sits above "Opening", not on top of it', () => {
     expect(css).toContain('.c-splash .c-waiting{position:absolute;bottom:var(--s5);');
     expect(css).toContain('.c-splash .c-slow{position:absolute;bottom:calc(var(--s5) + var(--s4));');
@@ -77,7 +77,7 @@ describe('the opening screen', () => {
 
 describe('the reserve cover bar', () => {
   const panel = readFileSync(join(import.meta.dirname, 'components', 'clear', 'ReservePanel.tsx'), 'utf8');
-  const css = readFileSync(join(import.meta.dirname, 'styles', 'clear-components.css'), 'utf8');
+  const css = readFileSync(join(import.meta.dirname, '..', '..', '..', 'packages', 'member-kit', 'src', 'styles', 'clear-components.css'), 'utf8');
   test('its legend sits above the bar, as the credits line does on Home', () => {
     expect(panel.indexOf('Policy floor')).toBeLessThan(panel.indexOf('<Bar'));
     expect(panel).toContain('<Line className="mb-s1">');
