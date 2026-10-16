@@ -141,7 +141,9 @@ there is no native app.
 
 Written 2026-10-16. `packages/public-api-contracts` (new, `@clear/public-api-contracts`), and in
 `packages/merchant-contracts`: `pay.ts`, `payPages.ts`, with additions to `orders.ts` and `drawer.ts`.
-Waiting for approval at Hard Stop 2.
+
+Approved at Hard Stop 2, 2026-10-16: the contracts as written, the five additions, and an amount link's
+amount being what the customer pays, with no tax added.
 
 ### The public API (`@clear/public-api-contracts`)
 

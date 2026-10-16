@@ -6,6 +6,8 @@ import {
   LineInput,
   type Order,
   type OrderDiscount,
+  type OrderSource,
+  sourceHasStaff,
   type OrderLine,
   orderStatus,
   type Role,
@@ -217,7 +219,7 @@ interface OrderRow {
   merchant: string;
   number: number | null;
   name: string | null;
-  raised_by: string;
+  raised_by: string | null;
   customer: string | null;
   status: Order['status'];
   subtotal_cents: string | number;
@@ -240,6 +242,9 @@ interface OrderRow {
   member_added_by?: string | null;
   member_added_via?: 'code' | 'phone' | 'claim' | 'app' | null;
   member_added_at?: Date | string | null;
+  source?: OrderSource;
+  source_detail?: string | null;
+  livemode?: boolean;
 }
 
 const day = (d: Date | string) => (typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10));
@@ -316,6 +321,9 @@ async function toOrder(q: Queryable, r: OrderRow): Promise<Order> {
     member: r.member_person
       ? { memberId: r.member_person, addedBy: r.member_added_by ?? null, addedVia: r.member_added_via ?? 'app', at: new Date(r.member_added_at ?? r.created_at).toISOString() }
       : null,
+    source: r.source ?? 'counter',
+    sourceDetail: r.source_detail ?? null,
+    livemode: r.livemode ?? true,
   };
 }
 
@@ -380,16 +388,35 @@ async function checkStock(tx: Queryable, lines: PreparedLine[]): Promise<void> {
 }
 
 /**
+ * What these lines would come to, priced and taxed as an order would be, without raising one: a
+ * payment link's page shows it before anyone pays.
+ */
+export async function quoteLines(db: Db, deps: OrderDeps, merchant: string, lines: unknown): Promise<{ lines: Priced['lines']; subtotal: number; tax: number; total: number }> {
+  const priced = await price(db, deps, merchant, await prepareLines(db, merchant, lines), null);
+  return { lines: priced.lines, subtotal: priced.subtotal, tax: priced.tax, total: priced.total };
+}
+
+/** Where an order nobody at the shop raised came from: a website or a link, and whether it's a test. */
+export interface OnlineSource {
+  source: Extract<OrderSource, 'online' | 'link'>;
+  /** The website's origin, or the link's slug. */
+  detail: string;
+  livemode: boolean;
+}
+
+/**
  * Raising an order: prices, tax and totals worked out here, and its stock held. A table's order
  * becomes its tab. With a key, a retry is the same order. An order rung up offline keeps the
  * tablet's subtotal, tax and total (the customer paid that and had their change): its lines are
  * priced here, its tax is the tablet's spread across them, and stock is taken without the check.
+ * A website's or a link's order has no staff member, and says where it came from (`online`).
  */
 export async function createOrder(
   db: Db,
   deps: OrderDeps,
-  input: { merchant: string; staffId: string; lines: unknown; customer?: unknown; name?: unknown; request?: Record<string, unknown>; now?: Date },
+  input: { merchant: string; staffId: string | null; lines: unknown; customer?: unknown; name?: unknown; request?: Record<string, unknown>; now?: Date; online?: OnlineSource },
 ): Promise<Order> {
+  if (input.staffId === null && (!input.online || sourceHasStaff(input.online.source))) throw new OrderError('Only a website’s or a link’s order has nobody behind it', 'invalid');
   // The lines go through prepareLines, which says what's wrong with one; the rest through the contract.
   const parsed = CreateOrder.omit({ lines: true }).safeParse({ customer: input.customer ?? null, name: input.name ?? null, ...(input.request ?? {}) });
   if (!parsed.success) throw new OrderError(parsed.error.issues[0]?.message ?? 'That customer or order name isn’t valid', 'invalid');
@@ -430,8 +457,8 @@ export async function createOrder(
     const { rows: n } = await tx.query<{ next: number }>('SELECT COALESCE(max(number), 0) + 1 AS next FROM commerce.orders WHERE merchant = $1 AND business_date = $2', [input.merchant, date]);
     await tx.query(
       `INSERT INTO commerce.orders (id, merchant, number, name, raised_by, customer, subtotal_cents, discount_cents, tax_cents, total_cents, business_date, tax_included, tax_source, tax_calculation_id,
-          table_id, service_type, delivery_partner, idempotency_key, offline, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+          table_id, service_type, delivery_partner, idempotency_key, offline, created_at, source, source_detail, livemode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
       [
         id,
         input.merchant,
@@ -453,6 +480,9 @@ export async function createOrder(
         r.idempotencyKey ?? null,
         Boolean(off),
         at,
+        input.online?.source ?? 'counter',
+        input.online?.detail ?? null,
+        input.online?.livemode ?? true,
       ],
     );
     if (r.tableId) {
@@ -537,7 +567,7 @@ async function currentDiscount(tx: Queryable, orderId: string): Promise<Discount
 }
 
 /** Writes the order's new figures and lines, re-holding stock. Inside the caller's lock. */
-async function rewrite(tx: Queryable, merchant: string, order: OrderRow, priced: Priced, spec: DiscountSpec | null, actor: string): Promise<void> {
+async function rewrite(tx: Queryable, merchant: string, order: OrderRow, priced: Priced, spec: DiscountSpec | null, actor: string | null): Promise<void> {
   await tx.query('UPDATE commerce.order_lines SET removed_at = now() WHERE order_id = $1 AND removed_at IS NULL', [order.id]);
   // Release the old lines' holds before checking the new ones, so an order can keep its own stock.
   await settleOrder(tx, { merchant, orderId: order.id, actor });

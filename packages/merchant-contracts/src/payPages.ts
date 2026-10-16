@@ -36,7 +36,7 @@ export type PayOrder = z.infer<typeof PayOrder>;
 
 export const PAY_STATES = ['open', 'paid', 'expired', 'canceled'] as const;
 
-/** `GET /api/pay/:session`: what the modal opens on. */
+/** `GET /api/checkout/:session`: what the modal opens on. */
 export const PaySession = z.object({
   id: Id,
   livemode: z.boolean(),
@@ -74,7 +74,7 @@ export const LinkSessionStarted = z.object({ session: Id });
 // ---- Signing in ----------------------------------------------------------------------------------
 
 /**
- * `POST /api/pay/:session/contact`. Whatever was typed, everyone gets the same answer and the same
+ * `POST /api/checkout/:session/contact`. Whatever was typed, everyone gets the same answer and the same
  * screen ("Check your phone" or "Check your email"): a code, and a link to the approval page. Whether
  * the number has a Clear account is never in the answer.
  */
@@ -88,7 +88,7 @@ export const ContactSent = z.object({
 export type ContactSent = z.infer<typeof ContactSent>;
 
 /**
- * `POST /api/pay/:session/code`. Six digits; five tries; ten minutes. The token is for this payment
+ * `POST /api/checkout/:session/code`. Six digits; five tries; ten minutes. The token is for this payment
  * only. A member gets their first name; a contact on no account is "new" ("(909) 555-0188 is confirmed").
  */
 export const PayCode = z.object({ code: z.string().regex(/^\d{6}$/, 'The code is six digits') });
@@ -102,7 +102,7 @@ export const CodeVerified = z.object({
 export type CodeVerified = z.infer<typeof CodeVerified>;
 
 /**
- * `GET /api/pay/:session/status`, polled every 3 seconds while a screen waits: for the texted link,
+ * `GET /api/checkout/:session/status`, polled every 3 seconds while a screen waits: for the texted link,
  * the approval window, the join window or a card.
  */
 export const PayStatus = z.object({
@@ -114,7 +114,7 @@ export type PayStatus = z.infer<typeof PayStatus>;
 // ---- The member's screen -------------------------------------------------------------------------
 
 /**
- * `GET /api/pay/:session/member` (token): "Hi Sofia", the choices and their figures. Splits come from
+ * `GET /api/checkout/:session/member` (token): "Hi Sofia", the choices and their figures. Splits come from
  * the member's terms through `@clear/domain` (`splitsOffered`, `splitQuote`); the shop never sees this.
  */
 export const MemberQuote = z.object({
@@ -142,13 +142,13 @@ export const MemberQuote = z.object({
 export type MemberQuote = z.infer<typeof MemberQuote>;
 
 /**
- * `POST /api/pay/:session/approve` (token, and `X-Step-Up` when the member has a passkey): over time,
+ * `POST /api/checkout/:session/approve` (token, and `X-Step-Up` when the member has a passkey): over time,
  * in the frame. The server opens the plan, as it does when the Clear app approves.
  */
 export const ApproveOverTime = z.object({ installments: z.number().int().min(2), idempotencyKey: z.string().min(8).max(200) });
 
 /**
- * `POST /api/pay/:session/approval`: the approval page's address, which the frame opens with
+ * `POST /api/checkout/:session/approval`: the approval page's address, which the frame opens with
  * `window.open`. On a phone it's "Approve with Clear"; from the member's screen, it's Pay now, which
  * the member's own wallet signs there.
  */
@@ -169,7 +169,7 @@ export type PaidView = z.infer<typeof PaidView>;
 // ---- Joining (§3) ----------------------------------------------------------------------------------
 
 /**
- * `POST /api/pay/:session/join` (token, a new person): step 1's basics, kept on the session, encrypted,
+ * `POST /api/checkout/:session/join` (token, a new person): step 1's basics, kept on the session, encrypted,
  * for 30 minutes. Never an SSN: that's step 2, in Clear's own window.
  */
 export const JoinBasics = z.object({
@@ -180,13 +180,13 @@ export const JoinBasics = z.object({
 });
 /** Step 2: the window's address (single use, 15 minutes), also drawn as a QR on a computer. */
 export const JoinHandoff = z.object({ url: z.string().url(), expiresAt: Timestamp });
-/** `GET /api/pay/:session/join`: polled while the window is open. */
+/** `GET /api/checkout/:session/join`: polled while the window is open. */
 export const JoinState = z.object({ state: z.enum(['waiting', 'done', 'failed', 'expired']) });
 
 // ---- Card (§3) ------------------------------------------------------------------------------------
 
 /**
- * `POST /api/pay/:session/card`: a PaymentIntent on the shop's own connected account, for Stripe's
+ * `POST /api/checkout/:session/card`: a PaymentIntent on the shop's own connected account, for Stripe's
  * fields in the frame. The amount is the order's; Clear's fee is set on the server.
  */
 export const CardStarted = z.object({

@@ -25,13 +25,15 @@ export interface AuditInput {
   ref?: { type: string; id: string } | null;
   amountCents?: number | null;
   detail?: Record<string, unknown>;
+  /** A customer did it online, through a website or a link (pay DECISIONS): the app reads "Online". */
+  source?: 'online' | 'link' | null;
 }
 
 export async function audit(tx: Queryable, input: AuditInput): Promise<void> {
   await tx.query(
-    `INSERT INTO payments.audit_log (merchant, actor, approver, action, ref_type, ref_id, amount_cents, detail)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [input.merchant, input.actor, input.approver ?? null, input.action, input.ref?.type ?? null, input.ref?.id ?? null, input.amountCents ?? null, JSON.stringify(input.detail ?? {})],
+    `INSERT INTO payments.audit_log (merchant, actor, approver, action, ref_type, ref_id, amount_cents, detail, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [input.merchant, input.actor, input.approver ?? null, input.action, input.ref?.type ?? null, input.ref?.id ?? null, input.amountCents ?? null, JSON.stringify(input.detail ?? {}), input.source ?? null],
   );
 }
 
@@ -44,6 +46,7 @@ export interface AuditEntry {
   ref: { type: string; id: string } | null;
   amountCents: number | null;
   detail: Record<string, unknown>;
+  source: 'online' | 'link' | null;
 }
 
 /** A shop's audit trail over a range of days (UTC dates, inclusive), newest first. */
@@ -58,6 +61,7 @@ export async function auditTrail(q: Queryable, input: { merchant: string; from: 
     ref_id: string | null;
     amount_cents: string | number | null;
     detail: Record<string, unknown> | string;
+    source: 'online' | 'link' | null;
   }>(
     `SELECT * FROM payments.audit_log WHERE merchant = $1 AND at >= $2::date AND at < ($3::date + 1)
       ORDER BY at DESC, id DESC LIMIT $4`,
@@ -72,5 +76,6 @@ export async function auditTrail(q: Queryable, input: { merchant: string; from: 
     ref: r.ref_type && r.ref_id ? { type: r.ref_type, id: r.ref_id } : null,
     amountCents: r.amount_cents === null ? null : Number(r.amount_cents),
     detail: typeof r.detail === 'string' ? JSON.parse(r.detail) : r.detail,
+    source: r.source ?? null,
   }));
 }

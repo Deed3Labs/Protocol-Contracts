@@ -41,6 +41,7 @@ import merchantBankRouter from './merchantBank.js';
 import { merchantTerminalRouter } from './merchantTerminal.js';
 import { touchShop } from '../services/merchant/terminal/bus.js';
 import { merchantRewardsRouter } from './rewards.js';
+import { merchantPayLinksRouter } from './payLinks.js';
 
 /**
  * The merchant surface.
@@ -91,6 +92,8 @@ merchantRouter.use(merchantReportsRouter);
 merchantRouter.use(merchantTerminalRouter());
 // Rewards: Settings › Shop app, and adding a member at the cart (routes/rewards.ts).
 merchantRouter.use(merchantRewardsRouter());
+// Pay with Clear: payment links (routes/payLinks.ts).
+merchantRouter.use(merchantPayLinksRouter());
 
 /** Sign-in is scoped to one shop: a four-digit PIN only means anything against a merchant. */
 function merchantOf(req: Request): string {
@@ -401,6 +404,10 @@ merchantRouter.get('/charges', requireMerchant, async (req: Request, res: Respon
       .map((r) => [r.chargeCode, r]),
   );
 
+  // Pay with Clear: a charge a link or a website raised says so ("Link · Taco tray for 12"), and
+  // has nobody at the shop behind it. Best effort, like the names.
+  const online = await onlineSources(rows.map((c) => c.code)).catch(() => new Map<string, OnlineSource>());
+
   // One lookup for the page's members. If it can't be read, the list still loads, unnamed.
   const memberNames = await memberStore
     .publicNamesForWallets(rows.map((c) => c.memberWallet).filter((w): w is string => Boolean(w)))
@@ -424,9 +431,42 @@ merchantRouter.get('/charges', requireMerchant, async (req: Request, res: Respon
       expiresAt: c.expiresAt,
       openedAt: c.openedAt,
       resolvedAt: c.resolvedAt,
+      source: online.get(c.code) ?? null,
     })),
   });
 });
+
+interface OnlineSource {
+  kind: 'link' | 'online';
+  /** The link's name ("Taco tray for 12", or "Payment" for an amount), or the website's host. */
+  label: string;
+  livemode: boolean;
+}
+
+/** Which of these charges a link or a website raised, read from the orders behind them. */
+async function onlineSources(codes: string[]): Promise<Map<string, OnlineSource>> {
+  const d = await merchantDb();
+  if (!d || !codes.length) return new Map();
+  const { rows } = await d.query<{ code: string; source: 'link' | 'online'; source_detail: string | null; livemode: boolean; item_name: string | null; amount_cents: string | null }>(
+    `SELECT t.clear_charge_code AS code, o.source, o.source_detail, o.livemode, i.name AS item_name, l.amount_cents
+       FROM payments.tenders t
+       JOIN commerce.orders o ON o.id = t.order_id AND o.source IN ('link','online')
+       LEFT JOIN payments.payment_links l ON o.source = 'link' AND l.slug = o.source_detail
+       LEFT JOIN commerce.catalog_items i ON i.id = l.item_id
+      WHERE t.clear_charge_code = ANY($1)`,
+    [codes],
+  );
+  const host = (origin: string | null) => {
+    try {
+      return origin ? new URL(origin).host : 'a website';
+    } catch {
+      return 'a website';
+    }
+  };
+  return new Map(
+    rows.map((r) => [r.code, { kind: r.source, label: r.source === 'link' ? (r.item_name ?? 'Payment') : host(r.source_detail), livemode: r.livemode }]),
+  );
+}
 
 /**
  * The shop withdraws a charge the member has not answered.

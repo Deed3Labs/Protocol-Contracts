@@ -268,7 +268,7 @@ export async function createCardTender(
 export async function createCheckoutTender(
   db: Db,
   provider: CardConnectorProvider,
-  input: { merchant: string; orderId: string; amountCents: number; lineName: string; successUrl: string; cancelUrl: string; idempotencyKey: string },
+  input: { merchant: string; orderId: string; amountCents: number; lineName: string; successUrl: string; cancelUrl: string; idempotencyKey: string; source?: 'online' | 'link' },
 ): Promise<{ tenderId: string; url: string }> {
   if (!provider.createCheckout) throw new TenderError('Card payments from a phone aren’t available for this shop', 'method_off');
   const requestHash = createHash('sha256').update(JSON.stringify([input.orderId, input.amountCents, 'checkout'])).digest('hex');
@@ -299,7 +299,8 @@ export async function createCheckoutTender(
       action: 'tender.card_checkout_started',
       ref: { type: 'tender', id: rows[0]!.id },
       amountCents: input.amountCents,
-      detail: { orderId: order.id, applicationFeeCents: fee, from: 'phone page' },
+      detail: { orderId: order.id, applicationFeeCents: fee, from: input.source ? `${input.source} page` : 'phone page' },
+      source: input.source,
     });
     await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: null });
     return rows[0]!;
