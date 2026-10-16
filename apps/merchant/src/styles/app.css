@@ -666,6 +666,39 @@ input.c-st-time {
   grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
 }
 
+/* Tables: a floor that is one row (an area with a few tables) takes half the floor, two rows a half
+   each, three a third; past what fits, the floor scrolls. The reference's frame always had full rows,
+   so its seam colour behind the grid showed in a short row's empty slots; each tile draws its own
+   right and bottom seams instead. A row that reaches the foot puts its bottom seam just outside the
+   scroll box, where it is clipped, so it never doubles the foot's top border. */
+/* The terminal pages grow as one page (c-mc-page); Tables instead fits the screen, so the floor and
+   the wait list each scroll inside their cell and the feet stay put. */
+.c-mc-tablet.c-mc-page:has(> .c-slab.c-tm-tslab) {
+  overflow: hidden;
+}
+.c-mc-tablet.c-mc-page > .c-slab.c-tm-tslab {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.c-mc-tablet.c-mc-page > .c-slab.c-tm-tslab > .c-cell {
+  min-height: 0;
+  overflow: hidden;
+}
+.c-mc-tablet.c-mc-page > .c-slab.c-tm-tslab > .c-cell > .c-cmain {
+  min-height: 0;
+  overflow-y: auto;
+}
+.c-tm-floorcell .c-tm-floor {
+  background: none;
+  align-content: start;
+  grid-auto-rows: minmax(132px, calc(50% - 0.5px));
+}
+.c-tm-floorcell .c-tm-floor > .c-tm-t {
+  box-shadow:
+    1px 0 0 var(--seam),
+    0 1px 0 var(--seam);
+}
+
 /* Edit tables' area is tapped to move the table to the next area (not drawn as a control). */
 .c-tm-area {
   cursor: pointer;
