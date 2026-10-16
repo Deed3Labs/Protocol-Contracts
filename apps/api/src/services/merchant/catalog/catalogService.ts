@@ -368,6 +368,11 @@ interface CodeRow {
   ends_at: Date | string | null;
   once_per_customer: boolean;
   uses: string | number;
+  show_in_app: boolean;
+  audience: 'everyone' | 'members' | 'clear_members';
+  offer_title: string | null;
+  offer_detail: string | null;
+  days: number[] | null;
 }
 
 const toCode = (r: CodeRow): DiscountCode => ({
@@ -380,6 +385,10 @@ const toCode = (r: CodeRow): DiscountCode => ({
   endsAt: r.ends_at ? new Date(r.ends_at).toISOString() : null,
   oncePerCustomer: r.once_per_customer,
   uses: Number(r.uses),
+  showInApp: r.show_in_app,
+  audience: r.audience,
+  offer: r.offer_title ? { title: r.offer_title, detail: r.offer_detail ?? '' } : null,
+  days: r.days,
 });
 
 /** Uses are counted from the orders that kept the code, not stored, so they can't drift. */
@@ -403,9 +412,9 @@ export async function createDiscountCode(db: Db, input: { merchant: string; staf
   const id = `dsc_${randomUUID()}`;
   try {
     await db.query(
-      `INSERT INTO commerce.discount_codes (id, merchant, code, percent, amount_cents, applies_to, starts_at, ends_at, once_per_customer, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [id, input.merchant, code, c.percent, c.amountCents, 'categories' in c.appliesTo ? c.appliesTo.categories : null, c.startsAt, c.endsAt, c.oncePerCustomer, input.staffId],
+      `INSERT INTO commerce.discount_codes (id, merchant, code, percent, amount_cents, applies_to, starts_at, ends_at, once_per_customer, created_by, audience, offer_title, offer_detail, days)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [id, input.merchant, code, c.percent, c.amountCents, 'categories' in c.appliesTo ? c.appliesTo.categories : null, c.startsAt, c.endsAt, c.oncePerCustomer, input.staffId, c.audience ?? 'everyone', c.offer?.title ?? null, c.offer?.detail || null, c.days ?? null],
     );
   } catch (error) {
     if (String((error as { code?: string }).code) === '23505') throw new CatalogError(`${code} is already a code`, 'code_taken');

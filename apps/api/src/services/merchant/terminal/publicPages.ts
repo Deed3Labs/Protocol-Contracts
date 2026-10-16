@@ -4,6 +4,9 @@ import { memberAppUrl } from '../../memberAppUrl.js';
 import { createCheckoutTender } from '../cards/cardTenders.js';
 import type { CardConnectorProvider } from '../cards/connector.js';
 import { type ClearCharges, createClearTender } from '../orders/payments.js';
+import { applyCustomerReward, OrderError, type OrderDeps } from '../orders/orderService.js';
+import { setOrderMember } from '../rewards/counter.js';
+import { RewardsError } from '../rewards/errors.js';
 import { touchShop } from './bus.js';
 import { TerminalError } from './errors.js';
 import { joinWaitlist } from './floor.js';
@@ -23,16 +26,28 @@ export interface PublicPayDeps {
   clear: ClearCharges;
   /** The shop's card processor, when it takes cards. */
   card: (merchant: string) => Promise<CardConnectorProvider | null>;
+  /** Pricing a reward the customer puts on the bill from their rewards app. */
+  orders?: OrderDeps;
+  /** Where a rewards app's card checkout comes back to: `https://rewards.useclear.org`. */
+  rewardsUrl?: string;
+}
+
+/** A signed-in customer paying from a shop's rewards app: who, and the shop their token is for. */
+export interface PayingCustomer {
+  personId: string;
+  slug: string;
 }
 
 /** Pay what's left on the bill the Point is showing. */
-export async function publicPay(db: Db, deps: PublicPayDeps, input: { code: string; request: unknown; now?: Date }): Promise<PublicPayStarted> {
+export async function publicPay(db: Db, deps: PublicPayDeps, input: { code: string; request: unknown; now?: Date; customer?: PayingCustomer | null }): Promise<PublicPayStarted> {
   const parsed = PublicPay.safeParse(input.request);
   if (!parsed.success) throw new TerminalError('Clear or card', 'invalid');
   const p = await pointByCode(db, input.code);
   if (!p) throw new TerminalError('No Point has that code', 'not_found');
   const { state } = await pointStateFor(db, p.deviceId, input.now ?? new Date());
   if (state.kind !== 'bill') throw new TerminalError('There’s no bill here right now', 'conflict');
+  if (input.customer) await customerOnBill(db, deps, { merchant: p.merchant, orderId: state.orderId, customer: input.customer, rewardId: parsed.data.rewardId ?? null });
+  else if (parsed.data.rewardId) throw new TerminalError('Sign in to use a reward', 'forbidden');
   const { rows } = await db.query<{ raised_by: string; total_cents: string | number; number: number | null; name: string }>(
     `SELECT o.raised_by, o.total_cents, o.number, p.name FROM commerce.orders o JOIN merchant.profiles p ON p.merchant = o.merchant WHERE o.id = $1`,
     [state.orderId],
@@ -68,13 +83,13 @@ export async function publicPay(db: Db, deps: PublicPayDeps, input: { code: stri
   const card = await deps.card(p.merchant);
   if (!card) throw new TerminalError('This shop doesn’t take cards here', 'conflict');
   if (left <= 0) throw new TerminalError('This bill is being paid already', 'conflict');
-  const back = `${phonePageBase()}/p/${input.code.toUpperCase()}`;
+  const back = input.customer && deps.rewardsUrl ? `${deps.rewardsUrl.replace(/\/+$/, '')}/s/${input.customer.slug}` : `${phonePageBase()}/p/${input.code.toUpperCase()}`;
   const started = await createCheckoutTender(db, card, {
     merchant: p.merchant,
     orderId: state.orderId,
     amountCents: left,
     lineName: order.number !== null ? `${order.name} · order ${order.number}` : order.name,
-    successUrl: `${back}?paid=1`,
+    successUrl: input.customer ? `${back}/paid/${encodeURIComponent(state.orderId)}` : `${back}?paid=1`,
     cancelUrl: back,
     idempotencyKey: key,
   });
@@ -89,4 +104,26 @@ export async function publicJoinWaitlist(db: Db, input: { code: string; request:
   const { point } = await pointStateFor(db, p.deviceId, input.now ?? new Date());
   if (point.settings.placement !== 'door') throw new TerminalError('This Point doesn’t take names', 'conflict');
   return joinWaitlist(db, { merchant: p.merchant, request: input.request, memberWallet: input.memberWallet ?? null, texter: input.texter, now: input.now });
+}
+
+/**
+ * The rewards app pays a Point's bill signed in (rewards spec, section 3): the customer goes on the
+ * order, so card earns as Clear does, with the reward they switched on as its one discount. Only on
+ * this shop's bills, with this shop's token.
+ */
+async function customerOnBill(db: Db, deps: PublicPayDeps, input: { merchant: string; orderId: string; customer: PayingCustomer; rewardId: string | null }): Promise<void> {
+  const { rows } = await db.query('SELECT 1 FROM rewards.shop_apps WHERE merchant = $1 AND slug = $2', [input.merchant, input.customer.slug]);
+  if (!rows[0]) throw new TerminalError('This bill is at another shop', 'forbidden');
+  try {
+    if (input.rewardId) {
+      if (!deps.orders) throw new TerminalError('Rewards can’t be used here', 'conflict');
+      await applyCustomerReward(db, deps.orders, { merchant: input.merchant, orderId: input.orderId, personId: input.customer.personId, rewardId: input.rewardId });
+    } else {
+      await db.transaction((tx) => setOrderMember(tx, { merchant: input.merchant, orderId: input.orderId, personId: input.customer.personId, by: null, via: 'app' }));
+    }
+  } catch (error) {
+    if (error instanceof OrderError) throw new TerminalError(error.message, error.code === 'not_found' ? 'not_found' : error.code === 'invalid' ? 'invalid' : 'conflict');
+    if (error instanceof RewardsError) throw new TerminalError(error.message, error.code === 'not_found' ? 'not_found' : error.code === 'invalid' ? 'invalid' : error.code === 'forbidden' ? 'forbidden' : 'conflict');
+    throw error;
+  }
 }

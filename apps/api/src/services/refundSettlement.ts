@@ -10,6 +10,8 @@
  * were refunded while their plan still runs is worse off than one who has not been told yet — they
  * would stop expecting the payments that are still coming.
  */
+import { merchantDb } from '../config/merchantDb.js';
+import { rewardsOnClearRefund } from './merchant/rewards/hooks.js';
 import { ethers } from 'ethers';
 import { chargeStore, type ChargeRow } from './chargeStore.js';
 import { notificationStore } from './notificationStore.js';
@@ -223,6 +225,9 @@ export async function settleRefund(
   if (!closed.ok) return closed;
 
   await chargeStore.markRefunded(chargeCode);
+  // Rewards: the points earned on what was refunded come back off (merchant database).
+  const books = await merchantDb().catch(() => null);
+  if (books) await rewardsOnClearRefund(books, chargeCode, amountCents).catch((error) => console.error('[refund] rewards reversal failed', error instanceof Error ? error.message : error));
   await notifyMember(charge, amountCents, closed);
   return closed;
 }

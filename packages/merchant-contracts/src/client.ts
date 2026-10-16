@@ -15,6 +15,7 @@ import type {
   RegisterSmartReader,
 } from './cards';
 import type { CatalogImport, CatalogItem, CategoryOrder, DiscountCode, ImportResult, ItemInput, OptionGroup, Reorder, StockAdjustment, StockMovement } from './catalog';
+import type { MerchantRewardsApi } from './rewards';
 import type { AuditEntry, BankDeposit, SendStatement, CloseDayFigures,
   CloseDayResult, CountsView, DayReport, DrawerSession, Overview, SaveCount, SignOff } from './drawer';
 import type {
@@ -64,7 +65,7 @@ type Range = { from: z.infer<typeof BusinessDate>; to: z.infer<typeof BusinessDa
  *
  * **Changing this interface changes the UI's mock layer.** Flag any change in the PR.
  */
-export interface MerchantApi {
+export interface MerchantApi extends MerchantRewardsApi {
   // ---- The shop ------------------------------------------------------------------------------------
   shop(): Promise<Shop>;
   /** Owners only. The address sets sales tax and the card reader location. */

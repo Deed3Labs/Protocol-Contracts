@@ -3,6 +3,7 @@ import { orderStatus, type OrderStatus, type TenderState } from '@clear/merchant
 import type { Queryable } from '../../../db/db.js';
 import { type Entry, entriesFor, post, reverse } from '../ledger/ledgerService.js';
 import * as postings from '../ledger/postings.js';
+import { rewardsOn } from '../rewards/hooks.js';
 
 /**
  * Keeps an order and the ledger in step with its tenders. Called in the same transaction as every
@@ -85,6 +86,7 @@ export async function settleOrder(tx: Queryable, input: { merchant: string; orde
         `INSERT INTO payments.outbox (merchant, topic, dedupe_key, payload) VALUES ($1, 'order.unpaid', $2, $3) ON CONFLICT (dedupe_key) DO NOTHING`,
         [input.merchant, `order.unpaid:${order.id}:${live.attempts}`, JSON.stringify({ orderId: order.id })],
       );
+      await rewardsOn(tx, input.merchant, { kind: 'unpaid', orderId: order.id });
     }
   } else if (live.sales.length === 0) {
     const taken = tenders.filter((t) => ['authorised', 'approved', 'captured', 'partly_refunded', 'refunded'].includes(t.status));
@@ -116,6 +118,8 @@ export async function settleOrder(tx: Queryable, input: { merchant: string; orde
       `INSERT INTO payments.outbox (merchant, topic, dedupe_key, payload) VALUES ($1, 'order.paid', $2, $3) ON CONFLICT (dedupe_key) DO NOTHING`,
       [input.merchant, `order.paid:${order.id}:${live.attempts}`, JSON.stringify({ orderId: order.id })],
     );
+    // Points earned and the reward used, in this transaction (rewards spec, "Points ledger").
+    await rewardsOn(tx, input.merchant, { kind: 'paid', orderId: order.id, attempt: live.attempts });
   }
   await tx.query('UPDATE commerce.orders SET status = $2, tip_cents = $3, updated_at = now() WHERE id = $1', [order.id, summary.status, summary.tipCents]);
   return summary.status;

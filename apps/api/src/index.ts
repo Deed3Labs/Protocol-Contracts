@@ -67,6 +67,8 @@ import { startTerminalSweep } from './jobs/terminalSweep.js';
 import { devicePointRouter } from './routes/devicePoint.js';
 import { pointPageRouter, receiptPageRouter } from './routes/phonePages.js';
 import { startOutboxProcessor } from './jobs/outboxProcessor.js';
+import { startRewardsJobs } from './jobs/rewardsJobs.js';
+import { partnersRouter, rewardsRouter, shopRouter } from './routes/rewards.js';
 import { startCardReconciliation } from './jobs/cardReconciliation.js';
 import { startClearFeeBilling } from './jobs/clearFeeBilling.js';
 import { startMonthlyStatements } from './jobs/monthlyStatements.js';
@@ -287,6 +289,11 @@ async function startServer() {
     app.use('/api/device/point', devicePointRouter());
     app.use('/api/p', pointPageRouter());
     app.use('/api/r', receiptPageRouter());
+    // Rewards (docs/rewards-reference): a shop's app at /api/s/:slug, the hub's at /api/rewards, Add a
+    // shop's directory. Each takes rewards' own tokens, never a member route's.
+    app.use('/api/s', shopRouter());
+    app.use('/api/rewards', rewardsRouter());
+    app.use('/api/partners', partnersRouter());
     app.use('/api/withdraw', requireAuth, withdrawRouter);
     app.use('/api/autopay', requireAuth, autopayRouter);
     app.use('/api/contacts', requireAuth, contactsRouter);
@@ -421,6 +428,7 @@ async function startServer() {
     startTerminalSweep();
     // Acts on what the back office announced: recording and reversing tax at Stripe.
     startOutboxProcessor();
+    startRewardsJobs();
     // Nightly: card payouts brought up to date, then our books checked against the processor's.
     startCardReconciliation();
     // Daily: Clear's fee billed and collected for any shop whose processor can't take it per sale.

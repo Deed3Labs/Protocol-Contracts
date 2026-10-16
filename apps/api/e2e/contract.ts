@@ -229,6 +229,36 @@ try {
     if (asked) await check('decideRefund', C.Refund, () => manager.decideRefund(asked.id, { decision: 'approve', pin: null }));
   } else ['requestRefund', 'decideRefund'].forEach((m) => skip(m, 'no card captured'));
 
+  // ---- The shop's app (rewards spec, section 8) and a customer at the cart (section 9)
+  await check('shopApp', C.ShopAppSettings, () => jen.shopApp());
+  await check('updateShopApp', C.ShopAppSettings, () => manager.updateShopApp({ enabled: true }));
+  const reward = await check('createReward', C.Reward, () => manager.createReward({ name: 'Free rotation', gives: { kind: 'amount', amountCents: 2000, categories: null }, cost: 500, limit: 'none', clearMembersOnly: false, note: null }));
+  if (reward) await check('updateReward', C.Reward, () => manager.updateReward(reward.id, { ...reward, cost: 450 }));
+  await check('giveBack', C.GiveBack, () => manager.giveBack());
+  // Bytes that aren't a font are refused with a sentence: the route, the upload and the error shape.
+  await check('uploadFont', C.UploadedFont, () =>
+    manager.uploadFont(new Blob([new Uint8Array(64)]), { name: 'Shop Display', usedFor: 'headings', licenceDeclared: true }).catch((error: Error & { status?: number }) => {
+      if (error.status && error.status < 500) return Promise.reject(Object.assign(new Error(`refused cleanly (${error.status}): ${error.message}`), { expected: true }));
+      throw error;
+    }),
+  );
+  const codes = await manager.discountCodes();
+  if (codes[0]) await check('updateOffer', C.DiscountCode, () => manager.updateOffer(codes[0]!.id, { showInApp: true, audience: 'members' }));
+  else skip('updateOffer', 'no code');
+  await check('setDomain', C.ShopDomain, () => manager.setDomain({ domain: 'rewards.mikestire.example.com' }));
+  await check('checkDomain', C.ShopDomain, () => manager.checkDomain());
+  const at = await jen.createOrder({ lines: [labour('Rotation', 4000)], customer: null });
+  await check('orderCustomer', C.OrderCustomerState, () => jen.orderCustomer(at.id));
+  await check('addCustomer', C.OrderCustomerState, () => jen.addCustomer(at.id, { via: 'phone', phone: '(909) 555-0199' }));
+  await check('inviteCustomer', null, () =>
+    jen.inviteCustomer(at.id).catch((error: Error & { status?: number }) => {
+      if (error.status === 409 || error.status === 404) return Promise.reject(Object.assign(new Error(`refused cleanly (${error.status}): nobody is on it yet`), { expected: true }));
+      throw error;
+    }),
+  );
+  await check('removeCustomer', null, () => jen.removeCustomer(at.id));
+  if (reward) await check('removeReward', null, () => manager.removeReward(reward.id));
+
   // ---- Reports
   await check('dayReports', C.DayReport.array(), () => manager.dayReports(range));
   await check('cardDeposits', C.CardDeposit.array(), () => manager.cardDeposits(range));

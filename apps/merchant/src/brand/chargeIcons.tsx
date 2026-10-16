@@ -171,3 +171,27 @@ export const IconCheck15 = () => (
 export const IconRoute = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-70)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 12h14"/><path d="m13 6 6 6-6 6"/></svg>
 );
+
+// ---- Rewards (rewards spec, sections 8 and 9) ------------------------------------------------------
+
+/** The Clear mark at 14px, on the Clear balance block of a shop's app. */
+export const IconClear14 = () => (
+  <svg className="c-mk" width="14" height="14" viewBox="0 0 336 336" aria-hidden="true"><g transform="translate(168 168)" fill="none" stroke="currentColor"><path d="M 148.28 -64 A 161.5 161.5 0 1 0 148.28 64 L 74.22 64 A 98 98 0 1 1 74.22 -64 Z" strokeWidth="4" fill="currentColor"/><path d="M 0 -8 H 114 V 8 H 0 Z" fill="currentColor" stroke="none"/><circle cx="0" cy="0" r="34" fill="currentColor" stroke="none"/><circle cx="131.5" cy="0" r="25.25" strokeWidth="15.5"/></g></svg>
+);
+/** Scan their code. */
+export const IconScanCode = ({ size = 16 }: { size?: 16 | 20 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={size === 16 ? 1.9 : 1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M8 12h8"/></svg>
+);
+export const IconChevron12 = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+);
+/** A shop app's tabs: Home, Rewards, Pay, You. */
+export const IconAppHome = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg>
+);
+export const IconAppRewards = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="9" width="16" height="11"/><path d="M12 9v11M3 9h18M12 9C9 9 7 4 9.5 4S12 9 12 9Zm0 0c3 0 5-5 2.5-5S12 9 12 9Z"/></svg>
+);
+export const IconAppYou = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+);

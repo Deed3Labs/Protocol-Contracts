@@ -347,15 +347,13 @@ export async function notifyMember(charge: ChargeRow, opts: { resend?: boolean }
   try {
     const contact = await memberStore.getContactByWallet(charge.memberWallet);
     if (!contact) return true;
-    const destination = contact.phone ?? contact.email;
-    if (!destination) return true;
-    await sendNotificationService.sendChargeAlert({
-      recipientType: contact.phone ? 'phone' : 'email',
-      recipientContact: destination,
-      merchantName: charge.merchantName,
-      amount,
-      approveUrl,
-    });
+    // A text and an email at once, as well as the app (rewards spec, section 9: "Reached her · All
+    // three at once"), so whichever they look at first has it.
+    const channels = [
+      contact.phone ? { recipientType: 'phone' as const, recipientContact: contact.phone } : null,
+      contact.email ? { recipientType: 'email' as const, recipientContact: contact.email } : null,
+    ].filter((c): c is NonNullable<typeof c> => c !== null);
+    await Promise.all(channels.map((c) => sendNotificationService.sendChargeAlert({ ...c, merchantName: charge.merchantName, amount, approveUrl })));
   } catch (error) {
     // Never fatal to raising a charge. The member already has it in-app and on their lock screen,
     // and failing the merchant's request because Twilio was down would be the wrong trade.

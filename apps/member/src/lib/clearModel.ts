@@ -303,7 +303,9 @@ export type ActivitySource =
   | 'cash account'
   | 'pending'
   /** Money in from another member. */
-  | 'received';
+  | 'received'
+  /** A purchase at a Clear shop on a card of the member's own, not Clear's money (rewards, Phase 6). */
+  | 'card';
 
 /** What the row is, which is what the Activity filter chips select on. */
 /** `repayment`: money put against the member's credit balance, by whichever method. */

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Queryable } from '../../../db/db.js';
+import { rewardsOn } from '../rewards/hooks.js';
 
 /**
  * What a succeeded refund does to the books and the shelf, the same for card and cash
@@ -72,4 +73,6 @@ export async function announceRefund(tx: Queryable, input: { merchant: string; r
     `INSERT INTO payments.outbox (merchant, topic, dedupe_key, payload) VALUES ($1, 'refund.succeeded', $2, $3) ON CONFLICT (dedupe_key) DO NOTHING`,
     [input.merchant, `refund.succeeded:${input.refundId}`, JSON.stringify({ refundId: input.refundId, orderId: input.orderId })],
   );
+  // A refund takes back the points earned on what it refunded.
+  await rewardsOn(tx, input.merchant, { kind: 'refunded', orderId: input.orderId, key: input.refundId });
 }

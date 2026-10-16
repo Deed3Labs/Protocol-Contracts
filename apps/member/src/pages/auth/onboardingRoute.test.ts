@@ -10,7 +10,8 @@ import { join } from 'node:path';
  * worth catching: `updateMemberOnboarding` would still succeed, and the member record would just
  * be wrong in a way nobody sees until somebody queries it.
  */
-const SOURCE = readFileSync(join(import.meta.dir, 'OnboardingRoute.tsx'), 'utf8');
+// The submit chain moved to packages/member-kit (shared with the rewards app); the route calls it.
+const SOURCE = readFileSync(join(import.meta.dir, 'OnboardingRoute.tsx'), 'utf8') + readFileSync(join(import.meta.dir, '../../../../../packages/member-kit/src/onboarding/submit.ts'), 'utf8');
 
 const REQUIRED = [
   'currentStep', 'accessTrack', 'accountMethod', 'identityModeSelected', 'referralSource',
@@ -44,7 +45,7 @@ describe('the submit contract', () => {
 });
 
 describe('the flow it drives', () => {
-  const FLOW = readFileSync(join(import.meta.dir, 'OnboardingFlow.tsx'), 'utf8');
+  const FLOW = readFileSync(join(import.meta.dir, '../../../../../packages/member-kit/src/onboarding/OnboardingFlow.tsx'), 'utf8');
 
   test('stays free of auth calls', () => {
     // The same component serves the live app and the preview harness. It can only do that by not

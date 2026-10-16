@@ -10,6 +10,8 @@
     "paths": {
       "@/*": ["*"],
       "@clear/domain": ["../../../packages/domain/src/index.ts"],
+      "@clear/member-kit": ["../../../packages/member-kit/src/index.ts"],
+      "@clear/member-kit/*": ["../../../packages/member-kit/src/*"],
     },
 
     /* Bundler mode */

@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { ACTIVITY_IN_USE } from '@/data/clearPlaceholder';
 import { DEFAULT_FILTERS, categoryShares, filterRows, groupByDay, rowTag, sortRows } from './activityView';
+import { mergedActivityRows } from './activityMapping';
+import { sourceTag } from './clearModel';
 
 const rows = ACTIVITY_IN_USE.rows;
 
@@ -156,13 +158,13 @@ describe('the card shows the network logo, not its name', () => {
     expect(src('components/clear/card/NetworkMark.tsx')).toContain("from '@/assets/brand/networkMarks'");
   });
   test('it takes the card\'s own light ink in both themes', () => {
-    const css = src('styles/clear-components.css');
+    const css = src('../../../packages/member-kit/src/styles/clear-components.css');
     expect(css).toContain('.c-cnet{height:13px;width:auto;flex-shrink:0;color:var(--paper);opacity:.95}');
     expect(css).toMatch(/\.dark \.c-pan,\.dark \.c-cardface \.c-wm,\.dark \.c-cstate,\.dark \.c-cnet,\.dark \.c-cbrand \.c-cmk\{color:#DFE3DE\}/);
   });
   test('the Clear lockup sits on the card: the mark as given, beside a slightly larger word', () => {
     expect(src('components/clear/card/CardFace.tsx')).toMatch(/<span className="c-cbrand">\s*<ClearMark className="c-cmk" \/>\s*<span className="c-wm">Clear<\/span>/);
-    const css = src('styles/clear-components.css');
+    const css = src('../../../packages/member-kit/src/styles/clear-components.css');
     expect(css).toContain('.c-cbrand .c-cmk{display:block;flex-shrink:0;width:18px;height:18px;color:var(--paper)}');
     expect(css).toContain('.c-cbrand .c-wm{font-size:17px;line-height:1;margin-left:9px}');
   });
@@ -170,5 +172,19 @@ describe('the card shows the network logo, not its name', () => {
     const face = src('components/clear/card/CardFace.tsx');
     expect(face).not.toContain('Online only');
     expect(face).toContain('Frozen</span>');
+  });
+});
+
+describe('shop card purchases (rewards, Phase 6)', () => {
+  const purchase = { orderId: 'ord_1', shop: { slug: 'micasa', name: 'Mi Casa Tacos' }, at: '2026-10-12T02:30:00.000Z', amountCents: 1733, cardLast4: '4242', points: { earned: 16, name: { kind: 'points' as const } } };
+  test('a card purchase at a shop shows, marked as card', () => {
+    const rows = mergedActivityRows([], [], undefined, [], [], [], [purchase]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: 'shop:ord_1', name: 'Mi Casa Tacos', source: 'card', kind: 'spending', amount: -17.33, paidFromLabel: 'Card ••4242' });
+    expect(sourceTag(rows[0]!)).toEqual({ label: 'Card' });
+  });
+  test('one on their own Clear card is already in the card feed, so it isn’t listed twice', () => {
+    const card = { id: 'ctx_1', name: 'MI CASA TACOS', at: '2026-10-12T02:31:10.000Z', amountCents: 1733, mcc: '5812', city: 'Redlands', state: 'CA', draws: [{ source: 'cash', amountCents: 1733 }], cardToken: 'card_1' };
+    expect(mergedActivityRows([], [card], undefined, [], [], [], [purchase]).map((r) => r.id)).toEqual(['ctx_1']);
   });
 });

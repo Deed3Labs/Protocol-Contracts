@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { looksLikePhone } from './LoginRoute';
 
 const SOURCE = readFileSync(join(import.meta.dir, 'LoginRoute.tsx'), 'utf8');
-const FLOW = readFileSync(join(import.meta.dir, 'OnboardingFlow.tsx'), 'utf8');
+const FLOW = readFileSync(join(import.meta.dir, '../../../../../packages/member-kit/src/onboarding/OnboardingFlow.tsx'), 'utf8');
 
 /*
  * One field for both, so this function decides which channel a code goes to. Guessing wrong sends

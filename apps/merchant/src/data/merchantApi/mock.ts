@@ -5,6 +5,7 @@ import type { api as ApiClient, EnrolledDevice, MerchantCharge, MerchantProfile,
 import { price } from './pricing';
 import * as mikesTire from './seed';
 import * as miCasaTacos from './seedMiCasa';
+import { createRewardsMock } from './rewardsMock';
 import { createTerminalMock } from './terminalMock';
 
 /**
@@ -120,6 +121,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   const now = initial.now ?? (() => new Date().toISOString());
   // Clear Terminal's state (below). Declared first: seeding reads orders back before it's made.
   let terminal: ReturnType<typeof createTerminalMock> | null = null;
+  let rewards: ReturnType<typeof createRewardsMock> | null = null;
 
   // ---- State -------------------------------------------------------------------------------------
   let settings: ShopSettings = { ...seed.SETTINGS };
@@ -233,7 +235,9 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   }
   function toOrder(rec: OrderRec): Order {
     const lines = linesOf(rec);
-    const spec = rec.discount ? { percent: rec.discount.percent, amountCents: rec.discount.fixedCents, categories: null } : null;
+    // An item reward follows the cart, as the server works it out again on the current lines.
+    const now = rec.discount?.kind === 'reward' && rec.discount.rewardId && rewards ? rewards.hooks.amountNow(rec.id, rec.discount.rewardId) : null;
+    const spec = rec.discount ? { percent: now ? now.percent : rec.discount.percent, amountCents: now ? now.amountCents : rec.discount.fixedCents, categories: null } : null;
     const p = price(lines.map((l) => ({ lineCents: l.unitCents * l.quantity, taxKind: l.taxKind, category: l.category })), spec, { inclusive: settings.tax.pricesIncludeTax, rates: seed.RATES_PPM });
     const ts = [...tenders.values()].filter((t) => t.orderId === rec.id);
     const summary = orderStatus({ totalCents: p.total, voided: rec.voided }, ts);
@@ -259,7 +263,10 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       customer: rec.customer,
       status: summary.status,
       lines: orderLines,
-      discount: rec.discount ? { kind: rec.discount.kind, codeId: rec.discount.codeId, label: rec.discount.label, amountCents: p.discount, reason: rec.discount.reason, approvedBy: rec.discount.approvedBy } : null,
+      discount: rec.discount
+        ? { kind: rec.discount.kind, codeId: rec.discount.codeId, label: rec.discount.label, amountCents: p.discount, reason: rec.discount.reason, approvedBy: rec.discount.approvedBy, ...(rec.discount.kind === 'reward' ? { rewardId: rec.discount.rewardId, points: rec.discount.points } : {}) }
+        : null,
+      member: rewards?.hooks.member(rec.id) ?? null,
       subtotalCents: p.subtotal,
       discountCents: p.discount,
       taxCents: p.tax,
@@ -330,7 +337,10 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   function settle(orderId: string, before: Order['status']) {
     const rec = orderRec(orderId);
     const after = toOrder(rec).status;
-    if (before !== 'paid' && after === 'paid') for (const l of stockLines(rec)) moveStock(l.itemId, 'sell', l.quantity, rec.id);
+    if (before !== 'paid' && after === 'paid') {
+      for (const l of stockLines(rec)) moveStock(l.itemId, 'sell', l.quantity, rec.id);
+      rewards?.hooks.paid(orderId, { clear: [...tenders.values()].some((t) => t.orderId === orderId && t.method === 'clear' && t.status === 'approved') });
+    }
   }
   function checkNewTender(rec: OrderRec, amountCents: number, method: Tender['method']) {
     const o = toOrder(rec);
@@ -490,6 +500,33 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     settings: () => settings,
     openDrawerSession: () => [...sessions.values()].find((x) => x.status !== 'closed') ?? null,
   });
+  // ---- Rewards (rewardsMock.ts): the shop's app and the customer at the cart ---------------------
+  rewards = createRewardsMock({
+    micasa: initial.shop === 'micasa',
+    shopName: shop.name,
+    shopId: shop.id,
+    now,
+    id,
+    viewer: () => viewer,
+    roleOf: (staffId) => roles.get(staffId) ?? who(staffId)?.role,
+    refuse,
+    items: () => [...items.values()],
+    codes,
+    cart: (orderId) => linesOf(orderRec(orderId)).map((l) => ({ id: l.id, itemId: l.itemId, name: l.name, quantity: l.quantity, unitCents: l.unitCents, lineCents: l.unitCents * l.quantity, category: l.category })),
+    paid: (orderId) => {
+      const o = toOrder(orderRec(orderId));
+      const cats = linesOf(orderRec(orderId)).map((l) => l.category);
+      return { lines: o.lines.map((l, i) => ({ netCents: l.lineCents - l.discountCents, category: cats[i] ?? null })), totalCents: o.totalCents };
+    },
+    editable: (orderId) => editable(orderRec(orderId)),
+    hasReward: (orderId) => orders.get(orderId)?.discount?.kind === 'reward',
+    clock: (iso) => {
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: shop.timezone, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(iso));
+      const get = (t: string) => parts.find((x) => x.type === t)?.value ?? '';
+      return { weekday: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(get('weekday')), time: `${get('hour')}:${get('minute')}` };
+    },
+  });
+
   function terminalFields(rec: OrderRec) {
     const m = terminal?.metaOf(rec.id) ?? { tableId: null, serviceType: null, deliveryPartner: null, calledAt: null, pickedUpAt: null };
     return { tableId: m.tableId, serviceType: m.serviceType, deliveryPartner: m.deliveryPartner, calledAt: m.calledAt, pickedUpAt: m.pickedUpAt, offline: Boolean(rec.offline) };
@@ -645,7 +682,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       staffHours.set(staffId, h);
       return personHours(staffId);
     },
-    // The rate the mock prices orders at: Mi Casa's 8.32% (seedMiCasa), or 7.75%.
+    // The rate the mock prices orders at: Mi Casa's 8.375% (seedMiCasa), or 7.75%.
     taxStatus: async () => {
       const pct = (ppm: number | undefined) => (ppm === undefined ? '7.75' : String(ppm / 10_000));
       return { source: 'address_rate', stripe: switches.stripe === 'connected' ? 'setup_needed' : 'not_connected', rates: { goods: pct(seed.RATES_PPM?.goods), labour: null, food: pct(seed.RATES_PPM?.food) }, pricesIncludeTax: settings.tax.pricesIncludeTax };
@@ -804,7 +841,11 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     applyDiscount: async (orderId, input) => {
       const rec = orderRec(orderId);
       editable(rec);
-      if (input.kind === 'code') {
+      if (input.kind === 'reward' || input.kind === 'claim') {
+        // The order's one discount: a reward replaces a code, never stacks with it.
+        const r = rewards!.hooks.rewardSpec(orderId, input);
+        rec.discount = { kind: 'reward', codeId: null, label: r.label, amountCents: 0, reason: null, approvedBy: null, rewardId: r.rewardId, points: r.points, percent: r.percent, fixedCents: r.amountCents };
+      } else if (input.kind === 'code') {
         const code = [...codes.values()].find((c) => c.code.toUpperCase() === input.code.trim().toUpperCase());
         if (!code) refuse(`${input.code} isn’t a code here`, 422, 'code_unknown');
         rec.discount = { kind: 'code', codeId: code!.id, label: code!.percent ? `${code!.code} · ${code!.percent}% off` : code!.code, amountCents: 0, reason: null, approvedBy: null, percent: code!.percent, fixedCents: code!.amountCents };
@@ -822,12 +863,14 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
         }
         rec.discount = { kind: 'manual', codeId: null, label: input.percent !== null ? `${input.percent}% · ${input.reason}` : `$${((input.amountCents ?? 0) / 100).toFixed(2)} · ${input.reason}`, amountCents: 0, reason: input.reason, approvedBy, percent: input.percent, fixedCents: input.amountCents };
       }
+      if (rec.discount?.kind !== 'reward') rewards?.hooks.rewardRemoved(orderId);
       return toOrder(rec);
     },
     removeDiscount: async (orderId) => {
       const rec = orderRec(orderId);
       editable(rec);
       rec.discount = null;
+      rewards?.hooks.rewardRemoved(orderId);
       return toOrder(rec);
     },
     voidOrder: async (orderId, input) => {
@@ -918,6 +961,10 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       if (input.to === 'member') {
         if (!/^0x[0-9a-fA-F]{40}$/.test(input.wallet)) refuse('That isn’t a member’s code', 400, 'invalid');
         return { to: 'member' as const, label: 'their Clear app' };
+      }
+      if (input.to === 'customer') {
+        if (!rewards?.hooks.customerWallet(t!.orderId)) refuse('Nobody has been added to this charge', 400, 'invalid');
+        return { to: 'customer' as const, label: 'their Clear app, text and email' };
       }
       const d = input.phone.replace(/\D/g, '');
       const ten = d.length === 11 && d.startsWith('1') ? d.slice(1) : d;
@@ -1129,6 +1176,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
 
     // Clear Terminal: hardware, Points, the drawer's log, tables, the wait list (terminalMock.ts).
     ...terminal!.api,
+    // Rewards: Settings › Shop app and the customer at the cart (rewardsMock.ts).
+    ...rewards!.api,
   };
 
   // ---- The Clear side (the older client's calls) ----------------------------------------------------
@@ -1409,6 +1458,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
         viewer = staffId;
       },
       set: (next: Partial<MockSwitches>) => Object.assign(switches, next),
+      /** The preview's customers at the cart: Sofia, Dev L., Marco (rewardsMock.ts). */
+      rewards: rewards!.preview,
       failNext: (method: keyof MerchantApi | keyof ClearSide, message = 'Something went wrong. Take the ticket the usual way and try again.', status = 500) => {
         failNext = { method, message, status };
       },

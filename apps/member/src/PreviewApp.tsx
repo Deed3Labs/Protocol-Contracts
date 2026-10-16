@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import HeaderActions from '@/components/shell/HeaderActions';
 import { unreadThreads, withOnTrack } from '@/lib/clearModel';
 import HomePage from '@/pages/app/HomePage';
+import type { YourShop } from '@/utils/apiClient';
 import SavingsPage from '@/pages/app/SavingsPage';
 import ActivityPage from '@/pages/app/ActivityPage';
 import CardPage from '@/pages/app/CardPage';
@@ -38,6 +39,13 @@ import CounterOnboarding, { COUNTER_STEPS, type CounterStep } from '@/pages/auth
 import { useInstallMode } from '@/hooks/useInstallMode';
 import ChargeApproval from '@/pages/app/ChargeApproval';
 import MoveMoneyDialog, { type MoveDirection } from '@/components/clear/MoveMoneyDialog';
+
+/** The shops section 6 draws: Mi Casa (128 points, a reward ready), Mike's Tire, La Bonita (stamps). */
+const YOUR_SHOPS_IN_USE: YourShop[] = [
+  { slug: 'micasa', name: 'Mi Casa Tacos', brand: { logoUrl: null, monogram: 'MC', colour: '#B4532A', onColour: '#FBF3EA', headingFont: { kind: 'preset', preset: 'serif' } }, pointsName: { kind: 'points' }, unit: 'dollars', points: 128, cardSize: null, readyCount: 1, next: { name: 'Free churros', toGo: 22 } },
+  { slug: 'mikes-tire', name: 'Mike’s Tire', brand: { logoUrl: null, monogram: 'MT', colour: '#1F4E8C', onColour: '#F2F5F9', headingFont: { kind: 'preset', preset: 'grotesque' } }, pointsName: { kind: 'points' }, unit: 'dollars', points: 340, cardSize: null, readyCount: 0, next: { name: 'Free tire rotation', toGo: 160 } },
+  { slug: 'la-bonita', name: 'La Bonita Bakery', brand: { logoUrl: null, monogram: 'LB', colour: '#8C3B5E', onColour: '#FBEFF4', headingFont: { kind: 'preset', preset: 'rounded' } }, pointsName: { kind: 'custom', one: 'stamp', many: 'stamps' }, unit: 'visits', points: 6, cardSize: 10, readyCount: 1, next: { name: 'Box of pan dulce', toGo: 4 } },
+];
 import {
   HOME_IN_USE,
   HOME_DAY_ONE,
@@ -927,6 +935,8 @@ export default function PreviewApp() {
                         <Route path="/" element={<HomePage data={empty ? HOME_DAY_ONE : HOME_IN_USE} />} />
                         {/* Day one has two arrivals; the toggle only reaches the direct one. */}
                         <Route path="/day-one-counter" element={<HomePage data={HOME_DAY_ONE_COUNTER} />} />
+                        {/* Your shops (rewards spec, section 6): the three shops the spec draws, on a furnished Home. */}
+                        <Route path="/your-shops" element={<HomePage data={HOME_IN_USE} yourShops={YOUR_SHOPS_IN_USE} />} />
                         {/* All clear: nothing carried, nothing owed, nothing prompting — the slot drops out. */}
                         <Route
                           path="/all-clear"

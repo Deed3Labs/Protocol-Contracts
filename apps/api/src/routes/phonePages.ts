@@ -11,7 +11,10 @@ import { emailReceiptByCode, ReceiptError, receiptByCode } from '../services/mer
 import { sendNotificationService } from '../services/sendNotificationService.js';
 import { TERMINAL_STATUS, TerminalError } from '../services/merchant/terminal/errors.js';
 import { menuFor, pointByCode, publicPoint } from '../services/merchant/terminal/pointState.js';
-import { phonePageBase, publicJoinWaitlist, publicPay, type PublicPayDeps } from '../services/merchant/terminal/publicPages.js';
+import { phonePageBase, publicJoinWaitlist, publicPay, type PayingCustomer, type PublicPayDeps } from '../services/merchant/terminal/publicPages.js';
+import { personByDid } from '../services/merchant/rewards/people.js';
+import { defaultTaxApi } from '../services/merchant/tax/taxApi.js';
+import { readRewardsToken } from './rewards.js';
 import { defaultTexter, type Texter } from '../services/merchant/terminal/texts.js';
 
 /**
@@ -38,7 +41,12 @@ export interface PhonePageDeps {
 
 export const defaultPhonePageDeps = (): PhonePageDeps => ({
   db: merchantDb,
-  pay: (db) => ({ clear: clearChargesFor(db), card: (merchant) => connectorForShop(db, merchant) }),
+  pay: (db) => ({
+    clear: clearChargesFor(db),
+    card: (merchant) => connectorForShop(db, merchant),
+    orders: { taxApi: defaultTaxApi(), pinCheck: async () => null },
+    rewardsUrl: (process.env.REWARDS_APP_URL || 'https://rewards.useclear.org').replace(/\/+$/, ''),
+  }),
   sendEmail: async ({ to, merchantName, total, url }) =>
     Boolean(await sendNotificationService.sendReceipt({ recipientType: 'email', recipientContact: to, merchantName, total, receiptUrl: url })),
   texter: defaultTexter(),
@@ -64,6 +72,18 @@ function runWith(deps: PhonePageDeps) {
   };
 }
 
+/**
+ * A rewards app pays signed in, with its shop's token (routes/rewards.ts): the customer goes on the
+ * order. Anyone else pays as before, with no sign-in.
+ */
+async function payingCustomer(db: Db, req: Request): Promise<PayingCustomer | null> {
+  const claims = readRewardsToken(req);
+  if (!claims || !('shop' in claims.scope)) return null;
+  const person = await personByDid(db, claims.did);
+  if (!person) throw new TerminalError('Tell us your first name first', 'forbidden');
+  return { personId: person.id, slug: claims.scope.shop };
+}
+
 export function pointPageRouter(deps: PhonePageDeps = defaultPhonePageDeps()): Router {
   const router = forwardAsyncErrors(Router());
   const run = runWith(deps);
@@ -75,7 +95,7 @@ export function pointPageRouter(deps: PhonePageDeps = defaultPhonePageDeps()): R
     if (!p) throw new TerminalError('No Point has that code', 'not_found');
     return menuFor(db, p.merchant);
   }));
-  router.post('/:code/pay', deps.limits.act, run((db, req) => publicPay(db, deps.pay(db), { code: code(req), request: req.body })));
+  router.post('/:code/pay', deps.limits.act, run(async (db, req) => publicPay(db, deps.pay(db), { code: code(req), request: req.body, customer: await payingCustomer(db, req) })));
   router.post('/:code/waitlist', deps.limits.act, run((db, req) => publicJoinWaitlist(db, { code: code(req), request: req.body, texter: deps.texter })));
   return router;
 }

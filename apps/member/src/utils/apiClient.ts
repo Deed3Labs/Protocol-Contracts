@@ -3742,3 +3742,75 @@ export async function recordGaslessPool(p: {
 export async function recordGaslessBond(p: { txHash: string; chainId: number }): Promise<void> {
   await apiRequest('/api/savings/bond/record', { method: 'POST', body: JSON.stringify(p) });
 }
+
+// ---- Rewards: Your shops and shop purchases (rewards spec, section 6; Phase 6) --------------------
+
+/** A shop's look for its row: its logo or monogram, in its colours and heading font. */
+export interface YourShopBrand {
+  logoUrl: string | null;
+  monogram: string;
+  colour: string;
+  onColour: string;
+  headingFont: { kind: 'preset'; preset: string } | { kind: 'uploaded'; fontId: string };
+}
+export type RewardsPointsName = { kind: 'points' } | { kind: 'stars' } | { kind: 'custom'; one: string; many: string };
+
+/** A shop whose rewards the member has joined (`GET /api/rewards/me/shops`, `MyShops` in the contracts). */
+export interface YourShop {
+  slug: string;
+  name: string;
+  brand: YourShopBrand;
+  pointsName: RewardsPointsName;
+  unit: 'dollars' | 'visits';
+  points: number;
+  cardSize: number | null;
+  readyCount: number;
+  next: { name: string; toGo: number } | null;
+}
+
+/**
+ * Your shops: a hub session minted from the member's own sign-in, then their shops. Plain fetches,
+ * not `apiRequest`: a refusal here (rewards not set up on this API) must never sign the member out.
+ * Null when it couldn't be read.
+ */
+export async function getYourShops(): Promise<YourShop[] | null> {
+  try {
+    const privy = await getAccessToken().catch(() => null);
+    if (!privy) return null;
+    const s = await fetch(`${API_BASE_URL}/api/rewards/session`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${privy}` }, body: '{}' });
+    if (!s.ok) return null;
+    const { token } = (await s.json()) as { token: string };
+    const r = await fetch(`${API_BASE_URL}/api/rewards/me/shops`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) return null;
+    return ((await r.json()) as { shops: YourShop[] }).shops;
+  } catch {
+    return null;
+  }
+}
+
+/** A card purchase at a Clear shop (`GET /api/rewards/purchases`, `MemberShopPurchases`). */
+export interface ShopPurchase {
+  orderId: string;
+  shop: { slug: string | null; name: string };
+  at: string;
+  amountCents: number;
+  cardLast4: string | null;
+  points: { earned: number; name: RewardsPointsName } | null;
+}
+
+/**
+ * What the member bought by card at Clear shops, including as a rewards-only customer before they
+ * set up Clear. The API answers only once onboarding is submitted; before that, and on any refusal,
+ * there's nothing to add.
+ */
+export async function getShopPurchases(): Promise<ShopPurchase[]> {
+  try {
+    const privy = await getAccessToken().catch(() => null);
+    if (!privy) return [];
+    const r = await fetch(`${API_BASE_URL}/api/rewards/purchases`, { headers: { Authorization: `Bearer ${privy}` } });
+    if (!r.ok) return [];
+    return ((await r.json()) as { items: ShopPurchase[] }).items;
+  } catch {
+    return [];
+  }
+}

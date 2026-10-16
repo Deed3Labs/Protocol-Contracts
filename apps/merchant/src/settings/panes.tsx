@@ -40,6 +40,7 @@ export type Section =
   | 'tax'
   | 'tips'
   | 'discounts'
+  | 'shop-app'
   | 'devices'
   | 'closing'
   | 'security'
@@ -57,6 +58,7 @@ export const SECTIONS: { key: Section; label: string; det: string; desc: string;
   { key: 'tax', label: 'Tax', det: 'Sales tax, worked out from where the shop is.', desc: 'Where you collect, how prices show', live: true },
   { key: 'tips', label: 'Tips', det: 'Whether Checkout asks, what it offers, and who gets it.', desc: 'Asking, amounts, who gets them', live: true },
   { key: 'discounts', label: 'Discounts', det: 'Codes you create, and how much each role can give without asking.', desc: 'Codes, limits by role', live: true },
+  { key: 'shop-app', label: 'Shop app', det: 'Your own app for your customers: rewards, offers and Scan to pay.', desc: 'Rewards, look, offers', live: true },
   { key: 'devices', label: 'Devices', det: 'What is paired with this tablet.', desc: 'Reader, printer, this tablet', live: true },
   { key: 'closing', label: 'Closing', det: 'How the drawer is opened, counted and signed off.', desc: 'The drawer, and who closes', live: true },
   { key: 'security', label: 'Security', det: 'How you sign in, and what is signed in as the shop.', desc: 'Sign-in, owner PIN, devices', live: true },
@@ -246,6 +248,8 @@ export interface Actions {
   onDevice: () => void;
   onLeave: () => void;
   onNewCode: () => void;
+  /** A code's row: Show in app and who sees it (rewards spec, Offers). */
+  onCode?: (c: DiscountCode) => void;
   onSignOutDevice?: (id: string) => void;
   /** Owners: to Stripe's onboarding (or its dashboard, once connected). */
   onConnectStripe?: () => void;
@@ -391,6 +395,12 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 const ago = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 /** A discount code's line: what it takes off, and on what. */
+/** The reference's two codes, for the preview's code sheet. */
+const PREVIEW_CODES: [DiscountCode, DiscountCode] = [
+  { id: 'dsc_fall10', code: 'FALL10', percent: 10, amountCents: null, appliesTo: { all: true }, startsAt: null, endsAt: '2026-11-01T07:00:00.000Z', oncePerCustomer: false, uses: 4, showInApp: false, audience: 'everyone' },
+  { id: 'dsc_summer25', code: 'SUMMER25', percent: 25, amountCents: null, appliesTo: { categories: ['Tires'] }, startsAt: null, endsAt: '2026-09-01T07:00:00.000Z', oncePerCustomer: false, uses: 11, showInApp: false, audience: 'everyone' },
+];
+
 function codeLine(c: DiscountCode): string {
   const off = c.percent !== null ? `${c.percent}% off` : `${money(c.amountCents ?? 0)} off`;
   return 'all' in c.appliesTo ? `${off} the whole charge` : `${off} ${c.appliesTo.categories.join(', ').toLowerCase()}`;
@@ -528,16 +538,19 @@ function liveSelling(key: Section, l: LiveSelling, a: Actions): ReactNode {
           >
             <Main>
               {codes.length ? (
-                <Rows>
+                <Rows link={Boolean(a.onCode)}>
                   {codes.map((c) => (
                     <Kv
                       key={c.id}
                       k={
                         <>
                           <b className="c-st-dcode">{c.code}</b> {codeLine(c)}
+                          {c.showInApp ? ' · in the app' : ''}
                         </>
                       }
                       v={codeChip(c)}
+                      go={Boolean(a.onCode)}
+                      onTap={a.onCode ? () => a.onCode!(c) : undefined}
                     />
                   ))}
                 </Rows>
@@ -729,6 +742,8 @@ function liveAdvanced(d: SettingsData, a: Actions): ReactNode {
 
 /** A pane's cells. */
 export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
+  // Settings › Shop app is its own section (settings/shopApp.tsx), as Devices is.
+  if (key === 'shop-app') return null;
   if (!d.preview && (key === 'counter' || key === 'devices')) return d.liveShop ? liveCounterDevices(key, d.liveShop, a) : null;
   if (!d.preview && key === 'advanced') return liveAdvanced(d, a);
   // A live shop's own settings, never the reference's example figures, even while they load.
@@ -1210,6 +1225,7 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
                     </span>
                   }
                   go
+                  onTap={a.onCode ? () => a.onCode!(PREVIEW_CODES[0]) : undefined}
                 />
                 <Kv
                   k={
@@ -1219,6 +1235,7 @@ export function paneBody(key: Section, d: SettingsData, a: Actions): ReactNode {
                   }
                   v={<span className="c-chip c-neutral">Ended Sep 1</span>}
                   go
+                  onTap={a.onCode ? () => a.onCode!(PREVIEW_CODES[1]) : undefined}
                 />
               </Rows>
             </Main>

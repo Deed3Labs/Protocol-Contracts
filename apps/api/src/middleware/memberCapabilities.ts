@@ -11,7 +11,7 @@ function resolveRawAuthSubject(req: Request): string {
   throw new Error('Authenticated subject missing');
 }
 
-async function resolveMemberAuthSubject(req: Request): Promise<string> {
+export async function resolveMemberAuthSubject(req: Request): Promise<string> {
   const rawAuthSubject = resolveRawAuthSubject(req);
   const canonicalAuthSubject = await memberStore.resolveCanonicalAuthSubject({
     authSubject: rawAuthSubject,

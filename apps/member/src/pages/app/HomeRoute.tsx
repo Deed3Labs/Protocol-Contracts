@@ -8,6 +8,7 @@ import { useAppKitAccount } from '@/lib/walletCompat';
 import { mergedActivityRows } from '@/lib/activityMapping';
 import { useCreditRepayments } from '@/hooks/useCreditRepayments';
 import { useChargePayments } from '@/hooks/useChargePayments';
+import { useShopPurchases, useYourShops } from '@/hooks/useRewards';
 import { toCredit, toCycle, toLimitBacking, toTermPlans } from '@/lib/creditMapping';
 import { onChainStale } from '@/lib/chainStale';
 import { keepLastGood } from '@/lib/keepLastGood';
@@ -81,6 +82,9 @@ export default function HomeRoute() {
   const repayments = useCreditRepayments(address);
   // Shops paid now: one row each, in place of the transfers they were made of.
   const chargePayments = useChargePayments(address);
+  const shopPurchases = useShopPurchases(address);
+  // Your shops (rewards spec, section 6): shown on Home once they've joined one.
+  const yourShops = useYourShops(address);
   const repay = useCreditRepay();
   const payPlan = usePayPlan();
   const setSplit = useSetPlanSplit();
@@ -186,7 +190,7 @@ export default function HomeRoute() {
      * The newest four of EVERYTHING, not the newest four transfers. A member who paid for lunch on
      * the card and then sent a friend $20 should see both, in the order they happened.
      */
-    ...(txLoading ? {} : { recent: mergedActivityRows(items, cards, undefined, repayments, chargePayments).slice(0, 4) }),
+    ...(txLoading ? {} : { recent: mergedActivityRows(items, cards, undefined, repayments, chargePayments, [], shopPurchases).slice(0, 4) }),
     ...(credit?.complete
       ? {
           // Pending card holds count as used: a live authorization is money this member cannot
@@ -234,6 +238,7 @@ export default function HomeRoute() {
       onSetSplit={setSplit}
       onPayBack={payBack}
       savingsFree={savingsFree}
+      yourShops={yourShops}
     />
     </PendingFigures>
   );

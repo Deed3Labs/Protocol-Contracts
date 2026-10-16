@@ -110,7 +110,7 @@ const IDLE_WORD: Record<PointIdleMode, string> = {
   waitlist: 'wait list',
 };
 
-/** "Point · battery 82% · showing the bill, $48.20" (section 1). */
+/** "Point · battery 82% · showing the bill, $48.23" (section 1). */
 export function pointDet(p: Point, billCents: (orderId: string) => number | null): string {
   const model = p.model === 'point_large' ? 'Point Large' : 'Point';
   const h = p.health;

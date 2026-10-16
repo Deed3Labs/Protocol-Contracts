@@ -57,7 +57,7 @@ describe('Face ID can actually be set up', () => {
 });
 
 describe('social sign-in', () => {
-  const flow = read('pages/auth/OnboardingFlow.tsx');
+  const flow = read('../../../packages/member-kit/src/onboarding/OnboardingFlow.tsx');
 
   test('Google goes through Privy OAuth', () => {
     expect(login).toContain('oauth.initOAuth({ provider })');

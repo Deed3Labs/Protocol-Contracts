@@ -4,6 +4,9 @@ import type { Ref, State } from './states';
 
 export const E2E = path.dirname(new URL(import.meta.url).pathname);
 export const REFERENCE_DIR = path.resolve(E2E, '../../../docs/merchant-reference');
+/** Where a reference file is: the merchant reference's, or the rewards spec (its sections 8 and 9). */
+export const referenceFile = (file: string) =>
+  file === 'rewards' ? path.resolve(E2E, '../../../docs/rewards-reference/clear-rewards-app.html') : path.join(REFERENCE_DIR, `clear-merchant-${file}.html`);
 /** Captures for the side-by-side report: git-ignored, rebuilt on every run. */
 export const REPORT_DIR = path.join(E2E, '.report');
 

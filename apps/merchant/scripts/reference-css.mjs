@@ -40,9 +40,17 @@ const ORDER = ['home', 'new-charge', 'inventory', 'staff', 'charges', 'settings'
  * `.c-page-<file>` (usePage). They come last, in this order.
  */
 const ADDENDA = ['terminal'];
+/**
+ * The rewards spec draws the shop's side too (Settings › Shop app, the customer at the cart): it
+ * adds like the terminal file, read from its own folder, and its screens are `.c-page-rewards`.
+ */
+const rewardsSpec = join(here, '../../../docs/rewards-reference/clear-rewards-app.html');
 const all = readdirSync(refDir).filter((f) => /^clear-merchant-.*\.html$/.test(f));
 const files = all.filter((f) => ORDER.includes(f.slice(15, -5))).sort((a, b) => ORDER.indexOf(a.slice(15, -5)) - ORDER.indexOf(b.slice(15, -5)));
-const addenda = ADDENDA.map((a) => `clear-merchant-${a}.html`).filter((f) => all.includes(f));
+const addenda = [...ADDENDA.map((a) => `clear-merchant-${a}.html`).filter((f) => all.includes(f)), 'clear-rewards-app.html'];
+/** A file's page name: `settings` for clear-merchant-settings.html, `rewards` for the rewards spec. */
+const pageOf = (f) => (f.startsWith('clear-merchant-') ? f.slice(15, -5) : 'rewards');
+const pathOf = (f) => (f === 'clear-rewards-app.html' ? rewardsSpec : join(refDir, f));
 
 const PHONE = '@media (max-width:519.98px)';
 const PORTRAIT = '@media (min-width:520px) and (max-width:899.98px)';
@@ -95,7 +103,7 @@ const seen = new Set();
 /** An added file's rules, by media|selector, in its own order. */
 const addendumRules = new Map(); // file -> [{key, n, media, sel, body}]
 for (const f of [...files, ...addenda]) {
-  const html = readFileSync(join(refDir, f), 'utf8');
+  const html = readFileSync(pathOf(f), 'utf8');
   const style = html.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
   const markup = html.slice(html.indexOf('</style>'));
   const mine = new Set();
@@ -105,7 +113,7 @@ for (const f of [...files, ...addenda]) {
   for (const c of mine) {
     used.add(c);
     if (!classFiles.has(c)) classFiles.set(c, new Set());
-    classFiles.get(c).add(f.slice(15, -5));
+    classFiles.get(c).add(pageOf(f));
   }
   const counts = new Map();
   if (addenda.includes(f)) {
@@ -270,7 +278,7 @@ for (const { key, n, media, sel } of order) {
 // it could match on one of the ten's), and what the ten draw differently, scoped to its screens.
 let added = 0;
 for (const f of addenda) {
-  const page = f.slice(15, -5);
+  const page = pageOf(f);
   // A rule the ten already have, in any of their versions, or one this file repeats (the terminal
   // file inlines the library twice), adds nothing.
   const done = new Set();

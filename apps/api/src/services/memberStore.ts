@@ -190,6 +190,11 @@ export interface MemberCapabilities {
   canAccessDirectDeposit: boolean;
   canAccessCard: boolean;
   canUseRegulatedTransfers: boolean;
+  /**
+   * Pay a shop from the Clear balance, and add money (rewards spec, "Two levels"): once onboarding is
+   * submitted and the member isn't restricted. Paying over time also needs a credit line.
+   */
+  canPayWithClear: boolean;
 }
 
 export interface MemberAccountCenter {
@@ -946,6 +951,7 @@ function deriveCapabilities(member: MemberRecord): MemberCapabilities {
     canAccessDirectDeposit: verified,
     canAccessCard: verified,
     canUseRegulatedTransfers: verified,
+    canPayWithClear: !restricted && member.status !== 'ONBOARDING',
   };
 }
 

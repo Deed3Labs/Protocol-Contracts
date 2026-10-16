@@ -14,7 +14,7 @@ import { DINNER, LUNCH } from './capture';
  * or the manager (luis) on shift instead of the owner.
  */
 
-export type File = 'home' | 'charges' | 'inventory' | 'new-charge' | 'onboarding' | 'overview' | 'payouts' | 'settings' | 'sign-in' | 'staff' | 'terminal';
+export type File = 'home' | 'charges' | 'inventory' | 'new-charge' | 'onboarding' | 'overview' | 'payouts' | 'settings' | 'sign-in' | 'staff' | 'terminal' | 'rewards';
 
 export interface Ref {
   file: File;
@@ -47,6 +47,9 @@ const P = '?preview=1';
 /** Clear Terminal's restaurant. */
 const MC = '&shop=micasa';
 const r = (file: File, h2: string, i = 0, note?: string, at?: SizeName): Ref => ({ file, h2, i, note, at });
+const SHOP_SIDE = '8 · The shop’s side';
+const COUNTER = '9 · At the counter: scan a member once';
+const RW = `/new${P}&live=1${MC}&as=jen&table=tbl_6&rw=`;
 
 export const STATES: State[] = [
   // ---- Home ------------------------------------------------------------------------------------
@@ -318,19 +321,19 @@ export const STATES: State[] = [
   { id: 'terminal-drawer', page: 'settings', clock: DINNER, url: `/settings/devices/hw_drawer${P}${MC}`, refs: [r('terminal', '4 · Drawer and printers', 0)] },
   { id: 'terminal-printers', page: 'settings', clock: DINNER, url: `/settings/devices/printers${P}${MC}`, refs: [r('terminal', '4 · Drawer and printers', 1)] },
   { id: 'terminal-nosale', page: 'settings', clock: DINNER, url: `/settings/devices/hw_drawer${P}${MC}&screen=nosale&as=jen`, refs: [r('terminal', '6 · No sale', 0, 'A keypad under the dots: a tablet has no keyboard (DECISIONS › Terminal Phase 4). “or from their phone” is left off until approving from a phone is built (DECISIONS › Terminal: what the spec met).')] },
-  { id: 'terminal-cash-paid', page: 'new', clock: LUNCH, url: `/new${P}${MC}&screen=cash-paid&as=jen`, refs: [r('terminal', '5 · A cash sale, with the drawer and the Point', 0, 'Order 0142 is $45.76 at the one tax rate the reference’s bills share (DECISIONS › Terminal Phase 4). Send a receipt stays above the printer’s rows, as New Charge draws it.')] },
-  { id: 'terminal-cash-stuck', page: 'new', clock: LUNCH, url: `/new${P}${MC}&screen=cash-paid&as=jen&drawerHw=stuck`, refs: [r('terminal', '5 · A cash sale, with the drawer and the Point', 1, 'Order 0142 is $45.76 (DECISIONS › Terminal Phase 4).')] },
+  { id: 'terminal-cash-paid', page: 'new', clock: LUNCH, url: `/new${P}${MC}&screen=cash-paid&as=jen`, refs: [r('terminal', '5 · A cash sale, with the drawer and the Point', 0, 'Order 0142 is $45.79 at Mi Casa’s 8.375% (rewards DECISIONS › Figures). Send a receipt stays above the printer’s rows, as New Charge draws it.')] },
+  { id: 'terminal-cash-stuck', page: 'new', clock: LUNCH, url: `/new${P}${MC}&screen=cash-paid&as=jen&drawerHw=stuck`, refs: [r('terminal', '5 · A cash sale, with the drawer and the Point', 1, 'Order 0142 is $45.79 at 8.375% (rewards DECISIONS › Figures).')] },
   { id: 'terminal-close-drawer', page: 'close', clock: DINNER, url: `/close${P}${MC}&drawer=signed`, refs: [r('terminal', '6 · No sale', 1, 'A detail: the reference draws the drawer’s opens alone; the app puts them above the counts on Close the day.')] },
-  { id: 'terminal-show-on', page: 'new', clock: LUNCH, url: `/new${P}${MC}&screen=show-on&as=jen`, refs: [r('terminal', '7 · Show on a Point', 0, 'The sheet opens over Checkout. Table 12’s tab reads its total; the counter’s order is $45.76.')] },
+  { id: 'terminal-show-on', page: 'new', clock: LUNCH, url: `/new${P}${MC}&screen=show-on&as=jen`, refs: [r('terminal', '7 · Show on a Point', 0, 'The sheet opens over Checkout. Table 12’s tab reads its total; the counter’s order is $45.79.')] },
   // Tables v2 (sections 8–8d): the floor at dinner with Kim's Call open, and every sheet.
-  { id: 'terminal-tables', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&calls=open&as=jen`, refs: [r('terminal', '8 · Tables', 0, 'Table 2’s tab is $35.74 at the one rate Table 12’s $48.20 sets (DECISIONS › Tables v2, the app).'), r('terminal', '13b · The Pay case', 1), r('terminal', '8d · Tables on a phone', 0)] },
+  { id: 'terminal-tables', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&calls=open&as=jen`, refs: [r('terminal', '8 · Tables', 0, 'Table 2’s tab is $35.76, as drawn; Table 12’s is $48.23 at 8.375% (rewards DECISIONS › Figures).'), r('terminal', '13b · The Pay case', 1), r('terminal', '8d · Tables on a phone', 0)] },
   { id: 'terminal-tables-empty', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&floor=empty`, refs: [r('terminal', '8 · Tables', 1)] },
   { id: 'terminal-tables-setup', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&floor=empty&screen=setup`, refs: [r('terminal', '8 · Tables', 2, 'The sheet opens over the empty floor; it starts at 10 tables, the reference shows 14.')] },
   { id: 'terminal-tables-edit', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&screen=edit`, refs: [r('terminal', '8 · Tables', 3, 'Its Points are the reference’s devices (section 1), not the four this frame draws; each row has Remove, which the reference doesn’t draw.')] },
   { id: 'terminal-counter', page: 'settings', clock: DINNER, url: `/settings/counter${P}${MC}`, refs: [r('terminal', '8 · Tables', 4)] },
   { id: 'terminal-table-free', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&as=jen&screen=table&table=1`, refs: [r('terminal', '8b · A table, from seated to cleared', 0)] },
-  { id: 'terminal-table-ordered', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&as=jen&screen=table&table=2`, refs: [r('terminal', '8b · A table, from seated to cleared', 1, 'Table 2’s tab is $35.74 (DECISIONS › Tables v2, the app).')] },
-  { id: 'terminal-add-items', page: 'new', clock: DINNER, url: `/new${P}${MC}&as=jen&items=1&table=tbl_2`, refs: [r('terminal', '8b · A table, from seated to cleared', 2, 'Before anything is added: the reference draws four items already picked. Tax is at Mi Casa’s 8.32% (DECISIONS › Tables v2, the app).')] },
+  { id: 'terminal-table-ordered', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&as=jen&screen=table&table=2`, refs: [r('terminal', '8b · A table, from seated to cleared', 1, 'Table 2’s tab is $35.76, as drawn.')] },
+  { id: 'terminal-add-items', page: 'new', clock: DINNER, url: `/new${P}${MC}&as=jen&items=1&table=tbl_2`, refs: [r('terminal', '8b · A table, from seated to cleared', 2, 'Before anything is added: the reference draws four items already picked. Tax is at Mi Casa’s 8.375%, as drawn.')] },
   { id: 'terminal-table-bill', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&as=jen&screen=table&table=4`, refs: [r('terminal', '8b · A table, from seated to cleared', 3)] },
   { id: 'terminal-table-paid', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&as=jen&screen=table&table=9`, refs: [r('terminal', '8b · A table, from seated to cleared', 4)] },
   { id: 'terminal-table-move', page: 'tables', clock: DINNER, url: `/tables${P}${MC}&as=jen&screen=move&table=2`, refs: [r('terminal', '8b · A table, from seated to cleared', 5)] },
@@ -340,6 +343,22 @@ export const STATES: State[] = [
   { id: 'terminal-order-ready', page: 'home', clock: LUNCH, url: `/${P}${MC}&as=jen`, refs: [r('terminal', '9 · Order ready', 0, 'A cell on Home, under the rest of it.')] },
   { id: 'terminal-menu', page: 'inventory', clock: DINNER, url: `/inventory${P}${MC}&live=1`, refs: [r('terminal', '10 · Inventory · on the Point', 0, 'Every item on the menu is listed; the reference draws five.')] },
   { id: 'terminal-card-table', page: 'new', clock: DINNER, url: `/new${P}${MC}&screen=card-table&as=jen`, refs: [r('terminal', '13b · The Pay case', 2)] },
+
+  // ---- Rewards (docs/rewards-reference/clear-rewards-app.html, sections 8 and 9) ------------------
+  // Settings › Shop app is the mock's Mi Casa. Section 9 runs the live path over the mock (`&live=1`),
+  // set up by `&rw=` (NewChargePage), so the cart, Checkout and the waiting screen are the server's figures.
+  { id: 'rewards-shop-app', page: 'settings', clock: DINNER, url: `/settings/shop-app${P}${MC}`, refs: [r('rewards', SHOP_SIDE, 0, 'Extra for paying with Clear is Off at Mi Casa, so the give-back line has no Clear clause (rewards DECISIONS, Hard Stop 2).')] },
+  { id: 'rewards-domain', page: 'settings', clock: DINNER, url: `/settings/shop-app${P}${MC}&screen=shop-app-domain`, refs: [r('rewards', SHOP_SIDE, 1)] },
+  { id: 'rewards-store', page: 'settings', clock: DINNER, url: `/settings/shop-app${P}${MC}&screen=shop-app-store`, refs: [r('rewards', SHOP_SIDE, 2)] },
+  { id: 'rewards-add-reward', page: 'settings', clock: DINNER, url: `/settings/shop-app${P}${MC}&screen=shop-app-reward`, refs: [r('rewards', SHOP_SIDE, 3, 'Mi Casa’s menu has no Tamarindo: the chips are its drinks (rewards DECISIONS, Phase 5).')] },
+  { id: 'rewards-font', page: 'settings', clock: DINNER, url: `/settings/shop-app${P}${MC}&screen=shop-app-font`, refs: [r('rewards', SHOP_SIDE, 4)] },
+  { id: 'rewards-cart', page: 'new', clock: DINNER, url: `${RW}cart`, refs: [r('rewards', COUNTER, 0, 'Tax per line: $1.33 and $17.33 (rewards DECISIONS › Figures). The items are Mi Casa’s menu.')] },
+  { id: 'rewards-scan', page: 'new', clock: DINNER, url: `${RW}scan`, refs: [r('rewards', COUNTER, 1, 'The viewfinder is the tablet’s camera.')] },
+  { id: 'rewards-sofia', page: 'new', clock: DINNER, url: `${RW}sofia`, refs: [r('rewards', COUNTER, 2, 'Neutral pronouns: “Approves on their phone” (rewards DECISIONS).')] },
+  { id: 'rewards-dev', page: 'new', clock: DINNER, url: `${RW}dev`, refs: [r('rewards', COUNTER, 3, '“Ask them to join” (rewards DECISIONS).')] },
+  { id: 'rewards-applied', page: 'new', clock: DINNER, url: `${RW}applied`, refs: [r('rewards', COUNTER, 4, '“75 of their 128 points”.')] },
+  { id: 'rewards-checkout', page: 'new', clock: DINNER, url: `${RW}checkout`, refs: [r('rewards', COUNTER, 5, 'The merchant reference’s rows stay: the reward as the discount, the tip, the tax.')] },
+  { id: 'rewards-waiting', page: 'new', clock: DINNER, url: `${RW}waiting`, refs: [r('rewards', COUNTER, 6, 'The live waiting screen’s steps (Raised, Opened, Approved); neutral pronouns.')] },
 ];
 
 /** A frame's size, from its classes: which of the three captures it pairs with. */

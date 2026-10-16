@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IdempotencyKey, NonNegativeCents, Timestamp } from './common';
+import { Id, IdempotencyKey, NonNegativeCents, Timestamp } from './common';
 import { PointCode, PointState } from './devices';
 import { Table } from './floor';
 import { Receipt } from './orders';
@@ -43,7 +43,8 @@ export type PublicBill = z.infer<typeof PublicBill>;
  */
 export const PublicPoint = z.object({
   code: PointCode,
-  shop: z.object({ name: z.string() }),
+  /** `slug` when the shop has an app, so a rewards app's scanner opens the bill inside it. */
+  shop: z.object({ name: z.string(), slug: z.string().optional() }),
   /** "Table 12". Null at the counter or the door. */
   table: z.string().nullable(),
   placement: z.enum(['counter', 'table', 'door']),
@@ -63,7 +64,15 @@ export type PublicPoint = z.infer<typeof PublicPoint>;
  * and answers with its charge code, which the Clear app opens. Card is a Stripe Checkout Session on
  * the shop's own account, which returns to the page.
  */
-export const PublicPay = z.object({ method: z.enum(['clear', 'card']), idempotencyKey: IdempotencyKey });
+export const PublicPay = z.object({
+  method: z.enum(['clear', 'card']),
+  idempotencyKey: IdempotencyKey,
+  /**
+   * From a signed-in rewards app (a shop's token): a ready reward to put on the bill before paying.
+   * The token also puts the customer on the order, so a card payment earns too.
+   */
+  rewardId: Id.nullable().optional(),
+});
 export const PublicPayStarted = z.discriminatedUnion('method', [
   z.object({ method: z.literal('clear'), chargeCode: z.string(), url: z.string().url() }),
   z.object({ method: z.literal('card'), checkoutUrl: z.string().url() }),

@@ -22,6 +22,8 @@ import { audit } from '../security/audit.js';
 import { type TenderRow, toTender } from '../cards/cardTenders.js';
 import { attachTab } from '../terminal/tabs.js';
 import { TerminalError } from '../terminal/errors.js';
+import { RewardsError } from '../rewards/errors.js';
+import { openClaim, rewardAmountNow, rewardSpecFor, setOrderMember } from '../rewards/counter.js';
 
 /**
  * Orders (card-processing prompt, Phase 6: the order service). The app sends lines and a discount
@@ -149,7 +151,7 @@ export function allocate(amounts: number[], discount: number): number[] {
 // ---- Discounts ---------------------------------------------------------------------------------
 
 interface DiscountSpec {
-  kind: 'code' | 'manual';
+  kind: 'code' | 'manual' | 'reward';
   codeId: string | null;
   percent: number | null;
   amountCents: number | null;
@@ -157,8 +159,12 @@ interface DiscountSpec {
   categories: string[] | null;
   label: string;
   reason: string | null;
-  appliedBy: string;
+  appliedBy: string | null;
   approvedBy: string | null;
+  /** A reward: which, its points, and the counter code it came from. */
+  rewardId?: string | null;
+  points?: number | null;
+  claimId?: string | null;
 }
 
 const usd = (c: number) => `$${(c / 100).toFixed(2)}`;
@@ -230,6 +236,10 @@ interface OrderRow {
   called_at?: Date | string | null;
   picked_up_at?: Date | string | null;
   offline?: boolean;
+  member_person?: string | null;
+  member_added_by?: string | null;
+  member_added_via?: 'code' | 'phone' | 'claim' | 'app' | null;
+  member_added_at?: Date | string | null;
 }
 
 const day = (d: Date | string) => (typeof d === 'string' ? d.slice(0, 10) : d.toISOString().slice(0, 10));
@@ -248,7 +258,7 @@ async function toOrder(q: Queryable, r: OrderRow): Promise<Order> {
     tax_kind: TaxKind;
     tax_cents: string | number;
   }>('SELECT * FROM commerce.order_lines WHERE order_id = $1 AND removed_at IS NULL ORDER BY position, id', [r.id]);
-  const { rows: discounts } = await q.query<{ kind: 'code' | 'manual'; code_id: string | null; label: string; amount_cents: string | number; reason: string | null; approved_by: string | null }>(
+  const { rows: discounts } = await q.query<{ kind: 'code' | 'manual' | 'reward'; code_id: string | null; label: string; amount_cents: string | number; reason: string | null; approved_by: string | null; reward_id: string | null; reward_points: number | null }>(
     'SELECT * FROM commerce.order_discounts WHERE order_id = $1 AND removed_at IS NULL',
     [r.id],
   );
@@ -262,7 +272,7 @@ async function toOrder(q: Queryable, r: OrderRow): Promise<Order> {
   );
   const d = discounts[0];
   const discount: OrderDiscount | null = d
-    ? { kind: d.kind, codeId: d.code_id, label: d.label, amountCents: Number(d.amount_cents), reason: d.reason, approvedBy: d.approved_by }
+    ? { kind: d.kind, codeId: d.code_id, label: d.label, amountCents: Number(d.amount_cents), reason: d.reason, approvedBy: d.approved_by, ...(d.kind === 'reward' ? { rewardId: d.reward_id, points: d.reward_points } : {}) }
     : null;
   const toLine = (l: (typeof lines)[number]): OrderLine => ({
     id: l.id,
@@ -303,6 +313,9 @@ async function toOrder(q: Queryable, r: OrderRow): Promise<Order> {
     calledAt: r.called_at ? new Date(r.called_at).toISOString() : null,
     pickedUpAt: r.picked_up_at ? new Date(r.picked_up_at).toISOString() : null,
     offline: Boolean(r.offline),
+    member: r.member_person
+      ? { memberId: r.member_person, addedBy: r.member_added_by ?? null, addedVia: r.member_added_via ?? 'app', at: new Date(r.member_added_at ?? r.created_at).toISOString() }
+      : null,
   };
 }
 
@@ -496,13 +509,19 @@ async function currentLines(tx: Queryable, orderId: string): Promise<PreparedLin
 }
 
 async function currentDiscount(tx: Queryable, orderId: string): Promise<DiscountSpec | null> {
-  const { rows } = await tx.query<{ kind: 'code' | 'manual'; code_id: string | null; percent: number | null; amount_cents: string | number; label: string; reason: string | null; applied_by: string; approved_by: string | null; applies_to: string[] | null; code_amount: string | number | null }>(
-    `SELECT d.*, c.applies_to, c.amount_cents AS code_amount FROM commerce.order_discounts d LEFT JOIN commerce.discount_codes c ON c.id = d.code_id
+  const { rows } = await tx.query<{ kind: 'code' | 'manual' | 'reward'; code_id: string | null; percent: number | null; amount_cents: string | number; label: string; reason: string | null; applied_by: string | null; approved_by: string | null; applies_to: string[] | null; code_amount: string | number | null; reward_id: string | null; reward_points: number | null; claim_id: string | null; merchant: string }>(
+    `SELECT d.*, c.applies_to, c.amount_cents AS code_amount, o.merchant FROM commerce.order_discounts d LEFT JOIN commerce.discount_codes c ON c.id = d.code_id
+       JOIN commerce.orders o ON o.id = d.order_id
       WHERE d.order_id = $1 AND d.removed_at IS NULL`,
     [orderId],
   );
   const d = rows[0];
   if (!d) return null;
+  if (d.kind === 'reward' && d.reward_id) {
+    // An item reward follows the cart: a free drink is still the drink's price after a change.
+    const now = await rewardAmountNow(tx, d.merchant, orderId, d.reward_id);
+    return { kind: 'reward', codeId: null, percent: now.percent, amountCents: now.amountCents, categories: now.categories, label: d.label, reason: d.reason, appliedBy: d.applied_by, approvedBy: null, rewardId: d.reward_id, points: d.reward_points, claimId: d.claim_id };
+  }
   return {
     kind: d.kind,
     codeId: d.code_id,
@@ -567,7 +586,9 @@ export async function applyDiscount(
     const lines = await currentLines(tx, order.id);
     let spec: DiscountSpec;
 
-    if (req.kind === 'code') {
+    if (req.kind === 'reward' || req.kind === 'claim') {
+      spec = await rewardSpec(tx, { merchant: input.merchant, order, staffId: input.staff.id, request: req });
+    } else if (req.kind === 'code') {
       const { rows } = await tx.query<{ id: string; code: string; percent: number | null; amount_cents: string | number | null; applies_to: string[] | null; starts_at: Date | null; ends_at: Date | null; once_per_customer: boolean }>(
         'SELECT * FROM commerce.discount_codes WHERE merchant = $1 AND upper(code) = upper($2) AND archived_at IS NULL',
         [input.merchant, req.code.trim()],
@@ -628,11 +649,7 @@ export async function applyDiscount(
     }
 
     const priced = await price(tx, deps, input.merchant, lines, spec);
-    await tx.query(
-      `INSERT INTO commerce.order_discounts (id, order_id, kind, code_id, label, percent, amount_cents, reason, applied_by, approved_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [`odc_${randomUUID()}`, order.id, spec.kind, spec.codeId, spec.label, spec.percent, priced.discount, spec.reason, spec.appliedBy, spec.approvedBy],
-    );
+    await insertDiscount(tx, order.id, spec, priced.discount);
     await audit(tx, {
       merchant: input.merchant,
       actor: input.staff.id,
@@ -647,9 +664,109 @@ export async function applyDiscount(
   return getOrder(db, input.merchant, input.orderId);
 }
 
+async function insertDiscount(tx: Queryable, orderId: string, spec: DiscountSpec, amountCents: number): Promise<void> {
+  await tx.query(
+    `INSERT INTO commerce.order_discounts (id, order_id, kind, code_id, label, percent, amount_cents, reason, applied_by, approved_by, reward_id, reward_points, claim_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [`odc_${randomUUID()}`, orderId, spec.kind, spec.codeId, spec.label, spec.percent, amountCents, spec.reason, spec.appliedBy, spec.approvedBy, spec.rewardId ?? null, spec.points ?? null, spec.claimId ?? null],
+  );
+  if (spec.claimId) await tx.query('UPDATE rewards.reward_claims SET order_id = $2 WHERE id = $1', [spec.claimId, orderId]);
+}
+
+const REWARD_TO_ORDER: Record<RewardsError['code'], OrderError['code']> = {
+  not_found: 'invalid',
+  invalid: 'invalid',
+  forbidden: 'invalid',
+  scope: 'invalid',
+  conflict: 'locked',
+  not_joined: 'invalid',
+  needs_clear: 'invalid',
+  limit: 'invalid',
+  expired: 'invalid',
+  not_enough: 'invalid',
+  unavailable: 'invalid',
+};
+
+/**
+ * A reward as the order's discount: the added customer's (`reward`), or a counter code they claimed
+ * in their app (`claim`), which adds them when nobody is on the order. Points come off when it's paid.
+ */
+async function rewardSpec(
+  tx: Queryable,
+  input: { merchant: string; order: OrderRow & { member_person?: string | null }; staffId: string | null; request: { kind: 'reward'; rewardId: string } | { kind: 'claim'; code: string } },
+): Promise<DiscountSpec> {
+  try {
+    let personId = input.order.member_person ?? null;
+    let rewardId: string;
+    let claimId: string | null = null;
+    if (input.request.kind === 'claim') {
+      const claim = await openClaim(tx, { merchant: input.merchant, code: input.request.code, orderId: input.order.id });
+      if (personId && personId !== claim.personId) throw new RewardsError('That code is someone else’s', 'conflict');
+      if (!personId) {
+        await setOrderMember(tx, { merchant: input.merchant, orderId: input.order.id, personId: claim.personId, by: input.staffId, via: 'claim' });
+        personId = claim.personId;
+      }
+      rewardId = claim.rewardId;
+      claimId = claim.id;
+    } else {
+      if (!personId) throw new RewardsError('Add the customer first', 'conflict');
+      rewardId = input.request.rewardId;
+    }
+    const r = await rewardSpecFor(tx, { merchant: input.merchant, orderId: input.order.id, personId, rewardId, claimId });
+    return {
+      kind: 'reward',
+      codeId: null,
+      percent: r.percent,
+      amountCents: r.amountCents,
+      categories: r.categories,
+      label: r.name,
+      reason: `Reward · ${r.points} points`,
+      appliedBy: input.staffId,
+      approvedBy: null,
+      rewardId: r.rewardId,
+      points: r.points,
+      claimId: r.claimId,
+    };
+  } catch (error) {
+    if (error instanceof RewardsError) throw new OrderError(error.message, REWARD_TO_ORDER[error.code]);
+    throw error;
+  }
+}
+
+/**
+ * The customer's own reward, from a Point's bill in their app (rewards spec, section 3): the same
+ * discount the counter would apply, with no staff member on it.
+ */
+export async function applyCustomerReward(db: Db, deps: OrderDeps, input: { merchant: string; orderId: string; personId: string; rewardId: string }): Promise<Order> {
+  await db.transaction(async (tx) => {
+    const order = await lockEditable(tx, input.merchant, input.orderId);
+    const { rows: existing } = await tx.query<{ reward_id: string | null }>('SELECT reward_id FROM commerce.order_discounts WHERE order_id = $1 AND removed_at IS NULL', [order.id]);
+    if (existing[0]?.reward_id === input.rewardId) return;
+    if (existing[0]) throw new OrderError('This order already has a discount; remove it first', 'one_discount');
+    const withMember = order as OrderRow & { member_person?: string | null };
+    if (withMember.member_person && withMember.member_person !== input.personId) throw new OrderError('This order is someone else’s', 'locked');
+    if (!withMember.member_person) {
+      await setOrderMember(tx, { merchant: input.merchant, orderId: order.id, personId: input.personId, by: null, via: 'app' }).catch((e) => {
+        if (e instanceof RewardsError) throw new OrderError(e.message, REWARD_TO_ORDER[e.code]);
+        throw e;
+      });
+      withMember.member_person = input.personId;
+    }
+    const spec = await rewardSpec(tx, { merchant: input.merchant, order: withMember, staffId: null, request: { kind: 'reward', rewardId: input.rewardId } });
+    const lines = await currentLines(tx, order.id);
+    const priced = await price(tx, deps, input.merchant, lines, spec);
+    await insertDiscount(tx, order.id, spec, priced.discount);
+    await audit(tx, { merchant: input.merchant, actor: null, action: 'order.discount_applied', ref: { type: 'order', id: order.id }, amountCents: priced.discount, detail: { kind: 'reward', label: spec.label, rewardId: spec.rewardId, by: 'customer' } });
+    await rewrite(tx, input.merchant, order, priced, spec, order.raised_by);
+  });
+  return getOrder(db, input.merchant, input.orderId);
+}
+
 export async function removeDiscount(db: Db, deps: OrderDeps, input: { merchant: string; orderId: string; staffId: string }): Promise<Order> {
   await db.transaction(async (tx) => {
     const order = await lockEditable(tx, input.merchant, input.orderId);
+    // A claimed code goes back to being good, until it runs out.
+    await tx.query('UPDATE rewards.reward_claims SET order_id = NULL WHERE id IN (SELECT claim_id FROM commerce.order_discounts WHERE order_id = $1 AND removed_at IS NULL AND claim_id IS NOT NULL)', [order.id]);
     await tx.query('UPDATE commerce.order_discounts SET removed_at = now() WHERE order_id = $1 AND removed_at IS NULL', [order.id]);
     await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'order.discount_removed', ref: { type: 'order', id: order.id } });
     const lines = await currentLines(tx, order.id);
@@ -657,4 +774,26 @@ export async function removeDiscount(db: Db, deps: OrderDeps, input: { merchant:
     await rewrite(tx, input.merchant, order, priced, null, input.staffId);
   });
   return getOrder(db, input.merchant, input.orderId);
+}
+
+/**
+ * An order's figures as they would be with a reward on it, without saving anything: the bill a
+ * customer sees in their app with the reward line switched on, and its lines after their share.
+ */
+export async function priceWithReward(
+  q: Queryable,
+  deps: OrderDeps,
+  input: { merchant: string; orderId: string; reward: { percent: number | null; amountCents: number | null; categories: string[] | null } | null },
+): Promise<{ discountCents: number; taxCents: number; totalCents: number; lines: Array<{ netCents: number; category: string | null }> }> {
+  const lines = await currentLines(q, input.orderId);
+  const spec: DiscountSpec | null = input.reward
+    ? { kind: 'reward', codeId: null, percent: input.reward.percent, amountCents: input.reward.amountCents, categories: input.reward.categories, label: '', reason: null, appliedBy: null, approvedBy: null }
+    : await currentDiscount(q, input.orderId);
+  const priced = await price(q, deps, input.merchant, lines, spec);
+  return {
+    discountCents: priced.discount,
+    taxCents: priced.tax,
+    totalCents: priced.total,
+    lines: priced.lines.map((l) => ({ netCents: l.lineCents - l.discountCents, category: l.category })),
+  };
 }

@@ -684,3 +684,38 @@ describe('Take the bill back (section 8b)', () => {
     expect((await floor.getTable(db, t.merchant, t.table(14)))).toMatchObject({ status: 'ordering', billSentAt: null });
   });
 });
+
+describe('rewards on a Point’s bill', () => {
+  test('a signed-in customer sees the reward that fits, switches it on, and goes on the order with it', async () => {
+    const { ensureShopApp, patchShopApp, createReward } = await import('../rewards/shopApp.js');
+    const { createPerson } = await import('../rewards/people.js');
+    const { fixedClearSide } = await import('../rewards/clearSide.js');
+    const { joinShop, shopBill } = await import('../rewards/customerApp.js');
+    const { addEntry } = await import('../rewards/ledger.js');
+    const t = await tacos();
+    await ensureShopApp(db, t.merchant, t.staff.owner);
+    const slug = `tacos-${t.merchant.slice(-4)}`;
+    await patchShopApp(db, t.merchant, t.staff.owner, { slug, enabled: true });
+    const agua = await createReward(db, t.merchant, { name: 'Free agua fresca', gives: { kind: 'item', itemIds: [t.horchata.id], maxCents: null }, cost: 75, limit: 'none', clearMembersOnly: false, note: null });
+    const clear = fixedClearSide([]);
+    const marco = await createPerson(db, clear, { did: `did:privy:marco-${t.merchant.slice(-4)}`, wallet: `0x${'5'.repeat(36)}${t.merchant.slice(-4)}` }, { firstName: 'Marco' });
+    await joinShop(db, { slug, person: marco, body: { texts: 'codes', birthMonth: null, consentVersion: 'v1', ref: null, orderId: null } });
+    await addEntry(db, { merchant: t.merchant, personId: marco.id, kind: 'adjust', points: 128, rulesVersion: 1, reason: 'Opening balance', dedupeKey: `open-${marco.id}` });
+
+    const order = await createOrder(db, deps, { merchant: t.merchant, staffId: t.staff.jen, lines: [{ itemId: t.pastor.id, quantity: 2, optionIds: [] }, { itemId: t.horchata.id, quantity: 1, optionIds: [] }], request: { tableId: t.table(14) } });
+    await showOnPoint(db, { merchant: t.merchant, staffId: t.staff.jen, pointId: t.at14.id, request: { kind: 'order', orderId: order.id } });
+
+    const bill = await shopBill(db, { clear, orders: deps, chargePaidNow: async () => null }, { slug, pointCode: t.at14.code, person: marco });
+    expect(bill).toMatchObject({ reward: { rewardId: agua.id, name: 'Free agua fresca', cost: 75, amountCents: 350, pointsBefore: 128 }, withoutReward: { totalCents: 1250, earnsPoints: 12 }, withReward: { totalCents: 900, earnsPoints: 9 } });
+
+    let raisedFor = 0;
+    const charges: ClearCharges = { raise: async ({ amountCents }) => ((raisedFor = amountCents), { ok: true, code: 'RW2M9XHQ' }), status: async () => 'pending', cancel: async () => true, sendTo: async () => ({ ok: true, label: '' }) };
+    // Another shop's token can't pay this shop's bill as its customer.
+    await expect(publicPay(db, { clear: charges, card: async () => null, orders: deps }, { code: t.at14.code, request: { method: 'clear', idempotencyKey: 'rw-pay-0', rewardId: agua.id }, customer: { personId: marco.id, slug: 'elsewhere' } })).rejects.toMatchObject({ code: 'forbidden' });
+    // And nobody signed out can spend points.
+    await expect(publicPay(db, { clear: charges, card: async () => null, orders: deps }, { code: t.at14.code, request: { method: 'clear', idempotencyKey: 'rw-pay-1', rewardId: agua.id } })).rejects.toMatchObject({ code: 'forbidden' });
+    await publicPay(db, { clear: charges, card: async () => null, orders: deps }, { code: t.at14.code, request: { method: 'clear', idempotencyKey: 'rw-pay-2', rewardId: agua.id }, customer: { personId: marco.id, slug } });
+    expect(raisedFor).toBe(900);
+    expect(await getOrder(db, t.merchant, order.id)).toMatchObject({ totalCents: 900, discount: { kind: 'reward', rewardId: agua.id }, member: { memberId: marco.id, addedVia: 'app', addedBy: null } });
+  });
+});

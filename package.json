@@ -7,6 +7,7 @@
   "workspaces": [
     "apps/member",
     "apps/merchant",
+    "apps/rewards",
     "packages/*"
   ],
   "scripts": {
@@ -50,7 +51,8 @@
     "typecheck": "turbo run typecheck",
     "test:apps": "turbo run test",
     "build:member": "turbo run build --filter=@clear/member",
-    "build:merchant": "turbo run build --filter=@clear/merchant"
+    "build:merchant": "turbo run build --filter=@clear/merchant",
+    "build:rewards": "turbo run build --filter=@clear/rewards"
   },
   "repository": {
     "type": "git",

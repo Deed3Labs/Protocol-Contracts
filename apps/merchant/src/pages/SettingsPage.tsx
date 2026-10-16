@@ -1,7 +1,8 @@
 import { useContext, useEffect, useState } from 'react';
 import { DevicesSection } from '@/terminal/useDevicesPane';
+import { OfferSheet, ShopAppSection } from '@/settings/shopApp';
 import { MI_CASA, miCasa } from '@/terminal/reference';
-import type { MerchantApi, Reader, Shop, ShopHours, ShopSettings, ShopSettingsPatch, TaxKind } from '@clear/merchant-contracts';
+import type { DiscountCode, MerchantApi, Reader, Shop, ShopHours, ShopSettings, ShopSettingsPatch, TaxKind } from '@clear/merchant-contracts';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { seesMoney } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
@@ -161,6 +162,7 @@ export default function SettingsPage() {
   const [edit, setEdit] = useState<AmountEdit | null>(null);
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [offerCode, setOfferCode] = useState<DiscountCode | null>(null);
   /** Save a change to the shop's settings, then read them again: the server's are what show. */
   const saveSettings = async (patch: ShopSettingsPatch, after?: () => void) => {
     setSaveBusy(true);
@@ -241,7 +243,8 @@ export default function SettingsPage() {
   );
   const close = () => setOpen(null);
 
-  const items = owner ? SECTIONS.filter((s) => preview || s.live) : [YOU];
+  // Shop app is the one section the rest of the team sees: managers change it, the counter looks.
+  const items = owner ? SECTIONS.filter((s) => preview || s.live) : [SECTIONS.find((s) => s.key === 'shop-app')!, YOU];
   const helpItem = owner ? items.find((s) => s.key === 'help') : undefined;
   const railItems = items.filter((s) => s.key !== 'help');
   const fallback: Section = owner ? 'shop' : 'you';
@@ -310,6 +313,7 @@ export default function SettingsPage() {
     onDevice: () => setOpen('device'),
     onLeave: () => setOpen('leave'),
     onNewCode: () => setOpen('code'),
+    onCode: (c: DiscountCode) => setOfferCode(c),
     onSignOutDevice: preview
       ? undefined
       : async (id: string) => {
@@ -367,6 +371,10 @@ export default function SettingsPage() {
     <PaneHead title={meta.label} det={meta.det} back={one ? () => navigate(`/settings${q}`) : undefined} small={phone} />
   ) : null;
 
+  // Settings › Shop app (rewards spec, section 8): its own data, saved as it changes.
+  const shopAppHere = current === 'shop-app';
+  const shopAppSection = shopAppHere ? <ShopAppSection head={head} screen={screen} onDiscounts={owner ? () => navigate(`/settings/discounts${q}`) : undefined} /> : null;
+
   // Settings › Devices is Clear Terminal's: Points, readers, the drawer, printers and this tablet.
   const devicesHere = current === 'devices' && owner;
   const devicesSection = devicesHere ? (
@@ -420,6 +428,26 @@ export default function SettingsPage() {
             onClose={close}
           />
         ))}
+      {offerCode && (
+        <OfferSheet
+          code={offerCode}
+          onSave={
+            preview
+              ? undefined
+              : async (input) => {
+                  try {
+                    await merchant.updateOffer(offerCode.id, input);
+                    codes.reload();
+                    return true;
+                  } catch (e) {
+                    setSaveError(errorSentence(e));
+                    return false;
+                  }
+                }
+          }
+          onClose={() => setOfferCode(null)}
+        />
+      )}
       {edit && shopSettings && <AmountEditSheet edit={edit} s={shopSettings} busy={saveBusy} error={saveError} onSave={(patch) => void saveSettings(patch, () => setEdit(null))} onClose={() => setEdit(null)} />}
       {open === 'reader' && (
         <AddReaderSheet
@@ -458,7 +486,7 @@ export default function SettingsPage() {
       );
     return (
       <>
-        {devicesHere ? devicesSection : (
+        {devicesHere ? devicesSection : shopAppHere ? shopAppSection : (
           <>
             {head}
             <div className="c-panebody">{body}</div>
@@ -476,7 +504,7 @@ export default function SettingsPage() {
       <div className="c-pane">
         <Rail items={railItems} help={helpItem} on={current ?? fallback} onPick={go} />
         <div>
-          {devicesHere ? devicesSection : (
+          {devicesHere ? devicesSection : shopAppHere ? shopAppSection : (
             <>
               {head}
               <div className="c-panebody">{body}</div>

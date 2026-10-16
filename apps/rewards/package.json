@@ -1,0 +1,39 @@
+{
+  "name": "@clear/rewards",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "vite --port 5190",
+    "build": "tsc -b && vite build",
+    "build:vercel": "vite build",
+    "preview": "vite preview",
+    "test": "bun test src",
+    "typecheck": "tsc -b --noEmit",
+    "reference-css": "node scripts/reference-css.mjs"
+  },
+  "dependencies": {
+    "@clear/domain": "*",
+    "@clear/member-kit": "*",
+    "@clear/merchant-contracts": "*",
+    "@privy-io/react-auth": "^3.32.2",
+    "@tailwindcss/vite": "^4.1.11",
+    "jsqr": "^1.4.0",
+    "permissionless": "^0.3.6",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.7.1",
+    "tailwindcss": "^4.1.11",
+    "viem": "^2.33.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "turbo": "^2.3.3",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}

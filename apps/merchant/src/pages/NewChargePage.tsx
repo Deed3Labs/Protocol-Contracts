@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { CardTableSheet } from '@/terminal/cardTable';
 import { readerQueue, type ReaderQueue, type TableReaderState } from '@/reader';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import type { Order, Tender } from '@clear/merchant-contracts';
+import { earnLabels, pointsWord, type Order, type OrderCustomerState, type PointsName, type Tender } from '@clear/merchant-contracts';
 import { seesMoney } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
 import { Segmented } from '@/brand/controls';
 import { OneColumn, cx } from '@/brand/ui';
 import { api } from '@/data/apiClient';
-import { discardOnLeave, useMerchantApi } from '@/data/merchantApi';
+import { discardOnLeave, mockControls, useMerchantApi } from '@/data/merchantApi';
 import { errorSentence, useApi } from '@/data/useApi';
 import { printReceipt } from '@/lib/printReceipt';
 import { useLayout } from '@/lib/useBreakpoint';
@@ -63,11 +63,12 @@ import { CashPaidView, CashView, SplitLegsCell, SplitView, type Leg, type LegMet
 import { cardName, chargeItemFrom, codeCheck, legsFromTenders, nothingTaken, payKey, pickedOptionIds, toLineInputs, totalsFromOrder } from '@/charge/live';
 import { FailureSheet, PhoneAmount, PhoneCart, PhoneCode, PhoneItems, PhoneStatus } from '@/charge/phone';
 import { CodeScanner } from '@/charge/CodeScanner';
+import { CustomerAdd, CustomerOn, fullName, MemberSheet, PhoneCustomerSheet, RewardLine, ScanCustomerSheet, ServerSmall } from '@/charge/customer';
 import { memberWalletFrom } from '@/charge/memberCode';
 import { useOnline } from '@/lib/useOnline';
 import { printAfterCash, useCounterHardware, useDrawerForSale, useQueueSync, type PrintRow } from '@/terminal/counter';
 import { isOffline, offlineOrder, queueCashSale, rememberRates, type OfflineLine } from '@/terminal/offlineSale';
-import { miCasa, ORDER_0142 } from '@/terminal/reference';
+import { miCasa, ORDER_0142, TAB_12 } from '@/terminal/reference';
 import { ShowOnRow, ShowOnSheet, useShowOn } from '@/terminal/showOn';
 
 /**
@@ -301,6 +302,12 @@ const linesOf = (o: Order): CartLine[] =>
     optionIds: l.options.map((x) => x.optionId),
   }));
 
+/** Where a waiting Clear charge goes: a scanned member, a number, or the customer added at the cart. */
+type SendTo = { to: 'member'; wallet: string } | { to: 'phone'; phone: string } | { to: 'customer' };
+
+/** "with the agua fresca already off": a free item by its name, anything else as their reward. */
+const offLine = (label: string) => (/^free /i.test(label) ? `the ${label.slice(5)}` : 'their reward');
+
 /** "8.375" from the shop's "8.375", or the cart's own rate (7.75) while it's unknown. */
 const pctOf = (fraction: number) => (fraction * 100).toFixed(3).replace(/\.?0+$/, '');
 
@@ -414,11 +421,13 @@ export default function NewChargePage() {
   }, [preview, tabOrder, counterHw.points.length]);
   // Adding to a tab: the table (its number and party) from the floor, and its tab, which is never this
   // page's `order`, so leaving doesn't discard it. Its rates price the tab after this.
-  const tabFloor = useApi(() => (adding ? merchant.floor() : Promise.resolve(null)), [adding]);
+  // A new charge for a table (`&table=`, not adding) reads the floor too, for its title.
+  const tabFloor = useApi(() => (adding || (tabTable && !preview) ? merchant.floor() : Promise.resolve(null)), [adding, tabTable]);
   const tabView = tabFloor.data?.tables.find((t) => t.id === tabTable) ?? null;
   const tabOrderId = adding ? (tabOrder ?? tabView?.orderId ?? null) : null;
   const tab = useApi(() => (tabOrderId ? merchant.order(tabOrderId) : Promise.resolve(null)), [tabOrderId]);
-  const tabTax = useApi(() => (adding ? merchant.taxStatus() : Promise.resolve(null)), [adding]);
+  // The shop's rates price the tab after this, and a live cart line by line, as the server does.
+  const tabTax = useApi(() => (adding || !preview ? merchant.taxStatus() : Promise.resolve(null)), [adding, preview]);
   const tabRates: TabRates = useMemo(() => {
     const r = tabTax.data?.rates;
     const frac = (v: string | null | undefined) => (v ? Number(v) / 100 : 0);
@@ -440,7 +449,7 @@ export default function NewChargePage() {
       toTables();
     });
   };
-  const [sentVia, setSentVia] = useState<{ how: 'App' | 'Text'; label: string; at: Date; to: { to: 'member'; wallet: string } | { to: 'phone'; phone: string } } | null>(null);
+  const [sentVia, setSentVia] = useState<{ how: 'App' | 'Text' | 'Customer'; label: string; at: Date; to: SendTo } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [live, setLive] = useState<{ openedAt: string | null; resolvedAt: string | null; splitInto: number | null; paidNow: boolean; payingNow: boolean } | null>(null);
@@ -514,6 +523,113 @@ export default function NewChargePage() {
     });
   };
 
+  // ---- Rewards: the customer at the cart (rewards spec, section 9) ----------------------------
+  // Only where the shop's app is on, and on the live path: the reference's own frames are unchanged.
+  const shopApp = useApi(() => (preview ? Promise.resolve(null) : merchant.shopApp().catch(() => null)), [preview]);
+  const appOn = !preview && !adding && shopApp.data?.app.enabled === true;
+  const pointsName: PointsName = shopApp.data?.app.pointsName ?? { kind: 'points' };
+  const pword = (n: number) => pointsWord(pointsName, n);
+  const [cust, setCust] = useState<OrderCustomerState>({ status: 'none' });
+  const [custSheet, setCustSheet] = useState<'scan' | 'phone' | 'member' | null>(null);
+  const [custBusy, setCustBusy] = useState(false);
+  const [custError, setCustError] = useState<string | null>(null);
+  const [pendingPhone, setPendingPhone] = useState<string | null>(null);
+  const [invited, setInvited] = useState(false);
+  const added = cust.status === 'added' ? cust : null;
+  const applied = order?.discount?.kind === 'reward' && order.discount.rewardId ? { rewardId: order.discount.rewardId, label: order.discount.label } : null;
+  const custRun = async (fn: () => Promise<void>) => {
+    setCustBusy(true);
+    setCustError(null);
+    try {
+      await fn();
+    } catch (e) {
+      setCustError(errorSentence(e));
+    } finally {
+      setCustBusy(false);
+    }
+  };
+  /** Adding someone needs the order on the server: the cart as it is, created or brought up to date. */
+  const ensureOrder = async (): Promise<Order> => {
+    const lines = toLineInputs(f.mode === 'items' ? f.lines : [], f.mode === 'items' ? 0 : typedCents);
+    if (!lines.length) throw new Error('Add something to the cart first.');
+    const o = order && order.status === 'open' && !isOffline(order) ? await merchant.updateOrder(order.id, { lines }) : await merchant.createOrder({ lines, customer: null, tableId: tabTable });
+    setOrder(o);
+    return o;
+  };
+  const addByCode = (code: string) =>
+    custRun(async () => {
+      const o = await ensureOrder();
+      setCust(await merchant.addCustomer(o.id, { via: 'code', code }));
+      setInvited(false);
+      setCustSheet('member');
+    });
+  const addByPhone = (phone: string) =>
+    custRun(async () => {
+      const o = await ensureOrder();
+      const st = await merchant.addCustomer(o.id, { via: 'phone', phone });
+      setCust(st);
+      const d = phone.replace(/\D/g, '').slice(-10);
+      setPendingPhone(d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : phone);
+      setCustSheet(null);
+    });
+  const applyReward = (rewardId: string) =>
+    custRun(async () => {
+      if (!order) return;
+      const o = await merchant.applyDiscount(order.id, { kind: 'reward', rewardId });
+      setOrder(o);
+      setCust(await merchant.orderCustomer(o.id));
+    });
+  const undoReward = () =>
+    custRun(async () => {
+      if (!order) return;
+      const o = await merchant.removeDiscount(order.id);
+      setOrder(o);
+      setCust(await merchant.orderCustomer(o.id));
+    });
+  /** Off the charge: their reward first, then them. Closing the sheet without Add to charge does this too. */
+  const removeCustomer = () =>
+    custRun(async () => {
+      if (!order) return;
+      if (applied) setOrder(await merchant.removeDiscount(order.id));
+      await merchant.removeCustomer(order.id);
+      setOrder(await merchant.order(order.id));
+      setCust({ status: 'none' });
+      setPendingPhone(null);
+      setCustSheet(null);
+    });
+  // A number waits on their phone: asked again every few seconds until they've confirmed.
+  useEffect(() => {
+    if (cust.status !== 'pending' || !order) return;
+    const id = window.setInterval(() => {
+      void merchant.orderCustomer(order.id).then((st) => {
+        setCust(st);
+        if (st.status === 'added') {
+          setPendingPhone(null);
+          setCustSheet('member');
+        } else if (st.status === 'none') setPendingPhone(null);
+      }, () => undefined);
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [cust.status, order, merchant]);
+  // With someone on it, the order follows the cart, so their reward and points follow it too.
+  const cartKey = JSON.stringify(toLineInputs(f.mode === 'items' ? f.lines : [], f.mode === 'items' ? 0 : typedCents));
+  useEffect(() => {
+    if (!added || !order || order.status !== 'open' || isOffline(order)) return;
+    const lines = JSON.parse(cartKey) as Parameters<typeof merchant.updateOrder>[1]['lines'];
+    if (!lines.length) return;
+    const id = window.setTimeout(() => {
+      void merchant
+        .updateOrder(order.id, { lines })
+        .then(async (o) => {
+          setOrder(o);
+          setCust(await merchant.orderCustomer(o.id));
+        })
+        .catch((e) => setCustError(errorSentence(e)));
+    }, 300);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartKey]);
+
   /** Clear: a tender on the order for what's owed (and the tip), shown to the member as a code. */
   const raise = async () => {
     if (preview) {
@@ -528,6 +644,12 @@ export default function NewChargePage() {
       setTender(t);
       setRaisedAt(new Date());
       setLive(null);
+      // A member added at the cart who can pay with Clear: straight to them, nothing to scan (section 9).
+      if (added?.customer.canPayWithClear) {
+        set({ code: t.clearChargeCode ?? '' });
+        await sendOn({ to: 'customer' }, t);
+        return;
+      }
       set({ screen: 'code', code: t.clearChargeCode ?? '' });
     } catch (e) {
       setRaiseError(errorSentence(e));
@@ -537,15 +659,16 @@ export default function NewChargePage() {
   };
 
   /** Send the waiting charge on; the screen then waits on their answer, as it does for the code. */
-  const sendOn = async (to: { to: 'member'; wallet: string } | { to: 'phone'; phone: string }) => {
+  const sendOn = async (to: SendTo, viaTender?: Tender) => {
     if (sending) return;
     // Not silently: a scan or a number sent before the charge exists would otherwise do nothing at all.
-    if (!tender) return setSendError('The charge is still being set up. Try again in a moment.');
+    const t = viaTender ?? tender;
+    if (!t) return setSendError('The charge is still being set up. Try again in a moment.');
     setSending(true);
     setSendError(null);
     try {
-      const r = await merchant.sendClearCharge(tender.id, to);
-      setSentVia({ how: r.to === 'member' ? 'App' : 'Text', label: r.label, at: new Date(), to });
+      const r = await merchant.sendClearCharge(t.id, to);
+      setSentVia({ how: r.to === 'member' ? 'App' : r.to === 'customer' ? 'Customer' : 'Text', label: r.label, at: new Date(), to });
       set({ screen: 'waiting' });
     } catch (e) {
       setSendError(errorSentence(e));
@@ -553,6 +676,48 @@ export default function NewChargePage() {
       setSending(false);
     }
   };
+
+  // Development only, on the live path over the mock (`?preview=1&live=1&shop=micasa&table=tbl_6`):
+  // `&rw=cart|scan|pending|sofia|dev|applied|checkout|waiting` sets up Table 6 as section 9 draws it.
+  const rw = import.meta.env.DEV && params.get('preview') === '1' && params.get('live') === '1' ? params.get('rw') : null;
+  const rwDone = useRef(false);
+  useEffect(() => {
+    if (!rw || rwDone.current || !appOn) return;
+    rwDone.current = true;
+    const codeFor = (who: 'sofia' | 'dev') => mockControls()?.rewards.codeFor(who) ?? '';
+    void (async () => {
+      const lines = (
+        [
+          ['pastor', 2],
+          ['horchata', 1],
+          ['jamaica', 1],
+        ] as const
+      ).map(([ref, quantity]) => ({ itemId: `itm_${ref}`, quantity, optionIds: [] }));
+      let o = await merchant.createOrder({ lines, customer: null, tableId: tabTable });
+      setOrder(o);
+      set({ mode: 'items', lines: linesOf(o) });
+      if (rw === 'cart') return;
+      if (rw === 'scan') return setCustSheet('scan');
+      if (rw === 'pending') {
+        setCust(await merchant.addCustomer(o.id, { via: 'phone', phone: '(909) 555-0123' }));
+        return setPendingPhone('(909) 555-0123');
+      }
+      setCust(await merchant.addCustomer(o.id, { via: 'code', code: codeFor(rw === 'dev' ? 'dev' : 'sofia') }));
+      if (rw === 'sofia' || rw === 'dev') return setCustSheet('member');
+      o = await merchant.applyDiscount(o.id, { kind: 'reward', rewardId: 'rwd_agua' });
+      setOrder(o);
+      setCust(await merchant.orderCustomer(o.id));
+      if (rw === 'applied') return;
+      set({ screen: 'checkout' });
+      if (rw === 'checkout') return;
+      const t = await merchant.createClearTender(o.id, { amountCents: o.remainingCents, tipCents: 0, idempotencyKey: payKey() });
+      setTender(t);
+      setRaisedAt(new Date());
+      set({ method: 'clear', tip: { kind: 'none' }, code: t.clearChargeCode ?? '' });
+      await sendOn({ to: 'customer' }, t);
+    })().catch((e) => setPayError(errorSentence(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rw, appOn]);
 
   // The member's answer, followed on the tender (and how far they've got, on the charge itself).
   // Checks that keep failing are said, not swallowed: "waiting" while the tablet can't ask would
@@ -845,6 +1010,16 @@ export default function NewChargePage() {
     <FlowTop title={title} back={back} onExit={back ? () => set({ screen: f.screen === 'checkout' ? 'start' : 'checkout' }) : exit} onShift={me} />
   );
 
+  // The cart's Customer line: Scan their code or Phone; then who it is and their reward (section 9).
+  const customerLine = !appOn ? undefined : added ? (
+    <>
+      <CustomerOn c={added.customer} shop={shop} name={pointsName} onRemove={() => void removeCustomer()} onOpen={() => setCustSheet('member')} />
+      <RewardLine c={added.customer} name={pointsName} applied={applied} busy={custBusy} onApply={(id) => void applyReward(id)} onUndo={() => void undoReward()} />
+    </>
+  ) : (
+    <CustomerAdd pending={cust.status === 'pending' ? pendingPhone : null} onScan={() => (setCustError(null), setCustSheet('scan'))} onPhone={() => (setCustError(null), setCustSheet('phone'))} onCancel={() => void removeCustomer()} />
+  );
+
   if (f.screen === 'start' || f.screen === 'cart') {
     // A shop with a catalogue starts with an amount or its items; one without, with an amount.
     const hasItems = preview || shopItems.length > 0;
@@ -893,7 +1068,7 @@ export default function NewChargePage() {
       top = adding ? (
         <FlowTop title={`Adding to Table ${tabNumber}`} back onExit={toTables} onShift={me} />
       ) : hasItems ? (
-        <StartTop mode={f.mode} onMode={(mode) => set({ mode })} onShift={me} onExit={exit} title={f.catalog === 'food' ? 'New order' : 'New charge'} />
+        <StartTop mode={f.mode} onMode={(mode) => set({ mode })} onShift={me} onExit={exit} title={f.catalog === 'food' ? 'New order' : tabTable && tabView ? `New charge · Table ${tabView.number}` : 'New charge'} />
       ) : (
         <FlowTop title="New charge" onExit={exit} onShift={me} />
       );
@@ -946,6 +1121,24 @@ export default function NewChargePage() {
                 heading={f.catalog === 'food' ? 'Order 47' : undefined}
                 headingDet={f.catalog === 'food' ? 'For “Sam”' : undefined}
                 heroLabel={f.catalog === 'food' ? 'Total' : undefined}
+                rates={preview ? undefined : tabRates}
+                customer={customerLine}
+                server={
+                  added && order
+                    ? {
+                        totalCents: order.totalCents,
+                        small: (
+                          <ServerSmall
+                            discount={order.discount ? { label: order.discount.label, cents: order.discountCents } : null}
+                            taxCents={order.taxCents}
+                            taxLabel={`Sales tax · ${tabRates.label}%`}
+                            earns={added.earnsPoints}
+                            word={pword}
+                          />
+                        ),
+                      }
+                    : null
+                }
               />
             )}
           </div>
@@ -992,6 +1185,13 @@ export default function NewChargePage() {
         }
         onPick={pick}
         rows={counterHw.points.length > 0 && !isOffline(order) ? <ShowOnRow name={showOnPoint?.name ?? 'Just this tablet'} onChange={() => setShowOnSheet(true)} /> : null}
+        customer={added ? <CustomerOn c={added.customer} shop={shop} name={pointsName} /> : undefined}
+        heroDet={added?.customer.membership && added.earnsPoints !== null ? `${applied ? `${applied.label} applied · ` : ''}earns ${added.earnsPoints} ${pword(added.earnsPoints)}` : undefined}
+        foot={added?.customer.membership ? `Card or cash: ${pword(2)} land on ${added.customer.firstName}’s account when it’s paid.` : undefined}
+        payer={added?.customer.firstName}
+        clearDet={added?.customer.canPayWithClear ? `Sent to ${added.customer.firstName}’s phone now. Nothing to scan` : undefined}
+        taxRate={preview ? undefined : tabRates.label}
+        reward={applied && order ? { label: applied.label, cents: order.discountCents, onUndo: () => void undoReward() } : null}
       />
     );
   } else if (f.screen === 'tip') {
@@ -1099,6 +1299,8 @@ export default function NewChargePage() {
           raisedBy: me,
           amountCents: shownCents,
           sentTo: sentVia ? `Sent to ${sentVia.label}` : undefined,
+          customer: sentVia?.how === 'Customer' && added ? fullName(added.customer) : undefined,
+          header: tabTable && tabView ? `Table ${tabView.number} · raised by ${me}` : undefined,
           status: approved ? 'approved' : 'waiting',
           waitingLine: approved
             ? undefined
@@ -1106,7 +1308,9 @@ export default function NewChargePage() {
               ? 'Can’t reach Clear to check right now. Still trying; the payment is safe either way.'
               : live?.payingNow
                 ? 'Paying now, from their Clear cash'
-                : undefined,
+                : sentVia?.how === 'Customer' && applied
+                  ? `Approving on their phone, with ${offLine(applied.label)} already off`
+                  : undefined,
           howPaid: !approved
             ? undefined
             : live?.paidNow
@@ -1135,7 +1339,12 @@ export default function NewChargePage() {
           { how: 'App', status: 'Opened', at: '12:17pm' },
         ] as const)
       : [
-          ...(sentVia ? [{ how: sentVia.how, status: 'Sent', at: sentVia.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] : []),
+          // To the customer it goes three ways at once: their app, a text and an email.
+          ...(sentVia?.how === 'Customer'
+            ? (['Text', 'Email'] as const).map((how) => ({ how, status: 'Sent', at: sentVia.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }))
+            : []),
+          ...(sentVia?.how === 'Customer' && !live?.openedAt ? [{ how: 'App' as const, status: 'Sent', at: sentVia.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] : []),
+          ...(sentVia && sentVia.how !== 'Customer' ? [{ how: sentVia.how, status: 'Sent', at: sentVia.at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] : []),
           ...(live?.openedAt ? [{ how: 'App' as const, status: 'Opened', at: new Date(live.openedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(' ', '') }] : []),
         ];
     // Again the same way it went, or a number if it has only been shown.
@@ -1173,7 +1382,22 @@ export default function NewChargePage() {
           onNew={again}
         />
       ) : (
-        <WaitingView s={s} reached={[...reached]} reachedNote={preview ? undefined : sentVia ? (sentVia.how === 'Text' ? 'By text' : 'In their Clear app') : 'The code on this screen'} onSendAgain={preview ? () => undefined : sendAgain} onCancel={live?.payingNow ? undefined : cancel} onHome={exit} />
+        <WaitingView
+          s={s}
+          reached={[...reached]}
+          reachedNote={preview ? undefined : sentVia ? (sentVia.how === 'Customer' ? 'All three at once' : sentVia.how === 'Text' ? 'By text' : 'In their Clear app') : 'The code on this screen'}
+          keyline={
+            sentVia?.how === 'Customer' ? (
+              <>
+                {live?.openedAt ? `They have it open${tabTable ? ' at the table' : ''}. ` : ''}
+                <strong>Nothing was scanned at checkout</strong>: they were added once, at the cart, and Clear went straight to them.
+              </>
+            ) : undefined
+          }
+          onSendAgain={preview ? () => undefined : sendAgain}
+          onCancel={live?.payingNow ? undefined : cancel}
+          onHome={exit}
+        />
       );
     }
   } else if (f.screen === 'card') {
@@ -1479,11 +1703,40 @@ export default function NewChargePage() {
         </p>
       )}
       {sheet}
+      {custSheet === 'scan' && (
+        <ScanCustomerSheet
+          error={custError}
+          onCode={(raw) => {
+            void addByCode(raw);
+            return true;
+          }}
+          onPhone={() => (setCustError(null), setCustSheet('phone'))}
+          onClose={() => setCustSheet(null)}
+        />
+      )}
+      {custSheet === 'phone' && <PhoneCustomerSheet busy={custBusy} error={custError} onSend={(p) => void addByPhone(p)} onClose={() => setCustSheet(null)} />}
+      {custSheet === 'member' && added && (
+        <MemberSheet
+          state={added}
+          shop={shop}
+          name={pointsName}
+          rate={shopApp.data ? earnLabels(shopApp.data.rules, pointsName).rate : ''}
+          applied={applied}
+          invited={invited}
+          busy={custBusy}
+          error={custError}
+          onApply={(id) => void applyReward(id)}
+          onUndo={() => void undoReward()}
+          onInvite={() => void custRun(async () => (await merchant.inviteCustomer(order!.id), setInvited(true)))}
+          onAdd={() => setCustSheet(null)}
+          onClose={() => void removeCustomer()}
+        />
+      )}
       {((preview && miCasa() && params.get('screen') === 'card-table') || (f.screen === 'card' && tablePoint && tableReader.active === tablePoint.id && (tableReader.phase === 'connecting' || tableReader.queue.length > 0))) && (
         <CardTableSheet
           table={preview ? 'Table 12' : (counterHw.points.find((p) => p.id === tableReader.active)?.name ?? 'the table')}
           reader={preview ? 'M2 1A3F' : (shopReaders.data?.find((r) => r.id === tablePoint?.settings.readerId)?.label ?? 'its reader')}
-          amountCents={preview ? 4820 : dueCents}
+          amountCents={preview ? TAB_12.totalCents : dueCents}
           state={tableReader}
           waiting={tableReader.queue.map((id) => (preview && id === 'hw_t4' ? 'Table 4' : (counterHw.points.find((p) => p.id === id)?.name ?? 'Another table')))}
           onClose={() => setTableReader((t) => ({ ...t, phase: t.phase === 'connecting' ? 'ready' : t.phase }))}
