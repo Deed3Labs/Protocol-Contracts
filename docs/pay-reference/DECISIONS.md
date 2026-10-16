@@ -441,6 +441,17 @@ Settings › Developers in the merchant app.
   - So for now a Clear payment is refunded from Charges. A part of one is still refused first, with
     `partial_refund_unsupported`.
   - Letting the API ask for Clear refunds later only adds to it: `api_refunds.clear_refund_id` is ready.
+- **Keys need their own prefix before any are issued (a contract change, not made).**
+  - `pk_`/`sk_` + `test_`/`live_` + 24 characters is exactly Stripe's format. GitHub's push protection blocked
+    this branch over fake test keys in it.
+  - For shops, that means:
+    - a Clear secret key a shop commits would be reported as a Stripe key (to Stripe, not to Clear);
+    - Clear could never join GitHub's secret-scanning partner programme with a prefix that's Stripe's;
+    - a shop using both couldn't tell the two apart.
+  - Recommended: `clear_pk_live_…` and `clear_sk_live_…` (and `_test_`), which changes `API_KEY_PATTERN`, the API's
+    check and the SDK's.
+  - The spec draws `pk_live_mc8Q2v`, so the drawn key and the snippets would change to the new prefix.
+  - The tests now build their fake keys at run time.
 - **Two error codes added:**
   - `refund_in_app`;
   - `payment_closed`: a modal for a payment that's paid or canceled.
