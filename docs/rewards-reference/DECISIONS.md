@@ -694,3 +694,7 @@ rewrites branch.
 - Builds: rewards, the merchant typecheck, and the store build's web step.
 - Vercel's API itself isn't called in tests. A fake stands in, and the client's requests are checked
   against Vercel's documented routes; it needs the real token to be tried live.
+
+Approved at Hard Stop 7, 2026-10-16: Phase 7 and its contract additions. The user adds
+`VERCEL_TOKEN`, `VERCEL_REWARDS_PROJECT_ID` and `VERCEL_TEAM_ID` to Railway. All seven phases of the
+rewards prompt are done.
