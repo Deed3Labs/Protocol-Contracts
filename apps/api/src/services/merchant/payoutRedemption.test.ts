@@ -62,10 +62,11 @@ describe('what the code promises in its own text', function () {
     // The failure branch must not touch the payout row: a request nobody settled is the truth, and
     // the old code's whole discipline was never claiming money had moved.
     const withdraw = route.slice(route.indexOf("'/payouts/withdraw'"), route.indexOf("'/payouts/redeem'"));
-    expect(withdraw).toContain('if (redemption.ok)');
-    expect(withdraw).toContain('recordRedemption');
+    // A failed part stops the loop before anything is recorded for it.
+    const loop = withdraw.slice(withdraw.indexOf('for (const part of parts)'));
+    expect(loop.indexOf('if (!r.ok) break;')).toBeLessThan(loop.indexOf('recordRedemption'));
     expect(withdraw).toContain(
-      "status: redemption?.ok && redemption.paidNow && destination === 'cash' ? 'paid' : 'requested'",
+      "status: redemption?.ok && queuedCents === 0 && paidNowCents === amountCents && destination === 'cash' ? 'paid' : 'requested'",
     );
   });
 
@@ -78,12 +79,37 @@ describe('what the code promises in its own text', function () {
      */
     const withdraw = route.slice(route.indexOf("'/payouts/withdraw'"), route.indexOf("'/payouts/redeem'"));
     expect(withdraw).toContain("destination === 'cash' ? 'paid' : 'requested'");
-    expect(withdraw).toContain('inCashAccount: redemption.paidNow');
+    expect(withdraw).toContain('inCashAccount: paidNowCents > 0');
   });
 
   test('only redeems money that is owed, never the cash account', function () {
     // Cash-account money is already the shop's and has no claim to redeem. Redeeming against it
     // would take credits for money they already hold.
     expect(route).toContain("if (source === 'owed' && redemptionConfigured())");
+  });
+});
+
+/**
+ * Owed money beyond what the pool has released queues, which is what starts its 30 days. Capping a
+ * withdrawal at the released figure meant the rest could never be withdrawn and no clock ran.
+ */
+describe('withdrawing more than is released queues the rest', function () {
+  const store = source('profileStore.ts');
+  const route = source('../../routes/merchant.ts');
+  const withdraw = route.slice(route.indexOf("'/payouts/withdraw'"), route.indexOf("'/payouts/redeem'"));
+
+  test('owed money is capped by what the shop is owed, not by what was released', function () {
+    expect(store).toContain("input.source === 'cash' ? position.cashAccountCents : chainOwedCents(position)");
+    expect(store).not.toContain("input.source === 'cash' ? position.cashAccountCents : position.releasedReadyCents");
+  });
+
+  test('the released part is redeemed first, so it is paid now; the rest after it, so it queues', function () {
+    expect(withdraw).toContain('const releasedNow = Math.min(amountCents, before.releasedReadyCents ?? 0);');
+    expect(withdraw).toContain('const parts = [releasedNow, amountCents - releasedNow].filter((c) => c > 0);');
+  });
+
+  test('only what reached the cash account goes on to a bank', function () {
+    expect(withdraw).toContain("const toBankCents = source === 'cash' ? amountCents : paidNowCents;");
+    expect(withdraw).toContain('amountCents: toBankCents');
   });
 });

@@ -56,3 +56,23 @@ describe('a clawback bigger than the balance is carried, not dropped', () => {
     expect(STORE).toContain('const net = owedCents;');
   });
 });
+
+/**
+ * A withdrawal the pool can't pay on the spot moves the credits to the pool as a claim, due when the
+ * shop's terms run out. It left `redeemable` and vanished from Payouts, and the net-30 card never
+ * counted down because the only date it knew was a scheduled payout row net-30 never writes.
+ */
+describe('a queued withdrawal stays on the screen and is what net-30 counts down to', () => {
+  test('the shop’s unpaid claims are read from the pool, oldest due first', () => {
+    expect(READER).toContain("'function claimsOwnedBy(address merchant) view returns (uint256[])'");
+    expect(READER).toContain('.filter((c) => !c[4])');
+    expect(READER).toContain('.sort((a, b) => a.dueBy - b.dueBy)');
+  });
+
+  test('queued money is counted as still arriving, and its due day is returned', () => {
+    expect(STORE).toContain('const scheduled = (releasedReady === null ? net : Math.max(0, net - releasedReady)) + queuedCents;');
+    expect(STORE).toContain('const releasesOn = chainPosition?.queued[0] ? new Date(chainPosition.queued[0].dueBy * 1000).toISOString() : null;');
+    // What can be redeemed again stays the ledger balance: a queued claim can't be withdrawn twice.
+    expect(STORE).toContain('owedCents: net,');
+  });
+});

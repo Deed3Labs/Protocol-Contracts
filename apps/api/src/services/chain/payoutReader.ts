@@ -38,6 +38,8 @@ const POOL_ABI = [
   'function queuedTotal() view returns (uint256)',
   'function refundsOwed() view returns (uint256)',
   'function redeemableOf(address merchant) view returns (uint256)',
+  'function claimsOwnedBy(address merchant) view returns (uint256[])',
+  'function claimAt(uint256 claimId) view returns (address merchant, uint256 amount, uint64 claimedAt, uint64 dueBy, bool paid)',
 ];
 
 const REGISTRY_ABI = ['function payoutWindowOf(address merchant) view returns (uint32)'];
@@ -61,6 +63,13 @@ export interface MerchantPayoutPosition {
    * it silently. Reported beside what they are owed, because it comes off the next sales.
    */
   owedByMicros: bigint;
+  /**
+   * What they have already withdrawn and the pool hasn't paid yet, oldest first: each claim's
+   * amount and the day its terms run out (`dueBy`, seconds). Withdrawing moves the credits to the
+   * pool, so this is money no longer in `redeemable` but still theirs, on its way. The net-30
+   * clock is these: nothing counts down until a withdrawal queues one.
+   */
+  queued: { amountMicros: bigint; dueBy: number }[];
 }
 
 export async function merchantPayoutPosition(
@@ -87,6 +96,13 @@ export async function merchantPayoutPosition(
         credit ? credit.creditBalanceOf(merchant) : Promise.resolve(0n),
       ])) as [bigint, bigint, bigint, bigint, bigint];
 
+      const ids = (await pool.claimsOwnedBy(merchant)) as bigint[];
+      const claims = (await Promise.all(ids.map((id) => pool.claimAt(id)))) as [string, bigint, bigint, bigint, boolean][];
+      const waiting = claims
+        .filter((c) => !c[4])
+        .map((c) => ({ amountMicros: c[1], dueBy: Number(c[3]) }))
+        .sort((a, b) => a.dueBy - b.dueBy);
+
       let windowSeconds = 30 * 24 * 60 * 60;
       if (registryAddress) {
         const registry = new ethers.Contract(registryAddress, REGISTRY_ABI, provider);
@@ -100,6 +116,7 @@ export async function merchantPayoutPosition(
         queuedAheadMicros: queued,
         windowSeconds,
         owedByMicros: owedBy,
+        queued: waiting,
       };
     } catch (error) {
       console.error(

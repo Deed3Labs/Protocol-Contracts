@@ -511,6 +511,11 @@ export const api = {
      * off-ramp from the cash account to a bank is a separate act that nothing here performs yet.
      */
     inCashAccount?: boolean;
+    /** Paid into the cash account now, and queued in the pool for later: owed money beyond what was released queues. */
+    paidNowCents?: number;
+    queuedCents?: number;
+    /** When the oldest queued withdrawal is due. */
+    releasesOn?: string | null;
     /** Why this is still only a request. Present only when the chain leg was tried and refused. */
     settlementNote?: string;
     /** The bank hop, when it was tried: sent to Bridge, or why not. */
@@ -700,6 +705,13 @@ export interface PayoutPosition {
   readyToWithdrawCents: number | null;
   /** When the next one lands. Null when none is scheduled — the screen says so rather than guessing. */
   nextPayoutOn: string | null;
+  /**
+   * Withdrawn, queued in the payout pool, and still theirs: no longer in `owedCents` (the credits
+   * moved to the pool) but counted in `scheduledCents`. Absent from an API older than it.
+   */
+  queuedCents?: number;
+  /** When the oldest queued withdrawal is due: what net-30 counts down to. Null when none is queued. */
+  releasesOn?: string | null;
   clearsBalanceCents: number;
   toBankCents: number;
   /** Null when the pool cap is not yet known. The app says so rather than inventing a figure. */

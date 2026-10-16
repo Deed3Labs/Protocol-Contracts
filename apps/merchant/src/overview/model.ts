@@ -1,5 +1,6 @@
 import { countsAsVolume, isPending, type StaffRole } from '@clear/domain';
 import type { MerchantCharge, MerchantProfile, PayoutPosition, StaffMember } from '../data/apiClient';
+import { stillOwedCents } from '../payouts/model';
 
 /**
  * Overview, as data — docs/merchant-reference/clear-merchant-overview.html.
@@ -137,7 +138,7 @@ export function fromApi(input: {
     recent,
     owed: input.position
       ? {
-          cents: input.position.owedCents,
+          cents: stillOwedCents(input.position),
           on: input.position.nextPayoutOn ? new Date(input.position.nextPayoutOn).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : null,
           freeCents: input.position.releasedReadyCents,
           cashCents: input.position.cashAccountCents,

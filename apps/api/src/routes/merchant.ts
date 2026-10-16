@@ -809,18 +809,27 @@ merchantRouter.post(
      * A failed redemption leaves the row exactly as the old code left every row: requested, and
      * arriving on the scheduled payout. Nothing is claimed and nothing is lost.
      */
+    /*
+     * Released first, then the rest. What the pool can free today is redeemed on its own so it is
+     * paid on the spot; the remainder is redeemed after it and queues as a claim due when the
+     * shop's terms run out, which is what starts its 30 days. Redeemed together, the pool would
+     * queue the whole amount, holding back money it could pay now.
+     */
     let redemption: Awaited<ReturnType<typeof redeemForMerchant>> | null = null;
+    let paidNowCents = 0;
+    let queuedCents = 0;
     if (source === 'owed' && redemptionConfigured()) {
-      redemption = await redeemForMerchant({
-        merchant,
-        amountMicros: BigInt(Math.round(amountCents)) * 10_000n,
-      });
-      if (redemption.ok) {
-        await merchantProfileStore.recordRedemption(result.id!, {
-          txHash: redemption.txHash,
-          claimId: redemption.claimId,
-          paidNow: redemption.paidNow,
-        });
+      const before = await merchantProfileStore.payoutPosition(merchant);
+      const releasedNow = Math.min(amountCents, before.releasedReadyCents ?? 0);
+      const parts = [releasedNow, amountCents - releasedNow].filter((c) => c > 0);
+      for (const part of parts) {
+        const r = await redeemForMerchant({ merchant, amountMicros: BigInt(Math.round(part)) * 10_000n });
+        // The last one is what the row records; a failure stops there and says why.
+        redemption = r;
+        if (!r.ok) break;
+        if (r.paidNow) paidNowCents += part;
+        else queuedCents += part;
+        await merchantProfileStore.recordRedemption(result.id!, { txHash: r.txHash, claimId: r.claimId, paidNow: r.paidNow && part === amountCents });
       }
     }
 
@@ -832,9 +841,11 @@ merchantRouter.post(
     let bank: BankWithdrawal | null = null;
     const bankAccountId = typeof req.body?.bankAccountId === 'string' ? req.body.bankAccountId : null;
     const speed = req.body?.speed === 'same_day' ? 'same_day' : 'standard';
-    if (destination === 'bank' && bankAccountId && (source === 'cash' || (redemption?.ok && redemption.paidNow))) {
+    // Only what is in the cash account now can go on to the bank; a queued part lands there later.
+    const toBankCents = source === 'cash' ? amountCents : paidNowCents;
+    if (destination === 'bank' && bankAccountId && toBankCents > 0) {
       const d = await merchantDb();
-      if (d) bank = await withdrawToBank(d, liveOfframp(), { merchant, staffId: staff.id, bankAccountId, amountCents, speed });
+      if (d) bank = await withdrawToBank(d, liveOfframp(), { merchant, staffId: staff.id, bankAccountId, amountCents: toBankCents, speed });
     }
 
     const position = await merchantProfileStore.payoutPosition(merchant);
@@ -860,13 +871,19 @@ merchantRouter.post(
        * first hop done and a second hop still owed: `inCashAccount` says the money moved, `status`
        * keeps saying `requested` because what they asked for has not finished.
        */
-      status: redemption?.ok && redemption.paidNow && destination === 'cash' ? 'paid' : 'requested',
+      status: redemption?.ok && queuedCents === 0 && paidNowCents === amountCents && destination === 'cash' ? 'paid' : 'requested',
       ...(redemption?.ok
         ? {
             txHash: redemption.txHash,
             claimId: redemption.claimId,
-            queued: !redemption.paidNow,
-            inCashAccount: redemption.paidNow,
+            queued: queuedCents > 0,
+            inCashAccount: paidNowCents > 0,
+            /** Paid into the cash account now. */
+            paidNowCents,
+            /** Queued in the pool, paid within the shop's terms. */
+            queuedCents,
+            /** When the oldest queued withdrawal is due. */
+            releasesOn: position.releasesOn,
           }
         : {}),
       // Why it is still only a request, when a shop expected the money. Absent when nothing was

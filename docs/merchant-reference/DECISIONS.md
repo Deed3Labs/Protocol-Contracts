@@ -881,6 +881,24 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   net-30), Home's Next payout (shown whenever something is owed), Overview and Settings (Net-30 ·
   the amount), and an approved charge's Paid out. A dash is left only where the figure couldn't be
   read. Against the mock: `&payday=none`.
+- **Net-30 counts down from a withdrawal, not from a sale** (2026-10-15). The pool starts a claim's
+  30 days when the shop withdraws (`PayoutPool.redeem`, `dueBy`); before that nothing is counting,
+  and the card keeps saying "30 day terms". Once a withdrawal is queued, the API reads the shop's
+  unpaid claims from the pool (`queued`), returns their total (`queuedCents`, counted in
+  `scheduledCents`) and the oldest one's due day (`releasesOn`), and the card counts down to it.
+  Withdrawing moves the credits to the pool, so before this a queued withdrawal also vanished from
+  Payouts, Home, Overview and Settings while its 30 days ran; `stillOwedCents` keeps it in each.
+- **When a claim comes due, nobody has to be asked.** `drawForDueClaim()` is permissionless: the pool
+  borrows what it's short from the yield pool, then the assurance pool's excess and buffer, and pays.
+  Checked on a fork of Base Sepolia with MiMi Crack's real balance: $91.50 withdrawn and queued,
+  31 days on an unrelated address drew $90.50 from the yield pool and the shop was paid $91.50.
+- **Withdraw queues what the pool can't pay yet** (the owner's call, 2026-10-15). Owed money was
+  capped at what the pool had released, so the rest could never be withdrawn and its 30 days never
+  started. Now owed money is capped by what the shop holds on the ledger: the released part is
+  redeemed first and paid on the spot, the rest is redeemed after it and queues, due 30 days later.
+  The sheet says so before and after ("Queued · $91.50 by Nov 14", "You receive now"). A bank only
+  gets the paid-now part; the queued part lands in the cash account when it's paid. Fork-checked:
+  $1.00 then $91.50 for MiMi Crack, the first paid at once, the second queued.
 
 
 ## Terminal: what the spec met (Phase 1, 2026-10-15)
