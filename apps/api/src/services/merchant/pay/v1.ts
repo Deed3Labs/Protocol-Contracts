@@ -8,6 +8,7 @@ import {
   ERROR_CODES,
   fromZodError,
   ListPayments,
+  ListWebhookDeliveries,
   type ApiError,
   type ErrorCode,
   type ModalSession,
@@ -16,6 +17,7 @@ import {
   type PaymentMethod,
   type Price,
   type Refund,
+  type WebhookDelivery,
 } from '@clear/public-api-contracts';
 import type { Db, Queryable } from '../../../db/db.js';
 import { createOrder, type OrderDeps } from '../orders/orderService.js';
@@ -171,6 +173,51 @@ export async function listPayments(db: Db, input: { auth: KeyAuth; query: unknow
   const page = rows.slice(0, q.limit);
   const data: Payment[] = [];
   for (const r of page) data.push(await paymentView(db, r));
+  return { object: 'list', data, hasMore: rows.length > q.limit };
+}
+
+/**
+ * `GET /v1/webhook_deliveries` (secret key): each event sent to each endpoint, newest first, in the key's
+ * mode. One endpoint's, or one status, when asked.
+ */
+export async function listDeliveries(db: Db, input: { auth: KeyAuth; query: unknown }): Promise<{ object: 'list'; data: WebhookDelivery[]; hasMore: boolean }> {
+  const q = parse(ListWebhookDeliveries, input.query);
+  const { rows } = await db.query<{
+    id: string;
+    endpoint_id: string;
+    event_id: string;
+    type: WebhookDelivery['event']['type'];
+    livemode: boolean;
+    status: WebhookDelivery['status'];
+    attempts: number;
+    response_code: number | null;
+    last_attempt_at: Date | string | null;
+    next_attempt_at: Date | string | null;
+    created_at: Date | string;
+  }>(
+    `SELECT d.id, d.endpoint_id, d.event_id, e.type, e.livemode, d.status, d.attempts, d.response_code, d.last_attempt_at, d.next_attempt_at, d.created_at
+       FROM payments.webhook_deliveries d JOIN payments.webhook_events e ON e.id = d.event_id
+      WHERE e.merchant = $1 AND e.livemode = $2
+        AND ($3::text IS NULL OR d.endpoint_id = $3)
+        AND ($4::text IS NULL OR d.status = $4)
+        AND ($5::text IS NULL OR (d.created_at, d.id) < (SELECT created_at, id FROM payments.webhook_deliveries WHERE id = $5))
+      ORDER BY d.created_at DESC, d.id DESC LIMIT $6`,
+    [input.auth.merchant, input.auth.livemode, q.endpoint ?? null, q.status ?? null, q.startingAfter ?? null, q.limit + 1],
+  );
+  const iso = (d: Date | string | null) => (d ? new Date(d).toISOString() : null);
+  const data = rows.slice(0, q.limit).map((r) => ({
+    id: r.id,
+    object: 'webhook_delivery' as const,
+    livemode: r.livemode,
+    endpoint: r.endpoint_id,
+    event: { id: r.event_id, type: r.type },
+    status: r.status,
+    attempts: r.attempts,
+    responseStatus: r.response_code,
+    lastAttemptAt: iso(r.last_attempt_at),
+    nextAttemptAt: iso(r.next_attempt_at),
+    createdAt: iso(r.created_at)!,
+  }));
   return { object: 'list', data, hasMore: rows.length > q.limit };
 }
 

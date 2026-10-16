@@ -867,3 +867,10 @@ Built 2026-10-16. API: `pay/join.ts`, `pay/card.ts`, migration `0031_pay_join.sq
   - a real Stripe payment (no Stripe key here; the preview draws the fields);
   - the window's live path through Privy, Lithic and Plaid;
   - a `setTermLimit` on any chain.
+
+Approved at Hard Stop 6, 2026-10-16:
+
+- Phase 6 as built.
+- D2's rule: $500 to start, $250 more for every 3 clean installments, bounded by income, with a $5,000 ceiling.
+- The card fallback's copy.
+- The join window's first read answering signed out.

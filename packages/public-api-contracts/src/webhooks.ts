@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EventId, HttpsUrl, Livemode, Timestamp, WebhookEndpointId } from './common';
+import { EventId, HttpsUrl, Livemode, Timestamp, WebhookDeliveryId, WebhookEndpointId } from './common';
 import { PaymentEventObject } from './payments';
 import { Refund } from './refunds';
 import { CLEAR_VERSIONS } from './versions';
@@ -51,6 +51,40 @@ export const Event = z.discriminatedUnion('type', [
   z.object({ ...EventBase, type: z.literal('refund.succeeded'), data: Refund }),
 ]);
 export type Event = z.infer<typeof Event>;
+
+// ---- Deliveries (added in 2026-10-16, Phase 7) ---------------------------------------------------------
+
+/**
+ * One event sent to one endpoint: whether it got there, how many tries, and the endpoint's last answer.
+ * `GET /v1/webhook_deliveries`, with the secret key, newest first. What Developers shows as "Recent
+ * deliveries", for an agent (the MCP's `list_webhook_deliveries`) or a shop's own tooling.
+ */
+export const WEBHOOK_DELIVERY_STATUSES = ['pending', 'succeeded', 'failed'] as const;
+export const WebhookDelivery = z.object({
+  id: WebhookDeliveryId,
+  object: z.literal('webhook_delivery'),
+  livemode: Livemode,
+  endpoint: WebhookEndpointId,
+  event: z.object({ id: EventId, type: EventType }),
+  /** `pending` while it's still being retried (for 3 days); then `succeeded` or `failed`. */
+  status: z.enum(WEBHOOK_DELIVERY_STATUSES),
+  attempts: z.number().int().min(0),
+  /** The HTTP status the endpoint last answered with; null before the first try, or when it didn't answer. */
+  responseStatus: z.number().int().nullable(),
+  lastAttemptAt: Timestamp.nullable(),
+  nextAttemptAt: Timestamp.nullable(),
+  createdAt: Timestamp,
+});
+export type WebhookDelivery = z.infer<typeof WebhookDelivery>;
+
+/** `GET /v1/webhook_deliveries`: one endpoint's, or one status, or all; the key's mode only. */
+export const ListWebhookDeliveries = z.strictObject({
+  endpoint: WebhookEndpointId.optional(),
+  status: z.enum(WEBHOOK_DELIVERY_STATUSES).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  startingAfter: WebhookDeliveryId.optional(),
+});
+export type ListWebhookDeliveries = z.input<typeof ListWebhookDeliveries>;
 
 // ---- Signing ---------------------------------------------------------------------------------------
 

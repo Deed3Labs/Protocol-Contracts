@@ -7,6 +7,7 @@ import type {
   PaymentLink,
   Price,
   Refund,
+  WebhookDelivery,
   WebhookEndpoint,
 } from '@clear/public-api-contracts';
 import type { Http, RequestOptions } from './http';
@@ -122,5 +123,27 @@ export class WebhookEndpoints {
   /** Turns the endpoint off; the answer is the endpoint, `status: 'disabled'`. */
   del(endpointId: string): Promise<WebhookEndpoint> {
     return this.#http.request('DELETE', `/v1/webhook_endpoints/${id(endpointId, 'webhook endpoint')}`);
+  }
+}
+
+/** `GET /v1/webhook_deliveries`: one endpoint's, or one status, newest first. */
+export type ListWebhookDeliveriesParams = {
+  endpoint?: string;
+  status?: 'pending' | 'succeeded' | 'failed';
+  /** 1 to 100; 20 unless you say. */
+  limit?: number;
+  /** A delivery id from the previous page: the list continues after it. */
+  startingAfter?: string;
+};
+
+export class WebhookDeliveries {
+  readonly #http: Http;
+  constructor(http: Http) {
+    this.#http = http;
+  }
+
+  /** Each event sent to each endpoint: whether it got there, and the endpoint's last answer. */
+  list(params: ListWebhookDeliveriesParams = {}): Promise<List<WebhookDelivery>> {
+    return this.#http.request('GET', '/v1/webhook_deliveries', { query: { ...params } });
   }
 }

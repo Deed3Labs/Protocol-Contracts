@@ -3,9 +3,10 @@ import { ERROR_CODE_LIST, ErrorResponse } from './errors';
 import { CreatePayment, ListPayments, Payment, PAYMENT_STATUSES } from './payments';
 import { CreatePaymentLink, PaymentLink, Price } from './prices';
 import { CreateRefund, Refund, REFUND_STATUSES } from './refunds';
-import { CreateWebhookEndpoint, Event, EVENT_TYPES, WebhookEndpoint } from './webhooks';
+import { CreateWebhookEndpoint, Event, EVENT_TYPES, ListWebhookDeliveries, WEBHOOK_DELIVERY_STATUSES, WebhookDelivery, WebhookEndpoint } from './webhooks';
 import { CreateModalSession, MODAL_ERROR_CODES, ModalMessage, ModalSession } from './modal';
 import { CLEAR_VERSIONS } from './versions';
+import { ENDPOINT_LIST } from './endpoints';
 
 /**
  * What a version publishes, and the check that a later change only grows it (rule 10).
@@ -16,8 +17,8 @@ import { CLEAR_VERSIONS } from './versions';
  * by hand to make the test pass: a real removal takes a new version.
  */
 export const PUBLISHED_SCHEMAS = {
-  responses: { Payment, Price, PaymentLink, Refund, WebhookEndpoint, Event, ModalSession, ErrorResponse, ModalMessage },
-  requests: { CreatePayment, ListPayments, CreatePaymentLink, CreateRefund, CreateWebhookEndpoint, CreateModalSession },
+  responses: { Payment, Price, PaymentLink, Refund, WebhookEndpoint, Event, ModalSession, ErrorResponse, ModalMessage, WebhookDelivery },
+  requests: { CreatePayment, ListPayments, CreatePaymentLink, CreateRefund, CreateWebhookEndpoint, CreateModalSession, ListWebhookDeliveries },
 } as const;
 
 export const PUBLISHED_LISTS = {
@@ -27,6 +28,8 @@ export const PUBLISHED_LISTS = {
   paymentStatuses: PAYMENT_STATUSES,
   refundStatuses: REFUND_STATUSES,
   modalErrorCodes: MODAL_ERROR_CODES,
+  webhookDeliveryStatuses: WEBHOOK_DELIVERY_STATUSES,
+  endpoints: ENDPOINT_LIST,
 } as const;
 
 type Json = { [k: string]: unknown };

@@ -25,6 +25,7 @@ export const ID_PREFIXES = {
   webhookEndpoint: 'we_',
   event: 'evt_',
   modalSession: 'ms_',
+  webhookDelivery: 'whd_',
 } as const;
 
 const prefixed = (prefix: string) =>
@@ -37,6 +38,7 @@ export const RefundId = prefixed(ID_PREFIXES.refund);
 export const WebhookEndpointId = prefixed(ID_PREFIXES.webhookEndpoint);
 export const EventId = prefixed(ID_PREFIXES.event);
 export const ModalSessionId = prefixed(ID_PREFIXES.modalSession);
+export const WebhookDeliveryId = prefixed(ID_PREFIXES.webhookDelivery);
 
 /** The shop's own string for a payment ("catering-1042"): unique per shop and mode. */
 export const Reference = z.string().trim().min(1).max(100);

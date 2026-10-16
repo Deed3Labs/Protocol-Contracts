@@ -242,7 +242,7 @@ describe('lists', () => {
 describe('the other routes', () => {
   test('each goes where the API expects', async () => {
     const list = { object: 'list', data: [], hasMore: false };
-    const f = fakeFetch([json(200, list), json(200, {}), json(200, {}), json(200, {}), json(200, list), json(200, { status: 'disabled' })]);
+    const f = fakeFetch([json(200, list), json(200, {}), json(200, {}), json(200, {}), json(200, list), json(200, { status: 'disabled' }), json(200, list)]);
     const clear = new Clear(KEY, { fetch: f.fetch });
     await clear.prices.list();
     await clear.paymentLinks.create({ price: 'price_tacotray12', quantity: 2 }, { idempotencyKey: 'link-1' });
@@ -251,6 +251,8 @@ describe('the other routes', () => {
     await clear.webhookEndpoints.list();
     const gone = await clear.webhookEndpoints.del('we_abc');
     expect(gone.status).toBe('disabled');
+    await clear.webhookDeliveries.list({ endpoint: 'we_abc', status: 'failed', limit: 5 });
+    expect(f.calls[6]!.url.search).toBe('?endpoint=we_abc&status=failed&limit=5');
     expect(f.calls.map((c) => `${c.method} ${c.url.pathname}`)).toEqual([
       'GET /v1/prices',
       'POST /v1/payment_links',
@@ -258,6 +260,7 @@ describe('the other routes', () => {
       'POST /v1/webhook_endpoints',
       'GET /v1/webhook_endpoints',
       'DELETE /v1/webhook_endpoints/we_abc',
+      'GET /v1/webhook_deliveries',
     ]);
     expect(f.calls[1]!.headers['idempotency-key']).toBe('link-1');
     expect(f.calls[2]!.headers['idempotency-key']).toBeDefined();

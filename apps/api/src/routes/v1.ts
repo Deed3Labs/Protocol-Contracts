@@ -7,7 +7,7 @@ import { limitByAddress } from '../middleware/rateLimiter.js';
 import { connectorForShop } from '../services/merchant/cards/registry.js';
 import { authenticateKey, originAllowed, type KeyAuth } from '../services/merchant/pay/keys.js';
 import { PayError } from '../services/merchant/pay/links.js';
-import { cancelPayment, createLinkV1, createModalSession, createPayment, createRefundV1, getPayment, listPayments, listPrices, V1Error, type V1Deps } from '../services/merchant/pay/v1.js';
+import { cancelPayment, createLinkV1, createModalSession, createPayment, createRefundV1, getPayment, listDeliveries, listPayments, listPrices, V1Error, type V1Deps } from '../services/merchant/pay/v1.js';
 import { createEndpointViaApi, deleteEndpoint, listEndpointsViaApi } from '../services/merchant/pay/webhooks.js';
 import { staffStore } from '../services/merchant/staffStore.js';
 import { defaultTaxApi } from '../services/merchant/tax/taxApi.js';
@@ -154,6 +154,7 @@ export function v1Router(deps: V1RouteDeps = defaultV1Deps()): Router {
   router.post('/refunds', secretOnly, idempotent, run((db, req) => createRefundV1(db, deps.v1(db), { auth: auth(req), body: req.body, idempotencyKey: idem(req) })));
   router.post('/webhook_endpoints', secretOnly, run((db, req) => createEndpointViaApi(db, { merchant: auth(req).merchant, livemode: auth(req).livemode, request: req.body })));
   router.get('/webhook_endpoints', secretOnly, run(async (db, req) => ({ object: 'list', data: await listEndpointsViaApi(db, { merchant: auth(req).merchant, livemode: auth(req).livemode }), hasMore: false })));
+  router.get('/webhook_deliveries', secretOnly, run((db, req) => listDeliveries(db, { auth: auth(req), query: req.query })));
   router.delete('/webhook_endpoints/:id', secretOnly, run((db, req) => deleteEndpoint(db, { merchant: auth(req).merchant, livemode: auth(req).livemode, id: String(req.params.id), staffId: null })));
 
   // The modal: a publishable key, from one of the shop's allowed websites only.

@@ -3,7 +3,7 @@ import express from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type Stripe from 'stripe';
-import { Event, Payment, Refund } from '@clear/public-api-contracts';
+import { ENDPOINTS, Event, Payment, Refund, WebhookDelivery } from '@clear/public-api-contracts';
 import type { Db } from '../db/db.js';
 import { seedShop, testDb } from '../db/testDb.js';
 import * as catalog from '../services/merchant/catalog/catalogService.js';
@@ -357,6 +357,24 @@ describe('webhooks', () => {
     expect(nextAttempt(made, 30, new Date(made.getTime() + RETRY_FOR_MS - 60_000))).toBeNull();
   });
 
+  test('deliveries through the API: each try, the endpoint’s answer, newest first, the key’s mode only', async () => {
+    const s = await shop();
+    const clear = s.sdk(s.liveSecret);
+    const endpoint = await clear.webhookEndpoints.create({ url: 'https://down.example.com/hook2', events: ['payment.canceled'] });
+    const payment = await clear.payments.create(SNIPPET, { idempotencyKey: key() });
+    await clear.payments.cancel(payment.id);
+    await deliverDue(db, { fetch: endpointServer(() => 500).fetchImpl, now: () => new Date() });
+    const list = await clear.webhookDeliveries.list({ endpoint: endpoint.id });
+    expect(list.hasMore).toBe(false);
+    expect(list.data).toHaveLength(1);
+    const d = WebhookDelivery.parse(list.data[0]);
+    expect(d).toMatchObject({ object: 'webhook_delivery', livemode: true, endpoint: endpoint.id, event: { type: 'payment.canceled' }, status: 'pending', attempts: 1, responseStatus: 500 });
+    expect(d.nextAttemptAt).not.toBeNull();
+    expect((await clear.webhookDeliveries.list({ status: 'succeeded' })).data).toHaveLength(0);
+    // The test key sees none of the live ones.
+    expect((await s.sdk(s.testSecret).webhookDeliveries.list()).data).toHaveLength(0);
+  });
+
   test('only the key’s mode: a live endpoint never hears about a test payment', async () => {
     const s = await shop();
     await s.sdk(s.liveSecret).webhookEndpoints.create({ url: 'https://micasatacos.com/live', events: ['payment.canceled'] });
@@ -430,6 +448,15 @@ describe('the API’s own answers', () => {
     const res = await fetch(`${base}/v1/payment_links`, { method: 'POST', headers: { Authorization: `Bearer ${s.liveSecret}`, 'Content-Type': 'application/json' }, body: '{nope' });
     expect(res.status).toBe(400);
     expect((await body(res)).error.code).toBe('parameter_invalid');
+  });
+  test('every route the docs list exists (docs/api.md is generated from the same list)', async () => {
+    const s = await shop();
+    for (const e of ENDPOINTS) {
+      const path = e.path.replace(':id', 'x_none');
+      const res = await call(path, { method: e.method, key: e.key === 'publishable' ? s.livePk : s.liveSecret, body: e.method === 'POST' ? {} : undefined, headers: e.idempotent ? { 'Idempotency-Key': key() } : {} });
+      const code = res.status === 204 ? null : (await body(res).catch(() => null))?.error?.code;
+      expect({ route: `${e.method} ${e.path}`, code }).not.toEqual({ route: `${e.method} ${e.path}`, code: 'route_not_found' });
+    }
   });
   test('a preflight from any website is answered without credentials', async () => {
     const res = await fetch(`${base}/v1/modal_sessions`, { method: 'OPTIONS', headers: { Origin: 'https://micasatacos.com', 'Access-Control-Request-Method': 'POST' } });

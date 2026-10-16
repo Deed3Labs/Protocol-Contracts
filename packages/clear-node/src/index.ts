@@ -8,7 +8,7 @@
 import { LATEST_VERSION } from '@clear/public-api-contracts';
 import { ClearError } from './errors';
 import { Http } from './http';
-import { PaymentLinks, Payments, Prices, Refunds, WebhookEndpoints } from './resources';
+import { PaymentLinks, Payments, Prices, Refunds, WebhookDeliveries, WebhookEndpoints } from './resources';
 import { Webhooks } from './webhooks';
 
 export type ClearOptions = {
@@ -61,6 +61,7 @@ export default class Clear {
   readonly paymentLinks: PaymentLinks;
   readonly refunds: Refunds;
   readonly webhookEndpoints: WebhookEndpoints;
+  readonly webhookDeliveries: WebhookDeliveries;
   readonly webhooks: Webhooks;
   /** Whether the key is a live one. Test keys only ever see test payments, and the other way round. */
   readonly livemode: boolean;
@@ -84,6 +85,7 @@ export default class Clear {
     this.paymentLinks = new PaymentLinks(http);
     this.refunds = new Refunds(http);
     this.webhookEndpoints = new WebhookEndpoints(http);
+    this.webhookDeliveries = new WebhookDeliveries(http);
     this.webhooks = new Webhooks(() => options.webhookSecret ?? env('CLEAR_WEBHOOK_SECRET'));
   }
 }
@@ -91,7 +93,7 @@ export default class Clear {
 export { Clear };
 export { ClearError, ClearSignatureError, type ClearErrorCode } from './errors';
 export type { RequestOptions } from './http';
-export type { List, ListPaymentsParams, Payments, Prices, PaymentLinks, Refunds, WebhookEndpoints } from './resources';
+export type { List, ListPaymentsParams, ListWebhookDeliveriesParams, Payments, Prices, PaymentLinks, Refunds, WebhookDeliveries, WebhookEndpoints } from './resources';
 export type { RawBody, VerifyOptions, Webhooks } from './webhooks';
 export type {
   ApiError,

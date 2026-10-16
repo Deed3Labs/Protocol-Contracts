@@ -1371,6 +1371,118 @@
           "additionalProperties": false
         }
       ]
+    },
+    "WebhookDelivery": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^whd_[A-Za-z0-9]{1,64}$"
+        },
+        "object": {
+          "type": "string",
+          "const": "webhook_delivery"
+        },
+        "livemode": {
+          "type": "boolean"
+        },
+        "endpoint": {
+          "type": "string",
+          "pattern": "^we_[A-Za-z0-9]{1,64}$"
+        },
+        "event": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^evt_[A-Za-z0-9]{1,64}$"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "payment.succeeded",
+                "payment.failed",
+                "payment.canceled",
+                "refund.succeeded"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "succeeded",
+            "failed"
+          ]
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "responseStatus": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastAttemptAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "nextAttemptAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        }
+      },
+      "required": [
+        "id",
+        "object",
+        "livemode",
+        "endpoint",
+        "event",
+        "status",
+        "attempts",
+        "responseStatus",
+        "lastAttemptAt",
+        "nextAttemptAt",
+        "createdAt"
+      ],
+      "additionalProperties": false
     }
   },
   "requests": {
@@ -1710,6 +1822,35 @@
           "additionalProperties": false
         }
       ]
+    },
+    "ListWebhookDeliveries": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string",
+          "pattern": "^we_[A-Za-z0-9]{1,64}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "succeeded",
+            "failed"
+          ]
+        },
+        "limit": {
+          "default": 20,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "startingAfter": {
+          "type": "string",
+          "pattern": "^whd_[A-Za-z0-9]{1,64}$"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "lists": {
@@ -1778,6 +1919,25 @@
       "session_expired",
       "origin_not_allowed",
       "unavailable"
+    ],
+    "webhookDeliveryStatuses": [
+      "pending",
+      "succeeded",
+      "failed"
+    ],
+    "endpoints": [
+      "POST /v1/payments",
+      "GET /v1/payments",
+      "GET /v1/payments/:id",
+      "POST /v1/payments/:id/cancel",
+      "GET /v1/prices",
+      "POST /v1/payment_links",
+      "POST /v1/refunds",
+      "POST /v1/webhook_endpoints",
+      "GET /v1/webhook_endpoints",
+      "DELETE /v1/webhook_endpoints/:id",
+      "GET /v1/webhook_deliveries",
+      "POST /v1/modal_sessions"
     ]
   }
 }
