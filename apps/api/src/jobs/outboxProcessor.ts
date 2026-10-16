@@ -1,6 +1,7 @@
 import { merchantDb } from '../config/merchantDb.js';
 import { processOutbox } from '../services/merchant/outbox/outbox.js';
 import { defaultTaxApi } from '../services/merchant/tax/taxApi.js';
+import { rewardsOutboxHandlers } from '../services/merchant/rewards/hooks.js';
 import { taxRecordHandlers } from '../services/merchant/tax/taxRecorder.js';
 
 /*
@@ -10,7 +11,7 @@ import { taxRecordHandlers } from '../services/merchant/tax/taxRecorder.js';
 
 const EVERY_MS = 15_000;
 let running = false;
-const HANDLERS = taxRecordHandlers(defaultTaxApi);
+const HANDLERS = { ...taxRecordHandlers(defaultTaxApi), ...rewardsOutboxHandlers };
 
 export async function drainOutbox(): Promise<void> {
   if (running) return;

@@ -311,8 +311,9 @@ export const CLAIM_MINUTES = 15;
 /** Who an order is for, once a member is added at the cart. */
 export const OrderCustomer = z.object({
   memberId: PersonId,
-  addedBy: Id,
-  addedVia: z.enum(['code', 'phone', 'claim']),
+  /** The staff member; null when they added themselves in their app, or paid with Clear unadded. */
+  addedBy: Id.nullable(),
+  addedVia: z.enum(['code', 'phone', 'claim', 'app']),
   at: Timestamp,
 });
 export type OrderCustomer = z.infer<typeof OrderCustomer>;

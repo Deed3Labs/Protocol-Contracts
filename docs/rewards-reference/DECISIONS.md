@@ -153,3 +153,145 @@ Written 2026-10-15. `packages/merchant-contracts/src/rewards.ts`, with additions
   - `GET` and `POST /api/rewards/confirm/:token`, the customer's side of that.
 - **`MerchantRewardsApi` stays a separate interface until Phase 5.** It joins `MerchantApi` then,
   because adding it now would break the merchant mock before it implements it.
+
+Approved at Hard Stop 2, 2026-10-16:
+
+- **Mi Casa's extra for paying with Clear is Off** in every seed, so section 3 holds: 12 points
+  earned, 65 left. Settings › Shop app shows Off there, and the give-back line has no "or … paying
+  with Clear" part (`giveBack` returns null for the Clear figures).
+- **A reward goes on a bill from a Point**, where nothing has been paid yet. A counter charge's code
+  is a payment already started, so its order can't take a discount: the reward is applied at the
+  counter, from the member sheet or a claimed code, before Checkout.
+- **A full refund gives back the points a reward used**, as a `refund` entry beside the reversal of
+  what was earned. A partial refund reverses only what was earned on the refunded part.
+
+## Phase 3 · API
+
+Written 2026-10-16. Migration `0029_rewards.sql`; services in `apps/api/src/services/merchant/rewards/`;
+routes in `apps/api/src/routes/rewards.ts`.
+
+### Where it lives
+
+- **The merchant database.** The `rewards` schema sits beside `commerce` and `payments`, because
+  points ride on orders and are written in the same transaction as the sale. People link to Clear's
+  member records (main database) by value: their Privy DID, and the member's auth subject.
+- **Table names as the prompt gives them, plus four more.**
+  - `rewards.people`: rewards-only people have no member row.
+  - `rewards.counter_confirms`: a number typed at the counter.
+  - `rewards.processed_events`: a paid event, once.
+  - `rewards.loyalty_memberships.ref_code`: Bring a friend.
+  - Orders gain `member_person` and how they were added; order discounts gain `reward_id`,
+    `reward_points` and `claim_id`, and a reward's `applied_by` can be empty.
+- **The ledger refuses updates** (`payments.refuse_change`). Rows are deleted only when someone leaves
+  a shop or deletes their rewards account: the spec makes leaving erase the points and the consent.
+
+### Earning
+
+- **Inline, in `settleOrder`**, at the same transition that writes `order.paid`, so the Paid screen
+  already shows the new total.
+  - It runs inside a savepoint. If the rewards step throws, the sale stands and a `rewards.retry`
+    outbox event runs the same step again.
+  - A shop with no app skips it with one lookup.
+- **Idempotency:**
+  - A paid event is keyed `earn:<order>:<attempt>` (the sale's attempt number) and recorded in
+    `processed_events`, so a repeat moves nothing, not even the keep-the-change leftover.
+  - A void reverses each earn and redeem entry once (`void:<entry>`).
+  - An order paid again after a void earns again under its new attempt.
+- **Who earns:** the person on the order, if they've joined the shop.
+  - A Clear charge approved by someone nobody added puts its payer on the order, through the new
+    optional `ClearCharges.payer`.
+  - Someone who hasn't joined earns nothing until they join with that order (`creditOrderOnJoin`,
+    the same key).
+- **Refunds:**
+  - Card and cash refunds take back points in `announceRefund`. Clear refunds do it after
+    `settleRefund` closes the plan.
+  - What's taken back is worked out from everything refunded so far, against the order's total.
+    Refunded cents include any tip, so a partly refunded tipped order gives back slightly more points
+    than its goods alone would.
+  - Everything refunded also returns the reward's points (Hard Stop 2).
+- **Points can't be spent twice.** A reward on an open order holds its points, so a second order or a
+  claim can't spend them too.
+- **Birthday:** a `bonus_birthday` entry worth the birthday reward's points, marked with the reward,
+  once a year on the first of their month (UTC).
+- **Expiry** counts each entry against the rules version that earned it, from the last visit. A visit
+  that earned nothing still counts as a visit. The jobs run every six hours (`jobs/rewardsJobs.ts`).
+
+### Rewards on an order
+
+- **An item reward is one of its items: the dearest on the order, options included, up to its cap.**
+  A tie goes to the item the reward lists first, which is why section 9 reads "matches 1 × Jamaica"
+  with Jamaica listed before Horchata.
+- **It comes off as an amount, spread across the order's lines** like any discount. If the cart
+  changes, it's worked out again from the cart.
+- **A claim:** a counter code is a `DiscountRequest` `claim`. It adds its person when nobody is on the
+  order, and refuses if someone else is. Removing the discount makes the code good again until it
+  runs out.
+- **From a Point's bill:** `POST /api/p/:code/pay` with a shop's token puts the customer on the order,
+  and the reward when they switched it on. With no token, a `rewardId` is refused.
+
+### Identity and tokens
+
+- **Tokens are ours, HMAC-signed**, under `REWARDS_TOKEN_SECRET`. Production needs it set; elsewhere a
+  per-process secret is used.
+  - They last 12 hours and carry the DID, wallet, phone, email and scope.
+  - `requireAuth` takes only Privy tokens, so a rewards token opens no member route.
+  - A shop's token is refused by every other shop's route (403 `scope`).
+- **The hub's token** lists shops, reads and writes the person, and mints shop tokens without going
+  back to Privy.
+- **A person is found by DID, then by wallet.** The wallet case is a Clear member first seen at a
+  counter, whose row was made from their member subject. A Clear member never sees Welcome: their row
+  is made from their Clear name.
+- **The signed identity code** is `<rewards url>/send?to=<wallet>&id=<exp>.<sig>`, good for two
+  minutes. Adding someone by code needs it; a bare wallet is refused. The merchant tablet's parser
+  already accepts any origin.
+- **`canPayOverTime` is `canPayWithClear` for now.** Whether there's credit is the pay sheet's
+  existing check, as in the Clear app.
+
+### The counter
+
+- **Clear to the added customer:** `SendClearCharge { to: 'customer' }` finds the order's person's
+  wallet and uses the existing send. The tablet's line is "their Clear app, text and email".
+- **`notifyMember` now sends the text and the email** when a member has both. It used to send one or
+  the other. The spec draws all three reaching her at once.
+- **A typed-in number** gets a ten-minute link by text, and the answer is `pending` either way.
+  Confirming needs the link and a signed-in person whose own number it is, so a forwarded link can't
+  add someone else.
+
+### Routes, against section 11
+
+- **As listed:** `GET /api/s/:slug`, `…/manifest.webmanifest`, `POST …/join`,
+  `DELETE …/membership`, `GET …/me`, `POST …/rewards/:id/claim`, `GET /api/rewards/me/shops`,
+  `GET /api/partners?near=`, `POST /api/p/:code/pay` (now with `rewardId`),
+  `GET`/`PATCH /api/merchant/shop-app`, `POST …/fonts`, `POST …/domain`,
+  `POST`/`DELETE /api/merchant/orders/:id/customer`, `POST …/customer/invite` and
+  `GET …/shop-app/give-back`.
+- **Added:**
+  - the Phase 2 list: sessions, person, code, bill, paid, activity, membership PATCH, customer GET,
+    confirm;
+  - `GET /api/s/:slug/fonts/:id.woff2`;
+  - `POST /api/merchant/shop-app/give-back`, for rules not yet saved;
+  - rewards as their own routes: `POST`, `PATCH` and `DELETE /shop-app/rewards(/:id)`. Changing a
+    reward retires the old one, so past orders keep what they used.
+- **A font upload is the file as the request body** (1 MB at most), with its name, use and licence
+  declaration in the query. The API has no multipart parser, and one file didn't seem worth adding
+  one. Fonts are kept in the database as WOFF2 (`fontkit` 2.0.4 reads them; `wawoff2` 2.0.1
+  converts).
+  - **Legibility at 14px:** an x-height of at least 5.5px, and an average width of at least 0.35em.
+- **Not finished, for later phases:**
+  - The manifest's icons are the logo as uploaded; resizing is Phase 4.
+  - `POST /shop-app/domain` records the domain and its DNS record; Vercel and the check are Phase 7.
+  - The directory's distance is null until a shop has coordinates; geocoding is Phase 4's seed.
+  - The merchant mock still refuses reward discounts until Phase 5.
+
+### A contract change, for approval
+
+`OrderCustomer.addedBy` is now nullable, and `addedVia` gains `'app'`, for a customer who put
+themselves on an order from their app, or a Clear payer nobody added. The Phase 2 contract had a
+staff id there always.
+
+### Found on the way, not changed
+
+- **`/api/transactions` is public by address**, as it was before this work. A shop's token can't read
+  a member's activity through any authenticated route, but on-chain history is public anyway.
+- **`apps/api/package-lock.json` was already behind `package.json`** (PGlite, the contracts package,
+  zod 4). Only `bun.lock`, which the image installs from, was updated.

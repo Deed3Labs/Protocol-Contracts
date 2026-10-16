@@ -42,6 +42,9 @@ export function clearChargesFor(db: Db): ClearCharges {
           return 'other';
       }
     },
+    async payer(code) {
+      return (await chargeStore.get(code))?.memberWallet ?? null;
+    },
     async cancel(code, merchant) {
       return Boolean(await chargeStore.cancel(code, merchant));
     },

@@ -8,6 +8,7 @@ import { checkNewTender, PaymentError, type TenderOrderRow as OrderRow } from '.
 import { getOrder, type PinCheck } from './orderService.js';
 import { settleOrder } from './settle.js';
 import { audit } from '../security/audit.js';
+import { addPayer } from '../rewards/counter.js';
 
 /**
  * Cash and Clear tenders, splitting, and voiding an order (card-processing prompt, Phase 6). Card
@@ -36,6 +37,8 @@ export interface ClearCharges {
    * their app) or a phone number (a text with the link). `label` is where it went, for the screen.
    */
   sendTo(code: string, to: { member: string } | { phone: string }): Promise<{ ok: true; label: string } | { ok: false; reason: string }>;
+  /** Who approved it: the member's wallet. Rewards puts them on the order when nobody was added. */
+  payer?(code: string): Promise<string | null>;
 }
 
 /** "(909) 555-0177" → "+19095550177"; a number with its country code is kept. Null if it isn't one. */
@@ -162,12 +165,14 @@ export async function syncClearTender(db: Db, clear: ClearCharges, input: { merc
   const event: TenderEvent | null =
     status === 'approved' ? { type: 'approve' } : status === 'declined' ? { type: 'decline' } : status === 'expired' || status === 'cancelled' ? { type: 'cancel' } : null;
   if (!event) return toTender(t);
+  const payer = event.type === 'approve' ? ((await clear.payer?.(t.clear_charge_code).catch(() => null)) ?? null) : null;
   const out = await db.transaction(async (tx) => {
     const { rows: locked } = await tx.query<TenderRow>('SELECT * FROM payments.tenders WHERE id = $1 FOR UPDATE', [t.id]);
     const row = locked[0]!;
     const next = tenderTransition({ method: 'clear', status: row.status, amountCents: Number(row.amount_cents), tipCents: Number(row.tip_cents), refundedCents: 0 }, event);
     if (!next.ok) return row;
     const { rows: updated } = await tx.query<TenderRow>('UPDATE payments.tenders SET status = $2, updated_at = now() WHERE id = $1 RETURNING *', [row.id, next.state.status]);
+    if (next.state.status === 'approved' && payer) await addPayer(tx, { orderId: row.order_id, wallet: payer });
     await audit(tx, { merchant: input.merchant, actor: input.actor, action: `tender.clear_${next.state.status}`, ref: { type: 'tender', id: row.id }, amountCents: Number(row.amount_cents) + Number(row.tip_cents), detail: { chargeStatus: status } });
     await settleOrder(tx, { merchant: input.merchant, orderId: row.order_id, actor: input.actor });
     return updated[0]!;
@@ -189,8 +194,15 @@ export async function sendClearTender(db: Db, clear: ClearCharges, input: { merc
   if (t.status !== 'pending' || !t.clear_charge_code) throw new PaymentError('That payment isn’t waiting on anyone', 'not_sendable');
   const to = parsed.data;
   let target: { member: string } | { phone: string };
-  if (to.to === 'customer') throw new PaymentError('Nobody has been added to this charge', 'invalid');
-  if (to.to === 'member') target = { member: to.wallet.toLowerCase() };
+  if (to.to === 'customer') {
+    // The member added at the cart: straight to them, with nothing to scan (rewards spec, section 9).
+    const { rows: who } = await db.query<{ wallet: string | null }>(
+      'SELECT p.wallet FROM commerce.orders o JOIN rewards.people p ON p.id = o.member_person WHERE o.id = $1 AND o.merchant = $2',
+      [t.order_id, input.merchant],
+    );
+    if (!who[0]?.wallet) throw new PaymentError('Nobody has been added to this charge', 'invalid');
+    target = { member: who[0].wallet };
+  } else if (to.to === 'member') target = { member: to.wallet.toLowerCase() };
   else {
     const phone = phoneE164(to.phone);
     if (!phone) throw new PaymentError('That isn’t a phone number we can text', 'invalid');
@@ -207,7 +219,7 @@ export async function sendClearTender(db: Db, clear: ClearCharges, input: { merc
     // Never the whole number or wallet: the end is enough to know where it went.
     detail: { to: to.to, ending: 'phone' in target ? target.phone.slice(-4) : target.member.slice(-4) },
   });
-  return { to: to.to, label: sent.label };
+  return { to: to.to, label: to.to === 'customer' ? 'their Clear app, text and email' : sent.label };
 }
 
 /** Withdraws a Clear charge nobody has answered yet. If the member got there first, the tender follows their answer instead. */
