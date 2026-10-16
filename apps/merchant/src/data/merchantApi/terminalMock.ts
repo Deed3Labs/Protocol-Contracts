@@ -26,7 +26,7 @@ import {
   type WaitlistParty,
 } from '@clear/merchant-contracts';
 import { seesMoney } from '@clear/domain';
-import { MENU, ORDER_0142, PICKUPS, POINTS, TAB_12, TABLES, WAITLIST, CATEGORY_ORDER } from '../../terminal/reference';
+import { MENU, ORDER_0142, PARTIES, PICKUPS, POINTS, TAB_12, TAB_2, TABLES, WAITLIST, CATEGORY_ORDER } from '../../terminal/reference';
 
 /**
  * Clear Terminal in the mock (terminal reference): Points, the drawer and printers, tables and the
@@ -65,7 +65,7 @@ export interface TerminalHost {
   ) => string;
   order: (orderId: string) => Order;
   /** Pay it: a cash tender for the whole of it. */
-  payCash: (orderId: string, opts: { by: string; at: string; handedOverCents?: number }) => void;
+  payCash: (orderId: string, opts: { by: string; at: string; handedOverCents?: number; method?: 'cash' | 'clear'; tipCents?: number }) => void;
   settings: () => {
     tableService?: boolean;
     drawerNoSaleRoles?: 'managers' | 'anyone';
@@ -357,6 +357,7 @@ export function createTerminalMock(h: TerminalHost) {
         seatedAt: null,
         tabOrderId: null,
         hold: null,
+        party: PARTIES[t.number] ?? null,
       });
     for (const p of POINTS) {
       const tableId = p.table ? `tbl_${p.table}` : null;
@@ -478,13 +479,17 @@ export function createTerminalMock(h: TerminalHost) {
       });
       pickupNames.set(id, p.name);
     }
-    // Dinner (section 8, with the addenda).
-    seat(2, '19:48');
-    tabFor(2, tabOf(3150), '19:48');
+    // Dinner (section 8, Tables v2): Diaz ordered at 2, Okafor's bill out at 4, a walk-in at 7,
+    // Reyes paid by Clear at 9 with a $4.00 tip, Kim calling at 12.
+    seat(2, '19:38');
+    tabFor(2, TAB_2.map(([r, q]) => item(r, q)), '19:38');
     seat(4, '19:12');
-    const t4 = tabFor(4, tabOf(6200), '19:12', { billSent: '20:00' });
+    const t4 = tabFor(4, tabOf(6200), '19:12', { billSent: '19:42' });
     seat(7, '19:55');
-    tabFor(9, tabOf(2740), '19:10', { paid: '19:58' });
+    const t9 = h.raise(tabOf(2740), { by: 'stf_jen', createdAt: at('19:10') });
+    attachTab('tbl_9', t9, at('19:10'));
+    h.payCash(t9, { by: 'stf_jen', at: at('19:58'), method: 'clear', tipCents: 400 });
+    paidTimes.set(t9, at('19:58'));
     seat(12, '19:19');
     const t12 = tabFor(
       12,
@@ -510,13 +515,11 @@ export function createTerminalMock(h: TerminalHost) {
         quotedMinutes: w.quoted,
         state: h.anaWaiting && w.name === 'Ana' ? 'waiting' : w.state,
         tableId: w.table && !h.anaWaiting ? `tbl_${w.table}` : null,
-        joinedAt: at('19:40'),
+        joinedAt: at(w.joined),
         readyAt: null,
         seatedAt: w.state === 'seated' && !h.anaWaiting ? at('19:58') : null,
       });
     }
-    // Ana joined at 7:44: she has waited 14 minutes when the Seat sheet opens at 7:58.
-    parties.get('pty_ana')!.joinedAt = at('19:44');
     if (!h.anaWaiting) table('tbl_6').hold = {
       partyId: 'pty_ana',
       showName: true,
@@ -760,7 +763,11 @@ export function createTerminalMock(h: TerminalHost) {
         const a = alerts.get(input.alertId) ?? h.refuse('No such alert', 404, 'not_found');
         a.pointId = pointId;
       } else if (input.kind === 'test') p.base = { kind: 'test', since: at };
-      else p.base = { kind: 'idle', mode: p.settings.idleMode };
+      else {
+        // Take the bill back: an unpaid bill is no longer out.
+        if (p.base.kind === 'bill' && !PAID.includes(h.order(p.base.orderId).status)) setMeta(p.base.orderId, { billSentAt: null });
+        p.base = { kind: 'idle', mode: p.settings.idleMode };
+      }
       return pointDevice(p) as Extract<Device, { kind: 'point' }>;
     },
     drawerKey: async (drawerId) => {

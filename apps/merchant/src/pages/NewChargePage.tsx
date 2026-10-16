@@ -19,6 +19,7 @@ import {
   FOOD,
   FOOD_ORDER,
   REFERENCE_CART,
+  TAX_RATE,
   TILE_ORDER,
   lineOf,
   missingGroup,
@@ -37,9 +38,11 @@ import {
   QuickSaleSheet,
   StartTop,
   AmountView,
+  TabCell,
   typeAmount,
   type FeeTerms,
   type StartMode,
+  type TabRates,
 } from '@/charge/start';
 import { CheckoutView, DiscountSheet, TipView, chargeTotal, type CodeCheck, type Method, type TipChoice } from '@/charge/checkout';
 import {
@@ -285,6 +288,22 @@ const JEN_SHIFT: ShiftRow[] = [
   { name: 'Marcus T.', det: '11:02am', amountCents: 41200, approved: true },
 ];
 
+/** An order's lines as the cart draws them: a table's tab, opened to add to or to take payment. */
+const linesOf = (o: Order): CartLine[] =>
+  o.lines.map((l) => ({
+    key: l.id,
+    itemId: l.itemId ?? undefined,
+    name: l.name,
+    chosen: l.options.map((x) => x.name).join(', ') || undefined,
+    qty: l.quantity,
+    unitCents: l.unitCents,
+    tax: l.taxKind,
+    optionIds: l.options.map((x) => x.optionId),
+  }));
+
+/** "8.375" from the shop's "8.375", or the cart's own rate (7.75) while it's unknown. */
+const pctOf = (fraction: number) => (fraction * 100).toFixed(3).replace(/\.?0+$/, '');
+
 const nowTime = () => {
   const d = new Date();
   return `${d.getHours() % 12 || 12}:${d.getMinutes().toString().padStart(2, '0')}${d.getHours() < 12 ? 'am' : 'pm'}`;
@@ -304,11 +323,14 @@ export default function NewChargePage() {
   // `&live=1` keeps the preview's session but shows what a live shop gets.
   const preview = import.meta.env.DEV && params.get('preview') === '1' && !params.get('live');
   const preset = preview ? SCREENS[params.get('screen') ?? ''] : undefined;
+  // Tables › Add items (`&items=1&table=`): New charge's items, with the table's tab where the cart was
+  // (terminal reference, 8b). The catalogue and the tab are read in the preview too, from the mock.
+  const adding = !!params.get('items') && !!params.get('table');
 
   const { data: profile } = useApi(() => api.profile(), []);
   // The live shop's catalogue, codes, ways to pay and tips, from the merchant API.
   const merchant = useMerchantApi();
-  const liveCatalog = useApi(() => (preview ? Promise.resolve(null) : merchant.catalog()), [preview]);
+  const liveCatalog = useApi(() => (preview && !adding ? Promise.resolve(null) : merchant.catalog()), [preview]);
   const liveCodes = useApi(() => (preview ? Promise.resolve(null) : merchant.discountCodes()), [preview]);
   const liveSettings = useApi(() => (preview ? Promise.resolve(null) : merchant.settings()), [preview]);
   const liveCards = useApi(() => (preview ? Promise.resolve(null) : merchant.cardAvailability()), [preview]);
@@ -376,20 +398,11 @@ export default function NewChargePage() {
   const tabTable = params.get('table');
   const tabOrder = params.get('order');
   useEffect(() => {
-    if (preview || !tabOrder) return;
+    if (preview || !tabOrder || adding) return;
     void merchant.order(tabOrder).then(
       (o) => {
         setOrder(o);
-        const lines: CartLine[] = o.lines.map((l) => ({
-          key: l.id,
-          itemId: l.itemId ?? undefined,
-          name: l.name,
-          chosen: l.options.map((x) => x.name).join(', ') || undefined,
-          qty: l.quantity,
-          unitCents: l.unitCents,
-          tax: l.taxKind,
-          optionIds: l.options.map((x) => x.optionId),
-        }));
+        const lines = linesOf(o);
         set(params.get('items') ? { mode: 'items', lines } : { mode: 'items', lines, screen: 'checkout' });
         // Taking payment at a table: its own Point shows the bill (section 8).
         const point = counterHw.points.find((p) => p.settings.tableId === o.tableId);
@@ -399,6 +412,34 @@ export default function NewChargePage() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preview, tabOrder, counterHw.points.length]);
+  // Adding to a tab: the table (its number and party) from the floor, and its tab, which is never this
+  // page's `order`, so leaving doesn't discard it. Its rates price the tab after this.
+  const tabFloor = useApi(() => (adding ? merchant.floor() : Promise.resolve(null)), [adding]);
+  const tabView = tabFloor.data?.tables.find((t) => t.id === tabTable) ?? null;
+  const tabOrderId = adding ? (tabOrder ?? tabView?.orderId ?? null) : null;
+  const tab = useApi(() => (tabOrderId ? merchant.order(tabOrderId) : Promise.resolve(null)), [tabOrderId]);
+  const tabTax = useApi(() => (adding ? merchant.taxStatus() : Promise.resolve(null)), [adding]);
+  const tabRates: TabRates = useMemo(() => {
+    const r = tabTax.data?.rates;
+    const frac = (v: string | null | undefined) => (v ? Number(v) / 100 : 0);
+    const named = r?.food ?? r?.goods ?? r?.labour;
+    return r
+      ? { goods: frac(r.goods), labour: frac(r.labour), food: frac(r.food), label: named ?? '0', inclusive: tabTax.data!.pricesIncludeTax }
+      : { goods: TAX_RATE, labour: 0, food: TAX_RATE, label: pctOf(TAX_RATE), inclusive: false };
+  }, [tabTax.data]);
+  // Back to the floor, the preview's with it, as Tables builds its own links.
+  const toTables = () => navigate(`/tables${hwPreview ? `?preview=1${miCasa() ? '&shop=micasa' : ''}` : ''}`);
+  /** Add {n} to the tab: the tab's lines and the new ones, onto its order (or a new one for the table), then the floor. */
+  const addToTab = () => {
+    if (!tabTable || !f.lines.length) return;
+    const t = tab.data;
+    const lines = toLineInputs([...(t ? linesOf(t) : []), ...f.lines], 0);
+    void attempt(async () => {
+      if (t) await merchant.updateOrder(t.id, { lines });
+      else await merchant.createOrder({ lines, customer: null, tableId: tabTable });
+      toTables();
+    });
+  };
   const [sentVia, setSentVia] = useState<{ how: 'App' | 'Text'; label: string; at: Date; to: { to: 'member'; wallet: string } | { to: 'phone'; phone: string } } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -406,7 +447,7 @@ export default function NewChargePage() {
   const [raisedAt, setRaisedAt] = useState<Date>(() => new Date());
 
   const shopItems = useMemo(() => (liveCatalog.data ?? []).filter((c) => !c.archivedAt).map(chargeItemFrom), [liveCatalog.data]);
-  const catalog = preview ? (f.catalog === 'food' ? FOOD : CATALOG) : shopItems;
+  const catalog = preview && !adding ? (f.catalog === 'food' ? FOOD : CATALOG) : shopItems;
   const typedCents = Math.round(parseFloat(f.typed || '0') * 100);
   const body = { lines: f.mode === 'items' ? f.lines : [], typedCents, discount: f.discount };
   // Live, the order's numbers are the server's: what it comes to, and what's still owed. The tip
@@ -599,7 +640,8 @@ export default function NewChargePage() {
 
   /** Leaving: an order nothing was paid on is discarded, so its stock isn't held for nobody. */
   const discardIfUnpaid = async (o: Order | null) => {
-    if (preview || !o || o.status === 'voided') return;
+    // A table's tab belongs to the table: backing out of Take payment leaves it open (Tables v2).
+    if (preview || !o || o.status === 'voided' || o.tableId) return;
     const ts = await merchant.tenders(o.id).catch(() => null);
     if (ts && nothingTaken(ts)) await merchant.discardOrder(o.id).catch(() => undefined);
   };
@@ -623,7 +665,7 @@ export default function NewChargePage() {
     if (preview) return;
     const onHide = () => {
       const o = orderRef.current;
-      if (o && o.status !== 'voided' && nothingTaken(tendersRef.current)) discardOnLeave(o.id);
+      if (o && o.status !== 'voided' && !o.tableId && nothingTaken(tendersRef.current)) discardOnLeave(o.id);
     };
     window.addEventListener('pagehide', onHide);
     return () => window.removeEventListener('pagehide', onHide);
@@ -807,7 +849,10 @@ export default function NewChargePage() {
     // A shop with a catalogue starts with an amount or its items; one without, with an amount.
     const hasItems = preview || shopItems.length > 0;
     const items = hasItems && f.mode === 'items';
-    if (phone) {
+    // Adding to a table's tab is drawn for the tablet; a phone gets the same two cells, one above the other.
+    const tabNumber = tabView?.number ?? '…';
+    const party = tabView?.party;
+    if (phone && !adding) {
       main =
         items && f.screen === 'cart' ? (
           <PhoneCart
@@ -845,7 +890,9 @@ export default function NewChargePage() {
           />
         );
     } else {
-      top = hasItems ? (
+      top = adding ? (
+        <FlowTop title={`Adding to Table ${tabNumber}`} back onExit={toTables} onShift={me} />
+      ) : hasItems ? (
         <StartTop mode={f.mode} onMode={(mode) => set({ mode })} onShift={me} onExit={exit} title={f.catalog === 'food' ? 'New order' : 'New charge'} />
       ) : (
         <FlowTop title="New charge" onExit={exit} onShift={me} />
@@ -876,20 +923,31 @@ export default function NewChargePage() {
               onOptions={(i) => set({ sheet: { k: 'options', item: i } })}
               tabs={f.catalog === 'food' ? ['All', 'Food', 'Drinks', 'Sweet'] : undefined}
               // The reference's tile layouts are for its own catalogues; a live shop's tiles are its catalogue.
-              tileOrder={!preview ? undefined : f.catalog === 'food' ? ['tacos', 'burrito', 'quesadilla', 'chips', 'horchata', 'agua', 'churros'] : TILE_ORDER}
+              tileOrder={!preview || adding ? undefined : f.catalog === 'food' ? ['tacos', 'burrito', 'quesadilla', 'chips', 'horchata', 'agua', 'churros'] : TILE_ORDER}
             />
-            <CartCell
-              lines={f.lines}
-              suggestion={suggestion}
-              onAddSuggestion={() => {
-                if (mountItem) addLine(mountItem, {}, tires);
-                set({ suggested: true });
-              }}
-              onCheckout={toCheckout}
-              heading={f.catalog === 'food' ? 'Order 47' : undefined}
-              headingDet={f.catalog === 'food' ? 'For “Sam”' : undefined}
-              heroLabel={f.catalog === 'food' ? 'Total' : undefined}
-            />
+            {adding ? (
+              <TabCell
+                heading={`Table ${tabNumber}${party ? ` · ${party.name ?? 'Walk-in'}, ${party.size}` : ''}`}
+                onTab={tab.data ? linesOf(tab.data) : []}
+                adding={f.lines}
+                rates={tabRates}
+                busy={busy || (!!tabOrderId && !tab.data)}
+                onAdd={addToTab}
+              />
+            ) : (
+              <CartCell
+                lines={f.lines}
+                suggestion={suggestion}
+                onAddSuggestion={() => {
+                  if (mountItem) addLine(mountItem, {}, tires);
+                  set({ suggested: true });
+                }}
+                onCheckout={toCheckout}
+                heading={f.catalog === 'food' ? 'Order 47' : undefined}
+                headingDet={f.catalog === 'food' ? 'For “Sam”' : undefined}
+                heroLabel={f.catalog === 'food' ? 'Total' : undefined}
+              />
+            )}
           </div>
         );
       } else {
@@ -1392,7 +1450,7 @@ export default function NewChargePage() {
     // A tablet frame, as the reference draws these, in landscape and portrait: the slab fills the
     // screen and each cell scrolls inside it, so the pad and the primary button never leave the
     // screen. The phone scrolls as a page.
-    <div className={cx('c-app c-mc-tablet', phone && 'c-mc-page', FRAME[f.screen === 'start' && f.mode === 'items' ? 'items' : f.screen])}>
+    <div className={cx('c-app c-mc-tablet', phone && 'c-mc-page', FRAME[f.screen === 'start' && f.mode === 'items' ? 'items' : f.screen], adding && f.screen === 'start' && 'c-ck')}>
       {top}
       {!online && (
         // Offline cards aren't built (reader/platform.ts), so only cash works until it's back.

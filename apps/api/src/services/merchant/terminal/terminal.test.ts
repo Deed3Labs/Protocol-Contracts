@@ -642,3 +642,14 @@ describe('Tables v2 (the reference, 8b–8c and 14)', () => {
     expect((await floor.floor(db, t.merchant)).tables.find((x) => x.number === 6)?.point).toBeNull();
   });
 });
+
+describe('Take the bill back (section 8b)', () => {
+  test('clearing a Point that shows an unpaid bill puts its table back to Ordered', async () => {
+    const t = await tacos();
+    const order = await tab(t, t.table(14));
+    await showOnPoint(db, { merchant: t.merchant, staffId: t.staff.jen, pointId: t.at14.id, request: { kind: 'order', orderId: order.id } });
+    expect((await floor.getTable(db, t.merchant, t.table(14))).status).toBe('bill_sent');
+    await showOnPoint(db, { merchant: t.merchant, staffId: t.staff.jen, pointId: t.at14.id, request: { kind: 'clear' } });
+    expect((await floor.getTable(db, t.merchant, t.table(14)))).toMatchObject({ status: 'ordering', billSentAt: null });
+  });
+});

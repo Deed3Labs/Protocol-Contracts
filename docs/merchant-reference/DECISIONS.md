@@ -1419,3 +1419,45 @@ with it is unchanged and already built. The contract amendment, approved:
 - **Edit tables links Points**: a Point linked to a table is placed there; the Point that was there
   lets go; null unlinks.
 - Migration 0028 also holds Settings › Counter's three columns.
+
+## Terminal: Tables v2, the merchant app (2026-10-15)
+
+- **The floor** (8): Asking along the top, two requests at a time with its own pager; the floor by
+  area (All, then the shop's areas) beside the wait list; one tile per table, each saying the next
+  step. On a phone (8d) it is the same floor as a list grouped by state, with the wait list a tab
+  away. The first time (8, empty) offers Set up tables to managers and owners only; Counter staff see
+  the line without the button.
+- **One sheet per table** (8a): free (seat a walk-in, or a party from the list), seated / held /
+  ordered / calling (Add items, Send the bill, Move), bill sent (Take back, Take payment), paid
+  (Clear). The main button is the next step. Card and cash open Checkout for that bill; Clear and
+  Split are Checkout's own.
+- **Take back** clears the table's Point and un-sends the bill (`bill_sent_at` back to null), so the
+  table reads Ordered again. That is a small API change on top of step 2; it has a test.
+- **Add items** (8b) is New charge with the cart's place showing the table's tab: what's on it, what's
+  being added, and Add N to the tab. Its tax estimate rounds per line, as the server prices an order,
+  so a tab with nothing added reads the same total as its table. Leaving Take payment never voids a
+  table's tab; a counter sale's unpaid order is still dropped as before.
+- **Move** (8c) lists free tables that seat the party first, then the rest; the bill on the Point
+  follows (step 2).
+- **Wait list** (8c): Add a party (name, how many, a number to text, Tell them), and a party's sheet
+  (Seat at, show their name on the Point, Text them, Text: almost ready, No show, Remove). The next
+  party to fit is marked Next. Texting follows Settings › Counter's Text the wait list.
+- **Set up and Edit tables** (14) are for managers and owners. Set up makes N numbered tables, then
+  opens Edit, where areas, seats and Points are set.
+- **Settings › Counter** holds the three table rules (Clear paid tables, Wait estimates, Text the
+  wait list).
+
+Where the app differs from the drawing, or adds what it doesn't draw:
+
+- **Tax.** Mi Casa's mock stays at 8.32%, because Table 12's $48.20 appears in six frames. Add items
+  draws 8.375%. So Table 2 reads $35.74, not the drawn $35.76.
+- **Ready text** reads "14, Patio": the area is the shop's own name for it ("Patio"), not the drawn
+  "on the patio". A shop that names its area "on the patio" gets the drawn line.
+- **Edit tables' Points** come from the shop's own devices (section 1). Remove and Unlink are not
+  drawn; Link opens a picker that is not drawn either.
+- **Set up** starts at 10 tables, 2 seats each; the drawing doesn't give a starting number.
+- **"Clears soon"** tables are listed in a party's Seat at but can't be picked until they're free.
+- **Spacing:** Move's "Free tables that seat four first." has a 16px gap above the table buttons, as a
+  sentence rather than a field label (8px).
+- **Not done:** new items on a tab aren't sent to the kitchen printer; on a phone, Add items shows the
+  items and the tab as stacked cells rather than a drawn phone frame.

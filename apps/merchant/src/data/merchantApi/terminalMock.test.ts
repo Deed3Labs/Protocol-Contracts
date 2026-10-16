@@ -15,7 +15,8 @@ describe('Mi Casa Tacos at dinner', () => {
     const tile = (n: number) => f.tables.find((t) => t.number === n)!;
     expect(f.tables.map((t) => t.number)).toEqual([1, 2, 4, 6, 7, 9, 12, 14]);
     expect([1, 2, 4, 6, 7, 9, 12, 14].map((n) => tile(n).status)).toEqual(['free', 'ordering', 'bill_sent', 'held', 'seated', 'paid', 'bill_sent', 'free']);
-    expect([2, 4, 7, 9, 12].map((n) => tile(n).tabCents)).toEqual([3150, 6200, null, 2740, 4820]);
+    expect([2, 4, 7, 9, 12].map((n) => tile(n).tabCents)).toEqual([3574, 6200, null, 2740, 4820]);
+    expect([2, 4, 6, 7, 9, 12].map((n) => tile(n).party)).toEqual([{ name: "Diaz", size: 4 }, { name: "Okafor", size: 3 }, { name: "Ana", size: 2 }, { name: null, size: 2 }, { name: "Reyes", size: 2 }, { name: "Kim", size: 2 }]);
     expect(tile(6).hold).toMatchObject({ partyName: 'Ana', showName: true });
     expect(tile(12).request).toMatchObject({ kind: 'call', state: 'open' });
     expect(f.waitlist.quotedMinutes).toBe(15);

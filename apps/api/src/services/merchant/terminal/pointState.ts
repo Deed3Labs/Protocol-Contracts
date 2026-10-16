@@ -189,6 +189,12 @@ export async function showOnPoint(db: Db, input: { merchant: string; staffId: st
     } else if (show.kind === 'test') {
       await setBase(tx, input.pointId, 'test', null, now);
     } else {
+      // Take the bill back (section 8b): a bill still unpaid is no longer out, so its table is
+      // Ordered again. A paid one stays paid.
+      const { rows } = await tx.query<{ kind: string; order_id: string | null }>('SELECT kind, order_id FROM merchant.point_states WHERE device_id = $1', [input.pointId]);
+      if (rows[0]?.kind === 'bill' && rows[0].order_id) {
+        await tx.query(`UPDATE commerce.orders SET bill_sent_at = NULL WHERE id = $1 AND status IN ('open','paying')`, [rows[0].order_id]);
+      }
       await setBase(tx, input.pointId, 'idle', null, now);
     }
   });

@@ -321,6 +321,7 @@ export default function SettingsPage() {
     onEditShop: liveOwner ? (f: ShopField) => (setEditError(null), setTextEdit(f)) : undefined,
     onBreaks: liveOwner ? () => (setEditError(null), setTextEdit('breaks')) : undefined,
     onTables: liveOwner ? (on: boolean) => void change(() => merchant.updateSettings({ tableService: on })) : undefined,
+    onTableRules: liveOwner ? (patch: ShopSettingsPatch) => void saveSettings(patch) : undefined,
     onNotifyEmail: liveOwner ? () => (setEditError(null), setTextEdit('notifyEmail')) : undefined,
     onVerifyBusiness: liveOwner ? () => (setEditError(null), setTextEdit('kyb')) : undefined,
     onIdle: liveOwner && device ? (seconds: number) => void change(() => api.setIdleLock(device.id, seconds), () => void refresh()) : undefined,

@@ -117,16 +117,35 @@ export const POINTS: RefPoint[] = [
   },
 ];
 
-/** Section 8: eight tables (seats from the seating addendum: 1 and 6 seat two, 14 seats four). */
+/**
+ * Section 8 (Tables v2): eight tables in two areas, as Edit tables draws them. Table 7 isn't in Edit
+ * tables' rows but is on the floor; it's Inside, like its neighbours.
+ */
 export const TABLES: { number: number; seats: number; area: string | null }[] = [
-  { number: 1, seats: 2, area: null },
-  { number: 2, seats: 4, area: null },
-  { number: 4, seats: 4, area: null },
-  { number: 6, seats: 2, area: 'by the window' },
-  { number: 7, seats: 2, area: null },
-  { number: 9, seats: 4, area: null },
-  { number: 12, seats: 4, area: 'back patio' },
-  { number: 14, seats: 4, area: null },
+  { number: 1, seats: 2, area: 'Inside' },
+  { number: 2, seats: 4, area: 'Inside' },
+  { number: 4, seats: 4, area: 'Inside' },
+  { number: 6, seats: 2, area: 'Inside' },
+  { number: 7, seats: 2, area: 'Inside' },
+  { number: 9, seats: 2, area: 'Patio' },
+  { number: 12, seats: 2, area: 'Patio' },
+  { number: 14, seats: 4, area: 'Patio' },
+];
+
+/** Who is at each table at 8pm (section 8): a name and size, or a walk-in's size. */
+export const PARTIES: Record<number, { name: string | null; size: number }> = {
+  2: { name: 'Diaz', size: 4 },
+  4: { name: 'Okafor', size: 3 },
+  7: { name: null, size: 2 },
+  9: { name: 'Reyes', size: 2 },
+  12: { name: 'Kim', size: 2 },
+};
+
+/** Table 2's tab (sections 8b and Add items): 2 Carne asada, 2 Al pastor, 4 Horchata. */
+export const TAB_2: [string, number][] = [
+  ['asada', 2],
+  ['pastor', 2],
+  ['horchata', 4],
 ];
 
 /** Section 10 and the bills: the menu, by Inventory's categories. */
@@ -195,7 +214,7 @@ export const MENU: {
     name: 'Horchata',
     category: 'Drinks',
     cents: 350,
-    detail: null,
+    detail: '16 oz',
     onMenu: true,
   },
   {
@@ -203,7 +222,7 @@ export const MENU: {
     name: 'Jamaica',
     category: 'Drinks',
     cents: 350,
-    detail: null,
+    detail: '16 oz',
     onMenu: true,
   },
   {
@@ -211,7 +230,7 @@ export const MENU: {
     name: 'Mexican Coke',
     category: 'Drinks',
     cents: 350,
-    detail: null,
+    detail: 'Bottle',
     onMenu: true,
   },
   {
@@ -219,7 +238,24 @@ export const MENU: {
     name: 'Churros',
     category: 'Dessert',
     cents: 575,
-    detail: null,
+    detail: 'With chocolate',
+    onMenu: true,
+  },
+  // Add items (section 8b) draws two more desserts.
+  {
+    ref: 'flan',
+    name: 'Flan',
+    category: 'Dessert',
+    cents: 600,
+    detail: 'Caramel',
+    onMenu: true,
+  },
+  {
+    ref: 'tresleches',
+    name: 'Tres leches',
+    category: 'Dessert',
+    cents: 650,
+    detail: 'Slice',
     onMenu: true,
   },
   {
@@ -274,12 +310,16 @@ export const ORDER_0142 = {
   at: '12:41pm',
 };
 
-/** The wait list after Ana is seated at 6 (seating addendum). */
+/**
+ * The wait list at 8pm, after Ana is seated at 6 (sections 8 and 8c): when each joined (Lee has
+ * waited 22 minutes, told 20; Marco 12, told 15; Priya 6, told 15).
+ */
 export const WAITLIST: {
   name: string;
   size: number;
   phone: string | null;
   quoted: number;
+  joined: string;
   state: 'waiting' | 'seated';
   table?: number;
 }[] = [
@@ -287,7 +327,8 @@ export const WAITLIST: {
     name: 'Ana',
     size: 2,
     phone: '(909) 555-0142',
-    quoted: 0,
+    quoted: 15,
+    joined: '19:44',
     state: 'seated',
     table: 6,
   },
@@ -295,15 +336,17 @@ export const WAITLIST: {
     name: 'Lee',
     size: 4,
     phone: '(909) 555-0177',
-    quoted: 5,
+    quoted: 20,
+    joined: '19:38',
     state: 'waiting',
   },
-  { name: 'Marco', size: 3, phone: null, quoted: 10, state: 'waiting' },
+  { name: 'Marco', size: 3, phone: null, quoted: 15, joined: '19:48', state: 'waiting' },
   {
     name: 'Priya',
     size: 2,
-    phone: '(909) 555-0190',
+    phone: '(909) 555-0142',
     quoted: 15,
+    joined: '19:54',
     state: 'waiting',
   },
 ];
