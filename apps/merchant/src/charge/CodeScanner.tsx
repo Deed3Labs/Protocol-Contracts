@@ -18,7 +18,16 @@ type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => BarcodeDete
 
 export type CameraState = 'starting' | 'scanning' | 'blocked' | 'unsupported';
 
-export function CodeScanner({ onCode, onState }: { onCode: (raw: string) => boolean; onState?: (s: CameraState) => void }) {
+export function CodeScanner({
+  onCode,
+  onState,
+  offline,
+}: {
+  onCode: (raw: string) => boolean;
+  onState?: (s: CameraState) => void;
+  /** What to say when the camera is off or missing, where the counter's own words don't fit. */
+  offline?: { blocked: string; unsupported: string };
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -141,8 +150,8 @@ export function CodeScanner({ onCode, onState }: { onCode: (raw: string) => bool
           {state === 'starting'
             ? 'Starting the camera…'
             : state === 'blocked'
-              ? 'The camera is off for this app. Allow it in the tablet’s settings, or send it to their number.'
-              : 'This browser can’t use the camera. Send it to their number instead.'}
+              ? (offline?.blocked ?? 'The camera is off for this app. Allow it in the tablet’s settings, or send it to their number.')
+              : (offline?.unsupported ?? 'This browser can’t use the camera. Send it to their number instead.')}
         </p>
       )}
       <canvas ref={canvasRef} hidden />

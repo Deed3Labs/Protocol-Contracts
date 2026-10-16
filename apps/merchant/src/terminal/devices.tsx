@@ -838,6 +838,7 @@ export function AddPointSheet({
   busy,
   error,
   scanner,
+  example = null,
   onBack,
   onClose,
   onType,
@@ -854,6 +855,8 @@ export function AddPointSheet({
   error?: string | null;
   /** The camera, when it can show one. */
   scanner?: ReactNode;
+  /** The reference's example code after "Or type the four letters under the code", in the preview only. */
+  example?: string | null;
   onBack?: () => void;
   onClose: () => void;
   onType: () => void;
@@ -911,7 +914,13 @@ export function AddPointSheet({
           />
         )}
         <p className="c-det" style={{ marginTop: 'var(--s2)' }}>
-          Or type the four letters under the code: <b>A7K2</b>
+          {example ? (
+            <>
+              Or type the four letters under the code: <b>{example}</b>
+            </>
+          ) : (
+            'Or type the four letters under the code.'
+          )}
         </p>
         {err}
       </Sheet>

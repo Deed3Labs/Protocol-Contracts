@@ -1332,3 +1332,8 @@ amendment, approved before the API builds on them.
     with the owner as required reviewer.
 - **The fake Point checks firmware as a Point must**: `--firmware <keys>` asks for it and verifies the
   Ed25519 signature with the public keys it's given. The API's route test runs it.
+- **Add a Point scans with the camera.** Step 1 drew the reference's frame and its example code on
+  every tablet; it now shows the camera behind the aim box (the counter's `CodeScanner`), reading the
+  QR on the back of the Point (`useclear.org/p/A7K2`, or four letters on their own), and the line
+  under it drops the example: "Or type the four letters under the code." The preview keeps the
+  drawn frame and `A7K2`; `&live=1` uses the camera.
