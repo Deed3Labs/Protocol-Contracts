@@ -106,7 +106,7 @@ interface OrderRec {
   offline?: boolean;
 }
 
-export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?: string } = {}) {
+export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?: string; now?: () => string } = {}) {
   // Mi Casa's seed has every name Mike's Tire's has (it re-exports what it doesn't change).
   const seed = (initial.shop === 'micasa' ? miCasaTacos : mikesTire) as typeof mikesTire & { RATES_PPM?: typeof miCasaTacos.RATES_PPM };
   const TODAY = seed.REFERENCE_DAY;
@@ -115,7 +115,9 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
   let failNext: { method: string; message: string; status: number } | null = null;
   let n = 1000;
   const id = (p: string) => `${p}_mock_${++n}`;
-  const now = () => new Date().toISOString();
+  // The real clock, or a fixed one: Mi Casa's dinner is seeded at its reference times (8pm, Oct 15),
+  // so a test that reads its 10-minute Call must stand at that dinner, not whenever it runs.
+  const now = initial.now ?? (() => new Date().toISOString());
   // Clear Terminal's state (below). Declared first: seeding reads orders back before it's made.
   let terminal: ReturnType<typeof createTerminalMock> | null = null;
 

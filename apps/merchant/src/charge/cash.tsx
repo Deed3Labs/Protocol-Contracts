@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { IconCard, IconCash, IconChevronSm, IconClear, IconReaderApproved } from '@/brand/chargeIcons';
+import { IconCard, IconCash, IconChevronSm, IconClear, IconLock14, IconReaderApproved } from '@/brand/chargeIcons';
 import { Chip } from '@/brand/controls';
 import { cx, Slab } from '@/brand/ui';
 import { Keypad } from '@/charge/start';
@@ -372,11 +372,14 @@ export function SplitView({
   onCharge,
   typed,
   onAmount,
+  cashLocked,
 }: {
   totalCents: number;
   legs: Leg[];
   nextCents: number;
   method: LegMethod;
+  /** Today's drawer isn't open: a cash part waits for it, as on checkout. */
+  cashLocked?: boolean;
   onMethod?: (m: LegMethod) => void;
   onCharge?: () => void;
   /** Live: what's typed for this part ("40.00"); empty for all that's left. */
@@ -385,23 +388,27 @@ export function SplitView({
 }) {
   const paid = legs.filter((l) => l.state === 'paid').reduce((s, l) => s + l.amountCents, 0);
   const all = nextCents === totalCents - paid;
-  const tile = (m: LegMethod, det: string) => (
-    <div
-      className={cx('c-ck-t c-sm', m === 'clear' && 'c-clear', method === m && 'c-on')}
-      role="radio"
-      aria-checked={method === m}
-      tabIndex={0}
-      onClick={() => onMethod?.(m)}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onMethod?.(m)}
-    >
-      <span className="c-ic">{METHOD_ICON[m]}</span>
-      <div>
-        <p className="c-t">{METHOD_NAME[m]}</p>
-        <p className="c-det">{det}</p>
+  const tile = (m: LegMethod, det: string) => {
+    const locked = m === 'cash' && cashLocked;
+    return (
+      <div
+        className={cx('c-ck-t c-sm', m === 'clear' && 'c-clear', method === m && !locked && 'c-on', locked && 'c-ck-lock')}
+        role="radio"
+        aria-checked={method === m && !locked}
+        aria-disabled={locked || undefined}
+        tabIndex={locked ? -1 : 0}
+        onClick={() => !locked && onMethod?.(m)}
+        onKeyDown={(e) => !locked && (e.key === 'Enter' || e.key === ' ') && onMethod?.(m)}
+      >
+        <span className="c-ic">{METHOD_ICON[m]}</span>
+        <div>
+          <p className="c-t">{METHOD_NAME[m]}</p>
+          <p className="c-det">{locked ? 'Open the drawer on Home to take cash' : det}</p>
+        </div>
+        {locked ? <IconLock14 /> : <IconChevronSm />}
       </div>
-      <IconChevronSm />
-    </div>
-  );
+    );
+  };
   return (
     <Slab>
       <SplitLegsCell totalCents={totalCents} legs={legs} />
@@ -440,7 +447,7 @@ export function SplitView({
           {tile('cash', 'Enter what they hand over')}
         </div>
         <div className="c-cfoot">
-          <button type="button" className="c-btn c-btn-primary c-btn-lg" onClick={onCharge}>
+          <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={method === 'cash' && cashLocked} onClick={onCharge}>
             Charge {usd(nextCents)} {method === 'cash' ? 'in cash' : method === 'card' ? 'by card' : 'with Clear'}
           </button>
         </div>

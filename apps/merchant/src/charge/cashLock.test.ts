@@ -16,10 +16,17 @@ describe('cash waits for the drawer', () => {
   });
 
   test('locked only when the drawer is known not to be open; unread (offline), cash stays open', () => {
-    expect(PAGE).toContain("cashLocked={preview ? params.get('screen') === 'checkout-nodrawer' : !liveDrawer.loading && !liveDrawer.error && liveDrawer.data?.status !== 'open'}");
+    expect(PAGE).toContain("const cashLocked = preview ? params.get('screen') === 'checkout-nodrawer' : !liveDrawer.loading && !liveDrawer.error && liveDrawer.data?.status !== 'open';");
   });
 
   test('read again each time checkout opens, so a drawer opened meanwhile counts', () => {
     expect(PAGE).toContain("const liveDrawer = useApi(() => (preview ? Promise.resolve(null) : merchant.drawer()), [preview, f.screen === 'checkout']);");
+  });
+
+  test('a split’s cash part waits too: the option is locked and its Charge does nothing', () => {
+    const SPLIT = readFileSync(join(import.meta.dir, 'cash.tsx'), 'utf8');
+    expect(SPLIT).toContain("<p className=\"c-det\">{locked ? 'Open the drawer on Home to take cash' : det}</p>");
+    expect(SPLIT).toContain("disabled={method === 'cash' && cashLocked}");
+    expect(PAGE).toContain("if (f.legMethod === 'cash') return cashLocked ? setPayError('Open the drawer on Home to take cash')");
   });
 });
