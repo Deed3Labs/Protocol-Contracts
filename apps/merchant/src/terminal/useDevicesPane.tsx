@@ -9,6 +9,7 @@ import { pointService } from '@/hardware/point';
 import { printerService } from '@/hardware/printer';
 import { AddDeviceKindSheet, AddPointSheet, DevicesList, DrawerPane, FindSheet, PointPane, pointPaneDet, PrintersPane, ReaderPickSheet, type AddKind, type PointStep } from './devices';
 import { NoSaleSheet, noSalePin, runNoSale } from './noSale';
+import { PointCamera } from './PointCamera';
 import { MI_CASA, miCasa, TAB_12 } from './reference';
 
 /**
@@ -305,33 +306,49 @@ export function useDevicesPane({
         );
     }
   };
+  // A whole code, scanned or typed: find that Point over Bluetooth and the networks it can see.
+  const findPoint = (code: string) =>
+    void run(async () => {
+      const found = await points.find(code);
+      const networks = await points.networks(code);
+      setOpen({
+        kind: 'point',
+        s: {
+          step: 'wifi',
+          code,
+          found,
+          networks,
+          ssid: networks.find((n) => n.usable)?.ssid ?? null,
+          password: '',
+        },
+      });
+    });
+  // The reference's drawn frame is the preview's; `&live=1`, like a tablet, uses the camera.
+  const drawnScan = preview && (typeof window === 'undefined' || new URLSearchParams(window.location.search).get('live') !== '1');
   const pointSheet = (s: PointStep) => (
     <AddPointSheet
       state={s}
       shop={shop}
       busy={busy}
       error={error}
+      // The preview draws the reference's frame; a tablet shows its camera, reading the QR on the back.
+      scanner={
+        drawnScan ? undefined : (
+          <PointCamera
+            onCode={(code) => {
+              if (busy) return false;
+              findPoint(code);
+              return true;
+            }}
+          />
+        )
+      }
+      example={drawnScan ? 'A7K2' : null}
       onBack={s.step === 'scan' ? () => setOpen({ kind: 'add' }) : s.step === 'type' ? () => setOpen({ kind: 'point', s: { step: 'scan' } }) : undefined}
       onClose={close}
       onType={() => setOpen({ kind: 'point', s: { step: 'type', code: '' } })}
       onTyped={(code) => setOpen({ kind: 'point', s: { step: 'type', code } })}
-      onCode={(code) =>
-        void run(async () => {
-          const found = await points.find(code);
-          const networks = await points.networks(code);
-          setOpen({
-            kind: 'point',
-            s: {
-              step: 'wifi',
-              code,
-              found,
-              networks,
-              ssid: networks.find((n) => n.usable)?.ssid ?? null,
-              password: '',
-            },
-          });
-        })
-      }
+      onCode={findPoint}
       onWifi={(patch) => s.step === 'wifi' && setOpen({ kind: 'point', s: { ...s, ...patch } })}
       onConnect={() =>
         s.step === 'wifi' &&
