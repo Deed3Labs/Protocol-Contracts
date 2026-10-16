@@ -421,3 +421,170 @@ Built 2026-10-16. Migration `0030_pay.sql`; `apps/api/src/services/merchant/pay/
   Coinbase import.
 - **Run live:** the link page against `pay:dev`, from $161.48 through the Clear charge to "You're all set".
 - **Not run:** a real card checkout (no Stripe keys here), and the deployed apps.
+
+Approved at Hard Stop 3, 2026-10-16: Phase 3 as built, including `/api/checkout` for the session routes, the shop's
+colour and logo only on the link page, and the states that aren't drawn.
+
+## Phase 4 · The public API, keys and webhooks
+
+Built 2026-10-16. `apps/api/src/routes/v1.ts`; `services/merchant/pay/{keys,secrets,events,webhooks,v1}.ts`;
+`jobs/webhookDeliveries.ts`; the Developers routes in `routes/payLinks.ts`; `packages/clear-node` (`@useclear/node`);
+Settings › Developers in the merchant app.
+
+### For approval
+
+- **`/v1/refunds` refunds card payments at once, in part or in full. A Clear payment answers `refund_in_app` (409).**
+  - This changes Hard Stop 1's "a secret key's refund runs at once" for Clear.
+  - A Clear refund closes the member's plan on chain, and today only the owner can trigger that: by their device,
+    or by their code under the refund limit.
+  - The Clear refund flow also takes the plan's figures from the tablet, and needs a staff member to have asked.
+  - So for now a Clear payment is refunded from Charges. A part of one is still refused first, with
+    `partial_refund_unsupported`.
+  - Letting the API ask for Clear refunds later only adds to it: `api_refunds.clear_refund_id` is ready.
+- **Two error codes added:**
+  - `refund_in_app`;
+  - `payment_closed`: a modal for a payment that's paid or canceled.
+
+  The snapshot is updated, and the published-fields test passes.
+- **A payment the shop's server makes keeps its own lines and tax.**
+  - The order's lines are the request's, and its tax is the amount less the lines ($14.32 in the snippet), spread
+    across the lines.
+  - It is recorded with `taxSource: 'none'`, since Clear didn't work it out.
+- **A link's sale is a payment too.** It gets a `pay_…` payment (`created_via: 'link'`), so it can be listed and
+  retrieved through `/v1`, and its events reach the shop's webhooks.
+
+### Keys
+
+- **Each mode has one publishable and one secret key**, made in Developers ("Make keys"; not drawn).
+  - Keys are `pk_`/`sk_`, `test_`/`live_`, then 24 random base62 characters.
+  - The secret is kept as a SHA-256 hash and shown once.
+  - Roll makes a new secret key; the old one works for 24 hours, then answers `key_expired`.
+- **A publishable key reads `/v1/prices` and opens `/v1/modal_sessions`, and nothing else**
+  (`publishable_key_not_allowed`).
+  - A modal session needs the request's `Origin` to be one of the shop's allowed websites (`origin_not_allowed`).
+  - Loopback origins work with test keys only.
+- **Every answer carries:**
+  - `Clear-Version`: the request's version, or its key's pinned one;
+  - `Request-Id`;
+  - `Cache-Control: no-store`.
+- **`/v1` has its own CORS, ahead of the API's:**
+  - any origin, never credentials, only its own headers;
+  - whether an origin may use a key is the route's check, not the browser's;
+  - every other route keeps the API's CORS as it was.
+
+### Payments, prices and links
+
+- **`POST /v1/payments` needs an `Idempotency-Key`.**
+  - The same key and body gives the same payment, as tenders and refunds already do.
+  - The same key with another body is refused (`idempotency_key_reused`).
+  - The reference is unique per shop and mode.
+- **The status is read from the order and its tenders:**
+  - canceled: voided, or canceled;
+  - succeeded: paid; a refund doesn't change it;
+  - processing: a tender under way;
+  - failed: the latest tender was declined;
+  - requires_customer: otherwise.
+- **`method`** is the biggest tender that took money. `amountRefunded` counts card refunds and settled Clear refunds.
+- **Cancel** works only before anything is under way. It voids the order, which releases its stock.
+- **A price's id is its item's:** `itm_tray12` is `price_tray12`.
+  - Items with options to choose aren't prices.
+  - An archived or sold-out item isn't active.
+- **`POST /v1/payment_links`** makes the merchant app's kind of link, in the key's mode, with nobody named on it.
+- **`POST /v1/modal_sessions`:**
+  - Its options travel with the session.
+  - A payment's session is its order; the session's website becomes the order's `sourceDetail`.
+  - A price's session makes its order when the customer starts paying (Phase 5), so a click that never pays holds
+    no stock.
+
+### Webhooks
+
+- **Events are written inside the transaction of the change:**
+  - payment events at the end of `settleOrder`;
+  - card and cash `refund.succeeded` where the refund is announced.
+
+  Each is written once, keyed by what happened.
+- **One delivery per endpoint of the shop, in that mode, listening for that type.** A live endpoint never hears
+  about a test payment.
+- **The delivery job runs every 10 seconds:**
+  - each delivery is leased for 2 minutes, so two workers never send one twice;
+  - a delivery is signed `t.body` with the endpoint's secret;
+  - 2xx means delivered;
+  - otherwise it tries again after 1, 5 and 30 minutes, 2, 5 and 10 hours, then every 12 hours, until 3 days
+    after the event;
+  - every attempt is kept for Developers.
+- **Endpoint secrets** are `whsec_…`, AES-256-GCM encrypted under `PAY_SECRETS_KEY`, which the API needs in
+  production. Payments' client secrets are kept the same way.
+- **An endpoint must be a public https name.** localhost, `.local`, `.internal` and IP addresses are refused, so
+  Clear can't be pointed at itself.
+
+### `@useclear/node`
+
+- **`new Clear(key)`, `payments`, `prices`, `paymentLinks`, `refunds`, `webhookEndpoints`, and
+  `webhooks.verify(body, header)`.**
+  - `verify` reads the endpoint secret from `CLEAR_WEBHOOK_SECRET` when none is passed, as the spec's snippet
+    needs.
+  - The base URL is `https://api.useclear.org`, or `CLEAR_API_URL`.
+  - POSTs carry an idempotency key, reused across retries.
+  - Network errors, 429 and 5xx are retried with backoff.
+  - It refuses a `pk_` key with a sentence.
+- **The API's `/v1` tests use the SDK as the client.** It verifies the API's real signatures and refuses a changed
+  body or another endpoint's secret.
+- **Before publishing (Phase 7):**
+  - give the contracts a zod-free module for the signing helpers, so the bundle doesn't carry zod (0.67 MB today);
+  - give the published objects plain TypeScript types for the `.d.ts`;
+  - decide the CommonJS default export;
+  - point `main` at `dist`.
+
+  tsup's config is written but tsup isn't installed.
+
+### Settings › Developers
+
+- **As drawn**, from the merchant app's `c-` classes. Its text matches the spec frame's, compared in the browser.
+- **The rail is Shop app › Developers › Devices.**
+  - Owners and managers see it; the counter doesn't.
+  - Managers' rail is Shop app, Developers, You.
+  - `sections.ts` now holds the rail.
+- **Not drawn, built from the nearest drawing** (each at `/settings/developers?preview=1&shop=micasa&screen=…`):
+  - **Test:** the switch's Test side, and the chip reads Test.
+  - **`no-keys`:** "No live keys yet" with Make keys.
+  - **`secret`:** the secret shown once ("Copy it to the server now, as CLEAR_SECRET_KEY. It never goes in a web
+    page.", "It won't be shown again."). After a roll it says when the old key stops, and an "Old secret key" row
+    follows.
+  - **`roll`:** "Roll the secret key".
+  - **`add-site`:** the address checked as it's typed with `allowedOrigin`'s own reasons, and a localhost note.
+  - **`remove-site`:** "Remove a site".
+  - **`add-endpoint`:** a URL and the four events as tick boxes, with the drawn three ticked.
+  - **`endpoint-secret`:** "Signing secret".
+  - **`remove-endpoint`:** reached by tapping the endpoint row.
+  - **`no-endpoints` and `no-deliveries`:** "—".
+  - An older delivery reads "Oct 15, 10:42am".
+  - The test card without cards: "· once cards are connected in Payments".
+- **Recent deliveries shows 5** (the drawing has 3; the API keeps 20 per mode).
+- **The row buttons are the app's 36px**, by an existing app-wide rule.
+- **The mock's live publishable key** is a full key starting `pk_live_mc8Q2v`: the drawing's is short, and the
+  contract wants 24 characters.
+
+### For the user
+
+- **Set these on Railway:**
+  - `PAY_SECRETS_KEY`: 32 random bytes, base64;
+  - `PAY_OVER_TIME_ONLINE`: leave unset in live until counsel signs off.
+- **Point `api.useclear.org` at the API on Railway,** as the SDK's default base URL. Or tell me another host, and
+  the SDK's default changes.
+
+### Checks
+
+- **Tests:**
+  - API 1008 (975 before), with 27 for `/v1` over HTTP, the SDK as the client;
+  - merchant 226;
+  - member 783;
+  - pay 6;
+  - rewards 7;
+  - merchant contracts 83;
+  - public contracts 31;
+  - `@useclear/node` 31.
+- **Typechecks and builds:** all clean, including the API's `src`, apart from the known Coinbase import.
+- **Not run:**
+  - a real webhook delivery to a server outside this machine;
+  - a Stripe refund against Stripe's test mode;
+  - `apps/api/e2e/contract.ts` for the new merchant methods, which needs a Postgres.

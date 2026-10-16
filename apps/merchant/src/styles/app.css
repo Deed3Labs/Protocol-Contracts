@@ -791,6 +791,49 @@ input.c-pay-note:focus-visible {
   margin: var(--s2) 0 0;
   text-align: center;
 }
+/* Settings › Developers (pay spec §6): a delivery's answer, as the spec's .pw-ok, and its undrawn sheets. */
+.c-pw-ok,
+.c-pw-bad {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--settled);
+}
+.c-pw-bad {
+  color: var(--absent);
+}
+.c-dev-sheet {
+  width: 480px;
+  max-width: 100%;
+}
+/* A sheet's action waits for a valid entry, as the reference greys a disabled button elsewhere. */
+.c-dev-sheet .c-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.c-dev-endpoint {
+  cursor: pointer;
+}
+.c-dev-endpoint .c-t {
+  overflow-wrap: anywhere;
+}
+/* A secret shown once: in full, in mono, beside its Copy. */
+.c-dev-secret {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  padding: 10px 12px;
+  border: 1px solid var(--ink-13);
+}
+.c-dev-secret code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
 /* Charges: where an online sale came from, in place of who raised it. */
 .c-pm-src {
   color: var(--ink);

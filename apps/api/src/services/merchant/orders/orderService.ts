@@ -399,9 +399,14 @@ export async function quoteLines(db: Db, deps: OrderDeps, merchant: string, line
 /** Where an order nobody at the shop raised came from: a website or a link, and whether it's a test. */
 export interface OnlineSource {
   source: Extract<OrderSource, 'online' | 'link'>;
-  /** The website's origin, or the link's slug. */
-  detail: string;
+  /** The website's origin, or the link's slug; null for a payment the shop's server made, until a page opens it. */
+  detail: string | null;
   livemode: boolean;
+  /**
+   * A payment the shop's server made (`POST /v1/payments`): its own lines and the tax it worked out,
+   * kept as they are. The lines aren't Inventory's, so nothing is priced or held here.
+   */
+  given?: { lines: Array<{ name: string; unitCents: number; quantity: number }>; taxCents: number };
 }
 
 /**
@@ -426,10 +431,28 @@ export async function createOrder(
     const { rows } = await db.query<{ id: string }>('SELECT id FROM commerce.orders WHERE merchant = $1 AND idempotency_key = $2', [input.merchant, r.idempotencyKey]);
     if (rows[0]) return getOrder(db, input.merchant, rows[0].id);
   }
-  const lines = await prepareLines(db, input.merchant, input.lines);
+  const given = input.online?.given;
+  const lines: PreparedLine[] = given
+    ? given.lines.map((l) => ({ itemId: null, category: null, name: l.name, note: null, quantity: l.quantity, unitCents: l.unitCents, options: [], lineCents: l.unitCents * l.quantity, taxKind: 'exempt', stockTracked: false }))
+    : await prepareLines(db, input.merchant, input.lines);
   const off = r.offline;
   let priced: Priced;
-  if (off) {
+  if (given) {
+    // The shop's server worked out the tax; it's spread across the lines as an offline sale's is,
+    // and the amount is the lines and that tax (never tax-inclusive).
+    const subtotal = lines.reduce((s, l) => s + l.lineCents, 0);
+    const shares = allocate(lines.map((l) => l.lineCents), given.taxCents);
+    priced = {
+      lines: lines.map((l, i) => ({ ...l, discountCents: 0, taxCents: shares[i]! })),
+      subtotal,
+      discount: 0,
+      tax: given.taxCents,
+      total: subtotal + given.taxCents,
+      inclusive: false,
+      taxSource: 'none',
+      calculationId: null,
+    };
+  } else if (off) {
     if (off.totalCents !== off.subtotalCents + off.taxCents) throw new OrderError('An offline order’s total is its subtotal and tax', 'invalid');
     const settings = await getSettings(db, input.merchant);
     const shares = allocate(lines.map((l) => l.lineCents), off.taxCents);

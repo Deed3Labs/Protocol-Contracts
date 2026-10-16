@@ -30,7 +30,7 @@ test('a fresh database gets the lazy merchant tables, then every migration', asy
     commerce: 11, // 10 tables (category_order, 0025) and the stock_levels view
     ledger: 3,
     merchant: 32, // with table_visits (0028), firmware_releases (0026), shop_hours and shop_closures (0012), shifts, shift_breaks and staff_hours (0013), setup_marks (0014), bank_accounts (0018), bank_withdrawals (0019), statement_sends (0020), terms_codes (0021), and Terminal's hardware, point_keys, point_states, drawer_keys (0023), tables, waitlist_parties, table_requests and alerts (0024)
-    payments: 24, // with Terminal's no_sale_approvals and drawer_events (0023), and Pay with Clear's eight (0030)
+    payments: 26, // with Terminal's no_sale_approvals and drawer_events (0023), and Pay with Clear's ten (0030)
   });
   // A restart applies nothing.
   expect(await runMerchantMigrations(fakePool)).toEqual([]);

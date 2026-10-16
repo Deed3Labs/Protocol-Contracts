@@ -4,6 +4,7 @@ import type { Queryable } from '../../../db/db.js';
 import { type Entry, entriesFor, post, reverse } from '../ledger/ledgerService.js';
 import * as postings from '../ledger/postings.js';
 import { rewardsOn } from '../rewards/hooks.js';
+import { paymentEvents } from '../pay/events.js';
 
 /**
  * Keeps an order and the ledger in step with its tenders. Called in the same transaction as every
@@ -122,6 +123,8 @@ export async function settleOrder(tx: Queryable, input: { merchant: string; orde
     await rewardsOn(tx, input.merchant, { kind: 'paid', orderId: order.id, attempt: live.attempts });
   }
   await tx.query('UPDATE commerce.orders SET status = $2, tip_cents = $3, updated_at = now() WHERE id = $1', [order.id, summary.status, summary.tipCents]);
+  // Pay with Clear: an online payment's webhook events, in this transaction (pay spec §8).
+  await paymentEvents(tx, order.id);
   return summary.status;
 }
 

@@ -100,6 +100,61 @@ CREATE TABLE payments.allowed_sites (
   CHECK (test_only OR origin LIKE 'https://%')
 );
 
+-- ---- The public API's payments and refunds ---------------------------------------------------------
+
+-- A payment is the public view of one online or link order (rule 2): its id, the shop's reference and
+-- metadata, the ways it may be paid, and its client secret (kept encrypted, to give back to the secret
+-- key that reads it, and hashed, to find it when a page hands it to the script).
+CREATE TABLE payments.api_payments (
+  id                 TEXT PRIMARY KEY,
+  merchant           TEXT NOT NULL REFERENCES merchant.profiles (merchant),
+  order_id           TEXT NOT NULL UNIQUE REFERENCES commerce.orders (id),
+  livemode           BOOLEAN NOT NULL,
+  created_via        TEXT NOT NULL CHECK (created_via IN ('api','link','modal')),
+  key_id             TEXT REFERENCES payments.api_keys (id),
+  reference          TEXT CHECK (char_length(reference) <= 100),
+  methods            TEXT[] NOT NULL CHECK (cardinality(methods) > 0 AND methods <@ ARRAY['clear','card']),
+  metadata           JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
+  client_secret_hash TEXT NOT NULL UNIQUE,
+  client_secret_enc  TEXT NOT NULL,
+  idempotency_key    TEXT,
+  request_hash       TEXT,
+  canceled_at        TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((idempotency_key IS NULL) = (request_hash IS NULL))
+);
+-- The shop's reference is unique per shop and mode; so is a retry key.
+CREATE UNIQUE INDEX api_payments_reference ON payments.api_payments (merchant, livemode, reference) WHERE reference IS NOT NULL;
+CREATE UNIQUE INDEX api_payments_idempotency ON payments.api_payments (merchant, livemode, idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX api_payments_list ON payments.api_payments (merchant, livemode, created_at DESC);
+
+-- A refund asked for through the API: the card refund (payments.refunds) it became. A Clear payment
+-- is refunded from Charges, where the owner approves it (pay DECISIONS, Phase 4), so `clear_refund_id`
+-- is for when the API can ask for one.
+CREATE TABLE payments.api_refunds (
+  id               TEXT PRIMARY KEY,
+  merchant         TEXT NOT NULL REFERENCES merchant.profiles (merchant),
+  payment_id       TEXT NOT NULL REFERENCES payments.api_payments (id),
+  livemode         BOOLEAN NOT NULL,
+  amount_cents     BIGINT NOT NULL CHECK (amount_cents > 0),
+  reason           TEXT CHECK (char_length(reason) <= 200),
+  method           TEXT NOT NULL CHECK (method IN ('clear','card')),
+  card_refund_id   TEXT UNIQUE REFERENCES payments.refunds (id),
+  clear_refund_id  TEXT UNIQUE,
+  require_approval BOOLEAN NOT NULL DEFAULT false,
+  idempotency_key  TEXT NOT NULL,
+  request_hash     TEXT NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (merchant, livemode, idempotency_key),
+  CHECK (method = 'card' OR card_refund_id IS NULL),
+  CHECK (method = 'clear' OR clear_refund_id IS NULL)
+);
+
+-- A card refund the API asked for has nobody at the shop behind it; anything else still does.
+ALTER TABLE payments.refunds ADD COLUMN via_api BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE payments.refunds ALTER COLUMN requested_by DROP NOT NULL;
+ALTER TABLE payments.refunds ADD CONSTRAINT refunds_staff_unless_api CHECK (requested_by IS NOT NULL OR via_api);
+
 -- ---- Webhooks ----------------------------------------------------------------------------------
 
 CREATE TABLE payments.webhook_endpoints (

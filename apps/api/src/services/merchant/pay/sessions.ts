@@ -9,6 +9,7 @@ import { createOrder, getOrder, type OrderDeps, OrderError } from '../orders/ord
 import { type ClearCharges, createClearTender } from '../orders/payments.js';
 import { touchShop } from '../terminal/bus.js';
 import { cardsOn, type LinkRow, linkBySlug, linkLines, linkQuote, linkState, payBase, PayError, payShop } from './links.js';
+import { insertApiPayment } from './events.js';
 import { overTimeOnline } from './overTime.js';
 
 /**
@@ -69,10 +70,15 @@ export async function startLinkSession(db: Db, deps: PaySessionDeps, input: { sl
     throw error;
   });
   const id = `ps_${randomUUID().replace(/-/g, '')}`;
-  await db.query(
-    `INSERT INTO payments.pay_sessions (id, merchant, livemode, kind, order_id, link_id, created_at, expires_at) VALUES ($1,$2,$3,'link',$4,$5,$6,$7)`,
-    [id, link.merchant, link.livemode, order.id, link.id, now, new Date(now.getTime() + LINK_SESSION_MS)],
-  );
+  const card = await cardsOn(db, link.merchant);
+  await db.transaction(async (tx) => {
+    // A link's sale is a payment too: listed and retrievable through the API, and in its webhooks.
+    await insertApiPayment(tx, { merchant: link.merchant, orderId: order.id, livemode: link.livemode, via: 'link', methods: card ? ['clear', 'card'] : ['clear'], now });
+    await tx.query(
+      `INSERT INTO payments.pay_sessions (id, merchant, livemode, kind, order_id, link_id, created_at, expires_at) VALUES ($1,$2,$3,'link',$4,$5,$6,$7)`,
+      [id, link.merchant, link.livemode, order.id, link.id, now, new Date(now.getTime() + LINK_SESSION_MS)],
+    );
+  });
   return { session: id };
 }
 

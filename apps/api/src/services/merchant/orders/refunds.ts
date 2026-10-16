@@ -73,7 +73,11 @@ async function lockRefund(tx: Queryable, merchant: string, refundId: string): Pr
  * against what the tender took less what's been refunded or is waiting to be, and against how many
  * of each line have come back already.
  */
-export async function requestRefund(db: Db, deps: RefundDeps, input: { merchant: string; staff: { id: string; role: Role }; request: unknown }): Promise<Refund> {
+export async function requestRefund(
+  db: Db,
+  deps: RefundDeps,
+  input: { merchant: string; staff: { id: string | null; role: Role }; request: unknown; viaApi?: boolean },
+): Promise<Refund> {
   const parsed = RequestRefund.safeParse(input.request);
   if (!parsed.success) throw new RefundError(parsed.error.issues[0]?.message ?? 'That refund isn’t valid', 'invalid');
   const r = parsed.data;
@@ -117,9 +121,9 @@ export async function requestRefund(db: Db, deps: RefundDeps, input: { merchant:
     }
 
     const { rows: out } = await tx.query<RefundRow>(
-      `INSERT INTO payments.refunds (id, merchant, tender_id, amount_cents, items, reason, status, idempotency_key, request_hash, requested_by)
-       VALUES ($1,$2,$3,$4,$5,$6,'requested',$7,$8,$9) RETURNING *`,
-      [`rfd_${randomUUID()}`, input.merchant, t.id, r.amountCents, JSON.stringify(r.items), r.reason, r.idempotencyKey, requestHash, input.staff.id],
+      `INSERT INTO payments.refunds (id, merchant, tender_id, amount_cents, items, reason, status, idempotency_key, request_hash, requested_by, via_api)
+       VALUES ($1,$2,$3,$4,$5,$6,'requested',$7,$8,$9,$10) RETURNING *`,
+      [`rfd_${randomUUID()}`, input.merchant, t.id, r.amountCents, JSON.stringify(r.items), r.reason, r.idempotencyKey, requestHash, input.staff.id, input.viaApi === true],
     );
     await audit(tx, {
       merchant: input.merchant,
@@ -132,11 +136,28 @@ export async function requestRefund(db: Db, deps: RefundDeps, input: { merchant:
     return out[0]!;
   });
 
-  // A manager or owner asking is also the one who'd approve it.
-  if (row.status === 'requested' && isManager(input.staff.role)) {
-    return decideRefund(db, deps, { merchant: input.merchant, refundId: row.id, decision: 'approve', pin: null, staff: input.staff });
+  // A manager or owner asking is also the one who'd approve it. The API's refunds are approved, or
+  // left for an owner or manager, by the API's own rules (approveApiRefund).
+  if (row.status === 'requested' && !input.viaApi && input.staff.id && isManager(input.staff.role)) {
+    return decideRefund(db, deps, { merchant: input.merchant, refundId: row.id, decision: 'approve', pin: null, staff: { id: input.staff.id, role: input.staff.role } });
   }
   return toRefund(row);
+}
+
+/**
+ * A refund the shop's secret key asked for (`POST /v1/refunds`): approved as it's asked, since the key
+ * is the shop's own, and sent at once. Nobody at the shop is named on it.
+ */
+export async function approveApiRefund(db: Db, deps: RefundDeps, input: { merchant: string; refundId: string }): Promise<Refund> {
+  const decided = await db.transaction(async (tx) => {
+    const r = await lockRefund(tx, input.merchant, input.refundId);
+    if (r.status !== 'requested') return r;
+    const { rows } = await tx.query<RefundRow>(`UPDATE payments.refunds SET status = 'approved', decided_at = now(), updated_at = now() WHERE id = $1 RETURNING *`, [r.id]);
+    await audit(tx, { merchant: input.merchant, actor: null, action: 'refund.approved', ref: { type: 'refund', id: r.id }, amountCents: Number(r.amount_cents), detail: { via: 'api' }, source: 'online' });
+    return rows[0]!;
+  });
+  if (decided.status !== 'approved') return toRefund(decided);
+  return executeRefund(db, deps, { merchant: input.merchant, refundId: decided.id, actor: null });
 }
 
 /**

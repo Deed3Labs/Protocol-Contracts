@@ -1,6 +1,8 @@
 import { useContext, useEffect, useState } from 'react';
 import { DevicesSection } from '@/terminal/useDevicesPane';
 import { OfferSheet, ShopAppSection } from '@/settings/shopApp';
+import { DevelopersSection } from '@/settings/developers';
+import { sectionsFor } from '@/settings/sections';
 import { MI_CASA, miCasa } from '@/terminal/reference';
 import type { DiscountCode, MerchantApi, Reader, Shop, ShopHours, ShopSettings, ShopSettingsPatch, TaxKind } from '@clear/merchant-contracts';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -34,7 +36,9 @@ import { AddDeviceSheet, AddReaderSheet, AmountSheet, Btn, Cell, ChangeAccountSh
  * A live shop gets the sections the API can fill: the listing, payouts, the partnership, security
  * and help. The rest are the preview's until their backends land:
  * `/settings[/<section>]?preview=1`, `&screen=counter|payments-connected|account|device|leave|
- * confirm|code`, and `/settings/shop/hours`.
+ * confirm|code`, and `/settings/shop/hours`. Developers (settings/developers.tsx) adds
+ * `&screen=test|no-keys|no-endpoints|no-deliveries|secret|roll|add-site|remove-site|add-endpoint|
+ * endpoint-secret|remove-endpoint`.
  */
 
 type Open = 'account' | 'device' | 'leave' | 'confirm' | 'code' | 'reader' | null;
@@ -243,8 +247,9 @@ export default function SettingsPage() {
   );
   const close = () => setOpen(null);
 
-  // Shop app is the one section the rest of the team sees: managers change it, the counter looks.
-  const items = owner ? SECTIONS.filter((s) => preview || s.live) : [SECTIONS.find((s) => s.key === 'shop-app')!, YOU];
+  // Shop app is the one section the whole team sees (managers change it, the counter looks), and
+  // Developers the one a manager sees beside it (pay DECISIONS, Phase 1).
+  const items = sectionsFor(role, preview);
   const helpItem = owner ? items.find((s) => s.key === 'help') : undefined;
   const railItems = items.filter((s) => s.key !== 'help');
   const fallback: Section = owner ? 'shop' : 'you';
@@ -375,6 +380,10 @@ export default function SettingsPage() {
   const shopAppHere = current === 'shop-app';
   const shopAppSection = shopAppHere ? <ShopAppSection head={head} screen={screen} onDiscounts={owner ? () => navigate(`/settings/discounts${q}`) : undefined} /> : null;
 
+  // Settings › Developers (pay spec §6): its own data and sheets, for owners and managers.
+  const developersHere = current === 'developers';
+  const developersSection = developersHere ? <DevelopersSection head={head} screen={screen} /> : null;
+
   // Settings › Devices is Clear Terminal's: Points, readers, the drawer, printers and this tablet.
   const devicesHere = current === 'devices' && owner;
   const devicesSection = devicesHere ? (
@@ -486,7 +495,7 @@ export default function SettingsPage() {
       );
     return (
       <>
-        {devicesHere ? devicesSection : shopAppHere ? shopAppSection : (
+        {devicesHere ? devicesSection : shopAppHere ? shopAppSection : developersHere ? developersSection : (
           <>
             {head}
             <div className="c-panebody">{body}</div>
@@ -504,7 +513,7 @@ export default function SettingsPage() {
       <div className="c-pane">
         <Rail items={railItems} help={helpItem} on={current ?? fallback} onPick={go} />
         <div>
-          {devicesHere ? devicesSection : shopAppHere ? shopAppSection : (
+          {devicesHere ? devicesSection : shopAppHere ? shopAppSection : developersHere ? developersSection : (
             <>
               {head}
               <div className="c-panebody">{body}</div>

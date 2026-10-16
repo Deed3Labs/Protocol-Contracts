@@ -1,5 +1,5 @@
 import { Router, type Request, type RequestHandler, type Response } from 'express';
-import type { Role } from '@clear/merchant-contracts';
+import { pasteInPrompt, type DevelopersView, type Role } from '@clear/merchant-contracts';
 import { merchantDb } from '../config/merchantDb.js';
 import type { Db } from '../db/db.js';
 import { forwardAsyncErrors } from '../middleware/asyncRouter.js';
@@ -10,7 +10,9 @@ import { connectorForShop } from '../services/merchant/cards/registry.js';
 import { clearChargesFor } from '../services/merchant/orders/clearCharges.js';
 import { OrderError, type OrderDeps } from '../services/merchant/orders/orderService.js';
 import { PaymentError } from '../services/merchant/orders/payments.js';
-import { createPaymentLink, deactivatePaymentLink, listPaymentLinks, PAY_STATUS, PayError, publicLink } from '../services/merchant/pay/links.js';
+import { addSite, createKeys, listKeys, listSites, removeSite, rollSecretKey } from '../services/merchant/pay/keys.js';
+import { cardsOn, createPaymentLink, deactivatePaymentLink, listPaymentLinks, PAY_STATUS, PayError, publicLink } from '../services/merchant/pay/links.js';
+import { addEndpointFromApp, deleteEndpoint, merchantEndpoints, recentDeliveries } from '../services/merchant/pay/webhooks.js';
 import { payInSession, paySessionView, startLinkSession, type PaySessionDeps } from '../services/merchant/pay/sessions.js';
 import { staffStore } from '../services/merchant/staffStore.js';
 import { defaultTaxApi } from '../services/merchant/tax/taxApi.js';
@@ -58,7 +60,9 @@ function runWith(deps: PayRouteDeps, opts: { noStore: boolean }) {
     // A payment changes by the second; nothing here may be cached by a browser or a worker.
     if (opts.noStore) res.setHeader('Cache-Control', 'no-store');
     try {
-      return res.json(await fn(db, req));
+      const out = await fn(db, req);
+      if (out === undefined) return res.status(204).end();
+      return res.json(out);
     } catch (error) {
       if (error instanceof PayError) return res.status(PAY_STATUS[error.code]).json({ error: error.code, message: error.message });
       if (error instanceof OrderError) return res.status(error.code === 'invalid' ? 422 : 409).json({ error: error.code, message: error.message });
@@ -80,7 +84,37 @@ export function merchantPayLinksRouter(deps: PayRouteDeps = defaultPayRouteDeps(
   router.post('/payment-links/:id/deactivate', requireMerchant, requireManager, run((db, req) =>
     deactivatePaymentLink(db, orders(db), { merchant: req.merchant!.merchant, staffId: req.merchant!.staff.id, id: String(req.params.id) }),
   ));
+
+  // Settings › Developers (pay spec §6): owners and managers; the counter never sees it.
+  const who = (req: Request) => ({ merchant: req.merchant!.merchant, staffId: req.merchant!.staff.id });
+  router.get('/developers', requireMerchant, requireManager, run((db, req) => developersView(db, req.merchant!.merchant)));
+  router.post('/developers/keys', requireMerchant, requireManager, run((db, req) => createKeys(db, { ...who(req), livemode: req.body?.livemode === true })));
+  router.post('/developers/keys/:id/roll', requireMerchant, requireManager, run((db, req) => rollSecretKey(db, { ...who(req), keyId: String(req.params.id) })));
+  router.post('/developers/sites', requireMerchant, requireManager, run((db, req) => addSite(db, { ...who(req), request: req.body })));
+  router.delete('/developers/sites', requireMerchant, requireManager, run(async (db, req) => {
+    await removeSite(db, { ...who(req), origin: String(req.query.origin ?? '') });
+    return undefined;
+  }));
+  router.post('/developers/webhook-endpoints', requireMerchant, requireManager, run((db, req) => addEndpointFromApp(db, { ...who(req), request: req.body })));
+  router.delete('/developers/webhook-endpoints/:id', requireMerchant, requireManager, run(async (db, req) => {
+    await deleteEndpoint(db, { merchant: req.merchant!.merchant, id: String(req.params.id), staffId: req.merchant!.staff.id });
+    return undefined;
+  }));
   return router;
+}
+
+/** Settings › Developers, both modes: the pane's Test/Live switch only chooses what it shows. */
+export async function developersView(db: Db, merchant: string): Promise<DevelopersView> {
+  const keys = await listKeys(db, merchant);
+  const publishable = (livemode: boolean) => keys.find((k) => k.kind === 'publishable' && k.livemode === livemode && !k.rolledAt)?.token;
+  return {
+    keys,
+    sites: await listSites(db, merchant),
+    endpoints: await merchantEndpoints(db, merchant),
+    deliveries: await recentDeliveries(db, merchant),
+    cardsConnected: await cardsOn(db, merchant),
+    ai: { llmsUrl: 'https://useclear.org/llms.txt', prompt: pasteInPrompt(publishable(true) ?? publishable(false) ?? 'pk_test_…'), mcpUrl: 'https://useclear.org/docs/mcp.md' },
+  };
 }
 
 /** `/api/l`: a link's page. */

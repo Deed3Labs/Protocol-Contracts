@@ -32,3 +32,56 @@ describe('Send a link, in the mock (pay spec §5)', () => {
     expect(slugBase('Mike’s Tire')).toBe('mikestire');
   });
 });
+
+describe('Settings › Developers, in the mock (pay spec §6)', () => {
+  test('the counter is refused; a manager and the owner are not', async () => {
+    await expect(miCasa('stf_jen').api.developers()).rejects.toMatchObject({ status: 403 });
+    await expect(miCasa('stf_jen').api.addSite({ site: 'example.com' })).rejects.toMatchObject({ status: 403 });
+    expect((await miCasa('stf_luis').api.developers()).sites).toHaveLength(2);
+    expect((await miCasa('stf_mike').api.developers()).ai).toMatchObject({ llmsUrl: 'https://useclear.org/llms.txt', mcpUrl: 'https://useclear.org/docs/mcp.md' });
+  });
+  test('the paste-in prompt carries the live publishable key', async () => {
+    const v = await miCasa('stf_mike').api.developers();
+    const pk = v.keys.find((k) => k.kind === 'publishable' && k.livemode)!.token!;
+    expect(pk).toMatch(/^pk_live_mc8Q2v[0-9A-Za-z]{18}$/);
+    expect(v.ai.prompt).toContain(`Use publishable key ${pk}.`);
+  });
+  test('rolling shows a new secret once and keeps the old one 24 hours', async () => {
+    const { api } = miCasa('stf_luis');
+    const old = (await api.developers()).keys.find((k) => k.kind === 'secret' && k.livemode)!;
+    const made = await api.rollSecretKey(old.id);
+    expect(made.secret).toMatch(/^sk_live_[0-9A-Za-z]{24}$/);
+    expect(made.key).toMatchObject({ kind: 'secret', livemode: true, token: null, last4: made.secret.slice(-4), rolledAt: null });
+    const after = (await api.developers()).keys.filter((k) => k.kind === 'secret' && k.livemode);
+    expect(after.find((k) => k.id === old.id)).toMatchObject({ rolledAt: NOW, expiresAt: '2026-10-17T17:40:00.000Z' });
+    await expect(api.rollSecretKey(old.id)).rejects.toMatchObject({ status: 409 });
+  });
+  test('keys are made once per mode', async () => {
+    const m = createMockMerchantApi({ delayMs: 0, now: () => NOW });
+    const made = await m.api.createKeys(false);
+    expect(made.secret).toMatch(/^sk_test_[0-9A-Za-z]{24}$/);
+    expect((await m.api.developers()).keys.map((k) => k.kind)).toEqual(['publishable', 'secret']);
+    await expect(m.api.createKeys(false)).rejects.toMatchObject({ status: 409 });
+  });
+  test('websites: checked, never twice, removed', async () => {
+    const { api } = miCasa('stf_mike');
+    await expect(api.addSite({ site: 'micasatacos.com' })).rejects.toMatchObject({ status: 409 });
+    await expect(api.addSite({ site: 'http://micasatacos.com' })).rejects.toMatchObject({ status: 422 });
+    expect(await api.addSite({ site: 'http://localhost:5173/checkout' })).toMatchObject({ origin: 'http://localhost:5173', testOnly: true });
+    await api.removeSite('https://order.micasatacos.com');
+    expect((await api.developers()).sites.map((s) => s.origin)).toEqual(['https://micasatacos.com', 'http://localhost:5173']);
+  });
+  test('an endpoint: https, some events, its secret once', async () => {
+    const { api } = miCasa('stf_mike');
+    await expect(api.addWebhookEndpoint({ url: 'http://micasatacos.com/hook', events: ['payment.succeeded'], livemode: false })).rejects.toMatchObject({ status: 422 });
+    await expect(api.addWebhookEndpoint({ url: 'https://micasatacos.com/hook', events: [], livemode: false })).rejects.toMatchObject({ status: 422 });
+    const made = await api.addWebhookEndpoint({ url: 'https://micasatacos.com/hook', events: ['payment.succeeded'], livemode: false });
+    expect(made.secret).toMatch(/^whsec_/);
+    expect(made.endpoint).toMatchObject({ health: 'new', livemode: false });
+    expect(made.endpoint).not.toHaveProperty('secret');
+    await api.removeWebhookEndpoint('we_micasa1');
+    const v = await api.developers();
+    expect(v.endpoints.map((e) => e.id)).toEqual([made.endpoint.id]);
+    expect(v.deliveries).toEqual([]);
+  });
+});

@@ -52,6 +52,10 @@ export const ERROR_CODES = {
   payment_link_expired: { type: 'conflict', status: 409 },
   payment_not_cancelable: { type: 'conflict', status: 409 },
   payment_not_refundable: { type: 'conflict', status: 409 },
+  /** A modal can't open on a payment that's paid or canceled. */
+  payment_closed: { type: 'conflict', status: 409 },
+  /** A Clear payment is refunded from Charges in the merchant app, where the owner approves it (pay DECISIONS, Phase 4). */
+  refund_in_app: { type: 'conflict', status: 409 },
   rate_limited: { type: 'rate_limit', status: 429 },
   internal_error: { type: 'api', status: 500 },
 } as const satisfies Record<string, { type: ErrorType; status: number }>;

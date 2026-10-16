@@ -171,6 +171,60 @@ async function toMerchantLink(db: Db, deps: OrderDeps, row: LinkRow): Promise<Me
   };
 }
 
+/** What a link is for, from the merchant app or the public API. */
+export interface LinkSpec {
+  merchant: string;
+  /** Staff, or null when the public API made it. */
+  staffId: string | null;
+  livemode: boolean;
+  what: { amountCents: number } | { itemId: string; quantity: number };
+  note: string | null;
+  expiresAt: Date | null;
+  allowOverTime: boolean;
+  now?: Date;
+}
+
+/** Makes a link: its item checked (on sale, nothing to choose), and an address nobody has. */
+export async function makeLink(db: Db, spec: LinkSpec): Promise<LinkRow> {
+  if ('itemId' in spec.what) {
+    const { rows } = await db.query<{ archived_at: unknown }>('SELECT archived_at FROM commerce.catalog_items WHERE id = $1 AND merchant = $2', [spec.what.itemId, spec.merchant]);
+    if (!rows[0] || rows[0].archived_at) throw new PayError('That item isn’t for sale', 'invalid');
+    const { rows: required } = await db.query('SELECT 1 FROM commerce.option_groups WHERE item_id = $1 AND required LIMIT 1', [spec.what.itemId]);
+    if (required[0]) throw new PayError('An item with options to choose can’t be a link yet. Use an amount.', 'invalid');
+  }
+  const base = await shopSlugBase(db, spec.merchant);
+  const id = `plink_${randomUUID().replace(/-/g, '')}`;
+  const amount = 'amountCents' in spec.what ? spec.what.amountCents : null;
+  return db.transaction(async (tx) => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const { rows } = await tx.query<LinkRow>(
+        `INSERT INTO payments.payment_links (id, merchant, slug, livemode, amount_cents, item_id, quantity, note, expires_at, allow_over_time, created_by, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (slug) DO NOTHING RETURNING *`,
+        [
+          id,
+          spec.merchant,
+          `${base}-${suffix()}`,
+          spec.livemode,
+          amount,
+          'itemId' in spec.what ? spec.what.itemId : null,
+          'itemId' in spec.what ? spec.what.quantity : null,
+          spec.note,
+          spec.expiresAt,
+          spec.allowOverTime,
+          spec.staffId,
+          spec.now ?? new Date(),
+        ],
+      );
+      if (rows[0]) {
+        await audit(tx, { merchant: spec.merchant, actor: spec.staffId, action: 'payment_link.created', ref: { type: 'payment_link', id }, amountCents: amount, detail: { slug: rows[0].slug }, source: spec.staffId ? null : 'online' });
+        return rows[0];
+      }
+    }
+    throw new Error('Couldn’t find a free address for the link');
+  });
+}
+
 /** New charge › Send a link. Owners and managers. */
 export async function createPaymentLink(
   db: Db,
@@ -181,42 +235,16 @@ export async function createPaymentLink(
   if (!parsed.success) throw new PayError(parsed.error.issues[0]?.message ?? 'That link isn’t valid', 'invalid');
   const r = parsed.data;
   const now = input.now ?? new Date();
-  if (r.for === 'item') {
-    const { rows } = await db.query<{ archived_at: unknown }>('SELECT archived_at FROM commerce.catalog_items WHERE id = $1 AND merchant = $2', [r.itemId, input.merchant]);
-    if (!rows[0] || rows[0].archived_at) throw new PayError('That item isn’t for sale', 'invalid');
-    const { rows: required } = await db.query('SELECT 1 FROM commerce.option_groups WHERE item_id = $1 AND required LIMIT 1', [r.itemId]);
-    if (required[0]) throw new PayError('An item with options to choose can’t be a link yet. Use an amount.', 'invalid');
-  }
   const days = EXPIRY_DAYS[r.expires];
-  const expiresAt = days === null ? null : new Date(now.getTime() + days * DAY_MS);
-  const base = await shopSlugBase(db, input.merchant);
-  const id = `plink_${randomUUID().replace(/-/g, '')}`;
-  const row = await db.transaction(async (tx) => {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const { rows } = await tx.query<LinkRow>(
-        `INSERT INTO payments.payment_links (id, merchant, slug, livemode, amount_cents, item_id, quantity, note, expires_at, allow_over_time, created_by, created_at)
-         VALUES ($1,$2,$3,true,$4,$5,$6,$7,$8,$9,$10,$11)
-         ON CONFLICT (slug) DO NOTHING RETURNING *`,
-        [
-          id,
-          input.merchant,
-          `${base}-${suffix()}`,
-          r.for === 'amount' ? r.amountCents : null,
-          r.for === 'item' ? r.itemId : null,
-          r.for === 'item' ? r.quantity : null,
-          r.note,
-          expiresAt,
-          r.allowOverTime,
-          input.staffId,
-          now,
-        ],
-      );
-      if (rows[0]) {
-        await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'payment_link.created', ref: { type: 'payment_link', id }, amountCents: r.for === 'amount' ? r.amountCents : null, detail: { slug: rows[0].slug } });
-        return rows[0];
-      }
-    }
-    throw new Error('Couldn’t find a free address for the link');
+  const row = await makeLink(db, {
+    merchant: input.merchant,
+    staffId: input.staffId,
+    livemode: true,
+    what: r.for === 'item' ? { itemId: r.itemId, quantity: r.quantity } : { amountCents: r.amountCents },
+    note: r.note,
+    expiresAt: days === null ? null : new Date(now.getTime() + days * DAY_MS),
+    allowOverTime: r.allowOverTime,
+    now,
   });
   return toMerchantLink(db, deps, row);
 }

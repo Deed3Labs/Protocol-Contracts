@@ -1205,6 +1205,8 @@
                 "payment_link_expired",
                 "payment_not_cancelable",
                 "payment_not_refundable",
+                "payment_closed",
+                "refund_in_app",
                 "rate_limited",
                 "internal_error"
               ]
@@ -1753,6 +1755,8 @@
       "payment_link_expired",
       "payment_not_cancelable",
       "payment_not_refundable",
+      "payment_closed",
+      "refund_in_app",
       "rate_limited",
       "internal_error"
     ],
