@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { SOFIA_PAID, SOFIA_QUOTE } from '../lib/preview';
-import { approveLabel, carryLabel, checkBody, checkTitle, codeDigits, doneLine, everydayName, money, paidWith, pointsNote, pointsRow, splitLabel } from './model';
+import { approveLabel, cardByLine, cardPointsNote, carryLabel, checkBody, checkTitle, codeDigits, dobMask, dobToIso, doneLine, everydayName, joinDet, joinTitle, money, paidWith, pointsNote, pointsRow, splitLabel } from './model';
 
 describe('the Clear steps read as the spec draws them (§2–§4)', () => {
   test('one screen for everyone, by channel (approved copy)', () => {
@@ -34,5 +34,29 @@ describe('the Clear steps read as the spec draws them (§2–§4)', () => {
     expect(everydayName('Mi Casa Tacos')).toBe('Mi Casa');
     expect(everydayName('Joe’s')).toBe('Joe’s');
     expect(codeDigits('48 19-07x2')).toBe('481907');
+  });
+});
+
+describe('new to Clear, and card (§3)', () => {
+  test('the Join row reads as drawn when a starting limit covers the order', () => {
+    expect(joinTitle({ installments: 4, perCycleCents: 4865 })).toBe('Join Clear and split it');
+    expect(joinDet({ installments: 4, perCycleCents: 4865 })).toBe('About 3 minutes · In 4 is about $48.65 a cycle');
+  });
+  test('and says this one is by card when it doesn’t', () => {
+    expect(joinTitle(null)).toBe('Join Clear');
+    expect(joinDet(null)).toBe('About 3 minutes · Pay this one by card, split the next');
+  });
+  test('the card fields’ lines', () => {
+    expect(cardByLine('Mi Casa Tacos')).toBe('Secure card fields by Stripe, for Mi Casa Tacos');
+    expect(cardPointsNote('Mi Casa Rewards')).toBe('Card payments earn points too, if you join Mi Casa Rewards after.');
+    expect(cardPointsNote(null)).toBeNull();
+  });
+  test('a birthday as people type it', () => {
+    expect(dobMask('04121991')).toBe('04 / 12 / 1991');
+    expect(dobMask('0412')).toBe('04 / 12');
+    expect(dobToIso('04 / 12 / 1991')).toBe('1991-04-12');
+    expect(dobToIso('4/12/1991')).toBe('1991-04-12');
+    expect(dobToIso('02 / 30 / 1991')).toBeNull();
+    expect(dobToIso('04 / 12')).toBeNull();
   });
 });

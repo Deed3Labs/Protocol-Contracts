@@ -213,16 +213,18 @@ export const JoinState = z.object({ state: z.enum(['waiting', 'done', 'failed', 
 export type JoinState = z.infer<typeof JoinState>;
 
 /**
- * The Clear window's side (`app.useclear.org/join/pay?h=<handoff>`), signed in with Privy:
- * `GET /api/checkout/join/:handoff` fills in what step 1 took and the confirmed contact, so nothing
- * is typed twice. Single use: it reads only while the hand-off is `waiting` and unexpired.
+ * The Clear window's side (`app.useclear.org/join/pay?h=<handoff>`): `GET /api/checkout/join/:handoff`.
+ * Signed out, it names the shop and the order and gives the confirmed contact, so Privy's sign-in can be
+ * prefilled. Signed in with that same contact, it also gives step 1 back, so nothing is typed twice.
+ * It reads while the hand-off is `waiting` and unexpired; finishing (`/done`) is what spends it.
  */
 export const JoinWindow = z.object({
   shop: z.object({ name: z.string(), initials: z.string() }),
   order: z.object({ totalCents: PositiveCents, summary: z.string() }),
   /** "micasatacos.com": where they go back to. Null for a payment link. */
   shopHost: z.string().nullable(),
-  basics: JoinBasics,
+  /** Step 1 (a birthday and an address): only for the person signed in with the confirmed contact. */
+  basics: JoinBasics.nullable(),
   /** The phone or email the code confirmed: Privy signs up with it. */
   contact: z.object({ channel: z.enum(['phone', 'email']), value: z.string() }),
   expiresAt: Timestamp,

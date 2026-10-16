@@ -48,17 +48,27 @@ export function previewApi(state: PreviewState): PayApi {
 }
 
 /** Signing in, in the preview: a code of 000000 is Sofia; anything else is someone new, Marco. */
-function previewSignIn(): Pick<PayApi, 'frameOrigin' | 'contact' | 'code' | 'status' | 'member' | 'approve' | 'approval'> {
+function previewSignIn(): Pick<PayApi, 'frameOrigin' | 'contact' | 'code' | 'status' | 'member' | 'approve' | 'approval' | 'join' | 'joinState' | 'card'> {
   return {
     frameOrigin: async () => ({ origin: null }),
     contact: async (_id, contact) => (contact.includes('@') ? { channel: 'email', to: 's•••@gmail.com', resendInSeconds: 60 } : { channel: 'phone', to: '(909) •••-0142', resendInSeconds: 60 }),
-    code: async (_id, code) => (code === '000000' ? { token: 'pt.preview.x', person: { kind: 'member', firstName: 'Sofia' } } : { token: 'pt.preview.y', person: { kind: 'new', contact: '(909) 555-0188' } }),
+    code: async (_id, code) =>
+      code === '000000' ? { token: 'pt.preview.x', person: { kind: 'member', firstName: 'Sofia' } } : { token: 'pt.preview.y', person: { kind: 'new', contact: '(909) 555-0188', join: { split: MARCO_SPLIT } } },
     status: async () => ({ state: 'waiting', paid: null }),
     member: async () => SOFIA_QUOTE,
     approve: async () => SOFIA_PAID,
     approval: async () => ({ url: 'https://app.useclear.org/approve/preview' }),
+    join: async () => MARCO_HANDOFF,
+    joinState: async () => ({ state: 'waiting', token: null }),
+    // A `pk_preview` key: the card step draws the spec's fields instead of loading Stripe.
+    card: async () => ({ clientSecret: 'pi_preview_secret_preview', stripeAccount: 'acct_preview', publishableKey: 'pk_preview', amountCents: 18532 }),
   };
 }
+
+/** Marco, who has no account (§3): In 4 at $48.65 on a starting limit, his step 1, and the window. */
+export const MARCO_SPLIT = { installments: 4, perCycleCents: 4865 };
+export const MARCO_BASICS = { legalName: 'Marco Alvarez', dob: '04 / 12 / 1991', zip: '91762', street: '418 W 6th St, Ontario, CA' };
+export const MARCO_HANDOFF = { url: 'https://app.useclear.org/join/pay?h=Pv8Q2mK4xR7tL9wN3cZ5bY1d', expiresAt: '2026-10-16T18:05:00.000Z' };
 
 // ---- The modal (§2–§4): Sofia at micasatacos.com, the spec's catering order -------------------------
 
@@ -87,6 +97,7 @@ export const MI_CASA_SESSION: PaySession = {
   expiresAt: '2026-10-16T18:10:00.000Z',
   payment: { id: 'pay_preview', reference: 'catering-1042' },
   prefillEmail: 'sofia.m@gmail.com',
+  rewardsName: 'Mi Casa Rewards',
 };
 
 /** Sofia's screen as drawn: her terms at 2%, Chase, and 256 points at 1.5×. */
@@ -126,7 +137,19 @@ export function previewStep(name: string): Step | undefined {
     case 'member':
       return { k: 'member', token: 'pt.preview.x', quote: SOFIA_QUOTE };
     case 'new':
-      return { k: 'new', contact: '(909) 555-0188' };
+      return { k: 'new', contact: '(909) 555-0188', token: 'pt.preview.y', join: { split: MARCO_SPLIT } };
+    case 'new-no-split':
+      return { k: 'new', contact: '(909) 555-0188', token: 'pt.preview.y', join: { split: null } };
+    case 'join1':
+      return { k: 'join1', token: 'pt.preview.y', split: MARCO_SPLIT, prefill: MARCO_BASICS };
+    case 'join2':
+      return { k: 'join2', token: 'pt.preview.y', handoff: MARCO_HANDOFF, split: MARCO_SPLIT };
+    case 'joined':
+      return { k: 'joined', token: 'pt.preview.y' };
+    case 'marco':
+      return { k: 'member', token: 'pt.preview.z', quote: { ...SOFIA_QUOTE, firstName: 'Marco', clearsFrom: null, points: null }, joined: true };
+    case 'card':
+      return { k: 'card', token: null, signedIn: false };
     case 'window':
       return { k: 'window', via: 'clear', url: 'https://app.useclear.org/approve/preview' };
     case 'done':

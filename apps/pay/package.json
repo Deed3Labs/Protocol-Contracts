@@ -18,7 +18,9 @@
   },
   "dependencies": {
     "@clear/merchant-contracts": "*",
+    "@stripe/stripe-js": "^7.9.0",
     "@useclear/js": "*",
+    "qrcode.react": "^4.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.7.1"

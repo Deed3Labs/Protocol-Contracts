@@ -1,4 +1,4 @@
-import type { CodeVerified, ContactSent, MemberQuote, PaidView, PaySession, PayStatus, PublicLink, PublicPayStarted } from '@clear/merchant-contracts';
+import type { CardStarted, CodeVerified, ContactSent, JoinBasics, JoinHandoff, JoinState, MemberQuote, PaidView, PaySession, PayStatus, PublicLink, PublicPayStarted } from '@clear/merchant-contracts';
 import { API_BASE } from './env';
 
 /**
@@ -30,6 +30,12 @@ export interface PayApi {
   approve(id: string, token: string, installments: number, idempotencyKey: string): Promise<PaidView>;
   /** The Clear app's approval page, for `window.open`. */
   approval(id: string): Promise<{ url: string }>;
+  /** Step 1 of joining (a new person's token): the Clear window's address. */
+  join(id: string, token: string, basics: JoinBasics): Promise<JoinHandoff>;
+  /** Polled while the join window is open; a member's token once it's done. */
+  joinState(id: string, token: string): Promise<JoinState>;
+  /** Stripe's fields' payment, on the shop's account (the token when signed in). */
+  card(id: string, idempotencyKey: string, token: string | null): Promise<CardStarted>;
 }
 
 async function call<T>(path: string, init?: { method?: 'POST'; body?: unknown; token?: string }): Promise<T> {
@@ -68,4 +74,7 @@ export const liveApi: PayApi = {
   member: (id, token) => call(`/api/checkout/${enc(id)}/member`, { token }),
   approve: (id, token, installments, idempotencyKey) => call(`/api/checkout/${enc(id)}/approve`, { method: 'POST', body: { installments, idempotencyKey }, token }),
   approval: (id) => call(`/api/checkout/${enc(id)}/approval`, { method: 'POST', body: {} }),
+  join: (id, token, basics) => call(`/api/checkout/${enc(id)}/join`, { method: 'POST', body: basics, token }),
+  joinState: (id, token) => call(`/api/checkout/${enc(id)}/join`, { token }),
+  card: (id, idempotencyKey, token) => call(`/api/checkout/${enc(id)}/card`, { method: 'POST', body: { idempotencyKey }, token: token ?? undefined }),
 };

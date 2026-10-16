@@ -205,3 +205,21 @@ button.pay-choice {
 .pay-frames-sheet figure {
   width: 390px;
 }
+
+/* Join, step 2: the window's link as a QR, on a computer only (never on a phone's sheet). */
+.pay-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0;
+}
+.pay-qr svg {
+  background: #fff;
+  padding: 8px;
+  border: 1px solid var(--ink-12, rgba(22, 33, 29, 0.12));
+}
+/* Stripe's fields, until they load. */
+.pay-stripe {
+  min-height: 132px;
+}

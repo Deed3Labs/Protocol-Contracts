@@ -160,7 +160,7 @@ export function linkPageRouter(deps: PayRouteDeps = defaultPayRouteDeps()): Rout
  *   POST /:session/card         {idempotencyKey}: Stripe's fields' PaymentIntent (X-Pay-Session when signed in)
  *   POST /:session/join         step 1 of joining (a new person's X-Pay-Session): the window's address
  *   GET  /:session/join         polled while the window is open; a member's token once it's done
- *   GET  /join/:handoff         the Clear window, signed in: step 1 and the confirmed contact
+ *   GET  /join/:handoff         the Clear window: the shop and the contact; step 1 too when signed in as it
  *   POST /join/:handoff/done    the Clear window, signed in: joined; the starting term limit
  */
 export function checkoutRouter(deps: PayRouteDeps = defaultPayRouteDeps()): Router {
@@ -174,7 +174,9 @@ export function checkoutRouter(deps: PayRouteDeps = defaultPayRouteDeps()): Rout
   const memberAuth = deps.memberAuth ?? requireAuth;
   const who = (req: Request) => ({ phone: req.auth?.phone ?? null, emails: [...(req.auth?.emails ?? []), ...(req.auth?.email ? [req.auth.email] : [])] });
   router.use(deps.limits.read);
-  router.get('/join/:handoff', memberAuth, run((db, req) => joinWindow(db, deps.session(db), { handoff: String(req.params.handoff), who: who(req) })));
+  // Signed out it answers too (the window's first screen); with a bearer token it must be a good one.
+  const optionalMemberAuth: RequestHandler = (req, res, next) => (req.header('authorization') ? memberAuth(req, res, next) : next());
+  router.get('/join/:handoff', optionalMemberAuth, run((db, req) => joinWindow(db, deps.session(db), { handoff: String(req.params.handoff), who: req.auth ? who(req) : null })));
   router.post('/join/:handoff/done', memberAuth, deps.limits.act, run((db, req) => finishJoin(db, frame(db), { handoff: String(req.params.handoff), wallet: memberWallet(req), who: who(req) })));
   router.get('/approval/:id', run((db, req) => approvalView(db, frame(db), { id: String(req.params.id) })));
   router.get('/:session', run((db, req) => paySessionView(db, deps.session(db), { session: session(req) })));

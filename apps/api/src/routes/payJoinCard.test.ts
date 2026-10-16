@@ -161,7 +161,7 @@ async function marcoSignsIn(session: string) {
 
 const MARCO_BASICS = { legalName: 'Marco Alvarez', dateOfBirth: '1991-04-12', zip: '91762', street: '418 W 6th St, Ontario, CA' };
 const handoffOf = (url: string) => new URL(url).searchParams.get('h')!;
-const asMarco = { 'x-test-wallet': MARCO, 'x-test-phone': '+19095550188' };
+const asMarco = { Authorization: 'Bearer test', 'x-test-wallet': MARCO, 'x-test-phone': '+19095550188' };
 
 describe('joining (§3)', () => {
   test('a join that hands back yields a member who can approve: $185.32 in 4 on a starting limit', async () => {
@@ -207,10 +207,13 @@ describe('joining (§3)', () => {
     const handoff = JoinHandoff.parse(await json(await post(`/api/checkout/${session}/join`, MARCO_BASICS, { 'X-Pay-Session': marco.token })));
     const h = handoffOf(handoff.url);
     // Signed in with another number: nothing read, nothing finished.
-    const other = { 'x-test-wallet': '0x' + 'd'.repeat(40), 'x-test-phone': '+19095550111' };
+    const other = { Authorization: 'Bearer test', 'x-test-wallet': '0x' + 'd'.repeat(40), 'x-test-phone': '+19095550111' };
     expect((await fetch(`${base}/api/checkout/join/${h}`, { headers: other })).status).toBe(403);
     expect((await post(`/api/checkout/join/${h}/done`, {}, other)).status).toBe(403);
-    expect((await fetch(`${base}/api/checkout/join/${h}`)).status).toBe(401);
+    // Signed out: the first screen only, never step 1.
+    const signedOut = JoinWindow.parse(await json(await fetch(`${base}/api/checkout/join/${h}`)));
+    expect(signedOut).toMatchObject({ shop: { name: 'Mi Casa Tacos' }, contact: { channel: 'phone', value: '+19095550188' }, basics: null });
+    expect((await post(`/api/checkout/join/${h}/done`, {})).status).toBe(401);
     // Done once; the link is spent.
     expect((await post(`/api/checkout/join/${h}/done`, {}, asMarco)).status).toBe(200);
     expect((await fetch(`${base}/api/checkout/join/${h}`, { headers: asMarco })).status).toBe(410);

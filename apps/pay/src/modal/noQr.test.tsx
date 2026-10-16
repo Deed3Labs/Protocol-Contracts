@@ -5,7 +5,7 @@ import { MI_CASA_SESSION, previewModalApi, previewStep } from '../lib/preview';
 import { ModalShell } from './Shell';
 
 /** Connecting is by app or code: never a QR code on a phone (§2). The sheet is what draws under 640px. */
-const STEPS = ['start', 'enter', 'check', 'check-email', 'member', 'new', 'window', 'done'];
+const STEPS = ['start', 'enter', 'check', 'check-email', 'member', 'new', 'new-no-split', 'join1', 'join2', 'marco', 'joined', 'card', 'window', 'done'];
 const draw = (name: string, sheet: boolean) =>
   renderToStaticMarkup(
     <ModalShell session={MI_CASA_SESSION} sheet={sheet} onClose={() => {}}>

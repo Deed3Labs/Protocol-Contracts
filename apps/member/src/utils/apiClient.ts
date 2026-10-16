@@ -26,6 +26,7 @@ import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } 
 import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
 import { notifyServerLocked } from '@/lib/appLock';
 import { readApproval, type ApprovalRead } from '@/lib/approvalPage';
+import { postJoinDone, readJoinWindow, type JoinFinished, type JoinRead, type JoinWindowView } from '@/lib/joinPay';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
@@ -3659,6 +3660,37 @@ export async function getCharge(code: string): Promise<ChargeView | null> {
  */
 export function getApprovalView(id: string): Promise<ApprovalRead> {
   return readApproval(id, API_BASE_URL);
+}
+
+/**
+ * The member's session as the member routes take it: the Privy token and the active wallet (the
+ * smart wallet, which the API also falls back to). Empty when nobody is signed in.
+ */
+async function memberSessionHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken().catch(() => null);
+  if (!token) return {};
+  const wallet = getActiveWallet();
+  return {
+    Authorization: `Bearer ${token}`,
+    ...(wallet ? { 'X-Wallet-Address': wallet } : {}),
+    ...(REOWN_PROJECT_ID ? { 'X-Reown-Project-Id': REOWN_PROJECT_ID } : {}),
+  };
+}
+
+/**
+ * The join window's hand-off (`/join/pay?h=`). Read with the member's session when there is one;
+ * signed out it asks without, and a 401 says to sign in first. Its own fetch rather than
+ * `apiRequest`, because what a 404 or a 410 means (the link has ended) is the screen.
+ */
+export async function getJoinWindow(handoff: string): Promise<JoinRead<JoinWindowView>> {
+  return readJoinWindow(handoff, API_BASE_URL, await memberSessionHeaders());
+}
+
+/** `POST /api/checkout/join/:handoff/done`: the window is finished, and the modal moves on. */
+export async function finishJoinWindow(handoff: string): Promise<JoinRead<JoinFinished>> {
+  const r = await postJoinDone(handoff, API_BASE_URL, await memberSessionHeaders());
+  wantFreshReads();
+  return r;
 }
 
 export interface ChargeActionResult {

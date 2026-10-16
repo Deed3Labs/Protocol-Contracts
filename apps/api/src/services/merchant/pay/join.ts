@@ -165,18 +165,19 @@ async function waitingHandoff(db: Db, handoff: string, now: Date): Promise<JoinR
   return s;
 }
 
-/** `GET /api/checkout/join/:handoff` (signed in): step 1 and the confirmed contact, read back in the window. */
-export async function joinWindow(db: Db, deps: PaySessionDeps, input: { handoff: string; who: WindowPerson; now?: Date }): Promise<JoinWindow> {
+/** `GET /api/checkout/join/:handoff`: the window's first screen signed out; step 1 too, signed in as that contact. */
+export async function joinWindow(db: Db, deps: PaySessionDeps, input: { handoff: string; who: WindowPerson | null; now?: Date }): Promise<JoinWindow> {
   const now = input.now ?? new Date();
   const s = await waitingHandoff(db, input.handoff, now);
-  const contact = mustBeTheirs(s, input.who);
+  // Signed out: who's asking, and the contact to sign in with. Step 1 only for that same contact.
+  const contact = input.who ? mustBeTheirs(s, input.who) : (JSON.parse(decryptSecret(s.join_contact_enc!)) as Contact);
   const shop = await payShop(db, s.merchant);
   const order = await getOrder(db, s.merchant, await ensureSessionOrder(db, deps, s, now));
   return {
     shop: { name: shop.name, initials: shop.initials },
     order: { totalCents: order.totalCents, summary: orderSummary(order.lines.map((l) => ({ name: l.name, quantity: l.quantity, lineCents: l.lineCents }))) },
     shopHost: s.origin ? new URL(s.origin).host : null,
-    basics: JoinBasics.parse(JSON.parse(decryptSecret(s.join_basics_enc!))),
+    basics: input.who ? JoinBasics.parse(JSON.parse(decryptSecret(s.join_basics_enc!))) : null,
     contact,
     expiresAt: new Date(at(s.join_handoff_expires_at)).toISOString(),
   };

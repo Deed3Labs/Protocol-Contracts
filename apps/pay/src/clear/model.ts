@@ -51,3 +51,34 @@ export function everydayName(name: string): string {
 
 /** Only digits, at most six: what the code boxes hold. */
 export const codeDigits = (typed: string) => typed.replace(/\D/g, '').slice(0, 6);
+
+// ---- Joining and card (§3) ------------------------------------------------------------------------
+
+/** "About 3 minutes · In 4 is about $48.65 a cycle"; when a starting limit can't cover it, this one's by card. */
+export const joinDet = (split: { installments: number; perCycleCents: number } | null) =>
+  split ? `About 3 minutes · In ${split.installments} is about ${money(split.perCycleCents)} a cycle` : 'About 3 minutes · Pay this one by card, split the next';
+
+/** "Join Clear and split it", or plain "Join Clear" when this order can't be split yet. */
+export const joinTitle = (split: unknown) => (split ? 'Join Clear and split it' : 'Join Clear');
+
+/** "Secure card fields by Stripe, for Mi Casa Tacos". */
+export const cardByLine = (shopName: string) => `Secure card fields by Stripe, for ${shopName}`;
+
+/** "Card payments earn points too, if you join Mi Casa Rewards after." Only where the shop has rewards. */
+export const cardPointsNote = (rewardsName: string | null) => (rewardsName ? `Card payments earn points too, if you join ${rewardsName} after.` : null);
+
+/** "04 / 12 / 1991" as people type it, to 1991-04-12; null until it's a real date. */
+export function dobToIso(typed: string): string | null {
+  const m = /^\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})\s*$/.exec(typed);
+  if (!m) return null;
+  const [mm, dd, yyyy] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+  if (d.getUTCFullYear() !== yyyy || d.getUTCMonth() !== mm - 1 || d.getUTCDate() !== dd) return null;
+  return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
+/** Digits typed into the birthday box, shown as "04 / 12 / 1991". */
+export function dobMask(typed: string): string {
+  const d = typed.replace(/\D/g, '').slice(0, 8);
+  return [d.slice(0, 2), d.slice(2, 4), d.slice(4)].filter(Boolean).join(' / ');
+}
