@@ -28,3 +28,12 @@ export function framedBy(origin: string | null, ancestors: { length: number; [i:
   if (!ancestors || ancestors.length === 0) return true;
   return ancestors[0] === origin;
 }
+
+/**
+ * The layout the page drew the frame in (`#layout=modal|sheet`, set by `@useclear/js`): a 440px modal
+ * is narrower than 640px, so the frame's own width can't say. Null when the page didn't say.
+ */
+export function layoutFromHash(hash: string): 'modal' | 'sheet' | null {
+  const m = /(?:^#|&)layout=(modal|sheet)(?:&|$)/.exec(hash);
+  return m ? (m[1] as 'modal' | 'sheet') : null;
+}

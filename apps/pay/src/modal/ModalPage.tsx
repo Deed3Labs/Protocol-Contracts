@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useParams, useSearchParams } from 'react-router-dom';
 import { ClearSteps, type Step } from '@/clear/Steps';
 import { type PayApi, PayApiError } from '@/lib/api';
-import { framedBy, post } from './protocol';
+import { framedBy, layoutFromHash, post } from './protocol';
 import { ModalShell } from './Shell';
 
 /**
@@ -13,13 +13,22 @@ import { ModalShell } from './Shell';
  */
 
 const SHEET_BELOW = 640;
+/** The page's word when framed (the fragment); the window's own width only when it's opened alone. */
 const useSheet = () => {
-  const [sheet, setSheet] = useState(() => window.innerWidth < SHEET_BELOW);
+  const read = () => {
+    const said = window.parent !== window ? layoutFromHash(window.location.hash) : null;
+    return said ? said === 'sheet' : window.innerWidth < SHEET_BELOW;
+  };
+  const [sheet, setSheet] = useState(read);
   useEffect(() => {
+    const on = () => setSheet(read());
     const q = window.matchMedia(`(max-width: ${SHEET_BELOW - 1}px)`);
-    const on = () => setSheet(q.matches);
     q.addEventListener('change', on);
-    return () => q.removeEventListener('change', on);
+    window.addEventListener('hashchange', on);
+    return () => {
+      q.removeEventListener('change', on);
+      window.removeEventListener('hashchange', on);
+    };
   }, []);
   return sheet;
 };

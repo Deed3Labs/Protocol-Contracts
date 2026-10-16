@@ -25,12 +25,20 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, styles: Styles, attrs
 
 const matches = (query: string): boolean => typeof matchMedia === 'function' && matchMedia(query).matches;
 
+/**
+ * The frame can't tell a modal from a sheet by its own width (a 440px modal is narrower than 640px),
+ * so the page tells it, in the URL's fragment: never sent to a server, and changing it doesn't reload.
+ */
+export const withLayout = (url: string, wide: boolean) => `${url.split('#')[0]}#layout=${wide ? 'modal' : 'sheet'}`;
+
 export function domView(returnFocus: Element | null): View {
   const html = document.documentElement;
   const body = document.body;
   const reduced = matches('(prefers-reduced-motion: reduce)');
   let height = FIRST_HEIGHT;
   let frame: HTMLIFrameElement | null = null;
+  let frameUrl = '';
+  let frameWide: boolean | null = null;
   let dismiss = () => {};
   const saved: Array<[HTMLElement, 'overflow' | 'paddingRight', string]> = [];
   const save = (node: HTMLElement, prop: 'overflow' | 'paddingRight', value: string) => {
@@ -72,6 +80,10 @@ export function domView(returnFocus: Element | null): View {
     css(box, wide
       ? { width: 'min(440px, calc(100% - 32px))', height: `${px}px`, paddingBottom: '0' }
       : { width: '100%', height: `calc(${px}px + env(safe-area-inset-bottom, 0px))`, paddingBottom: 'env(safe-area-inset-bottom, 0px)' });
+    if (frame && wide !== frameWide) {
+      frameWide = wide;
+      frame.src = withLayout(frameUrl, wide);
+    }
     return wide;
   }
 
@@ -119,10 +131,12 @@ export function domView(returnFocus: Element | null): View {
     },
 
     load(url) {
+      frameUrl = url;
+      frameWide = matches(WIDE);
       frame = el('iframe', {
         display: 'block', width: '100%', height: '100%', border: '0', margin: '0', padding: '0',
         background: 'transparent', colorScheme: 'light', opacity: '0',
-      }, { title: 'Pay with Clear', allow: 'payment *; publickey-credentials-get *', src: url });
+      }, { title: 'Pay with Clear', allow: 'payment *; publickey-credentials-get *', src: withLayout(url, frameWide) });
       box.insertBefore(frame, after);
     },
 

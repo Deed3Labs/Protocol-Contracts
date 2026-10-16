@@ -105,6 +105,11 @@ a.pay-a {
 .pay-modal-page {
   background: transparent;
 }
+/* Opened on its own (the preview, the card window's return): the modal's own width, not the window's. */
+.pay-modal-page > .pay-modal:not(.pay-sheet) {
+  max-width: 440px;
+  margin: 0 auto;
+}
 .pay-modal.pw-modal {
   border-radius: 0;
   box-shadow: none;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { framedBy, post, PROTOCOL } from './protocol';
+import { framedBy, layoutFromHash, post, PROTOCOL } from './protocol';
 
 const SITE = 'https://micasatacos.com';
 const target = () => {
@@ -39,5 +39,18 @@ describe('who frames it', () => {
   });
   test('browsers without ancestorOrigins leave it to frame-ancestors', () => {
     expect(framedBy(SITE, undefined)).toBe(true);
+  });
+});
+
+describe('the layout the page drew it in', () => {
+  test('from the fragment the script sets', () => {
+    expect(layoutFromHash('#layout=modal')).toBe('modal');
+    expect(layoutFromHash('#layout=sheet')).toBe('sheet');
+    expect(layoutFromHash('#x=1&layout=sheet')).toBe('sheet');
+  });
+  test('nothing said, or something else: the frame measures itself', () => {
+    expect(layoutFromHash('')).toBeNull();
+    expect(layoutFromHash('#layout=wide')).toBeNull();
+    expect(layoutFromHash('#notlayout=modal')).toBeNull();
   });
 });

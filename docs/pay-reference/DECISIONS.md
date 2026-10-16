@@ -610,3 +610,113 @@ Approved at Hard Stop 4, 2026-10-16:
   - the spec's snippets and docs follow: `Clear("clear_pk_live_mc8Q2v")`, and the paste-in prompt's "Use
     publishable key clear_pk_live_…".
   - The spec file itself is left as drawn; this note is what overrides it.
+
+## Phase 5 · The modal, `@useclear/js`, and paying with Clear
+
+Built 2026-10-16. `apps/api/src/services/merchant/pay/{frame,testMode,payDeps}.ts` and the `/api/checkout/:session/…`
+routes; `packages/clear-js` (`@useclear/js`); `apps/pay` `/m/:session` (`src/clear`, `src/modal`, `api/frame.ts`);
+the Clear app's approval page (`apps/member` `/approve/:id`); Charges' Online line.
+
+### For approval
+
+- **Who approves where.**
+  - Over time, for a member with no passkey, is approved in the frame (`MemberQuote.approveIn: 'frame'`). The
+    server signs the plan (`approveCharge`), as at the counter.
+  - Pay now, and any member with Face ID, is approved in the Clear app's window (`approveIn: 'window'`). The frame
+    can't sign a Pay now transfer or run a passkey step-up, since both need the member's Privy wallet on
+    `app.useclear.org`.
+  - The window is `app.useclear.org/approve/:id`, opened on the tap itself. The frame polls every 3 seconds and moves
+    on by itself.
+- **Three additions to the contracts:** `PaySession.payment {id, reference}` (what `success` posts),
+  `PaySession.prefillEmail` (the script's `email`), and `MemberQuote.approveIn`.
+- **The first cycle clears on the 1st of next month**, in the shop's time zone ("clears Nov 1").
+- **"Clears from" is left out for real members until a bank name has a source.** A linked bank's name isn't kept
+  with its Plaid item yet. The test member reads "Test Bank •••• 0000".
+- **Card in the modal is hosted checkout in a window until Phase 6.** "You're new to Clear" shows "Pay $185.32 by
+  card" without the Join row, which is Phase 6 (D2 is still open).
+- **The page tells the frame its layout** (`#layout=modal|sheet` on the iframe's URL). A 440px modal is narrower
+  than 640px, so the frame's own width can't say. The fragment never reaches a server, and changing it doesn't
+  reload the frame.
+
+### Not drawn, built from the nearest drawing
+
+- "Use a different email or phone" and "Resend in Ns" under the code boxes.
+- **Approve in Clear**: the window step, "Finish in the window that opened. This page moves on by itself.",
+  "Waiting for Clear", "Open it again" and "Pay another way".
+- **Check your email**: the approved email variant.
+- "You'll approve it in Clear, in a new window." under Approve, when the window is where it happens.
+- **Pay now's rows:** "From | Your Clear cash".
+- **A Test chip** in the head in test mode.
+- **Ended and failed states:** "This checkout has ended" and "Clear can't open this".
+
+### Test mode
+
+- **The test member** is (555) 010-0100, code 000000, "Test", with a $5,000 limit. Nobody else signs in, and
+  nothing is texted or emailed.
+- **Test charges are kept apart** (`payments.test_charges`). A test order skips the ledger, stock, tax filing and
+  payouts.
+- **Only the test member earns test points.** They are joined to a shop's app the first time they pay there, so the
+  shop sees the 256.
+
+### `@useclear/js`
+
+- `js.useclear.org/v1` is an `apps/pay` host rewrite. The build is copied in by the prebuild; nothing is published to
+  npm.
+- Size: 5.09 KB gzipped against a 10 KB budget.
+- A click on the scrim cancels, as Esc does.
+- The script has its own error codes beside the API's and the modal's: `insecure_page`, `invalid_options`,
+  `network_error` and `invalid_response`, plus `unavailable` after 20 seconds.
+- It refuses a modal session whose URL isn't on the pay origin.
+
+### The Clear app's approval page
+
+- The head reads "MI CASA TACOS IS ASKING · ONLINE" (or "· LINK"), with "Then you're back on micasatacos.com".
+- With over time off online, the Over time choice is hidden.
+- On approval it tries `window.close()`; otherwise it shows "Done. Go back to micasatacos.com".
+- With no account it shows "No Clear account yet".
+- It uses the member app's own look, as Charge approval does, not the modal's.
+- **It opens on Pay now in real use** (it doesn't know the split the member was looking at). Over time stays one
+  tap away.
+
+### The link page
+
+- **Pay with Clear on the link page is now the same steps as the modal**, drawn inline.
+- Card still goes to hosted checkout.
+
+### Frame-ancestors
+
+- `/m/:session` is served by `apps/pay/api/frame.ts` (edge). It asks the API for the session's website and sends
+  `Content-Security-Policy: frame-ancestors <that origin>`.
+- Anything else gets `frame-ancestors 'none'` with `X-Frame-Options: DENY`: an unknown, ended or link session, an
+  origin that doesn't read cleanly, or the API being down.
+- The frame also checks `location.ancestorOrigins` where the browser has it.
+- **It needs `PAY_API_URL` (or `VITE_API_BASE_URL`) on the pay project's Vercel functions.**
+
+### For the user
+
+- Set `PAY_API_URL` on the pay Vercel project, which creating that project is part of.
+- `PAY_BASE_URL` on Railway defaults to `https://pay.useclear.org`.
+
+### Checks
+
+- **Tests:**
+  - API 1021. One file died once on the local Redis-reconnect noise (`offramp.test.ts`) and passes on its own. The
+    file includes `checkout.test.ts` (15): the spec's order end to end in test mode, the payment-scoped token, code
+    tries, expiry and rate limits, and over time online being off.
+  - merchant 226;
+  - member 811;
+  - rewards 11;
+  - pay 32: copy, protocol, frame-ancestors, and no QR on the phone sheet;
+  - `@useclear/js` 58;
+  - `@useclear/node` 31;
+  - merchant contracts 83;
+  - public contracts 31;
+  - domain 75.
+- **Typechecks and builds:** all clean, apart from the known Coinbase import in the API.
+- **Run for real:** `bun run pay:dev` now serves `/v1` and a shop page at `localhost:5199` that uses
+  `@useclear/js`. The test payment was recorded at 1280 and 390 wide: $185.32 in 4 at $48.65, 256 points, and the
+  page's `onSuccess` got `{id, status, reference}` and nothing else.
+- **Not run:**
+  - a real member's approval through `app.useclear.org` (it needs Privy);
+  - the edge function on Vercel itself;
+  - Safari's and Firefox's handling of the frame.
