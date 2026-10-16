@@ -129,6 +129,8 @@ export function realMerchantApi(request: Transport): MerchantApi {
 
     // ---- Counter hardware (terminal reference)
     hardware: () => get('/hardware'),
+    hardwareOrders: () => get('/hardware/orders'),
+    cancelHardwareOrder: (orderId, line) => post(`/hardware/orders/${id(orderId)}/lines/${line}/cancel`, {}),
     addDevice: (input) => post('/hardware', input),
     updateDevice: (deviceId, input) => send('PATCH', `/hardware/${id(deviceId)}`, input),
     removeDevice: async (deviceId) => {

@@ -43,6 +43,7 @@ import type {
   DrawerEventBatch,
   DrawerEventsSaved,
   DrawerKey,
+  HardwareOrders,
   NoSaleApproval,
   PointDevice,
   ShowOnPoint,
@@ -213,6 +214,10 @@ export interface MerchantApi extends MerchantRewardsApi {
   // ---- Counter hardware (terminal reference, 1–7) --------------------------------------------------------
   /** Points, drawers and printers (`GET /hardware`). Anyone on shift: Show on and the drawer need them. */
   hardware(): Promise<Device[]>;
+  /** Owners and managers: hardware reserved on useclear.org, with each line's status (`GET /hardware/orders`). */
+  hardwareOrders(): Promise<HardwareOrders>;
+  /** Owners: cancel a reserved line and refund its deposit, before building starts (`POST /hardware/orders/:id/lines/:n/cancel`). */
+  cancelHardwareOrder(orderId: string, line: number): Promise<HardwareOrders>;
   /** Owners: a drawer or printer the tablet found (`POST /hardware`). */
   addDevice(input: In<typeof AddDevice>): Promise<Device>;
   /** Owners (`PATCH /hardware/:id`). */

@@ -9,6 +9,7 @@ import { pointService } from '@/hardware/point';
 import { printerService } from '@/hardware/printer';
 import { AddDeviceKindSheet, AddPointSheet, DevicesList, DrawerPane, FindSheet, PointPane, pointPaneDet, PrintersPane, ReaderPickSheet, type AddKind, type PointStep } from './devices';
 import { NoSaleSheet, noSalePin, runNoSale } from './noSale';
+import { OnOrderCell, OnOrderPane } from './onOrder';
 import { PointCamera } from './PointCamera';
 import { MI_CASA, miCasa, TAB_12 } from './reference';
 
@@ -97,6 +98,9 @@ export function useDevicesPane({
   const order = useApi(() => api.categoryOrder(), []);
   const staff = useApi(() => api.staff(), []);
   const orders = useApi(() => api.orders({ date: new Date().toISOString().slice(0, 10) }), [nonce]);
+  // On order (useclear.org reservations): money, so owners and managers only; the server says so too.
+  const seesOrders = session?.staff.role === 'owner' || session?.staff.role === 'manager';
+  const onOrder = useApi(() => (seesOrders ? api.hardwareOrders() : Promise.resolve(null)), [seesOrders, nonce]);
   // The preview opens a sheet by name (`&screen=`), so every step of section 2 is a link.
   const [open, setOpen] = useState<Open>(() => previewSheet(preview, sub));
   const [busy, setBusy] = useState(false);
@@ -140,11 +144,24 @@ export function useDevicesPane({
   };
 
   // ---- The pane ----------------------------------------------------------------------------------
-  const target = sub && sub !== 'printers' ? devices.find((x) => x.id === sub) : undefined;
+  const target = sub && sub !== 'printers' && sub !== 'on-order' ? devices.find((x) => x.id === sub) : undefined;
   let title = 'Devices';
   let det = 'Everything on the counter and the tables, and what each is doing now.';
   let body: ReactNode = null;
-  if (sub === 'printers') {
+  if (sub === 'on-order') {
+    title = 'On order';
+    det = 'Hardware you reserved on useclear.org, and when it ships.';
+    body = (
+      <OnOrderPane
+        orders={onOrder.data?.orders ?? []}
+        configured={onOrder.data?.configured ?? false}
+        owner={session?.staff.role === 'owner'}
+        busy={busy}
+        error={error}
+        onCancel={(id, line) => void run(() => api.cancelHardwareOrder(id, line))}
+      />
+    );
+  } else if (sub === 'printers') {
     title = 'Printers';
     det = 'What prints where, and what it looks like.';
     body = (
@@ -262,6 +279,12 @@ export function useDevicesPane({
         onAdd={() => setOpen({ kind: 'add' })}
         onTablet={onRenameTablet}
       />
+    );
+    body = (
+      <>
+        {body}
+        <OnOrderCell orders={onOrder.data?.orders ?? []} onOpen={() => go('on-order')} />
+      </>
     );
   }
 
