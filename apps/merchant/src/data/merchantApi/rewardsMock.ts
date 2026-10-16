@@ -132,8 +132,9 @@ export function createRewardsMock(h: RewardsHost) {
       fileName: 'Casa-Display-Bold.woff2',
       sizeBytes: 190_464,
       uploadedAs: 'woff2',
-      // No file stands behind it in the mock; the preview falls back to the serif, as the spec draws it.
-      url: 'https://useclear.org/s/micasa/fonts/fnt_casa.woff2',
+      // No file stands behind it in the mock (an empty one, so nothing is fetched); the preview falls
+      // back to the serif, as the spec draws it.
+      url: 'data:font/woff2;base64,',
       checks: { glyphs: 'passed', missing: [], legibility: 'passed' },
       usedFor: 'headings',
       licence: { declaredAt: '2026-10-09T17:20:00.000Z', declaredBy: 'stf_mike' },
@@ -502,6 +503,11 @@ export function createRewardsMock(h: RewardsHost) {
     },
     pending(orderId: string, phone: string) {
       customers.set(orderId, { status: 'pending', phone, since: new Date(8.64e15).toISOString(), expiresAt: plus(h.now(), CONFIRM_MINUTES * 60_000), staffId: h.viewer() });
+    },
+    /** A domain set up and last looked at a few minutes ago, as Own domain draws it. */
+    domain(name: string, checkedMinutesAgo: number) {
+      const labels = name.split('.');
+      domain = { domain: name, shopSlug: app.slug, status: 'pending', record: { type: 'CNAME', name: labels[0]!, value: 'cname.vercel-dns.com' }, checkedAt: plus(new Date().toISOString(), -checkedMinutesAgo * 60_000), verifiedAt: null };
     },
     /** A code for a seeded person, as their phone would show it. */
     codeFor(who: 'sofia' | 'dev' | 'marco') {

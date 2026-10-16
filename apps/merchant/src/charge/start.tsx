@@ -518,8 +518,24 @@ const TAX_NAMES: Record<TaxKind, string> = {
   exempt: 'Exempt',
 };
 
-/** Parts, labour and tax, small, at the foot of a cart. `after` once a discount has come off. */
-export function Breakdown({ t, after, className = 'c-ci-small' }: { t: Totals; after?: boolean; className?: string }) {
+/**
+ * Parts, labour and tax, small, at the foot of a cart. `after` once a discount has come off. With the
+ * shop's rate known (`rate`, "8.375"), a cart of food and drinks is the tax line alone, as Mi Casa's
+ * cart draws it (rewards spec, section 9); anything else keeps its rows.
+ */
+export function Breakdown({ t, after, className = 'c-ci-small', rate }: { t: Totals; after?: boolean; className?: string; rate?: string }) {
+  if (rate && t.foodCents && !t.goodsCents && !t.labourCents) {
+    return (
+      <div className={className}>
+        {t.taxCents > 0 && (
+          <div className="c-kv">
+            <span>Sales tax &middot; {rate}%</span>
+            <span className="c-v">{usd(t.taxCents)}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
   const rows: [string, number][] = [];
   const suffix = after ? ', after discount' : '';
   if (t.goodsCents) rows.push([TAX_NAMES.goods + suffix, t.goodsCents]);
@@ -529,8 +545,8 @@ export function Breakdown({ t, after, className = 'c-ci-small' }: { t: Totals; a
   const taxLabel = after
     ? 'Sales tax · on the discounted parts'
     : t.foodCents && !t.goodsCents
-      ? 'Sales tax · prepared food 7.75%'
-      : 'Sales tax · 7.75% on parts';
+      ? `Sales tax · prepared food ${rate ?? '7.75'}%`
+      : `Sales tax · ${rate ?? '7.75'}% on parts`;
   return (
     <div className={className}>
       {rows.map(([k, v]) => (
@@ -560,7 +576,16 @@ export function CartCell({
   heading = 'Cart',
   headingDet,
   heroLabel = 'Customer approves',
+  customer,
+  rates,
+  server,
 }: {
+  /** The Customer line, or who's on the charge and their reward (rewards spec, section 9). */
+  customer?: ReactNode;
+  /** The shop's own rates: tax per line, as the server works it out, and the rate named. */
+  rates?: TabRates;
+  /** Once a customer is on the order, its figures are the server's: the reward, the tax, what it earns. */
+  server?: { totalCents: number; small: ReactNode } | null;
   lines: CartLine[];
   /** "Tires usually go with mount and balance": suggested once, with the count matched. */
   suggestion?: { t: string; det: string; action: string } | null;
@@ -572,7 +597,11 @@ export function CartCell({
   headingDet?: ReactNode;
   heroLabel?: string;
 }) {
-  const t = totals(lines);
+  const base = totals(lines);
+  // The shop's rates, per line and rounded half up, so the cart reads what Checkout will.
+  const perLine = rates ? tabTotals(lines, [], rates) : null;
+  const t = perLine ? { ...base, taxCents: perLine.taxCents, totalCents: perLine.totalCents } : base;
+  const total = server?.totalCents ?? t.totalCents;
   const empty = lines.length === 0;
   return (
     <div className="c-cell">
@@ -584,9 +613,10 @@ export function CartCell({
       </div>
       {/* It scrolls inside the cell, and an empty cart has nothing to Tab to, so it takes focus itself. */}
       <div className="c-cmain c-ci-sum" tabIndex={0} role="region" aria-label="Cart">
+        {customer}
         <div className="c-ci-hero">
           <p className="c-label">{heroLabel}</p>
-          <p className={cx('c-f', empty && 'c-muted')}>{usd(t.totalCents)}</p>
+          <p className={cx('c-f', empty && 'c-muted')}>{usd(total)}</p>
           <p className="c-det">{empty ? 'Nothing in the cart yet' : `${itemCount(t.count)} · tax included`}</p>
         </div>
         {empty ? (
@@ -619,13 +649,13 @@ export function CartCell({
                 </button>
               </div>
             )}
-            <Breakdown t={t} />
+            {server ? server.small : <Breakdown t={t} rate={rates?.label} />}
           </>
         )}
       </div>
       <div className="c-cfoot">
         <button type="button" className="c-btn c-btn-primary c-btn-lg" disabled={empty} onClick={onCheckout}>
-          {empty ? 'Checkout' : `Checkout · ${usd(t.totalCents)}`}
+          {empty ? 'Checkout' : `Checkout · ${usd(total)}`}
         </button>
       </div>
     </div>

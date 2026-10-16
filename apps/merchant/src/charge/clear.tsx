@@ -457,6 +457,8 @@ export interface ChargeState {
   howPaid?: string;
   /** Waiting, when there is more to say than "approving": "Paying now, from their Clear cash". */
   waitingLine?: string;
+  /** In place of "#code · raised by": "Table 6 · raised by Jen R." */
+  header?: string;
 }
 
 function StateCell({ s, foot }: { s: ChargeState; foot: ReactNode }) {
@@ -465,9 +467,7 @@ function StateCell({ s, foot }: { s: ChargeState; foot: ReactNode }) {
       <div className="c-chead">
         <div className="c-sechead">
           <p className="c-label">This charge</p>
-          <span className="c-det">
-            #{s.code} &middot; raised by {s.raisedBy}
-          </span>
+          <span className="c-det">{s.header ?? `#${s.code} · raised by ${s.raisedBy}`}</span>
         </div>
       </div>
       <div className="c-cmain">
@@ -520,7 +520,10 @@ export function WaitingView({
   onSendAgain,
   onCancel,
   onHome,
+  keyline,
 }: {
+  /** In place of the reached cell's line: the member added at the cart (rewards spec, section 9). */
+  keyline?: ReactNode;
   s: ChargeState;
   /** Text, email, app: what reached them and when. Absent where the API does not say. */
   reached?: { how: 'Text' | 'Email' | 'App'; status: string; at: string }[];
@@ -576,7 +579,7 @@ export function WaitingView({
             </div>
             <div className="c-mc-bleed">
               <p className="c-keyline" style={{ margin: 0 }}>
-                {opened ? (
+                {keyline ?? (opened ? (
                   <>
                     They have it open, so there is nothing to chase. <strong>They can approve any time today</strong>, and Home shows it
                     the moment they do.
@@ -585,7 +588,7 @@ export function WaitingView({
                   <>
                     <strong>They can approve any time today</strong>, and Home shows it the moment they do.
                   </>
-                )}
+                ))}
               </p>
             </div>
           </div>

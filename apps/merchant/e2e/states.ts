@@ -14,7 +14,7 @@ import { DINNER, LUNCH } from './capture';
  * or the manager (luis) on shift instead of the owner.
  */
 
-export type File = 'home' | 'charges' | 'inventory' | 'new-charge' | 'onboarding' | 'overview' | 'payouts' | 'settings' | 'sign-in' | 'staff' | 'terminal';
+export type File = 'home' | 'charges' | 'inventory' | 'new-charge' | 'onboarding' | 'overview' | 'payouts' | 'settings' | 'sign-in' | 'staff' | 'terminal' | 'rewards';
 
 export interface Ref {
   file: File;
@@ -47,6 +47,9 @@ const P = '?preview=1';
 /** Clear Terminal's restaurant. */
 const MC = '&shop=micasa';
 const r = (file: File, h2: string, i = 0, note?: string, at?: SizeName): Ref => ({ file, h2, i, note, at });
+const SHOP_SIDE = '8 · The shop’s side';
+const COUNTER = '9 · At the counter: scan a member once';
+const RW = `/new${P}&live=1${MC}&as=jen&table=tbl_6&rw=`;
 
 export const STATES: State[] = [
   // ---- Home ------------------------------------------------------------------------------------
@@ -340,6 +343,22 @@ export const STATES: State[] = [
   { id: 'terminal-order-ready', page: 'home', clock: LUNCH, url: `/${P}${MC}&as=jen`, refs: [r('terminal', '9 · Order ready', 0, 'A cell on Home, under the rest of it.')] },
   { id: 'terminal-menu', page: 'inventory', clock: DINNER, url: `/inventory${P}${MC}&live=1`, refs: [r('terminal', '10 · Inventory · on the Point', 0, 'Every item on the menu is listed; the reference draws five.')] },
   { id: 'terminal-card-table', page: 'new', clock: DINNER, url: `/new${P}${MC}&screen=card-table&as=jen`, refs: [r('terminal', '13b · The Pay case', 2)] },
+
+  // ---- Rewards (docs/rewards-reference/clear-rewards-app.html, sections 8 and 9) ------------------
+  // Settings › Shop app is the mock's Mi Casa. Section 9 runs the live path over the mock (`&live=1`),
+  // set up by `&rw=` (NewChargePage), so the cart, Checkout and the waiting screen are the server's figures.
+  { id: 'rewards-shop-app', page: 'settings', clock: DINNER, url: `/settings/shop-app${P}${MC}`, refs: [r('rewards', SHOP_SIDE, 0, 'Extra for paying with Clear is Off at Mi Casa, so the give-back line has no Clear clause (rewards DECISIONS, Hard Stop 2).')] },
+  { id: 'rewards-domain', page: 'settings', clock: DINNER, url: `/settings/shop-app${P}${MC}&screen=shop-app-domain`, refs: [r('rewards', SHOP_SIDE, 1)] },
+  { id: 'rewards-store', page: 'settings', clock: DINNER, url: `/settings/shop-app${P}${MC}&screen=shop-app-store`, refs: [r('rewards', SHOP_SIDE, 2)] },
+  { id: 'rewards-add-reward', page: 'settings', clock: DINNER, url: `/settings/shop-app${P}${MC}&screen=shop-app-reward`, refs: [r('rewards', SHOP_SIDE, 3, 'Mi Casa’s menu has no Tamarindo: the chips are its drinks (rewards DECISIONS, Phase 5).')] },
+  { id: 'rewards-font', page: 'settings', clock: DINNER, url: `/settings/shop-app${P}${MC}&screen=shop-app-font`, refs: [r('rewards', SHOP_SIDE, 4)] },
+  { id: 'rewards-cart', page: 'new', clock: DINNER, url: `${RW}cart`, refs: [r('rewards', COUNTER, 0, 'Tax per line: $1.33 and $17.33 (rewards DECISIONS › Figures). The items are Mi Casa’s menu.')] },
+  { id: 'rewards-scan', page: 'new', clock: DINNER, url: `${RW}scan`, refs: [r('rewards', COUNTER, 1, 'The viewfinder is the tablet’s camera.')] },
+  { id: 'rewards-sofia', page: 'new', clock: DINNER, url: `${RW}sofia`, refs: [r('rewards', COUNTER, 2, 'Neutral pronouns: “Approves on their phone” (rewards DECISIONS).')] },
+  { id: 'rewards-dev', page: 'new', clock: DINNER, url: `${RW}dev`, refs: [r('rewards', COUNTER, 3, '“Ask them to join” (rewards DECISIONS).')] },
+  { id: 'rewards-applied', page: 'new', clock: DINNER, url: `${RW}applied`, refs: [r('rewards', COUNTER, 4, '“75 of their 128 points”.')] },
+  { id: 'rewards-checkout', page: 'new', clock: DINNER, url: `${RW}checkout`, refs: [r('rewards', COUNTER, 5, 'The merchant reference’s rows stay: the reward as the discount, the tip, the tax.')] },
+  { id: 'rewards-waiting', page: 'new', clock: DINNER, url: `${RW}waiting`, refs: [r('rewards', COUNTER, 6, 'The live waiting screen’s steps (Raised, Opened, Approved); neutral pronouns.')] },
 ];
 
 /** A frame's size, from its classes: which of the three captures it pairs with. */

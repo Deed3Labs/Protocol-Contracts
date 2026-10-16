@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from '@playwright/test';
 import { STATES, type File, type Ref } from './states';
-import { refKey, REFERENCE_DIR, REPORT_DIR } from './capture';
+import { referenceFile, refKey, REPORT_DIR } from './capture';
 
 /**
  * The reference frames the states pair with, drawn at the size they stand for: a landscape tablet
@@ -29,10 +29,10 @@ for (const [file, refs] of byFile) {
   test(`reference ${file}`, async ({ page }, info) => {
     test.skip(info.project.name !== 'landscape', 'the reference is captured once');
     await page.setViewportSize({ width: 1400, height: 1000 });
-    await page.goto(`file://${REFERENCE_DIR}/clear-merchant-${file}.html`);
+    await page.goto(`file://${referenceFile(file)}`);
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
-    // The terminal file draws most of its states as sheets on their own, so its sheets are frames too.
-    const kinds = file === 'terminal' ? [HAS('mc-tablet'), HAS('phone'), HAS('sheet')] : [HAS('mc-tablet'), HAS('phone')];
+    // The terminal file and the rewards spec draw states as sheets on their own, so their sheets are frames too.
+    const kinds = file === 'terminal' || file === 'rewards' ? [HAS('mc-tablet'), HAS('phone'), HAS('sheet')] : [HAS('mc-tablet'), HAS('phone')];
     const any = kinds.join(' or ');
     const frameOf = (ref: Ref) =>
       page

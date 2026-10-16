@@ -403,3 +403,124 @@ Built 2026-10-16. `packages/member-kit` was extracted first, on its own branch `
 Approved at Hard Stop 4, 2026-10-16: Phase 4 as built, the three additions (`PublicPoint.shop.slug`,
 the hub tiles' heading font, the Clear charge view's `reward` and `orderId`), and the differences
 recorded above.
+
+## Phase 5 · The merchant app
+
+`MerchantApi` now extends `MerchantRewardsApi`. The real client calls the rewards routes. The mock
+(`apps/merchant/src/data/merchantApi/rewardsMock.ts`) answers them from Mi Casa's Shop app as section 8
+draws it, and three people stand at the counter:
+
+- Sofia M.: a Clear member with 128 points;
+- Dev L.: a Clear member who hasn't joined;
+- Marco A.: rewards only, with 42 points.
+
+Matching a reward to the cart and what an order earns follow the server's rules (`counter.ts`,
+`ledger.ts`), so the cart reads what the API will.
+
+### Figures
+
+- **Mi Casa's mock tax is 8.375%**, as decided at Phase 1. That gives:
+  - Table 12: $3.73 tax, $48.23 (the terminal reference draws $3.70 and $48.20);
+  - order 0142: $3.54 tax, $45.79, $4.21 change from $50.00;
+  - Table 2: $35.76, as drawn.
+
+  The terminal tests, the state notes and the card sheet's preview amount follow.
+- **A live cart is taxed line by line at the shop's rates**, rounded half up, as the server does it.
+  So the cart reads $17.33 and tax $1.33 (§9 draws $17.34 and $1.34).
+  - A cart of food and drinks shows the tax line alone: "Sales tax · 8.375%".
+  - A cart with parts or labour keeps its rows; the rate in the label is the shop's.
+- **With a customer on the order, the cart's figures are the server's**: the reward line, the tax,
+  "Earns 12 points". The order follows the cart after each change, so an item reward follows the
+  cart.
+- **The rewards preview had Table 6 without the reward earning 17.** It earns 16: points count
+  $16.00 before tax. Fixed, with a test.
+
+### Settings › Shop app
+
+- **Its own section, beside Devices** (`settings/shopApp.tsx`). It is in the rail between Discounts
+  and Devices.
+  - Managers and the counter see two items, Shop app and You.
+  - Owners and managers change it; the counter sees it as it is.
+  - Every change saves as it's made.
+- **The rows are worded by rules** (`settings/shopAppModel.ts`, tested against every drawn row):
+  - A long item list reads as its note: "Item · any plate up to $14".
+  - A short one names the items: "Item · Jamaica or Horchata, any size".
+  - An offer named for its day reads as its deal ("TACOTUE · Two tacos for $7"); one named for its
+    deal reads as its name ("TRAY10 · 10% off a tray").
+  - A code with no days or end date shows its detail ("Staff only").
+- **Mi Casa's codes are seeded.** TACOTUE (Tuesdays) and TRAY10 (ends Oct 31) are shown in the app;
+  STAFF20 is not.
+- **Mi Casa's taco plate has the note "any plate up to $14".** The rewards app would show
+  "300 points · any plate up to $14"; the rewards preview's own seed still draws "300 points".
+- **Your own domain's row suggests `rewards.<the shop's email domain>`** until a domain is set; then
+  it reads "Manage".
+- **Casa Display has no file behind it in the mock.** The preview falls back to the serif, as the
+  drawing does.
+- **Add a reward's item chips are Mi Casa's own drinks**: Jamaica, Horchata, Mexican Coke. The menu
+  has no Tamarindo.
+- **Built where nothing is drawn:**
+  - Turn on, for a shop whose app is off;
+  - Custom colour (four colours, contrast-checked);
+  - Call them › Custom (one and many);
+  - Logo (an image address, until there's an upload);
+  - Add a boost;
+  - Preview an order;
+  - a printable 4 × 6 join card;
+  - editing or removing a reward by tapping its row.
+- **The store app's Start opens an email to Clear.** Nothing is submitted from the app (Phase 7).
+- **Settings › Discounts:** a tap on a code opens a sheet with Show in app and Who sees it (Everyone,
+  Members, Clear members). The row adds "· in the app" when it's on. The rows are otherwise as the
+  merchant reference draws them, which section 8 leaves unchanged.
+
+### At the counter
+
+- **The Customer line shows only on the live path, and only where the shop's app is on.** The
+  merchant reference's own preview frames don't change.
+- **Adding someone puts the cart on the server as an order** (or brings it up to date).
+- **The member sheet adds them as soon as their code is read.** Add to charge keeps them; closing
+  the sheet takes them off, their reward first.
+- **A number waits on their phone.** The line says "Texted (909) 555-0123 a link"; the tablet asks
+  again every 3 seconds and opens the member sheet once they confirm.
+- **The cart has the reward line.** When nothing is applied, it offers the first ready reward that
+  fits, with Apply; once applied, it shows Undo.
+- **Checkout keeps the merchant reference's rows** (discount, tip, Show on, tax). The reward sits
+  where a code would, and its × undoes it. Section 9 adds:
+  - the member at the top;
+  - "Free agua fresca applied · earns 12 points";
+  - the foot "Card or cash: points land on Sofia's account when it's paid.";
+  - "How is Sofia paying?";
+  - the Clear tile's "Sent to Sofia's phone now. Nothing to scan".
+- **Clear, for a member who can pay with it, goes straight to them** (`sendClearCharge({ to:
+  'customer' })`). The waiting screen then shows:
+  - "Table 6 · raised by Jen R.";
+  - "Sent to their Clear app, text and email";
+  - "Approving on their phone, with the agua fresca already off";
+  - Text, Email and App under "All three at once";
+  - the keyline, in neutral pronouns.
+
+  Its steps are the live screen's own (Raised, Opened, Approved), not the drawn four.
+- **"New charge · Table 6"** is a new charge opened for a table (`&table=`).
+- **The frames are reachable in development:**
+  - `/new?preview=1&live=1&shop=micasa&as=jen&table=tbl_6&rw=cart|scan|pending|sofia|dev|applied|checkout|waiting`;
+  - `/settings/shop-app?preview=1&shop=micasa&screen=shop-app-domain|store|reward|font`.
+
+  `e2e/states.ts` pairs each with its frame in the merchant reference report.
+
+### Contract and API additions, for approval
+
+- **`PATCH /api/merchant/shop-app/offers/:codeId`** (`OfferPatch`: `showInApp`, `audience`;
+  `MerchantRewardsApi.updateOffer`) sets Settings › Discounts' switch and audience.
+  - On puts the code last in `offerCodeIds`; off takes it out.
+  - The catalogue now reads and writes a code's `showInApp`, `audience`, `offer` and `days`, which
+    Phase 3 had added to the table but not to its reads and writes.
+- **`POST /api/merchant/shop-app/domain/check`** (`checkDomain`, already in the contract): stamps
+  `checkedAt` and returns the record. Asking Vercel is Phase 7.
+
+### Checks
+
+- API: 947 pass. Merchant: 201 unit tests. Member: 779. Rewards: 5. Contracts: 71.
+- Builds: merchant, member and rewards, on Node 22.
+- Axe passes on all 12 rewards states. Roles, Settings and New charge e2e pass, apart from failures
+  that are on `dev` too: Tables' axe checks and Devices "this tablet, renamed".
+- The contract conformance run (`apps/api/e2e/contract.ts`) has the new methods but needs a
+  Postgres, which this machine doesn't have, so it hasn't been run.

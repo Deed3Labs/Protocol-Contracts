@@ -33,13 +33,16 @@ function PayTile({
   method,
   locked,
   onPick,
+  clearDet,
 }: {
   method: Method;
   locked?: boolean;
   onPick?: (m: Method) => void;
+  /** With a member on the charge who can pay with Clear: "Sent to Sofia’s phone now. Nothing to scan". */
+  clearDet?: string;
 }) {
   const t = {
-    clear: ['Clear', 'Pay now or over time, approved on their phone', <IconClear key="i" />],
+    clear: ['Clear', clearDet ?? 'Pay now or over time, approved on their phone', <IconClear key="i" />],
     card: ['Card', locked ? 'Connect Stripe in Settings to take cards' : 'Tap, insert or swipe on the counter reader', <IconCard key="i" />],
     cash: ['Cash', locked ? 'Open the drawer on Home to take cash' : 'Enter what they hand over, see the change', <IconCash key="i" />],
     split: ['Split between methods', 'Part cash, part card, or any mix', <IconSplit key="i" />],
@@ -72,18 +75,20 @@ export function PayTiles({
   cashLocked,
   unavailable = [],
   onPick,
+  clearDet,
 }: {
   cardLocked?: boolean;
   cashLocked?: boolean;
   /** Ways to pay the backend cannot take yet; drawn locked like an unconnected card. */
   unavailable?: Method[];
   onPick?: (m: Method) => void;
+  clearDet?: string;
 }) {
   return (
     <div className="c-cmain c-ck-pay">
       {(['clear', 'card', 'cash', 'split'] as const).map((m) =>
         unavailable.includes(m) && m !== 'card' ? null : (
-          <PayTile key={m} method={m} locked={(m === 'card' && cardLocked) || (m === 'cash' && cashLocked)} onPick={onPick} />
+          <PayTile key={m} method={m} locked={(m === 'card' && cardLocked) || (m === 'cash' && cashLocked)} onPick={onPick} clearDet={clearDet} />
         ),
       )}
     </div>
@@ -101,9 +106,29 @@ export function CheckoutView({
   onRemoveDiscount,
   onPick,
   rows,
+  customer,
+  heroDet,
+  foot,
+  payer,
+  clearDet,
+  taxRate,
+  reward,
 }: {
+  /** A reward is the order's one discount: it shows where a code would, and its × undoes it. */
+  reward?: { label: string; cents: number; onUndo: () => void } | null;
   /** More rows under the tip: where the customer sees it (Show on, Clear Terminal section 7). */
   rows?: ReactNode;
+  /** The member on the charge, at the top (rewards spec, section 9). */
+  customer?: ReactNode;
+  /** In place of "4 items · tax included": "Free agua fresca applied · earns 12 points". */
+  heroDet?: string;
+  /** In place of the tax note: "Card or cash: points land on Sofia’s account when it’s paid." */
+  foot?: string;
+  /** "Sofia": How is Sofia paying? */
+  payer?: string;
+  clearDet?: string;
+  /** The shop's rate, "8.375", for a food cart's tax line. */
+  taxRate?: string;
   body: ChargeBody;
   /** A live shop: the order's totals, from the server, in place of the local estimate. */
   server?: Totals | null;
@@ -140,10 +165,13 @@ export function CheckoutView({
           </div>
         </div>
         <div className="c-cmain c-ci-sum">
+          {customer}
           <div className="c-ci-hero">
             <p className="c-label">Total</p>
             <p className="c-f">{usd(total)}</p>
-            {t && (
+            {heroDet ? (
+              <p className="c-det">{heroDet}</p>
+            ) : t && (
               <p className="c-det">
                 {itemCount(t.count)} &middot; tax included
                 {t.discountCents > 0 && (
@@ -166,7 +194,20 @@ export function CheckoutView({
             </div>
           )}
           <div className="c-ck-adj">
-            {body.discount && t ? (
+            {reward ? (
+              <div className="c-r">
+                <span className="c-k">
+                  <IconDiscount />
+                  {reward.label}
+                </span>
+                <span className="c-v c-neg">
+                  &minus;{usd(reward.cents)}
+                  <button type="button" className="c-ck-x" aria-label="Undo the reward" onClick={reward.onUndo}>
+                    <IconCloseLg />
+                  </button>
+                </span>
+              </div>
+            ) : body.discount && t ? (
               <div className="c-r">
                 <span className="c-k">
                   <IconDiscount />
@@ -196,22 +237,22 @@ export function CheckoutView({
             </div>
             {rows}
           </div>
-          {t && <Breakdown t={t} after={!!body.discount} />}
+          {t && <Breakdown t={t} after={!!body.discount || !!reward} rate={taxRate} />}
         </div>
         <div className="c-cfoot">
           <p className="c-det">
-            {hasLines ? 'Tax is worked out per line: parts are taxed, labour is not.' : 'Next: a tip on their side, then how they pay.'}
+            {foot ?? (hasLines ? 'Tax is worked out per line: parts are taxed, labour is not.' : 'Next: a tip on their side, then how they pay.')}
           </p>
         </div>
       </div>
       <div className="c-cell">
         <div className="c-chead">
           <div className="c-sechead">
-            <p className="c-label">How are they paying?</p>
+            <p className="c-label">{payer ? `How is ${payer} paying?` : 'How are they paying?'}</p>
             <span className="c-det">One method, or split</span>
           </div>
         </div>
-        <PayTiles cardLocked={cardLocked} cashLocked={cashLocked} unavailable={unavailable} onPick={onPick} />
+        <PayTiles cardLocked={cardLocked} cashLocked={cashLocked} unavailable={unavailable} onPick={onPick} clearDet={clearDet} />
         <div className="c-cfoot">
           <p className="c-det">Any of these asks for a tip first, on the customer&rsquo;s side of the screen.</p>
         </div>

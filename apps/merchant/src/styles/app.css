@@ -709,3 +709,21 @@ input.c-st-time {
 .c-tm-plist {
   padding: 0;
 }
+
+/* Settings › Shop app: the spec's number boxes are inputs here. */
+input.c-sa-box {
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: center;
+  width: 44px;
+  border-radius: 0;
+}
+input.c-sa-box:disabled {
+  color: var(--ink);
+  opacity: 1;
+}
+/* The camera's own line (Starting the camera…) on the scan sheet's dark viewfinder. */
+.c-sa-tvf > .c-det {
+  color: #c9cfca;
+}
