@@ -196,3 +196,29 @@ describe('seating', () => {
     expect(tile.hold?.partyName).toBe('Ana');
   });
 });
+
+describe('Point firmware (docs/hardware/point-device-api.md, 7)', () => {
+  const m = {
+    model: 'point',
+    version: '1.0.4',
+    url: 'https://x.public.blob.vercel-storage.com/point/point-1.0.4.bin',
+    sha256: 'a'.repeat(64),
+    sizeBytes: 1_048_576,
+    minBattery: 40,
+    keyId: 'clear-2026',
+    signature: 'A'.repeat(88),
+  };
+  test('a manifest: HTTPS only, a hex hash, a version of three numbers', async () => {
+    const { PointFirmware } = await import('./devices');
+    expect(PointFirmware.parse(m)).toEqual(m);
+    expect(PointFirmware.safeParse({ ...m, url: 'http://x/y.bin' }).success).toBe(false);
+    expect(PointFirmware.safeParse({ ...m, sha256: 'A'.repeat(64) }).success).toBe(false);
+    expect(PointFirmware.safeParse({ ...m, version: '1.0' }).success).toBe(false);
+  });
+  test('what is signed, and newer by number', async () => {
+    const { compareFirmware, firmwareSigningPayload } = await import('./devices');
+    const { signature: _sig, ...unsigned } = m as typeof m & { model: 'point' };
+    expect(firmwareSigningPayload(unsigned)).toBe(`clear-point-firmware/v1\npoint\n1.0.4\n${m.url}\n${'a'.repeat(64)}\n1048576\n40\nclear-2026`);
+    expect(compareFirmware('1.0.10', '1.0.9')).toBeGreaterThan(0);
+  });
+});

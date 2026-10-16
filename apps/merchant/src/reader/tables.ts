@@ -1,3 +1,4 @@
+import { timed } from './timings';
 import type { ReaderInfo, ReaderService } from './types';
 
 /**
@@ -39,14 +40,15 @@ export function readerQueue(service: () => Promise<ReaderService>, opts: { idleM
   async function connect(req: TableRequestReader) {
     set({ active: req.pointId, phase: 'connecting' });
     const svc = await service();
-    const found = (await svc.discover('bluetooth')).find((r) => r.id === req.externalReaderId || r.handle === req.externalReaderId) ?? {
+    const found = (await timed('discover', req.externalReaderId, () => svc.discover('bluetooth'))).find((r) => r.id === req.externalReaderId || r.handle === req.externalReaderId) ?? {
       id: req.externalReaderId,
       kind: 'bluetooth' as const,
       label: req.externalReaderId,
       detail: '',
     };
-    if (svc.connected()) await svc.disconnect();
-    await svc.connect(found);
+    const was = svc.connected();
+    if (was) await timed('disconnect', was.id, () => svc.disconnect());
+    await timed('connect', req.externalReaderId, () => svc.connect(found));
     set({ phase: 'ready' });
     armIdle();
   }
@@ -64,11 +66,12 @@ export function readerQueue(service: () => Promise<ReaderService>, opts: { idleM
       return;
     }
     if (idle) clearTimeout(idle);
+    const reader = wants.get(pointId)?.externalReaderId ?? pointId;
     wants.delete(pointId);
     const svc = await service();
-    await svc.disconnect();
+    await timed('disconnect', reader, () => svc.disconnect());
     const counter = opts.counter?.();
-    if (counter) await svc.connect(counter);
+    if (counter) await timed('counter', counter.id, () => svc.connect(counter));
     const [next, ...rest] = state.queue;
     set({ active: null, phase: 'counter', queue: rest });
     if (next && wants.has(next)) await connect(wants.get(next)!);

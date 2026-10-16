@@ -310,30 +310,77 @@ POST /api/device/point/event
 
 ## 7. Firmware updates
 
-**Proposed; nothing in the API serves it yet.** It needs signing keys, hosting and a release process
-decided outside this file.
+```
+GET /api/device/point/firmware
+Authorization: Bearer <deviceKey>
+→ 200 { …PointFirmware… }   or   204 (nothing published for its model)
+```
 
-- A **signed manifest** per model at a fixed URL baked into the firmware:
-  `https://firmware.useclear.org/point/<model>/manifest.json`
-  ```json
-  {
-    "model": "point",
-    "version": "1.0.4",
-    "url": "https://firmware.useclear.org/point/point/1.0.4.bin",
-    "sha256": "<hex of the image>",
-    "minBattery": 40,
-    "signature": "<base64 Ed25519 over the manifest's other fields, canonical JSON>"
-  }
-  ```
-- The firmware holds the release **public key** and refuses any manifest whose signature doesn't
-  verify, any image whose SHA-256 doesn't match, and any version not newer than its own.
-- It checks at most once a day, and installs only when it has shown idle for 30 minutes and is
-  plugged in or above `minBattery`. (The screen JSON carries no shop timezone, so "overnight" is
-  left to that rule rather than a clock.)
-- Images install to the inactive OTA slot (ESP-IDF OTA with rollback); a new image that can't reach
-  `/state` within five minutes of booting rolls back.
-- The server marks a Point **up to date** when its reported `firmware` equals `POINT_FIRMWARE_LATEST`
-  (Settings › Devices: "Firmware 1.0.3 · up to date").
+```json
+{
+  "model": "point",
+  "version": "1.0.4",
+  "url": "https://<store>.public.blob.vercel-storage.com/point/point-1.0.4.bin",
+  "sha256": "<hex of the image>",
+  "sizeBytes": 1048576,
+  "minBattery": 40,
+  "keyId": "clear-2026",
+  "signature": "<base64 Ed25519>"
+}
+```
+
+**What is signed** (`firmwareSigningPayload`): these fields, one per line, in this order, UTF-8,
+no trailing newline:
+
+```
+clear-point-firmware/v1
+<model>
+<version>
+<url>
+<sha256>
+<sizeBytes>
+<minBattery>
+<keyId>
+```
+
+**The firmware:**
+
+- Carries **two Ed25519 public keys**, the release key and a backup kept offline, by key id. A
+  manifest whose `keyId` isn't one of them, or whose signature doesn't verify over the lines above,
+  is ignored. So is one whose `model` isn't its own, or whose `version` isn't newer than its own
+  (compared as three numbers: 1.0.10 is newer than 1.0.9).
+- Asks at most once a day, and installs only when it has shown idle for 30 minutes and is plugged
+  in or above `minBattery`.
+- Downloads `url` into the inactive OTA slot (ESP-IDF OTA), refusing it if its size or SHA-256
+  doesn't match, then boots it. A new image that can't reach `/state` within five minutes of booting
+  rolls back.
+- Reports its new `firmware` in its next health report. Settings › Devices shows "up to date" when it
+  matches the newest published release for its model.
+
+**The server** never holds a private key. It publishes only a manifest that verifies against the
+public keys in `POINT_FIRMWARE_KEYS` (`keyId:base64,…`, the same keys the firmware carries) and is
+newer than any already published for that model. A server that was broken into can withdraw an
+update but can't forge one: the Point checks the signature again itself. `POINT_FIRMWARE_LATEST` is
+only a fallback for "up to date" before any release is published.
+
+**Releasing** (`apps/api/scripts/point-firmware.ts`):
+
+1. **Once:** `bun scripts/point-firmware.ts keygen clear-2026` on the key holder's own machine.
+   The private half goes in a password manager and nowhere else. The public line
+   (`clear-2026:<base64>`) goes into the firmware's trusted keys and into `POINT_FIRMWARE_KEYS` on
+   the API. Do it twice: the second key is the backup, its private half kept offline.
+2. **Upload** the image to Vercel Blob (public, served from Vercel's CDN, no build) under
+   `point/<model>-<version>.bin`, and copy its URL. Any HTTPS host works: the manifest carries the
+   hash, so the host is never trusted.
+3. **Sign**, on the key holder's machine:
+   `CLEAR_FIRMWARE_KEY=<private> bun scripts/point-firmware.ts sign clear-2026 point 1.0.4 <url> point-1.0.4.bin > point-1.0.4.json`.
+4. **Publish:** `railway run … bun scripts/point-firmware.ts publish point-1.0.4.json`. Points of that
+   model are offered it from their next daily check.
+5. **Withdraw** a bad release with `… withdraw point 1.0.4`. It's never offered again, and Points still
+   on the one before stay there. The fix is published as a newer version.
+
+Later, signing can move into the firmware repo's release job: a GitHub Actions environment holding
+the private key, with the key holder as its required reviewer.
 
 ## 8. Errors
 

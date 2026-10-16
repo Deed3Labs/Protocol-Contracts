@@ -1016,6 +1016,7 @@ amendment, approved before the API builds on them.
   Tables is open, the rate the "waiting" screens already use. A stream can replace it later.
 - **Measured on a real M2: not yet.** How long connecting and letting go take decides whether the
   background connect is fast enough. There's no M2 on this Mac; the figure goes here once measured.
+  The app now times it (docs/hardware/m2-timing.md), so it's one console call on a tablet.
 - **Mock seed, for Phase 4:** Table 12 in a Pay case with M2 1A3F; an open Call on 12 from a minute
   ago; Table 4's bill just sent ($62.00); Table 9's call answered by Luis at 8:01pm.
 
@@ -1302,3 +1303,32 @@ amendment, approved before the API builds on them.
   code twice in one list goes in once and is reported. The insert is `ON CONFLICT DO NOTHING`, so
   two runs at once can't double one either.
 - **A dry run** says what would be added and skipped, and writes nothing.
+
+## Terminal: M2 timing and firmware releases (2026-10-15)
+
+- **The M2 is timed by the app.** Every step the table reader queue takes (finding the reader,
+  letting the current one go, connecting, letting go, the counter's reader back) is timed and kept on
+  the tablet, the last 200 (`reader/timings.ts`). In the installed app,
+  `clearReaderTimings.measure('<serial>', 10)` from the tablet's web inspector runs a series against
+  one M2, charging nothing. docs/hardware/m2-timing.md has the steps and what the figures decide:
+  under 10 seconds at the 90th percentile keeps the connect-on-bill design; 10 to 30 moves the
+  connect earlier; over 30 rethinks it. No screen shows the figures: the reference draws none.
+- **Firmware releases are built** (Phase 7's proposal, approved, with these choices):
+  - *Signing:* Ed25519. The owner holds the private key, made on their own machine with
+    `scripts/point-firmware.ts keygen` and kept in their password manager, never in a repo or on
+    Railway. A second key is made the same way and kept offline as the backup. The firmware carries
+    both public keys.
+  - *The manifest:* served by the API (`GET /api/device/point/firmware`, by device key), the newest
+    published release for the Point's model, rather than a fixed URL on a new domain. The server
+    publishes only what verifies against `POINT_FIRMWARE_KEYS` and is newer than what's there, so a
+    server that's broken into can withdraw an update but never forge one.
+  - *The images:* Vercel Blob, public behind Vercel's CDN with no build, since the sites are already
+    on Vercel. The manifest carries the SHA-256 and size, so the host is never trusted and can change.
+  - *Contracts:* `PointFirmware`, `firmwareSigningPayload` (eight lines, fixed order) and
+    `compareFirmware` (1.0.10 is newer than 1.0.9). Migration 0026 adds `merchant.firmware_releases`.
+  - "Up to date" in Settings › Devices now compares with the newest release for the Point's model;
+    `POINT_FIRMWARE_LATEST` is the fallback before any release is published.
+  - Later, signing can move to the firmware repo's release job, behind a GitHub Actions environment
+    with the owner as required reviewer.
+- **The fake Point checks firmware as a Point must**: `--firmware <keys>` asks for it and verifies the
+  Ed25519 signature with the public keys it's given. The API's route test runs it.

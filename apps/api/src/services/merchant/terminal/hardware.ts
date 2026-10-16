@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import {
   AddDevice,
   ClaimPoint,
+  compareFirmware,
   DEFAULT_IDLE_MODE,
   DrawerSettings,
   PointHealthReport,
@@ -18,6 +19,7 @@ import { decryptWithEnvelope, encryptWithEnvelope, isEnvelopeEncryptionConfigure
 import { audit } from '../security/audit.js';
 import { businessDate } from '../orders/orderService.js';
 import { touchShop } from './bus.js';
+import { latestFirmware } from './firmware.js';
 import { secret, sha256 } from './codes.js';
 import { pointStateFor } from './pointState.js';
 import { TerminalError } from './errors.js';
@@ -44,8 +46,11 @@ interface HardwareRow {
 const json = <T>(v: T | string): T => (typeof v === 'string' ? (JSON.parse(v) as T) : v);
 const iso = (d: Date | string) => new Date(d).toISOString();
 
-/** The latest firmware Clear publishes for Points (`POINT_FIRMWARE_LATEST`); unset, every Point is current. */
-const latestFirmware = () => (process.env.POINT_FIRMWARE_LATEST || '').trim() || null;
+/**
+ * The firmware a Point should run: its model's newest published release, or `POINT_FIRMWARE_LATEST`
+ * before any release is published. Neither: every Point is current.
+ */
+const envFirmware = () => (process.env.POINT_FIRMWARE_LATEST || '').trim() || null;
 
 async function shopZone(q: Queryable, merchant: string): Promise<string> {
   const { rows } = await q.query<{ timezone: string }>('SELECT timezone FROM merchant.profiles WHERE merchant = $1', [merchant]);
@@ -61,9 +66,9 @@ async function toDevice(q: Queryable, row: HardwareRow, now: Date): Promise<Devi
     );
     const k = rows[0]!;
     const reported = k.health ? json<Omit<PointHealth, 'lastSeenAt' | 'firmwareCurrent'>>(k.health) : null;
-    const latest = latestFirmware();
-    const health: PointHealth | null =
-      reported && k.last_seen_at ? { ...reported, lastSeenAt: iso(k.last_seen_at), firmwareCurrent: latest === null || reported.firmware === latest } : null;
+    const latest = (await latestFirmware(q, k.model))?.version ?? envFirmware();
+    const current = (v: string) => latest === null || (/^\d+\.\d+\.\d+$/.test(v) ? compareFirmware(v, latest) >= 0 : v === latest);
+    const health: PointHealth | null = reported && k.last_seen_at ? { ...reported, lastSeenAt: iso(k.last_seen_at), firmwareCurrent: current(reported.firmware) } : null;
     const { state } = await pointStateFor(q, row.id, now);
     return { ...base, kind: 'point', code: k.code, model: k.model, settings: json(row.settings) as PointSettings, health, showing: state };
   }

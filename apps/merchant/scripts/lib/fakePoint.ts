@@ -1,4 +1,4 @@
-import { PointKey, PointScreen, type PointHealthReport } from '@clear/merchant-contracts';
+import { firmwareSigningPayload, PointFirmware, PointKey, PointScreen, type PointHealthReport } from '@clear/merchant-contracts';
 
 /**
  * A Point on the network, as its firmware talks to the device API (docs/hardware/point-device-api.md):
@@ -67,6 +67,23 @@ export class FakePointDevice {
       }
     })().catch(() => undefined);
     return () => stop.abort();
+  }
+
+  /**
+   * The newest firmware for this Point's model, or null. Checked as the firmware must: against the
+   * public keys it carries, with Ed25519, before anything is downloaded.
+   */
+  async firmware(trusted: Map<string, string>): Promise<{ manifest: PointFirmware; verified: boolean } | null> {
+    const r = await fetch(`${this.api}/firmware`, { headers: this.auth() });
+    if (r.status === 204) return null;
+    if (!r.ok) throw new Error(`/firmware: ${r.status} ${await r.text()}`);
+    const manifest = PointFirmware.parse(await r.json());
+    const raw = trusted.get(manifest.keyId);
+    if (!raw) return { manifest, verified: false };
+    const key = await crypto.subtle.importKey('raw', Buffer.from(raw, 'base64'), { name: 'Ed25519' }, false, ['verify']);
+    const { signature, ...unsigned } = manifest;
+    const verified = await crypto.subtle.verify({ name: 'Ed25519' }, key, Buffer.from(signature, 'base64'), new TextEncoder().encode(firmwareSigningPayload(unsigned)));
+    return { manifest, verified };
   }
 
   health(report: PointHealthReport) {

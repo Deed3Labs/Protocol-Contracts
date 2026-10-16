@@ -8,9 +8,11 @@
  *   --press call|bill    press a Pay case button after the first screen
  *   --health             report battery 82%, the Pay case and firmware 1.0.3 on start
  *   --stream             hold the event stream instead of long-polling
+ *   --firmware KEYS      ask for firmware on start and check its signature against KEYS
+ *                        (`keyId:base64,…`, the public keys the firmware would carry)
  *   --screens N          stop after N screens (default: run until stopped)
  *
- * Prints one JSON line per thing that happens: activated, health, state (each screen), pressed.
+ * Prints one JSON line per thing that happens: activated, health, firmware, state (each screen), pressed.
  */
 import { FakePointDevice } from './lib/fakePoint';
 
@@ -49,6 +51,12 @@ try {
   if (has('health')) {
     await point.health({ batteryPercent: 82, pluggedIn: false, rssi: -61, ssid: 'MiCasa-Staff', firmware: '1.0.3', case: { kind: 'pay', buttons: 'ok' } });
     say({ event: 'health' });
+  }
+  const keys = opt('firmware');
+  if (keys !== null) {
+    const trusted = new Map(keys.split(',').filter(Boolean).map((p) => p.split(':') as [string, string]));
+    const fw = await point.firmware(trusted);
+    say({ event: 'firmware', version: fw?.manifest.version ?? null, verified: fw?.verified ?? null });
   }
   if (has('stream')) point.stream((s) => void onScreen(s));
   else

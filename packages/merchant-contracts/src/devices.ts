@@ -284,6 +284,42 @@ export const ActivatePoint = z.object({ code: PointCode, secret: z.string().min(
 export const PointKey = z.object({ deviceKey: z.string().min(32) });
 export type PointKey = z.infer<typeof PointKey>;
 
+/**
+ * `GET /api/device/point/firmware`: the newest firmware Clear publishes for the asking Point's model
+ * (204 when there's none). Signed with Ed25519 by a key the API never holds; the Point carries the
+ * public keys and installs only what verifies (docs/hardware/point-device-api.md, 7).
+ */
+export const POINT_FIRMWARE_CONTEXT = 'clear-point-firmware/v1';
+export const FirmwareVersion = z.string().regex(/^\d{1,4}\.\d{1,4}\.\d{1,4}$/, 'A version like 1.0.4');
+export const PointFirmware = z.object({
+  model: z.enum(['point', 'point_large']),
+  version: FirmwareVersion,
+  /** Where the image is, over HTTPS. */
+  url: z.string().url().startsWith('https://'),
+  /** Of the image, lower-case hex. */
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  sizeBytes: z.number().int().positive(),
+  /** On battery, it installs only above this. */
+  minBattery: z.number().int().min(0).max(100),
+  /** Which of the Point's public keys signed it. */
+  keyId: z.string().regex(/^[a-z0-9-]{1,40}$/),
+  /** Ed25519 over `firmwareSigningPayload`, base64. */
+  signature: z.string().min(80).max(100),
+});
+export type PointFirmware = z.infer<typeof PointFirmware>;
+
+/** Exactly what is signed: one field per line, in this order, UTF-8, no trailing newline. */
+export const firmwareSigningPayload = (m: Omit<PointFirmware, 'signature'>) =>
+  [POINT_FIRMWARE_CONTEXT, m.model, m.version, m.url, m.sha256, String(m.sizeBytes), String(m.minBattery), m.keyId].join('\n');
+
+/** 1.0.10 is newer than 1.0.9. */
+export function compareFirmware(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i += 1) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
+  return 0;
+}
+
 /** `POST /api/device/point/health`. */
 export const PointHealthReport = PointHealth.omit({ lastSeenAt: true, firmwareCurrent: true });
 export type PointHealthReport = z.infer<typeof PointHealthReport>;

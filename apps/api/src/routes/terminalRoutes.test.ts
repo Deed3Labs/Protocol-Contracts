@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { Db } from '../db/db.js';
 import { seedShop, testDb } from '../db/testDb.js';
 import type { MerchantSession } from '../services/merchant/sessionStore.js';
+import { newSigningKey, publishFirmware, signFirmware, trustedKeys } from '../services/merchant/terminal/firmware.js';
 import { devicePointRouter } from './devicePoint.js';
 import { merchantTerminalRouter } from './merchantTerminal.js';
 import { pointPageRouter, receiptPageRouter, type PhonePageDeps } from './phonePages.js';
@@ -139,6 +140,24 @@ describe('the Point’s own API', () => {
  * the e2e path with no hardware. It activates with the claim's secret, reports health, follows its
  * screen by long poll, and presses Call; every answer is parsed with the contract.
  */
+const routeKey = newSigningKey('clear-route');
+const trustedKey = routeKey.publicKey;
+
+describe('firmware for a Point', () => {
+  test('none published: 204; published for its model: the signed manifest; no key: 401', async () => {
+    const auth = { authorization: `Bearer ${point.key}` };
+    expect((await call('/api/device/point/firmware', { headers: auth })).status).toBe(204);
+    const k = routeKey;
+    const m = signFirmware({ privateKey: k.privateKey, keyId: k.keyId, model: 'point', version: '1.0.4', url: 'https://firmware.example/point-1.0.4.bin', image: new Uint8Array(64) });
+    await publishFirmware(db, { manifest: m, keys: trustedKeys(`clear-route:${k.publicKey}`) });
+    const got = await call('/api/device/point/firmware', { headers: auth });
+    expect(got.status).toBe(200);
+    expect(got.body).toEqual(m);
+    expect(got.headers.get('cache-control')).toBe('no-store');
+    expect((await call('/api/device/point/firmware')).status).toBe(401);
+  });
+});
+
 describe('the fake Point, end to end', () => {
   test('claimed, activated, idle on its number, then Call lights it', async () => {
     const tables = (await call('/api/merchant/tables', { headers: as('jen') })).body.tables;
@@ -149,7 +168,7 @@ describe('the fake Point, end to end', () => {
     const claimed = await call('/api/merchant/points/claim', { headers: as('owner'), body: { code: 'N9N9' } });
     await call(`/api/merchant/hardware/${claimed.body.device.id}`, { method: 'PATCH', headers: as('owner'), body: { name: 'Table 9', point: { placement: 'table', tableId: nine } } });
 
-    const proc = Bun.spawn(['bun', join(import.meta.dir, '../../../merchant/scripts/fake-point.ts'), '--api', base, '--code', 'N9N9', '--secret', claimed.body.provisioning.secret, '--health', '--press', 'call', '--screens', '2'], {
+    const proc = Bun.spawn(['bun', join(import.meta.dir, '../../../merchant/scripts/fake-point.ts'), '--api', base, '--code', 'N9N9', '--secret', claimed.body.provisioning.secret, '--health', '--firmware', `clear-route:${trustedKey}`, '--press', 'call', '--screens', '2'], {
       stdout: 'pipe',
       stderr: 'pipe',
     });
@@ -158,10 +177,12 @@ describe('the fake Point, end to end', () => {
     clearTimeout(timer);
     expect(await proc.exited).toBe(0);
     const lines = out.trim().split('\n').map((l) => JSON.parse(l));
-    expect(lines.map((l) => l.event)).toEqual(['activated', 'health', 'state', 'pressed', 'state']);
-    expect(lines[2].screen).toMatchObject({ code: 'N9N9', table: 'Table 9', state: { kind: 'idle', mode: 'number' }, lit: false });
-    expect(lines[3].request).toMatchObject({ kind: 'call', state: 'open' });
-    expect(lines[4].screen).toMatchObject({ state: { kind: 'called' }, lit: true });
+    expect(lines.map((l) => l.event)).toEqual(['activated', 'health', 'firmware', 'state', 'pressed', 'state']);
+    // The release published above, checked by the fake Point with the key it carries, as firmware will.
+    expect(lines[2]).toEqual({ event: 'firmware', version: '1.0.4', verified: true });
+    expect(lines[3].screen).toMatchObject({ code: 'N9N9', table: 'Table 9', state: { kind: 'idle', mode: 'number' }, lit: false });
+    expect(lines[4].request).toMatchObject({ kind: 'call', state: 'open' });
+    expect(lines[5].screen).toMatchObject({ state: { kind: 'called' }, lit: true });
     const health = (await call('/api/merchant/hardware', { headers: as('owner') })).body.find((d: { id: string }) => d.id === claimed.body.device.id).health;
     expect(health).toMatchObject({ batteryPercent: 82, firmware: '1.0.3', case: { kind: 'pay', buttons: 'ok' } });
   }, 20_000);
