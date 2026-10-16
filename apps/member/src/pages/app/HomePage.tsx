@@ -23,6 +23,8 @@ import AddMoneyDialog from '@/components/clear/AddMoneyDialog';
 import TransactionDetailDialog from '@/components/clear/TransactionDetailDialog';
 import { HOME_DAY_ONE, SAVINGS_DAY_ONE } from '@/data/clearPlaceholder';
 import { useIsDesktop } from '@/lib/useIsDesktop';
+import YourShopsCell from '@/components/clear/YourShopsCell';
+import type { YourShop } from '@/utils/apiClient';
 import { activePlans, addableTier, creditLimit, savingsTotal, type ActivityRow, type HomeData } from '@/lib/clearModel';
 
 /**
@@ -48,7 +50,10 @@ export default function HomePage({
   onSetSplit,
   onPayBack,
   savingsFree,
+  yourShops = [],
 }: {
+  /** Shops whose rewards they've joined (rewards spec, section 6): a list and links, once there's one. */
+  yourShops?: YourShop[];
   data?: HomeData;
   /** Nothing known yet: the populated layout with placeholder figures, never the day-one layout. */
   pending?: boolean;
@@ -247,6 +252,13 @@ export default function HomePage({
     </>
   );
 
+  // Its own full-width row under the grid, so the grid's pairs of cells stay paired.
+  const shopsCell = yourShops.length ? (
+    <div className="c-slab c-one">
+      <YourShopsCell shops={yourShops} />
+    </div>
+  ) : null;
+
   if (dayOne) {
     // A member who joined at a counter already has a plan, and it is why they are here, so the shelf
     // sits between setup and savings. A member who signed up directly has an empty shelf, and it
@@ -260,6 +272,7 @@ export default function HomePage({
           <SetupPanel tasks={data.tasks} onAction={onTask} onAddMoney={() => setAddMoneyOpen(true)} />
           {fromCounter && termPlans(true)}
           <SavingsSummaryCard savings={data.savings} emptyState />
+          {shopsCell}
         </div>
         {modals}
       </>
@@ -323,6 +336,7 @@ export default function HomePage({
             {activity}
           </div>
         )}
+        {shopsCell}
       </div>
 
       {modals}

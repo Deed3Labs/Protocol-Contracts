@@ -19,6 +19,9 @@ export default defineConfig({
     exclude: ['@farcaster/mini-app-solana', '@abstract-foundation/agw-client'],
   },
   build: {
+    // Its own folder, not `/assets`: a shop's link is also served from the apex (useclear.org/s/*,
+    // rewritten by clearpath-website), where `/assets` is the Clear app's phone pages.
+    assetsDir: '_rw',
     rollupOptions: {
       external: [/^@farcaster\/mini-app-solana/, /^@abstract-foundation\/agw-client/],
     },

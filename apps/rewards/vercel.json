@@ -19,7 +19,7 @@
   ],
   "headers": [
     {
-      "source": "/assets/(.*)",
+      "source": "/_rw/(.*)",
       "headers": [
         {
           "key": "Cache-Control",

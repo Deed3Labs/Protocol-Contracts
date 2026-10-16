@@ -1,5 +1,5 @@
 import type { ActivityItem } from '@/hooks/useClearTransactions';
-import type { CardTransaction, ChargePayment, CreditRepaymentEntry } from '@/utils/apiClient';
+import type { CardTransaction, ChargePayment, CreditRepaymentEntry, ShopPurchase } from '@/utils/apiClient';
 import { categoryForMcc } from './mccCategory';
 import type { ActivityRow, ActivityKind, ActivitySource } from '@/lib/clearModel';
 import type { MemberCharge } from '@/utils/apiClient';
@@ -137,6 +137,29 @@ export function chargePaymentRow(p: ChargePayment, ts: number): ActivityRow {
   };
 }
 
+/**
+ * Whether a shop's card sale was the member's own Clear card, which the card feed already lists: the
+ * same last four, or (the feed has no last four) the same amount within a quarter of an hour.
+ */
+function onClearCard(p: ShopPurchase, cards: CardTransaction[], cardLast4?: string): boolean {
+  if (cardLast4 && p.cardLast4 === cardLast4) return true;
+  const at = Date.parse(p.at);
+  return cards.some((c) => Math.abs(Date.parse(c.at) - at) <= 15 * 60_000 && (c.amountCents === p.amountCents || c.heldCents === p.amountCents));
+}
+
+/** A card purchase at a Clear shop, marked as card: the member's own card, not Clear's money. */
+export function shopPurchaseRow(p: ShopPurchase): ActivityRow {
+  return {
+    id: `shop:${p.orderId}`,
+    name: p.shop.name,
+    ...when(Date.parse(p.at)),
+    kind: 'spending',
+    source: 'card',
+    amount: -p.amountCents / 100,
+    paidFromLabel: p.cardLast4 ? `Card ••${p.cardLast4}` : 'Card',
+  };
+}
+
 /** The same payment given back. */
 export function chargeRefundRow(p: ChargePayment, ts: number): ActivityRow {
   return {
@@ -180,6 +203,7 @@ export function mergedActivityRows(
   repayments: CreditRepaymentEntry[] = [],
   chargePayments: ChargePayment[] = [],
   charges: MemberCharge[] = [],
+  shopPurchases: ShopPurchase[] = [],
 ): ActivityRow[] {
   /*
    * An on-chain repayment is also a token transfer, and the chain feed shows it as one. The
@@ -218,6 +242,9 @@ export function mergedActivityRows(
     ...shopRows,
     // Charges the rows above don't cover: waiting on them, over time, never charged.
     ...chargeActivityRows(charges),
+    // Card purchases at Clear shops, from before they set up Clear too. One on their own Clear card
+    // is already a card row above, so it isn't listed twice.
+    ...shopPurchases.filter((p) => !onClearCard(p, cards, cardLast4)).map((p) => ({ ts: Date.parse(p.at), row: shopPurchaseRow(p) })),
   ]
     .sort((a, b) => b.ts - a.ts)
     .map((entry) => entry.row);

@@ -26,6 +26,7 @@ import {
 import {
   joinShop,
   leaveShop,
+  memberShopPurchases,
   myShops,
   partners,
   rewardsMe,
@@ -38,6 +39,8 @@ import {
 } from '../services/merchant/rewards/customerApp.js';
 import { checkDomain, setDomain } from '../services/merchant/rewards/domains.js';
 import { REWARDS_STATUS, RewardsError } from '../services/merchant/rewards/errors.js';
+import { resolveMemberAuthSubject } from '../middleware/memberCapabilities.js';
+import { memberStore } from '../services/memberStore.js';
 import { fontFile, fontsFor, uploadFont } from '../services/merchant/rewards/fonts.js';
 import { createPerson, deletePerson, requirePerson, resolvePerson, toPerson, type Caller } from '../services/merchant/rewards/people.js';
 import {
@@ -86,6 +89,8 @@ export interface RewardsDeps {
   limits: { read: RequestHandler; act: RequestHandler };
   /** Where the API serves its own files from, for font URLs. */
   apiUrl: string;
+  /** The member's auth subject once onboarding is submitted, or null (`GET /api/rewards/purchases`). */
+  onboarded: (req: Request) => Promise<string | null>;
 }
 
 const pinCheck: OrderDeps['pinCheck'] = async (merchant, pin) => {
@@ -111,6 +116,13 @@ export const defaultRewardsDeps = (): RewardsDeps => ({
   privy: requireAuth,
   limits: { read: limitByAddress('rewards', 60_000, 240), act: limitByAddress('rewards-act', 60_000, 30) },
   apiUrl: (process.env.API_PUBLIC_URL || '').replace(/\/+$/, ''),
+  onboarded: async (req) => {
+    if (!memberStore.isConfigured()) return null;
+    await memberStore.ensureReady();
+    const subject = await resolveMemberAuthSubject(req);
+    const member = await memberStore.getMemberByAuthSubject(subject);
+    return member && member.status !== 'ONBOARDING' ? subject : null;
+  },
 });
 
 declare global {
@@ -280,6 +292,12 @@ export function rewardsRouter(deps: RewardsDeps = defaultRewardsDeps()): Router 
   router.get('/me/shops', requireRewards, run(async (db, req) => {
     const p = await resolvePerson(db, deps.clear, callerOf(req.rewards!));
     return p ? myShops(db, { person: p }) : { shops: [] };
+  }));
+  // Activity's card and cash purchases at shops, once they've set up Clear (Phase 6).
+  router.get('/purchases', deps.privy, run(async (db, req) => {
+    const subject = await deps.onboarded(req);
+    if (!subject) throw new RewardsError('Complete account onboarding before using this feature', 'forbidden');
+    return memberShopPurchases(db, { authSubject: subject, did: req.auth?.profileUuid ?? null });
   }));
   router.post('/me/code', requireRewards, run(async (_db, req) => {
     const { id, expiresAt } = mintIdentityId(req.rewards!.wallet);

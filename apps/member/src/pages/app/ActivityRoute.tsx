@@ -6,6 +6,7 @@ import { mergedActivityRows } from '@/lib/activityMapping';
 import { useChargeHistory } from '@/hooks/useChargeHistory';
 import { useCreditRepayments } from '@/hooks/useCreditRepayments';
 import { useChargePayments } from '@/hooks/useChargePayments';
+import { useShopPurchases } from '@/hooks/useRewards';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { useAppKitAccount } from '@/lib/walletCompat';
 import { onChainStale } from '@/lib/chainStale';
@@ -71,6 +72,8 @@ export default function ActivityRoute() {
   const chargePayments = useChargePayments(address);
   // Every charge they've had: waiting ones, over time, never charged (paid-now ones come from above).
   const charges = useChargeHistory(address);
+  // Card purchases at Clear shops, including from before they set up Clear (rewards, Phase 6).
+  const shopPurchases = useShopPurchases(address);
   const [pendingClaim, setPendingClaim] = useState<PendingClaim | undefined>(undefined);
   const [moved, setMoved] = useState<Record<string, string>>({});
   const [grouping, setGrouping] = useState(true);
@@ -151,7 +154,7 @@ export default function ActivityRoute() {
          * shows up, and it was on-chain items alone — so a card purchase counted towards the cycle
          * total, the category bar and the merchant list, then appeared nowhere underneath them.
          */
-        rows: mergedActivityRows(items, cards, undefined, repayments, chargePayments, charges),
+        rows: mergedActivityRows(items, cards, undefined, repayments, chargePayments, charges, shopPurchases),
         cycleSpend,
         categories,
         merchants,

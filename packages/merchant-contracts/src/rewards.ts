@@ -578,6 +578,29 @@ export const ShopActivity = z.object({
 export type ShopActivity = z.infer<typeof ShopActivity>;
 
 /**
+ * `GET /api/rewards/purchases`: a member's card purchases at Clear shops, the ones their rewards
+ * recorded before (and after) they set up Clear, shown in Activity marked as card. Clear payments
+ * aren't here (Activity has them from the chain), nor is cash, which Activity's "Cash" would misname.
+ * Only once onboarding is submitted (rewards spec, Phase 6).
+ */
+export const MemberShopPurchases = z.object({
+  items: z.array(
+    z.object({
+      orderId: Id,
+      shop: z.object({ slug: ShopSlug.nullable(), name: z.string() }),
+      at: Timestamp,
+      /** What was paid by card, tip included. */
+      amountCents: NonNegativeCents,
+      /** The card's last four, so a sale on the member's own Clear card isn't listed twice. */
+      cardLast4: z.string().regex(/^\d{4}$/).nullable(),
+      /** Earned there, when they'd joined. */
+      points: z.object({ earned: z.number().int(), name: PointsName }).nullable(),
+    }),
+  ),
+});
+export type MemberShopPurchases = z.infer<typeof MemberShopPurchases>;
+
+/**
  * `GET /api/s/:slug/bill/:point`: a Point's bill as the signed-in customer sees it, with the reward
  * they have ready that matches it (on by default) and what they'd earn either way.
  */

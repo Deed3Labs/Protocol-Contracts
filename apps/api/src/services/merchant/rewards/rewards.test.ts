@@ -15,13 +15,13 @@ import { type ClearCharges, createCashTender, createClearTender, sendClearTender
 import { settleOrder } from '../orders/settle.js';
 import { fixedClearSide, type ClearSide } from './clearSide.js';
 import { addCustomer, answerCounterConfirm, claimReward, counterCustomer, openClaim, orderCustomerState, setOrderMember, type RewardsNotifier } from './counter.js';
-import { joinShop, leaveShop, shopPaid } from './customerApp.js';
+import { joinShop, leaveShop, memberShopPurchases, shopPaid } from './customerApp.js';
 import { addEntry, balance, expirePoints, onOrderPaid, onOrderRefunded } from './ledger.js';
 import { createPerson, personByDid, resolvePerson } from './people.js';
 import { checkDomain, setDomain } from './domains.js';
 import { createReward, ensureShopApp, offersFor, patchShopApp, rulesAt, shopAppRow, updateOffer } from './shopApp.js';
 import { mintIdentityId, mintSession } from './tokens.js';
-import { shopRouter, type RewardsDeps } from '../../../routes/rewards.js';
+import { rewardsRouter, shopRouter, type RewardsDeps } from '../../../routes/rewards.js';
 
 let db: Db;
 beforeAll(async () => {
@@ -500,6 +500,7 @@ describe('a token that sees one shop', () => {
       privy: (req, res) => res.status(401).json({ error: 'privy only' }),
       limits: { read: pass, act: pass },
       apiUrl: '',
+      onboarded: async () => null,
     };
     const app = express();
     app.use(express.json());
@@ -580,5 +581,70 @@ describe('Settings › Discounts and Own domain', () => {
     const checked = await checkDomain(db, shop.merchant);
     expect(checked).toMatchObject({ domain: set.domain, status: 'pending', record: set.record });
     expect(checked.checkedAt).not.toBeNull();
+  });
+});
+
+describe('history after onboarding (Phase 6)', () => {
+  /** A card sale at the counter's reader, with this person on the order. */
+  async function payCard(shop: Awaited<ReturnType<typeof miCasa>>, orderId: string) {
+    const fake = fakeProvider();
+    const acct = `acct_rw_${shop.merchant.slice(-6)}`;
+    const cc = await connectorStore.insert(db, { merchant: shop.merchant, provider: 'stripe', externalAccountId: acct, connectedBy: shop.staff.owner });
+    await connectorStore.applyStatus(db, { provider: 'stripe', externalAccountId: acct, chargesEnabled: true, detailsSubmitted: true, at: new Date() });
+    const reader = `rdr_rw_${shop.merchant.slice(-6)}`;
+    await db.query(`INSERT INTO merchant.readers (id, merchant, connector_id, provider, type, external_reader_id, label) VALUES ($1,$2,$3,'stripe','m2',$4,'M2')`, [reader, shop.merchant, cc.id, `M2-${shop.merchant}`]);
+    const o = await getOrder(db, shop.merchant, orderId);
+    const start = await createCardTender(db, fake.provider, { merchant: shop.merchant, orderId, staffId: shop.staff.jen, amountCents: o.totalCents, tipCents: 0, readerId: reader, idempotencyKey: key() });
+    fake.tap(fake.payments.values().next().value!.id);
+    await syncCardTender(db, fake.provider, { merchant: shop.merchant, tenderId: start.tenderId, actor: null });
+  }
+
+  test('a rewards-only card purchase shows, marked as card, once they’ve set up Clear; Clear payments are left to the chain', async () => {
+    const shop = await miCasa();
+    const did = `did:privy:marco-${seq++}`;
+    const marco = await createPerson(db, fixedClearSide([]), { did, wallet: wallet(), phone: '+19095550188' }, { firstName: 'Marco' });
+    await joinShop(db, { slug: shop.slug, person: marco, body: { texts: 'codes', birthMonth: null, consentVersion: CONSENT, ref: null, orderId: null } });
+    const byCard = await shop.table6();
+    await setOrderMember(db, { merchant: shop.merchant, orderId: byCard.id, personId: marco.id, by: shop.staff.jen, via: 'phone' });
+    await payCard(shop, byCard.id);
+    const byClear = await shop.table6();
+    await setOrderMember(db, { merchant: shop.merchant, orderId: byClear.id, personId: marco.id, by: shop.staff.jen, via: 'phone' });
+    await payClear(shop, byClear.id);
+
+    // The same Privy account, now a member: their earlier card purchase is theirs.
+    const out = await memberShopPurchases(db, { authSubject: 'member-marco', did });
+    expect(out.items).toEqual([
+      { orderId: byCard.id, shop: { slug: shop.slug, name: expect.any(String) }, at: expect.any(String), amountCents: 1733, cardLast4: '4242', points: { earned: 16, name: { kind: 'points' } } },
+    ]);
+    // Linked by onboarding instead (another sign-in method): found by the member subject.
+    await db.query('UPDATE rewards.people SET member_subject = $2 WHERE id = $1', [marco.id, 'member-marco']);
+    expect((await memberShopPurchases(db, { authSubject: 'member-marco', did: null })).items.map((i) => i.orderId)).toEqual([byCard.id]);
+    expect((await memberShopPurchases(db, { authSubject: 'someone-else', did: null })).items).toEqual([]);
+  });
+
+  test('the route waits for onboarding', async () => {
+    const pass: express.RequestHandler = (_q, _r, next) => next();
+    const base: RewardsDeps = {
+      db: async () => db,
+      clear: fixedClearSide([]),
+      notify: { text: async () => true, app: async () => undefined },
+      orders: () => noTax,
+      chargePaidNow: async () => null,
+      rewardsUrl: 'https://rewards.test',
+      privy: (req, _res, next) => ((req.auth = { profileUuid: 'did:privy:nobody', walletAddress: '', token: '' } as NonNullable<express.Request['auth']>), next()),
+      limits: { read: pass, act: pass },
+      apiUrl: '',
+      onboarded: async () => null,
+    };
+    const serve = async (deps: RewardsDeps) => {
+      const app = express();
+      app.use('/api/rewards', rewardsRouter(deps));
+      const server = app.listen(0);
+      const r = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/api/rewards/purchases`);
+      server.close();
+      return { status: r.status, body: await r.json() };
+    };
+    expect(await serve(base)).toMatchObject({ status: 403, body: { message: 'Complete account onboarding before using this feature' } });
+    expect(await serve({ ...base, onboarded: async () => 'member-nobody' })).toEqual({ status: 200, body: { items: [] } });
   });
 });

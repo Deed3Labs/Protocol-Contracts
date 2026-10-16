@@ -109,8 +109,9 @@ describe('a card purchase appears on the Activity page too', () => {
      * looking at a recent-activity preview with no purchases in it. One merge, used by both.
      */
     // Activity also lists shop charges (waiting on them, over time, never charged): the Charges page's.
-    expect(activity).toContain('mergedActivityRows(items, cards, undefined, repayments, chargePayments, charges)');
-    expect(home).toContain('mergedActivityRows(items, cards, undefined, repayments, chargePayments)');
+    // Both list card purchases at Clear shops too, from before the member set up Clear (rewards, Phase 6).
+    expect(activity).toContain('mergedActivityRows(items, cards, undefined, repayments, chargePayments, charges, shopPurchases)');
+    expect(home).toContain('mergedActivityRows(items, cards, undefined, repayments, chargePayments, [], shopPurchases)');
     expect(activity).not.toMatch(/rows: items\.map\(toActivityRow\),/);
     expect(home).not.toMatch(/recent: items\.slice/);
   });

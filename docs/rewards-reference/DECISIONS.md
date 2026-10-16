@@ -524,3 +524,90 @@ Matching a reward to the cart and what an order earns follow the server's rules 
   that are on `dev` too: Tables' axe checks and Devices "this tablet, renamed".
 - The contract conformance run (`apps/api/e2e/contract.ts`) has the new methods but needs a
   Postgres, which this machine doesn't have, so it hasn't been run.
+
+Approved at Hard Stop 5, 2026-10-16: Phase 5 as built, the offers and domain-check additions
+(`PATCH /api/merchant/shop-app/offers/:codeId`, `POST /api/merchant/shop-app/domain/check`), and the
+differences recorded above.
+
+## Phase 6 · The Clear app, and the apex
+
+### The apex: clearpath-website, branch `feat/apex-rewrites`
+
+As Phase 1 found, `useclear.org` is the marketing site, so the rewrite is there, not in
+`apps/member/vercel.json`.
+
+- **Its `next.config.ts` rewrites four kinds of path to Clear's apps:**
+  - `/s/*` to the rewards deployment, with its files under `/_rw/*`;
+  - `/p/*` and `/r/*` to the Clear app's phone pages, with their files under `/assets/*`.
+  - `REWARDS_ORIGIN` and `CLEAR_APP_ORIGIN` override the hosts (rewards.useclear.org,
+    app.useclear.org).
+- **This fixes a live break as well.** Today `useclear.org/p/A7K2`, the link printed on a Point,
+  redirects to www and answers 404, and `/s/<shop>` would too.
+- **The rewards build puts its files under `/_rw`** (`assetsDir`), not `/assets`, because the Clear
+  app's phone pages use `/assets` behind the same domain. The cache header follows.
+- **The rewrites run after the site's own pages and files.** None of them shadows anything: the site
+  has no `/s`, `/p`, `/r` or `/_rw`, and its `public/assets/logo.png` is still served.
+- **Checked locally:** the built site (`next start`) was run against the built rewards app.
+  - `/s/micasa` and its `/_rw` scripts came through, and the app booted until Privy, because the
+    local build has no app id.
+  - `/p/A7K2` and its `/assets` script came through from app.useclear.org.
+  - The site's own pages answered as before.
+- **Not confirmed live: that the apex serves a shop and that sign-in carries over.** The rewards
+  deployment doesn't exist yet. Sign-in carrying over rests on Privy's cookie sessions for the
+  verified `useclear.org` domain (the Phase 1 spike). It needs, from you:
+  - the Privy Domains step, adding `www.useclear.org` and `rewards.useclear.org` beside
+    app.useclear.org;
+  - the rewards Vercel project.
+- **The branch is pushed; there's no PR yet.** The rewards prompt asks for none until asked; the site
+  usually merges through PRs.
+- **The live app.useclear.org serves its main page at `/p/`**, so production is on an older build
+  than `dev`. That's outside this change.
+
+### Your shops
+
+- **On Home, as its own full-width cell under the grid**, shown once they've joined a shop, in both
+  the day-one and the furnished layout. The grid's pairs of cells stay paired. The section 6 frame
+  draws the list on a screen of its own; Home is where a list of the member's places fits without a
+  new tab.
+- **The rows match the hub's tiles** (`lib/yourShops.ts`, the same rule as apps/rewards
+  `shopLine`):
+  - "128 points";
+  - "340 points · 160 to a free tire rotation" (the reward's own name; the drawing shortens it);
+  - "6 of 10 stamps".
+
+  Each tile wears its shop's colour and heading type; the Ready chip is Clear's ink, as drawn.
+- **A row is a link to `rewards.useclear.org/shops/<slug>`** (`VITE_REWARDS_URL` overrides it). No
+  rewards screen is drawn in the Clear app.
+- **The data:** a hub session minted from the member's own Privy sign-in (`POST /api/rewards/session`),
+  then `GET /api/rewards/me/shops`. These are plain fetches, so a refusal there can never sign the
+  member out. The member app mirrors the response types rather than depending on the contracts
+  package (it hasn't so far, and that keeps its builds from following contract changes).
+- **Preview:** `/your-shops?preview=1` (the three shops section 6 draws, on a furnished Home).
+
+### History after onboarding
+
+- **`GET /api/rewards/purchases`** (Privy sign-in; answers only once onboarding is submitted, else 403
+  "Complete account onboarding before using this feature") lists a member's card purchases at Clear
+  shops.
+  - It takes them from every rewards identity that is theirs: the same Privy account, or the person
+    onboarding linked by `member_subject`.
+  - So what they bought as a rewards-only customer shows once they've set up Clear.
+- **Card only.** Clear payments are already in Activity from the chain. Cash is left out because
+  Activity's "Cash" means the Clear balance, and a shop's cash sale would read as spending from it.
+  A split shows its card part.
+- **In Activity they're marked as card:** a new source, `card` ("Card"), with "Card ••4242" as how
+  it was paid. Home's recent activity lists them too.
+- **A sale on the member's own Clear card isn't listed twice.** The card feed already has it, so a
+  shop purchase is folded into a card row with the same amount within 15 minutes. The feed carries no
+  last four, so the amount and time are what match; `cardLast4` is in the response for when it does.
+
+### Contract and API additions, for approval
+
+- `MemberShopPurchases` and `GET /api/rewards/purchases`, as above.
+- `RewardsDeps.onboarded`, the onboarding check the route uses (member store; tests stand one in).
+- `resolveMemberAuthSubject` is exported from `memberCapabilities.ts` for it.
+
+### Checks
+
+- Tests: API 949, member 783, merchant 201, rewards 5, contracts 71.
+- Builds: member and rewards on Node 22, the merchant typecheck, and the site's `next build`.

@@ -6,6 +6,8 @@ import {
   UpdateMembership,
   type Joined,
   type Membership,
+  type MemberShopPurchases,
+  type PointsName,
   type MyShops,
   type Partners,
   type RewardsMe,
@@ -349,4 +351,41 @@ export async function shopPaid(q: Queryable, deps: CustomerDeps, input: { slug: 
     points,
     joinOffer,
   };
+}
+
+/**
+ * `GET /api/rewards/purchases`: a member's card purchases at Clear shops, from every rewards identity
+ * that is theirs (their Privy account, or the one onboarding linked), so what they bought as a
+ * rewards-only customer shows in Activity once they've set up Clear. A split shows its card part.
+ */
+export async function memberShopPurchases(q: Queryable, input: { authSubject: string; did: string | null }): Promise<MemberShopPurchases> {
+  const { rows: people } = await q.query<{ id: string }>('SELECT id FROM rewards.people WHERE member_subject = $1 OR ($2::text IS NOT NULL AND privy_did = $2)', [input.authSubject, input.did]);
+  if (!people.length) return { items: [] };
+  const ids = people.map((p) => p.id);
+  const { rows } = await q.query<{ id: string; merchant: string; created_at: Date | string; member_person: string; name: string; slug: string | null; enabled: boolean | null; points_name: unknown }>(
+    `SELECT o.id, o.merchant, o.created_at, o.member_person, p.name, a.slug, a.enabled, a.points_name
+       FROM commerce.orders o JOIN merchant.profiles p ON p.merchant = o.merchant LEFT JOIN rewards.shop_apps a ON a.merchant = o.merchant
+      WHERE o.member_person = ANY($1::text[]) AND o.status = ANY($2::text[]) ORDER BY o.created_at DESC LIMIT 200`,
+    [ids, PAID],
+  );
+  const items: MemberShopPurchases['items'] = [];
+  for (const o of rows) {
+    const { rows: card } = await q.query<{ cents: string | number | null; last4: string | null }>(
+      `SELECT SUM(amount_cents + tip_cents) AS cents, MAX(card_last4) AS last4 FROM payments.tenders WHERE order_id = $1 AND method = 'card' AND status NOT IN ('pending','declined','cancelled')`,
+      [o.id],
+    );
+    const cents = Number(card[0]?.cents ?? 0);
+    if (cents <= 0) continue;
+    const { rows: pts } = await q.query<{ points: number }>(`SELECT points FROM rewards.loyalty_entries WHERE order_id = $1 AND person_id = $2 AND kind = 'earn'`, [o.id, o.member_person]);
+    const name = (typeof o.points_name === 'string' ? JSON.parse(o.points_name) : o.points_name) as PointsName | null;
+    items.push({
+      orderId: o.id,
+      shop: { slug: o.enabled ? o.slug : null, name: o.name },
+      at: new Date(o.created_at).toISOString(),
+      amountCents: cents,
+      cardLast4: card[0]?.last4 ?? null,
+      points: pts.length && name ? { earned: pts.reduce((sum, x) => sum + x.points, 0), name } : null,
+    });
+  }
+  return { items };
 }
