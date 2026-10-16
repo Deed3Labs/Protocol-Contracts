@@ -41,7 +41,7 @@ function PayTile({
   const t = {
     clear: ['Clear', 'Pay now or over time, approved on their phone', <IconClear key="i" />],
     card: ['Card', locked ? 'Connect Stripe in Settings to take cards' : 'Tap, insert or swipe on the counter reader', <IconCard key="i" />],
-    cash: ['Cash', 'Enter what they hand over, see the change', <IconCash key="i" />],
+    cash: ['Cash', locked ? 'Open the drawer on Home to take cash' : 'Enter what they hand over, see the change', <IconCash key="i" />],
     split: ['Split between methods', 'Part cash, part card, or any mix', <IconSplit key="i" />],
   }[method] as [string, string, ReactNode];
   return (
@@ -63,13 +63,18 @@ function PayTile({
   );
 }
 
-/** The four ways to pay. Card stays in the list, greyed, until Stripe is connected. */
+/**
+ * The four ways to pay. Card stays in the list, greyed, until Stripe is connected; Cash the same,
+ * until today's drawer is opened on Home (the server takes cash only into an open drawer).
+ */
 export function PayTiles({
   cardLocked,
+  cashLocked,
   unavailable = [],
   onPick,
 }: {
   cardLocked?: boolean;
+  cashLocked?: boolean;
   /** Ways to pay the backend cannot take yet; drawn locked like an unconnected card. */
   unavailable?: Method[];
   onPick?: (m: Method) => void;
@@ -78,7 +83,7 @@ export function PayTiles({
     <div className="c-cmain c-ck-pay">
       {(['clear', 'card', 'cash', 'split'] as const).map((m) =>
         unavailable.includes(m) && m !== 'card' ? null : (
-          <PayTile key={m} method={m} locked={m === 'card' && cardLocked} onPick={onPick} />
+          <PayTile key={m} method={m} locked={(m === 'card' && cardLocked) || (m === 'cash' && cashLocked)} onPick={onPick} />
         ),
       )}
     </div>
@@ -89,6 +94,7 @@ export function CheckoutView({
   body,
   server,
   cardLocked,
+  cashLocked,
   unavailable,
   onEditCart,
   onDiscount,
@@ -102,6 +108,8 @@ export function CheckoutView({
   /** A live shop: the order's totals, from the server, in place of the local estimate. */
   server?: Totals | null;
   cardLocked?: boolean;
+  /** Today's drawer isn't open: cash waits for it (Home › Open the drawer). */
+  cashLocked?: boolean;
   unavailable?: Method[];
   onEditCart?: () => void;
   onDiscount?: () => void;
@@ -203,7 +211,7 @@ export function CheckoutView({
             <span className="c-det">One method, or split</span>
           </div>
         </div>
-        <PayTiles cardLocked={cardLocked} unavailable={unavailable} onPick={onPick} />
+        <PayTiles cardLocked={cardLocked} cashLocked={cashLocked} unavailable={unavailable} onPick={onPick} />
         <div className="c-cfoot">
           <p className="c-det">Any of these asks for a tip first, on the customer&rsquo;s side of the screen.</p>
         </div>

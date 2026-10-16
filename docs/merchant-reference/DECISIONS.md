@@ -1337,3 +1337,8 @@ amendment, approved before the API builds on them.
   QR on the back of the Point (`useclear.org/p/A7K2`, or four letters on their own), and the line
   under it drops the example: "Or type the four letters under the code." The preview keeps the
   drawn frame and `A7K2`; `&live=1` uses the camera.
+- **Cash waits for the drawer.** Checkout's Cash tile is drawn locked, "Open the drawer on Home to
+  take cash", until today's drawer is opened, the way Card waits for Stripe: the server takes cash
+  only into an open drawer, so it used to fail after the amount was typed. It locks only when the
+  drawer is known not to be open; offline, unread, cash stays open and the queue files it into the
+  session open when it was taken. Preview: `/new?preview=1&screen=checkout-nodrawer`.

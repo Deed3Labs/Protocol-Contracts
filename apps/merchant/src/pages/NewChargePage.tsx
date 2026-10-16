@@ -202,6 +202,8 @@ export const SCREENS: Record<string, Partial<Flow>> = {
   checkout: { ...cart, screen: 'checkout' },
   // Before Stripe is connected: Card is locked (the page reads the screen name for that).
   'checkout-nostripe': { ...cart, screen: 'checkout' },
+  /** Today's drawer not opened yet: Cash locked, like an unconnected card. */
+  'checkout-nodrawer': { ...cart, screen: 'checkout' },
   'checkout-amount': { ...typed940, screen: 'checkout' },
   'checkout-discount': { ...cart, screen: 'checkout', discount: FALL10 },
   'discount-code': { ...cart, screen: 'checkout', sheet: { k: 'discount', code: 'FALL10' } },
@@ -337,6 +339,10 @@ export default function NewChargePage() {
     mode: params.get('items') ? 'items' : BLANK.mode,
     ...preset,
   }));
+  // Today's drawer: cash goes only into an open one. Read again on each checkout, so a drawer opened
+  // on Home meanwhile counts. Unread (offline), cash stays open: the queue files it into the session
+  // open when it was taken.
+  const liveDrawer = useApi(() => (preview ? Promise.resolve(null) : merchant.drawer()), [preview, f.screen === 'checkout']);
   const set = useCallback((p: Partial<Flow>) => setF((cur) => ({ ...cur, ...p })), []);
   // A receipt on a live shop: Text or Email asks where; paper prints from the order's own receipt.
   const pickSend = (sendBy: SendBy) => set(sendBy === 'none' ? { sendBy } : { sendBy, sheet: { k: 'send', by: sendBy, to: '' } });
@@ -907,6 +913,7 @@ export default function NewChargePage() {
         server={order ? totalsFromOrder(order) : null}
         // Live, cards open once Stripe is connected and cards are on in Settings › Payments.
         cardLocked={preview ? params.get('screen') === 'checkout-nostripe' : !cardsOn}
+        cashLocked={preview ? params.get('screen') === 'checkout-nodrawer' : !liveDrawer.loading && !liveDrawer.error && liveDrawer.data?.status !== 'open'}
         unavailable={
           isOffline(order)
             ? (['card', 'clear', 'split'] as Method[])
