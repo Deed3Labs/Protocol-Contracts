@@ -511,6 +511,11 @@ export const api = {
      * off-ramp from the cash account to a bank is a separate act that nothing here performs yet.
      */
     inCashAccount?: boolean;
+    /** Paid into the cash account now, and queued in the pool for later: owed money beyond what was released queues. */
+    paidNowCents?: number;
+    queuedCents?: number;
+    /** When the oldest queued withdrawal is due. */
+    releasesOn?: string | null;
     /** Why this is still only a request. Present only when the chain leg was tried and refused. */
     settlementNote?: string;
     /** The bank hop, when it was tried: sent to Bridge, or why not. */

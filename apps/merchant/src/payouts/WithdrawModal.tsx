@@ -16,10 +16,15 @@ import { type Destination, type Source, arrivalLabel, feeCents, feeLabel, routeL
  * already there goes straight out, so "how much" is not a complete question on its own. Tapping a
  * leg opens its sheet; the Route line reports the hop so it never becomes a step to think about.
  *
- * **The cap changes with the source.** Owed money is capped by what the pool can free today;
- * cash-account money only by the balance. The amount line says which is in force rather than
- * letting a merchant find out by being refused.
+ * **The cap changes with the source.** Owed money is capped by what the shop is owed: what the pool
+ * can free today is paid now, and the rest queues as a claim paid within the shop's 30-day terms,
+ * which is what starts those 30 days. Cash-account money is capped only by the balance. The amount
+ * line and the Queued row say which applies rather than letting a merchant find out afterwards.
  */
+
+/** The shop's terms: a queued claim is paid within this many days. */
+const TERMS_DAYS = 30;
+const termsEnd = (now = new Date()) => new Date(now.getTime() + TERMS_DAYS * 86_400_000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 export type Stage = 'amount' | 'from' | 'to' | 'sending' | 'done';
 type Outcome = Awaited<ReturnType<typeof api.requestWithdrawal>>;
@@ -59,7 +64,7 @@ export function WithdrawModal({
   onDone: () => void;
 }) {
   const [stage, setStage] = useState<Stage>(initialStage);
-  const firstSource: Source = initialSource ?? ((position.releasedReadyCents ?? 0) > 0 ? 'owed' : 'cash');
+  const firstSource: Source = initialSource ?? (position.owedCents > 0 && position.releasedReadyCents !== null ? 'owed' : 'cash');
   const [source, setSource] = useState<Source>(firstSource);
   const [destination, setDestination] = useState<Destination>(firstSource === 'cash' ? (bankName ? 'bank' : 'debit') : bankName ? 'bank' : 'cash');
   const [entry, setEntry] = useState(initialEntry);
@@ -70,11 +75,16 @@ export function WithdrawModal({
   const [speed, setSpeed] = useState<'standard' | 'same_day'>('standard');
   const sameDay = destination === 'bank' && !!bankAccountId && speed === 'same_day';
 
-  const cap = source === 'cash' ? position.cashAccountCents : position.releasedReadyCents;
+  const released = position.releasedReadyCents ?? 0;
+  // Owed money: everything owed, unless what is owed couldn't be read (then nothing is offered).
+  const cap = source === 'cash' ? position.cashAccountCents : position.releasedReadyCents === null ? null : position.owedCents;
   const cents = entry ? toCents(Number(entry) || 0) : 0;
   const overCap = cap !== null && cents > cap;
-  const fee = sameDay ? Math.ceil(cents / 100) : feeCents(destination, cents);
-  const receives = Math.max(0, cents - fee);
+  // Beyond what is released, owed money queues; only the released part moves now, and pays a fee.
+  const queues = source === 'owed' ? Math.max(0, cents - released) : 0;
+  const now = cents - queues;
+  const fee = sameDay ? Math.ceil(now / 100) : feeCents(destination, now);
+  const receives = Math.max(0, now - fee);
   const bank = bankName ?? 'your bank';
   const to = destination === 'cash' ? 'your cash account' : destination === 'bank' ? bank : 'your card';
 
@@ -104,12 +114,12 @@ export function WithdrawModal({
       <Sheet
         title="Where is it coming from?"
         onClose={() => setStage('amount')}
-        foot={<p className="c-det">Owed money is capped by what the pool can free today. Cash-account money is capped only by the balance.</p>}
+        foot={<p className="c-det">Owed money the pool can’t free today queues, and is paid within your {TERMS_DAYS}-day terms. Cash-account money is capped only by the balance.</p>}
       >
         <div className="c-rows">
           {(
             [
-              ['owed', 'Owed to you', 'Passes through your cash account', position.releasedReadyCents, 'free today'],
+              ['owed', 'Owed to you', 'Passes through your cash account', position.releasedReadyCents === null ? null : position.owedCents, `${usd(position.releasedReadyCents ?? 0)} free today`],
               ['cash', 'Cash account', 'Goes straight out', position.cashAccountCents, 'all of it'],
             ] as const
           ).map(([k, t, det, c, note]) => (
@@ -235,7 +245,16 @@ export function WithdrawModal({
     const queued = outcome?.queued === true;
     const firstHop = outcome?.inCashAccount === true && !paid;
     const heading = paid ? 'Paid' : queued ? 'Queued' : firstHop ? 'In your cash account' : 'On its way';
-    const arrives = paid ? 'In your account' : queued ? 'Within your payout terms' : firstHop ? `Released — ${arrivalLabel(destination)} to ${to}` : arrivalLabel(destination);
+    const paidNow = outcome?.paidNowCents ?? 0;
+    const arrives = paid
+      ? 'In your account'
+      : queued
+        ? paidNow > 0
+          ? `${usd(paidNow)} now, ${destination === 'cash' ? 'in your cash account' : `${arrivalLabel(destination)} to ${to}`}`
+          : 'Within your payout terms'
+        : firstHop
+          ? `Released — ${arrivalLabel(destination)} to ${to}`
+          : arrivalLabel(destination);
     const finish = () => {
       onDone();
       onClose();
@@ -265,6 +284,7 @@ export function WithdrawModal({
         </p>
         <div className="c-rows" style={{ marginTop: 'var(--s3)' }}>
           {kv('Arrives', arrives)}
+          {(outcome?.queuedCents ?? 0) > 0 && kv('Queued', `${usd(outcome!.queuedCents!)} · paid by ${outcome?.releasesOn ? formatCalendarDate(outcome.releasesOn) : termsEnd()}`)}
           {kv('Still owed to you', usd(Math.max(0, position.owedCents - (source === 'owed' ? cents : 0))))}
           {kv('Cash account', position.cashAccountCents === null ? '—' : usd(position.cashAccountCents - (source === 'cash' ? cents : 0)))}
           {position.nextPayoutOn && kv('Next payout', formatCalendarDate(position.nextPayoutOn))}
@@ -294,7 +314,7 @@ export function WithdrawModal({
   const from =
     source === 'cash'
       ? { nm: 'Cash account', bal: position.cashAccountCents === null ? 'balance unknown' : `${usd(position.cashAccountCents)} all of it` }
-      : { nm: 'Owed to you', bal: position.releasedReadyCents === null ? 'nothing free today' : `${usd(position.releasedReadyCents)} free` };
+      : { nm: 'Owed to you', bal: position.releasedReadyCents === null ? 'unknown just now' : `${usd(position.releasedReadyCents)} free · ${usd(position.owedCents)} owed` };
   const dest =
     destination === 'cash'
       ? { nm: 'Cash account', bal: 'Instant · no fee' }
@@ -307,11 +327,13 @@ export function WithdrawModal({
       ? 'That is more than is available from there.'
       : (cap ?? 0) <= 0
         ? source === 'owed'
-          ? 'Nothing is released early today. Change the source, or it arrives on your scheduled payout.'
+          ? 'Nothing is owed to you right now. Change the source to your cash account.'
           : 'Your cash account is empty. Change the source to what you are owed.'
-        : source === 'owed'
-          ? 'Owed money passes through your cash account. That hop is automatic.'
-          : 'Cash-account money goes straight out.');
+        : queues > 0
+          ? `${usd(queues)} is more than the pool can free today, so it queues and lands in your cash account by ${termsEnd()}.`
+          : source === 'owed'
+            ? 'Owed money passes through your cash account. That hop is automatic.'
+            : 'Cash-account money goes straight out.');
 
   return (
     <Sheet
@@ -332,8 +354,16 @@ export function WithdrawModal({
               <span>Arrives</span>
               <span>{sameDay ? 'Today, by same-day ACH' : arrivalLabel(destination)}</span>
             </div>
+            {queues > 0 && (
+              <div>
+                <span>Queued</span>
+                <span>
+                  {usd(queues)} · by {termsEnd()}
+                </span>
+              </div>
+            )}
             <div className="c-limit">
-              <span>You receive</span>
+              <span>{queues > 0 ? 'You receive now' : 'You receive'}</span>
               <span>{usd(receives)}</span>
             </div>
           </div>
@@ -364,7 +394,7 @@ export function WithdrawModal({
             : 'Nothing is released early today — it arrives on your scheduled payout'
           : source === 'cash'
             ? `All of your cash account, ${usd(cap)}`
-            : `All that is free today, of ${usd(position.owedCents)} owed`}
+            : `${usd(released)} free today, of ${usd(position.owedCents)} owed. The rest queues for up to ${TERMS_DAYS} days`}
       </p>
       <div className="c-qc">
         {quick.map((c, i) => (
@@ -375,7 +405,7 @@ export function WithdrawModal({
             disabled={cap === null || c > cap || c <= 0}
             onClick={() => setEntry(String(c / 100))}
           >
-            {i === 2 ? 'All free' : usd(c).replace(/\.00$/, '')}
+            {i === 2 ? (source === 'owed' ? 'All owed' : 'All free') : usd(c).replace(/\.00$/, '')}
           </button>
         ))}
       </div>

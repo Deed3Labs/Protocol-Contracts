@@ -892,9 +892,13 @@ With a Bridge test key, in a command's environment only, against `api.sandbox.br
   borrows what it's short from the yield pool, then the assurance pool's excess and buffer, and pays.
   Checked on a fork of Base Sepolia with MiMi Crack's real balance: $91.50 withdrawn and queued,
   31 days on an unrelated address drew $90.50 from the yield pool and the shop was paid $91.50.
-- **Open:** the app caps a withdrawal of owed money at what the pool has released, so a shop can't
-  queue the rest and its 30 days never start. Whether Withdraw should queue the remainder (starting
-  the clock) is the owner's call.
+- **Withdraw queues what the pool can't pay yet** (the owner's call, 2026-10-15). Owed money was
+  capped at what the pool had released, so the rest could never be withdrawn and its 30 days never
+  started. Now owed money is capped by what the shop holds on the ledger: the released part is
+  redeemed first and paid on the spot, the rest is redeemed after it and queues, due 30 days later.
+  The sheet says so before and after ("Queued · $91.50 by Nov 14", "You receive now"). A bank only
+  gets the paid-now part; the queued part lands in the cash account when it's paid. Fork-checked:
+  $1.00 then $91.50 for MiMi Crack, the first paid at once, the second queued.
 
 
 ## Terminal: what the spec met (Phase 1, 2026-10-15)

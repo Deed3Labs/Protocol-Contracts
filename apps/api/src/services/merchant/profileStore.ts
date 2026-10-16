@@ -33,6 +33,9 @@ import { merchantPayoutPosition, microsToCents } from '../chain/payoutReader.js'
 const CHARGES_TABLE = CHARGE_TABLE_NAME;
 const normalize = (m: string) => m.trim().toLowerCase();
 
+/** Owed money a shop can withdraw: its ledger balance, or unknown when the chain couldn't be read. */
+const chainOwedCents = (p: { owedCents: number; releasedReadyCents: number | null }) => (p.releasedReadyCents === null ? null : p.owedCents);
+
 export const merchantProfileStore = {
   async forDisplay(merchant: string, includeMoney: boolean) {
     const pool = getMerchantPool();
@@ -173,12 +176,13 @@ export const merchantProfileStore = {
     /**
      * The cap depends on where the money is coming from — reference section 07b.
      *
-     * Owed money is bounded by what the payout pool can free today; cash-account money is bounded
-     * only by the balance. Checking one cap for both would either block a merchant from moving
-     * their own money or let them draw against a pool that has not released it.
+     * Cash-account money is bounded by the balance. Owed money is bounded by what the shop holds on
+     * the ledger: what the pool can free today is paid now, and the rest is redeemed as a claim the
+     * pool pays within the shop's terms (net-30). Capping owed money at what was released, as this
+     * did, meant the rest could never be withdrawn, so its 30 days never started.
      */
     const cap =
-      input.source === 'cash' ? position.cashAccountCents : position.releasedReadyCents;
+      input.source === 'cash' ? position.cashAccountCents : chainOwedCents(position);
 
     if (cap === null) {
       return {
@@ -186,7 +190,7 @@ export const merchantProfileStore = {
         reason:
           input.source === 'cash'
             ? 'We cannot read your cash account just now. Try again shortly.'
-            : 'We cannot size an early release just now. It arrives on your scheduled payout.',
+            : 'We cannot read what you are owed just now. Try again shortly.',
       };
     }
     if (input.amountCents <= 0 || input.amountCents > cap) {
