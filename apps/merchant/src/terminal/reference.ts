@@ -279,22 +279,22 @@ export const MENU: {
 /** The order categories show in (section 10). */
 export const CATEGORY_ORDER = ['Tacos', 'Drinks', 'Dessert', 'Sides', 'Specials'];
 
-/** Table 12's tab (sections 8, 11, 13): 4 Al pastor, 2 Horchata, 1 Nachos grande, tax $3.70, $48.20. */
+/** Table 12's tab (sections 8, 11, 13): 4 Al pastor, 2 Horchata, 1 Nachos grande, tax $3.73, $48.23 at 8.375% (rewards DECISIONS › Figures; the reference draws $3.70 and $48.20). */
 export const TAB_12 = {
   lines: [
     ['pastor', 4],
     ['horchata', 2],
     ['nachos', 1],
   ] as [string, number][],
-  taxCents: 370,
-  totalCents: 4820,
+  taxCents: 373,
+  totalCents: 4823,
   sentAt: '7:42 PM',
 };
 
 /**
- * Order 0142 at the counter (sections 5, 7, 12). The reference draws $3.45 of tax and $45.70; at the
- * one rate Table 12's bill sets (8.32%), it's $3.51 and $45.76, $4.24 change from $50.00 (DECISIONS ›
- * Terminal Phase 4).
+ * Order 0142 at the counter (sections 5, 7, 12). The reference draws $3.45 of tax and $45.70; at Mi
+ * Casa's one rate, 8.375%, it's $3.54 and $45.79, $4.21 change from $50.00 (rewards DECISIONS ›
+ * Figures).
  */
 export const ORDER_0142 = {
   number: 142,
@@ -304,8 +304,8 @@ export const ORDER_0142 = {
     ['coke', 2],
     ['churros', 1],
   ] as [string, number][],
-  taxCents: 351,
-  totalCents: 4576,
+  taxCents: 354,
+  totalCents: 4579,
   handedOverCents: 5000,
   at: '12:41pm',
 };

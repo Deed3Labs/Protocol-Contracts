@@ -61,7 +61,7 @@ export function ShowOnSheet({
   points: Point[];
   tables: TableView[];
   value: string | null;
-  /** Items on each table's tab, by table id: "Its tab: 3 items, $48.20". */
+  /** Items on each table's tab, by table id: "Its tab: 3 items, $48.23". */
   tabItems?: Record<string, number>;
   onPick: (id: string | null) => void;
   onClose: () => void;
@@ -95,5 +95,5 @@ export function ShowOnSheet({
   );
 }
 
-/** "Its tab: 3 items, $48.20", from the tab's order when it's known. */
+/** "Its tab: 3 items, $48.23", from the tab's order when it's known. */
 export const tabDet = (items: number, cents: number) => `Its tab: ${items} item${items === 1 ? '' : 's'}, ${usd(cents)}`;

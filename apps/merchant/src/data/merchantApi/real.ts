@@ -170,5 +170,31 @@ export function realMerchantApi(request: Transport): MerchantApi {
     reconciliation: () => get('/reconciliation'),
     explainFlag: (flagId, input) => post(`/reconciliation/${id(flagId)}/explain`, input),
     sendStatement: (input) => post('/statements/send', input),
+
+    // ---- The shop's app and its customers (rewards spec, sections 8 and 9)
+    shopApp: () => get('/shop-app'),
+    updateShopApp: (input) => send('PATCH', '/shop-app', input),
+    createReward: (input) => post('/shop-app/rewards', input),
+    updateReward: (rewardId, input) => send('PATCH', `/shop-app/rewards/${id(rewardId)}`, input),
+    removeReward: async (rewardId) => {
+      await send('DELETE', `/shop-app/rewards/${id(rewardId)}`);
+    },
+    updateOffer: (codeId, input) => send('PATCH', `/shop-app/offers/${id(codeId)}`, input),
+    // The file is the body; its fields ride in the query (apps/api routes/rewards.ts).
+    uploadFont: (file, fields) =>
+      request(`${M}/shop-app/fonts?${new URLSearchParams({ name: fields.name, usedFor: fields.usedFor, licenceDeclared: String(fields.licenceDeclared), fileName: file instanceof File ? file.name : 'font' })}`, {
+        method: 'POST',
+        body: file,
+        headers: { 'Content-Type': 'application/octet-stream' },
+      }),
+    giveBack: (rules) => (rules ? post('/shop-app/give-back', { rules }) : get('/shop-app/give-back')),
+    setDomain: (input) => post('/shop-app/domain', input),
+    checkDomain: () => post('/shop-app/domain/check'),
+    addCustomer: (orderId, input) => post(`/orders/${id(orderId)}/customer`, input),
+    orderCustomer: (orderId) => get(`/orders/${id(orderId)}/customer`),
+    removeCustomer: async (orderId) => {
+      await send('DELETE', `/orders/${id(orderId)}/customer`);
+    },
+    inviteCustomer: (orderId) => post(`/orders/${id(orderId)}/customer/invite`),
   };
 }

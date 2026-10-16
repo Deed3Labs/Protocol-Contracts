@@ -67,7 +67,7 @@ import { memberWalletFrom } from '@/charge/memberCode';
 import { useOnline } from '@/lib/useOnline';
 import { printAfterCash, useCounterHardware, useDrawerForSale, useQueueSync, type PrintRow } from '@/terminal/counter';
 import { isOffline, offlineOrder, queueCashSale, rememberRates, type OfflineLine } from '@/terminal/offlineSale';
-import { miCasa, ORDER_0142 } from '@/terminal/reference';
+import { miCasa, ORDER_0142, TAB_12 } from '@/terminal/reference';
 import { ShowOnRow, ShowOnSheet, useShowOn } from '@/terminal/showOn';
 
 /**
@@ -1483,7 +1483,7 @@ export default function NewChargePage() {
         <CardTableSheet
           table={preview ? 'Table 12' : (counterHw.points.find((p) => p.id === tableReader.active)?.name ?? 'the table')}
           reader={preview ? 'M2 1A3F' : (shopReaders.data?.find((r) => r.id === tablePoint?.settings.readerId)?.label ?? 'its reader')}
-          amountCents={preview ? 4820 : dueCents}
+          amountCents={preview ? TAB_12.totalCents : dueCents}
           state={tableReader}
           waiting={tableReader.queue.map((id) => (preview && id === 'hw_t4' ? 'Table 4' : (counterHw.points.find((p) => p.id === id)?.name ?? 'Another table')))}
           onClose={() => setTableReader((t) => ({ ...t, phase: t.phase === 'connecting' ? 'ready' : t.phase }))}

@@ -18,7 +18,8 @@ import { addCustomer, answerCounterConfirm, claimReward, counterCustomer, openCl
 import { joinShop, leaveShop, shopPaid } from './customerApp.js';
 import { addEntry, balance, expirePoints, onOrderPaid, onOrderRefunded } from './ledger.js';
 import { createPerson, personByDid, resolvePerson } from './people.js';
-import { createReward, ensureShopApp, patchShopApp, rulesAt } from './shopApp.js';
+import { checkDomain, setDomain } from './domains.js';
+import { createReward, ensureShopApp, offersFor, patchShopApp, rulesAt, shopAppRow, updateOffer } from './shopApp.js';
 import { mintIdentityId, mintSession } from './tokens.js';
 import { shopRouter, type RewardsDeps } from '../../../routes/rewards.js';
 
@@ -544,5 +545,40 @@ describe('a token that sees one shop', () => {
     expect(body.rewards[0]).toMatchObject({ name: 'Free agua fresca', detail: '75 points · any size' });
     const manifest = await (await fetch(`${base}/api/s/${shops.a.slug}/manifest.webmanifest`)).json();
     expect(manifest).toMatchObject({ id: `/s/${shops.a.slug}/`, scope: `/s/${shops.a.slug}/`, start_url: `/s/${shops.a.slug}/`, display: 'standalone' });
+  });
+});
+
+describe('Settings › Discounts and Own domain', () => {
+  test('a code keeps its offer wording; Show in app and its audience decide who sees it', async () => {
+    const shop = await miCasa();
+    const code = (c: string, extra: Record<string, unknown>) =>
+      catalog.createDiscountCode(db, { merchant: shop.merchant, staffId: shop.staff.owner, code: { code: c, percent: 10, amountCents: null, appliesTo: { all: true }, startsAt: null, endsAt: null, oncePerCustomer: false, ...extra } });
+    const tue = await code('TACOTUE', { offer: { title: 'Taco Tuesday', detail: 'Two tacos for $7, in the shop or to go' }, days: [1] });
+    const staff = await code('STAFF20', { audience: 'members' });
+    expect(tue).toMatchObject({ showInApp: false, audience: 'everyone', offer: { title: 'Taco Tuesday' }, days: [1] });
+    expect(staff).toMatchObject({ showInApp: false, audience: 'members', offer: null, days: null });
+
+    expect(await updateOffer(db, shop.merchant, shop.staff.owner, staff.id, { showInApp: true })).toMatchObject({ showInApp: true });
+    expect(await updateOffer(db, shop.merchant, shop.staff.owner, tue.id, { showInApp: true })).toMatchObject({ showInApp: true });
+    const app = (await shopAppRow(db, shop.merchant))!;
+    expect(app.offer_code_ids).toEqual([staff.id, tue.id]);
+    const titles = async (who: { member: boolean; clearMember: boolean }) => (await offersFor(db, (await shopAppRow(db, shop.merchant))!, 'America/Los_Angeles', who)).map((o) => o.code);
+    expect(await titles({ member: false, clearMember: false })).toEqual(['TACOTUE']);
+    expect(await titles({ member: true, clearMember: false })).toEqual(['STAFF20', 'TACOTUE']);
+
+    await updateOffer(db, shop.merchant, shop.staff.owner, staff.id, { audience: 'everyone' });
+    await updateOffer(db, shop.merchant, shop.staff.owner, tue.id, { showInApp: false });
+    expect(await titles({ member: false, clearMember: false })).toEqual(['STAFF20']);
+    await expect(updateOffer(db, shop.merchant, shop.staff.owner, 'dsc_nope', { showInApp: true })).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  test('Check again stamps the domain and keeps it pending until it’s verified', async () => {
+    const shop = await miCasa();
+    await expect(checkDomain(db, shop.merchant)).rejects.toMatchObject({ code: 'not_found' });
+    const set = await setDomain(db, { merchant: shop.merchant, body: { domain: `rewards-${seq++}.micasatacos.com` } });
+    expect(set).toMatchObject({ status: 'pending', record: { type: 'CNAME', name: set.domain.split('.')[0], value: 'cname.vercel-dns.com' }, checkedAt: null });
+    const checked = await checkDomain(db, shop.merchant);
+    expect(checked).toMatchObject({ domain: set.domain, status: 'pending', record: set.record });
+    expect(checked.checkedAt).not.toBeNull();
   });
 });

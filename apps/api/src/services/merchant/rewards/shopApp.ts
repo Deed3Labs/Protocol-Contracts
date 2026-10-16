@@ -7,11 +7,13 @@ import {
   EarnRules,
   EarnRulesInput,
   giveBack,
+  OfferPatch,
   pointsWord,
   PointsName,
   Reward,
   RewardInput,
   ShopAppPatch,
+  type DiscountCode,
   type EarnSummary,
   type GiveBack,
   type OfferView,
@@ -21,6 +23,7 @@ import {
 } from '@clear/merchant-contracts';
 import { shopSlug } from '@clear/domain';
 import type { Queryable } from '../../../db/db.js';
+import { listDiscountCodes } from '../catalog/catalogService.js';
 import { RewardsError } from './errors.js';
 import { fontUsable } from './fonts.js';
 
@@ -410,4 +413,23 @@ export async function patchShopApp(q: Queryable, merchant: string, staffId: stri
     [merchant, p.slug ?? current.slug, p.enabled ?? current.enabled, JSON.stringify(brand), JSON.stringify(p.pointsName ?? current.pointsName), p.offerCodeIds ?? current.offerCodeIds],
   );
   if (p.rules) await saveRules(q, merchant, staffId, p.rules);
+}
+
+/**
+ * Settings › Discounts: a code's Show in app switch and who sees it. On puts it last among the
+ * app's offers; off takes it out. The app's order stays the shop's.
+ */
+export async function updateOffer(q: Queryable, merchant: string, staffId: string, codeId: string, body: unknown): Promise<DiscountCode> {
+  const parsed = OfferPatch.safeParse(body);
+  if (!parsed.success) throw new RewardsError(parsed.error.issues[0]?.message ?? 'That isn’t valid', 'invalid');
+  const p = parsed.data;
+  const { rows } = await q.query<{ id: string }>('SELECT id FROM commerce.discount_codes WHERE merchant = $1 AND id = $2 AND archived_at IS NULL', [merchant, codeId]);
+  if (!rows[0]) throw new RewardsError('No such code', 'not_found');
+  if (p.audience) await q.query('UPDATE commerce.discount_codes SET audience = $3 WHERE merchant = $1 AND id = $2', [merchant, codeId, p.audience]);
+  if (p.showInApp !== undefined) {
+    const current = toShopApp(await ensureShopApp(q, merchant, staffId));
+    const ids = current.offerCodeIds.filter((id) => id !== codeId);
+    await patchShopApp(q, merchant, staffId, { offerCodeIds: p.showInApp ? [...ids, codeId] : ids });
+  }
+  return (await listDiscountCodes(q, merchant)).find((c) => c.id === codeId)!;
 }

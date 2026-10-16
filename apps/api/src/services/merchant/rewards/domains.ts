@@ -25,3 +25,25 @@ export async function setDomain(q: Queryable, input: { merchant: string; body: u
   );
   return { domain, shopSlug: toShopApp(app).slug, status: 'pending', record, checkedAt: null, verifiedAt: null };
 }
+
+/**
+ * Check again: reads the record as it stands and stamps when it was looked at. Asking Vercel whether
+ * the record is in place is Phase 7's; until then a domain stays pending.
+ */
+export async function checkDomain(q: Queryable, merchant: string): Promise<ShopDomain> {
+  const app = await shopAppRow(q, merchant);
+  const { rows } = await q.query<{ domain: string; status: ShopDomain['status']; record: ShopDomain['record'] | string; checked_at: Date | null; verified_at: Date | null }>(
+    'UPDATE rewards.shop_domains SET checked_at = now() WHERE merchant = $1 AND removed_at IS NULL RETURNING domain, status, record, checked_at, verified_at',
+    [merchant],
+  );
+  const d = rows[0];
+  if (!app || !d) throw new RewardsError('Add a domain first', 'not_found');
+  return {
+    domain: d.domain,
+    shopSlug: toShopApp(app).slug,
+    status: d.status,
+    record: typeof d.record === 'string' ? JSON.parse(d.record) : d.record,
+    checkedAt: d.checked_at ? new Date(d.checked_at).toISOString() : null,
+    verifiedAt: d.verified_at ? new Date(d.verified_at).toISOString() : null,
+  };
+}

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { earnPoints, type EarnRules } from '@clear/merchant-contracts';
 import { scopeOf } from '../shell/scope';
 import { shortName } from '../screens/parts';
 import { FRAMES } from '../preview/frameList';
@@ -30,6 +31,10 @@ describe('the preview seed keeps the spec’s figures', () => {
     expect(TABLE_6.withReward).toEqual({ discountCents: 350, taxCents: 105, totalCents: 1355, earnsPoints: 12 });
     expect(1600 - 350 + 105).toBe(1355);
     expect(TABLE_6.withoutReward.totalCents).toBe(1600 + 133);
+    // Points count what's paid before tax, a point a dollar, on a Thursday: $12.50 and $16.00.
+    const rules = { unit: 'dollars', pointsPer: 1, perAmountCents: 100, keepTheChange: true, clearMultiplier: 1, boosts: [], visitMinCents: 0 } as unknown as EarnRules;
+    const earn = (netCents: number) => earnPoints({ rules, lines: [{ netCents, category: null }], at: { weekday: 3, time: '19:46' }, clearCents: 0, paidCents: netCents, carryCents: 0, stampedToday: false }).points;
+    expect([earn(1250), earn(1600)]).toEqual([TABLE_6.withReward.earnsPoints, TABLE_6.withoutReward.earnsPoints]);
     expect(21240 - 1355).toBe(19885);
     expect(128 - 75 + 12).toBe(65);
   });

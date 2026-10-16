@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Id, NonNegativeCents, PositiveCents, Timestamp } from './common';
 import { PointCode } from './devices';
+import type { DiscountCode } from './catalog';
 import type { PublicPay, PublicPayStarted } from './public';
 import { OpenSpan } from './shop';
 
@@ -690,6 +691,15 @@ export const ShopAppPatch = z.object({
   rules: EarnRulesInput.optional(),
 });
 
+/**
+ * `PATCH /api/merchant/shop-app/offers/:codeId`: Settings › Discounts' Show in app switch and who
+ * sees it. Switching one on puts it last in `offerCodeIds`; off takes it out. Owners and managers.
+ */
+export const OfferPatch = z.object({
+  showInApp: z.boolean().optional(),
+  audience: z.enum(['everyone', 'members', 'clear_members']).optional(),
+});
+
 // ---- The rules, worked out the same way everywhere -----------------------------------------------
 // The API ledger, the shop's give-back line and the app's "earns 12 points" all call these.
 
@@ -875,7 +885,7 @@ export function brandContrast(c: BrandColours): string[] {
   return out;
 }
 
-/** The rewards routes. `MerchantRewardsApi` joins `MerchantApi` in Phase 5, when the merchant app implements it. */
+/** The merchant's rewards routes, part of `MerchantApi`. */
 type In<T extends z.ZodType> = z.input<T>;
 
 /** No sign-in. */
@@ -922,6 +932,8 @@ export interface MerchantRewardsApi {
   createReward(input: In<typeof RewardInput>): Promise<Reward>;
   updateReward(id: string, input: In<typeof RewardInput>): Promise<Reward>;
   removeReward(id: string): Promise<void>;
+  /** Settings › Discounts: Show in app and the audience. */
+  updateOffer(codeId: string, input: In<typeof OfferPatch>): Promise<DiscountCode>;
   uploadFont(file: Blob, fields: In<typeof UploadFontFields>): Promise<UploadedFont>;
   /** The give-back line for rules not yet saved, as the owner changes them. */
   giveBack(rules?: In<typeof EarnRulesInput>): Promise<GiveBack>;

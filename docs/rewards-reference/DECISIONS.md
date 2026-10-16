@@ -399,3 +399,7 @@ Built 2026-10-16. `packages/member-kit` was extracted first, on its own branch `
 - **Live mode is built and type-checked, not run end to end.** The API branch isn't deployed, and the
   preview covers every frame.
 - **Logo icons at 192 and 512, geocoding for Near you, Web Push per origin.**
+
+Approved at Hard Stop 4, 2026-10-16: Phase 4 as built, the three additions (`PublicPoint.shop.slug`,
+the hub tiles' heading font, the Clear charge view's `reward` and `orderId`), and the differences
+recorded above.

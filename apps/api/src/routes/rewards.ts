@@ -36,7 +36,7 @@ import {
   updateMembership,
   type CustomerDeps,
 } from '../services/merchant/rewards/customerApp.js';
-import { setDomain } from '../services/merchant/rewards/domains.js';
+import { checkDomain, setDomain } from '../services/merchant/rewards/domains.js';
 import { REWARDS_STATUS, RewardsError } from '../services/merchant/rewards/errors.js';
 import { fontFile, fontsFor, uploadFont } from '../services/merchant/rewards/fonts.js';
 import { createPerson, deletePerson, requirePerson, resolvePerson, toPerson, type Caller } from '../services/merchant/rewards/people.js';
@@ -51,6 +51,7 @@ import {
   rewardsFor,
   rulesAt,
   toShopApp,
+  updateOffer,
   updateReward,
 } from '../services/merchant/rewards/shopApp.js';
 import { mintIdentityId, mintSession, readSession, type SessionClaims } from '../services/merchant/rewards/tokens.js';
@@ -382,6 +383,10 @@ export function merchantRewardsRouter(deps: RewardsDeps = defaultRewardsDeps()):
     });
   }));
   router.post('/shop-app/domain', requireMerchant, requireManager, run(async (db, req) => setDomain(db, { merchant: who(req).merchant, body: req.body })));
+  router.post('/shop-app/domain/check', requireMerchant, requireManager, run(async (db, req) => checkDomain(db, who(req).merchant)));
+  router.patch('/shop-app/offers/:codeId', requireMerchant, requireManager, run(async (db, req) =>
+    db.transaction((tx) => updateOffer(tx, who(req).merchant, who(req).staff.id, String(req.params.codeId), req.body)),
+  ));
 
   router.get('/orders/:id/customer', requireMerchant, run(async (db, req) => orderCustomerState(db, counterDeps(), { merchant: who(req).merchant, orderId: String(req.params.id) })));
   router.post('/orders/:id/customer', requireMerchant, run(async (db, req) =>

@@ -144,7 +144,7 @@ export const TABLE_6 = {
   ],
   // Tax per line at 8.375% (DECISIONS, Figures): $17.33 without the reward, $13.55 with it.
   withReward: { discountCents: 350, taxCents: 105, totalCents: 1355, earnsPoints: 12 },
-  withoutReward: { discountCents: 0, taxCents: 133, totalCents: 1733, earnsPoints: 17 },
+  withoutReward: { discountCents: 0, taxCents: 133, totalCents: 1733, earnsPoints: 16 },
   paidAt: NOW,
   counterCharge: 'CLRTBL6X',
 };

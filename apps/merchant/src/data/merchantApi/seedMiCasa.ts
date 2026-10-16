@@ -40,13 +40,12 @@ export const SHOP: Shop = {
 };
 
 /**
- * 8.32% on food. The reference's two bills don't agree on one rate (Table 12's $3.70 is 8.32% of
- * $44.50; order 0142's $3.45 would be 8.17% of $42.25), so Table 12's, which five sections draw,
- * sets it, and order 0142 comes to $45.76 (DECISIONS › Terminal Phase 4).
+ * 8.375% on food, the rate every rewards frame and Add items draw (rewards DECISIONS › Figures). It
+ * was 8.32%, set from Table 12's $3.70; Table 12 now comes to $48.23 and order 0142 to $45.79.
  */
 export const RATES_PPM: Record<TaxKind, number> = {
-  goods: 83_200,
-  food: 83_200,
+  goods: 83_750,
+  food: 83_750,
   labour: 0,
   exempt: 0,
 };
@@ -93,7 +92,57 @@ export function catalog(): CatalogItem[] {
 
 export { CATEGORY_ORDER };
 export const REORDERS: Reorder[] = [];
-export const DISCOUNT_CODES: DiscountCode[] = [];
+/**
+ * The codes Settings › Shop app lists under Offers in the app (rewards spec, section 8): Taco
+ * Tuesday and the tray code shown in the app, the staff code not.
+ */
+export const DISCOUNT_CODES: DiscountCode[] = [
+  {
+    id: 'dsc_tacotue',
+    code: 'TACOTUE',
+    percent: null,
+    amountCents: 200,
+    appliesTo: { categories: ['Tacos'] },
+    startsAt: null,
+    endsAt: null,
+    oncePerCustomer: false,
+    uses: 31,
+    showInApp: true,
+    audience: 'everyone',
+    offer: { title: 'Taco Tuesday', detail: 'Two tacos for $7, in the shop or to go' },
+    days: [1],
+  },
+  {
+    id: 'dsc_tray10',
+    code: 'TRAY10',
+    percent: 10,
+    amountCents: null,
+    appliesTo: { categories: ['Catering'] },
+    startsAt: null,
+    endsAt: new Date('2026-11-01T00:00:00-07:00').toISOString(),
+    oncePerCustomer: false,
+    uses: 4,
+    showInApp: true,
+    audience: 'everyone',
+    offer: { title: '10% off a tray', detail: 'Catering orders over $60' },
+    days: null,
+  },
+  {
+    id: 'dsc_staff20',
+    code: 'STAFF20',
+    percent: 20,
+    amountCents: null,
+    appliesTo: { all: true },
+    startsAt: null,
+    endsAt: null,
+    oncePerCustomer: false,
+    uses: 12,
+    showInApp: false,
+    audience: 'everyone',
+    offer: { title: '20% off', detail: 'Staff only' },
+    days: null,
+  },
+];
 
 /** The counter's Clear Tap (an M2 in its dock), Table 12's Pay case M2, and Tap to Pay on this tablet. */
 export const READERS: Reader[] = [
