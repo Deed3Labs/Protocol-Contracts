@@ -29,7 +29,7 @@ export type ClearOptions = {
 const DEFAULT_BASE_URL = 'https://api.useclear.org';
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_RETRIES = 2;
-const SECRET_KEY = /^sk_(test|live)_[A-Za-z0-9]+$/;
+const SECRET_KEY = /^clear_sk_(test|live)_[A-Za-z0-9]+$/;
 
 const env = (name: string): string | undefined => (typeof process === 'undefined' ? undefined : process.env[name]) || undefined;
 
@@ -38,19 +38,19 @@ function checkKey(key: unknown): string {
     throw new ClearError({
       type: 'authentication',
       code: 'key_missing',
-      message: 'No secret key. Pass yours: new Clear(process.env.CLEAR_SECRET_KEY), with sk_test_… or sk_live_… from Developers in the merchant app.',
+      message: 'No secret key. Pass yours: new Clear(process.env.CLEAR_SECRET_KEY), with clear_sk_test_… or clear_sk_live_… from Developers in the merchant app.',
     });
   }
   const k = key.trim();
-  if (k.startsWith('pk_')) {
+  if (k.startsWith('clear_pk_')) {
     throw new ClearError({
       type: 'permission',
       code: 'publishable_key_not_allowed',
-      message: 'That is a publishable key (pk_…). It belongs in the browser, with the Clear script; your server uses the secret key (sk_test_… or sk_live_…).',
+      message: 'That is a publishable key (clear_pk_…). It belongs in the browser, with the Clear script; your server uses the secret key (clear_sk_test_… or clear_sk_live_…).',
     });
   }
   if (!SECRET_KEY.test(k)) {
-    throw new ClearError({ type: 'authentication', code: 'key_invalid', message: 'That is not a Clear secret key. It starts sk_test_ or sk_live_.' });
+    throw new ClearError({ type: 'authentication', code: 'key_invalid', message: 'That is not a Clear secret key. It starts clear_sk_test_ or clear_sk_live_.' });
   }
   return k;
 }
@@ -78,7 +78,7 @@ export default class Clear {
       timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       maxRetries: Math.max(0, options.maxRetries ?? DEFAULT_MAX_RETRIES),
     });
-    this.livemode = key.startsWith('sk_live_');
+    this.livemode = key.startsWith('clear_sk_live_');
     this.payments = new Payments(http);
     this.prices = new Prices(http);
     this.paymentLinks = new PaymentLinks(http);

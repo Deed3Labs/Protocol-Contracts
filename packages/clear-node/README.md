@@ -78,7 +78,7 @@ It has `type` (`invalid_request`, `authentication`, `permission`, `not_found`, `
 
 ## Test mode
 
-`sk_test_…` keys only see test payments, and `sk_live_…` keys only live ones. Nothing moves money in test
+`clear_sk_test_…` keys only see test payments, and `clear_sk_live_…` keys only live ones. Nothing moves money in test
 mode. The publishable key (`pk_…`) belongs in the browser, with the Clear script; this package refuses it.
 
 ## Idempotency and retries

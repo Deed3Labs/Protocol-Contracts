@@ -599,3 +599,14 @@ Settings › Developers in the merchant app.
   - a real webhook delivery to a server outside this machine;
   - a Stripe refund against Stripe's test mode;
   - `apps/api/e2e/contract.ts` for the new merchant methods, which needs a Postgres.
+
+Approved at Hard Stop 4, 2026-10-16:
+
+- Phase 4 as built.
+- A Clear payment through `/v1/refunds` answers `refund_in_app` for now.
+- **Keys are `clear_pk_…` and `clear_sk_…`** (`clear_pk_live_`, `clear_sk_test_`…, then 24 base62 characters):
+  - in the contract (`API_KEY_PATTERN`), the API's check, `@useclear/node` and the merchant app;
+  - Developers reads "clear_pk_live_mc8Q2v… · safe in a web page" and "clear_sk_live_…9fA2";
+  - the spec's snippets and docs follow: `Clear("clear_pk_live_mc8Q2v")`, and the paste-in prompt's "Use
+    publishable key clear_pk_live_…".
+  - The spec file itself is left as drawn; this note is what overrides it.

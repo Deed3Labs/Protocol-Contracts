@@ -23,8 +23,8 @@ describe('Add a site', () => {
 
 describe('the paste-in prompt', () => {
   test("is the spec's, with the shop's key", () => {
-    expect(pasteInPrompt('pk_live_mc8Q2v')).toBe(
-      'Add Pay with Clear to this site.\nRead https://useclear.org/llms.txt first.\nUse publishable key pk_live_mc8Q2v.\n' +
+    expect(pasteInPrompt('clear_pk_live_mc8Q2v')).toBe(
+      'Add Pay with Clear to this site.\nRead https://useclear.org/llms.txt first.\nUse publishable key clear_pk_live_mc8Q2v.\n' +
         'Attach it to the existing checkout button; do not add a new button.\nNever put the amount in the browser: create the payment on the server\n' +
         'with CLEAR_SECRET_KEY from the environment, and fulfil orders from the\npayment.succeeded webhook, not from the page.',
     );

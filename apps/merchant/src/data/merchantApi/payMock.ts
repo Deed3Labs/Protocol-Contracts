@@ -157,9 +157,9 @@ export function createDevelopersMock(h: DevelopersHost) {
     expiresAt: null,
     pinnedVersion: VERSION,
   });
-  const publishable = (livemode: boolean, at: string, token = `pk_${livemode ? 'live' : 'test'}_${base62(24)}`) => key('publishable', livemode, at, token, token.slice(-4));
+  const publishable = (livemode: boolean, at: string, token = `clear_pk_${livemode ? 'live' : 'test'}_${base62(24)}`) => key('publishable', livemode, at, token, token.slice(-4));
   const secretFor = (livemode: boolean, at: string) => {
-    const secret = `sk_${livemode ? 'live' : 'test'}_${base62(24)}`;
+    const secret = `clear_sk_${livemode ? 'live' : 'test'}_${base62(24)}`;
     return { key: key('secret', livemode, at, null, secret.slice(-4)), secret };
   };
 
@@ -168,9 +168,9 @@ export function createDevelopersMock(h: DevelopersHost) {
     const oct12 = '2026-10-12T16:20:00.000Z';
     const oct14 = '2026-10-14T18:05:00.000Z';
     keys.push(
-      publishable(true, oct12, 'pk_live_mc8Q2vT4nR7kWb2LxQe9Hs3J'),
+      publishable(true, oct12, 'clear_pk_live_mc8Q2vT4nR7kWb2LxQe9Hs3J'),
       { ...key('secret', true, oct12, null, '9fA2') },
-      publishable(false, oct12, 'pk_test_mc5Hd2yP8sLq4Vn6Rt1Zc7Ka'),
+      publishable(false, oct12, 'clear_pk_test_mc5Hd2yP8sLq4Vn6Rt1Zc7Ka'),
       { ...key('secret', false, oct12, null, 'Q7m3') },
     );
     sites.push(
@@ -233,7 +233,7 @@ export function createDevelopersMock(h: DevelopersHost) {
         endpoints: [...endpoints],
         deliveries: [...latest(true), ...latest(false)],
         cardsConnected: h.cardsConnected(),
-        ai: { llmsUrl: DEVELOPERS_AI.llmsUrl, prompt: pasteInPrompt(key ?? 'pk_test_…'), mcpUrl: DEVELOPERS_AI.mcpUrl },
+        ai: { llmsUrl: DEVELOPERS_AI.llmsUrl, prompt: pasteInPrompt(key ?? 'clear_pk_test_…'), mcpUrl: DEVELOPERS_AI.mcpUrl },
       };
     },
     async createKeys(livemode) {

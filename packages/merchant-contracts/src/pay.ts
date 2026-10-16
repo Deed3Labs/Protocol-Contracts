@@ -12,11 +12,12 @@ import { Id, PositiveCents, Timestamp } from './common';
 // ---- Keys ------------------------------------------------------------------------------------------
 
 /**
- * `pk_test_…`, `pk_live_…`, `sk_test_…`, `sk_live_…`, then 24 base62 characters. The spec's
- * `pk_live_mc8Q2v` is drawn short. A publishable key is safe in a web page; a secret key is stored
+ * `clear_pk_test_…`, `clear_pk_live_…`, `clear_sk_test_…`, `clear_sk_live_…`, then 24 base62 characters:
+ * Clear's own prefix, never Stripe's `pk_`/`sk_`, so a scanner can tell a leaked Clear key from a
+ * Stripe one (pay DECISIONS, Hard Stop 4). The spec's `pk_live_mc8Q2v` is drawn short, and before this. A publishable key is safe in a web page; a secret key is stored
  * hashed and shown in full once, when it's made or rolled.
  */
-export const API_KEY_PATTERN = /^(pk|sk)_(test|live)_[0-9A-Za-z]{24}$/;
+export const API_KEY_PATTERN = /^clear_(pk|sk)_(test|live)_[0-9A-Za-z]{24}$/;
 export const API_KEY_KINDS = ['publishable', 'secret'] as const;
 
 export const ApiKey = z.object({
@@ -25,7 +26,7 @@ export const ApiKey = z.object({
   livemode: z.boolean(),
   /** The publishable key in full; null for a secret key, which is never shown again. */
   token: z.string().nullable(),
-  /** "9fA2": what Developers shows of a secret key ("sk_live_…9fA2"). */
+  /** "9fA2": what Developers shows of a secret key ("clear_sk_live_…9fA2"). */
   last4: z.string().length(4),
   createdAt: Timestamp,
   /** Staff id. */

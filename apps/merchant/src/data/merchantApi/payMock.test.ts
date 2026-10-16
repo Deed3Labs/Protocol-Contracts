@@ -43,14 +43,14 @@ describe('Settings › Developers, in the mock (pay spec §6)', () => {
   test('the paste-in prompt carries the live publishable key', async () => {
     const v = await miCasa('stf_mike').api.developers();
     const pk = v.keys.find((k) => k.kind === 'publishable' && k.livemode)!.token!;
-    expect(pk).toMatch(/^pk_live_mc8Q2v[0-9A-Za-z]{18}$/);
+    expect(pk).toMatch(/^clear_pk_live_mc8Q2v[0-9A-Za-z]{18}$/);
     expect(v.ai.prompt).toContain(`Use publishable key ${pk}.`);
   });
   test('rolling shows a new secret once and keeps the old one 24 hours', async () => {
     const { api } = miCasa('stf_luis');
     const old = (await api.developers()).keys.find((k) => k.kind === 'secret' && k.livemode)!;
     const made = await api.rollSecretKey(old.id);
-    expect(made.secret).toMatch(/^sk_live_[0-9A-Za-z]{24}$/);
+    expect(made.secret).toMatch(/^clear_sk_live_[0-9A-Za-z]{24}$/);
     expect(made.key).toMatchObject({ kind: 'secret', livemode: true, token: null, last4: made.secret.slice(-4), rolledAt: null });
     const after = (await api.developers()).keys.filter((k) => k.kind === 'secret' && k.livemode);
     expect(after.find((k) => k.id === old.id)).toMatchObject({ rolledAt: NOW, expiresAt: '2026-10-17T17:40:00.000Z' });
@@ -59,7 +59,7 @@ describe('Settings › Developers, in the mock (pay spec §6)', () => {
   test('keys are made once per mode', async () => {
     const m = createMockMerchantApi({ delayMs: 0, now: () => NOW });
     const made = await m.api.createKeys(false);
-    expect(made.secret).toMatch(/^sk_test_[0-9A-Za-z]{24}$/);
+    expect(made.secret).toMatch(/^clear_sk_test_[0-9A-Za-z]{24}$/);
     expect((await m.api.developers()).keys.map((k) => k.kind)).toEqual(['publishable', 'secret']);
     await expect(m.api.createKeys(false)).rejects.toMatchObject({ status: 409 });
   });

@@ -4,7 +4,7 @@ import Clear, { ClearError } from './index';
 import { SDK_VERSION } from './version';
 
 // Made at run time: written out, a fake key looks like a Stripe key to secret scanners.
-const fakeKey = (mode: 'test' | 'live') => ['sk', mode, 'Fake0Key1For2Tests3Only4X'.slice(0, 24)].join('_');
+const fakeKey = (mode: 'test' | 'live') => ['clear', 'sk', mode, 'Fake0Key1For2Tests3Only4X'.slice(0, 24)].join('_');
 const KEY = fakeKey('test');
 
 type Call = { url: URL; method: string; headers: Record<string, string>; body: unknown };
@@ -199,7 +199,7 @@ describe('keys', () => {
   test('a publishable key is refused, and says it belongs in the browser', () => {
     let err: unknown;
     try {
-      new Clear('pk_test_4eC39HqLyjWDarjtT1zdp7dc');
+      new Clear(['clear', 'pk', 'test', 'Fake0Key1For2Tests3Only4X'.slice(0, 24)].join('_'));
     } catch (e) {
       err = e;
     }
@@ -209,7 +209,7 @@ describe('keys', () => {
   });
   test('no key, and not a key', () => {
     expect(() => new Clear(undefined)).toThrow(/No secret key/);
-    expect(() => new Clear('whsec_abc')).toThrow(/sk_test_ or sk_live_/);
+    expect(() => new Clear('whsec_abc')).toThrow(/clear_sk_test_ or clear_sk_live_/);
   });
   test('test and live', () => {
     expect(new Clear(KEY).livemode).toBe(false);

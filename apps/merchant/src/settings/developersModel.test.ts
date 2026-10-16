@@ -13,10 +13,10 @@ const drawn = async (): Promise<DevelopersView> => {
 describe('Settings › Developers, as drawn (pay spec §6)', () => {
   test('the keys read as the spec draws them', async () => {
     const live = forMode(await drawn(), true, NOW);
-    expect(keyShown(live.publishable!)).toBe('pk_live_mc8Q2v…');
-    expect(publishableDet(live.publishable!)).toBe('pk_live_mc8Q2v… · safe in a web page');
-    expect(keyShown(live.secret!)).toBe('sk_live_…9fA2');
-    expect(secretDet(live.secret!)).toBe('sk_live_…9fA2 · server only. Shown once when made');
+    expect(keyShown(live.publishable!)).toBe('clear_pk_live_mc8Q2v…');
+    expect(publishableDet(live.publishable!)).toBe('clear_pk_live_mc8Q2v… · safe in a web page');
+    expect(keyShown(live.secret!)).toBe('clear_sk_live_…9fA2');
+    expect(secretDet(live.secret!)).toBe('clear_sk_live_…9fA2 · server only. Shown once when made');
   });
   test('the websites, by host, with when they were added', async () => {
     const v = await drawn();
@@ -39,7 +39,7 @@ describe('Settings › Developers, as drawn (pay spec §6)', () => {
   });
   test('Test shows the test keys and none of the live endpoints or deliveries', async () => {
     const test = forMode(await drawn(), false, NOW);
-    expect(keyShown(test.publishable!)).toMatch(/^pk_test_[0-9A-Za-z]{6}…$/);
+    expect(keyShown(test.publishable!)).toMatch(/^clear_pk_test_[0-9A-Za-z]{6}…$/);
     expect(test.secret?.livemode).toBe(false);
     expect(test.endpoints).toEqual([]);
     expect(test.deliveries).toEqual([]);

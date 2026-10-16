@@ -46,7 +46,7 @@ export const toApiKey = (r: KeyRow): ApiKey => ({
 const mode = (livemode: boolean) => (livemode ? 'live' : 'test');
 
 async function insertKey(tx: Queryable, input: { merchant: string; kind: 'publishable' | 'secret'; livemode: boolean; staffId: string | null }): Promise<{ row: KeyRow; token: string }> {
-  const token = `${input.kind === 'publishable' ? 'pk' : 'sk'}_${mode(input.livemode)}_${randomBase62(24)}`;
+  const token = `clear_${input.kind === 'publishable' ? 'pk' : 'sk'}_${mode(input.livemode)}_${randomBase62(24)}`;
   const { rows } = await tx.query<KeyRow>(
     `INSERT INTO payments.api_keys (id, merchant, kind, livemode, token, secret_hash, last4, pinned_version, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
@@ -114,7 +114,7 @@ export interface KeyAuth {
 export type KeyLookup = { ok: true; auth: KeyAuth } | { ok: false; code: 'key_invalid' | 'key_expired' };
 
 export async function authenticateKey(q: Queryable, token: string, now = new Date()): Promise<KeyLookup> {
-  const m = /^(pk|sk)_(test|live)_[0-9A-Za-z]{24}$/.exec(token);
+  const m = /^clear_(pk|sk)_(test|live)_[0-9A-Za-z]{24}$/.exec(token);
   if (!m) return { ok: false, code: 'key_invalid' };
   const { rows } = await q.query<KeyRow>(m[1] === 'pk' ? 'SELECT * FROM payments.api_keys WHERE token = $1' : 'SELECT * FROM payments.api_keys WHERE secret_hash = $1', [
     m[1] === 'pk' ? token : sha256(token),

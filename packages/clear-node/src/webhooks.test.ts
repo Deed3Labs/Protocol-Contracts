@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import Clear, { ClearSignatureError } from './index';
 
 // Made at run time: written out, a fake key looks like a Stripe key to secret scanners.
-const fakeKey = (mode: 'test' | 'live') => ['sk', mode, 'Fake0Key1For2Tests3Only4X'.slice(0, 24)].join('_');
+const fakeKey = (mode: 'test' | 'live') => ['clear', 'sk', mode, 'Fake0Key1For2Tests3Only4X'.slice(0, 24)].join('_');
 const KEY = fakeKey('test');
 const SECRET = 'whsec_micasa_current';
 const OLD_SECRET = 'whsec_micasa_old';

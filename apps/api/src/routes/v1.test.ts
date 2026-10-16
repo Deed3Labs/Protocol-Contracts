@@ -178,7 +178,7 @@ describe('Clear-Version', () => {
 describe('keys', () => {
   test('no key, or not a key: 401', async () => {
     expect((await fetch(`${base}/v1/prices`)).status).toBe(401);
-    const res = await call('/v1/prices', { key: ['sk', 'live', 'NotARealKeyNotARealKeyXX'].join('_') });
+    const res = await call('/v1/prices', { key: ['clear', 'sk', 'live', 'NotARealKeyNotARealKeyXX'].join('_') });
     expect((await body(res)).error).toMatchObject({ type: 'authentication', code: 'key_invalid' });
   });
 

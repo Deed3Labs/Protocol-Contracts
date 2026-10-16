@@ -21,10 +21,10 @@ export const EVENT_DET: Record<EventType, string> = {
 
 const modeWord = (livemode: boolean) => (livemode ? 'live' : 'test');
 
-/** "pk_live_mc8Q2v…" for a publishable key; "sk_live_…9fA2" for a secret one. */
+/** "clear_pk_live_mc8Q2v…" for a publishable key; "clear_sk_live_…9fA2" for a secret one. */
 export function keyShown(k: Pick<ApiKey, 'kind' | 'livemode' | 'token' | 'last4'>): string {
-  if (k.kind === 'publishable' && k.token) return `${k.token.slice(0, 'pk_live_'.length + 6)}…`;
-  return `${k.kind === 'publishable' ? 'pk' : 'sk'}_${modeWord(k.livemode)}_…${k.last4}`;
+  if (k.kind === 'publishable' && k.token) return `${k.token.slice(0, 'clear_pk_live_'.length + 6)}…`;
+  return `clear_${k.kind === 'publishable' ? 'pk' : 'sk'}_${modeWord(k.livemode)}_…${k.last4}`;
 }
 
 export const publishableDet = (k: ApiKey) => `${keyShown(k)} · safe in a web page`;
@@ -50,7 +50,7 @@ export const untilLabel = (iso: string, timeZone: string) => {
   return `${at.md}, ${at.time}`;
 };
 
-/** A rolled secret key that still works: "sk_live_…9fA2 · works until Oct 17, 3:04pm". */
+/** A rolled secret key that still works: "clear_sk_live_…9fA2 · works until Oct 17, 3:04pm". */
 export const rolledDet = (k: ApiKey, timeZone: string) => `${keyShown(k)} · works until ${k.expiresAt ? untilLabel(k.expiresAt, timeZone) : '—'}`;
 
 /** A website's row: "micasatacos.com" and "Added Oct 12". */
