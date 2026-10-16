@@ -804,6 +804,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     applyDiscount: async (orderId, input) => {
       const rec = orderRec(orderId);
       editable(rec);
+      // Rewards (docs/rewards-reference, Phase 5) gives the mock these.
+      if (input.kind === 'reward' || input.kind === 'claim') return refuse('Rewards can’t go on an order yet', 422, 'invalid');
       if (input.kind === 'code') {
         const code = [...codes.values()].find((c) => c.code.toUpperCase() === input.code.trim().toUpperCase());
         if (!code) refuse(`${input.code} isn’t a code here`, 422, 'code_unknown');
@@ -919,6 +921,7 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
         if (!/^0x[0-9a-fA-F]{40}$/.test(input.wallet)) refuse('That isn’t a member’s code', 400, 'invalid');
         return { to: 'member' as const, label: 'their Clear app' };
       }
+      if (input.to === 'customer') return refuse('Nobody has been added to this charge', 400, 'invalid');
       const d = input.phone.replace(/\D/g, '');
       const ten = d.length === 11 && d.startsWith('1') ? d.slice(1) : d;
       if (ten.length !== 10) refuse('That isn’t a phone number we can text', 400, 'invalid');

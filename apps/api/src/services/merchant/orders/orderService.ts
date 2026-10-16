@@ -567,6 +567,8 @@ export async function applyDiscount(
     const lines = await currentLines(tx, order.id);
     let spec: DiscountSpec;
 
+    // Rewards puts these on an order from Phase 3 (docs/rewards-reference); until then they're refused.
+    if (req.kind === 'reward' || req.kind === 'claim') throw new OrderError('Rewards can’t go on an order yet', 'invalid');
     if (req.kind === 'code') {
       const { rows } = await tx.query<{ id: string; code: string; percent: number | null; amount_cents: string | number | null; applies_to: string[] | null; starts_at: Date | null; ends_at: Date | null; once_per_customer: boolean }>(
         'SELECT * FROM commerce.discount_codes WHERE merchant = $1 AND upper(code) = upper($2) AND archived_at IS NULL',

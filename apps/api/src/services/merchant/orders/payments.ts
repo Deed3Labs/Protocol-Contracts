@@ -189,6 +189,7 @@ export async function sendClearTender(db: Db, clear: ClearCharges, input: { merc
   if (t.status !== 'pending' || !t.clear_charge_code) throw new PaymentError('That payment isn’t waiting on anyone', 'not_sendable');
   const to = parsed.data;
   let target: { member: string } | { phone: string };
+  if (to.to === 'customer') throw new PaymentError('Nobody has been added to this charge', 'invalid');
   if (to.to === 'member') target = { member: to.wallet.toLowerCase() };
   else {
     const phone = phoneE164(to.phone);

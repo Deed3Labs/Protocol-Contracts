@@ -19,4 +19,5 @@ export * from './fees';
 export * from './devices';
 export * from './floor';
 export * from './public';
+export * from './rewards';
 export type { MerchantApi } from './client';

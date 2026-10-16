@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { BusinessDate, Cents, Id, IdempotencyKey, NonNegativeCents, PositiveCents, ShopId, Timestamp } from './common';
 import { TaxKind } from './catalog';
+import { ClaimCode, OrderCustomer } from './rewards';
 
 /**
  * Orders, their lines and their one discount; tenders and refunds.
@@ -64,7 +65,8 @@ export const LineInput = z.union([
 export type LineInput = z.infer<typeof LineInput>;
 
 export const OrderDiscount = z.object({
-  kind: z.enum(['code', 'manual']),
+  /** A code, a manual percent or amount, or a reward the customer's points pay for. */
+  kind: z.enum(['code', 'manual', 'reward']),
   codeId: Id.nullable(),
   /** "FALL10 · 10% off", "15% · Returning customer" */
   label: z.string(),
@@ -72,12 +74,21 @@ export const OrderDiscount = z.object({
   reason: z.string().nullable(),
   /** Set when the discount was over the applier's limit and someone approved it with a PIN. */
   approvedBy: Id.nullable(),
+  /** A reward: which one, and the points that come off when the order is paid. */
+  rewardId: Id.nullable().optional(),
+  points: z.number().int().min(1).nullable().optional(),
 });
 export type OrderDiscount = z.infer<typeof OrderDiscount>;
 
-/** One per order: a code, or a manual percent or amount. Never both. */
+/**
+ * One per order: a code, a manual percent or amount, or a reward, so a reward and a code never
+ * stack. A reward is the added customer's (`reward`), or a counter code they claimed in their app
+ * (`claim`), which also adds them to the order when nobody is on it yet.
+ */
 export const DiscountRequest = z.union([
   z.object({ kind: z.literal('code'), code: z.string().min(1) }),
+  z.object({ kind: z.literal('reward'), rewardId: Id }),
+  z.object({ kind: z.literal('claim'), code: ClaimCode }),
   z.object({
     kind: z.literal('manual'),
     percent: z.number().int().min(1).max(100).nullable(),
@@ -127,6 +138,11 @@ export const Order = z.object({
   calledAt: Timestamp.nullable().optional(),
   pickedUpAt: Timestamp.nullable().optional(),
   offline: z.boolean().optional(),
+  /**
+   * Rewards: the member added at the cart, by their code or by phone. `customer` above stays the
+   * free-text name it always was.
+   */
+  member: OrderCustomer.nullable().optional(),
 });
 export type Order = z.infer<typeof Order>;
 
@@ -217,9 +233,11 @@ export const CreateClearTender = z.object({
 export const SendClearCharge = z.discriminatedUnion('to', [
   z.object({ to: z.literal('member'), wallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'That isn’t a member’s code') }),
   z.object({ to: z.literal('phone'), phone: z.string().trim().min(7).max(24) }),
+  /** The member added at the cart: to their app, a text and an email at once, with nothing to scan. */
+  z.object({ to: z.literal('customer') }),
 ]);
 /** Where it went, as the screen says it: "their Clear app", "(909) 555-0177". */
-export const ClearChargeSent = z.object({ to: z.enum(['member', 'phone']), label: z.string() });
+export const ClearChargeSent = z.object({ to: z.enum(['member', 'phone', 'customer']), label: z.string() });
 export type ClearChargeSent = z.infer<typeof ClearChargeSent>;
 
 export const RefundItem = z.object({

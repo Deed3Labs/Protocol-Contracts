@@ -142,6 +142,16 @@ export const DiscountCode = z
     endsAt: Timestamp.nullable(),
     oncePerCustomer: z.boolean(),
     uses: z.number().int().min(0),
+    /**
+     * Rewards: whether the shop's app shows it as an offer, and to whom. Optional so older
+     * responses still parse; missing is off, to everyone.
+     */
+    showInApp: z.boolean().optional(),
+    audience: z.enum(['everyone', 'members', 'clear_members']).optional(),
+    /** How the app words it: "Taco Tuesday", "Two tacos for $7, in the shop or to go". */
+    offer: z.object({ title: z.string().trim().min(1).max(40), detail: z.string().trim().max(80) }).nullable().optional(),
+    /** The weekdays it works on (Monday 0), for an offer like Taco Tuesday; null is every day. */
+    days: z.array(z.number().int().min(0).max(6)).min(1).max(7).nullable().optional(),
   })
   .refine((d) => (d.percent === null) !== (d.amountCents === null), 'A code takes off a percent or an amount, not both');
 export type DiscountCode = z.infer<typeof DiscountCode>;
