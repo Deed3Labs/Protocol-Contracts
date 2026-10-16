@@ -739,3 +739,131 @@ The user's answer was both (i) and (ii):
   finishes by card for this order, and the points are credited on joining.
 
 The rule as built, and its figures, are below for approval.
+
+#### The rule as built, for approval (`apps/api/src/services/credit/termLimitRule.ts`)
+
+**Limits**
+- **Starting limit: $500**, on `TermIssuer.termLimitOf`, the line split plans draw on. It is granted once the identity
+  check has passed (Lithic `ACCEPTED`). The first grant also opens the member's StableCredit line.
+- **Growth: $250 for every 3 clean installments paid.**
+  - "Clean" means installments paid (`term_plan_payments`, counted by distinct plan and installment) since the last time
+    the member was seen behind.
+  - Being behind leaves a late mark, and the count starts again from it.
+- **The income bound:** growth above $500 stops at half the trailing 90-day monthly deposit (`INCOME_SHARE`). The
+  starting $500 stands on its own, since a new member has no deposits yet. The ceiling is $5,000.
+- **It only raises.** It never lowers a limit (an operator may have set one higher), and it skips anyone behind,
+  suspended or ever defaulted. After a default the limit is the operator's call, as the contract says.
+
+**When it runs**
+- When the join window finishes.
+- When a Lithic account comes back `ACCEPTED`.
+- Hourly, for every member. That pass also asks Lithic about anyone stored as pending, so a member accepted later is
+  caught.
+
+**Switch:** `AUTO_TERM_LIMITS=on`. It is on by default on Base Sepolia and off elsewhere unless set. `off` turns it
+off anywhere.
+- **This applies to every member, not only online.** Once it's on, members at the counter can split up to their
+  limit too.
+- The operator key needs Clear's `OPERATOR` role.
+- One write goes at a time within this service. The credit-period renewer signs with the same key, so the two can
+  still meet on a nonce.
+
+## Phase 6, as built
+
+Built 2026-10-16. API: `pay/join.ts`, `pay/card.ts`, migration `0031_pay_join.sql`, `cards/cardTenders.ts`
+`createOnlineCardTender`, and `services/credit/termLimit*` with `jobs/termLimitReviewer.ts`. `apps/pay`:
+`clear/Steps.tsx`, `clear/Card.tsx`. `apps/member`: `/join/pay`.
+
+### For approval
+
+- **D2's rule and its figures**, above.
+- **When a starting limit can't cover the order**, it falls back to card (not drawn):
+  - this applies when the order is over $500, over time online is off, or checks are still pending;
+  - the Join row reads **"Join Clear" / "About 3 minutes · Pay this one by card, split the next"**;
+  - after joining, **"You're in" / "Welcome to Clear. Splitting opens once your checks finish, so pay this one by
+    card."**
+- **The join window's first read answers signed out.** It gives the shop, the order and the confirmed contact, so
+  Privy's sign-in can be prefilled.
+  - Step 1 (the birthday and address) comes back only to someone signed in with that same phone or email, which Privy
+    verified.
+  - Anyone else holding the link gets a 403 and reads nothing.
+  - The link lasts 15 minutes and is spent on `/done`.
+- **Test-mode card never runs on a live key.**
+  - A test session's card is offered only where this environment's Stripe key is a test key.
+  - On production, test mode has no card until a test platform key and per-shop test accounts exist (D3's
+    remaining work).
+  - A live session uses the environment's key, which is a test key on dev.
+- **A signed-in member who picks card** has their waiting Clear charge withdrawn and is put on the order, so the shop's
+  points follow the card: 171 at Mi Casa, with no 1.5×, since that's for Clear cents.
+- **Receipts:** "In Clear" for a member's card, and "On your card statement" for a card with no Clear account.
+
+### Joining
+
+- **After the code, someone new can join** (live only; test mode has only the test member):
+  - **Step 1** in the modal: the drawn fields, with the birthday as MM / DD / YYYY and 18 or older. It is kept
+    encrypted on the session for 30 minutes. An SSN sent there is dropped.
+  - **Step 2:** the approved line and "Continue in a new window". On a computer, "finish on your phone" shows the same
+    link as a QR. The phone's sheet never shows one.
+  - **Step 3:** the new member's own screen ("Step 3 of 3", "Hi Marco"), approved in the frame on the starting limit.
+- **The modal polls every 3 seconds.** A link that ran out offers "Open a new window" (step 1 is kept in the frame's
+  memory) or card.
+- **The window (`app.useclear.org/join/pay?h=`):**
+  1. Privy sign-in, prefilled.
+  2. The onboarding submit chain (`referralSource: 'online'`).
+  3. Lithic's identity check, with step 1 filled in. The SSN is asked here only, and cleared after.
+  4. The ID photo, when Lithic asks.
+  5. Plaid, skippable.
+  6. `/done`, then it closes itself, or says "Done. Go back to micasatacos.com".
+- **A rejected check still finishes:** the modal moves on to card.
+
+### Card
+
+- **`createOnlinePayment`:** a direct charge on the shop's account, with `automatic_payment_methods` and Clear's fee
+  from `clearCardFee`, as at the counter.
+- **The tender keeps its PaymentIntent from the start.** The existing `payment_intent.*` handlers settle it, and the
+  nightly reconciliation matches it.
+- **A declined card stays pending online.** The customer can try another card on the same payment, and asking again
+  returns it.
+- **The fields:** Stripe's Payment Element in the frame, in Clear's look (square, Clear's ink), confirmed with
+  `redirect: 'if_required'`. "Secure card fields by Stripe, for Mi Casa Tacos" and "Pay $185.32" are as drawn.
+- **"Card payments earn points too, if you join Mi Casa Rewards after."** It shows where the shop's rewards app is on.
+  `PaySession.rewardsName` was added for it.
+- **Wallets:** adding an allowed site registers it and the pay host as payment-method domains on the shop's account,
+  best effort. Localhost is skipped.
+- **Card is shown when** the shop takes cards, the modal allows it, the mode fits and `STRIPE_PUBLISHABLE_KEY` matches
+  the key's mode. The link page uses the same fields now; hosted checkout stays for `POST /pay` callers.
+
+### Not drawn, built from the nearest drawing
+
+- The joined-by-card fallback, above.
+- The QR's line: "Scan it with your phone's camera. This page moves on when you're done there."
+- "Open a new window" after the link runs out.
+- "Pay another way" under the card fields.
+- The window's screens (in the screenshots).
+
+### For the user
+
+- **`STRIPE_PUBLISHABLE_KEY` on the API**, in each environment, matching its secret key's mode. Without it, card isn't
+  offered online.
+- **`AUTO_TERM_LIMITS`:** leave unset on dev, where it is on because dev is Base Sepolia. Set `on` in live only when you
+  want starting limits for everyone.
+- **A Lithic status webhook, or a write-back,** would keep `lithic_accounts.status` current. Today only the hourly
+  review asks Lithic about members still pending.
+
+### Checks
+
+- **Tests:**
+  - API 1057, with 11 new over HTTP: the join that hands back and approves in 4; the window only for that contact,
+    once; the 15-minute link; no SSN or minor kept; closing the window leaves card; the $185.32 fee of 30¢ and none
+    under $10; Online, captured and reconciled; a declined card retried; no processor or wrong mode, no card; a
+    member's card taking the points; wallet domains. One file died once on the local Redis noise and passes on its
+    own.
+  - The term-limit rule 10 and service 13.
+  - pay 42; member 843; merchant 227, with Online card in Charges; rewards 11.
+  - `@useclear/js` 58; `@useclear/node` 31; domain 75; member-kit 2; contracts 83 and 31.
+- **Builds:** pay, member, merchant and rewards all build. The API's `src` typechecks apart from the known Coinbase
+  import.
+- **Not run:**
+  - a real Stripe payment (no Stripe key here; the preview draws the fields);
+  - the window's live path through Privy, Lithic and Plaid;
+  - a `setTermLimit` on any chain.
