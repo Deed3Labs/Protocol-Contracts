@@ -68,7 +68,7 @@ export function Tile({ t, now, onTap }: { t: TableView; now: number; onTap?: () 
 
 /** "Lee is next: 4, and only 14 seats four." */
 export function nextLine(w: Waitlist, tables: TableView[]): string | null {
-  const next = w.parties.find((p) => p.state === 'waiting' || p.state === 'ready');
+  const next = w.parties.find((p) => p.state === 'waiting' || p.state === 'notified');
   if (!next) return null;
   const fit = tables.filter((t) => t.status === 'free' && t.seats >= next.size).map((t) => t.label ?? String(t.number));
   const seats = fit.length === 1 ? 'seats' : 'seat';
@@ -104,7 +104,7 @@ export function FloorView({
   strip?: ReactNode;
 }) {
   const seated = tables.filter((t) => t.status !== 'free' && t.status !== 'held').length;
-  const waiting = waitlist.parties.filter((p) => p.state === 'waiting' || p.state === 'ready');
+  const waiting = waitlist.parties.filter((p) => p.state === 'waiting' || p.state === 'notified');
   const next = waiting[0] ?? null;
   const tableOf = (p: WaitlistParty) => tables.find((t) => t.id === p.tableId);
   return (
@@ -154,7 +154,7 @@ export function FloorView({
                       {p.state === 'seated' ? <b>{p.name}</b> : p.name} · {p.size}
                     </span>
                     <span className={cx('c-v', p.state === 'seated' && 'c-ink')}>
-                      {p.state === 'seated' ? `Seated at ${tableOf(p)?.label ?? tableOf(p)?.number ?? '—'}` : p.state === 'ready' ? 'Table ready' : `${p.quotedMinutes} min`}
+                      {p.state === 'seated' ? `Seated at ${tableOf(p)?.label ?? tableOf(p)?.number ?? '—'}` : p.state === 'notified' ? 'Almost ready' : `${p.quotedMinutes} min`}
                     </span>
                   </div>
                 </div>

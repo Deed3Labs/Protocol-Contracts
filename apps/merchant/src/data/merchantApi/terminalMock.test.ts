@@ -70,3 +70,37 @@ describe('Mi Casa Tacos at dinner', () => {
     expect(door.kind === 'point' && door.showing.kind).toBe('alert');
   });
 });
+
+describe('Tables v2 in the mock (the reference, 8b–8c)', () => {
+  test('a walk-in is seated with how many and a name; a held party sits down as themselves', async () => {
+    const api = dinner();
+    const one = (await api.floor()).tables.find((t) => t.number === 1)!;
+    expect(await api.seatTable(one.id, { size: 2, name: null })).toMatchObject({ status: 'seated', party: { name: null, size: 2 } });
+    const six = (await api.floor()).tables.find((t) => t.number === 6)!;
+    expect(await api.seatTable(six.id)).toMatchObject({ status: 'seated', party: { name: 'Ana', size: 2 }, hold: null });
+  });
+
+  test('Move takes the tab and the party to a free table, and frees the one they left', async () => {
+    const api = dinner();
+    const tables = (await api.floor()).tables;
+    const two = tables.find((t) => t.number === 2)!;
+    const fourteen = tables.find((t) => t.number === 14)!;
+    const moved = await api.moveTable(two.id, { toTableId: fourteen.id });
+    expect(moved.from.status).toBe('free');
+    expect(moved.to).toMatchObject({ status: 'ordering', orderId: two.orderId, tabCents: two.tabCents });
+    await expect(api.moveTable(two.id, { toTableId: tables.find((t) => t.number === 1)!.id })).rejects.toMatchObject({ status: 409 });
+    await expect(api.moveTable(fourteen.id, { toTableId: tables.find((t) => t.number === 4)!.id })).rejects.toMatchObject({ status: 409 });
+  });
+
+  test('the wait list: told a wait, texted almost ready, no show', async () => {
+    const api = dinner();
+    const priya = await api.addParty({ name: 'Priya', size: 2, phone: '(909) 555-0142', textConsent: true, quotedMinutes: 15 });
+    expect(priya.quotedMinutes).toBe(15);
+    expect(await api.notifyParty(priya.id)).toMatchObject({ state: 'notified' });
+    const marco = (await api.waitlist()).parties.find((p) => p.name === 'Marco')!;
+    await expect(api.notifyParty(marco.id)).rejects.toMatchObject({ status: 422 });
+    expect(await api.noShowParty(marco.id)).toMatchObject({ state: 'no_show' });
+    expect((await api.waitlist()).parties.map((p) => p.name)).not.toContain('Marco');
+  });
+});
+

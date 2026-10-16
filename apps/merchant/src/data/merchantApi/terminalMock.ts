@@ -101,6 +101,8 @@ interface TableRec {
     seatedAt: string;
     expiresAt: string;
   } | null;
+  /** Who is there, from seated to cleared: a wait-list party's name and size, or a walk-in's (Tables v2). */
+  party?: { name: string | null; size: number } | null;
 }
 
 interface PartyRec {
@@ -115,6 +117,8 @@ interface PartyRec {
   tableId: string | null;
   joinedAt: string;
   readyAt: string | null;
+  /** When the almost-ready text went (Text: almost ready). */
+  notifiedAt?: string | null;
   seatedAt: string | null;
 }
 
@@ -276,6 +280,7 @@ export function createTerminalMock(h: TerminalHost) {
       billSentAt: m?.billSentAt ?? null,
       paidAt: o && PAID.includes(o.status) ? lastPaid(o.id) : null,
       point: point ? { id: point.id, showing: showing(point, nowIso) } : null,
+      party: status === 'free' ? null : (t.party ?? (t.hold ? { name: firstName(parties.get(t.hold.partyId)?.name ?? ''), size: parties.get(t.hold.partyId)?.size ?? 1 } : null)),
     };
   }
   const strip = (r: TableRequest & { expiresAt: string }): TableRequest => {
@@ -284,28 +289,31 @@ export function createTerminalMock(h: TerminalHost) {
   };
   const table = (tableId: string) => tables.get(tableId) ?? h.refuse('No such table', 404, 'not_found');
 
+  const viewOf = (p: PartyRec, position: number): WaitlistParty => ({
+    id: p.id,
+    name: p.name,
+    size: p.size,
+    phone: p.phone,
+    textConsent: p.textConsent,
+    position,
+    quotedMinutes: p.quotedMinutes,
+    state: p.state,
+    tableId: p.tableId,
+    joinedAt: p.joinedAt,
+    readyAt: p.readyAt,
+    notifiedAt: p.notifiedAt ?? null,
+  });
+
   function waitlist(): Waitlist {
-    const live = [...parties.values()].filter((p) => p.state === 'waiting' || p.state === 'ready').sort((a, b) => a.rank - b.rank);
+    const live = [...parties.values()].filter((p) => p.state === 'waiting' || p.state === 'notified').sort((a, b) => a.rank - b.rank);
     const seated = [...parties.values()].filter((p) => p.state === 'seated').sort((a, b) => (b.seatedAt ?? '').localeCompare(a.seatedAt ?? ''));
-    const view = (p: PartyRec, position: number): WaitlistParty => ({
-      id: p.id,
-      name: p.name,
-      size: p.size,
-      phone: p.phone,
-      textConsent: p.textConsent,
-      position,
-      quotedMinutes: p.quotedMinutes,
-      state: p.state,
-      tableId: p.tableId,
-      joinedAt: p.joinedAt,
-      readyAt: p.readyAt,
-    });
     return {
-      parties: [...seated.map((p) => view(p, 1)), ...live.map((p, i) => view(p, i + 1))],
+      parties: [...seated.map((p) => viewOf(p, 1)), ...live.map((p, i) => viewOf(p, i + 1))],
       quotedMinutes: live.length * 5,
     };
   }
-  const partyView = (id: string) => waitlist().parties.find((p) => p.id === id)!;
+  // A party off the list (no show, removed) is still answered, at the position it last had.
+  const partyView = (id: string) => waitlist().parties.find((p) => p.id === id) ?? viewOf(parties.get(id)!, 1);
 
   function attachTab(tableId: string, orderId: string, at: string) {
     const t = table(tableId);
@@ -633,11 +641,14 @@ export function createTerminalMock(h: TerminalHost) {
     | 'floor'
     | 'saveTables'
     | 'seatTable'
+    | 'moveTable'
     | 'clearTable'
     | 'waitlist'
     | 'addParty'
     | 'updateParty'
     | 'seatParty'
+    | 'notifyParty'
+    | 'noShowParty'
     | 'tableRequests'
     | 'answerTableRequest'
     | 'createAlert'
@@ -863,16 +874,35 @@ export function createTerminalMock(h: TerminalHost) {
       }
       return api.floor();
     },
-    seatTable: async (tableId) => {
+    seatTable: async (tableId, input = {}) => {
       const t = table(tableId);
+      const held = t.hold ? parties.get(t.hold.partyId) : null;
+      // A held party sits down; a free table takes a walk-in, with how many and an optional name.
+      t.party = t.party ?? (held ? { name: firstName(held.name), size: held.size } : { name: input.name?.trim() || null, size: input.size ?? t.seats });
       t.seatedAt = t.seatedAt ?? t.hold?.seatedAt ?? h.now();
       t.hold = null;
       return tableView(t);
     },
+    moveTable: async (tableId, input) => {
+      const from = table(tableId);
+      const to = table(input.toTableId);
+      const fromView = tableView(from);
+      if (fromView.status === 'free') h.refuse(`Table ${from.number} has nobody to move`, 409, 'conflict');
+      if (tableView(to).status !== 'free') h.refuse(`Table ${to.number} isn’t free`, 409, 'conflict');
+      // The tab, the bill if sent, the party and their name on the Point go; the table they left is free.
+      Object.assign(to, { seatedAt: from.seatedAt, tabOrderId: from.tabOrderId, hold: from.hold, party: from.party ?? fromView.party ?? null });
+      Object.assign(from, { seatedAt: null, tabOrderId: null, hold: null, party: null });
+      const fromPoint = [...points.values()].find((p) => p.settings.tableId === from.id);
+      const toPoint = [...points.values()].find((p) => p.settings.tableId === to.id);
+      if (toPoint && fromPoint) toPoint.base = fromPoint.base;
+      if (fromPoint) fromPoint.base = { kind: 'idle', mode: fromPoint.settings.idleMode };
+      for (const p of parties.values()) if (p.tableId === from.id && p.state === 'seated') p.tableId = to.id;
+      return { from: tableView(from), to: tableView(to) };
+    },
     clearTable: async (tableId) => {
       const t = table(tableId);
       if (t.tabOrderId && !PAID.includes(h.order(t.tabOrderId).status) && h.order(t.tabOrderId).status !== 'voided') h.refuse('Its tab isn’t paid yet', 409, 'conflict');
-      Object.assign(t, { seatedAt: null, tabOrderId: null, hold: null });
+      Object.assign(t, { seatedAt: null, tabOrderId: null, hold: null, party: null });
       for (const r of requests.values())
         if (r.tableId === t.id && r.state === 'open')
           Object.assign(r, {
@@ -894,7 +924,7 @@ export function createTerminalMock(h: TerminalHost) {
         phone: input.phone ?? null,
         textConsent: Boolean(input.phone) && input.textConsent,
         rank: Date.now(),
-        quotedMinutes: (waiting + 1) * 5,
+        quotedMinutes: input.quotedMinutes ?? (waiting + 1) * 5,
         state: 'waiting',
         tableId: null,
         joinedAt: h.now(),
@@ -908,12 +938,24 @@ export function createTerminalMock(h: TerminalHost) {
       if (input.tableId !== undefined) p.tableId = input.tableId;
       if (input.state) p.state = input.state;
       if (input.position !== undefined) {
-        const others = [...parties.values()].filter((x) => x.id !== p.id && (x.state === 'waiting' || x.state === 'ready')).sort((a, b) => a.rank - b.rank);
+        const others = [...parties.values()].filter((x) => x.id !== p.id && (x.state === 'waiting' || x.state === 'notified')).sort((a, b) => a.rank - b.rank);
         const i = Math.min(input.position - 1, others.length);
         const before = others[i - 1]?.rank;
         const after = others[i]?.rank;
         p.rank = before === undefined ? (after ?? 0) - 1 : after === undefined ? before + 1 : (before + after) / 2;
       }
+      return partyView(partyId);
+    },
+    notifyParty: async (partyId) => {
+      const p = parties.get(partyId) ?? h.refuse('No such party', 404, 'not_found');
+      if (!p.phone || !p.textConsent) h.refuse('They didn’t leave a number to text', 422, 'invalid');
+      if (p.state === 'waiting') Object.assign(p, { state: 'notified', notifiedAt: h.now() });
+      return partyView(partyId);
+    },
+    noShowParty: async (partyId) => {
+      const p = parties.get(partyId) ?? h.refuse('No such party', 404, 'not_found');
+      if (p.state === 'seated') h.refuse('They’re seated', 409, 'conflict');
+      p.state = 'no_show';
       return partyView(partyId);
     },
     seatParty: async (partyId, input) => {
@@ -968,7 +1010,7 @@ export function createTerminalMock(h: TerminalHost) {
       if (input.kind === 'table_ready') {
         const p = parties.get(input.partyId) ?? h.refuse('No such party', 404, 'not_found');
         const door = input.pointId ?? [...points.values()].find((x) => x.settings.placement === 'door')?.id ?? null;
-        if (p.state === 'waiting') Object.assign(p, { state: 'ready', readyAt: at });
+        if (p.state === 'waiting') Object.assign(p, { state: 'notified', readyAt: at });
         alerts.set(id, {
           id,
           kind: 'table_ready',

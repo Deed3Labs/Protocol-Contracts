@@ -150,6 +150,12 @@ export const ShopSettings = z.object({
   noSaleNeedsPin: z.boolean().optional(),
   /** Tables, for shops that serve at tables (Settings › Counter). Off by default. */
   tableService: z.boolean().optional(),
+  /** Settings › Counter › Clear paid tables: this many minutes after paying, or null for by hand (Tables v2). */
+  clearPaidAfterMinutes: z.number().int().min(1).max(120).nullable().optional(),
+  /** Settings › Counter › Wait estimates: from how long tables took this week, or a set number of minutes. */
+  waitEstimate: z.union([z.literal('this_week'), z.number().int().min(1).max(240)]).optional(),
+  /** Settings › Counter › Text the wait list: joined, almost ready, table ready. */
+  textWaitlist: z.boolean().optional(),
   updatedAt: Timestamp,
 });
 export type ShopSettings = z.infer<typeof ShopSettings>;
@@ -174,6 +180,9 @@ export const DEFAULT_SETTINGS: Omit<ShopSettings, 'updatedAt'> = {
   drawerNoSaleRoles: 'managers',
   noSaleNeedsPin: true,
   tableService: false,
+  clearPaidAfterMinutes: 10,
+  waitEstimate: 'this_week',
+  textWaitlist: true,
 };
 
 /**

@@ -1360,3 +1360,29 @@ amendment, approved before the API builds on them.
   only into an open drawer, so it used to fail after the amount was typed. It locks only when the
   drawer is known not to be open; offline, unread, cash stays open and the queue files it into the
   session open when it was taken. Preview: `/new?preview=1&screen=checkout-nodrawer`.
+
+## Terminal: Tables v2, the contracts (2026-10-15)
+
+The terminal reference was replaced again (8:24pm): section 8 is redrawn, 8b is now "A table, from
+seated to cleared", and 8c (the wait list) and 8d (Tables on a phone) are new; section 14 adds Move,
+Clear after a delay, wait-list statuses and estimates; a new decision says a table's sheet always
+leads with its next step and Tables adds no new way to take money. The seating addendum sent again
+with it is unchanged and already built. The contract amendment, approved:
+
+- **Who's at a table.** `TableView.party` (`{ name | null, size }`): "Diaz, 4", or "Walk-in, 2" when
+  the name is null. `TableView.clearsAt`: when a paid table clears itself under the shop's rule.
+  Both optional, so a response from before parses. The status stays `ordering`; the tile says
+  "Ordered". A status is worked out, never set.
+- **Seating and moving.** `seatTable(tableId, { size, name })` seats a walk-in at a free table (a held
+  party sits down with no input, as before). `moveTable(tableId, { toTableId })` takes the tab, the
+  bill if sent, the party and their name on the Point to a free table.
+- **Edit tables** can link a Point: `TableInput.pointId` (null unlinks, absent leaves it).
+- **The wait list.** States are `waiting | notified | seated | no_show | removed`; migration 0027 maps
+  `ready` → `notified` and `left` → `removed`. `AddParty.quotedMinutes` is "Tell them".
+  `notifyParty` is Text: almost ready (needs their number and consent); `noShowParty` is No show;
+  Remove is `updateParty({ state: 'removed' })`. A party off the list is still answered for.
+- **Settings › Counter.** `clearPaidAfterMinutes` (default 10; null is by hand), `waitEstimate`
+  (`'this_week'` or minutes; default this week), `textWaitlist` (default on).
+- **Not yet:** the API's routes and jobs (Move, walk-in seating, notify, no show, auto-clear, the
+  estimate from this week's table times) and the merchant app's screens are the next two steps. The
+  mock already does Move, walk-ins, notify and no show, so the screens can be built against it.

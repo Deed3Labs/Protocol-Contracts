@@ -301,7 +301,7 @@ const toParty = (r: PartyRow, position: number): WaitlistParty => ({
 /** Who is waiting, in order, and seated today; and the quote for someone joining now. */
 export async function waitlist(q: Queryable, merchant: string): Promise<Waitlist> {
   const { rows } = await q.query<PartyRow>(
-    `SELECT * FROM merchant.waitlist_parties WHERE merchant = $1 AND (state IN ('waiting','ready') OR (state = 'seated' AND seated_at > now() - interval '12 hours'))
+    `SELECT * FROM merchant.waitlist_parties WHERE merchant = $1 AND (state IN ('waiting','notified') OR (state = 'seated' AND seated_at > now() - interval '12 hours'))
       ORDER BY (state = 'seated') DESC, seated_at DESC NULLS LAST, rank`,
     [merchant],
   );
@@ -370,11 +370,11 @@ export async function updateParty(db: Db, input: { merchant: string; staffId: st
     const party = await partyRow(tx, input.merchant, input.partyId, true);
     if (p.tableId) await tableRow(tx, input.merchant, p.tableId);
     if (p.tableId !== undefined) await tx.query('UPDATE merchant.waitlist_parties SET table_id = $2 WHERE id = $1', [party.id, p.tableId]);
-    if (p.state === 'left') await tx.query(`UPDATE merchant.waitlist_parties SET state = 'left', left_at = $2 WHERE id = $1`, [party.id, input.now ?? new Date()]);
+    if (p.state === 'removed') await tx.query(`UPDATE merchant.waitlist_parties SET state = 'removed', left_at = $2 WHERE id = $1`, [party.id, input.now ?? new Date()]);
     if (p.state === 'waiting') await tx.query(`UPDATE merchant.waitlist_parties SET state = 'waiting', left_at = NULL WHERE id = $1`, [party.id]);
     if (p.position !== undefined) {
       const { rows } = await tx.query<{ id: string; rank: number }>(
-        `SELECT id, rank FROM merchant.waitlist_parties WHERE merchant = $1 AND state IN ('waiting','ready') AND id <> $2 ORDER BY rank`,
+        `SELECT id, rank FROM merchant.waitlist_parties WHERE merchant = $1 AND state IN ('waiting','notified') AND id <> $2 ORDER BY rank`,
         [input.merchant, party.id],
       );
       const i = Math.min(p.position - 1, rows.length);
@@ -403,7 +403,7 @@ export async function seatParty(db: Db, texter: Texter, input: { merchant: strin
       if (party.table_id === r.tableId) return { again: true as const, party, table: null };
       throw new TerminalError('They’re already seated at another table', 'conflict');
     }
-    if (party.state === 'left') throw new TerminalError('They left the list', 'conflict');
+    if (party.state === 'removed' || party.state === 'no_show') throw new TerminalError('They’re off the list', 'conflict');
     const table = await tableRow(tx, input.merchant, r.tableId, true);
     if (table.tab_order_id || table.seated_at || (table.hold_party_id && table.hold_expires_at && new Date(table.hold_expires_at).getTime() > now.getTime())) {
       throw new TerminalError(`Table ${table.number} isn’t free`, 'conflict');
@@ -490,7 +490,7 @@ export async function createAlert(db: Db, texter: Texter, input: { merchant: str
     if (a.kind === 'table_ready') {
       const party = await partyRow(tx, input.merchant, a.partyId, true);
       const point = a.pointId ?? (await pointAt(tx, input.merchant, 'door'));
-      await tx.query(`UPDATE merchant.waitlist_parties SET state = CASE WHEN state = 'waiting' THEN 'ready' ELSE state END, ready_at = $2 WHERE id = $1`, [party.id, now]);
+      await tx.query(`UPDATE merchant.waitlist_parties SET state = CASE WHEN state = 'waiting' THEN 'notified' ELSE state END, ready_at = $2 WHERE id = $1`, [party.id, now]);
       await tx.query(`INSERT INTO merchant.alerts (id, merchant, kind, point_id, party_id, label, created_at, expires_at) VALUES ($1,$2,'table_ready',$3,$4,$5,$6,$7)`, [
         id,
         input.merchant,
