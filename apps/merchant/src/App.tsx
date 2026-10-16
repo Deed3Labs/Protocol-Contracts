@@ -5,6 +5,7 @@ import { AppShell } from '@/shell/AppShell';
 import { SignIn } from '@/auth/SignIn';
 import { OwnerSignIn } from '@/auth/OwnerSignIn';
 import { EnrollDevice } from '@/auth/EnrollDevice';
+import { ConnectPage } from '@/connect/ConnectPage';
 import { useAuth } from '@/auth/authContext';
 import HomePage from '@/pages/HomePage';
 import NewChargePage from '@/pages/NewChargePage';
@@ -80,6 +81,10 @@ export default function App() {
       <div className="c-app c-mc-tablet" aria-busy="true" />
     );
   }
+
+  // Signing a shop in to useclear.org (connect/): the owner arrives from the site's bag on any
+  // computer, so this comes before the tablet's own enrollment and PIN screens and needs neither.
+  if (window.location.pathname === '/connect') return <ConnectPage />;
 
   /**
    * Not set up, or removed — reference section 19.

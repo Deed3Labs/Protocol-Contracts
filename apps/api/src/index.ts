@@ -33,6 +33,7 @@ import assuranceRouter from './routes/assurance.js';
 import disputesRouter from './routes/disputes.js';
 import chargesRouter from './routes/charges.js';
 import merchantRouter from './routes/merchant.js';
+import { publicShopsRouter } from './routes/publicShops.js';
 import { startChargeReconciler } from './services/chargeReconciler.js';
 import withdrawRouter from './routes/withdraw.js';
 import autopayRouter from './routes/autopay.js';
@@ -311,6 +312,8 @@ async function startServer() {
     app.use('/api/s', shopRouter());
     app.use('/api/rewards', rewardsRouter());
     app.use('/api/partners', partnersRouter());
+    // For useclear.org's server: shop approval (behind its key) and the shop-token public key.
+    app.use('/api/public', publicShopsRouter());
     app.use('/api/withdraw', requireAuth, withdrawRouter);
     app.use('/api/autopay', requireAuth, autopayRouter);
     app.use('/api/contacts', requireAuth, contactsRouter);

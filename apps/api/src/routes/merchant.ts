@@ -42,6 +42,7 @@ import { merchantTerminalRouter } from './merchantTerminal.js';
 import { touchShop } from '../services/merchant/terminal/bus.js';
 import { merchantRewardsRouter } from './rewards.js';
 import { merchantPayLinksRouter } from './payLinks.js';
+import { merchantConnectRouter } from './merchantConnect.js';
 
 /**
  * The merchant surface.
@@ -94,6 +95,8 @@ merchantRouter.use(merchantTerminalRouter());
 merchantRouter.use(merchantRewardsRouter());
 // Pay with Clear: payment links (routes/payLinks.ts).
 merchantRouter.use(merchantPayLinksRouter());
+// Shop sign-in for useclear.org: a token the site verifies, for hardware pre-orders.
+merchantRouter.use(merchantConnectRouter());
 
 /** Sign-in is scoped to one shop: a four-digit PIN only means anything against a merchant. */
 function merchantOf(req: Request): string {

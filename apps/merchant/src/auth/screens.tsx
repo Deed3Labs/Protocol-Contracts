@@ -590,7 +590,9 @@ export function CheckEmailSheet({
  * The owner's own sign-in, full screen: on the back-office computer, the owner's phone, or a
  * tablet not yet enrolled. On the phone it is the reference's narrower layout.
  */
-export function OwnerSignInScreen({ phone, onSetUpShop, ...form }: OwnerFormProps & { phone?: boolean; onSetUpShop?: () => void }) {
+/* `title` and `sub` replace the heading and its line when sign-in is for something particular
+   (useclear.org's /connect); without them it is the owner's own sign-in, as drawn. */
+export function OwnerSignInScreen({ phone, onSetUpShop, title, sub, ...form }: OwnerFormProps & { phone?: boolean; onSetUpShop?: () => void; title?: string; sub?: ReactNode }) {
   const setUp = (
     <button type="button" className="c-si-link" onClick={onSetUpShop}>
       Set up your shop
@@ -604,10 +606,10 @@ export function OwnerSignInScreen({ phone, onSetUpShop, ...form }: OwnerFormProp
           <Wordmark small />
         </div>
         <p className="c-si-title" style={{ fontSize: 22 }}>
-          Sign in
+          {title ?? 'Sign in'}
         </p>
         <p className="c-det" style={{ margin: '6px 0 var(--s2)' }}>
-          For owners. Staff use the counter tablet.
+          {sub ?? 'For owners. Staff use the counter tablet.'}
         </p>
         <OwnerForm {...form} />
         <p className="c-det" style={{ textAlign: 'center', marginTop: 'var(--s3)' }}>
@@ -619,9 +621,9 @@ export function OwnerSignInScreen({ phone, onSetUpShop, ...form }: OwnerFormProp
   return (
     <SignInFrame>
       <div className="c-si-center">
-        <p className="c-si-title">Sign in</p>
+        <p className="c-si-title">{title ?? 'Sign in'}</p>
         <p className="c-det c-si-sub">
-          For owners, on any device. Staff start a shift on the counter tablet instead, with their PIN.
+          {sub ?? 'For owners, on any device. Staff start a shift on the counter tablet instead, with their PIN.'}
         </p>
         <div className="c-si-form">
           <OwnerForm {...form} />
