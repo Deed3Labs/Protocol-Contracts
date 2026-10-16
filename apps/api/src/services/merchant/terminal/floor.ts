@@ -382,6 +382,39 @@ export async function clearTable(db: Db, input: { merchant: string; staffId: str
   return getTable(db, input.merchant, input.tableId, now);
 }
 
+/**
+ * Unseat (not drawn; asked for): a table seated or held by mistake, before anything is on its tab. It is
+ * free again with no visit kept, so wait estimates don't count it; a party from the wait list goes back
+ * on it in their old place, and the door's "table ready" for them ends. Once there's a tab it's Move or
+ * payment.
+ */
+export async function unseatTable(db: Db, input: { merchant: string; staffId: string; tableId: string; now?: Date }): Promise<TableView> {
+  const now = input.now ?? new Date();
+  await db.transaction(async (tx) => {
+    const t = await tableRow(tx, input.merchant, input.tableId, true);
+    if (t.tab_order_id) {
+      const { rows } = await tx.query<{ status: string }>('SELECT status FROM commerce.orders WHERE id = $1', [t.tab_order_id]);
+      if (rows[0]?.status !== 'voided') throw new TerminalError('It has a tab. Move them, or take payment', 'conflict');
+    }
+    if (!t.seated_at && !t.hold_party_id) throw new TerminalError(`Table ${t.number} has nobody to unseat`, 'conflict');
+    const { rows: back } = await tx.query<{ id: string }>(
+      `UPDATE merchant.waitlist_parties SET state = 'waiting', seated_at = NULL, table_id = NULL WHERE merchant = $1 AND table_id = $2 AND state = 'seated' RETURNING id`,
+      [input.merchant, t.id],
+    );
+    if (back.length) await tx.query(`UPDATE merchant.alerts SET expires_at = $2 WHERE party_id = ANY($1) AND kind = 'table_ready' AND expires_at > $2`, [back.map((r) => r.id), now]);
+    await tx.query(
+      `UPDATE merchant.tables SET seated_at = NULL, tab_order_id = NULL, hold_party_id = NULL, hold_show_name = NULL, hold_seated_at = NULL, hold_expires_at = NULL, party_name = NULL, party_size = NULL WHERE id = $1`,
+      [t.id],
+    );
+    await tx.query(`UPDATE merchant.table_requests SET state = 'answered', answered_by = $2, answered_at = $3 WHERE table_id = $1 AND state = 'open'`, [t.id, input.staffId, now]);
+    const pointId = await pointAtTable(tx, input.merchant, t.id);
+    if (pointId) await setBase(tx, pointId, 'idle', null, now);
+    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tables.unseated', ref: { type: 'table', id: t.id }, detail: { partyIds: back.map((r) => r.id) } });
+  });
+  touchShop(input.merchant);
+  return getTable(db, input.merchant, input.tableId, now);
+}
+
 // ---- The wait list ------------------------------------------------------------------------------------------
 
 interface PartyRow {

@@ -106,6 +106,7 @@ export function merchantTerminalRouter(deps: TerminalRouteDeps = defaultTerminal
   }));
   router.post('/tables/:id/seat', signedIn, run((db, req) => floor.seatTable(db, { merchant: m(req), staffId: staff(req), tableId: id(req), request: req.body })));
   router.post('/tables/:id/move', signedIn, run((db, req) => floor.moveTable(db, { merchant: m(req), staffId: staff(req), tableId: id(req), request: req.body })));
+  router.post('/tables/:id/unseat', signedIn, run((db, req) => floor.unseatTable(db, { merchant: m(req), staffId: staff(req), tableId: id(req) })));
   router.post('/tables/:id/clear', signedIn, run((db, req) => floor.clearTable(db, { merchant: m(req), staffId: staff(req), tableId: id(req) })));
   router.get('/waitlist', signedIn, run((db, req) => floor.waitlist(db, m(req))));
   router.post('/waitlist', signedIn, run((db, req) => floor.addParty(db, { merchant: m(req), staffId: staff(req), party: req.body, texter: deps.texter }), 201));

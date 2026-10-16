@@ -147,6 +147,7 @@ export function realMerchantApi(request: Transport): MerchantApi {
     seatTable: (tableId, input) => post(`/tables/${id(tableId)}/seat`, input ?? {}),
     moveTable: (tableId, input) => post(`/tables/${id(tableId)}/move`, input),
     clearTable: (tableId) => post(`/tables/${id(tableId)}/clear`),
+    unseatTable: (tableId) => post(`/tables/${id(tableId)}/unseat`),
     waitlist: () => get('/waitlist'),
     addParty: (input) => post('/waitlist', input),
     updateParty: (partyId, input) => send('PATCH', `/waitlist/${id(partyId)}`, input),

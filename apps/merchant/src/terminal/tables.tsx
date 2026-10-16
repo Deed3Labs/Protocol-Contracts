@@ -524,6 +524,7 @@ export interface TableSheetActions {
   onSendBill: () => void;
   onTakeBack: () => void;
   onMove: () => void;
+  onUnseat: () => void;
   onPay: (method: 'clear' | 'card' | 'cash' | 'split') => void;
   onTakePayment: () => void;
   onClear: () => void;
@@ -747,6 +748,11 @@ export function TableSheet({
             <button type="button" className="c-btn c-sm" disabled={busy} onClick={a.onMove}>
               Move
             </button>
+            {!t.orderId && (
+              <button type="button" className="c-btn c-sm" disabled={busy} onClick={a.onUnseat}>
+                Unseat
+              </button>
+            )}
             {lines > 0 && (
               <button type="button" className="c-btn c-sm" disabled={busy || !t.point} onClick={a.onSendBill}>
                 Send the bill
