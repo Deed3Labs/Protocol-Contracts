@@ -2,6 +2,7 @@ import { countsAsVolume, dollars, type StaffRole } from '@clear/domain';
 import type { MerchantCharge, PayoutPosition, StaffMember } from '@/data/apiClient';
 import type { CatalogItem, Order, Reorder, SetupProgress, ShiftNow } from '@clear/merchant-contracts';
 import { fromCatalog, level, type InvItem } from '../inventory/model';
+import { stillOwedCents } from '../payouts/model';
 
 /**
  * What Home shows, as data.
@@ -306,7 +307,7 @@ export function fromApi(input: {
 
   if (sees(role) && position) {
     const available = position.readyToWithdrawCents ?? position.releasedReadyCents ?? 0;
-    const total = position.owedCents;
+    const total = stillOwedCents(position);
     const on = position.nextPayoutOn ? new Date(position.nextPayoutOn) : null;
     // Something owed and no day set: it's paid net-30, and the cell says so rather than hiding.
     if (on || total > 0) {

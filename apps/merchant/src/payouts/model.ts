@@ -61,16 +61,29 @@ function ordinal(n: number): string {
   return `${n}${s}`;
 }
 
+/**
+ * Everything still owed to the shop: what it holds on the ledger, and what it has withdrawn that the
+ * pool hasn't paid yet. Withdrawing moves the credits to the pool, so `owedCents` alone drops a
+ * queued withdrawal off every screen while its 30 days run.
+ */
+export const stillOwedCents = (p: Pick<PayoutPosition, 'owedCents' | 'queuedCents'>) => p.owedCents + (p.queuedCents ?? 0);
+
+/** Whole days until an ISO date, never below zero. */
+const daysUntil = (iso: string, now: Date) => Math.max(0, Math.ceil((Date.parse(iso) - now.getTime()) / 86400000));
+
 export function fromPosition(p: PayoutPosition, bank: string | null, now = new Date()): PayoutsModel {
   const on = p.nextPayoutOn ? short(p.nextPayoutOn) : null;
-  const daysLeft = p.nextPayoutOn ? Math.max(0, Math.ceil((Date.parse(p.nextPayoutOn) - now.getTime()) / 86400000)) : null;
+  // A payout day when one is set; otherwise the day the oldest queued withdrawal's net-30 runs out.
+  // Neither: nothing is counting, and the card says the terms.
+  const countTo = p.nextPayoutOn ?? p.releasesOn ?? null;
+  const daysLeft = countTo ? daysUntil(countTo, now) : null;
   const released = p.releasedReadyCents;
   return {
     readyCents: p.readyToWithdrawCents,
     cashCents: p.cashAccountCents,
     releasedCents: released,
     scheduledCents: p.scheduledCents,
-    owedCents: p.owedCents,
+    owedCents: stillOwedCents(p),
     on,
     dayOrdinal: p.nextPayoutOn ? ordinal(new Date(p.nextPayoutOn).getDate()) : null,
     daysLeft,

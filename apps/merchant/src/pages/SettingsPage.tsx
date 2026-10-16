@@ -20,6 +20,7 @@ import { everyChargeCsv, everyPayoutCsv, since as historyFrom } from '@/settings
 import { salesCsv } from '@/overview/exportCsv';
 import { printStatement, statementOf } from '@/overview/statement';
 import { HOURS_DET, hoursBody, paneBody, REFERENCE, SECTIONS, YOU, type AmountEdit, type ReaderRow, type Section, type SettingsData, type ShopField, type StatementMonth } from '@/settings/panes';
+import { stillOwedCents } from '@/payouts/model';
 import { AddDeviceSheet, AddReaderSheet, AmountSheet, Btn, Cell, ChangeAccountSheet, clock12, ConfirmLeaveSheet, DateHoursSheet, FootLine, IndexCell, Kv, LeaveSheet, Main, NewCodeSheet, Pair, PaneHead, Rail, Rows, TextSheet, WeekHoursEdit, Who } from '@/settings/views';
 
 /**
@@ -62,7 +63,7 @@ function fromApi(p: MerchantProfile | null, pos: PayoutPosition | null, devices:
     closedDates: [],
     account: p?.payoutAccount ? { bank: 'Business checking', det: p.payoutAccount } : null,
     // No day set: the terms are net-30, said rather than dashed. A dash only when it can't be read.
-    nextPayout: pos ? `${next ?? 'Net-30'} · ${usd(pos.owedCents)}` : '—',
+    nextPayout: pos ? `${next ?? 'Net-30'} · ${usd(stillOwedCents(pos))}` : '—',
     payoutWhen: p?.payoutTerms ?? '—',
     ratesNow: '—',
     ratesOver: rate === null ? '—' : `${(rate * 100).toFixed(1)}%`,

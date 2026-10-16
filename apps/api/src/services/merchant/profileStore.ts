@@ -248,6 +248,8 @@ export const merchantProfileStore = {
         scheduledCents: 0,
         readyToWithdrawCents: null as number | null,
         nextPayoutOn: null as string | null,
+        queuedCents: 0,
+        releasesOn: null as string | null,
         clearsBalanceCents: 0,
         toBankCents: 0,
         availableTodayCents: null as number | null,
@@ -354,9 +356,19 @@ export const merchantProfileStore = {
     const availableTodayCents: number | null =
       chainPosition === null ? null : microsToCents(chainPosition.freeNowMicros);
 
+    /*
+     * Withdrawn and waiting: a withdrawal the pool couldn't pay on the spot moved the credits to
+     * the pool as a claim, due when the shop's terms run out. It is no longer in what they hold, but
+     * it is still theirs, so it stays on the screen, and its due day is what net-30 counts down to.
+     * Before this, a queued withdrawal vanished from Payouts and the card said "30 day terms" for
+     * ever, because the only date it knew was a scheduled payout row net-30 never writes.
+     */
+    const queuedCents = chainPosition === null ? 0 : chainPosition.queued.reduce((s, c) => s + microsToCents(c.amountMicros), 0);
+    const releasesOn = chainPosition?.queued[0] ? new Date(chainPosition.queued[0].dueBy * 1000).toISOString() : null;
+
     const cash = await cashAccountCents(normalize(merchant));
     const releasedReady = availableTodayCents === null ? null : Math.min(availableTodayCents, net);
-    const scheduled = releasedReady === null ? net : Math.max(0, net - releasedReady);
+    const scheduled = (releasedReady === null ? net : Math.max(0, net - releasedReady)) + queuedCents;
 
     return {
       owedCents: net,
@@ -370,6 +382,10 @@ export const merchantProfileStore = {
       // must not hide it. Null only when the balance itself could not be read.
       readyToWithdrawCents: cash === null ? null : cash + (releasedReady ?? 0),
       nextPayoutOn: nextRes.rows[0]?.scheduled_for ?? null,
+      /** Withdrawn, queued in the pool, and still theirs. Counted in `scheduledCents`, not in `owedCents`. */
+      queuedCents,
+      /** When the oldest of those is due: what net-30 counts down to. Null when nothing is queued. */
+      releasesOn,
       clearsBalanceCents: Math.round(settle.clearsBalance * 100),
       toBankCents: Math.round(settle.toBank * 100),
       // The early-withdrawal cap is a pool question the credit side answers. Stated as null rather
