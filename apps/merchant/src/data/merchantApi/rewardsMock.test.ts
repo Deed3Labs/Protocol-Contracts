@@ -140,3 +140,17 @@ describe('section 8: Settings › Shop app', () => {
     expect(after.giveBack.high).toBe(5);
   });
 });
+
+describe('re-pricing with Earn by', () => {
+  test('saves the unit and the new costs together, and a reward that isn’t theirs changes nothing', async () => {
+    const api = createMockMerchantApi({ shop: 'micasa', delayMs: 0 }).api;
+    const s = await api.shopApp();
+    const [first] = s.rewards;
+    const { version: _v, effectiveAt: _e, ...input } = s.rules;
+    await expect(api.updateShopApp({ rules: { ...input, unit: 'visits' }, rewardCosts: [{ id: first!.id, cost: 4 }, { id: 'rwd_nope', cost: 2 }] })).rejects.toBeTruthy();
+    expect((await api.shopApp()).rewards.find((r) => r.id === first!.id)!.cost).toBe(first!.cost);
+    const next = await api.updateShopApp({ rules: { ...input, unit: 'visits' }, rewardCosts: [{ id: first!.id, cost: 4 }] });
+    expect(next.rules.unit).toBe('visits');
+    expect(next.rewards.find((r) => r.id === first!.id)!.cost).toBe(4);
+  });
+});

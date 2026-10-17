@@ -155,7 +155,7 @@ export async function rulesByVersion(q: Queryable, merchant: string, version: nu
 }
 
 /** A save of the rules is a new version, effective now. Boosts without an id get one. */
-export async function saveRules(q: Queryable, merchant: string, by: string, body: unknown, now = new Date()): Promise<EarnRules> {
+export async function saveRules(q: Queryable, merchant: string, by: string | null, body: unknown, now = new Date()): Promise<EarnRules> {
   const parsed = EarnRulesInput.safeParse(body);
   if (!parsed.success) throw new RewardsError(parsed.error.issues[0]?.message ?? 'Those rules aren’t valid', 'invalid');
   const r = parsed.data;
@@ -220,11 +220,42 @@ export async function createReward(q: Queryable, merchant: string, body: unknown
  * Changing a reward retires the old one and adds the new, so an order or claim that named the old
  * one keeps what it was when it was used.
  */
-export async function updateReward(q: Queryable, merchant: string, id: string, body: unknown): Promise<Reward> {
+export async function updateReward(q: Queryable, merchant: string, id: string, body: unknown, by: string | null = null): Promise<Reward> {
   if (!(await rewardById(q, merchant, id))) throw new RewardsError('No such reward', 'not_found');
   const created = await createReward(q, merchant, body);
   await q.query('UPDATE rewards.rewards SET archived_at = now() WHERE id = $1 AND merchant = $2', [id, merchant]);
+  await carryBirthday(q, merchant, by, new Map([[id, created.id]]));
   return created;
+}
+
+/**
+ * The birthday reward is named by id, and an edit makes a new reward under a new id. Without this the
+ * rules would keep naming the retired one, and the birthday reward would quietly stop being given
+ * (the ledger skips an archived reward). Saves a new rules version naming the new id.
+ */
+async function carryBirthday(q: Queryable, merchant: string, by: string | null, moved: Map<string, string>): Promise<void> {
+  const current = await rulesAt(q, merchant);
+  const next = current.birthdayRewardId ? moved.get(current.birthdayRewardId) : undefined;
+  if (!next) return;
+  const { version: _v, effectiveAt: _e, ...input } = current;
+  await saveRules(q, merchant, by, { ...input, birthdayRewardId: next });
+}
+
+/**
+ * New costs for some rewards (Settings › Shop app's re-price, when Earn by changes unit). Each changed
+ * one is re-made like an edit; returns the old id → new id, so the rules saved with it can follow.
+ */
+async function repriceRewards(q: Queryable, merchant: string, costs: Array<{ id: string; cost: number }>): Promise<Map<string, string>> {
+  const moved = new Map<string, string>();
+  for (const { id, cost } of costs) {
+    const r = await rewardById(q, merchant, id);
+    if (!r) throw new RewardsError('One of those rewards isn’t one of yours', 'invalid');
+    if (r.cost === cost) continue;
+    const created = await createReward(q, merchant, { name: r.name, gives: r.gives, cost, limit: r.limit, clearMembersOnly: r.clearMembersOnly, note: r.note });
+    await q.query('UPDATE rewards.rewards SET archived_at = now() WHERE id = $1 AND merchant = $2', [id, merchant]);
+    moved.set(id, created.id);
+  }
+  return moved;
 }
 
 export async function removeReward(q: Queryable, merchant: string, id: string): Promise<void> {
@@ -414,7 +445,14 @@ export async function patchShopApp(q: Queryable, merchant: string, staffId: stri
     `UPDATE rewards.shop_apps SET slug = $2, enabled = $3, brand = $4, points_name = $5, offer_code_ids = $6, config_version = config_version + 1, updated_at = now() WHERE merchant = $1`,
     [merchant, p.slug ?? current.slug, p.enabled ?? current.enabled, JSON.stringify(brand), JSON.stringify(p.pointsName ?? current.pointsName), p.offerCodeIds ?? current.offerCodeIds],
   );
-  if (p.rules) await saveRules(q, merchant, staffId, p.rules);
+  // Re-priced rewards first, so rules saved alongside can name them; all in the caller's transaction.
+  const moved = p.rewardCosts?.length ? await repriceRewards(q, merchant, p.rewardCosts) : new Map<string, string>();
+  if (p.rules) {
+    const birthday = p.rules.birthdayRewardId ? (moved.get(p.rules.birthdayRewardId) ?? p.rules.birthdayRewardId) : null;
+    await saveRules(q, merchant, staffId, { ...p.rules, birthdayRewardId: birthday });
+  } else if (moved.size) {
+    await carryBirthday(q, merchant, staffId, moved);
+  }
 }
 
 /**

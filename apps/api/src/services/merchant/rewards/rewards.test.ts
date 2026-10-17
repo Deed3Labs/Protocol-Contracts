@@ -744,3 +744,45 @@ describe('store app builds (Phase 7): records only', () => {
     await expect(recordStoreBuild(db, { slug: shop.slug, platform: 'ios', bundleId: 'not a bundle', version: '1', review: 'live' })).rejects.toMatchObject({ code: 'invalid' });
   });
 });
+
+describe('re-pricing rewards with Earn by', () => {
+  test('the unit and the new costs save together; changed rewards are re-made and the birthday reward follows', async () => {
+    const shop = await miCasa();
+    const rules = await rulesAt(db, shop.merchant);
+    await patchShopApp(db, shop.merchant, shop.staff.owner, { rules: { ...rules, birthdayRewardId: shop.rewards.agua.id } });
+    const before = await rulesAt(db, shop.merchant);
+    const { version: _v, effectiveAt: _e, ...input } = before;
+    await db.transaction((tx) =>
+      patchShopApp(tx, shop.merchant, shop.staff.owner, { rules: { ...input, unit: 'visits' }, rewardCosts: [{ id: shop.rewards.agua.id, cost: 4 }] }),
+    );
+    const after = await rulesAt(db, shop.merchant);
+    expect(after.unit).toBe('visits');
+    const { rows } = await db.query<{ id: string; name: string; cost: number }>('SELECT id, name, cost FROM rewards.rewards WHERE merchant = $1 AND archived_at IS NULL ORDER BY name', [shop.merchant]);
+    const agua = rows.find((r) => r.name === 'Free agua fresca')!;
+    expect(agua.cost).toBe(4);
+    expect(agua.id).not.toBe(shop.rewards.agua.id);
+    expect(after.birthdayRewardId).toBe(agua.id);
+  });
+  test('a reward that isn’t the shop’s changes nothing at all, rules included', async () => {
+    const shop = await miCasa();
+    const rules = await rulesAt(db, shop.merchant);
+    const { version: _v, effectiveAt: _e, ...input } = rules;
+    await expect(
+      db.transaction((tx) =>
+        patchShopApp(tx, shop.merchant, shop.staff.owner, { rules: { ...input, unit: 'visits' }, rewardCosts: [{ id: shop.rewards.agua.id, cost: 4 }, { id: 'rwd_not_theirs', cost: 2 }] }),
+      ),
+    ).rejects.toThrow();
+    expect((await rulesAt(db, shop.merchant)).unit).toBe(rules.unit);
+    const { rows } = await db.query<{ cost: number }>('SELECT cost FROM rewards.rewards WHERE id = $1 AND archived_at IS NULL', [shop.rewards.agua.id]);
+    expect(rows[0]?.cost).toBe(75);
+  });
+  test('editing the birthday reward keeps it the birthday reward', async () => {
+    const shop = await miCasa();
+    const rules = await rulesAt(db, shop.merchant);
+    await patchShopApp(db, shop.merchant, shop.staff.owner, { rules: { ...rules, birthdayRewardId: shop.rewards.agua.id } });
+    const { updateReward, rewardById } = await import('./shopApp.js');
+    const old = (await rewardById(db, shop.merchant, shop.rewards.agua.id))!;
+    const edited = await db.transaction((tx) => updateReward(tx, shop.merchant, old.id, { name: old.name, gives: old.gives, cost: 80, limit: old.limit, clearMembersOnly: old.clearMembersOnly, note: old.note }, shop.staff.owner));
+    expect((await rulesAt(db, shop.merchant)).birthdayRewardId).toBe(edited.id);
+  });
+});

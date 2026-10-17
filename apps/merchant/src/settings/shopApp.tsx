@@ -9,6 +9,7 @@ import {
   earnPoints,
   giveBack,
   pointsWord,
+  suggestCosts,
   type Brand,
   type CatalogItem,
   type DiscountCode,
@@ -46,6 +47,7 @@ type Open =
   | { kind: 'name' }
   | { kind: 'logo' }
   | { kind: 'preview' }
+  | { kind: 'reprice'; unit: EarnRules['unit'] }
   | null;
 
 const PRESET_KEYS = ['terracotta', 'ink', 'olive', 'plum'] as const;
@@ -507,7 +509,13 @@ export function ShopAppSection({ head, screen, onDiscounts }: { head: ReactNode;
         >
           <Main>
             <Rows>
-              <R2 t="Earn by" det="Dollars spent, or one stamp a visit like a punch card" end={<Seg label="Earn by" options={['Dollars', 'Visits']} on={rules.unit === 'dollars' ? 0 : 1} disabled={!edit} onPick={(i) => void saveRules({ unit: i === 0 ? 'dollars' : 'visits' })} />} />
+              <R2 t="Earn by" det="Dollars spent, or one stamp a visit like a punch card" end={<Seg label="Earn by" options={['Dollars', 'Visits']} on={rules.unit === 'dollars' ? 0 : 1} disabled={!edit} onPick={(i) => {
+                    const unit = i === 0 ? 'dollars' : 'visits';
+                    if (unit === rules.unit) return;
+                    // Rewards were priced in the old unit: offer to re-price them in the new one first.
+                    if (s.rewards.length) setOpen({ kind: 'reprice', unit });
+                    else void saveRules({ unit });
+                  }} />} />
               {rules.unit === 'dollars' ? (
                 <>
                   <R2
@@ -749,6 +757,20 @@ export function ShopAppSection({ head, screen, onDiscounts }: { head: ReactNode;
           categories={[...new Set(items.map((i) => i.category))]}
           onAdd={async (b) => {
             const ok = await saveRules({ boosts: [...rules.boosts, b] });
+            if (ok) setOpen(null);
+          }}
+          onClose={() => setOpen(null)}
+        />
+      )}
+      {open?.kind === 'reprice' && (
+        <RepriceSheet
+          rewards={s.rewards}
+          from={rules}
+          to={{ ...rules, unit: open.unit }}
+          word={word}
+          error={error}
+          onSave={async (costs) => {
+            const ok = await save((m) => m.updateShopApp({ rules: { ...rulesInput(rules), unit: open.unit }, ...(costs ? { rewardCosts: costs } : {}) }));
             if (ok) setOpen(null);
           }}
           onClose={() => setOpen(null)}
@@ -1329,6 +1351,94 @@ function ColourSheet({ brand, onSave, onClose }: { brand: Brand; onSave: (c: Pic
       {field('onColour', 'Text on it')}
       {field('paper', 'Paper')}
       {field('paper2', 'Deeper paper')}
+    </Sheet>
+  );
+}
+
+/**
+ * Earn by is switching unit, and the rewards are priced in the old one: a reward at 75 points would be
+ * 75 stamps on a ten-stamp card. Each reward's suggested cost in the new unit (suggestCosts), for the
+ * owner to change before saving; or switch and keep the costs as they are. Saved with the rules in one
+ * go, so the app never shows the new unit with the old prices.
+ */
+function RepriceSheet({
+  rewards,
+  from,
+  to,
+  word,
+  error,
+  onSave,
+  onClose,
+}: {
+  rewards: Reward[];
+  from: EarnRules;
+  to: EarnRules;
+  word: (n: number) => string;
+  error: string | null;
+  onSave: (costs: Array<{ id: string; cost: number }> | null) => Promise<void>;
+  onClose: () => void;
+}) {
+  const suggested = useMemo(() => suggestCosts(rewards, from, to), [rewards, from, to]);
+  const [costs, setCosts] = useState<Record<string, string>>(() => Object.fromEntries(suggested.map((c) => [c.id, String(c.to)])));
+  const [busy, setBusy] = useState(false);
+  const parsed = rewards.map((r) => ({ id: r.id, cost: Number(costs[r.id]) }));
+  const valid = parsed.every((c) => Number.isInteger(c.cost) && c.cost >= 1 && c.cost <= 1_000_000);
+  const visits = to.unit === 'visits';
+  const visit = to.visitMinCents > 0 ? dollars(to.visitMinCents) : '$10';
+  const go = async (next: Array<{ id: string; cost: number }> | null) => {
+    setBusy(true);
+    await onSave(next);
+    setBusy(false);
+  };
+  return (
+    <Sheet
+      className="c-st-sheet c-tm-sheet c-w460"
+      title={visits ? 'Re-price rewards for the card' : 'Re-price rewards for dollars'}
+      onClose={onClose}
+      foot={
+        <Foot det={error ?? (valid ? '' : 'Whole numbers, 1 or more.')}>
+          <button type="button" className="c-btn" disabled={busy} onClick={() => void go(null)}>
+            Switch, keep costs
+          </button>
+          <button type="button" className="c-btn c-btn-primary" disabled={busy || !valid} onClick={() => void go(parsed)}>
+            Switch and re-price
+          </button>
+        </Foot>
+      }
+    >
+      <p className="c-det" style={{ margin: '0 0 var(--s1)' }}>
+        {visits
+          ? `One ${word(1)} a visit, ${to.cardSize} to a card. Each reward is suggested as its share of a full card, with the dearest taking all ${to.cardSize}. Change any before you switch.`
+          : `${to.pointsPer} ${word(to.pointsPer)} per ${dollars(to.perAmountCents)}. Each ${word(1)} on the card is suggested as one visit of ${visit}. Change any before you switch.`}
+      </p>
+      <Rows>
+        {rewards.map((r) => {
+          const was = suggested.find((c) => c.id === r.id)!;
+          return (
+            <div key={r.id} className="c-line" style={{ alignItems: 'center' }}>
+              <div style={{ minWidth: 0 }}>
+                <p className="c-t" style={{ margin: 0 }}>{r.name}</p>
+                <p className="c-det" style={{ margin: 0 }}>
+                  Now {was.from} {word(was.from)}
+                </p>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  className="c-field c-sa-box"
+                  inputMode="numeric"
+                  aria-label={`${r.name}, new cost`}
+                  value={costs[r.id] ?? ''}
+                  onChange={(e) => setCosts({ ...costs, [r.id]: e.target.value.replace(/[^0-9]/g, '') })}
+                  style={{ width: 72, textAlign: 'right' }}
+                />
+                <span className="c-det" style={{ minWidth: '7ch' }}>
+                  {word(Number(costs[r.id]) || 2)}
+                </span>
+              </label>
+            </div>
+          );
+        })}
+      </Rows>
     </Sheet>
   );
 }
