@@ -1,0 +1,25 @@
+{
+  "name": "@clear/pay-docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "Pay with Clear's docs for AI and people: llms.txt and the plain-text docs apps/member serves at useclear.org, rendered from the spec's snippets and the public contracts so they can't drift.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bun test src",
+    "typecheck": "tsc --noEmit",
+    "write": "bun scripts/write.ts"
+  },
+  "dependencies": {
+    "@clear/public-api-contracts": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "~5.8.3"
+  }
+}

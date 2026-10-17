@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { CardTableSheet } from '@/terminal/cardTable';
 import { readerQueue, type ReaderQueue, type TableReaderState } from '@/reader';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { earnLabels, pointsWord, type Order, type OrderCustomerState, type PointsName, type Tender } from '@clear/merchant-contracts';
+import { earnLabels, pointsWord, type MerchantPaymentLink, type Order, type OrderCustomerState, type PointsName, type Tender } from '@clear/merchant-contracts';
+import { BLANK_LINK, SendLinkSheet, type LinkDraft } from '@/charge/link';
 import { seesMoney } from '@clear/domain';
 import { useAuth } from '@/auth/authContext';
 import { Segmented } from '@/brand/controls';
@@ -361,6 +362,46 @@ export default function NewChargePage() {
           ? { now: Math.round(profile.discountRate * 10000) / 100 }
           : null;
   const limitCents = preview ? 250000 : (profile?.approvalCapCents ?? null);
+
+  // New charge › Send a link (pay spec §5): owners and managers, from the start of a charge. The
+  // preview's `&screen=link` is the drawn sheet, `&screen=link-made` the link once made.
+  const linkScreen = preview ? params.get('screen') : null;
+  const [linkSheet, setLinkSheet] = useState(() => linkScreen === 'link' || linkScreen === 'link-made');
+  const [linkMade, setLinkMade] = useState<MerchantPaymentLink | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const linkItems = useApi(() => (linkSheet ? merchant.catalog() : Promise.resolve(null)), [linkSheet]);
+  const linkDraft: LinkDraft = linkScreen?.startsWith('link') ? { ...BLANK_LINK, itemId: 'itm_tray12', note: 'Saturday pickup, 11:30am' } : BLANK_LINK;
+  const createLink = async (request: Parameters<typeof merchant.createPaymentLink>[0]) => {
+    setLinkBusy(true);
+    setLinkError(null);
+    try {
+      setLinkMade(await merchant.createPaymentLink(request));
+    } catch (error) {
+      setLinkError(errorSentence(error));
+    } finally {
+      setLinkBusy(false);
+    }
+  };
+  useEffect(() => {
+    if (linkScreen === 'link-made') void createLink({ for: 'item', itemId: 'itm_tray12', quantity: 1, note: 'Saturday pickup, 11:30am', expires: '7d', allowOverTime: true });
+    // Once, for the preview's frame.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const sendLink =
+    seesMoney(role) && !adding ? (
+      <button
+        type="button"
+        className="c-ci-link"
+        onClick={() => {
+          setLinkMade(null);
+          setLinkError(null);
+          setLinkSheet(true);
+        }}
+      >
+        Send a link
+      </button>
+    ) : null;
 
   const [f, setF] = useState<Flow>(() => ({
     ...BLANK,
@@ -1062,15 +1103,16 @@ export default function NewChargePage() {
             onExit={exit}
             // A shop with a catalogue switches to its items here, as on a tablet.
             modeSwitch={hasItems ? modeSwitch : undefined}
+            foot={sendLink ? <p className="c-pay-phonelink">{sendLink}</p> : undefined}
           />
         );
     } else {
       top = adding ? (
         <FlowTop title={`Adding to Table ${tabNumber}`} back onExit={toTables} onShift={me} />
       ) : hasItems ? (
-        <StartTop mode={f.mode} onMode={(mode) => set({ mode })} onShift={me} onExit={exit} title={f.catalog === 'food' ? 'New order' : tabTable && tabView ? `New charge · Table ${tabView.number}` : 'New charge'} />
+        <StartTop mode={f.mode} onMode={(mode) => set({ mode })} onShift={me} onExit={exit} end={sendLink} title={f.catalog === 'food' ? 'New order' : tabTable && tabView ? `New charge · Table ${tabView.number}` : 'New charge'} />
       ) : (
-        <FlowTop title="New charge" onExit={exit} onShift={me} />
+        <FlowTop title="New charge" onExit={exit} onShift={me} end={sendLink} />
       );
       if (items && f.capNote) {
         main = (
@@ -1740,6 +1782,17 @@ export default function NewChargePage() {
           state={tableReader}
           waiting={tableReader.queue.map((id) => (preview && id === 'hw_t4' ? 'Table 4' : (counterHw.points.find((p) => p.id === id)?.name ?? 'Another table')))}
           onClose={() => setTableReader((t) => ({ ...t, phase: t.phase === 'connecting' ? 'ready' : t.phase }))}
+        />
+      )}
+      {linkSheet && (
+        <SendLinkSheet
+          items={linkItems.data ?? []}
+          draft={linkDraft}
+          created={linkMade}
+          busy={linkBusy}
+          error={linkError}
+          onCreate={(request) => void createLink(request)}
+          onClose={() => setLinkSheet(false)}
         />
       )}
       {showOnSheet && (

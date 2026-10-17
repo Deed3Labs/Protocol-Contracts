@@ -172,8 +172,10 @@ export type CloseDayFigures = z.infer<typeof CloseDayFigures>;
 export const AuditEntry = z.object({
   id: z.string(),
   at: z.string(),
-  /** Staff id; null for the system (a job, a processor webhook). */
+  /** Staff id; null for the system (a job, a processor webhook) or a customer online. */
   actor: z.string().nullable(),
+  /** Set when a customer did it online, through a website or a link: the app reads "Online". */
+  source: z.enum(['online', 'link']).nullable().optional(),
   /** Whoever approved it with their PIN. */
   approver: z.string().nullable(),
   action: z.string(),

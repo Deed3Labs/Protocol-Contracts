@@ -17,6 +17,8 @@ import ClaimFunds from "@/pages/auth/ClaimFunds";
 import OnboardingRoute from "@/pages/auth/OnboardingRoute";
 import CounterOnboardingRoute from "@/pages/auth/CounterOnboardingRoute";
 import ChargeApprovalRoute from "@/pages/app/ChargeApprovalRoute";
+import ApprovalPageRoute from "@/pages/app/ApprovalPageRoute";
+import JoinPayRoute from "@/pages/app/JoinPayRoute";
 import ChargesRoute from "@/pages/app/ChargesRoute";
 import ConfirmIdentitySheet from "@/components/shell/ConfirmIdentitySheet";
 import { MemberProfileProvider } from '@/hooks/useMemberProfile';
@@ -157,6 +159,30 @@ function App() {
                       element={
                         <MemberProfileProvider>
                           <ChargeApprovalRoute />
+                        </MemberProfileProvider>
+                      }
+                    />
+                    {/* `/approve/<id>` — Pay with Clear's approval page, opened over a shop's page by
+                        `window.open` or from a texted link. Outside the shell for the same reasons
+                        as /c/:code, whose approval it runs; it reads the payment first, then
+                        signs in and comes back here. */}
+                    <Route
+                      path="/approve/:id"
+                      element={
+                        <MemberProfileProvider>
+                          <ApprovalPageRoute />
+                        </MemberProfileProvider>
+                      }
+                    />
+                    {/* `/join/pay?h=<handoff>` — Pay with Clear's join window, step 2 of the shop's
+                        modal: sign in, join, confirm it's you, link a bank, hand back. Outside the
+                        shell like /approve/:id, and it signs in in place (Privy's modal, prefilled
+                        with the contact the modal confirmed) rather than bouncing to /login. */}
+                    <Route
+                      path="/join/pay"
+                      element={
+                        <MemberProfileProvider>
+                          <JoinPayRoute />
                         </MemberProfileProvider>
                       }
                     />

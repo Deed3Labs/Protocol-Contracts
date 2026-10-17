@@ -5,6 +5,7 @@ import type { api as ApiClient, EnrolledDevice, MerchantCharge, MerchantProfile,
 import { price } from './pricing';
 import * as mikesTire from './seed';
 import * as miCasaTacos from './seedMiCasa';
+import { createDevelopersMock, createPayLinksMock } from './payMock';
 import { createRewardsMock } from './rewardsMock';
 import { createTerminalMock } from './terminalMock';
 
@@ -499,6 +500,27 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     },
     settings: () => settings,
     openDrawerSession: () => [...sessions.values()].find((x) => x.status !== 'closed') ?? null,
+  });
+  // ---- Pay with Clear's links (payMock.ts) ------------------------------------------------------------
+  const payLinks = createPayLinksMock({
+    shopName: shop.name,
+    now,
+    id,
+    viewer: () => viewer,
+    isManager,
+    refuse,
+    items: () => [...items.values()],
+    rates: seed.RATES_PPM,
+    inclusive: () => settings.tax.pricesIncludeTax,
+  });
+  // ---- Pay with Clear's Settings › Developers (payMock.ts) ---------------------------------------------
+  const developers = createDevelopersMock({
+    micasa: initial.shop === 'micasa',
+    now,
+    viewer: () => viewer,
+    isManager,
+    refuse,
+    cardsConnected: () => switches.stripe === 'connected',
   });
   // ---- Rewards (rewardsMock.ts): the shop's app and the customer at the cart ---------------------
   rewards = createRewardsMock({
@@ -1178,6 +1200,10 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
     ...terminal!.api,
     // Rewards: Settings › Shop app and the customer at the cart (rewardsMock.ts).
     ...rewards!.api,
+    // Pay with Clear: New charge › Send a link (payMock.ts).
+    ...payLinks.api,
+    // Pay with Clear: Settings › Developers (payMock.ts).
+    ...developers.api,
   };
 
   // ---- The Clear side (the older client's calls) ----------------------------------------------------
@@ -1460,6 +1486,8 @@ export function createMockMerchantApi(initial: Partial<MockSwitches> & { viewer?
       set: (next: Partial<MockSwitches>) => Object.assign(switches, next),
       /** The preview's customers at the cart: Sofia, Dev L., Marco (rewardsMock.ts). */
       rewards: rewards!.preview,
+      /** Settings › Developers' undrawn states in the preview (payMock.ts). */
+      developers: developers.preview,
       failNext: (method: keyof MerchantApi | keyof ClearSide, message = 'Something went wrong. Take the ticket the usual way and try again.', status = 500) => {
         failNext = { method, message, status };
       },

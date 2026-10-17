@@ -15,6 +15,7 @@ import { useShiftActions } from '@/shell/shiftActions';
 import type { OrderWithTenders } from '@clear/merchant-contracts';
 import { CARD_SALE, MARCUS, MARCUS_DETAIL, SPLIT_SALE, saleFromOrder, type ClearDetail, type Sale } from '@/charges/model';
 import { useMerchantApi } from '@/data/merchantApi';
+import { raisedByName } from '../lib/raisedBy';
 import {
   ChoseCell,
   GoodsRefundSheet,
@@ -380,7 +381,7 @@ export default function ChargeDetailPage() {
 
   // ---- A live sale's actions ------------------------------------------------------------------------
   const o = order.data;
-  const by = o ? firstName(nameOf(o.raisedBy)) : '';
+  const by = o ? firstName(raisedByName(o.raisedBy, nameOf)) : '';
   const authorisedCard = o?.tenders.find((t) => t.method === 'card' && t.status === 'authorised');
   const openSheet = (k: 'goods' | 'void' | 'tip') => (setPin(''), setSaleError(null), setSheet(k));
   const endSheet = () => (setSheet(null), setPinFor(null), setPin(''), setSaleError(null));

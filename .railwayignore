@@ -1,5 +1,6 @@
 # The api service builds from the REPOSITORY ROOT so it can see packages/domain, which apps/api
-# imports for refund figures, and packages/merchant-contracts, the merchant API's contract. Keep
+# imports for refund figures, packages/merchant-contracts, the merchant API's contract,
+# and packages/public-api-contracts, Pay with Clear's /v1 contract. Keep
 # `railway up` uploads small: ship apps/api and the packages it needs, never node_modules.
 /*
 !/apps
@@ -9,4 +10,5 @@
 /packages/*
 !/packages/domain
 !/packages/merchant-contracts
+!/packages/public-api-contracts
 node_modules

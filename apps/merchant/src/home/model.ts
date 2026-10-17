@@ -3,6 +3,7 @@ import type { MerchantCharge, PayoutPosition, StaffMember } from '@/data/apiClie
 import type { CatalogItem, Order, Reorder, SetupProgress, ShiftNow } from '@clear/merchant-contracts';
 import { fromCatalog, level, type InvItem } from '../inventory/model';
 import { stillOwedCents } from '../payouts/model';
+import { raisedByName } from '../lib/raisedBy';
 
 /**
  * What Home shows, as data.
@@ -357,7 +358,7 @@ export function fromApi(input: {
       id: o.id,
       name: o.customer ?? (o.number ? `Order ${o.number}` : 'A walk-in'),
       time: clockTime(o.createdAt),
-      by: firstName(nameOf(o.raisedBy)),
+      by: firstName(raisedByName(o.raisedBy, nameOf)),
       amountCents: o.totalCents + o.tipCents,
     }));
     model.confirmedCents = model.confirmed.reduce((t, c) => t + c.amountCents, 0);

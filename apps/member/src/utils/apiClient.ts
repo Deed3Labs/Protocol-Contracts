@@ -25,6 +25,8 @@ import { clearSiwxAuthToken, getActiveWallet, notifyAuthExpired } from './authSe
 import { STEP_UP_DECLINED, confirmForServer, currentStepUpToken, stepUpDenied } from '@/lib/stepUp';
 import { readsMustBeFresh, wantFreshReads } from '@/lib/freshReads';
 import { notifyServerLocked } from '@/lib/appLock';
+import { readApproval, type ApprovalRead } from '@/lib/approvalPage';
+import { postJoinDone, readJoinWindow, type JoinFinished, type JoinRead, type JoinWindowView } from '@/lib/joinPay';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 const REOWN_PROJECT_ID = import.meta.env.VITE_APPKIT_PROJECT_ID || '';
@@ -3628,6 +3630,13 @@ export interface ChargeView {
   table?: string | null;
   /** What the shop pays Clear if it's paid now, in basis points: 125 is 1.25%. */
   paidNowBps?: number | null;
+  /**
+   * Paid online (a link or a website): false when only paying now is offered. Null at the counter,
+   * whose rules (the $50 minimum) are the app's own.
+   */
+  overTime?: boolean | null;
+  /** Where an online charge came from, and the shop's site to name: "micasatacos.com". Null at the counter. */
+  online?: { channel: 'online' | 'link'; shopHost: string | null } | null;
 }
 
 /** What the member's wallet sends to pay now: USDC token units (6dp), to the shop and Clear's fee. */
@@ -3643,6 +3652,45 @@ export interface PayNowInstructions {
 export async function getCharge(code: string): Promise<ChargeView | null> {
   const r = await apiRequest<ChargeView>(`/api/charges/${encodeURIComponent(code)}`);
   return r.error || !r.data ? null : r.data;
+}
+
+/**
+ * The approval page's payment (`/approve/:id`): no session, no cookies, nothing cached. It names the
+ * shop and the order; which member pays is the charge's business, behind sign-in.
+ */
+export function getApprovalView(id: string): Promise<ApprovalRead> {
+  return readApproval(id, API_BASE_URL);
+}
+
+/**
+ * The member's session as the member routes take it: the Privy token and the active wallet (the
+ * smart wallet, which the API also falls back to). Empty when nobody is signed in.
+ */
+async function memberSessionHeaders(): Promise<Record<string, string>> {
+  const token = await getAccessToken().catch(() => null);
+  if (!token) return {};
+  const wallet = getActiveWallet();
+  return {
+    Authorization: `Bearer ${token}`,
+    ...(wallet ? { 'X-Wallet-Address': wallet } : {}),
+    ...(REOWN_PROJECT_ID ? { 'X-Reown-Project-Id': REOWN_PROJECT_ID } : {}),
+  };
+}
+
+/**
+ * The join window's hand-off (`/join/pay?h=`). Read with the member's session when there is one;
+ * signed out it asks without, and a 401 says to sign in first. Its own fetch rather than
+ * `apiRequest`, because what a 404 or a 410 means (the link has ended) is the screen.
+ */
+export async function getJoinWindow(handoff: string): Promise<JoinRead<JoinWindowView>> {
+  return readJoinWindow(handoff, API_BASE_URL, await memberSessionHeaders());
+}
+
+/** `POST /api/checkout/join/:handoff/done`: the window is finished, and the modal moves on. */
+export async function finishJoinWindow(handoff: string): Promise<JoinRead<JoinFinished>> {
+  const r = await postJoinDone(handoff, API_BASE_URL, await memberSessionHeaders());
+  wantFreshReads();
+  return r;
 }
 
 export interface ChargeActionResult {

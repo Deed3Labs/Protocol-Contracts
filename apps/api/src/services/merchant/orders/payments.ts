@@ -27,7 +27,7 @@ export { PaymentError };
 
 /** The Clear charge flow, as tenders need it. The real one is `raiseChargeFromDevice` and `chargeStore`. */
 export interface ClearCharges {
-  raise(input: { merchant: string; amountCents: number; raisedBy: string }): Promise<{ ok: true; code: string } | { ok: false; reason: string }>;
+  raise(input: { merchant: string; amountCents: number; raisedBy: string | null }): Promise<{ ok: true; code: string } | { ok: false; reason: string }>;
   /** The charge as it stands: pending (or being approved), approved, declined, expired or cancelled. */
   status(code: string): Promise<'pending' | 'approved' | 'declined' | 'expired' | 'cancelled' | 'other' | null>;
   /** Withdraws a charge nobody has answered. False if it was answered first. */
@@ -110,7 +110,11 @@ export async function createCashTender(db: Db, input: { merchant: string; orderI
  * Raises a Clear charge for part or all of what's owed; the member approves (or declines) on their
  * phone and the tender follows. The charge carries the tip: Clear takes it like the rest.
  */
-export async function createClearTender(db: Db, clear: ClearCharges, input: { merchant: string; orderId: string; staffId: string; tender: unknown }): Promise<Tender> {
+export async function createClearTender(
+  db: Db,
+  clear: ClearCharges,
+  input: { merchant: string; orderId: string; staffId: string | null; tender: unknown; source?: 'online' | 'link' },
+): Promise<Tender> {
   const parsed = CreateClearTender.safeParse(input.tender);
   if (!parsed.success) throw new PaymentError(parsed.error.issues[0]?.message ?? 'That Clear payment isn’t valid', 'invalid');
   const t = parsed.data;
@@ -124,7 +128,7 @@ export async function createClearTender(db: Db, clear: ClearCharges, input: { me
        VALUES ($1,$2,$3,'clear',$4,$5,'pending',$6,$7,$8,$9) RETURNING *`,
       [`tnd_${randomUUID()}`, input.merchant, order.id, t.amountCents, t.tipCents, t.idempotencyKey, requestHash, order.raised_by, input.staffId],
     );
-    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tender.clear_started', ref: { type: 'tender', id: rows[0]!.id }, amountCents: t.amountCents + t.tipCents, detail: { orderId: order.id, tipCents: t.tipCents } });
+    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tender.clear_started', ref: { type: 'tender', id: rows[0]!.id }, amountCents: t.amountCents + t.tipCents, detail: { orderId: order.id, tipCents: t.tipCents }, source: input.source });
     await settleOrder(tx, { merchant: input.merchant, orderId: order.id, actor: input.staffId });
     return rows[0]!;
   });
@@ -138,14 +142,14 @@ export async function createClearTender(db: Db, clear: ClearCharges, input: { me
     // withdrawal back and leave the order owing on a payment that never started.
     await db.transaction(async (tx) => {
       await tx.query(`UPDATE payments.tenders SET status = 'cancelled', updated_at = now() WHERE id = $1 AND status = 'pending'`, [pending.id]);
-      await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tender.clear_refused', ref: { type: 'tender', id: pending.id }, amountCents: t.amountCents + t.tipCents, detail: { reason: raised.reason } });
+      await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tender.clear_refused', ref: { type: 'tender', id: pending.id }, amountCents: t.amountCents + t.tipCents, detail: { reason: raised.reason }, source: input.source });
       await settleOrder(tx, { merchant: input.merchant, orderId: pending.order_id, actor: input.staffId });
     });
     throw new PaymentError(`Clear couldn’t take this one: ${raised.reason}`, 'clear_refused');
   }
   const out = await db.transaction(async (tx) => {
     const { rows } = await tx.query<TenderRow>('UPDATE payments.tenders SET clear_charge_code = $2, updated_at = now() WHERE id = $1 RETURNING *', [pending.id, raised.code]);
-    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tender.clear_raised', ref: { type: 'tender', id: pending.id }, amountCents: t.amountCents + t.tipCents, detail: { chargeCode: raised.code } });
+    await audit(tx, { merchant: input.merchant, actor: input.staffId, action: 'tender.clear_raised', ref: { type: 'tender', id: pending.id }, amountCents: t.amountCents + t.tipCents, detail: { chargeCode: raised.code }, source: input.source });
     return rows;
   });
   return toTender(out[0]!);

@@ -23,8 +23,11 @@ export interface OnboardingAnswers {
   contact: string;
 }
 
-/** Where they came in: directly, through a shop's counter code, or from a shop's rewards app. */
-export type ReferralSource = 'direct' | 'counter' | 'rewards';
+/**
+ * Where they came in: directly, through a shop's counter code, from a shop's rewards app, or from a
+ * shop's online checkout (Pay with Clear's join window).
+ */
+export type ReferralSource = 'direct' | 'counter' | 'rewards' | 'online';
 
 export async function submitClearOnboarding(api: OnboardingApi, values: OnboardingAnswers, opts: { referralSource?: ReferralSource } = {}): Promise<void> {
   const bootstrapped = await api.bootstrapMemberAccount();

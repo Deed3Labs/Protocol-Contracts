@@ -309,6 +309,7 @@ export function FlowTop({
   back,
   onExit,
   middle,
+  end,
   onShift,
   onChangeShift,
 }: {
@@ -317,6 +318,8 @@ export function FlowTop({
   back?: boolean;
   onExit?: () => void;
   middle?: ReactNode;
+  /** Beside the shift: New charge's "Send a link", for owners and managers. */
+  end?: ReactNode;
   onShift: string;
   onChangeShift?: () => void;
 }) {
@@ -331,6 +334,7 @@ export function FlowTop({
       </span>
       {middle}
       <span className="c-mc-right">
+        {end}
         <ShiftPill name={onShift} onClick={onChangeShift} />
       </span>
     </div>

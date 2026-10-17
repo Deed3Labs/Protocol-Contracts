@@ -2,6 +2,7 @@ import { isPending, type ChargeState } from '@clear/domain';
 import { canVoidOrder, type OrderWithTenders, type Tender } from '@clear/merchant-contracts';
 import type { MerchantCharge } from '@/data/apiClient';
 import { ago, clockTime, firstName } from '../home/model';
+import { raisedByName } from '../lib/raisedBy';
 
 /**
  * Charges, as data — docs/merchant-reference/clear-merchant-charges.html.
@@ -39,7 +40,15 @@ export interface ChargeRow {
   pay?: string;
   sold?: string;
   tipCents?: number;
+  /**
+   * Pay with Clear: a sale from a payment link or a website, which nobody at the shop raised. The row
+   * says where in place of who: "Link · Taco tray for 12", "Online · micasatacos.com".
+   */
+  source?: { kind: 'link' | 'online'; label: string };
 }
+
+/** "Link · Taco tray for 12" */
+export const sourceLabel = (s: NonNullable<ChargeRow['source']>) => `${s.kind === 'link' ? 'Link' : 'Online'} · ${s.label}`;
 
 export const done = (r: ChargeRow) => r.state === 'confirmed' || r.state === 'paid';
 
@@ -94,6 +103,7 @@ export function rowFromApi(c: MerchantCharge, now = Date.now()): ChargeRow {
     by: c.raisedBy ? firstName(c.raisedBy) : '—',
     byId: c.raisedByStaffId ?? undefined,
     note,
+    ...(c.source ? { source: { kind: c.source.kind, label: c.source.label } } : {}),
   };
 }
 
@@ -109,7 +119,7 @@ const cardLabel = (t: Tender) => `${t.cardBrand ? t.cardBrand[0]!.toUpperCase() 
  * list already as a Clear charge, so this row is the card and cash part, and each dollar is listed
  * once. A Clear-only order is only its Clear charge; an order still being paid isn't a sale yet.
  */
-export function rowFromOrder(o: OrderWithTenders, nameOf: (staffId: string) => string, now = Date.now()): ChargeRow | null {
+export function rowFromOrder(o: OrderWithTenders, nameOf: (staffId: string) => string, now = Date.now(), linkName?: (slug: string) => string | undefined): ChargeRow | null {
   const voided = o.status === 'voided';
   const legs = o.tenders.filter((t) => t.method !== 'clear' && (voided ? true : took(t)));
   if (!legs.length) return null;
@@ -128,13 +138,26 @@ export function rowFromOrder(o: OrderWithTenders, nameOf: (staffId: string) => s
     date: day > 1 ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : undefined,
     time: clockTime(o.createdAt),
     at: d.getHours() * 60 + d.getMinutes() - day * 1440,
-    by: firstName(nameOf(o.raisedBy)),
-    byId: o.raisedBy,
+    by: firstName(raisedByName(o.raisedBy, nameOf)),
+    byId: o.raisedBy ?? undefined,
     note: o.status === 'partly_refunded' ? 'part refunded' : undefined,
     pay: method === 'split' ? 'Split' : method === 'card' ? cardLabel(legs[0]!) : 'Cash',
     sold: o.lines[0]?.name,
     tipCents: legs.reduce((s, t) => s + t.tipCents, 0) || undefined,
+    ...(o.source === 'link' || o.source === 'online' ? { source: orderSource(o, linkName) } : {}),
   };
+}
+
+/** A link's name where the shop's links are read (owners and managers), else its first line; a website's host. */
+function orderSource(o: OrderWithTenders, linkName?: (slug: string) => string | undefined): NonNullable<ChargeRow['source']> {
+  if (o.source === 'link') return { kind: 'link', label: (o.sourceDetail && linkName?.(o.sourceDetail)) ?? o.lines[0]?.name ?? 'Payment' };
+  let host = 'a website';
+  try {
+    if (o.sourceDetail) host = new URL(o.sourceDetail).host;
+  } catch {
+    // An origin the API wrote; anything else reads as a website.
+  }
+  return { kind: 'online', label: host };
 }
 
 // ---- Raised today, and how it was paid -----------------------------------------------------------
@@ -286,6 +309,15 @@ const EARLIER: ChargeRow[] = (() => {
 
 export const REFERENCE_ROWS: ChargeRow[] = [NINA, DANA, MARCUS, PRIYA, ANA, RAY, TOM, ...EARLIER];
 
+/**
+ * `&screen=links`: Pay with Clear's sales beside the reference's (not drawn; pay DECISIONS, Phase 3).
+ * A link paid with Clear in 4, and one paid by card, each named by its link in place of who raised it.
+ */
+export const LINK_ROWS: ChargeRow[] = [
+  { id: 'link-sofia', name: 'Sofia M.', amountCents: 16148, method: 'clear', state: 'confirmed', day: 0, time: '2:31pm', at: m(14, 31), by: 'Online', note: '4 payments', source: { kind: 'link', label: 'Taco tray for 12' } },
+  { id: 'link-card', name: 'Walk-in', amountCents: 16148, method: 'card', state: 'paid', day: 0, time: '1:58pm', at: m(13, 58), by: 'Online', pay: 'Visa ••4242', sold: 'Taco tray for 12', source: { kind: 'link', label: 'Taco tray for 12' } },
+];
+
 /** Late in the day, every way to pay. The valve stems are $38.79 (DECISIONS.md). */
 export const LATE_ROWS: ChargeRow[] = [
   { ...NINA, note: 'sent 3 hours ago' },
@@ -422,7 +454,7 @@ export function saleFromOrder(o: OrderWithTenders, nameOf: (staffId: string) => 
   return {
     id: o.id,
     name: o.customer ?? 'Walk-in',
-    when: `${day} · ${clockTime(o.createdAt)} · ${firstName(nameOf(o.raisedBy))}`,
+    when: `${day} · ${clockTime(o.createdAt)} · ${firstName(raisedByName(o.raisedBy, nameOf))}`,
     count: o.lines.reduce((s, l) => s + l.quantity, 0),
     totalCents: o.totalCents + o.tipCents,
     lines: o.lines.map((l) => ({ t: `${l.quantity} × ${l.name}${l.options.length ? ` · ${l.options.map((x) => x.name.toLowerCase()).join(', ')}` : ''}`, cents: net(l) })),

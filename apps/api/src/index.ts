@@ -67,7 +67,10 @@ import { startClearTenderSync } from './jobs/clearTenderSync.js';
 import { startTerminalSweep } from './jobs/terminalSweep.js';
 import { devicePointRouter } from './routes/devicePoint.js';
 import { pointPageRouter, receiptPageRouter } from './routes/phonePages.js';
+import { checkoutRouter, linkPageRouter } from './routes/payLinks.js';
+import { v1Cors, v1Errors, v1Router } from './routes/v1.js';
 import { startOutboxProcessor } from './jobs/outboxProcessor.js';
+import { startWebhookDeliveries } from './jobs/webhookDeliveries.js';
 import { startRewardsJobs } from './jobs/rewardsJobs.js';
 import { partnersRouter, rewardsRouter, shopRouter } from './routes/rewards.js';
 import { startCardReconciliation } from './jobs/cardReconciliation.js';
@@ -75,6 +78,7 @@ import { startClearFeeBilling } from './jobs/clearFeeBilling.js';
 import { startMonthlyStatements } from './jobs/monthlyStatements.js';
 import { startStaleOrderSweep } from './jobs/staleOrderSweep.js';
 import { startCreditPeriodRenewer } from './jobs/creditPeriodRenewer.js';
+import { startTermLimitReviewer } from './jobs/termLimitReviewer.js';
 import { startReconciler } from './jobs/reconciler.js';
 import { startSnapshotRefresher } from './jobs/snapshotRefresher.js';
 import { startCardSettlementSweeper } from './jobs/cardSettlementSweeper.js';
@@ -172,6 +176,8 @@ const corsOptions = {
     'X-Clear-Device',
     // A fresh server-verified Face ID (routes/stepUp), on the requests that need one.
     'X-Step-Up',
+    // Pay with Clear's modal: its payment-scoped sign-in (routes/payLinks.ts).
+    'X-Pay-Session',
   ],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   maxAge: 86400, // 24 hours
@@ -179,7 +185,11 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
-app.use(cors(corsOptions));
+// Pay with Clear's public API answers browsers on any website with its own CORS (routes/v1.ts): a
+// shop's page reads prices and opens the modal with its publishable key. Everything else keeps this one.
+app.use('/v1', v1Cors);
+const appCors = cors(corsOptions);
+app.use((req, res, next) => (req.path.startsWith('/v1/') || req.path === '/v1' ? next() : appCors(req, res, next)));
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -290,6 +300,13 @@ async function startServer() {
     app.use('/api/device/point', devicePointRouter());
     app.use('/api/p', pointPageRouter());
     app.use('/api/r', receiptPageRouter());
+    // Pay with Clear (docs/pay-reference): a payment link's page, and the payment-scoped session it
+    // pays through. No sign-in, limited by address. See routes/payLinks.ts.
+    app.use('/api/l', linkPageRouter());
+    app.use('/api/checkout', checkoutRouter());
+    // Pay with Clear's public API: its own keys, versions and errors (routes/v1.ts).
+    app.use('/v1', v1Router());
+    app.use('/v1', v1Errors);
     // Rewards (docs/rewards-reference): a shop's app at /api/s/:slug, the hub's at /api/rewards, Add a
     // shop's directory. Each takes rewards' own tokens, never a member route's.
     app.use('/api/s', shopRouter());
@@ -395,6 +412,8 @@ async function startServer() {
     startSessionCleanup();
     // Nothing else rolls a cycle over: without this every member's period runs out and stays out.
     startCreditPeriodRenewer();
+    // Nothing else sets a term limit: without this a member's split plans all revert at zero.
+    startTermLimitReviewer();
 
     startReconciler().catch((error) => {
       console.error('Failed to start reconciler:', error);
@@ -431,6 +450,8 @@ async function startServer() {
     startTerminalSweep();
     // Acts on what the back office announced: recording and reversing tax at Stripe.
     startOutboxProcessor();
+    // Pay with Clear: the shops' webhooks, signed and retried for 3 days.
+    startWebhookDeliveries();
     startRewardsJobs();
     // Nightly: card payouts brought up to date, then our books checked against the processor's.
     startCardReconciliation();

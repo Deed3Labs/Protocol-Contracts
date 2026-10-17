@@ -38,6 +38,10 @@ import OnboardingFlow, { type OnboardingStep } from '@/pages/auth/OnboardingFlow
 import CounterOnboarding, { COUNTER_STEPS, type CounterStep } from '@/pages/auth/CounterOnboarding';
 import { useInstallMode } from '@/hooks/useInstallMode';
 import ChargeApproval from '@/pages/app/ChargeApproval';
+import { NoClearAccount } from '@/pages/app/ApprovalPage';
+import { doneLine } from '@/lib/approvalPage';
+import JoinPay, { type JoinScreen } from '@/pages/app/JoinPay';
+import { doneLede, identityValuesFrom, type IdentityValues, type JoinWindowView } from '@/lib/joinPay';
 import MoveMoneyDialog, { type MoveDirection } from '@/components/clear/MoveMoneyDialog';
 
 /** The shops section 6 draws: Mi Casa (128 points, a reward ready), Mike's Tire, La Bonita (stamps). */
@@ -578,6 +582,164 @@ function ChargeApprovalPreview() {
 }
 
 /**
+ * Pay with Clear's approval page, `/approve/<anything>?preview=1`: pay spec §4's approve sheet for Mi
+ * Casa Tacos ($185.32, Over time, In 4). `&screen=` picks the undrawn ones: done-fallback (paid, and the
+ * window wouldn't close), pay-now-only (the shop offers no Over time), no-account. `&channel=link`
+ * shows a payment link's line.
+ */
+type ApprovalScreen = 'sheet' | 'done-fallback' | 'pay-now-only' | 'no-account';
+const APPROVAL_SCREENS: ApprovalScreen[] = ['sheet', 'done-fallback', 'pay-now-only', 'no-account'];
+
+function ApprovalPagePreview() {
+  const params = new URLSearchParams(window.location.search);
+  const asked = params.get('screen') as ApprovalScreen | null;
+  const channel = params.get('channel') === 'link' ? 'link' : 'online';
+  const [screen, setScreen] = useState<ApprovalScreen>(asked && APPROVAL_SCREENS.includes(asked) ? asked : 'sheet');
+  const [mode, setMode] = useState<'choose' | 'now' | 'over'>(screen === 'pay-now-only' ? 'now' : 'over');
+  const [splitInto, setSplitInto] = useState(4);
+  const [approved, setApproved] = useState(false);
+  const host = 'micasatacos.com';
+  const pick = (next: ApprovalScreen) => {
+    setScreen(next);
+    setApproved(false);
+    setMode(next === 'pay-now-only' ? 'now' : 'over');
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      {screen === 'no-account' ? (
+        <NoClearAccount shopName="Mi Casa Tacos" host={host} />
+      ) : (
+        <ChargeApproval
+          merchantName="Mi Casa Tacos"
+          amount={185.32}
+          items={[
+            { name: 'Taco tray for 12', quantity: 1, cents: 14900 },
+            { name: 'Agua fresca, gallon', quantity: 2, cents: 2200 },
+          ]}
+          taxCents={1432}
+          shopPaysBps={125}
+          mode={mode}
+          onModeChange={setMode}
+          overTimeShown={screen !== 'pay-now-only'}
+          online={{ channel, host }}
+          readyToAllocate={412.6}
+          spendable={null}
+          onPayNow={() => setScreen('done-fallback')}
+          onAddMoney={() => {}}
+          paid={screen === 'done-fallback' ? { at: new Date(2026, 9, 16, 12, 4).toISOString(), left: 227.28 } : null}
+          doneLine={screen === 'done-fallback' || approved ? doneLine(host) : null}
+          onDone={() => pick('sheet')}
+          splitInto={splitInto}
+          onSplitChange={setSplitInto}
+          splitOptions={[1, 2, 4, 12]}
+          perCycleLimit={850}
+          clearsFromLabel="Chase ····4471"
+          firstPaymentOn="Nov 1"
+          doneBy={() => 'Feb 1'}
+          onApprove={() => setApproved(true)}
+          onDecline={() => pick('sheet')}
+          onLeave={() => pick('sheet')}
+          approved={approved}
+        />
+      )}
+
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        {APPROVAL_SCREENS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => pick(f)}
+            className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+              screen === f ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Pay with Clear's join window, `/join/pay?preview=1`: step 2 of the shop's modal, for Marco Alvarez
+ * joining at Mi Casa Tacos ($185.32). `&screen=` picks a step: signin, onboard, identity, ask-city
+ * (step 1's street had no city or state), checking, document, bank, done (with a term limit),
+ * done-fallback (the window wouldn't close), rejected, ended.
+ */
+type JoinPreviewScreen = 'signin' | 'onboard' | 'identity' | 'ask-city' | 'checking' | 'document' | 'bank' | 'done' | 'done-fallback' | 'rejected' | 'ended';
+const JOIN_SCREENS: JoinPreviewScreen[] = ['signin', 'onboard', 'identity', 'ask-city', 'checking', 'document', 'bank', 'done', 'done-fallback', 'rejected', 'ended'];
+const JOIN_BASICS = { legalName: 'Marco Alvarez', dateOfBirth: '1991-04-12', zip: '91762', street: '418 W 6th St, Ontario, CA' };
+const JOIN_VIEW: JoinWindowView = {
+  shop: { name: 'Mi Casa Tacos', initials: 'MC' },
+  order: { totalCents: 18532, summary: 'Taco tray for 12, 2 × Agua fresca' },
+  shopHost: 'micasatacos.com',
+  basics: JOIN_BASICS,
+  contact: { channel: 'phone', value: '+19095550188' },
+  expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+};
+
+function JoinPayPreview() {
+  const params = new URLSearchParams(window.location.search);
+  const asked = params.get('screen') as JoinPreviewScreen | null;
+  const [screen, setScreen] = useState<JoinPreviewScreen>(asked && JOIN_SCREENS.includes(asked) ? asked : 'signin');
+  const view = screen === 'ask-city' ? { ...JOIN_VIEW, basics: { ...JOIN_BASICS, street: '418 W 6th St' } } : JOIN_VIEW;
+  const [values, setValues] = useState<IdentityValues>(() => identityValuesFrom(view));
+  const [editing, setEditing] = useState(false);
+  const pick = (next: JoinPreviewScreen) => {
+    setScreen(next);
+    setEditing(false);
+    setValues(identityValuesFrom(next === 'ask-city' ? { ...JOIN_VIEW, basics: { ...JOIN_BASICS, street: '418 W 6th St' } } : JOIN_VIEW));
+  };
+  const shown: JoinScreen =
+    screen === 'ask-city' ? 'identity' : screen === 'done-fallback' || screen === 'rejected' ? 'done' : screen;
+  const finished = screen === 'done' || screen === 'done-fallback' ? { state: 'done' as const, termLimitCents: 50_000 } : { state: 'done' as const, termLimitCents: null };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <JoinPay
+        screen={shown}
+        view={view}
+        busy={screen === 'onboard' || screen === 'checking'}
+        onSignIn={() => pick('onboard')}
+        onRetry={() => {}}
+        identity={{
+          values,
+          onChange: (patch) => setValues((v) => ({ ...v, ...patch })),
+          editing,
+          onEdit: () => setEditing(true),
+          onSubmit: () => pick('checking'),
+          onLater: () => pick('bank'),
+        }}
+        onDocumentDone={() => pick('bank')}
+        bank={{ linked: false, busy: false, onConnect: () => pick('done'), onSkip: () => pick('done') }}
+        done={{
+          lede: doneLede(finished, view.shopHost, view.shop.name, screen === 'rejected' ? 'rejected' : 'verified'),
+          doneLine: screen === 'done-fallback' ? doneLine(view.shopHost) : null,
+          onClose: () => pick('done-fallback'),
+        }}
+      />
+
+      <div className="fixed inset-x-0 bottom-0 z-[60] flex flex-wrap justify-center gap-1 border-t-[0.5px] border-border bg-background/90 p-2 backdrop-blur-sm">
+        {JOIN_SCREENS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => pick(f)}
+            className={`rounded-md border-[0.5px] px-2 py-1 text-[11px] ${
+              screen === f ? 'border-tier-boost text-tier-boost-fg' : 'border-border text-muted-foreground'
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * The counter path — five steps, outside the app chrome like the direct one.
  *
  * Driven the way `CounterOnboardingRoute` drives it rather than on the component's own defaults,
@@ -918,6 +1080,8 @@ export default function PreviewApp() {
               <Route path="/onboarding" element={<OnboardingPreview />} />
               <Route path="/onboarding-counter" element={<CounterOnboardingPreview />} />
               <Route path="/charge" element={<ChargeApprovalPreview />} />
+              <Route path="/approve/:id" element={<ApprovalPagePreview />} />
+              <Route path="/join/pay" element={<JoinPayPreview />} />
               <Route path="/move-money" element={<MoveMoneyPreview />} />
               <Route path="/pool" element={<PoolMovePreview />} />
               <Route path="/bond" element={<BondPreview />} />

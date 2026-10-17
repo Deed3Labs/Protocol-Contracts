@@ -43,6 +43,7 @@ export function StartTop({
   onExit,
   title = 'New charge',
   onChangeShift,
+  end,
 }: {
   mode: StartMode;
   onMode?: (m: StartMode) => void;
@@ -50,6 +51,7 @@ export function StartTop({
   onExit?: () => void;
   title?: string;
   onChangeShift?: () => void;
+  end?: ReactNode;
 }) {
   return (
     <FlowTop
@@ -57,6 +59,7 @@ export function StartTop({
       onExit={onExit}
       onShift={onShift}
       onChangeShift={onChangeShift}
+      end={end}
       middle={
         <Segmented
           as="span"

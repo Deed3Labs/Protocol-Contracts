@@ -8,6 +8,7 @@ import { memberStore } from './memberStore.js';
 import { alertOps } from './opsAlert.js';
 import { dollars, PAY_OVER_TIME_MIN_CENTS } from '@clear/domain';
 import { memberAppUrl } from './memberAppUrl.js';
+import { onlineOverTime } from './merchant/pay/overTime.js';
 
 /*
  * Raising a charge, and a member answering it.
@@ -451,6 +452,13 @@ export async function approveCharge(
   if (!existing) return { ok: false, reason: 'no such charge' };
   if (existing.memberWallet !== member.trim().toLowerCase()) {
     return { ok: false, reason: 'not your charge' };
+  }
+
+  // Online, over time is the link's or the site's to allow, and off in live until counsel signs off
+  // (pay DECISIONS, rule 9). Approving opens a plan even in full, so any approval is refused; the
+  // member pays now instead.
+  if ((await onlineOverTime(code)) === false) {
+    return { ok: false, reason: 'This one is paid now, from your Clear cash.' };
   }
 
   // Under the minimum a charge is paid now, in full. The approval screen offers only that; this is

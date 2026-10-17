@@ -71,8 +71,17 @@ export const SETTINGS: ShopSettings = {
 
 export const itemId = (ref: string) => `itm_${ref}`;
 
+/**
+ * Pay with Clear's catering order (pay spec §2 and §5): the taco tray for 12 and a gallon of agua
+ * fresca, sold by link and online. Off the Points' menu, which is the terminal reference's.
+ */
+const CATERING: typeof MENU = [
+  { ref: 'tray12', name: 'Taco tray for 12', category: 'Catering', cents: 14900, detail: null, onMenu: false },
+  { ref: 'aguagal', name: 'Agua fresca, gallon', category: 'Catering', cents: 1100, detail: null, onMenu: false },
+];
+
 export function catalog(): CatalogItem[] {
-  return MENU.map((m) => ({
+  return [...MENU, ...CATERING].map((m) => ({
     id: itemId(m.ref),
     shop: SHOP.id,
     name: m.name,

@@ -1,5 +1,6 @@
 import type { CardDeposit, Order, Overview } from '@clear/merchant-contracts';
 import type { OverviewModel, RecentRow } from './model';
+import { raisedByName } from '../lib/raisedBy';
 
 /**
  * Overview for a live shop, from the merchant API (UI Phase 6, step 9): the month across every way
@@ -29,7 +30,7 @@ export function liveMonth(
       id: o.id,
       name: o.customer ?? `Order ${o.number ?? ''}`.trim(),
       when: o.businessDate === input.today ? 'today' : 'yesterday',
-      by: first(input.nameOf(o.raisedBy)),
+      by: first(raisedByName(o.raisedBy, input.nameOf)),
       ...(o.status === 'paying' ? { state: 'waiting' as const } : {}),
       cents: o.totalCents + o.tipCents,
     }));

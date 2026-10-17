@@ -21,6 +21,7 @@ import {
   PAGE,
   sections,
   shareLine,
+  sourceLabel,
   type ChargeRow,
   type ClearDetail,
   type Filters,
@@ -184,7 +185,17 @@ const CHIP: Record<RowState, [string, string]> = {
 
 function RowView({ r, methods, onOpen }: { r: ChargeRow; methods: boolean; onOpen?: () => void }) {
   const [tone, label] = CHIP[r.state];
-  const bits: ReactNode[] = [r.time, r.by];
+  // An online sale says where it came from in place of who raised it.
+  const bits: ReactNode[] = [
+    r.time,
+    r.source ? (
+      <span key="src" className="c-pm-src">
+        {sourceLabel(r.source)}
+      </span>
+    ) : (
+      r.by
+    ),
+  ];
   if (methods && r.state !== 'waiting' && r.pay) {
     bits.push(
       <span key="pm" className={cx('c-pm-t', `c-${r.method}`)}>

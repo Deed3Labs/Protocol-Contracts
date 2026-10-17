@@ -1,0 +1,12 @@
+# Clear
+> Pay with Clear: online payments from Clear members (pay now or
+> over time), with card on the shop's own Stripe as the fallback.
+
+## Docs
+- [Quickstart: no server](https://useclear.org/docs/quickstart.md)
+- [Quickstart: with a server](https://useclear.org/docs/server.md)
+- [Webhooks](https://useclear.org/docs/webhooks.md)
+- [API reference](https://useclear.org/docs/api.md)
+
+## Optional
+- [MCP server: let an agent create links, look up payments and ask for refunds](https://useclear.org/docs/mcp.md)

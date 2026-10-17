@@ -20,6 +20,16 @@ export const SERVICE_TYPES = ['dine_in', 'to_go', 'delivery'] as const;
 export const ServiceType = z.enum(SERVICE_TYPES);
 export type ServiceType = z.infer<typeof ServiceType>;
 
+/**
+ * Where an order was raised: the counter's tablet, a Point's bill, a phone at `/p/:code`, a shop's
+ * website through the modal, or a payment link. Online and link orders have no staff member; every
+ * other kind has one (the database holds it to that).
+ */
+export const ORDER_SOURCES = ['counter', 'point', 'phone', 'online', 'link'] as const;
+export const OrderSource = z.enum(ORDER_SOURCES);
+export type OrderSource = z.infer<typeof OrderSource>;
+export const sourceHasStaff = (source: OrderSource) => source !== 'online' && source !== 'link';
+
 export const ChosenOption = z.object({
   groupId: Id,
   optionId: Id,
@@ -106,7 +116,8 @@ export const Order = z.object({
   /** A number and a name for call-outs, where the shop uses them. */
   number: z.number().int().min(1).nullable(),
   name: z.string().nullable(),
-  raisedBy: Id,
+  /** Staff id. Null only for an online or link order, which nobody at the shop raised. */
+  raisedBy: Id.nullable(),
   customer: z.string().nullable(),
   status: OrderStatus,
   lines: z.array(OrderLine),
@@ -143,6 +154,14 @@ export const Order = z.object({
    * free-text name it always was.
    */
   member: OrderCustomer.nullable().optional(),
+  /**
+   * Pay with Clear additions. Where it was raised (counter when absent); the website's origin
+   * ("https://micasatacos.com") or the link's slug; and false for a test payment, which Charges marks
+   * Test and which never reaches the books, stock, tax, payouts or statements.
+   */
+  source: OrderSource.optional(),
+  sourceDetail: z.string().nullable().optional(),
+  livemode: z.boolean().optional(),
 });
 export type Order = z.infer<typeof Order>;
 

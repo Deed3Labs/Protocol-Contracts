@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { MerchantCharge } from '@/data/apiClient';
-import { filterRows, LATE_ROWS, raisedToday, REFERENCE_ROWS, rowFromApi, sections, shareLine, sortRows } from './model';
+import type { OrderWithTenders } from '@clear/merchant-contracts';
+import { filterRows, LATE_ROWS, raisedToday, REFERENCE_ROWS, rowFromApi, rowFromOrder, sections, shareLine, sortRows, sourceLabel } from './model';
 
 /** The reference's own figures, from docs/merchant-reference/clear-merchant-charges.html. */
 describe('the list', () => {
@@ -59,5 +60,25 @@ describe('a charge from the API', () => {
     // One payment is a plan too: cleared at the end of the cycle, with its carry.
     expect(rowFromApi({ ...base, state: 'approved', splitInto: 1 }, now).note).toBe('next cycle');
     expect(rowFromApi({ ...base, state: 'expired' }, now).note).toBe('not approved in 24 hours');
+  });
+});
+
+describe('a card paid online (Pay with Clear, Phase 6)', () => {
+  const order = {
+    id: 'ord_online',
+    status: 'paid',
+    raisedBy: null,
+    customer: null,
+    createdAt: new Date().toISOString(),
+    lines: [{ name: 'Taco tray for 12' }],
+    source: 'online',
+    sourceDetail: 'https://micasatacos.com',
+    tenders: [{ id: 'tnd_1', method: 'card', amountCents: 18532, tipCents: 0, status: 'captured', refundedCents: 0, cardBrand: 'visa', cardLast4: '4242' }],
+  } as unknown as OrderWithTenders;
+
+  test('shows in Charges as Online, by nobody on staff, paid by the card', () => {
+    const row = rowFromOrder(order, () => 'Staff')!;
+    expect(row).toMatchObject({ method: 'card', state: 'paid', amountCents: 18532, by: 'Online', pay: 'Visa ••4242', source: { kind: 'online', label: 'micasatacos.com' } });
+    expect(sourceLabel(row.source!)).toBe('Online · micasatacos.com');
   });
 });

@@ -86,6 +86,8 @@ export function liveData(deps: LiveDeps): RewardsData {
       table?: string | null;
       orderId?: string | null;
       reward?: { name: string; points: number; appliedBy: 'counter' | 'customer' } | null;
+      overTime?: boolean | null;
+      online?: { channel: 'online' | 'link'; shopHost: string | null } | null;
     }>(`/api/charges/${encodeURIComponent(code)}`, { auth: 'privy' });
     return {
       code: c.code,
@@ -98,6 +100,8 @@ export function liveData(deps: LiveDeps): RewardsData {
       earnsPoints: null,
       status: c.status === 'resolving' ? 'pending' : c.status === 'refunded' || c.status === 'disputed' ? 'approved' : c.status,
       orderId: c.orderId ?? null,
+      overTime: c.overTime ?? null,
+      online: c.online ?? null,
     };
   }
 

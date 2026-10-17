@@ -733,3 +733,114 @@ input.c-sa-box:disabled {
 .c-sa-tvf > .c-det {
   color: #c9cfca;
 }
+
+/* ---- Pay with Clear (pay DECISIONS, Phase 3) ---------------------------------------------------- */
+
+/* New charge › Send a link: the drawing's 480px sheet, its rows' inputs, the picker and the QR. */
+.c-pay-link {
+  width: 480px;
+  max-width: 100%;
+}
+.c-pay-pick,
+.c-pay-option {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.c-pay-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  width: 100%;
+}
+.c-pay-picker {
+  margin: var(--s1) 0 var(--s1) var(--s2);
+}
+input.c-pay-qty,
+input.c-pay-amount {
+  font: 600 var(--t-sec) var(--font-text);
+  color: var(--ink);
+  text-align: center;
+}
+input.c-pay-qty {
+  width: 56px;
+}
+input.c-pay-amount {
+  width: 112px;
+  text-align: right;
+}
+input.c-pay-note {
+  display: block;
+  width: 100%;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-text);
+}
+input.c-pay-note:focus-visible {
+  outline-offset: 4px;
+}
+.c-pay-qr {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--s2);
+}
+.c-pay-phonelink {
+  margin: var(--s2) 0 0;
+  text-align: center;
+}
+/* Settings › Developers (pay spec §6): a delivery's answer, as the spec's .pw-ok, and its undrawn sheets. */
+.c-pw-ok,
+.c-pw-bad {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--settled);
+}
+.c-pw-bad {
+  color: var(--absent);
+}
+.c-dev-sheet {
+  width: 480px;
+  max-width: 100%;
+}
+/* A sheet's action waits for a valid entry, as the reference greys a disabled button elsewhere. */
+.c-dev-sheet .c-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.c-dev-endpoint {
+  cursor: pointer;
+}
+.c-dev-endpoint .c-t {
+  overflow-wrap: anywhere;
+}
+/* A secret shown once: in full, in mono, beside its Copy. */
+.c-dev-secret {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  margin-top: var(--s2);
+  padding: 10px 12px;
+  border: 1px solid var(--ink-13);
+}
+.c-dev-secret code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* Charges: where an online sale came from, in place of who raised it. */
+.c-pm-src {
+  color: var(--ink);
+}

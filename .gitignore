@@ -76,3 +76,9 @@ typechain-types\ 2/
 
 # The rewards app's dev comparator (public/_ref/cmp.html beside a copy of the spec), not shipped.
 apps/rewards/public/_ref/
+
+# The pay app's dev copy of the spec, for comparing frames, not shipped.
+apps/pay/public/_ref/
+
+# The browser script, copied in by apps/pay's prebuild for js.useclear.org (packages/clear-js), not committed.
+apps/pay/public/js/

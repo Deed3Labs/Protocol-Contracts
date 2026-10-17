@@ -171,6 +171,24 @@ export function realMerchantApi(request: Transport): MerchantApi {
     explainFlag: (flagId, input) => post(`/reconciliation/${id(flagId)}/explain`, input),
     sendStatement: (input) => post('/statements/send', input),
 
+    // ---- Pay with Clear: payment links (pay spec §5)
+    paymentLinks: () => get('/payment-links'),
+    createPaymentLink: (input) => post('/payment-links', input),
+    deactivatePaymentLink: (linkId) => post(`/payment-links/${id(linkId)}/deactivate`),
+
+    // ---- Pay with Clear: Settings › Developers (pay spec §6). A 204 comes back as undefined.
+    developers: () => get('/developers'),
+    createKeys: (livemode) => post('/developers/keys', { livemode }),
+    rollSecretKey: (keyId) => post(`/developers/keys/${id(keyId)}/roll`),
+    addSite: (input) => post('/developers/sites', { site: input.site }),
+    removeSite: async (origin) => {
+      await send('DELETE', `/developers/sites?origin=${encodeURIComponent(origin)}`);
+    },
+    addWebhookEndpoint: (input) => post('/developers/webhook-endpoints', { url: input.url, events: input.events, livemode: input.livemode }),
+    removeWebhookEndpoint: async (endpointId) => {
+      await send('DELETE', `/developers/webhook-endpoints/${id(endpointId)}`);
+    },
+
     // ---- The shop's app and its customers (rewards spec, sections 8 and 9)
     shopApp: () => get('/shop-app'),
     updateShopApp: (input) => send('PATCH', '/shop-app', input),
