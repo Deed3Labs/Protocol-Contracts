@@ -1,4 +1,4 @@
-import { frameHeaders, lookupOrigin } from './_frameHeaders';
+import { frameHeaders, lookupOrigin } from './_frameHeaders.js';
 
 /**
  * `/m/:session`, the modal: the app's page with a `frame-ancestors` for that session's website alone.
