@@ -530,6 +530,26 @@ input.c-st-time {
   --qr-paper: #dfe3de;
 }
 
+/* Settings › Shop app draws the shop's own app (its phone preview, on the shop's paper) and the
+   join code's white card. Those keep their own light ground in every theme, so inside them the ink
+   stays light's: the dark and dusk inks are for the app's page, and turned this text pale on pale. */
+:root[data-theme='dark'] :is(.c-sa-ph, .c-sa-mini),
+:root[data-theme='dusk'] :is(.c-sa-ph, .c-sa-mini) {
+  --paper: #dfe3de;
+  --paper-2: #e9ece7;
+  --ink: #16211d;
+  --ink-70: #525b57;
+  --ink-50: #5a635f;
+  --ink-28: #a7ada8;
+  --ink-13: #c5cac5;
+  --live: #24409e;
+  --settled: #0e6b4e;
+  --underway: #8a5512;
+  --absent: #9b2c22;
+  --seam: var(--ink-28);
+  color-scheme: light;
+}
+
 /* Cash's sage chip keeps dark text on a dark ground (the ink there is light). */
 :root[data-theme='dark'] .c-ch-pm.c-cash {
   color: #16211d;
