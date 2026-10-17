@@ -937,7 +937,8 @@ Built 2026-10-16. `packages/pay-docs` (`@clear/pay-docs`, private), served from 
 ### For the user
 
 - **Claim the npm scope `@useclear`** before publishing `@useclear/js`, `@useclear/node` and `@useclear/mcp`.
-  - Their `build` (tsup) isn't installed in the repo yet.
+  - Their publishing bundle is `npm run bundle` (tsup), named so turbo's `^build` doesn't run it in CI. tsup isn't
+    installed, and the declaration build fails on the contracts: fix both before publishing.
   - `@useclear/mcp` bundles `@useclear/node` and the contracts, since neither is on npm.
 - **The website rewrites** `useclear.org/llms.txt` and `/docs/*.md` to the member app, in the website work.
 
