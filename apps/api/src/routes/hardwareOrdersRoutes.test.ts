@@ -44,7 +44,7 @@ beforeAll(() => {
 
 const call = async (path: string, role: string, method = 'GET') => {
   const r = await fetch(base + path, { method, headers: { 'content-type': 'application/json', ...(role ? { 'x-test-role': role } : {}) }, body: method === 'POST' ? '{}' : undefined });
-  return { status: r.status, body: await r.json() };
+  return { status: r.status, body: (await r.json()) as { orders: Array<{ lines: Array<Record<string, unknown>> }>; configured?: boolean } };
 };
 
 describe('On order', () => {

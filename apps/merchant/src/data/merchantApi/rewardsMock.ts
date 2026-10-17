@@ -370,6 +370,10 @@ export function createRewardsMock(h: RewardsHost) {
         if (p.data.offerCodeIds.some((id) => !h.codes.has(id))) return h.refuse('One of those offers isn’t one of your codes', 422, 'invalid');
         for (const c of h.codes.values()) h.codes.set(c.id, { ...c, showInApp: p.data.offerCodeIds.includes(c.id) });
       }
+      // Re-priced rewards (Earn by changed unit): all checked first, so a bad one changes nothing.
+      // The API re-makes each under a new id; here they keep theirs, which the screen can't tell apart.
+      if (p.data.rewardCosts?.some((c) => !rewards.has(c.id))) return h.refuse('One of those rewards isn’t one of yours', 422, 'invalid');
+      for (const c of p.data.rewardCosts ?? []) rewards.set(c.id, { ...rewards.get(c.id)!, cost: c.cost });
       if (p.data.rules) {
         const next = p.data.rules;
         rules = { ...next, boosts: next.boosts.map((b) => ({ ...b, id: b.id ?? h.id('bst') })), version: ++rulesVersion, effectiveAt: h.now() };

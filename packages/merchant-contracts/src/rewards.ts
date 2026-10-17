@@ -723,6 +723,15 @@ export const ShopAppPatch = z.object({
   pointsName: PointsName.optional(),
   offerCodeIds: z.array(Id).optional(),
   rules: EarnRulesInput.optional(),
+  /**
+   * New costs for rewards, saved with `rules` in one go: Earn by switching between dollars and visits
+   * re-prices the rewards in the new unit (see suggestCosts), or the costs would still read as points
+   * on a ten-stamp card. Each changed reward is retired and re-made, as an edit is.
+   */
+  rewardCosts: z
+    .array(z.object({ id: Id, cost: z.number().int().min(1).max(1_000_000) }))
+    .max(50)
+    .optional(),
 });
 
 /**
@@ -890,6 +899,30 @@ export function earnLabels(rules: EarnRules, name: PointsName): Pick<EarnSummary
   const day = rules.boosts.find((b) => b.on && b.scope.kind === 'days' && b.scope.days.length === 1);
   const extra = day && day.scope.kind === 'days' ? ` ${TIMES[String(day.multiplier)] ?? `${day.multiplier}×`} on ${DAY_PLURAL[day.scope.days[0]!]}.` : '';
   return { rate, sentence: `Earn ${rules.pointsPer} ${word} for every ${dollars(rules.perAmountCents)}.${extra}`, expiry };
+}
+
+/**
+ * What each reward could cost once Earn by changes unit: Settings › Shop app's starting point, which
+ * the owner adjusts before saving.
+ *   To visits: the dearest reward takes a full card, and the rest the same share of a card, at least
+ *   one stamp each (75 and 150 points on a ten-stamp card: 5 and 10 stamps).
+ *   To dollars: a stamp is worth what one visit earns at the new rate, a visit being the visit
+ *   minimum, or $10 when there's none ($5 a visit at 1 point per $1: 5 points a stamp).
+ * The same unit on both sides leaves every cost as it is.
+ */
+export function suggestCosts(
+  rewards: Pick<Reward, 'id' | 'cost'>[],
+  from: Pick<EarnRules, 'unit'>,
+  to: Pick<EarnRules, 'unit' | 'cardSize' | 'pointsPer' | 'perAmountCents' | 'visitMinCents'>,
+): Array<{ id: string; from: number; to: number }> {
+  if (from.unit === to.unit) return rewards.map((r) => ({ id: r.id, from: r.cost, to: r.cost }));
+  if (to.unit === 'visits') {
+    const top = Math.max(1, ...rewards.map((r) => r.cost));
+    return rewards.map((r) => ({ id: r.id, from: r.cost, to: Math.max(1, Math.round((r.cost / top) * to.cardSize)) }));
+  }
+  const visit = to.visitMinCents > 0 ? to.visitMinCents : 1000;
+  const perStamp = Math.max(1, Math.round((visit * to.pointsPer) / to.perAmountCents));
+  return rewards.map((r) => ({ id: r.id, from: r.cost, to: Math.min(1_000_000, r.cost * perStamp) }));
 }
 
 /** A claim code as the screen draws it: `K7P · 4QM`. */

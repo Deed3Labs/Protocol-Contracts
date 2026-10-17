@@ -389,7 +389,7 @@ export function merchantRewardsRouter(deps: RewardsDeps = defaultRewardsDeps()):
     await ensureShopApp(db, who(req).merchant, who(req).staff.id);
     return createReward(db, who(req).merchant, req.body);
   }));
-  router.patch('/shop-app/rewards/:id', requireMerchant, requireManager, run(async (db, req) => db.transaction((tx) => updateReward(tx, who(req).merchant, String(req.params.id), req.body))));
+  router.patch('/shop-app/rewards/:id', requireMerchant, requireManager, run(async (db, req) => db.transaction((tx) => updateReward(tx, who(req).merchant, String(req.params.id), req.body, who(req).staff.id))));
   router.delete('/shop-app/rewards/:id', requireMerchant, requireManager, run(async (db, req) => {
     await removeReward(db, who(req).merchant, String(req.params.id));
     return undefined;
