@@ -173,8 +173,12 @@ function printJoinCard(shop: string, url: string) {
 function AppThumb({ s, shopName, codes, timeZone }: { s: ShopAppSettings; shopName: string; codes: DiscountCode[]; timeZone: string }) {
   const { app, rules, rewards, fonts } = s;
   const b = app.brand;
-  const points = 128;
+  // Earn by Visits is a punch card, drawn as the rewards app draws it (apps/rewards RewardsBlock):
+  // "6 of 10 stamps" over a row of stamps. A sample card is a little over half full.
+  const visits = rules.unit === 'visits';
+  const points = visits ? Math.max(1, Math.min(rules.cardSize - 1, Math.round(rules.cardSize * 0.6))) : 128;
   const word = (n: number) => pointsWord(app.pointsName, n);
+  const many = word(2);
   const offers = app.offerCodeIds.map((id) => codes.find((c) => c.id === id)).filter((c): c is DiscountCode => Boolean(c));
   const vars = { '--b': b.colour, '--bi': b.onColour, '--bf': fontFamily(b.headingFont, fonts), '--bp': b.paper, '--b2': b.paper2 } as CSSProperties;
   const labels = earnLabels(rules, app.pointsName);
@@ -196,14 +200,21 @@ function AppThumb({ s, shopName, codes, timeZone }: { s: ShopAppSettings; shopNa
           <div className="c-sa-body">
             <div className="c-sa-sec c-sa-brandsec">
               <div className="c-sa-h">
-                <p className="c-label">Rewards</p>
+                <p className="c-label">{visits ? many.charAt(0).toUpperCase() + many.slice(1) : 'Rewards'}</p>
                 <span className="c-det">{labels.rate}</span>
               </div>
               <div className="c-sa-m">
                 <p className="c-sa-pts">
                   <b>{points}</b>
-                  <span>{word(points)}</span>
+                  <span>{visits ? `of ${rules.cardSize} ${many}` : word(points)}</span>
                 </p>
+                {visits && (
+                  <div className="c-sa-stamps" aria-hidden="true">
+                    {Array.from({ length: rules.cardSize }, (_, i) => (
+                      <i key={i} className={i < points ? 'c-on' : ''} />
+                    ))}
+                  </div>
+                )}
                 <div className="c-sa-rows">
                   {rewards.slice(0, 2).map((r) => (
                     <div key={r.id} className="c-sa-r ">
