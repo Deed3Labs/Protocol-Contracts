@@ -399,3 +399,44 @@ export type DrawerDay = z.infer<typeof DrawerDay>;
  */
 export const DrawerKey = z.object({ drawerId: Id, keyId: z.string().min(1), key: z.string().min(32), issuedAt: Timestamp });
 export type DrawerKey = z.infer<typeof DrawerKey>;
+
+// ---- On order: hardware reserved on useclear.org (Settings › Devices) -------------------------------
+
+/**
+ * Hardware the shop reserved on useclear.org. The site's Stripe holds the record (one metadata key per
+ * line on the reservation's PaymentIntent) until the API holds reservations itself, so these are read
+ * from there. A line's status moves reserved → building (we emailed the start date) → shipped (the rest
+ * was charged), or awaiting-payment (the card needed the shop, so Stripe emailed an invoice), or refunded.
+ */
+export const HARDWARE_ORDER_STATUSES = ['reserved', 'building', 'shipped', 'awaiting-payment', 'refunded'] as const;
+export const HardwareOrderStatus = z.enum(HARDWARE_ORDER_STATUSES);
+export type HardwareOrderStatus = z.infer<typeof HardwareOrderStatus>;
+
+export const HardwareOrderLine = z.object({
+  /** The line's number on its order (1, 2…), which Cancel names. */
+  n: z.number().int().positive(),
+  slug: z.string(),
+  variant: z.string(),
+  /** "Clear Point, Table". */
+  name: z.string(),
+  qty: z.number().int().positive(),
+  /** Paid at checkout, for the whole line. */
+  depositCents: z.number().int().nonnegative(),
+  /** Charged to the saved card when it ships, before shipping. */
+  balanceCents: z.number().int().nonnegative(),
+  /** The estimated ship month, "Feb 2027". */
+  ships: z.string(),
+  status: HardwareOrderStatus,
+  /** The day building starts, once we have emailed it (status building). */
+  startsOn: z.string().nullable(),
+  /** Cancel refunds the deposit: while reserved, or building before its start date. Owners only. */
+  cancellable: z.boolean(),
+});
+export type HardwareOrderLine = z.infer<typeof HardwareOrderLine>;
+
+export const HardwareOrder = z.object({ id: z.string(), placedAt: Timestamp, lines: z.array(HardwareOrderLine) });
+export type HardwareOrder = z.infer<typeof HardwareOrder>;
+
+/** `configured` is false when the API has no key for the site's Stripe: nothing to show yet. */
+export const HardwareOrders = z.object({ configured: z.boolean(), orders: z.array(HardwareOrder) });
+export type HardwareOrders = z.infer<typeof HardwareOrders>;

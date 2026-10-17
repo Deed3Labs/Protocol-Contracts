@@ -12,6 +12,7 @@ import {
   type Alert,
   type Device,
   type DrawerEvent,
+  type HardwareOrder,
   type LineInput,
   type MerchantApi,
   type Order,
@@ -167,6 +168,22 @@ export function createTerminalMock(h: TerminalHost) {
   let seq = 0;
   /** Order ready's names: who to call. */
   const pickupNames = new Map<string, string | null>();
+  /**
+   * On order: Mi Casa's reservation on useclear.org (the site's Reserved page draws the same one): four
+   * table Points still reserved, and a Tap whose build starts in a few days, both cancellable.
+   */
+  const hwOrders: HardwareOrder[] = h.micasa
+    ? [
+        {
+          id: 'pi_micasa_reserve',
+          placedAt: h.at(h.day, '10:12'),
+          lines: [
+            { n: 1, slug: 'clear-point', variant: 'table', name: 'Clear Point, Table', qty: 4, depositCents: 22000, balanceCents: 13600, ships: 'Feb 2027', status: 'reserved', startsOn: null, cancellable: true },
+            { n: 2, slug: 'clear-tap', variant: 'm2', name: 'Clear Tap, With an M2', qty: 1, depositCents: 8000, balanceCents: 900, ships: 'Mar 2027', status: 'building', startsOn: new Date(Date.parse(h.day) + 4 * 864e5).toISOString().slice(0, 10), cancellable: true },
+          ],
+        },
+      ]
+    : [];
 
   const metaOf = (orderId: string): OrderMeta =>
     meta.get(orderId) ?? {
@@ -632,6 +649,8 @@ export function createTerminalMock(h: TerminalHost) {
     | 'categoryOrder'
     | 'saveCategoryOrder'
     | 'hardware'
+    | 'hardwareOrders'
+    | 'cancelHardwareOrder'
     | 'addDevice'
     | 'updateDevice'
     | 'removeDevice'
@@ -667,6 +686,18 @@ export function createTerminalMock(h: TerminalHost) {
       return { names: [...categoryOrder] };
     },
     hardware: async () => list(),
+    hardwareOrders: async () => {
+      if (!seesMoney(h.roleOf(h.viewer()) ?? 'counter')) h.refuse('that needs a manager', 403, 'forbidden');
+      return { configured: true, orders: structuredClone(hwOrders) };
+    },
+    cancelHardwareOrder: async (orderId, n) => {
+      owner();
+      const line = hwOrders.find((o) => o.id === orderId)?.lines.find((l) => l.n === n) ?? h.refuse('No such order line', 404, 'not_found');
+      if (!line.cancellable) h.refuse('Building has started, so this one can’t be cancelled here. Reply to our email, or write to support@useclear.org.', 409, 'locked');
+      line.status = 'refunded';
+      line.cancellable = false;
+      return { configured: true, orders: structuredClone(hwOrders) };
+    },
     addDevice: async (input) => {
       owner();
       const id = h.id('hw');
