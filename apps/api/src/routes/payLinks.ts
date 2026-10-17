@@ -129,7 +129,8 @@ export async function developersView(db: Db, merchant: string): Promise<Develope
     sites: await listSites(db, merchant),
     endpoints: await merchantEndpoints(db, merchant),
     deliveries: await recentDeliveries(db, merchant),
-    cardsConnected: await cardsOn(db, merchant),
+    // Testing's test card: only where a test-mode payment can take a card (never on a live key).
+    cardsConnected: await cardsOn(db, merchant, false),
     ai: { llmsUrl: 'https://useclear.org/llms.txt', prompt: pasteInPrompt(publishable(true) ?? publishable(false) ?? 'clear_pk_test_…'), mcpUrl: 'https://useclear.org/docs/mcp.md' },
   };
 }

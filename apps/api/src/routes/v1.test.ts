@@ -392,6 +392,27 @@ describe('webhooks', () => {
   });
 });
 
+describe('cancel', () => {
+  test('a payment that started first isn’t canceled, and never reads as canceled', async () => {
+    const s = await shop();
+    const clear = s.sdk(s.liveSecret);
+    const payment = await clear.payments.create(SNIPPET, { idempotencyKey: key() });
+    const { rows } = await db.query<{ order_id: string }>('SELECT order_id FROM payments.api_payments WHERE id = $1', [payment.id]);
+    // Part of it was paid between the payment's read and the discard: the payment still reads as waiting
+    // on the customer, but the order can't be thrown away.
+    await db.query(
+      `INSERT INTO payments.tenders (id, merchant, order_id, method, amount_cents, tip_cents, idempotency_key, request_hash, created_by, status, clear_charge_code)
+       VALUES ($1, $2, $3, 'clear', 1000, 0, $4, 'h', NULL, 'approved', $5)`,
+      [`tnd_race_${seq}`, s.merchant, rows[0]!.order_id, key(), `RACE${seq}`],
+    );
+    expect((await clear.payments.retrieve(payment.id)).status).toBe('requires_customer');
+    await expect(clear.payments.cancel(payment.id)).rejects.toMatchObject({ code: 'payment_not_cancelable' });
+    expect((await clear.payments.retrieve(payment.id)).status).toBe('requires_customer');
+    const { rows: marked } = await db.query<{ canceled_at: unknown }>('SELECT canceled_at FROM payments.api_payments WHERE id = $1', [payment.id]);
+    expect(marked[0]!.canceled_at).toBeNull();
+  });
+});
+
 describe('refunds', () => {
   async function cardPayment(s: Awaited<ReturnType<typeof shop>>) {
     const payment = await s.sdk(s.liveSecret).payments.create(SNIPPET, { idempotencyKey: key() });

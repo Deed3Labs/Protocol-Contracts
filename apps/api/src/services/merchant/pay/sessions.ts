@@ -9,7 +9,7 @@ import { createOrder, getOrder, type OrderDeps, OrderError, quoteLines } from '.
 import { type ClearCharges, createClearTender, discardOrder } from '../orders/payments.js';
 import { touchShop } from '../terminal/bus.js';
 import { cardsOn, type LinkRow, linkBySlug, linkLines, linkQuote, linkState, orderSummary, payBase, PayError, payShop } from './links.js';
-import { cardOnline } from './card.js';
+import { cardModeOk, cardOnline } from './card.js';
 import { testClearCharges } from './testMode.js';
 import { itemForPrice } from './v1.js';
 import { insertApiPayment, paymentForOrder } from './events.js';
@@ -88,7 +88,7 @@ export async function startLinkSession(db: Db, deps: PaySessionDeps, input: { sl
     throw error;
   });
   const id = `ps_${randomUUID().replace(/-/g, '')}`;
-  const card = await cardsOn(db, link.merchant);
+  const card = await cardsOn(db, link.merchant, link.livemode);
   await db.transaction(async (tx) => {
     // A link's sale is a payment too: listed and retrievable through the API, and in its webhooks.
     await insertApiPayment(tx, { merchant: link.merchant, orderId: order.id, livemode: link.livemode, via: 'link', methods: card ? ['clear', 'card'] : ['clear'], now });
@@ -252,8 +252,9 @@ export async function payInSession(db: Db, deps: PaySessionDeps, input: { sessio
     return { method: 'clear', chargeCode: tender.clearChargeCode, url: url(tender.clearChargeCode) };
   }
 
-  const card = (await cardsOn(db, s.merchant)) ? await deps.card(s.merchant) : null;
-  if (!card) throw new PayError('This shop doesn’t take cards here', 'unavailable');
+  const card = (await cardsOn(db, s.merchant, s.livemode)) ? await deps.card(s.merchant) : null;
+  // The processor itself must fit the mode too: a test payment never starts a checkout on a live key.
+  if (!card || !cardModeOk(card, s.livemode)) throw new PayError('This shop doesn’t take cards here', 'unavailable');
   if (order.remainingCents <= 0) throw new PayError('This is being paid already', 'conflict');
   const shop = await payShop(db, s.merchant);
   const back = link ? `${payBase()}/l/${link.slug}` : `${payBase()}/m/${s.id}`;

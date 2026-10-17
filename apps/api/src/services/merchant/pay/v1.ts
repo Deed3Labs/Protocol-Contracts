@@ -88,8 +88,8 @@ async function byIdempotencyKey(q: Queryable, auth: KeyAuth, key: string): Promi
 }
 
 /** The ways this shop can be paid: card only with its processor connected. */
-async function methodsFor(q: Queryable, merchant: string, asked: PaymentMethod[]): Promise<PaymentMethod[]> {
-  const card = await cardsOn(q, merchant);
+async function methodsFor(q: Queryable, merchant: string, livemode: boolean, asked: PaymentMethod[]): Promise<PaymentMethod[]> {
+  const card = await cardsOn(q, merchant, livemode);
   return asked.filter((m) => m === 'clear' || card);
 }
 
@@ -110,7 +110,7 @@ export async function createPayment(db: Db, deps: V1Deps, input: { auth: KeyAuth
     const { rows } = await db.query('SELECT 1 FROM payments.api_payments WHERE merchant = $1 AND livemode = $2 AND reference = $3', [input.auth.merchant, input.auth.livemode, p.reference]);
     if (rows[0]) throw new V1Error('reference_taken', `A payment already has the reference ${p.reference}`, 'reference');
   }
-  const methods = await methodsFor(db, input.auth.merchant, p.methods);
+  const methods = await methodsFor(db, input.auth.merchant, input.auth.livemode, p.methods);
   if (!methods.length) throw new V1Error('method_unavailable', 'This shop doesn’t take cards yet: connect a card processor in the merchant app, or allow Clear', 'methods');
   const lines = p.lines ?? [{ name: 'Payment', amount: p.amount, quantity: 1 }];
   const linesCents = lines.reduce((s, l) => s + l.amount * l.quantity, 0);
@@ -228,11 +228,14 @@ export async function cancelPayment(db: Db, input: { auth: KeyAuth; id: string }
   if (view.status === 'canceled') return view;
   if (view.status === 'succeeded') throw new V1Error('payment_not_cancelable', 'A payment that succeeded is refunded, not canceled');
   if (view.status === 'processing') throw new V1Error('payment_not_cancelable', 'This payment is under way; it can be canceled if it fails');
-  await db.query('UPDATE payments.api_payments SET canceled_at = COALESCE(canceled_at, now()) WHERE id = $1', [row.id]);
+  // The order first, under its own lock: a payment that started since the read above makes the discard
+  // refuse, and then nothing says canceled. Only once it's voided is the cancellation recorded (a voided
+  // order already reads, and is announced, as canceled).
   await discardOrder(db, { merchant: row.merchant, orderId: row.order_id, staffId: null }).catch((error) => {
     if (error instanceof PaymentError) throw new V1Error('payment_not_cancelable', error.message);
     throw error;
   });
+  await db.query('UPDATE payments.api_payments SET canceled_at = COALESCE(canceled_at, now()) WHERE id = $1', [row.id]);
   return paymentView(db, await paymentRow(db, input.auth, input.id));
 }
 

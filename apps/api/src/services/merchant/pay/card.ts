@@ -36,7 +36,7 @@ export const cardModeOk = (provider: Pick<CardConnectorProvider, 'livemode'>, se
 /** Card on this session: the shop takes cards, the modal allows it, the mode fits and the fields can load. */
 export async function cardOnline(db: Db, deps: PaySessionDeps, s: Pick<SessionRow, 'merchant' | 'kind' | 'livemode' | 'options'>): Promise<boolean> {
   if (s.kind === 'modal' && !(optionsOf(s).methods ?? []).includes('card')) return false;
-  if (!(await cardsOn(db, s.merchant))) return false;
+  if (!(await cardsOn(db, s.merchant, s.livemode))) return false;
   const provider = await deps.card(s.merchant).catch(() => null);
   if (!provider?.createOnlinePayment || !cardModeOk(provider, s.livemode)) return false;
   return publishableKey(provider.livemode !== false) !== null;

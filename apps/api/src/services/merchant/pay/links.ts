@@ -3,6 +3,7 @@ import { contrastRatio, CreatePaymentLink, type MerchantPaymentLink, type PayOrd
 import type { Db, Queryable } from '../../../db/db.js';
 import { cardAvailability } from '../cards/availability.js';
 import { connectorStore } from '../cards/connectorStore.js';
+import { processorKeyIsLive } from '../cards/registry.js';
 import { type OrderDeps, OrderError, quoteLines } from '../orders/orderService.js';
 import { audit } from '../security/audit.js';
 import { getSettings } from '../shop/shopService.js';
@@ -129,8 +130,13 @@ export async function linkQuote(db: Db, deps: OrderDeps, link: LinkRow): Promise
   return { lines, subtotalCents: q.subtotal, taxCents: q.tax, totalCents: q.total, summary: orderSummary(lines) };
 }
 
-/** Whether the shop takes card here: its processor connected and card on in Settings. */
-export async function cardsOn(q: Queryable, merchant: string): Promise<boolean> {
+/**
+ * Whether the shop takes card here, for a payment in this mode: its processor connected, card on in
+ * Settings, and the mode fits. Test and live never mix: a test-mode payment never runs on a live key,
+ * so on a live key it gets no card (until a test platform key exists, pay DECISIONS D3).
+ */
+export async function cardsOn(q: Queryable, merchant: string, livemode: boolean): Promise<boolean> {
+  if (!livemode && processorKeyIsLive()) return false;
   const settings = await getSettings(q, merchant);
   return cardAvailability(await connectorStore.latest(q, merchant)).available && settings.paymentMethods.card;
 }
@@ -299,6 +305,6 @@ export async function publicLink(db: Db, deps: OrderDeps, slug: string, now = ne
     note: link.note,
     expiresAt: iso(link.expires_at),
     state: order ? state : state === 'open' ? 'inactive' : state,
-    methods: { clear: true, card: await cardsOn(db, link.merchant) },
+    methods: { clear: true, card: await cardsOn(db, link.merchant, link.livemode) },
   };
 }

@@ -225,7 +225,8 @@ export function nextAttempt(createdAt: Date, attempts: number, now: Date): Date 
 }
 
 export interface DeliverDeps {
-  fetch: typeof fetch;
+  /** The job sends through `webhookSend` (webhookSend.ts), which refuses non-public addresses; tests stand in their own. */
+  fetch: (url: string, init: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal; redirect?: 'manual' }) => Promise<{ status: number }>;
   now?: () => Date;
 }
 

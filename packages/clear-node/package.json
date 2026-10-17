@@ -18,7 +18,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsup",
+    "bundle": "tsup",
     "test": "bun test src",
     "typecheck": "tsc --noEmit"
   },

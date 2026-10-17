@@ -3,7 +3,7 @@ import express from 'express';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type Stripe from 'stripe';
-import { CardStarted, CodeVerified, JoinFinished, JoinHandoff, JoinState, JoinWindow, MemberQuote, PaidView, PaySession, PayStatus } from '@clear/merchant-contracts';
+import { CardStarted, CodeVerified, PublicLink, JoinFinished, JoinHandoff, JoinState, JoinWindow, MemberQuote, PaidView, PaySession, PayStatus } from '@clear/merchant-contracts';
 import type { Db } from '../db/db.js';
 import { seedShop, testDb } from '../db/testDb.js';
 import { createOnlineCardTender } from '../services/merchant/cards/cardTenders.js';
@@ -20,7 +20,7 @@ import { decryptSecret } from '../services/merchant/pay/secrets.js';
 import { joinShop } from '../services/merchant/rewards/customerApp.js';
 import { ensureShopApp, patchShopApp } from '../services/merchant/rewards/shopApp.js';
 import { cardPaymentHandlers } from '../services/merchant/stripeEvents/cardPaymentHandlers.js';
-import { checkoutRouter, type PayRouteDeps } from './payLinks.js';
+import { checkoutRouter, linkPageRouter, type PayRouteDeps } from './payLinks.js';
 import { v1Cors, v1Errors, v1Router } from './v1.js';
 
 /**
@@ -92,6 +92,7 @@ beforeAll(async () => {
   app.use(express.json());
   app.use('/v1', v1Router({ db: async () => db, v1: () => ({ orders, refunds: async () => ({ card: fake.provider, pinCheck: async () => null }) }), limit: pass }));
   app.use('/v1', v1Errors);
+  app.use('/api/l', linkPageRouter(deps));
   app.use('/api/checkout', checkoutRouter(deps));
   server = app.listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -367,6 +368,27 @@ describe('card in the modal (§3)', () => {
     const status = PayStatus.parse(await json(await fetch(`${base}/api/checkout/${session}/status`)));
     // $171 of food, a point a dollar; Clear's 1.5× is for Clear's cents only.
     expect(status.paid).toMatchObject({ method: 'card', points: { earned: 171, now: 171 }, receipt: 'In Clear' });
+  });
+
+  test('a test-mode link on a live Stripe key: no card offered, and none can be started', async () => {
+    const shop = await miCasa();
+    const link = await json<{ url: string }>(await post('/v1/payment_links', { amount: 18532 }, { Authorization: `Bearer ${shop.testSecret}` }));
+    const slug = new URL(link.url).pathname.split('/').pop()!;
+    const was = process.env.STRIPE_SECRET_KEY;
+    // Made at run time: a live-shaped key in the source would trip secret scanning.
+    process.env.STRIPE_SECRET_KEY = ['rk', 'live', 'x'.repeat(24)].join('_');
+    try {
+      expect(PublicLink.parse(await json(await fetch(`${base}/api/l/${slug}`))).methods.card).toBe(false);
+      const { session } = await json<{ session: string }>(await post(`/api/l/${slug}/session`, {}));
+      expect(PaySession.parse(await json(await fetch(`${base}/api/checkout/${session}`))).methods.card).toBe(false);
+      expect((await post(`/api/checkout/${session}/pay`, { method: 'card', idempotencyKey: key() })).status).toBe(409);
+      expect((await post(`/api/checkout/${session}/card`, { idempotencyKey: key() })).status).toBe(409);
+    } finally {
+      if (was === undefined) delete process.env.STRIPE_SECRET_KEY;
+      else process.env.STRIPE_SECRET_KEY = was;
+    }
+    // On a test key (this environment's), the same test link takes a card.
+    expect(PublicLink.parse(await json(await fetch(`${base}/api/l/${slug}`))).methods.card).toBe(true);
   });
 
   test('adding a site registers it and Clear’s pay host for wallets; localhost is left out', async () => {

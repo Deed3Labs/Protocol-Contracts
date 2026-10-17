@@ -1,6 +1,6 @@
 import type { Queryable } from '../../../db/db.js';
 import type { CardConnectorProvider, CardProviderName } from './connector.js';
-import { defaultCardConnector } from './stripeConnector.js';
+import { defaultCardConnector, stripeLivemode } from './stripeConnector.js';
 
 /**
  * Which card connectors this server has (card-processing prompt, Phase 9). Routes and jobs ask here
@@ -50,3 +50,9 @@ export async function connectorForShop(q: Queryable, merchant: string): Promise<
 export function setCardConnectorsForTest(next: Partial<Record<CardProviderName, CardConnectorProvider | null>> | null): void {
   overrides = next;
 }
+
+/**
+ * Whether this environment's card processor key takes real money. Test and live never mix: a test-mode
+ * payment gets no card where it would (pay links.ts `cardsOn`).
+ */
+export const processorKeyIsLive = (): boolean => stripeLivemode();

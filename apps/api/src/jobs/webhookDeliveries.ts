@@ -1,4 +1,5 @@
 import { merchantDb } from '../config/merchantDb.js';
+import { webhookSend } from '../services/merchant/pay/webhookSend.js';
 import { deliverDue } from '../services/merchant/pay/webhooks.js';
 
 /*
@@ -7,6 +8,7 @@ import { deliverDue } from '../services/merchant/pay/webhooks.js';
  */
 
 const EVERY_MS = 10_000;
+const send = webhookSend();
 let running = false;
 
 export async function sendWebhooks(): Promise<void> {
@@ -16,7 +18,8 @@ export async function sendWebhooks(): Promise<void> {
     const db = await merchantDb();
     if (!db) return;
     // A full batch means more are waiting: keep going until a short one.
-    while ((await deliverDue(db, { fetch })) === 20);
+    // Through the guarded sender: an endpoint whose name resolves inside a network is never reached.
+    while ((await deliverDue(db, { fetch: send })) === 20);
   } catch (error) {
     console.error('[webhooks] delivery failed:', (error as Error)?.message);
   } finally {
