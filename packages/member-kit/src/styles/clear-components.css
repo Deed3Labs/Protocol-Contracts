@@ -742,6 +742,8 @@
 .c-pc-live{color:var(--settled);position:relative;width:14px;height:14px;border-radius:50%;background:var(--settled);margin-top:var(--s1);box-shadow:0 0 10px 3px color-mix(in srgb, var(--settled) 55%, transparent)}
 /* over time: "Next cycle" is the longest label, so its chip is a little wider */
 .c-qc.c-split .c-chip-q:first-child{flex:1.35}
+/* the appearance chooser: three equal choices, whatever their labels (after the rule above, which it overrides) */
+.c-qc.c-split.c-even .c-chip-q{flex:1 1 0;min-width:0}
 
 /* ================= SAVINGS =================
    From docs/reference/savings-reference.html. The balance header, then one slab of two blocks
