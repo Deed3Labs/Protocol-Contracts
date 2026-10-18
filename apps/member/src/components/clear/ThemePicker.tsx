@@ -20,7 +20,7 @@ export default function ThemePicker({ className }: { className?: string }) {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div className={cn('c-qc c-split', className)}>
+    <div className={cn('c-qc c-split c-even', className)}>
       {THEMES.map(({ id, label, Icon }) => (
         <Btn
           key={id}
