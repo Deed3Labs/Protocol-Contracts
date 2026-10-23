@@ -1,7 +1,7 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { LIVE } from '../live/env';
 import { loadTeam, logView } from '../live/account';
-import { SERVED, loadSection, needsData } from '../live/sections';
+import { loadSection, needsData } from '../live/sections';
 import { Fragment } from 'react';
 import { attrs, css, html } from '../runtime/dom';
 import { contractsPage } from './contracts';
@@ -171,7 +171,8 @@ export function toast(msg, act) {
   clearTimeout(toast.h);
   toast.h = setTimeout(() => t.classList.remove('on'), act ? 5000 : 2400);
 }
-/* in a read-only view, anything that would change something is stopped before it runs; opening and reading still work */
+/* in a read-only view, anything that would change something is stopped before it runs; opening and reading still work.
+   Preview only: hides personal tabs and names in a Totals view, as the prototype did */
 export function vScrub(root) {
   root.querySelectorAll('.ptabs button').forEach((b) => {
     if (V_PERSONAL_TABS.includes(b.textContent.trim())) b.hidden = true;
@@ -244,7 +245,8 @@ export function render() {
                                 : placeholder(r)}
     </>,
   );
-  if (S.view && vLevel(r) === 1 && !(LIVE && SERVED.has(r))) vScrub($('#main'));
+  // the preview's simulation of a Totals view, as the prototype drew it; live, the API sends Totals nothing personal
+  if (!LIVE && S.view && vLevel(r) === 1) vScrub($('#main'));
   corridorMount();
   requestAnimationFrame(syncPages);
   if (LIVE) logView();

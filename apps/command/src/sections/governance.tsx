@@ -6,6 +6,8 @@ import { compBar, head, ic, money, pct } from './core';
 import {
   AGENDA,
   AK,
+  MEETING,
+  MEETINGS_HELD,
   AST,
   BODIES,
   DAY,
@@ -407,6 +409,32 @@ export function rpMatrix() {
   );
 }
 
+/* ── counted from the rows ─────────────────────────────────────────────── */
+const WORD = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
+const word = (n) => (n === 0 ? 'none' : (WORD[n] ?? String(n)).toLowerCase());
+const allSeats = () => GBOARDS.flatMap((b) => b[2].map((x) => [b, x]));
+/** The co-op board seats on the ballot at the next election: open seats to elect, and terms ending then. */
+export function ballot() {
+  const coop = GBOARDS.find((b) => b[1] === 'coop')[2],
+    at = coop.find((x) => !x[1] && /^Elect/.test(x[4] || ''))?.[2];
+  return { at, seats: coop.filter((x) => (!x[1] && /^Elect/.test(x[4] || '')) || (x[1] && at && x[3] === at)) };
+}
+/** The next meeting of any body, after now. */
+export function nextMeeting() {
+  return MEETS.flatMap(([b, ev]) => ev.filter((e) => e[0] === 'next' && e[1] > NOW).map((e) => [b, e[1]])).sort((a, b) => a[1] - b[1])[0];
+}
+/** The day the member vote reached quorum, counting the votes cast each day it's been open. */
+export function quorumDay(v = VOTE) {
+  const i = v.days.findIndex((n) => n >= v.quorum * v.elig);
+  return i < 0 ? null : v.open + i * DAY;
+}
+/** Who approves a related-party deal: the payee's board while it's open, else the payer's. */
+export const rpBoard = (r) => (r[5] ? GBOARDS.find((b) => b[1] === r[1])?.[0] : r[0] === 'fdn' ? 'Foundation council' : 'Co-op board');
+/** The co-op board's next meeting, and who sits on it now. */
+export const nextBoard = () => MEETS.find((m) => m[0] === 'Co-op board')?.[1].find((e) => e[0] === 'next' && e[1] > NOW)?.[1];
+export const seatedBoard = () => GBOARDS.find((b) => b[1] === 'coop')[2].filter((x) => x[1]);
+const MON_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const monYear = (t) => `${MON[new Date(t).getUTCMonth()]} ${new Date(t).getUTCFullYear()}`;
 /* ── page ─────────────────────────────────────────────────────────────── */
 export function governancePage() {
   const P = VS.pane,
@@ -418,9 +446,11 @@ export function governancePage() {
       : P === 'entities'
         ? `${ENT.filter((e) => e[3] === 'formed').length} of ${ENT.length} entities formed.`
         : P === 'boards'
-          ? 'Three co-op seats go to the members on 15 Jan.'
+          ? `${WORD[ballot().seats.length]} co-op seats go to the members on ${fmtD(ballot().at)}.`
           : P === 'votes'
-            ? 'The member vote has passed quorum.'
+            ? quorumDay()
+              ? 'The member vote has passed quorum.'
+              : 'The member vote is short of quorum.'
             : `${FILINGS.filter((f) => f[4] !== 'later').length} filings and meetings to prepare.`;
   const tools = (
     <button className="btn btn-p" type="button" data-vflow="log">
@@ -532,7 +562,7 @@ export function voteCell(span, big) {
         </button>
         <span className="rule" aria-hidden="true" />
         <div className="row">
-          <span className="t">Quorum reached 19 Oct · needs a majority</span>
+          <span className="t">{quorumDay() ? `Quorum reached ${fmtD(quorumDay())} · needs a majority` : `Needs ${Math.ceil(v.quorum * v.elig)} votes for quorum`}</span>
         </div>
       </div>
     </section>
@@ -723,7 +753,7 @@ export function vBoards() {
         <span className="lbl">Seats and terms</span>
         <span className="tag">2026 – 2028</span>
       </header>
-      <div className="c-fig">{figHtml(`${filled} of ${seats}`, 'seats filled · three co-op seats go to the members on 15 Jan')}</div>
+      <div className="c-fig">{figHtml(`${filled} of ${seats}`, `seats filled · ${word(ballot().seats.length)} co-op seats go to the members on ${fmtD(ballot().at)}`)}</div>
       <div className="c-body">
         {laneFrame(rows, from, to, 'month', 'gt bt')}
         {mkey([
@@ -735,9 +765,9 @@ export function vBoards() {
       </div>
       {strip([
         ['Filled', `${filled} of ${seats}`],
-        ['On the ballot', '3 · 15 Jan', '', 'warn'],
-        ['Investor seats', 'Empty'],
-        ['Longest term', 'Jul 2028'],
+        ['On the ballot', `${ballot().seats.length} · ${fmtD(ballot().at)}`, '', 'warn'],
+        ['Investor seats', allSeats().some(([, x]) => x[0] === 'i' && x[1]) ? 'Filled' : 'Empty'],
+        ['Longest term', monYear(allSeats().reduce((a, [, x]) => (x[1] && x[3] - x[2] > (a ? a[3] - a[2] : 0) ? x : a), null)[3])],
       ])}
     </section>
   );
@@ -745,7 +775,7 @@ export function vBoards() {
     's-5',
     'Who sits where',
     'People and boards',
-    figHtml('3', 'boards with Kai on them · he steps out of votes between them'),
+    figHtml(String(PEOPLE.find((x) => x[0] === 'Kai')?.[1].length ?? 0), 'boards with Kai on them · he steps out of votes between them'),
     <div className="pb">
       <div className="pb-r pb-h">
         <span />
@@ -768,21 +798,20 @@ export function vBoards() {
       ))}
     </div>,
     strip([
-      ['Recusals this year', '3'],
-      ['Conflicts disclosed', '2'],
+      ['Recusals this year', String(RESOS.filter((r) => new Date(r[0]).getUTCFullYear() === new Date(NOW).getUTCFullYear()).reduce((a, r) => a + r[3].filter((v) => v === 'r').length, 0))],
+      ['Conflicts disclosed', String(PEOPLE.filter((x) => x[2]).length)],
     ]),
   );
   const res = gCell(
     's-7',
     'Resolutions',
     'Every board',
-    figHtml(String(RESOS.length), 'passed since August · none failed, three with a recusal'),
+    figHtml(
+      String(RESOS.length),
+      `passed since ${MON_LONG[new Date(Math.min(...RESOS.map((r) => r[0]))).getUTCMonth()]} · ${word(RESOS.filter((r) => r[3].filter((v) => v === 'n').length > r[3].filter((v) => v === 'y').length).length)} failed, ${word(RESOS.filter((r) => r[3].includes('r')).length)} with a recusal`,
+    ),
     resoRows(RESOS),
-    strip([
-      ['Co-op board', '3'],
-      ['ClearLabs board', '2'],
-      ['Holdings board', '1'],
-    ]),
+    strip([...new Set(RESOS.map((r) => r[1]))].map((b) => [b, String(RESOS.filter((r) => r[1] === b).length)])),
   );
   return (
     <>
@@ -817,7 +846,8 @@ export function vOverview() {
     </div>,
   );
   const from = NOW - 2 * DAY,
-    to = NOW + 88 * DAY;
+    to = NOW + 88 * DAY,
+    notStarted = FILINGS.filter((f) => f[4] === 'none').sort((a, b) => a[3] - b[3])[0];
   const due = (
     <section className="cell s-8">
       <header className="c-hd">
@@ -840,8 +870,8 @@ export function vOverview() {
           {ic('chev', 'sm')}
         </button>
         <span className="rule" aria-hidden="true" />
-        <button type="button" data-vflow="filing" data-vid="f3">
-          <span className="t">Statement of Information isn’t started</span>
+        <button type="button" data-vflow="filing" data-vid={notStarted?.[0] ?? ''}>
+          <span className="t">{notStarted ? `${notStarted[2]} isn’t started` : 'Everything is started'}</span>
           {ic('chev', 'sm')}
         </button>
       </div>
@@ -851,7 +881,10 @@ export function vOverview() {
     's-4 wt',
     'Related parties',
     'This year',
-    figHtml(String(RP.reduce((a, r) => a + r[3].length, 0)), 'deals between our own entities, all logged · 1 waits on the Holdings board'),
+    figHtml(
+      String(RP.reduce((a, r) => a + r[3].length, 0)),
+      `deals between our own entities, all logged${RP.some((r) => r[5]) ? ` · ${RP.filter((r) => r[5]).length} waits on the ${rpBoard(RP.find((r) => r[5]))}` : ''}`,
+    ),
     rpMatrix(),
     <div className="c-ft">
       <button type="button" data-vpane="entities">
@@ -862,7 +895,7 @@ export function vOverview() {
   );
   return (
     <>
-      {G('Structure', 'Select an entity', '', entCell('9 entities · Wyoming'))}
+      {G('Structure', 'Select an entity', '', entCell(`${ENT.length} entities · Wyoming`))}
       {G(
         'Decisions',
         '',
@@ -914,7 +947,7 @@ export function vEntities() {
         <span className="lbl">Who decides what</span>
         <span className="tag">Reserved matters</span>
       </header>
-      <div className="c-fig">{figHtml(String(MATTERS.length), 'kinds of decision · the co-op’s reserved seats can stop four of them at Holdings')}</div>
+      <div className="c-fig">{figHtml(String(MATTERS.length), `kinds of decision · the co-op’s reserved seats can stop ${word(MATTERS.filter((m) => m[1][2] >= 1).length)} of them at Holdings`)}</div>
       <div className="c-body">
         {mx}
         {mkey([
@@ -924,8 +957,8 @@ export function vEntities() {
         ])}
       </div>
       {strip([
-        ['Open', '1', 'Intercompany pricing', 'warn'],
-        ['Next meeting', 'Co-op board · 4 Nov'],
+        ['Open', String(MATTERS.filter((m) => m[2]).length), MATTERS.filter((m) => m[2]).map((m) => m[2].split(' goes')[0]).join(', '), 'warn'],
+        ['Next meeting', nextMeeting() ? `${nextMeeting()[0]} · ${fmtD(nextMeeting()[1])}` : 'None'],
         ['Veto holders', 'Co-op seats'],
       ])}
     </section>
@@ -966,7 +999,7 @@ export function vEntities() {
     </div>,
     strip([
       ['Financial class sold', 'None'],
-      ['Investor seats', '2, empty'],
+      ['Investor seats', `${allSeats().filter(([, x]) => x[0] === 'i').length}, ${allSeats().some(([, x]) => x[0] === 'i' && x[1]) ? 'some filled' : 'empty'}`],
     ]),
   );
   /* related-party log as lanes */
@@ -994,7 +1027,8 @@ export function vEntities() {
             <i className="sl-seg proj" style={css(`left:${pctX(NOW, from, to)}%;width:${pctX(open, from, to) - pctX(NOW, from, to)}%`)} />
             <i className="rp-m open" style={css(`left:${pctX(open, from, to)}%`)} />
             <i className="gb-tag" style={css(`left:${pctX(open, from, to)}%`)}>
-              Board 1 Dec
+              {'Board '}
+              {fmtD(open)}
             </i>
           </>
         ) : (
@@ -1021,14 +1055,14 @@ export function vEntities() {
       </div>
       {strip([
         ['Logged', String(RP.reduce((a, r) => a + r[3].length, 0))],
-        ['Open', '1', '', 'warn'],
+        ['Open', String(RP.filter((r) => r[5]).length), '', 'warn'],
         ['Pricing policy', 'Draft'],
       ])}
     </section>
   );
   return (
     <>
-      {G('Structure', '', '', entCell('9 entities · select one'))}
+      {G('Structure', '', '', entCell(`${ENT.length} entities · select one`))}
       {G(
         'Control',
         '',
@@ -1043,11 +1077,12 @@ export function vEntities() {
   );
 }
 export function vVotes() {
+  const lowest = PASTV.reduce((a, x) => (x[2] < a[2] ? x : a));
   const past = gCell(
     's-4 wt',
     'Turnout',
     'Every member vote',
-    figHtml('32.4%', 'turnout so far · each vote has drawn fewer members than the last'),
+    figHtml(`${PASTV.at(-1)[2].toFixed(1)}%`, `turnout so far${PASTV.every((x, i) => !i || x[2] < PASTV[i - 1][2]) ? ' · each vote has drawn fewer members than the last' : ''}`),
     columns(
       PASTV.map(([k, m, v]) => [`${m}`, v]),
       {
@@ -1057,8 +1092,8 @@ export function vVotes() {
       },
     ),
     strip([
-      ['Quorum', '25%'],
-      ['Lowest', '32.4%', 'this vote'],
+      ['Quorum', `${Math.round(VOTE.quorum * 100)}%`],
+      ['Lowest', `${lowest[2].toFixed(1)}%`, lowest === PASTV.at(-1) ? 'this vote' : lowest[0]],
     ]),
   );
   const from = D(6, 1),
@@ -1150,10 +1185,10 @@ export function vVotes() {
         </div>
       </div>
       {strip([
-        ['Held', '12'],
-        ['Minutes filed', '11 of 12'],
-        ['Next', 'Co-op board · 4 Nov'],
-        ['Delegate assembly', 'From 1,000 members'],
+        ['Held', String(MEETINGS_HELD.held)],
+        ['Minutes filed', `${MEETINGS_HELD.minutes} of ${MEETINGS_HELD.held}`],
+        ['Next', nextMeeting() ? `${nextMeeting()[0]} · ${fmtD(nextMeeting()[1])}` : 'None'],
+        ['Delegate assembly', MEETS.find((m) => m[0] === 'Delegate assembly')?.[1][0][3] ?? '—'],
       ])}
     </section>
   );
@@ -1404,7 +1439,18 @@ export function vCalendar() {
     ['all', 'All entities', FILINGS.length],
     ...['coop', 'labs', 'fin', 'hold', 'dt', 'fdn'].map((id) => [id, entOf(id)[1], FILINGS.filter((f) => f[1] === id).length]),
   ];
-  const list = FILINGS.filter((f) => VS.cal === 'all' || f[1] === VS.cal);
+  const list = FILINGS.filter((f) => VS.cal === 'all' || f[1] === VS.cal),
+    next = list.filter((f) => f[3] > NOW).sort((a, b) => a[3] - b[3])[0];
+  // the month with the most filings of one kind, like April's federal returns
+  const cluster = Object.values(
+    list.reduce((a, f) => {
+      const m = new Date(f[3]).getUTCMonth(),
+        k = m + '|' + f[2];
+      a[k] = a[k] || { m, t: f[2], n: 0 };
+      a[k].n++;
+      return a;
+    }, {}),
+  ).reduce((a, c) => (!a || c.n > a.n ? c : a), null);
   const from = D(10, 15),
     to = D(7, 31, 2027);
   const cal = (
@@ -1424,10 +1470,10 @@ export function vCalendar() {
         {filKey()}
       </div>
       {strip([
-        ['Next', 'Annual report · 1 Nov'],
+        ['Next', next ? `${next[2]} · ${fmtD(next[3])}` : 'None'],
         ['Ready', String(list.filter((f) => f[4] === 'ready').length)],
         ['Not started', String(list.filter((f) => f[4] === 'none').length), '', 'warn'],
-        ['April', '3 federal returns'],
+        ...(cluster ? [[MON_LONG[cluster.m], `${cluster.n} ${cluster.t.toLowerCase()}s`]] : []),
       ])}
     </section>
   );
@@ -1469,22 +1515,20 @@ export function vCalendar() {
     's-6',
     'By month',
     'Nov – Jul',
-    figHtml('April', 'the busiest month · three federal returns'),
+    cluster ? figHtml(MON_LONG[cluster.m], `the busiest month · ${word(cluster.n)} ${cluster.t.toLowerCase()}s`) : figHtml('—', 'nothing due'),
     <>
       {cols}
       {filKey()}
     </>,
-    strip([
-      ['Nov', '4'],
-      ['Apr', '3'],
-    ]),
+    strip(
+      bins
+        .map((b, i) => [MON[new Date(months[i]).getUTCMonth()], b.reduce((a, c) => a + c, 0), i])
+        .sort((a, b) => b[1] - a[1] || a[2] - b[2])
+        .slice(0, 2)
+        .map(([k, n]) => [k, String(n)]),
+    ),
   );
-  const owners = [
-    ['Accountant', list.filter((f) => f[5] === 'Accountant').length],
-    ['Kai', list.filter((f) => f[5] === 'Kai').length],
-    ['Dana Ruiz', list.filter((f) => f[5] === 'Dana Ruiz').length],
-    ['Counsel', list.filter((f) => f[5] === 'Counsel').length],
-  ];
+  const owners = [...new Set(list.map((f) => f[5]).filter(Boolean))].map((k) => [k, list.filter((f) => f[5] === k).length]).sort((a, b) => b[1] - a[1]);
   const own = gCell(
     's-6',
     'Who files',
@@ -1502,8 +1546,8 @@ export function vCalendar() {
       ))}
     </div>,
     strip([
-      ['Owners', '4'],
-      ['Unassigned', '0'],
+      ['Owners', String(owners.length)],
+      ['Unassigned', String(list.filter((f) => !f[5]).length)],
     ]),
   );
   return (
@@ -1869,7 +1913,8 @@ export function meetingPane() {
           Co-op board
         </p>
         <p className="quiet" style={css('margin:8px 0 0')}>
-          Wed 4 Nov · 18:00 – 19:00 · video call
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(nextBoard()).getUTCDay()]} {fmtD(nextBoard())}
+          {' · 18:00 – 19:00 · video call'}
         </p>
       </div>
       {sec(
@@ -1933,18 +1978,16 @@ export function meetingPane() {
                 <b>{h}</b>
                 <span className="small quiet">Member-elected seat</span>
               </span>
-              <span className={`chip ${i === 2 ? 'underway' : 'plain'}`}>{i === 2 ? 'No reply' : 'Coming'}</span>
+              <span className={`chip ${MEETING.rsvp[i] === 'Coming' ? 'plain' : 'underway'}`}>{MEETING.rsvp[i] ?? 'No reply'}</span>
             </div>
           ))}
         </div>,
-        '3 of 3 needed',
+        `${seated.length} of ${seated.length} needed`,
       )}
       {sec(
         'Packet',
         kv([
-          ['Agenda', 'Final'],
-          ['7 Oct minutes', 'Draft · approve as item 1'],
-          ['Q3 money review', 'Dana Ruiz · due 2 Nov'],
+          ...MEETING.packet,
           ['Sent', 'Not yet', 1],
         ]),
       )}
@@ -2153,19 +2196,19 @@ export function openVFlow(kind, id) {
           </div>
           <div>
             {vizTrack([
-              ['Opened 15 Oct', 1],
-              ['Quorum 19 Oct', 1],
-              ['Closes 29 Oct', 2],
+              [`Opened ${fmtD(v.open)}`, 1],
+              [quorumDay(v) ? `Quorum ${fmtD(quorumDay(v))}` : 'Quorum', quorumDay(v) ? 1 : 2],
+              [`Closes ${fmtD(v.close)}`, quorumDay(v) ? 2 : 0],
               ['Certified', 0],
             ])}
           </div>
         </>
       ),
       rows: [
-        ['Who votes', 'Members with an account · 188'],
-        ['Quorum', '25% · reached 19 Oct'],
+        ['Who votes', `Members with an account · ${v.elig}`],
+        ['Quorum', `${Math.round(v.quorum * 100)}%${quorumDay(v) ? ` · reached ${fmtD(quorumDay(v))}` : ''}`],
         ['Passes with', 'A majority of votes cast'],
-        ['Then', 'Certified by the co-op board, 4 Nov', 1],
+        ['Then', `Certified by the co-op board, ${fmtD(nextBoard())}`, 1],
       ],
       note: (
         <>
@@ -2248,13 +2291,13 @@ export function openVFlow(kind, id) {
       ),
       rows: [
         ['Priced', open ? 'Pricing policy in draft' : amt ? 'Against two outside quotes' : 'At the last valuation'],
-        ['Approved by', open ? 'Holdings board, 1 Dec' : a === 'fdn' ? 'Foundation council' : 'Co-op board'],
+        ['Approved by', open ? `${rpBoard(RP[id])}, ${fmtD(open)}` : rpBoard(RP[id])],
         ['Total this year', amt ? money(amt * ds.length) : '—'],
         ['Conflict', a === 'coop' && b === 'labs' ? 'Kai recused' : 'None', 1],
       ],
-      btn: open ? 'Put it on the 1 Dec agenda' : 'Log a payment',
+      btn: open ? `Put it on the ${fmtD(open)} agenda` : 'Log a payment',
       steps: open ? ['Added it to the Holdings board agenda', 'Attached the draft pricing policy'] : ['Logged the payment', 'Attached the invoice'],
-      done: open ? ['On the agenda.', 'The Holdings board takes it up on 1 Dec.'] : ['Logged.', 'It shows on the related-party log.'],
+      done: open ? ['On the agenda.', `The ${rpBoard(RP[id])} takes it up on ${fmtD(open)}.`] : ['Logged.', 'It shows on the related-party log.'],
       after: open
         ? null
         : () => {
@@ -2332,21 +2375,21 @@ export function openVFlow(kind, id) {
   } else if (kind === 'packet') {
     f = {
       t: 'Send the packet',
-      h: 'Co-op board · 4 Nov',
+      h: `Co-op board · ${fmtD(nextBoard())}`,
       rows: [
         ['Agenda', `${AGENDA.length} items, ${AGENDA.reduce((a, x) => a + x[1], 0)} minutes`],
-        ['Attached', '7 Oct minutes draft, Q3 money review'],
-        ['To', '3 seated board members'],
+        ['Attached', MEETING.attached.join(', ')],
+        ['To', `${seatedBoard().length} seated board members`],
         ['Sent by', 'You', 1],
       ],
       btn: 'Send it',
-      steps: ['Built the packet from the agenda', 'Attached the 7 Oct minutes draft', 'Sent it to 3 board members'],
+      steps: ['Built the packet from the agenda', `Attached the ${MEETING.attached[0]}`, `Sent it to ${seatedBoard().length} board members`],
       done: ['Packet sent.', 'It’s filed with the meeting in Records.'],
     };
   } else if (kind === 'minutes') {
     f = {
       t: 'Start the minutes',
-      h: 'Co-op board · 4 Nov',
+      h: `Co-op board · ${fmtD(nextBoard())}`,
       p: 'A draft with the agenda as headings, ready to fill in during the meeting.',
       rows: [
         ['Secretary', 'Kai'],
@@ -2355,12 +2398,12 @@ export function openVFlow(kind, id) {
       ],
       btn: 'Start the draft',
       steps: ['Made a draft from the agenda', 'Filed it with the meeting'],
-      done: ['Draft started.', 'It’s in Records, attached to 4 Nov.'],
+      done: ['Draft started.', `It’s in Records, attached to ${fmtD(nextBoard())}.`],
     };
   } else if (kind === 'item') {
     f = {
       t: 'Add an item',
-      h: 'Co-op board · 4 Nov',
+      h: `Co-op board · ${fmtD(nextBoard())}`,
       post: (
         <>
           <label className="field">

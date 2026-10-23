@@ -201,7 +201,8 @@ export async function liveBoot(start) {
 const idOf = new Map(); // short id → person uuid
 const shortOf = new Map(); // person uuid → short id
 
-function shortId(p) {
+/** A person's short key, as Team, Records and the log show them: initials, numbered when two share them. */
+export function shortId(p) {
   if (shortOf.has(p.id)) return shortOf.get(p.id);
   const parts = (p.name || p.email || '?').split(/[ @.]+/).filter(Boolean);
   let base = (parts.length > 1 ? parts[0][0] + parts[1][0] : parts[0].slice(0, 2)).toUpperCase();

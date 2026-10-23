@@ -207,3 +207,40 @@ Decided 2026-10-23 (Kai: stored figures, one PR per section group).
   shows a first name to the person packing, and nobody below See sees an order.
 - **Refunds and shop actions** (restock, pack, refund, nudge) still change only the page; they're
   saved through the API in the step after 3e.
+
+### 3e: Contracts, Governance, Records and Home
+
+- **Contracts' rows:** every agreement (the merchant ones built by the same function the app runs at
+  start, and the one out for signature with its lane), the contracts with their map status lines,
+  how they connect, releases and the next one waiting, changes in flight and done, and the Safe's
+  signers. **Figures:** the chain and Safe rule (network, block, 2 of 3, 24-hour wait), who holds each
+  role, draft-to-live days, signatures a week and the days shops were added to MerchantRegistry, all
+  of which Phases 4–5 read from the chain and the Safe.
+- **Governance's rows:** the entities and their facts, filings, boards and seats, who sits where, the
+  agenda, resolutions, the member vote, every body's meetings, related-party deals and who decides
+  what. **Figures:** past turnout, meetings held and minutes filed (the prototype says 12 held and its
+  own lanes show 11, so it's stored), and the next meeting's packet and replies.
+- **Counted, no longer written in:** live and not funded contracts, renewals and the first one,
+  what waits on your signature and who signed last, each signer's queue and speed, releases this
+  week and the fastest-moving contract, the open door in the roles, the median and averages of
+  draft-to-live; seats on the ballot and when, investor seats, the longest term, recusals and
+  conflicts, resolutions by board, open matters and what the co-op seats can stop, the next meeting,
+  quorum day, turnout, the next filing, the busiest month and who files; approvals and what's
+  waiting, drafts, documents by entity, new devices and the busiest person; and on Home the funnel's
+  rates, activation (counted from the members), posters, the $10s owed by shop with today's payout
+  shop, the next payout run and the next filing.
+- **Still the prototype's words:** a few clauses that name a reason the rows don't carry ("when the
+  Graphic Tees were new", "confirmed by Kai", "he steps out of votes between them", a document's
+  access list, the agenda's clock times).
+- **The log is never seeded.** Records' log, its activity heat map and the approvals matrix read
+  `command.audit_log` and `command.proposals`, live and in the seeded database alike: an append-only
+  record shouldn't hold sample rows. People get the same short keys Team gives them. At Totals the
+  log and approvals aren't sent and the Audit log tab isn't shown; documents and counts are.
+- **Home counts on the server.** `/sections/home` sends the member counts, the $10s owed with shop
+  names, the poster count, the filings due in 30 days and its figures, so Home needs no other section
+  loaded. Its deadlines now come from Governance's filings, so live they read "Annual report ·
+  ClearLabs Inc." where the prototype wrote "Wyoming annual report · ClearLabs Inc".
+- **`vScrub` is preview-only.** Every section is served now, so live the API decides what Totals
+  gets. The preview's simulated Totals view still scrubs, as the prototype did.
+- **Actions** (sign, renew, log a decision, send the packet, upload) still change only the page; the
+  next step saves them through the API.

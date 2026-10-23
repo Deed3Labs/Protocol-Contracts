@@ -1,0 +1,1767 @@
+{
+ "agreements": [
+  {
+   "id": "coop-oa",
+   "name": "Cooperative operating agreement",
+   "party": "Clear Co-op",
+   "type": "company",
+   "st": "signed",
+   "a": 1781222400000,
+   "b": null,
+   "ver": "v1.0",
+   "note": "Adopted by the founding members. Changes need a member vote."
+  },
+  {
+   "id": "psa",
+   "name": "Program services agreement",
+   "party": "Clear Financial Co.",
+   "type": "company",
+   "st": "renew",
+   "a": 1767225600000,
+   "b": 1798761600000,
+   "ver": "v1.0",
+   "note": "Clear Financial Co. runs the card and money programs for the co-op."
+  },
+  {
+   "id": "pma",
+   "name": "Protocol maintenance",
+   "party": "ClearLabs Inc.",
+   "type": "company",
+   "st": "renew",
+   "a": 1765756800000,
+   "b": 1797292800000,
+   "ver": "v1.0",
+   "note": "ClearLabs maintains the protocol for the Foundation, which can hire other maintainers too."
+  },
+  {
+   "id": "ics",
+   "name": "Intercompany services",
+   "party": "Clear Capital Holdings",
+   "type": "company",
+   "st": "draft",
+   "a": null,
+   "b": null,
+   "ver": "v0.3",
+   "note": "Pricing for services between the co-op and Holdings, at arm’s length."
+  },
+  {
+   "id": "lithic",
+   "name": "Card program agreement",
+   "party": "Lithic",
+   "type": "provider",
+   "st": "signed",
+   "a": 1772409600000,
+   "b": 1803859200000,
+   "ver": "v2.0",
+   "note": "Cards and authorizations."
+  },
+  {
+   "id": "bridge",
+   "name": "Stablecoin services",
+   "party": "Bridge",
+   "type": "provider",
+   "st": "signed",
+   "a": 1784332800000,
+   "b": 1815868800000,
+   "ver": "v1.0",
+   "note": "USDC on and off ramps. Holds the reserve behind member savings."
+  },
+  {
+   "id": "plaid",
+   "name": "Bank data",
+   "party": "Plaid",
+   "type": "provider",
+   "st": "renew",
+   "a": 1762905600000,
+   "b": 1794441600000,
+   "ver": "v1.0",
+   "note": "Bank links for members and the business account."
+  },
+  {
+   "id": "esign",
+   "name": "E-signature",
+   "party": "E-signature tool",
+   "type": "provider",
+   "st": "signed",
+   "a": 1785542400000,
+   "b": null,
+   "roll": 1,
+   "ver": "—",
+   "note": "Month to month. Signed copies come back here."
+  },
+  {
+   "id": "print",
+   "name": "Poster printing",
+   "party": "Inland Print Co.",
+   "type": "provider",
+   "st": "renew",
+   "a": 1764460800000,
+   "b": 1795996800000,
+   "ver": "v1.0",
+   "note": "Window posters, printed in batches of 25."
+  },
+  {
+   "id": "mem21",
+   "name": "Member agreement",
+   "party": "Every member",
+   "type": "member",
+   "st": "signed",
+   "a": 1786665600000,
+   "b": null,
+   "ver": "v2.1",
+   "note": "Accepted by 188 members when they opened an account."
+  },
+  {
+   "id": "mem22",
+   "name": "Member agreement",
+   "party": "Every member",
+   "type": "member",
+   "st": "draft",
+   "a": null,
+   "b": null,
+   "ver": "v2.2",
+   "note": "Adds the term-plan terms. Members accept it in the app once it’s final."
+  },
+  {
+   "id": "rosas",
+   "name": "Merchant partner agreement",
+   "party": "Rosa’s Panadería",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1785715200000,
+   "b": 1817251200000,
+   "note": "NET-14, 2.0% fee, $100.00 cap per sale. Founding partner.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "uptown",
+   "name": "Merchant partner agreement",
+   "party": "Uptown Barber",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1785974400000,
+   "b": 1817510400000,
+   "note": "NET-30, no fee, $100.00 cap per sale. Founding partner.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "mesa",
+   "name": "Merchant partner agreement",
+   "party": "Mesa Laundry",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1786320000000,
+   "b": 1817856000000,
+   "note": "NET-30, 2.0% fee, $120.00 cap per sale. Founding partner.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "tire",
+   "name": "Merchant partner agreement",
+   "party": "Redlands Tire & Lube",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1786665600000,
+   "b": 1818201600000,
+   "note": "NET-30, 2.5% fee, $500.00 cap per sale.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "citrus",
+   "name": "Merchant partner agreement",
+   "party": "Citrus Bowl Café",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1787270400000,
+   "b": 1818806400000,
+   "note": "NET-30, 2.5% fee, $100.00 cap per sale.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "books",
+   "name": "Merchant partner agreement",
+   "party": "State St. Books",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1787875200000,
+   "b": 1819411200000,
+   "note": "NET-30, 2.5% fee, $150.00 cap per sale.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "mich",
+   "name": "Merchant partner agreement",
+   "party": "La Michoacana",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1788307200000,
+   "b": 1819843200000,
+   "note": "NET-30, 2.5% fee, $100.00 cap per sale.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "nails",
+   "name": "Merchant partner agreement",
+   "party": "Arrowhead Nails",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1788912000000,
+   "b": 1820448000000,
+   "note": "NET-14, 2.5% fee, $150.00 cap per sale.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "hdw",
+   "name": "Merchant partner agreement",
+   "party": "Highland Hardware",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1789516800000,
+   "b": 1821052800000,
+   "note": "NET-30, 2.5% fee, $300.00 cap per sale.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "phone",
+   "name": "Merchant partner agreement",
+   "party": "Cajon Phone Repair",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1790121600000,
+   "b": 1821657600000,
+   "note": "NET-14, 2.5% fee, $300.00 cap per sale.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "pet",
+   "name": "Merchant partner agreement",
+   "party": "Brookside Pet Wash",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1790726400000,
+   "b": 1822262400000,
+   "note": "NET-30, 2.5% fee, $150.00 cap per sale.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "orange",
+   "name": "Merchant partner agreement",
+   "party": "Orange St. Laundromat",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1792454400000,
+   "b": 1823990400000,
+   "note": "NET-30, 2.5% fee, $100.00 cap per sale.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "icw",
+   "name": "Merchant partner agreement",
+   "party": "Inland Cycle Works",
+   "type": "merchant",
+   "st": "out",
+   "a": null,
+   "b": null,
+   "sent": 1792281600000,
+   "note": "They signed 20 Oct. Founding seat 4 of 5 once you sign.",
+   "ev": [
+    [
+     "seg",
+     "done",
+     1792317600000,
+     1792508400000
+    ],
+    [
+     "seg",
+     "open",
+     1792508400000,
+     null
+    ],
+    [
+     "seg",
+     "proj",
+     null,
+     1792800000000
+    ],
+    [
+     "draft",
+     1792317600000
+    ],
+    [
+     "sign",
+     1792508400000,
+     "IC"
+    ],
+    [
+     "sign",
+     null,
+     "K",
+     1
+    ],
+    [
+     "check",
+     1792713600000,
+     1
+    ],
+    [
+     "live",
+     1792800000000,
+     1
+    ]
+   ],
+   "ver": "v1.1"
+  },
+  {
+   "id": "shoe",
+   "name": "Merchant partner agreement",
+   "party": "Valley Shoe Repair",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1791936000000,
+   "b": 1823472000000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "tacos",
+   "name": "Merchant partner agreement",
+   "party": "Fontana Tacos",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1791676800000,
+   "b": 1823212800000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "feed",
+   "name": "Merchant partner agreement",
+   "party": "Yucaipa Feed & Seed",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1791417600000,
+   "b": 1822953600000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "pharm",
+   "name": "Merchant partner agreement",
+   "party": "Loma Linda Pharmacy",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1791158400000,
+   "b": 1822694400000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "cuts",
+   "name": "Merchant partner agreement",
+   "party": "Colton Cuts",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1790899200000,
+   "b": 1822435200000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "donut",
+   "name": "Merchant partner agreement",
+   "party": "Rialto Donuts",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1790640000000,
+   "b": 1822176000000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "bmkt",
+   "name": "Merchant partner agreement",
+   "party": "Bloomington Market",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1790380800000,
+   "b": 1821916800000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "mcof",
+   "name": "Merchant partner agreement",
+   "party": "Mentone Coffee",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1790121600000,
+   "b": 1821657600000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "clean",
+   "name": "Merchant partner agreement",
+   "party": "Calimesa Cleaners",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1789862400000,
+   "b": 1821398400000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "deli",
+   "name": "Merchant partner agreement",
+   "party": "Grand Terrace Deli",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1789603200000,
+   "b": 1821139200000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.1"
+  },
+  {
+   "id": "tea",
+   "name": "Merchant partner agreement",
+   "party": "Muscovy Tea",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1789344000000,
+   "b": 1820880000000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "tailor",
+   "name": "Merchant partner agreement",
+   "party": "Sixth St. Tailor",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1789084800000,
+   "b": 1820620800000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "thrift",
+   "name": "Merchant partner agreement",
+   "party": "Kendall Thrift",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1788825600000,
+   "b": 1820361600000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "tires2",
+   "name": "Merchant partner agreement",
+   "party": "Tippecanoe Tires",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1788566400000,
+   "b": 1820102400000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "flor",
+   "name": "Merchant partner agreement",
+   "party": "Victoria Ave. Florist",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1788307200000,
+   "b": 1819843200000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "pho",
+   "name": "Merchant partner agreement",
+   "party": "Base Line Pho",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1788048000000,
+   "b": 1819584000000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.0"
+  },
+  {
+   "id": "opt",
+   "name": "Merchant partner agreement",
+   "party": "Citrus Plaza Optical",
+   "type": "merchant",
+   "st": "signed",
+   "a": 1787788800000,
+   "b": 1819324800000,
+   "sent": null,
+   "note": "Takes $10 redemptions. Clear payments not on yet.",
+   "ver": "v1.0"
+  }
+ ],
+ "contracts": [
+  [
+   "am",
+   "AccessManager",
+   "v1.0",
+   0,
+   "live",
+   "0x19aB…f207",
+   "Role-based access for the protocol. Admin is the Ops Safe.",
+   10,
+   13,
+   "c"
+  ],
+  [
+   "ms",
+   "MembershipRegistry",
+   "v1.0",
+   0,
+   "live",
+   "0xE700…4dE8",
+   "Member entitlements on-chain, no personal data.",
+   10,
+   21,
+   "c"
+  ],
+  [
+   "nr",
+   "NetworkRegistry",
+   "v1.0",
+   0,
+   "live",
+   "0x0a9F…3D7f",
+   "The parent registry every issuer is registered against.",
+   10,
+   37,
+   "c"
+  ],
+  [
+   "cr",
+   "CollateralRegistry",
+   "v1.0",
+   0,
+   "live",
+   "0x62fB…52Cf",
+   "What each member has pledged, and what the AssurancePool would pay.",
+   10,
+   29,
+   "c"
+  ],
+  [
+   "mr",
+   "MerchantRegistry",
+   "v1.0",
+   0,
+   "live",
+   "0x4172…f1f5",
+   "What each shop was promised: payout schedule, cap, fee, status.",
+   10,
+   45,
+   "c"
+  ],
+  [
+   "tr",
+   "TokenRegistry",
+   "v1.0",
+   0,
+   "live",
+   "0x4B13…6a86",
+   "Which tokens count, with fallback prices.",
+   10,
+   53,
+   "c"
+  ],
+  [
+   "lc",
+   "LimitCalculator",
+   "v1.0",
+   1,
+   "live",
+   "0xbA98…c0a7",
+   "Turns pledges and attestations into a member’s ceiling.",
+   30,
+   21,
+   "c"
+  ],
+  [
+   "ri",
+   "RevolvingIssuer",
+   "v1.3",
+   1,
+   "live",
+   "0x7f15…6070",
+   "The tiered revolving line: savings-backed, asset-backed, income and Boost.",
+   30,
+   29,
+   "c"
+  ],
+  [
+   "ti",
+   "TermIssuer",
+   "v1.0",
+   1,
+   "live",
+   "0xe467…3721",
+   "Term plans: partner credit, Clear Cash and the ELPA.",
+   30,
+   53,
+   "c"
+  ],
+  [
+   "lq",
+   "Liquidator",
+   "v1.0",
+   1,
+   "live",
+   "0x8E2E…9593",
+   "Turns a defaulted member’s pledged savings into repayment of their own debt.",
+   30,
+   69,
+   "c"
+  ],
+  [
+   "cc",
+   "ClearCredit",
+   "v1.1",
+   2,
+   "live",
+   "0x1d9f…928C",
+   "The co-op’s credit ledger, the deployable StableCredit. Only issuers mint.",
+   50,
+   39,
+   "c"
+  ],
+  [
+   "cu",
+   "ClearUSD",
+   "v1.1",
+   2,
+   "live",
+   "0x2a11…D6D1",
+   "CLRUSD, upgradeable. Settles savings and bridges by CCIP.",
+   50,
+   69,
+   "c"
+  ],
+  [
+   "ao",
+   "AssuranceOracle",
+   "v1.0",
+   3,
+   "live",
+   "0x2E52…Fe38",
+   "Prices reserve tokens.",
+   70,
+   13,
+   "c"
+  ],
+  [
+   "ap",
+   "AssurancePool",
+   "v1.2",
+   3,
+   "live",
+   "0xf5E4…5840",
+   "Absorbs losses on unsecured credit. RTD reads it and nothing else.",
+   70,
+   21,
+   "c"
+  ],
+  [
+   "lp",
+   "LendingPool",
+   "v1.0",
+   3,
+   "live",
+   "0x5840…ce23",
+   "Member money funding the unsecured tiers. Takes first loss. Not funded yet.",
+   70,
+   29,
+   "c"
+  ],
+  [
+   "cp",
+   "CreditPool",
+   "—",
+   3,
+   "later",
+   "—",
+   "In the repo, not deployed. Members deposit credit for others to draw.",
+   70,
+   37,
+   "c"
+  ],
+  [
+   "pp",
+   "PayoutPool",
+   "v0.9",
+   3,
+   "live",
+   "0xe9d1…7D66",
+   "Pays shops on the schedule they were promised, oldest claim first.",
+   70,
+   45,
+   "c"
+  ],
+  [
+   "esa",
+   "ESADepositVault",
+   "v1.1",
+   3,
+   "live",
+   "0x8364…413b",
+   "Member savings, CLRUSD backed 1:1 by USDC.",
+   70,
+   69,
+   "c"
+  ],
+  [
+   "ce",
+   "ClaimEscrow",
+   "v1.0",
+   3,
+   "live",
+   "0x24DA…c37D",
+   "Holds USDC sent by link until it’s claimed or refunded.",
+   70,
+   53,
+   "c"
+  ],
+  [
+   "si",
+   "SavingsIntent",
+   "v1.0",
+   3,
+   "live",
+   "0xee28…C8Bc",
+   "One-transfer escrows that turn a deposit into savings.",
+   70,
+   61,
+   "c"
+  ],
+  [
+   "bb",
+   "BurnerBond",
+   "v1.0",
+   4,
+   "live",
+   "0x4d96…c148",
+   "Zero-coupon bonds, one token each, with their factory and deposit. 6 issued.",
+   90,
+   21,
+   "c"
+  ],
+  [
+   "bv",
+   "BondVault",
+   "v1.0",
+   4,
+   "live",
+   "0x9f31…A855",
+   "Where bond proceeds live, behind a redemption reserve. Not funded yet.",
+   90,
+   29,
+   "c"
+  ],
+  [
+   "bvl",
+   "BondValuer",
+   "v1.0",
+   1,
+   "live",
+   "0x64d5…0d2C",
+   "What a member’s pledged bonds are worth today, for CollateralRegistry.",
+   30,
+   61,
+   "c"
+  ],
+  [
+   "vr",
+   "ValidatorRegistry",
+   "v1.0",
+   0,
+   "live",
+   "0x979E…bc91",
+   "Which validators may approve deeds, and for what.",
+   10,
+   84,
+   "d"
+  ],
+  [
+   "va",
+   "Validator",
+   "v1.0",
+   1,
+   "live",
+   "0x18C5…79b9",
+   "Checks a deed’s title and papers before it’s minted. Made by the ValidatorFactory.",
+   30,
+   84,
+   "d"
+  ],
+  [
+   "mx",
+   "MetadataRenderer",
+   "v1.0",
+   1,
+   "live",
+   "0x849e…70E5",
+   "Renders a deed’s features, condition and legal details.",
+   30,
+   93,
+   "d"
+  ],
+  [
+   "dn",
+   "DeedNFT",
+   "v1.1",
+   2,
+   "live",
+   "0x1a4e…21E6",
+   "One token per property deed, with its traits and validation.",
+   50,
+   84,
+   "d"
+  ],
+  [
+   "sd",
+   "Subdivide",
+   "v1.0",
+   2,
+   "live",
+   "0x3c94…923F",
+   "Splits a deed into units, like lots or rooms.",
+   50,
+   93,
+   "d"
+  ],
+  [
+   "fz",
+   "Fractionalize",
+   "v1.0",
+   3,
+   "live",
+   "0xeC46…9823",
+   "Locks a deed or its units and issues shares against it.",
+   70,
+   84,
+   "d"
+  ],
+  [
+   "ft",
+   "FractionToken",
+   "v1.0",
+   4,
+   "live",
+   "0x3E51…28dc",
+   "Shares in one property, made by the FractionTokenFactory.",
+   90,
+   84,
+   "d"
+  ],
+  [
+   "fm",
+   "FundManager",
+   "v1.0",
+   4,
+   "live",
+   "0x73ea…401e",
+   "Money around deeds: commissions and payouts.",
+   90,
+   93,
+   "d"
+  ]
+ ],
+ "notes": {
+  "ap": "v1.3 · waiting on you",
+  "mr": "1 change in the wait",
+  "vr": "Waits on D&T Co.",
+  "bb": "6 bonds",
+  "lp": "Not funded yet",
+  "bv": "Not funded yet"
+ },
+ "links": [
+  [
+   "ms",
+   "am",
+   "reads",
+   "checks members",
+   ""
+  ],
+  [
+   "am",
+   "cc",
+   "reads",
+   "sets roles",
+   null
+  ],
+  [
+   "nr",
+   "cr",
+   "reads",
+   "lists issuers",
+   ""
+  ],
+  [
+   "nr",
+   "cc",
+   "reads",
+   "registers issuers",
+   null
+  ],
+  [
+   "cr",
+   "lc",
+   "reads",
+   "pledges",
+   ""
+  ],
+  [
+   "bvl",
+   "cr",
+   "reads",
+   "values bonds",
+   ""
+  ],
+  [
+   "lc",
+   "ri",
+   "reads",
+   "limits",
+   ""
+  ],
+  [
+   "lp",
+   "ri",
+   "money",
+   "funds unsecured credit",
+   "funds unsecured"
+  ],
+  [
+   "ri",
+   "cc",
+   "mint",
+   "mints credit",
+   "mints"
+  ],
+  [
+   "ti",
+   "cc",
+   "mint",
+   "mints credit",
+   ""
+  ],
+  [
+   "cc",
+   "ap",
+   "money",
+   "claims on losses",
+   ""
+  ],
+  [
+   "ao",
+   "ap",
+   "reads",
+   "prices reserves",
+   ""
+  ],
+  [
+   "tr",
+   "ao",
+   "reads",
+   "token list",
+   null
+  ],
+  [
+   "lp",
+   "ap",
+   "money",
+   "takes first loss",
+   ""
+  ],
+  [
+   "cc",
+   "pp",
+   "money",
+   "pays merchant balances",
+   ""
+  ],
+  [
+   "mr",
+   "pp",
+   "reads",
+   "payout terms",
+   "terms",
+   50
+  ],
+  [
+   "cc",
+   "cp",
+   "reads",
+   "credit deposits",
+   ""
+  ],
+  [
+   "esa",
+   "cu",
+   "mint",
+   "mints against USDC",
+   "mints"
+  ],
+  [
+   "si",
+   "esa",
+   "money",
+   "deposits",
+   ""
+  ],
+  [
+   "lq",
+   "cu",
+   "money",
+   "seizes pledged CLRUSD",
+   "seizes"
+  ],
+  [
+   "lq",
+   "esa",
+   "reads",
+   "redeems",
+   null
+  ],
+  [
+   "lq",
+   "cc",
+   "reads",
+   "repays debt",
+   null
+  ],
+  [
+   "bb",
+   "bv",
+   "money",
+   "bond proceeds",
+   ""
+  ],
+  [
+   "vr",
+   "va",
+   "reads",
+   "lists validators",
+   "lists"
+  ],
+  [
+   "va",
+   "dn",
+   "reads",
+   "validates",
+   "checks"
+  ],
+  [
+   "mx",
+   "dn",
+   "reads",
+   "renders",
+   ""
+  ],
+  [
+   "dn",
+   "sd",
+   "mint",
+   "splits into units",
+   ""
+  ],
+  [
+   "dn",
+   "fz",
+   "money",
+   "locks deeds",
+   "locks"
+  ],
+  [
+   "sd",
+   "fz",
+   "money",
+   "locks units",
+   ""
+  ],
+  [
+   "fz",
+   "ft",
+   "mint",
+   "issues shares",
+   "issues"
+  ],
+  [
+   "fm",
+   "dn",
+   "reads",
+   "commissions",
+   null
+  ]
+ ],
+ "releases": {
+  "cc": [
+   [
+    "v1.0",
+    1785628800000
+   ],
+   [
+    "v1.1",
+    1788307200000
+   ]
+  ],
+  "ri": [
+   [
+    "v1.0",
+    1785628800000
+   ],
+   [
+    "v1.1",
+    1788307200000
+   ],
+   [
+    "v1.2",
+    1790726400000
+   ],
+   [
+    "v1.3",
+    1792540800000
+   ]
+  ],
+  "ti": [
+   [
+    "v1.0",
+    1791417600000
+   ]
+  ],
+  "lq": [
+   [
+    "v1.0",
+    1791417600000
+   ]
+  ],
+  "lp": [
+   [
+    "v1.0",
+    1791936000000
+   ]
+  ],
+  "bv": [
+   [
+    "v1.0",
+    1791936000000
+   ]
+  ],
+  "bvl": [
+   [
+    "v1.0",
+    1791936000000
+   ]
+  ],
+  "ap": [
+   [
+    "v1.0",
+    1785628800000
+   ],
+   [
+    "v1.1",
+    1788307200000
+   ],
+   [
+    "v1.2",
+    1790640000000
+   ]
+  ],
+  "ao": [
+   [
+    "v1.0",
+    1788307200000
+   ]
+  ],
+  "bb": [
+   [
+    "v1.0",
+    1786665600000
+   ]
+  ],
+  "esa": [
+   [
+    "v1.0",
+    1785628800000
+   ],
+   [
+    "v1.1",
+    1788912000000
+   ]
+  ],
+  "nr": [
+   [
+    "v1.0",
+    1788912000000
+   ]
+  ],
+  "mr": [
+   [
+    "v1.0",
+    1788912000000
+   ]
+  ],
+  "cr": [
+   [
+    "v1.0",
+    1789516800000
+   ]
+  ],
+  "lc": [
+   [
+    "v1.0",
+    1789516800000
+   ]
+  ],
+  "pp": [
+   [
+    "v0.8",
+    1790035200000
+   ],
+   [
+    "v0.9",
+    1791244800000
+   ]
+  ],
+  "am": [
+   [
+    "v1.0",
+    1785628800000
+   ]
+  ],
+  "ms": [
+   [
+    "v1.0",
+    1790208000000
+   ]
+  ],
+  "tr": [
+   [
+    "v1.0",
+    1788307200000
+   ]
+  ],
+  "cu": [
+   [
+    "v1.0",
+    1788307200000
+   ]
+  ],
+  "ce": [
+   [
+    "v1.0",
+    1790812800000
+   ]
+  ],
+  "si": [
+   [
+    "v1.0",
+    1791417600000
+   ]
+  ],
+  "vr": [
+   [
+    "v1.0",
+    1787184000000
+   ]
+  ],
+  "va": [
+   [
+    "v1.0",
+    1787184000000
+   ]
+  ],
+  "mx": [
+   [
+    "v1.0",
+    1787184000000
+   ]
+  ],
+  "dn": [
+   [
+    "v1.0",
+    1787184000000
+   ],
+   [
+    "v1.1",
+    1790726400000
+   ]
+  ],
+  "sd": [
+   [
+    "v1.0",
+    1788998400000
+   ]
+  ],
+  "fz": [
+   [
+    "v1.0",
+    1788998400000
+   ]
+  ],
+  "ft": [
+   [
+    "v1.0",
+    1788998400000
+   ]
+  ],
+  "fm": [
+   [
+    "v1.0",
+    1787184000000
+   ]
+  ]
+ },
+ "pending": {
+  "ap": [
+   "v1.3",
+   1792677600000
+  ]
+ },
+ "changes": [
+  {
+   "id": "ch2",
+   "t": "AssurancePool v1.3",
+   "c": "AssurancePool",
+   "by": "Dana Ruiz",
+   "mine": 1,
+   "stage": 2,
+   "state": "Waiting on you · 1 of 2",
+   "d": "Gates every withdrawal behind a role, so only bonds, credit and lending can claim. Closes the open withdraw.",
+   "short": "closes the open withdraw",
+   "ev": [
+    [
+     "seg",
+     "done",
+     1791799200000,
+     1792486800000
+    ],
+    [
+     "seg",
+     "open",
+     1792486800000,
+     null
+    ],
+    [
+     "seg",
+     "proj",
+     null,
+     1792677600000
+    ],
+    [
+     "draft",
+     1791799200000
+    ],
+    [
+     "check",
+     1792321200000
+    ],
+    [
+     "sign",
+     1792486800000,
+     "DR"
+    ],
+    [
+     "sign",
+     null,
+     "K",
+     1
+    ],
+    [
+     "live",
+     1792677600000,
+     1
+    ]
+   ]
+  },
+  {
+   "id": "ch1",
+   "t": "Raise Rosa’s cap to $150.00",
+   "c": "MerchantRegistry",
+   "by": "Marcus Lee",
+   "stage": 3,
+   "state": "Live tomorrow, 12:00",
+   "d": "Signed by Marcus Lee and you. In the 24-hour wait.",
+   "ev": [
+    [
+     "seg",
+     "done",
+     1792407600000,
+     1792584000000
+    ],
+    [
+     "seg",
+     "wait",
+     1792584000000,
+     1792670400000
+    ],
+    [
+     "draft",
+     1792407600000
+    ],
+    [
+     "check",
+     1792425600000
+    ],
+    [
+     "sign",
+     1792519200000,
+     "ML"
+    ],
+    [
+     "sign",
+     1792584000000,
+     "K"
+    ],
+    [
+     "live",
+     1792670400000,
+     1
+    ]
+   ]
+  },
+  {
+   "id": "ch3",
+   "t": "PayoutPool top-up",
+   "c": "PayoutPool",
+   "by": "You",
+   "stage": 0,
+   "state": "$1,116.89 · needs a second person",
+   "d": "Optional. Otherwise the yield pool lends it on 4 Nov; from operating cash, the co-op earns the interest. Due 30 Oct.",
+   "ev": [
+    [
+     "seg",
+     "open",
+     1792587600000,
+     null
+    ],
+    [
+     "seg",
+     "proj",
+     null,
+     1793361600000
+    ],
+    [
+     "draft",
+     1792587600000
+    ],
+    [
+     "due",
+     1793361600000,
+     "Due 30 Oct"
+    ]
+   ]
+  },
+  {
+   "id": "ch5",
+   "t": "Register D&T Co. as a validator",
+   "c": "ValidatorRegistry",
+   "by": "Kai",
+   "stage": 0,
+   "state": "Waits on formation",
+   "d": "The Deed & Title Co. reviews title before a deed is minted. Goes to signing once the company is formed.",
+   "ev": [
+    [
+     "seg",
+     "block",
+     1792144800000,
+     null
+    ],
+    [
+     "draft",
+     1792144800000
+    ]
+   ]
+  },
+  {
+   "id": "ch4",
+   "t": "Add Inland Cycle Works",
+   "c": "MerchantRegistry",
+   "by": "Marcus Lee",
+   "stage": 0,
+   "state": "Waits on the agreement",
+   "d": "NET-30, 2.5% fee, $100.00 cap. Goes to signing once the agreement is signed.",
+   "ev": [
+    [
+     "seg",
+     "block",
+     1792512000000,
+     null
+    ],
+    [
+     "draft",
+     1792512000000
+    ]
+   ]
+  }
+ ],
+ "done": [
+  {
+   "id": "h1",
+   "t": "RevolvingIssuer v1.3",
+   "c": "RevolvingIssuer",
+   "by": "Dana Ruiz",
+   "state": "Live 21 Oct",
+   "ev": [
+    [
+     "seg",
+     "done",
+     1791885600000,
+     1792490400000
+    ],
+    [
+     "seg",
+     "wait",
+     1792490400000,
+     1792576800000
+    ],
+    [
+     "draft",
+     1791885600000
+    ],
+    [
+     "check",
+     1792152000000
+    ],
+    [
+     "sign",
+     1792422000000,
+     "DR"
+    ],
+    [
+     "sign",
+     1792490400000,
+     "K"
+    ],
+    [
+     "live",
+     1792576800000
+    ]
+   ]
+  },
+  {
+   "id": "h2",
+   "t": "Add Uptown Barber",
+   "c": "MerchantRegistry",
+   "by": "Marcus Lee",
+   "state": "Live 20 Oct",
+   "ev": [
+    [
+     "seg",
+     "done",
+     1792314000000,
+     1792411200000
+    ],
+    [
+     "seg",
+     "wait",
+     1792411200000,
+     1792497600000
+    ],
+    [
+     "draft",
+     1792314000000
+    ],
+    [
+     "sign",
+     1792400400000,
+     "ML"
+    ],
+    [
+     "sign",
+     1792411200000,
+     "DR"
+    ],
+    [
+     "live",
+     1792497600000
+    ]
+   ]
+  },
+  {
+   "id": "h3",
+   "t": "Issue BB-0006",
+   "c": "BurnerBond",
+   "by": "You",
+   "state": "Live 15 Oct",
+   "ev": [
+    [
+     "seg",
+     "done",
+     1791968400000,
+     1792000800000
+    ],
+    [
+     "seg",
+     "wait",
+     1792000800000,
+     1792087200000
+    ],
+    [
+     "draft",
+     1791968400000
+    ],
+    [
+     "sign",
+     1791990000000,
+     "K"
+    ],
+    [
+     "sign",
+     1792000800000,
+     "DR"
+    ],
+    [
+     "live",
+     1792087200000
+    ]
+   ]
+  },
+  {
+   "id": "h4",
+   "t": "Pause partner credit",
+   "c": "TermIssuer",
+   "by": "RTD under the floor",
+   "state": "Automatic 6 Oct",
+   "ev": [
+    [
+     "auto",
+     1791273600000
+    ]
+   ]
+  },
+  {
+   "id": "h5",
+   "t": "PayoutPool v0.9",
+   "c": "PayoutPool",
+   "by": "Dana Ruiz",
+   "state": "Live 6 Oct",
+   "ev": [
+    [
+     "seg",
+     "done",
+     1790676000000,
+     1791194400000
+    ],
+    [
+     "seg",
+     "wait",
+     1791194400000,
+     1791280800000
+    ],
+    [
+     "draft",
+     1790676000000
+    ],
+    [
+     "check",
+     1790935200000
+    ],
+    [
+     "sign",
+     1791108000000,
+     "DR"
+    ],
+    [
+     "sign",
+     1791194400000,
+     "K"
+    ],
+    [
+     "live",
+     1791280800000
+    ]
+   ]
+  },
+  {
+   "id": "h6",
+   "t": "AssurancePool v1.2",
+   "c": "AssurancePool",
+   "by": "Dana Ruiz",
+   "state": "Live 29 Sep",
+   "ev": [
+    [
+     "seg",
+     "done",
+     1789898400000,
+     1790589600000
+    ],
+    [
+     "seg",
+     "wait",
+     1790589600000,
+     1790676000000
+    ],
+    [
+     "draft",
+     1789898400000
+    ],
+    [
+     "check",
+     1790330400000
+    ],
+    [
+     "sign",
+     1790503200000,
+     "DR"
+    ],
+    [
+     "sign",
+     1790589600000,
+     "BS"
+    ],
+    [
+     "live",
+     1790676000000
+    ]
+   ]
+  }
+ ],
+ "signers": [
+  [
+   "K",
+   "Kai",
+   "You",
+   3.1,
+   "Nothing waiting"
+  ],
+  [
+   "DR",
+   "Dana Ruiz",
+   "ClearLabs",
+   5.4,
+   "Next on your top-up, once proposed"
+  ],
+  [
+   "BS",
+   "Board signer",
+   "Co-op board",
+   31,
+   "Nothing waiting"
+  ]
+ ]
+}

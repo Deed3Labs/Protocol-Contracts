@@ -9,6 +9,9 @@ import merchFigures from '@clear/command-types/src/fixtures/merchants-figures.js
 import moneyFx from '@clear/command-types/src/fixtures/money.json';
 import shopFx from '@clear/command-types/src/fixtures/shop.json';
 import shopFigures from '@clear/command-types/src/fixtures/shop-figures.json';
+import contractsFx from '@clear/command-types/src/fixtures/contracts.json';
+import governanceFx from '@clear/command-types/src/fixtures/governance.json';
+import recordsFx from '@clear/command-types/src/fixtures/records.json';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Db } from '../db/db.js';
@@ -76,7 +79,7 @@ describe('the seed', () => {
     expect(rows[0].n).toBe(Object.keys(MEMBERS_FIGURES).length);
     const all = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM command.figures');
     expect(all.rows[0].n).toBe(Object.keys(SEED_FIGURES).length);
-    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops', '30 merchants', '32 board cards', '6 accounts', '6 bonds', '18 yield positions', '13 products', '19 orders', '6 pre-orders']));
+    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops', '30 merchants', '32 board cards', '6 accounts', '6 bonds', '18 yield positions', '13 products', '19 orders', '6 pre-orders', '41 agreements', '31 contracts', '11 changes', '9 entities', '16 filings', '3 boards', '16 documents']));
   });
 
   test('never overwrites a figure a live job wrote', async () => {
@@ -291,5 +294,77 @@ describe('Shop, built from the database', () => {
     expect(r.body.RETURNS).toEqual([]);
     const text = JSON.stringify(r.body);
     for (const o of shopFx.orders as any[]) expect(text).not.toContain(o[2]);
+  });
+});
+
+describe('Contracts, Governance, Records and Home, built from the database', () => {
+  const NOW = Date.UTC(2026, 9, 21, 14);
+  const evNow = (ev: any[]) => ev.map((e: any[]) => e.map((v) => v ?? NOW));
+  const C = contractsFx as Record<string, any>;
+  /** The Totals person from the Members tests, given Totals on every section. */
+  const totalsEverywhere = async () => {
+    const kai = await signIn('did:kai|kai@useclear.org');
+    const tid = (await call(kai, 'GET', '/people')).body.people.find((p: any) => p.email === 'totals@useclear.org').id;
+    expect((await call(kai, 'PATCH', `/people/${tid}/access`, { custom: all(1) })).status).toBe(200);
+    return signIn('did:totals|totals@useclear.org');
+  };
+  const G = governanceFx as Record<string, any>;
+
+  test('Contracts: agreements, contracts, links, releases, changes and signers are the prototype’s', async () => {
+    const kai = await signIn('did:kai|kai@useclear.org');
+    const r = await call(kai, 'GET', '/sections/contracts');
+    expect(r.status).toBe(200);
+    // a merchant agreement's sent date is only kept while it's out for signature
+    expect(r.body.AGR).toEqual(C.agreements.map(({ sent, ...a }: any) => ({ ...a, ...(sent ? { sent } : {}), ...(a.ev ? { ev: evNow(a.ev) } : {}) })));
+    expect(r.body.CTR).toEqual(C.contracts);
+    expect(r.body.CTR_NOTE).toEqual(C.notes);
+    expect(r.body.REL).toEqual(C.links);
+    expect(r.body.RELEASES).toEqual(C.releases);
+    expect(r.body.PENDING).toEqual(C.pending);
+    expect(r.body.CH).toEqual(C.changes.map((c: any) => ({ ...c, ev: evNow(c.ev) })));
+    expect(r.body.CH_DONE).toEqual(C.done.map((c: any) => ({ ...c, ev: evNow(c.ev) })));
+    expect(r.body.SIGNERS).toEqual(C.signers);
+  });
+
+  test('Governance: entities, filings, boards, votes, meetings and deals are the prototype’s', async () => {
+    const kai = await signIn('did:kai|kai@useclear.org');
+    const r = await call(kai, 'GET', '/sections/governance');
+    expect(r.status).toBe(200);
+    expect(r.body.ENT).toEqual(G.entities.map((e: any) => e.row));
+    expect(r.body.PARENT).toEqual(Object.fromEntries(G.entities.map((e: any) => [e.row[0], e.parent])));
+    expect(r.body.ENTF).toEqual(Object.fromEntries(G.entities.filter((e: any) => e.facts).map((e: any) => [e.row[0], e.facts])));
+    expect(r.body.OWN).toEqual(Object.fromEntries(G.entities.filter((e: any) => e.owned).map((e: any) => [e.row[0], e.owned])));
+    for (const [k, f] of [['FILINGS', 'filings'], ['GBOARDS', 'boards'], ['AGENDA', 'agenda'], ['RESOS', 'resolutions'], ['PEOPLE', 'people'], ['VOTE', 'vote'], ['MEETS', 'meetings'], ['RP', 'related'], ['MATTERS', 'matters']]) {
+      expect(r.body[k]).toEqual(G[f]);
+    }
+  });
+
+  test('Records: the documents are the prototype’s; the log is the app’s own and never seeded', async () => {
+    const kai = await signIn('did:kai|kai@useclear.org');
+    const r = await call(kai, 'GET', '/sections/records');
+    expect(r.status).toBe(200);
+    expect(r.body.DOCS).toEqual(recordsFx.documents);
+    expect(r.body.LOG.some((l: any) => l.action === 'Signed “Raise Rosa’s cap to $150.00”')).toBe(false);
+    expect(r.body.LOG.length).toBeGreaterThan(0);
+    // at Totals the documents and counts only: the log and approvals name people
+    const t = await call(await totalsEverywhere(), 'GET', '/sections/records');
+    expect(t.status).toBe(200);
+    expect([t.body.LOG, t.body.APPROVALS, t.body.people]).toEqual([[], [], 'none']);
+    expect(t.body.DOCS).toEqual(recordsFx.documents);
+  });
+
+  test('Home: counts from the other sections, and the filings due in 30 days', async () => {
+    const r = await call(await totalsEverywhere(), 'GET', '/sections/home');
+    expect(r.status).toBe(200);
+    expect(r.body.MEMBER_SUMMARY).toEqual({ invited: 300, active: 124, opened: 64, notOpened: 112, funded: { bank: 71, five: 38, deposit: 15 } });
+    expect(r.body.OWED).toEqual(merchFx.owed);
+    expect(r.body.POSTERS).toBe(102);
+    expect(r.body.DEADLINES).toEqual([
+      ['Annual report', 'ClearLabs Inc.', '1 Nov', 11, 'ready'],
+      ['Board minutes', 'Clear Co-op', '4 Nov', 14, 'draft'],
+      ['Statement of Information', 'Clear Co-op', '15 Nov', 25, 'none'],
+    ]);
+    expect(r.body.figures['home.funnel'][0]).toEqual(['Visits', 36410]);
+    expect(JSON.stringify(r.body)).not.toContain('@');
   });
 });
