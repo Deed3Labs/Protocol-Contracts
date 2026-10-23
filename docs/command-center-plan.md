@@ -132,6 +132,29 @@ These need Kai's answer before Phase 1. Each has the default I'd take.
     an investor (Lena Park). On dev those are seed rows. For anyone real to sign in, I need their
     emails, or Kai invites them from Permissions once Phase 2 lands.
 
+## Kai's answers
+
+Decided 2026-10-22. These replace the defaults above where they differ.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Branches | PRs into `dev`; `command.useclear.org` follows `dev` (testnet). `main` only when ready for real money. |
+| 2 | API path | `/api/command/*`. |
+| 3 | `apps/web` | It's `apps/member`. No decision needed. |
+| 4 | Merchant data | Read the existing `merchant`, `payments` and `commerce` tables. New tables only for the pipeline, prospects and activity. |
+| 5 | Schema | A new `command` Postgres schema, with its own audit log. |
+| 6 | Audit log | A trigger that rejects UPDATE and DELETE, plus a test. No second DB role. |
+| 7 | Deploy blocks | Find each creation block once and store it in `command.contract`. Deployment files stay untouched. |
+| 8 | Ops Safe | Open until Phase 4. Phases 1–3 don't need it. |
+| 9 | Sign-in | Passkey and email code as drawn, plus an "Other ways to sign in" link (SMS, Google, Apple). Recorded in `docs/command-reference/DECISIONS.md` when Phase 1 starts. |
+| 10 | Site visits and forms | Plausible on useclear.org, and a small forms endpoint in `apps/api` that the site posts to. |
+| 10b | Waitlist and batches | Built in Command. Waitlist joins land in a Command table from the site's form; batches are proposed and approved here and send invite codes the member app already accepts. |
+| 11 | Shop | Orders and refunds read live from Stripe (restricted read-only key). Catalog read from `content/shop.ts`. Stock in a Command table. Product edits and refunds become proposals, never live writes. |
+| 12 | Team | Seed people stay demo rows on `dev`. Real people are invited by email from Permissions once Phase 2 lands. |
+
+Questions 10 and 10b touch `clearpath-website` (the Plausible script and the form posting to the API).
+That work goes in its own PR on that repo, in Phase 7.
+
 ## Plan
 
 One PR per phase into `dev`. Commits as each piece verifies; push at the end of each phase.
