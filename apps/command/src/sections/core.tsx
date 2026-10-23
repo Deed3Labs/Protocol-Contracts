@@ -1,6 +1,8 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { LIVE } from '../live/env';
+import { liveSignOut } from '../live/account';
 import { attrs, css, html } from '../runtime/dom';
-import { P, S, TH_IC, TS, vars } from './data';
+import { P, S, SG, TH_IC, TS, vars } from './data';
 import { stepFlow } from './kit';
 import { modalShell, onKey, render } from './shell';
 import { showLogin } from './signin';
@@ -106,7 +108,7 @@ export function openPf() {
   if (btn) btn.setAttribute('aria-expanded', 'true');
   const rail = document.documentElement.dataset.rail === 'min',
     mem = S.view && !S.view.preview,
-    nm = mem ? S.view.who : 'Kai';
+    nm = mem ? S.view.who : LIVE ? SG.name : 'Kai';
   html(
     $('#pfRoot'),
     <>
@@ -114,11 +116,11 @@ export function openPf() {
       <div className="pm" role="dialog" aria-label="Profile and settings">
         <div className="pm-hd">
           <span className="av pm-av" aria-hidden="true">
-            {mem ? nm.slice(0, 2).toUpperCase() : 'KK'}
+            {mem || LIVE ? nm.slice(0, 2).toUpperCase() : 'KK'}
           </span>
           <div className="pm-who">
             <b>{nm}</b>
-            <span>{mem ? 'Member · read-only' : 'Admin · Founder'}</span>
+            <span>{LIVE && vars.me ? `${vars.me.group?.name ?? 'Member'}${mem ? ' · read-only' : ''}${vars.me.title ? ` · ${vars.me.title}` : ''}` : mem ? 'Member · read-only' : 'Admin · Founder'}</span>
           </div>
           <span className="chip settled pm-pk">{mem ? 'Clear app login' : 'Passkey'}</span>
         </div>
@@ -141,7 +143,7 @@ export function openPf() {
             </svg>
             <span>
               <b>Your access and devices</b>
-              <span className="small quiet">{mem ? 'Members group · this device' : 'Admin everywhere · 2 devices'}</span>
+              <span className="small quiet">{LIVE && vars.me ? `${vars.me.group?.name ?? 'Members'} · this device` : mem ? 'Members group · this device' : 'Admin everywhere · 2 devices'}</span>
             </span>
           </button>
           <button type="button" data-pfa="keys">
@@ -186,7 +188,7 @@ export function pfAct(k) {
   if (k === 'access') {
     if (typeof TS !== 'undefined') {
       TS.pane = 'people';
-      TS.person = 'K';
+      TS.person = LIVE ? vars.meId : 'K';
     }
     S.route = 'team';
     render();
@@ -256,6 +258,7 @@ export function pfAct(k) {
   }
   if (k === 'signout-go') {
     modalShell('Sign out', '', 'Every sign-in is logged');
+    if (LIVE) return void liveSignOut().then(() => stepFlow('Signing out', ['Ended this session', 'Logged it'], ['Signed out.', ''], () => setTimeout(showLogin, 500)));
     return stepFlow('Signing out', ['Ended this session', 'Logged it'], ['Signed out.', ''], () => setTimeout(showLogin, 500));
   }
 }

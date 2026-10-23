@@ -18,7 +18,8 @@
   "dependencies": {
     "maplibre-gl": "^4.7.1",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "@privy-io/react-auth": "^3.32.2"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

@@ -7,7 +7,8 @@ import { defineConfig } from '@playwright/test';
  *
  * Runs on the installed Chrome, like the merchant app's checks, against its own dev server on 5231.
  */
-export const APP = 'http://localhost:5231';
+// the preview: the prototype's simulated sign-in and demo team, which is what the checks compare
+export const APP = 'http://localhost:5231/?preview=1';
 export const PROTO = 'http://localhost:5233/clear-command-center.html';
 export const WIDTHS = { wide: 1500, laptop: 1100, phone: 390 } as const;
 

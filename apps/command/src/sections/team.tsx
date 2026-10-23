@@ -1,8 +1,10 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { LIVE } from '../live/env';
+import * as live from '../live/account';
 import { css } from '../runtime/dom';
 import { D, laneFrame, pctX } from './contracts';
 import { head, ic } from './core';
-import { AREAS, CAN, DAY, INVITES, LOG, LV, PEOPLE_T, RESULT, ROLES, RULES2, SECS, SIGNIN, TS, WAIT2, WEEK, vars } from './data';
+import { AREAS, CAN, DAY, DEMO_PEOPLE, INVITES, LOG, LV, PEOPLE_T, RESULT, ROLES, RULES2, SECS, SIGNIN, TS, WAIT2, WEEK, vars } from './data';
 import { kv, sec, vModal } from './governance';
 import { G, columns, figHtml, figSide, fmtD, gCell } from './growth';
 import { mkey } from './home';
@@ -20,7 +22,7 @@ export function MEMBERS_N() {
   return mCount((m) => m.status === 'active' || m.status === 'opened');
 }
 export function pOf(id) {
-  return PEOPLE_T.find((p) => p.id === id);
+  return PEOPLE_T.find((p) => p.id === id) ?? (LIVE ? DEMO_PEOPLE.find((p) => p.id === id) : undefined);
 }
 export function lvSq(v, big) {
   return <i className={`lv lv${v}${big ? ' big' : ''}`} title={LV[v]} />;
@@ -39,7 +41,7 @@ export function lvKey() {
 }
 export function avatar(id, n, cls = '') {
   return (
-    <i className={`sg-sq${id === 'K' ? ' me' : ''} ${cls}`} title={n || ''}>
+    <i className={`sg-sq${id === (LIVE ? vars.meId : 'K') ? ' me' : ''} ${cls}`} title={n || ''}>
       {id}
     </i>
   );
@@ -807,7 +809,7 @@ export function teamPane() {
             ''
           )}
         </>,
-        p.off || p.id === 'K' ? (
+        p.off || p.id === (LIVE ? vars.meId : 'K') ? (
           ''
         ) : (
           <button type="button" className="pn-link" data-tflow="custom" data-tid={p.id}>
@@ -864,7 +866,7 @@ export function teamPane() {
     <button className="btn btn-p" type="button" data-tflow="turn-on" data-tid={p.id}>
       Turn access back on
     </button>
-  ) : p.id === 'K' ? (
+  ) : p.id === (LIVE ? vars.meId : 'K') ? (
     <button className="btn btn-g" type="button" data-rflow="signout">
       Sign out other devices
     </button>
@@ -979,6 +981,7 @@ export function openTFlow(kind, id) {
         p.custom = diff ? TS.edit.levels.slice() : null;
         TS.edit = null;
       },
+      api: () => live.teamChange(f, () => live.setAccess(p.id, { custom: live.customLevels(diff ? TS.edit.levels.slice() : null) })).then(() => (TS.edit = null)),
       steps: ['Saved their access', 'Refreshed their session', 'Logged it'],
       done: [diff ? 'Custom access saved.' : 'Back to the group.', diff ? `${p.n} now shows as Custom.` : `${p.n} has ${ROLES[p.role][0]} access again.`],
     };
@@ -1034,6 +1037,10 @@ export function openTFlow(kind, id) {
       note: E.levels.some((v, i) => v === 4 && base[i] < 4) ? <b>Giving Approve needs a second admin.</b> : null,
       noteIc: 'team',
       btn: g ? 'Save the group' : 'Make the group',
+      api: () =>
+        live
+          .teamChange(f, () => (g ? live.editGroup(id, E.levels.slice()) : live.newGroup(E.name || 'New group', E.desc || '', E.levels.slice())))
+          .then(() => (TS.edit = null)),
       after: () => {
         if (g) {
           g[2] = E.levels.slice();
@@ -1056,11 +1063,11 @@ export function openTFlow(kind, id) {
         <>
           <label className="field">
             <span className="lbl">Name</span>
-            <input type="text" defaultValue="Jordan Avila" autoComplete="off" />
+            <input type="text" {...(LIVE ? { id: 'tf-name', placeholder: 'Their name' } : { defaultValue: 'Jordan Avila' })} autoComplete="off" />
           </label>
           <label className="field">
             <span className="lbl">Email</span>
-            <input type="text" defaultValue="jordan@" autoComplete="off" />
+            <input type="text" {...(LIVE ? { id: 'tf-email', type: 'email', placeholder: 'name@example.com' } : { defaultValue: 'jordan@' })} autoComplete="off" />
           </label>
           <span className="lbl">Group</span>
           {roleSeg(r, 'invite')}
@@ -1087,6 +1094,12 @@ export function openTFlow(kind, id) {
       btn: 'Send the invite',
       after: () => {
         INVITES.push(['JA', 'Jordan Avila', r, 'Sent today · expires 29 Oct']);
+      },
+      api: () => {
+        const n = (document.getElementById('tf-name')?.value || '').trim(),
+          e = (document.getElementById('tf-email')?.value || '').trim();
+        if (!n || !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(e)) return Promise.reject(new Error('Add their name and email first'));
+        return live.teamChange(f, () => live.invite({ name: n, email: e, group: r }));
       },
       steps: ['Made the invite', 'Sent it by email', 'Logged who sent it'],
       done: ['Invite sent.', 'They show as invited until they first sign in.'],
@@ -1121,6 +1134,7 @@ export function openTFlow(kind, id) {
         p.role = to;
         TS.roleTo = null;
       },
+      api: () => live.teamChange(f, () => live.setAccess(p.id, { group: to })).then(() => (TS.roleTo = null)),
       steps: ['Changed the group', 'Refreshed their access', 'Logged it'],
       done: ['Group changed.', `${p.n} is now ${ROLES[to][0]}.`],
     };
@@ -1146,6 +1160,7 @@ export function openTFlow(kind, id) {
       after: () => {
         p.off = 1;
       },
+      api: () => live.teamChange(f, () => live.setAccess(p.id, { off: true })),
       steps: ['Ended every session', 'Turned off sign-in', 'Logged it'],
       done: ['Access turned off.', 'You can turn it back on any time.'],
     };
@@ -1161,6 +1176,7 @@ export function openTFlow(kind, id) {
       after: () => {
         p.off = 0;
       },
+      api: () => live.teamChange(f, () => live.setAccess(p.id, { off: false })),
       steps: ['Turned sign-in back on', 'Logged it'],
       done: ['Access is back on.', 'Their group is unchanged.'],
     };
@@ -1177,6 +1193,7 @@ export function openTFlow(kind, id) {
       ],
       pre: accessRow(ROLES[iv[2]][2]),
       btn: 'Send it again',
+      api: () => live.teamChange(f, () => live.resendInvite(id)),
       steps: ['Sent the invite again', 'Reset the 7 days'],
       done: ['Sent again.', 'It now expires 29 Oct.'],
     };

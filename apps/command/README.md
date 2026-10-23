@@ -52,3 +52,28 @@ npm run test:crawl --workspace=@clear/command
 at 1500, 1100 and 390 px in Paper and Ink; it starts its own servers on 5231 (the app) and 5233 (the
 prototype). `test:crawl` clicks every button on every page in both and compares what opens; it takes
 a few minutes.
+
+## Live and preview (Phase 2)
+
+- `http://localhost:5230/` is the live app: Privy sign-in against the API in `VITE_API_BASE_URL`.
+- `http://localhost:5230/?preview=1` is the prototype's simulated sign-in and demo team. The checks
+  above run on it.
+
+`apps/command/.env.local` (copy `.env.example`):
+
+| Variable | What |
+|---|---|
+| `VITE_PRIVY_APP_ID` | The Clear app's Privy app, the same one `apps/member` uses |
+| `VITE_API_BASE_URL` | The API: `http://localhost:3001`, or the dev API on Railway |
+
+The API (`apps/api`, Railway) needs:
+
+| Variable | What |
+|---|---|
+| `COMMAND_ADMIN_EMAILS` | Comma-separated. Each becomes Admin on first sign-in. |
+| `COMMAND_APP_URL` | Where invite links point. Default `https://command.useclear.org`. |
+| `CORS_ORIGIN` | Must include the Command Center's origin. |
+| `RESEND_API_KEY`, `RESEND_FROM` | Invites go by email (already set for receipts). |
+
+Privy's dashboard needs the Command Center's origins (`http://localhost:5230`, its Vercel previews,
+`https://command.useclear.org`) under allowed origins, or Privy refuses to load.

@@ -1,4 +1,6 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { LIVE } from '../live/env';
+import * as live from '../live/account';
 import { css, hasHtml, html } from '../runtime/dom';
 import { D, openCFlow } from './contracts';
 import { $, closePf, money, openPf, pfAct, setRail, setTheme } from './core';
@@ -1028,6 +1030,16 @@ export function startup() {
       const f = openVFlow.f,
         it = document.getElementById('vi-what');
       if (it) openVFlow.lastItem = it.value;
+      if (LIVE && f.api) {
+        t.disabled = true;
+        return f.api().then(
+          () => stepFlow(f.ext ? 'Handing off' : 'Working', f.steps, f.done, () => render()),
+          (e) => {
+            t.disabled = false;
+            toast(e.message);
+          },
+        );
+      }
       return stepFlow(f.ext ? 'Handing off' : 'Working', f.steps, f.done, f.after || null);
     }
     if (t.dataset.cpane) {
@@ -1427,6 +1439,17 @@ export function startup() {
       const b = e.target.closest('[data-sgn]');
       if (!b) return;
       const k = b.dataset.sgn;
+      if (LIVE) {
+        if (k === 'terms-ok') return live.liveTerms();
+        if (k === 'passkey') return live.livePasskey();
+        if (k === 'other') return live.liveOther();
+        if (k === 'back') return sgnStep('start');
+        if (k === 'resend') {
+          sgnTimer(30);
+          return live.liveResend();
+        }
+        return;
+      }
       if (k === 'terms-ok') {
         const tp = PEOPLE_T.find((p) => p.id === SG.view.person);
         if (tp) tp.terms = 1;
@@ -1459,6 +1482,7 @@ export function startup() {
         l.querySelector('.sgn-err').textContent = v ? 'That doesn’t look like an email.' : 'Enter your email.';
         return;
       }
+      if (LIVE) return live.liveSendCode(v);
       /* one login for everyone: a person on the team list gets their group (or custom) access, anyone else with a Clear account is a member */
       const tp = PEOPLE_T.find((p) => p.email === v && !p.off);
       SG.view = tp
@@ -1507,6 +1531,7 @@ export function startup() {
           const n = document.querySelectorAll('#sgnCode input')[k];
           if (n) n.value = x.value;
         });
+        if (LIVE) return live.liveCode(ins.map((x) => x.value).join(''));
         setTimeout(sgnIn, 1100);
       }
     });
@@ -1529,6 +1554,8 @@ export function startup() {
     </>,
   );
   const start = (location.hash || '').slice(1);
+  // the live app opens on sign-in, or on the page asked for when this browser is still signed in
+  if (LIVE) return void live.liveBoot(NAMES[start] || start.startsWith('invite=') ? start : '');
   go(NAMES[start] ? start : 'home');
   if (start === 'login') showLogin();
 }

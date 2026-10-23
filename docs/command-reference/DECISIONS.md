@@ -69,3 +69,37 @@ None of these change what is drawn. The DOM and pixel checks below prove it.
 own a browser renders it in quirks mode, where tables don't inherit `line-height` and every table
 row's text sits a pixel lower. Claude's artifact viewer, where the design was drawn and reviewed,
 adds the doctype, and so does the app; the checks serve the prototype with one.
+
+## Phase 2: sign-in, people and permissions
+
+Decided 2026-10-23.
+
+- **Live and preview.** The app is live by default: Privy, the API, the real team. `?preview=1`
+  (dev only) is the prototype as drawn, with its simulated sign-in and demo team; the checks against
+  the prototype run on it. The live code sits behind `LIVE` in the sections, so the preview's DOM is
+  unchanged.
+- **The screens are the prototype's; Privy is headless behind them.** Passkey and email code use
+  Privy's own hooks (`useLoginWithPasskey`, `useLoginWithEmail`).
+- **Additions the prototype doesn't draw:**
+  - An "Other ways to sign in" link under the email form opens Privy's window for SMS, Google and
+    Apple, for members who joined that way.
+  - A wrong code goes back to the code boxes with a toast; a refused sign-in ("no Clear account",
+    "access is off") shows in the email box's own error line.
+- **Who counts as a member.** A Privy login alone isn't a Clear account. The Members row goes to
+  logins the member store recognises (`resolveCanonicalAuthSubject`); anyone else needs an invite.
+  Without that, anyone could make a Privy login and read the member view.
+- **The first admin** is whoever signs in with an address on `COMMAND_ADMIN_EMAILS`.
+- **No wallet needed.** The Command Center checks the Privy token itself (`requireIdentity`), so an
+  outside accountant or an investor with no Clear wallet can sign in. The member app's idle lock
+  doesn't apply here; the Command Center has its own 12-hour sessions.
+- **The second admin.** Giving anyone Approve, and anything proposed by someone who can only
+  propose, waits in Home → Needs you for another admin. The proposer can't approve it: the API
+  refuses, and so does a CHECK in the database.
+- **People on the Permissions page get short ids** (initials, as the prototype's `K`, `DR`) mapped to
+  their real ids, because the page draws avatars from them. Demo rows in sections still on demo data
+  (Records, Contracts) keep naming the demo people until Phase 3.
+- **Still client-side until Phase 3.** The read-only bar, the blocked buttons and `vScrub` (names
+  hidden at Totals) still run in the browser for the sections, because those sections still draw
+  demo data. Everything the API serves is enforced on the server already; `vScrub` goes when the
+  sections' data does.
+- **Ops Safe signers** show as none on the Permissions page until the Safe arrives (Phase 4).

@@ -233,6 +233,42 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 }
 
+/**
+ * The same Privy sign-in as requireAuth, for the Command Center: no wallet needed (an outside
+ * accountant or an investor may not have a Clear wallet) and none of the member app's idle lock
+ * (the Command Center keeps its own sessions). `walletAddress` is '' when there's no wallet.
+ */
+export async function requireIdentity(req: Request, res: Response, next: NextFunction) {
+  const token = getBearerToken(req);
+  if (!token) return sendUnauthorized(res, 'Missing bearer token', 'AUTH_TOKEN_MISSING');
+  const privy = getPrivy();
+  if (!privy) {
+    return res.status(500).json({ error: 'Authentication misconfigured', message: 'PRIVY_APP_ID and PRIVY_APP_SECRET are required' });
+  }
+  let userId: string;
+  let sessionId: string | undefined;
+  try {
+    const claims = await privy.verifyAuthToken(token);
+    userId = claims.userId;
+    sessionId = claims.sessionId;
+  } catch (error) {
+    console.error('Authentication error (token):', error);
+    return sendUnauthorized(res, 'Invalid or expired authentication token', 'AUTH_TOKEN_INVALID');
+  }
+  try {
+    const { addresses, smartWallet, email, emails, phone } = await loadUserWallets(privy, userId);
+    req.auth = { walletAddress: smartWallet ?? [...addresses][0] ?? '', profileUuid: userId, email, emails: [...emails], phone, smartWallet, addresses: [...addresses], sessionId, token };
+    return next();
+  } catch (error) {
+    console.error('Authentication error (user lookup):', error);
+    return res.status(503).json({
+      error: 'Authentication temporarily unavailable',
+      message: 'Could not verify your account right now. Please try again.',
+      code: 'AUTH_UPSTREAM_UNAVAILABLE',
+    });
+  }
+}
+
 export function requireWalletMatch(
   req: Request,
   res: Response,
