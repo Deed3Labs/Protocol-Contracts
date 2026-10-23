@@ -1,4 +1,5 @@
 import growthFigures from './fixtures/growth-figures.json';
+import merchantsFigures from './fixtures/merchants-figures.json';
 
 /**
  * The figures each section shows that aren't counted from its own rows: weekly series, the waitlist,
@@ -47,4 +48,7 @@ export const MEMBERS_FIGURES = {
 /** Growth's figures, written from the prototype's data by apps/command/scripts/fixtures.ts. */
 export const GROWTH_FIGURES: Record<string, unknown> = growthFigures;
 
-export const SEED_FIGURES: Record<string, unknown> = { ...MEMBERS_FIGURES, ...GROWTH_FIGURES };
+/** Merchants' figures, likewise. */
+export const MERCHANTS_FIGURES: Record<string, unknown> = merchantsFigures;
+
+export const SEED_FIGURES: Record<string, unknown> = { ...MEMBERS_FIGURES, ...GROWTH_FIGURES, ...MERCHANTS_FIGURES };

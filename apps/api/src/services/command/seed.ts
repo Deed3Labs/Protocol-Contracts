@@ -2,6 +2,7 @@ import { DAY, SEED_FIGURES, SEED_TODAY } from '@clear/command-types';
 import field from '@clear/command-types/src/fixtures/field.json';
 import growth from '@clear/command-types/src/fixtures/growth.json';
 import members from '@clear/command-types/src/fixtures/members.json';
+import merch from '@clear/command-types/src/fixtures/merchants.json';
 import type { Db, Queryable } from '../../db/db.js';
 
 /**
@@ -133,6 +134,46 @@ export async function seedCommand(db: Db): Promise<string[]> {
         );
       }
       done.push(`a route of ${field.stops.length} stops`);
+    }
+
+    if (await empty(tx, 'command.merchants')) {
+      const cents = (v: number) => Math.round(v * 100);
+      const where = merch.cities as unknown as Record<string, [number, number, string]>;
+      const board = merch.board as Array<Record<string, any>>;
+      for (const [i, t] of (merch.tx as any[][]).entries()) {
+        const [id, name, kind, city, founding, fee, terms, cap, hits, orig, lost, oct, octN, sept, hw] = t;
+        await tx.query(
+          `INSERT INTO command.merchants (id, position, name, kind, city, lng, lat, status, founding, fee_pct, terms, cap_cents, hardware)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'transacting', $8, $9, $10, $11, $12)`,
+          [id, i, name, kind, city, where[city]?.[0] ?? null, where[city]?.[1] ?? null, !!founding, fee, terms, cents(cap), hw],
+        );
+        await tx.query('INSERT INTO command.merchant_stats (merchant_id, cap_hits_7d, originations, losses) VALUES ($1, $2, $3, $4)', [id, hits, orig, lost]);
+        await tx.query('INSERT INTO command.merchant_months (merchant_id, month, cleared_cents, sales) VALUES ($1, $2, $3, $4), ($1, $5, $6, 0)', [id, '2026-10-01', cents(oct), octN, '2026-09-01', cents(sept)]);
+      }
+      for (const [i, sg] of (merch.signed as string[][]).entries()) {
+        const [id, name, kind, city, st] = sg;
+        await tx.query(
+          `INSERT INTO command.merchants (id, position, name, kind, city, lng, lat, status, founding) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [id, 100 + i, name, kind, city, where[city]?.[0] ?? null, where[city]?.[1] ?? null, st === 'signing' ? 'signing' : 'signed', !!board.find((c) => c.id === id)?.founding],
+        );
+      }
+      for (const [id, v] of Object.entries(merch.owed as Record<string, number>)) {
+        await tx.query('INSERT INTO command.redemptions_owed (merchant_id, owed_cents) VALUES ($1, $2)', [id, cents(v)]);
+      }
+      for (const [i, c] of board.entries()) {
+        await tx.query(
+          `INSERT INTO command.merchant_stage (id, merchant_id, position, name, kind, city, stage, owner, per_month_cents, next_step, due_on, last_contact_at, contact, source, address, flag, founding, posters)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+          [c.id, c.m ?? null, i, c.name, c.kind, c.city, c.stage, c.owner ?? null, c.val != null ? cents(c.val) : null, c.next ?? null, iso(c.due), iso(c.last), JSON.stringify(c.contact), c.source, c.addr ?? '', !!c.flag, !!c.founding, c.posters ?? null],
+        );
+      }
+      for (const [i, [id, kinds, issue, last]] of (merch.fleet as Array<[string, Record<string, string[]>, string, string]>).entries()) {
+        for (const [kind, list] of Object.entries(kinds)) {
+          for (const [seq, status] of list.entries()) await tx.query('INSERT INTO command.device_fleet (merchant_id, kind, seq, status) VALUES ($1, $2, $3, $4)', [id, kind, seq, status]);
+        }
+        await tx.query('INSERT INTO command.fleet_checkins (merchant_id, position, issue, last_seen) VALUES ($1, $2, $3, $4)', [id, i, issue, last]);
+      }
+      done.push(`${merch.tx.length + merch.signed.length} merchants`, `${board.length} board cards`);
     }
   });
   return done;

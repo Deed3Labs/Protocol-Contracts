@@ -77,4 +77,45 @@ write('field.json', {
   later: d.LATER,
   shopInfo: d.SHOP_INFO,
 });
+// Merchants: the partners and their numbers, the signed shops, the prospects, what's owed in $10
+// redemptions, the pipeline board as the prototype builds it, the hardware fleet and the map's cities.
+const merchants = await import('../src/sections/merchants.tsx');
+merchants.kbInit();
+write('merchants.json', {
+  tx: d.TX,
+  signed: d.SIGNED,
+  prospects: d.PROSPECTS,
+  owed: d.OWED,
+  board: d.XS.board,
+  fleet: d.FLEET,
+  cities: d.CITY_LL,
+});
+// Figures written into Merchants' drawing code (the prototype's own numbers, each marked there).
+const D = (m: number, day: number) => Date.UTC(2026, m - 1, day);
+write('merchants-figures.json', {
+  'merchants.founding_seats': 5,
+  'merchants.newest_partner': { name: 'Uptown Barber', joined: D(10, 21) },
+  'merchants.weekly.transacting': [0, 0, 1, 2, 3, 4, 5, 7, 8, 10, 11],
+  'merchants.weekly.cleared': [0, 120, 480, 1100, 2300, 3900, 6100, 8800, 11900, 14600, 17300],
+  'merchants.weekly.next_run': [0, 0, 0, 0, 310, 310, 310, 310, 3980, 3980, 3980],
+  'merchants.weekly.loss_rate': [0, 0, 0, 0, 0, 0, 0, 1.2, 1.4, 1.2, 1.1],
+  'merchants.pipeline.owners': [['Marcus Lee', 9], ['Dana Ruiz', 4], ['Kai', 3]],
+  'merchants.pipeline.kinds': [['Auto and tires', 8], ['Furniture and mattresses', 2], ['Veterinary', 2], ['Optical', 1], ['Dental', 1], ['HVAC', 1], ['Appliances', 1]],
+  'merchants.payouts.schedule': {
+    underway: { id: 'rosas', date: D(10, 22) },
+    monthly: D(11, 2),
+    net14: D(11, 4),
+    net14Next: { date: D(11, 18), estimate: 1140.8 },
+    collectedBy: D(10, 30),
+    calendarStart: D(10, 19),
+  },
+  'merchants.payouts.collected_share': 0.842,
+  'merchants.payouts.collected_series': [0, 8, 19, 31, 42, 52, 61, 69, 75, 80, 83, 84.2],
+  'merchants.payouts.owed_series': [0, 0, 40, 90, 150, 200, 250, 300, 340, 380, 410],
+  'merchants.payouts.fees_series': [0, 0, 0, 0, 0, 8, 14, 20, 28, 36, 44],
+  'merchants.hardware.devices_series': [0, 0, 2, 4, 6, 8, 10, 13, 15, 17, 19],
+  'merchants.hardware.online_series': [100, 100, 100, 95, 100, 100, 94, 100, 95, 90, 95],
+  'merchants.hardware.preorders': { devices: 19, shops: 7, series: [0, 0, 0, 0, 2, 2, 5, 8, 11, 14, 17, 19] },
+  'merchants.hardware.unit_cost': { repaired: 61, fresh: 189, series: [88, 84, 80, 76, 74, 71, 69, 66, 64, 63, 62, 61] },
+});
 console.log('fixtures written');

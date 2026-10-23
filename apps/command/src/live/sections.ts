@@ -1,26 +1,33 @@
 // @ts-nocheck: writes into the sections' untyped data (src/sections/data.tsx).
 import {
   BATCH_DATE,
+  BOARD,
   BOARDS,
   B_ACT,
   B_OPEN,
   CITY_V,
   COHORTS,
   DESIGNS,
+  FLEET,
   HEAT,
   INBOX,
   LANDING,
   LATER,
   MEMBERS,
   OTHERS,
+  OWED,
   POSTERS,
+  PROSPECTS,
   RANGE,
   REFS,
   SHOPS,
   SHOP_INFO,
   SHOP_NO,
+  SIGNED,
   SRC30,
   STOPS,
+  TX,
+  TXO,
   W_ACT,
   W_INV,
   W_JOIN,
@@ -28,8 +35,10 @@ import {
   W_VIS,
   W_WAIT,
   WEEKS,
+  XS,
   vars,
 } from '../sections/data';
+import { T } from '../sections/merchants';
 import { api } from './api';
 import { LIVE } from './env';
 import { setFigures } from './figures';
@@ -39,7 +48,7 @@ import { setFigures } from './figures';
  * opened; until then the page shows the prototype's loading state. Sections not listed here still
  * draw the prototype's demo data.
  */
-export const SERVED = new Set(['members', 'growth', 'field']);
+export const SERVED = new Set(['members', 'growth', 'field', 'merchants']);
 const ready = new Set<string>();
 
 export const needsData = (route: string) => LIVE && SERVED.has(route) && !ready.has(route);
@@ -93,6 +102,17 @@ const apply = {
     replace(LATER, d.LATER);
     assign(SHOP_INFO, d.SHOP_INFO);
     vars.ROUTE = d.ROUTE;
+  },
+  merchants(d) {
+    replace(TX, d.TX);
+    replace(TXO, TX.map(T));
+    replace(SIGNED, d.SIGNED);
+    replace(PROSPECTS, d.PROSPECTS);
+    assign(OWED, d.OWED);
+    replace(BOARD, d.BOARD);
+    replace(FLEET, d.FLEET);
+    // the board is built from BOARD the next time it's drawn
+    XS.board = null;
   },
   members(d) {
     replace(MEMBERS, d.MEMBERS);
