@@ -2,12 +2,24 @@
 import { Fragment } from 'react';
 import { attrs, css } from '../runtime/dom';
 import { compBar, head, ic, money, pct } from './core';
-import { ACCTS, AP_BAL, AP_REQ, BONDS, COOP_W, DAY, FLOWS, GROUPS, M, MON, NS, NW, PRE, RTD_W, SHOP, TODAY, TXO, vars } from './data';
+import { ACCTS, AP_BAL, BONDS, COOP_W, DAY, FLOWS, GROUPS, M, MON, NS, NW, PRE, RTD_W, SHOP, TODAY, TXO, Y, YD, YLD, Y_DEP, vars } from './data';
 import { kv, sec, vModal } from './governance';
 import { G, chart, columns, figHtml, fmtD, gCell, line, px } from './growth';
 import { mkey } from './home';
 import { ddHtml } from './kit';
 import { prOf } from './shop';
+export function yBorrowBps(u) {
+  return u <= Y.curve.kink
+    ? Y.curve.base + (Y.curve.s1 * u) / Y.curve.kink
+    : Y.curve.base + Y.curve.s1 + (Y.curve.s2 * (u - Y.curve.kink)) / (1 - Y.curve.kink);
+}
+export function yApr(bps) {
+  return ((bps / 10000) * 365) / Y.cycleDays;
+}
+/* simple, per year */
+export function yApy(bps) {
+  return Math.pow(1 + bps / 10000, 365 / Y.cycleDays) - 1;
+}
 export function acctOf(id) {
   return ACCTS.find((a) => a[0] === id);
 }
@@ -69,14 +81,16 @@ export function moneyPage() {
   const P = NS.pane;
   const title =
     P === 'overview'
-      ? `The payout pool runs ${money(M.short)} short on 4 Nov.`
+      ? `4 Nov payouts clear, with ${money(M.short)} from the yield pool.`
       : P === 'reserves'
         ? 'Member savings are fully reserved.'
-        : P === 'credit'
-          ? 'Most credit is backed by savings.'
-          : P === 'bonds'
-            ? 'The first bond matures 14 Dec.'
-            : `${FLOWS.length} money movements in the next 30 days.`;
+        : P === 'yield'
+          ? `Depositors earn ${(Y.apy * 100).toFixed(2)}% a year today.`
+          : P === 'credit'
+            ? 'Most credit is backed by savings.'
+            : P === 'bonds'
+              ? 'The first bond matures 14 Dec.'
+              : `${FLOWS.length} money movements in the next 30 days.`;
   const tools = (
     <div className="ph-tools">
       <span className="chip underway">
@@ -89,6 +103,7 @@ export function moneyPage() {
   const tabs = [
     ['overview', 'Overview'],
     ['reserves', 'Reserves'],
+    ['yield', 'Yield pool'],
     ['credit', 'Credit'],
     ['bonds', 'Bonds'],
     ['schedule', 'Schedule'],
@@ -96,6 +111,7 @@ export function moneyPage() {
   const body = {
     overview: nOverview,
     reserves: nReserves,
+    yield: nYield,
     credit: nCredit,
     bonds: nBonds,
     schedule: nSchedule,
@@ -230,9 +246,12 @@ export function holdings() {
     <section className="cell s-12">
       <header className="c-hd">
         <span className="lbl">Everything we hold</span>
-        <span className="tag">5 accounts · 3 sources</span>
+        <span className="tag">
+          {ACCTS.length}
+          {' accounts · 3 sources'}
+        </span>
       </header>
-      <div className="c-fig">{figHtml(money(tot), `across five accounts · ${money(free)} of it is the co-op’s to spend freely`)}</div>
+      <div className="c-fig">{figHtml(money(tot), `across ${ACCTS.length} accounts · ${money(free)} of it is the co-op’s to spend freely`)}</div>
       <div className="c-body">
         {bar}
         <div className="wh">
@@ -248,7 +267,7 @@ export function holdings() {
         </div>
       </div>
       {strip([
-        ['Owed to shops by 4 Nov', money(M.owed14), `pool ${money(M.short)} short`, 'warn'],
+        ['Owed to shops by 4 Nov', money(M.owed14), `${money(M.short)} lent by the yield pool`],
         ['Owed to bondholders', money(M.bonds), 'first due 14 Dec'],
         ['Reserve check', '1 : 1', 'member savings · 2 min ago'],
         ['Free to spend', money(free), 'after tax and deposits'],
@@ -290,10 +309,18 @@ export function moneyPane() {
       ['USDC at Bridge', money(M.savings) + ' · 2 min'],
       ['Reserve', '1 : 1', 1],
     ],
+    yld: [
+      ['Deposited', money(Y.assets) + ' · ' + Y.depositors + ' depositors'],
+      ['Lent to unsecured credit', money(Y.lent) + ' · ' + pct(Y.lent, Y.assets)],
+      ['Cash for withdrawals', money(Y.cash)],
+      ['Lends the payout pool', money(Y.toPayout) + ' on 4 Nov'],
+      ['Depositors earn', (Y.apy * 100).toFixed(2) + '% a year, today'],
+      ['Takes losses', 'First, before the AssurancePool', 1],
+    ],
     pay: [
       ['Owed to shops by 4 Nov', money(M.owed14)],
       ['Repayments due', money(M.dueMembers)],
-      ['Short on 4 Nov', <span style={css('color:var(--underway)')}>{money(M.short)}</span>],
+      ['Yield pool lends on 4 Nov', money(M.short)],
       ['Moves by', 'Two people · Ops Safe', 1],
     ],
     ap: [
@@ -331,18 +358,28 @@ export function moneyPane() {
               ['20 Oct', 'Withdrawals', '6 members', '−$412.00', ''],
               ['19 Oct', 'Deposits', '29 members', '+$1,322.10', 'in'],
             ]
-          : id === 'ap'
+          : id === 'yld'
             ? [
-                ['20 Oct', 'Fee share in', 'From credit fees', '+$62.40', 'in'],
-                ['14 Oct', 'Loss absorbed', 'Cajon Phone Repair', '−$204.00', ''],
-                ['13 Oct', 'Fee share in', 'From credit fees', '+$58.10', 'in'],
+                ['4 Nov', 'Lends the payout pool', 'Scheduled · repaid from repayments', '−' + money(Y.toPayout), ''],
+                ['21 Oct', 'Interest from credit', 'Unsecured tiers · cycle carry', '+$31.20', 'in'],
+                ['20 Oct', 'Deposits', '4 members', '+$1,150.00', 'in'],
+                ['18 Oct', 'Withdrawal', '1 member · paid at once', '−$250.00', ''],
+                ['18 Oct', 'Interest from credit', 'Unsecured tiers', '+$6.70', 'in'],
+                ['15 Oct', 'Opened', 'Founding deposits · 14 members', '+$8,062.10', 'in'],
               ]
-            : [
-                ['20 Oct', 'Discounts held', '14 purchases', '+$100.00', 'in'],
-                ['13 Oct', 'Discounts held', '19 purchases', '+$126.80', 'in'],
-              ];
+            : id === 'ap'
+              ? [
+                  ['20 Oct', 'Fee share in', 'From credit fees', '+$62.40', 'in'],
+                  ['14 Oct', 'Loss absorbed', 'Cajon Phone Repair', '−$204.00', ''],
+                  ['13 Oct', 'Fee share in', 'From credit fees', '+$58.10', 'in'],
+                ]
+              : [
+                  ['20 Oct', 'Discounts held', '14 purchases', '+$100.00', 'in'],
+                  ['13 Oct', 'Discounts held', '19 purchases', '+$126.80', 'in'],
+                ];
   const act = {
-    pay: ['top', 'Top up the pool'],
+    yld: ['yrate', 'How the rate works'],
+    pay: ['top', 'Top up instead'],
     ops: ['sync', 'Sync from Plaid'],
     ap: ['ap', 'How the gate works'],
     sav: ['reserve', 'Run the reserve check'],
@@ -401,7 +438,11 @@ export function moneyPane() {
           <button className="btn btn-p" type="button" data-nflow={act[0]}>
             {act[1]}
           </button>
-          {id !== 'pay' ? (
+          {id === 'yld' ? (
+            <button className="btn btn-g" type="button" data-npane="yield">
+              Yield pool
+            </button>
+          ) : id !== 'pay' ? (
             <button className="btn btn-g" type="button" data-npane="reserves">
               All pools
             </button>
@@ -418,14 +459,15 @@ export function openNFlow(kind) {
   let f = null;
   if (kind === 'top')
     f = {
-      t: 'Top up the payout pool',
-      lbl: 'Payout pool',
+      t: 'Top up instead of borrowing',
+      lbl: 'Payout pool · optional',
       h: money(M.short),
-      p: 'Moves operating cash into the pool so the 4 Nov payouts clear.',
+      p: 'Nothing is needed: on 4 Nov the pool borrows this from the yield pool and pays it back from repayments. Topping up from operating cash means the co-op earns that interest instead.',
       rows: [
         ['From', 'Operating cash · ' + money(M.cash)],
         ['To', 'PayoutPool on Base Sepolia'],
         ['After it', money(M.payout + M.short) + ' in the pool'],
+        ['Otherwise', 'The yield pool lends it · ' + money(Y.cash) + ' free'],
         ['Second person', 'Dana Ruiz, in the Ops Safe', 1],
       ],
       note: (
@@ -464,6 +506,22 @@ export function openNFlow(kind) {
       btn: 'Run it again',
       steps: ['Read CLRUSD supply on Base Sepolia', 'Read the USDC balance at Bridge', 'Compared them'],
       done: ['Fully reserved.', '1 : 1, checked just now.'],
+    };
+  else if (kind === 'yrate')
+    f = {
+      t: 'How the yield pool pays',
+      lbl: 'Yield pool',
+      h: `${(Y.apy * 100).toFixed(2)}% a year today`,
+      p: 'The rate follows how much of the pool is lent out. More lent, higher rate; more idle cash, lower rate. Nobody sets it by hand.',
+      rows: [
+        ['Lent out', pct(Y.lent, Y.assets) + ' of ' + money(Y.assets)],
+        ['Unsecured credit pays', (Y.apr * 100).toFixed(1) + '% a year'],
+        ['Depositors earn', 'That rate × the share lent out · ' + (Y.apy * 100).toFixed(2) + '%'],
+        ['How they get it', 'Builds into the share price · paid when they withdraw'],
+        ['Payout pool, 4 Nov', 'Borrows ' + money(Y.toPayout) + ' · rate rises to ' + (Y.apyAfter * 100).toFixed(2) + '%'],
+        ['Losses', 'Lower the share price first, before the AssurancePool pays', 1],
+      ],
+      btn: null,
     };
   else if (kind === 'ap')
     f = {
@@ -519,52 +577,80 @@ export function nOverview() {
     />
   );
   const floorLn = <line x1="0" x2="1000" y1={(1 - M.floor / rmax) * 100} y2={(1 - M.floor / rmax) * 100} className="ch-floor" />;
+  /* the gate as a sum, a meter against the floor, and the last time it closed */
+  const gOpen = M.rtd >= M.floor,
+    GM = 0.4,
+    gBack = RTD_W.findIndex((v, i) => i > dip && v !== null && v >= M.floor);
+  const gsum = (
+    <div className="yeq">
+      <div>
+        <span className="lbl">AssurancePool</span>
+        <b className="fig fig-l">{money(M.assurance)}</b>
+        <span className="small quiet">covers losses</span>
+      </div>
+      <span className="yeq-op" aria-hidden="true">
+        ÷
+      </span>
+      <div>
+        <span className="lbl">Unsecured credit</span>
+        <b className="fig fig-l">{money(M.unsecured)}</b>
+        <span className="small quiet">owed by members</span>
+      </div>
+      <span className="yeq-op" aria-hidden="true">
+        =
+      </span>
+      <div className={gOpen ? 'hi' : 'warn'}>
+        <span className="lbl">RTD</span>
+        <b className="fig fig-l">{pct(M.rtd, 1)}</b>
+        <span className="small quiet">{gOpen ? 'above the 20% floor' : 'under the 20% floor'}</span>
+      </div>
+    </div>
+  );
+  const meter = (
+    <div className="ablock">
+      <span className="lbl">Credit pauses below the floor</span>
+      <div className="gm" role="img" aria-label={`RTD ${pct(M.rtd, 1)} against a 20% floor`}>
+        <div className="gm-t">
+          <i className={`gm-f${gOpen ? '' : ' warn'}`} style={css(`width:${Math.min(100, (M.rtd / GM) * 100).toFixed(1)}%`)} />
+          <i className="gm-fl" style={css(`left:${((M.floor / GM) * 100).toFixed(1)}%`)} />
+        </div>
+        <div className="gm-x">
+          <span style={css('left:0')}>0</span>
+          <span className="fl" style={css(`left:${((M.floor / GM) * 100).toFixed(1)}%`)}>
+            20% floor
+          </span>
+          <span style={css('left:100%')}>40%</span>
+        </div>
+      </div>
+    </div>
+  );
+  const hist =
+    dip >= 0 ? (
+      <div className="ablock">
+        <span className="lbl">Last time it closed</span>
+        {evRows([
+          [NW[dip], 'Fell under the floor', 'New credit paused', pct(RTD_W[dip], 1), ''],
+          ...(gBack > 0 ? [[NW[gBack], 'Back above it', 'Credit reopened as the pool grew', pct(RTD_W[gBack], 1), 'in']] : []),
+        ])}
+      </div>
+    ) : (
+      ''
+    );
   const gate = (
     <section className="cell s-6">
       <header className="c-hd">
         <span className="lbl">Credit gate · RTD</span>
         <span className="tag">{srcTxt('protocol')}</span>
       </header>
-      <div className="c-fig">{figHtml(pct(M.rtd, 1), 'AssurancePool over unsecured credit · new credit may issue')}</div>
+      <div className="c-fig">{figHtml(money(M.room), 'more unsecured credit can go out before the gate closes')}</div>
       <div className="c-body">
-        {chart({
-          h: 140,
-          max: rmax,
-          yTicks: [0, 0.2, 0.4],
-          yFmt: (v) => (v ? Math.round(v * 100) + '%' : '0'),
-          x: NW.map((t, i) => ({
-            t,
-            x: px(i, NW.length),
-          })).filter((_, i) => i % 2 === 0),
-          paths: (
-            <>
-              {floorLn}
-              {rLine}
-            </>
-          ),
-          marks: [
-            {
-              x: 100,
-              v: M.rtd,
-              c: 'var(--live)',
-            },
-            {
-              x: px(dip, NW.length),
-              v: RTD_W[dip],
-              c: 'var(--underway)',
-            },
-          ],
-        })}
-        {mkey([
-          ['var(--live)', 'RTD'],
-          ['var(--fg-50)', 'Floor · 20%'],
-          ['var(--underway)', `Under the floor ${NW[dip]}, credit paused`],
-        ])}
+        {gsum}
+        {meter}
+        {hist}
       </div>
       {strip([
-        ['AssurancePool', money(M.assurance)],
-        ['Unsecured', money(M.unsecured)],
-        ['Room to issue', money(M.room)],
+        ['Floor', '20%', 'set in AssurancePool'],
+        ['Status', gOpen ? 'Open' : 'Closed', gOpen ? 'new credit may issue' : 'no new unsecured credit'],
       ])}
     </section>
   );
@@ -572,8 +658,14 @@ export function nOverview() {
   /* claims in priority order, each against what backs it, never summed */
   const claims = [
     ['Member savings', 'USDC reserve at Bridge', M.savings, M.savings],
-    ['Shops, by 4 Nov', 'Payout pool and repayments due', M.owed14, M.payout + M.dueMembers],
-    ['Bondholders', 'Operating cash, until BondVault', M.bonds, M.cash],
+    ['Shops, by 4 Nov', 'Payout pool, then the yield pool', M.owed14, M.payout + M.dueMembers + YLD.toPayout],
+    [
+      'Bondholders',
+      'Operating cash, until BondVault',
+      M.bonds,
+      M.cash,
+    ] /* junior: first loss on unsecured credit. Owed what the pool holds, so always covered; the bar splits cash from loans out */,
+    ['Yield pool deposits', 'Pool cash, then loans out', YLD.assets, YLD.assets, YLD.cash - YLD.toPayout],
   ];
   const order = (
     <section className="cell s-6">
@@ -590,7 +682,7 @@ export function nOverview() {
             <span className="lbl">Covered</span>
             <span className="lbl">Owed</span>
           </div>
-          {claims.map(([k, by, owed, held], i) => {
+          {claims.map(([k, by, owed, held, liq], i) => {
             const c = Math.min(1, held / owed);
             return (
               <div key={i} className="cl-r">
@@ -601,7 +693,14 @@ export function nOverview() {
                 </span>
                 <span className="cl-c">
                   <span className="cl-bar">
-                    <i style={css(`width:${(c * 100).toFixed(1)}%;background:${c >= 1 ? 'var(--fg)' : 'var(--underway)'}`)} />
+                    {liq != null ? (
+                      <>
+                        <i style={css(`width:${((liq / owed) * 100).toFixed(1)}%`)} />
+                        <i style={css(`width:${(((held - liq) / owed) * 100).toFixed(1)}%;background:var(--land)`)} />
+                      </>
+                    ) : (
+                      <i style={css(`width:${(c * 100).toFixed(1)}%;background:${c >= 1 ? 'var(--fg)' : 'var(--underway)'}`)} />
+                    )}
                   </span>
                   <b className="num">{c >= 1 ? '100%' : pct(held, owed)}</b>
                 </span>
@@ -610,102 +709,98 @@ export function nOverview() {
             );
           })}
         </div>
+        {mkey([
+          ['var(--fg)', 'Cash or reserve'],
+          ['var(--land)', 'Out on loan'],
+          ['var(--underway)', 'Partly covered'],
+        ])}
       </div>
       {strip([
         ['Tier 1 gap', 'None'],
-        ['Tier 2 gap', money(M.short), '', 'warn'],
+        ['Tier 2 gap', M.short > YLD.toPayout ? money(M.short - YLD.toPayout) : 'None'],
         ['Tier 3 gap', money(M.bonds - M.cash)],
+        ['Tier 4 gap', 'None'],
       ])}
     </section>
   );
 
-  /* payout pool, projected day by day from the schedule */
-  const lo = -2000,
-    hi = 12000,
-    Y = (v) => (1 - (v - lo) / (hi - lo)) * 100,
-    X = (d) => (d / 30) * 1000;
+  /* payout pool: the 4 Nov gap as a sum, then what happens to it */
   let bal = M.payout,
     low = {
       v: bal,
       d: 0,
-    };
-  const pts = [`0,${Y(bal)}`],
-    dots = [];
+    },
+    back = null;
   FLOWS.forEach(([d, k, v]) => {
-    pts.push(`${X(d)},${Y(bal)}`);
     bal += k === 'in' ? v : -v;
-    pts.push(`${X(d)},${Y(bal)}`);
-    dots.push({
-      d,
-      v: bal,
-      k,
-    });
     if (bal < low.v)
       low = {
         v: bal,
         d,
       };
+    else if (low.v < 0 && back === null && bal >= 0) back = d;
   });
-  pts.push(`1000,${Y(bal)}`);
-  const nxt = FLOWS.find((f) => f[0] > low.d)[0];
-  const proj = (
-    <div className="chart proj" style={css('--ch:160px')}>
-      <div className="ch-y">
-        {[0, 4000, 8000, 12000].map((v, __k) => (
-          <span key={__k} style={css(`top:${Y(v)}%`)}>
-            {v ? '$' + v / 1000 + 'k' : '0'}
-          </span>
-        ))}
-      </div>
-      <div className="ch-plot">
-        <svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
-          {[4000, 8000, 12000].map((v, __k) => (
-            <line key={__k} x1="0" x2="1000" y1={Y(v)} y2={Y(v)} className="ch-grid" />
-          ))}
-          <rect x={X(low.d)} y={Y(0)} width={X(nxt) - X(low.d)} height={Y(low.v) - Y(0)} className="ch-neg" />
-          <line x1="0" x2="1000" y1={Y(0)} y2={Y(0)} className="ch-zero" />
-          <path d={`M${pts.join(' L')}`} className="ch-l1" />
-        </svg>
-        {dots.map((o, __k) => (
-          <i key={__k} className={`ch-dot ${o.k}${o.d === low.d ? ' low' : ''}`} style={css(`left:${(o.d / 30) * 100}%;top:${Y(o.v)}%`)} />
-        ))}
-        <span className="ch-call" style={css(`left:${(low.d / 30) * 100}%;top:${Y(low.v)}%`)}>
-          {'−' + money(-low.v)}
-          {' on '}
-          {dayD(low.d)}
-        </span>
-      </div>
-      <div className="ch-x">
-        {[0, 7, 14, 21, 28].map((d, __k) => (
-          <span key={__k} style={css(`left:${(d / 30) * 100}%`)} className={d === 0 ? 'a0' : ''}>
-            {dayD(d)}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
   const inn = FLOWS.filter((f) => f[1] === 'in').reduce((a, f) => a + f[2], 0),
     out = FLOWS.filter((f) => f[1] === 'out').reduce((a, f) => a + f[2], 0);
+  const term = (k, v, note, cls = '') => (
+    <div className={cls}>
+      <span className="lbl">{k}</span>
+      <b className="fig fig-l">{v}</b>
+      <span className="small quiet">{note}</span>
+    </div>
+  );
+  const op = (c) => (
+    <span className="yeq-op" aria-hidden="true">
+      {c}
+    </span>
+  );
+  const sum = (
+    <div className="yeq four">
+      {term('In the pool', money(M.payout), 'today')}
+      {op('+')}
+      {term('Repayments', money(M.dueMembers), 'due by ' + dayD(low.d))}
+      {op('−')}
+      {term('Owed to shops', money(M.owed14), 'due by ' + dayD(low.d))}
+      {op('=')}
+      {term('Short', '−' + money(-low.v), 'on ' + dayD(low.d), 'warn')}
+    </div>
+  );
+  const after = back !== null ? FLOWS.filter((f) => f[0] <= back).reduce((a, f) => a + (f[1] === 'in' ? f[2] : -f[2]), M.payout) : 0;
+  const then = (
+    <div className="ablock">
+      <span className="lbl">What happens to the gap</span>
+      {evRows([
+        [dayD(low.d), 'The yield pool lends it', 'Shops are paid on time', '+' + money(-low.v), 'in'],
+        [
+          back !== null ? dayD(back) : 'Later',
+          'Repayments pay it back',
+          'Principal first, then interest · pool left at ' + money(after),
+          '−' + money(-low.v),
+          '',
+        ],
+      ])}
+    </div>
+  );
   const pool = (
     <section className="cell s-8">
       <header className="c-hd">
         <span className="lbl">Payout pool · next 30 days</span>
         <span className="tag">Projected from the schedule</span>
       </header>
-      <div className="c-fig">{figHtml(money(M.short), 'to add by 30 Oct so the 4 Nov payouts clear · a multisig action')}</div>
+      <div className="c-fig">
+        {figHtml(
+          back !== null ? `${back - low.d} days` : 'Open',
+          `the pool borrows from the yield pool, ${dayD(low.d)} to ${back !== null ? dayD(back) : 'repaid'} · no top-up needed`,
+        )}
+      </div>
       <div className="c-body">
-        {proj}
-        {mkey([
-          ['var(--fg)', 'Balance · payout out'],
-          ['var(--land)', 'Repayment in'],
-          ['var(--underway)', 'Below zero'],
-        ])}
+        {sum}
+        {then}
       </div>
       {strip([
-        ['Today', money(M.payout)],
-        ['Out', money(out)],
-        ['In', money(inn)],
-        ['On 20 Nov', money(M.payout - out + inn)],
+        ['Paid out', money(out), 'next 30 days'],
+        ['Coming in', money(inn), 'next 30 days'],
+        ['On ' + dayD(30), money(M.payout - out + inn), 'after the loan is repaid'],
       ])}
     </section>
   );
@@ -754,8 +849,8 @@ export function nOverview() {
 
 /* ── Reserves: what sits in each pool ─────────────────────────────────── */
 export function nReserves() {
-  const cellR = (name, fig, sub, body, st) => (
-    <section className="cell s-6">
+  const cellR = (name, fig, sub, body, st, cls = 'mtop') => (
+    <section className={`cell s-6 ${cls}`}>
       <header className="c-hd">
         <span className="lbl">{name}</span>
         <span className="tag">{srcTxt('protocol')}</span>
@@ -765,52 +860,101 @@ export function nReserves() {
       {strip(st)}
     </section>
   );
+  const yp = (v) => (v * 100).toFixed(2) + '%';
+  /* who covers a loss — the order the contracts enforce, in two lanes by kind of credit */
+  const st = (n, k, v, note) => (
+    <div className="lo-s">
+      <span className="lo-k">
+        <span className="num-sq">{n}</span>
+        <b>{k}</b>
+      </span>
+      <b className="fig fig-l">{v}</b>
+      <span className="small quiet">{note}</span>
+    </div>
+  );
+  const lane = (t, body, cls = '') => (
+    <div className={`lo-g ${cls}`}>
+      <span className="lo-lane">
+        <b>{t}</b>
+        <i />
+      </span>
+      {body}
+    </div>
+  );
+  const never = [
+    ['Bondholders', M.bonds],
+    ['Payout pool', M.payout],
+    ['Other members’ savings', M.savings - M.savingsBacked],
+  ];
+  const order = gCell(
+    's-12',
+    'If a member stops paying',
+    srcTxt('protocol'),
+    '',
+    <div className="lo">
+      {lane('Savings-backed credit', st(1, 'Their own savings', money(M.savingsBacked), 'Their pledged savings pay it'))}
+      {lane(
+        'Unsecured credit',
+        <div className="lo-pair">
+          {st(2, 'Yield pool', money(Y.assets), 'First loss · its share price falls')}
+          <span className="lo-c" aria-hidden="true">
+            {ic('chev', 'sm')}
+          </span>
+          {st(3, 'AssurancePool', money(M.assurance), 'Pays what the yield pool can’t')}
+        </div>,
+        'wide',
+      )}
+      {lane(
+        'Never covers a loss',
+        <div className="lo-nv">
+          {never.map(([k, v], __k) => (
+            <div key={__k}>
+              <span>{k}</span>
+              <b className="num">{money(v)}</b>
+            </div>
+          ))}
+        </div>,
+        'nv',
+      )}
+    </div>,
+    <div className="c-ft">
+      <button type="button" data-npane="yield">
+        <span className="t">Yield pool</span>
+        {ic('chev', 'sm')}
+      </button>
+    </div>,
+  );
+  /* AssurancePool: what the floor needs and what's spare, then what goes in each week */
+  const req = M.unsecured * M.floor,
+    apW = AP_BAL.slice(1).map((v, i) => v - AP_BAL[i]);
   const ap = cellR(
     'AssurancePool',
     money(M.assurance),
-    'absorbs losses on unsecured credit',
+    'covers unsecured losses after the yield pool',
     <>
-      {chart({
-        h: 132,
-        max: 1600,
-        yTicks: [0, 800, 1600],
-        yFmt: (v) => (v ? '$' + v.toLocaleString('en-US') : '0'),
-        x: NW.map((t, i) => ({
-          t,
-          x: px(i, NW.length),
-        })).filter((_, i) => i % 2 === 0),
-        paths: (
-          <>
-            {line(AP_REQ, 1600, 'ch-l2')}
-            <path
-              d={`M${AP_BAL.map((y, i) => `${px(i, NW.length) * 10},${(1 - y / 1600) * 100}`).join(' L')}`}
-              className="ch-l1"
-              style={css('stroke:var(--live)')}
-            />
-          </>
-        ),
-        marks: [
+      <div className="ablock">
+        <span className="lbl">Against the 20% floor</span>
+        {compBar([
+          ['Needed for the floor', req, 'var(--fg)', money(req)],
+          ['Spare', M.assurance - req, 'var(--land)', money(M.assurance - req)],
+        ])}
+      </div>
+      <div className="ablock">
+        <span className="lbl">Added each week · fee share</span>
+        {columns(
+          NW.slice(1).map((t, i) => [t, apW[i]]),
           {
-            x: 100,
-            v: M.assurance,
-            c: 'var(--live)',
+            h: 104,
+            hi: apW.length - 1,
+            fmt: (v) => money(v),
           },
-          {
-            x: 100,
-            v: AP_REQ[AP_REQ.length - 1],
-            c: 'var(--land)',
-          },
-        ],
-      })}
-      {mkey([
-        ['var(--live)', 'Pool'],
-        ['var(--land)', 'Floor · 20% of unsecured'],
-      ])}
+        )}
+      </div>
     </>,
     [
-      ['Covers', money(M.unsecured)],
-      ['Above floor', money(M.assurance - M.unsecured * M.floor)],
-      ['Absorbed', money(M.lost)],
+      ['Covers', money(M.unsecured), 'unsecured credit'],
+      ['Absorbed', money(M.lost), '3 losses, all time'],
+      ['Lent out', '$0.00', 'from spare only'],
     ],
   );
   const queue = [
@@ -824,7 +968,8 @@ export function nReserves() {
     'PayoutPool',
     money(M.payout),
     'pays shops, oldest claim first',
-    <>
+    <div className="ablock">
+      <span className="lbl">Claims, oldest first</span>
       <div className="fifo">
         {queue.map(([d, k, v], __k) => {
           const a = run;
@@ -844,13 +989,13 @@ export function nReserves() {
       </div>
       {mkey([
         ['var(--fg)', 'Covered now'],
-        ['var(--line)', 'Waits on repayments'],
+        ['var(--line)', 'By repayments, then the yield pool'],
       ])}
-    </>,
+    </div>,
     [
-      ['Owed by 4 Nov', money(M.owed14)],
-      ['Repayments due', money(M.dueMembers)],
-      ['Short', money(M.short), '', 'warn'],
+      ['Owed by 4 Nov', money(M.owed14), 'to 4 shops'],
+      ['Repayments due', money(M.dueMembers), 'by 4 Nov'],
+      ['From the yield pool', money(M.short), '4 Nov to 6 Nov'],
     ],
   );
   const esa = cellR(
@@ -904,9 +1049,10 @@ export function nReserves() {
   );
   return (
     <>
+      {G('Loss order', '', '', order)}
       {G(
         'Pools',
-        'Read from the chain · LendingPool and BondVault are deployed, not funded yet',
+        'Read from the chain · BondVault is deployed, not funded yet',
         '',
         <>
           {ap}
@@ -926,60 +1072,386 @@ export function nReserves() {
   );
 }
 
+/* ── Yield pool: members lending to unsecured credit (LendingPool, ERC-4626) ── */
+export function nYield() {
+  const yp = (v) => (v * 100).toFixed(2) + '%';
+  /* the yield pool: rate curve, then how depositors get paid */
+  /* the rate, as a sum anyone can follow: what credit pays × how much of the pool is lent */
+  const depAt = (u) => yApy(yBorrowBps(u) * u) * 100;
+  const mo = (bps) => (bps / 100).toFixed(2) + '%';
+  const eq = (
+    <div className="yeq">
+      <div>
+        <span className="lbl">Credit pays</span>
+        <b className="fig fig-l">{mo(Y.borrowBps)}</b>
+        <span className="small quiet">
+          {'a month · '}
+          {(Y.apr * 100).toFixed(1)}% a year
+        </span>
+      </div>
+      <span className="yeq-op" aria-hidden="true">
+        ×
+      </span>
+      <div>
+        <span className="lbl">Lent out</span>
+        <b className="fig fig-l">{pct(Y.lent, Y.assets)}</b>
+        <span className="small quiet">
+          {money(Y.lent)}
+          {' of '}
+          {money(Y.assets)}
+        </span>
+      </div>
+      <span className="yeq-op" aria-hidden="true">
+        =
+      </span>
+      <div className="hi">
+        <span className="lbl">Depositors earn</span>
+        <b className="fig fig-l">{mo(Y.supplyBps)}</b>
+        <span className="small quiet">
+          {'a month · '}
+          {yp(Y.apy)}
+          {' a year'}
+        </span>
+      </div>
+    </div>
+  );
+  const scen = [
+    ['20%', 0.2],
+    ['40%', 0.4],
+    [
+      <>
+        {Math.round(Y.util * 100)}%<br />
+        now
+      </>,
+      Y.util,
+    ],
+    [
+      <>
+        {Math.round(Y.utilAfter * 100)}%<br />4 Nov
+      </>,
+      Y.utilAfter,
+    ],
+    ['80%', 0.8],
+  ];
+  const pool = (
+    <section className="cell s-8">
+      <header className="c-hd">
+        <span className="lbl">Rate</span>
+        <span className="tag">
+          {srcTxt('protocol')}
+          {' · opened '}
+          {Y.opened}
+        </span>
+      </header>
+      <div className="c-fig">{figHtml(yp(Y.apy), 'a year to depositors today · set by the contract, not by us')}</div>
+      <div className="c-body">
+        {eq}
+        <div className="ablock">
+          <span className="lbl">Yearly rate, by share lent out</span>
+          {columns(
+            scen.map(([k, u]) => [k, depAt(u)]),
+            {
+              h: 96,
+              hi: 2,
+              fmt: (v) => v.toFixed(1) + '%',
+            },
+          )}
+        </div>
+      </div>
+      {strip([
+        ['Base rate', mo(Y.curve.base), 'a month at 0% lent'],
+        ['Cycle', Y.cycleDays + ' days', 'set by RevolvingIssuer'],
+        ['Past 80% lent', 'Climbs fast', 'to pull deposits in'],
+      ])}
+    </section>
+  );
+  const wd = gCell(
+    's-4 ctop',
+    'How depositors get paid',
+    'ERC-4626',
+    figHtml('$' + Y.price.toFixed(4), `a share · up ${((Y.price - 1) * 100).toFixed(2)}% since ${Y.opened}`),
+    <div className="how two">
+      <span className="k">Interest</span>
+      <b>Raises the share price</b>
+      <span className="k">
+        {'Up to '}
+        {money(Y.cash)}
+      </span>
+      <b>Paid at once</b>
+      <span className="k">Above that</span>
+      <b>Queued, paid as credit repays</b>
+      <span className="k">Pledged to credit</span>
+      <b className="num">
+        {money(Y.pledged)}
+        {' · locked'}
+      </b>
+    </div>,
+    strip([
+      ['Earned so far', money(Y.earned), 'since ' + Y.opened],
+      ['Queue', Y.queued ? money(Y.queued) : 'Empty', Y.queued ? 'waiting on cash' : 'nothing waiting'],
+    ]),
+  );
+  /* balance since it opened */
+  const YMX = 10000,
+    ny = YD.length;
+  const bal = gCell(
+    's-6 ctop',
+    'Deposits',
+    srcTxt('protocol'),
+    figHtml(money(Y.assets), `held for ${Y.depositors} members since ${Y.opened}`),
+    <>
+      <div className="ablock">
+        <span className="lbl">Where it is</span>
+        {compBar([
+          ['Lent to unsecured credit', Y.lent, 'var(--live)', money(Y.lent)],
+          ['Cash', Y.cash, 'var(--land)', money(Y.cash)],
+        ])}
+      </div>
+      <div className="ablock">
+        <span className="lbl">Since it opened</span>
+        {evRows([
+          ['15 Oct', 'Opened', '14 founding members', '+$8,062.10', 'in'],
+          ['18 Oct', 'Withdrawal', '1 member · paid at once', '−$250.00', ''],
+          ['20 Oct', 'Deposits', '4 new members', '+$1,150.00', 'in'],
+          ['21 Oct', 'Interest', 'From unsecured credit, so far', '+' + money(Y.earned), 'in'],
+        ])}
+      </div>
+    </>,
+    strip([
+      ['Depositors', String(Y.depositors), '4 joined this week'],
+      ['Average', money(Y.assets / Y.depositors), 'a member'],
+      ['Largest', money(1500), pct(1500, Y.assets) + ' of the pool'],
+    ]),
+  );
+  const loans = gCell(
+    's-6 ctop',
+    'Loans to the payout pool',
+    'drawForDueClaim',
+    figHtml(money(Y.toPayout), 'to lend on 4 Nov, when shops’ claims come due'),
+    <>
+      <div className="ablock">
+        <span className="lbl">The pool on 4 Nov</span>
+        {compBar([
+          ['Lent to credit', Y.lent, 'var(--live)', money(Y.lent)],
+          ['To the payout pool', Y.toPayout, 'var(--underway)', money(Y.toPayout)],
+          ['Cash', Y.cash - Y.toPayout, 'var(--land)', money(Y.cash - Y.toPayout)],
+        ])}
+      </div>
+      <div className="ablock">
+        <span className="lbl">How it works</span>
+        <div className="how two">
+          <span className="k">Lent now</span>
+          <b className="num">{money(0)}</b>
+          <span className="k">Repaid from</span>
+          <b>Member repayments, first</b>
+          <span className="k">Order</span>
+          <b>Principal, then interest</b>
+          <span className="k">Backup</span>
+          <b>AssurancePool spare, not its reserve</b>
+        </div>
+      </div>
+    </>,
+    strip([
+      ['Lent after', pct(Y.lent + Y.toPayout, Y.assets), 'of the pool'],
+      ['Rate after', yp(Y.apyAfter), 'a year to depositors'],
+      ['Paid back', '6 Nov', 'from repayments'],
+    ]),
+  );
+  const rows = Y_DEP.map(([id, w, since, pl]) => {
+    const e = (w * Y.earned) / Y.assets;
+    return {
+      id,
+      w,
+      since,
+      pl,
+      e,
+      d: w - e,
+    };
+  });
+  const top = rows.slice(0, 8),
+    rest = rows.slice(8),
+    sum = (a, k) => a.reduce((t, r) => t + r[k], 0);
+  const tbl = (
+    <section className="cell s-12">
+      <header className="c-hd">
+        <span className="lbl">Depositors</span>
+        <span className="tag">
+          {Y.depositors}
+          {' members · masked'}
+        </span>
+      </header>
+      <div className="c-fig" />
+      <div className="c-body flush">
+        <div className="tbl-wrap">
+          <table className="tbl compact">
+            <thead>
+              <tr>
+                <th className="l">Member</th>
+                <th className="l">Since</th>
+                <th>Put in</th>
+                <th>Earned</th>
+                <th>Worth now</th>
+                <th>Pledged</th>
+                <th>Can withdraw</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top.map((r, __k) => (
+                <tr key={__k}>
+                  <td className="l mono">
+                    <b>M•••{r.id}</b>
+                  </td>
+                  <td className="l">{r.since}</td>
+                  <td>{money(r.d)}</td>
+                  <td>{money(r.e)}</td>
+                  <td>
+                    <b>{money(r.w)}</b>
+                  </td>
+                  <td>{r.pl ? money(r.pl) : <span className="quiet">None</span>}</td>
+                  <td className="quiet">{r.pl ? money(r.w - r.pl) : 'All of it'}</td>
+                </tr>
+              ))}
+              <tr>
+                <td className="l quiet">
+                  {rest.length}
+                  {' more'}
+                </td>
+                <td />
+                <td>{money(sum(rest, 'd'))}</td>
+                <td>{money(sum(rest, 'e'))}</td>
+                <td>{money(sum(rest, 'w'))}</td>
+                <td>
+                  <span className="quiet">None</span>
+                </td>
+                <td className="quiet">All of it</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td className="l">
+                  <b>All</b>
+                </td>
+                <td />
+                <td>{money(sum(rows, 'd'))}</td>
+                <td>{money(sum(rows, 'e'))}</td>
+                <td>{money(Y.assets)}</td>
+                <td>{money(Y.pledged)}</td>
+                <td className="quiet">{money(Y.assets - Y.pledged)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      <div />
+    </section>
+  );
+  return (
+    <>
+      {G(
+        'Rate',
+        '',
+        '',
+        <>
+          {pool}
+          {wd}
+        </>,
+      )}
+      {G(
+        'Balance',
+        '',
+        '',
+        <>
+          {bal}
+          {loans}
+        </>,
+      )}
+      {G('Depositors', '', '', tbl)}
+    </>
+  );
+}
+
 /* ── Credit: how much is out, and how safe ───────────────────────────── */
 export function nCredit() {
   const out = [0, 900, 3100, 6200, 9400, 12100, M.credit],
     lim = [0, 8000, 15400, 24600, 31800, 37200, M.limits];
+  /* October in one sum (where the balance came from), then whether this cycle's repayments are coming in */
+  const spent = TXO.reduce((a, m) => a + m.oct, 0),
+    start = 7040.0,
+    repaid = start + spent - M.credit; /* repaid falls out, so the sum always closes */
+  const sched = FLOWS.filter((f) => f[1] === 'in' && f[0] <= 9).reduce((a, f) => a + f[2], 0),
+    due = repaid + sched,
+    autopay = 98;
+  const t4 = (k, v, note, cls = '') => (
+    <div className={cls}>
+      <span className="lbl">{k}</span>
+      <b className="fig fig-l">{v}</b>
+      <span className="small quiet">{note}</span>
+    </div>
+  );
+  const o4 = (c) => (
+    <span className="yeq-op" aria-hidden="true">
+      {c}
+    </span>
+  );
+  const flow = (
+    <div className="yeq four">
+      {t4('Owed on 1 Oct', money(start), 'start of the month')}
+      {o4('+')}
+      {t4('Spent', money(spent), 'at 12 shops')}
+      {o4('−')}
+      {t4('Repaid', money(repaid), 'by members')}
+      {o4('=')}
+      {t4('Owed now', money(M.credit), 'by 124 members', 'hi')}
+    </div>
+  );
+  const rp = (
+    <div className="ablock">
+      <span className="lbl">This cycle’s repayments · due 31 Oct</span>
+      <div className="rp">
+        <div className="rp-t">
+          <i style={css(`width:${((repaid / due) * 100).toFixed(1)}%`)} />
+          <i className="s" style={css(`width:${((sched / due) * 100).toFixed(1)}%`)} />
+        </div>
+        <div className="rp-k">
+          <span>
+            <i className="sw" />
+            Collected<b className="num">{money(repaid)}</b>
+          </span>
+          <span>
+            <i className="sw s" />
+            On autopay, 24 and 30 Oct<b className="num">{money(sched)}</b>
+          </span>
+          <span className="due">
+            <i className="sw n" />
+            Due<b className="num">{money(due)}</b>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
   const trend = (
-    <section className="cell s-12">
+    <section className="cell s-12 mtop">
       <header className="c-hd">
-        <span className="lbl">Owed against limits</span>
+        <span className="lbl">October</span>
         <span className="tag">{srcTxt('protocol')}</span>
       </header>
-      <div className="c-fig">{figHtml(pct(M.credit, M.limits), 'of limits drawn · up from 11.3% the week the first batch went out')}</div>
+      <div className="c-fig">
+        {figHtml(
+          (repaid + sched) / due >= 0.9995 ? '100%' : pct(repaid + sched, due),
+          `of this cycle’s repayments are collected or on autopay · owed is up ${money(M.credit - start)} this month`,
+        )}
+      </div>
       <div className="c-body">
-        {chart({
-          h: 180,
-          max: 45000,
-          yTicks: [0, 15000, 30000, 45000],
-          yFmt: (v) => (v ? `$${v / 1000}k` : '0'),
-          x: NW.map((t, i) => ({
-            t,
-            x: px(i, NW.length),
-          })),
-          paths: (
-            <>
-              {line(lim, 45000, 'ch-l2')}
-              <path
-                d={`M${out.map((y, i) => `${px(i, NW.length) * 10},${(1 - y / 45000) * 100}`).join(' L')}`}
-                className="ch-l1"
-                style={css('stroke:var(--live)')}
-              />
-            </>
-          ),
-          marks: [
-            {
-              x: 100,
-              v: M.limits,
-              c: 'var(--land)',
-            },
-            {
-              x: 100,
-              v: M.credit,
-              c: 'var(--live)',
-            },
-          ],
-        })}
-        {mkey([
-          ['var(--live)', 'Owed'],
-          ['var(--land)', 'Limits issued'],
-        ])}
+        {rp}
+        <div className="ablock">
+          <span className="lbl">Where the balance came from</span>
+          {flow}
+        </div>
       </div>
       {strip([
-        ['Owed', money(M.credit)],
-        ['Limits', money(M.limits)],
-        ['Members', '124'],
-        ['Average limit', money(M.limits / 124)],
+        ['Limits issued', money(M.limits), pct(M.credit, M.limits) + ' drawn'],
+        ['On autopay', String(autopay), pct(autopay, 124) + ' of members'],
+        ['Average owed', money(M.credit / 124), 'a member'],
       ])}
     </section>
   );
@@ -999,7 +1471,7 @@ export function nCredit() {
         <span className="k quiet">Savings-backed</span>
         <b>Their savings cover it</b>
         <span className="k quiet">Unsecured</span>
-        <b>The AssurancePool covers it</b>
+        <b>The yield pool, then the AssurancePool</b>
       </div>
     </>,
     strip([
@@ -1033,7 +1505,7 @@ export function nCredit() {
     's-4 wt',
     'Losses',
     'All time',
-    figHtml(money(M.lost), '3 members · absorbed by the AssurancePool'),
+    figHtml(money(M.lost), '3 members · paid by the AssurancePool, before the yield pool opened'),
     evRows([
       ['22 Sep', 'Redlands Tire', 'Member M•••, 90 days late', money(204)],
       ['6 Oct', 'Citrus Bowl Café', 'Member M•••, 90 days late', money(204)],
@@ -1320,7 +1792,7 @@ export function nSchedule() {
         ['Movements', String(shown.length)],
         ['Out', money(out)],
         ['In', money(inn)],
-        ['Pool low', '−' + money(M.short), '', 'warn'],
+        ['Yield pool lends', money(M.short)],
       ])}
     </section>
   );

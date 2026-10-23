@@ -6,13 +6,10 @@ import {
   AGR,
   CS,
   DAY,
-  FEED0,
   FS,
   GS,
   KST,
   LATER,
-  LIVE0,
-  M,
   MEMBERS,
   MS,
   NAMES,
@@ -50,8 +47,6 @@ import { openSFlow } from './shop';
 import { sgnIn, sgnStep, sgnTimer, showLogin } from './signin';
 import { accOf, openTFlow } from './team';
 export function startup() {
-  NAMES.waiting = 'Waiting';
-  NAMES.more = 'More';
   try {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (vars.themePref === 'auto') setTheme('auto');
@@ -79,11 +74,6 @@ export function startup() {
     true,
   );
   window.addEventListener('resize', () => requestAnimationFrame(syncPages));
-  S.live = LIVE0.slice();
-  S.updates = FEED0.slice();
-
-  /* ── Waiting (phone tab) ─────────────────────────────────── */
-
   document.addEventListener(
     'click',
     (e) => {
@@ -646,9 +636,6 @@ export function startup() {
       }
     }),
   );
-  M.rtd = M.assurance / M.unsecured;
-  M.room = M.assurance / M.floor - M.unsecured; /* unsecured credit that can still issue */
-  M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
   TXO.forEach((m, i) =>
     AGR.push({
       id: m.id,

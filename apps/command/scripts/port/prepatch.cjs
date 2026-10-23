@@ -2,7 +2,9 @@
 const fs = require('fs');
 const [, , IN, OUT] = process.argv;
 let s = fs.readFileSync(IN, 'utf8');
-const rep = (a, b) => { if (!s.includes(a)) throw new Error('missing: ' + a.slice(0, 80)); s = s.split(a).join(b); };
+// A patch whose code is gone (the prototype changed there) is reported and skipped; the converter
+// then reports anything it still can't parse.
+const rep = (a, b) => { if (!s.includes(a)) return console.log('prepatch: no longer needed: ' + a.slice(0, 70)); s = s.split(a).join(b); };
 
 rep(`'<span style="color:var(--underway)">'+money(M.short)+'</span>'`, '`<span style="color:var(--underway)">${money(M.short)}</span>`');
 rep(`'<span class="mono">#'+(48210+LOG.indexOf(l))+' · sealed</span>'`, '`<span class="mono">#${48210+LOG.indexOf(l)} · sealed</span>`');
@@ -26,7 +28,7 @@ fs.writeFileSync(OUT, s);
 // string edits on finished markup become parameters
 {
   let t2 = fs.readFileSync(OUT, 'utf8');
-  const r2 = (a, b) => { if (!t2.includes(a)) throw new Error('missing: ' + a.slice(0, 80)); t2 = t2.split(a).join(b); };
+  const r2 = (a, b) => { if (!t2.includes(a)) return console.log('prepatch: no longer needed: ' + a.slice(0, 70)); t2 = t2.split(a).join(b); };
   r2('const gCell = (cls, label, tag, fig, body, foot, state) =>', 'const gCell = (cls, label, tag, fig, body, foot, state, bodyCls) =>');
   r2('<div class="c-fig">${fig||\'\'}</div><div class="c-body">${body}</div>${foot||\'<div></div>\'}</section>`;', '<div class="c-fig">${fig||\'\'}</div><div class="c-body${bodyCls||\'\'}">${body}</div>${foot||\'<div></div>\'}</section>`;');
   r2(")).replace('class=\"c-body\"','class=\"c-body start\"')", "), undefined, ' start')");

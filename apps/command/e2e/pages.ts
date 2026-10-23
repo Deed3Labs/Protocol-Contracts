@@ -39,6 +39,8 @@ export async function paneTabs(page: Page): Promise<string[]> {
  * text and spell styles; this form doesn't see those differences, and sees everything else.
  */
 export async function canonical(page: Page, selector: string): Promise<string> {
+  // some drawing finishes on the next frame (the map lays its labels out then), so let it
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   return page.evaluate((sel) => {
     const root = document.querySelector(sel);
     if (!root) return '(missing)';
@@ -55,7 +57,8 @@ export async function canonical(page: Page, selector: string): Promise<string> {
         .filter((a) => a.name !== 'style')
         .map((a) => `${a.name}="${a.value}"`)
         .sort();
-      const style = el.getAttribute('style') ? `style="${el.style.cssText}"` : '';
+      // an inline style the browser rejected entirely is no style at all
+      const style = el.style.cssText ? `style="${el.style.cssText}"` : '';
       out.push(`${'  '.repeat(depth)}<${el.tagName.toLowerCase()}${[...attrs, style].filter(Boolean).map((a) => ' ' + a).join('')}>`);
       // adjacent text nodes are one piece of text
       let text = '';

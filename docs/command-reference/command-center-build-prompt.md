@@ -8,9 +8,9 @@ Read this whole brief before writing code, then start with **Phase 0**.
 
 ## 0. Where things are
 
-- **Monorepo.** It already has `apps/api` (Node, on Railway, with Postgres) and `apps/web` (the member app). Look at both first: package manager, framework, lint and test setup, how `apps/api` is structured and deployed, and how `apps/web` does Privy auth. Match what's there. Don't introduce a second way of doing anything the repo already does.
+- **Monorepo:** `github.com/Deed3Labs/Protocol-Contracts`, **`dev` branch**. It's a Turborepo holding the contracts *and* the apps: `apps/api` (Express + `pg`, on Railway, Postgres, `migrations/`), `apps/member` (the member app: Vite + React 19 + TS, `@privy-io/react-auth`, deployed on Vercel), `apps/merchant` (Vite + React + Capacitor), `apps/pay`, `apps/rewards`, and shared code under `packages/` (`contracts-sdk`, `domain`, `tokens`, `member-kit` and others). Look first at `apps/member` (Privy setup, build, Vercel config), `apps/api` (structure, auth middleware, migrations, deploy), `packages/contracts-sdk` and `packages/tokens`. Match what's there. Don't introduce a second way of doing anything the repo already does.
 - **New app:** `apps/command` is the Command Center frontend. API work goes into the existing `apps/api` under its own route namespace (`/command/*`). Shared types go in a shared package if the repo has one; create `packages/command-types` if not.
-- **Contracts:** `github.com/Deed3Labs/Protocol-Contracts`, **`dev` branch** (not `main`). Most contracts are deployed on **Base Sepolia** from there. Read deployed addresses from that repo's deployment files. Don't hardcode addresses you didn't find there. Don't use, adapt or import anything from `KyngKai909/Lending`.
+- **Contracts:** the same repo, `contracts/` on **`dev`** (not `main`). Most contracts are deployed on **Base Sepolia** from there. Read deployed addresses from that repo's deployment files. Don't hardcode addresses you didn't find there. Don't use, adapt or import anything from `KyngKai909/Lending`.
 - **Brand assets:** the mark and lockups are in the `clearpath-website` repo under `public/brand/`. Use the solid mark at app sizes.
 - **Domains:**
   - Frontend at **`command.useclear.org`**.
@@ -19,16 +19,17 @@ Read this whole brief before writing code, then start with **Phase 0**.
 
 ## 1. Stack and rules
 
-- **Frontend:** use whatever `apps/web` uses (React + TypeScript). If it's Next.js, you can use Next with static export or SPA routing. Otherwise use Vite + React + TS.
+- **Frontend:** Vite + React + TypeScript, matching `apps/member`. Use `packages/contracts-sdk` for ABIs and addresses if it covers what you need.
   - Port the prototype's CSS as-is into a design-token stylesheet: `:root` tokens, Paper and Ink themes, the bento grid, `.cell` / `.c-hd` / `.c-fig` / `.c-body` / `.c-ft`, `.ptabs`, panes, modals, charts.
   - **Don't restyle anything.** No component library. The prototype's markup and class names are the components; turn them into React components with the same DOM and classes.
-- **Hosting:** deploy `apps/command` wherever `apps/web` is deployed. If it isn't deployed anywhere, use Vercel, with preview deploys per PR. Add `command.useclear.org` as the production domain and set up DNS instructions for it.
+- **Hosting:** Vercel, set up like `apps/member` (its own `vercel.json`, the turbo `build:vercel` task), with preview deploys per PR. Add `command.useclear.org` as the production domain and set up DNS instructions for it.
 - **API:** extend `apps/api` on Railway. Postgres with migrations, using the repo's existing migration tool or Drizzle/Prisma if there is none. Use Railway's Postgres and Railway env vars for every secret.
 - **No private keys anywhere.** The app never signs on-chain transactions. Money and on-chain actions are *proposed* here and *signed* in the Ops Safe (Safe{Wallet}) by a second person. The app reads Safe state and links out to it.
 - **Environment flag:**
   - `CLEAR_ENV=testnet` drives the **TESTNET** chip in the header and the "Testnet · demo data" footer in the profile menu.
   - Sandbox and test keys only, except the shop (§6).
 - **Money formatting:** always `$1,234.56`, two decimals, tabular numerals. That's how the prototype does it, and it's deliberate.
+- **Column charts:** bar height is `calc(var(--colh) * value / max)` with `flex: none` on the bar. An earlier prototype sized bars in % of the whole column, which squashed tall bars; don't copy that.
 - **Accessibility:** keep what the prototype already does (keyboard focus, Escape closes panes and modals, `aria-current` on tabs, `role="switch"` and similar). Don't regress it.
 
 ## 2. Auth: one login for everyone
@@ -135,7 +136,7 @@ Design it properly, but it must at least cover these. Use UUIDs and `created_at`
   - `payout_run`, `payout_line`
   - `device_fleet` (hardware), `hardware_inventory`, `preorder`
 - **Shop:** `shop_product`, `shop_order`, `shop_inventory`. The shop is live (§6), so these are a cache of the live source.
-- **Money:** `account_snapshot` (balances by source and time) and `reserve_check`.
+- **Money:** `account_snapshot` (balances by source and time), `reserve_check`, and `yield_position` (per depositor: shares, assets, pledged, first deposit; derived from `LendingPool` Transfer/Deposit/Withdraw events, never hand-entered).
 - **Governance:** `entity`, `board_seat` (the Holdings board has **7 seats**), `vote`, `meeting`, `filing`, `calendar_event`.
 - **Records:** `document` (uploads in object storage; use Railway volumes or S3-compatible).
 - **Contracts:**
@@ -196,7 +197,17 @@ The prototype already defines each screen. Wire it to the API, and make every bu
     - Every change writes `merchant_activity` and the audit log.
   - Partners, payouts (real payout lines; runs need two people), hardware fleet (device status from check-ins).
 - **Shop:** live catalog, inventory, orders, pre-orders and refunds.
-- **Money:** where it sits (account snapshots), reserves (on-chain pools from the indexer), credit, bonds, schedule.
+- **Money:** where it sits (account snapshots), reserves (on-chain pools from the indexer), credit, bonds, schedule. The yield pool is first-class, read from `LendingPool` (ERC-4626) and never computed client-side:
+  - **Loss order** (Reserves): member's own savings → `LendingPool` (first loss on unsecured credit, via `absorbLoss`) → `AssurancePool`. Bondholders, the PayoutPool and other members' savings never absorb. RTD stays AssurancePool ÷ unsecured; the yield pool doesn't change it.
+  - **Rate:** `utilizationBps`, `borrowRatePerCycle`, `supplyRatePerCycle`, and `RevolvingIssuer.cycleLength()` to annualise. Show depositor APY (compounded per cycle) and what unsecured credit pays (simple APR), plus the curve from the contract's own parameters.
+  - **Depositors:** total assets, `availableCash`, `totalBorrowed`, share price (`convertToAssets(1e18)`), depositor count, pledged shares (`encumberedOf`), and the withdrawal queue (`WithdrawalQueued` / `WithdrawalClaimed`, `isClaimable`). Losses from `LossAbsorbed`.
+  - **Payout gap:** `PayoutPool.shortfall()`, `borrowedFromYield`, `borrowedFromReserve`, `carryEarned`, and the `DrewFromYieldPool` / `DrewFromReserve` / `RepaidYieldPool` / `RepaidReserve` / `InterestPaid` events. When a due claim can't be paid, `drawForDueClaim` (permissionless) borrows the yield pool's free cash first, then AssurancePool excess/buffer. Overview projects this from claim due dates. A top-up from operating cash is an *optional* proposal, not a required one.
+  - **Tabs in the prototype:** Overview, Reserves, **Yield pool**, Credit, Bonds, Schedule.
+    - *Overview:* "Everything we hold" (the yield pool's cash is an account under Members' money); **Credit gate** written as a sum (AssurancePool ÷ unsecured = RTD), a meter against the 20% floor, and the last time it closed; **Claims in order** with four tiers (member savings, shops, bondholders, then yield pool deposits, whose bar splits cash from money out on loan); **Payout pool** written as a sum (in the pool + repayments − owed to shops = short), then what happens to the gap, with how long the pool borrows as the headline.
+    - *Reserves:* the loss order (lanes by kind of credit, plus "never covers a loss"), the AssurancePool (needed for the floor vs spare, fee share added each week), the PayoutPool queue, member savings, the co-op balance.
+    - *Yield pool:* the rate as a sum (credit pays × lent out = depositors earn, monthly, with yearly beside it), yearly rate by share lent out, how depositors get paid, deposits (where it is, every movement since it opened), loans to the payout pool (the pool on 4 Nov), and the depositor table, **masked** (`M•••4f`) for every viewer.
+    - *Credit:* the top card is the current cycle: the share of repayments collected or on autopay (bar: collected, on autopay, due) and where the balance came from (owed at month start + spent − repaid = owed now; spent matches "Where it was spent"). Then what backs it, how old, losses, where it was spent, limit sizes.
+  - **Design rule for Money:** explain with sums, split bars and plain rows. Don't reintroduce the line charts the prototype removed.
 - **Contracts:** agreements, the on-chain map, and changes (GitHub plus Safe).
 - **Governance:** entities, boards (7 Holdings seats), meetings and votes, calendar, filings.
 - **Records:** activity, documents (upload and versions), the audit log (append-only), the data-room page views.
@@ -222,7 +233,7 @@ The prototype already defines each screen. Wire it to the API, and make every bu
 
 ## 9. Phases (open a PR per phase; keep `main` deployable)
 
-0. **Read and plan.** Inspect the repo (`apps/api`, `apps/web`, the existing Privy setup, the deploy targets) and the contracts repo's `dev` deployments. Write `docs/command-center-plan.md` with what you found, any conflicts with this brief, and the plan. **Stop and ask Kai before building if something here conflicts with what's in the repo.**
+0. **Read and plan.** Inspect the repo (`apps/api`, `apps/member`, `packages/*`, the existing Privy setup, the deploy targets) and the contracts repo's `dev` deployments. Write `docs/command-center-plan.md` with what you found, any conflicts with this brief, and the plan. **Stop and ask Kai before building if something here conflicts with what's in the repo.**
 1. **Shell and design system.** Port the CSS and shell (top bar, menu, sticky tabs, panes, modals, toasts, themes), the sign-in page and routing. Visual tests against the prototype.
 2. **Auth, people and permissions.** Privy server verification, `person` / `group` / `person_access`, enforcement middleware, the Permissions page fully working, preview-as-group, investor invites with expiry and terms, audit log.
 3. **Database and seed.** Full schema and migrations, the seed from the prototype, `seed` providers. Every page renders from the DB and matches the prototype.

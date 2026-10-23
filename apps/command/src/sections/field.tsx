@@ -748,4 +748,5 @@ export function fSave(n) {
    Read-only. Each tab answers one question. Two checks stay apart on purpose: RTD is the gate
    (AssurancePool over unsecured credit); claims-in-order is a reporting view and is never summed.
    Ties: $12,839.25 owed to shops by 4 Nov, $1,482.36 due from members, payout pool $10,240.00,
-   so the pool runs $1,116.89 short on 4 Nov unless it is topped up. */
+   so the pool runs $1,116.89 short on 4 Nov. PayoutPool.drawForDueClaim then borrows the gap: the yield pool's free cash first,
+   then AssurancePool excess (never its primary reserve). Repaid from member repayments, principal then carry. */

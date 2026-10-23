@@ -328,10 +328,20 @@ console.log(problems.length ? problems.join('\n') : 'no problems');
 
 
 // ---- split: data in the prototype's order, functions by section, start-up statements last ----
-const RANGES = [
-  [1, 'core'], [231, 'home'], [575, 'growth'], [1156, 'members'], [1381, 'merchants'], [2108, 'field'], [2263, 'money'],
-  [2519, 'contracts'], [2907, 'governance'], [3379, 'records'], [3663, 'team'], [3881, 'shop'], [4309, 'shell'], [4577, 'signin'],
+// each section starts at its anchor in the prototype's script
+const ANCHORS = [
+  ['core', null], ['home', /^\/\* ── Home /], ['growth', /^const GS = /], ['members', /^const MS = /], ['merchants', /^const XS = /],
+  ['field', /^const FS = /], ['money', /^const NS = /], ['contracts', /^const CS = /], ['governance', /^const VS = /],
+  ['records', /^const RS = /], ['team', /^const TS = /], ['shop', /^const SS = /], ['shell', /^\/\* ── Render /], ['signin', /^\/\* ── Sign in/],
 ];
+const srcLines = src.split('\n');
+const RANGES = ANCHORS.map(([name, re]) => {
+  if (!re) return [1, name];
+  const i = srcLines.findIndex((l) => re.test(l));
+  if (i < 0) throw new Error('section anchor not found: ' + name);
+  return [i + 1, name];
+});
+for (let k = 1; k < RANGES.length; k++) if (RANGES[k][0] <= RANGES[k - 1][0]) throw new Error('section anchors out of order at ' + RANGES[k][1]);
 const OVERRIDE = { stepFlow: 'kit', ddHtml: 'kit', ddClose: 'kit', ddOpen: 'kit', ddPick: 'kit' };
 const iifePath = (() => { let fp; traverse(ast, { ArrowFunctionExpression(p) { if (!fp) { fp = p; p.stop(); } } }); return fp; })();
 const iife = iifePath.node.body.body;
@@ -393,6 +403,9 @@ for (const st of iife) {
     }
     continue;
   }
+  // a statement that only fills in data (`Y.cash = Y.assets - Y.lent`) stays with the data, in order
+  const assigns = (e) => t.isAssignmentExpression(e) && t.isMemberExpression(e.left) || (t.isSequenceExpression(e) && e.expressions.every(assigns));
+  if (t.isExpressionStatement(st) && assigns(st.expression)) { mods.data.push(st); continue; }
   mods.startup.push(st);
 }
 mods.data.unshift(t.variableDeclaration('const', [t.variableDeclarator(t.identifier('vars'), t.objectExpression([]))]));

@@ -622,7 +622,7 @@ export function columns(items, { max, fmt = (v) => v, hi = -1, h = 140 } = {}) {
       {items.map(([k, v], i) => (
         <div key={i} className={`col${i === hi ? ' hi' : ''}`}>
           <span className="cv2">{fmt(v)}</span>
-          <i style={css(`height:${((v / max) * 100).toFixed(1)}%`)} />
+          <i style={css(`height:calc(var(--colh) * ${(v / max).toFixed(4)})`)} />
           <span className="ck">{k}</span>
         </div>
       ))}

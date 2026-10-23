@@ -1478,6 +1478,93 @@ button.wh-r:hover .wh-k b,.wh-r.sel .wh-k b{text-decoration:underline;text-under
   .wh-r{grid-template-columns:12px minmax(0,1fr) auto;row-gap:2px;padding:10px 0} .wh-src,.wh-sp,.wh-ch,.wh-h{display:none !important} .wh-r.sub .wh-ch{display:none}
 }
 
+/* loss order: lanes by kind of credit, bracketed like the holdings bar */
+.lo{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(0,1.1fr)}
+.lo-g{display:flex;flex-direction:column;gap:var(--s2);min-width:0;padding:0 var(--s3);border-left:1px solid var(--hair)}
+.lo-g:first-child{padding-left:0;border-left:0} .lo-g:last-child{padding-right:0}
+.lo-lane{position:relative;display:block;padding-bottom:12px}
+.lo-lane b{display:block;font:400 10.5px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--fg-70);white-space:nowrap}
+.lo-lane i{position:absolute;left:0;right:0;bottom:0;height:6px;border:1px solid var(--line);border-bottom:0}
+.lo-pair{display:grid;grid-template-columns:minmax(0,auto) minmax(40px,1fr) minmax(0,auto);column-gap:var(--s2)}
+.lo-pair > .lo-s{max-width:260px}
+.lo-c{display:grid;place-items:center;justify-self:stretch;height:28px;margin-top:30px;color:var(--fg-50);align-self:start}
+.lo-s{display:grid;grid-template-rows:22px 28px auto;row-gap:8px;min-width:0}
+.lo-k{display:flex;align-items:center;gap:10px;min-width:0}
+.lo-k .num-sq{width:20px;height:20px;font-size:10.5px;border-color:var(--line);color:var(--fg-70)}
+.lo-k b{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lo-s .fig-l{font-size:24px;line-height:28px}
+.lo-s .small{line-height:1.4;color:var(--fg-70)}
+.lo-nv{display:flex;flex-direction:column;margin-top:-6px}
+.lo-nv > div{display:flex;justify-content:space-between;align-items:baseline;gap:var(--s2);padding:7px 0;border-top:1px solid var(--hair);font-size:13px}
+.lo-nv > div:first-child{border-top:0}
+.lo-nv span{color:var(--fg-70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lo-nv b{font-weight:500;color:var(--fg-70)}
+@media (max-width:1180px){ .lo{grid-template-columns:minmax(0,1fr) minmax(0,2fr)} .lo-g.nv{grid-column:1/-1;padding:var(--s3) 0 0;border-left:0;border-top:1px solid var(--hair);margin-top:var(--s3)} .lo-nv{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:var(--s3)} .lo-nv{margin-top:0} .lo-nv > div{border-top:0;padding:2px 0;flex-direction:column;gap:4px} }
+@media (max-width:760px){
+  .lo{grid-template-columns:1fr}
+  .lo-g,.lo-g.nv{padding:var(--s3) 0 0;border-left:0;border-top:1px solid var(--hair);margin-top:var(--s3)}
+  .lo-g:first-child{padding-top:0;border-top:0;margin-top:0}
+  .lo-pair{grid-template-columns:1fr;row-gap:var(--s1)} .lo-c{justify-self:start;margin:0 0 0 2px;height:16px;transform:rotate(90deg)}
+  .lo-nv{grid-template-columns:1fr} .lo-nv > div{flex-direction:row;padding:7px 0;border-top:1px solid var(--hair)} .lo-nv > div:first-child{border-top:0}
+}
+.yl-ch .ch-ntext,.yl-ch.ch .ch-ntext{transform:translateX(-100%)}
+.c-body > .wf{display:grid}
+/* yield rate as a sum: each term only as wide as its text, symbols centred in the space between */
+.yeq{display:grid;grid-template-columns:minmax(0,auto) minmax(32px,1fr) minmax(0,auto) minmax(32px,1fr) minmax(0,auto);align-items:start;padding:4px 0 var(--s3);border-bottom:1px solid var(--hair)}
+.yeq > div{display:grid;grid-template-rows:16px 28px auto;row-gap:8px;min-width:0}
+.yeq > div > .lbl{line-height:16px}
+.yeq .fig-l{font-size:24px;line-height:28px}
+.yeq .lbl,.yeq .small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.yeq-op{height:28px;margin-top:24px;display:grid;place-items:center;font:300 22px/1 var(--f-text);color:var(--fg-50)}
+.yeq > div.hi .fig{color:var(--live)}
+@media (max-width:760px){
+  .yeq{grid-template-columns:minmax(0,auto) minmax(24px,1fr) minmax(0,auto);row-gap:var(--s2)}
+  .yeq > span.yeq-op:nth-of-type(2){display:none}
+  .yeq > div.hi{grid-column:1/-1;padding-top:var(--s2);border-top:1px solid var(--hair)}
+  .yeq .fig-l{font-size:22px}
+}
+.yeq.four{grid-template-columns:minmax(0,auto) minmax(24px,1fr) minmax(0,auto) minmax(24px,1fr) minmax(0,auto) minmax(24px,1fr) minmax(0,auto)}
+.yeq > div.warn .fig{color:var(--underway)}
+@media (max-width:760px){
+  .yeq.four{grid-template-columns:20px minmax(0,1fr);row-gap:0}
+  .yeq.four > div{grid-column:2;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:var(--s2);row-gap:4px;align-items:center;padding:10px 0;border-top:1px solid var(--hair)}
+  .yeq.four > div:first-child{border-top:0;padding-top:0}
+  .yeq.four > div .lbl{grid-column:1;grid-row:1} .yeq.four > div .small{grid-column:1;grid-row:2} .yeq.four > div .fig{grid-column:2;grid-row:1/3;font-size:20px}
+  .yeq.four > span.yeq-op,.yeq.four > span.yeq-op:nth-of-type(2){display:grid;grid-column:1;margin:0;height:auto;align-self:center;justify-self:start;font-size:18px}
+  .yeq.four > div.warn{grid-column:2;padding-top:10px;border-top:1px solid var(--line)}
+}
+/* RTD meter: a track to 40%, the floor marked */
+.gm{padding-top:4px}
+.gm-t{position:relative;height:12px;background:var(--hair)}
+.gm-f{position:absolute;left:0;top:0;bottom:0;background:var(--live)} .gm-f.warn{background:var(--underway)}
+.gm-fl{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--fg)}
+.gm-x{position:relative;height:16px;margin-top:8px;font:400 10.5px/1 var(--f-mono);text-transform:uppercase;letter-spacing:.04em;color:var(--fg-50)}
+.gm-x span{position:absolute;top:0;white-space:nowrap} .gm-x span:first-child{transform:none} .gm-x span:last-child{transform:translateX(-100%)}
+.gm-x span.fl{transform:translateX(-1px);color:var(--fg-70);padding-left:0}
+.bento > .cell.mtop > .c-body{justify-content:flex-start !important}
+.cr-two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:var(--s4);align-items:start}
+@media (max-width:1100px){.cr-two{grid-template-columns:1fr;gap:var(--s3)}}
+.cr-two > .ablock{border-top:0 !important;padding-top:0 !important;margin-top:0 !important}
+/* owed inside limits, by week */
+.ol{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:var(--s2)}
+.ol-c{display:grid;grid-template-rows:calc(var(--olh) + 22px) auto;row-gap:8px;min-width:0}
+.ol-p{font:600 13px/1 var(--f-text);text-align:center;color:var(--fg-70)} .ol-c.hi .ol-p{color:var(--fg)}
+.ol-b{display:flex;flex-direction:column;justify-content:flex-end;gap:8px;border-bottom:1px solid var(--line)}
+.ol-l{position:relative;display:flex;align-items:flex-end;flex:none;width:100%;background:var(--hair);box-shadow:inset 0 0 0 1px var(--line)}
+.ol-l i{display:block;width:100%;background:color-mix(in srgb,var(--fg) 55%,transparent)} .ol-c.hi .ol-l i{background:var(--fg)}
+.ol-k{font:400 11px/1.2 var(--f-mono);text-transform:uppercase;letter-spacing:.04em;color:var(--fg-50);text-align:center}
+@media (max-width:760px){ .ol{gap:6px} .ol-p{font-size:11.5px} .ol-k{font-size:10px} }
+/* repayments this cycle: collected, scheduled, rest */
+.rp-t{display:flex;height:12px;background:var(--hair)} .rp-t i{display:block;height:100%;background:var(--fg)} .rp-t i.s{background:color-mix(in srgb,var(--fg) 30%,transparent)}
+.rp-k{display:flex;align-items:center;gap:var(--s3);margin-top:12px;font-size:13px;color:var(--fg-70)}
+.rp-k span{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.rp-k b{color:var(--fg);font-weight:600;margin-left:4px}
+.rp-k .sw{width:10px;height:10px;background:var(--fg);flex:none} .rp-k .sw.s{background:color-mix(in srgb,var(--fg) 30%,transparent)}
+.rp-k .due{margin-left:auto}
+.ablock > .yeq{padding-top:0;padding-bottom:0;border-bottom:0}
+.rp-k .sw.n{background:none;display:none}
+@media (max-width:760px){ .rp-k{flex-direction:column;align-items:stretch;gap:6px} .rp-k span{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px} .rp-k span b{margin-left:0} .rp-k .due{margin-left:0} .rp-k .sw.n{display:block} }
+
 /* ── Field ── */
 .fnow-h{font-size:28px;margin:0}
 .txstrip.nfacts{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -1880,7 +1967,7 @@ button.hb:hover .hb-k{text-decoration:underline;text-underline-offset:3px}
 .hkey span:first-child{margin-right:4px} .hkey span:last-child{margin-left:4px}
 .cols{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:var(--s1);align-items:end;height:calc(var(--colh) + 48px)}
 .col{display:flex;flex-direction:column;align-items:stretch;justify-content:flex-end;height:100%;gap:4px;min-width:0}
-.col i{display:block;background:var(--line);min-height:2px}
+.col i{display:block;flex:none;background:var(--line);min-height:2px}
 .col.hi i{background:var(--fg)}
 .col .cv2{font:600 13px/1 var(--f-text);font-variant-numeric:tabular-nums;text-align:center}
 .col .ck{font:400 11px/1.2 var(--f-mono);text-transform:uppercase;letter-spacing:.04em;color:var(--fg-50);text-align:center;min-height:28px;padding-top:4px;border-top:1px solid var(--line)}
@@ -3127,7 +3214,7 @@ const G = (label, aside, cls, cells) => `<div class="group"><div class="g-lbl"><
 /* vertical columns drawn in HTML so labels stay crisp */
 function columns(items, {max, fmt=v=>v, hi=-1, h=140}={}){
   max = max || Math.max(...items.map(i=>i[1]));
-  return `<div class="cols" style="--colh:${h}px">${items.map(([k,v],i)=>`<div class="col${i===hi?' hi':''}"><span class="cv2">${fmt(v)}</span><i style="height:${(v/max*100).toFixed(1)}%"></i><span class="ck">${k}</span></div>`).join('')}</div>`;
+  return `<div class="cols" style="--colh:${h}px">${items.map(([k,v],i)=>`<div class="col${i===hi?' hi':''}"><span class="cv2">${fmt(v)}</span><i style="height:calc(var(--colh) * ${(v/max).toFixed(4)})"></i><span class="ck">${k}</span></div>`).join('')}</div>`;
 }
 
 /* ── Acquisition pane: where visitors come from and which ones join ───── */
@@ -4586,16 +4673,30 @@ function fSave(n){
    Read-only. Each tab answers one question. Two checks stay apart on purpose: RTD is the gate
    (AssurancePool over unsecured credit); claims-in-order is a reporting view and is never summed.
    Ties: $12,839.25 owed to shops by 4 Nov, $1,482.36 due from members, payout pool $10,240.00,
-   so the pool runs $1,116.89 short on 4 Nov unless it is topped up. */
+   so the pool runs $1,116.89 short on 4 Nov. PayoutPool.drawForDueClaim then borrows the gap: the yield pool's free cash first,
+   then AssurancePool excess (never its primary reserve). Repaid from member repayments, principal then carry. */
 const NS = { pane:'overview', sf:'all', acct:null };
 const M = {
   savings:38940.20, cash:21480.75, payout:10240.00, assurance:1420.00, coop:476.20,
   credit:14212.40, savingsBacked:8640.00, unsecured:5572.40, limits:41600.00, lost:612.00,
   owed14:12839.25, dueMembers:1482.36, bonds:25000.00, floor:0.20
 };
+/* the yield pool (LendingPool on Base Sepolia, ERC-4626). It funds the unsecured tiers and takes their first loss,
+   before the AssurancePool. Rates follow the contract's curve: per cycle, base 25 bps, +75 to the 80% kink, +900 past it.
+   Depositors are paid through the share price: nothing is distributed, it's realised when they withdraw. */
+const Y = { assets:9000.00, principal:8962.10, lent:M.unsecured, depositors:18, pledged:1200.00, queued:0, opened:'15 Oct', cycleDays:30,
+  curve:{base:25, s1:75, s2:900, kink:0.80} };
+Y.cash = Y.assets - Y.lent; Y.util = Y.lent / Y.assets; Y.earned = Y.assets - Y.principal; Y.price = Y.assets / Y.principal;
+const yBorrowBps = u => u <= Y.curve.kink ? Y.curve.base + Y.curve.s1*u/Y.curve.kink : Y.curve.base + Y.curve.s1 + Y.curve.s2*(u-Y.curve.kink)/(1-Y.curve.kink);
+const yApr = bps => bps/10000 * 365/Y.cycleDays;                       /* simple, per year */
+const yApy = bps => Math.pow(1 + bps/10000, 365/Y.cycleDays) - 1;       /* compounded each cycle */
+Y.borrowBps = yBorrowBps(Y.util); Y.supplyBps = Y.borrowBps * Y.util; Y.apy = yApy(Y.supplyBps); Y.apr = yApr(Y.borrowBps);
 M.rtd = M.assurance / M.unsecured;
 M.room = M.assurance / M.floor - M.unsecured;            /* unsecured credit that can still issue */
 M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
+/* the 4 Nov payout gap, borrowed from the pool's free cash when the claim comes due */
+Y.toPayout = Math.min(M.short, Y.cash); Y.utilAfter = (Y.lent + Y.toPayout) / Y.assets; Y.apyAfter = yApy(yBorrowBps(Y.utilAfter)*Y.utilAfter);
+const YLD = Y;   /* nOverview shadows Y with its chart scale */
 const NW = WEEKS.slice(5);                                /* 8 Sep → 20 Oct, launch onward */
 const AP_BAL = [0,400,520,690,860,1110,M.assurance], UNSEC = [0,900,2050,3450,4400,5100,M.unsecured];
 const AP_REQ = UNSEC.map(v=>v*M.floor), RTD_W = AP_BAL.map((v,i)=>UNSEC[i] ? v/UNSEC[i] : null);
@@ -4609,8 +4710,9 @@ const BONDS = [ /* id, face, issued, matures, term in months, internal rate, hol
 /* every account we hold, in the order the bar draws them: whose money it is decides the bracket */
 const ACCTS = [ /* id, name, what it's for, owner group, source, balance, 7 weeks, colour */
   ['sav','Member savings','CLRUSD, backed 1:1 by USDC at Bridge','members','bridge',M.savings,[0,2100,6400,13900,22800,31200,M.savings],'var(--fg)'],
+  ['yld','Yield pool','Members’ deposits · cash not lent out yet','members','protocol',Y.cash,[0,0,0,0,0,2180,Y.cash],'color-mix(in srgb,var(--live) 60%,transparent)'],
   ['pay','Payout pool','Pays shops for financed sales, oldest first','set','protocol',M.payout,[0,1200,3900,5200,7800,9600,M.payout],'var(--fg-50)'],
-  ['ap','AssurancePool','Absorbs losses on unsecured credit','set','protocol',M.assurance,AP_BAL,'var(--underway)'],
+  ['ap','AssurancePool','Covers unsecured losses after the yield pool','set','protocol',M.assurance,AP_BAL,'var(--underway)'],
   ['ops','Operating cash','Business checking · the co-op’s own money','coop','plaid',M.cash,[16800,17900,18600,19800,20400,21100,M.cash],'var(--land)'],
   ['coop','Co-op balance','Discounts on member purchases, held for a vote','coop','protocol',M.coop,[0,22.40,61.80,140.20,249.40,376.20,M.coop],'color-mix(in srgb,var(--land) 45%,transparent)']];
 const GROUPS = { members:['Members’ money','Owed back to members on request'], set:['Set aside','Only for shops and losses'], coop:['The co-op’s','Ours to run on'] };
@@ -4625,11 +4727,11 @@ const evRows = rows => `<div class="evlist">${rows.map(([d,n,s,v,k])=>`<div clas
 
 function moneyPage(){
   const P = NS.pane;
-  const title = P==='overview' ? `The payout pool runs ${money(M.short)} short on 4 Nov.` : P==='reserves' ? 'Member savings are fully reserved.'
+  const title = P==='overview' ? `4 Nov payouts clear, with ${money(M.short)} from the yield pool.` : P==='reserves' ? 'Member savings are fully reserved.' : P==='yield' ? `Depositors earn ${(Y.apy*100).toFixed(2)}% a year today.`
     : P==='credit' ? 'Most credit is backed by savings.' : P==='bonds' ? 'The first bond matures 14 Dec.' : `${FLOWS.length} money movements in the next 30 days.`;
   const tools = `<div class="ph-tools"><span class="chip underway"><span class="dot"></span>Plaid 3 h behind</span><span class="chip plain">Read-only</span></div>`;
-  const tabs = [['overview','Overview'],['reserves','Reserves'],['credit','Credit'],['bonds','Bonds'],['schedule','Schedule']];
-  const body = {overview:nOverview, reserves:nReserves, credit:nCredit, bonds:nBonds, schedule:nSchedule}[P]();
+  const tabs = [['overview','Overview'],['reserves','Reserves'],['yield','Yield pool'],['credit','Credit'],['bonds','Bonds'],['schedule','Schedule']];
+  const body = {overview:nOverview, reserves:nReserves, yield:nYield, credit:nCredit, bonds:nBonds, schedule:nSchedule}[P]();
   return head(`Money · Testnet · <b>Demo data</b>`, title, tools) +
     `<nav class="ptabs" aria-label="Money panes">${tabs.map(([v,t])=>`<button type="button" data-npane="${v}" aria-current="${P===v?'page':'false'}">${t}</button>`).join('')}</nav>` + body + moneyPane();
 }
@@ -4645,10 +4747,10 @@ function holdings(){
     return `<button type="button" class="wh-r${NS.acct===id?' sel':''}" data-nacct="${id}"><i class="wh-sw" style="background:${col}"></i><span class="wh-k"><b>${n}</b><span class="small quiet">${why}</span></span>
       <span class="wh-src ${st}"><i class="dot"></i>${srcTxt(src)}</span>${sp(wk)}<span class="wh-ch num ${ch>0?'up':ch<0?'dn':''}">${ch>0?'+':ch<0?'−':''}${money(Math.abs(ch))}</span><b class="wh-v num">${money(bal)}</b></button>`
       + (id==='ops' ? aside.map(([k,v,s])=>`<div class="wh-r sub"><i></i><span class="wh-k"><b>${k}</b><span class="small quiet">${s}</span></span><span class="wh-src"></span><span class="wh-sp"></span><span class="wh-ch small quiet">Set aside</span><b class="wh-v num">${money(v)}</b></div>`).join('') : ''); }).join('');
-  return `<section class="cell s-12"><header class="c-hd"><span class="lbl">Everything we hold</span><span class="tag">5 accounts · 3 sources</span></header>
-    <div class="c-fig">${figHtml(money(tot), `across five accounts · ${money(free)} of it is the co-op’s to spend freely`)}</div>
+  return `<section class="cell s-12"><header class="c-hd"><span class="lbl">Everything we hold</span><span class="tag">${ACCTS.length} accounts · 3 sources</span></header>
+    <div class="c-fig">${figHtml(money(tot), `across ${ACCTS.length} accounts · ${money(free)} of it is the co-op’s to spend freely`)}</div>
     <div class="c-body">${bar}<div class="wh"><div class="wh-r wh-h"><span></span><span>Account</span><span>Source</span><span>7 weeks</span><span>This week</span><span>Balance</span></div>${rows}</div></div>
-    ${strip([['Owed to shops by 4 Nov',money(M.owed14),`pool ${money(M.short)} short`,'warn'],['Owed to bondholders',money(M.bonds),'first due 14 Dec'],['Reserve check','1 : 1','member savings · 2 min ago'],['Free to spend',money(free),'after tax and deposits']])}</section>`;
+    ${strip([['Owed to shops by 4 Nov',money(M.owed14),`${money(M.short)} lent by the yield pool`],['Owed to bondholders',money(M.bonds),'first due 14 Dec'],['Reserve check','1 : 1','member savings · 2 min ago'],['Free to spend',money(free),'after tax and deposits']])}</section>`;
 }
 
 /* ── account panel ───────────────────────────────────────────────────── */
@@ -4659,30 +4761,34 @@ function moneyPane(){
     paths: line(wk,mx,'ch-l1'), marks:[{x:100,v:bal,c:'var(--fg)'}]});
   const facts = {
     sav:[['Members','124'],['Tied to credit',money(M.savingsBacked)],['Free to withdraw',money(M.savings-M.savingsBacked)],['USDC at Bridge',money(M.savings)+' · 2 min'],['Reserve','1 : 1',1]],
-    pay:[['Owed to shops by 4 Nov',money(M.owed14)],['Repayments due',money(M.dueMembers)],['Short on 4 Nov','<span style="color:var(--underway)">'+money(M.short)+'</span>'],['Moves by','Two people · Ops Safe',1]],
+    yld:[['Deposited',money(Y.assets)+' · '+Y.depositors+' depositors'],['Lent to unsecured credit',money(Y.lent)+' · '+pct(Y.lent,Y.assets)],['Cash for withdrawals',money(Y.cash)],['Lends the payout pool',money(Y.toPayout)+' on 4 Nov'],['Depositors earn',(Y.apy*100).toFixed(2)+'% a year, today'],['Takes losses','First, before the AssurancePool',1]],
+    pay:[['Owed to shops by 4 Nov',money(M.owed14)],['Repayments due',money(M.dueMembers)],['Yield pool lends on 4 Nov',money(M.short)],['Moves by','Two people · Ops Safe',1]],
     ap:[['Covers unsecured credit',money(M.unsecured)],['RTD',pct(M.rtd,1)+' · floor 20.0%'],['Room to issue',money(M.room)],['Losses absorbed',money(M.lost),1]],
     ops:[['Bank','Business checking'],['Last sync','3 h ago · Plaid'],['Set aside inside it',money(ASIDE().reduce((s,x)=>s+x[1],0))],['Covers bonds until BondVault',money(M.bonds)],['Moves by','Two people',1]],
     coop:[['Added in October',money(COOP_W.slice(3).reduce((s,b)=>s+b,0))],['From','Member discounts at partner shops'],['Spending it','Needs a member vote',1]]}[id];
   const moves = id==='pay' ? FLOWS.map(([d,k,v,nn,s])=>[dayD(d),nn,s,sgn(k,v),k]) : id==='ops' ? [['20 Oct','Card sales · shop','Stripe payout','+$1,218.40','in'],['19 Oct','Poster printing','Card','−$212.00',''],['15 Oct','BB-0006 issued','From a member','+$5,000.00','in'],['14 Oct','Railway','Card','−$67.04','']]
     : id==='sav' ? [['21 Oct','Deposits','38 members','+$1,904.20','in'],['20 Oct','Withdrawals','6 members','−$412.00',''],['19 Oct','Deposits','29 members','+$1,322.10','in']]
+    : id==='yld' ? [['4 Nov','Lends the payout pool','Scheduled · repaid from repayments','−'+money(Y.toPayout),''],['21 Oct','Interest from credit','Unsecured tiers · cycle carry','+$31.20','in'],['20 Oct','Deposits','4 members','+$1,150.00','in'],['18 Oct','Withdrawal','1 member · paid at once','−$250.00',''],['18 Oct','Interest from credit','Unsecured tiers','+$6.70','in'],['15 Oct','Opened','Founding deposits · 14 members','+$8,062.10','in']]
     : id==='ap' ? [['20 Oct','Fee share in','From credit fees','+$62.40','in'],['14 Oct','Loss absorbed','Cajon Phone Repair','−$204.00',''],['13 Oct','Fee share in','From credit fees','+$58.10','in']]
     : [['20 Oct','Discounts held','14 purchases','+$100.00','in'],['13 Oct','Discounts held','19 purchases','+$126.80','in']];
-  const act = {pay:['top','Top up the pool'], ops:['sync','Sync from Plaid'], ap:['ap','How the gate works'], sav:['reserve','Run the reserve check'], coop:['vote','Propose a use for it']}[id];
+  const act = {yld:['yrate','How the rate works'], pay:['top','Top up instead'], ops:['sync','Sync from Plaid'], ap:['ap','How the gate works'], sav:['reserve','Run the reserve check'], coop:['vote','Propose a use for it']}[id];
   const body = `<div><p class="h2" style="font-size:28px">${n}</p><p class="quiet" style="margin:8px 0 0">${why}</p></div>
     <div><span class="fig fig-xl">${money(bal)}</span><span class="figsub" style="display:block;margin-top:6px">${GROUPS[g][0]} · ${GROUPS[g][1].toLowerCase()} · ${srcTxt(src)}</span></div>
     ${sec('Seven weeks', ch)}${sec('Facts', kv(facts))}${sec(id==='pay'?'Next 30 days':'Recent', evRows(moves), id==='pay'?`<button type="button" class="pn-link" data-npane="schedule">Calendar</button>`:'')}`;
   return `<div class="pane-scrim" data-closenpane></div>
   <aside class="pane" role="dialog" aria-label="Account">
     <header class="m-hd"><span class="sub">Account</span><span style="display:flex;align-items:center;gap:8px"><span class="chip ${src==='plaid'?'underway':'plain'}">${srcTxt(src)}</span><button class="x" type="button" data-closenpane aria-label="Close">${ic('close')}</button></span></header>
-    <div class="pane-mn">${body}</div><footer class="pane-ft"><button class="btn btn-p" type="button" data-nflow="${act[0]}">${act[1]}</button>${id!=='pay'?`<button class="btn btn-g" type="button" data-npane="reserves">All pools</button>`:''}</footer></aside>`;
+    <div class="pane-mn">${body}</div><footer class="pane-ft"><button class="btn btn-p" type="button" data-nflow="${act[0]}">${act[1]}</button>${id==='yld'?`<button class="btn btn-g" type="button" data-npane="yield">Yield pool</button>`:id!=='pay'?`<button class="btn btn-g" type="button" data-npane="reserves">All pools</button>`:''}</footer></aside>`;
 }
 function openNFlow(kind){
   lastFocus = document.activeElement; let f = null;
-  if (kind==='top') f = {t:'Top up the payout pool', lbl:'Payout pool', h:money(M.short), p:'Moves operating cash into the pool so the 4 Nov payouts clear.',
-    rows:[['From','Operating cash · '+money(M.cash)],['To','PayoutPool on Base Sepolia'],['After it',money(M.payout+M.short)+' in the pool'],['Second person','Dana Ruiz, in the Ops Safe',1]],
+  if (kind==='top') f = {t:'Top up instead of borrowing', lbl:'Payout pool · optional', h:money(M.short), p:'Nothing is needed: on 4 Nov the pool borrows this from the yield pool and pays it back from repayments. Topping up from operating cash means the co-op earns that interest instead.',
+    rows:[['From','Operating cash · '+money(M.cash)],['To','PayoutPool on Base Sepolia'],['After it',money(M.payout+M.short)+' in the pool'],['Otherwise','The yield pool lends it · '+money(Y.cash)+' free'],['Second person','Dana Ruiz, in the Ops Safe',1]],
     note:'<b>Money moves need a second person.</b> You propose, Dana Ruiz signs.', noteIc:'team', btn:'Propose the top-up', steps:['Drafted the transfer','Sent it to the Ops Safe for a second signature','Logged it'], done:['Waiting on Dana Ruiz.','It shows on Home and Team until it’s signed.']};
   else if (kind==='sync') f = {t:'Sync from Plaid', h:'Operating cash', rows:[['Last sync','3 hours ago'],['Bank','Business checking'],['Takes','About a minute',1]], btn:'Sync now', steps:['Asked Plaid for new transactions','Updated the balance'], done:['Synced.','Balance and set-asides are current.']};
   else if (kind==='reserve') f = {t:'Reserve check', h:'Member savings', rows:[['CLRUSD issued',money(M.savings)],['USDC at Bridge',money(M.savings)],['Difference','None',1]], btn:'Run it again', steps:['Read CLRUSD supply on Base Sepolia','Read the USDC balance at Bridge','Compared them'], done:['Fully reserved.','1 : 1, checked just now.']};
+  else if (kind==='yrate') f = {t:'How the yield pool pays', lbl:'Yield pool', h:`${(Y.apy*100).toFixed(2)}% a year today`, p:'The rate follows how much of the pool is lent out. More lent, higher rate; more idle cash, lower rate. Nobody sets it by hand.',
+    rows:[['Lent out',pct(Y.lent,Y.assets)+' of '+money(Y.assets)],['Unsecured credit pays',(Y.apr*100).toFixed(1)+'% a year'],['Depositors earn','That rate × the share lent out · '+(Y.apy*100).toFixed(2)+'%'],['How they get it','Builds into the share price · paid when they withdraw'],['Payout pool, 4 Nov','Borrows '+money(Y.toPayout)+' · rate rises to '+(Y.apyAfter*100).toFixed(2)+'%'],['Losses','Lower the share price first, before the AssurancePool pays',1]], btn:null};
   else if (kind==='ap') f = {t:'The credit gate', lbl:'AssurancePool', h:`RTD ${pct(M.rtd,1)}`, p:'Unsecured credit can only issue while the AssurancePool is at least 20% of it.', rows:[['AssurancePool',money(M.assurance)],['Unsecured credit',money(M.unsecured)],['Floor','20%'],['Room to issue',money(M.room),1]], btn:null};
   else if (kind==='vote') f = {t:'Propose a use', lbl:'Co-op balance', h:money(M.coop), post:`<label class="field"><span class="lbl">What for</span><input type="text" value="Print 40 more window posters" autocomplete="off"></label>`, rows:[['Decided by','Member vote · one member, one vote'],['Next vote window','After v2.2 closes, 29 Oct',1]], btn:'Draft the proposal', steps:['Drafted the proposal','Sent it to Governance'], done:['Drafted.','It shows under Votes in Governance.']};
   if (!f) return;
@@ -4697,46 +4803,54 @@ function nOverview(){
   const rmax = .5, dip = RTD_W.findIndex(v=>v!==null && v<M.floor);
   const rLine = `<path d="M${RTD_W.map((v,i)=>v===null?null:`${px(i,NW.length)*10},${(1-v/rmax)*100}`).filter(Boolean).join(' L')}" class="ch-l1" style="stroke:var(--live)"/>`;
   const floorLn = `<line x1="0" x2="1000" y1="${(1-M.floor/rmax)*100}" y2="${(1-M.floor/rmax)*100}" class="ch-floor"/>`;
+  /* the gate as a sum, a meter against the floor, and the last time it closed */
+  const gOpen = M.rtd >= M.floor, GM = 0.4, gBack = RTD_W.findIndex((v,i)=>i>dip && v!==null && v>=M.floor);
+  const gsum = `<div class="yeq">
+      <div><span class="lbl">AssurancePool</span><b class="fig fig-l">${money(M.assurance)}</b><span class="small quiet">covers losses</span></div>
+      <span class="yeq-op" aria-hidden="true">÷</span>
+      <div><span class="lbl">Unsecured credit</span><b class="fig fig-l">${money(M.unsecured)}</b><span class="small quiet">owed by members</span></div>
+      <span class="yeq-op" aria-hidden="true">=</span>
+      <div class="${gOpen?'hi':'warn'}"><span class="lbl">RTD</span><b class="fig fig-l">${pct(M.rtd,1)}</b><span class="small quiet">${gOpen?'above the 20% floor':'under the 20% floor'}</span></div></div>`;
+  const meter = `<div class="ablock"><span class="lbl">Credit pauses below the floor</span><div class="gm" role="img" aria-label="RTD ${pct(M.rtd,1)} against a 20% floor">
+      <div class="gm-t"><i class="gm-f${gOpen?'':' warn'}" style="width:${Math.min(100, M.rtd/GM*100).toFixed(1)}%"></i><i class="gm-fl" style="left:${(M.floor/GM*100).toFixed(1)}%"></i></div>
+      <div class="gm-x"><span style="left:0">0</span><span class="fl" style="left:${(M.floor/GM*100).toFixed(1)}%">20% floor</span><span style="left:100%">40%</span></div></div></div>`;
+  const hist = dip>=0 ? `<div class="ablock"><span class="lbl">Last time it closed</span>${evRows([
+      [NW[dip],'Fell under the floor','New credit paused',pct(RTD_W[dip],1),''],
+      ...(gBack>0 ? [[NW[gBack],'Back above it','Credit reopened as the pool grew',pct(RTD_W[gBack],1),'in']] : [])])}</div>` : '';
   const gate = `<section class="cell s-6"><header class="c-hd"><span class="lbl">Credit gate · RTD</span><span class="tag">${srcTxt('protocol')}</span></header>
-    <div class="c-fig">${figHtml(pct(M.rtd,1), 'AssurancePool over unsecured credit · new credit may issue')}</div>
-    <div class="c-body">${chart({h:140, max:rmax, yTicks:[0,.2,.4], yFmt:v=>v?Math.round(v*100)+'%':'0', x:NW.map((t,i)=>({t, x:px(i,NW.length)})).filter((_,i)=>i%2===0),
-        paths:floorLn+rLine, marks:[{x:100,v:M.rtd,c:'var(--live)'},{x:px(dip,NW.length),v:RTD_W[dip],c:'var(--underway)'}]})}
-      ${mkey([['var(--live)','RTD'],['var(--fg-50)','Floor · 20%'],['var(--underway)',`Under the floor ${NW[dip]}, credit paused`]])}</div>
-    ${strip([['AssurancePool',money(M.assurance)],['Unsecured',money(M.unsecured)],['Room to issue',money(M.room)]])}</section>`;
+    <div class="c-fig">${figHtml(money(M.room), 'more unsecured credit can go out before the gate closes')}</div>
+    <div class="c-body">${gsum}${meter}${hist}</div>
+    ${strip([['Floor','20%','set in AssurancePool'],['Status',gOpen?'Open':'Closed',gOpen?'new credit may issue':'no new unsecured credit']])}</section>`;
 
   /* claims in priority order, each against what backs it, never summed */
-  const claims = [['Member savings','USDC reserve at Bridge',M.savings,M.savings],['Shops, by 4 Nov','Payout pool and repayments due',M.owed14,M.payout+M.dueMembers],['Bondholders','Operating cash, until BondVault',M.bonds,M.cash]];
+  const claims = [['Member savings','USDC reserve at Bridge',M.savings,M.savings],['Shops, by 4 Nov','Payout pool, then the yield pool',M.owed14,M.payout+M.dueMembers+YLD.toPayout],['Bondholders','Operating cash, until BondVault',M.bonds,M.cash],
+    /* junior: first loss on unsecured credit. Owed what the pool holds, so always covered; the bar splits cash from loans out */
+    ['Yield pool deposits','Pool cash, then loans out',YLD.assets,YLD.assets,YLD.cash-YLD.toPayout]];
   const order = `<section class="cell s-6"><header class="c-hd"><span class="lbl">Claims in order</span><span class="tag">Reporting · gates nothing</span></header>
     <div class="c-fig">${figHtml('100%', 'of tier 1, member savings, is reserved')}</div>
     <div class="c-body"><div class="claims"><div class="cl-r cl-h"><span></span><span class="lbl">Claim</span><span class="lbl">Covered</span><span class="lbl">Owed</span></div>
-      ${claims.map(([k,by,owed,held],i)=>{ const c = Math.min(1, held/owed);
+      ${claims.map(([k,by,owed,held,liq],i)=>{ const c = Math.min(1, held/owed);
         return `<div class="cl-r"><span class="num-sq">${i+1}</span><span class="cl-k"><b>${k}</b><span class="small quiet">${by}</span></span>
-          <span class="cl-c"><span class="cl-bar"><i style="width:${(c*100).toFixed(1)}%;background:${c>=1?'var(--fg)':'var(--underway)'}"></i></span><b class="num">${c>=1?'100%':pct(held,owed)}</b></span>
-          <b class="num cl-v">${money(owed)}</b></div>`; }).join('')}</div></div>
-    ${strip([['Tier 1 gap','None'],['Tier 2 gap',money(M.short),'','warn'],['Tier 3 gap',money(M.bonds-M.cash)]])}</section>`;
+          <span class="cl-c"><span class="cl-bar">${liq!=null ? `<i style="width:${(liq/owed*100).toFixed(1)}%"></i><i style="width:${((held-liq)/owed*100).toFixed(1)}%;background:var(--land)"></i>` : `<i style="width:${(c*100).toFixed(1)}%;background:${c>=1?'var(--fg)':'var(--underway)'}"></i>`}</span><b class="num">${c>=1?'100%':pct(held,owed)}</b></span>
+          <b class="num cl-v">${money(owed)}</b></div>`; }).join('')}</div>
+      ${mkey([['var(--fg)','Cash or reserve'],['var(--land)','Out on loan'],['var(--underway)','Partly covered']])}</div>
+    ${strip([['Tier 1 gap','None'],['Tier 2 gap',M.short>YLD.toPayout?money(M.short-YLD.toPayout):'None'],['Tier 3 gap',money(M.bonds-M.cash)],['Tier 4 gap','None']])}</section>`;
 
-  /* payout pool, projected day by day from the schedule */
-  const lo = -2000, hi = 12000, Y = v => (1-(v-lo)/(hi-lo))*100, X = d => d/30*1000;
-  let bal = M.payout, low = {v:bal,d:0}; const pts = [`0,${Y(bal)}`], dots = [];
-  FLOWS.forEach(([d,k,v])=>{ pts.push(`${X(d)},${Y(bal)}`); bal += k==='in'?v:-v; pts.push(`${X(d)},${Y(bal)}`); dots.push({d,v:bal,k}); if (bal<low.v) low = {v:bal,d}; });
-  pts.push(`1000,${Y(bal)}`);
-  const nxt = FLOWS.find(f=>f[0]>low.d)[0];
-  const proj = `<div class="chart proj" style="--ch:160px">
-      <div class="ch-y">${[0,4000,8000,12000].map(v=>`<span style="top:${Y(v)}%">${v?'$'+v/1000+'k':'0'}</span>`).join('')}</div>
-      <div class="ch-plot"><svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
-        ${[4000,8000,12000].map(v=>`<line x1="0" x2="1000" y1="${Y(v)}" y2="${Y(v)}" class="ch-grid"/>`).join('')}
-        <rect x="${X(low.d)}" y="${Y(0)}" width="${X(nxt)-X(low.d)}" height="${Y(low.v)-Y(0)}" class="ch-neg"/>
-        <line x1="0" x2="1000" y1="${Y(0)}" y2="${Y(0)}" class="ch-zero"/>
-        <path d="M${pts.join(' L')}" class="ch-l1"/></svg>
-        ${dots.map(o=>`<i class="ch-dot ${o.k}${o.d===low.d?' low':''}" style="left:${o.d/30*100}%;top:${Y(o.v)}%"></i>`).join('')}
-        <span class="ch-call" style="left:${low.d/30*100}%;top:${Y(low.v)}%">${'−'+money(-low.v)} on ${dayD(low.d)}</span>
-      </div>
-      <div class="ch-x">${[0,7,14,21,28].map(d=>`<span style="left:${d/30*100}%" class="${d===0?'a0':''}">${dayD(d)}</span>`).join('')}</div></div>`;
+  /* payout pool: the 4 Nov gap as a sum, then what happens to it */
+  let bal = M.payout, low = {v:bal,d:0}, back = null;
+  FLOWS.forEach(([d,k,v])=>{ bal += k==='in'?v:-v; if (bal<low.v) low = {v:bal,d}; else if (low.v<0 && back===null && bal>=0) back = d; });
   const inn = FLOWS.filter(f=>f[1]==='in').reduce((a,f)=>a+f[2],0), out = FLOWS.filter(f=>f[1]==='out').reduce((a,f)=>a+f[2],0);
+  const term = (k, v, note, cls='') => `<div class="${cls}"><span class="lbl">${k}</span><b class="fig fig-l">${v}</b><span class="small quiet">${note}</span></div>`;
+  const op = c => `<span class="yeq-op" aria-hidden="true">${c}</span>`;
+  const sum = `<div class="yeq four">${term('In the pool', money(M.payout), 'today')}${op('+')}${term('Repayments', money(M.dueMembers), 'due by '+dayD(low.d))}${op('−')}${term('Owed to shops', money(M.owed14), 'due by '+dayD(low.d))}${op('=')}${term('Short', '−'+money(-low.v), 'on '+dayD(low.d), 'warn')}</div>`;
+  const after = back!==null ? FLOWS.filter(f=>f[0]<=back).reduce((a,f)=>a+(f[1]==='in'?f[2]:-f[2]),M.payout) : 0;
+  const then = `<div class="ablock"><span class="lbl">What happens to the gap</span>${evRows([
+      [dayD(low.d),'The yield pool lends it','Shops are paid on time','+'+money(-low.v),'in'],
+      [back!==null?dayD(back):'Later','Repayments pay it back','Principal first, then interest · pool left at '+money(after),'−'+money(-low.v),'']])}</div>`;
   const pool = `<section class="cell s-8"><header class="c-hd"><span class="lbl">Payout pool · next 30 days</span><span class="tag">Projected from the schedule</span></header>
-    <div class="c-fig">${figHtml(money(M.short), 'to add by 30 Oct so the 4 Nov payouts clear · a multisig action')}</div>
-    <div class="c-body">${proj}${mkey([['var(--fg)','Balance · payout out'],['var(--land)','Repayment in'],['var(--underway)','Below zero']])}</div>
-    ${strip([['Today',money(M.payout)],['Out',money(out)],['In',money(inn)],['On 20 Nov',money(M.payout-out+inn)]])}</section>`;
+    <div class="c-fig">${figHtml(back!==null?`${back-low.d} days`:'Open', `the pool borrows from the yield pool, ${dayD(low.d)} to ${back!==null?dayD(back):'repaid'} · no top-up needed`)}</div>
+    <div class="c-body">${sum}${then}</div>
+    ${strip([['Paid out',money(out),'next 30 days'],['Coming in',money(inn),'next 30 days'],['On '+dayD(30),money(M.payout-out+inn),'after the loan is repaid']])}</section>`;
   const next = `<section class="cell s-4 wt"><header class="c-hd"><span class="lbl">Coming up</span><span class="tag">${FLOWS.length} movements</span></header>
     <div class="c-body start span2">${evRows(FLOWS.map(([d,k,v,n,s])=>[dayD(d),n,s,sgn(k,v),k]))}</div>
     <div class="c-ft"><button type="button" data-npane="schedule"><span class="t">Calendar</span>${ic('chev','sm')}</button></div></section>`;
@@ -4748,21 +4862,31 @@ function nOverview(){
 
 /* ── Reserves: what sits in each pool ─────────────────────────────────── */
 function nReserves(){
-  const cellR = (name, fig, sub, body, st) => `<section class="cell s-6"><header class="c-hd"><span class="lbl">${name}</span><span class="tag">${srcTxt('protocol')}</span></header>
+  const cellR = (name, fig, sub, body, st, cls='mtop') => `<section class="cell s-6 ${cls}"><header class="c-hd"><span class="lbl">${name}</span><span class="tag">${srcTxt('protocol')}</span></header>
     <div class="c-fig">${figHtml(fig, sub)}</div><div class="c-body">${body}</div>${strip(st)}</section>`;
-  const ap = cellR('AssurancePool', money(M.assurance), 'absorbs losses on unsecured credit',
-    chart({h:132, max:1600, yTicks:[0,800,1600], yFmt:v=>v?'$'+v.toLocaleString('en-US'):'0', x:NW.map((t,i)=>({t, x:px(i,NW.length)})).filter((_,i)=>i%2===0),
-      paths: line(AP_REQ,1600,'ch-l2') + `<path d="M${AP_BAL.map((y,i)=>`${px(i,NW.length)*10},${(1-y/1600)*100}`).join(' L')}" class="ch-l1" style="stroke:var(--live)"/>`,
-      marks:[{x:100,v:M.assurance,c:'var(--live)'},{x:100,v:AP_REQ[AP_REQ.length-1],c:'var(--land)'}]})
-    + mkey([['var(--live)','Pool'],['var(--land)','Floor · 20% of unsecured']]),
-    [['Covers',money(M.unsecured)],['Above floor',money(M.assurance-M.unsecured*M.floor)],['Absorbed',money(M.lost)]]);
+  const yp = v => (v*100).toFixed(2)+'%';
+  /* who covers a loss — the order the contracts enforce, in two lanes by kind of credit */
+  const st = (n, k, v, note) => `<div class="lo-s"><span class="lo-k"><span class="num-sq">${n}</span><b>${k}</b></span><b class="fig fig-l">${v}</b><span class="small quiet">${note}</span></div>`;
+  const lane = (t, body, cls='') => `<div class="lo-g ${cls}"><span class="lo-lane"><b>${t}</b><i></i></span>${body}</div>`;
+  const never = [['Bondholders',M.bonds],['Payout pool',M.payout],['Other members’ savings',M.savings-M.savingsBacked]];
+  const order = gCell('s-12', 'If a member stops paying', srcTxt('protocol'), '', `<div class="lo">
+      ${lane('Savings-backed credit', st(1, 'Their own savings', money(M.savingsBacked), 'Their pledged savings pay it'))}
+      ${lane('Unsecured credit', `<div class="lo-pair">${st(2, 'Yield pool', money(Y.assets), 'First loss · its share price falls')}<span class="lo-c" aria-hidden="true">${ic('chev','sm')}</span>${st(3, 'AssurancePool', money(M.assurance), 'Pays what the yield pool can’t')}</div>`, 'wide')}
+      ${lane('Never covers a loss', `<div class="lo-nv">${never.map(([k,v])=>`<div><span>${k}</span><b class="num">${money(v)}</b></div>`).join('')}</div>`, 'nv')}
+    </div>`, `<div class="c-ft"><button type="button" data-npane="yield"><span class="t">Yield pool</span>${ic('chev','sm')}</button></div>`);
+  /* AssurancePool: what the floor needs and what's spare, then what goes in each week */
+  const req = M.unsecured*M.floor, apW = AP_BAL.slice(1).map((v,i)=>v-AP_BAL[i]);
+  const ap = cellR('AssurancePool', money(M.assurance), 'covers unsecured losses after the yield pool',
+    `<div class="ablock"><span class="lbl">Against the 20% floor</span>${compBar([['Needed for the floor',req,'var(--fg)',money(req)],['Spare',M.assurance-req,'var(--land)',money(M.assurance-req)]])}</div>
+     <div class="ablock"><span class="lbl">Added each week · fee share</span>${columns(NW.slice(1).map((t,i)=>[t,apW[i]]), {h:104, hi:apW.length-1, fmt:v=>money(v)})}</div>`,
+    [['Covers',money(M.unsecured),'unsecured credit'],['Absorbed',money(M.lost),'3 losses, all time'],['Lent out','$0.00','from spare only']]);
   const queue = [['22 Oct',"Rosa’s Panadería",412.60],['2 Nov','Monthly run · 11 shops',9510.65],['4 Nov','Arrowhead Nails',732.00],['4 Nov','Cajon Phone Repair',2184.00]];
   let run = 0;
   const pp = cellR('PayoutPool', money(M.payout), 'pays shops, oldest claim first',
-    `<div class="fifo">${queue.map(([d,k,v])=>{ const a = run; run += v; const cov = Math.max(0, Math.min(v, M.payout - a));
+    `<div class="ablock"><span class="lbl">Claims, oldest first</span><div class="fifo">${queue.map(([d,k,v])=>{ const a = run; run += v; const cov = Math.max(0, Math.min(v, M.payout - a));
       return `<div class="ff-r"><span class="ev-d">${d}</span><span class="ff-k">${k}</span><span class="ff-bar"><i style="width:${(cov/v*100).toFixed(1)}%"></i></span><b class="num">${money(v)}</b></div>`; }).join('')}</div>
-     ${mkey([['var(--fg)','Covered now'],['var(--line)','Waits on repayments']])}`,
-    [['Owed by 4 Nov',money(M.owed14)],['Repayments due',money(M.dueMembers)],['Short',money(M.short),'','warn']]);
+     ${mkey([['var(--fg)','Covered now'],['var(--line)','By repayments, then the yield pool']])}</div>`,
+    [['Owed by 4 Nov',money(M.owed14),'to 4 shops'],['Repayments due',money(M.dueMembers),'by 4 Nov'],['From the yield pool',money(M.short),'4 Nov to 6 Nov']]);
   const esa = cellR('Member savings', money(M.savings), 'CLRUSD, backed 1:1 by USDC at Bridge',
     `<div class="ablock"><span class="lbl">Free or tied to credit</span>${compBar([['Tied to credit',M.savingsBacked,'var(--fg)',money(M.savingsBacked)],['Free to withdraw',M.savings-M.savingsBacked,'var(--land)',money(M.savings-M.savingsBacked)]])}</div>
      <div class="ablock"><span class="lbl">Reserve check</span><div class="how two"><span class="k">CLRUSD issued</span><b class="num">${money(M.savings)}</b><span class="k">USDC at Bridge · 2 min</span><b class="num">${money(M.savings)}</b></div></div>`,
@@ -4770,27 +4894,82 @@ function nReserves(){
   const coop = cellR('Co-op balance', money(M.coop), 'discounts on member purchases · held',
     `<div class="ablock"><span class="lbl">Added each week</span>${columns(NW.slice(1).map((t,i)=>[t,COOP_W[i]]), {h:104, hi:5, fmt:v=>money(v)})}</div>`,
     [['October',money(COOP_W.slice(3).reduce((a,b)=>a+b,0))],['Held',money(M.coop)],['To spend it','A vote']]);
-  return G('Pools', 'Read from the chain · LendingPool and BondVault are deployed, not funded yet', '', ap + pp) + G('Balances', '', '', esa + coop);
+  return G('Loss order', '', '', order)
+    + G('Pools', 'Read from the chain · BondVault is deployed, not funded yet', '', ap + pp) + G('Balances', '', '', esa + coop);
+}
+
+
+/* ── Yield pool: members lending to unsecured credit (LendingPool, ERC-4626) ── */
+const YD = ['15 Oct','16 Oct','17 Oct','18 Oct','19 Oct','20 Oct','21 Oct','22 Oct'];
+const Y_ASSETS = [8062.10,8062.10,8062.10,7818.80,7818.80,8968.80,9000.00,Y.assets];
+const Y_LENT = [5210.00,5262.40,5301.10,5355.80,5410.20,5488.00,5540.60,Y.lent];
+/* 18 depositors, by what their shares are worth now; earned split pro rata, so the rows reconcile to the pool */
+const Y_DEP = [['4f',1500,'15 Oct',600],['a2',1000,'15 Oct',400],['c9',1000,'15 Oct',0],['17',750,'15 Oct',0],['e0',600,'15 Oct',200],['5b',500,'15 Oct',0],['9d',500,'15 Oct',0],['b3',500,'20 Oct',0],['61',400,'15 Oct',0],['2e',350,'15 Oct',0],['d8',300,'15 Oct',0],['7a',300,'15 Oct',0],['f4',250,'15 Oct',0],['0c',250,'20 Oct',0],['8b',200,'15 Oct',0],['3f',200,'15 Oct',0],['c1',200,'20 Oct',0],['6e',200,'20 Oct',0]];
+function nYield(){
+  const yp = v => (v*100).toFixed(2)+'%';
+  /* the yield pool: rate curve, then how depositors get paid */
+  /* the rate, as a sum anyone can follow: what credit pays × how much of the pool is lent */
+  const depAt = u => yApy(yBorrowBps(u)*u)*100;
+  const mo = bps => (bps/100).toFixed(2)+'%';
+  const eq = `<div class="yeq">
+      <div><span class="lbl">Credit pays</span><b class="fig fig-l">${mo(Y.borrowBps)}</b><span class="small quiet">a month · ${(Y.apr*100).toFixed(1)}% a year</span></div>
+      <span class="yeq-op" aria-hidden="true">×</span>
+      <div><span class="lbl">Lent out</span><b class="fig fig-l">${pct(Y.lent,Y.assets)}</b><span class="small quiet">${money(Y.lent)} of ${money(Y.assets)}</span></div>
+      <span class="yeq-op" aria-hidden="true">=</span>
+      <div class="hi"><span class="lbl">Depositors earn</span><b class="fig fig-l">${mo(Y.supplyBps)}</b><span class="small quiet">a month · ${yp(Y.apy)} a year</span></div></div>`;
+  const scen = [['20%',0.2],['40%',0.4],[`${Math.round(Y.util*100)}%<br>now`,Y.util],[`${Math.round(Y.utilAfter*100)}%<br>4 Nov`,Y.utilAfter],['80%',0.8]];
+  const pool = `<section class="cell s-8"><header class="c-hd"><span class="lbl">Rate</span><span class="tag">${srcTxt('protocol')} · opened ${Y.opened}</span></header>
+    <div class="c-fig">${figHtml(yp(Y.apy), 'a year to depositors today · set by the contract, not by us')}</div>
+    <div class="c-body">${eq}
+      <div class="ablock"><span class="lbl">Yearly rate, by share lent out</span>${columns(scen.map(([k,u])=>[k,depAt(u)]), {h:96, hi:2, fmt:v=>v.toFixed(1)+'%'})}</div></div>
+    ${strip([['Base rate',mo(Y.curve.base),'a month at 0% lent'],['Cycle',Y.cycleDays+' days','set by RevolvingIssuer'],['Past 80% lent','Climbs fast','to pull deposits in']])}</section>`;
+  const wd = gCell('s-4 ctop', 'How depositors get paid', 'ERC-4626', figHtml('$'+Y.price.toFixed(4), `a share · up ${((Y.price-1)*100).toFixed(2)}% since ${Y.opened}`),
+    `<div class="how two"><span class="k">Interest</span><b>Raises the share price</b><span class="k">Up to ${money(Y.cash)}</span><b>Paid at once</b><span class="k">Above that</span><b>Queued, paid as credit repays</b><span class="k">Pledged to credit</span><b class="num">${money(Y.pledged)} · locked</b></div>`,
+    strip([['Earned so far',money(Y.earned),'since '+Y.opened],['Queue',Y.queued?money(Y.queued):'Empty',Y.queued?'waiting on cash':'nothing waiting']]));
+  /* balance since it opened */
+  const YMX = 10000, ny = YD.length;
+  const bal = gCell('s-6 ctop', 'Deposits', srcTxt('protocol'), figHtml(money(Y.assets), `held for ${Y.depositors} members since ${Y.opened}`),
+    `<div class="ablock"><span class="lbl">Where it is</span>${compBar([['Lent to unsecured credit',Y.lent,'var(--live)',money(Y.lent)],['Cash',Y.cash,'var(--land)',money(Y.cash)]])}</div>
+     <div class="ablock"><span class="lbl">Since it opened</span>${evRows([['15 Oct','Opened','14 founding members','+$8,062.10','in'],['18 Oct','Withdrawal','1 member · paid at once','−$250.00',''],['20 Oct','Deposits','4 new members','+$1,150.00','in'],['21 Oct','Interest','From unsecured credit, so far','+'+money(Y.earned),'in']])}</div>`,
+    strip([['Depositors',String(Y.depositors),'4 joined this week'],['Average',money(Y.assets/Y.depositors),'a member'],['Largest',money(1500),pct(1500,Y.assets)+' of the pool']]));
+  const loans = gCell('s-6 ctop', 'Loans to the payout pool', 'drawForDueClaim', figHtml(money(Y.toPayout), 'to lend on 4 Nov, when shops’ claims come due'),
+    `<div class="ablock"><span class="lbl">The pool on 4 Nov</span>${compBar([['Lent to credit',Y.lent,'var(--live)',money(Y.lent)],['To the payout pool',Y.toPayout,'var(--underway)',money(Y.toPayout)],['Cash',Y.cash-Y.toPayout,'var(--land)',money(Y.cash-Y.toPayout)]])}</div>
+     <div class="ablock"><span class="lbl">How it works</span><div class="how two"><span class="k">Lent now</span><b class="num">${money(0)}</b><span class="k">Repaid from</span><b>Member repayments, first</b><span class="k">Order</span><b>Principal, then interest</b><span class="k">Backup</span><b>AssurancePool spare, not its reserve</b></div></div>`,
+    strip([['Lent after',pct(Y.lent+Y.toPayout,Y.assets),'of the pool'],['Rate after',yp(Y.apyAfter),'a year to depositors'],['Paid back','6 Nov','from repayments']]));
+  const rows = Y_DEP.map(([id,w,since,pl])=>{ const e = w*Y.earned/Y.assets; return {id,w,since,pl,e,d:w-e}; });
+  const top = rows.slice(0,8), rest = rows.slice(8), sum = (a,k)=>a.reduce((t,r)=>t+r[k],0);
+  const tbl = `<section class="cell s-12"><header class="c-hd"><span class="lbl">Depositors</span><span class="tag">${Y.depositors} members · masked</span></header><div class="c-fig"></div>
+    <div class="c-body flush"><div class="tbl-wrap"><table class="tbl compact"><thead><tr><th class="l">Member</th><th class="l">Since</th><th>Put in</th><th>Earned</th><th>Worth now</th><th>Pledged</th><th>Can withdraw</th></tr></thead>
+      <tbody>${top.map(r=>`<tr><td class="l mono"><b>M•••${r.id}</b></td><td class="l">${r.since}</td><td>${money(r.d)}</td><td>${money(r.e)}</td><td><b>${money(r.w)}</b></td><td>${r.pl?money(r.pl):'<span class="quiet">None</span>'}</td><td class="quiet">${r.pl?money(r.w-r.pl):'All of it'}</td></tr>`).join('')}
+        <tr><td class="l quiet">${rest.length} more</td><td></td><td>${money(sum(rest,'d'))}</td><td>${money(sum(rest,'e'))}</td><td>${money(sum(rest,'w'))}</td><td><span class="quiet">None</span></td><td class="quiet">All of it</td></tr></tbody>
+      <tfoot><tr><td class="l"><b>All</b></td><td></td><td>${money(sum(rows,'d'))}</td><td>${money(sum(rows,'e'))}</td><td>${money(Y.assets)}</td><td>${money(Y.pledged)}</td><td class="quiet">${money(Y.assets-Y.pledged)}</td></tr></tfoot></table></div></div><div></div></section>`;
+  return G('Rate', '', '', pool + wd) + G('Balance', '', '', bal + loans) + G('Depositors', '', '', tbl);
 }
 
 /* ── Credit: how much is out, and how safe ───────────────────────────── */
 function nCredit(){
   const out = [0,900,3100,6200,9400,12100,M.credit], lim = [0,8000,15400,24600,31800,37200,M.limits];
-  const trend = `<section class="cell s-12"><header class="c-hd"><span class="lbl">Owed against limits</span><span class="tag">${srcTxt('protocol')}</span></header>
-    <div class="c-fig">${figHtml(pct(M.credit, M.limits), 'of limits drawn · up from 11.3% the week the first batch went out')}</div>
-    <div class="c-body">${chart({h:180, max:45000, yTicks:[0,15000,30000,45000], yFmt:v=>v?`$${v/1000}k`:'0', x:NW.map((t,i)=>({t, x:px(i,NW.length)})),
-        paths: line(lim,45000,'ch-l2') + `<path d="M${out.map((y,i)=>`${px(i,NW.length)*10},${(1-y/45000)*100}`).join(' L')}" class="ch-l1" style="stroke:var(--live)"/>`,
-        marks:[{x:100,v:M.limits,c:'var(--land)'},{x:100,v:M.credit,c:'var(--live)'}]})}
-      ${mkey([['var(--live)','Owed'],['var(--land)','Limits issued']])}</div>
-    ${strip([['Owed',money(M.credit)],['Limits',money(M.limits)],['Members','124'],['Average limit',money(M.limits/124)]])}</section>`;
+  /* October in one sum (where the balance came from), then whether this cycle's repayments are coming in */
+  const spent = TXO.reduce((a,m)=>a+m.oct,0), start = 7040.00, repaid = start + spent - M.credit;   /* repaid falls out, so the sum always closes */
+  const sched = FLOWS.filter(f=>f[1]==='in' && f[0]<=9).reduce((a,f)=>a+f[2],0), due = repaid + sched, autopay = 98;
+  const t4 = (k, v, note, cls='') => `<div class="${cls}"><span class="lbl">${k}</span><b class="fig fig-l">${v}</b><span class="small quiet">${note}</span></div>`;
+  const o4 = c => `<span class="yeq-op" aria-hidden="true">${c}</span>`;
+  const flow = `<div class="yeq four">${t4('Owed on 1 Oct',money(start),'start of the month')}${o4('+')}${t4('Spent',money(spent),'at 12 shops')}${o4('−')}${t4('Repaid',money(repaid),'by members')}${o4('=')}${t4('Owed now',money(M.credit),'by 124 members','hi')}</div>`;
+  const rp = `<div class="ablock"><span class="lbl">This cycle’s repayments · due 31 Oct</span>
+      <div class="rp"><div class="rp-t"><i style="width:${(repaid/due*100).toFixed(1)}%"></i><i class="s" style="width:${(sched/due*100).toFixed(1)}%"></i></div>
+      <div class="rp-k"><span><i class="sw"></i>Collected<b class="num">${money(repaid)}</b></span><span><i class="sw s"></i>On autopay, 24 and 30 Oct<b class="num">${money(sched)}</b></span><span class="due"><i class="sw n"></i>Due<b class="num">${money(due)}</b></span></div></div></div>`;
+  const trend = `<section class="cell s-12 mtop"><header class="c-hd"><span class="lbl">October</span><span class="tag">${srcTxt('protocol')}</span></header>
+    <div class="c-fig">${figHtml((repaid+sched)/due >= 0.9995 ? '100%' : pct(repaid+sched, due), `of this cycle’s repayments are collected or on autopay · owed is up ${money(M.credit-start)} this month`)}</div>
+    <div class="c-body">${rp}<div class="ablock"><span class="lbl">Where the balance came from</span>${flow}</div></div>
+    ${strip([['Limits issued',money(M.limits),pct(M.credit,M.limits)+' drawn'],['On autopay',String(autopay),pct(autopay,124)+' of members'],['Average owed',money(M.credit/124),'a member']])}</section>`;
   const backing = gCell('s-4', 'What backs it', srcTxt('protocol'), figHtml(pct(M.savingsBacked, M.credit), 'backed by the member’s own savings'),
     compBar([['Savings',M.savingsBacked,'var(--fg)',money(M.savingsBacked)],['Unsecured',M.unsecured,'var(--underway)',money(M.unsecured)]])
-    + `<div class="how two"><span class="k">If a member stops paying</span><b></b><span class="k quiet">Savings-backed</span><b>Their savings cover it</b><span class="k quiet">Unsecured</span><b>The AssurancePool covers it</b></div>`,
+    + `<div class="how two"><span class="k">If a member stops paying</span><b></b><span class="k quiet">Savings-backed</span><b>Their savings cover it</b><span class="k quiet">Unsecured</span><b>The yield pool, then the AssurancePool</b></div>`,
     strip([['Counts for RTD',money(M.unsecured)],['Does not',money(M.savingsBacked)]]));
   const aging = gCell('s-4', 'How old', srcTxt('protocol'), figHtml(pct(12480.20, M.credit), 'of what’s owed is current'),
     columns([['Current',12480.20],['1–30 d',1310.40],['31–60 d',421.80]], {hi:0, h:96, fmt:v=>money(v)}),
     strip([['Late',money(1310.40+421.80)],['Over 60 d','None']]));
-  const losses = gCell('s-4 wt', 'Losses', 'All time', figHtml(money(M.lost), '3 members · absorbed by the AssurancePool'),
+  const losses = gCell('s-4 wt', 'Losses', 'All time', figHtml(money(M.lost), '3 members · paid by the AssurancePool, before the yield pool opened'),
     evRows([['22 Sep','Redlands Tire','Member M•••, 90 days late',money(204)],['6 Oct','Citrus Bowl Café','Member M•••, 90 days late',money(204)],['14 Oct','Cajon Phone Repair','Member M•••, 90 days late',money(204)]]),
     strip([['Loss rate','1.1%'],['Recovered',money(0)]]));
   const shops = TXO.slice().sort((a,b)=>b.oct-a.oct).slice(0,6), octAll = TXO.reduce((a,m)=>a+m.oct,0);
@@ -4834,7 +5013,7 @@ function nSchedule(){
     <div class="c-body"><div class="cal"><div class="cal-h">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=>`<span>${d}</span>`).join('')}</div><div class="cal-g">${days}</div></div>
       <div class="phlist">${evRows(shown.map(([d,k,v,n,s])=>[dayD(d),n,s,sgn(k,v),k]))}</div>
       ${mkey([['var(--land)','In from members'],['var(--fg)','Out to shops']])}</div>
-    ${strip([['Movements',String(shown.length)],['Out',money(out)],['In',money(inn)],['Pool low','−'+money(M.short),'','warn']])}</section>`;
+    ${strip([['Movements',String(shown.length)],['Out',money(out)],['In',money(inn)],['Yield pool lends',money(M.short)]])}</section>`;
   return G('Calendar', 'Payouts leave the PayoutPool · repayments come in by member autopay', '', cal);
 }
 
@@ -4933,7 +5112,7 @@ const CH = [
     ev:[['seg','done',H(10,12,10),H(10,20,9)],['seg','open',H(10,20,9),NOW],['seg','proj',NOW,H(10,22,14)],['draft',H(10,12,10)],['check',H(10,18,11)],['sign',H(10,20,9),'DR'],['sign',NOW,'K',1],['live',H(10,22,14),1]]},
   {id:'ch1', t:'Raise Rosa’s cap to $150.00', c:'MerchantRegistry', by:'Marcus Lee', stage:3, state:'Live tomorrow, 12:00', d:'Signed by Marcus Lee and you. In the 24-hour wait.',
     ev:[['seg','done',H(10,19,11),H(10,21,12)],['seg','wait',H(10,21,12),H(10,22,12)],['draft',H(10,19,11)],['check',H(10,19,16)],['sign',H(10,20,18),'ML'],['sign',H(10,21,12),'K'],['live',H(10,22,12),1]]},
-  {id:'ch3', t:'PayoutPool top-up', c:'PayoutPool', by:'You', stage:0, state:'$1,116.89 · needs a second person', d:'From operating cash, so the 4 Nov payouts clear. Due 30 Oct.',
+  {id:'ch3', t:'PayoutPool top-up', c:'PayoutPool', by:'You', stage:0, state:'$1,116.89 · needs a second person', d:'Optional. Otherwise the yield pool lends it on 4 Nov; from operating cash, the co-op earns the interest. Due 30 Oct.',
     ev:[['seg','open',H(10,21,13),NOW],['seg','proj',NOW,H(10,30,12)],['draft',H(10,21,13)],['due',H(10,30,12),'Due 30 Oct']]},
   {id:'ch5', t:'Register D&T Co. as a validator', c:'ValidatorRegistry', by:'Kai', stage:0, state:'Waits on formation', d:'The Deed & Title Co. reviews title before a deed is minted. Goes to signing once the company is formed.',
     ev:[['seg','block',H(10,16,10),NOW],['draft',H(10,16,10)]]},

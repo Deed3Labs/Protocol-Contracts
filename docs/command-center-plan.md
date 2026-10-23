@@ -155,25 +155,37 @@ Decided 2026-10-22. These replace the defaults above where they differ.
 Questions 10 and 10b touch `clearpath-website` (the Plausible script and the form posting to the API).
 That work goes in its own PR on that repo, in Phase 7.
 
+## Brief update 1 (2026-10-23)
+
+[`command-reference/command-center-brief-update-1.md`](command-reference/command-center-brief-update-1.md)
+changed the design and the brief while Phase 1 was open. Phase 1 wasn't merged, so it was applied
+there rather than after.
+
+- **New design:** replaced and re-ported. The DOM, sign-in and pixel checks pass against it.
+- **Repo layout:** this plan already found `apps/member`; nothing changes.
+- **Column charts:** the new design already sizes bars with `calc(var(--colh) * value / max)` and
+  `flex: none`, and the port copies its stylesheet and markup, so the fix came with it.
+- **Money and the yield pool:** the new tab, layouts and copy came with the port, on demo data. The
+  data work is in Phases 3 and 5 below. Every function and event the update names is in the deployed
+  Base Sepolia ABIs (`LendingPool`, `PayoutPool`, `RevolvingIssuer`), so there is no conflict to raise.
+
 ## Plan
 
 One PR per phase into `dev`. Commits as each piece verifies; push at the end of each phase.
 
-### Phase 1: shell and design system
+### Phase 1: shell and design system (built)
 
-- `apps/command`: Vite + React + TS, the same layout as `apps/rewards`. Added to the root
-  workspaces, `vercel.json` with the filtered install and the ignore script, `turbo` build:vercel.
-- `src/styles/command.css`: the prototype's 2,280 lines of CSS, ported verbatim (tokens, Paper and
-  Ink, bento grid, cells, tabs, panes, modals, charts). No Tailwind, no component library.
-- The prototype renders HTML strings. Each render function becomes a React component that emits the
-  same DOM and classes. The shell first: top bar, rail (collapse with `[`), sticky tabs, panes,
-  modals, toasts, profile menu, theme switch, routing (`/home`, `/growth/funnel`, …), sign-in with
-  all its states.
-- The prototype's data constants move into `packages/command-types` as typed seed fixtures, so the
-  frontend (Phase 1) and the database seed (Phase 3) use the same rows.
-- Playwright visual tests (the merchant app's `e2e/` setup is the model): every route and tab at
-  1500, 1100 and 390 px in Paper and Ink, compared with the prototype rendered from
-  `docs/command-reference/`. Baselines stay git-ignored, as in merchant.
+What was built differs from the first plan in three places; `docs/command-reference/DECISIONS.md`
+has the detail.
+
+- The markup is generated from the prototype by `apps/command/scripts/port` (`npm run port`),
+  not retyped, so the DOM is the prototype's. The stylesheet is copied by the same script.
+- The data stays in `apps/command/src/sections/data.tsx` for now, not `packages/command-types`. Phase
+  3 moves it into the seed, typed, when the API serves it.
+- Routes stay the prototype's hash routes (`#members`). Path routes can come with Phase 2's router.
+- The checks compare with the prototype itself: DOM (every section and pane), sign-in (every
+  state), pixels (1500, 1100 and 390 px, Paper and Ink) and a click crawl. The prototype's screenshot
+  is the baseline, so no app baselines are stored.
 
 ### Phase 2: auth, people and permissions
 
@@ -193,6 +205,8 @@ One PR per phase into `dev`. Commits as each piece verifies; push at the end of 
 - A seed that loads every row the prototype renders, from the shared fixtures.
 - A provider interface per source with a `seed` implementation; `PROVIDER_<SOURCE>=seed|live`.
 - Aggregates as views or materialized views refreshed by a job (`jobs/` has the pattern).
+- Money: `yield_position` (per depositor: shares, assets, pledged, first deposit), and the yield
+  pool's sample data in the seed: 18 depositors, daily balances since 15 Oct, the 4 Nov loan.
 
 ### Phase 4: two-person rule and the Safe
 
@@ -206,6 +220,12 @@ One PR per phase into `dev`. Commits as each piece verifies; push at the end of 
 - `chain_event` backfill with paged `eth_getLogs` from the found deploy blocks, then Alchemy
   webhooks; 5 confirmations and a re-check of the last N blocks. Idempotent on (tx, log index).
 - GitHub webhooks for `contracts/**` into `contract_change`.
+- The yield pool: index `LendingPool` and the PayoutPool loan events (`Borrowed`, `Repaid`,
+  `LossAbsorbed`, `WithdrawalQueued`, `WithdrawalClaimed`, `DrewFromYieldPool`, `DrewFromReserve`,
+  `RepaidYieldPool`, `RepaidReserve`, `InterestPaid`), derive `yield_position` from `LendingPool`
+  Transfer/Deposit/Withdraw, and read rates from `utilizationBps`, `borrowRatePerCycle`,
+  `supplyRatePerCycle` and `RevolvingIssuer.cycleLength()` on the server. Use `packages/contracts-sdk`
+  for ABIs where it covers them.
 
 ### Phase 6: sandboxes
 

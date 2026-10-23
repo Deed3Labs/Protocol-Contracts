@@ -1,4 +1,5 @@
-// Ports docs/command-reference/clear-command-center.html into src/sections. See README.md.
+// Ports docs/command-reference/clear-command-center.html into src/sections and src/styles/command.css.
+// See README.md.
 //   npm run port                 regenerate src/sections from the prototype
 //   npm run port -- --to DIR       write somewhere else (to diff a new prototype against the port)
 const fs = require('fs');
@@ -22,4 +23,9 @@ fs.mkdirSync(to, { recursive: true });
 for (const f of fs.readdirSync(to)) if (f.endsWith('.tsx')) fs.rmSync(path.join(to, f));
 for (const f of fs.readdirSync(path.join(tmp, 'out.d'))) fs.copyFileSync(path.join(tmp, 'out.d', f), path.join(to, f));
 node('post.cjs', to);
+// the stylesheet, unchanged (only when writing into the app itself)
+if (!process.argv.includes('--to')) {
+  const css = src.slice(src.indexOf('<style>') + '<style>'.length, src.indexOf('</style>')).replace(/^\n/, '');
+  fs.writeFileSync(path.join(app, 'src/styles/command.css'), '/* Ported verbatim from docs/command-reference/clear-command-center.html by scripts/port. Change the design there first. */\n' + css);
+}
 fs.rmSync(tmp, { recursive: true, force: true });

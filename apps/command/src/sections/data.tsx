@@ -4,6 +4,7 @@ import { rng, series } from './core';
 import { daysTo, pid } from './growth';
 import { mcomp, mkey, pips, vizScale, vizSpark, vizTrack } from './home';
 import { T } from './merchants';
+import { yApr, yApy, yBorrowBps } from './money';
 import { H2 } from './records';
 import { u4, unitCost } from './shop';
 
@@ -163,6 +164,8 @@ export const SECTIONS = [
   },
 ];
 export const NAMES = Object.fromEntries(SECTIONS.flatMap((g) => g.items));
+NAMES.waiting = 'Waiting';
+NAMES.more = 'More';
 export const PLANNED = {
   growth: {
     line: 'Posters, scans and the road to $10 spent.',
@@ -715,6 +718,10 @@ export const FEED_FROM = {
   chain: 'Sent Rosa’s cap raise to the multisig',
 };
 vars.pageRaf = 0;
+S.live = LIVE0.slice();
+S.updates = FEED0.slice();
+
+/* ── Waiting (phone tab) ─────────────────────────────────── */
 /* ── Placeholder sections ────────────────────────────────── */
 export const SPANS = {
   2: ['s-7', 's-5'],
@@ -1705,7 +1712,8 @@ export const SHOP_INFO = {
    Read-only. Each tab answers one question. Two checks stay apart on purpose: RTD is the gate
    (AssurancePool over unsecured credit); claims-in-order is a reporting view and is never summed.
    Ties: $12,839.25 owed to shops by 4 Nov, $1,482.36 due from members, payout pool $10,240.00,
-   so the pool runs $1,116.89 short on 4 Nov unless it is topped up. */
+   so the pool runs $1,116.89 short on 4 Nov. PayoutPool.drawForDueClaim then borrows the gap: the yield pool's free cash first,
+   then AssurancePool excess (never its primary reserve). Repaid from member repayments, principal then carry. */
 export const NS = {
   pane: 'overview',
   sf: 'all',
@@ -1727,6 +1735,44 @@ export const M = {
   bonds: 25000.0,
   floor: 0.2,
 };
+/* the yield pool (LendingPool on Base Sepolia, ERC-4626). It funds the unsecured tiers and takes their first loss,
+   before the AssurancePool. Rates follow the contract's curve: per cycle, base 25 bps, +75 to the 80% kink, +900 past it.
+   Depositors are paid through the share price: nothing is distributed, it's realised when they withdraw. */
+export const Y = {
+  assets: 9000.0,
+  principal: 8962.1,
+  lent: M.unsecured,
+  depositors: 18,
+  pledged: 1200.0,
+  queued: 0,
+  opened: '15 Oct',
+  cycleDays: 30,
+  curve: {
+    base: 25,
+    s1: 75,
+    s2: 900,
+    kink: 0.8,
+  },
+};
+Y.cash = Y.assets - Y.lent;
+Y.util = Y.lent / Y.assets;
+Y.earned = Y.assets - Y.principal;
+Y.price = Y.assets / Y.principal;
+/* compounded each cycle */
+Y.borrowBps = yBorrowBps(Y.util);
+Y.supplyBps = Y.borrowBps * Y.util;
+Y.apy = yApy(Y.supplyBps);
+Y.apr = yApr(Y.borrowBps);
+M.rtd = M.assurance / M.unsecured;
+M.room = M.assurance / M.floor - M.unsecured; /* unsecured credit that can still issue */
+/* unsecured credit that can still issue */
+M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
+/* the 4 Nov payout gap, borrowed from the pool's free cash when the claim comes due */
+Y.toPayout = Math.min(M.short, Y.cash);
+Y.utilAfter = (Y.lent + Y.toPayout) / Y.assets;
+Y.apyAfter = yApy(yBorrowBps(Y.utilAfter) * Y.utilAfter);
+export const YLD = Y;
+/* nOverview shadows Y with its chart scale */
 export const NW = WEEKS.slice(5);
 /* 8 Sep → 20 Oct, launch onward */
 export const AP_BAL = [0, 400, 520, 690, 860, 1110, M.assurance];
@@ -1767,6 +1813,16 @@ export const ACCTS = [
     'var(--fg)',
   ],
   [
+    'yld',
+    'Yield pool',
+    'Members’ deposits · cash not lent out yet',
+    'members',
+    'protocol',
+    Y.cash,
+    [0, 0, 0, 0, 0, 2180, Y.cash],
+    'color-mix(in srgb,var(--live) 60%,transparent)',
+  ],
+  [
     'pay',
     'Payout pool',
     'Pays shops for financed sales, oldest first',
@@ -1776,7 +1832,7 @@ export const ACCTS = [
     [0, 1200, 3900, 5200, 7800, 9600, M.payout],
     'var(--fg-50)',
   ],
-  ['ap', 'AssurancePool', 'Absorbs losses on unsecured credit', 'set', 'protocol', M.assurance, AP_BAL, 'var(--underway)'],
+  ['ap', 'AssurancePool', 'Covers unsecured losses after the yield pool', 'set', 'protocol', M.assurance, AP_BAL, 'var(--underway)'],
   [
     'ops',
     'Operating cash',
@@ -1803,6 +1859,31 @@ export const GROUPS = {
   set: ['Set aside', 'Only for shops and losses'],
   coop: ['The co-op’s', 'Ours to run on'],
 };
+/* ── Yield pool: members lending to unsecured credit (LendingPool, ERC-4626) ── */
+export const YD = ['15 Oct', '16 Oct', '17 Oct', '18 Oct', '19 Oct', '20 Oct', '21 Oct', '22 Oct'];
+export const Y_ASSETS = [8062.1, 8062.1, 8062.1, 7818.8, 7818.8, 8968.8, 9000.0, Y.assets];
+export const Y_LENT = [5210.0, 5262.4, 5301.1, 5355.8, 5410.2, 5488.0, 5540.6, Y.lent];
+/* 18 depositors, by what their shares are worth now; earned split pro rata, so the rows reconcile to the pool */
+export const Y_DEP = [
+  ['4f', 1500, '15 Oct', 600],
+  ['a2', 1000, '15 Oct', 400],
+  ['c9', 1000, '15 Oct', 0],
+  ['17', 750, '15 Oct', 0],
+  ['e0', 600, '15 Oct', 200],
+  ['5b', 500, '15 Oct', 0],
+  ['9d', 500, '15 Oct', 0],
+  ['b3', 500, '20 Oct', 0],
+  ['61', 400, '15 Oct', 0],
+  ['2e', 350, '15 Oct', 0],
+  ['d8', 300, '15 Oct', 0],
+  ['7a', 300, '15 Oct', 0],
+  ['f4', 250, '15 Oct', 0],
+  ['0c', 250, '20 Oct', 0],
+  ['8b', 200, '15 Oct', 0],
+  ['3f', 200, '15 Oct', 0],
+  ['c1', 200, '20 Oct', 0],
+  ['6e', 200, '20 Oct', 0],
+];
 /* ══ Contracts ══════════════════════════════════════════════════════════
    Agreements on paper, contracts on-chain, and the changes moving between them. Nothing here holds a key:
    changes are drafted here and signed in the Ops Safe (2 of 3); agreements are signed in the e-signature tool.
@@ -2133,7 +2214,7 @@ export const CH = [
     by: 'You',
     stage: 0,
     state: '$1,116.89 · needs a second person',
-    d: 'From operating cash, so the 4 Nov payouts clear. Due 30 Oct.',
+    d: 'Optional. Otherwise the yield pool lends it on 4 Nov; from operating cash, the co-op earns the interest. Due 30 Oct.',
     ev: [
       ['seg', 'open', H(10, 21, 13), NOW],
       ['seg', 'proj', NOW, H(10, 30, 12)],
