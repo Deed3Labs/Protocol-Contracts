@@ -1,9 +1,11 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { SEED_ROUTE } from '@clear/command-types';
+import { LIVE } from '../live/env';
 import { Fragment } from 'react';
 import { attrs, css } from '../runtime/dom';
 import { head, ic, int } from './core';
-import { DAY, DESIGNS, FS, LATER, OUT, POSTERS, SHOP_INFO, STOPS, TODAY } from './data';
-import { G, designThumb, figHtml, fmtD, gCell, pid, slug } from './growth';
+import { DAY, DESIGNS, FS, LATER, OUT, POSTERS, SHOP_INFO, STOPS, TODAY, vars } from './data';
+import { G, dayName, designThumb, figHtml, fmtD, gCell, pid, slug } from './growth';
 import { mkey } from './home';
 import { ddHtml, stepFlow } from './kit';
 export function posterAt(shop, n) {
@@ -31,7 +33,7 @@ export function fieldPage() {
     <>
       {head(
         <>
-          {'Field · Wed 21 Oct · '}
+          {`Field · ${dayName(route().day)} · `}
           <b>Demo data</b>
         </>,
         title,
@@ -62,12 +64,12 @@ export function fRoute(cur, done) {
         figHtml('No stops', 'you aren’t on a route today'),
         <div className="acts">
           <button className="btn btn-g" type="button" data-fwho="marcus">
-            See Marcus Lee’s route
+            See {route().staff}’s route
           </button>
         </div>,
       ),
     );
-  const leftMins = STOPS.filter((s) => !stopDone(s)).length * 34;
+  const leftMins = STOPS.filter((s) => !stopDone(s)).length * route().minutesPerStop;
   const groups = [];
   STOPS.forEach((s, i) => {
     const g = groups[groups.length - 1];
@@ -191,7 +193,7 @@ export function fRoute(cur, done) {
   const vanCell = gCell(
     's-5',
     'In the van',
-    'Loaded at 08:40',
+    `Loaded at ${route().loaded}`,
     figHtml(String(needN), `poster${needN === 1 ? '' : 's'} to put up today · ${Object.values(van).reduce((a, b) => a + b, 0)} loaded`),
     <div className="vanl">
       {Object.keys(van).map((k, __k) => (
@@ -288,7 +290,7 @@ export function fRoute(cur, done) {
           {ddHtml(
             'fwho',
             [
-              ['marcus', 'Marcus Lee', ''],
+              [route().staffKey, route().staff, ''],
               ['me', 'My route', ''],
             ],
             FS.who,
@@ -297,7 +299,7 @@ export function fRoute(cur, done) {
         </span>
       </header>
       <div className="c-fig">
-        {figHtml(`${done} of ${STOPS.length}`, `stops done · about ${Math.floor(leftMins / 60)} h ${leftMins % 60} min and 31 mi left · back by 14:00`)}
+        {figHtml(`${done} of ${STOPS.length}`, `stops done · about ${Math.floor(leftMins / 60)} h ${leftMins % 60} min and ${route().miles} mi left · back by ${route().backBy}`)}
       </div>
       <div className="c-body flush">
         <div className="fsegs2" role="img" aria-label={`${done} of ${STOPS.length} stops done`}>
@@ -312,7 +314,7 @@ export function fRoute(cur, done) {
     <>
       {G(
         'This stop',
-        'Marcus Lee is on route · started 08:50',
+        `${route().staff} is on route · started ${route().started}`,
         '',
         <>
           {now}
@@ -430,7 +432,7 @@ export function fToday() {
     <section className="cell s-12">
       <header className="c-hd">
         <span className="lbl">Logged today</span>
-        <span className="tag">Marcus Lee · since 08:50</span>
+        <span className="tag">{route().staff} · since {route().started}</span>
       </header>
       <div className="c-fig">
         {figHtml(String(log.length), log.length ? `things logged · ${photos} with a photo · last at ${log[0].t.done}` : 'nothing logged yet')}
@@ -750,3 +752,8 @@ export function fSave(n) {
    Ties: $12,839.25 owed to shops by 4 Nov, $1,482.36 due from members, payout pool $10,240.00,
    so the pool runs $1,116.89 short on 4 Nov. PayoutPool.drawForDueClaim then borrows the gap: the yield pool's free cash first,
    then AssurancePool excess (never its primary reserve). Repaid from member repayments, principal then carry. */
+
+/** The day's route: the API's in the live app, the prototype's in the preview. */
+export function route() {
+  return LIVE && vars.ROUTE ? vars.ROUTE : SEED_ROUTE;
+}

@@ -1,0 +1,209 @@
+{
+ "route": {
+  "staff": "Marcus Lee",
+  "staffKey": "marcus",
+  "day": 1792540800000,
+  "loaded": "08:40",
+  "started": "08:50",
+  "miles": 31,
+  "backBy": "14:00",
+  "minutesPerStop": 34
+ },
+ "stops": [
+  {
+   "id": "uptown",
+   "name": "Uptown Barber",
+   "city": "Redlands",
+   "where": "E Citrus Ave",
+   "eta": "09:05",
+   "tasks": [
+    {
+     "kind": "poster",
+     "n": 12,
+     "t": "Swap P-012",
+     "done": "09:12",
+     "out": "Replaced",
+     "photo": 1
+    }
+   ]
+  },
+  {
+   "id": "shoe",
+   "name": "Valley Shoe Repair",
+   "city": "Redlands",
+   "where": "State St",
+   "eta": "09:30",
+   "tasks": [
+    {
+     "kind": "poster",
+     "n": 81,
+     "t": "Swap P-081",
+     "done": "09:41",
+     "out": "Replaced",
+     "photo": 1
+    }
+   ]
+  },
+  {
+   "id": "pet",
+   "name": "Brookside Pet Wash",
+   "city": "Redlands",
+   "where": "Brookside Ave",
+   "eta": "10:00",
+   "tasks": [
+    {
+     "kind": "poster",
+     "t": "Check P-073",
+     "done": "10:08",
+     "out": "Checked",
+     "n": 73
+    }
+   ]
+  },
+  {
+   "id": "orange",
+   "name": "Orange St. Laundromat",
+   "city": "Redlands",
+   "where": "N Orange St",
+   "eta": "10:30",
+   "tasks": [
+    {
+     "kind": "poster",
+     "n": 27,
+     "t": "Swap P-027"
+    },
+    {
+     "kind": "device",
+     "t": "Plug in the counter Clear Point",
+     "note": "Offline since 08:40"
+    }
+   ]
+  },
+  {
+   "id": "mesa",
+   "name": "Mesa Laundry",
+   "city": "San Bernardino",
+   "where": "W Highland Ave",
+   "eta": "11:15",
+   "tasks": [
+    {
+     "kind": "poster",
+     "n": 44,
+     "t": "Replace P-044",
+     "note": "Sun-faded, 4 days late"
+    }
+   ]
+  },
+  {
+   "id": "bmkt",
+   "name": "Bloomington Market",
+   "city": "Bloomington",
+   "where": "Valley Blvd",
+   "eta": "11:50",
+   "tasks": [
+    {
+     "kind": "poster",
+     "n": 55,
+     "t": "Swap P-055"
+    }
+   ]
+  },
+  {
+   "id": "citrus",
+   "name": "Citrus Bowl Café",
+   "city": "Riverside",
+   "where": "Main St",
+   "eta": "12:40",
+   "tasks": [
+    {
+     "kind": "device",
+     "t": "Swap the battery on table 4",
+     "note": "Battery low since 19:12"
+    }
+   ]
+  },
+  {
+   "id": "tailor",
+   "name": "Sixth St. Tailor",
+   "city": "Riverside",
+   "where": "Sixth St",
+   "eta": "13:20",
+   "tasks": [
+    {
+     "kind": "poster",
+     "n": 71,
+     "t": "Replace P-071",
+     "note": "Faded"
+    }
+   ]
+  }
+ ],
+ "later": [
+  [
+   "Calimesa Cleaners",
+   "Calimesa",
+   "P-063 is missing. Needs a new poster and a word with the owner.",
+   "missing",
+   "P-063",
+   "Gone from the window",
+   "Bring design A and talk to the owner",
+   "Overdue",
+   "+22 min",
+   "12 Sep"
+  ],
+  [
+   "Victoria Ave. Florist",
+   "Riverside",
+   "P-090 is faded. Swap due in 25 days.",
+   "faded",
+   "P-090",
+   "Faded in the sun",
+   "Swap early or wait for 15 Nov",
+   "Due 15 Nov",
+   "+14 min",
+   "2 Sep"
+  ]
+ ],
+ "shopInfo": {
+  "uptown": [
+   "8 pm",
+   "Andre",
+   "12 Sep"
+  ],
+  "shoe": [
+   "6 pm",
+   "Luis",
+   "2 Sep"
+  ],
+  "pet": [
+   "7 pm",
+   "Kim",
+   "29 Sep"
+  ],
+  "orange": [
+   "10 pm",
+   "Ms. Tran",
+   "26 Aug"
+  ],
+  "mesa": [
+   "11 pm",
+   "Dana",
+   "19 Oct"
+  ],
+  "bmkt": [
+   "9 pm",
+   "Hector",
+   "24 Aug"
+  ],
+  "citrus": [
+   "3 pm",
+   "Sofia",
+   "14 Oct"
+  ],
+  "tailor": [
+   "6 pm",
+   "Mr. Ruiz",
+   "30 Aug"
+  ]
+ }
+}

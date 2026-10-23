@@ -1,4 +1,6 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { LIVE } from '../live/env';
+import { fig } from '../live/figures';
 import { Fragment } from 'react';
 import { attrs, css } from '../runtime/dom';
 import { $, compBar, footItem, head, ic, int, pct, series } from './core';
@@ -13,6 +15,7 @@ import {
   HEAT,
   INBOX,
   LANDING,
+  MEMBERS,
   MON,
   OTHERS,
   PER_PAGE,
@@ -37,7 +40,8 @@ import {
 } from './data';
 import { mkey } from './home';
 import { ddHtml } from './kit';
-import { modalShell, onKey } from './shell';
+import { nextBatch } from './members';
+import { modalShell, onKey, vLevel } from './shell';
 export function fmtD(t) {
   const d = new Date(t);
   return d.getUTCDate() + ' ' + MON[d.getUTCMonth()];
@@ -133,7 +137,8 @@ export function growthPage() {
     ['shops', 'Shops and designs'],
     ['posters', 'Posters'],
     ['site', 'Forms'],
-  ];
+  ].filter(([v]) => !(LIVE && v === 'site' && vLevel('growth') === 1));
+  if (LIVE && GS.pane === 'site' && vLevel('growth') === 1) GS.pane = 'overview';
   return (
     <>
       {head(
@@ -247,8 +252,8 @@ export function gOverview() {
     <>
       {kpi('Visits', int(W_VIS[L]), `+${dv.toFixed(1)}% on last week`, W_VIS)}
       {kpi('Joined', int(W_JOIN[L]), `+${dj.toFixed(1)}% on last week`, W_JOIN)}
-      {kpi('Invited', int(W_INV[L]), `${W_INV[L] / 25} batches of 25 · batch 13 waiting`, W_INV)}
-      {kpi('Waiting', int(W_WAIT[L]), 'on the waitlist · median 24 days', W_WAIT, 'Now')}
+      {kpi('Invited', int(W_INV[L]), `${W_INV[L] / 25} batches of 25 · batch ${nextBatch()?.number ?? '–'} waiting`, W_INV)}
+      {kpi('Waiting', int(W_WAIT[L]), `on the waitlist · median ${fig('members.waitlist.median_days')} days`, W_WAIT, 'Now')}
     </>
   );
 
@@ -326,7 +331,7 @@ export function gOverview() {
       </div>
       <div className="c-ft split">
         {footItem({
-          t: 'At this pace the waitlist takes 20 weeks to clear',
+          t: `At this pace the waitlist takes ${fig('growth.waitlist.weeks_to_clear')} weeks to clear`,
         })}
         <span className="rule" aria-hidden="true" />
         <button type="button" data-move="pace">
@@ -389,9 +394,9 @@ export function gOverview() {
       {move(
         'field',
         'Swap design',
-        'Redlands Tire & Lube',
-        '12.0%',
-        'join rate on 301 scans',
+        lowestShop()[1],
+        pct(lowestShop()[4], lowestShop()[3]),
+        `join rate on ${int(lowestShop()[3])} scans`,
         `Lowest of the top 10 shops. Design A averages ${aJr}%.`,
         'Plan the swap',
         'data-move="swap"',
@@ -410,7 +415,7 @@ export function gOverview() {
         'members',
         'Nudge',
         'Opened, not funded',
-        '64',
+        int(memberSummary().opened),
         'people one step from activating',
         'No bank, no deposit and no $5 yet.',
         'Send a nudge',
@@ -633,15 +638,16 @@ export function columns(items, { max, fmt = (v) => v, hi = -1, h = 140 } = {}) {
 /* ── Acquisition pane: where visitors come from and which ones join ───── */
 export function gAcquisition() {
   const tot = SRC30.reduce((a, s) => [a[0] + s[1], a[1] + s[2], a[2] + s[3]], [0, 0, 0]);
-  const uniq = W_VIS.map((v) => Math.round(v * 0.69)),
+  const ratio = fig('growth.visitors_ratio'),
+    uniq = W_VIS.map((v) => Math.round(v * ratio)),
     jr = W_VIS.map((v, i) => (W_JOIN[i] / v) * 100),
-    phone = [70.2, 71.0, 72.4, 73.1, 74.0, 75.2, 75.9, 76.6, 77.1, 77.8, 78.0, 78.4];
+    phone = fig('growth.phone_share');
   const kpis = (
     <>
-      {kpiCell('Visits', int(tot[0]), '+31.6% on the 30 days before', W_VIS, '30 days')}
-      {kpiCell('Visitors', int(Math.round(tot[0] * 0.69)), 'people, after repeat visits', uniq, '30 days')}
+      {kpiCell('Visits', int(tot[0]), RANGE.month.delta, W_VIS, '30 days')}
+      {kpiCell('Visitors', int(Math.round(tot[0] * ratio)), 'people, after repeat visits', uniq, '30 days')}
       {kpiCell('Join rate', pct(tot[1], tot[0]), 'of visits join the waitlist', jr, '30 days')}
-      {kpiCell('On a phone', '78.4%', 'of visits · posters are phone-only', phone, '30 days')}
+      {kpiCell('On a phone', `${phone[phone.length - 1].toFixed(1)}%`, 'of visits · posters are phone-only', phone, '30 days')}
     </>
   );
   const best = SRC30.reduce((a, b) => (b[2] / b[1] > a[2] / a[1] ? b : a));
@@ -772,22 +778,15 @@ export function gAcquisition() {
     '',
     'Devices',
     '30 days',
-    figHtml('78.4%', 'on a phone'),
-    compBar([
-      ['Phone', 28545, 'var(--fg)'],
-      ['Desktop', 6590, 'var(--land)'],
-      ['Tablet', 1275, 'var(--line)'],
-    ]),
+    figHtml(pct(fig('growth.devices')[0][1], sumOf(fig('growth.devices'))), 'on a phone'),
+    compBar(fig('growth.devices').map(([k, v], i) => [k, v, ['var(--fg)', 'var(--land)', 'var(--line)'][i]])),
   );
   const ret = gCell(
     '',
     'New or returning',
     '30 days',
-    figHtml('31.0%', 'of visits are a return visit'),
-    compBar([
-      ['New', 25123, 'var(--fg)'],
-      ['Returning', 11287, 'var(--land)'],
-    ]),
+    figHtml(pct(fig('growth.returning')[1][1], sumOf(fig('growth.returning'))), 'of visits are a return visit'),
+    compBar(fig('growth.returning').map(([k, v], i) => [k, v, ['var(--fg)', 'var(--land)'][i]])),
   );
   const refMax = Math.max(...REFS.map((r) => r[1]));
   const rs = REFS.slice().sort((a, b) => b[1] - a[1]);
@@ -878,13 +877,14 @@ export function miniSparkV(v, w = 96, h = 24) {
 
 /* ── Cohorts pane: what happens after we invite ───────────────────────── */
 export function gCohorts() {
-  const invited = COHORTS.reduce((a, c) => a + c[1], 0);
+  const invited = COHORTS.reduce((a, c) => a + c[1], 0),
+    ms = memberSummary();
   const kpis = (
     <>
-      {kpiCell('Invited', int(invited), 'since invites started 15 Sep', W_INV.slice(6), 'All time')}
-      {kpiCell('Activated', '124', '41.3% of the 300 invited in 30 days', W_ACT.slice(5), '30 days')}
-      {kpiCell('Days to activate', '6', 'median, from invite to activated', [11, 10, 9, 8, 7, 7, 6], 'By cohort')}
-      {kpiCell('Still in window', '176', 'of the 300 invited in 30 days, not yet active', [25, 50, 98, 150, 165, 176], 'Now')}
+      {kpiCell('Invited', int(invited), `since invites started ${fmtD(fig('growth.cohorts.since'))}`, W_INV.slice(6), 'All time')}
+      {kpiCell('Activated', int(ms.active), `${pct(ms.active, ms.invited)} of the ${int(ms.invited)} invited in 30 days`, W_ACT.slice(5), '30 days')}
+      {kpiCell('Days to activate', String(fig('growth.cohorts.median_days_to_activate').at(-1)), 'median, from invite to activated', fig('growth.cohorts.median_days_to_activate'), 'By cohort')}
+      {kpiCell('Still in window', int(ms.invited - ms.active), `of the ${int(ms.invited)} invited in 30 days, not yet active`, fig('growth.cohorts.still_in_window'), 'Now')}
     </>
   );
   const maxW = 5;
@@ -942,7 +942,7 @@ export function gCohorts() {
     's-12',
     'Activation by invite week',
     'Share active, by week',
-    figHtml('36%', 'activate by week three, in every cohort that has reached it'),
+    figHtml(`${fig('growth.cohorts.by_week_three')}%`, 'activate by week three, in every cohort that has reached it'),
     <div className="flush-x">{tbl}</div>,
     <div className="c-ft">
       <div className="row">
@@ -950,19 +950,12 @@ export function gCohorts() {
       </div>
     </div>,
   );
-  const ttA = [
-    ['Same day', 31],
-    ['1–3 days', 27],
-    ['4–7 days', 29],
-    ['1–2 wks', 21],
-    ['2–4 wks', 12],
-    ['4 wks +', 4],
-  ];
+  const ttA = fig('growth.cohorts.time_to_activate');
   const timeCell = gCell(
     's-7',
     'Time to activate',
-    '124 activations · 30 days',
-    figHtml('70%', 'activate within a week of the invite'),
+    `${int(ms.active)} activations · 30 days`,
+    figHtml(`${Math.round((sumOf(ttA.slice(0, 3)) / ms.active) * 100)}%`, 'activate within a week of the invite'),
     columns(ttA, {
       hi: 0,
       fmt: (v) => v,
@@ -976,24 +969,24 @@ export function gCohorts() {
   const how = gCell(
     's-5',
     'How they activated',
-    '124 activations',
-    figHtml('57.3%', 'connected a bank'),
+    `${int(ms.active)} activations`,
+    figHtml(pct(ms.funded.Bank, ms.active), 'connected a bank'),
     <>
       {compBar([
-        ['Connected a bank', 71, 'var(--fg)'],
-        ['Added $5', 38, 'var(--land)'],
-        ['Direct deposit', 15, 'var(--line)'],
+        ['Connected a bank', ms.funded.Bank, 'var(--fg)'],
+        ['Added $5', ms.funded.$5, 'var(--land)'],
+        ['Direct deposit', ms.funded.Deposit, 'var(--line)'],
       ])}
       <div className="how two">
         <span className="k">Opened, not funded</span>
-        <b className="num">64</b>
+        <b className="num">{int(ms.opened)}</b>
         <span className="k">Not opened yet</span>
-        <b className="num">112</b>
+        <b className="num">{int(ms.invited - ms.active - ms.opened)}</b>
       </div>
     </>,
     <div className="c-ft">
       <button type="button" data-move="nudge">
-        <span className="t">Nudge the 64</span>
+        <span className="t">Nudge the {int(ms.opened)}</span>
         {ic('chev', 'sm')}
       </button>
     </div>,
@@ -1021,7 +1014,7 @@ export function gCohorts() {
 export function scMid() {
   return {
     mx: SHOPS.reduce((a, s) => a + s[3] / s[2], 0) / SHOPS.length,
-    my: 1106 / 4812,
+    my: scanJoinRate(),
   };
 }
 export function scCorner(s) {
@@ -1299,7 +1292,7 @@ export function gFunnel() {
     );
   });
   const mx = SHOPS.reduce((a, s) => a + s[3] / s[2], 0) / SHOPS.length,
-    my = 1106 / 4812;
+    my = scanJoinRate();
   const q = (hi, good) => SHOPS.filter((s) => s[3] / s[2] > mx === hi && s[4] / s[3] > my === good).map((s) => s[1]);
   const scatter = (
     <section className="cell s-8">
@@ -1747,14 +1740,7 @@ export function gSite() {
     tot = d.forms.reduce((a, b) => a + b, 0);
   const types = ['all', 'Waitlist', 'Shop enquiry', 'Land offer', 'Work with us'];
   const rows = INBOX.filter((x) => GS.ft === 'all' || x.type === GS.ft);
-  const pages = [
-    ['/join', 11904],
-    ['/', 9880],
-    ['/how', 4120],
-    ['/shops', 2310],
-    ['/contribute', 1204],
-    ['/s/rosas-panaderia', 842],
-  ];
+  const pages = fig('growth.site.pages');
   const forms = (
     <section className="cell s-5">
       <header className="c-hd">
@@ -1948,17 +1934,17 @@ export function openMove(kind, city) {
   const flows = {
     swap: {
       title: 'Plan a swap',
-      h: 'Redlands Tire & Lube',
+      h: lowestShop()[1],
       rows: [
-        ['Posters', '2'],
-        ['Now', 'Design B, 12.0% join rate'],
-        ['Swap to', 'Design A, 24.9% average'],
-        ['When', 'Next route day, Thu 22 Oct'],
+        ['Posters', String(lowestShop()[2])],
+        ['Now', `Design ${POSTERS.find((p) => p.shopId === lowestShop()[0]).design}, ${pct(lowestShop()[4], lowestShop()[3])} join rate`],
+        ['Swap to', `Design A, ${((DESIGNS.A.joined / DESIGNS.A.scans) * 100).toFixed(1)}% average`],
+        ['When', `Next route day, ${dayName(asOf() + DAY)}`],
         ['Check again', 'After 14 days', 1],
       ],
       btn: 'Plan the swap',
-      steps: ['Added both posters to Thursday\u2019s route', 'Set them to design A', 'Set a check for 5 Nov'],
-      done: ['Swap planned.', 'You\u2019ll see the new join rate here on 5 Nov.'],
+      steps: [`Added both posters to ${dayName(asOf() + DAY).split(' ')[0] === 'Thu' ? 'Thursday' : dayName(asOf() + DAY).split(' ')[0]}\u2019s route`, 'Set them to design A', `Set a check for ${fmtD(asOf() + 15 * DAY)}`],
+      done: ['Swap planned.', `You\u2019ll see the new join rate here on ${fmtD(asOf() + 15 * DAY)}.`],
     },
     nudge: {
       title: 'Send a nudge',
@@ -2065,3 +2051,35 @@ export function openAdd(prefill) {
 /* ══ Members ════════════════════════════════════════════════════════════
    Ties to Home: 300 invited in 12 batches of 25 · 188 opened · 124 active · 64 opened, not funded ·
    112 not opened · 109 first spends · batch 12 at 14/25 opened with 9 active · batch 13 waiting. */
+
+/** Of the top shops, the one whose scans turn into joins least often: the swap Growth suggests. */
+export function lowestShop() {
+  return SHOPS.reduce((a, b) => (b[4] / b[3] < a[4] / a[3] ? b : a));
+}
+/** Joins per scan across every poster: the top shops, the boards and the rest. */
+export function scanJoinRate() {
+  const all = [...SHOPS, BOARDS, OTHERS];
+  return all.reduce((a, s) => a + s[4], 0) / all.reduce((a, s) => a + s[3], 0);
+}
+export function sumOf(rows) {
+  return rows.reduce((a, [, v]) => a + v, 0);
+}
+/** How many of the invited are at each step: the API counts it in the live app; the preview counts the prototype's members. */
+export function memberSummary() {
+  if (LIVE && vars.memberSummary) return vars.memberSummary;
+  const n = (f) => MEMBERS.filter(f).length;
+  return {
+    invited: MEMBERS.length,
+    opened: n((m) => m.status === 'opened'),
+    active: n((m) => m.status === 'active'),
+    funded: { Bank: n((m) => m.fund === 'Bank'), $5: n((m) => m.fund === '$5'), Deposit: n((m) => m.fund === 'Deposit') },
+  };
+}
+/** The day the rows were read for. */
+export function asOf() {
+  return vars.asOf ?? TODAY;
+}
+/** "Thu 22 Oct". */
+export function dayName(t) {
+  return `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(t).getUTCDay()]} ${fmtD(t)}`;
+}

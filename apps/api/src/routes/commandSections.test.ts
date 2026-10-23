@@ -1,5 +1,8 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
-import { MEMBERS_FIGURES, mask } from '@clear/command-types';
+import { MEMBERS_FIGURES, SEED_FIGURES, mask } from '@clear/command-types';
+import fieldFx from '@clear/command-types/src/fixtures/field.json';
+import growthFigures from '@clear/command-types/src/fixtures/growth-figures.json';
+import growthFx from '@clear/command-types/src/fixtures/growth.json';
 import fixture from '@clear/command-types/src/fixtures/members.json';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
@@ -66,6 +69,9 @@ describe('the seed', () => {
     expect(await seedCommand(db)).toEqual([]);
     const { rows } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM command.figures WHERE key LIKE 'members.%'`);
     expect(rows[0].n).toBe(Object.keys(MEMBERS_FIGURES).length);
+    const all = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM command.figures');
+    expect(all.rows[0].n).toBe(Object.keys(SEED_FIGURES).length);
+    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops']));
   });
 
   test('never overwrites a figure a live job wrote', async () => {
@@ -138,5 +144,58 @@ describe('Members, as each level gets it', () => {
   test('None is refused', async () => {
     const member = await signIn('did:member|member@example.com');
     expect((await call(member, 'GET', '/sections/members')).status).toBe(403);
+  });
+});
+
+describe('Growth and Field, as each level gets them', () => {
+  let kai: { user: string; session: string };
+  beforeAll(async () => {
+    kai = await signIn('did:kai|kai@useclear.org');
+  });
+
+  test('Growth with names: the prototype’s posters, designs, inbox and figures exactly; the asking is logged', async () => {
+    const r = await call(kai, 'GET', '/sections/growth?reveal=1');
+    expect(r.status).toBe(200);
+    expect(r.body.POSTERS).toEqual(growthFx.posters);
+    expect(r.body.INBOX).toEqual(growthFx.forms);
+    expect(r.body.DESIGNS).toEqual({
+      A: { name: 'The neighbor', posters: 41, scans: 2011, joined: 501 },
+      B: { name: '$10 on us', posters: 38, scans: 2104, joined: 465 },
+      C: { name: 'The map', posters: 23, scans: 697, joined: 140 },
+    });
+    for (const [k, v] of Object.entries(growthFigures)) expect(r.body.figures[k]).toEqual(v);
+    expect(r.body.figures['members.waitlist.median_days']).toBe(24);
+    expect(r.body.MEMBER_SUMMARY).toEqual({ invited: 300, opened: 64, active: 124, funded: { Bank: 71, $5: 38, Deposit: 15 } });
+    expect(r.body.NEXT_BATCH).toEqual({ number: 13 });
+    expect((await call(kai, 'GET', '/audit')).body.entries[0]).toMatchObject({ action: 'Showed names on the forms', area: 'growth' });
+  });
+
+  test('Growth without asking: names and emails masked the way the page masks them', async () => {
+    const r = await call(kai, 'GET', '/sections/growth');
+    expect(r.body.INBOX[0].who).toEqual([mask(growthFx.forms[0].who[0]), mask(growthFx.forms[0].who[1])]);
+    expect(r.body.INBOX[0].mail).toBe('m•••@g•••.com');
+    expect(JSON.stringify(r.body.INBOX)).not.toContain(growthFx.forms[0].mail);
+  });
+
+  test('Growth at Totals (every member): no inbox at all, the rest the same', async () => {
+    const member = await signIn('did:member|member@example.com');
+    const r = await call(member, 'GET', '/sections/growth?reveal=1');
+    expect(r.status).toBe(200);
+    expect(r.body.INBOX).toBeNull();
+    expect(r.body.names).toBe('none');
+    expect(r.body.POSTERS).toEqual(growthFx.posters);
+    expect(JSON.stringify(r.body)).not.toContain('@');
+  });
+
+  test('Field: the prototype’s route, stops, tasks and shops due later; None is refused', async () => {
+    const r = await call(kai, 'GET', '/sections/field');
+    expect(r.status).toBe(200);
+    expect(r.body.ROUTE).toEqual(fieldFx.route);
+    expect(r.body.STOPS).toEqual(fieldFx.stops);
+    expect(r.body.LATER).toEqual(fieldFx.later);
+    expect(r.body.SHOP_INFO).toEqual(fieldFx.shopInfo);
+    expect(r.body.POSTERS).toEqual(growthFx.posters);
+    const member = await signIn('did:member|member@example.com');
+    expect((await call(member, 'GET', '/sections/field')).status).toBe(403);
   });
 });
