@@ -1,4 +1,6 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { LIVE } from '../live/env';
+import * as live from '../live/account';
 import { css, swapClass } from '../runtime/dom';
 import { D, pctX } from './contracts';
 import { compBar, head, ic, pct, rng } from './core';
@@ -18,6 +20,7 @@ import {
   LOG,
   MON,
   NOW,
+  PEOPLE_T,
   RESULT,
   RPN,
   RS,
@@ -1419,11 +1422,17 @@ export function openRFlow(kind, id) {
       h: 'Pick a person',
       post: (
         <div className="seg2" role="group" aria-label="Person">
-          {['Dana Ruiz', 'Marcus Lee'].map((x, i) => (
-            <button key={i} type="button" aria-pressed={i === 1}>
-              {x}
-            </button>
-          ))}
+          {LIVE
+            ? PEOPLE_T.filter((p) => p.id !== vars.meId && !p.off).map((p, i) => (
+                <button key={p.id} type="button" data-pid={p.id} aria-pressed={i === 0}>
+                  {p.n}
+                </button>
+              ))
+            : ['Dana Ruiz', 'Marcus Lee'].map((x, i) => (
+                <button key={i} type="button" aria-pressed={i === 1}>
+                  {x}
+                </button>
+              ))}
         </div>
       ),
       rows: [
@@ -1432,6 +1441,11 @@ export function openRFlow(kind, id) {
         ['Logged', 'Yes', 1],
       ],
       btn: 'Sign them out',
+      api: () => {
+        const b = document.querySelector('.modal .seg2 [aria-pressed="true"]');
+        if (!b?.dataset.pid) return Promise.reject(new Error('Pick someone first'));
+        return live.teamChange(f, () => live.signOutEverywhere(b.dataset.pid));
+      },
       steps: ['Ended every session', 'Logged it'],
       done: ['Signed out.', 'They can sign back in with their own passkey.'],
     };

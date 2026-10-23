@@ -1,4 +1,5 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { LIVE } from '../live/env';
 import { BrandMark } from '../App';
 import { attrs, css, html } from '../runtime/dom';
 import { closePf } from './core';
@@ -97,7 +98,7 @@ export function sgnBody() {
         <div className="sgn-hd">
           <span className="lbl">Data room · first sign-in</span>
           <h1 className="h1">Before you look.</h1>
-          <p>You have read-only access to Clear’s numbers, contracts, votes and records until 21 Nov. It’s shared with you in confidence.</p>
+          <p>You have read-only access to Clear’s numbers, contracts, votes and records until {LIVE && SG.until ? SG.until : '21 Nov'}. It’s shared with you in confidence.</p>
         </div>
         <div className="sgn-kv sgn-terms">
           <span>Keep it confidential</span>
@@ -105,7 +106,7 @@ export function sgnBody() {
           <span>What’s logged</span>
           <span>Every page you open</span>
           <span>Access ends</span>
-          <span>21 Nov, unless Clear extends it</span>
+          <span>{LIVE && SG.until ? SG.until : '21 Nov'}, unless Clear extends it</span>
           <span>Questions</span>
           <span>kai@useclear.org</span>
         </div>
@@ -141,7 +142,7 @@ export function sgnBody() {
     ) : (
       <div className="sgn-hd">
         <span className="lbl">Signed in · Admin</span>
-        <h1 className="h1">Welcome back, Kai.</h1>
+        <h1 className="h1">Welcome back, {LIVE ? SG.name : 'Kai'}.</h1>
         <p>Opening the Command Center.</p>
       </div>
     );
@@ -167,6 +168,16 @@ export function sgnBody() {
             Email me a code
           </button>
         </form>
+        {/* Members who joined with a phone, Google or Apple have no passkey or email here (DECISIONS). */}
+        {LIVE ? (
+          <div className="sgn-row">
+            <button type="button" className="sgn-link" data-sgn="other">
+              Other ways to sign in
+            </button>
+          </div>
+        ) : (
+          ''
+        )}
         <label className="sgn-keep">
           <input type="checkbox" id="sgnKeep" {...attrs(SG.keep ? ' checked' : '')} />
           Keep me signed in on this device for 12 hours
@@ -265,7 +276,7 @@ export function sgnIn() {
       setWho(SG.view.who, ROLES[SG.view.g][0].replace(/s$/, ''));
     } else {
       S.view = null;
-      setWho('Kai', 'Admin');
+      setWho(LIVE ? SG.name : 'Kai', 'Admin');
     }
     go(S.view ? (vLevel('home') > 0 ? 'home' : 'growth') : 'home');
   }, 1100);

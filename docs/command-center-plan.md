@@ -187,7 +187,12 @@ has the detail.
   state), pixels (1500, 1100 and 390 px, Paper and Ink) and a click crawl. The prototype's screenshot
   is the baseline, so no app baselines are stored.
 
-### Phase 2: auth, people and permissions
+### Phase 2: auth, people and permissions (built)
+
+Built as planned, with the decisions in `command-reference/DECISIONS.md` (Phase 2). Two changes to
+the plan: the read-only rules for the sections' own data stay in the browser until Phase 3 serves
+that data (the API's own endpoints are enforced already), and Ops Safe signers wait for Phase 4.
+
 
 - `/api/command/*` router behind `requireAuth`, then a `commandAccess` middleware: map the Privy DID
   to `command.person`, load effective levels (`custom ?? group`, at least the Members row), and expose

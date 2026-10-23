@@ -1,4 +1,6 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { LIVE } from '../live/env';
+import { loadTeam, logView } from '../live/account';
 import { Fragment } from 'react';
 import { attrs, css, html } from '../runtime/dom';
 import { contractsPage } from './contracts';
@@ -232,6 +234,7 @@ export function render() {
   if (S.view && vLevel(r) === 1) vScrub($('#main'));
   corridorMount();
   requestAnimationFrame(syncPages);
+  if (LIVE) logView();
 }
 export function go(r) {
   if (!NAMES[r]) r = 'home';
@@ -358,9 +361,21 @@ export function openItem(id) {
   document.addEventListener('keydown', onKey);
   $('.modal [data-go-step]').focus();
 }
-export function runSteps(id) {
+export function runSteps(id, checked) {
   const w = S.waiting.find((x) => x.id === id);
   if (!w) return;
+  // a live item (an access change waiting on a second admin) is approved on the server first
+  if (w.api && !checked) {
+    const b = document.querySelector('.modal [data-go-step]');
+    if (b) b.disabled = true;
+    return w.api().then(
+      () => runSteps(id, true),
+      (e) => {
+        if (b) b.disabled = false;
+        toast(e.message);
+      },
+    );
+  }
   const box = $('.m-mn');
   const t = $('#mt');
   html(t, w.mode === 'approve' ? 'Working' : 'Handing off');
@@ -428,6 +443,7 @@ export function finish(id) {
   S.waiting = S.waiting.filter((x) => x.id !== id);
   closeModal();
   render();
+  if (LIVE && w?.live) loadTeam().then(render, () => undefined);
 }
 
 /* ── Events ──────────────────────────────────────────────── */

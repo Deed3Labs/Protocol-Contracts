@@ -67,6 +67,8 @@ export function attrs(s: string | false | null | undefined): Record<string, unkn
     const value = m[2] ?? m[3] ?? m[4];
     const name = lower.startsWith('data-') || lower.startsWith('aria-') ? raw : NAMES[lower] ?? (raw.includes('-') ? camel(raw) : raw);
     if (lower === 'style') out.style = css(value ?? '');
+    // a starting state, as in HTML, not a value React holds the field to
+    else if (lower === 'checked') out.defaultChecked = true;
     else if (value === undefined) out[name] = BOOL.has(lower) ? true : '';
     else out[name] = value;
   }

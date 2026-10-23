@@ -3055,6 +3055,8 @@ export const PEOPLE_T = [
     terms: 0,
   },
 ];
+/** The prototype's team, kept for the demo rows elsewhere that name them (Records, Contracts) once the live team replaces PEOPLE_T. */
+export const DEMO_PEOPLE = PEOPLE_T.slice();
 export const INVITES = [['PS', 'Priya Shah', 'field', 'Sent 19 Oct · expires 26 Oct']];
 export const CAN = [
   /* capability, who can do it */ ['Second sign on a money move', ['K', 'DR']],

@@ -11,6 +11,7 @@ describe('attrs: attribute strings the prototype wrote into tags', () => {
     expect(attrs('aria-current="page"')).toEqual({ 'aria-current': 'page' });
     expect(attrs(' data-state="warn" data-close')).toEqual({ 'data-state': 'warn', 'data-close': '' });
     expect(attrs(' disabled')).toEqual({ disabled: true });
+    expect(attrs(' checked')).toEqual({ defaultChecked: true });
     expect(attrs("title='Two words' tabindex=0")).toEqual({ title: 'Two words', tabIndex: '0' });
   });
   test('class and style become React props', () => {
