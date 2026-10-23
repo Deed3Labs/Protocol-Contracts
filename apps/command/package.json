@@ -1,0 +1,32 @@
+{
+  "name": "@clear/command",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "vite --port 5230",
+    "build": "tsc -b && vite build",
+    "build:vercel": "vite build",
+    "preview": "vite preview",
+    "test": "bun test src",
+    "typecheck": "tsc -b --noEmit",
+    "test:visual": "playwright test",
+    "test:crawl": "CRAWL=1 playwright test crawl --project=wide",
+    "port": "node scripts/port/index.cjs"
+  },
+  "dependencies": {
+    "maplibre-gl": "^4.7.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "turbo": "^2.3.3",
+    "typescript": "~5.8.3",
+    "vite": "^7.0.4"
+  }
+}
