@@ -17,7 +17,7 @@ import {
   type Levels,
   type Section,
 } from '../services/command/levels.js';
-import { NotLiveYet, membersSection } from '../services/command/sections.js';
+import { NotLiveYet, fieldSection, growthSection, membersSection } from '../services/command/sections.js';
 import * as store from '../services/command/store.js';
 
 /*
@@ -304,6 +304,30 @@ export function commandRouter(deps: CommandDeps) {
       const data = await membersSection(c.db, { level, reveal, now: now() });
       if (reveal) await auditFrom(req, { area: 'members', action: 'Showed member names', detail: `${data.MEMBERS.length} members`, result: 'done' });
       res.json(data);
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
+  });
+
+  router.get('/sections/growth', need('growth', TOTALS), async (req, res) => {
+    const c = req.command!;
+    const level = c.levels.growth;
+    const reveal = req.query.reveal === '1' && level >= SEE;
+    try {
+      const data = await growthSection(c.db, { level, reveal, now: now() });
+      if (reveal) await auditFrom(req, { area: 'growth', action: 'Showed names on the forms', detail: `${data.INBOX?.length ?? 0} forms`, result: 'done' });
+      res.json(data);
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
+  });
+
+  router.get('/sections/field', need('field', TOTALS), async (req, res) => {
+    const c = req.command!;
+    try {
+      res.json(await fieldSection(c.db, { level: c.levels.field, reveal: false, now: now() }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;

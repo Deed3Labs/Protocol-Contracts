@@ -1,3 +1,5 @@
+import growthFigures from './fixtures/growth-figures.json';
+
 /**
  * The figures each section shows that aren't counted from its own rows: weekly series, the waitlist,
  * previews. Stored in `command.figures` by key, written by the seed (these values, the prototype's)
@@ -42,4 +44,7 @@ export const MEMBERS_FIGURES = {
   },
 } as const;
 
-export const SEED_FIGURES: Record<string, unknown> = { ...MEMBERS_FIGURES };
+/** Growth's figures, written from the prototype's data by apps/command/scripts/fixtures.ts. */
+export const GROWTH_FIGURES: Record<string, unknown> = growthFigures;
+
+export const SEED_FIGURES: Record<string, unknown> = { ...MEMBERS_FIGURES, ...GROWTH_FIGURES };

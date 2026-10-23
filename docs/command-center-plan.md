@@ -208,7 +208,8 @@ that data (the API's own endpoints are enforced already), and Ops Safe signers w
 
 Kai chose stored figures refreshed by jobs, and one PR per section group: 3a the foundation and
 Members, 3b Growth and Field, 3c Merchants, 3d Shop and Money with the yield pool, 3e Contracts,
-Governance, Records and Home. 3a is the pattern the rest follow (DECISIONS.md, Phase 3).
+Governance, Records and Home. 3a is the pattern the rest follow (DECISIONS.md, Phase 3). After 3e, one
+more step saves each section's own actions (a scan, a stage move, a document upload) through the API.
 
 
 - Migrations for the rest of the `command` schema. Money in integer cents, UUIDs, timestamps.

@@ -133,3 +133,22 @@ Decided 2026-10-23 (Kai: stored figures, one PR per section group).
 - **Until a section is served, the live app still draws its demo data.** Members is first (3a).
   Growth and Field, Merchants, Shop and Money, then Contracts, Governance and Records follow, with
   Home last because it summarises the others.
+
+### 3b: Growth and Field
+
+- **Rows:** the 102 posters and their three designs, the website's forms, and the day's route (its
+  stops, tasks, the shops due later, and the route's own facts: who drives it, when it started, the
+  miles). **Figures:** visits, sources, landing pages, the heat map, cohorts, per-shop 30-day numbers,
+  devices, returning visits and the rest of Growth's analytics.
+- **Design totals.** Posters per design are counted from the posters. The prototype's scans and joins
+  per design don't equal its posters' sums, so they're stored figures.
+- **Growth counts members without reading them.** Cohorts and the nudge card need how many members
+  are invited, opened, active and how they funded. The API counts that and sends only the counts,
+  because Growth at Totals (every member) has no access to Members.
+- **The swap Growth suggests** (Redlands Tire & Lube, 12.0%) is worked out: the top shop whose scans
+  turn into joins least often. So is the scans-to-joins line on the shops chart (all shops, boards
+  and the rest).
+- **Forms are personal.** Names and emails leave the API masked unless asked for (logged); at
+  Totals the inbox isn't sent and the Forms tab isn't shown.
+- **Field's actions** (saving a scan, adding a stop) still change only the page, as in the prototype;
+  they're saved through the API in a later step, with the other sections' actions.

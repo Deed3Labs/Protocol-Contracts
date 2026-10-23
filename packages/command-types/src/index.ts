@@ -5,6 +5,7 @@
  */
 export * from './figures';
 export * from './members';
+export * from './growth';
 
 /** The prototype's "today": a seeded database is read as of this day, so its pages match the design. */
 export const SEED_TODAY = Date.UTC(2026, 9, 21);
