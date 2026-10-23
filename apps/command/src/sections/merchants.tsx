@@ -1,4 +1,6 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { LIVE } from '../live/env';
+import { fig } from '../live/figures';
 import { Fragment } from 'react';
 import { attrs, css, html } from '../runtime/dom';
 import { D } from './contracts';
@@ -22,14 +24,17 @@ import {
   S,
   SIGNED,
   TODAY,
+  TX,
   TXO,
   XS,
   vars,
+  BOARD,
+  FLEET,
 } from './data';
-import { G, columns, figHtml, figSide, fmtD, gCell, kpiCell, metricsCell, spark } from './growth';
+import { G, columns, dayName, figHtml, figSide, fmtD, gCell, kpiCell, metricsCell, spark } from './growth';
 import { mkey } from './home';
 import { ddHtml } from './kit';
-import { stageFlow } from './members';
+import { daysAgo, stageFlow } from './members';
 import { strip } from './money';
 import { modalShell, onKey, render, vLevel } from './shell';
 import { accOf, grpName } from './team';
@@ -948,6 +953,11 @@ export function xOverview() {
 /* ── Pipeline board: one list of shops, each with a stage. Drag a card between columns (press and drag with a mouse, touch and hold on a phone). ── */
 export function kbInit() {
   if (XS.board) return;
+  // the live app's board comes from the API, card by card (merchant_stage)
+  if (LIVE && BOARD.length) {
+    XS.board = BOARD.map((c) => ({ ...c, contact: { ...c.contact } }));
+    return;
+  }
   XS.board = [
     ...PROSPECTS.map((p, i) => ({
       id: 'p' + i,
@@ -2281,7 +2291,7 @@ export function xPayouts() {
       <span className="k">Still due from members</span>
       <b className="num">{money(sales - collected)}</b>
       <span className="k">Due by</span>
-      <b>30 Oct</b>
+      <b>{fmtD(schedule().collectedBy)}</b>
     </div>,
     <div className="c-ft">
       <div className="row">
@@ -2291,13 +2301,17 @@ export function xPayouts() {
   );
 
   /* calendar: five weeks from Mon 19 Oct */
-  const start = Date.UTC(2026, 9, 19),
+  const sc = schedule(),
+    start = sc.calendarStart,
+    // the calendar's days count from the 19th, as the prototype keyed them
+    at = (t) => 19 + Math.round((t - start) / DAY),
+    under = TXO.find((m) => m.id === sc.underway.id),
     marks = {
-      21: 'today',
-      22: [money(412.6), 'Rosa’s'],
-      33: [money(runTotal), 'Monthly run'],
-      35: [money(payOf(TXO[7]).total + payOf(TXO[9]).total), 'NET-14'],
-      49: [money(1140.8), 'NET-14, est.'],
+      [at(vars.asOf ?? TODAY)]: 'today',
+      [at(sc.underway.date)]: [money(payOf(under).total), under.name.split(' ')[0]],
+      [at(sc.monthly)]: [money(runTotal), 'Monthly run'],
+      [at(sc.net14)]: [money(net14Shops().reduce((a, m) => a + payOf(m).total, 0)), 'NET-14'],
+      [at(sc.net14Next.date)]: [money(sc.net14Next.estimate), 'NET-14, est.'],
     };
   const days = Array.from(
     {
@@ -2328,8 +2342,8 @@ export function xPayouts() {
   const cal = gCell(
     's-12',
     'Payout calendar',
-    '19 Oct – 22 Nov',
-    figHtml('4', 'payouts in the next 30 days · NET-14 every other Wednesday'),
+    `${fmtD(start)} – ${fmtD(start + 34 * DAY)}`,
+    figHtml(String(Object.values(marks).filter((v) => v !== 'today').length), 'payouts in the next 30 days · NET-14 every other Wednesday'),
     <div className="cal">
       <div className="cal-h">
         {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, __k) => (
@@ -2510,108 +2524,8 @@ export function xHardware() {
     ['T', 'Tap dock', 'Card reader'],
     ['C', 'Counter', 'Tablet'],
   ];
-  const fleet = [
-    [
-      'citrus',
-      {
-        P: ['on'],
-        t: ['on', 'on', 'on', 'low', 'on', 'off'],
-      },
-      'Table 4 battery low · table 6 offline since Tue',
-      '2 min ago',
-    ],
-    [
-      'orange',
-      {
-        P: ['off'],
-      },
-      'Point unplugged since 08:40',
-      '08:40',
-    ],
-    [
-      'rosas',
-      {
-        P: ['on'],
-        T: ['on'],
-      },
-      '',
-      'Now',
-    ],
-    [
-      'tire',
-      {
-        T: ['on'],
-        C: ['on'],
-      },
-      '',
-      'Now',
-    ],
-    [
-      'hdw',
-      {
-        T: ['on'],
-        C: ['on'],
-      },
-      '',
-      '1 min ago',
-    ],
-    [
-      'uptown',
-      {
-        P: ['on'],
-      },
-      '',
-      'Now',
-    ],
-    [
-      'mesa',
-      {
-        P: ['on'],
-      },
-      '',
-      '3 min ago',
-    ],
-    [
-      'books',
-      {
-        P: ['on'],
-      },
-      '',
-      'Now',
-    ],
-    [
-      'mich',
-      {
-        P: ['on'],
-      },
-      '',
-      'Now',
-    ],
-    [
-      'nails',
-      {
-        P: ['on'],
-      },
-      '',
-      '4 min ago',
-    ],
-    [
-      'phone',
-      {
-        T: ['on'],
-      },
-      '',
-      'Now',
-    ],
-    [
-      'pet',
-      {
-        P: ['on'],
-      },
-      '',
-      '1 min ago',
-    ],
-  ];
+  const fleet = FLEET;
+
   const all = fleet.flatMap((f) => Object.values(f[1]).flat()),
     total = all.length,
     off = all.filter((x) => x === 'off').length,
@@ -2624,18 +2538,18 @@ export function xHardware() {
         'Devices out',
         String(total),
         `${byType('P') + byType('t')} Clear Points, ${byType('T')} Tap docks, ${byType('C')} Counters`,
-        [0, 0, 2, 4, 6, 8, 10, 13, 15, 17, 19, total],
+        [...fig('merchants.hardware.devices_series'), total],
         'Now',
       )}
       {kpiCell(
         'Online',
         pct(total - off, total),
         `${off} offline · ${low} battery low`,
-        [100, 100, 100, 95, 100, 100, 94, 100, 95, 90, 95, ((total - off) / total) * 100],
+        [...fig('merchants.hardware.online_series'), ((total - off) / total) * 100],
         'Now',
       )}
-      {kpiCell('Pre-orders', '19', 'devices across 7 shops · deposits held', [0, 0, 0, 0, 2, 2, 5, 8, 11, 14, 17, 19], 'Open')}
-      {kpiCell('Unit cost', '$61.00', 'repaired, against $189.00 new', [88, 84, 80, 76, 74, 71, 69, 66, 64, 63, 62, 61], 'Average')}
+      {kpiCell('Pre-orders', String(fig('merchants.hardware.preorders').devices), `devices across ${fig('merchants.hardware.preorders').shops} shops · deposits held`, fig('merchants.hardware.preorders').series, 'Open')}
+      {kpiCell('Unit cost', money(fig('merchants.hardware.unit_cost').repaired), `repaired, against ${money(fig('merchants.hardware.unit_cost').fresh)} new`, fig('merchants.hardware.unit_cost').series, 'Average')}
     </>
   );
   const ST = {
@@ -3230,3 +3144,61 @@ export function openXFlow(kind, id) {
    Built for a phone on the poster route. Ties to Home ("Poster route 3/8 · Marcus Lee"),
    Growth (P-044 faded at Mesa Laundry, swaps due) and Merchants (Orange St. Point unplugged since 08:40,
    Citrus Bowl table 4 battery low). */
+
+// ── counted from the rows ───────────────────────────────────────────────────
+
+const WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
+/** "Seven", as the prototype's titles write a count; a figure past twelve. */
+export function word(n) {
+  return WORDS[n] ?? int(n);
+}
+export function stageCount(stage) {
+  return PROSPECTS.filter((p) => p[6] === stage).length;
+}
+export function signingCount() {
+  return SIGNED.filter((s) => s[4] === 'signing').length;
+}
+/** Founding seats taken: transacting founding shops, and a founding shop still signing. */
+export function foundingTaken() {
+  return TXO.filter((m) => m.founding).length + signingCount();
+}
+export function foundingOpen() {
+  return fig('merchants.founding_seats') - foundingTaken();
+}
+/** What the shops in talks would finance a month if they all signed. */
+export function talkValue() {
+  return PROSPECTS.filter((p) => p[6] === 'talking').reduce((a, p) => a + p[3], 0);
+}
+export function termsCount(t) {
+  return TXO.filter((m) => m.terms === t).length;
+}
+/** Shops per cap, for the caps a shop has. */
+export function capsUsed() {
+  return CAPS.map((c) => [`$${c}`, TXO.filter((m) => m.cap === c).length]).filter(([, n]) => n > 0);
+}
+export function owedTotal() {
+  return Object.values(OWED).reduce((a, v) => a + v, 0);
+}
+/** $10 redemptions owed to shops that are signed but not taking payments yet: paid with the monthly run. */
+export function owedSignedOnly() {
+  return Object.entries(OWED)
+    .filter(([id]) => !TX.some((t) => t[0] === id))
+    .map(([id, v]) => [SIGNED.find((x) => x[0] === id)?.[1] ?? id, v]);
+}
+/** NET-14 shops paid on the next NET-14 day (the one already underway is apart). */
+export function net14Shops() {
+  return TXO.filter((m) => m.terms === 'NET-14' && m.id !== schedule().underway.id);
+}
+export function schedule() {
+  return fig('merchants.payouts.schedule');
+}
+export function monthDays() {
+  return new Date(vars.asOf ?? TODAY).getUTCDate();
+}
+export function daysFromToday(t) {
+  return Math.round((t - (vars.asOf ?? TODAY)) / DAY);
+}
+export function newestLine() {
+  const n = fig('merchants.newest_partner');
+  return `${n.name} joined ${daysAgo(n.joined)}`;
+}

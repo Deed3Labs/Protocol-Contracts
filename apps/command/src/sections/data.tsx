@@ -1354,6 +1354,111 @@ export const OWED = {
   tacos: 40,
 };
 export const TXO = TX.map(T);
+/** The pipeline board's cards, from the API in the live app; the preview builds them from the lists above (kbInit). */
+export const BOARD = [];
+/** The hardware fleet: one row per shop, a status per device by type, what needs a visit, the last check-in. */
+export const FLEET = [
+    [
+      'citrus',
+      {
+        P: ['on'],
+        t: ['on', 'on', 'on', 'low', 'on', 'off'],
+      },
+      'Table 4 battery low · table 6 offline since Tue',
+      '2 min ago',
+    ],
+    [
+      'orange',
+      {
+        P: ['off'],
+      },
+      'Point unplugged since 08:40',
+      '08:40',
+    ],
+    [
+      'rosas',
+      {
+        P: ['on'],
+        T: ['on'],
+      },
+      '',
+      'Now',
+    ],
+    [
+      'tire',
+      {
+        T: ['on'],
+        C: ['on'],
+      },
+      '',
+      'Now',
+    ],
+    [
+      'hdw',
+      {
+        T: ['on'],
+        C: ['on'],
+      },
+      '',
+      '1 min ago',
+    ],
+    [
+      'uptown',
+      {
+        P: ['on'],
+      },
+      '',
+      'Now',
+    ],
+    [
+      'mesa',
+      {
+        P: ['on'],
+      },
+      '',
+      '3 min ago',
+    ],
+    [
+      'books',
+      {
+        P: ['on'],
+      },
+      '',
+      'Now',
+    ],
+    [
+      'mich',
+      {
+        P: ['on'],
+      },
+      '',
+      'Now',
+    ],
+    [
+      'nails',
+      {
+        P: ['on'],
+      },
+      '',
+      '4 min ago',
+    ],
+    [
+      'phone',
+      {
+        T: ['on'],
+      },
+      '',
+      'Now',
+    ],
+    [
+      'pet',
+      {
+        P: ['on'],
+      },
+      '',
+      '1 min ago',
+    ],
+  ];
 export const CAPS = [100, 120, 150, 300, 500];
 /* ── Overview ─────────────────────────────────────────────────────────── */
 /* real places for the live map: lng, lat, and which side the label sits so neighbours never collide */

@@ -4,6 +4,8 @@ import fieldFx from '@clear/command-types/src/fixtures/field.json';
 import growthFigures from '@clear/command-types/src/fixtures/growth-figures.json';
 import growthFx from '@clear/command-types/src/fixtures/growth.json';
 import fixture from '@clear/command-types/src/fixtures/members.json';
+import merchFx from '@clear/command-types/src/fixtures/merchants.json';
+import merchFigures from '@clear/command-types/src/fixtures/merchants-figures.json';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Db } from '../db/db.js';
@@ -71,7 +73,7 @@ describe('the seed', () => {
     expect(rows[0].n).toBe(Object.keys(MEMBERS_FIGURES).length);
     const all = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM command.figures');
     expect(all.rows[0].n).toBe(Object.keys(SEED_FIGURES).length);
-    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops']));
+    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops', '30 merchants', '32 board cards']));
   });
 
   test('never overwrites a figure a live job wrote', async () => {
@@ -197,5 +199,34 @@ describe('Growth and Field, as each level gets them', () => {
     expect(r.body.POSTERS).toEqual(growthFx.posters);
     const member = await signIn('did:member|member@example.com');
     expect((await call(member, 'GET', '/sections/field')).status).toBe(403);
+  });
+});
+
+describe('Merchants, as each level gets it', () => {
+  test('See and up: the prototype’s partners, signed shops, prospects, $10s owed, board and fleet, exactly', async () => {
+    const kai = await signIn('did:kai|kai@useclear.org');
+    const r = await call(kai, 'GET', '/sections/merchants');
+    expect(r.status).toBe(200);
+    expect(r.body.TX).toEqual(merchFx.tx);
+    expect(r.body.SIGNED).toEqual(merchFx.signed);
+    expect(r.body.PROSPECTS).toEqual(merchFx.prospects);
+    expect(r.body.OWED).toEqual(merchFx.owed);
+    expect(r.body.BOARD).toEqual(merchFx.board);
+    expect(r.body.FLEET).toEqual(merchFx.fleet);
+    for (const [k, v] of Object.entries(merchFigures)) expect(r.body.figures[k]).toEqual(v);
+  });
+
+  test('Totals (every member): the same shops and numbers, without the shops’ people', async () => {
+    const member = await signIn('did:member|member@example.com');
+    const r = await call(member, 'GET', '/sections/merchants');
+    expect(r.status).toBe(200);
+    expect(r.body.TX).toEqual(merchFx.tx);
+    for (const c of r.body.BOARD) {
+      expect(c.contact).toEqual({ name: '', role: '', phone: '', email: '' });
+      expect(c.addr).toBe('');
+    }
+    const body = JSON.stringify(r.body);
+    expect(body).not.toContain('555-0142');
+    expect(body).not.toContain('ray@missionauto.com');
   });
 });

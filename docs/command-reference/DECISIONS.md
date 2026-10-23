@@ -152,3 +152,23 @@ Decided 2026-10-23 (Kai: stored figures, one PR per section group).
   Totals the inbox isn't sent and the Forms tab isn't shown.
 - **Field's actions** (saving a scan, adding a stop) still change only the page, as in the prototype;
   they're saved through the API in a later step, with the other sections' actions.
+
+### 3c: Merchants
+
+- **Rows:** partner shops (`command.merchants`: terms, fee, cap, founding seat, city and place),
+  their cap hits, originations and losses, monthly sales, the $10 redemptions owed to each, the
+  pipeline board's cards (`merchant_stage`, with `merchant_activity` ready for the board's log), and
+  the hardware fleet with each shop's last check-in. The seed provider reads these; the live one will
+  read the merchant app's own tables, as the plan decided.
+- **The board's cards are rows, not a recipe.** The prototype built them in code from the prospect
+  and signed lists plus hand-written due dates and contacts (`kbSeed`). The fixture script runs that
+  code once and stores what it made; the live app draws the board from the rows.
+- **Counted:** every stage count, "44 shops", the founding seats taken and open, what the shops in
+  talks would finance, terms, fees and caps by shop, $10s owed and to how many, which shops are in
+  each payout run and its total, the shops needing a visit, and the titles ("Seven shops are in
+  talks.").
+- **Stored figures:** the weekly series, the payout schedule (run dates and the next NET-14
+  estimate), the share already collected, the pre-orders and unit cost. The pipeline tab's owners
+  and shop kinds are stored too: the prototype's add up to 16 against 14 open shops.
+- **Totals (every member)** sees the same shops and numbers. A shop's contact (name, phone, email)
+  and address are its people's, so the board's cards leave the API without them.

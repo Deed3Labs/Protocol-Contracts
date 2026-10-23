@@ -266,3 +266,69 @@ export async function fieldSection(db: Queryable, o: ReadOptions): Promise<Field
     asOf,
   };
 }
+
+// ── Merchants ───────────────────────────────────────────────────────────────
+
+export interface MerchantsPayload {
+  TX: unknown[][];
+  SIGNED: string[][];
+  PROSPECTS: unknown[][];
+  OWED: Record<string, number>;
+  BOARD: Array<Record<string, unknown>>;
+  FLEET: unknown[][];
+  figures: Record<string, unknown>;
+  asOf: number;
+}
+
+const dollars = (c: number | string | null) => (c == null ? null : Number(c) / 100);
+
+export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<MerchantsPayload> {
+  const provider = providerFor('merchants');
+  if (provider === 'live') throw new NotLiveYet('merchants');
+  const { rows: ms } = await db.query<{ id: string; name: string; kind: string; city: string; status: string; founding: boolean; fee_pct: string | null; terms: string | null; cap_cents: number | null; hardware: string | null; cap_hits_7d: number | null; originations: number | null; losses: number | null }>(
+    `SELECT m.*, s.cap_hits_7d, s.originations, s.losses FROM command.merchants m LEFT JOIN command.merchant_stats s ON s.merchant_id = m.id ORDER BY m.position`,
+  );
+  const { rows: months } = await db.query<{ merchant_id: string; month: Date; cleared_cents: string; sales: number }>('SELECT * FROM command.merchant_months');
+  const month = (id: string, y: number, m: number) => months.find((r) => r.merchant_id === id && new Date(r.month).getUTCFullYear() === y && new Date(r.month).getUTCMonth() === m - 1);
+  const TX = ms
+    .filter((m) => m.status === 'transacting')
+    .map((m) => {
+      const oct = month(m.id, 2026, 10),
+        sept = month(m.id, 2026, 9);
+      return [m.id, m.name, m.kind, m.city, m.founding ? 1 : 0, Number(m.fee_pct), m.terms, dollars(m.cap_cents), m.cap_hits_7d ?? 0, m.originations ?? 0, m.losses ?? 0, dollars(oct?.cleared_cents ?? 0), oct?.sales ?? 0, dollars(sept?.cleared_cents ?? 0), m.hardware];
+    });
+  const SIGNED = ms.filter((m) => m.status !== 'transacting').map((m) => (m.status === 'signing' ? [m.id, m.name, m.kind, m.city, 'signing'] : [m.id, m.name, m.kind, m.city]));
+  const { rows: owedRows } = await db.query<{ merchant_id: string; owed_cents: number }>('SELECT * FROM command.redemptions_owed');
+  const OWED = Object.fromEntries(owedRows.map((r) => [r.merchant_id, dollars(r.owed_cents)!]));
+
+  const { rows: cards } = await db.query<{ id: string; merchant_id: string | null; name: string; kind: string; city: string; stage: string; owner: string | null; per_month_cents: number | null; next_step: string | null; due_on: Date | null; last_contact_at: Date | null; contact: Record<string, string>; source: string; address: string; flag: boolean; founding: boolean; posters: number | null }>(
+    'SELECT * FROM command.merchant_stage ORDER BY position',
+  );
+  // a shop's contact is a person: at Totals the board keeps its cards, not their details
+  const blank = { name: '', role: '', phone: '', email: '' };
+  const BOARD = cards.map((c) => {
+    const base: Record<string, unknown> = { id: c.id, name: c.name, kind: c.kind, city: c.city };
+    if (c.stage === 'prospect' || c.stage === 'talking') Object.assign(base, { val: dollars(c.per_month_cents), owner: c.owner, next: c.next_step, stage: c.stage, flag: c.flag });
+    else if (c.stage === 'signing') Object.assign(base, { stage: c.stage, founding: c.founding ? 1 : 0, m: c.merchant_id });
+    else Object.assign(base, { stage: c.stage, m: c.merchant_id, posters: c.posters, owed: OWED[c.merchant_id ?? ''] ?? 0 });
+    return Object.assign(base, {
+      due: c.due_on ? ms_(c.due_on) : null,
+      last: c.last_contact_at ? ms_(c.last_contact_at) : null,
+      contact: o.level <= TOTALS ? blank : c.contact,
+      source: c.source,
+      addr: o.level <= TOTALS ? '' : c.address,
+    });
+  });
+  const PROSPECTS = cards.filter((c) => !c.merchant_id).map((c) => [c.name, c.kind, c.city, dollars(c.per_month_cents), c.owner, c.next_step, c.stage]);
+
+  const { rows: devs } = await db.query<{ merchant_id: string; kind: string; seq: number; status: string }>('SELECT * FROM command.device_fleet ORDER BY merchant_id, kind, seq');
+  const { rows: chk } = await db.query<{ merchant_id: string; issue: string; last_seen: string }>('SELECT * FROM command.fleet_checkins ORDER BY position');
+  const FLEET = chk.map((c) => {
+    const kinds: Record<string, string[]> = {};
+    for (const d of devs.filter((d) => d.merchant_id === c.merchant_id)) (kinds[d.kind] ??= []).push(d.status);
+    return [c.merchant_id, kinds, c.issue, c.last_seen];
+  });
+
+  return { TX, SIGNED, PROSPECTS, OWED, BOARD, FLEET, figures: await figures(db, 'merchants'), asOf: asOfFor(provider, o.now) };
+}
+const ms_ = (d: Date) => new Date(d).getTime();
