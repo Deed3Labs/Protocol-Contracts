@@ -34,6 +34,7 @@ afterEach(() => {
 let seq = 0;
 const key = () => `k-${++seq}-${Math.random().toString(36).slice(2, 6)}`;
 const orders: OrderDeps = { taxApi: null, pinCheck: async () => null };
+// Every call runs at OCT_16: the services default to the real clock, which passes these links’ 7-day expiry.
 const OCT_16 = new Date('2026-10-16T17:40:00Z');
 const wallet = () => `0x${Math.random().toString(16).slice(2).padEnd(40, '0').slice(0, 40)}`;
 
@@ -111,7 +112,7 @@ describe('New charge › Send a link', () => {
     const shop = await miCasa();
     const link = await createPaymentLink(db, orders, { merchant: shop.merchant, staffId: shop.staff.manager, request: { for: 'amount', amountCents: 2500, note: null, expires: 'never', allowOverTime: false } });
     expect(link).toMatchObject({ name: 'Payment', amountCents: 2500, totalCents: 2500, expiresAt: null });
-    expect((await publicLink(db, orders, link.slug)).order).toMatchObject({ totalCents: 2500, taxCents: 0 });
+    expect((await publicLink(db, orders, link.slug, OCT_16)).order).toMatchObject({ totalCents: 2500, taxCents: 0 });
   });
 
   test('an archived item, or one with options to choose, can’t be a link', async () => {
@@ -165,12 +166,12 @@ describe('expired and turned-off links refuse payment', () => {
     const shop = await miCasa();
     const link = await trayLink(shop);
     const { clear } = fakeClear();
-    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug });
+    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug, now: OCT_16 });
     const off = await deactivatePaymentLink(db, orders, { merchant: shop.merchant, staffId: shop.staff.manager, id: link.id });
     expect(off.active).toBe(false);
-    expect((await publicLink(db, orders, link.slug)).state).toBe('inactive');
-    await expect(startLinkSession(db, deps(clear), { slug: link.slug })).rejects.toMatchObject({ code: 'inactive' });
-    await expect(payInSession(db, deps(clear), { session, request: { method: 'clear', idempotencyKey: key() } })).rejects.toMatchObject({ code: 'inactive' });
+    expect((await publicLink(db, orders, link.slug, OCT_16)).state).toBe('inactive');
+    await expect(startLinkSession(db, deps(clear), { slug: link.slug, now: OCT_16 })).rejects.toMatchObject({ code: 'inactive' });
+    await expect(payInSession(db, deps(clear), { session, now: OCT_16, request: { method: 'clear', idempotencyKey: key() } })).rejects.toMatchObject({ code: 'inactive' });
   });
 
   test('another shop’s link can’t be turned off', async () => {
@@ -186,9 +187,10 @@ describe('the amount can’t be changed by the request', () => {
     const shop = await miCasa();
     const link = await trayLink(shop);
     const { clear } = fakeClear();
-    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug });
+    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug, now: OCT_16 });
     const started = await payInSession(db, deps(clear), {
       session,
+      now: OCT_16,
       request: { method: 'clear', idempotencyKey: key(), amountCents: 1, totalCents: 1, lines: [{ itemId: null, name: 'Taco tray for 12', amountCents: 1 }] },
     });
     expect(started.method).toBe('clear');
@@ -203,17 +205,17 @@ describe('the amount can’t be changed by the request', () => {
     const shop = await miCasa();
     const link = await trayLink(shop);
     const { clear } = fakeClear();
-    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug });
-    await expect(payInSession(db, deps(clear), { session, request: { method: 'clear', idempotencyKey: key(), rewardId: 'rwd_1' } })).rejects.toMatchObject({ code: 'invalid' });
+    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug, now: OCT_16 });
+    await expect(payInSession(db, deps(clear), { session, now: OCT_16, request: { method: 'clear', idempotencyKey: key(), rewardId: 'rwd_1' } })).rejects.toMatchObject({ code: 'invalid' });
   });
 
   test('a second tap opens the same Clear charge', async () => {
     const shop = await miCasa();
     const link = await trayLink(shop);
     const { clear } = fakeClear();
-    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug });
-    const a = await payInSession(db, deps(clear), { session, request: { method: 'clear', idempotencyKey: key() } });
-    const b = await payInSession(db, deps(clear), { session, request: { method: 'clear', idempotencyKey: key() } });
+    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug, now: OCT_16 });
+    const a = await payInSession(db, deps(clear), { session, now: OCT_16, request: { method: 'clear', idempotencyKey: key() } });
+    const b = await payInSession(db, deps(clear), { session, now: OCT_16, request: { method: 'clear', idempotencyKey: key() } });
     expect(a).toEqual(b);
     expect(a.method === 'clear' && a.url).toMatch(/\/c\/CLR/);
   });
@@ -225,16 +227,17 @@ describe('a link sale', () => {
     const link = await trayLink(shop);
     const { clear, charges } = fakeClear();
     const { session } = await startLinkSession(db, deps(clear), { slug: link.slug, now: OCT_16 });
-    const started = await payInSession(db, deps(clear), { session, request: { method: 'clear', idempotencyKey: key() } });
+    const started = await payInSession(db, deps(clear), { session, now: OCT_16, request: { method: 'clear', idempotencyKey: key() } });
     const code = started.method === 'clear' ? started.chargeCode : '';
     charges.set(code, 'approved');
     const { rows } = await db.query<{ id: string }>('SELECT id FROM payments.tenders WHERE clear_charge_code = $1', [code]);
     await syncClearTender(db, clear, { merchant: shop.merchant, tenderId: rows[0]!.id, actor: null });
-    expect((await paySessionView(db, deps(clear), { session })).state).toBe('paid');
+    expect((await paySessionView(db, deps(clear), { session, now: OCT_16 })).state).toBe('paid');
     const history = await listOrderHistory(db, shop.merchant, '2026-10-16', '2026-10-16');
     expect(history[0]).toMatchObject({ status: 'paid', source: 'link', sourceDetail: link.slug, raisedBy: null, livemode: true, totalCents: 16148 });
     expect(history[0]!.tenders[0]).toMatchObject({ method: 'clear', status: 'approved', amountCents: 16148 });
-    const trail = await auditTrail(db, { merchant: shop.merchant, from: '2026-10-16', to: '2026-10-17' });
+    // The audit log stamps rows with the database’s clock, not OCT_16.
+    const trail = await auditTrail(db, { merchant: shop.merchant, from: '2000-01-01', to: '2100-01-01' });
     expect(trail.find((e) => e.action === 'tender.clear_started')).toMatchObject({ actor: null, source: 'link' });
   });
 
@@ -256,8 +259,8 @@ describe('a link sale', () => {
 
     const link = await trayLink(shop);
     const { clear, charges } = fakeClear(w);
-    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug });
-    const started = await payInSession(db, deps(clear), { session, request: { method: 'clear', idempotencyKey: key() } });
+    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug, now: OCT_16 });
+    const started = await payInSession(db, deps(clear), { session, now: OCT_16, request: { method: 'clear', idempotencyKey: key() } });
     const code = started.method === 'clear' ? started.chargeCode : '';
     charges.set(code, 'approved');
     const { rows } = await db.query<{ id: string; order_id: string }>('SELECT id, order_id FROM payments.tenders WHERE clear_charge_code = $1', [code]);
@@ -274,11 +277,11 @@ describe('a link sale', () => {
     await connectorStore.insert(db, { merchant: shop.merchant, provider: 'stripe', externalAccountId: acct, connectedBy: shop.staff.owner });
     await connectorStore.applyStatus(db, { provider: 'stripe', externalAccountId: acct, chargesEnabled: true, detailsSubmitted: true, at: new Date() });
     const link = await trayLink(shop);
-    expect((await publicLink(db, orders, link.slug)).methods).toEqual({ clear: true, card: true });
+    expect((await publicLink(db, orders, link.slug, OCT_16)).methods).toEqual({ clear: true, card: true });
     const { clear } = fakeClear();
     const d = deps(clear, async () => fake.provider);
-    const { session } = await startLinkSession(db, d, { slug: link.slug });
-    const started = await payInSession(db, d, { session, request: { method: 'card', idempotencyKey: key() } });
+    const { session } = await startLinkSession(db, d, { slug: link.slug, now: OCT_16 });
+    const started = await payInSession(db, d, { session, now: OCT_16, request: { method: 'card', idempotencyKey: key() } });
     expect(started.method).toBe('card');
     const { rows } = await db.query<{ order_id: string; checkout_session_id: string; application_fee_cents: string; created_by: string | null; amount_cents: string }>(
       `SELECT order_id, checkout_session_id, application_fee_cents, created_by, amount_cents FROM payments.tenders WHERE order_id = (SELECT order_id FROM payments.pay_sessions WHERE id = $1)`,
@@ -292,15 +295,15 @@ describe('a link sale', () => {
     const event = { type: 'checkout.session.completed', account: acct, data: { object: { id: rows[0]!.checkout_session_id, payment_intent: paymentId } } } as unknown as Stripe.Event;
     await db.transaction((tx) => handlers['checkout.session.completed']!(tx, event));
     expect((await getOrder(db, shop.merchant, rows[0]!.order_id)).status).toBe('paid');
-    expect((await paySessionView(db, d, { session })).state).toBe('paid');
+    expect((await paySessionView(db, d, { session, now: OCT_16 })).state).toBe('paid');
   });
 
   test('a shop with no card processor isn’t offered card', async () => {
     const shop = await miCasa();
     const link = await trayLink(shop);
     const { clear } = fakeClear();
-    const { session } = await startLinkSession(db, deps(clear, async () => fakeProvider().provider), { slug: link.slug });
-    await expect(payInSession(db, deps(clear, async () => fakeProvider().provider), { session, request: { method: 'card', idempotencyKey: key() } })).rejects.toMatchObject({ code: 'unavailable' });
+    const { session } = await startLinkSession(db, deps(clear, async () => fakeProvider().provider), { slug: link.slug, now: OCT_16 });
+    await expect(payInSession(db, deps(clear, async () => fakeProvider().provider), { session, now: OCT_16, request: { method: 'card', idempotencyKey: key() } })).rejects.toMatchObject({ code: 'unavailable' });
   });
 });
 
@@ -309,18 +312,18 @@ describe('paying over time online (rule 9)', () => {
     const shop = await miCasa();
     const link = await trayLink(shop, patch);
     const { clear } = fakeClear();
-    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug });
-    const started = await payInSession(db, deps(clear), { session, request: { method: 'clear', idempotencyKey: key() } });
+    const { session } = await startLinkSession(db, deps(clear), { slug: link.slug, now: OCT_16 });
+    const started = await payInSession(db, deps(clear), { session, now: OCT_16, request: { method: 'clear', idempotencyKey: key() } });
     return { code: started.method === 'clear' ? started.chargeCode : '', session, clear };
   }
 
   test('off in live until it’s switched on, even where the link allows it', async () => {
     const { code, session, clear } = await chargeFor({ allowOverTime: true });
     expect(await onlineOverTimeForCharge(db, code)).toBe(false);
-    expect((await paySessionView(db, deps(clear), { session })).overTime).toBe(false);
+    expect((await paySessionView(db, deps(clear), { session, now: OCT_16 })).overTime).toBe(false);
     process.env.PAY_OVER_TIME_ONLINE = 'on';
     expect(await onlineOverTimeForCharge(db, code)).toBe(true);
-    expect((await paySessionView(db, deps(clear), { session })).overTime).toBe(true);
+    expect((await paySessionView(db, deps(clear), { session, now: OCT_16 })).overTime).toBe(true);
   });
 
   test('never where the link doesn’t allow it', async () => {
