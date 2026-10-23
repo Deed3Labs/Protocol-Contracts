@@ -3,6 +3,8 @@ import field from '@clear/command-types/src/fixtures/field.json';
 import growth from '@clear/command-types/src/fixtures/growth.json';
 import members from '@clear/command-types/src/fixtures/members.json';
 import merch from '@clear/command-types/src/fixtures/merchants.json';
+import moneyFx from '@clear/command-types/src/fixtures/money.json';
+import shopFx from '@clear/command-types/src/fixtures/shop.json';
 import type { Db, Queryable } from '../../db/db.js';
 
 /**
@@ -174,6 +176,80 @@ export async function seedCommand(db: Db): Promise<string[]> {
         await tx.query('INSERT INTO command.fleet_checkins (merchant_id, position, issue, last_seen) VALUES ($1, $2, $3, $4)', [id, i, issue, last]);
       }
       done.push(`${merch.tx.length + merch.signed.length} merchants`, `${board.length} board cards`);
+    }
+
+    if (await empty(tx, 'command.accounts')) {
+      const cents = (v: number) => Math.round(v * 100);
+      for (const [i, a] of moneyFx.accounts.entries()) {
+        await tx.query('INSERT INTO command.accounts (id, position, name, purpose, owner_group, source, swatch) VALUES ($1, $2, $3, $4, $5, $6, $7)', [a.id, i, a.name, a.why, a.group, a.source, a.swatch]);
+        for (const [w, bal] of (a.weeks as number[]).entries()) {
+          await tx.query('INSERT INTO command.account_snapshots (account_id, as_of, balance_cents) VALUES ($1, $2, $3)', [a.id, iso(moneyFx.weeks[w]), cents(bal)]);
+        }
+        for (const e of (moneyFx.entries as Record<string, Array<{ at: number; what: string; detail: string; amount: number }>>)[a.id] ?? []) {
+          await tx.query('INSERT INTO command.account_entries (account_id, at, what, detail, amount_cents) VALUES ($1, $2, $3, $4, $5)', [a.id, iso(e.at), e.what, e.detail, cents(e.amount)]);
+        }
+      }
+      for (const [id, face, issued, matures, term, rate, holder] of moneyFx.bonds as Array<[string, number, string, string, number, number, string]>) {
+        // a bond matures `term` months after it's issued, so its year follows from that
+        const iss = dayMonth(issued);
+        const mat = Date.UTC(2026, new Date(iss).getUTCMonth() + term, Number(matures.split(' ')[0]));
+        await tx.query('INSERT INTO command.bonds (id, face_cents, issued_on, matures_on, term_months, rate_pct, holder) VALUES ($1, $2, $3, $4, $5, $6, $7)', [id, cents(face), iso(iss), iso(mat), term, rate, holder]);
+      }
+      for (const [i, [dep, value, first, pledged]] of (moneyFx.depositors as Array<[string, number, string, number]>).entries()) {
+        await tx.query('INSERT INTO command.yield_positions (depositor, assets_cents, first_deposit, pledged_cents, position) VALUES ($1, $2, $3, $4, $5)', [dep, cents(value), iso(dayMonth(first)), cents(pledged), i]);
+      }
+      done.push(`${moneyFx.accounts.length} accounts`, `${moneyFx.bonds.length} bonds`, `${moneyFx.depositors.length} yield positions`);
+    }
+
+    if (await empty(tx, 'command.shop_products')) {
+      const cents = (v: number) => Math.round(v * 100);
+      const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+      type Product = { id: string; n: string; v: string; line: string; g: string; price: number; c?: number[]; st: string; cols: string[]; lead?: number; slug: string; why?: string; dep?: number };
+      const products = shopFx.products as Product[];
+      for (const [i, p] of products.entries()) {
+        await tx.query(
+          `INSERT INTO command.shop_products (id, position, name, variant, line, glyph, price_cents, cost_cents, status, options, lead_weeks, slug, why, deposit)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          [p.id, i, p.n, p.v, p.line, p.g, cents(p.price), p.c ? p.c.map(cents) : null, p.st, p.cols, p.lead ?? null, p.slug, p.why ?? null, !!p.dep],
+        );
+      }
+      for (const [id, opts] of Object.entries(shopFx.stock as Record<string, Record<string, number[]>>)) {
+        for (const [oi, [opt, sizes]] of Object.entries(opts).entries()) {
+          for (const [si, n] of sizes.entries()) {
+            await tx.query('INSERT INTO command.shop_stock (product_id, option, option_pos, size, size_pos, on_hand) VALUES ($1, $2, $3, $4, $5, $6)', [id, opt, oi, sizes.length === 1 ? '' : SIZES[si], si, n]);
+          }
+        }
+      }
+      for (const [id, ev] of Object.entries(shopFx.shelf as unknown as Record<string, Array<[string, number | null, number | null]>>)) {
+        for (const [i, [state, from, to]] of ev.entries()) {
+          await tx.query('INSERT INTO command.shop_shelf (product_id, position, state, starts_at, ends_at) VALUES ($1, $2, $3, $4, $5)', [id, i, state, iso(from), iso(to)]);
+        }
+      }
+      // newest first, as the product panel lists them; inserted oldest first so the ids keep that order
+      for (const [id, hist] of Object.entries(shopFx.history as unknown as Record<string, Array<[number, string, string]>>)) {
+        for (const [at, what, who] of [...hist].reverse()) await tx.query('INSERT INTO command.shop_history (product_id, at, what, who) VALUES ($1, $2, $3, $4)', [id, iso(at), what, who]);
+      }
+      for (const [id, at, buyer, member, items, paid, how, partner, state, city] of shopFx.orders as Array<[string, number, string, number, unknown[], string, string, string, string, string]>) {
+        await tx.query(
+          'INSERT INTO command.shop_orders (id, paid_at, buyer, member, items, paid_with, fulfilment, pickup_at, state, city) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+          [id, iso(at), buyer, !!member, JSON.stringify(items), paid, how, partner, state, city],
+        );
+      }
+      for (const [id, shop, pid, opt, units, state, at] of shopFx.preorders as Array<[string, string, string, string, number, string, number]>) {
+        await tx.query('INSERT INTO command.shop_preorders (id, shop, product_id, option, units, state, placed_at) VALUES ($1, $2, $3, $4, $5, $6, $7)', [id, shop, pid, opt, units, state, iso(at)]);
+      }
+      for (const [i, [what, units, stages, lands, pid]] of (shopFx.incoming as Array<[string, string, unknown[], string, string]>).entries()) {
+        await tx.query('INSERT INTO command.shop_incoming (position, what, units_label, stages, lands, product_id) VALUES ($1, $2, $3, $4, $5, $6)', [i, what, units, JSON.stringify(stages), lands, pid]);
+      }
+      type Return = { order: string; item: string; reason: string; returned: number; condition: string; proposedBy: string; proposedAt: number; second: string | null; refundedAt: number | null; amount: number | null };
+      for (const r of shopFx.returns as Return[]) {
+        await tx.query(
+          `INSERT INTO command.shop_returns (order_id, item, reason, returned_on, condition, proposed_by, proposed_at, second_person, refunded_at, amount_cents)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [r.order, r.item, r.reason, iso(r.returned), r.condition, r.proposedBy, iso(r.proposedAt), r.second, iso(r.refundedAt), r.amount == null ? null : cents(r.amount)],
+        );
+      }
+      done.push(`${products.length} products`, `${shopFx.orders.length} orders`, `${shopFx.preorders.length} pre-orders`);
     }
   });
   return done;

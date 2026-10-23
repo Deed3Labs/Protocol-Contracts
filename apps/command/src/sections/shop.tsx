@@ -1,8 +1,10 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { LIVE } from '../live/env';
 import { attrs, css } from '../runtime/dom';
 import { D, laneFrame, pctX } from './contracts';
 import { compBar, head, ic, money } from './core';
 import {
+  BUYERS,
   DAY,
   GLY,
   GP_W,
@@ -13,10 +15,13 @@ import {
   ORD_W,
   OST,
   PARTNERS,
+  PAID_WITH,
   PAY,
   PR,
   PRE,
   PRE_ST,
+  RETURNS,
+  RETURN_WHY,
   REV_W,
   SHELF,
   SHELF_EV,
@@ -28,6 +33,7 @@ import {
   SS,
   STK,
   SW,
+  TODAY,
   goods,
   vars,
 } from './data';
@@ -36,6 +42,7 @@ import { G, columns, figHtml, fmtD, gCell, kpiCell } from './growth';
 import { mkey, vizTrack } from './home';
 import { ddHtml } from './kit';
 import { evRows, strip } from './money';
+import { vLevel } from './shell';
 export function prOf(id) {
   return PR.find((p) => p.id === id);
 }
@@ -58,6 +65,36 @@ export function u4(p) {
 export function ordOf(id) {
   return ORDERS.find((o) => o[0] === id);
 }
+/** A restock on its way for a product: ordered, not just planned. */
+export function restockFor(p) {
+  return INCOMING.find((r) => r[4] === p.id && !r[2].some((s) => s[0] === 'plan'));
+}
+/** The return for an order, and the one still waiting on its refund. */
+export function retOf(id) {
+  return RETURNS.find((r) => r.order === id);
+}
+export function waitingReturn() {
+  return RETURNS.find((r) => r.refundedAt == null);
+}
+/** A return's refund track: returned, who proposed it, the second person, refunded. */
+export function retTrack(r) {
+  return vizTrack([
+    ['Returned', 1],
+    [r.proposedBy, 1],
+    ...(r.second ? [[r.second, r.refundedAt ? 1 : 2]] : []),
+    ['Refunded', r.refundedAt ? 1 : 0],
+  ]);
+}
+/** Days from paid to handed to the carrier: the median bucket, and the share within 2 days. */
+export function shipTimes() {
+  const total = SHIP_DAYS.reduce((a, b) => a + b[1], 0);
+  let c = 0;
+  const median = SHIP_DAYS.find(([, n]) => (c += n) >= total / 2)[0];
+  return { median, within2: SHIP_DAYS.slice(0, 3).reduce((a, b) => a + b[1], 0) / total };
+}
+const pc0 = (v) => `${(v * 100).toFixed(0)}%`;
+/* the line's word for a product whose variants share a price: "Graphic", "Patches" */
+const lineWord = (p) => (p.line === 'graphic' || p.line === 'patch' ? LINES[p.line][0].split(' ')[0] : p.n);
 export function ordTotal(o) {
   return o[4].reduce((a, [pid, , , q]) => a + prOf(pid).price * q, 0);
 }
@@ -244,20 +281,23 @@ export function ladder(list) {
     </>
   );
 }
+/* the scatter's labels, and which side of the dot they sit */
+const SC_LBL = {
+  lts: ['Logo SS', 'r'],
+  ltl: ['Logo LS', 'r'],
+  tn: ['Turtleneck', 'r'],
+  hd: ['Hoodie', 'r'],
+  gcm: ['Carousel Mall', 'r'],
+  gtt: ['Two Ten', 'l'],
+  psq: ['Square', 'r'],
+  pci: ['Circle', 'l'],
+};
+export const scName = (p) => SC_LBL[p.id]?.[0] ?? shortN(p);
 export function scatter() {
   const pts = goods.filter((p) => p.st !== 'arch' && u4(p)),
     xm = 36,
     ym = 70,
-    lbl = {
-      lts: ['Logo SS', 'r'],
-      ltl: ['Logo LS', 'r'],
-      tn: ['Turtleneck', 'r'],
-      hd: ['Hoodie', 'r'],
-      gcm: ['Carousel Mall', 'r'],
-      gtt: ['Two Ten', 'l'],
-      psq: ['Square', 'r'],
-      pci: ['Circle', 'l'],
-    };
+    lbl = SC_LBL;
   const rmax = Math.max(...pts.map((p) => u4(p) * p.price));
   return (
     <>
@@ -518,7 +558,8 @@ export function pipeline() {
     ['ready', 'Ready for pickup', 'At a partner shop'],
     ['closed', 'Done', 'Last 4 weeks'],
   ];
-  const cnt = (k) => (k === 'closed' ? 59 : ORDERS.filter((o) => o[8] === k).length);
+  // done in the last 4 weeks: the weeks' orders less the ones still on their way
+  const cnt = (k) => (k === 'closed' ? SHOP.ord - ORDERS.filter((o) => st.slice(0, 4).some(([s]) => s === o[8])).length : ORDERS.filter((o) => o[8] === k).length);
   const ages = (k) => (k === 'closed' ? [] : ORDERS.filter((o) => o[8] === k).sort((a, b) => a[1] - b[1]));
   return (
     <>
@@ -578,6 +619,9 @@ export function itemsLine(o) {
 }
 /* ── page ─────────────────────────────────────────────────────────────── */
 export function shopPage() {
+  // at Totals the orders are only counted: the list of buyers isn't shown
+  const totals = LIVE && vLevel('shop') === 1;
+  if (totals && SS.pane === 'orders') SS.pane = 'overview';
   const P = SS.pane,
     onShelf = PR.filter((p) => p.st === 'on').length,
     toPack = ORDERS.filter((o) => o[8] === 'paid').length,
@@ -620,7 +664,7 @@ export function shopPage() {
     ['products', 'Products'],
     ['inventory', 'Inventory'],
     ['orders', 'Orders'],
-  ];
+  ].filter(([v]) => !(totals && v === 'orders'));
   const body = {
     overview: sOverview,
     products: sProducts,
@@ -677,22 +721,15 @@ export function sOverview() {
     's-5',
     'Who buys',
     'Last 4 weeks',
-    figHtml('58%', 'of orders come from members · the rest are guests'),
+    figHtml(pc0(BUYERS[0][1] / S.ord), 'of orders come from members · the rest are guests'),
     <div className="sb">
       <div className="ablock">
         <span className="lbl">Buyer</span>
-        {compBar([
-          ['Members', 43, 'var(--fg)', '43'],
-          ['Guests', 31, 'var(--line)', '31'],
-        ])}
+        {compBar(BUYERS.map(([k, v], i) => [k, v, ['var(--fg)', 'var(--line)'][i], String(v)]))}
       </div>
       <div className="ablock">
         <span className="lbl">Paid with</span>
-        {compBar([
-          ['Clear', 31, 'var(--fg)', '31'],
-          ['Card', 27, 'var(--fg-50)', '27'],
-          ['Apple or Google Pay', 16, 'var(--line)', '16'],
-        ])}
+        {compBar(PAID_WITH.map(([k, v], i) => [k, v, ['var(--fg)', 'var(--fg-50)', 'var(--line)'][i], String(v)]))}
       </div>
       <div className="ablock">
         <span className="lbl">Gets it by</span>
@@ -703,7 +740,7 @@ export function sOverview() {
       </div>
     </div>,
     strip([
-      ['Paid with Clear', `${((31 / S.ord) * 100).toFixed(0)}%`],
+      ['Paid with Clear', pc0(PAID_WITH[0][1] / S.ord)],
       ['Picked up', `${S.picked} of ${S.ord}`],
     ]),
   );
@@ -720,7 +757,10 @@ export function sOverview() {
       ['8 weeks', money(REV_W.reduce((a, b) => a + b, 0))],
       ['Orders', String(ORD_W.reduce((a, b) => a + b, 0))],
       ['Products on the shelf', String(PR.filter((p) => p.st === 'on' && !p.dep).length)],
-      ['Hoodie back', '30 Oct', '', 'warn'],
+      ...goods
+        .filter((p) => p.st === 'off' && restockFor(p))
+        .slice(0, 1)
+        .map((p) => [`${p.n} back`, restockFor(p)[3], '', 'warn']),
     ]),
   );
   const top = goods
@@ -755,7 +795,10 @@ export function sOverview() {
     's-6',
     'Sizes sold',
     'Shirts and layers, last 4 weeks',
-    figHtml('58%', 'of shirts sold are a medium or large · restocks follow that mix'),
+    figHtml(
+      pc0(SIZE_MIX.filter(([k]) => k === 'M' || k === 'L').reduce((a, b) => a + b[1], 0) / SIZE_MIX.reduce((a, b) => a + b[1], 0)),
+      'of shirts sold are a medium or large · restocks follow that mix',
+    ),
     columns(SIZE_MIX, {
       hi: 2,
       h: 150,
@@ -951,13 +994,19 @@ export function sProducts() {
       </div>
       {strip([
         ['Lines', String(Object.keys(LINES).length)],
-        ['Off shelf', String(cnt('off')), 'Hoodie', 'warn'],
+        ['Off shelf', String(cnt('off')), PR.filter((p) => p.st === 'off').map((p) => p.n).join(', '), 'warn'],
         ['Drafts', String(cnt('draft'))],
         ['Pre-orders', String(PR.filter((p) => p.dep && p.st === 'on').length)],
       ])}
     </section>
   );
   const priced = goods.filter((p) => p.st !== 'arch' && !(p.line === 'graphic' && p.id !== 'gcm') && p.id !== 'pci');
+  const margin = (p) => (p.price - unitCost(p)) / p.price,
+    byCost = [...priced].sort((a, b) => unitCost(a) - unitCost(b)),
+    byMargin = [...priced].sort((a, b) => margin(a) - margin(b));
+  const sold = goods.filter((p) => p.st !== 'arch' && u4(p)),
+    most = (f) => sold.reduce((a, p) => (f(p) > f(a) ? p : a)),
+    perItem = (p) => p.price - unitCost(p);
   const lad = gCell(
     's-7',
     'Where the price goes',
@@ -968,27 +1017,27 @@ export function sProducts() {
     ),
     ladder(priced),
     strip([
-      ['Cheapest to make', 'Patch · $1.95'],
-      ['Costliest', 'Hoodie · $36.00'],
-      ['Lowest margin', 'Graphic · 62%'],
-      ['Highest margin', 'Patches · 78%'],
+      ['Cheapest to make', `${shortN(byCost[0]).split(' · ')[0]} · ${money(unitCost(byCost[0]))}`],
+      ['Costliest', `${shortN(byCost.at(-1)).split(' · ')[0]} · ${money(unitCost(byCost.at(-1)))}`],
+      ['Lowest margin', `${lineWord(byMargin[0])} · ${pc0(margin(byMargin[0]))}`],
+      ['Highest margin', `${lineWord(byMargin.at(-1))} · ${pc0(margin(byMargin.at(-1)))}`],
     ]),
   );
   const sc = gCell(
     's-5',
     'Margin and volume',
     'Size is sales',
-    figHtml('Logo SS', 'earns the most · a modest margin, sold most often'),
+    figHtml(scName(most((p) => u4(p) * perItem(p))), 'earns the most · a modest margin, sold most often'),
     scatter(),
     strip([
-      ['Most sold', 'Logo SS · 31'],
-      ['Most per item', 'Hoodie · $62.00'],
+      ['Most sold', `${scName(most(u4))} · ${u4(most(u4))}`],
+      ['Most per item', `${scName(most(perItem))} · ${money(perItem(most(perItem)))}`],
     ]),
   );
   const hist = gCell(
     's-12',
     'On and off the shelf',
-    'Since 24 Aug',
+    `Since ${fmtD(Math.min(...Object.values(SHELF_EV).flat().map((e) => e[1])))}`,
     figHtml(
       String(
         Object.values(SHIST)
@@ -999,10 +1048,10 @@ export function sProducts() {
     ),
     shelfLanes(),
     strip([
-      ['Off now', 'Hoodie · sold out', '', 'warn'],
-      ['Back on', 'Two Ten · 20 Oct'],
-      ['Next draft', 'Devore · sample 28 Oct'],
-      ['Archived', 'Founding Tee'],
+      ...PR.filter((p) => p.st === 'off').map((p) => ['Off now', `${p.n} · ${onHand(p.id) ? 'off' : 'sold out'}`, '', 'warn']),
+      ...backOn().map(([p, t]) => ['Back on', `${scName(p)} · ${fmtD(t)}`]),
+      ...PR.filter((p) => p.st === 'draft' && restockFor(p)).slice(0, 1).map((p) => ['Next draft', `${shortN(p)} · ${/sample$/.test(restockFor(p)[0]) ? 'sample ' : ''}${restockFor(p)[3]}`]),
+      ['Archived', PR.filter((p) => p.st === 'arch').map((p) => p.n).join(', ') || 'None'],
     ]),
   );
   return (
@@ -1020,6 +1069,11 @@ export function sProducts() {
       {G('Shelf history', '', '', hist)}
     </>
   );
+}
+/** The latest product back on the shelf after time off it, and when. */
+function backOn() {
+  const back = PR.flatMap((p) => (SHELF_EV[p.id] || []).filter((e, i, ev) => e[0] === 'on' && ev[i - 1]?.[0] === 'off').map((e) => [p, e[1]]));
+  return back.sort((a, b) => b[1] - a[1]).slice(0, 1);
 }
 export function sInventory() {
   const units = goods.filter((p) => p.st !== 'arch').reduce((a, p) => a + (onHand(p.id) || 0), 0),
@@ -1048,30 +1102,36 @@ export function sInventory() {
         ['Shirts and layers', String(units - onHand('psq') - onHand('pci'))],
         ['Patches', String(onHand('psq') + onHand('pci'))],
         ['Sizes out', String(outN), 'on the shelf', 'warn'],
-        ['On the way', '120 Hoodies'],
+        ['On the way', goods.filter((p) => (p.st === 'on' || p.st === 'off') && restockFor(p)).map((p) => `${parseInt(restockFor(p)[1])} ${p.n}s`).join(', ') || 'Nothing'],
       ])}
     </section>
   );
+  const lasting = goods.filter((p) => p.st === 'on' && coverW(p) !== null).sort((a, b) => coverW(a) - coverW(b)),
+    short = lasting[0],
+    slow = lasting.at(-1),
+    low = lasting.filter((p) => coverW(p) < p.lead);
+  const coming = INCOMING.filter((r) => !r[2].some((s) => s[0] === 'plan')),
+    next = goods.find((p) => p.st === 'off' && restockFor(p));
   const cov = gCell(
     's-6',
     'How long it lasts',
     'At the last 4 weeks’ pace',
-    figHtml('2.2 wk', 'of Turtlenecks left · a reorder takes 3 weeks to land'),
+    figHtml(`${coverW(short).toFixed(1)} wk`, `of ${short.n}s left · a reorder takes ${short.lead} weeks to land`),
     coverBars(),
     strip([
-      ['Reorder now', 'Turtleneck', '', 'warn'],
-      ['Slowest to sell', 'Two Ten · 24+ wk'],
+      ['Reorder now', low.map((p) => p.n).join(', ') || 'Nothing', '', low.length ? 'warn' : ''],
+      ['Slowest to sell', `${scName(slow)} · ${coverW(slow) >= 24 ? '24+' : coverW(slow).toFixed(1)} wk`],
     ]),
   );
   const inc = gCell(
     's-6',
     'On the way',
     'Ordered and planned',
-    figHtml('30 Oct', 'the Hoodie restock lands · it goes back on the shelf that day'),
+    next ? figHtml(restockFor(next)[3], `the ${next.n} restock lands · it goes back on the shelf that day`) : figHtml(String(INCOMING.length), 'batches ordered and planned'),
     incomingLanes(),
     strip([
-      ['Arriving', '2 batches'],
-      ['Planned', '2'],
+      ['Arriving', `${coming.length} ${coming.length === 1 ? 'batch' : 'batches'}`],
+      ['Planned', String(INCOMING.length - coming.length)],
     ]),
   );
   return (
@@ -1109,10 +1169,10 @@ export function sOrders() {
     ),
     pipeline(),
     strip([
-      ['Over 2 days', 'None'],
-      ['Median to ship', '1 day'],
+      ['Over 2 days', String(ORDERS.filter((o) => o[8] === 'paid' && ordAge(o) > 2).length || 'None')],
+      ['Median to ship', shipTimes().median],
       ['Picked up', `${SHOP.picked} in 4 weeks`],
-      ['Returns', '2 · 2.7%'],
+      ['Returns', `${RETURNS.length} · ${((RETURNS.length / SHOP.ord) * 100).toFixed(1)}%`],
     ]),
   );
   const rows = list.map((o, __k) => {
@@ -1240,72 +1300,64 @@ export function sOrders() {
     strip([
       ['Units', String(PRE.reduce((a, r) => a + r[4], 0))],
       ['Shops', String(new Set(PRE.map((r) => r[1])).size)],
-      ['Not finished', '2', 'sign-up or agreement', 'warn'],
+      ['Not finished', String(PRE.filter((r) => r[5] !== 'held').length), 'sign-up or agreement', 'warn'],
     ]),
     undefined,
     ' start',
   );
-  const rf = ordOf('1079');
+  const waiting = RETURNS.filter((r) => r.refundedAt == null),
+    refunded = RETURNS.filter((r) => r.refundedAt != null),
+    why = RETURN_WHY.map((k) => [k, RETURNS.filter((r) => r.reason === k).length]),
+    whyMax = Math.max(1, ...why.map((w) => w[1]));
   const refunds = gCell(
     's-5',
     'Refunds and returns',
     'Over $50.00 needs a second person',
-    figHtml('1', 'refund waiting · Dana Ruiz is the second person'),
+    figHtml(String(waiting.length), `refund${waiting.length === 1 ? '' : 's'} waiting${waiting[0]?.second ? ` · ${waiting[0].second} is the second person` : ''}`),
     <>
       <div className="pn-list">
-        <button type="button" className="pn-r two" data-order="1079">
-          <span className="pn-k">
-            <b>
-              {'#1079 · '}
-              {money(ordTotal(rf))}
-            </b>
-            <span className="small quiet">Hoodie · M, wrong size · returned 19 Oct</span>
-          </span>
-          <span className="chip underway">Waiting 3 h</span>
-        </button>
+        {waiting.map((r, __k) => (
+          <button key={__k} type="button" className="pn-r two" data-order={r.order}>
+            <span className="pn-k">
+              <b>
+                {`#${r.order} · `}
+                {money(ordTotal(ordOf(r.order)))}
+              </b>
+              <span className="small quiet">
+                {r.item}
+                {', '}
+                {r.reason.toLowerCase()}
+                {' · returned '}
+                {fmtD(r.returned)}
+              </span>
+            </span>
+            <span className="chip underway">Waiting {Math.round((NOW - r.proposedAt) / 3600e3)} h</span>
+          </button>
+        ))}
       </div>
-      <div>
-        {vizTrack([
-          ['Returned', 1],
-          ['Kai', 1],
-          ['Dana Ruiz', 2],
-          ['Refunded', 0],
-        ])}
-      </div>
+      {waiting[0] ? <div>{retTrack(waiting[0])}</div> : ''}
       <div className="ablock">
         <span className="lbl">Refunded · 4 weeks</span>
-        {evRows([['12 Oct', '#1071 · Logo Tee · S', 'Wrong size · under $50.00, no second person', '$46.00']])}
+        {evRows(refunded.map((r) => [fmtD(r.refundedAt), `#${r.order} · ${r.item}`, `${r.reason} · ${r.amount > 50 ? `approved by ${r.second}` : 'under $50.00, no second person'}`, money(r.amount)]))}
       </div>
       <div className="ablock">
         <span className="lbl">Why things come back · 4 weeks</span>
         <div className="hbars">
-          <div className="hb">
-            <span className="hb-k">Wrong size</span>
-            <span className="hb-bar">
-              <i style={css('width:100%;background:var(--fg)')} />
-            </span>
-            <b className="num">2</b>
-          </div>
-          <div className="hb">
-            <span className="hb-k">Damaged in shipping</span>
-            <span className="hb-bar">
-              <i style={css('width:0%')} />
-            </span>
-            <b className="num">0</b>
-          </div>
-          <div className="hb">
-            <span className="hb-k">Changed their mind</span>
-            <span className="hb-bar">
-              <i style={css('width:0%')} />
-            </span>
-            <b className="num">0</b>
-          </div>
+          {why.map(([k, n], __k) => (
+            <div key={__k} className="hb">
+              <span className="hb-k">{k}</span>
+              <span className="hb-bar">
+                <i style={css(n ? `width:${(n / whyMax) * 100}%;background:var(--fg)` : 'width:0%')} />
+              </span>
+              <b className="num">{n}</b>
+            </div>
+          ))}
         </div>
       </div>
     </>,
     strip([
-      ['Returns', '2 · 2.7%'],
-      ['Refunded', '$46.00'],
+      ['Returns', `${RETURNS.length} · ${((RETURNS.length / SHOP.ord) * 100).toFixed(1)}%`],
+      ['Refunded', money(refunded.reduce((a, r) => a + r.amount, 0))],
     ]),
     undefined,
     ' start',
@@ -1337,7 +1389,7 @@ export function sOrders() {
     's-6',
     'Time to ship',
     'Paid to handed to the carrier',
-    figHtml('1 day', 'median · 92% ship within 2 days'),
+    figHtml(shipTimes().median, `median · ${pc0(shipTimes().within2)} ship within 2 days`),
     columns(SHIP_DAYS, {
       hi: 1,
       h: 150,
@@ -1651,13 +1703,8 @@ export function orderPane() {
     refund: 4,
   }[st];
   const track =
-    st === 'refund'
-      ? vizTrack([
-          ['Returned', 1],
-          ['Kai', 1],
-          ['Dana Ruiz', 2],
-          ['Refunded', 0],
-        ])
+    st === 'refund' && retOf(id)
+      ? retTrack(retOf(id))
       : vizTrack(stages.map((s, i) => [s, i < at ? 1 : i === at ? 2 : 0]));
   const body = (
     <>
@@ -2021,7 +2068,7 @@ export function openSFlow(kind, id) {
           <>
             <b>Nothing on hand yet.</b>
             {' It will show as sold out until stock arrives'}
-            {p.id === 'hd' ? ' on 30 Oct' : ''}.
+            {restockFor(p) ? ` on ${restockFor(p)[3]}` : ''}.
           </>
         ) : null,
       noteIc: 'out',
@@ -2300,26 +2347,18 @@ export function openSFlow(kind, id) {
       steps: amt > 50 ? ['Drafted the refund', 'Sent it to Dana Ruiz'] : ['Refunded it', 'Emailed the buyer'],
       done: amt > 50 ? ['Waiting on a second person.', 'It shows in the two-person queue on Team.'] : ['Refunded.', 'The buyer has an email.'],
     };
-  } else if (kind === 'refundwait' && o) {
+  } else if (kind === 'refundwait' && o && retOf(o[0])) {
+    const r = retOf(o[0]);
     f = {
       t: 'Refund',
-      lbl: '#1079 · Theo B.',
+      lbl: `#${o[0]} · ${o[2]}`,
       h: money(ordTotal(o)),
-      pre: (
-        <div>
-          {vizTrack([
-            ['Returned', 1],
-            ['Kai', 1],
-            ['Dana Ruiz', 2],
-            ['Refunded', 0],
-          ])}
-        </div>
-      ),
+      pre: <div>{retTrack(r)}</div>,
       rows: [
-        ['Why', 'Wrong size · Hoodie, M'],
-        ['Returned', '19 Oct, unworn'],
-        ['Proposed', 'Kai · today 11:20'],
-        ['Waiting on', 'Dana Ruiz · 3 h', 1],
+        ['Why', `${r.reason} · ${r.item.replace(' · ', ', ')}`],
+        ['Returned', `${fmtD(r.returned)}${r.condition ? ', ' + r.condition : ''}`],
+        ['Proposed', `${r.proposedBy} · ${r.proposedAt >= TODAY ? 'today' : fmtD(r.proposedAt)} ${new Date(r.proposedAt).toISOString().slice(11, 16)}`],
+        ['Waiting on', `${r.second} · ${Math.round((NOW - r.proposedAt) / 3600e3)} h`, 1],
       ],
       note: (
         <>
@@ -2328,8 +2367,8 @@ export function openSFlow(kind, id) {
         </>
       ),
       noteIc: 'team',
-      btn: 'Nudge Dana Ruiz',
-      steps: ['Sent Dana Ruiz a nudge'],
+      btn: `Nudge ${r.second}`,
+      steps: [`Sent ${r.second} a nudge`],
       done: ['Nudged.', 'You’ll see it here when it’s approved.'],
     };
   } else if (kind === 'preorder') {

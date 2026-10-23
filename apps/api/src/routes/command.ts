@@ -17,7 +17,7 @@ import {
   type Levels,
   type Section,
 } from '../services/command/levels.js';
-import { NotLiveYet, fieldSection, growthSection, membersSection, merchantsSection } from '../services/command/sections.js';
+import { NotLiveYet, fieldSection, growthSection, membersSection, merchantsSection, moneySection, shopSection } from '../services/command/sections.js';
 import * as store from '../services/command/store.js';
 
 /*
@@ -338,6 +338,26 @@ export function commandRouter(deps: CommandDeps) {
     const c = req.command!;
     try {
       res.json(await merchantsSection(c.db, { level: c.levels.merchants, reveal: false, now: now() }));
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
+  });
+
+  router.get('/sections/money', need('money', TOTALS), async (req, res) => {
+    const c = req.command!;
+    try {
+      res.json(await moneySection(c.db, { level: c.levels.money, reveal: false, now: now() }));
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
+  });
+
+  router.get('/sections/shop', need('shop', TOTALS), async (req, res) => {
+    const c = req.command!;
+    try {
+      res.json(await shopSection(c.db, { level: c.levels.shop, reveal: false, now: now() }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;

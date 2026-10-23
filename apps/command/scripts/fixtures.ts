@@ -118,4 +118,71 @@ write('merchants-figures.json', {
   'merchants.hardware.preorders': { devices: 19, shops: 7, series: [0, 0, 0, 0, 2, 2, 5, 8, 11, 14, 17, 19] },
   'merchants.hardware.unit_cost': { repaired: 61, fresh: 189, series: [88, 84, 80, 76, 74, 71, 69, 66, 64, 63, 62, 61] },
 });
+// Money: the accounts and their seven weeks of balances, each account's recent activity (written in the
+// prototype's drawing code), the bonds, and the yield pool's depositors. The prototype's M and Y (what
+// Money computes from these) go in too, as the answer key for the API's tests.
+const day = (s: string) => Date.UTC(2026, ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].indexOf(s.split(' ')[1]), Number(s.split(' ')[0]));
+write('money.json', {
+  accounts: d.ACCTS.map((a: any[]) => ({ id: a[0], name: a[1], why: a[2], group: a[3], source: a[4], weeks: a[6], swatch: a[7] })),
+  weeks: d.NW.map((w: string) => day(w)),
+  entries: d.ENTRIES,
+  bonds: d.BONDS,
+  depositors: d.Y_DEP,
+  check: { M: d.M, Y: d.Y, ACCTS: d.ACCTS, AP_BAL: d.AP_BAL, UNSEC: d.UNSEC, AP_REQ: d.AP_REQ, RTD_W: d.RTD_W, Y_ASSETS: d.Y_ASSETS, Y_LENT: d.Y_LENT },
+});
+write('money-figures.json', {
+  // the credit book (Phase 5 reads it from the contracts)
+  'money.book': { credit: d.M.credit, savingsBacked: d.M.savingsBacked, unsecured: d.M.unsecured, limits: d.M.limits, lost: d.M.lost },
+  'money.payouts_due': { owed14: d.M.owed14, dueMembers: d.M.dueMembers },
+  'money.floor': d.M.floor,
+  'money.yield.pool': { principal: d.Y.principal, queued: d.Y.queued, opened: d.Y.opened, cycleDays: d.Y.cycleDays, curve: d.Y.curve },
+  'money.yield.history': { days: d.YD, assets: d.Y_ASSETS.slice(0, -1), lent: d.Y_LENT.slice(0, -1) },
+  'money.ap.balance_weeks': d.AP_BAL.slice(0, -1),
+  'money.credit.unsecured_weeks': d.UNSEC.slice(0, -1),
+  'money.coop.weekly': d.COOP_W,
+  'money.flows': d.FLOWS,
+  // from the drawing code
+  'money.reserve': { ratio: '1 : 1', checked: '2 min ago' },
+  'money.ap.losses': 3,
+  'money.ap.lent_out': 0,
+  'money.payout.queue': [[day('22 Oct'), 'Rosa’s Panadería', 412.6], [day('2 Nov'), 'Monthly run · 11 shops', 9510.65], [day('4 Nov'), 'Arrowhead Nails', 732.0], [day('4 Nov'), 'Cajon Phone Repair', 2184.0]],
+  'money.yield.since_opened': [[day('15 Oct'), 'Opened', '14 founding members', 8062.1], [day('18 Oct'), 'Withdrawal', '1 member · paid at once', -250], [day('20 Oct'), 'Deposits', '4 new members', 1150]],
+  'money.yield.joined_this_week': 4,
+  'money.credit.outstanding_weeks': [0, 900, 3100, 6200, 9400, 12100],
+  'money.credit.limits_weeks': [0, 8000, 15400, 24600, 31800, 37200],
+  'money.credit.owed_month_start': 7040.0,
+  'money.credit.autopay': 98,
+  'money.credit.aging': [['Current', 12480.2], ['1–30 d', 1310.4], ['31–60 d', 421.8]],
+  'money.credit.limit_sizes': [['$100', 38], ['$250', 46], ['$500', 28], ['$1,000+', 12]],
+  'money.credit.limit_range': { smallest: 100, largest: 1500 },
+  'money.credit.recovered': 0,
+});
+// Shop: the catalog, stock, shelf periods and product history, the recent orders, hardware pre-orders,
+// what's on the way and the returns are rows; each product's weekly sales, the weekly orders, what
+// selling costs and the 4-week breakdowns are figures. Times at the prototype's "now" (21 Oct, 14:00)
+// are written as null: still on the shelf, or planned from today. The prototype's SHOP and the
+// set-aside amounts Money shows go in as the answer key.
+const now = (t: number) => (t === d.NOW ? null : t);
+write('shop.json', {
+  products: d.PR.map(({ wk, ...p }: any) => p),
+  stock: d.STK,
+  shelf: Object.fromEntries(Object.entries(d.SHELF_EV).map(([id, ev]: [string, any]) => [id, ev.map(([st, a, b]: any[]) => [st, now(a), now(b)])])),
+  history: d.SHIST,
+  orders: d.ORDERS,
+  preorders: d.PRE,
+  incoming: d.INCOMING.map((r: any[]) => [r[0], r[1], r[2].map(([k, a, b]: any[]) => [k, now(a), now(b)]), r[3], r[4]]),
+  returns: d.RETURNS,
+  check: { SHOP: d.SHOP, GP_W: d.GP_W, SET_ASIDE: { salesTax: d.SHOP.tax, preorderDeposits: d.PRE.filter((r: any[]) => r[5] === 'held').reduce((a: number, r: any[]) => a + d.PR.find((x: any) => x.id === r[2]).price * r[4], 0) } },
+});
+write('shop-figures.json', {
+  'shop.units_weekly': Object.fromEntries(d.PR.map((p: any) => [p.id, p.wk])),
+  'shop.orders_weekly': d.ORD_W,
+  'shop.costs': d.SHOP_COSTS,
+  'shop.line_costs': d.LINE_COSTS,
+  'shop.size_mix': d.SIZE_MIX,
+  'shop.pickups': d.PARTNERS,
+  'shop.ship_days': d.SHIP_DAYS,
+  'shop.buyers': d.BUYERS,
+  'shop.paid_with': d.PAID_WITH,
+});
 console.log('fixtures written');

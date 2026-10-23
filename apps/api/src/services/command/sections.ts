@@ -282,9 +282,8 @@ export interface MerchantsPayload {
 
 const dollars = (c: number | string | null) => (c == null ? null : Number(c) / 100);
 
-export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<MerchantsPayload> {
-  const provider = providerFor('merchants');
-  if (provider === 'live') throw new NotLiveYet('merchants');
+/** The transacting partners, as the prototype's TX rows. Money reads them too (credit spent by shop). */
+async function partnerRows(db: Queryable) {
   const { rows: ms } = await db.query<{ id: string; name: string; kind: string; city: string; status: string; founding: boolean; fee_pct: string | null; terms: string | null; cap_cents: number | null; hardware: string | null; cap_hits_7d: number | null; originations: number | null; losses: number | null }>(
     `SELECT m.*, s.cap_hits_7d, s.originations, s.losses FROM command.merchants m LEFT JOIN command.merchant_stats s ON s.merchant_id = m.id ORDER BY m.position`,
   );
@@ -297,6 +296,13 @@ export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<M
         sept = month(m.id, 2026, 9);
       return [m.id, m.name, m.kind, m.city, m.founding ? 1 : 0, Number(m.fee_pct), m.terms, dollars(m.cap_cents), m.cap_hits_7d ?? 0, m.originations ?? 0, m.losses ?? 0, dollars(oct?.cleared_cents ?? 0), oct?.sales ?? 0, dollars(sept?.cleared_cents ?? 0), m.hardware];
     });
+  return { ms, TX };
+}
+
+export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<MerchantsPayload> {
+  const provider = providerFor('merchants');
+  if (provider === 'live') throw new NotLiveYet('merchants');
+  const { ms, TX } = await partnerRows(db);
   const SIGNED = ms.filter((m) => m.status !== 'transacting').map((m) => (m.status === 'signing' ? [m.id, m.name, m.kind, m.city, 'signing'] : [m.id, m.name, m.kind, m.city]));
   const { rows: owedRows } = await db.query<{ merchant_id: string; owed_cents: number }>('SELECT * FROM command.redemptions_owed');
   const OWED = Object.fromEntries(owedRows.map((r) => [r.merchant_id, dollars(r.owed_cents)!]));
@@ -332,3 +338,164 @@ export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<M
   return { TX, SIGNED, PROSPECTS, OWED, BOARD, FLEET, figures: await figures(db, 'merchants'), asOf: asOfFor(provider, o.now) };
 }
 const ms_ = (d: Date) => new Date(d).getTime();
+
+// ── Money ───────────────────────────────────────────────────────────────────
+
+/**
+ * Money: the accounts, their weeks and activity, the bonds, the yield pool and the credit book, and
+ * what the page works out from them. The headline numbers (M) and the yield pool (Y) are worked out
+ * here, with the prototype's own formulas: the update to the brief says rates are never computed in
+ * the browser, and Phase 5 swaps these sums for the contracts' own reads.
+ */
+export async function moneySection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
+  const provider = providerFor('money');
+  if (provider === 'live') throw new NotLiveYet('money');
+  const f = await figures(db, 'money');
+  const book = f['money.book'] as { credit: number; savingsBacked: number; unsecured: number; limits: number; lost: number };
+  const due = f['money.payouts_due'] as { owed14: number; dueMembers: number };
+  const pool = f['money.yield.pool'] as { principal: number; queued: number; opened: string; cycleDays: number; curve: { base: number; s1: number; s2: number; kink: number } };
+  const hist = f['money.yield.history'] as { days: string[]; assets: number[]; lent: number[] };
+  const floor = f['money.floor'] as number;
+
+  const { rows: accts } = await db.query<{ id: string; name: string; purpose: string; owner_group: string; source: string; swatch: string }>('SELECT * FROM command.accounts ORDER BY position');
+  const { rows: snaps } = await db.query<{ account_id: string; balance_cents: string }>('SELECT account_id, balance_cents FROM command.account_snapshots ORDER BY as_of');
+  const weeks = (id: string) => snaps.filter((s) => s.account_id === id).map((s) => Number(s.balance_cents) / 100);
+  const bal = (id: string) => weeks(id).at(-1) ?? 0;
+  const { rows: bondRows } = await db.query<{ id: string; face_cents: string; issued_on: Date; matures_on: Date; term_months: number; rate_pct: string; holder: string }>('SELECT * FROM command.bonds ORDER BY issued_on');
+  const BONDS = bondRows.map((b) => [b.id, Number(b.face_cents) / 100, dayMon(ms_(b.issued_on)), dayMon(ms_(b.matures_on)), b.term_months, Number(b.rate_pct), b.holder]);
+  const { rows: pos } = await db.query<{ depositor: string; assets_cents: string; first_deposit: Date; pledged_cents: string }>('SELECT * FROM command.yield_positions ORDER BY assets_cents DESC, position');
+  const Y_DEP = pos.map((p) => [p.depositor, Number(p.assets_cents) / 100, dayMon(ms_(p.first_deposit)), Number(p.pledged_cents) / 100]);
+
+  // the headline numbers, as the prototype's M
+  const M: Record<string, number> = {
+    savings: bal('sav'), cash: bal('ops'), payout: bal('pay'), assurance: bal('ap'), coop: bal('coop'),
+    ...book, ...due, bonds: BONDS.reduce((a, b) => a + (b[1] as number), 0), floor,
+  };
+  // the yield pool, as the prototype's Y: assets and pledges are the depositors'; it lends to unsecured credit
+  const Y: Record<string, any> = {
+    assets: Y_DEP.reduce((a, r) => a + (r[1] as number), 0), principal: pool.principal, lent: M.unsecured, depositors: Y_DEP.length,
+    pledged: Y_DEP.reduce((a, r) => a + (r[3] as number), 0), queued: pool.queued, opened: pool.opened, cycleDays: pool.cycleDays, curve: pool.curve,
+  };
+  Y.cash = Y.assets - Y.lent; Y.util = Y.lent / Y.assets; Y.earned = Y.assets - Y.principal; Y.price = Y.assets / Y.principal;
+  const borrowBps = (u: number) => (u <= Y.curve.kink ? Y.curve.base + (Y.curve.s1 * u) / Y.curve.kink : Y.curve.base + Y.curve.s1 + (Y.curve.s2 * (u - Y.curve.kink)) / (1 - Y.curve.kink));
+  const apr = (bps: number) => ((bps / 10000) * 365) / Y.cycleDays;
+  const apy = (bps: number) => Math.pow(1 + bps / 10000, 365 / Y.cycleDays) - 1;
+  Y.borrowBps = borrowBps(Y.util); Y.supplyBps = Y.borrowBps * Y.util; Y.apy = apy(Y.supplyBps); Y.apr = apr(Y.borrowBps);
+  M.rtd = M.assurance / M.unsecured;
+  M.room = M.assurance / M.floor - M.unsecured;
+  M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
+  Y.toPayout = Math.min(M.short, Y.cash); Y.utilAfter = (Y.lent + Y.toPayout) / Y.assets; Y.apyAfter = apy(borrowBps(Y.utilAfter) * Y.utilAfter);
+
+  const AP_BAL = [...(f['money.ap.balance_weeks'] as number[]), M.assurance];
+  const UNSEC = [...(f['money.credit.unsecured_weeks'] as number[]), M.unsecured];
+  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance };
+  const ACCTS = accts.map((a) => {
+    const w = weeks(a.id);
+    const now = live[a.id] ?? w.at(-1)!;
+    return [a.id, a.name, a.purpose, a.owner_group, a.source, now, a.id === 'ap' ? AP_BAL : [...w.slice(0, -1), now], a.swatch];
+  });
+  const { rows: ent } = await db.query<{ account_id: string; at: Date; what: string; detail: string; amount_cents: string }>('SELECT * FROM command.account_entries ORDER BY at DESC, id');
+  const ENTRIES: Record<string, unknown[]> = {};
+  for (const e of ent) (ENTRIES[e.account_id] ??= []).push({ at: ms_(e.at), what: e.what, detail: e.detail, amount: Number(e.amount_cents) / 100 });
+
+  const { rows: m } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM command.members WHERE status = 'active'`);
+  return {
+    M, Y, YD: hist.days, Y_ASSETS: [...hist.assets, Y.assets], Y_LENT: [...hist.lent, Y.lent], Y_DEP,
+    AP_BAL, UNSEC, AP_REQ: UNSEC.map((v) => v * M.floor), RTD_W: AP_BAL.map((v, i) => (UNSEC[i] ? v / UNSEC[i] : null)),
+    COOP_W: f['money.coop.weekly'], FLOWS: f['money.flows'], BONDS, ACCTS, ENTRIES,
+    TX: (await partnerRows(db)).TX,
+    MEMBER_SUMMARY: { active: m[0].n },
+    SET_ASIDE: await shopSetAside(db),
+    figures: f,
+    asOf: asOfFor(provider, o.now),
+  };
+}
+
+// ── Shop ────────────────────────────────────────────────────────────────────
+
+type ShopProduct = { id: string; n: string; v: string; line: string; g: string; price: number; c?: number[]; st: string; cols: string[]; wk: number[]; lead?: number; slug: string; why?: string; dep?: number };
+
+async function shopProducts(db: Queryable, f: Record<string, unknown>): Promise<ShopProduct[]> {
+  const units = f['shop.units_weekly'] as Record<string, number[]>;
+  const { rows } = await db.query<{ id: string; name: string; variant: string; line: string; glyph: string; price_cents: number; cost_cents: number[] | null; status: string; options: string[]; lead_weeks: number | null; slug: string; why: string | null; deposit: boolean }>(
+    'SELECT * FROM command.shop_products ORDER BY position',
+  );
+  return rows.map((r) => ({
+    id: r.id, n: r.name, v: r.variant, line: r.line, g: r.glyph, price: r.price_cents / 100,
+    ...(r.cost_cents ? { c: r.cost_cents.map((c) => c / 100) } : {}),
+    ...(r.deposit ? { dep: 1 } : {}),
+    st: r.status, cols: r.options, wk: units[r.id] ?? [],
+    ...(r.lead_weeks != null ? { lead: r.lead_weeks } : {}),
+    slug: r.slug,
+    ...(r.why ? { why: r.why } : {}),
+  }));
+}
+
+/** What the shop's money holds for others: sales tax on the last 4 weeks' sales, and the hardware deposits. */
+async function shopSetAside(db: Queryable): Promise<{ salesTax: number; preorderDeposits: number }> {
+  const f = await figures(db, 'shop');
+  const PR = await shopProducts(db, f);
+  const C = f['shop.costs'] as { taxRate: number; taxable: number };
+  const weeks = Math.max(0, ...PR.map((p) => p.wk.length));
+  const REV_W = Array.from({ length: weeks }, (_, i) => PR.filter((p) => !p.dep).reduce((a, p) => a + (p.wk[i] ?? 0) * p.price, 0));
+  const rev = REV_W.slice(-4).reduce((a, b) => a + b, 0);
+  const { rows } = await db.query<{ price_cents: number; units: number }>(`SELECT p.price_cents, o.units FROM command.shop_preorders o JOIN command.shop_products p ON p.id = o.product_id WHERE o.state = 'held' ORDER BY o.id`);
+  return { salesTax: rev * C.taxRate * C.taxable, preorderDeposits: rows.reduce((a, r) => a + (r.price_cents / 100) * r.units, 0) };
+}
+
+/**
+ * Shop: the catalog with each product's weekly sales, stock by size, the shelf's history, the recent
+ * orders, hardware pre-orders, what's on the way and the returns. The page works out its totals from
+ * these with the prototype's formulas. Orders are personal: at Totals they leave with no buyer, city
+ * or time (the overview only counts them), and the returns aren't sent.
+ */
+export async function shopSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
+  const provider = providerFor('shop');
+  if (provider === 'live') throw new NotLiveYet('shop');
+  const asOf = asOfFor(provider, o.now);
+  // the prototype's "now" is 2pm on its day
+  const NOW = provider === 'seed' ? SEED_TODAY + 14 * 3600e3 : o.now.getTime();
+  const at = (d: Date | null) => (d == null ? NOW : ms_(d));
+  const f = await figures(db, 'shop');
+  const PR = await shopProducts(db, f);
+
+  const { rows: stock } = await db.query<{ product_id: string; option: string; on_hand: number }>(
+    'SELECT s.product_id, s.option, s.on_hand FROM command.shop_stock s JOIN command.shop_products p ON p.id = s.product_id ORDER BY p.position, s.option_pos, s.size_pos',
+  );
+  const STK: Record<string, Record<string, number[]>> = {};
+  for (const s of stock) ((STK[s.product_id] ??= {})[s.option] ??= []).push(s.on_hand);
+
+  const { rows: shelf } = await db.query<{ product_id: string; state: string; starts_at: Date | null; ends_at: Date | null }>('SELECT * FROM command.shop_shelf ORDER BY product_id, position');
+  const SHELF_EV: Record<string, unknown[]> = {};
+  for (const id of PR.map((p) => p.id)) for (const e of shelf.filter((e) => e.product_id === id)) (SHELF_EV[id] ??= []).push([e.state, at(e.starts_at), at(e.ends_at)]);
+
+  const { rows: hist } = await db.query<{ product_id: string; at: Date; what: string; who: string }>('SELECT * FROM command.shop_history ORDER BY id DESC');
+  const SHIST: Record<string, unknown[]> = {};
+  for (const id of PR.map((p) => p.id)) for (const h of hist.filter((h) => h.product_id === id)) (SHIST[id] ??= []).push([ms_(h.at), h.what, h.who]);
+
+  const totals = o.level <= TOTALS;
+  const { rows: ord } = await db.query<{ id: string; paid_at: Date; buyer: string; member: boolean; items: unknown[]; paid_with: string; fulfilment: string; pickup_at: string; state: string; city: string }>(
+    'SELECT * FROM command.shop_orders ORDER BY id DESC',
+  );
+  const ORDERS = ord.map((r) =>
+    totals ? [r.id, 0, '', 0, r.items, r.paid_with, r.fulfilment, r.pickup_at, r.state, ''] : [r.id, ms_(r.paid_at), r.buyer, r.member ? 1 : 0, r.items, r.paid_with, r.fulfilment, r.pickup_at, r.state, r.city],
+  );
+
+  const { rows: pre } = await db.query<{ id: string; shop: string; product_id: string; option: string; units: number; state: string; placed_at: Date }>('SELECT * FROM command.shop_preorders ORDER BY id');
+  const PRE = pre.map((r) => [r.id, r.shop, r.product_id, r.option, r.units, r.state, ms_(r.placed_at)]);
+
+  const { rows: inc } = await db.query<{ what: string; units_label: string; stages: Array<[string, number | null, number | null]>; lands: string; product_id: string }>('SELECT * FROM command.shop_incoming ORDER BY position');
+  const INCOMING = inc.map((r) => [r.what, r.units_label, r.stages.map(([k, a, b]) => [k, a ?? NOW, b ?? NOW]), r.lands, r.product_id]);
+
+  const { rows: ret } = totals
+    ? { rows: [] }
+    : await db.query<{ order_id: string; item: string; reason: string; returned_on: Date; condition: string; proposed_by: string; proposed_at: Date; second_person: string | null; refunded_at: Date | null; amount_cents: number | null }>(
+        'SELECT * FROM command.shop_returns ORDER BY proposed_at DESC',
+      );
+  const RETURNS = ret.map((r) => ({
+    order: r.order_id, item: r.item, reason: r.reason, returned: ms_(r.returned_on), condition: r.condition, proposedBy: r.proposed_by, proposedAt: ms_(r.proposed_at),
+    second: r.second_person, refundedAt: r.refunded_at == null ? null : ms_(r.refunded_at), amount: r.amount_cents == null ? null : r.amount_cents / 100,
+  }));
+
+  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, NOW, figures: f, asOf };
+}

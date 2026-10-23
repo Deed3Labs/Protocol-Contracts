@@ -1,8 +1,10 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { LIVE } from '../live/env';
+import { fig } from '../live/figures';
 import { Fragment } from 'react';
 import { attrs, css } from '../runtime/dom';
 import { compBar, head, ic, money, pct } from './core';
-import { ACCTS, AP_BAL, BONDS, COOP_W, DAY, FLOWS, GROUPS, M, MON, NS, NW, PRE, RTD_W, SHOP, TODAY, TXO, Y, YD, YLD, Y_DEP, vars } from './data';
+import { ACCTS, AP_BAL, BONDS, COOP_W, DAY, ENTRIES, FLOWS, GROUPS, M, MEMBERS, MON, NS, NW, PRE, RTD_W, SHOP, TODAY, TXO, Y, YD, YLD, Y_DEP, vars } from './data';
 import { kv, sec, vModal } from './governance';
 import { G, chart, columns, figHtml, fmtD, gCell, line, px } from './growth';
 import { mkey } from './home';
@@ -25,10 +27,14 @@ export function acctOf(id) {
 }
 export function ASIDE() {
   return [
-    ['Sales tax held', typeof SHOP !== 'undefined' ? SHOP.tax : 351.58, 'Shop · paid with the quarterly return'],
+    ['Sales tax held', LIVE && vars.setAside ? vars.setAside.salesTax : typeof SHOP !== 'undefined' ? SHOP.tax : 351.58, 'Shop · paid with the quarterly return'],
     [
       'Pre-order deposits',
-      typeof PRE !== 'undefined' ? PRE.filter((r) => r[5] === 'held').reduce((a, r) => a + prOf(r[2]).price * r[4], 0) : 460,
+      LIVE && vars.setAside
+        ? vars.setAside.preorderDeposits
+        : typeof PRE !== 'undefined'
+          ? PRE.filter((r) => r[5] === 'held').reduce((a, r) => a + prOf(r[2]).price * r[4], 0)
+          : 460,
       'Hardware · refundable until made',
     ],
   ];
@@ -89,7 +95,7 @@ export function moneyPage() {
           : P === 'credit'
             ? 'Most credit is backed by savings.'
             : P === 'bonds'
-              ? 'The first bond matures 14 Dec.'
+              ? `The first bond matures ${firstBond()}.`
               : `${FLOWS.length} money movements in the next 30 days.`;
   const tools = (
     <div className="ph-tools">
@@ -268,8 +274,8 @@ export function holdings() {
       </div>
       {strip([
         ['Owed to shops by 4 Nov', money(M.owed14), `${money(M.short)} lent by the yield pool`],
-        ['Owed to bondholders', money(M.bonds), 'first due 14 Dec'],
-        ['Reserve check', '1 : 1', 'member savings · 2 min ago'],
+        ['Owed to bondholders', money(M.bonds), `first due ${firstBond()}`],
+        ['Reserve check', fig('money.reserve').ratio, `member savings · ${fig('money.reserve').checked}`],
         ['Free to spend', money(free), 'after tax and deposits'],
       ])}
     </section>
@@ -303,11 +309,11 @@ export function moneyPane() {
   });
   const facts = {
     sav: [
-      ['Members', '124'],
+      ['Members', String(activeMembers())],
       ['Tied to credit', money(M.savingsBacked)],
       ['Free to withdraw', money(M.savings - M.savingsBacked)],
       ['USDC at Bridge', money(M.savings) + ' · 2 min'],
-      ['Reserve', '1 : 1', 1],
+      ['Reserve', fig('money.reserve').ratio, 1],
     ],
     yld: [
       ['Deposited', money(Y.assets) + ' · ' + Y.depositors + ' depositors'],
@@ -347,35 +353,23 @@ export function moneyPane() {
       ? FLOWS.map(([d, k, v, nn, s]) => [dayD(d), nn, s, sgn(k, v), k])
       : id === 'ops'
         ? [
-            ['20 Oct', 'Card sales · shop', 'Stripe payout', '+$1,218.40', 'in'],
-            ['19 Oct', 'Poster printing', 'Card', '−$212.00', ''],
-            ['15 Oct', 'BB-0006 issued', 'From a member', '+$5,000.00', 'in'],
-            ['14 Oct', 'Railway', 'Card', '−$67.04', ''],
+            ...entryRows('ops'),
           ]
         : id === 'sav'
           ? [
-              ['21 Oct', 'Deposits', '38 members', '+$1,904.20', 'in'],
-              ['20 Oct', 'Withdrawals', '6 members', '−$412.00', ''],
-              ['19 Oct', 'Deposits', '29 members', '+$1,322.10', 'in'],
+              ...entryRows('sav'),
             ]
           : id === 'yld'
             ? [
                 ['4 Nov', 'Lends the payout pool', 'Scheduled · repaid from repayments', '−' + money(Y.toPayout), ''],
-                ['21 Oct', 'Interest from credit', 'Unsecured tiers · cycle carry', '+$31.20', 'in'],
-                ['20 Oct', 'Deposits', '4 members', '+$1,150.00', 'in'],
-                ['18 Oct', 'Withdrawal', '1 member · paid at once', '−$250.00', ''],
-                ['18 Oct', 'Interest from credit', 'Unsecured tiers', '+$6.70', 'in'],
-                ['15 Oct', 'Opened', 'Founding deposits · 14 members', '+$8,062.10', 'in'],
+                ...entryRows('yld'),
               ]
             : id === 'ap'
               ? [
-                  ['20 Oct', 'Fee share in', 'From credit fees', '+$62.40', 'in'],
-                  ['14 Oct', 'Loss absorbed', 'Cajon Phone Repair', '−$204.00', ''],
-                  ['13 Oct', 'Fee share in', 'From credit fees', '+$58.10', 'in'],
+                  ...entryRows('ap'),
                 ]
               : [
-                  ['20 Oct', 'Discounts held', '14 purchases', '+$100.00', 'in'],
-                  ['13 Oct', 'Discounts held', '19 purchases', '+$126.80', 'in'],
+                  ...entryRows('coop'),
                 ];
   const act = {
     yld: ['yrate', 'How the rate works'],
@@ -953,16 +947,11 @@ export function nReserves() {
     </>,
     [
       ['Covers', money(M.unsecured), 'unsecured credit'],
-      ['Absorbed', money(M.lost), '3 losses, all time'],
-      ['Lent out', '$0.00', 'from spare only'],
+      ['Absorbed', money(M.lost), `${fig('money.ap.losses')} losses, all time`],
+      ['Lent out', money(fig('money.ap.lent_out')), 'from spare only'],
     ],
   );
-  const queue = [
-    ['22 Oct', 'Rosa’s Panadería', 412.6],
-    ['2 Nov', 'Monthly run · 11 shops', 9510.65],
-    ['4 Nov', 'Arrowhead Nails', 732.0],
-    ['4 Nov', 'Cajon Phone Repair', 2184.0],
-  ];
+  const queue = fig('money.payout.queue').map(([t, k, v]) => [fmtD(t), k, v]);
   let run = 0;
   const pp = cellR(
     'PayoutPool',
@@ -993,7 +982,7 @@ export function nReserves() {
       ])}
     </div>,
     [
-      ['Owed by 4 Nov', money(M.owed14), 'to 4 shops'],
+      ['Owed by 4 Nov', money(M.owed14), `to ${queue.length} shops`],
       ['Repayments due', money(M.dueMembers), 'by 4 Nov'],
       ['From the yield pool', money(M.short), '4 Nov to 6 Nov'],
     ],
@@ -1021,9 +1010,9 @@ export function nReserves() {
       </div>
     </>,
     [
-      ['Members', '124'],
-      ['Average', money(M.savings / 124)],
-      ['Reserve', '1 : 1'],
+      ['Members', String(activeMembers())],
+      ['Average', money(M.savings / activeMembers())],
+      ['Reserve', fig('money.reserve').ratio],
     ],
   );
   const coop = cellR(
@@ -1161,7 +1150,7 @@ export function nYield() {
       {strip([
         ['Base rate', mo(Y.curve.base), 'a month at 0% lent'],
         ['Cycle', Y.cycleDays + ' days', 'set by RevolvingIssuer'],
-        ['Past 80% lent', 'Climbs fast', 'to pull deposits in'],
+        [`Past ${Math.round(Y.curve.kink * 100)}% lent`, 'Climbs fast', 'to pull deposits in'],
       ])}
     </section>
   );
@@ -1210,17 +1199,15 @@ export function nYield() {
       <div className="ablock">
         <span className="lbl">Since it opened</span>
         {evRows([
-          ['15 Oct', 'Opened', '14 founding members', '+$8,062.10', 'in'],
-          ['18 Oct', 'Withdrawal', '1 member · paid at once', '−$250.00', ''],
-          ['20 Oct', 'Deposits', '4 new members', '+$1,150.00', 'in'],
+          ...fig('money.yield.since_opened').map(([t, k, d, v]) => [fmtD(t), k, d, sgn(v < 0 ? '' : 'in', Math.abs(v)), v < 0 ? '' : 'in']),
           ['21 Oct', 'Interest', 'From unsecured credit, so far', '+' + money(Y.earned), 'in'],
         ])}
       </div>
     </>,
     strip([
-      ['Depositors', String(Y.depositors), '4 joined this week'],
+      ['Depositors', String(Y.depositors), `${fig('money.yield.joined_this_week')} joined this week`],
       ['Average', money(Y.assets / Y.depositors), 'a member'],
-      ['Largest', money(1500), pct(1500, Y.assets) + ' of the pool'],
+      ['Largest', money(largestDeposit()), pct(largestDeposit(), Y.assets) + ' of the pool'],
     ]),
   );
   const loans = gCell(
@@ -1372,15 +1359,15 @@ export function nYield() {
 
 /* ── Credit: how much is out, and how safe ───────────────────────────── */
 export function nCredit() {
-  const out = [0, 900, 3100, 6200, 9400, 12100, M.credit],
-    lim = [0, 8000, 15400, 24600, 31800, 37200, M.limits];
+  const out = [...fig('money.credit.outstanding_weeks'), M.credit],
+    lim = [...fig('money.credit.limits_weeks'), M.limits];
   /* October in one sum (where the balance came from), then whether this cycle's repayments are coming in */
   const spent = TXO.reduce((a, m) => a + m.oct, 0),
-    start = 7040.0,
+    start = fig('money.credit.owed_month_start'),
     repaid = start + spent - M.credit; /* repaid falls out, so the sum always closes */
   const sched = FLOWS.filter((f) => f[1] === 'in' && f[0] <= 9).reduce((a, f) => a + f[2], 0),
     due = repaid + sched,
-    autopay = 98;
+    autopay = fig('money.credit.autopay');
   const t4 = (k, v, note, cls = '') => (
     <div className={cls}>
       <span className="lbl">{k}</span>
@@ -1397,11 +1384,11 @@ export function nCredit() {
     <div className="yeq four">
       {t4('Owed on 1 Oct', money(start), 'start of the month')}
       {o4('+')}
-      {t4('Spent', money(spent), 'at 12 shops')}
+      {t4('Spent', money(spent), `at ${TXO.length} shops`)}
       {o4('−')}
       {t4('Repaid', money(repaid), 'by members')}
       {o4('=')}
-      {t4('Owed now', money(M.credit), 'by 124 members', 'hi')}
+      {t4('Owed now', money(M.credit), `by ${activeMembers()} members`, 'hi')}
     </div>
   );
   const rp = (
@@ -1450,8 +1437,8 @@ export function nCredit() {
       </div>
       {strip([
         ['Limits issued', money(M.limits), pct(M.credit, M.limits) + ' drawn'],
-        ['On autopay', String(autopay), pct(autopay, 124) + ' of members'],
-        ['Average owed', money(M.credit / 124), 'a member'],
+        ['On autopay', String(autopay), pct(autopay, activeMembers()) + ' of members'],
+        ['Average owed', money(M.credit / activeMembers()), 'a member'],
       ])}
     </section>
   );
@@ -1483,13 +1470,9 @@ export function nCredit() {
     's-4',
     'How old',
     srcTxt('protocol'),
-    figHtml(pct(12480.2, M.credit), 'of what’s owed is current'),
+    figHtml(pct(fig('money.credit.aging')[0][1], M.credit), 'of what’s owed is current'),
     columns(
-      [
-        ['Current', 12480.2],
-        ['1–30 d', 1310.4],
-        ['31–60 d', 421.8],
-      ],
+      fig('money.credit.aging'),
       {
         hi: 0,
         h: 96,
@@ -1497,7 +1480,7 @@ export function nCredit() {
       },
     ),
     strip([
-      ['Late', money(1310.4 + 421.8)],
+      ['Late', money(fig('money.credit.aging').slice(1).reduce((a, [, v]) => a + v, 0))],
       ['Over 60 d', 'None'],
     ]),
   );
@@ -1512,8 +1495,8 @@ export function nCredit() {
       ['14 Oct', 'Cajon Phone Repair', 'Member M•••, 90 days late', money(204)],
     ]),
     strip([
-      ['Loss rate', '1.1%'],
-      ['Recovered', money(0)],
+      ['Loss rate', pct(TXO.reduce((a, m) => a + m.lost, 0), TXO.reduce((a, m) => a + m.orig, 0))],
+      ['Recovered', money(fig('money.credit.recovered'))],
     ]),
   );
   const shops = TXO.slice()
@@ -1524,7 +1507,7 @@ export function nCredit() {
     's-8',
     'Where it was spent',
     srcTxt('lithic'),
-    figHtml(money(octAll), 'of credit spent at 12 shops in October'),
+    figHtml(money(octAll), `of credit spent at ${TXO.length} shops in October`),
     <>
       <div className="hbars">
         {shops.map((m, __k) => (
@@ -1551,29 +1534,24 @@ export function nCredit() {
           octAll,
         ),
       ],
-      ['6 others', money(octAll - shops.reduce((a, m) => a + m.oct, 0))],
+      [`${TXO.length - shops.length} others`, money(octAll - shops.reduce((a, m) => a + m.oct, 0))],
     ]),
   );
   const limits = gCell(
     's-4 wt',
     'Limit sizes',
-    '124 members',
-    figHtml('$250', 'the most common limit · 46 members'),
+    `${activeMembers()} members`,
+    figHtml(commonLimit()[0], `the most common limit · ${commonLimit()[1]} members`),
     columns(
-      [
-        ['$100', 38],
-        ['$250', 46],
-        ['$500', 28],
-        ['$1,000+', 12],
-      ],
+      fig('money.credit.limit_sizes'),
       {
         hi: 1,
         h: 132,
       },
     ),
     strip([
-      ['Smallest', money(100)],
-      ['Largest', money(1500)],
+      ['Smallest', money(fig('money.credit.limit_range').smallest)],
+      ['Largest', money(fig('money.credit.limit_range').largest)],
     ]),
   );
   return (
@@ -1804,3 +1782,26 @@ export function nSchedule() {
    changes are drafted here and signed in the Ops Safe (2 of 3); agreements are signed in the e-signature tool.
    Ties: Inland Cycle Works out for signature (Home, Needs you); Rosa's cap raise signed and in the wait (Merchants);
    RevolvingIssuer v1.3 live 21 Oct (Home, Dana Ruiz); PayoutPool top-up of $1,116.89 due 30 Oct (Money). */
+
+// ── counted ─────────────────────────────────────────────────────────────────
+
+/** Active members: the API counts them for Money; the preview counts the prototype's. */
+export function activeMembers() {
+  return LIVE && vars.memberSummary ? vars.memberSummary.active : MEMBERS.filter((m) => m.status === 'active').length;
+}
+/** When the first bond matures ("14 Dec"): ordered by issue month plus term, so a maturity next year sorts after this year's. */
+export function firstBond() {
+  const due = (b) => (MON.indexOf(b[2].split(' ')[1]) + b[4]) * 31 + Number(b[3].split(' ')[0]);
+  return BONDS.slice().sort((a, b) => due(a) - due(b))[0][3];
+}
+export function largestDeposit() {
+  return Math.max(...Y_DEP.map((r) => r[1]));
+}
+/** The most common credit limit, and how many members have it. */
+export function commonLimit() {
+  return fig('money.credit.limit_sizes').reduce((a, b) => (b[1] > a[1] ? b : a));
+}
+/** An account's recent activity, newest first, as the panel lists it. */
+export function entryRows(id) {
+  return (ENTRIES[id] ?? []).map(({ at, what, detail, amount }) => [fmtD(at), what, detail, sgn(amount < 0 ? '' : 'in', Math.abs(amount)), amount < 0 ? '' : 'in']);
+}

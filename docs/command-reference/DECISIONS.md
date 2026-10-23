@@ -172,3 +172,38 @@ Decided 2026-10-23 (Kai: stored figures, one PR per section group).
   and shop kinds are stored too: the prototype's add up to 16 against 14 open shops.
 - **Totals (every member)** sees the same shops and numbers. A shop's contact (name, phone, email)
   and address are its people's, so the board's cards leave the API without them.
+
+### 3d: Shop and Money, with the yield pool
+
+- **Money's rows:** the accounts and their weekly balances, each account's activity (written into
+  the prototype's drawing code, now `ENTRIES` in its data), the bonds and the yield pool's
+  depositors. **Figures:** the credit book, payouts due, the floor, the pool's principal, curve and
+  history, the Assurance and credit weeks, the co-op's weeks, flows, the payout queue, aging and limit
+  sizes.
+- **The headline numbers are worked out on the server.** M (cash, savings, payout, Assurance, the
+  floor, room, the shortfall) and the yield pool's Y (assets, utilisation, rates, APY, what it would
+  cover) are computed in the API with the prototype's own formulas, in the same order, so the
+  figures match to the cent; the brief's update says rates are never worked out in the browser.
+  Phase 5 swaps these sums for the contracts' reads.
+- **Depositors are never named.** A depositor is the last two hex characters of their address and
+  the page masks even that (`M•••4f`), for everyone. The order deposits came in breaks ties.
+- **Shop's rows:** the catalog, stock by colour and size, the shelf's periods and each product's
+  history, the recent orders, hardware pre-orders, what's ordered and planned, and returns with their
+  refunds. **Figures:** each product's weekly sales, weekly orders, what selling costs (shipping,
+  card fees, the sales-tax rate on the taxable share), running the line, sizes sold, pickups by shop,
+  days to ship, who buys and how they paid.
+- **Counted, no longer written in:** the shop's 4-week totals (worked out again from the rows with
+  the prototype's formulas), the share of member buyers and of mediums and larges, the cheapest,
+  costliest, lowest- and highest-margin products, what earns most, the restock dates, what's back
+  on, the next draft, what's archived, cover and the reorder list, batches arriving and planned,
+  orders done, the median to ship and the share within 2 days, returns and refunds, unfinished
+  pre-orders, and the refund waiting on a second person (who, and for how long).
+- **Money's set-aside comes from the shop.** Sales tax held and pre-order deposits are worked out on
+  the server from the shop's rows and sent with Money, so Money doesn't need Shop loaded.
+- **Orders are personal.** The buyer is stored as a first name and last initial, which is how the
+  prototype shows them while packing; addresses aren't stored (packing reads them from Stripe in
+  Phase 7). At Totals the orders leave with no buyer, city or time, the returns aren't sent, and the
+  Orders tab isn't shown. Unlike Members and Forms there's no masked view to reveal: the design
+  shows a first name to the person packing, and nobody below See sees an order.
+- **Refunds and shop actions** (restock, pack, refund, nudge) still change only the page; they're
+  saved through the API in the step after 3e.
