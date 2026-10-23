@@ -1,44 +1,84 @@
 // @ts-nocheck: writes into the sections' untyped data (src/sections/data.tsx).
 import {
+  ACCTS,
+  AP_BAL,
+  AP_REQ,
   BATCH_DATE,
   BOARD,
   BOARDS,
+  BONDS,
+  BUYERS,
   B_ACT,
   B_OPEN,
   CITY_V,
   COHORTS,
+  COOP_W,
+  COST_W,
   DESIGNS,
+  ENTRIES,
   FLEET,
+  FLOWS,
+  GP_W,
   HEAT,
   INBOX,
+  INCOMING,
   LANDING,
   LATER,
+  LINE_COSTS,
+  M,
   MEMBERS,
+  ORDERS,
+  ORD_W,
   OTHERS,
   OWED,
+  PAID_WITH,
+  PARTNERS,
   POSTERS,
+  PR,
+  PRE,
   PROSPECTS,
   RANGE,
   REFS,
+  RETURNS,
+  REV_W,
+  RTD_W,
+  SHELF_EV,
+  SHIP_DAYS,
+  SHIST,
+  SHOP,
   SHOPS,
+  SHOP_COSTS,
   SHOP_INFO,
   SHOP_NO,
   SIGNED,
+  SIZE_MIX,
   SRC30,
+  STK,
   STOPS,
+  SW,
   TX,
   TXO,
+  UNSEC,
+  WEEKS,
   W_ACT,
   W_INV,
   W_JOIN,
   W_SRC,
   W_VIS,
   W_WAIT,
-  WEEKS,
   XS,
+  Y,
+  YD,
+  Y_ASSETS,
+  Y_DEP,
+  Y_LENT,
+  goods,
+  gpWeeks,
+  shopTotals,
   vars,
 } from '../sections/data';
 import { T } from '../sections/merchants';
+import { unitCost } from '../sections/shop';
 import { api } from './api';
 import { LIVE } from './env';
 import { setFigures } from './figures';
@@ -48,7 +88,7 @@ import { setFigures } from './figures';
  * opened; until then the page shows the prototype's loading state. Sections not listed here still
  * draw the prototype's demo data.
  */
-export const SERVED = new Set(['members', 'growth', 'field', 'merchants']);
+export const SERVED = new Set(['members', 'growth', 'field', 'merchants', 'money', 'shop']);
 const ready = new Set<string>();
 
 export const needsData = (route: string) => LIVE && SERVED.has(route) && !ready.has(route);
@@ -113,6 +153,53 @@ const apply = {
     replace(FLEET, d.FLEET);
     // the board is built from BOARD the next time it's drawn
     XS.board = null;
+  },
+  money(d) {
+    // YLD is the same object as Y, so assigning Y updates both
+    assign(M, d.M);
+    assign(Y, d.Y);
+    replace(YD, d.YD);
+    replace(Y_ASSETS, d.Y_ASSETS);
+    replace(Y_LENT, d.Y_LENT);
+    replace(Y_DEP, d.Y_DEP);
+    replace(AP_BAL, d.AP_BAL);
+    replace(UNSEC, d.UNSEC);
+    replace(AP_REQ, d.AP_REQ);
+    replace(RTD_W, d.RTD_W);
+    replace(COOP_W, d.COOP_W);
+    replace(FLOWS, d.FLOWS);
+    replace(BONDS, d.BONDS);
+    replace(ACCTS, d.ACCTS);
+    assign(ENTRIES, d.ENTRIES);
+    replace(TX, d.TX);
+    replace(TXO, TX.map(T));
+    vars.memberSummary = { ...vars.memberSummary, ...d.MEMBER_SUMMARY };
+    if (d.SET_ASIDE) vars.setAside = d.SET_ASIDE;
+  },
+  shop(d) {
+    replace(PR, d.PR);
+    replace(goods, PR.filter((p) => !p.dep));
+    assign(STK, d.STK);
+    assign(SHELF_EV, d.SHELF_EV);
+    assign(SHIST, d.SHIST);
+    replace(ORDERS, d.ORDERS);
+    replace(PRE, d.PRE);
+    replace(INCOMING, d.INCOMING);
+    replace(RETURNS, d.RETURNS);
+    const f = d.figures;
+    replace(ORD_W, f['shop.orders_weekly']);
+    assign(SHOP_COSTS, f['shop.costs']);
+    replace(LINE_COSTS, f['shop.line_costs']);
+    replace(SIZE_MIX, f['shop.size_mix']);
+    replace(PARTNERS, f['shop.pickups']);
+    replace(SHIP_DAYS, f['shop.ship_days']);
+    replace(BUYERS, f['shop.buyers']);
+    replace(PAID_WITH, f['shop.paid_with']);
+    // the weekly sales and the 4-week totals are worked out again from the rows, as the prototype did
+    replace(REV_W, SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * p.price, 0)));
+    replace(COST_W, SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * unitCost(p), 0)));
+    assign(SHOP, shopTotals());
+    replace(GP_W, gpWeeks());
   },
   members(d) {
     replace(MEMBERS, d.MEMBERS);

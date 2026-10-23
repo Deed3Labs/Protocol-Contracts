@@ -1959,6 +1959,36 @@ export const ACCTS = [
     'color-mix(in srgb,var(--land) 45%,transparent)',
   ],
 ];
+/** Each account's recent activity, newest first (it was in the drawing code). Amounts in dollars, money out negative. */
+export const ENTRIES = {
+  ops: [
+    { at: Date.UTC(2026, 9, 20), what: "Card sales · shop", detail: "Stripe payout", amount: 1218.4 },
+    { at: Date.UTC(2026, 9, 19), what: "Poster printing", detail: "Card", amount: -212 },
+    { at: Date.UTC(2026, 9, 15), what: "BB-0006 issued", detail: "From a member", amount: 5000 },
+    { at: Date.UTC(2026, 9, 14), what: "Railway", detail: "Card", amount: -67.04 },
+  ],
+  sav: [
+    { at: Date.UTC(2026, 9, 21), what: "Deposits", detail: "38 members", amount: 1904.2 },
+    { at: Date.UTC(2026, 9, 20), what: "Withdrawals", detail: "6 members", amount: -412 },
+    { at: Date.UTC(2026, 9, 19), what: "Deposits", detail: "29 members", amount: 1322.1 },
+  ],
+  yld: [
+    { at: Date.UTC(2026, 9, 21), what: "Interest from credit", detail: "Unsecured tiers · cycle carry", amount: 31.2 },
+    { at: Date.UTC(2026, 9, 20), what: "Deposits", detail: "4 members", amount: 1150 },
+    { at: Date.UTC(2026, 9, 18), what: "Withdrawal", detail: "1 member · paid at once", amount: -250 },
+    { at: Date.UTC(2026, 9, 18), what: "Interest from credit", detail: "Unsecured tiers", amount: 6.7 },
+    { at: Date.UTC(2026, 9, 15), what: "Opened", detail: "Founding deposits · 14 members", amount: 8062.1 },
+  ],
+  ap: [
+    { at: Date.UTC(2026, 9, 20), what: "Fee share in", detail: "From credit fees", amount: 62.4 },
+    { at: Date.UTC(2026, 9, 14), what: "Loss absorbed", detail: "Cajon Phone Repair", amount: -204 },
+    { at: Date.UTC(2026, 9, 13), what: "Fee share in", detail: "From credit fees", amount: 58.1 },
+  ],
+  coop: [
+    { at: Date.UTC(2026, 9, 20), what: "Discounts held", detail: "14 purchases", amount: 100 },
+    { at: Date.UTC(2026, 9, 13), what: "Discounts held", detail: "19 purchases", amount: 126.8 },
+  ],
+};
 export const GROUPS = {
   members: ['Members’ money', 'Owed back to members on request'],
   set: ['Set aside', 'Only for shops and losses'],
@@ -3445,23 +3475,28 @@ export const STK = {
 };
 export const goods = PR.filter((p) => !p.dep);
 export const ORD_W = [9, 13, 13, 15, 18, 20, 17, 19];
+/* what selling costs beyond the goods: shipping net of what buyers pay, card fees, and the sales tax
+   held (the rate, on the taxable share of sales); and how many of the last 4 weeks' orders shipped */
+export const SHOP_COSTS = { shipNet: 1.4, cardPct: 0.029, cardFixed: 0.3, taxRate: 0.0775, taxable: 0.92, shipped4w: 60 };
+export const SHIP_NET = SHOP_COSTS.shipNet;
 export const REV_W = SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * p.price, 0));
 export const COST_W = SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * unitCost(p), 0));
-export const SHIP_NET = 1.4;
 export const LINE_COSTS = [
   ['Samples and proofs', 185],
   ['Photos for new products', 240],
   ['Shop software', 39],
   ['Label rolls', 36],
 ];
-export const SHOP = (() => {
+/** The shop's last 4 weeks, worked out from the products' weekly sales, the orders and the costs. */
+export function shopTotals() {
+  const C = SHOP_COSTS;
   const rev = REV_W.slice(-4).reduce((a, b) => a + b, 0),
     prev = REV_W.slice(0, 4).reduce((a, b) => a + b, 0),
     ord = ORD_W.slice(-4).reduce((a, b) => a + b, 0);
   const cost = COST_W.slice(-4).reduce((a, b) => a + b, 0),
-    shipped = 60,
-    ship = shipped * SHIP_NET,
-    fees = rev * 0.029 + ord * 0.3;
+    shipped = C.shipped4w,
+    ship = shipped * C.shipNet,
+    fees = rev * C.cardPct + ord * C.cardFixed;
   const gross = rev - cost - ship - fees,
     line = LINE_COSTS.reduce((a, b) => a + b[1], 0);
   return {
@@ -3474,13 +3509,16 @@ export const SHOP = (() => {
     gross,
     line,
     left: gross - line,
-    tax: rev * 0.0775 * 0.92,
+    tax: rev * C.taxRate * C.taxable,
     items: goods.reduce((a, p) => a + u4(p), 0),
     shipped,
     picked: ord - shipped,
   };
-})();
-export const GP_W = SW.map((_, i) => REV_W[i] - COST_W[i] - ORD_W[i] * 0.81 * SHIP_NET - (REV_W[i] * 0.029 + ORD_W[i] * 0.3));
+}
+export const SHOP = shopTotals();
+/* each week's gross profit, shipping about 81% of orders */
+export const gpWeeks = () => SW.map((_, i) => REV_W[i] - COST_W[i] - ORD_W[i] * 0.81 * SHOP_COSTS.shipNet - (REV_W[i] * SHOP_COSTS.cardPct + ORD_W[i] * SHOP_COSTS.cardFixed));
+export const GP_W = gpWeeks();
 export const SIZE_MIX = [
   ['XS', 4],
   ['S', 16],
@@ -3555,6 +3593,22 @@ export const PARTNERS = [
   ['Mesa Laundry', 4],
   ['Redlands Tire & Lube', 3],
 ];
+export const BUYERS = [
+  ['Members', 43],
+  ['Guests', 31],
+];
+export const PAID_WITH = [
+  ['Clear', 31],
+  ['Card', 27],
+  ['Apple or Google Pay', 16],
+];
+/* returns and refunds: the order, the item, why, when it came back, who proposed the refund and who
+   approves it (over $50.00 needs a second person), and the refund once paid (from the Orders drawing) */
+export const RETURNS = [
+  { order: '1079', item: 'Hoodie · M', reason: 'Wrong size', returned: D(10, 19), condition: 'unworn', proposedBy: 'Kai', proposedAt: TODAY + (11 * 60 + 20) * 60e3, second: 'Dana Ruiz', refundedAt: null, amount: null },
+  { order: '1071', item: 'Logo Tee · S', reason: 'Wrong size', returned: D(10, 12), condition: '', proposedBy: 'Kai', proposedAt: D(10, 12), second: null, refundedAt: D(10, 12), amount: 46 },
+];
+export const RETURN_WHY = ['Wrong size', 'Damaged in shipping', 'Changed their mind'];
 export const SHIP_DAYS = [
   ['Same day', 5],
   ['1 day', 29],

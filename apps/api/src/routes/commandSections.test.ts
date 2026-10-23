@@ -6,6 +6,9 @@ import growthFx from '@clear/command-types/src/fixtures/growth.json';
 import fixture from '@clear/command-types/src/fixtures/members.json';
 import merchFx from '@clear/command-types/src/fixtures/merchants.json';
 import merchFigures from '@clear/command-types/src/fixtures/merchants-figures.json';
+import moneyFx from '@clear/command-types/src/fixtures/money.json';
+import shopFx from '@clear/command-types/src/fixtures/shop.json';
+import shopFigures from '@clear/command-types/src/fixtures/shop-figures.json';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Db } from '../db/db.js';
@@ -73,7 +76,7 @@ describe('the seed', () => {
     expect(rows[0].n).toBe(Object.keys(MEMBERS_FIGURES).length);
     const all = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM command.figures');
     expect(all.rows[0].n).toBe(Object.keys(SEED_FIGURES).length);
-    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops', '30 merchants', '32 board cards']));
+    expect(first).toEqual(expect.arrayContaining(['102 posters', '8 forms', 'a route of 8 stops', '30 merchants', '32 board cards', '6 accounts', '6 bonds', '18 yield positions', '13 products', '19 orders', '6 pre-orders']));
   });
 
   test('never overwrites a figure a live job wrote', async () => {
@@ -228,5 +231,65 @@ describe('Merchants, as each level gets it', () => {
     const body = JSON.stringify(r.body);
     expect(body).not.toContain('555-0142');
     expect(body).not.toContain('ray@missionauto.com');
+  });
+});
+
+describe('Money, built from the database', () => {
+  test('the headline numbers, the yield pool and every series are the prototype’s, worked out on the server', async () => {
+    const kai = await signIn('did:kai|kai@useclear.org');
+    const r = await call(kai, 'GET', '/sections/money');
+    expect(r.status).toBe(200);
+    const c = moneyFx.check as Record<string, any>;
+    expect(r.body.M).toEqual(c.M);
+    expect(r.body.Y).toEqual(c.Y);
+    expect(r.body.ACCTS).toEqual(c.ACCTS);
+    for (const k of ['AP_BAL', 'UNSEC', 'AP_REQ', 'RTD_W', 'Y_ASSETS', 'Y_LENT']) expect(r.body[k]).toEqual(c[k]);
+    expect(r.body.Y_DEP).toEqual(moneyFx.depositors);
+    expect(r.body.BONDS).toEqual(moneyFx.bonds);
+    expect(r.body.ENTRIES).toEqual(moneyFx.entries);
+    expect(r.body.TX).toEqual(merchFx.tx);
+    expect(r.body.MEMBER_SUMMARY).toEqual({ active: 124 });
+    // what the shop holds for others: sales tax on the last 4 weeks, and the hardware deposits
+    expect(r.body.SET_ASIDE).toEqual(shopFx.check.SET_ASIDE);
+  });
+
+  test('every member can read it (Totals); nothing in it names a member', async () => {
+    const member = await signIn('did:member|member@example.com');
+    const r = await call(member, 'GET', '/sections/money');
+    expect(r.status).toBe(200);
+    expect(JSON.stringify(r.body)).not.toContain('@');
+  });
+});
+
+describe('Shop, built from the database', () => {
+  const NOW = Date.UTC(2026, 9, 21, 14);
+  const at = (v: number | null) => v ?? NOW;
+  const units = (shopFigures as Record<string, any>)['shop.units_weekly'];
+
+  test('the catalog, stock, shelf, orders, pre-orders, what’s coming and the returns are the prototype’s', async () => {
+    const kai = await signIn('did:kai|kai@useclear.org');
+    const r = await call(kai, 'GET', '/sections/shop');
+    expect(r.status).toBe(200);
+    expect(r.body.NOW).toBe(NOW);
+    expect(r.body.PR).toEqual(shopFx.products.map((p: any) => ({ ...p, wk: units[p.id] })));
+    expect(r.body.STK).toEqual(shopFx.stock);
+    expect(r.body.SHELF_EV).toEqual(Object.fromEntries(Object.entries(shopFx.shelf).map(([id, ev]: [string, any]) => [id, ev.map(([s, a, b]: any[]) => [s, at(a), at(b)])])));
+    expect(r.body.SHIST).toEqual(shopFx.history);
+    expect(r.body.ORDERS).toEqual(shopFx.orders);
+    expect(r.body.PRE).toEqual(shopFx.preorders);
+    expect(r.body.INCOMING).toEqual(shopFx.incoming.map((x: any[]) => [x[0], x[1], x[2].map(([k, a, b]: any[]) => [k, at(a), at(b)]), x[3], x[4]]));
+    expect(r.body.RETURNS).toEqual(shopFx.returns);
+    expect(r.body.figures['shop.orders_weekly']).toEqual([9, 13, 13, 15, 18, 20, 17, 19]);
+  });
+
+  test('at Totals the orders carry no buyer, city or time, and the returns aren’t sent', async () => {
+    const member = await signIn('did:member|member@example.com');
+    const r = await call(member, 'GET', '/sections/shop');
+    expect(r.status).toBe(200);
+    expect(r.body.ORDERS).toHaveLength(shopFx.orders.length);
+    for (const o of r.body.ORDERS) expect([o[1], o[2], o[3], o[9]]).toEqual([0, '', 0, '']);
+    expect(r.body.RETURNS).toEqual([]);
+    const text = JSON.stringify(r.body);
+    for (const o of shopFx.orders as any[]) expect(text).not.toContain(o[2]);
   });
 });
