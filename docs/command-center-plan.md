@@ -204,7 +204,12 @@ that data (the API's own endpoints are enforced already), and Ops Safe signers w
   data-room page views. Granting Approve becomes a proposal for a second admin.
 - `command.audit_log`, append-only, written by one helper every mutating handler calls.
 
-### Phase 3: database and seed
+### Phase 3: database and seed (in progress)
+
+Kai chose stored figures refreshed by jobs, and one PR per section group: 3a the foundation and
+Members, 3b Growth and Field, 3c Merchants, 3d Shop and Money with the yield pool, 3e Contracts,
+Governance, Records and Home. 3a is the pattern the rest follow (DECISIONS.md, Phase 3).
+
 
 - Migrations for the rest of the `command` schema. Money in integer cents, UUIDs, timestamps.
 - A seed that loads every row the prototype renders, from the shared fixtures.

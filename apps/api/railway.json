@@ -8,6 +8,7 @@
       "packages/domain/**",
       "packages/merchant-contracts/**",
       "packages/public-api-contracts/**",
+      "packages/command-types/**",
       "Dockerfile",
       "railway.json"
     ]

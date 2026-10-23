@@ -1160,6 +1160,7 @@ export function startup() {
     }
     if (t.dataset.mreveal !== undefined) {
       MS.reveal = !MS.reveal;
+      if (LIVE && MS.reveal && !vars.namesShown) return void live.loadSection('members', { reveal: true }).then(render, (e) => toast(e.message));
       return render();
     }
     if (t.dataset.closempane !== undefined) {

@@ -7,10 +7,11 @@ import dotenv from 'dotenv';
 import { applyBridgeEnv } from './config/bridgeEnv.js';
 import { getRedisClient, closeRedisConnection } from './config/redis.js';
 import { closePostgresPool } from './config/postgres.js';
-import { runMerchantMigrations } from './config/merchantDb.js';
+import { merchantDb, runMerchantMigrations } from './config/merchantDb.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { requireAuth } from './middleware/auth.js';
 import { liveCommandRouter } from './services/command/live.js';
+import { seedCommand } from './services/command/seed.js';
 import { requireMemberCapability } from './middleware/memberCapabilities.js';
 import pricesRouter from './routes/prices.js';
 import balancesRouter from './routes/balances.js';
@@ -442,6 +443,17 @@ async function startServer() {
       if (applied.length) console.log(`✅ Merchant migrations applied: ${applied.join(', ')}`);
     } catch (error) {
       console.error('❌ Merchant migrations failed; merchant back-office tables are not ready:', redactError(error));
+    }
+    // The Command Center's seed: the prototype's rows and figures, into empty tables only. On for
+    // dev (the demo site); off unless COMMAND_SEED=on.
+    if (process.env.COMMAND_SEED === 'on') {
+      try {
+        const db = await merchantDb();
+        const seeded = db ? await seedCommand(db) : [];
+        if (seeded.length) console.log(`✅ Command Center seeded: ${seeded.length} item(s)`);
+      } catch (error) {
+        console.error('❌ Command Center seed failed:', redactError(error));
+      }
     }
     // Acts on the Stripe webhooks the merchant back office stored. After the migrations, which
     // create the inbox it reads.

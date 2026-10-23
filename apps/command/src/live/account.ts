@@ -4,6 +4,8 @@ import { go, render, setWho, toast } from '../sections/shell';
 import { hideLogin, showLogin, sgnDraw, sgnIn, sgnStep } from '../sections/signin';
 import { ApiError, api, city, deviceKey, forgetSession, keepSession, sessionId, whenSessionEnds } from './api';
 import { privy, privyReady } from './privy';
+import { forgetSections } from './sections';
+export { loadSection } from './sections';
 
 /*
  * The live app's side of sign-in, the view and the Permissions page. The sections call these where
@@ -130,6 +132,7 @@ export async function liveSignOut() {
     // ended already: nothing to undo
   }
   forgetSession();
+  forgetSections();
   vars.me = null;
   await privy.logout().catch(() => undefined);
 }

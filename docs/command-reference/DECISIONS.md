@@ -103,3 +103,33 @@ Decided 2026-10-23.
   demo data. Everything the API serves is enforced on the server already; `vScrub` goes when the
   sections' data does.
 - **Ops Safe signers** show as none on the Permissions page until the Safe arrives (Phase 4).
+
+## Phase 3: the database behind the pages
+
+Decided 2026-10-23 (Kai: stored figures, one PR per section group).
+
+- **Rows are tables; figures are stored figures.** What a section lists (members, batches, …) is
+  in tables. The numbers it shows that aren't counted from its own rows (a weekly series, the
+  waitlist's shape) are rows in `command.figures`, by name, with their source and when they were
+  computed. The seed writes the prototype's values; live jobs overwrite them from real sources in
+  Phases 5–7, and the seed never overwrites a figure a job wrote.
+- **Anything the rows can count is counted.** "64 people are one step from active", the batch
+  totals, "48% active in batch 1" and the like are computed from the rows, so they can't drift from
+  them. The preview's DOM checks prove each computed figure matches the prototype's.
+- **A seeded database is read as of the prototype's day** (21 Oct 2026), so days-left and "went out
+  yesterday" match the design. Live data is read as of today.
+- **One source for the sample data.** `apps/command/scripts/fixtures.ts` writes the prototype's rows
+  into `packages/command-types/src/fixtures`; the API's seed loads them and its tests compare what it
+  serves with them. The figures' seed values live in `packages/command-types/src/figures.ts`, which
+  the preview draws from too.
+- **Names are decided on the server.**
+  - At See and above, names leave the API masked (`P••••`), and in full only when someone asks
+    (`?reveal=1`), which writes an audit row. The prototype showed first names unmasked in the
+    squares' tooltips; the live app doesn't.
+  - At Totals, member rows carry no name, member number, poster or dates, since each of those could
+    point to one person; only what the overview counts by (batch, stage, city, funding, first-spend
+    shop) is sent. The Accounts tab, a list of people, isn't shown.
+  - `vScrub` no longer runs on sections the API serves; it goes entirely when the last one is.
+- **Until a section is served, the live app still draws its demo data.** Members is first (3a).
+  Growth and Field, Merchants, Shop and Money, then Contracts, Governance and Records follow, with
+  Home last because it summarises the others.

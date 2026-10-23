@@ -13,13 +13,15 @@
     "typecheck": "tsc -b --noEmit",
     "test:visual": "playwright test",
     "test:crawl": "CRAWL=1 playwright test crawl --project=wide",
-    "port": "node scripts/port/index.cjs"
+    "port": "node scripts/port/index.cjs",
+    "fixtures": "bun scripts/fixtures.ts"
   },
   "dependencies": {
     "maplibre-gl": "^4.7.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "@privy-io/react-auth": "^3.32.2"
+    "@privy-io/react-auth": "^3.32.2",
+    "@clear/command-types": "*"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

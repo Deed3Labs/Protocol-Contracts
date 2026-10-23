@@ -65,7 +65,7 @@ async function signIn(user: string, extra: Record<string, unknown> = {}): Promis
 const all = (n: number): Levels => Object.fromEntries(SECTIONS.map((s) => [s, n])) as Levels;
 const inviteToken = (to: string) => /#invite=([\w-]+)/.exec(mail.filter((m) => m.to === to).at(-1)!.text)![1];
 
-let kai: Who, second: Who;
+let kai: Awaited<ReturnType<typeof signIn>>, second: Awaited<ReturnType<typeof signIn>>;
 
 describe('signing in', () => {
   test('an address on COMMAND_ADMIN_EMAILS becomes Admin on first sign-in', async () => {
