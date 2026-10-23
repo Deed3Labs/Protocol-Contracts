@@ -17,6 +17,7 @@ import {
   type Levels,
   type Section,
 } from '../services/command/levels.js';
+import { NotLiveYet, membersSection } from '../services/command/sections.js';
 import * as store from '../services/command/store.js';
 
 /*
@@ -286,6 +287,27 @@ export function commandRouter(deps: CommandDeps) {
 
   router.get('/audit', need('records', SEE), async (req, res) => {
     res.json({ entries: await store.auditLog(req.command!.db) });
+  });
+
+  // ── the sections' data ───────────────────────────────────────────────────
+
+  /**
+   * A section's rows and figures. Level 0 is refused by `need`; Totals gets what the server built for
+   * Totals (no names, nothing that points to one person). Names in full (?reveal=1) need See, and
+   * every time they're asked for is logged.
+   */
+  router.get('/sections/members', need('members', TOTALS), async (req, res) => {
+    const c = req.command!;
+    const level = c.levels.members;
+    const reveal = req.query.reveal === '1' && level >= SEE;
+    try {
+      const data = await membersSection(c.db, { level, reveal, now: now() });
+      if (reveal) await auditFrom(req, { area: 'members', action: 'Showed member names', detail: `${data.MEMBERS.length} members`, result: 'done' });
+      res.json(data);
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
   });
 
   router.get('/page-views', need('access', SEE), async (req, res) => {

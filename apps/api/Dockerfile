@@ -24,6 +24,8 @@ COPY packages/domain ./packages/domain
 COPY packages/merchant-contracts ./packages/merchant-contracts
 # Pay with Clear's public /v1 contract; merchant-contracts links to it too.
 COPY packages/public-api-contracts ./packages/public-api-contracts
+# The Command Center's shared shapes, figures and seed fixtures (no dependencies of its own).
+COPY packages/command-types ./packages/command-types
 # Their own dependencies, where they really live. bun links a `file:` package's files into the api's
 # node_modules, but resolves their imports from the files' real paths (/app/packages/...): without a
 # node_modules there, merchant-contracts can't find public-api-contracts (or zod) in the image, though

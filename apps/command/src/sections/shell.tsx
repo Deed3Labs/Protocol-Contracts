@@ -1,6 +1,7 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { LIVE } from '../live/env';
 import { loadTeam, logView } from '../live/account';
+import { SERVED, loadSection, needsData } from '../live/sections';
 import { Fragment } from 'react';
 import { attrs, css, html } from '../runtime/dom';
 import { contractsPage } from './contracts';
@@ -9,7 +10,7 @@ import { FEED_FROM, FIRST, LAST, NAMES, PEOPLE_T, ROLES, S, SECTIONS, UPD_FROM, 
 import { fieldPage } from './field';
 import { governancePage } from './governance';
 import { growthPage } from './growth';
-import { home, morePage, placeholder, syncPages, waitingPage } from './home';
+import { home, morePage, placeholder, stateError, stateLoading, syncPages, waitingPage } from './home';
 import { membersPage } from './members';
 import { corridorMount, merchantsPage } from './merchants';
 import { moneyPage } from './money';
@@ -196,6 +197,18 @@ export function vScrub(root) {
 export function render() {
   renderNav();
   const r = S.route;
+  // the live app draws a section from the API: the prototype's loading state until it arrives
+  if (needsData(r)) {
+    html($('#main'), stateLoading());
+    loadSection(r).then(
+      () => S.route === r && render(),
+      (e) => {
+        html($('#main'), stateError());
+        toast(e.message);
+      },
+    );
+    return;
+  }
   document.body.classList.toggle('ro', !!S.view && vLevel(r) < 3);
   document.body.classList.toggle('vw', vRO() && !S.view.preview);
   html(
@@ -231,7 +244,7 @@ export function render() {
                                 : placeholder(r)}
     </>,
   );
-  if (S.view && vLevel(r) === 1) vScrub($('#main'));
+  if (S.view && vLevel(r) === 1 && !(LIVE && SERVED.has(r))) vScrub($('#main'));
   corridorMount();
   requestAnimationFrame(syncPages);
   if (LIVE) logView();

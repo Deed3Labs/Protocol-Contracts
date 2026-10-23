@@ -77,3 +77,19 @@ The API (`apps/api`, Railway) needs:
 
 Privy's dashboard needs the Command Center's origins (`http://localhost:5230`, its Vercel previews,
 `https://command.useclear.org`) under allowed origins, or Privy refuses to load.
+
+## Data (Phase 3)
+
+Sections the API serves (`src/live/sections.ts`, `SERVED`) load their rows and figures from
+`GET /api/command/sections/:name` the first time they're opened. The rest still draw the prototype's
+demo data.
+
+The sample data the API seeds comes from the prototype:
+
+```bash
+npm run fixtures --workspace=@clear/command
+```
+
+That writes `packages/command-types/src/fixtures/*.json`. The API copies the package into its own
+`node_modules`, so run `bun install` in `apps/api` afterwards. The API seeds empty tables at start-up
+when `COMMAND_SEED=on` (dev); each source's provider is picked with `PROVIDER_<SOURCE>=seed|live`.
