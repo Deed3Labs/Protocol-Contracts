@@ -499,3 +499,160 @@ export async function shopSection(db: Queryable, o: ReadOptions): Promise<Record
 
   return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, NOW, figures: f, asOf };
 }
+
+// ── Contracts ───────────────────────────────────────────────────────────────
+
+/** The prototype's "now" for the seed (2pm on its day), the real one live. */
+const nowFor = (provider: Provider, now: Date) => (provider === 'seed' ? SEED_TODAY + 14 * 3600e3 : now.getTime());
+/** Lane events with a null time are "now". */
+const evAt = (ev: unknown[][], NOW: number) => ev.map((e) => e.map((v) => (v === null ? NOW : v)));
+const msOr = (d: Date | null, empty: number | null = null) => (d == null ? empty : ms_(d));
+
+/**
+ * Contracts: every agreement, the contracts and how they connect, their releases, the changes in
+ * flight and done, and the Safe's signers. Nothing here is personal: parties are companies and
+ * shops, signers are the co-op's officers.
+ */
+export async function contractsSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
+  const provider = providerFor('contracts');
+  if (provider === 'live') throw new NotLiveYet('contracts');
+  const NOW = nowFor(provider, o.now);
+  const { rows: agr } = await db.query<any>('SELECT * FROM command.agreements ORDER BY position');
+  const AGR = agr.map((a) => ({
+    id: a.id, name: a.name, party: a.party, type: a.kind, st: a.status, a: msOr(a.signed_at), b: msOr(a.ends_at), ver: a.version, note: a.note,
+    ...(a.rolls ? { roll: 1 } : {}),
+    ...(a.sent_at ? { sent: ms_(a.sent_at) } : {}),
+    ...(a.events ? { ev: evAt(a.events, NOW) } : {}),
+  }));
+  const { rows: ctr } = await db.query<any>('SELECT * FROM command.contracts ORDER BY position');
+  const CTR = ctr.map((c) => [c.id, c.name, c.version, c.layer, c.status, c.address, c.purpose, Number(c.map_x), Number(c.map_y), c.band]);
+  const CTR_NOTE = Object.fromEntries(ctr.filter((c) => c.note).map((c) => [c.id, c.note]));
+  const { rows: links } = await db.query<any>('SELECT * FROM command.contract_links ORDER BY position');
+  const REL = links.map((l) => [l.from_id, l.to_id, l.kind, l.verb, l.label, ...(l.label_side != null ? [Number(l.label_side)] : [])]);
+  const { rows: rel } = await db.query<any>('SELECT r.* FROM command.contract_releases r JOIN command.contracts c ON c.id = r.contract_id ORDER BY r.released_at, c.position');
+  const RELEASES: Record<string, unknown[]> = {};
+  const PENDING: Record<string, unknown> = {};
+  for (const r of rel) {
+    if (r.pending) PENDING[r.contract_id] = [r.version, ms_(r.released_at)];
+    else (RELEASES[r.contract_id] ??= []).push([r.version, ms_(r.released_at)]);
+  }
+  const { rows: ch } = await db.query<any>('SELECT * FROM command.contract_changes ORDER BY done, position');
+  const change = (c: any) => ({ id: c.id, t: c.title, c: c.contract, ...(c.proposed_by ? { by: c.proposed_by } : {}), ...c.detail, ev: evAt(c.events, NOW) });
+  const { rows: sg } = await db.query<any>('SELECT * FROM command.signers ORDER BY position');
+  return {
+    AGR, CTR, CTR_NOTE, REL, RELEASES, PENDING,
+    CH: ch.filter((c) => !c.done).map(change), CH_DONE: ch.filter((c) => c.done).map(change),
+    SIGNERS: sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),
+    NOW, figures: await figures(db, 'contracts'), asOf: asOfFor(provider, o.now),
+  };
+}
+
+// ── Governance ──────────────────────────────────────────────────────────────
+
+/** Governance: the entities, filings, boards and seats, the agenda, resolutions, the member vote, meetings, related-party deals and who decides what. */
+export async function governanceSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
+  const provider = providerFor('governance');
+  if (provider === 'live') throw new NotLiveYet('governance');
+  const q = async (sql: string) => (await db.query<any>(sql)).rows;
+  const ents = await q('SELECT * FROM command.entities ORDER BY position');
+  const ENT = ents.map((e) => [e.id, e.name, e.kind, e.status, e.role, Number(e.map_x), Number(e.map_y)]);
+  const pick = (k: string) => Object.fromEntries(ents.filter((e) => e[k] != null).map((e) => [e.id, e[k]]));
+  const FILINGS = (await q('SELECT * FROM command.filings ORDER BY position')).map((f) => [f.id, f.entity_id, f.title, ms_(f.due_on), f.status, f.owner]);
+  const seats = await q('SELECT * FROM command.board_seats ORDER BY board, position');
+  const GBOARDS = (await q('SELECT * FROM command.boards ORDER BY position')).map((b) => [
+    b.name, b.entity_id,
+    seats.filter((s) => s.board === b.name).map((s) => [s.class, s.holder, msOr(s.starts_at, 0), msOr(s.ends_at, 0), ...(s.note != null ? [s.note] : [])]),
+    b.note,
+  ]);
+  const [v] = await q('SELECT * FROM command.member_votes ORDER BY opens_at DESC LIMIT 1');
+  return {
+    ENT, PARENT: Object.fromEntries(ents.map((e) => [e.id, e.parent_id])), OWN: pick('owned'), UNDER: pick('under'), ENTF: pick('facts'),
+    FILINGS, GBOARDS,
+    AGENDA: (await q('SELECT * FROM command.agenda_items ORDER BY position')).map((a) => [a.title, a.minutes, a.owner, a.kind]),
+    RESOS: (await q('SELECT * FROM command.resolutions ORDER BY position')).map((r) => [ms_(r.passed_on), r.body, r.title, r.votes]),
+    PEOPLE: (await q('SELECT * FROM command.board_people ORDER BY position')).map((p) => [p.name, p.boards, p.note]),
+    VOTE: v ? { t: v.title, open: ms_(v.opens_at), close: ms_(v.closes_at), elig: v.eligible, quorum: Number(v.quorum), days: v.cast_daily, yes: v.yes, no: v.no, abs: v.abstain } : null,
+    MEETS: (await q('SELECT * FROM command.meetings ORDER BY position')).map((m) => [m.body, m.events]),
+    RP: (await q('SELECT * FROM command.related_party ORDER BY position')).map((r) => [r.payer, r.payee, r.what, r.paid_on.map((d: Date) => ms_(d)), r.amount_cents / 100, ...(r.opens_on ? [ms_(r.opens_on)] : [])]),
+    MATTERS: (await q('SELECT * FROM command.reserved_matters ORDER BY position')).map((m) => [m.decision, m.roles, ...(m.open ? [m.open] : [])]),
+    figures: await figures(db, 'governance'),
+    asOf: asOfFor(provider, o.now),
+  };
+}
+
+// ── Records ─────────────────────────────────────────────────────────────────
+
+/* the log's areas, as Records draws them */
+const LOG_AREA: Record<string, string> = { members: 'members', growth: 'field', field: 'field', merchants: 'field', money: 'money', shop: 'shop', contracts: 'chain', governance: 'gov', alert: 'alert' };
+
+/**
+ * Records: the documents, and the app's own log of what people did here (command.audit_log), its
+ * approvals (command.proposals) and nothing seeded: the log is a record, so it only ever holds what
+ * happened. At Totals only the documents and counts are sent; the log names people.
+ */
+export async function recordsSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
+  const provider = providerFor('records');
+  const q = async (sql: string, p: unknown[] = []) => (await db.query<any>(sql, p)).rows;
+  const DOCS = (await q('SELECT * FROM command.documents ORDER BY position')).map((d) => [d.id, d.title, d.kind, d.entity_id, ms_(d.dated), d.status, d.version, d.by_whom, d.pages]);
+  const people = o.level > TOTALS;
+  const since = new Date(o.now.getTime() - 30 * DAY);
+  const log = people
+    ? await q(
+        `SELECT a.id, a.at, a.person_id, a.who, a.area, a.action, a.detail, a.from_where, a.result, a.approver, p.name AS approver_name
+         FROM command.audit_log a LEFT JOIN command.people p ON p.id = a.approver ORDER BY a.at DESC, a.id DESC LIMIT 200`,
+      )
+    : [];
+  const LOG = log.map((l) => ({
+    id: 'l' + l.id, at: ms_(l.at), person: l.person_id, who: l.who, area: LOG_AREA[l.area] ?? 'system', action: l.action, detail: l.detail, from: l.from_where, result: l.result,
+    note: l.result === 'waiting' ? 'Needs a second person' : l.approver_name ? `Approved by ${l.approver_name}` : '',
+  }));
+  const APPROVALS = people
+    ? (
+        await q(
+          `SELECT a.proposed_by, pa.name AS proposer, a.approved_by, pb.name AS approver, count(*)::int AS n
+           FROM command.proposals a JOIN command.people pa ON pa.id = a.proposed_by JOIN command.people pb ON pb.id = a.approved_by
+           WHERE a.status = 'approved' AND a.approved_at >= $1 GROUP BY 1, 2, 3, 4`,
+          [since],
+        )
+      ).map((r) => ({ proposer: { id: r.proposed_by, name: r.proposer }, approver: { id: r.approved_by, name: r.approver }, n: r.n }))
+    : [];
+  return { DOCS, LOG, APPROVALS, people: people ? 'shown' : 'none', figures: await figures(db, 'records'), asOf: asOfFor(provider, o.now) };
+}
+
+// ── Home ────────────────────────────────────────────────────────────────────
+
+/**
+ * Home: what the other sections add up to, counted here so Home needs none of them loaded. Only
+ * counts and shop names leave: no member, no person.
+ */
+export async function homeSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
+  const provider = providerFor('home');
+  const asOf = asOfFor(provider, o.now);
+  const q = async (sql: string, p: unknown[] = []) => (await db.query<any>(sql, p)).rows;
+  const [m] = await q(`SELECT count(*)::int AS invited,
+      count(*) FILTER (WHERE status = 'active')::int AS active, count(*) FILTER (WHERE status = 'opened')::int AS opened, count(*) FILTER (WHERE status = 'invited')::int AS not_opened,
+      count(*) FILTER (WHERE status = 'active' AND funded_with = 'bank')::int AS bank, count(*) FILTER (WHERE status = 'active' AND funded_with = 'five')::int AS five,
+      count(*) FILTER (WHERE status = 'active' AND funded_with = 'deposit')::int AS deposit
+    FROM command.members`);
+  const owed = await q('SELECT o.merchant_id, o.owed_cents, coalesce(m.name, s.name) AS name FROM command.redemptions_owed o LEFT JOIN command.merchants m ON m.id = o.merchant_id LEFT JOIN command.merchant_stage s ON s.merchant_id = o.merchant_id');
+  const [{ n: posters }] = await q('SELECT count(*)::int AS n FROM command.posters');
+  const within = await q(
+    `SELECT f.title, e.name, f.due_on, f.status FROM command.filings f JOIN command.entities e ON e.id = f.entity_id
+     WHERE f.status NOT IN ('later', 'done') AND f.due_on >= $1 AND f.due_on <= $2 ORDER BY f.due_on, f.position`,
+    [new Date(asOf), new Date(asOf + 30 * DAY)],
+  );
+  const f = { ...(await figures(db, 'home')) };
+  for (const k of ['growth.range', 'merchants.payouts.schedule', 'members.first_spends.poster_ten']) {
+    const { rows } = await db.query<{ value: unknown }>('SELECT value FROM command.figures WHERE key = $1', [k]);
+    if (rows[0]) f[k] = rows[0].value;
+  }
+  return {
+    MEMBER_SUMMARY: { invited: m.invited, active: m.active, opened: m.opened, notOpened: m.not_opened, funded: { bank: m.bank, five: m.five, deposit: m.deposit } },
+    OWED: Object.fromEntries(owed.map((r) => [r.merchant_id, r.owed_cents / 100])),
+    SHOP_NAMES: Object.fromEntries(owed.map((r) => [r.merchant_id, r.name ?? r.merchant_id])),
+    POSTERS: posters,
+    DEADLINES: within.map((r) => [r.title, r.name, dayMon(ms_(r.due_on)), Math.round((ms_(r.due_on) - asOf) / DAY), r.status]),
+    figures: f,
+    asOf,
+  };
+}

@@ -1,0 +1,53 @@
+{
+ "governance.past_votes": [
+  [
+   "Operating agreement",
+   "Jun",
+   100
+  ],
+  [
+   "Board election",
+   "Aug",
+   58
+  ],
+  [
+   "Fee schedule",
+   "Sep",
+   41.2
+  ],
+  [
+   "Member agreement v2.2",
+   "Now",
+   32.4
+  ]
+ ],
+ "governance.meetings_held": {
+  "held": 12,
+  "minutes": 11
+ },
+ "governance.next_meeting": {
+  "packet": [
+   [
+    "Agenda",
+    "Final"
+   ],
+   [
+    "7 Oct minutes",
+    "Draft · approve as item 1"
+   ],
+   [
+    "Q3 money review",
+    "Dana Ruiz · due 2 Nov"
+   ]
+  ],
+  "attached": [
+   "7 Oct minutes draft",
+   "Q3 money review"
+  ],
+  "rsvp": [
+   "Coming",
+   "Coming",
+   "No reply"
+  ]
+ }
+}

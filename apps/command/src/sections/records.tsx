@@ -35,6 +35,7 @@ import { G, figHtml, fmtD, gCell } from './growth';
 import { mkey, vizTrack } from './home';
 import { ddHtml } from './kit';
 import { strip } from './money';
+import { vLevel } from './shell';
 
 /* on file, draft, waiting */
 export function docOf(id) {
@@ -466,11 +467,14 @@ export function recordsPage() {
       Add a document
     </button>
   );
+  // at Totals the log isn't sent: it names people
+  const totals = LIVE && vLevel('records') === 1;
+  if (totals && RS.pane === 'log') RS.pane = 'overview';
   const tabs = [
     ['overview', 'Overview'],
     ['docs', 'Documents'],
     ['log', 'Audit log'],
-  ];
+  ].filter(([v]) => !(totals && v === 'log'));
   const body = {
     overview: rOverview,
     docs: rDocs,
@@ -644,15 +648,17 @@ export function keyCell(span) {
     </section>
   );
 }
+/** Your key in the log: the prototype's Kai, or the signed-in person live. */
+const me = () => (LIVE ? vars.meId : 'K');
 export function rOverview() {
   const appr = gCell(
     's-4 wt',
     'Two-person rule',
     'Who approves whom',
-    figHtml('20', 'approvals in 30 days · nobody approved their own'),
+    figHtml(String(Object.values(APPR).reduce((a, o) => a + Object.values(o).reduce((x, y) => x + y, 0), 0)), 'approvals in 30 days · nobody approved their own'),
     apprMatrix(),
     strip([
-      ['Waiting', '3'],
+      ['Waiting', String(LOG.filter((l) => l[7] === 'waiting').length)],
       ['Self-approved', 'None'],
     ]),
   );
@@ -714,7 +720,7 @@ export function rDocs() {
     's-5',
     'What’s on file',
     'Select a kind to filter',
-    figHtml(String(Object.values(DCOUNT).reduce((a, b) => a + b, 0)), 'documents across 7 entities'),
+    figHtml(String(Object.values(DCOUNT).reduce((a, b) => a + b, 0)), `documents across ${Object.keys(COVER).length} entities`),
     treemap(
       Object.entries(DCOUNT).map(([k, v]) => ({
         k,
@@ -723,8 +729,8 @@ export function rDocs() {
     ),
     strip([
       ['Signed or final', String(Object.values(DSTATE_N).reduce((a, b) => a + b[0], 0))],
-      ['Drafts', '5'],
-      ['Waiting', '1'],
+      ['Drafts', String(Object.values(DSTATE_N).reduce((a, b) => a + b[1], 0))],
+      ['Waiting', String(Object.values(DSTATE_N).reduce((a, b) => a + b[2], 0))],
     ]),
   );
   /* documents by date: one row per kind, months as columns, status as the mark */
@@ -979,7 +985,7 @@ export function rLog() {
                   </td>
                   <td className="l">
                     <span className="who">
-                      <i className={`sg-sq${l[2] === 'K' ? ' me' : ''}`}>{l[2]}</i>
+                      <i className={`sg-sq${l[2] === me() ? ' me' : ''}`}>{l[2]}</i>
                       {WHO.find((w) => w[0] === l[2])[1]}
                     </span>
                   </td>
@@ -1008,15 +1014,22 @@ export function rLog() {
       <div />
     </section>
   );
+  const fresh = SIGNIN.filter((x) => /^New device/.test(x[5]));
+  const busiest = Object.entries(
+    [...WEEK.map((e) => e[1]), ...LOG.filter((l) => l[1] >= H2(10, 15, 0)).map((l) => l[2])].filter((k) => k !== 'SY').reduce((a, k) => ((a[k] = (a[k] || 0) + 1), a), {}),
+  ).sort((a, b) => b[1] - a[1])[0];
   const si = gCell(
     's-6',
     'Sign-ins',
     'Last 7 days',
-    figHtml('1', 'new device this week · Marcus Lee’s iPhone, confirmed by Kai'),
+    figHtml(
+      String(fresh.length),
+      `new device${fresh.length === 1 ? '' : 's'} this week${fresh[0] ? ` · ${fresh[0][1]}’s ${fresh[0][2].split(' · ')[0]}${/confirmed/.test(fresh[0][5]) ? ', confirmed by Kai' : ''}` : ''}`,
+    ),
     <div className="si">
       {SIGNIN.map(([k, n, dev, days, last, flag], __k) => (
         <div key={__k} className="si-r">
-          <i className={`sg-sq${k === 'K' ? ' me' : ''}`}>{k}</i>
+          <i className={`sg-sq${k === me() ? ' me' : ''}`}>{k}</i>
           <span className="si-k">
             <b>{n}</b>
             <span className="small quiet">
@@ -1070,7 +1083,7 @@ export function rLog() {
             's-6',
             'Who did what',
             'This week',
-            figHtml('Marcus Lee', 'the most actions this week · nearly all in shops and the field'),
+            figHtml(busiest ? WHO.find((w) => w[0] === busiest[0])?.[1] : 'Nobody', 'the most actions this week · nearly all in shops and the field'),
             <>
               {byPerson()}
               {areaKey(true)}

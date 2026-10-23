@@ -1,0 +1,180 @@
+{
+ "documents": [
+  [
+   "d1",
+   "Merchant partner agreement · Inland Cycle Works",
+   "agreement",
+   "coop",
+   1792454400000,
+   "waiting",
+   "v1.1",
+   "Inland Cycle Works",
+   6
+  ],
+  [
+   "d2",
+   "Minutes · Co-op board, 7 Oct",
+   "minutes",
+   "coop",
+   1791417600000,
+   "draft",
+   "v0.2",
+   "Kai",
+   4
+  ],
+  [
+   "d19",
+   "Shop returns and refunds · policy",
+   "policy",
+   "coop",
+   1790553600000,
+   "final",
+   "v1.0",
+   "Kai",
+   2
+  ],
+  [
+   "d3",
+   "RevolvingIssuer v1.3 · audit notes",
+   "policy",
+   "labs",
+   1792368000000,
+   "final",
+   "v1.0",
+   "Dana Ruiz",
+   9
+  ],
+  [
+   "d4",
+   "Merchant partner agreement · Uptown Barber",
+   "agreement",
+   "coop",
+   1792454400000,
+   "signed",
+   "v1.1",
+   "Uptown Barber · Kai",
+   6
+  ],
+  [
+   "d5",
+   "Bond certificate · BB-0006",
+   "bond",
+   "hold",
+   1792022400000,
+   "signed",
+   "v1.0",
+   "Kai · Dana Ruiz",
+   2
+  ],
+  [
+   "d6",
+   "Payout report · September",
+   "report",
+   "fin",
+   1790899200000,
+   "final",
+   "v1.0",
+   "System",
+   3
+  ],
+  [
+   "d7",
+   "Minutes · ClearLabs board, 7 Oct",
+   "minutes",
+   "labs",
+   1791417600000,
+   "signed",
+   "v1.0",
+   "Kai",
+   3
+  ],
+  [
+   "d8",
+   "Annual report · ClearLabs Inc.",
+   "filing",
+   "labs",
+   1792108800000,
+   "draft",
+   "v1.0",
+   "Kai",
+   2
+  ],
+  [
+   "d9",
+   "Intercompany pricing policy",
+   "policy",
+   "hold",
+   1791763200000,
+   "draft",
+   "v0.3",
+   "Kai",
+   5
+  ],
+  [
+   "d10",
+   "Program services agreement",
+   "agreement",
+   "fin",
+   1767225600000,
+   "signed",
+   "v1.0",
+   "Kai",
+   14
+  ],
+  [
+   "d11",
+   "Minutes · Holdings board, 16 Sep",
+   "minutes",
+   "hold",
+   1789603200000,
+   "signed",
+   "v1.0",
+   "Kai",
+   5
+  ],
+  [
+   "d12",
+   "Holdings bylaws",
+   "policy",
+   "hold",
+   1789516800000,
+   "final",
+   "v1.0",
+   "Holdings board",
+   22
+  ],
+  [
+   "d13",
+   "Cooperative operating agreement",
+   "agreement",
+   "coop",
+   1781222400000,
+   "signed",
+   "v1.0",
+   "Founding members",
+   31
+  ],
+  [
+   "d14",
+   "Articles of organization · Manager LLC",
+   "filing",
+   "mgr",
+   1791504000000,
+   "filed",
+   "v1.0",
+   "Accountant",
+   3
+  ],
+  [
+   "d15",
+   "Two-person rule",
+   "policy",
+   "coop",
+   1785542400000,
+   "final",
+   "v1.2",
+   "Co-op board",
+   4
+  ]
+ ]
+}

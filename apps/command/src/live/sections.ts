@@ -1,6 +1,10 @@
 // @ts-nocheck: writes into the sections' untyped data (src/sections/data.tsx).
 import {
   ACCTS,
+  AGENDA,
+  AGR,
+  ALERTS0,
+  APPR,
   AP_BAL,
   AP_REQ,
   BATCH_DATE,
@@ -10,37 +14,68 @@ import {
   BUYERS,
   B_ACT,
   B_OPEN,
+  CH,
+  CHAIN,
+  CH_DONE,
   CITY_V,
   COHORTS,
   COOP_W,
   COST_W,
+  COVER,
+  CTR,
+  CTR_NOTE,
+  DCOUNT,
+  DEADLINES,
   DESIGNS,
+  DOCS,
+  DSTATE_N,
+  EDGES,
+  ENT,
+  ENTF,
   ENTRIES,
+  FILINGS,
   FLEET,
   FLOWS,
+  FUNNEL,
+  GBOARDS,
   GP_W,
   HEAT,
   INBOX,
   INCOMING,
+  KEY_ROLES,
   LANDING,
   LATER,
   LINE_COSTS,
+  LOG,
   M,
+  MATTERS,
+  MEETING,
+  MEETINGS_HELD,
+  MEETS,
   MEMBERS,
   ORDERS,
   ORD_W,
   OTHERS,
   OWED,
+  OWN,
   PAID_WITH,
+  PARENT,
   PARTNERS,
+  PASTV,
+  PENDING,
+  PEOPLE,
   POSTERS,
   PR,
   PRE,
   PROSPECTS,
   RANGE,
   REFS,
+  REL,
+  RELEASES,
+  RESOS,
   RETURNS,
   REV_W,
+  RP,
   RTD_W,
   SHELF_EV,
   SHIP_DAYS,
@@ -51,15 +86,23 @@ import {
   SHOP_INFO,
   SHOP_NO,
   SIGNED,
+  SIGNERS,
+  SIGN_W,
   SIZE_MIX,
   SRC30,
   STK,
   STOPS,
   SW,
+  TTL,
   TX,
+  TXD,
   TXO,
+  UNDER,
   UNSEC,
+  VOTE,
+  WEEK,
   WEEKS,
+  WHO,
   W_ACT,
   W_INV,
   W_JOIN,
@@ -79,6 +122,7 @@ import {
 } from '../sections/data';
 import { T } from '../sections/merchants';
 import { unitCost } from '../sections/shop';
+import { shortId } from './account';
 import { api } from './api';
 import { LIVE } from './env';
 import { setFigures } from './figures';
@@ -88,7 +132,7 @@ import { setFigures } from './figures';
  * opened; until then the page shows the prototype's loading state. Sections not listed here still
  * draw the prototype's demo data.
  */
-export const SERVED = new Set(['members', 'growth', 'field', 'merchants', 'money', 'shop']);
+export const SERVED = new Set(['home', 'members', 'growth', 'field', 'merchants', 'money', 'shop', 'contracts', 'governance', 'records']);
 const ready = new Set<string>();
 
 export const needsData = (route: string) => LIVE && SERVED.has(route) && !ready.has(route);
@@ -111,7 +155,7 @@ const apply = {
     assign(DESIGNS, d.DESIGNS);
     replace(INBOX, d.INBOX ?? []);
     nextBatch(d.NEXT_BATCH);
-    vars.memberSummary = d.MEMBER_SUMMARY;
+    vars.memberSummary = { ...vars.memberSummary, ...d.MEMBER_SUMMARY };
     vars.formNamesShown = d.names === 'shown';
     // the datasets Growth draws are stored figures; the derived ones are worked out again from them
     const f = d.figures;
@@ -200,6 +244,74 @@ const apply = {
     replace(COST_W, SW.map((_, i) => goods.reduce((a, p) => a + p.wk[i] * unitCost(p), 0)));
     assign(SHOP, shopTotals());
     replace(GP_W, gpWeeks());
+  },
+  contracts(d) {
+    replace(AGR, d.AGR);
+    replace(CTR, d.CTR);
+    assign(CTR_NOTE, d.CTR_NOTE);
+    replace(REL, d.REL);
+    replace(EDGES, REL.filter((r) => r[4] !== null));
+    assign(RELEASES, d.RELEASES);
+    assign(PENDING, d.PENDING);
+    replace(CH, d.CH);
+    replace(CH_DONE, d.CH_DONE);
+    replace(SIGNERS, d.SIGNERS);
+    const f = d.figures;
+    assign(CHAIN, f['contracts.chain']);
+    assign(KEY_ROLES, f['contracts.key_roles']);
+    replace(TTL, f['contracts.draft_to_live']);
+    assign(SIGN_W, f['contracts.signatures_weekly']);
+    replace(TXD, f['contracts.registry_adds']);
+  },
+  governance(d) {
+    replace(ENT, d.ENT);
+    assign(PARENT, d.PARENT);
+    assign(OWN, d.OWN);
+    assign(UNDER, d.UNDER);
+    assign(ENTF, d.ENTF);
+    replace(FILINGS, d.FILINGS);
+    replace(GBOARDS, d.GBOARDS);
+    replace(AGENDA, d.AGENDA);
+    replace(RESOS, d.RESOS);
+    replace(PEOPLE, d.PEOPLE);
+    if (d.VOTE) assign(VOTE, d.VOTE);
+    replace(MEETS, d.MEETS);
+    replace(RP, d.RP);
+    replace(MATTERS, d.MATTERS);
+    const f = d.figures;
+    replace(PASTV, f['governance.past_votes']);
+    assign(MEETINGS_HELD, f['governance.meetings_held']);
+    assign(MEETING, f['governance.next_meeting']);
+  },
+  records(d) {
+    replace(DOCS, d.DOCS);
+    const f = d.figures;
+    assign(DCOUNT, f['records.doc_counts']);
+    assign(DSTATE_N, f['records.doc_states']);
+    assign(COVER, f['records.coverage']);
+    // the log is the app's own: people get the same short keys Team gives them, the system SY
+    const key = (id, name) => (id ? shortId({ id, name }) : 'SY');
+    replace(LOG, d.LOG.map((l) => [l.id, l.at, key(l.person, l.who), l.area, l.action, l.detail, l.from, l.result, l.note]));
+    replace(WHO, [...new Map([...d.LOG.map((l) => [key(l.person, l.who), l.person ? l.who : 'System']), ['SY', 'System']]).entries()]);
+    replace(WEEK, []);
+    const appr = {};
+    for (const a of d.APPROVALS) {
+      const p = key(a.proposer.id, a.proposer.name);
+      (appr[p] ??= {})[key(a.approver.id, a.approver.name)] = a.n;
+    }
+    assign(APPR, appr);
+    if (vars.me) vars.meId = shortId(vars.me);
+  },
+  home(d) {
+    vars.memberSummary = { ...vars.memberSummary, ...d.MEMBER_SUMMARY };
+    assign(OWED, d.OWED);
+    vars.shopNames = d.SHOP_NAMES;
+    vars.posterCount = d.POSTERS;
+    replace(DEADLINES, d.DEADLINES);
+    const f = d.figures;
+    replace(FUNNEL, f['home.funnel']);
+    replace(ALERTS0, f['home.alerts']);
+    if (f['growth.range']) assign(RANGE, f['growth.range']);
   },
   members(d) {
     replace(MEMBERS, d.MEMBERS);

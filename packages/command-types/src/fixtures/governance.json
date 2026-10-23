@@ -1,0 +1,947 @@
+{
+ "entities": [
+  {
+   "row": [
+    "coop",
+    "Clear Co-op",
+    "Wyoming LLC · co-op",
+    "formed",
+    "The parent. One member, one vote. Taxed as a corporation.",
+    40,
+    11
+   ],
+   "parent": null,
+   "owned": null,
+   "under": null,
+   "facts": {
+    "formed": "12 Jun 2026",
+    "tax": "Corporation, by election",
+    "ein": "••-•••4821",
+    "officers": "Kai, president",
+    "agr": [
+     "coop-oa",
+     "psa",
+     "mem21",
+     "ics"
+    ]
+   }
+  },
+  {
+   "row": [
+    "fin",
+    "Clear Financial Co.",
+    "Wyoming LLC",
+    "formed",
+    "Runs the card and money programs. Holds member funds for their benefit.",
+    10,
+    41
+   ],
+   "parent": "coop",
+   "owned": "100%",
+   "under": null,
+   "facts": {
+    "formed": "Before the co-op",
+    "tax": "Disregarded",
+    "ein": "••-•••1907",
+    "officers": "Kai, manager",
+    "agr": [
+     "psa",
+     "lithic",
+     "bridge",
+     "plaid"
+    ]
+   }
+  },
+  {
+   "row": [
+    "dt",
+    "The Deed & Title Co.",
+    "Wyoming LLC",
+    "forming",
+    "Keeps title records and will review deeds as a validator. Does not hold escrow.",
+    30,
+    41
+   ],
+   "parent": "coop",
+   "owned": "100%",
+   "under": null,
+   "facts": {
+    "tax": "Disregarded",
+    "steps": [
+     [
+      "Name reserved",
+      1
+     ],
+     [
+      "Operating agreement",
+      1
+     ],
+     [
+      "Articles filed",
+      0
+     ],
+     [
+      "EIN",
+      0
+     ],
+     [
+      "Bank account",
+      0
+     ]
+    ],
+    "agr": []
+   }
+  },
+  {
+   "row": [
+    "hold",
+    "Clear Capital Holdings",
+    "Wyoming C-corp",
+    "formed",
+    "Holds the economics of both funds. The co-op holds its governance class.",
+    50,
+    41
+   ],
+   "parent": "coop",
+   "owned": "100%",
+   "under": null,
+   "facts": {
+    "formed": "20 Jul 2026",
+    "tax": "C-corp",
+    "ein": "••-•••6630",
+    "officers": "Kai, president",
+    "agr": [
+     "ics"
+    ]
+   }
+  },
+  {
+   "row": [
+    "labs",
+    "ClearLabs Inc.",
+    "Wyoming C-corp",
+    "formed",
+    "Research and development. Maintains the protocol for the Foundation.",
+    70,
+    41
+   ],
+   "parent": "coop",
+   "owned": "Majority",
+   "under": null,
+   "facts": {
+    "formed": "5 Aug 2026",
+    "tax": "C-corp",
+    "ein": "••-•••3315",
+    "officers": "Kai, CEO · Dana Ruiz, protocol lead",
+    "agr": [
+     "pma"
+    ]
+   }
+  },
+  {
+   "row": [
+    "mgr",
+    "Manager LLC",
+    "Wyoming LLC",
+    "forming",
+    "Manages both funds. Owned by Holdings.",
+    50,
+    63
+   ],
+   "parent": "hold",
+   "owned": "100%",
+   "under": "Holdings 100%",
+   "facts": {
+    "tax": "Disregarded",
+    "steps": [
+     [
+      "Name reserved",
+      1
+     ],
+     [
+      "Articles filed",
+      1
+     ],
+     [
+      "Operating agreement",
+      0
+     ],
+     [
+      "EIN",
+      0
+     ],
+     [
+      "Bank account",
+      0
+     ]
+    ],
+    "agr": []
+   }
+  },
+  {
+   "row": [
+    "prop",
+    "Clear Properties Co.",
+    "Wyoming LLC · partnership",
+    "planned",
+    "Takes property contributions for OP units.",
+    34,
+    92
+   ],
+   "parent": "mgr",
+   "owned": null,
+   "under": "Holdings majority",
+   "facts": {
+    "tax": "Partnership",
+    "steps": [
+     [
+      "Name reserved",
+      0
+     ],
+     [
+      "Articles filed",
+      0
+     ],
+     [
+      "Operating agreement",
+      0
+     ],
+     [
+      "EIN",
+      0
+     ],
+     [
+      "First contribution",
+      0
+     ]
+    ],
+    "agr": []
+   }
+  },
+  {
+   "row": [
+    "lend",
+    "Clear Lending Co.",
+    "Wyoming LLC",
+    "planned",
+    "The credit book, bond series and pool shares.",
+    66,
+    92
+   ],
+   "parent": "hold",
+   "owned": null,
+   "under": "Holdings 100%",
+   "facts": {
+    "tax": "Disregarded",
+    "steps": [
+     [
+      "Name reserved",
+      0
+     ],
+     [
+      "Articles filed",
+      0
+     ],
+     [
+      "Operating agreement",
+      0
+     ],
+     [
+      "EIN",
+      0
+     ],
+     [
+      "Bank account",
+      0
+     ]
+    ],
+    "agr": []
+   }
+  },
+  {
+   "row": [
+    "fdn",
+    "Clear Foundation",
+    "Wyoming foundation",
+    "forming",
+    "Holds the protocol. Ownerless, outside the tree.",
+    91,
+    11
+   ],
+   "parent": null,
+   "owned": null,
+   "under": null,
+   "facts": {
+    "tax": "Not taxed as a business",
+    "steps": [
+     [
+      "Charter drafted",
+      1
+     ],
+     [
+      "Founder’s letter",
+      0
+     ],
+     [
+      "Filed with the state",
+      0
+     ],
+     [
+      "First council",
+      0
+     ]
+    ],
+    "agr": [
+     "pma"
+    ]
+   }
+  }
+ ],
+ "filings": [
+  [
+   "f1",
+   "labs",
+   "Annual report",
+   1793491200000,
+   "ready",
+   "Kai"
+  ],
+  [
+   "f2",
+   "coop",
+   "Board minutes",
+   1793750400000,
+   "draft",
+   "Kai"
+  ],
+  [
+   "f3",
+   "coop",
+   "Statement of Information",
+   1794700800000,
+   "none",
+   "Accountant"
+  ],
+  [
+   "f4",
+   "dt",
+   "Formation filing",
+   1795996800000,
+   "draft",
+   "Accountant"
+  ],
+  [
+   "f5",
+   "fdn",
+   "Foundation charter",
+   1797292800000,
+   "draft",
+   "Counsel"
+  ],
+  [
+   "f6",
+   "fin",
+   "Program review",
+   1798675200000,
+   "none",
+   "Dana Ruiz"
+  ],
+  [
+   "f7",
+   "coop",
+   "Annual member meeting",
+   1799971200000,
+   "none",
+   "Kai"
+  ],
+  [
+   "f15",
+   "coop",
+   "Sales tax return · Q4",
+   1801353600000,
+   "later",
+   "Accountant"
+  ],
+  [
+   "f8",
+   "fin",
+   "Annual report",
+   1803859200000,
+   "later",
+   "Accountant"
+  ],
+  [
+   "f9",
+   "fin",
+   "Program review",
+   1806451200000,
+   "later",
+   "Dana Ruiz"
+  ],
+  [
+   "f10",
+   "coop",
+   "Federal return",
+   1807747200000,
+   "later",
+   "Accountant"
+  ],
+  [
+   "f11",
+   "hold",
+   "Federal return",
+   1807747200000,
+   "later",
+   "Accountant"
+  ],
+  [
+   "f12",
+   "labs",
+   "Federal return",
+   1807747200000,
+   "later",
+   "Accountant"
+  ],
+  [
+   "f13",
+   "coop",
+   "Annual report",
+   1811808000000,
+   "later",
+   "Accountant"
+  ],
+  [
+   "f14",
+   "fin",
+   "Program review",
+   1814313600000,
+   "later",
+   "Dana Ruiz"
+  ],
+  [
+   "f15",
+   "hold",
+   "Annual report",
+   1814400000000,
+   "later",
+   "Accountant"
+  ]
+ ],
+ "boards": [
+  [
+   "Co-op board",
+   "coop",
+   [
+    [
+     "m",
+     "Kai",
+     1781222400000,
+     1831507200000
+    ],
+    [
+     "m",
+     "Member M•••",
+     1787184000000,
+     1831507200000
+    ],
+    [
+     "m",
+     "Member M•••",
+     1787184000000,
+     1799971200000
+    ],
+    [
+     "m",
+     null,
+     1799971200000,
+     0,
+     "Elect 15 Jan"
+    ],
+    [
+     "m",
+     null,
+     1799971200000,
+     0,
+     "Elect 15 Jan"
+    ]
+   ],
+   "Member-elected. Three seats are on the ballot at the annual meeting."
+  ],
+  [
+   "Holdings board",
+   "hold",
+   [
+    [
+     "c",
+     null,
+     0,
+     0,
+     "Elected directly"
+    ],
+    [
+     "r",
+     "Kai",
+     1784505600000,
+     1847664000000
+    ],
+    [
+     "r",
+     null,
+     0,
+     0,
+     "Co-op appoints"
+    ],
+    [
+     "i",
+     null,
+     0,
+     0,
+     "After the financial class sells"
+    ],
+    [
+     "i",
+     null,
+     0,
+     0,
+     "After the financial class sells"
+    ],
+    [
+     "n",
+     null,
+     0,
+     0,
+     "Picked jointly"
+    ],
+    [
+     "f",
+     null,
+     0,
+     0,
+     "Open to anyone"
+    ]
+   ],
+   "Investor seats stay empty until the financial class is sold. Chair elected directly."
+  ],
+  [
+   "ClearLabs board",
+   "labs",
+   [
+    [
+     "r",
+     "Kai",
+     1785888000000,
+     1849046400000
+    ],
+    [
+     "r",
+     "Dana Ruiz",
+     1785888000000,
+     1849046400000
+    ],
+    [
+     "t",
+     null,
+     0,
+     0,
+     "When a protocol lead joins"
+    ]
+   ],
+   "One seat for the team once a protocol lead joins."
+  ]
+ ],
+ "agenda": [
+  [
+   "Approve the 7 Oct minutes",
+   5,
+   "Kai",
+   "vote"
+  ],
+  [
+   "Member vote on agreement v2.2",
+   10,
+   "Kai",
+   "report"
+  ],
+  [
+   "Q3 money review",
+   15,
+   "Dana Ruiz",
+   "report"
+  ],
+  [
+   "Intercompany pricing policy",
+   15,
+   "Kai",
+   "vote"
+  ],
+  [
+   "Renew Plaid and poster printing",
+   10,
+   "Kai",
+   "vote"
+  ],
+  [
+   "Open seats and the annual meeting",
+   5,
+   "Kai",
+   "discuss"
+  ]
+ ],
+ "resolutions": [
+  [
+   1791331200000,
+   "Co-op board",
+   "Member fee schedule",
+   [
+    "y",
+    "y",
+    "y"
+   ]
+  ],
+  [
+   1791331200000,
+   "ClearLabs board",
+   "Protocol maintenance terms",
+   [
+    "r",
+    "y"
+   ]
+  ],
+  [
+   1789516800000,
+   "Holdings board",
+   "Adopt the bylaws",
+   [
+    "y"
+   ]
+  ],
+  [
+   1788307200000,
+   "Co-op board",
+   "Issue ClearLabs shares to the co-op",
+   [
+    "r",
+    "y",
+    "y"
+   ]
+  ],
+  [
+   1785888000000,
+   "Co-op board",
+   "Elect officers",
+   [
+    "y",
+    "y",
+    "a"
+   ]
+  ],
+  [
+   1785888000000,
+   "ClearLabs board",
+   "Appoint Dana Ruiz protocol lead",
+   [
+    "y",
+    "r"
+   ]
+  ]
+ ],
+ "people": [
+  [
+   "Kai",
+   [
+    "coop",
+    "hold",
+    "labs"
+   ],
+   "Recuses on deals between the co-op and ClearLabs"
+  ],
+  [
+   "Dana Ruiz",
+   [
+    "labs"
+   ],
+   "Recused on her own appointment"
+  ],
+  [
+   "Member M•••",
+   [
+    "coop"
+   ],
+   ""
+  ],
+  [
+   "Member M•••",
+   [
+    "coop"
+   ],
+   ""
+  ]
+ ],
+ "vote": {
+  "t": "Adopt member agreement v2.2",
+  "open": 1792022400000,
+  "close": 1793232000000,
+  "elig": 188,
+  "quorum": 0.25,
+  "days": [
+   9,
+   21,
+   30,
+   38,
+   47,
+   55,
+   61
+  ],
+  "yes": 52,
+  "no": 6,
+  "abs": 3
+ },
+ "meetings": [
+  [
+   "Members",
+   [
+    [
+     "held",
+     1781222400000,
+     "Founding vote"
+    ],
+    [
+     "held",
+     1787184000000,
+     "Board election"
+    ],
+    [
+     "held",
+     1790208000000,
+     "Fee schedule"
+    ],
+    [
+     "span",
+     1792022400000,
+     1793232000000,
+     "v2.2 vote"
+    ],
+    [
+     "next",
+     1799971200000,
+     "Annual meeting"
+    ]
+   ]
+  ],
+  [
+   "Co-op board",
+   [
+    [
+     "held",
+     1783468800000
+    ],
+    [
+     "held",
+     1785888000000
+    ],
+    [
+     "held",
+     1788307200000
+    ],
+    [
+     "held",
+     1791331200000
+    ],
+    [
+     "due",
+     1793750400000,
+     "Minutes due"
+    ],
+    [
+     "next",
+     1793750400000,
+     "4 Nov"
+    ],
+    [
+     "next",
+     1796169600000
+    ]
+   ]
+  ],
+  [
+   "Holdings board",
+   [
+    [
+     "held",
+     1784505600000,
+     "Founding resolutions"
+    ],
+    [
+     "held",
+     1789516800000
+    ],
+    [
+     "next",
+     1796083200000,
+     "Intercompany pricing"
+    ]
+   ]
+  ],
+  [
+   "ClearLabs board",
+   [
+    [
+     "held",
+     1785888000000
+    ],
+    [
+     "held",
+     1791331200000
+    ],
+    [
+     "next",
+     1799193600000
+    ]
+   ]
+  ],
+  [
+   "Delegate assembly",
+   [
+    [
+     "later",
+     1793491200000,
+     1801353600000,
+     "From 1,000 members"
+    ]
+   ]
+  ]
+ ],
+ "related": [
+  [
+   "coop",
+   "fin",
+   "Program services",
+   [
+    1785456000000,
+    1788134400000,
+    1790726400000,
+    1792022400000
+   ],
+   1200
+  ],
+  [
+   "fdn",
+   "labs",
+   "Protocol maintenance",
+   [
+    1786752000000,
+    1789430400000,
+    1792022400000
+   ],
+   2500
+  ],
+  [
+   "coop",
+   "labs",
+   "Shares issued",
+   [
+    1786752000000
+   ],
+   0
+  ],
+  [
+   "coop",
+   "hold",
+   "Intercompany services",
+   [],
+   0,
+   1796083200000
+  ]
+ ],
+ "matters": [
+  [
+   "Change the operating agreement",
+   [
+    2,
+    0,
+    -1,
+    -1,
+    -1,
+    -1
+   ]
+  ],
+  [
+   "Elect the co-op board",
+   [
+    2,
+    0,
+    -1,
+    -1,
+    -1,
+    -1
+   ]
+  ],
+  [
+   "Related-party deal",
+   [
+    0,
+    2,
+    1,
+    -1,
+    -1,
+    -1
+   ],
+   "Intercompany pricing goes to the board 1 Dec"
+  ],
+  [
+   "New share class at Holdings",
+   [
+    0,
+    0,
+    2,
+    1,
+    -1,
+    -1
+   ]
+  ],
+  [
+   "Sell or pledge a property",
+   [
+    0,
+    1,
+    2,
+    1,
+    -1,
+    -1
+   ]
+  ],
+  [
+   "Replace the fund manager",
+   [
+    0,
+    1,
+    2,
+    1,
+    -1,
+    -1
+   ]
+  ],
+  [
+   "Change the protocol maintainer",
+   [
+    -1,
+    0,
+    -1,
+    -1,
+    2,
+    -1
+   ]
+  ],
+  [
+   "Move money or change a contract",
+   [
+    -1,
+    0,
+    -1,
+    -1,
+    -1,
+    2
+   ]
+  ]
+ ]
+}

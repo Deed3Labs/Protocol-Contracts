@@ -17,7 +17,7 @@ import {
   type Levels,
   type Section,
 } from '../services/command/levels.js';
-import { NotLiveYet, fieldSection, growthSection, membersSection, merchantsSection, moneySection, shopSection } from '../services/command/sections.js';
+import { NotLiveYet, fieldSection, growthSection, membersSection, merchantsSection, moneySection, shopSection, contractsSection, governanceSection, recordsSection, homeSection } from '../services/command/sections.js';
 import * as store from '../services/command/store.js';
 
 /*
@@ -358,6 +358,46 @@ export function commandRouter(deps: CommandDeps) {
     const c = req.command!;
     try {
       res.json(await shopSection(c.db, { level: c.levels.shop, reveal: false, now: now() }));
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
+  });
+
+  router.get('/sections/contracts', need('contracts', TOTALS), async (req, res) => {
+    const c = req.command!;
+    try {
+      res.json(await contractsSection(c.db, { level: c.levels.contracts, reveal: false, now: now() }));
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
+  });
+
+  router.get('/sections/governance', need('governance', TOTALS), async (req, res) => {
+    const c = req.command!;
+    try {
+      res.json(await governanceSection(c.db, { level: c.levels.governance, reveal: false, now: now() }));
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
+  });
+
+  router.get('/sections/records', need('records', TOTALS), async (req, res) => {
+    const c = req.command!;
+    try {
+      res.json(await recordsSection(c.db, { level: c.levels.records, reveal: false, now: now() }));
+    } catch (e) {
+      if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
+      throw e;
+    }
+  });
+
+  router.get('/sections/home', need('home', TOTALS), async (req, res) => {
+    const c = req.command!;
+    try {
+      res.json(await homeSection(c.db, { level: c.levels.home, reveal: false, now: now() }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;

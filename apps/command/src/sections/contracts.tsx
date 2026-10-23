@@ -1,8 +1,38 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { Fragment } from 'react';
 import { css } from '../runtime/dom';
-import { footItem, head, ic } from './core';
-import { AGR, AGR_T, AST, CH, CH_DONE, CS, CTR, DAY, EDGES, LAYERS, MON, NOW, PENDING, REL, RELEASES, RK, SIGNERS, SIGN_W, TXD, vars } from './data';
+import { footItem, head, ic, money } from './core';
+import {
+  AGR,
+  AGR_T,
+  AST,
+  CH,
+  CHAIN,
+  CH_DONE,
+  CS,
+  CTR,
+  CTR_NOTE,
+  DAY,
+  EDGES,
+  KEY_ROLES,
+  LAYERS,
+  MON,
+  NOW,
+  PENDING,
+  REL,
+  RELEASES,
+  RK,
+  SIGNED,
+  SIGNERS,
+  SIGN_W,
+  SW,
+  TODAY,
+  TTL,
+  TXD,
+  TXO,
+  YEAR,
+  vars,
+} from './data';
 import { G, chart, columns, figHtml, fmtD, gCell, px } from './growth';
 import { mkey, vizTrack } from './home';
 import { ddHtml } from './kit';
@@ -22,6 +52,71 @@ export function ctrOf(id) {
 }
 /* projected, once you sign */
 /* changes: events drawn on a lane. seg: done | open | proj | wait | block. mark: draft | check | sign | live | due | auto */
+/**
+ * The merchant partner agreements: one per transacting shop (signed the day it was added to
+ * MerchantRegistry) and one per signed shop, the one out for signature included. The template's
+ * v1.1 (NET-14) started 15 Sep.
+ */
+export function merchantAgreements() {
+  const out = TXO.map((m, i) => ({
+    id: m.id,
+    name: 'Merchant partner agreement',
+    party: m.name,
+    type: 'merchant',
+    st: 'signed',
+    a: TXD[i],
+    b: TXD[i] + YEAR,
+    note: `${m.terms}, ${m.fee ? m.fee.toFixed(1) + '% fee' : 'no fee'}, ${money(m.cap)} cap per sale.${m.founding ? ' Founding partner.' : ''}`,
+  }));
+  SIGNED.forEach((s, i) => {
+    const sent = s[4] === 'signing',
+      a = sent ? null : TODAY - (4 + i * 3) * DAY;
+    out.push({
+      id: s[0],
+      name: 'Merchant partner agreement',
+      party: s[1],
+      type: 'merchant',
+      st: sent ? 'out' : 'signed',
+      a,
+      b: a ? a + YEAR : null,
+      sent: sent ? D(10, 18) : null,
+      note: sent ? 'They signed 20 Oct. Founding seat 4 of 5 once you sign.' : 'Takes $10 redemptions. Clear payments not on yet.',
+      // out for signature: sent, the shop signed, then you, a check and it's filed
+      ...(sent
+        ? {
+            ev: [
+              ['seg', 'done', D(10, 18, 2026, 10), D(10, 20, 2026, 15)],
+              ['seg', 'open', D(10, 20, 2026, 15), NOW],
+              ['seg', 'proj', NOW, D(10, 24)],
+              ['draft', D(10, 18, 2026, 10)],
+              ['sign', D(10, 20, 2026, 15), 'IC'],
+              ['sign', NOW, 'K', 1],
+              ['check', D(10, 23), 1],
+              ['live', D(10, 24), 1],
+            ],
+          }
+        : {}),
+    });
+  });
+  for (const x of out) x.ver = !x.a || x.a >= D(9, 15) ? 'v1.1' : 'v1.0';
+  return out;
+}
+/** When the other side signed an agreement that's out for signature. */
+export const theySigned = (a) => a.ev?.find((e) => e[0] === 'sign' && e[2] !== 'K')?.[1];
+/** A signer by key, and how many signatures wait on them. */
+export const signer = (k) => SIGNERS.find((s) => s[0] === k);
+export const waitingOn = (k) => CH.filter((c) => c.ev.some((e) => e[0] === 'sign' && e[2] === k && e[3]));
+/** "today", "yesterday" or the date, for an event. */
+export function dayWord(t) {
+  const d = Math.round((TODAY - (t - (t % DAY))) / DAY);
+  return d === 0 ? 'today' : d === 1 ? 'yesterday' : 'on ' + fmtD(t);
+}
+const safeRule = () => `${CHAIN.threshold} of ${SIGNERS.length} sign, then a ${CHAIN.delayHours}-hour wait`;
+const median = (v) => {
+  const s = [...v].sort((a, b) => a - b),
+    m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
 export function H(m, d, h) {
   return D(m, d, 2026, h);
 }
@@ -314,20 +409,16 @@ export function protoMap() {
       </span>
     );
   };
-  const pend = {
-    ap: 'v1.3 · waiting on you',
-    mr: '1 change in the wait',
-    vr: 'Waits on D&T Co.',
-    bb: '6 bonds',
-    lp: 'Not funded yet',
-    bv: 'Not funded yet',
-  };
+  const pend = CTR_NOTE;
   return (
     <>
       <div className="mp" role="img" aria-label="How the contracts connect">
         <div className="mp-safe">
-          <b>Ops Safe</b>
-          <span>2 of 3 · admin and pause on every live contract</span>
+          <b>{CHAIN.safe}</b>
+          <span>
+            {CHAIN.threshold} of {SIGNERS.length}
+            {' · admin and pause on every live contract'}
+          </span>
         </div>
         <div className="mp-in">
           {LAYERS.map((l, i) => (
@@ -479,7 +570,7 @@ export function signerHeat() {
     <div className="hm">
       <div className="hm-r hm-h">
         <span />
-        {['1', '8', '15', '22', '29', '6', '13', '20'].map((w, __k) => (
+        {SW.map((w) => w.split(' ')[0]).map((w, __k) => (
           <span key={__k}>{w}</span>
         ))}
         <span>Median</span>
@@ -559,15 +650,20 @@ export function contractsPage() {
   );
 }
 export function cOverview() {
-  const live = CTR.filter((c) => c[4] === 'live').length;
+  const live = CTR.filter((c) => c[4] === 'live').length,
+    mine = CH.find((c) => c.mine);
   const map = (
     <section className="cell s-12">
       <header className="c-hd">
         <span className="lbl">The protocol</span>
-        <span className="tag">Base Sepolia · block 18,204,331</span>
+        <span className="tag">
+          {CHAIN.network}
+          {' · block '}
+          {CHAIN.block.toLocaleString('en-US')}
+        </span>
       </header>
       <div className="c-fig">
-        {figHtml(`${live} of ${CTR.length}`, 'contracts live · AssurancePool v1.3 waits on your signature and closes the open withdraw')}
+        {figHtml(`${live} of ${CTR.length}`, `contracts live${mine ? ` · ${mine.t} waits on your signature${mine.short ? ' and ' + mine.short : ''}` : ''}`)}
       </div>
       <div className="c-body">
         {protoMap()}
@@ -576,9 +672,9 @@ export function cOverview() {
       {strip([
         ['Live', live],
         ['Not deployed', CTR.filter((c) => c[4] !== 'live').length],
-        ['Not funded yet', '2'],
+        ['Not funded yet', String(Object.values(CTR_NOTE).filter((n) => n === 'Not funded yet').length)],
         ['Changes in flight', CH.length],
-        ['Paused', 'None'],
+        ['Paused', String(CTR.filter((c) => c[4] === 'paused').length || 'None')],
       ])}
     </section>
   );
@@ -590,6 +686,7 @@ export function cOverview() {
     to,
     true,
   );
+  const renew = AGR.filter((a) => a.st === 'renew').sort((x, y) => x.b - y.b);
   const ms = AGR.filter((x) => x.type === 'merchant' && x.b),
     cluster = ms.filter((x) => x.b >= D(8, 1, 2027)).length;
   const agr = (
@@ -598,7 +695,9 @@ export function cOverview() {
         <span className="lbl">Agreement terms</span>
         <span className="tag">Jul 26 – Oct 27</span>
       </header>
-      <div className="c-fig">{figHtml(String(acnt((a) => a.st === 'renew')), 'renewals in the next 90 days · the first is Plaid on 12 Nov')}</div>
+      <div className="c-fig">
+        {figHtml(String(renew.length), `renewals in the next 90 days${renew[0] ? ` · the first is ${renew[0].party} on ${fmtD(renew[0].b)}` : ''}`)}
+      </div>
       <div className="c-body">
         {terms}
         {mkey([
@@ -628,13 +727,15 @@ export function cOverview() {
       </button>
     </div>,
   );
+  // the last signature on the change that waits on you, by someone else
+  const other = mine && [...mine.ev].reverse().find((e) => e[0] === 'sign' && !e[3] && e[2] !== 'K');
   const flight = (
     <section className="cell s-8">
       <header className="c-hd">
         <span className="lbl">Changes in flight</span>
-        <span className="tag">2 of 3 sign, then a 24-hour wait</span>
+        <span className="tag">{safeRule()}</span>
       </header>
-      <div className="c-fig">{figHtml('1', 'waiting on your signature · Dana Ruiz signed AssurancePool v1.3 yesterday')}</div>
+      <div className="c-fig">{figHtml(String(waitingOn('K').length), `waiting on your signature${other ? ` · ${signer(other[2])[1]} signed ${mine.t} ${dayWord(other[1])}` : ''}`)}</div>
       <div className="c-body">
         {sigLanes([CH[0], CH[1], CH[2], CH[3], CH[4], CH_DONE[0]], D(10, 13), D(10, 31), 3)}
         {sigKey()}
@@ -655,8 +756,11 @@ export function cOverview() {
   const signers = gCell(
     's-4 wt',
     'Signers',
-    'Ops Safe · 2 of 3',
-    figHtml('3.1 h', 'your median time to sign · the fastest of the three'),
+    `${CHAIN.safe} · ${CHAIN.threshold} of ${SIGNERS.length}`,
+    figHtml(
+      `${signer('K')[3].toFixed(1)} h`,
+      `your median time to sign${SIGNERS.every((s) => s[3] >= signer('K')[3]) ? ` · the fastest of the ${['', 'one', 'two', 'three', 'four', 'five'][SIGNERS.length]}` : ''}`,
+    ),
     <>
       <div className="ablock">
         <span className="lbl">Signatures a week · Sep – Oct</span>
@@ -665,17 +769,16 @@ export function cOverview() {
       <div className="ablock">
         <span className="lbl">Waiting on each</span>
         {evRows(
-          [
-            ['K', 'Kai', 'AssurancePool v1.3', '1', 'me'],
-            ['DR', 'Dana Ruiz', 'Next on your top-up, once proposed', '0'],
-            ['BS', 'Board signer', 'Nothing waiting', '0'],
-          ].map(([k, n, w, c, m]) => [k, n, w, c, m]),
+          SIGNERS.map(([k, n, , , next]) => {
+            const w = waitingOn(k);
+            return [k, n, w.length ? w.map((c) => c.t).join(', ') : next, String(w.length), ...(k === 'K' ? ['me'] : [])];
+          }),
         )}
       </div>
     </>,
     strip([
       ['Signed, 30 days', String(tot30)],
-      ['Waiting on you', '1'],
+      ['Waiting on you', String(waitingOn('K').length)],
     ]),
   );
   return (
@@ -799,33 +902,24 @@ export function cAgreements() {
     strip([
       ['On v1.1', String(v1[11] - v0[11])],
       ['On v1.0', String(v0[11])],
-      ['Member', 'v2.1'],
+      ['Member', AGR.find((a) => a.type === 'member' && a.st === 'signed')?.ver ?? '—'],
     ]),
   );
-  const icw = agrOf('icw');
-  const sig = gCell(
+  const icw = AGR.find((a) => a.st === 'out' && a.ev);
+  const sig = icw ? gCell(
     's-6',
     'Out for signature',
     'E-signature',
-    figHtml(icw.party, 'founding seat 4 of 5 · your signature is next'),
+    figHtml(icw.party, `${(icw.note.match(/founding seat \d+ of \d+/i)?.[0] ?? 'merchant agreement').toLowerCase()} · your signature is next`),
     <>
       {sigLanes(
         [
           {
-            id: 'icw',
+            id: icw.id,
             t: 'Merchant agreement',
             state: 'Waiting on you',
             flow: 'esign',
-            ev: [
-              ['seg', 'done', D(10, 18, 2026, 10), D(10, 20, 2026, 15)],
-              ['seg', 'open', D(10, 20, 2026, 15), NOW],
-              ['seg', 'proj', NOW, D(10, 24)],
-              ['draft', D(10, 18, 2026, 10)],
-              ['sign', D(10, 20, 2026, 15), 'IC'],
-              ['sign', NOW, 'K', 1],
-              ['check', D(10, 23), 1],
-              ['live', D(10, 24), 1],
-            ],
+            ev: icw.ev,
           },
         ],
         D(10, 16),
@@ -834,20 +928,21 @@ export function cAgreements() {
       )}
       <div className="how two">
         <span className="k">Sent</span>
-        <b>18 Oct</b>
+        <b>{fmtD(icw.sent)}</b>
         <span className="k">Shop signed</span>
-        <b>20 Oct</b>
+        <b>{fmtD(theySigned(icw))}</b>
         <span className="k">After you sign</span>
         <b>Filed, then terms go to the Ops Safe</b>
       </div>
     </>,
     <div className="c-ft">
-      <button type="button" data-cflow="esign" data-cid="icw">
+      <button type="button" data-cflow="esign" data-cid={icw.id}>
         <span className="t">Sign in your e-signature tool</span>
         {ic('out', 'sm')}
       </button>
     </div>,
-  );
+  )
+    : '';
   return (
     <>
       {G('Terms', 'Select a row for the agreement', '', full)}
@@ -933,14 +1028,17 @@ export function cChain() {
       </button>
     );
   });
-  const nRel = Object.values(RELEASES).reduce((a, r) => a + r.length, 0);
+  const nRel = Object.values(RELEASES).reduce((a, r) => a + r.length, 0),
+    rels = Object.entries(RELEASES).flatMap(([id, r]) => r.map(([v, t]) => [id, v, t])),
+    last = rels.reduce((a, r) => (!a || r[2] > a[2] ? r : a), null),
+    fastest = Object.entries(RELEASES).reduce((a, r) => (r[1].length > a[1].length ? r : a));
   const lanes = (
     <section className="cell s-8">
       <header className="c-hd">
         <span className="lbl">Releases</span>
         <span className="tag">Aug – Oct</span>
       </header>
-      <div className="c-fig">{figHtml(String(nRel), 'deploys and upgrades since 2 Aug · RevolvingIssuer moves fastest, 4 versions')}</div>
+      <div className="c-fig">{figHtml(String(nRel), `deploys and upgrades since ${fmtD(Math.min(...rels.map((r) => r[2])))} · ${ctrOf(fastest[0])[1]} moves fastest, ${fastest[1].length} versions`)}</div>
       <div className="c-body">
         {laneFrame(rows, from, to, 14, 'sl rl')}
         {mkey([
@@ -950,23 +1048,14 @@ export function cChain() {
         ])}
       </div>
       {strip([
-        ['This week', '1'],
-        ['Last', 'RevolvingIssuer v1.3'],
-        ['By', 'Dana Ruiz'],
+        ['This week', String(rels.filter((r) => r[2] > NOW - 7 * DAY).length)],
+        ['Last', last ? `${ctrOf(last[0])[1]} ${last[1]}` : '—'],
+        ['By', (last && [...CH, ...CH_DONE].find((c) => c.t === `${ctrOf(last[0])[1]} ${last[1]}`)?.by) || '—'],
       ])}
     </section>
   );
   /* who can do what */
-  const holders = ['Ops Safe', 'Issuers', 'ClearCredit', 'BurnerBond', 'Validator', 'Anyone', 'LendingPool'];
-  const roles = [
-    ['Upgrade and admin', [1, 0, 0, 0, 0, 0, 0]],
-    ['Pause', [1, 0, 0, 0, 0, 0, 0]],
-    ['Mint credit', [0, 1, 0, 0, 0, 0, 0]],
-    ['Set shop terms', [1, 0, 0, 0, 0, 0, 0]],
-    ['Approve a deed', [0, 0, 0, 0, 1, 0, 0]],
-    ['Add a validator', [1, 0, 0, 0, 0, 0, 0]],
-    ['Claim from AssurancePool', [0, 0, 1, 1, 0, 3, 2]],
-  ];
+  const { holders, roles } = KEY_ROLES;
   const mx = (
     <div className="rm">
       <div className="rm-r rm-h">
@@ -991,7 +1080,7 @@ export function cChain() {
     's-4 wt',
     'Who can do what',
     'Roles',
-    figHtml('1', 'open door: anyone can withdraw from the AssurancePool until v1.3'),
+    figHtml(String(roles.flatMap(([, v]) => v).filter((x) => x === 3).length), 'open door: anyone can withdraw from the AssurancePool until v1.3'),
     <>
       {mx}
       {mkey([
@@ -1001,7 +1090,7 @@ export function cChain() {
       ])}
     </>,
     strip([
-      ['People with keys', '3'],
+      ['People with keys', String(SIGNERS.length)],
       ['Keys in this app', 'None'],
     ]),
   );
@@ -1041,29 +1130,28 @@ export function cChanges() {
       ])}
     </section>
   );
+  const bySpeed = [...SIGNERS].sort((a, b) => a[3] - b[3]);
   const signers = gCell(
     's-6',
     'Signers',
     'Signatures a week',
-    figHtml('3.1 h', 'your median time to sign'),
+    figHtml(`${signer('K')[3].toFixed(1)} h`, 'your median time to sign'),
     signerHeat(),
     strip([
-      ['Fastest', 'Kai'],
-      ['Slowest', 'Board signer · 31.0 h'],
+      ['Fastest', bySpeed[0][1]],
+      ['Slowest', `${bySpeed.at(-1)[1]} · ${bySpeed.at(-1)[3].toFixed(1)} h`],
     ]),
   );
-  const ttl = [
-    ['RevolvingIssuer v1.3', 8.0],
-    ['Uptown Barber', 2.1],
-    ['BB-0006', 1.4],
-    ['PayoutPool v0.9', 7.0],
-    ['AssurancePool v1.2', 9.0],
-  ];
+  const ttl = TTL,
+    avg = (k) => {
+      const v = ttl.filter((t) => t[2] === k).map((t) => t[1]);
+      return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(1) + ' d' : '—';
+    };
   const speed = gCell(
     's-6',
     'Draft to live',
-    'Days, last 5 changes',
-    figHtml('7.0 days', 'median · contract upgrades take longest, shop changes about 2 days'),
+    `Days, last ${ttl.length} changes`,
+    figHtml(`${median(ttl.map((t) => t[1])).toFixed(1)} days`, 'median · contract upgrades take longest, shop changes about 2 days'),
     columns(
       ttl.map(([k, v]) => [k, v]),
       {
@@ -1073,9 +1161,9 @@ export function cChanges() {
       },
     ),
     strip([
-      ['Upgrades', '8.0 d'],
-      ['Shop changes', '2.1 d'],
-      ['Bonds', '1.4 d'],
+      ['Upgrades', avg('upgrade')],
+      ['Shop changes', avg('shop')],
+      ['Bonds', avg('bond')],
     ]),
   );
   return (
@@ -1349,8 +1437,8 @@ export function openCFlow(kind, id) {
       h: c ? c[1] : 'A contract change',
       rows: [
         ['Contract', c ? `${c[1]} ${c[2]}` : 'Pick one in the multisig'],
-        ['Second person', 'Dana Ruiz or the board signer'],
-        ['Then', '2 of 3 sign, then a 24-hour wait', 1],
+        ['Second person', SIGNERS.filter((x) => x[0] !== 'K').map((x, i) => (i ? 'the ' + x[1].toLowerCase() : x[1])).join(' or ')],
+        ['Then', safeRule(), 1],
       ],
       input: true,
       btn: 'Prepare for the multisig',
@@ -1384,8 +1472,8 @@ export function openCFlow(kind, id) {
         ? [
             ['Contract', ch.c],
             ['Proposed by', ch.by],
-            ['Signatures', '1 of 2 · yours is next'],
-            ['Then', 'A 24-hour wait, then live', 1],
+            ['Signatures', `${ch.ev.filter((e) => e[0] === 'sign' && !e[3]).length} of ${CHAIN.threshold} · yours is next`],
+            ['Then', `A ${CHAIN.delayHours}-hour wait, then live`, 1],
           ]
         : [],
       rule: ch && ch.by,
@@ -1414,7 +1502,7 @@ export function openCFlow(kind, id) {
       rows: a
         ? [
             ['Agreement', `${a.name} ${a.ver}`],
-            ['They signed', '20 Oct'],
+            ['They signed', theySigned(a) ? fmtD(theySigned(a)) : '—'],
             ['After you sign', 'Their terms go to the Ops Safe', 1],
           ]
         : [],

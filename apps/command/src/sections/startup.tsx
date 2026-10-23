@@ -2,7 +2,7 @@
 import { LIVE } from '../live/env';
 import * as live from '../live/account';
 import { css, hasHtml, html } from '../runtime/dom';
-import { D, openCFlow } from './contracts';
+import { D, merchantAgreements, openCFlow } from './contracts';
 import { $, closePf, money, openPf, pfAct, setRail, setTheme } from './core';
 import {
   AGR,
@@ -22,17 +22,13 @@ import {
   RS,
   S,
   SG,
-  SIGNED,
   SS,
   STOPS,
   TODAY,
   TS,
-  TXD,
-  TXO,
   VS,
   V_OK,
   XS,
-  YEAR,
   vars,
 } from './data';
 import { fSave, posterAt } from './field';
@@ -638,36 +634,7 @@ export function startup() {
       }
     }),
   );
-  TXO.forEach((m, i) =>
-    AGR.push({
-      id: m.id,
-      name: 'Merchant partner agreement',
-      party: m.name,
-      type: 'merchant',
-      st: 'signed',
-      a: TXD[i],
-      b: TXD[i] + YEAR,
-      note: `${m.terms}, ${m.fee ? m.fee.toFixed(1) + '% fee' : 'no fee'}, ${money(m.cap)} cap per sale.${m.founding ? ' Founding partner.' : ''}`,
-    }),
-  );
-  SIGNED.forEach((s, i) => {
-    const out = s[4] === 'signing',
-      a = out ? null : TODAY - (4 + i * 3) * DAY;
-    AGR.push({
-      id: s[0],
-      name: 'Merchant partner agreement',
-      party: s[1],
-      type: 'merchant',
-      st: out ? 'out' : 'signed',
-      a,
-      b: a ? a + YEAR : null,
-      sent: out ? D(10, 18) : null,
-      note: out ? 'They signed 20 Oct. Founding seat 4 of 5 once you sign.' : 'Takes $10 redemptions. Clear payments not on yet.',
-    });
-  });
-  AGR.filter((x) => x.type === 'merchant').forEach((x) => {
-    x.ver = !x.a || x.a >= D(9, 15) ? 'v1.1' : 'v1.0';
-  });
+  AGR.push(...merchantAgreements());
   document.addEventListener('input', (e) => {
     if (!TS.edit) return;
     if (e.target.id === 'tg-name') TS.edit.name = e.target.value;

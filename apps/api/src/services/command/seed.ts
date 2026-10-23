@@ -4,6 +4,9 @@ import growth from '@clear/command-types/src/fixtures/growth.json';
 import members from '@clear/command-types/src/fixtures/members.json';
 import merch from '@clear/command-types/src/fixtures/merchants.json';
 import moneyFx from '@clear/command-types/src/fixtures/money.json';
+import contractsFx from '@clear/command-types/src/fixtures/contracts.json';
+import governanceFx from '@clear/command-types/src/fixtures/governance.json';
+import recordsFx from '@clear/command-types/src/fixtures/records.json';
 import shopFx from '@clear/command-types/src/fixtures/shop.json';
 import type { Db, Queryable } from '../../db/db.js';
 
@@ -250,6 +253,77 @@ export async function seedCommand(db: Db): Promise<string[]> {
         );
       }
       done.push(`${products.length} products`, `${shopFx.orders.length} orders`, `${shopFx.preorders.length} pre-orders`);
+    }
+
+    if (await empty(tx, 'command.contracts')) {
+      const C = contractsFx as unknown as Record<string, any>;
+      for (const [i, a] of (C.agreements as any[]).entries()) {
+        await tx.query(
+          `INSERT INTO command.agreements (id, position, name, party, kind, status, signed_at, ends_at, sent_at, version, note, rolls, events)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          [a.id, i, a.name, a.party, a.type, a.st, iso(a.a), iso(a.b), iso(a.sent), a.ver ?? null, a.note ?? '', !!a.roll, a.ev ? JSON.stringify(a.ev) : null],
+        );
+      }
+      for (const [i, [id, name, ver, layer, st, addr, what, x, y, band]] of (C.contracts as any[]).entries()) {
+        await tx.query(
+          'INSERT INTO command.contracts (id, position, name, version, layer, status, address, purpose, map_x, map_y, band, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)',
+          [id, i, name, ver, layer, st, addr, what, x, y, band, C.notes[id] ?? null],
+        );
+      }
+      for (const [i, [from, to, kind, verb, label, side]] of (C.links as any[]).entries()) {
+        await tx.query('INSERT INTO command.contract_links (position, from_id, to_id, kind, verb, label, label_side) VALUES ($1, $2, $3, $4, $5, $6, $7)', [i, from, to, kind, verb, label, side ?? null]);
+      }
+      for (const [id, rel] of Object.entries(C.releases as Record<string, Array<[string, number]>>)) {
+        for (const [v, t] of rel) await tx.query('INSERT INTO command.contract_releases (contract_id, version, released_at) VALUES ($1, $2, $3)', [id, v, iso(t)]);
+      }
+      for (const [id, [v, t]] of Object.entries(C.pending as Record<string, [string, number]>)) {
+        await tx.query('INSERT INTO command.contract_releases (contract_id, version, released_at, pending) VALUES ($1, $2, $3, true)', [id, v, iso(t)]);
+      }
+      for (const [done, list] of [[false, C.changes], [true, C.done]] as const) {
+        for (const [i, { id, t, c, by, ev, ...detail }] of (list as any[]).entries()) {
+          await tx.query('INSERT INTO command.contract_changes (id, position, done, title, contract, proposed_by, detail, events) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [id, i, done, t, c, by ?? null, JSON.stringify(detail), JSON.stringify(ev)]);
+        }
+      }
+      for (const [i, [key, name, who, med, idle]] of (C.signers as any[]).entries()) {
+        await tx.query('INSERT INTO command.signers (key, position, name, who, median_hours, idle_note) VALUES ($1, $2, $3, $4, $5, $6)', [key, i, name, who, med, idle]);
+      }
+      done.push(`${C.agreements.length} agreements`, `${C.contracts.length} contracts`, `${C.changes.length + C.done.length} changes`);
+    }
+
+    if (await empty(tx, 'command.entities')) {
+      const G = governanceFx as unknown as Record<string, any>;
+      // parents point at entities, so every entity goes in before any parent is set
+      for (const [i, { row: [id, name, kind, st, role, x, y], owned, under, facts }] of (G.entities as any[]).entries()) {
+        await tx.query('INSERT INTO command.entities (id, position, name, kind, status, role, map_x, map_y, owned, under, facts) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)', [id, i, name, kind, st, role, x, y, owned, under, facts ? JSON.stringify(facts) : null]);
+      }
+      for (const e of G.entities as any[]) if (e.parent) await tx.query('UPDATE command.entities SET parent_id = $2 WHERE id = $1', [e.row[0], e.parent]);
+      for (const [i, [id, ent, title, due, st, owner]] of (G.filings as any[]).entries()) {
+        await tx.query('INSERT INTO command.filings (position, id, entity_id, title, due_on, status, owner) VALUES ($1, $2, $3, $4, $5, $6, $7)', [i, id, ent, title, iso(due), st, owner ?? null]);
+      }
+      for (const [i, [name, ent, seats, note]] of (G.boards as any[]).entries()) {
+        await tx.query('INSERT INTO command.boards (position, name, entity_id, note) VALUES ($1, $2, $3, $4)', [i, name, ent, note]);
+        for (const [j, [cls, holder, from, to, sn]] of (seats as any[]).entries()) {
+          await tx.query('INSERT INTO command.board_seats (board, position, class, holder, starts_at, ends_at, note) VALUES ($1, $2, $3, $4, $5, $6, $7)', [name, j, cls, holder, iso(from || null), iso(to || null), sn ?? null]);
+        }
+      }
+      for (const [i, [name, boards, note]] of (G.people as any[]).entries()) await tx.query('INSERT INTO command.board_people (position, name, boards, note) VALUES ($1, $2, $3, $4)', [i, name, boards, note]);
+      for (const [i, [title, mins, owner, kind]] of (G.agenda as any[]).entries()) await tx.query('INSERT INTO command.agenda_items (position, title, minutes, owner, kind) VALUES ($1, $2, $3, $4, $5)', [i, title, mins, owner, kind]);
+      for (const [i, [at, body, title, votes]] of (G.resolutions as any[]).entries()) await tx.query('INSERT INTO command.resolutions (position, passed_on, body, title, votes) VALUES ($1, $2, $3, $4, $5)', [i, iso(at), body, title, votes]);
+      const v = G.vote;
+      await tx.query('INSERT INTO command.member_votes (title, opens_at, closes_at, eligible, quorum, cast_daily, yes, no, abstain) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [v.t, iso(v.open), iso(v.close), v.elig, v.quorum, v.days, v.yes, v.no, v.abs]);
+      for (const [i, [body, ev]] of (G.meetings as any[]).entries()) await tx.query('INSERT INTO command.meetings (position, body, events) VALUES ($1, $2, $3)', [i, body, JSON.stringify(ev)]);
+      for (const [i, [a, b, what, ds, amt, open]] of (G.related as any[]).entries()) {
+        await tx.query('INSERT INTO command.related_party (position, payer, payee, what, paid_on, amount_cents, opens_on) VALUES ($1, $2, $3, $4, $5, $6, $7)', [i, a, b, what, (ds as number[]).map(iso), Math.round(amt * 100), iso(open ?? null)]);
+      }
+      for (const [i, [d, roles, open]] of (G.matters as any[]).entries()) await tx.query('INSERT INTO command.reserved_matters (position, decision, roles, open) VALUES ($1, $2, $3, $4)', [i, d, roles, open ?? null]);
+      done.push(`${G.entities.length} entities`, `${G.filings.length} filings`, `${G.boards.length} boards`);
+    }
+
+    if (await empty(tx, 'command.documents')) {
+      for (const [i, [id, title, kind, ent, at, st, ver, by, pages]] of (recordsFx.documents as any[]).entries()) {
+        await tx.query('INSERT INTO command.documents (id, position, title, kind, entity_id, dated, status, version, by_whom, pages) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', [id, i, title, kind, ent, iso(at), st, ver, by, pages]);
+      }
+      done.push(`${recordsFx.documents.length} documents`);
     }
   });
   return done;

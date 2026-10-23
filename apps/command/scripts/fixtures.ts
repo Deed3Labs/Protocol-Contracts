@@ -185,4 +185,55 @@ write('shop-figures.json', {
   'shop.buyers': d.BUYERS,
   'shop.paid_with': d.PAID_WITH,
 });
+// Contracts: every agreement (the merchant ones built by the same function the app runs at start),
+// the contracts and how they connect, their releases, the changes in flight and done, and the Safe's
+// signers. Events at the prototype's "now" are written as null.
+const { merchantAgreements } = await import('../src/sections/contracts.tsx');
+const evNow = (ev: any[]) => ev.map((e: any[]) => e.map((v) => (v === d.NOW ? null : v)));
+const change = (c: any) => ({ ...c, ev: evNow(c.ev) });
+write('contracts.json', {
+  agreements: [...d.AGR, ...merchantAgreements()].map((a: any) => (a.ev ? { ...a, ev: evNow(a.ev) } : a)),
+  contracts: d.CTR,
+  notes: d.CTR_NOTE,
+  links: d.REL,
+  releases: d.RELEASES,
+  pending: d.PENDING,
+  changes: d.CH.map(change),
+  done: d.CH_DONE.map(change),
+  signers: d.SIGNERS,
+});
+write('contracts-figures.json', {
+  'contracts.chain': d.CHAIN,
+  'contracts.key_roles': d.KEY_ROLES,
+  'contracts.draft_to_live': d.TTL,
+  'contracts.signatures_weekly': d.SIGN_W,
+  // the days shops were added to MerchantRegistry (Phase 5 reads them from its events)
+  'contracts.registry_adds': d.TXD,
+});
+// Governance: the entities and their facts, filings, boards and seats, the next agenda, resolutions,
+// who sits where, the open member vote, every body's meetings, related-party deals and who decides what.
+write('governance.json', {
+  entities: d.ENT.map((e: any[]) => ({ row: e, parent: d.PARENT[e[0]] ?? null, owned: d.OWN[e[0]] ?? null, under: d.UNDER[e[0]] ?? null, facts: d.ENTF[e[0]] ?? null })),
+  filings: d.FILINGS,
+  boards: d.GBOARDS,
+  agenda: d.AGENDA,
+  resolutions: d.RESOS,
+  people: d.PEOPLE,
+  vote: d.VOTE,
+  meetings: d.MEETS,
+  related: d.RP,
+  matters: d.MATTERS,
+});
+write('governance-figures.json', {
+  'governance.past_votes': d.PASTV,
+  'governance.meetings_held': d.MEETINGS_HELD,
+  'governance.next_meeting': d.MEETING,
+});
+// Records: the documents. Counts by kind and state cover every document, not only the latest listed,
+// so they're figures, as is each entity's paperwork. The log, approvals and sign-ins are the app's own
+// (command.audit_log, proposals, sign_ins) and never seeded.
+write('records.json', { documents: d.DOCS });
+write('records-figures.json', { 'records.doc_counts': d.DCOUNT, 'records.doc_states': d.DSTATE_N, 'records.coverage': d.COVER });
+// Home: what it shows that no other section counts.
+write('home-figures.json', { 'home.funnel': d.FUNNEL, 'home.alerts': d.ALERTS0, 'home.redeemed_paid': d.REDEEMED_PAID });
 console.log('fixtures written');

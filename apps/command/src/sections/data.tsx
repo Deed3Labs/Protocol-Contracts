@@ -430,6 +430,8 @@ export const ALERTS0 = [
     age: 'since 19:52',
     go: 'money',
     fix: 'resync',
+    /* bank links refreshed so far, of all of them */
+    progress: [7, 12],
   },
   {
     t: 'Poster P-044 is sun-faded',
@@ -454,6 +456,8 @@ export const DEADLINES = [
   ['Board minutes', 'Clear Co-op', '4 Nov', 14, 'draft'],
   ['Statement of Information', 'Clear Co-op', '15 Nov', 25, 'none'],
 ];
+/* $10 redemptions paid to shops this month, before today's payout */
+export const REDEEMED_PAID = 540;
 export const DL_STATUS = {
   ready: ['settled', 'Ready to file'],
   draft: ['underway', 'Drafting'],
@@ -2206,6 +2210,38 @@ export const CTR = [
   ['fm', 'FundManager', 'v1.0', 4, 'live', '0x73ea…401e', 'Money around deeds: commissions and payouts.', 90, 93, 'd'],
 ];
 export const LAYERS = ['Access', 'Issuance', 'Tokens', 'Pools and escrow', 'Capital'];
+/* each contract's status line on the map, where it has one */
+export const CTR_NOTE = {
+  ap: 'v1.3 · waiting on you',
+  mr: '1 change in the wait',
+  vr: 'Waits on D&T Co.',
+  bb: '6 bonds',
+  lp: 'Not funded yet',
+  bv: 'Not funded yet',
+};
+/* the chain the map is read from, and the multisig every live contract answers to */
+export const CHAIN = { network: 'Base Sepolia', block: 18204331, safe: 'Ops Safe', threshold: 2, delayHours: 24 };
+/* who holds each role (1 holds it · 2 once funded · 3 open, closes with v1.3) */
+export const KEY_ROLES = {
+  holders: ['Ops Safe', 'Issuers', 'ClearCredit', 'BurnerBond', 'Validator', 'Anyone', 'LendingPool'],
+  roles: [
+    ['Upgrade and admin', [1, 0, 0, 0, 0, 0, 0]],
+    ['Pause', [1, 0, 0, 0, 0, 0, 0]],
+    ['Mint credit', [0, 1, 0, 0, 0, 0, 0]],
+    ['Set shop terms', [1, 0, 0, 0, 0, 0, 0]],
+    ['Approve a deed', [0, 0, 0, 0, 1, 0, 0]],
+    ['Add a validator', [1, 0, 0, 0, 0, 0, 0]],
+    ['Claim from AssurancePool', [0, 0, 1, 1, 0, 3, 2]],
+  ],
+};
+/* draft to live, in days, for the last 5 changes, and what kind each was */
+export const TTL = [
+  ['RevolvingIssuer v1.3', 8.0, 'upgrade'],
+  ['Uptown Barber', 2.1, 'shop'],
+  ['BB-0006', 1.4, 'bond'],
+  ['PayoutPool v0.9', 7.0, 'upgrade'],
+  ['AssurancePool v1.2', 9.0, 'upgrade'],
+];
 export const REL = [
   /* from, to, kind (reads · money · mint), verb, label on the map (blank = drawn, unlabelled · null = panel only), label side for vertical lines */
   ['ms', 'am', 'reads', 'checks members', ''],
@@ -2313,6 +2349,7 @@ export const CH = [
     stage: 2,
     state: 'Waiting on you · 1 of 2',
     d: 'Gates every withdrawal behind a role, so only bonds, credit and lending can claim. Closes the open withdraw.',
+    short: 'closes the open withdraw',
     ev: [
       ['seg', 'done', H(10, 12, 10), H(10, 20, 9)],
       ['seg', 'open', H(10, 20, 9), NOW],
@@ -2478,9 +2515,10 @@ export const SIGN_W = {
   BS: [0, 1, 0, 1, 0, 0, 0, 0],
 };
 export const SIGNERS = [
-  ['K', 'Kai', 'You', 3.1],
-  ['DR', 'Dana Ruiz', 'ClearLabs', 5.4],
-  ['BS', 'Board signer', 'Co-op board', 31.0],
+  /* key, name, who they are, median hours to sign, what's next for them when nothing waits */
+  ['K', 'Kai', 'You', 3.1, 'Nothing waiting'],
+  ['DR', 'Dana Ruiz', 'ClearLabs', 5.4, 'Next on your top-up, once proposed'],
+  ['BS', 'Board signer', 'Co-op board', 31.0, 'Nothing waiting'],
 ];
 /* ══ Governance ═════════════════════════════════════════════════════════
    Who decides what, and when it is due. The co-op is the parent; Holdings carries a governance class
@@ -2787,6 +2825,18 @@ export const MEETS = [
   ],
   ['Delegate assembly', [['later', D(11, 1), D(1, 31, 2027), 'From 1,000 members']]],
 ];
+/* the next board meeting's packet and replies, one per seated member in seat order */
+export const MEETING = {
+  packet: [
+    ['Agenda', 'Final'],
+    ['7 Oct minutes', 'Draft · approve as item 1'],
+    ['Q3 money review', 'Dana Ruiz · due 2 Nov'],
+  ],
+  attached: ['7 Oct minutes draft', 'Q3 money review'],
+  rsvp: ['Coming', 'Coming', 'No reply'],
+};
+/* meetings held and minutes filed, all bodies, since the co-op formed (Records counts the minutes) */
+export const MEETINGS_HELD = { held: 12, minutes: 11 };
 export const RPX = ['coop', 'fin', 'dt', 'hold', 'labs', 'fdn'];
 export const RPN = {
   coop: 'Co-op',
@@ -3021,6 +3071,8 @@ export const RESULT = {
   running: ['underway', 'Running'],
   signed: ['plain', 'Signed'],
   confirmed: ['plain', 'Confirmed'],
+  declined: ['absent', 'Declined'],
+  refused: ['absent', 'Refused'],
 };
 /* filler: everyday actions, so the week reads true to life */
 export const WEEK = (() => {

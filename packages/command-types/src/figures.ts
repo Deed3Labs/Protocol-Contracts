@@ -2,6 +2,10 @@ import growthFigures from './fixtures/growth-figures.json';
 import merchantsFigures from './fixtures/merchants-figures.json';
 import moneyFigures from './fixtures/money-figures.json';
 import shopFigures from './fixtures/shop-figures.json';
+import contractsFigures from './fixtures/contracts-figures.json';
+import governanceFigures from './fixtures/governance-figures.json';
+import recordsFigures from './fixtures/records-figures.json';
+import homeFigures from './fixtures/home-figures.json';
 
 /**
  * The figures each section shows that aren't counted from its own rows: weekly series, the waitlist,
@@ -59,4 +63,20 @@ export const MONEY_FIGURES: Record<string, unknown> = moneyFigures;
 /** The shop's figures, likewise. */
 export const SHOP_FIGURES: Record<string, unknown> = shopFigures;
 
-export const SEED_FIGURES: Record<string, unknown> = { ...MEMBERS_FIGURES, ...GROWTH_FIGURES, ...MERCHANTS_FIGURES, ...MONEY_FIGURES, ...SHOP_FIGURES };
+/** Contracts', Governance's, Records' and Home's figures, likewise. */
+export const CONTRACTS_FIGURES: Record<string, unknown> = contractsFigures;
+export const GOVERNANCE_FIGURES: Record<string, unknown> = governanceFigures;
+export const RECORDS_FIGURES: Record<string, unknown> = recordsFigures;
+export const HOME_FIGURES: Record<string, unknown> = homeFigures;
+
+export const SEED_FIGURES: Record<string, unknown> = {
+  ...MEMBERS_FIGURES,
+  ...GROWTH_FIGURES,
+  ...MERCHANTS_FIGURES,
+  ...MONEY_FIGURES,
+  ...SHOP_FIGURES,
+  ...CONTRACTS_FIGURES,
+  ...GOVERNANCE_FIGURES,
+  ...RECORDS_FIGURES,
+  ...HOME_FIGURES,
+};
