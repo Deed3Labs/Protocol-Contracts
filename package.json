@@ -9,6 +9,7 @@
     "apps/merchant",
     "apps/rewards",
     "apps/pay",
+    "apps/command",
     "packages/*"
   ],
   "scripts": {
