@@ -4,12 +4,16 @@ import { resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
-/** Stamps the build's id into the service worker, so each deploy is a new worker with its own cache. */
+/**
+ * Stamps the build's id into the service worker, so each deploy is a new worker with its own cache.
+ * After the files are written (writeBundle), never on a build that failed: closeBundle runs then too,
+ * and would hide the build's own error behind a missing index.html.
+ */
 function stampServiceWorker(): Plugin {
   return {
     name: 'clear-command-sw-stamp',
     apply: 'build',
-    closeBundle() {
+    writeBundle() {
       const dist = resolve(__dirname, 'dist');
       const id = createHash('sha256').update(readFileSync(resolve(dist, 'index.html'))).digest('hex').slice(0, 12);
       const sw = resolve(dist, 'sw.js');
