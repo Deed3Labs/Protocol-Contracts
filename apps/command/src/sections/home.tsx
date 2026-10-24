@@ -2,9 +2,9 @@
 import { Fragment } from 'react';
 import { attrs, css, html } from '../runtime/dom';
 import { $, cell, compBar, head, ic, int, money, pct, segHtml, themeSwitch } from './core';
-import { LIVE } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import { fig } from '../live/figures';
-import { feedChip, feedList, hasFeeds } from '../live/feeds';
+import { feedChip, feedLabel, feedList, hasFeeds } from '../live/feeds';
 import {
   ALERTS0,
   DAY,
@@ -59,6 +59,15 @@ export function owedNow() {
 }
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const dayDate = (t) => `${DOW[new Date(t).getUTCDay()]} ${fmtD(t)}`;
+/** A share, or 0.0% when there's nothing to share out. */
+const pc = (a, b) => (b ? pct(a, b) : '0.0%');
+// the prototype's moving work and changes, which real data never draws (taken the first time Now draws)
+let PROTO = null;
+const real = (list) => {
+  PROTO ??= new Set([...S.live, ...S.updates.filter((u) => !u.mine)]);
+  return REAL ? list.filter((x) => !PROTO.has(x)) : list;
+};
+const noneYet = <span className="small quiet">None yet.</span>;
 /* ── Home ────────────────────────────────────────────────── */
 export function home() {
   const pv = S.preview;
@@ -90,7 +99,7 @@ export function home() {
   let h = head(
     <>
       {`Home · ${dayDate(TODAY)} · `}
-      <b>Demo data</b>
+      <b>{REAL ? 'Real data' : 'Demo data'}</b>
     </>,
     title,
     tools,
@@ -473,7 +482,7 @@ export function nowPanel(waiting) {
         Live
       </>
     ),
-    body: <div className="mvlist">{S.live.map(moveRow)}</div>,
+    body: real(S.live).length ? <div className="mvlist">{real(S.live).map(moveRow)}</div> : <div className="z-empty">{noneYet}</div>,
     foot: (
       <button type="button" data-go="records">
         <span className="t">All running work</span>
@@ -485,7 +494,11 @@ export function nowPanel(waiting) {
     span: 's-3',
     label: 'Changed',
     tag: 'Today',
-    body: <ol className="feed">{S.updates.map(feedRow)}</ol>,
+    body: real(S.updates).length ? (
+      <ol className="feed">{real(S.updates).map(feedRow)}</ol>
+    ) : (
+      <div className="z-empty">{noneYet}</div>
+    ),
     foot: (
       <button type="button" data-go="records">
         <span className="t">Activity log</span>
@@ -497,7 +510,7 @@ export function nowPanel(waiting) {
     <div className="group">
       <div className="g-lbl">
         <span className="lbl">Now</span>
-        <span className="lbl aside">Updated 22:50</span>
+        <span className="lbl aside">{REAL ? `Updated ${new Date().toTimeString().slice(0, 5)}` : 'Updated 22:50'}</span>
       </div>
       <div className="nowwrap">
         <div className="bento sub now">
@@ -538,7 +551,15 @@ export function syncPages() {
   }
 }
 export function numbers(cobaltFree, alerts) {
-  const d = RANGE[S.range];
+  const d0 = RANGE[S.range];
+  // the range's own words, when the data came without them
+  const d = d0.name
+    ? d0
+    : {
+        ...d0,
+        name: { today: 'Today', week: '7 days', month: '30 days' }[S.range],
+        prevName: { today: `Last ${DOW[new Date(TODAY).getUTCDay()]}`, week: '7 days before', month: '30 days before' }[S.range],
+      };
   const fTot = d.forms.reduce((a, b) => a + b, 0);
   const C = ['var(--fg)', 'var(--land)', 'var(--fg-50)', 'var(--line)'];
   const when = S.range === 'today' ? 'today' : 'in ' + d.name;
@@ -596,11 +617,11 @@ export function numbers(cobaltFree, alerts) {
     ),
     foot: [
       {
-        t: `Top page ${d.page[0]} · ${int(d.page[1])}`,
+        t: d.page[0] ? `Top page ${d.page[0]} · ${int(d.page[1])}` : 'No top page yet',
         go: 'growth',
       },
       {
-        t: 'Synced 1 min ago',
+        t: REAL ? feedLabel('site') || 'Not synced yet' : 'Synced 1 min ago',
       },
     ],
   });
@@ -621,10 +642,10 @@ export function numbers(cobaltFree, alerts) {
     span: 's-4',
     label: 'Sources',
     tag: d.name,
-    fig: F(pct(d.src[0], d.visits), 'of visits came from a poster'),
+    fig: F(pc(d.src[0], d.visits), 'of visits came from a poster'),
     main: compBar(['Posters', 'Direct', 'Social', 'Search'].map((k, i) => [k, d.src[i], C[i]])),
   });
-  const jr = +((d.forms[0] / d.visits) * 100).toFixed(1),
+  const jr = d.visits ? +((d.forms[0] / d.visits) * 100).toFixed(1) : 0,
     dj = (jr - d.joinPrev).toFixed(1);
   const join = cell({
     span: 's-4',
@@ -633,7 +654,7 @@ export function numbers(cobaltFree, alerts) {
     fig: F(jr.toFixed(1) + '%', `of visits joined · ${dj >= 0 ? 'up' : 'down'} ${Math.abs(dj)} pts`),
     main: (
       <>
-        {vizScale(d.joinPrev, jr, 2, 5, d.joinPrev.toFixed(1) + '%', jr.toFixed(1) + '%')}
+        {d.visits ? vizScale(d.joinPrev, jr, 2, 5, d.joinPrev.toFixed(1) + '%', jr.toFixed(1) + '%') : ''}
         {mkey([
           ['var(--fg-50)', d.prevName],
           ['var(--fg)', d.name],
@@ -657,14 +678,14 @@ export function numbers(cobaltFree, alerts) {
     span: 's-4',
     label: 'Cities',
     tag: d.name,
-    fig: F(pct(d.cities[0], d.visits), 'of visits from Redlands, the top city'),
+    fig: F(pc(d.cities[0], d.visits), 'of visits from Redlands, the top city'),
     main: (
       <div className="how">
         {CITY.map((k, i) => (
           <Fragment key={i}>
             <span className="k">{i === 3 ? <span className="quiet">{k}</span> : k}</span>
             <b className="num">{int(d.cities[i])}</b>
-            <span className="quiet num">{pct(d.cities[i], d.visits)}</span>
+            <span className="quiet num">{pc(d.cities[i], d.visits)}</span>
           </Fragment>
         ))}
       </div>
@@ -674,9 +695,9 @@ export function numbers(cobaltFree, alerts) {
   /* Poster launch */
   /* Funnel: one drawn shape, width shared with the step columns so they line up.
      Height follows the square root of each count, so a 50-to-1 drop stays readable. */
-  const conv = FUNNEL.map((f, i) => (i ? f[1] / FUNNEL[i - 1][1] : 1));
+  const conv = FUNNEL.map((f, i) => (i ? (FUNNEL[i - 1][1] ? f[1] / FUNNEL[i - 1][1] : 0) : 1));
   const weak = conv.indexOf(Math.min(...conv.slice(1)));
-  const hs = FUNNEL.map((f) => Math.max(10, 112 * Math.sqrt(f[1] / FUNNEL[0][1])));
+  const hs = FUNNEL.map((f) => Math.max(10, FUNNEL[0][1] ? 112 * Math.sqrt(f[1] / FUNNEL[0][1]) : 0));
   const top = (h) => (60 - h / 2).toFixed(1),
     bot = (h) => (60 + h / 2).toFixed(1),
     T = 14;
@@ -688,7 +709,7 @@ export function numbers(cobaltFree, alerts) {
     up.push(`${x0},${top(h)}`, `${x1},${top(h)}`);
     dn.unshift(`${x1},${bot(h)}`, `${x0},${bot(h)}`);
   });
-  const shape = (
+  const shape = FUNNEL.length ? (
     <svg
       className="fshape"
       viewBox="0 0 600 120"
@@ -702,12 +723,14 @@ export function numbers(cobaltFree, alerts) {
         <line key={__k} x1={i * 100} x2={i * 100} y1="0" y2="120" style={css('stroke:var(--ground);stroke-width:2;vector-effect:non-scaling-stroke')} />
       ))}
     </svg>
+  ) : (
+    ''
   );
   const convTxt = (i) =>
     i ? (
       <>
         {ic('arr', 'xs')}
-        {pct(FUNNEL[i][1], FUNNEL[i - 1][1])}
+        {pc(FUNNEL[i][1], FUNNEL[i - 1][1])}
       </>
     ) : (
       'all sources'
@@ -716,8 +739,10 @@ export function numbers(cobaltFree, alerts) {
     span: 's-7',
     label: 'Funnel',
     tag: 'Last 30 days',
-    fig: F(((FUNNEL.at(-1)[1] / FUNNEL[0][1]) * 100).toFixed(2) + '%', 'of visits end in a first spend at a partner shop'),
-    main: (
+    fig: F((FUNNEL.length && FUNNEL[0][1] ? ((FUNNEL.at(-1)[1] / FUNNEL[0][1]) * 100).toFixed(2) : '0.00') + '%', 'of visits end in a first spend at a partner shop'),
+    main: !FUNNEL.length ? (
+      noneYet
+    ) : (
       <>
         <div className="fwrap">
           <div className="fwide">
@@ -755,7 +780,7 @@ export function numbers(cobaltFree, alerts) {
           <span className="small quiet">
             {'Biggest drop is '}
             <b className="drop">{weak === 1 ? 'visit to join' : `${FUNNEL[weak - 1][0].toLowerCase()} to ${FUNNEL[weak][0].toLowerCase()}`}</b>
-            {`. ${Math.round((1 - FUNNEL[1][1] / FUNNEL[0][1]) * 100)} in every 100 visits leave without joining. ${fig('members.first_spends.poster_ten')} of the ${FUNNEL.at(-1)[1]} first spends were a poster’s $10.`}
+            {`. ${FUNNEL[0][1] ? Math.round((1 - FUNNEL[1][1] / FUNNEL[0][1]) * 100) : 0} in every 100 visits leave without joining. ${fig('members.first_spends.poster_ten') ?? 0} of the ${FUNNEL.at(-1)[1]} first spends were a poster’s $10.`}
           </span>
         </div>
       </>
@@ -781,7 +806,7 @@ export function numbers(cobaltFree, alerts) {
     span: 's-5',
     label: 'Activation',
     tag: 'Last 30 days',
-    fig: F(pct(mc.active, mc.invited), `of ${mc.invited} invited · ${int(d.act)} activated ${when}`),
+    fig: F(pc(mc.active, mc.invited), `of ${mc.invited} invited · ${int(d.act)} activated ${when}`),
     main: (
       <>
         <div className="ablock">
@@ -799,7 +824,7 @@ export function numbers(cobaltFree, alerts) {
               <Fragment key={__k}>
                 <span className="k">{k}</span>
                 <b className="num">{v}</b>
-                <span className="quiet num">{pct(v, mc.active)}</span>
+                <span className="quiet num">{pc(v, mc.active)}</span>
               </Fragment>
             ))}
           </div>
@@ -818,7 +843,7 @@ export function numbers(cobaltFree, alerts) {
     ],
   });
   const others = d.scans - d.top.reduce((a, t) => a + t[1], 0);
-  const tail = (() => {
+  const tail = others <= 0 ? [] : (() => {
     const n = 70,
       w = Array.from(
         {
@@ -878,13 +903,13 @@ export function numbers(cobaltFree, alerts) {
                 {n}
               </span>
               <b className="num">{int(v)}</b>
-              <span className="quiet num">{pct(v, d.scans)}</span>
+              <span className="quiet num">{pc(v, d.scans)}</span>
             </Fragment>
           ))}
         </div>
         <span className="small quiet">
           {'The top 10 posters bring '}
-          {pct(top10, d.scans)}
+          {pc(top10, d.scans)}
           {' of scans.'}
         </span>
       </>
@@ -904,13 +929,15 @@ export function numbers(cobaltFree, alerts) {
   const owedRows = top2.map(([n, v]) => [n, v / 10, 'var(--fg)']);
   if (on.today) owedRows.push([on.today[0], on.today[1] / 10, 'var(--land)', 'in today’s payout']);
   owedRows.push([`${rest.length} more shops`, rest.reduce((a, r) => a + r[1], 0) / 10, 'var(--line)']);
-  const run = dayDate(fig('merchants.payouts.schedule').monthly);
+  const run = fig('merchants.payouts.schedule')?.monthly ? dayDate(fig('merchants.payouts.schedule').monthly) : '–';
   const owedC = cell({
     span: 's-7',
     label: '$10 owed to shops',
     tag: 'Redemptions',
     fig: F(money(owed), `owed to ${shops} shops · clears ${run}`),
-    main: (
+    main: !on.rows.length ? (
+      noneYet
+    ) : (
       <>
         <div className="owe">
           {owedRows.map(([n, c, col, note], __k) => (
@@ -945,7 +972,7 @@ export function numbers(cobaltFree, alerts) {
     ),
     foot: [
       {
-        t: `Paid ${money(fig('home.redeemed_paid') + on.paidOut)} in ${fmtD(TODAY).split(' ')[1]}`,
+        t: `Paid ${money((fig('home.redeemed_paid') ?? 0) + on.paidOut)} in ${fmtD(TODAY).split(' ')[1]}`,
         go: 'merchants',
       },
       {
@@ -1044,6 +1071,7 @@ export function numbers(cobaltFree, alerts) {
           {marks}
         </div>
         <div className="dlist">
+          {DEADLINES.length ? '' : noneYet}
           {DEADLINES.map(([t, e, dt, n, st], i) => (
             <div key={i} className="drow">
               <span className={`num-sq ${st}`}>{i + 1}</span>

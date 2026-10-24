@@ -63,7 +63,7 @@ Each live source has its own, all listed with their reasons in `DECISIONS.md`:
 | Bridge, Lithic, Stripe (6a) | `BRIDGE_ENV=sandbox` + `BRIDGE_SANDBOX_API_KEY`; `LITHIC_API_KEY`; `STRIPE_SECRET_KEY` or `COMMAND_STRIPE_KEY` (test keys only) |
 | The shop (7a) | `COMMAND_SHOP_STRIPE_KEY` (restricted, read-only), `COMMAND_CATALOG_TOKEN`, `COMMAND_SHOP_CATALOG_URL` |
 | Waitlist invites (7b) | `COMMAND_INVITE_URL` (else `APP_PUBLIC_URL`); `COMMAND_INVITES=off` |
-| Site visits (7c) | `PLAUSIBLE_API_KEY`, `PLAUSIBLE_SITE_ID`, `COMMAND_SITE_MINUTES` |
+| Site visits (Umami, Phase 9) | `UMAMI_API_URL`, `UMAMI_WEBSITE_ID`, `UMAMI_USERNAME`, `UMAMI_PASSWORD`, `COMMAND_SITE_MINUTES` |
 
 ## Turning a section live
 

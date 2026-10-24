@@ -304,6 +304,24 @@ new blocks are read); GitHub polled with a read-only token; every deployed contr
 - A new Vercel project for `apps/command` with `command.useclear.org`, the CSP, the PWA, the README.
   DNS is a CNAME at Namecheap, the same way `api.useclear.org` was added.
 
+### Phase 9: real data only (dev)
+
+Kai, 2026-10-24: dev is the real thing on testnet. No prototype data, no demo people, no seed: every
+section shows what's real, and an empty state where nothing is yet. Site visits from Umami,
+self-hosted on Railway (free, open source, cookie-free; lighter than Plausible Community Edition,
+which needs ClickHouse), instead of Plausible's Stats API.
+
+- **9a · The app.** In live mode the prototype's data never shows: every dataset starts empty, dates
+  are today's, lists like "who can do what" are worked out from the real team, and every page and
+  pane renders cleanly with nothing in it. A dev-only empty preview (`?preview=1&empty=1`) and a
+  crawl of every page under it keep it that way.
+- **9b · The API.** Live providers for the sections that had none (Field, Merchants, Governance,
+  Records, Home): Command's own records, starting empty; Merchants from the real merchant tables.
+  The co-op's structure (the contracts' map, the entities, not formed, and their boards' empty
+  seats) is written on start into empty tables, seed or not. The site feed reads Umami.
+- **9c · Dev.** Every `PROVIDER_*=live`, `COMMAND_SEED` off, Umami hosted and on the site, and each
+  page checked signed in.
+
 ## Size
 
 The prototype is 6,981 lines: 2,280 of CSS and about 4,650 of JavaScript across 11 sections,

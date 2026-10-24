@@ -1,6 +1,6 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { boardFromApi, live, saveCard } from '../live/actions';
-import { LIVE } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import { fig } from '../live/figures';
 import { Fragment } from 'react';
 import { attrs, css, html } from '../runtime/dom';
@@ -70,9 +70,38 @@ export function payOf(m) {
     total: +(m.sept - fee + (OWED[m.id] || 0)).toFixed(2),
   };
 }
+/* Real data only: an empty cell says so, a share of nothing is 0.0%, and the counts come from the rows */
+const NONE = () => <span className="small quiet">None yet.</span>;
+const pz = (a, b) => (b ? pct(a, b) : pct(0, 1));
+const SEATS = () => fig('merchants.founding_seats') ?? 5;
+const runDay = () => (schedule()?.monthly ? dayName(schedule().monthly) : '–');
+function stagesNow(paid) {
+  return [
+    ['Prospect', stageCount('prospect'), 'Walk-ins'],
+    ['Talking', stageCount('talking'), 'Demos and calls'],
+    ['Signing', signingCount(), ''],
+    ['Signed', SIGNED.length - signingCount(), 'Redemptions only'],
+    ['Transacting', TXO.length, paid],
+  ];
+}
+/** The day a NET-14 shop is paid next, from the schedule; a dash before there is one. */
+function payDay(m, sc) {
+  const t = m.id === sc?.underway?.id ? sc.underway.date : sc?.net14;
+  return t ? fmtD(t) : '–';
+}
+function xTitle() {
+  const are = (n, one, many) => `${word(n)} ${n === 1 ? one : many}`;
+  if (XS.pane === 'overview') return `${are(Math.max(0, SEATS() - foundingTaken()), 'founding seat is', 'founding seats are')} still open.`;
+  if (XS.pane === 'pipeline') return `${are(stageCount('talking'), 'shop is', 'shops are')} in talks.`;
+  if (XS.pane === 'partners') return `${are(TXO.length, 'shop is', 'shops are')} transacting.`;
+  if (XS.pane === 'payouts') return schedule()?.monthly ? `The next payout run is ${runDay()}.` : 'No payout run is scheduled.';
+  const n = FLEET.flatMap((f) => Object.values(f[1]).flat()).filter((x) => x !== 'on').length;
+  return `${are(n, 'device needs', 'devices need')} a visit.`;
+}
 export function merchantsPage() {
-  const title =
-    XS.pane === 'overview'
+  const title = REAL
+    ? xTitle()
+    : XS.pane === 'overview'
       ? 'One founding seat is still open.'
       : XS.pane === 'pipeline'
         ? 'Seven shops are in talks.'
@@ -106,7 +135,7 @@ export function merchantsPage() {
       {head(
         <>
           {'Merchants · '}
-          <b>Demo data</b>
+          <b>{REAL ? 'Real data' : 'Demo data'}</b>
         </>,
         title,
         tools,
@@ -444,7 +473,7 @@ export function corridorCell(oct, run, lost, orig) {
               <span className="lbl">By city</span>
               <span className="lbl aside">Transacting of all</span>
             </div>
-            <div className="cm-list">{vars.CM_DATA.map((d) => cmRow(d, sel))}</div>
+            <div className="cm-list">{vars.CM_DATA.length ? vars.CM_DATA.map((d) => cmRow(d, sel)) : NONE()}</div>
           </div>
         </div>
         <div className="mkey cm-key">
@@ -466,12 +495,21 @@ export function corridorCell(oct, run, lost, orig) {
           </span>
         </div>
       </div>
-      {strip([
-        ['Cleared in Oct', money(oct), '21 days'],
-        ['Next payout run', money(run), 'Mon 2 Nov'],
-        ['In talks', '7', '$52,500.00 a month'],
-        ['Loss rate', pct(lost, orig), 'on shops’ own books'],
-      ])}
+      {strip(
+        REAL
+          ? [
+              ['Cleared in Oct', money(oct), `${monthDays()} days`],
+              ['Next payout run', money(run), runDay()],
+              ['In talks', String(stageCount('talking')), `${money(talkValue())} a month`],
+              ['Loss rate', pz(lost, orig), 'on shops’ own books'],
+            ]
+          : [
+              ['Cleared in Oct', money(oct), '21 days'],
+              ['Next payout run', money(run), 'Mon 2 Nov'],
+              ['In talks', '7', '$52,500.00 a month'],
+              ['Loss rate', pct(lost, orig), 'on shops’ own books'],
+            ],
+      )}
     </section>
   );
 }
@@ -703,8 +741,8 @@ export function xOverview() {
     TXO.filter((m) => m.terms === 'NET-30')
       .map(payOf)
       .reduce((a, p) => a + p.total, 0) +
-    60 +
-    40; /* plus signed-only shops' redemptions */
+    (REAL ? owedSignedOnly().reduce((a, e) => a + e[1], 0) : 60) +
+    (REAL ? 0 : 40); /* plus signed-only shops' redemptions */
   const kpis = (
     <>
       {kpiCell('Transacting', '12', 'of 30 partners · Uptown Barber joined today', [0, 0, 1, 2, 3, 4, 5, 7, 8, 10, 11, 12], 'Now')}
@@ -734,16 +772,20 @@ export function xOverview() {
   const pipe = gCell(
     's-7',
     'Pipeline',
-    '44 shops',
-    figHtml('12', `transacting · 7 more in talks worth $52,500.00 a month in financed work`),
+    REAL ? `${int(stagesNow().reduce((a, x) => a + x[1], 0))} shops` : '44 shops',
+    REAL
+      ? figHtml(String(TXO.length), `transacting · ${stageCount('talking')} more in talks worth ${money(talkValue())} a month in financed work`)
+      : figHtml('12', `transacting · 7 more in talks worth $52,500.00 a month in financed work`),
     stageFlow(
-      [
-        ['Prospect', 7, 'Walk-ins'],
-        ['Talking', 7, 'Demos and calls'],
-        ['Signing', 1, 'Founding 4/5'],
-        ['Signed', 17, 'Redemptions only'],
-        ['Transacting', 12, 'Payments on'],
-      ],
+      REAL
+        ? stagesNow('Payments on')
+        : [
+            ['Prospect', 7, 'Walk-ins'],
+            ['Talking', 7, 'Demos and calls'],
+            ['Signing', 1, 'Founding 4/5'],
+            ['Signed', 17, 'Redemptions only'],
+            ['Transacting', 12, 'Payments on'],
+          ],
       4,
       'shops',
     ),
@@ -754,18 +796,21 @@ export function xOverview() {
       </button>
     </div>,
   );
-  const seats = [
-    ['Rosa’s', 'filled', 'Aug'],
-    ['Mesa Laundry', 'filled', 'Sep'],
-    ['Uptown Barber', 'filled', 'Today'],
-    ['Inland Cycle', 'signing', 'Signing'],
-    ['', 'open', 'Open'],
-  ];
+  const seats = REAL
+    ? [...TXO.filter((m) => m.founding).map((m) => [m.name, 'filled', '']), ...SIGNED.filter((x) => x[4] === 'signing').map((x) => [x[1], 'signing', 'Signing'])]
+    : [
+        ['Rosa’s', 'filled', 'Aug'],
+        ['Mesa Laundry', 'filled', 'Sep'],
+        ['Uptown Barber', 'filled', 'Today'],
+        ['Inland Cycle', 'signing', 'Signing'],
+        ['', 'open', 'Open'],
+      ];
+  if (REAL) while (seats.length < SEATS()) seats.push(['', 'open', 'Open']);
   const seat = gCell(
     's-5',
     'Founding seats',
     'Capped at five',
-    figHtml('3 of 5', 'filled · Inland Cycle Works signs for the fourth'),
+    REAL ? figHtml(`${TXO.filter((m) => m.founding).length} of ${SEATS()}`, 'filled') : figHtml('3 of 5', 'filled · Inland Cycle Works signs for the fourth'),
     <>
       <div className="seats">
         {seats.map(([n, st, w], i) => (
@@ -785,7 +830,7 @@ export function xOverview() {
     </>,
     <div className="c-ft">
       <button type="button" data-go="home">
-        <span className="t">Sign Inland Cycle Works in Needs you</span>
+        <span className="t">{REAL ? 'Open Needs you' : 'Sign Inland Cycle Works in Needs you'}</span>
         {ic('chev', 'sm')}
       </button>
     </div>,
@@ -793,30 +838,35 @@ export function xOverview() {
   const sorted = TXO.slice().sort((a, b) => b.oct - a.oct),
     top = sorted.slice(0, 7),
     rest = sorted.slice(7).reduce((a, m) => a + m.oct, 0),
-    vmax = top[0].oct;
+    vmax = top.length ? top[0].oct : 0;
   const vol = gCell(
     's-7',
     'Cleared by shop',
     'October so far',
-    figHtml(pct(top[0].oct, oct), `of October’s volume is ${top[0].name}, a financing shop`),
+    top.length ? figHtml(pct(top[0].oct, oct), `of October’s volume is ${top[0].name}, a financing shop`) : '',
     <>
       <div className="hbars">
+        {top.length ? '' : NONE()}
         {top.map((m, __k) => (
           <button key={__k} type="button" className="hb" data-merchant={m.id}>
             <span className="hb-k">{m.name}</span>
             <span className="hb-bar">
-              <i style={css(`width:${((m.oct / vmax) * 100).toFixed(1)}%;background:${m.cap >= 300 ? 'var(--fg)' : 'var(--land)'}`)} />
+              <i style={css(`width:${(vmax ? (m.oct / vmax) * 100 : 0).toFixed(1)}%;background:${m.cap >= 300 ? 'var(--fg)' : 'var(--land)'}`)} />
             </span>
             <b className="num">{money(m.oct)}</b>
           </button>
         ))}
-        <div className="hb rest">
-          <span className="hb-k">5 more shops</span>
-          <span className="hb-bar">
-            <i style={css(`width:${((rest / vmax) * 100).toFixed(1)}%;background:var(--line)`)} />
-          </span>
-          <b className="num">{money(rest)}</b>
-        </div>
+        {REAL && sorted.length <= top.length ? (
+          ''
+        ) : (
+          <div className="hb rest">
+            <span className="hb-k">{REAL ? `${sorted.length - top.length} more shops` : '5 more shops'}</span>
+            <span className="hb-bar">
+              <i style={css(`width:${((rest / vmax) * 100).toFixed(1)}%;background:var(--line)`)} />
+            </span>
+            <b className="num">{money(rest)}</b>
+          </div>
+        )}
       </div>
       {mkey([
         ['var(--fg)', 'Financing shops, cap $300+'],
@@ -843,6 +893,7 @@ export function xOverview() {
     'Hit the cap this week',
     figHtml(String(review.length), 'shops hit their per-sale cap this week'),
     <div className="capl">
+      {review.length ? '' : NONE()}
       {review.map((m, __k) => (
         <button key={__k} type="button" className="capr" data-merchant={m.id}>
           <span className="capr-k">
@@ -850,7 +901,7 @@ export function xOverview() {
             <span className="small quiet">
               {money(m.cap)}
               {' cap · '}
-              {pct(m.lost, m.orig)}
+              {pz(m.lost, m.orig)}
               {' loss on '}
               {m.orig}
             </span>
@@ -870,11 +921,21 @@ export function xOverview() {
       </div>
     </div>,
   );
-  const runs = [
-    ['Rosa’s Panadería', 'NET-14 · September', 1, 412.6, '22 Oct', 'underway'],
-    ['Monthly run', 'NET-30 · 9 shops', 12, run, '2 Nov', 'plain'],
-    ['NET-14 shops', 'Arrowhead Nails, Cajon Phone Repair', 14, payOf(TXO[7]).total + payOf(TXO[9]).total, '4 Nov', 'plain'],
-  ];
+  const sc = schedule(),
+    under = REAL && sc ? TXO.find((m) => m.id === sc.underway?.id) : null;
+  const runs = REAL
+    ? [
+        ...(under ? [[under.name, `${under.terms} · September`, daysFromToday(sc.underway.date), payOf(under).total, fmtD(sc.underway.date), 'underway']] : []),
+        ...(sc?.monthly && termsCount('NET-30') ? [['Monthly run', `NET-30 · ${termsCount('NET-30')} shops`, daysFromToday(sc.monthly), run, fmtD(sc.monthly), 'plain']] : []),
+        ...(sc?.net14 && net14Shops().length
+          ? [['NET-14 shops', net14Shops().map((m) => m.name).join(', '), daysFromToday(sc.net14), net14Shops().reduce((a, m) => a + payOf(m).total, 0), fmtD(sc.net14), 'plain']]
+          : []),
+      ]
+    : [
+        ['Rosa’s Panadería', 'NET-14 · September', 1, 412.6, '22 Oct', 'underway'],
+        ['Monthly run', 'NET-30 · 9 shops', 12, run, '2 Nov', 'plain'],
+        ['NET-14 shops', 'Arrowhead Nails, Cajon Phone Repair', 14, payOf(TXO[7]).total + payOf(TXO[9]).total, '4 Nov', 'plain'],
+      ];
   const pay = gCell(
     's-12',
     'Payout calendar',
@@ -886,20 +947,21 @@ export function xOverview() {
         <span className="tick" style={css('left:0')} />
         <span className="tick" style={css('left:100%')} />
         <span className="end" style={css('left:100%;transform:translateX(-100%)')}>
-          20 Nov
+          {REAL ? fmtD((vars.asOf ?? TODAY) + 30 * DAY) : '20 Nov'}
         </span>
         {runs.map((r, i) => (
           <Fragment key={i}>
-            <span className={`mk ${i === 0 ? 'draft' : 'ready'}`} style={css(`left:${((i === 0 ? 1 : r[2]) / 30) * 100}%`)}>
+            <span className={`mk ${i === 0 ? 'draft' : 'ready'}`} style={css(`left:${((REAL ? r[2] : i === 0 ? 1 : r[2]) / 30) * 100}%`)}>
               {i + 1}
             </span>
-            <span className={`dt${i === 0 ? ' first' : ''}`} style={css(`left:${((i === 0 ? 1 : r[2]) / 30) * 100}%`)}>
-              {i === 0 ? 'Tomorrow' : r[4]}
+            <span className={`dt${i === 0 ? ' first' : ''}`} style={css(`left:${((REAL ? r[2] : i === 0 ? 1 : r[2]) / 30) * 100}%`)}>
+              {REAL ? r[4] : i === 0 ? 'Tomorrow' : r[4]}
             </span>
           </Fragment>
         ))}
       </div>
       <div className="dlist">
+        {runs.length ? '' : NONE()}
         {runs.map((r, i) => (
           <div key={i} className="drow">
             <span className={`num-sq ${i === 0 ? 'draft' : 'ready'}`}>{i + 1}</span>
@@ -923,7 +985,7 @@ export function xOverview() {
       </button>
       <span className="rule" aria-hidden="true" />
       {footItem({
-        t: '$430.00 in $10 redemptions owed across 11 shops',
+        t: REAL ? `${money(owedTotal())} in $10 redemptions owed across ${Object.keys(OWED).length} shops` : '$430.00 in $10 redemptions owed across 11 shops',
       })}
     </div>,
   );
@@ -973,23 +1035,27 @@ export function kbInit() {
       stage: p[6],
       flag: p[5] === 'Wants net-14',
     })),
-    {
-      id: 'icw',
-      name: 'Inland Cycle Works',
-      kind: 'Bikes and repair',
-      city: 'Redlands',
-      stage: 'signing',
-      founding: 1,
-      m: 'icw',
-    },
-    ...SIGNED.slice(1).map((s) => ({
+    ...(REAL
+      ? []
+      : [
+          {
+            id: 'icw',
+            name: 'Inland Cycle Works',
+            kind: 'Bikes and repair',
+            city: 'Redlands',
+            stage: 'signing',
+            founding: 1,
+            m: 'icw',
+          },
+        ]),
+    ...SIGNED.slice(REAL ? 0 : 1).map((s) => ({
       id: s[0],
       name: s[1],
       kind: s[2],
       city: s[3],
-      stage: 'signed',
+      stage: REAL && s[4] === 'signing' ? 'signing' : 'signed',
       m: s[0],
-      posters: s[0] === 'tacos' ? 4 : 3,
+      posters: REAL ? 0 : s[0] === 'tacos' ? 4 : 3,
       owed: OWED[s[0]] || 0,
     })),
   ];
@@ -1869,52 +1935,71 @@ export function xPipeline() {
       </div>
     </section>
   );
-  const owners = [
-    ['Marcus Lee', 9, 'var(--fg)'],
-    ['Dana Ruiz', 4, 'var(--land)'],
-    ['Kai', 3, 'var(--line)'],
-  ];
-  const kinds = [
-    ['Auto and tires', 8],
-    ['Furniture and mattresses', 2],
-    ['Veterinary', 2],
-    ['Optical', 1],
-    ['Dental', 1],
-    ['HVAC', 1],
-    ['Appliances', 1],
-  ];
+  // live, counted from the shops in the pipeline: by owner (p[4]) and by kind (p[1])
+  const tally = (i) => Object.entries(PROSPECTS.reduce((a, p) => ((a[p[i] || 'No owner'] = (a[p[i] || 'No owner'] || 0) + 1), a), {})).sort((a, b) => b[1] - a[1]);
+  const owners = REAL
+    ? tally(4).map(([k, v], i) => [k, v, ['var(--fg)', 'var(--land)'][i] || 'var(--line)'])
+    : [
+        ['Marcus Lee', 9, 'var(--fg)'],
+        ['Dana Ruiz', 4, 'var(--land)'],
+        ['Kai', 3, 'var(--line)'],
+      ];
+  const kinds = REAL
+    ? tally(1)
+    : [
+        ['Auto and tires', 8],
+        ['Furniture and mattresses', 2],
+        ['Veterinary', 2],
+        ['Optical', 1],
+        ['Dental', 1],
+        ['HVAC', 1],
+        ['Appliances', 1],
+      ];
+  const open = REAL ? PROSPECTS.length : 14;
   const flow = gCell(
     's-12',
     'Stages',
     'Now',
-    figHtml('7', `in talks · ${money(sum(talk))} a month in financed work if they all sign`),
+    figHtml(REAL ? String(talk.length) : '7', `in talks · ${money(sum(talk))} a month in financed work if they all sign`),
     stageFlow(
-      [
-        ['Prospect', 7, 'Walk-ins'],
-        ['Talking', 7, 'Demos and calls'],
-        ['Signing', 1, 'Founding 4/5'],
-        ['Signed', 17, 'Redemptions only'],
-        ['Transacting', 12, 'Clear payments on'],
-      ],
+      REAL
+        ? stagesNow('Clear payments on')
+        : [
+            ['Prospect', 7, 'Walk-ins'],
+            ['Talking', 7, 'Demos and calls'],
+            ['Signing', 1, 'Founding 4/5'],
+            ['Signed', 17, 'Redemptions only'],
+            ['Transacting', 12, 'Clear payments on'],
+          ],
       4,
       'shops',
     ),
   );
-  const ownCell = gCell('s-5', 'Who owns the calls', '14 open', figHtml('9', 'are Marcus Lee’s, mostly auto and tire'), compBar(owners));
+  const ownCell = gCell(
+    's-5',
+    'Who owns the calls',
+    `${open} open`,
+    REAL ? (owners.length ? figHtml(String(owners[0][1]), `are ${owners[0][0]}’s`) : '') : figHtml('9', 'are Marcus Lee’s, mostly auto and tire'),
+    owners.length ? compBar(owners) : NONE(),
+  );
   const kindCell = gCell(
     's-7',
     'What kind of shops',
-    '14 open',
-    figHtml('8 of 14', 'are auto and tire, the strongest early fit'),
-    <div className="how">
-      {kinds.map(([k, v], __k) => (
-        <Fragment key={__k}>
-          <span className="k">{k}</span>
-          <b className="num">{v}</b>
-          <span className="quiet num">{pct(v, 14)}</span>
-        </Fragment>
-      ))}
-    </div>,
+    `${open} open`,
+    REAL ? (kinds.length ? figHtml(`${kinds[0][1]} of ${open}`, `are ${kinds[0][0].toLowerCase()}`) : '') : figHtml('8 of 14', 'are auto and tire, the strongest early fit'),
+    kinds.length ? (
+      <div className="how">
+        {kinds.map(([k, v], __k) => (
+          <Fragment key={__k}>
+            <span className="k">{k}</span>
+            <b className="num">{v}</b>
+            <span className="quiet num">{pct(v, open)}</span>
+          </Fragment>
+        ))}
+      </div>
+    ) : (
+      NONE()
+    ),
   );
   const txCell = transactingCell();
   return (
@@ -1961,9 +2046,9 @@ export function xPartners() {
   ];
   const opts = [
     ['all', 'All partners', rows.length],
-    ['tx', 'Transacting', 12],
-    ['signed', 'Signed, not transacting', 18],
-    ['founding', 'Founding', 4],
+    ['tx', 'Transacting', REAL ? rows.filter(fl.tx).length : 12],
+    ['signed', 'Signed, not transacting', REAL ? rows.filter(fl.signed).length : 18],
+    ['founding', 'Founding', REAL ? rows.filter(fl.founding).length : 4],
     ['review', 'Hit the cap', rows.filter(fl.review).length],
   ];
   const list = rows.filter(fl[XS.pf]);
@@ -1992,6 +2077,15 @@ export function xPartners() {
               </tr>
             </thead>
             <tbody>
+              {list.length ? (
+                ''
+              ) : (
+                <tr>
+                  <td className="l" colSpan={10}>
+                    {NONE()}
+                  </td>
+                </tr>
+              )}
               {list.map((m, __k) => (
                 <tr key={__k} className="click" data-merchant={m.id} tabIndex="0">
                   <td className="l">
@@ -2033,7 +2127,7 @@ export function xPartners() {
                       ''
                     )}
                   </td>
-                  <td className={m.tx && m.lost ? 'weak' : ''}>{m.tx ? pct(m.lost, m.orig) : <span className="quiet">–</span>}</td>
+                  <td className={m.tx && m.lost ? 'weak' : ''}>{m.tx ? pz(m.lost, m.orig) : <span className="quiet">–</span>}</td>
                   <td>{m.tx ? money(m.oct) : <span className="quiet">–</span>}</td>
                   <td>{OWED[m.id] ? money(OWED[m.id]) : <span className="quiet">–</span>}</td>
                   <td className="l small">{m.hw || <span className="quiet">Poster only</span>}</td>
@@ -2054,11 +2148,11 @@ export function xPartners() {
   const mix = gCell(
     's-4 ctop',
     'Terms',
-    '12 transacting',
-    figHtml('9 of 12', 'on NET-30, the default'),
+    REAL ? `${TXO.length} transacting` : '12 transacting',
+    REAL ? figHtml(`${termsCount('NET-30')} of ${TXO.length}`, 'on NET-30, the default') : figHtml('9 of 12', 'on NET-30, the default'),
     compBar([
-      ['NET-30', 9, 'var(--fg)'],
-      ['NET-14', 3, 'var(--land)'],
+      ['NET-30', REAL ? termsCount('NET-30') : 9, 'var(--fg)'],
+      ['NET-14', REAL ? termsCount('NET-14') : 3, 'var(--land)'],
     ]),
     <div className="c-ft">
       <div className="row">
@@ -2069,12 +2163,12 @@ export function xPartners() {
   const feeC = gCell(
     's-4 ctop',
     'Fees',
-    '12 transacting',
+    REAL ? `${TXO.length} transacting` : '12 transacting',
     figHtml('2.5%', 'standard · founding shops pay 2.0% for life'),
     compBar([
-      ['2.5%', 9, 'var(--fg)'],
-      ['2.0% founding', 2, 'var(--land)'],
-      ['Free, first 20', 1, 'var(--line)'],
+      ['2.5%', REAL ? TXO.filter((m) => m.fee === 2.5).length : 9, 'var(--fg)'],
+      ['2.0% founding', REAL ? TXO.filter((m) => m.fee === 2).length : 2, 'var(--land)'],
+      ['Free, first 20', REAL ? TXO.filter((m) => !m.fee).length : 1, 'var(--line)'],
     ]),
     <div className="c-ft">
       <div className="row">
@@ -2086,21 +2180,25 @@ export function xPartners() {
     's-4 ctop',
     'Caps',
     'Per sale',
-    figHtml('$100', 'where most shops start'),
-    columns(
-      [
-        ['$100', 5],
-        ['$120', 1],
-        ['$150', 3],
-        ['$300', 2],
-        ['$500', 1],
-      ],
-      {
-        hi: 0,
-        h: 96,
-        fmt: (v) => v,
-      },
-    ),
+    REAL ? (capsUsed().length ? figHtml(capsUsed()[0][0], 'where most shops start') : '') : figHtml('$100', 'where most shops start'),
+    REAL && !capsUsed().length
+      ? NONE()
+      : columns(
+          REAL
+            ? capsUsed()
+            : [
+                ['$100', 5],
+                ['$120', 1],
+                ['$150', 3],
+                ['$300', 2],
+                ['$500', 1],
+              ],
+          {
+            hi: 0,
+            h: 96,
+            fmt: (v) => v,
+          },
+        ),
     <div className="c-ft">
       <div className="row">
         <span className="t">Raised after 15 clean sales</span>
@@ -2122,7 +2220,7 @@ export function xPartners() {
       <div className="group">
         <div className="g-lbl">
           <span className="lbl">Every partner</span>
-          <span className="lbl aside">30 shops</span>
+          <span className="lbl aside">{REAL ? `${rows.length} shops` : '30 shops'}</span>
         </div>
         <div className="bento">{tbl}</div>
       </div>
@@ -2189,13 +2287,13 @@ export function transactingCell() {
           {' shops · October'}
         </span>
       </header>
-      <div className="c-fig">{figHtml(money(oct), `cleared at 12 shops in October · Uptown Barber joined today`)}</div>
+      <div className="c-fig">{figHtml(money(oct), REAL ? `cleared at ${TXO.length} shops in October` : `cleared at 12 shops in October · Uptown Barber joined today`)}</div>
       <div className="c-body flush txwrap">
         <div className="txstrip">
           {stat('Sales', int(n), 'in October')}
-          {stat('Average sale', money(oct / n), 'across all shops')}
-          {stat('Loss rate', pct(lost, orig), `${lost} of ${orig} originations`)}
-          {stat('Top 3 shops', pct(top3, oct), 'of October’s volume')}
+          {stat('Average sale', money(n ? oct / n : 0), 'across all shops')}
+          {stat('Loss rate', pz(lost, orig), `${lost} of ${orig} originations`)}
+          {stat('Top 3 shops', pz(top3, oct), 'of October’s volume')}
         </div>
         <div className="sub-hd">
           <span className="sub-hd-k">
@@ -2204,7 +2302,7 @@ export function transactingCell() {
           </span>
           <span className="hd-tools">{ddHtml('xsort', opts, XS.txsort, 'Sort')}</span>
         </div>
-        <div className="txgrid">{list.map(tile)}</div>
+        <div className="txgrid">{list.length ? list.map(tile) : NONE()}</div>
       </div>
       <div className="c-ft">
         <button type="button" data-xpane="partners">
@@ -2223,31 +2321,38 @@ export function xPayouts() {
       m,
       ...payOf(m),
     }));
-  const extra = [
-    ['Inland Cycle Works', 60],
-    ['Fontana Tacos', 40],
-  ];
+  const extra = REAL
+    ? owedSignedOnly()
+    : [
+        ['Inland Cycle Works', 60],
+        ['Fontana Tacos', 40],
+      ];
   const runTotal = lines.reduce((a, l) => a + l.total, 0) + extra.reduce((a, e) => a + e[1], 0);
   const sales = lines.reduce((a, l) => a + l.sales, 0),
     fees = lines.reduce((a, l) => a + l.fee, 0),
-    red = lines.reduce((a, l) => a + l.red, 0) + 100;
-  const collected = +(sales * 0.842).toFixed(2);
+    red = lines.reduce((a, l) => a + l.red, 0) + (REAL ? extra.reduce((a, e) => a + e[1], 0) : 100);
+  const collected = +(sales * (REAL ? (fig('merchants.payouts.collected_share') ?? 0) : 0.842)).toFixed(2);
+  const runShops = lines.length + extra.length;
   const kpis = (
     <>
-      {kpiCell('Next run', money(runTotal), 'Mon 2 Nov · 11 shops', [0, 0, 0, 0, 310, 310, 310, 310, 3980, 3980, 3980, runTotal], '2 Nov')}
+      {REAL
+        ? kpiCell('Next run', money(runTotal), `${runDay()} · ${runShops} shops`, [...(fig('merchants.weekly.next_run') ?? []), runTotal], schedule()?.monthly ? fmtD(schedule().monthly) : '–')
+        : kpiCell('Next run', money(runTotal), 'Mon 2 Nov · 11 shops', [0, 0, 0, 0, 310, 310, 310, 310, 3980, 3980, 3980, runTotal], '2 Nov')}
       {kpiCell(
         'Already collected',
-        pct(collected, sales),
+        pz(collected, sales),
         `${money(collected)} of September sales repaid by members`,
-        [0, 8, 19, 31, 42, 52, 61, 69, 75, 80, 83, 84.2],
+        REAL ? (fig('merchants.payouts.collected_series') ?? [0]) : [0, 8, 19, 31, 42, 52, 61, 69, 75, 80, 83, 84.2],
         'This run',
       )}
-      {kpiCell('$10 owed', '$430.00', 'across 11 shops · paid with each run', [0, 0, 40, 90, 150, 200, 250, 300, 340, 380, 410, 430], 'Now')}
+      {REAL
+        ? kpiCell('$10 owed', money(owedTotal()), `across ${Object.keys(OWED).length} shops · paid with each run`, [...(fig('merchants.payouts.owed_series') ?? []), owedTotal()], 'Now')
+        : kpiCell('$10 owed', '$430.00', 'across 11 shops · paid with each run', [0, 0, 40, 90, 150, 200, 250, 300, 340, 380, 410, 430], 'Now')}
       {kpiCell(
         'Fees earned',
-        money(fees + payOf(TXO[7]).fee + payOf(TXO[9]).fee),
+        money(REAL ? fees + net14Shops().reduce((a, m) => a + payOf(m).fee, 0) : fees + payOf(TXO[7]).fee + payOf(TXO[9]).fee),
         'on September sales',
-        [0, 0, 0, 0, 0, 8, 14, 20, 28, 36, 44, fees],
+        REAL ? [...(fig('merchants.payouts.fees_series') ?? []), fees] : [0, 0, 0, 0, 0, 8, 14, 20, 28, 36, 44, fees],
         'September',
       )}
     </>
@@ -2255,7 +2360,7 @@ export function xPayouts() {
 
   /* how the run adds up: a waterfall on one scale */
   const W = Math.max(sales, runTotal),
-    x = (v) => ((v / W) * 100).toFixed(2);
+    x = (v) => (W ? (v / W) * 100 : 0).toFixed(2);
   const steps = [
     ['Sales cleared', 0, sales, 'var(--fg)', money(sales)],
     ['Fees', sales - fees, sales, 'var(--absent)', '−' + money(fees)],
@@ -2266,7 +2371,7 @@ export function xPayouts() {
     's-7',
     'How the run adds up',
     'September · NET-30',
-    figHtml(money(runTotal), 'to 11 shops on Mon 2 Nov'),
+    figHtml(money(runTotal), REAL ? `to ${runShops} shops on ${runDay()}` : 'to 11 shops on Mon 2 Nov'),
     <div className="wf">
       {steps.map(([k, a, b, c, t], i) => (
         <div key={i} className={`wf-r${i === 3 ? ' tot' : ''}`}>
@@ -2289,14 +2394,14 @@ export function xPayouts() {
     's-5',
     'Collected before it goes out',
     'For this run',
-    ringBig(0.842, `of September’s ${money(sales)} is already repaid by members`),
+    ringBig(REAL ? (sales ? collected / sales : 0) : 0.842, `of September’s ${money(sales)} is already repaid by members`),
     <div className="how two">
       <span className="k">Collected</span>
       <b className="num">{money(collected)}</b>
       <span className="k">Still due from members</span>
       <b className="num">{money(sales - collected)}</b>
       <span className="k">Due by</span>
-      <b>{fmtD(schedule().collectedBy)}</b>
+      <b>{schedule()?.collectedBy ? fmtD(schedule().collectedBy) : '–'}</b>
     </div>,
     <div className="c-ft">
       <div className="row">
@@ -2306,17 +2411,19 @@ export function xPayouts() {
   );
 
   /* calendar: five weeks from Mon 19 Oct */
-  const sc = schedule(),
+  // live, before the API sends a schedule: five weeks from this week's Monday, nothing paid on them
+  const sc = schedule() ?? { calendarStart: TODAY - ((new Date(TODAY).getUTCDay() + 6) % 7) * DAY },
     start = sc.calendarStart,
     // the calendar's days count from the 19th, as the prototype keyed them
     at = (t) => 19 + Math.round((t - start) / DAY),
-    under = TXO.find((m) => m.id === sc.underway.id),
+    under = TXO.find((m) => m.id === sc.underway?.id),
     marks = {
       [at(vars.asOf ?? TODAY)]: 'today',
-      [at(sc.underway.date)]: [money(payOf(under).total), under.name.split(' ')[0]],
-      [at(sc.monthly)]: [money(runTotal), 'Monthly run'],
-      [at(sc.net14)]: [money(net14Shops().reduce((a, m) => a + payOf(m).total, 0)), 'NET-14'],
-      [at(sc.net14Next.date)]: [money(sc.net14Next.estimate), 'NET-14, est.'],
+      // live, a day is marked only when a shop is paid on it
+      ...(under ? { [at(sc.underway.date)]: [money(payOf(under).total), under.name.split(' ')[0]] } : {}),
+      ...(!REAL || (runShops && sc.monthly) ? { [at(sc.monthly)]: [money(runTotal), 'Monthly run'] } : {}),
+      ...(!REAL || (net14Shops().length && sc.net14) ? { [at(sc.net14)]: [money(net14Shops().reduce((a, m) => a + payOf(m).total, 0)), 'NET-14'] } : {}),
+      ...(!REAL || (termsCount('NET-14') && sc.net14Next) ? { [at(sc.net14Next.date)]: [money(sc.net14Next.estimate), 'NET-14, est.'] } : {}),
     };
   const days = Array.from(
     {
@@ -2362,7 +2469,7 @@ export function xPayouts() {
     <section className="cell s-12">
       <header className="c-hd">
         <span className="lbl">Monthly run, line by line</span>
-        <span className="tag">Mon 2 Nov</span>
+        <span className="tag">{REAL ? runDay() : 'Mon 2 Nov'}</span>
       </header>
       <div className="c-fig" />
       <div className="c-body flush">
@@ -2380,6 +2487,15 @@ export function xPayouts() {
               </tr>
             </thead>
             <tbody>
+              {runShops ? (
+                ''
+              ) : (
+                <tr>
+                  <td className="l" colSpan={7}>
+                    {NONE()}
+                  </td>
+                </tr>
+              )}
               {lines
                 .sort((a, b) => b.total - a.total)
                 .map((l, __k) => (
@@ -2398,10 +2514,10 @@ export function xPayouts() {
                         <span className="sharebar">
                           <i style={css(`width:${((l.total / runTotal) * 100).toFixed(1)}%`)} />
                         </span>
-                        <span className="small quiet">{pct(l.total, runTotal)}</span>
+                        <span className="small quiet">{pz(l.total, runTotal)}</span>
                       </span>
                     </td>
-                    <td className="l mono small">····{String(4000 + l.m.orig * 37).slice(-4)}</td>
+                    <td className="l mono small">{REAL ? <span className="quiet">–</span> : <>····{String(4000 + l.m.orig * 37).slice(-4)}</>}</td>
                   </tr>
                 ))}
               {extra.map(([n, v], __k) => (
@@ -2421,10 +2537,10 @@ export function xPayouts() {
                       <span className="sharebar">
                         <i style={css(`width:${((v / runTotal) * 100).toFixed(1)}%`)} />
                       </span>
-                      <span className="small quiet">{pct(v, runTotal)}</span>
+                      <span className="small quiet">{pz(v, runTotal)}</span>
                     </span>
                   </td>
-                  <td className="l mono small">····{String(5000 + v * 13).slice(-4)}</td>
+                  <td className="l mono small">{REAL ? <span className="quiet">–</span> : <>····{String(5000 + v * 13).slice(-4)}</>}</td>
                 </tr>
               ))}
             </tbody>
@@ -2457,18 +2573,21 @@ export function xPayouts() {
     ['Oct', 4520.4],
     ['Nov', runTotal + 412.6],
   ];
-  const hist = gCell(
-    's-7',
-    'Paid to shops',
-    'By month',
-    figHtml(money(months[3][1]), 'scheduled for November, the biggest month yet'),
-    columns(months, {
-      hi: 3,
-      h: 140,
-      fmt: (v) => money(v),
-    }),
-  );
-  const n14 = [TXO[0], TXO[7], TXO[9]].map((m) => ({
+  // the prototype's months are written out; live has no history of runs to draw yet
+  const hist = REAL
+    ? gCell('s-7', 'Paid to shops', 'By month', '', NONE())
+    : gCell(
+        's-7',
+        'Paid to shops',
+        'By month',
+        figHtml(money(months[3][1]), 'scheduled for November, the biggest month yet'),
+        columns(months, {
+          hi: 3,
+          h: 140,
+          fmt: (v) => money(v),
+        }),
+      );
+  const n14 = (REAL ? TXO.filter((m) => m.terms === 'NET-14') : [TXO[0], TXO[7], TXO[9]]).map((m) => ({
     m,
     ...payOf(m),
   }));
@@ -2476,19 +2595,20 @@ export function xPayouts() {
     's-5',
     'NET-14 shops',
     'Paid every two weeks',
-    figHtml('3', 'shops on NET-14, all on 30-day customer terms'),
+    figHtml(REAL ? String(n14.length) : '3', 'shops on NET-14, all on 30-day customer terms'),
     <div className="how three">
+      {n14.length ? '' : NONE()}
       {n14.map((l, __k) => (
         <Fragment key={__k}>
           <span className="k">{l.m.name}</span>
-          <span className="quiet small">{l.m.id === 'rosas' ? '22 Oct' : '4 Nov'}</span>
+          <span className="quiet small">{REAL ? payDay(l.m, sc) : l.m.id === 'rosas' ? '22 Oct' : '4 Nov'}</span>
           <b className="num">{money(l.total)}</b>
         </Fragment>
       ))}
     </div>,
     <div className="c-ft">
       <button type="button" data-go="home">
-        <span className="t">Rosa’s is waiting in Needs you</span>
+        <span className="t">{REAL ? 'Open Needs you' : 'Rosa’s is waiting in Needs you'}</span>
         {ic('chev', 'sm')}
       </button>
     </div>,
@@ -2543,18 +2663,18 @@ export function xHardware() {
         'Devices out',
         String(total),
         `${byType('P') + byType('t')} Clear Points, ${byType('T')} Tap docks, ${byType('C')} Counters`,
-        [...fig('merchants.hardware.devices_series'), total],
+        [...(fig('merchants.hardware.devices_series') ?? []), total],
         'Now',
       )}
       {kpiCell(
         'Online',
-        pct(total - off, total),
+        pz(total - off, total),
         `${off} offline · ${low} battery low`,
-        [...fig('merchants.hardware.online_series'), ((total - off) / total) * 100],
+        [...(fig('merchants.hardware.online_series') ?? []), total ? ((total - off) / total) * 100 : 0],
         'Now',
       )}
-      {kpiCell('Pre-orders', String(fig('merchants.hardware.preorders').devices), `devices across ${fig('merchants.hardware.preorders').shops} shops · deposits held`, fig('merchants.hardware.preorders').series, 'Open')}
-      {kpiCell('Unit cost', money(fig('merchants.hardware.unit_cost').repaired), `repaired, against ${money(fig('merchants.hardware.unit_cost').fresh)} new`, fig('merchants.hardware.unit_cost').series, 'Average')}
+      {kpiCell('Pre-orders', String(fig('merchants.hardware.preorders')?.devices ?? 0), `devices across ${fig('merchants.hardware.preorders')?.shops ?? 0} shops · deposits held`, fig('merchants.hardware.preorders')?.series ?? [0], 'Open')}
+      {kpiCell('Unit cost', money(fig('merchants.hardware.unit_cost')?.repaired ?? 0), `repaired, against ${money(fig('merchants.hardware.unit_cost')?.fresh ?? 0)} new`, fig('merchants.hardware.unit_cost')?.series ?? [0], 'Average')}
     </>
   );
   const ST = {
@@ -2587,8 +2707,8 @@ export function xHardware() {
       <tr key={__k} className={`fv-r${bad ? ' ' + bad : ''}`} data-merchant={id}>
         <td className="l">
           <span className="fv-n">
-            <b>{m.name}</b>
-            <span className="small quiet">{m.city}</span>
+            <b>{m?.name ?? id}</b>
+            <span className="small quiet">{m?.city}</span>
             <span className={`fv-st fv-m${bad ? ' ' + bad : ''}`}>{bad ? note : 'All online'}</span>
           </span>
         </td>
@@ -2633,7 +2753,17 @@ export function xHardware() {
                 <th className="fv-all">Devices</th>
               </tr>
             </thead>
-            <tbody>{rows}</tbody>
+            <tbody>
+              {rows.length ? (
+                rows
+              ) : (
+                <tr>
+                  <td className="l" colSpan={FT.length + 4}>
+                    {NONE()}
+                  </td>
+                </tr>
+              )}
+            </tbody>
           </table>
         </div>
         <div className="mkey fv-key">
@@ -2652,20 +2782,28 @@ export function xHardware() {
           <span className="quiet">One square per device · select a shop to open it</span>
         </div>
       </div>
-      <div className="c-ft split">
-        <button type="button" data-go="field">
-          <span className="t">
-            {'Add '}
-            {visit.map((f) => TXO.find((x) => x.id === f[0]).name.split(' ')[0]).join(' and ')}
-            {' to today’s route'}
-          </span>
-          {ic('chev', 'sm')}
-        </button>
-        <span className="rule" aria-hidden="true" />
-        {footItem({
-          t: 'Points report in every 2 minutes',
-        })}
-      </div>
+      {REAL && !visit.length ? (
+        <div className="c-ft">
+          {footItem({
+            t: 'Points report in every 2 minutes',
+          })}
+        </div>
+      ) : (
+        <div className="c-ft split">
+          <button type="button" data-go="field">
+            <span className="t">
+              {'Add '}
+              {visit.map((f) => (TXO.find((x) => x.id === f[0])?.name ?? f[0]).split(' ')[0]).join(' and ')}
+              {' to today’s route'}
+            </span>
+            {ic('chev', 'sm')}
+          </button>
+          <span className="rule" aria-hidden="true" />
+          {footItem({
+            t: 'Points report in every 2 minutes',
+          })}
+        </div>
+      )}
     </section>
   );
   const refurb = gCell(
@@ -2817,6 +2955,8 @@ export function xHardware() {
       ))}
     </div>,
   );
+  // the refurb line, unit costs, stock and pre-orders are the prototype's own figures; live has none of them yet
+  const nothing = (cls, label, tag) => gCell(cls, label, tag, '', NONE());
   return (
     <>
       {G('At a glance', '', '', metricsCell(kpis))}
@@ -2826,8 +2966,8 @@ export function xHardware() {
         '',
         '',
         <>
-          {refurb}
-          {cost}
+          {REAL ? nothing('s-7', 'Refurb line', 'Used and damaged Samsung units') : refurb}
+          {REAL ? nothing('s-5', 'What a unit costs', 'Average, repaired') : cost}
         </>,
       )}
       {G(
@@ -2835,8 +2975,8 @@ export function xHardware() {
         '',
         '',
         <>
-          {invCell}
-          {preCell}
+          {REAL ? nothing('s-7', 'Inventory', 'By device') : invCell}
+          {REAL ? nothing('s-5', 'Pre-orders', 'Refundable until made') : preCell}
         </>,
       )}
     </>
@@ -2878,7 +3018,7 @@ export function merchantPane() {
           </div>
           <div>
             <span className="lbl">Loss</span>
-            <span className="fig fig-l">{pct(m.lost, m.orig)}</span>
+            <span className="fig fig-l">{pz(m.lost, m.orig)}</span>
           </div>
         </div>
         <div>
@@ -2925,7 +3065,15 @@ export function merchantPane() {
             <span className="v">
               {money(p.total)}
               {' · '}
-              {m.id === 'rosas' ? '22 Oct' : m.terms === 'NET-14' ? '4 Nov' : '2 Nov'}
+              {REAL
+                ? schedule()
+                  ? fmtD(m.id === schedule().underway?.id ? schedule().underway.date : m.terms === 'NET-14' ? schedule().net14 : schedule().monthly)
+                  : '–'
+                : m.id === 'rosas'
+                  ? '22 Oct'
+                  : m.terms === 'NET-14'
+                    ? '4 Nov'
+                    : '2 Nov'}
             </span>
           </div>
           <div className="r">
@@ -2970,9 +3118,11 @@ export function merchantPane() {
         <div className="note">
           {ic('chev', 'sm')}
           <span>
-            <b>{s[4] === 'signing' ? 'Founding seat 4 of 5.' : 'Taking $10 redemptions.'}</b>{' '}
+            <b>{s[4] === 'signing' ? (REAL ? 'Signing.' : 'Founding seat 4 of 5.') : 'Taking $10 redemptions.'}</b>{' '}
             {s[4] === 'signing'
-              ? 'They signed 20 Oct. Your signature is waiting in Needs you.'
+              ? REAL
+                ? 'Your signature is waiting in Needs you.'
+                : 'They signed 20 Oct. Your signature is waiting in Needs you.'
               : 'Clear payments aren’t on yet. Turn them on once the shop is ready.'}
           </span>
         </div>
@@ -2983,7 +3133,7 @@ export function merchantPane() {
           </div>
           <div className="r">
             <span className="k">Posters</span>
-            <span className="v">{s[0] === 'icw' ? 3 : s[0] === 'tacos' ? 4 : 3}</span>
+            <span className="v">{REAL ? '–' : s[0] === 'icw' ? 3 : s[0] === 'tacos' ? 4 : 3}</span>
           </div>
           <div className="r">
             <span className="k">Hardware</span>
@@ -3028,6 +3178,7 @@ export function openXFlow(kind, id) {
     name: (SIGNED.find((x) => x[0] === id) || [])[1],
   };
   const next = m.cap ? CAPS[CAPS.indexOf(m.cap) + 1] || m.cap : 0;
+  const runN = termsCount('NET-30') + owedSignedOnly().length;
   const f = {
     cap: {
       t: 'Propose a cap raise',
@@ -3070,15 +3221,15 @@ export function openXFlow(kind, id) {
     },
     run: {
       t: 'Propose the monthly run',
-      h: 'Mon 2 Nov',
+      h: REAL ? runDay() : 'Mon 2 Nov',
       rows: [
-        ['Shops', '11'],
+        ['Shops', REAL ? String(runN) : '11'],
         ['Pays', 'September sales and $10 redemptions'],
         ['Approval', 'Someone else approves before it goes', 1],
       ],
       btn: 'Propose the run',
-      steps: ['Totalled September for 11 shops', 'Checked every bank account on file', 'Sent it to Needs you for a second approval'],
-      done: ['Run proposed.', 'It goes out Mon 2 Nov once someone else approves.'],
+      steps: [`Totalled September for ${REAL ? runN : 11} shops`, 'Checked every bank account on file', 'Sent it to Needs you for a second approval'],
+      done: ['Run proposed.', `It goes out ${REAL ? runDay() : 'Mon 2 Nov'} once someone else approves.`],
     },
     add: {
       t: 'Add a prospect',
@@ -3105,7 +3256,7 @@ export function openXFlow(kind, id) {
       {kind === 'add' ? (
         <label className="field">
           <span className="lbl">Shop</span>
-          <input id="xa-name" type="text" defaultValue="Sunnymead Auto" autoComplete="off" />
+          <input id="xa-name" type="text" defaultValue={REAL ? '' : 'Sunnymead Auto'} autoComplete="off" />
         </label>
       ) : (
         ''
@@ -3174,7 +3325,7 @@ export function foundingTaken() {
   return TXO.filter((m) => m.founding).length + signingCount();
 }
 export function foundingOpen() {
-  return fig('merchants.founding_seats') - foundingTaken();
+  return SEATS() - foundingTaken();
 }
 /** What the shops in talks would finance a month if they all signed. */
 export function talkValue() {
@@ -3198,7 +3349,7 @@ export function owedSignedOnly() {
 }
 /** NET-14 shops paid on the next NET-14 day (the one already underway is apart). */
 export function net14Shops() {
-  return TXO.filter((m) => m.terms === 'NET-14' && m.id !== schedule().underway.id);
+  return TXO.filter((m) => m.terms === 'NET-14' && m.id !== schedule()?.underway?.id);
 }
 export function schedule() {
   return fig('merchants.payouts.schedule');
@@ -3211,5 +3362,6 @@ export function daysFromToday(t) {
 }
 export function newestLine() {
   const n = fig('merchants.newest_partner');
+  if (!n) return '';
   return `${n.name} joined ${daysAgo(n.joined)}`;
 }

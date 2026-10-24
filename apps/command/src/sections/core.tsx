@@ -1,5 +1,5 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
-import { LIVE } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import { liveSignOut } from '../live/account';
 import { attrs, css, html } from '../runtime/dom';
 import { P, S, SG, TH_IC, TS, vars } from './data';
@@ -168,7 +168,7 @@ export function openPf() {
         </div>
         <div className="pm-ft">
           <span className="dot" aria-hidden="true" />
-          Testnet · demo data · no keys in this app
+          {REAL ? 'Testnet · no keys in this app' : 'Testnet · demo data · no keys in this app'}
         </div>
       </div>
     </>,

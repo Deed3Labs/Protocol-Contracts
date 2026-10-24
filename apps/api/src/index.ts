@@ -12,6 +12,7 @@ import { rateLimiter } from './middleware/rateLimiter.js';
 import { requireAuth } from './middleware/auth.js';
 import { liveCommandJoinRouter, liveCommandRouter, liveCommandSharedRouter, liveCommandWebhookRouter } from './services/command/live.js';
 import { seedCommand } from './services/command/seed.js';
+import { structureCommand } from './services/command/structure.js';
 import { requireMemberCapability } from './middleware/memberCapabilities.js';
 import pricesRouter from './routes/prices.js';
 import balancesRouter from './routes/balances.js';
@@ -466,6 +467,14 @@ async function startServer() {
       } catch (error) {
         console.error('❌ Command Center seed failed:', redactError(error));
       }
+    }
+    // …then its structure, seed or not: the contracts, entities and boards' seats, into empty tables only.
+    try {
+      const db = await merchantDb();
+      const written = db ? await structureCommand(db) : [];
+      if (written.length) console.log(`✅ Command Center structure: ${written.join(', ')}`);
+    } catch (error) {
+      console.error('❌ Command Center structure failed:', redactError(error));
     }
     // The Command Center's indexer: every deployed contract's events, after the migrations.
     startCommandIndexer();

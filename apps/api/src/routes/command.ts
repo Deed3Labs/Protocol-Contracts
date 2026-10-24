@@ -319,6 +319,12 @@ export function commandRouter(deps: CommandDeps) {
     const area = String(req.query.area ?? 'access');
     const areas = area === 'all' ? (Object.keys(c.levels) as Section[]).filter((s) => c.levels[s] >= SEE) : [area as Section];
     if (!areas.length || areas.some((a) => !(a in c.levels) || c.levels[a] < SEE)) return fail(res, 403, 'FORBIDDEN', 'You can’t see what’s waiting there');
+    // approved=30: what was approved in the last 30 days, for the two-person rule's counts and waits
+    const days = Number(req.query.approved);
+    if (days > 0) {
+      const since = new Date(now().getTime() - Math.min(days, 365) * 86400_000);
+      return res.json({ proposals: (await Promise.all(areas.map((a) => store.approvedSince(c.db, a, since)))).flat() });
+    }
     res.json({ proposals: (await Promise.all(areas.map((a) => store.proposals(c.db, a)))).flat() });
   });
 

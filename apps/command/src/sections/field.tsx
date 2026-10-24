@@ -1,7 +1,7 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { SEED_ROUTE } from '@clear/command-types';
 import { act, addFile } from '../live/actions';
-import { LIVE } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import { Fragment } from 'react';
 import { attrs, css } from '../runtime/dom';
 import { head, ic, int } from './core';
@@ -24,7 +24,7 @@ export function fieldPage() {
     left = STOPS.length - done,
     cur = curStop();
   const W = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'];
-  const title = cur ? `${W[left]} stop${left === 1 ? '' : 's'} left on today’s route.` : 'Route done for today.';
+  const title = cur ? `${W[left]} stop${left === 1 ? '' : 's'} left on today’s route.` : STOPS.length ? 'Route done for today.' : 'No route today.';
   const tools = (
     <button className="btn btn-p" type="button" data-fscan="">
       <span className="dot pulse" style={css('color:var(--btn-dot)')} aria-hidden="true" />
@@ -36,7 +36,7 @@ export function fieldPage() {
       {head(
         <>
           {`Field · ${dayName(route().day)} · `}
-          <b>Demo data</b>
+          <b>{REAL ? 'Real data' : 'Demo data'}</b>
         </>,
         title,
         tools,
@@ -54,6 +54,9 @@ export function fieldPage() {
   );
 }
 export function fRoute(cur, done) {
+  // nobody on a route today (real data only, Phase 9): no stop, no van, no route to show
+  if (!STOPS.length)
+    return G('This stop', '', '', gCell('s-12', 'Route', 'Today', figHtml('No stops', 'nobody is on a route today'), <span className="small quiet">Stops show up here when a route is planned.</span>));
   if (FS.who === 'me')
     return G(
       'This stop',
@@ -225,17 +228,21 @@ export function fRoute(cur, done) {
           </span>
         </div>
       ))}
-      <div className="van-r">
-        <span className="van-ic">{ic('battery', 'sm')}</span>
-        <span className="van-k">
-          <b>Clear Point batteries</b>
-          <span className="small quiet">1 for Citrus Bowl table 4 · 2 loaded</span>
-        </span>
-        <span className="van-bar" aria-hidden="true">
-          <i className="need" />
-          <i />
-        </span>
-      </div>
+      {REAL ? (
+        ''
+      ) : (
+        <div className="van-r">
+          <span className="van-ic">{ic('battery', 'sm')}</span>
+          <span className="van-k">
+            <b>Clear Point batteries</b>
+            <span className="small quiet">1 for Citrus Bowl table 4 · 2 loaded</span>
+          </span>
+          <span className="van-bar" aria-hidden="true">
+            <i className="need" />
+            <i />
+          </span>
+        </div>
+      )}
     </div>,
     <div className="c-ft">
       <div className="row van-ft">
@@ -395,7 +402,7 @@ export function fToday() {
                 {l.t.p.design}
                 <span className="small quiet">
                   {' · '}
-                  {DESIGNS[l.t.p.design].name}
+                  {DESIGNS[l.t.p.design]?.name}
                 </span>
               </span>
             </>
@@ -434,7 +441,15 @@ export function fToday() {
     <section className="cell s-12">
       <header className="c-hd">
         <span className="lbl">Logged today</span>
-        <span className="tag">{route().staff} · since {route().started}</span>
+        <span className="tag">
+          {route().staff ? (
+            <>
+              {route().staff} · since {route().started}
+            </>
+          ) : (
+            'Today'
+          )}
+        </span>
       </header>
       <div className="c-fig">
         {figHtml(String(log.length), log.length ? `things logged · ${photos} with a photo · last at ${log[0].t.done}` : 'nothing logged yet')}
@@ -564,13 +579,16 @@ export function fieldSheet() {
         <div>
           <span className="lbl">At this stop</span>
           <div className="codes">
+            {!sug.length && (REAL || !POSTERS.find((x) => x.n === 44)) ? <span className="small quiet">None yet.</span> : ''}
             {(sug.length
               ? sug
-              : [
-                  {
-                    p: POSTERS.find((x) => x.n === 44),
-                  },
-                ]
+              : REAL || !POSTERS.find((x) => x.n === 44)
+                ? []
+                : [
+                    {
+                      p: POSTERS.find((x) => x.n === 44),
+                    },
+                  ]
             ).map((t, __k) => (
               <button key={__k} type="button" className="code" data-fpick={t.p.n}>
                 {designThumb(t.p.design, 20)}
@@ -768,5 +786,7 @@ export function fSave(n) {
 
 /** The day's route: the API's in the live app, the prototype's in the preview. */
 export function route() {
-  return LIVE && vars.ROUTE ? vars.ROUTE : SEED_ROUTE;
+  // no route loaded (real data only): nobody on it, today
+  if (REAL) return (LIVE && vars.ROUTE) || { staff: '', staffKey: '', day: TODAY, loaded: '', started: '', miles: 0, backBy: '', minutesPerStop: 0 };
+  return SEED_ROUTE;
 }

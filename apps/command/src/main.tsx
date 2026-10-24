@@ -2,7 +2,7 @@ import { flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import './styles/command.css';
 import { App } from './App';
-import { LIVE } from './live/env';
+import { LIVE, REAL } from './live/env';
 import { registerServiceWorker } from './live/pwa';
 
 // The shell goes in first and synchronously: the sections' start-up code reads it, as the
@@ -20,7 +20,13 @@ if (LIVE) {
   });
 }
 
-import('./sections/index').then(({ startup }) => startup());
+// real data only (Phase 9): the prototype's datasets are emptied before anything draws, live and in the empty preview
+import('./sections/index').then(async ({ startup }) => {
+  if (REAL) (await import('./live/empty')).emptyData();
+  startup();
+});
+// in development, a hot update can run sections/data.tsx again with the prototype's data in it: load afresh instead
+if (REAL && import.meta.hot) import.meta.hot.on('vite:beforeUpdate', () => window.location.reload());
 
 // installable, and opens on a poor connection: the shell only, never the API (public/sw.js)
 registerServiceWorker();

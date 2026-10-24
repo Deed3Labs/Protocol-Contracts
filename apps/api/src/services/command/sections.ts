@@ -1,5 +1,6 @@
 import { DAY, SEED_TODAY, mask, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PosterRow } from '@clear/command-types';
 import type { Queryable } from '../../db/db.js';
+import { getPostgresPool } from '../../config/postgres.js';
 import { SEE, TOTALS, type Level } from './levels.js';
 import { deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { feedRows } from './feeds.js';
@@ -38,6 +39,8 @@ export interface ReadOptions {
   chain?: ChainReader;
   /** The member app's records, for Members when it's live (Phase 7b). */
   memberSource?: MemberSource;
+  /** Where the Clear charges are (charge_requests), for Merchants live: the main database unless given. */
+  charges?: Pick<Queryable, 'query'>;
 }
 
 const chainOf = (o: ReadOptions, source: string) => {
@@ -427,7 +430,6 @@ export async function growthSection(db: Queryable, o: ReadOptions): Promise<Grow
 
 export async function fieldSection(db: Queryable, o: ReadOptions): Promise<FieldPayload> {
   const provider = providerFor('field');
-  if (provider === 'live') throw new NotLiveYet('field');
   const asOf = asOfFor(provider, o.now);
   const { rows: rr } = await db.query<{ day: Date; staff: string; staff_key: string; loaded_at: string; started_at: string; miles: number; back_by: string; minutes_per_stop: number }>(
     'SELECT * FROM command.routes WHERE day <= $1 ORDER BY day DESC LIMIT 1',
@@ -503,12 +505,26 @@ async function partnerRows(db: Queryable) {
 
 export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<MerchantsPayload> {
   const provider = providerFor('merchants');
-  if (provider === 'live') throw new NotLiveYet('merchants');
+  if (provider === 'live') return merchantsLive(db, o);
   const { ms, TX } = await partnerRows(db);
   const SIGNED = ms.filter((m) => m.status !== 'transacting').map((m) => (m.status === 'signing' ? [m.id, m.name, m.kind, m.city, 'signing'] : [m.id, m.name, m.kind, m.city]));
   const { rows: owedRows } = await db.query<{ merchant_id: string; owed_cents: number }>('SELECT * FROM command.redemptions_owed');
   const OWED = Object.fromEntries(owedRows.map((r) => [r.merchant_id, dollars(r.owed_cents)!]));
+  const { BOARD, PROSPECTS } = await merchantBoard(db, o, OWED);
 
+  const { rows: devs } = await db.query<{ merchant_id: string; kind: string; seq: number; status: string }>('SELECT * FROM command.device_fleet ORDER BY merchant_id, kind, seq');
+  const { rows: chk } = await db.query<{ merchant_id: string; issue: string; last_seen: string }>('SELECT * FROM command.fleet_checkins ORDER BY position');
+  const FLEET = chk.map((c) => {
+    const kinds: Record<string, string[]> = {};
+    for (const d of devs.filter((d) => d.merchant_id === c.merchant_id)) (kinds[d.kind] ??= []).push(d.status);
+    return [c.merchant_id, kinds, c.issue, c.last_seen];
+  });
+
+  return { TX, SIGNED, PROSPECTS, OWED, BOARD, FLEET, figures: await figures(db, 'merchants'), asOf: asOfFor(provider, o.now) };
+}
+
+/** The pipeline board and its prospects: Command's own CRM, read the same way seed or live. */
+async function merchantBoard(db: Queryable, o: ReadOptions, OWED: Record<string, number>) {
   const { rows: cards } = await db.query<{ id: string; merchant_id: string | null; name: string; kind: string; city: string; stage: string; owner: string | null; per_month_cents: number | null; next_step: string | null; due_on: Date | null; last_contact_at: Date | null; contact: Record<string, string>; source: string; address: string; flag: boolean; founding: boolean; posters: number | null; notes: string }>(
     'SELECT * FROM command.merchant_stage WHERE removed_at IS NULL ORDER BY position',
   );
@@ -532,16 +548,147 @@ export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<M
     });
   });
   const PROSPECTS = cards.filter((c) => !c.merchant_id).map((c) => [c.name, c.kind, c.city, dollars(c.per_month_cents), c.owner, c.next_step, c.stage]);
+  return { BOARD, PROSPECTS };
+}
 
-  const { rows: devs } = await db.query<{ merchant_id: string; kind: string; seq: number; status: string }>('SELECT * FROM command.device_fleet ORDER BY merchant_id, kind, seq');
-  const { rows: chk } = await db.query<{ merchant_id: string; issue: string; last_seen: string }>('SELECT * FROM command.fleet_checkins ORDER BY position');
-  const FLEET = chk.map((c) => {
-    const kinds: Record<string, string[]> = {};
-    for (const d of devs.filter((d) => d.merchant_id === c.merchant_id)) (kinds[d.kind] ??= []).push(d.status);
-    return [c.merchant_id, kinds, c.issue, c.last_seen];
-  });
+/** A Point is online while heard from in the last ten minutes, and low under 20% on battery: the merchant app's own rule (pointChip). */
+const POINT_HEARD_MS = 10 * 60_000;
+const POINT_LOW_BATTERY = 20;
 
-  return { TX, SIGNED, PROSPECTS, OWED, BOARD, FLEET, figures: await figures(db, 'merchants'), asOf: asOfFor(provider, o.now) };
+/** "Now", "4 min ago", "08:40" earlier today, "22 Oct" before that, in the shop's own time. */
+function heardAt(t: number, now: number, timeZone: string): string {
+  if (now - t < 60_000) return 'Now';
+  if (now - t < 3600_000) return `${Math.floor((now - t) / 60_000)} min ago`;
+  const fmt = (o: Intl.DateTimeFormatOptions, at: number) => {
+    try {
+      return new Intl.DateTimeFormat('en-GB', { timeZone, ...o }).format(at);
+    } catch {
+      return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', ...o }).format(at);
+    }
+  };
+  const day: Intl.DateTimeFormatOptions = { year: 'numeric', month: '2-digit', day: '2-digit' };
+  return fmt(day, t) === fmt(day, now) ? fmt({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }, t) : fmt({ day: 'numeric', month: 'short' }, t);
+}
+
+/**
+ * Merchants, live: every shop in the merchant app (merchant.profiles), keyed by its address.
+ *
+ * A shop is transacting once a Clear charge of its has gone through; until then it's signed, or
+ * signing while its onboarding hasn't put Clear's signer on its wallet yet. Its fee is its tier's
+ * pay-over-time rate and its terms its payout terms; the month's figures are its approved Clear
+ * charges in this and last calendar month, and originations every plan a charge opened. The cap is
+ * on chain (MerchantRegistry), cap hits and losses aren't recorded anywhere the API reads, and
+ * nothing in the merchant app is a $10 redemption owed, so those stay empty rather than guessed.
+ *
+ * The fleet is the shops' Points, the only devices that check in (merchant.point_keys); readers,
+ * tablets, printers and drawers are named in the shop's hardware but have no status to show. The
+ * board and its prospects are Command's own CRM, as on the seed.
+ */
+export async function merchantsLive(db: Queryable, o: ReadOptions): Promise<MerchantsPayload> {
+  const now = o.now.getTime();
+  const y = o.now.getUTCFullYear(),
+    mo = o.now.getUTCMonth();
+  const iso = (t: number) => new Date(t).toISOString();
+  const [thisMonth, lastMonth, nextMonth] = [Date.UTC(y, mo, 1), Date.UTC(y, mo - 1, 1), Date.UTC(y, mo + 1, 1)];
+
+  const { rows: shops } = await db.query<{ merchant: string; name: string; kind: string; city: string; founding: boolean; terms: string | null; over_time_bps: number | null; signer: boolean; joined_ms: string | number; timezone: string | null }>(
+    `SELECT p.merchant, p.name, coalesce(p.category, '') AS kind, coalesce(p.town, p.address_city, '') AS city, p.founding, p.payout_terms AS terms, p.timezone,
+            p.clear_signer_quorum_id IS NOT NULL AS signer, t.over_time_bps,
+            extract(epoch FROM coalesce(p.partner_since::timestamp AT TIME ZONE 'UTC', p.created_at)) * 1000 AS joined_ms
+       FROM merchant.profiles p LEFT JOIN merchant.clear_tiers t ON t.tier = p.clear_tier
+      ORDER BY joined_ms, p.merchant`,
+  );
+  const ids = shops.map((s) => s.merchant.toLowerCase());
+
+  // a charge that went through: approved, or since refunded or disputed (it was still a sale, and a plan was opened)
+  const charges = o.charges ?? getPostgresPool() ?? db;
+  const { rows: sales } = ids.length
+    ? await charges.query<{ merchant: string; ever: string | number; plans: string | number; this_cents: string | number; this_n: string | number; last_cents: string | number }>(
+        `SELECT merchant,
+                count(*) FILTER (WHERE status IN ('approved', 'refunded', 'disputed')) AS ever,
+                count(*) FILTER (WHERE status IN ('approved', 'refunded', 'disputed') AND plan_id IS NOT NULL) AS plans,
+                coalesce(sum(amount_cents) FILTER (WHERE status = 'approved' AND at >= $2 AND at < $3), 0) AS this_cents,
+                count(*) FILTER (WHERE status = 'approved' AND at >= $2 AND at < $3) AS this_n,
+                coalesce(sum(amount_cents) FILTER (WHERE status = 'approved' AND at >= $4 AND at < $2), 0) AS last_cents
+           FROM (SELECT lower(merchant_address) AS merchant, status, plan_id, amount_cents, coalesce(resolved_at, created_at) AS at FROM charge_requests WHERE lower(merchant_address) = ANY($1)) c
+          GROUP BY merchant`,
+        [ids, iso(thisMonth), iso(nextMonth), iso(lastMonth)],
+      )
+    : { rows: [] };
+  const saleOf = new Map(sales.map((s) => [s.merchant, s]));
+
+  // what each shop has out, for its hardware line
+  const { rows: hw } = await db.query<{ merchant: string; kind: string; n: string | number }>(
+    `SELECT merchant, CASE WHEN kind = 'point' AND settings->>'placement' = 'table' THEN 'table' ELSE kind END AS kind, count(*) AS n
+       FROM merchant.hardware WHERE removed_at IS NULL GROUP BY 1, 2
+     UNION ALL
+     SELECT merchant, 'reader', count(*) FROM merchant.readers WHERE removed_at IS NULL AND type IN ('m2', 'smart') GROUP BY 1
+     UNION ALL
+     SELECT merchant, 'tablet', count(*) FROM merchant.devices WHERE revoked_at IS NULL GROUP BY 1`,
+  );
+  const HW: Array<[string, string]> = [['point', 'Point'], ['table', 'Table Point'], ['reader', 'Tap'], ['tablet', 'Counter'], ['printer', 'Printer'], ['drawer', 'Drawer']];
+  const hardware = (id: string) =>
+    HW.flatMap(([k, label]) => {
+      const n = Number(hw.find((h) => h.merchant.toLowerCase() === id && h.kind === k)?.n ?? 0);
+      return n === 0 ? [] : [n === 1 ? label : `${n} ${label}s`];
+    }).join(' · ');
+
+  const TX: unknown[][] = [];
+  const SIGNED: string[][] = [];
+  for (const s of shops) {
+    const id = s.merchant.toLowerCase();
+    const c = saleOf.get(id);
+    if (c && Number(c.ever) > 0)
+      TX.push([id, s.name, s.kind, s.city, s.founding ? 1 : 0, s.over_time_bps == null ? 0 : s.over_time_bps / 100, (s.terms ?? '').toUpperCase(), null, 0, Number(c.plans), 0, dollars(c.this_cents), Number(c.this_n), dollars(c.last_cents), hardware(id)]);
+    else SIGNED.push(s.signer ? [id, s.name, s.kind, s.city] : [id, s.name, s.kind, s.city, 'signing']);
+  }
+  const OWED: Record<string, number> = {};
+  const { BOARD, PROSPECTS } = await merchantBoard(db, o, OWED);
+
+  const { rows: points } = await db.query<{ merchant: string; name: string; placement: string | null; health: { batteryPercent?: number; pluggedIn?: boolean } | string | null; last_seen_at: Date | string | null }>(
+    `SELECT h.merchant, h.name, h.settings->>'placement' AS placement, k.health, k.last_seen_at
+       FROM merchant.hardware h LEFT JOIN merchant.point_keys k ON k.device_id = h.id
+      WHERE h.kind = 'point' AND h.removed_at IS NULL
+      ORDER BY h.created_at, h.id`,
+  );
+  const RANK: Record<string, number> = { off: 0, low: 1, on: 2 };
+  const FLEET = shops
+    .flatMap((s) => {
+      const id = s.merchant.toLowerCase();
+      const mine = points.filter((p) => p.merchant.toLowerCase() === id);
+      if (!mine.length) return [];
+      const tz = s.timezone ?? 'UTC';
+      const kinds: Record<string, string[]> = {};
+      const issues: string[] = [];
+      let last: number | null = null;
+      for (const p of mine) {
+        const health = typeof p.health === 'string' ? JSON.parse(p.health) : p.health;
+        const seen = p.last_seen_at == null ? null : new Date(p.last_seen_at).getTime();
+        if (seen != null && (last == null || seen > last)) last = seen;
+        // as the merchant app shows it: no report yet, or nothing for ten minutes, is offline
+        const status = !health || seen == null || now - seen > POINT_HEARD_MS ? 'off' : !health.pluggedIn && Number(health.batteryPercent) < POINT_LOW_BATTERY ? 'low' : 'on';
+        (kinds[p.placement === 'table' ? 't' : 'P'] ??= []).push(status);
+        if (status === 'off') issues.push(!health || seen == null ? `${p.name} not heard from yet` : `${p.name} offline since ${heardAt(seen, now, tz)}`);
+        if (status === 'low') issues.push(`${p.name} battery low`);
+      }
+      const worst = Math.min(...Object.values(kinds).flat().map((k) => RANK[k]!));
+      return [{ worst, row: [id, kinds, issues.join(' · '), last == null ? 'Never' : heardAt(last, now, tz)] }];
+    })
+    // problems first, as the page lists them
+    .sort((a, b) => a.worst - b.worst)
+    .map((f) => f.row);
+
+  const newest = shops.at(-1);
+  return {
+    TX,
+    SIGNED,
+    PROSPECTS,
+    OWED,
+    BOARD,
+    FLEET,
+    figures: { ...(await figures(db, 'merchants')), 'merchants.newest_partner': newest ? { name: newest.name, joined: Number(newest.joined_ms) } : null },
+    asOf: asOfFor('live', o.now),
+  };
 }
 const ms_ = (d: Date) => new Date(d).getTime();
 
@@ -959,7 +1106,6 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
 /** Governance: the entities, filings, boards and seats, the agenda, resolutions, the member vote, meetings, related-party deals and who decides what. */
 export async function governanceSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const provider = providerFor('governance');
-  if (provider === 'live') throw new NotLiveYet('governance');
   const q = async (sql: string) => (await db.query<any>(sql)).rows;
   const ents = await q('SELECT * FROM command.entities ORDER BY position');
   const ENT = ents.map((e) => [e.id, e.name, e.kind, e.status, e.role, Number(e.map_x), Number(e.map_y)]);

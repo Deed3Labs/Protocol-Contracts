@@ -1,5 +1,5 @@
 // @ts-nocheck: works on the sections' untyped data (src/sections/data.tsx) until Phase 3 types it.
-import { FEED_FROM, INVITES, NEED, PEOPLE_T, ROLES, S, SG, SIGNIN, UPD_FROM, VSEC, W_ICON, W_VIZ, vars } from '../sections/data';
+import { CAN, FEED_FROM, INVITES, NEED, PEOPLE_T, ROLES, RULES2, S, SG, SIGNIN, UPD_FROM, VSEC, WAIT2, W_ICON, W_VIZ, vars } from '../sections/data';
 import { go, render, setWho, toast } from '../sections/shell';
 import { hideLogin, showLogin, sgnDraw, sgnIn, sgnStep } from '../sections/signin';
 import { ApiError, api, city, deviceKey, forgetSession, keepSession, sessionId, whenSessionEnds } from './api';
@@ -280,6 +280,8 @@ export async function loadTeam() {
     }),
   );
   if (vars.me) vars.meId = shortOf.get(vars.me.id) ?? null;
+  // who can approve in each section, from the groups and people above
+  CAN.splice(0, CAN.length, ...ruleAreas().map((k) => [`Approve in ${AREA_NAME[apiKey(k)]}`, approvers(k)]));
   await loadWaiting().catch(() => undefined);
 }
 
@@ -309,9 +311,48 @@ const AREA_NAME = { access: 'Access', growth: 'Growth', field: 'Field', members:
 const AREA_ICON = { access: 'team', shop: 'shop', money: 'money', merchants: 'merchants', contracts: 'contracts', governance: 'governance', members: 'members', growth: 'growth', field: 'field', records: 'records' };
 
 /** Everything waiting for a second person, in every area you can see, as Needs-you items the prototype's modal already draws. */
+/** The sections something can be proposed and approved in: all but Home. */
+const ruleAreas = () => VSEC.filter((k) => k !== 'home');
+/** Who can be the second person in a section: on the team, not turned off, with Approve there. */
+const approvers = (k) => {
+  const i = VSEC.indexOf(k);
+  return PEOPLE_T.filter((p) => !p.off && (p.custom || ROLES[p.role]?.[2] || [])[i] === 4).map((p) => p.id);
+};
+/** The dot Permissions draws for an area, from the log's kinds. */
+const AREA_DOT = { contracts: 'chain', money: 'money', members: 'members', growth: 'members', field: 'field', merchants: 'field', shop: 'shop', governance: 'gov' };
+const hours = (from) => Math.max(0, Math.round((Date.now() - new Date(from).getTime()) / 3600e3));
+const median = (xs) => {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b),
+    m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+
 export async function loadWaiting() {
   if (!vars.me || !Object.values(vars.me.levels).some((v) => v >= 2)) return;
-  const { proposals } = await api('GET', '/proposals?area=all');
+  const [{ proposals }, { proposals: approved }] = await Promise.all([api('GET', '/proposals?area=all'), api('GET', '/proposals?area=all&approved=30')]);
+  // the two-person rule: per section, who can approve, how many were approved in 30 days and the usual wait
+  const usual = {};
+  RULES2.splice(
+    0,
+    RULES2.length,
+    ...ruleAreas().map((k) => {
+      const done = approved.filter((p) => p.area === apiKey(k));
+      usual[apiKey(k)] = median(done.map((p) => (new Date(p.approvedAt).getTime() - new Date(p.createdAt).getTime()) / 3600e3));
+      return [AREA_NAME[apiKey(k)], `Anything proposed in ${AREA_NAME[apiKey(k)]}`, approvers(k), done.length, usual[apiKey(k)]];
+    }),
+  );
+  // what's waiting now, oldest first, as the Permissions page lists it
+  WAIT2.splice(
+    0,
+    WAIT2.length,
+    ...proposals.map((p) => {
+      const mine = p.proposedBy === vars.me.id,
+        by = mine ? 'you' : (PEOPLE_T.find((x) => x.uid === p.proposedBy)?.n ?? 'Someone'),
+        h = hours(p.createdAt);
+      return [p.summary, `Proposed by ${by} · ${AREA_NAME[p.area] ?? 'Change'}`, mine ? 'Someone else' : 'You', `${h} h`, AREA_DOT[p.area] ?? 'system', h, usual[p.area] ?? 0, p.area === 'access' ? 'team' : p.area];
+    }),
+  );
   // live, Needs you is only what's really waiting: the prototype's sample items go
   S.waiting = [];
   proposals.forEach((p, i) => {

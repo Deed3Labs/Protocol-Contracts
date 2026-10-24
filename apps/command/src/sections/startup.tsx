@@ -1224,7 +1224,7 @@ export function startup() {
       if (x) x.focus();
       return;
     }
-    if (t.dataset.mbatch !== undefined) return openMemberFlow('batch', MEMBERS[0].id);
+    if (t.dataset.mbatch !== undefined) return openMemberFlow('batch', MEMBERS[0]?.id);
     if (t.dataset.mact) return openMemberFlow(t.dataset.mact, Number(t.dataset.mid));
     if (t.dataset.mturnoff) return openMemberFlow('off', Number(t.dataset.mturnoff));
     if (t.dataset.mgo) {
