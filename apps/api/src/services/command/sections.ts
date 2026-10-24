@@ -5,6 +5,8 @@ import { deployedName, inventory, releasesLive, reserveLive, shortAddress, yield
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { variantParts } from './feedSources.js';
+import type { MemberSource } from './memberSource.js';
+import { WINDOW_DAYS, waitlistFigures } from './waitlist.js';
 import { codeChanges, codeConfig } from './github.js';
 
 /*
@@ -34,6 +36,8 @@ export interface ReadOptions {
   now: Date;
   /** The contracts' own reads, for the sections that are live from the chain. */
   chain?: ChainReader;
+  /** The member app's records, for Members when it's live (Phase 7b). */
+  memberSource?: MemberSource;
 }
 
 const chainOf = (o: ReadOptions, source: string) => {
@@ -66,7 +70,7 @@ function totalsOnly(m: MemberRow): MemberRow {
 
 export async function membersSection(db: Queryable, o: ReadOptions): Promise<MembersPayload> {
   const provider = providerFor('members');
-  if (provider === 'live') throw new NotLiveYet('members');
+  if (provider === 'live') return membersLive(db, o);
   const asOf = asOfFor(provider, o.now);
   const names: MembersPayload['names'] = o.level <= TOTALS ? 'none' : o.reveal && o.level >= SEE ? 'shown' : 'masked';
 
@@ -152,6 +156,115 @@ export async function membersSection(db: Queryable, o: ReadOptions): Promise<Mem
     B_OPEN: sent.map((b) => count(b.number, 'opened')),
     NEXT_BATCH,
     figures: await figures(db, 'members'),
+    asOf,
+    names,
+  };
+}
+
+/**
+ * Members, live (Phase 7b): everyone the waitlist invited, and everyone with an account in the member
+ * app. An account is matched to its invite by the code its onboarding sent back, which gives it its
+ * batch, when it was invited and where it heard of Clear; one without a code joined some other way
+ * (batch 0). Opened is the account; active is the first deposit, which says how they funded; the
+ * first spend is a card purchase or a charge code, whichever came first. The waitlist's own figures
+ * are worked out from it, and a batch waiting for its second person is the next batch.
+ */
+async function membersLive(db: Queryable, o: ReadOptions): Promise<MembersPayload> {
+  if (!o.memberSource) throw new Error('PROVIDER_MEMBERS=live reads the member app, and no member source was given');
+  const now = o.now.getTime();
+  const asOf = asOfFor('live', o.now);
+  const names: MembersPayload['names'] = o.level <= TOTALS ? 'none' : o.reveal && o.level >= SEE ? 'shown' : 'masked';
+  const roster = await o.memberSource.roster({ names: names !== 'none' });
+  const miles = await o.memberSource.milestones([...new Set(roster.flatMap((m) => m.wallets))]);
+  const { rows: wl } = await db.query<{ id: number; name: string; city: string; source: string; poster: string | null; joined_at: Date; batch: number | null; invite_code: string | null; invited_at: Date | null }>(
+    'SELECT id, name, city, source, poster, joined_at, batch, invite_code, invited_at FROM command.waitlist ORDER BY id',
+  );
+  const invite = new Map(wl.filter((w) => w.invite_code).map((w) => [w.invite_code!, w]));
+  const joinedCodes = new Set(roster.map((m) => m.inviteCode).filter(Boolean));
+  const shown = (n: string | null) => (names === 'none' ? null : names === 'shown' ? n : n == null ? null : mask(n));
+  const split = (n: string | null) => {
+    const [first, ...rest] = (n ?? '').trim().split(/\s+/);
+    return [first || null, rest.join(' ') || null] as const;
+  };
+  const row = (m: Omit<MemberRow, 'left' | 'quiet'>): MemberRow => ({ ...m, left: WINDOW_DAYS - Math.round((asOf - m.invited) / DAY), quiet: m.status === 'invited' && (asOf - m.invited) / DAY >= 21 });
+
+  // invited by a batch, and not signed up yet
+  const waiting = wl.filter((w) => w.invite_code && !joinedCodes.has(w.invite_code)).map((w) => {
+    const [first, last] = split(w.name);
+    return row({ id: 1_000_000 + w.id, no: '', first: shown(first), last: shown(last), batch: w.batch!, invited: ms(w.invited_at)!, joined: ms(w.joined_at)!, city: w.city, src: w.source === 'poster' ? 'Poster' : 'Website', status: 'invited', poster: w.poster, last_: ms(w.invited_at)! });
+  });
+  const members = roster.map((m) => {
+    const w = m.inviteCode ? invite.get(m.inviteCode) : undefined;
+    const got = m.wallets.map((x) => miles.get(x)).filter(Boolean) as Array<NonNullable<ReturnType<typeof miles.get>>>;
+    const funded = got.map((g) => g.funded).filter(Boolean).sort((a, b) => a!.at - b!.at)[0];
+    const spend = got.map((g) => g.spend).filter(Boolean).sort((a, b) => a!.at - b!.at)[0];
+    const [first, last] = split(m.name);
+    const r: Omit<MemberRow, 'left' | 'quiet'> = {
+      id: m.id,
+      no: `M-${String(m.id).padStart(4, '0')}`,
+      first: shown(first),
+      last: shown(last),
+      batch: w?.batch ?? 0,
+      invited: w ? ms(w.invited_at)! : m.createdAt,
+      joined: w ? ms(w.joined_at)! : m.createdAt,
+      city: m.city ?? w?.city ?? '',
+      src: w?.source === 'poster' ? 'Poster' : 'Website',
+      status: funded ? 'active' : 'opened',
+      poster: w?.poster ?? null,
+      last_: m.lastSeen ?? m.createdAt,
+      opened: m.createdAt,
+    };
+    if (funded) Object.assign(r, { fund: FUND[funded.with], activeAt: funded.at });
+    if (spend) Object.assign(r, { spend: spend.shop, spentAt: spend.at });
+    return row(r);
+  });
+  // the figures are worked out from the full rows; at Totals the rows then leave without names or dates
+  const all = [...members, ...waiting];
+  const MEMBERS = names === 'none' ? all.map(totalsOnly) : all;
+
+  const { rows: batches } = await db.query<{ number: number; sent_at: Date }>(`SELECT number, sent_at FROM command.batches WHERE live AND status = 'sent' ORDER BY number`);
+  const count = (n: number, s: string) => all.filter((m) => m.batch === n && m.status === s).length;
+  // a batch someone proposed, waiting for a second person: who it would take, oldest first
+  const { rows: p } = await db.query<{ payload: { body: { size: number } }; who: string }>(
+    `SELECT p.payload, coalesce(nullif(pp.name, ''), pp.email) AS who FROM command.proposals p JOIN command.people pp ON pp.id = p.proposed_by
+      WHERE p.kind = 'action' AND p.status = 'waiting' AND p.payload->>'section' = 'members' AND p.payload->>'kind' = 'batch' ORDER BY p.created_at DESC LIMIT 1`,
+  );
+  let NEXT_BATCH: NextBatch | null = null;
+  if (p.length) {
+    const size = Number(p[0].payload.body.size);
+    const take = wl.filter((w) => w.batch == null).sort((a, b) => ms(a.joined_at)! - ms(b.joined_at)!).slice(0, size);
+    const { rows: n } = await db.query<{ number: number }>('SELECT coalesce(max(number), 0) + 1 AS number FROM command.batches');
+    NEXT_BATCH = {
+      number: n[0].number,
+      size,
+      proposedBy: p[0].who,
+      joinedFrom: take.length ? ms(take[0].joined_at)! : now,
+      joinedTo: take.length ? ms(take.at(-1)!.joined_at)! : now,
+      fromPosters: take.filter((w) => w.source === 'poster').length,
+      fromWebsite: take.filter((w) => w.source !== 'poster').length,
+      windowEnds: now + WINDOW_DAYS * DAY,
+    };
+  }
+
+  // the 12 weeks' members figures, from the rows
+  const week = Math.floor(now / (7 * DAY)) * 7 * DAY;
+  const ends = Array.from({ length: 12 }, (_, i) => week + 7 * DAY - (11 - i) * 7 * DAY);
+  const before = (t: number | undefined, end: number) => t != null && t < end;
+  const live = {
+    ...(await waitlistFigures(db, now)),
+    'members.weekly.opened': ends.map((end) => all.filter((m) => m.opened != null && m.opened < end && m.opened >= end - 7 * DAY).length),
+    'members.weekly.active_total': ends.map((end) => all.filter((m) => before(m.activeAt, end)).length),
+    'members.weekly.first_spend_total': ends.map((end) => all.filter((m) => before(m.spentAt, end)).length),
+    // no source says which first spends were a poster's $10 yet
+    'members.first_spends.poster_ten': 0,
+  };
+  return {
+    MEMBERS,
+    BATCH_DATE: batches.map((b) => ms(b.sent_at)!),
+    B_ACT: batches.map((b) => count(b.number, 'active')),
+    B_OPEN: batches.map((b) => count(b.number, 'opened')),
+    NEXT_BATCH,
+    figures: { ...(await figures(db, 'members')), ...live },
     asOf,
     names,
   };
