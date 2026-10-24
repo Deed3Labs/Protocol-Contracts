@@ -703,11 +703,18 @@ const ms_ = (d: Date) => new Date(d).getTime();
 export async function moneySection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const provider = providerFor('money');
   const f = await figures(db, 'money');
-  const book = f['money.book'] as { credit: number; savingsBacked: number; unsecured: number; limits: number; lost: number };
-  const due = f['money.payouts_due'] as { owed14: number; dueMembers: number };
-  const pool = f['money.yield.pool'] as { principal: number; queued: number; opened: string; cycleDays: number; curve: { base: number; s1: number; s2: number; kink: number } };
-  const hist = f['money.yield.history'] as { days: string[]; assets: number[]; lent: number[] };
-  const floor = f['money.floor'] as number;
+  // with no seed (Phase 9) these stored figures may not exist yet: nothing, not a crash
+  const book = (f['money.book'] ?? { credit: 0, savingsBacked: 0, unsecured: 0, limits: 0, lost: 0 }) as { credit: number; savingsBacked: number; unsecured: number; limits: number; lost: number };
+  const due = (f['money.payouts_due'] ?? { owed14: 0, dueMembers: 0 }) as { owed14: number; dueMembers: number };
+  const pool = (f['money.yield.pool'] ?? { principal: 0, queued: 0, opened: '—', cycleDays: 30, curve: { base: 0, s1: 0, s2: 0, kink: 1 } }) as {
+    principal: number;
+    queued: number;
+    opened: string;
+    cycleDays: number;
+    curve: { base: number; s1: number; s2: number; kink: number };
+  };
+  const hist = (f['money.yield.history'] ?? { days: [], assets: [], lent: [] }) as { days: string[]; assets: number[]; lent: number[] };
+  const floor = (f['money.floor'] ?? 0) as number;
 
   const { rows: accts } = await db.query<{ id: string; name: string; purpose: string; owner_group: string; source: string; swatch: string }>('SELECT * FROM command.accounts ORDER BY position');
   const { rows: snaps } = await db.query<{ account_id: string; balance_cents: string }>('SELECT account_id, balance_cents FROM command.account_snapshots ORDER BY as_of');
@@ -743,10 +750,10 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
         assets: Y_DEP.reduce((a, r) => a + (r[1] as number), 0), principal: pool.principal, lent: M.unsecured, depositors: Y_DEP.length,
         pledged, queued: pool.queued, opened: pool.opened, cycleDays: pool.cycleDays, curve: pool.curve,
       };
-  if (!chainPool) { Y.cash = Y.assets - Y.lent; Y.util = Y.lent / Y.assets; }
+  if (!chainPool) { Y.cash = Y.assets - Y.lent; Y.util = Y.assets ? Y.lent / Y.assets : 0; }
   Y.earned = Y.assets - Y.principal;
   // live, the price of a share; the seed has no shares, so its principal stands in
-  Y.price = chainPool ? (chainPool.supply ? chainPool.assets / chainPool.supply : 1) : Y.assets / Y.principal;
+  Y.price = chainPool ? (chainPool.supply ? chainPool.assets / chainPool.supply : 1) : Y.principal ? Y.assets / Y.principal : 1;
   const borrowBps = (u: number) => (u <= Y.curve.kink ? Y.curve.base + (Y.curve.s1 * u) / Y.curve.kink : Y.curve.base + Y.curve.s1 + (Y.curve.s2 * (u - Y.curve.kink)) / (1 - Y.curve.kink));
   const apr = (bps: number) => ((bps / 10000) * 365) / Y.cycleDays;
   const apy = (bps: number) => Math.pow(1 + bps / 10000, 365 / Y.cycleDays) - 1;
@@ -754,18 +761,18 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   Y.borrowBps = chainPool ? chainPool.borrowBps : borrowBps(Y.util); Y.supplyBps = chainPool ? chainPool.supplyBps : Y.borrowBps * Y.util;
   Y.apy = apy(Y.supplyBps); Y.apr = apr(Y.borrowBps);
   if (reserve) { M.clrusd = reserve.clrusd; M.reserveDiff = reserve.difference; }
-  M.rtd = M.assurance / M.unsecured;
-  M.room = M.assurance / M.floor - M.unsecured;
+  M.rtd = M.unsecured ? M.assurance / M.unsecured : 0;
+  M.room = M.floor ? M.assurance / M.floor - M.unsecured : 0;
   M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
   // live, the gap is the PayoutPool's own shortfall, never the tables' sample against real cash
   Y.toPayout = Math.min(chainPool ? chainPool.payoutShort : M.short, Y.cash); Y.utilAfter = Y.assets ? (Y.lent + Y.toPayout) / Y.assets : 0; Y.apyAfter = apy(borrowBps(Y.utilAfter) * Y.utilAfter);
 
-  const AP_BAL = [...(f['money.ap.balance_weeks'] as number[]), M.assurance];
-  const UNSEC = [...(f['money.credit.unsecured_weeks'] as number[]), M.unsecured];
+  const AP_BAL = [...((f['money.ap.balance_weeks'] as number[] | undefined) ?? []), M.assurance];
+  const UNSEC = [...((f['money.credit.unsecured_weeks'] as number[] | undefined) ?? []), M.unsecured];
   const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}) };
   const ACCTS = accts.map((a) => {
     const w = weeks(a.id);
-    const now = live[a.id] ?? w.at(-1)!;
+    const now = live[a.id] ?? w.at(-1) ?? 0;
     const series =
       a.id === 'ap' ? AP_BAL
       : a.id === 'yld' && chainPool ? chainPool.cashWeeks
@@ -789,7 +796,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
       ? { YD: chainPool.days.map(dayMon), Y_ASSETS: chainPool.assetsByDay, Y_LENT: chainPool.lentByDay }
       : { YD: hist.days, Y_ASSETS: [...hist.assets, Y.assets], Y_LENT: [...hist.lent, Y.lent] }),
     AP_BAL, UNSEC, AP_REQ: UNSEC.map((v) => v * M.floor), RTD_W: AP_BAL.map((v, i) => (UNSEC[i] ? v / UNSEC[i] : null)),
-    COOP_W: f['money.coop.weekly'], FLOWS: f['money.flows'], BONDS, ACCTS, ENTRIES,
+    COOP_W: f['money.coop.weekly'] ?? [], FLOWS: f['money.flows'] ?? [], BONDS, ACCTS, ENTRIES,
     TX: (await partnerRows(db)).TX,
     MEMBER_SUMMARY: { active: counts.active },
     // live, Lithic's card spend this month and what's moving through Bridge (null until they've synced)
@@ -819,7 +826,7 @@ const reserveRatio = (usdc: number, clrusd: number) => (clrusd === 0 ? (usdc ===
 type ShopProduct = { id: string; n: string; v: string; line: string; g: string; price: number; c?: number[]; st: string; cols: string[]; wk: number[]; lead?: number; slug: string; why?: string; dep?: number };
 
 async function shopProducts(db: Queryable, f: Record<string, unknown>): Promise<ShopProduct[]> {
-  const units = f['shop.units_weekly'] as Record<string, number[]>;
+  const units = (f['shop.units_weekly'] ?? {}) as Record<string, number[]>;
   const { rows } = await db.query<{ id: string; name: string; variant: string; line: string; glyph: string; price_cents: number; cost_cents: number[] | null; status: string; options: string[]; lead_weeks: number | null; slug: string; why: string | null; deposit: boolean }>(
     'SELECT * FROM command.shop_products ORDER BY position',
   );
@@ -839,13 +846,14 @@ async function shopSetAside(db: Queryable): Promise<{ salesTax: number; preorder
   const f = await figures(db, 'shop');
   if (providerFor('shop') === 'live') {
     // live, the deposits the shop holds for reserved hardware, and the tax on the last 4 weeks' orders
-    const C = f['shop.costs'] as { taxRate: number; taxable: number };
+    // no stored rate yet (Phase 9, no seed): nothing set aside, rather than a guessed rate
+    const C = (f['shop.costs'] ?? { taxRate: 0, taxable: 0 }) as { taxRate: number; taxable: number };
     const { rows: dep } = await db.query<{ cents: string }>(`SELECT coalesce(sum(deposit_cents * units), 0) AS cents FROM command.shop_live_preorders WHERE state = 'held'`);
     const { rows: rev } = await db.query<{ cents: string }>(`SELECT coalesce(sum(total_cents - refunded_cents), 0) AS cents FROM command.shop_orders WHERE source = 'stripe' AND paid_at > now() - interval '28 days'`);
     return { salesTax: (Number(rev[0].cents) / 100) * C.taxRate * C.taxable, preorderDeposits: Number(dep[0].cents) / 100 };
   }
   const PR = await shopProducts(db, f);
-  const C = f['shop.costs'] as { taxRate: number; taxable: number };
+  const C = (f['shop.costs'] ?? { taxRate: 0, taxable: 0 }) as { taxRate: number; taxable: number };
   const weeks = Math.max(0, ...PR.map((p) => p.wk.length));
   const REV_W = Array.from({ length: weeks }, (_, i) => PR.filter((p) => !p.dep).reduce((a, p) => a + (p.wk[i] ?? 0) * p.price, 0));
   const rev = REV_W.slice(-4).reduce((a, b) => a + b, 0);

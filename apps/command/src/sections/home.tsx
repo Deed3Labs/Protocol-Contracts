@@ -1245,26 +1245,44 @@ export function stateLoading() {
     </div>
   );
 }
-export function stateError() {
+/** The page couldn't load. Live, it says why and when; the prototype's sample says the node didn't answer. */
+export function stateError(err?: Error) {
   return (
     <div className="state" data-state="absent">
-      <div>
-        <span className="lbl" style={css('color:var(--absent)')}>
-          Error · 22:48
-        </span>
-        <p className="h2">Couldn’t reach the protocol.</p>
-        <p className="quiet" style={css('margin:0;max-width:46ch')}>
-          The testnet node didn’t answer. Nothing moved. The last good figures are from 22:31.
-        </p>
-        <div className="acts">
-          <button className="btn btn-p" type="button" data-retry="">
-            Try again
-          </button>
-          <button className="btn btn-g" type="button" data-preview="live">
-            Show figures from 22:31
-          </button>
+      {REAL ? (
+        <div>
+          <span className="lbl" style={css('color:var(--absent)')}>
+            {`Error · ${new Date().toTimeString().slice(0, 5)}`}
+          </span>
+          <p className="h2">Couldn’t load this page.</p>
+          <p className="quiet" style={css('margin:0;max-width:46ch')}>
+            {`${err?.message || 'The API didn’t answer.'} Nothing moved.`}
+          </p>
+          <div className="acts">
+            <button className="btn btn-p" type="button" data-retry="">
+              Try again
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div>
+          <span className="lbl" style={css('color:var(--absent)')}>
+            Error · 22:48
+          </span>
+          <p className="h2">Couldn’t reach the protocol.</p>
+          <p className="quiet" style={css('margin:0;max-width:46ch')}>
+            The testnet node didn’t answer. Nothing moved. The last good figures are from 22:31.
+          </p>
+          <div className="acts">
+            <button className="btn btn-p" type="button" data-retry="">
+              Try again
+            </button>
+            <button className="btn btn-g" type="button" data-preview="live">
+              Show figures from 22:31
+            </button>
+          </div>
+        </div>
+      )}
       <div>
         <span className="lbl">Sources</span>
         {LIVE && hasFeeds() ? (
