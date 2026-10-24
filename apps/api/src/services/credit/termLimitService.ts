@@ -37,7 +37,7 @@ function chainId(): number {
   const parsed = Number((process.env.SAVINGS_DEFAULT_CHAIN_ID || process.env.SEND_DEFAULT_CHAIN_ID || '').trim());
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 84532;
 }
-const operatorKey = () => (process.env.CREDIT_OPERATOR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY || '').trim();
+const operatorKey = () => (process.env.CREDIT_OPERATOR_PRIVATE_KEY || '').trim();
 const issuerAddress = () => getContractAddress(chainId(), 'TermIssuer');
 
 /**

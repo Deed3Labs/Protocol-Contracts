@@ -36,7 +36,7 @@ function chainId(): number {
 }
 
 function operatorKey(): string | null {
-  const raw = (process.env.CREDIT_OPERATOR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY || '').trim();
+  const raw = (process.env.CREDIT_OPERATOR_PRIVATE_KEY || '').trim();
   if (!raw) return null;
   return raw.startsWith('0x') ? raw : `0x${raw}`;
 }
@@ -79,7 +79,7 @@ export async function openCreditLine(wallet: string): Promise<OpenLineResult> {
   if (!issuerAddress) return { opened: false, reason: 'no issuer deployed on this chain' };
 
   const key = operatorKey();
-  if (!key) return { opened: false, reason: 'no CREDIT_OPERATOR_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY' };
+  if (!key) return { opened: false, reason: 'no CREDIT_OPERATOR_PRIVATE_KEY' };
 
   try {
     const provider = chainProvider(chainId());
