@@ -23,6 +23,7 @@ import { ActionError, actionFor, actionTime, levelFor, type Action } from '../se
 import { liveSafeReader, safeAppUrl, safeConfig, SafeServiceError, type SafeConfig, type SafeReader } from '../services/command/safe.js';
 import { getAddress, isAddress, recoverTypedDataAddress, verifyMessage, type Hex } from 'viem';
 import { BUILDERS, BuildError, onChain, safeTxFor, safeTxHash, typedDataFor, type SafeTxData } from '../services/command/safeTx.js';
+import { indexStatus } from '../services/command/indexer.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
 /*
@@ -46,6 +47,8 @@ export interface CommandDeps {
   /** Emails that become Admin on first sign-in (COMMAND_ADMIN_EMAILS): how the first admin gets in. */
   adminEmails: () => string[];
   appUrl: () => string;
+  /** The indexer: a catch-up when someone opens a section that reads the chain. */
+  indexer?: { catchUp(): void };
   /** The Ops Safe: which one (env unless given), and how it's read. */
   safe?: { config: () => SafeConfig | null; reader: SafeReader };
   /** Where files people add are kept (Postgres unless given). */
@@ -360,6 +363,7 @@ export function commandRouter(deps: CommandDeps) {
 
   router.get('/sections/money', need('money', TOTALS), async (req, res) => {
     const c = req.command!;
+    deps.indexer?.catchUp();
     try {
       res.json(await moneySection(c.db, { level: c.levels.money, reveal: false, now: now() }));
     } catch (e) {
@@ -380,6 +384,7 @@ export function commandRouter(deps: CommandDeps) {
 
   router.get('/sections/contracts', need('contracts', TOTALS), async (req, res) => {
     const c = req.command!;
+    deps.indexer?.catchUp();
     try {
       res.json(await contractsSection(c.db, { level: c.levels.contracts, reveal: false, now: now() }));
     } catch (e) {
@@ -416,6 +421,11 @@ export function commandRouter(deps: CommandDeps) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
     }
+  });
+
+  /** Where the indexer is: how far it's read, how far behind the head, its last error. */
+  router.get('/chain/status', need('contracts', SEE), async (req, res) => {
+    res.json(await indexStatus(req.command!.db));
   });
 
   router.get('/page-views', need('access', SEE), async (req, res) => {

@@ -360,3 +360,30 @@ admin roles; `scripts/command/ops-roles.ts` moves the rest, to the wallet that d
   nothing (`DEPLOYER_PRIVATE_KEY` was the fallback in eight services).
 - **The drill** (`scripts/command/drill_ops_roles.ts`) runs both scripts on a fork and passes: the
   deployer ends holding no role and owning nothing, and each job's wallet can still do its job.
+
+## Phase 5: the indexer and contracts
+
+Decided 2026-10-23 (Kai: a polling job, made as cheap as it can be; GitHub polled with a read-only
+token; every deployed contract's events kept).
+
+### 5a: the indexer
+
+- **Every event from every deployed contract**, raw and decoded, in `command.chain_events`, unique
+  on (chain, tx, log index). The inventory is `deployments/base-sepolia` (37 contracts).
+- **Cheap by design.** One `eth_getLogs` covers all 37 addresses. Only blocks not read before are
+  asked for. Every 5 minutes (`COMMAND_INDEXER_MINUTES`), plus a catch-up when someone opens
+  Contracts or Money, at most once a minute. Measured against Base Sepolia: a quiet run is one
+  request.
+- **Two sources, each for what it's good at.** Base's public RPC answers `eth_getLogs` 200 blocks at
+  a time (it says so, and the indexer reads the cap from the refusal): right for keeping up, since 5
+  minutes is 150 blocks. History comes from a block explorer, a contract at a time over any range:
+  the whole history (3,359 events) took 37 calls and 98 seconds. Etherscan V2 when
+  `ETHERSCAN_API_KEY` is set; Blockscout otherwise, which rate-limits callers without a key.
+- **Deploy blocks** (the deployment files say 0) come from the explorer's contract-creation API, five
+  a call, each checked against the chain (code at that block, none the block before); a halving
+  search on `eth_getCode` finds any the explorer doesn't know. 37 found with 74 chain reads.
+- **Reorg-safe.** Indexed only to 5 blocks behind the head; each run reads the last 30 indexed
+  blocks again in the same request and reconciles them.
+- **The public RPC first, Alchemy only on a rate limit**, as the API does elsewhere. Any other
+  refusal is the public RPC's answer.
+- **Status:** `GET /api/command/chain/status`: how far it's read, how far behind, the last error.
