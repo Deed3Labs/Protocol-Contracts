@@ -352,7 +352,7 @@ export function commandRouter(deps: CommandDeps) {
     const level = c.levels.growth;
     const reveal = req.query.reveal === '1' && level >= SEE;
     try {
-      const data = await growthSection(c.db, { level, reveal, now: now() });
+      const data = await growthSection(c.db, { level, reveal, now: now(), memberSource: deps.memberSource });
       if (reveal) await auditFrom(req, { area: 'growth', action: 'Showed names on the forms', detail: `${data.INBOX?.length ?? 0} forms`, result: 'done' });
       res.json(data);
     } catch (e) {
@@ -385,7 +385,7 @@ export function commandRouter(deps: CommandDeps) {
     const c = req.command!;
     deps.indexer?.catchUp();
     try {
-      res.json(await moneySection(c.db, { level: c.levels.money, reveal: false, now: now(), chain: deps.chain }));
+      res.json(await moneySection(c.db, { level: c.levels.money, reveal: false, now: now(), chain: deps.chain, memberSource: deps.memberSource }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
@@ -437,7 +437,7 @@ export function commandRouter(deps: CommandDeps) {
   router.get('/sections/home', need('home', TOTALS), async (req, res) => {
     const c = req.command!;
     try {
-      res.json(await homeSection(c.db, { level: c.levels.home, reveal: false, now: now() }));
+      res.json(await homeSection(c.db, { level: c.levels.home, reveal: false, now: now(), memberSource: deps.memberSource }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;

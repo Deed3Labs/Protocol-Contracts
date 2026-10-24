@@ -591,3 +591,30 @@ stand.
   member summary still read Command's own `members` table: they follow.
 - **Not checked against the real member database** from here: it holds members' personal data. The
   source's SQL is tested against tables with the member app's columns.
+
+### 7c: site visits and forms
+
+`PROVIDER_GROWTH=live`. Migration `0049_command_site`; `services/command/siteFeed.ts`; `growthLive`
+and `liveRange` in `sections.ts`. clearpath-website PR #95.
+
+- **useclear.org had no analytics.** Kai, 2026-10-24: Plausible, with the site's own snippet
+  (`NEXT_PUBLIC_PLAUSIBLE_SCRIPT` on Vercel, its `pa-….js` id; nothing loads without it, and only on
+  the live site), and Command reads it back through the Stats API v2 with `PLAUSIBLE_API_KEY`
+  (`PLAUSIBLE_SITE_ID`, default `useclear.org`). Events leave with only their `utm_` parameters; the
+  join form sends a `Join` goal once the API has kept the answer.
+- **One more feed, `site`**, every 15 minutes (`COMMAND_SITE_MINUTES`), about two dozen queries a sync:
+  today by the hour against the same day last week, 7 and 30 days by the day against the period
+  before, each with its sources, cities and top landing page; and over 30 days the sources and
+  landing pages with their joins, referrers (by site), cities, devices, pages, the hour of the week
+  (each hour's share of 4 weeks), and 12 weeks of sources and of phone share.
+- **Four sources, as the prototype has them:** Posters (`utm_source=poster`, so the QR codes carry
+  it), Search, Social, and Direct, which is everything else. Three cities (Redlands, San Bernardino,
+  Riverside), then the rest.
+- **From Command's own records:** each range's forms (the join form's submissions, now marked `live`
+  so the seed's samples aren't counted or listed), the join rate the period before, members who
+  became active in it, and the weeks of joins, invites and activations from the waitlist and members.
+  Poster scans are the Posters visits; which shop's poster isn't known yet (`top` is empty).
+- **Plausible keeps no returning visitors:** visits by someone already counted that month stand in.
+- **Every section's member counts** (Growth, Home, Money) are the member app's once Members is live,
+  which closes 7b's follow-up.
+- **Not checked against Plausible** from here: the key isn't on this machine.

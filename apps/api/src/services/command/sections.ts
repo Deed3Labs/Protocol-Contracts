@@ -169,7 +169,7 @@ export async function membersSection(db: Queryable, o: ReadOptions): Promise<Mem
  * first spend is a card purchase or a charge code, whichever came first. The waitlist's own figures
  * are worked out from it, and a batch waiting for its second person is the next batch.
  */
-async function membersLive(db: Queryable, o: ReadOptions): Promise<MembersPayload> {
+async function membersLive(db: Queryable, o: ReadOptions, keep?: { rows?: MemberRow[] }): Promise<MembersPayload> {
   if (!o.memberSource) throw new Error('PROVIDER_MEMBERS=live reads the member app, and no member source was given');
   const now = o.now.getTime();
   const asOf = asOfFor('live', o.now);
@@ -221,6 +221,7 @@ async function membersLive(db: Queryable, o: ReadOptions): Promise<MembersPayloa
   // the figures are worked out from the full rows; at Totals the rows then leave without names or dates
   const all = [...members, ...waiting];
   const MEMBERS = names === 'none' ? all.map(totalsOnly) : all;
+  if (keep) keep.rows = all;
 
   const { rows: batches } = await db.query<{ number: number; sent_at: Date }>(`SELECT number, sent_at FROM command.batches WHERE live AND status = 'sent' ORDER BY number`);
   const count = (n: number, s: string) => all.filter((m) => m.batch === n && m.status === s).length;
@@ -270,6 +271,63 @@ async function membersLive(db: Queryable, o: ReadOptions): Promise<MembersPayloa
   };
 }
 
+/** The members' counts the other sections show: the member app's when Members is live, else Command's table. */
+async function memberCounts(db: Queryable, o: ReadOptions): Promise<{ invited: number; opened: number; active: number; notOpened: number; funded: { bank: number; five: number; deposit: number }; rows: MemberRow[] | null }> {
+  if (providerFor('members') === 'live' && o.memberSource) {
+    // the full rows, dates and all: only counts leave this function
+    const keep: { rows?: MemberRow[] } = {};
+    await membersLive(db, { ...o, level: TOTALS, reveal: false }, keep);
+    const rows = keep.rows!;
+    const by = (s: string) => rows.filter((m) => m.status === s).length;
+    const fund = (label: string) => rows.filter((m) => m.status === 'active' && m.fund === label).length;
+    return { invited: rows.length, opened: by('opened'), active: by('active'), notOpened: by('invited'), funded: { bank: fund('Bank'), five: fund('$5'), deposit: fund('Deposit') }, rows };
+  }
+  const { rows } = await db.query<any>(`SELECT count(*)::int AS invited,
+      count(*) FILTER (WHERE status = 'active')::int AS active, count(*) FILTER (WHERE status = 'opened')::int AS opened, count(*) FILTER (WHERE status = 'invited')::int AS not_opened,
+      count(*) FILTER (WHERE status = 'active' AND funded_with = 'bank')::int AS bank, count(*) FILTER (WHERE status = 'active' AND funded_with = 'five')::int AS five,
+      count(*) FILTER (WHERE status = 'active' AND funded_with = 'deposit')::int AS deposit
+    FROM command.members`);
+  const m = rows[0];
+  return { invited: m.invited, opened: m.opened, active: m.active, notOpened: m.not_opened, funded: { bank: m.bank, five: m.five, deposit: m.deposit }, rows: null };
+}
+
+const FORM_ORDER = ['Waitlist', 'Shop enquiry', 'Land offer', 'Work with us'];
+
+/**
+ * Today, 7 days and 30 days as Growth and Home draw them (Phase 7c): the visits, their sources, cities
+ * and top page from Plausible (the site feed), and from Command's own records the forms the site's
+ * join form sent in each period, the join rate the period before, and the members who became active.
+ */
+async function liveRange(db: Queryable, site: Record<string, any>, now: number, members: MemberRow[] | null): Promise<Record<string, unknown>> {
+  const today = Math.floor(now / DAY) * DAY;
+  const span: Record<string, number> = { today: 1, week: 7, month: 30 };
+  const out: Record<string, unknown> = {};
+  for (const [k, n] of Object.entries(span)) {
+    const r = site[k];
+    if (!r) continue;
+    const from = today - (n - 1) * DAY,
+      prevFrom = from - n * DAY;
+    const { rows } = await db.query<{ form: string; n: number; prev: number }>(
+      `SELECT form, count(*) FILTER (WHERE received_at >= $1)::int AS n, count(*) FILTER (WHERE received_at >= $2 AND received_at < $1)::int AS prev
+         FROM command.form_submissions WHERE live AND received_at >= $2 AND received_at <= $3 GROUP BY form`,
+      [new Date(from), new Date(prevFrom), new Date(now)],
+    );
+    const forms = FORM_ORDER.map((f) => rows.find((x) => x.form === f)?.n ?? 0);
+    const prevJoins = rows.find((x) => x.form === 'Waitlist')?.prev ?? 0;
+    const { prevVisits, ...rest } = r;
+    out[k] = {
+      ...rest,
+      forms,
+      scans: r.src[0],
+      // which poster's shop each scan came from isn't in the visits yet
+      top: [],
+      act: members ? members.filter((m) => m.activeAt != null && m.activeAt >= from).length : 0,
+      joinPrev: prevVisits ? Math.round((prevJoins / prevVisits) * 1000) / 10 : 0,
+    };
+  }
+  return out;
+}
+
 // ── Growth and Field ────────────────────────────────────────────────────────
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -299,9 +357,30 @@ async function designs(db: Queryable, list: PosterRow[]): Promise<GrowthPayload[
   return Object.fromEntries(rows.map((d) => [d.code, { name: d.name, posters: list.filter((p) => p.design === d.code).length, scans: f?.[d.code]?.scans ?? 0, joined: f?.[d.code]?.joined ?? 0 }]));
 }
 
+/** Growth's live parts: the site feed's visits, and the 12 weeks of joins, invites and activations from the waitlist and members. */
+async function growthLive(db: Queryable, o: ReadOptions, members: MemberRow[] | null) {
+  const now = o.now.getTime();
+  const site = (await feedRows(db)).get('site')?.figures as Record<string, any> | null | undefined;
+  const { rows: wl } = await db.query<{ joined_at: Date; invited_at: Date | null; batch: number | null }>('SELECT joined_at, invited_at, batch FROM command.waitlist');
+  const week = Math.floor(now / (7 * DAY)) * 7 * DAY;
+  const weeks = Array.from({ length: 12 }, (_, i) => week - (11 - i) * 7 * DAY);
+  const per = (times: number[]) => weeks.map((w) => times.filter((t) => t >= w && t < w + 7 * DAY).length);
+  const { rows: p } = await db.query(`SELECT 1 FROM command.proposals WHERE kind = 'action' AND status = 'waiting' AND payload->>'section' = 'members' AND payload->>'kind' = 'batch' LIMIT 1`);
+  const { rows: n } = await db.query<{ number: number }>('SELECT coalesce(max(number), 0) + 1 AS number FROM command.batches');
+  const { range, ...visits } = site ?? {};
+  return {
+    next: p.length ? { number: n[0].number } : null,
+    figures: {
+      'growth.weekly.joined': per(wl.map((w) => ms_(w.joined_at))),
+      'growth.weekly.invited': per(wl.filter((w) => w.invited_at).map((w) => ms_(w.invited_at!))),
+      'growth.weekly.activated': per((members ?? []).filter((m) => m.activeAt != null).map((m) => m.activeAt!)),
+      ...(site ? { ...visits, 'growth.range': await liveRange(db, range, now, members) } : {}),
+    },
+  };
+}
+
 export async function growthSection(db: Queryable, o: ReadOptions): Promise<GrowthPayload> {
   const provider = providerFor('growth');
-  if (provider === 'live') throw new NotLiveYet('growth');
   const names: GrowthPayload['names'] = o.level <= TOTALS ? 'none' : o.reveal && o.level >= SEE ? 'shown' : 'masked';
   const list = await posters(db);
 
@@ -309,7 +388,7 @@ export async function growthSection(db: Queryable, o: ReadOptions): Promise<Grow
   let INBOX: FormRow[] | null = null;
   if (names !== 'none') {
     const { rows } = await db.query<{ first_name: string; last_name: string; email: string; form: string; city: string; source: string; received_at: Date; status: string }>(
-      'SELECT * FROM command.form_submissions ORDER BY received_at DESC',
+      `SELECT * FROM command.form_submissions ${provider === 'live' ? 'WHERE live ' : ''}ORDER BY received_at DESC`,
     );
     INBOX = rows.map((r) => ({
       who: names === 'shown' ? [r.first_name, r.last_name] : [mask(r.first_name), mask(r.last_name)],
@@ -322,27 +401,25 @@ export async function growthSection(db: Queryable, o: ReadOptions): Promise<Grow
     }));
   }
 
-  const { rows: m } = await db.query<{ status: string; funded_with: string | null; n: number }>(
-    'SELECT status, funded_with, count(*)::int AS n FROM command.members GROUP BY status, funded_with',
-  );
-  const sum = (f: (r: { status: string; funded_with: string | null }) => boolean) => m.filter(f).reduce((a, r) => a + r.n, 0);
-  const FUNDED: Record<string, string> = { bank: 'Bank', five: '$5', deposit: 'Deposit' };
+  const counts = await memberCounts(db, o);
   const next = await db.query<{ number: number }>(`SELECT number FROM command.batches WHERE status = 'proposed' ORDER BY number LIMIT 1`);
   const fig = await figures(db, 'growth');
   const median = await db.query<{ value: unknown }>(`SELECT value FROM command.figures WHERE key = 'members.waitlist.median_days'`);
+  // live, the visits are the site's from Plausible, and the weeks of joins, invites and activations Command's own (Phase 7c)
+  const live = provider === 'live' ? await growthLive(db, o, counts.rows) : null;
 
   return {
     POSTERS: list,
     DESIGNS: await designs(db, list),
     INBOX,
-    NEXT_BATCH: next.rows[0] ? { number: next.rows[0].number } : null,
+    NEXT_BATCH: live ? live.next : next.rows[0] ? { number: next.rows[0].number } : null,
     MEMBER_SUMMARY: {
-      invited: sum(() => true),
-      opened: sum((r) => r.status === 'opened'),
-      active: sum((r) => r.status === 'active'),
-      funded: Object.fromEntries(Object.entries(FUNDED).map(([k, v]) => [v, sum((r) => r.funded_with === k)])),
+      invited: counts.invited,
+      opened: counts.opened,
+      active: counts.active,
+      funded: { Bank: counts.funded.bank, $5: counts.funded.five, Deposit: counts.funded.deposit },
     },
-    figures: { ...fig, ...(median.rows[0] ? { 'members.waitlist.median_days': median.rows[0].value } : {}) },
+    figures: { ...fig, ...(median.rows[0] ? { 'members.waitlist.median_days': median.rows[0].value } : {}), ...(live?.figures ?? {}) },
     asOf: asOfFor(provider, o.now),
     names,
   };
@@ -558,7 +635,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   if (chainPool) ENTRIES.yld = chainPool.entries;
   if (bank) ENTRIES.ops = bank.entries;
 
-  const { rows: m } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM command.members WHERE status = 'active'`);
+  const counts = await memberCounts(db, o);
   return {
     M, Y, Y_DEP,
     ...(chainPool
@@ -567,7 +644,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     AP_BAL, UNSEC, AP_REQ: UNSEC.map((v) => v * M.floor), RTD_W: AP_BAL.map((v, i) => (UNSEC[i] ? v / UNSEC[i] : null)),
     COOP_W: f['money.coop.weekly'], FLOWS: f['money.flows'], BONDS, ACCTS, ENTRIES,
     TX: (await partnerRows(db)).TX,
-    MEMBER_SUMMARY: { active: m[0].n },
+    MEMBER_SUMMARY: { active: counts.active },
     // live, Lithic's card spend this month and what's moving through Bridge (null until they've synced)
     ...(feeds ? { CARD_SPEND: cardSpend(feeds.get('lithic')), DEPOSIT_RAIL: depositRail(feeds.get('bridge')) } : {}),
     SET_ASIDE: await shopSetAside(db),
@@ -959,11 +1036,7 @@ export async function homeSection(db: Queryable, o: ReadOptions): Promise<Record
   const provider = providerFor('home');
   const asOf = asOfFor(provider, o.now);
   const q = async (sql: string, p: unknown[] = []) => (await db.query<any>(sql, p)).rows;
-  const [m] = await q(`SELECT count(*)::int AS invited,
-      count(*) FILTER (WHERE status = 'active')::int AS active, count(*) FILTER (WHERE status = 'opened')::int AS opened, count(*) FILTER (WHERE status = 'invited')::int AS not_opened,
-      count(*) FILTER (WHERE status = 'active' AND funded_with = 'bank')::int AS bank, count(*) FILTER (WHERE status = 'active' AND funded_with = 'five')::int AS five,
-      count(*) FILTER (WHERE status = 'active' AND funded_with = 'deposit')::int AS deposit
-    FROM command.members`);
+  const m = await memberCounts(db, o);
   const owed = await q('SELECT o.merchant_id, o.owed_cents, coalesce(m.name, s.name) AS name FROM command.redemptions_owed o LEFT JOIN command.merchants m ON m.id = o.merchant_id LEFT JOIN command.merchant_stage s ON s.merchant_id = o.merchant_id');
   const [{ n: posters }] = await q('SELECT count(*)::int AS n FROM command.posters');
   const within = await q(
@@ -976,8 +1049,14 @@ export async function homeSection(db: Queryable, o: ReadOptions): Promise<Record
     const { rows } = await db.query<{ value: unknown }>('SELECT value FROM command.figures WHERE key = $1', [k]);
     if (rows[0]) f[k] = rows[0].value;
   }
+  // live, the visits are the site's (Phase 7c), and nothing yet says which first spends were a poster's $10
+  if (providerFor('growth') === 'live') {
+    const site = (await feedRows(db)).get('site')?.figures as Record<string, any> | null | undefined;
+    if (site?.range) f['growth.range'] = await liveRange(db, site.range, o.now.getTime(), m.rows);
+  }
+  if (m.rows) f['members.first_spends.poster_ten'] = 0;
   return {
-    MEMBER_SUMMARY: { invited: m.invited, active: m.active, opened: m.opened, notOpened: m.not_opened, funded: { bank: m.bank, five: m.five, deposit: m.deposit } },
+    MEMBER_SUMMARY: { invited: m.invited, active: m.active, opened: m.opened, notOpened: m.notOpened, funded: m.funded },
     OWED: Object.fromEntries(owed.map((r) => [r.merchant_id, r.owed_cents / 100])),
     SHOP_NAMES: Object.fromEntries(owed.map((r) => [r.merchant_id, r.name ?? r.merchant_id])),
     POSTERS: posters,

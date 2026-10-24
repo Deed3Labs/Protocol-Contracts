@@ -2,6 +2,7 @@ import { createHash, createPublicKey, timingSafeEqual, verify, type JsonWebKey }
 import type { Queryable } from '../../db/db.js';
 import { decryptWithEnvelope, encryptWithEnvelope, isEnvelopeEncryptionConfigured, type EncryptedPayload } from '../../utils/envelopeEncryption.js';
 import type { Feed, FeedRow } from './feeds.js';
+import { siteFeed } from './siteFeed.js';
 
 /*
  * The four sandbox feeds (Phase 6a). Each reads only: the one write is Plaid's sandbox-only call that
@@ -386,4 +387,4 @@ export function catalogFeed(env: Env = process.env, f: typeof fetch = fetch): Fe
   };
 }
 
-export const liveFeeds = (env: Env = process.env): Feed[] => [plaidFeed(env), bridgeFeed(env), lithicFeed(env), stripeFeed(env), shopFeed(env), catalogFeed(env)];
+export const liveFeeds = (env: Env = process.env): Feed[] => [plaidFeed(env), bridgeFeed(env), lithicFeed(env), stripeFeed(env), shopFeed(env), catalogFeed(env), siteFeed(env)];
