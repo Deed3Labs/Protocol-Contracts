@@ -291,8 +291,10 @@ new blocks are read); GitHub polled with a read-only token; every deployed contr
 - **7a · The shop.** Catalog from the site's `/api/shop/catalog` (clearpath-website #94), orders,
   reservations and refunds from the shop's Stripe Checkout with a restricted key, addresses read on
   demand and never stored.
-- **7b · Members**, with the waitlist and batches. **7c · Site visits and forms**, with the site's
-  PR. **7d · The map's style** in env.
+- **7b · Members**, with the waitlist and batches: the site's join form into the waitlist, batches
+  that send real invites once approved (codes tracked, not gated), and Members from the member app.
+  Built: `services/command/waitlist.ts`, `memberSource.ts`.
+- **7c · Site visits and forms**, with the site's PR. **7d · The map's style** in env.
 
 ### Phase 8: launch
 

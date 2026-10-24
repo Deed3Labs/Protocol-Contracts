@@ -529,7 +529,7 @@ stand.
   copy that would drift). clearpath-website PR #94 adds `GET /api/shop/catalog`, read from
   `content/shop.ts`: live products for anyone, drafts too with `COMMAND_CATALOG_TOKEN` (same value
   in both envs), and the renamed slugs. Command reads it every 5 minutes (`COMMAND_SHOP_CATALOG_URL`,
-  default `https://useclear.org/api/shop/catalog`). The site's price, status, colours and variants
+  default `https://www.useclear.org/api/shop/catalog`). The site's price, status, colours and variants
   win; Command's own record of a product (costs, glyph, lead time, stock), matched by slug or a
   renamed slug, rides along. A product with no costs here says "Not entered yet" rather than showing
   a 100% margin. Hardware's price is the smallest deposit it reserves, as the prototype's is, with
@@ -553,3 +553,41 @@ stand.
   pickups. Whether a buyer is a member waits for 7b.
 - **Checked against the real catalog** (the site's dev server): 18 products at the site's prices;
   Command's records found for the Logo Tee, Turtleneck, Hoodie (by its old slug) and Clear Point.
+
+### 7b: members, the waitlist and batches
+
+`PROVIDER_MEMBERS=live`. Migration `0048_command_waitlist`; `services/command/waitlist.ts`,
+`memberSource.ts`, `jobs/commandInvites.ts`; `membersLive` in `sections.ts`; the member app's
+`lib/invite.ts`.
+
+- **The member app checked no invite codes**, and had no waitlist (its waitlist step is a screen).
+  Kai, 2026-10-24: codes are **tracked, not gated**. Nobody needs one to join; a code just matches a
+  sign-up to its invite and batch.
+- **The waitlist is the site's join form.** It already posts JSON to `NEXT_PUBLIC_JOIN_ENDPOINT`;
+  that's `POST /api/command/join` (no sign-in, 5 a minute an address). Every answer is kept as a form
+  submission (Growth's Forms), with the other answers' fields as they came; "I want to join" is also
+  a place on `command.waitlist`, one an email (asking again keeps the place, and the answer is the
+  same either way). The city comes from the ZIP (an Inland Empire table; anything else shows as its
+  ZIP). No site change: Kai sets the variable on Vercel.
+- **A batch, once a second person approves, sends for real** (Kai). The next people waiting, in the
+  chosen order (oldest, posters first, Redlands first), each get a code (10 characters, nothing to
+  misread) and their email is queued; the batch is recorded with its window (90 days). A job emails
+  them through Resend a minute later, outside the approval, and tries a failure again 10 minutes
+  later, 5 times at most. On the seed, the batch is only recorded, as before.
+- **The invite link is the member app's** (`COMMAND_INVITE_URL`, else `APP_PUBLIC_URL`) with
+  `?invite=CODE`. It lands before sign-in, so the member app keeps the code on the device (90 days)
+  and onboarding sends it back in the field it already had.
+- **Members are the member app's accounts**, read when the page is: their invite code from
+  onboarding, their wallets, and, decrypted only for See and above, their legal name; the city at
+  every level, since Totals counts by city. An account with a code gets its batch, invite date and
+  source; one without came another way (batch 0). Opened is the account; active is the first deposit
+  (a Lithic ACH pull is "bank", a Bridge virtual account "deposit"); the first spend is the first
+  approved card purchase or charge code. People invited and not yet signed up show as invited.
+  Nothing personal is copied into Command's tables.
+- **Worked out live:** the waitlist's figures (how many wait and how long, sources, cities, the 12
+  weeks, who the next batch would take), each batch's opened and active, the 12 weeks of opened,
+  active and first spends, and the next batch from a batch proposal waiting for its second person.
+  No source yet says which first spends were a poster's $10 (shown as 0). Home's counts and Money's
+  member summary still read Command's own `members` table: they follow.
+- **Not checked against the real member database** from here: it holds members' personal data. The
+  source's SQL is tested against tables with the member app's columns.

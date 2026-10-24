@@ -12,6 +12,7 @@ import {
 import { useAppKitAuth } from '@/hooks/useAppKitAuth';
 import { useMemberProfile } from '@/hooks/useMemberProfile';
 import { isServed } from '@/lib/servedRegion';
+import { storedInvite } from '@/lib/invite';
 import OnboardingFlow, {
   type OnboardingStep,
   type OnboardingValues,
@@ -41,7 +42,8 @@ export default function OnboardingRoute() {
     contact: '',
     code: '',
     zip: '',
-    invite: '',
+    // an invite link's code, if this device followed one: sent back so the sign-up matches its invite
+    invite: storedInvite(),
     email: '',
   });
   const [submitting, setSubmitting] = useState(false);

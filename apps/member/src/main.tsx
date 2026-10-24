@@ -3,9 +3,13 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import { registerServiceWorker } from './utils/serviceWorker'
 import { initAnalytics } from './lib/analytics'
+import { captureInvite } from './lib/invite'
 
 // Plausible analytics — injects only on the live app (app.useclear.org); no-op in dev/preview.
 initAnalytics();
+
+// An invite link from the waitlist (?invite=CODE): kept until onboarding sends it back.
+captureInvite();
 
 // Buffer polyfill for XMTP — must be set before App/AppKit/XMTP modules load, so App and
 // AppKitProvider are imported dynamically below (after this runs).

@@ -370,7 +370,7 @@ export async function shopAddress(db: Queryable, orderId: string, env: Env = pro
 
 /** What the shop sells, as the site serves it (clearpath-website /api/shop/catalog); drafts with the shared token. */
 export function catalogFeed(env: Env = process.env, f: typeof fetch = fetch): Feed {
-  const url = env.COMMAND_SHOP_CATALOG_URL?.trim() || 'https://useclear.org/api/shop/catalog';
+  const url = env.COMMAND_SHOP_CATALOG_URL?.trim() || 'https://www.useclear.org/api/shop/catalog';
   const token = env.COMMAND_CATALOG_TOKEN?.trim();
   return {
     id: 'catalog',

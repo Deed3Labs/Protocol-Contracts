@@ -28,6 +28,8 @@ import type { ChainReader } from '../services/command/onchain.js';
 import { codeStatus } from '../services/command/github.js';
 import { feedStatus, requestSync, type Feed } from '../services/command/feeds.js';
 import { liveFeeds, plaidWebhook, plaidWebhookKey, shopAddress } from '../services/command/feedSources.js';
+import { join } from '../services/command/waitlist.js';
+import type { MemberSource } from '../services/command/memberSource.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
 /*
@@ -59,6 +61,8 @@ export interface CommandDeps {
   code?: { catchUp(): void };
   /** The sandbox feeds, for their status (Phase 6a): the live four unless given. */
   feeds?: Feed[];
+  /** The member app's records, for Members when it's live (Phase 7b). */
+  memberSource?: MemberSource;
   /** A live order's address, read from the shop's Stripe (Phase 7a): Stripe's unless given. */
   shopAddress?: typeof shopAddress;
   /** The Ops Safe: which one (env unless given), and how it's read. */
@@ -334,7 +338,7 @@ export function commandRouter(deps: CommandDeps) {
     const level = c.levels.members;
     const reveal = req.query.reveal === '1' && level >= SEE;
     try {
-      const data = await membersSection(c.db, { level, reveal, now: now() });
+      const data = await membersSection(c.db, { level, reveal, now: now(), memberSource: deps.memberSource });
       if (reveal) await auditFrom(req, { area: 'members', action: 'Showed member names', detail: `${data.MEMBERS.length} members`, result: 'done' });
       res.json(data);
     } catch (e) {
@@ -1103,6 +1107,40 @@ export function commandWebhookRouter(deps: { db: () => Promise<Db | null>; plaid
     if (!r.ok) return res.status(400).json({ error: r.why });
     if (r.wake) await requestSync(db, 'plaid', 'Plaid webhook');
     res.json({ ok: true });
+  });
+  return router;
+}
+
+/**
+ * The site's join form (clearpath-website, NEXT_PUBLIC_JOIN_ENDPOINT), signed in by nobody: kept as a
+ * form submission, and "I want to join" is a place on the waitlist (Phase 7b). Rate-limited by address,
+ * and it says the same thing whether the email was new or already waiting.
+ */
+const JOIN = z.object({
+  as: z.enum(['member', 'shop', 'land', 'work']).default('member'),
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().toLowerCase().email().max(200),
+  zip: z.string().trim().regex(/^\d{5}(-\d{4})?$/).optional().or(z.literal('')),
+  note: z.string().trim().max(2000).optional(),
+  poster: z.string().trim().regex(/^P-\d{1,6}$/).optional(),
+});
+export function commandJoinRouter(deps: { db: () => Promise<Db | null>; limit?: RequestHandler; now?: () => Date }) {
+  const router = forwardAsyncErrors(express.Router());
+  router.post('/', deps.limit ?? passThrough, async (req, res) => {
+    const db = await deps.db();
+    if (!db) return res.status(503).json({ error: 'Not available right now' });
+    const p = JOIN.safeParse(req.body);
+    if (!p.success) return res.status(400).json({ error: 'Check your name, email and ZIP' });
+    // the other answers' fields (business, industry, property…): short strings only, kept as they came
+    const known = new Set(['as', 'name', 'email', 'zip', 'note', 'poster']);
+    const details = Object.fromEntries(
+      Object.entries(req.body as Record<string, unknown>)
+        .filter(([k, v]) => !known.has(k) && /^[a-zA-Z]{1,40}$/.test(k) && typeof v === 'string' && v.trim())
+        .slice(0, 20)
+        .map(([k, v]) => [k, String(v).trim().slice(0, 300)]),
+    );
+    await join(db, { ...p.data, zip: p.data.zip || undefined, details }, deps.now?.() ?? new Date());
+    res.status(201).json({ ok: true });
   });
   return router;
 }

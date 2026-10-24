@@ -5,6 +5,7 @@ import { PROPOSE, type Level, type Section } from './levels.js';
 import { providerFor } from './sections.js';
 import type { Person } from './store.js';
 import { requestSync } from './feeds.js';
+import { sendBatch } from './waitlist.js';
 
 /*
  * Each section's own actions (docs/command-center-plan.md: the step after Phase 3).
@@ -167,11 +168,23 @@ const members: Record<string, Action> = {
   resend: { body: member, summary: () => 'Resend a member’s invite', outbox: true },
   nudge: { body: member, summary: () => 'Nudge a member to finish joining', outbox: true },
   off: { body: member.extend({ reason: text(200).default('') }), summary: () => 'Turn off a member’s access', outbox: true },
+  // live (Phase 7b): once a second person approves, the next people waiting get their codes and the
+  // emails are queued for the invite job; on the seed it's recorded, as before
   batch: {
-    body: z.object({ size: z.number().int().positive().max(500), order: text(40).default('longest') }),
+    body: z.object({ size: z.number().int().positive().max(500), order: text(40).default('oldest') }),
     summary: (b) => `Send the next batch of ${b.size} invites`,
     second: () => true,
-    outbox: true,
+    apply: async ({ tx, person, at }, b) => {
+      if (providerFor('members') !== 'live') return;
+      const order = (['oldest', 'posters', 'city'] as const).find((o) => o === b.order) ?? 'oldest';
+      try {
+        return await sendBatch(tx, b.size, order, who(person), at);
+      } catch (e: any) {
+        if (e?.code === 'NOBODY_WAITING') throw new ActionError(409, e.code, e.message);
+        throw e;
+      }
+    },
+    outbox: () => providerFor('members') !== 'live',
   },
 };
 
