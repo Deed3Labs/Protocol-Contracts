@@ -299,7 +299,7 @@ new blocks are read); GitHub polled with a read-only token; every deployed contr
 - **7d · The map's style** in env: `VITE_MAP_STYLE_URL` and a public `VITE_MAPBOX_TOKEN`
   (`apps/command/src/live/map.ts`).
 
-### Phase 8: launch
+### Phase 8: launch (built)
 
 - A new Vercel project for `apps/command` with `command.useclear.org`, the CSP, the PWA, the README.
   DNS is a CNAME at Namecheap, the same way `api.useclear.org` was added.

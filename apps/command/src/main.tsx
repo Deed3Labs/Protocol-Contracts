@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles/command.css';
 import { App } from './App';
 import { LIVE } from './live/env';
+import { registerServiceWorker } from './live/pwa';
 
 // The shell goes in first and synchronously: the sections' start-up code reads it, as the
 // prototype's script did when it ran at the end of the page.
@@ -20,3 +21,6 @@ if (LIVE) {
 }
 
 import('./sections/index').then(({ startup }) => startup());
+
+// installable, and opens on a poor connection: the shell only, never the API (public/sw.js)
+registerServiceWorker();
