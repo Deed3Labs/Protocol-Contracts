@@ -331,3 +331,32 @@ the app with their own wallet; the admin handover is written now and run by him 
 - **Worth knowing:** the deployer wallet also holds every operational role (operators, settlers,
   minters, the funder). The handover leaves those where they are, so the deployer stays a powerful
   key until they're moved to dedicated service wallets (or the Safe, with `INCLUDE_ROLES`).
+
+### Moving the operational roles off the deployer
+
+The deployer wallet held every admin role and every operational one. The handover above moves the
+admin roles; `scripts/command/ops-roles.ts` moves the rest, to the wallet that does each job.
+
+- **The map** (`scripts/command/ops-roles.map.json`), from reading the API and the contracts:
+  - **credit operator** (`CREDIT_OPERATOR_PRIVATE_KEY`): AccessManager `OPERATOR`
+  - **savings relayer** (a Coinbase CDP wallet by default): ESADepositVault `OPERATOR_ROLE`,
+    SavingsIntentFactory `SETTLER_ROLE`, and CollateralRegistry `OPERATOR_ROLE` (the savings sync
+    signs collateral writes as the savings relayer unless `COLLATERAL_SIGNER_MODE=local_key`)
+  - **send relayer**: ClaimEscrow `SETTLER_ROLE`
+  - **card settler** (`CARD_SETTLER_PRIVATE_KEY`): LendingPool `BORROWER_ROLE`
+  - **membership registrar** (`MEMBERSHIP_REGISTRAR_PRIVATE_KEY`): MembershipRegistry `REGISTRAR_ROLE`
+  - **the Ops Safe**: every config-only operator role, MerchantRegistry `OPERATOR_ROLE` and PayoutPool
+    `FUNDER_ROLE` (Command proposes those), FundManager's and Validator's managers
+  - **renounced**, used by nothing off-chain: AccessManager `MEMBER`, LendingPool `LOSS_REPORTER_ROLE`,
+    LimitCalculator `ATTESTOR_ROLE`, SavingsIntentFactory `CREATOR_ROLE`, DeedNFT `MINTER_ROLE` and
+    `VALIDATOR_ROLE`, MetadataRenderer `VALIDATOR_ROLE` (never checked there), FundManager
+    `MINTER_ROLE` (checked by nothing), the legacy vault's operator
+- **Order:** this first, while the deployer can still grant; then the admin handover.
+- **AccessManager:** `isOperator` is true for its default admin too, so the deployer stops being an
+  operator only once the admin handover moves that admin to the Safe.
+- **Found on chain:** the Liquidator contract doesn't hold LendingPool's `LIQUIDATOR_ROLE`, which
+  `liquidateShares` needs; no script ever granted it. `FIX_CHECKS=1` grants it during a run.
+- **The API no longer falls back to the deployer's key.** Each job signs with its own key or does
+  nothing (`DEPLOYER_PRIVATE_KEY` was the fallback in eight services).
+- **The drill** (`scripts/command/drill_ops_roles.ts`) runs both scripts on a fork and passes: the
+  deployer ends holding no role and owning nothing, and each job's wallet can still do its job.

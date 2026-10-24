@@ -69,7 +69,7 @@ function membershipRegistryAddress(): string {
 
 function membershipRegistrarKey(): string | null {
   return normalizePrivateKey(
-    process.env.MEMBERSHIP_REGISTRAR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY
+    process.env.MEMBERSHIP_REGISTRAR_PRIVATE_KEY
   );
 }
 
@@ -190,7 +190,7 @@ export class MembershipRegistryService {
     const registrarKey = membershipRegistrarKey();
     if (!registryAddress || !registrarKey) {
       throw new Error(
-        'Membership registry is not configured. Set MEMBERSHIP_REGISTRY_ADDRESS and MEMBERSHIP_REGISTRAR_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY.'
+        'Membership registry is not configured. Set MEMBERSHIP_REGISTRY_ADDRESS and MEMBERSHIP_REGISTRAR_PRIVATE_KEY.'
       );
     }
 

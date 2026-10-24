@@ -62,7 +62,7 @@ export function chainId(): number {
 }
 
 function operatorKey(): string | null {
-  const raw = (process.env.CREDIT_OPERATOR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY || '').trim();
+  const raw = (process.env.CREDIT_OPERATOR_PRIVATE_KEY || '').trim();
   if (!raw) return null;
   return raw.startsWith('0x') ? raw : `0x${raw}`;
 }

@@ -1,0 +1,46 @@
+{
+  "about": "Where each operational role the deployer holds belongs. A job's wallet is <JOB>_ADDRESS in env (credit-operator → CREDIT_OPERATOR_ADDRESS); \"safe\" is SAFE_ADDRESS; \"renounce\" is used by nothing off-chain. Mapped 2026-10-23 from apps/api and contracts/; see docs/command-reference/DECISIONS.md, \"Moving the operational roles\".",
+  "roles": [
+    { "contract": "AccessManager", "role": "OPERATOR", "to": "credit-operator", "why": "openLine, credit periods, term limits, openPlan, refund closes, reinstate (CREDIT_OPERATOR_PRIVATE_KEY)" },
+    { "contract": "ESADepositVault", "role": "OPERATOR_ROLE", "to": "savings-relayer", "why": "deposits, redemptions and autopay mandates (savings relayer, CDP by default)" },
+    { "contract": "SavingsIntentFactory", "role": "SETTLER_ROLE", "to": "savings-relayer", "why": "settling and refunding savings intents (savings relayer)" },
+    { "contract": "CollateralRegistry", "role": "OPERATOR_ROLE", "to": "savings-relayer", "why": "pledges and releases from the savings sync, which the savings relayer signs unless COLLATERAL_SIGNER_MODE=local_key" },
+    { "contract": "ClaimEscrow", "role": "SETTLER_ROLE", "to": "send-relayer", "why": "sends by link: escrow, claim, claim to payout (SEND_RELAYER_PRIVATE_KEY or its CDP account)" },
+    { "contract": "LendingPool", "role": "BORROWER_ROLE", "to": "card-settler", "why": "card funding borrows from the pool (CARD_SETTLER_PRIVATE_KEY)" },
+    { "contract": "MembershipRegistry", "role": "REGISTRAR_ROLE", "to": "membership-registrar", "why": "registering members and their status (MEMBERSHIP_REGISTRAR_PRIVATE_KEY)" },
+
+    { "contract": "MerchantRegistry", "role": "OPERATOR_ROLE", "to": "safe", "why": "shop terms and on/off: Command proposes these to the Safe" },
+    { "contract": "PayoutPool", "role": "FUNDER_ROLE", "to": "safe", "why": "top-ups: Command proposes these to the Safe" },
+    { "contract": "PayoutPool", "role": "OPERATOR_ROLE", "to": "safe", "why": "lenders, treasury and co-op income settings: config, no service uses it" },
+    { "contract": "LendingPool", "role": "OPERATOR_ROLE", "to": "safe", "why": "rate curve and encumbrance source: config" },
+    { "contract": "NetworkRegistry", "role": "OPERATOR_ROLE", "to": "safe", "why": "registering issuers: config" },
+    { "contract": "Liquidator", "role": "OPERATOR_ROLE", "to": "safe", "why": "liquidations and the trusted savings issuer: nothing liquidates automatically yet" },
+    { "contract": "LimitCalculator", "role": "OPERATOR_ROLE", "to": "safe", "why": "issuer and collateral yield settings (pushCapacities needs no role)" },
+    { "contract": "BondVault", "role": "OPERATOR_ROLE", "to": "safe", "why": "reserve terms: config" },
+    { "contract": "FundManager", "role": "FEE_MANAGER_ROLE", "to": "safe", "why": "withdrawing validator and royalty fees: money, by two people" },
+    { "contract": "Validator", "role": "CRITERIA_MANAGER_ROLE", "to": "safe", "why": "deed validation criteria: config" },
+    { "contract": "Validator", "role": "FEE_MANAGER_ROLE", "to": "safe", "why": "validator fees and whitelist: config and money" },
+    { "contract": "Validator", "role": "METADATA_ROLE", "to": "safe", "why": "operating-agreement records: config" },
+    { "contract": "Validator", "role": "VALIDATOR_ROLE", "to": "safe", "why": "validating deeds: no service does it yet" },
+
+    { "contract": "AccessManager", "role": "MEMBER", "to": "renounce", "why": "only makes the holder a member" },
+    { "contract": "LendingPool", "role": "LOSS_REPORTER_ROLE", "to": "renounce", "why": "absorbLoss: called by nothing" },
+    { "contract": "LimitCalculator", "role": "ATTESTOR_ROLE", "to": "renounce", "why": "attest: called by nothing" },
+    { "contract": "SavingsIntentFactory", "role": "CREATOR_ROLE", "to": "renounce", "why": "settle and refund make the clone themselves" },
+    { "contract": "DeedNFT", "role": "MINTER_ROLE", "to": "renounce", "why": "mintAsset: no service mints deeds" },
+    { "contract": "DeedNFT", "role": "VALIDATOR_ROLE", "to": "renounce", "why": "held by the Validator and MetadataRenderer contracts, which use it; the deployer doesn't" },
+    { "contract": "MetadataRenderer", "role": "VALIDATOR_ROLE", "to": "renounce", "why": "never checked on MetadataRenderer itself" },
+    { "contract": "FundManager", "role": "MINTER_ROLE", "to": "renounce", "why": "no function checks it" },
+    { "contract": "ESADepositVaultLegacy", "role": "OPERATOR_ROLE", "to": "renounce", "why": "the legacy vault: nothing deposits there" }
+  ],
+  "checks": [
+    { "contract": "LendingPool", "role": "LIQUIDATOR_ROLE", "holder": "Liquidator", "why": "Liquidator.liquidateShares calls seizeShares, which needs it; no script grants it" },
+    { "contract": "LendingPool", "role": "BORROWER_ROLE", "holder": "PayoutPool", "why": "the PayoutPool draws from the yield pool for a due claim" },
+    { "contract": "ClearUSDUpgradeable", "role": "MINTER_ROLE", "holder": "ESADepositVault", "why": "savings mint CLRUSD" },
+    { "contract": "ClearUSDUpgradeable", "role": "BURNER_ROLE", "holder": "ESADepositVault", "why": "redemptions burn CLRUSD" },
+    { "contract": "CollateralRegistry", "role": "OPERATOR_ROLE", "holder": "Liquidator", "why": "recordSeizure" },
+    { "contract": "CollateralRegistry", "role": "OPERATOR_ROLE", "holder": "LimitCalculator", "why": "set at deploy" },
+    { "contract": "AccessManager", "role": "OPERATOR", "holder": "RevolvingIssuer", "why": "the issuers call the ledger as operators" },
+    { "contract": "AccessManager", "role": "OPERATOR", "holder": "TermIssuer", "why": "the issuers call the ledger as operators" }
+  ]
+}

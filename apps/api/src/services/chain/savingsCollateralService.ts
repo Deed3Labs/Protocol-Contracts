@@ -86,7 +86,7 @@ function collateralSignerMode(): CollateralSignerMode {
 }
 
 function operatorKey(): string | null {
-  const raw = (process.env.CREDIT_OPERATOR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY || '').trim();
+  const raw = (process.env.CREDIT_OPERATOR_PRIVATE_KEY || '').trim();
   if (!raw) return null;
   return raw.startsWith('0x') ? raw : `0x${raw}`;
 }
@@ -223,7 +223,7 @@ async function sendCollateralTx(
      */
     if (!key) {
       throw new Error(
-        'COLLATERAL_SIGNER_MODE=local_key but no CREDIT_OPERATOR_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY is set.',
+        'COLLATERAL_SIGNER_MODE=local_key but no CREDIT_OPERATOR_PRIVATE_KEY is set.',
       );
     }
     const provider = chainProvider(chainId());
