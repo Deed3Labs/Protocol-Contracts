@@ -72,6 +72,7 @@ import { pointPageRouter, receiptPageRouter } from './routes/phonePages.js';
 import { checkoutRouter, linkPageRouter } from './routes/payLinks.js';
 import { v1Cors, v1Errors, v1Router } from './routes/v1.js';
 import { startOutboxProcessor } from './jobs/outboxProcessor.js';
+import { startCommandIndexer } from './jobs/commandIndexer.js';
 import { startWebhookDeliveries } from './jobs/webhookDeliveries.js';
 import { startRewardsJobs } from './jobs/rewardsJobs.js';
 import { partnersRouter, rewardsRouter, shopRouter } from './routes/rewards.js';
@@ -457,6 +458,8 @@ async function startServer() {
         console.error('❌ Command Center seed failed:', redactError(error));
       }
     }
+    // The Command Center's indexer: every deployed contract's events, after the migrations.
+    startCommandIndexer();
     // Acts on the Stripe webhooks the merchant back office stored. After the migrations, which
     // create the inbox it reads.
     startStripeEventProcessor();

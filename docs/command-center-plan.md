@@ -251,18 +251,27 @@ the section actions' outbox records every on-chain act without carrying it out.
   renounce anything the Safe doesn't hold yet. A fork test makes a 2-of-3 Safe with the canonical
   factory, runs the handover, and has the Safe execute an admin call with two test signers.
 
-### Phase 5: indexer and contracts
+### Phase 5: indexer and contracts (in progress)
 
-- Contract inventory from `deployments/base-sepolia/`, ABIs from the same files.
-- `chain_event` backfill with paged `eth_getLogs` from the found deploy blocks, then Alchemy
-  webhooks; 5 confirmations and a re-check of the last N blocks. Idempotent on (tx, log index).
-- GitHub webhooks for `contracts/**` into `contract_change`.
-- The yield pool: index `LendingPool` and the PayoutPool loan events (`Borrowed`, `Repaid`,
-  `LossAbsorbed`, `WithdrawalQueued`, `WithdrawalClaimed`, `DrewFromYieldPool`, `DrewFromReserve`,
-  `RepaidYieldPool`, `RepaidReserve`, `InterestPaid`), derive `yield_position` from `LendingPool`
-  Transfer/Deposit/Withdraw, and read rates from `utilizationBps`, `borrowRatePerCycle`,
-  `supplyRatePerCycle` and `RevolvingIssuer.cycleLength()` on the server. Use `packages/contracts-sdk`
-  for ABIs where it covers them.
+Kai, 2026-10-23: a polling job, not webhooks (efficient: one request covers every contract, and only
+new blocks are read); GitHub polled with a read-only token; every deployed contract's events kept.
+
+- **5a · The indexer.** `command.chain_contracts` holds the inventory from
+  `deployments/base-sepolia`, with each contract's deploy block found once by a binary search on
+  `eth_getCode` (the deployment files say 0). `command.chain_events` keeps every event from every
+  contract, raw and decoded, unique on (chain, tx, log index). One `eth_getLogs` per page covers
+  all 37 addresses; pages use the span each RPC allows (`logScan`), public RPC first, Alchemy only
+  on rate limits. It indexes only to 5 blocks behind the head, and each run re-reads the last 30
+  indexed blocks in the same request and reconciles them, so a reorg can't leave a ghost event.
+  Every 5 minutes (`COMMAND_INDEXER_MINUTES`), plus a catch-up when someone opens Contracts or
+  Money, at most once a minute. The first run backfills from the earliest deploy block.
+- **5b · What Command reads from it.** Yield positions from LendingPool's Transfer, Deposit and
+  Withdraw; the PayoutPool's loans and draws; releases from each proxy's `Upgraded` events; rates
+  read on the server (`utilizationBps`, `borrowRatePerCycle`, `supplyRatePerCycle`,
+  `RevolvingIssuer.cycleLength()`). Money's yield pool and Contracts' releases switch to these live
+  (`PROVIDER_MONEY`, `PROVIDER_CONTRACTS`).
+- **5c · Changes from GitHub.** A job asks GitHub for commits touching `contracts/` on `dev` every
+  few minutes, with a fine-grained read-only `GITHUB_TOKEN` in Railway, into Contracts' changes.
 
 ### Phase 6: sandboxes
 
