@@ -15,10 +15,8 @@ import { ethers, network } from "hardhat";
 import { Contract, Wallet, concat, getAddress } from "ethers";
 import { deployments, execute, plan, survey } from "./handover";
 
-// Safe 1.4.1, at the same address on every chain Safe supports
-const FACTORY = "0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67";
-const SINGLETON = "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762";
-const FALLBACK = "0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99";
+import { SAFE_FACTORY as FACTORY, createSafe } from "./safe";
+
 const SAFE_ABI = [
   "function setup(address[] owners, uint256 threshold, address to, bytes data, address fallbackHandler, address paymentToken, uint256 payment, address paymentReceiver)",
   "function getOwners() view returns (address[])",
@@ -27,7 +25,6 @@ const SAFE_ABI = [
   "function getTransactionHash(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, uint256 nonce) view returns (bytes32)",
   "function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures) payable returns (bool)",
 ];
-const FACTORY_ABI = ["function createProxyWithNonce(address singleton, bytes initializer, uint256 saltNonce) returns (address proxy)", "event ProxyCreation(address indexed proxy, address singleton)"];
 
 const check = (ok: boolean, what: string) => {
   if (!ok) throw new Error(`FAILED: ${what}`);
@@ -52,12 +49,7 @@ async function main() {
   // a 2-of-3 Safe with throwaway signers, made the way Safe{Wallet} makes one
   const signers = [Wallet.createRandom(), Wallet.createRandom(), Wallet.createRandom()].map((w) => w.connect(ethers.provider));
   for (const w of signers) await network.provider.request({ method: "hardhat_setBalance", params: [w.address, "0xDE0B6B3A7640000"] });
-  const singleton = new Contract(SINGLETON, SAFE_ABI, ethers.provider);
-  const init = singleton.interface.encodeFunctionData("setup", [signers.map((w) => w.address), 2, ethers.ZeroAddress, "0x", FALLBACK, ethers.ZeroAddress, 0, ethers.ZeroAddress]);
-  const factory = new Contract(FACTORY, FACTORY_ABI, signers[0]);
-  const rc = await (await factory.createProxyWithNonce(SINGLETON, init, BigInt(Date.now()))).wait();
-  const ev = rc!.logs.map((l: any) => { try { return factory.interface.parseLog(l); } catch { return null; } }).find((x: any) => x?.name === "ProxyCreation");
-  const safeAddr = getAddress(ev!.args.proxy);
+  const safeAddr = (await createSafe(signers[0], signers.map((w) => w.address), 2, BigInt(Date.now()))).address;
   const safe = new Contract(safeAddr, SAFE_ABI, signers[0]);
   console.log(`Deployer ${deployer}\nSafe     ${safeAddr} (2 of 3)\n`);
   check(Number(await safe.getThreshold()) === 2 && (await safe.getOwners()).length === 3, "the Safe is 2 of 3");

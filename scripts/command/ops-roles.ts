@@ -92,7 +92,7 @@ export function walletFor(job: string, env: Record<string, string | undefined> =
   if (job === "renounce") return null;
   const all = { ...apiAddresses(), ...env };
   const names = job === "safe" ? ["SAFE_ADDRESS", "COMMAND_SAFE_ADDRESS"] : [envName(job), ...(ALIASES[job] ?? [])];
-  const raw = names.map((n) => all[n]?.trim()).find((v) => v && isAddress(v)) ?? "";
+  const raw = names.map((n) => all[n]?.trim()).find((v) => v && isAddress(v)) ?? (MAP.wallets?.[job] as string | undefined) ?? "";
   return raw ? getAddress(raw) : null;
 }
 
