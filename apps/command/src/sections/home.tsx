@@ -4,6 +4,7 @@ import { attrs, css, html } from '../runtime/dom';
 import { $, cell, compBar, head, ic, int, money, pct, segHtml, themeSwitch } from './core';
 import { LIVE } from '../live/env';
 import { fig } from '../live/figures';
+import { feedChip, feedList, hasFeeds } from '../live/feeds';
 import {
   ALERTS0,
   DAY,
@@ -1238,43 +1239,60 @@ export function stateError() {
       </div>
       <div>
         <span className="lbl">Sources</span>
-        <div className="rows srcs">
-          <div className="r">
-            <span className="k">Site analytics</span>
-            <span className="chip settled">
-              <span className="dot" />
-              Synced
-            </span>
+        {LIVE && hasFeeds() ? (
+          <div className="rows srcs">
+            {feedList().map((f) => {
+              const [cls, words] = feedChip(f);
+              return (
+                <div key={f.id} className="r">
+                  <span className="k">{f.name}</span>
+                  <span className={`chip ${cls}`} title={f.error ?? f.offReason ?? ''}>
+                    <span className="dot" />
+                    {words}
+                  </span>
+                </div>
+              );
+            })}
           </div>
-          <div className="r">
-            <span className="k">Lithic</span>
-            <span className="chip settled">
-              <span className="dot" />
-              Synced
-            </span>
+        ) : (
+          <div className="rows srcs">
+            <div className="r">
+              <span className="k">Site analytics</span>
+              <span className="chip settled">
+                <span className="dot" />
+                Synced
+              </span>
+            </div>
+            <div className="r">
+              <span className="k">Lithic</span>
+              <span className="chip settled">
+                <span className="dot" />
+                Synced
+              </span>
+            </div>
+            <div className="r">
+              <span className="k">Bridge</span>
+              <span className="chip settled">
+                <span className="dot" />
+                Synced
+              </span>
+            </div>
+            <div className="r">
+              <span className="k">Plaid</span>
+              <span className="chip underway">
+                <span className="dot" />
+                3h behind
+              </span>
+            </div>
+            <div className="r">
+              <span className="k">Clear protocol</span>
+              <span className="chip absent">
+                <span className="dot" />
+                Not reached
+              </span>
+            </div>
           </div>
-          <div className="r">
-            <span className="k">Bridge</span>
-            <span className="chip settled">
-              <span className="dot" />
-              Synced
-            </span>
-          </div>
-          <div className="r">
-            <span className="k">Plaid</span>
-            <span className="chip underway">
-              <span className="dot" />
-              3h behind
-            </span>
-          </div>
-          <div className="r">
-            <span className="k">Clear protocol</span>
-            <span className="chip absent">
-              <span className="dot" />
-              Not reached
-            </span>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

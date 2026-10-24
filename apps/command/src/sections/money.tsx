@@ -2,6 +2,7 @@
 import { live } from '../live/actions';
 import { LIVE } from '../live/env';
 import { fig } from '../live/figures';
+import { feedLabel, feedLate, feedLine, hasFeeds } from '../live/feeds';
 import { Fragment } from 'react';
 import { attrs, css } from '../runtime/dom';
 import { compBar, head, ic, money, pct } from './core';
@@ -47,6 +48,8 @@ export function sgn(k, v) {
   return (k === 'in' ? '+' : '−') + money(v);
 }
 export function srcTxt(k) {
+  // live, how old each source's figures really are (Phase 6a)
+  if (LIVE && hasFeeds()) return feedLabel(k);
   return {
     protocol: 'Protocol · 12 s',
     lithic: 'Lithic · 1 min',
@@ -100,10 +103,19 @@ export function moneyPage() {
               : `${FLOWS.length} money movements in the next 30 days.`;
   const tools = (
     <div className="ph-tools">
-      <span className="chip underway">
-        <span className="dot" />
-        Plaid 3 h behind
-      </span>
+      {LIVE && hasFeeds() ? (
+        feedLine()?.worst ? (
+          <span className="chip underway">
+            <span className="dot" />
+            {feedLine().headline.replace(/ is (.*) behind$/, ' $1 behind')}
+          </span>
+        ) : null
+      ) : (
+        <span className="chip underway">
+          <span className="dot" />
+          Plaid 3 h behind
+        </span>
+      )}
       <span className="chip plain">Read-only</span>
     </div>
   );
@@ -211,7 +223,7 @@ export function holdings() {
   const rows = ACCTS.map((a, __k) => {
     const [id, n, why, g, src, bal, wk, col] = a,
       ch = wk[wk.length - 1] - wk[wk.length - 2],
-      st = src === 'plaid' ? 'late' : '';
+      st = (LIVE && hasFeeds() ? feedLate(src) : src === 'plaid') ? 'late' : '';
     return (
       <Fragment key={__k}>
         <button type="button" className={`wh-r${NS.acct === id ? ' sel' : ''}`} data-nacct={id}>
@@ -338,7 +350,7 @@ export function moneyPane() {
     ],
     ops: [
       ['Bank', 'Business checking'],
-      ['Last sync', '3 h ago · Plaid'],
+      ['Last sync', LIVE && hasFeeds() ? feedLabel('plaid').replace(/^Plaid · (.*)$/, '$1 ago · Plaid') : '3 h ago · Plaid'],
       ['Set aside inside it', money(ASIDE().reduce((s, x) => s + x[1], 0))],
       ['Covers bonds until BondVault', money(M.bonds)],
       ['Moves by', 'Two people', 1],
@@ -422,7 +434,7 @@ export function moneyPane() {
         <header className="m-hd">
           <span className="sub">Account</span>
           <span style={css('display:flex;align-items:center;gap:8px')}>
-            <span className={`chip ${src === 'plaid' ? 'underway' : 'plain'}`}>{srcTxt(src)}</span>
+            <span className={`chip ${(LIVE && hasFeeds() ? feedLate(src) : src === 'plaid') ? 'underway' : 'plain'}`}>{srcTxt(src)}</span>
             <button className="x" type="button" data-closenpane="" aria-label="Close">
               {ic('close')}
             </button>

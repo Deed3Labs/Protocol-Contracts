@@ -10,7 +10,7 @@ import { closePostgresPool } from './config/postgres.js';
 import { merchantDb, runMerchantMigrations } from './config/merchantDb.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { requireAuth } from './middleware/auth.js';
-import { liveCommandRouter, liveCommandSharedRouter } from './services/command/live.js';
+import { liveCommandRouter, liveCommandSharedRouter, liveCommandWebhookRouter } from './services/command/live.js';
 import { seedCommand } from './services/command/seed.js';
 import { requireMemberCapability } from './middleware/memberCapabilities.js';
 import pricesRouter from './routes/prices.js';
@@ -74,6 +74,7 @@ import { v1Cors, v1Errors, v1Router } from './routes/v1.js';
 import { startOutboxProcessor } from './jobs/outboxProcessor.js';
 import { startCommandIndexer } from './jobs/commandIndexer.js';
 import { startCommandGithub } from './jobs/commandGithub.js';
+import { startCommandFeeds } from './jobs/commandFeeds.js';
 import { startWebhookDeliveries } from './jobs/webhookDeliveries.js';
 import { startRewardsJobs } from './jobs/rewardsJobs.js';
 import { partnersRouter, rewardsRouter, shopRouter } from './routes/rewards.js';
@@ -292,6 +293,8 @@ async function startServer() {
     // levels, enforced per endpoint inside. See services/command/live.ts.
     // a document shared by view-only link opens without signing in: the link is the key
     app.use('/api/command/shared', liveCommandSharedRouter());
+    // the sandbox providers' webhooks (Plaid's) carry a signature, not a session
+    app.use('/api/command/webhooks', liveCommandWebhookRouter());
     app.use('/api/command', liveCommandRouter());
     // Deliberately not `requireAuth` at the mount: `POST /api/charges` is a merchant device
     // authenticating by signature, with no member session to check. The member-facing routes
@@ -463,6 +466,8 @@ async function startServer() {
     startCommandIndexer();
     // …and its GitHub poller: the commits that touch the contracts, into Contracts' changes.
     startCommandGithub();
+    // …and the sandbox feeds: Plaid, Bridge, Lithic and Stripe, each on its own schedule.
+    startCommandFeeds();
     // Acts on the Stripe webhooks the merchant back office stored. After the migrations, which
     // create the inbox it reads.
     startStripeEventProcessor();

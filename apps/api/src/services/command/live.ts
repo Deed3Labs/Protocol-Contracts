@@ -1,7 +1,7 @@
 import { merchantDb } from '../../config/merchantDb.js';
 import { requireIdentity } from '../../middleware/auth.js';
 import { limitByAddress } from '../../middleware/rateLimiter.js';
-import { commandRouter, commandSharedRouter } from '../../routes/command.js';
+import { commandRouter, commandSharedRouter, commandWebhookRouter } from '../../routes/command.js';
 import { indexerCatchUp } from '../../jobs/commandIndexer.js';
 import { githubCatchUp } from '../../jobs/commandGithub.js';
 import { liveChainReader } from './onchain.js';
@@ -18,6 +18,11 @@ import { memberStore } from '../memberStore.js';
 /** Shared document links: opened without signing in, so mounted ahead of the Command Center's router. */
 export function liveCommandSharedRouter() {
   return commandSharedRouter({ db: merchantDb });
+}
+
+/** The sandbox providers' webhooks (Plaid's): checked by signature, so mounted ahead too. */
+export function liveCommandWebhookRouter() {
+  return commandWebhookRouter({ db: merchantDb });
 }
 
 export function liveCommandRouter() {
