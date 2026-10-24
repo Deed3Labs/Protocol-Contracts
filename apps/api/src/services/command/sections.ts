@@ -1,7 +1,9 @@
 import { DAY, SEED_TODAY, mask, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PosterRow } from '@clear/command-types';
 import type { Queryable } from '../../db/db.js';
 import { SEE, TOTALS, type Level } from './levels.js';
-import { deployedName, inventory, releasesLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { feedRows } from './feeds.js';
+import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
 import { codeChanges, codeConfig } from './github.js';
 
 /*
@@ -381,10 +383,14 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const Y_DEP = chainPool
     ? chainPool.depositors.map((d) => [d.id, d.assets, dayMon(d.since), d.pledged])
     : pos.map((p) => [p.depositor, Number(p.assets_cents) / 100, dayMon(ms_(p.first_deposit)), Number(p.pledged_cents) / 100]);
+  // live, the savings reserve is the vault's on chain, and the operating account the bank's at Plaid (Phase 6b)
+  const reserve = provider === 'live' ? await reserveLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
+  const feeds = provider === 'live' ? await feedRows(db) : null;
+  const bank = feeds ? await bankLive(db, feeds.get('plaid'), feeds.get('stripe'), o.now.getTime()) : null;
 
   // the headline numbers, as the prototype's M
   const M: Record<string, number> = {
-    savings: bal('sav'), cash: bal('ops'), payout: bal('pay'), assurance: bal('ap'), coop: bal('coop'),
+    savings: reserve ? reserve.usdc : bal('sav'), cash: bank ? bank.balance : bal('ops'), payout: bal('pay'), assurance: bal('ap'), coop: bal('coop'),
     ...book, ...due, bonds: BONDS.reduce((a, b) => a + (b[1] as number), 0), floor,
   };
   // the yield pool, as the prototype's Y: assets and pledges are the depositors'; it lends to unsecured credit
@@ -409,6 +415,7 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   // live, the rates are the contract's own reads; the curve is only for what a draw would do to them
   Y.borrowBps = chainPool ? chainPool.borrowBps : borrowBps(Y.util); Y.supplyBps = chainPool ? chainPool.supplyBps : Y.borrowBps * Y.util;
   Y.apy = apy(Y.supplyBps); Y.apr = apr(Y.borrowBps);
+  if (reserve) { M.clrusd = reserve.clrusd; M.reserveDiff = reserve.difference; }
   M.rtd = M.assurance / M.unsecured;
   M.room = M.assurance / M.floor - M.unsecured;
   M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
@@ -417,17 +424,25 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
 
   const AP_BAL = [...(f['money.ap.balance_weeks'] as number[]), M.assurance];
   const UNSEC = [...(f['money.credit.unsecured_weeks'] as number[]), M.unsecured];
-  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance };
+  const live: Record<string, number> = { yld: Y.cash, ap: M.assurance, ...(reserve ? { sav: M.savings } : {}), ...(bank ? { ops: M.cash } : {}) };
   const ACCTS = accts.map((a) => {
     const w = weeks(a.id);
     const now = live[a.id] ?? w.at(-1)!;
-    const series = a.id === 'ap' ? AP_BAL : a.id === 'yld' && chainPool ? chainPool.cashWeeks : [...w.slice(0, -1), now];
-    return [a.id, a.name, a.purpose, a.owner_group, a.source, now, series, a.swatch];
+    const series =
+      a.id === 'ap' ? AP_BAL
+      : a.id === 'yld' && chainPool ? chainPool.cashWeeks
+      : a.id === 'sav' && reserve ? [...reserve.weeks.slice(0, -1), now]
+      : a.id === 'ops' && bank ? bank.weeks
+      : [...w.slice(0, -1), now];
+    // the USDC behind savings is in the vault, not at Bridge: Bridge is how it arrives
+    const [purpose, source] = a.id === 'sav' && reserve ? ['CLRUSD, backed 1:1 by USDC in the savings vault', 'protocol'] : [a.purpose, a.source];
+    return [a.id, a.name, purpose, a.owner_group, source, now, series, a.swatch];
   });
   const { rows: ent } = await db.query<{ account_id: string; at: Date; what: string; detail: string; amount_cents: string }>('SELECT * FROM command.account_entries ORDER BY at DESC, id');
   const ENTRIES: Record<string, unknown[]> = {};
   for (const e of ent) (ENTRIES[e.account_id] ??= []).push({ at: ms_(e.at), what: e.what, detail: e.detail, amount: Number(e.amount_cents) / 100 });
   if (chainPool) ENTRIES.yld = chainPool.entries;
+  if (bank) ENTRIES.ops = bank.entries;
 
   const { rows: m } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM command.members WHERE status = 'active'`);
   return {
@@ -439,18 +454,27 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     COOP_W: f['money.coop.weekly'], FLOWS: f['money.flows'], BONDS, ACCTS, ENTRIES,
     TX: (await partnerRows(db)).TX,
     MEMBER_SUMMARY: { active: m[0].n },
+    // live, Lithic's card spend this month and what's moving through Bridge (null until they've synced)
+    ...(feeds ? { CARD_SPEND: cardSpend(feeds.get('lithic')), DEPOSIT_RAIL: depositRail(feeds.get('bridge')) } : {}),
     SET_ASIDE: await shopSetAside(db),
     // live, what the yield pane lists since the opening is the pool's own deposits and withdrawals
-    figures: chainPool
-      ? {
-          ...f,
-          'money.yield.since_opened': chainPool.entries.filter((e) => /^(Opened|Deposits|Withdrawals)$/.test(e.what)).reverse().map((e) => [e.at, e.what, e.detail, e.amount]),
-          'money.yield.joined_this_week': chainPool.depositors.filter((d) => d.since >= o.now.getTime() - 7 * DAY).length,
-        }
-      : f,
+    figures: {
+      ...f,
+      ...(chainPool
+        ? {
+            'money.yield.since_opened': chainPool.entries.filter((e) => /^(Opened|Deposits|Withdrawals)$/.test(e.what)).reverse().map((e) => [e.at, e.what, e.detail, e.amount]),
+            'money.yield.joined_this_week': chainPool.depositors.filter((d) => d.since >= o.now.getTime() - 7 * DAY).length,
+          }
+        : {}),
+      // live, the reserve as the vault stands now: its USDC to each CLRUSD, read with this page
+      ...(reserve ? { 'money.reserve': { ratio: reserveRatio(reserve.usdc, reserve.clrusd), checked: 'just now' } } : {}),
+    },
     asOf: asOfFor(provider, o.now),
   };
 }
+
+/** "1 : 1" when the vault's USDC covers CLRUSD to the cent; otherwise the USDC per CLRUSD. */
+const reserveRatio = (usdc: number, clrusd: number) => (clrusd === 0 ? (usdc === 0 ? '1 : 1' : 'Nothing issued') : Math.abs(usdc - clrusd) < 0.005 ? '1 : 1' : `${(usdc / clrusd).toFixed(4)} : 1`);
 
 // ── Shop ────────────────────────────────────────────────────────────────────
 

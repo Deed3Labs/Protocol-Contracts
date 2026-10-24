@@ -1,6 +1,6 @@
 import chain from '@clear/command-types/src/chain/base-sepolia.json';
 import { DAY } from '@clear/command-types';
-import { getAddress, type Abi, type Address } from 'viem';
+import { erc20Abi, getAddress, type Abi, type Address } from 'viem';
 import type { Queryable } from '../../db/db.js';
 import { publicFirst } from './indexer.js';
 
@@ -17,9 +17,11 @@ import { publicFirst } from './indexer.js';
 const C = chain.contracts as Record<string, { address: string; functions: Abi; events: Abi }>;
 
 export interface ChainCall {
+  /** A deployed contract by name, or 'ERC20' with an address for a token the protocol uses. */
   contract: string;
   fn: string;
   args?: unknown[];
+  address?: string;
 }
 /** Reads from the deployed contracts, every call in one request. */
 export interface ChainReader {
@@ -33,7 +35,11 @@ export function liveChainReader(chainId = chain.chainId): ChainReader {
       ask((c) =>
         c.multicall({
           allowFailure: false,
-          contracts: calls.map((k) => ({ address: getAddress(C[k.contract].address), abi: C[k.contract].functions, functionName: k.fn, args: k.args ?? [] })) as any,
+          contracts: calls.map((k) =>
+            k.contract === 'ERC20'
+              ? { address: getAddress(k.address!), abi: erc20Abi, functionName: k.fn, args: k.args ?? [] }
+              : { address: getAddress(C[k.contract].address), abi: C[k.contract].functions, functionName: k.fn, args: k.args ?? [] },
+          ) as any,
         }),
       ) as Promise<unknown[]>,
   };
@@ -231,6 +237,48 @@ function entries(ev: Ev[], byAddress: Map<string, string>, interest: Set<string>
     .map((l) => ({ at: l.at, what: l.what, detail: l.detail(l.who.size), amount: usd(l.amount) }))
     .sort((x, y) => y.at - x.at)
     .slice(0, 50);
+}
+
+// ── The savings reserve ─────────────────────────────────────────────────────
+
+export interface ReserveLive {
+  /** CLRUSD in issue, and the USDC the savings vault holds against it, in dollars. */
+  clrusd: number;
+  usdc: number;
+  /** The vault's USDC less what's issued: negative is a shortfall. */
+  difference: number;
+  /** CLRUSD in issue at the end of each of the last six weeks, then now. */
+  weeks: number[];
+}
+
+/**
+ * Member savings, as the vault backs them (Kai, 2026-10-24): CLRUSD's supply against the USDC
+ * ESADepositVault holds, the comparison the vault itself makes. The USDC is the protocol's reserve
+ * token (the LendingPool's asset), so no address is written down here. The weeks are CLRUSD's mints
+ * and burns, from the indexer.
+ */
+export async function reserveLive(db: Queryable, reader: ChainReader, now: number): Promise<ReserveLive> {
+  const [supply, decimals, usdcAddress] = await reader.read([
+    { contract: 'ClearUSDUpgradeable', fn: 'totalSupply' },
+    { contract: 'ClearUSDUpgradeable', fn: 'decimals' },
+    { contract: 'LendingPool', fn: 'asset' },
+  ]);
+  const [held, usdcDecimals] = await reader.read([
+    { contract: 'ERC20', address: String(usdcAddress), fn: 'balanceOf', args: [getAddress(C.ESADepositVault.address)] },
+    { contract: 'ERC20', address: String(usdcAddress), fn: 'decimals' },
+  ]);
+  const dollars = (v: bigint, d: unknown) => Math.round((Number(v) / 10 ** Number(d)) * 100) / 100;
+  const moves = (await events(db, ['ClearUSDUpgradeable'], ['Transfer'])).filter((e) => e.args.from === ZERO || e.args.to === ZERO);
+  const today = Math.floor(now / DAY) * DAY;
+  const at = (t: number) => moves.filter((e) => e.at < t).reduce((s, e) => s + (e.args.from === ZERO ? big(e.args.value) : -big(e.args.value)), 0n);
+  const clrusd = dollars(big(supply), decimals),
+    usdc = dollars(big(held), usdcDecimals);
+  return {
+    clrusd,
+    usdc,
+    difference: Math.round((usdc - clrusd) * 100) / 100,
+    weeks: [...[6, 5, 4, 3, 2, 1].map((k) => dollars(at(today + DAY - k * 7 * DAY), decimals)), clrusd],
+  };
 }
 
 // ── Releases ────────────────────────────────────────────────────────────────

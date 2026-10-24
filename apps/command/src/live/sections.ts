@@ -221,6 +221,9 @@ const apply = {
     replace(TXO, TX.map(T));
     vars.memberSummary = { ...vars.memberSummary, ...d.MEMBER_SUMMARY };
     if (d.SET_ASIDE) vars.setAside = d.SET_ASIDE;
+    // live, Lithic's card spend and what's moving through Bridge (Phase 6b)
+    vars.cardSpend = d.CARD_SPEND ?? null;
+    vars.depositRail = d.DEPOSIT_RAIL ?? null;
   },
   shop(d) {
     replace(PR, d.PR);
