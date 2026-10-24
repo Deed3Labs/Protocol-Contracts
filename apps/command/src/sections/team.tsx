@@ -1,10 +1,10 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
-import { LIVE } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import * as live from '../live/account';
 import { css } from '../runtime/dom';
 import { D, laneFrame, pctX } from './contracts';
 import { head, ic } from './core';
-import { AREAS, CAN, DAY, DEMO_PEOPLE, INVITES, LOG, LV, PEOPLE_T, RESULT, ROLES, RULES2, SECS, SIGNIN, TS, WAIT2, WEEK, vars } from './data';
+import { AREAS, CAN, DAY, DEMO_PEOPLE, INVITES, LOG, LV, MON, PEOPLE_T, RESULT, ROLES, RULES2, SECS, SIGNIN, TODAY, TS, WAIT2, WEEK, vars } from './data';
 import { kv, sec, vModal } from './governance';
 import { G, columns, figHtml, figSide, fmtD, gCell } from './growth';
 import { mkey } from './home';
@@ -17,6 +17,15 @@ export function accOf(p) {
 }
 export function grpName(p) {
   return p.off ? 'Off' : p.custom ? 'Custom' : ROLES[p.role][0];
+}
+/** A count as the page's titles say it: "Two things", "No one"… */
+export function words(n, one, many, none = 'No') {
+  const w = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'][n] ?? String(n);
+  return n ? `${w} ${n === 1 ? one : many}` : `${none} ${many}`;
+}
+/** The last seven days, oldest first: the prototype's week, or this one. */
+export function weekDays() {
+  return Array.from({ length: 7 }, (_, d) => (REAL ? TODAY - (6 - d) * DAY : H2(10, 15 + d, 0)));
 }
 export function MEMBERS_N() {
   return mCount((m) => m.status === 'active' || m.status === 'opened');
@@ -47,12 +56,7 @@ export function avatar(id, n, cls = '') {
   );
 }
 export function actsOf(id) {
-  const days = Array.from(
-    {
-      length: 7,
-    },
-    (_, d) => H2(10, 15 + d, 0),
-  );
+  const days = weekDays();
   return days.map(
     (t) => WEEK.filter((e) => e[1] === id && e[0] >= t && e[0] < t + DAY).length + LOG.filter((l) => l[2] === id && l[1] >= t && l[1] < t + DAY).length,
   );
@@ -142,7 +146,7 @@ export function coverage() {
               {ids.map((id) => avatar(id, pOf(id).n))}
               {Array.from(
                 {
-                  length: 3 - ids.length,
+                  length: Math.max(0, 3 - ids.length),
                 },
                 (_, __k) => (
                   <i key={__k} className="sg-sq empty" />
@@ -156,10 +160,15 @@ export function coverage() {
     </>
   );
 }
+/** Who did the most this week, from the log. */
+export function busiest() {
+  const tot = PEOPLE_T.map((p) => [p, actsOf(p.id).reduce((a, b) => a + b, 0)]).sort((a, b) => b[1] - a[1]);
+  return tot[0]?.[1] ? figHtml(tot[0][0].n, `the busiest this week · ${tot[0][1]} actions`) : figHtml('0', 'actions this week');
+}
 export function actCols() {
   return (
     <div className="ac">
-      {PEOPLE_T.filter((p) => ['K', 'DR', 'ML'].includes(p.id))
+      {(REAL ? PEOPLE_T.filter((p) => !p.off) : PEOPLE_T.filter((p) => ['K', 'DR', 'ML'].includes(p.id)))
         .concat([
           {
             id: 'SY',
@@ -168,7 +177,7 @@ export function actCols() {
         ])
         .map((p, __k) => {
           const v = actsOf(p.id),
-            m = 10;
+            m = REAL ? Math.max(10, ...PEOPLE_T.flatMap((x) => actsOf(x.id))) : 10;
           return (
             <div key={__k} className="ac-r">
               <span className="ac-k">
@@ -189,7 +198,7 @@ export function actCols() {
       <div className="ac-r ac-x">
         <span />
         <span className="ac-b ax-days">
-          {['Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Today'].map((d, __k) => (
+          {(REAL ? weekDays().map((t, i) => (i === 6 ? 'Today' : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(t).getUTCDay()])) : ['Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue', 'Today']).map((d, __k) => (
             <span key={__k}>{d}</span>
           ))}
         </span>
@@ -202,8 +211,18 @@ export function actCols() {
 export function teamPage() {
   const P = TS.pane,
     ones = CAN.filter((c) => c[1].length < 2).length;
-  const title =
-    P === 'overview'
+  const on = PEOPLE_T.filter((p) => !p.off).length;
+  const title = REAL
+    ? P === 'overview'
+      ? ones
+        ? `${words(ones, 'thing', 'things')} only one person can do.`
+        : 'Nothing rests on one person.'
+      : P === 'people'
+        ? `${words(on, 'person has', 'people have')} access.`
+        : P === 'roles'
+          ? `${vars.TEAMG.length} groups, and every member.`
+          : `${WAIT2.length ? words(WAIT2.length, 'action is', 'actions are') : 'Nothing is'} waiting on a second person.`
+    : P === 'overview'
       ? `${['', 'One thing', 'Two things', 'Three things', 'Four things'][ones]} only one person can do.`
       : P === 'people'
         ? `${['', 'One person has', 'Two people have', 'Three people have', 'Four people have', 'Five people have', 'Six people have'][PEOPLE_T.filter((p) => !p.off).length]} access.`
@@ -274,6 +293,7 @@ export function accessCell(span) {
   );
 }
 export function waitCell(span, onRule) {
+  const long = WAIT2.reduce((a, w) => (!a || w[5] > a[5] ? w : a), null);
   return (
     <section className={`cell ${span}`}>
       <header className="c-hd">
@@ -283,11 +303,18 @@ export function waitCell(span, onRule) {
           {' now'}
         </span>
       </header>
-      <div className="c-fig">{figHtml('30 h', 'the longest wait · AssurancePool v1.3 is waiting on you')}</div>
+      <div className="c-fig">
+        {REAL
+          ? long
+            ? figHtml(`${long[5]} h`, `the longest wait · ${long[0]} is waiting on ${long[2] === 'You' ? 'you' : 'someone else'}`)
+            : figHtml('0', 'waiting · nothing needs a second person now')
+          : figHtml('30 h', 'the longest wait · AssurancePool v1.3 is waiting on you')}
+      </div>
       <div className="c-body start">
         <div className="pn-list">
-          {WAIT2.map(([t, s, w, age, a], __k) => (
-            <button key={__k} type="button" className="pn-r wt2" data-go={a === 'money' ? 'money' : a === 'shop' ? 'shop' : 'contracts'}>
+          {REAL && !WAIT2.length ? <span className="small quiet">Nothing waiting.</span> : ''}
+          {WAIT2.map(([t, s, w, age, a, , , sec], __k) => (
+            <button key={__k} type="button" className="pn-r wt2" data-go={REAL ? sec : a === 'money' ? 'money' : a === 'shop' ? 'shop' : 'contracts'}>
               <i className="dt-ic" style={css(areaDot(a))} />
               <span className="pn-k">
                 <b>{t}</b>
@@ -295,7 +322,7 @@ export function waitCell(span, onRule) {
               </span>
               <span className="wt2-w">
                 <span className="small quiet">Waiting on</span>
-                <b className={w === 'Kai' ? 'me' : ''}>{w === 'Kai' ? 'You' : w}</b>
+                <b className={w === 'Kai' || w === 'You' ? 'me' : ''}>{w === 'Kai' ? 'You' : w}</b>
               </span>
               <span className="mono quiet small">{age}</span>
             </button>
@@ -307,8 +334,8 @@ export function waitCell(span, onRule) {
             <div key={__k} className="wb-r">
               <span className="wb-k">{t.split(' · ')[0]}</span>
               <span className="wb-b">
-                <i style={css(`width:${(h / 36) * 100}%;${h > med * 3 ? 'background:var(--underway)' : ''}`)} />
-                <em style={css(`left:${(med / 36) * 100}%`)} />
+                <i style={css(`width:${Math.min(100, (h / 36) * 100)}%;${h > med * 3 ? 'background:var(--underway)' : ''}`)} />
+                <em style={css(`left:${Math.min(100, (med / 36) * 100)}%`)} />
               </span>
               <b className="num">
                 {h}
@@ -329,11 +356,19 @@ export function waitCell(span, onRule) {
         </div>
       </div>
       {onRule ? (
-        strip([
-          ['Waiting', String(WAIT2.length)],
-          ['Longest', '30 h', '', 'warn'],
-          ['Usual', '2–8 h'],
-        ])
+        strip(
+          REAL
+            ? [
+                ['Waiting', String(WAIT2.length)],
+                ['Longest', long ? `${long[5]} h` : 'None', '', long ? 'warn' : ''],
+                ['Usual', usualWait()],
+              ]
+            : [
+                ['Waiting', String(WAIT2.length)],
+                ['Longest', '30 h', '', 'warn'],
+                ['Usual', '2–8 h'],
+              ],
+        )
       ) : (
         <div className="c-ft">
           <button type="button" data-tpane="rule">
@@ -344,6 +379,11 @@ export function waitCell(span, onRule) {
       )}
     </section>
   );
+}
+/** The usual wait for a second person, across the rules that approved something in 30 days. */
+export function usualWait() {
+  const hs = RULES2.filter((r) => r[3]).map((r) => r[4]);
+  return hs.length ? `${Math.min(...hs).toFixed(1)}–${Math.max(...hs).toFixed(1)} h` : 'None yet';
 }
 export function tOverview() {
   const ones = CAN.filter((c) => c[1].length < 2).length;
@@ -362,7 +402,7 @@ export function tOverview() {
     's-6',
     'Activity',
     'Actions a day, this week',
-    figHtml('Marcus Lee', 'the busiest this week · mostly on the poster route'),
+    REAL ? busiest() : figHtml('Marcus Lee', 'the busiest this week · mostly on the poster route'),
     actCols(),
     <div className="c-ft">
       <button type="button" data-rpane="log">
@@ -393,6 +433,15 @@ export function tOverview() {
       )}
     </>
   );
+}
+/** Devices the team is signed in on now. */
+export function devices() {
+  return PEOPLE_T.reduce((a, p) => a + p.dev.filter((d) => !d.includes('signed out')).length, 0);
+}
+/** Who joined first and last, as "Kai · Jun". */
+export function joined(first) {
+  const p = [...PEOPLE_T].sort((a, b) => (first ? a.since - b.since : b.since - a.since))[0];
+  return p ? `${p.n} · ${MON[new Date(p.since).getUTCMonth()]}` : 'None yet';
 }
 export function tPeople() {
   const rows = PEOPLE_T.map((p, __k) => {
@@ -463,17 +512,22 @@ export function tPeople() {
       </div>
       {strip([
         ['People', String(PEOPLE_T.length)],
-        ['Invited', '1'],
+        ['Invited', REAL ? String(INVITES.length) : '1'],
         ['Passkeys', `${PEOPLE_T.filter((p) => p.passkey).length} of ${PEOPLE_T.length}`, '', 'warn'],
-        ['Signed in on', '8 devices'],
+        ['Signed in on', REAL ? `${devices()} ${devices() === 1 ? 'device' : 'devices'}` : '8 devices'],
       ])}
     </section>
   );
+  // the lanes run from the first to join (or two months back) to a month ahead
+  const from = REAL ? Math.min(TODAY - 60 * DAY, ...PEOPLE_T.map((p) => p.since)) : D(6, 1),
+    to = REAL ? TODAY + 30 * DAY : D(11, 15);
   const tenure = gCell(
     's-6',
     'Joined',
     'Since the co-op formed',
-    figHtml('5', 'people in four months · one more invited'),
+    REAL
+      ? figHtml(String(PEOPLE_T.length), `on the team${INVITES.length ? ` · ${words(INVITES.length, 'more', 'more').toLowerCase()} invited` : ''}`)
+      : figHtml('5', 'people in four months · one more invited'),
     laneFrame(
       <>
         {PEOPLE_T.map((p, __k) => (
@@ -485,39 +539,53 @@ export function tPeople() {
             <span className="ln-l">
               <i
                 className="gb"
-                style={css(`left:${pctX(p.since, D(6, 1), D(11, 15))}%;width:${100 - pctX(p.since, D(6, 1), D(11, 15))}%;background:var(--fg)`)}
+                style={css(`left:${pctX(p.since, from, to)}%;width:${100 - pctX(p.since, from, to)}%;background:var(--fg)`)}
               />
             </span>
           </div>
         ))}
-        <div className="ln-r">
-          <span className="ln-k">
-            <b>Priya Shah</b>
-            <span>Invited</span>
-          </span>
-          <span className="ln-l">
-            <i
-              className="sl-seg proj"
-              style={css(`left:${pctX(D(10, 19), D(6, 1), D(11, 15))}%;width:${pctX(D(10, 26), D(6, 1), D(11, 15)) - pctX(D(10, 19), D(6, 1), D(11, 15))}%`)}
-            />
-          </span>
-        </div>
+        {REAL ? (
+          INVITES.map(([, n], __k) => (
+            <div key={__k} className="ln-r">
+              <span className="ln-k">
+                <b>{n}</b>
+                <span>Invited</span>
+              </span>
+              <span className="ln-l" />
+            </div>
+          ))
+        ) : (
+          <div className="ln-r">
+            <span className="ln-k">
+              <b>Priya Shah</b>
+              <span>Invited</span>
+            </span>
+            <span className="ln-l">
+              <i
+                className="sl-seg proj"
+                style={css(`left:${pctX(D(10, 19), D(6, 1), D(11, 15))}%;width:${pctX(D(10, 26), D(6, 1), D(11, 15)) - pctX(D(10, 19), D(6, 1), D(11, 15))}%`)}
+              />
+            </span>
+          </div>
+        )}
       </>,
-      D(6, 1),
-      D(11, 15),
+      from,
+      to,
       'month',
       'gt',
     ),
     strip([
-      ['Longest', 'Kai · Jun'],
-      ['Newest', 'Accountant · Oct'],
+      ['Longest', REAL ? joined(true) : 'Kai · Jun'],
+      ['Newest', REAL ? joined(false) : 'Accountant · Oct'],
     ]),
   );
   const sess = gCell(
     's-6',
     'Sign-ins',
     'Last 7 days',
-    figHtml('1', 'new device this week · Marcus Lee’s iPhone, confirmed by Kai'),
+    REAL
+      ? figHtml(String(SIGNIN.filter((s) => s[5]).length), `${SIGNIN.filter((s) => s[5]).length === 1 ? 'person' : 'people'} on a new device · ${SIGNIN.length} signed in`)
+      : figHtml('1', 'new device this week · Marcus Lee’s iPhone, confirmed by Kai'),
     <div className="si">
       {SIGNIN.map(([k, n, dev, days, last, flag], __k) => (
         <div key={__k} className="si-r">
@@ -565,6 +633,23 @@ export function tPeople() {
         </>,
       )}
     </>
+  );
+}
+/** The groups whose levels pass a test, by name: "Admin, Protocol". */
+/** How many can add or turn off a person: Approve in Access. */
+export function adminsFig() {
+  const i = SECS.findIndex(([k]) => k === 'team'),
+    a = PEOPLE_T.filter((p) => !p.off && accOf(p)[i] === 4);
+  return a.length === 1
+    ? figHtml('1', `admin · if ${a[0].n} is out, nobody else can add or turn off a person`)
+    : figHtml(String(a.length), 'can add or turn off a person');
+}
+export function groupsWhere(test, auto = false) {
+  return (
+    Object.entries(ROLES)
+      .filter(([k, [, , a]]) => (auto || vars.TEAMG.includes(k)) && test(a))
+      .map(([, [n]]) => n)
+      .join(', ') || 'None'
   );
 }
 export function tRoles() {
@@ -621,10 +706,10 @@ export function tRoles() {
         {lvKey()}
       </div>
       {strip([
-        ['Approve anything', 'Admin'],
-        ['Approve money', 'Admin, Protocol'],
-        ['Sign on-chain', 'Admin, Protocol, Board'],
-        ['Read-only', 'Members, Outside, Investors'],
+        ['Approve anything', REAL ? groupsWhere((a) => a.every((v) => v === 4)) : 'Admin'],
+        ['Approve money', REAL ? groupsWhere((a) => a[SECS.findIndex(([k]) => k === 'money')] === 4) : 'Admin, Protocol'],
+        ['Sign on-chain', REAL ? groupsWhere((a) => a[SECS.findIndex(([k]) => k === 'contracts')] === 4) : 'Admin, Protocol, Board'],
+        ['Read-only', REAL ? groupsWhere((a) => a.every((v) => v <= 2), true) : 'Members, Outside, Investors'],
         ['Custom access', `${PEOPLE_T.filter((p) => p.custom).length} ${PEOPLE_T.filter((p) => p.custom).length === 1 ? 'person' : 'people'}`],
       ])}
     </section>
@@ -632,8 +717,8 @@ export function tRoles() {
   const per = gCell(
     's-6',
     'People per group',
-    'Including the invite',
-    figHtml('1', 'admin · if Kai is out, nobody else can add or turn off a person'),
+    REAL ? 'Including invites' : 'Including the invite',
+    REAL ? adminsFig() : figHtml('1', 'admin · if Kai is out, nobody else can add or turn off a person'),
     <div className="hbars">
       {Object.entries(ROLES)
         .filter(([k]) => vars.TEAMG.includes(k))
@@ -643,33 +728,46 @@ export function tRoles() {
             <div key={__k} className="hb">
               <span className="hb-k">{n}</span>
               <span className="hb-bar">
-                <i style={css(`width:${(c / 2) * 100}%;background:var(--fg)`)} />
+                <i style={css(`width:${Math.min(100, (c / 2) * 100)}%;background:var(--fg)`)} />
               </span>
               <b className="num">{c}</b>
             </div>
           );
         })}
     </div>,
-    strip([
-      ['Groups with one person', '4', '', 'warn'],
-      ['Field, after Priya', '2'],
-    ]),
+    strip(
+      REAL
+        ? [
+            ['Groups with one person', String(vars.TEAMG.filter((k) => PEOPLE_T.filter((p) => p.role === k).length + INVITES.filter((i) => i[2] === k).length === 1).length), '', 'warn'],
+            ['Invited', String(INVITES.length)],
+          ]
+        : [
+            ['Groups with one person', '4', '', 'warn'],
+            ['Field, after Priya', '2'],
+          ],
+    ),
   );
   const sp = Object.entries(ROLES)
     .filter(([k]) => vars.TEAMG.includes(k))
     .map(([k, [n, , a]]) => [n, a.filter((v) => v === 4).length]);
+  const wide = [...sp].sort((a, b) => b[1] - a[1])[0],
+    narrow = [...sp].sort((a, b) => a[1] - b[1])[0];
   const reach = gCell(
     's-6',
     'Approval reach',
     'Sections a group can approve in',
-    figHtml('11 of 11', 'for Admin · every other group approves in three or fewer'),
+    REAL && sp.length
+      ? figHtml(`${wide[1]} of ${SECS.length}`, `for ${wide[0]}`)
+      : REAL
+        ? figHtml('0', 'groups')
+        : figHtml('11 of 11', 'for Admin · every other group approves in three or fewer'),
     columns(sp, {
       hi: 0,
       h: 120,
     }),
     strip([
-      ['Widest', 'Admin'],
-      ['Narrowest', 'Outside · none'],
+      ['Widest', REAL ? (wide?.[0] ?? 'None') : 'Admin'],
+      ['Narrowest', REAL ? (narrow ? `${narrow[0]} · ${narrow[1] || 'none'}` : 'None') : 'Outside · none'],
     ]),
   );
   return (
@@ -688,6 +786,9 @@ export function tRoles() {
   );
 }
 export function tRule() {
+  const nMax = Math.max(9, ...RULES2.map((r) => r[3])),
+    hMax = Math.max(8, ...RULES2.map((r) => r[4])),
+    slow = RULES2.filter((r) => r[3]).sort((a, b) => b[4] - a[4])[0];
   const rules = (
     <section className="cell s-12">
       <header className="c-hd">
@@ -712,13 +813,13 @@ export function tRule() {
               <span className="rl2-a">{ids.map((id) => avatar(id, pOf(id).n))}</span>
               <span className="rl2-n">
                 <span className="rl2-bar">
-                  <i style={css(`width:${(n / 9) * 100}%`)} />
+                  <i style={css(`width:${(n / nMax) * 100}%`)} />
                 </span>
                 <b className="num">{n}</b>
               </span>
               <span className="rl2-n">
                 <span className="rl2-bar">
-                  <i style={css(`width:${(h / 8) * 100}%;background:${h > 6 ? 'var(--underway)' : 'var(--fg)'}`)} />
+                  <i style={css(`width:${(h / hMax) * 100}%;background:${h > 6 ? 'var(--underway)' : 'var(--fg)'}`)} />
                 </span>
                 <b className="num">{n ? h.toFixed(1) + ' h' : '—'}</b>
               </span>
@@ -729,14 +830,14 @@ export function tRule() {
       {strip([
         ['Approved, 30 days', String(RULES2.reduce((a, r) => a + r[3], 0))],
         ['Self-approved', 'None'],
-        ['Slowest', 'On-chain · 7.8 h', '', 'warn'],
+        REAL ? ['Slowest', slow ? `${slow[0]} · ${slow[4].toFixed(1)} h` : 'None yet', '', slow ? 'warn' : ''] : ['Slowest', 'On-chain · 7.8 h', '', 'warn'],
         ['Waiting now', String(WAIT2.length)],
       ])}
     </section>
   );
   return (
     <>
-      {G('Two-person rule', 'Written in the co-op’s policy v1.2', '', rules)}
+      {G('Two-person rule', REAL ? 'Enforced by the API and the database' : 'Written in the co-op’s policy v1.2', '', rules)}
       {G(
         'Now',
         '',
@@ -747,7 +848,7 @@ export function tRule() {
             's-6',
             'Who approves whom',
             'Last 30 days',
-            figHtml('20', 'approvals · nobody approved their own'),
+            figHtml(REAL ? String(RULES2.reduce((a, r) => a + r[3], 0)) : '20', 'approvals · nobody approved their own'),
             apprMatrix(),
             strip([
               ['Waiting', String(WAIT2.length)],
@@ -758,6 +859,15 @@ export function tRule() {
       )}
     </>
   );
+}
+
+/** What's waiting that only this person can approve, by name. */
+export function onlyThem(id) {
+  const sole = WAIT2.filter((w) => {
+    const r = RULES2.find((x) => w[1].endsWith(` · ${x[0]}`));
+    return r && r[2].length === 1 && r[2][0] === id;
+  });
+  return sole.map((w) => w[0]).join(', ') || 'Nothing only they can approve';
 }
 
 /* ── person panel ─────────────────────────────────────────────────────── */
@@ -822,7 +932,7 @@ export function teamPane() {
         kv([
           ['Passkey', p.passkey ? 'Set up' : <span style={css('color:var(--underway)')}>Not set up</span>],
           ['Ops Safe', p.signer ? 'Signer, 1 of 3' : 'Not a signer'],
-          ['Joined', fmtD(p.since) + ' 2026'],
+          ['Joined', fmtD(p.since) + (REAL ? ` ${new Date(p.since).getUTCFullYear()}` : ' 2026')],
           ['Last seen', p.last, 1],
         ]),
       )}
@@ -1147,7 +1257,7 @@ export function openTFlow(kind, id) {
       rows: [
         ['Sessions', 'Ended on every device'],
         ['Their actions', 'Kept, never deleted'],
-        ['Waiting on them', p.id === 'DR' ? 'PayoutPool top-up · Kai can still pick someone else' : 'Nothing'],
+        ['Waiting on them', REAL ? onlyThem(p.id) : p.id === 'DR' ? 'PayoutPool top-up · Kai can still pick someone else' : 'Nothing'],
         ['Ops Safe key', p.signer ? 'Still a signer until a multisig change removes it' : 'None', 1],
       ],
       note: p.signer ? (
@@ -1195,7 +1305,7 @@ export function openTFlow(kind, id) {
       btn: 'Send it again',
       api: () => live.teamChange(f, () => live.resendInvite(id)),
       steps: ['Sent the invite again', 'Reset the 7 days'],
-      done: ['Sent again.', 'It now expires 29 Oct.'],
+      done: ['Sent again.', REAL ? 'It expires in 7 days.' : 'It now expires 29 Oct.'],
     };
   } else if (kind === 'role') {
     const [n, w, a, auto] = ROLES[id],
@@ -1270,7 +1380,12 @@ export function openTFlow(kind, id) {
         ['Median wait', n ? `${h.toFixed(1)} hours` : 'None yet'],
         ['Proposer approves', 'Never', 1],
       ],
-      note: (
+      note: REAL ? (
+        <>
+          <b>The person who proposes can never approve.</b>
+          {' The API refuses it, and so does the database.'}
+        </>
+      ) : (
         <>
           <b>Changing this rule needs a board vote.</b>
           {' It’s written in the two-person policy, v1.2.'}

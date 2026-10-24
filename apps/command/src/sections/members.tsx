@@ -1,6 +1,6 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { live } from '../live/actions';
-import { LIVE } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import { fig } from '../live/figures';
 import { SEED_NEXT_BATCH } from '@clear/command-types';
 import { Fragment } from 'react';
@@ -14,11 +14,18 @@ import { modalShell, onKey, vLevel } from './shell';
 export function mCount(f) {
   return MEMBERS.filter(f).length;
 }
+/** A share of nothing is 0.0%, not NaN. */
+const pz = (a, b) => (b ? pct(a, b) : pct(0, 1));
+/** Batches sent: none while every date is blank (the empty preview's zeros). */
+/** A figure the API hasn't sent yet (live, before it answers): nothing. */
+const fz = (k, d) => fig(k) ?? d;
+const bCount = () => (BATCH_DATE.some((t) => t) ? BATCH_DATE.length : 0);
 export function mName(m) {
   return MS.reveal ? `${m.first} ${m.last}` : `${mask(m.first)} ${mask(m.last)}`;
 }
 /* stacked columns, one per batch: active / opened / not opened */
 export function batchCols() {
+  if (!bCount()) return <span className="small quiet">None yet.</span>;
   return (
     <div className="bcols">
       {B_ACT.map((a, i) => {
@@ -57,7 +64,7 @@ export function membersPage() {
       : MS.pane === 'batches'
         ? nextBatch()
           ? `Batch ${nextBatch().number} is waiting on approval.`
-          : `${BATCH_DATE.length} batches sent.`
+          : `${bCount()} batches sent.`
         : `${int(MEMBERS.length)} invited, ${int(mCount((m) => m.status === 'active'))} active.`;
   const tools = (
     <button className="btn btn-p" type="button" data-mbatch="">
@@ -77,7 +84,7 @@ export function membersPage() {
       {head(
         <>
           {'Members · '}
-          <b>Demo data</b>
+          <b>{REAL ? 'Real data' : 'Demo data'}</b>
         </>,
         title,
         tools,
@@ -146,10 +153,10 @@ export function unitCell() {
   return gCell(
     's-8',
     'Members',
-    `${BATCH_DATE.length} batches · ${unit === 1 ? 'a square each' : 'a square is ' + unit}`,
-    figSide(int(act), 'active members', `${pct(act, total)} of ${int(total)} invited`),
+    `${bCount()} batches · ${unit === 1 ? 'a square each' : 'a square is ' + unit}`,
+    figSide(int(act), 'active members', `${pz(act, total)} of ${int(total)} invited`),
     <>
-      {grid}
+      {total ? grid : <span className="small quiet">None yet.</span>}
       {key}
     </>,
     <div className="c-ft split">
@@ -163,7 +170,7 @@ export function unitCell() {
       </button>
       <span className="rule" aria-hidden="true" />
       {footItem({
-        t: `Waitlist ${int(fig('members.waitlist.total'))} · median wait ${fig('members.waitlist.median_days')} days`,
+        t: `Waitlist ${int(fz('members.waitlist.total', 0))} · median wait ${fz('members.waitlist.median_days', 0)} days`,
       })}
     </div>,
   );
@@ -174,7 +181,7 @@ export function mOverview() {
     inv = mCount((m) => m.status === 'invited'),
     spent = mCount((m) => m.spend),
     quiet = mCount((m) => m.quiet);
-  const W_OPEN = fig('members.weekly.opened');
+  const W_OPEN = fz('members.weekly.opened', []);
   const kpis = (
     <>
       {kpiCell(
@@ -184,19 +191,19 @@ export function mOverview() {
         W_OPEN.map((v, i, a) => a.slice(0, i + 1).reduce((x, y) => x + y, 0)),
         'All time',
       )}
-      {kpiCell('Active', int(act), `${pct(act, MEMBERS.length)} of everyone invited`, fig('members.weekly.active_total'), 'All time')}
+      {kpiCell('Active', int(act), `${pct(act, MEMBERS.length)} of everyone invited`, fz('members.weekly.active_total', []), 'All time')}
       {kpiCell(
         'First spends',
         int(spent),
-        `${pct(spent, act)} of active members · ${fig('members.first_spends.poster_ten')} were a poster’s $10`,
-        fig('members.weekly.first_spend_total'),
+        `${pct(spent, act)} of active members · ${fz('members.first_spends.poster_ten', 0)} were a poster’s $10`,
+        fz('members.weekly.first_spend_total', []),
         'All time',
       )}
       {kpiCell(
         'Waitlist',
-        int(fig('members.waitlist.total')),
-        `waiting for an invite · median ${fig('members.waitlist.median_days')} days`,
-        fig('members.weekly.waitlist_total'),
+        int(fz('members.waitlist.total', 0)),
+        `waiting for an invite · median ${fz('members.waitlist.median_days', 0)} days`,
+        fz('members.weekly.waitlist_total', []),
         'Now',
       )}
     </>
@@ -204,13 +211,13 @@ export function mOverview() {
 
   /* where everyone is: one row per stage, bars on a shared square-root scale so 1,500 and 64 both read */
   const stages = [
-    ['Waitlist', fig('members.waitlist.total'), 'var(--line)', 'Waiting for an invite'],
+    ['Waitlist', fz('members.waitlist.total', 0), 'var(--line)', 'Waiting for an invite'],
     ['Invited, not opened', inv, 'var(--fg-50)', `${quiet} have gone quiet for 3+ weeks`],
     ['Opened, not funded', opn, 'var(--land)', 'No bank, deposit or $5 yet'],
     ['Active, no spend yet', act - spent, 'var(--fg-70)', 'Funded, waiting on a first spend'],
     ['Spent', spent, 'var(--fg)', 'Made a first spend at a partner shop'],
   ];
-  const smax = Math.sqrt(fig('members.waitlist.total'));
+  const smax = Math.sqrt(fz('members.waitlist.total', 0));
   const pipe = gCell(
     's-7',
     'Where everyone is',
@@ -225,7 +232,7 @@ export function mOverview() {
           </span>
           <b className="num stg-v">{int(v)}</b>
           <span className="stg-bar">
-            <i style={css(`width:${((Math.sqrt(v) / smax) * 100).toFixed(1)}%;background:${c}`)} />
+            <i style={css(`width:${(smax ? (Math.sqrt(v) / smax) * 100 : 0).toFixed(1)}%;background:${c}`)} />
           </span>
         </div>
       ))}
@@ -253,15 +260,15 @@ export function mOverview() {
     's-5',
     'How they funded',
     'All time',
-    figSide(pct(how[0][1], act), 'connected a bank', 'the most common way in'),
+    figSide(pz(how[0][1], act), 'connected a bank', 'the most common way in'),
     <>
       {compBar(how.map(([k, v], i) => [k, v, SRC_COL[i]]))}
       <div className="how two">
         <span className="k">Median days, invite to active</span>
-        <b className="num">6</b>
+        <b className="num">{REAL ? <span className="quiet">–</span> : 6}</b>
         <span className="k">From a poster</span>
         <b className="num">
-          {pct(
+          {pz(
             mCount((m) => m.status === 'active' && m.src === 'Poster'),
             act,
           )}
@@ -272,11 +279,13 @@ export function mOverview() {
   const bcell = gCell(
     's-7',
     'Activation by batch',
-    `${BATCH_DATE.length} batches of 25`,
-    figHtml(
-      `${Math.round((B_ACT[0] / 25) * 100)}%`,
-      `active in batch 1, the oldest · batch ${BATCH_DATE.length} went out ${daysAgo(BATCH_DATE[BATCH_DATE.length - 1])}`,
-    ),
+    `${bCount()} batches of 25`,
+    bCount()
+      ? figHtml(
+          `${Math.round((B_ACT[0] / 25) * 100)}%`,
+          `active in batch 1, the oldest · batch ${BATCH_DATE.length} went out ${daysAgo(BATCH_DATE[BATCH_DATE.length - 1])}`,
+        )
+      : figHtml('0%', 'active · no batch sent yet'),
     <>
       {batchCols()}
       {mkey([
@@ -301,16 +310,20 @@ export function mOverview() {
     's-5',
     'Where first spends happen',
     `${spent} first spends`,
-    figHtml(shops[0][0], `${shops[0][1]} first spends, the most of any shop`),
-    <div className="how">
-      {shops.map(([k, v], __k) => (
-        <Fragment key={__k}>
-          <span className="k">{k}</span>
-          <b className="num">{v}</b>
-          <span className="quiet num">{pct(v, spent)}</span>
-        </Fragment>
-      ))}
-    </div>,
+    shops.length ? figHtml(shops[0][0], `${shops[0][1]} first spends, the most of any shop`) : '',
+    shops.length ? (
+      <div className="how">
+        {shops.map(([k, v], __k) => (
+          <Fragment key={__k}>
+            <span className="k">{k}</span>
+            <b className="num">{v}</b>
+            <span className="quiet num">{pct(v, spent)}</span>
+          </Fragment>
+        ))}
+      </div>
+    ) : (
+      <span className="small quiet">None yet.</span>
+    ),
     <div className="c-ft">
       <button type="button" data-go="merchants">
         <span className="t">Merchants</span>
@@ -334,8 +347,9 @@ export function mOverview() {
     's-12',
     'By city',
     'Invited and active',
-    figHtml(cities[0][0], `${cities[0][1].n} invited, the most of any city`),
+    cities.length ? figHtml(cities[0][0], `${cities[0][1].n} invited, the most of any city`) : '',
     <>
+      {cities.length ? '' : <span className="small quiet">None yet.</span>}
       <div className="cityrows">
         {cities.map(([c, o], __k) => (
           <div key={__k} className="cr">
@@ -395,10 +409,10 @@ export function mBatches() {
     city: ['Redlands first', 'Where most partner shops are'],
   };
   /* preview of the next n on the waitlist */
-  const pv = fig('members.next_batch.preview')[n];
+  const pv = fig('members.next_batch.preview')?.[n] ?? { wk: [0, 0, 0], src: [0, 0], city: [0, 0, 0, 0] };
   const NB = nextBatch(),
-    after = (NB ? NB.number : BATCH_DATE.length) + 1,
-    waiting = fig('members.waitlist.total');
+    after = (NB ? NB.number : bCount()) + 1,
+    waiting = fz('members.waitlist.total', 0);
   const nextCell = gCell(
     's-5',
     'Next batch',
@@ -482,16 +496,21 @@ export function mBatches() {
       </button>
     </div>,
   );
-  const ages = fig('members.waitlist.wait_buckets');
+  const ages = fz('members.waitlist.wait_buckets', []);
   const ageCell = gCell(
     's-7',
     'How long people have waited',
     `${int(waiting)} on the waitlist`,
-    figHtml(`${fig('members.waitlist.median_days')} days`, `median wait · ${int(fig('members.waitlist.over_4_weeks'))} have waited over 4 weeks`),
-    columns(ages, {
-      hi: 5,
-      h: 150,
-    }),
+    figHtml(`${fz('members.waitlist.median_days', 0)} days`, `median wait · ${int(fz('members.waitlist.over_4_weeks', 0))} have waited over 4 weeks`),
+    ages.length ? (
+      columns(ages, {
+        hi: 5,
+        h: 150,
+        max: Math.max(...ages.map((a) => a[1])) || 1,
+      })
+    ) : (
+      <span className="small quiet">None yet.</span>
+    ),
     <div className="c-ft">
       <div className="row">
         <span className="t">The longest-waiting go first unless you pick otherwise</span>
@@ -502,16 +521,24 @@ export function mBatches() {
     's-5',
     'Who is waiting',
     `${int(waiting)} on the waitlist`,
-    figHtml(pct(fig('members.waitlist.sources')[0][1], waiting), 'joined from a poster'),
+    figHtml(pz(fz('members.waitlist.sources', [])[0]?.[1] ?? 0, waiting), 'joined from a poster'),
     <>
-      {compBar(fig('members.waitlist.sources').map(([k, v], i) => [k, v, ['var(--fg)', 'var(--line)'][i]]))}
+      {fz('members.waitlist.sources', []).length ? (
+        compBar(fig('members.waitlist.sources').map(([k, v], i) => [k, v, ['var(--fg)', 'var(--line)'][i]]))
+      ) : (
+        <span className="small quiet">None yet.</span>
+      )}
       <span className="lbl" style={css('margin-top:8px')}>
         City
       </span>
-      {compBar(fig('members.waitlist.cities').map(([k, v], i) => [k, v, ['var(--fg)', 'var(--land)', 'var(--fg-50)', 'var(--line)'][i]]))}
+      {fz('members.waitlist.cities', []).length ? (
+        compBar(fig('members.waitlist.cities').map(([k, v], i) => [k, v, ['var(--fg)', 'var(--land)', 'var(--fg-50)', 'var(--line)'][i]]))
+      ) : (
+        <span className="small quiet">None yet.</span>
+      )}
     </>,
   );
-  const rows = B_ACT.map((a, i) => ({
+  const rows = B_ACT.slice(0, bCount()).map((a, i) => ({
     b: i + 1,
     sent: BATCH_DATE[i],
     a,
@@ -552,6 +579,15 @@ export function mBatches() {
           ) : (
             ''
           )}
+          {NB || rows.length ? (
+            ''
+          ) : (
+            <tr>
+              <td className="l" colSpan={8}>
+                <span className="small quiet">None yet.</span>
+              </td>
+            </tr>
+          )}
           {rows.map((r, __k) => (
             <tr key={__k}>
               <td className="l">
@@ -582,7 +618,7 @@ export function mBatches() {
             <td>{int(MEMBERS.length)}</td>
             <td>{int(mCount((m) => m.status !== 'invited'))}</td>
             <td>{int(mCount((m) => m.status === 'active'))}</td>
-            <td>{pct(mCount((m) => m.status === 'active'), MEMBERS.length)}</td>
+            <td>{pz(mCount((m) => m.status === 'active'), MEMBERS.length)}</td>
             <td />
             <td />
           </tr>
@@ -674,6 +710,15 @@ export function mAccounts() {
               </tr>
             </thead>
             <tbody>
+              {slice.length ? (
+                ''
+              ) : (
+                <tr>
+                  <td className="l" colSpan={8}>
+                    <span className="small quiet">None yet.</span>
+                  </td>
+                </tr>
+              )}
               {slice.map((m, __k) => (
                 <tr key={__k} className="click" data-member={m.id} tabIndex="0">
                   <td className="l">
@@ -911,22 +956,24 @@ export function memberPane() {
 export function openMemberFlow(kind, id) {
   vars.lastFocus = document.activeElement;
   const m = MEMBERS.find((x) => x.id === id);
+  // the batch after the one waiting, or after the last sent; the prototype's is 14
+  const nb = REAL ? `${(nextBatch()?.number ?? bCount()) + 1}` : '14';
   const f = {
     resend: {
       t: 'Resend invite',
-      h: mName(m),
+      h: m && mName(m),
       rows: [
-        ['Batch', String(m.batch)],
-        ['Invited', fmtD(m.invited)],
-        ['Window ends', fmtD(m.invited + 90 * DAY), 1],
+        ['Batch', String(m?.batch)],
+        ['Invited', fmtD(m?.invited)],
+        ['Window ends', fmtD(m?.invited + 90 * DAY), 1],
       ],
       btn: 'Resend invite',
       steps: ['Made a fresh invite link', 'Sent it by text and email', 'Logged the resend'],
-      done: ['Invite resent.', 'Their window still ends ' + fmtD(m.invited + 90 * DAY) + '.'],
+      done: ['Invite resent.', 'Their window still ends ' + fmtD(m?.invited + 90 * DAY) + '.'],
     },
     nudge1: {
       t: 'Send a nudge',
-      h: mName(m),
+      h: m && mName(m),
       rows: [
         ['Status', 'Opened, not funded'],
         ['Message', 'One step left: connect a bank or add $5'],
@@ -938,7 +985,7 @@ export function openMemberFlow(kind, id) {
     },
     off: {
       t: 'Turn off access',
-      h: mName(m),
+      h: m && mName(m),
       rows: [
         ['What stops', 'Sign-in and new spending'],
         ['What stays', 'Their account record and history'],
@@ -949,7 +996,7 @@ export function openMemberFlow(kind, id) {
       done: ['Access turned off.', 'Their record is kept. You can turn it back on.'],
     },
     batch: {
-      t: 'Propose batch 14',
+      t: `Propose batch ${nb}`,
       h: `${MS.size} people`,
       rows: [
         [
@@ -963,9 +1010,9 @@ export function openMemberFlow(kind, id) {
         ['Approval', 'Someone else approves before it sends'],
         ['Window', '90 days from the day it sends', 1],
       ],
-      btn: 'Propose batch 14',
+      btn: `Propose batch ${nb}`,
       steps: [`Picked ${MS.size} people from the waitlist`, 'Checked none are already members', 'Sent it to Needs you for a second approval'],
-      done: ['Batch 14 proposed.', 'It sends once someone else approves it.'],
+      done: [`Batch ${nb} proposed.`, 'It sends once someone else approves it.'],
     },
   }[kind];
   modalShell(
@@ -1037,7 +1084,7 @@ export function stageFlow(stages, hi, unit) {
           {int(tot)} {unit}
         </span>
         <span>
-          {pct(stages[hi][1], tot)} {stages[hi][0].toLowerCase()}
+          {pz(stages[hi][1], tot)} {stages[hi][0].toLowerCase()}
         </span>
       </div>
     </>
@@ -1057,5 +1104,5 @@ export function daysAgo(t) {
 
 /** The batch waiting for approval: the API's in the live app, the prototype's in the preview. */
 export function nextBatch() {
-  return LIVE ? (vars.NEXT_BATCH ?? null) : SEED_NEXT_BATCH;
+  return REAL ? (vars.NEXT_BATCH ?? null) : SEED_NEXT_BATCH;
 }

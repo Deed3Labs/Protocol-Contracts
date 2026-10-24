@@ -663,3 +663,27 @@ Content-Security-Policy is enforced from the first deploy.
 - **Checked:** the production build served with exactly these headers, in Chrome: nothing refused by
   the CSP (only Privy's own frame policy refuses localhost, as it will until the origin is allowed),
   the worker activates and caches only the shell, the app opens offline, and the manifest is read.
+
+## Phase 9: real data only (dev)
+
+Kai, 2026-10-24: dev is the real thing on testnet. No seed, no demo people, no prototype figures.
+
+- **The app empties the prototype's data at start-up** (`src/live/empty.ts`), live and in the dev-only
+  empty preview (`?preview=1&empty=1`), and every page draws an honest empty state. Dates are today's.
+  `e2e/empty.spec.ts` crawls every page, tab and the first controls on each under the empty preview
+  and fails on a thrown error, a prototype name, or NaN / Infinity / undefined on screen.
+- **The structure stays** (`services/command/structure.ts`, written on every start into empty tables,
+  seed or not): the protocol's 31 contracts and their links, the nine entities, every one not formed,
+  each board's seats with no one in them, and who decides what. No people, no dates, no events.
+- **Permissions is worked out from the real team:** who can approve in each section, the two-person
+  rule per section with its approvals and median wait in the last 30 days (`GET
+  /proposals?area=all&approved=30`), and what's waiting now.
+- **Live providers for every section:** Field and Governance read Command's own tables as of today;
+  Merchants reads the merchant app's tables (`merchantsLive`).
+- **Site visits from Umami, not Plausible.** Self-hosted on Railway (`umami` on Umami 3.4.0, with its
+  own Postgres), open source and cookie-free; lighter to host than Plausible Community Edition, which
+  needs ClickHouse. Command signs in as a view-only Umami user (`UMAMI_API_URL` over the private
+  network, `UMAMI_WEBSITE_ID`, `UMAMI_USERNAME`, `UMAMI_PASSWORD`). Umami's breakdowns count visitors,
+  so the visits Growth shows are visitors. The site loads the tracker from `NEXT_PUBLIC_UMAMI_SRC` and
+  `NEXT_PUBLIC_UMAMI_WEBSITE_ID` (clearpath-website PR #96); every event leaves with no hash and only
+  `utm_` parameters, its referrer too.

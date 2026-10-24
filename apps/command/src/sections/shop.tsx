@@ -1,6 +1,6 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { dollars, live, picked, typed } from '../live/actions';
-import { LIVE } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import { api } from '../live/api';
 import { attrs, css } from '../runtime/dom';
 import { D, laneFrame, pctX } from './contracts';
@@ -90,11 +90,14 @@ export function retTrack(r) {
 /** Days from paid to handed to the carrier: the median bucket, and the share within 2 days. */
 export function shipTimes() {
   const total = SHIP_DAYS.reduce((a, b) => a + b[1], 0);
+  if (!total) return { median: '—', within2: 0 };
   let c = 0;
   const median = SHIP_DAYS.find(([, n]) => (c += n) >= total / 2)[0];
   return { median, within2: SHIP_DAYS.slice(0, 3).reduce((a, b) => a + b[1], 0) / total };
 }
 const pc0 = (v) => `${(v * 100).toFixed(0)}%`;
+/* a share of a total that may be nothing yet: 0, not NaN */
+const per = (a, b) => (b ? a / b : 0);
 /* the line's word for a product whose variants share a price: "Graphic", "Patches" */
 const lineWord = (p) => (p.line === 'graphic' || p.line === 'patch' ? LINES[p.line][0].split(' ')[0] : p.n);
 export function ordTotal(o) {
@@ -180,11 +183,13 @@ export function stackCols() {
   const lines = ['logo', 'graphic', 'layers', 'patch'],
     mx = Math.max(...REV_W),
     H = 150;
-  const notes = {
-    2: 'Long sleeve',
-    4: 'Graphic Tees',
-    5: 'Hoodie sold out',
-  };
+  const notes = REAL
+    ? {}
+    : {
+        2: 'Long sleeve',
+        4: 'Graphic Tees',
+        5: 'Hoodie sold out',
+      };
   return (
     <>
       <div className="scol sc8" style={css(`--colh:${H}px`)}>
@@ -392,6 +397,7 @@ export function stockGrid() {
             <b className="num">{v.reduce((a, b) => a + b, 0)}</b>
           </button>
         ))}
+        {rows.length ? '' : <span className="small quiet">None yet.</span>}
       </div>
       <div className="mkey">
         <span>
@@ -429,7 +435,7 @@ export function coverBars() {
               <span className="wb-b">
                 {out ? (
                   <span className="cvb-out" style={css(`left:calc(${(p.lead / mx) * 100}% + 8px)`)}>
-                    Out · 120 arrive 30 Oct
+                    {REAL ? 'Out of stock' : 'Out · 120 arrive 30 Oct'}
                   </span>
                 ) : (
                   <i style={css(`width:${Math.min(100, (w / mx) * 100)}%;${short ? 'background:var(--underway)' : ''}`)} />
@@ -440,6 +446,7 @@ export function coverBars() {
             </button>
           );
         })}
+        {list.length ? '' : <span className="small quiet">None yet.</span>}
         <div className="wb-ax">
           <span />
           <span className="wb-axl">
@@ -575,7 +582,7 @@ export function pipeline() {
               {k === 'closed' ? (
                 <>
                   <span className="f5-bar">
-                    <i style={css(`width:${(SHOP.shipped / SHOP.ord) * 100}%`)} />
+                    <i style={css(`width:${per(SHOP.shipped, SHOP.ord) * 100}%`)} />
                   </span>
                   <span className="small quiet">
                     {SHOP.shipped}
@@ -634,8 +641,8 @@ export function shopPage() {
       : P === 'products'
         ? `${onShelf} products on the shelf.`
         : P === 'inventory'
-          ? `${['Nothing needs', 'One product needs', 'Two products need', 'Three products need'][low.length]} a reorder.`
-          : `${['No orders', 'One order', 'Two orders', 'Three orders', 'Four orders', 'Five orders', 'Six orders'][toPack]} to pack.`;
+          ? `${['Nothing needs', 'One product needs', 'Two products need', 'Three products need'][low.length] ?? `${low.length} products need`} a reorder.`
+          : `${['No orders', 'One order', 'Two orders', 'Three orders', 'Four orders', 'Five orders', 'Six orders'][toPack] ?? `${toPack} orders`} to pack.`;
   const tools =
     P === 'inventory' ? (
       <button className="btn btn-p" type="button" data-sflow="restock" data-sid="tn">
@@ -698,7 +705,7 @@ export function shopPage() {
 export function sOverview() {
   const S = SHOP,
     L = SW.length - 1,
-    aov = REV_W.map((r, i) => r / ORD_W[i]);
+    aov = REV_W.map((r, i) => per(r, ORD_W[i]));
   const kpis = (
     <>
       {kpiCell('Sales', money(S.rev), `+${((S.rev / S.prev - 1) * 100).toFixed(1)}% on the 4 weeks before`, REV_W, '4 weeks')}
@@ -714,7 +721,7 @@ export function sOverview() {
     figHtml(money(S.left), 'left for marketing · after the goods, shipping, fees and running the line'),
     waterfall(),
     strip([
-      ['Product margin', `${(((S.rev - S.cost) / S.rev) * 100).toFixed(1)}%`, 'before shipping and fees'],
+      ['Product margin', `${(per(S.rev - S.cost, S.rev) * 100).toFixed(1)}%`, 'before shipping and fees'],
       ['Sales tax held', money(S.tax), 'paid with the return'],
       ['Deposits held', money(PRE.filter((r) => r[5] === 'held').reduce((a, r) => a + prOf(r[2]).price * r[4], 0)), 'refundable'],
     ]),
@@ -723,15 +730,19 @@ export function sOverview() {
     's-5',
     'Who buys',
     'Last 4 weeks',
-    figHtml(pc0(BUYERS[0][1] / S.ord), 'of orders come from members · the rest are guests'),
+    figHtml(pc0(per(BUYERS[0]?.[1] ?? 0, S.ord)), 'of orders come from members · the rest are guests'),
     <div className="sb">
       <div className="ablock">
         <span className="lbl">Buyer</span>
-        {compBar(BUYERS.map(([k, v], i) => [k, v, ['var(--fg)', 'var(--line)'][i], String(v)]))}
+        {BUYERS.length ? compBar(BUYERS.map(([k, v], i) => [k, v, ['var(--fg)', 'var(--line)'][i], String(v)])) : <span className="small quiet">None yet.</span>}
       </div>
       <div className="ablock">
         <span className="lbl">Paid with</span>
-        {compBar(PAID_WITH.map(([k, v], i) => [k, v, ['var(--fg)', 'var(--fg-50)', 'var(--line)'][i], String(v)]))}
+        {PAID_WITH.length ? (
+          compBar(PAID_WITH.map(([k, v], i) => [k, v, ['var(--fg)', 'var(--fg-50)', 'var(--line)'][i], String(v)]))
+        ) : (
+          <span className="small quiet">None yet.</span>
+        )}
       </div>
       <div className="ablock">
         <span className="lbl">Gets it by</span>
@@ -742,7 +753,7 @@ export function sOverview() {
       </div>
     </div>,
     strip([
-      ['Paid with Clear', pc0(PAID_WITH[0][1] / S.ord)],
+      ['Paid with Clear', pc0(per(PAID_WITH[0]?.[1] ?? 0, S.ord))],
       ['Picked up', `${S.picked} of ${S.ord}`],
     ]),
   );
@@ -750,7 +761,12 @@ export function sOverview() {
     's-12',
     'Sales by week',
     'Since the shop opened 1 Sep',
-    figHtml(money(Math.max(...REV_W)), `the best week so far · ${SW[REV_W.indexOf(Math.max(...REV_W))]}, when the Graphic Tees were new`),
+    figHtml(
+      money(Math.max(...REV_W)),
+      Math.max(...REV_W)
+        ? `the best week so far · ${SW[REV_W.indexOf(Math.max(...REV_W))]}${REAL ? '' : ', when the Graphic Tees were new'}`
+        : 'the best week so far · no sales yet',
+    ),
     <>
       {stackCols()}
       {mkey(['logo', 'graphic', 'layers', 'patch'].map((l) => [LINES[l][1], LINES[l][0]]))}
@@ -769,12 +785,12 @@ export function sOverview() {
       .filter((p) => u4(p))
       .map((p) => [p, u4(p) * p.price])
       .sort((a, b) => b[1] - a[1]),
-    tm = top[0][1];
+    tm = top[0]?.[1];
   const topCell = gCell(
     's-6',
     'What sells',
     'Sales, last 4 weeks',
-    figHtml(shortN(top[0][0]), `the top seller · ${u4(top[0][0])} sold, ${money(top[0][1])}`),
+    top.length ? figHtml(shortN(top[0][0]), `the top seller · ${u4(top[0][0])} sold, ${money(top[0][1])}`) : '',
     <div className="hbars">
       {top.map(([p, v], __k) => (
         <button key={__k} type="button" className="hb" data-product={p.id}>
@@ -785,6 +801,7 @@ export function sOverview() {
           <b className="num">{money(v)}</b>
         </button>
       ))}
+      {top.length ? '' : <span className="small quiet">None yet.</span>}
     </div>,
     <div className="c-ft">
       <button type="button" data-spane="products">
@@ -798,13 +815,22 @@ export function sOverview() {
     'Sizes sold',
     'Shirts and layers, last 4 weeks',
     figHtml(
-      pc0(SIZE_MIX.filter(([k]) => k === 'M' || k === 'L').reduce((a, b) => a + b[1], 0) / SIZE_MIX.reduce((a, b) => a + b[1], 0)),
+      pc0(
+        per(
+          SIZE_MIX.filter(([k]) => k === 'M' || k === 'L').reduce((a, b) => a + b[1], 0),
+          SIZE_MIX.reduce((a, b) => a + b[1], 0),
+        ),
+      ),
       'of shirts sold are a medium or large · restocks follow that mix',
     ),
-    columns(SIZE_MIX, {
-      hi: 2,
-      h: 150,
-    }),
+    SIZE_MIX.length ? (
+      columns(SIZE_MIX, {
+        hi: 2,
+        h: 150,
+      })
+    ) : (
+      <span className="small quiet">None yet.</span>
+    ),
     <div className="c-ft">
       <button type="button" data-spane="inventory">
         <span className="t">Stock by size</span>
@@ -885,10 +911,10 @@ export function shelfCell() {
         <span className="tag">useclear.org/shop</span>
       </header>
       <div className="c-fig">
-        {figHtml(money(S.rev), `in sales over 4 weeks · +${((S.rev / S.prev - 1) * 100).toFixed(1)}% on the 4 weeks before · ${S.ord} orders`)}
+        {figHtml(money(S.rev), `in sales over 4 weeks · +${(S.prev ? (S.rev / S.prev - 1) * 100 : 0).toFixed(1)}% on the 4 weeks before · ${S.ord} orders`)}
       </div>
       <div className="c-body">
-        <div className="shf">{tiles}</div>
+        {tiles.length ? <div className="shf">{tiles}</div> : <span className="small quiet">None yet.</span>}
         <div className="mkey">
           <span>
             <i className="sw" style={css('background:var(--fg)')} />
@@ -902,8 +928,8 @@ export function shelfCell() {
         </div>
       </div>
       {strip([
-        ['Gross profit', money(S.gross), `${((S.gross / S.rev) * 100).toFixed(1)}% of sales`],
-        ['Average order', money(S.rev / S.ord), `${(S.items / S.ord).toFixed(1)} items`],
+        ['Gross profit', money(S.gross), `${(per(S.gross, S.rev) * 100).toFixed(1)}% of sales`],
+        ['Average order', money(per(S.rev, S.ord)), `${per(S.items, S.ord).toFixed(1)} items`],
         ['To pack', String(toPackN()), 'paid, not packed', 'warn'],
         ['On the shelf', `${PR.filter((p) => p.st === 'on').length} of ${list.length}`],
       ])}
@@ -991,7 +1017,7 @@ export function sProducts() {
             <span>8 weeks</span>
             <span>Shelf</span>
           </div>
-          {rows}
+          {rows.length ? rows : <span className="small quiet">None yet.</span>}
         </div>
       </div>
       {strip([
@@ -1014,32 +1040,36 @@ export function sProducts() {
     'Where the price goes',
     'Cost of one item',
     figHtml(
-      `${((goods.filter((p) => p.st === 'on').reduce((a, p) => a + (p.price - unitCost(p)) / p.price, 0) / goods.filter((p) => p.st === 'on').length) * 100).toFixed(0)}%`,
+      `${(per(goods.filter((p) => p.st === 'on').reduce((a, p) => a + (p.price - unitCost(p)) / p.price, 0), goods.filter((p) => p.st === 'on').length) * 100).toFixed(0)}%`,
       'average margin · enough to run the line and fund marketing, no more',
     ),
-    ladder(priced),
-    strip([
-      ['Cheapest to make', `${shortN(byCost[0]).split(' · ')[0]} · ${money(unitCost(byCost[0]))}`],
-      ['Costliest', `${shortN(byCost.at(-1)).split(' · ')[0]} · ${money(unitCost(byCost.at(-1)))}`],
-      ['Lowest margin', `${lineWord(byMargin[0])} · ${pc0(margin(byMargin[0]))}`],
-      ['Highest margin', `${lineWord(byMargin.at(-1))} · ${pc0(margin(byMargin.at(-1)))}`],
-    ]),
+    priced.length ? ladder(priced) : <span className="small quiet">None yet.</span>,
+    priced.length
+      ? strip([
+          ['Cheapest to make', `${shortN(byCost[0]).split(' · ')[0]} · ${money(unitCost(byCost[0]))}`],
+          ['Costliest', `${shortN(byCost.at(-1)).split(' · ')[0]} · ${money(unitCost(byCost.at(-1)))}`],
+          ['Lowest margin', `${lineWord(byMargin[0])} · ${pc0(margin(byMargin[0]))}`],
+          ['Highest margin', `${lineWord(byMargin.at(-1))} · ${pc0(margin(byMargin.at(-1)))}`],
+        ])
+      : '',
   );
   const sc = gCell(
     's-5',
     'Margin and volume',
     'Size is sales',
-    figHtml(scName(most((p) => u4(p) * perItem(p))), 'earns the most · a modest margin, sold most often'),
-    scatter(),
-    strip([
-      ['Most sold', `${scName(most(u4))} · ${u4(most(u4))}`],
-      ['Most per item', `${scName(most(perItem))} · ${money(perItem(most(perItem)))}`],
-    ]),
+    sold.length ? figHtml(scName(most((p) => u4(p) * perItem(p))), 'earns the most · a modest margin, sold most often') : '',
+    sold.length ? scatter() : <span className="small quiet">None yet.</span>,
+    sold.length
+      ? strip([
+          ['Most sold', `${scName(most(u4))} · ${u4(most(u4))}`],
+          ['Most per item', `${scName(most(perItem))} · ${money(perItem(most(perItem)))}`],
+        ])
+      : '',
   );
   const hist = gCell(
     's-12',
     'On and off the shelf',
-    `Since ${fmtD(Math.min(...Object.values(SHELF_EV).flat().map((e) => e[1])))}`,
+    Object.keys(SHELF_EV).length ? `Since ${fmtD(Math.min(...Object.values(SHELF_EV).flat().map((e) => e[1])))}` : '',
     figHtml(
       String(
         Object.values(SHIST)
@@ -1097,7 +1127,7 @@ export function sInventory() {
         <span className="tag">Select a product</span>
       </header>
       <div className="c-fig">
-        {figHtml(String(units), `items on hand · ${money(atCost)} at cost · patches ${onHand('psq')} square and ${onHand('pci')} circle`)}
+        {figHtml(String(units), `items on hand · ${money(atCost)} at cost · patches ${onHand('psq') ?? 0} square and ${onHand('pci') ?? 0} circle`)}
       </div>
       <div className="c-body start">{stockGrid()}</div>
       {strip([
@@ -1118,11 +1148,11 @@ export function sInventory() {
     's-6',
     'How long it lasts',
     'At the last 4 weeks’ pace',
-    figHtml(`${coverW(short).toFixed(1)} wk`, `of ${short.n}s left · a reorder takes ${short.lead} weeks to land`),
+    short ? figHtml(`${coverW(short).toFixed(1)} wk`, `of ${short.n}s left · a reorder takes ${short.lead} weeks to land`) : '',
     coverBars(),
     strip([
       ['Reorder now', low.map((p) => p.n).join(', ') || 'Nothing', '', low.length ? 'warn' : ''],
-      ['Slowest to sell', `${scName(slow)} · ${coverW(slow) >= 24 ? '24+' : coverW(slow).toFixed(1)} wk`],
+      ...(slow ? [['Slowest to sell', `${scName(slow)} · ${coverW(slow) >= 24 ? '24+' : coverW(slow).toFixed(1)} wk`]] : []),
     ]),
   );
   const inc = gCell(
@@ -1160,21 +1190,22 @@ export function sOrders() {
       .filter((o) => o[2]),
     ['all', 'All recent', ORDERS.length],
   ];
-  const list = ORDERS.filter((o) => (SS.of === 'all' ? 1 : SS.of === 'open' ? open.includes(o[8]) : o[8] === SS.of)).sort((a, b) => b[1] - a[1]);
+  const list = ORDERS.filter((o) => (SS.of === 'all' ? 1 : SS.of === 'open' ? open.includes(o[8]) : o[8] === SS.of)).sort((a, b) => b[1] - a[1]),
+    oldest = ORDERS.filter((o) => o[8] === 'paid').sort((a, b) => a[1] - b[1])[0];
   const pipe = gCell(
     's-12',
     'Where every order is',
     'Ships within 2 days of paying',
     figHtml(
       String(ORDERS.filter((o) => open.includes(o[8])).length),
-      `open orders · the oldest still to pack was paid ${ordAge(ORDERS.filter((o) => o[8] === 'paid').sort((a, b) => a[1] - b[1])[0]).toFixed(1)} days ago`,
+      oldest ? `open orders · the oldest still to pack was paid ${ordAge(oldest).toFixed(1)} days ago` : 'open orders',
     ),
     pipeline(),
     strip([
       ['Over 2 days', String(ORDERS.filter((o) => o[8] === 'paid' && ordAge(o) > 2).length || 'None')],
       ['Median to ship', shipTimes().median],
       ['Picked up', `${SHOP.picked} in 4 weeks`],
-      ['Returns', `${RETURNS.length} · ${((RETURNS.length / SHOP.ord) * 100).toFixed(1)}%`],
+      ['Returns', `${RETURNS.length} · ${(per(RETURNS.length, SHOP.ord) * 100).toFixed(1)}%`],
     ]),
   );
   const rows = list.map((o, __k) => {
@@ -1202,7 +1233,7 @@ export function sOrders() {
   const tbl = (
     <section className="cell s-12">
       <header className="c-hd">
-        <span className="lbl">{SS.of === 'open' ? 'Open orders, newest first' : SS.of === 'all' ? 'Recent orders' : opts.find((o) => o[0] === SS.of)[1]}</span>
+        <span className="lbl">{SS.of === 'open' ? 'Open orders, newest first' : SS.of === 'all' ? 'Recent orders' : (opts.find((o) => o[0] === SS.of)?.[1] ?? OST[SS.of]?.[1])}</span>
         <span className="hd-tools">{ddHtml('sof', opts, SS.of, 'Show')}</span>
       </header>
       <div className="c-fig" />
@@ -1217,7 +1248,9 @@ export function sOrders() {
             <span>Total</span>
             <span>Status</span>
           </div>
-          {rows || (
+          {rows.length ? (
+            rows
+          ) : (
             <p className="quiet" style={css('padding:var(--s3) 0')}>
               Nothing here.
             </p>
@@ -1236,50 +1269,52 @@ export function sOrders() {
     figHtml(money(dep), `in deposits · refundable until each device is made`),
     <>
       <div className="po">
-        {['cpt', 'c8'].map((pid, __k) => {
-          const p = prOf(pid),
-            rs = PRE.filter((r) => r[2] === pid),
-            h = rs.filter((r) => r[5] === 'held').reduce((a, r) => a + r[4], 0),
-            w = rs.filter((r) => r[5] !== 'held').reduce((a, r) => a + r[4], 0);
-          return (
-            <div key={__k} className="po-r">
-              <span className="po-k">
-                {glyph(p, 'sm')}
-                <span>
-                  <b>{pName(p).replace(' · Counter or table', '')}</b>
-                  <span className="small quiet">
-                    {money(p.price)}
-                    {' deposit'}
+        {['cpt', 'c8']
+          .filter((pid) => prOf(pid))
+          .map((pid, __k) => {
+            const p = prOf(pid),
+              rs = PRE.filter((r) => r[2] === pid),
+              h = rs.filter((r) => r[5] === 'held').reduce((a, r) => a + r[4], 0),
+              w = rs.filter((r) => r[5] !== 'held').reduce((a, r) => a + r[4], 0);
+            return (
+              <div key={__k} className="po-r">
+                <span className="po-k">
+                  {glyph(p, 'sm')}
+                  <span>
+                    <b>{pName(p).replace(' · Counter or table', '')}</b>
+                    <span className="small quiet">
+                      {money(p.price)}
+                      {' deposit'}
+                    </span>
                   </span>
                 </span>
-              </span>
-              <span className="po-p">
-                {Array.from(
-                  {
-                    length: h,
-                  },
-                  (_, __k) => (
-                    <i key={__k} className="on" />
-                  ),
-                )}
-                {Array.from(
-                  {
-                    length: w,
-                  },
-                  (_, __k) => (
-                    <i key={__k} />
-                  ),
-                )}
-              </span>
-              <span className="small quiet">
-                {h}
-                {' held · '}
-                {w}
-                {' waiting'}
-              </span>
-            </div>
-          );
-        })}
+                <span className="po-p">
+                  {Array.from(
+                    {
+                      length: h,
+                    },
+                    (_, __k) => (
+                      <i key={__k} className="on" />
+                    ),
+                  )}
+                  {Array.from(
+                    {
+                      length: w,
+                    },
+                    (_, __k) => (
+                      <i key={__k} />
+                    ),
+                  )}
+                </span>
+                <span className="small quiet">
+                  {h}
+                  {' held · '}
+                  {w}
+                  {' waiting'}
+                </span>
+              </div>
+            );
+          })}
       </div>
       <div className="pn-list">
         {PRE.map(([id, shop, pid, opt, n, st, d], __k) => (
@@ -1297,6 +1332,7 @@ export function sOrders() {
             <span className={`chip ${PRE_ST[st][0]}`}>{PRE_ST[st][1]}</span>
           </button>
         ))}
+        {PRE.length ? '' : <span className="small quiet">None yet.</span>}
       </div>
     </>,
     strip([
@@ -1340,7 +1376,11 @@ export function sOrders() {
       {waiting[0] ? <div>{retTrack(waiting[0])}</div> : ''}
       <div className="ablock">
         <span className="lbl">Refunded · 4 weeks</span>
-        {evRows(refunded.map((r) => [fmtD(r.refundedAt), `#${r.order} · ${r.item}`, `${r.reason} · ${r.amount > 50 ? `approved by ${r.second}` : 'under $50.00, no second person'}`, money(r.amount)]))}
+        {refunded.length ? (
+          evRows(refunded.map((r) => [fmtD(r.refundedAt), `#${r.order} · ${r.item}`, `${r.reason} · ${r.amount > 50 ? `approved by ${r.second}` : 'under $50.00, no second person'}`, money(r.amount)]))
+        ) : (
+          <span className="small quiet">None yet.</span>
+        )}
       </div>
       <div className="ablock">
         <span className="lbl">Why things come back · 4 weeks</span>
@@ -1358,7 +1398,7 @@ export function sOrders() {
       </div>
     </>,
     strip([
-      ['Returns', `${RETURNS.length} · ${((RETURNS.length / SHOP.ord) * 100).toFixed(1)}%`],
+      ['Returns', `${RETURNS.length} · ${(per(RETURNS.length, SHOP.ord) * 100).toFixed(1)}%`],
       ['Refunded', money(refunded.reduce((a, r) => a + r.amount, 0))],
     ]),
     undefined,
@@ -1368,7 +1408,7 @@ export function sOrders() {
     's-6',
     'Pickups',
     'At partner shops, last 4 weeks',
-    figHtml(`${((SHOP.picked / SHOP.ord) * 100).toFixed(0)}%`, 'of orders are picked up at a partner shop · brings people through their door'),
+    figHtml(`${(per(SHOP.picked, SHOP.ord) * 100).toFixed(0)}%`, 'of orders are picked up at a partner shop · brings people through their door'),
     <div className="hbars">
       {PARTNERS.map(([k, v], __k) => (
         <div key={__k} className="hb">
@@ -1379,6 +1419,7 @@ export function sOrders() {
           <b className="num">{v}</b>
         </div>
       ))}
+      {PARTNERS.length ? '' : <span className="small quiet">None yet.</span>}
     </div>,
     <div className="c-ft">
       <button type="button" data-go="merchants">
@@ -1392,10 +1433,14 @@ export function sOrders() {
     'Time to ship',
     'Paid to handed to the carrier',
     figHtml(shipTimes().median, `median · ${pc0(shipTimes().within2)} ship within 2 days`),
-    columns(SHIP_DAYS, {
-      hi: 1,
-      h: 150,
-    }),
+    SHIP_DAYS.length ? (
+      columns(SHIP_DAYS, {
+        hi: 1,
+        h: 150,
+      })
+    ) : (
+      <span className="small quiet">None yet.</span>
+    ),
     <div className="c-ft">
       <button type="button" data-sflow="labels">
         <span className="t">Print today’s labels</span>
@@ -2267,7 +2312,7 @@ export function openSFlow(kind, id) {
           'Orders',
           ORDERS.filter((x) => x[8] === 'paid' && x[6] === 'ship')
             .map((x) => '#' + x[0])
-            .join(', '),
+            .join(', ') || 'None',
         ],
         ['Printer', '4-inch label printer'],
         ['Postage', money(n * 7.4)],

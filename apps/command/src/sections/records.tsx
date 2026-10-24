@@ -1,5 +1,5 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
-import { LIVE } from '../live/env';
+import { LIVE, REAL } from '../live/env';
 import * as live from '../live/account';
 import { act, addFile, picked, typed } from '../live/actions';
 import { api, apiUrl, saveDownload } from '../live/api';
@@ -39,6 +39,7 @@ import { ddHtml } from './kit';
 import { strip } from './money';
 import { vLevel } from './shell';
 
+const noneYet = <span className="small quiet">None yet.</span>;
 /** The file picked in the open flow, or a clear error. */
 const pickedFile = () => {
   const f = document.getElementById('ru-file')?.files?.[0];
@@ -144,7 +145,7 @@ export function weekLanes() {
               className={`wtl${i === 6 ? ' now' : ''}`}
               data-rflow="day"
               data-rid={`${w}|${i}`}
-              style={css(`--v:${(cnt / max).toFixed(2)}`)}
+              style={css(`--v:${max ? (cnt / max).toFixed(2) : '0.00'}`)}
               title={`${n} · ${dn(t)} ${new Date(t).getUTCDate()} · ${cnt} actions${keys.length ? ' · ' + keys.length + ' key' : ''}`}
             >
               <b className="wtl-n">{cnt}</b>
@@ -194,6 +195,7 @@ export function areaKey(bare) {
   );
 }
 export function apprMatrix() {
+  if (REAL) return apprReal();
   const ppl = [
       ['K', 'Kai'],
       ['DR', 'Dana Ruiz'],
@@ -252,6 +254,61 @@ export function apprMatrix() {
     </>
   );
 }
+/** The two-person grid from real people: who proposed, and who approved, in the last 30 days. */
+function apprReal() {
+  const by = Object.keys(APPR),
+    of = new Set(by.flatMap((p) => Object.keys(APPR[p] || {}))),
+    name = (k) => PEOPLE_T.find((p) => p.id === k)?.n ?? WHO.find((w) => w[0] === k)?.[1] ?? (k === 'BS' ? 'Board' : k);
+  const ppl = [...PEOPLE_T.map((p) => p.id).filter((k) => by.includes(k)), ...by.filter((k) => !PEOPLE_T.some((p) => p.id === k))].map((k) => [k, name(k)]),
+    appr = [...PEOPLE_T.map((p) => p.id).filter((k) => of.has(k) || by.includes(k)), ...[...of].filter((k) => !PEOPLE_T.some((p) => p.id === k))].map((k) => [k, name(k).split(' ')[0]]);
+  if (!ppl.length) return noneYet;
+  return (
+    <>
+      <div className="am">
+        <div className="am-r am-cap">
+          <span />
+          <span>Approved by</span>
+        </div>
+        <div className="am-r am-h">
+          <span className="lbl">Proposed by</span>
+          {appr.map((a, __k) => (
+            <span key={__k}>{a[1]}</span>
+          ))}
+          <span>Total</span>
+        </div>
+        {ppl.map(([p, n], __k) => {
+          const row = APPR[p] || {},
+            tot = Object.values(row).reduce((a, b) => a + b, 0);
+          return (
+            <div key={__k} className="am-r">
+              <span className="am-k">{n}</span>
+              {appr.map(([a], __k) => {
+                if (a === p) return <i key={__k} className="am-c self" title="Nobody approves their own action" />;
+                const v = row[a] || 0;
+                return (
+                  <i key={__k} className="am-c" style={css(`--v:${v / 6};${v / 6 >= 0.5 ? 'color:var(--ground)' : ''}`)}>
+                    {v || ''}
+                  </i>
+                );
+              })}
+              <b className="am-t">{tot}</b>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mkey">
+        <span>
+          <i className="sw" style={css('background:var(--fg)')} />
+          Approvals, last 30 days
+        </span>
+        <span>
+          <i className="sw am-sw" />
+          Can’t approve your own
+        </span>
+      </div>
+    </>
+  );
+}
 export function byPerson() {
   const order = Object.keys(AREAS),
     from = H2(10, 15, 0);
@@ -260,6 +317,7 @@ export function byPerson() {
     order.map((a) => WEEK.filter((e) => e[1] === w && e[2] === a).length + LOG.filter((l) => l[2] === w && l[3] === a && l[1] >= from).length),
   ]);
   const max = Math.max(...data.map((d) => d[1].reduce((a, b) => a + b, 0)));
+  if (!data.length) return noneYet;
   return (
     <div className="bp">
       {data.map(([n, v], __k) => {
@@ -267,7 +325,7 @@ export function byPerson() {
         return (
           <div key={__k} className="bp-r">
             <span className="bp-k">{n}</span>
-            <span className="bp-b" style={css(`width:${(tot / max) * 100}%`)}>
+            <span className="bp-b" style={css(`width:${max ? (tot / max) * 100 : 0}%`)}>
               {v.map((x, i) => (x ? <i key={i} style={css(`flex:${x};${areaDot(order[i])}`)} title={`${AREAS[order[i]][0]} ${x}`} /> : ''))}
             </span>
             <b className="num">{tot}</b>
@@ -278,7 +336,8 @@ export function byPerson() {
   );
 }
 export function coverMatrix() {
-  const ids = ['coop', 'fin', 'dt', 'hold', 'labs', 'mgr', 'fdn'];
+  const ids = ['coop', 'fin', 'dt', 'hold', 'labs', 'mgr', 'fdn'].filter((id) => COVER[id]);
+  if (!ids.length) return noneYet;
   return (
     <>
       <div className="pw">
@@ -291,7 +350,7 @@ export function coverMatrix() {
         {ids.map((id, __k) => (
           <div key={__k} className="pw-r">
             <span className="pw-k">
-              <span className="pw-lg">{entOf(id)[1]}</span>
+              <span className="pw-lg">{entOf(id)?.[1]}</span>
               <span className="pw-sh">
                 {
                   {
@@ -321,9 +380,10 @@ export function coverMatrix() {
 
 /* squarified treemap, in percent of a box */
 export function treemap(items, W = 100, H = 62) {
-  items = items.slice().sort((a, b) => b.v - a.v);
+  items = items.filter((it) => it.v > 0).sort((a, b) => b.v - a.v);
   const tot = items.reduce((a, b) => a + b.v, 0),
     out = [];
+  if (!tot) return noneYet;
   let x = 0,
     y = 0,
     w = W,
@@ -420,6 +480,9 @@ export function heat() {
       const d = new Date(start + i * DAY).getUTCDay(),
         we = d === 0 || d === 6;
       const ramp = 0.35 + i / days;
+      // live, the day's count from the log; the prototype's is drawn
+      const t = start + i * DAY;
+      if (REAL) return WEEK.filter((e) => e[0] >= t && e[0] < t + DAY).length + LOG.filter((l) => l[1] >= t && l[1] < t + DAY).length;
       return Math.round((we ? 2 : 9) * ramp + r() * (we ? 3 : 8));
     },
   );
@@ -434,7 +497,7 @@ export function heat() {
       const i = k - ((first + 6) % 7);
       if (i < 0 || i >= days) return <i key={k} className="hx-c off" />;
       const t = start + i * DAY;
-      return <i key={k} className={`hx-c${t === TODAY ? ' today' : ''}`} style={css(`--v:${v[i] / max}`)} title={`${fmtD(t)} · ${v[i]} actions`} />;
+      return <i key={k} className={`hx-c${t === TODAY ? ' today' : ''}`} style={css(`--v:${max ? v[i] / max : 0}`)} title={`${fmtD(t)} · ${v[i]} actions`} />;
     },
   );
   const mlabels = Array.from(
@@ -555,31 +618,62 @@ export function coverCell(span) {
         )}
       </div>
       <div className="c-body">{coverMatrix()}</div>
-      <div className="c-ft split">
-        <button type="button" data-ent-go="dt">
-          <span className="t">The Deed & Title Co. is missing two</span>
-          {ic('chev', 'sm')}
-        </button>
-        <span className="rule" aria-hidden="true" />
-        <button type="button" data-rflow="upload">
-          <span className="t">Add what’s missing</span>
-          {ic('chev', 'sm')}
-        </button>
-      </div>
+      {REAL ? (
+        coverFoot()
+      ) : (
+        <div className="c-ft split">
+          <button type="button" data-ent-go="dt">
+            <span className="t">The Deed & Title Co. is missing two</span>
+            {ic('chev', 'sm')}
+          </button>
+          <span className="rule" aria-hidden="true" />
+          <button type="button" data-rflow="upload">
+            <span className="t">Add what’s missing</span>
+            {ic('chev', 'sm')}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
+/** Live, the entity missing the most papers, if any is. */
+function coverFoot() {
+  const [id, n] = Object.entries(COVER)
+    .map(([k, v]) => [k, v.filter((x) => x === 'm').length])
+    .sort((a, b) => b[1] - a[1])[0] ?? [null, 0];
+  const add = (
+    <button type="button" data-rflow="upload">
+      <span className="t">{n ? 'Add what’s missing' : 'Add a document'}</span>
+      {ic('chev', 'sm')}
+    </button>
+  );
+  if (!n) return <div className="c-ft">{add}</div>;
+  return (
+    <div className="c-ft split">
+      <button type="button" data-ent-go={id}>
+        <span className="t">
+          {entOf(id)?.[1] ?? id}
+          {` is missing ${n}`}
+        </span>
+        {ic('chev', 'sm')}
+      </button>
+      <span className="rule" aria-hidden="true" />
+      {add}
+    </div>
+  );
+}
 export function weekCell(span) {
-  const n = LOG.filter((l) => l[1] >= H2(10, 15, 0)).length + WEEK.length;
+  const from = REAL ? TODAY - 6 * DAY : H2(10, 15, 0);
+  const n = LOG.filter((l) => l[1] >= from).length + WEEK.length;
   return (
     <section className={`cell ${span}`}>
       <header className="c-hd">
         <span className="lbl">This week</span>
-        <span className="tag">15 – 21 Oct</span>
+        <span className="tag">{REAL ? `${fmtD(from)} – ${fmtD(TODAY)}` : '15 – 21 Oct'}</span>
       </header>
       <div className="c-fig">{figHtml(String(n), 'actions by the team and the system · select a day to see what happened')}</div>
       <div className="c-body start">
-        {weekLanes()}
+        {WHO.length ? weekLanes() : noneYet}
         <div className="mkey">
           <span>
             <i className="wk-scale">
@@ -617,7 +711,7 @@ export function kindCell(span) {
         <span className="lbl">Kind of work</span>
         <span className="tag">This week</span>
       </header>
-      <div className="c-fig">{figHtml(AREAS[by[0][0]][0], `the biggest share · ${pct(by[0][1], tot)} of this week’s actions`)}</div>
+      <div className="c-fig">{tot ? figHtml(AREAS[by[0][0]][0], `the biggest share · ${pct(by[0][1], tot)} of this week’s actions`) : figHtml('None', 'no actions this week')}</div>
       <div className="c-body start">
         <div className="kw">
           {by.map(([a, v], __k) => (
@@ -625,7 +719,7 @@ export function kindCell(span) {
               <i className="kw-sw" style={css(areaDot(a))} />
               <span className="kw-k">{AREAS[a][0]}</span>
               <span className="kw-b">
-                <i style={css(`width:${((v / max) * 100).toFixed(1)}%;${areaDot(a)}`)} />
+                <i style={css(`width:${(max ? (v / max) * 100 : 0).toFixed(1)}%;${areaDot(a)}`)} />
               </span>
               <b className="num">{v}</b>
             </div>
@@ -654,6 +748,7 @@ export function keyCell(span) {
       </div>
       <div className="c-body start">
         <div className="pn-list">
+          {LOG.length ? '' : noneYet}
           {LOG.slice(0, 6).map((l, __k) => (
             <button key={__k} type="button" className="pn-r ka-r" data-rflow="entry" data-rid={l[0]}>
               <span className="ev-d">{fmtD(l[1])}</span>
@@ -661,7 +756,7 @@ export function keyCell(span) {
               <span className="pn-k">
                 <b>{l[4]}</b>
                 <span className="small quiet">
-                  {WHO.find((w) => w[0] === l[2])[1]}
+                  {WHO.find((w) => w[0] === l[2])?.[1]}
                   {' · '}
                   {l[6]}
                 </span>
@@ -903,6 +998,15 @@ export function rDocs() {
               </tr>
             </thead>
             <tbody>
+              {list.length ? (
+                ''
+              ) : (
+                <tr>
+                  <td className="l" colSpan="6">
+                    {noneYet}
+                  </td>
+                </tr>
+              )}
               {list.map((d, __k) => (
                 <tr key={__k} className="click" data-doc={d[0]} tabIndex="0">
                   <td className="l">
@@ -959,12 +1063,12 @@ export function rLog() {
         <span className="lbl">Every day</span>
         <span className="tag">12 weeks</span>
       </header>
-      <div className="c-fig">{figHtml(String(h.last30), 'actions in the last 30 days · busier every week since the first batch')}</div>
+      <div className="c-fig">{figHtml(String(h.last30), REAL ? 'actions in the last 30 days' : 'actions in the last 30 days · busier every week since the first batch')}</div>
       <div className="c-body">{h.html}</div>
       {strip([
         ['12 weeks', String(h.total)],
         ['Busiest day', String(h.max)],
-        ['Quiet days', String(h.quiet), 'mostly weekends'],
+        ['Quiet days', String(h.quiet), REAL ? '' : 'mostly weekends'],
       ])}
     </section>
   );
@@ -975,13 +1079,13 @@ export function rLog() {
     's-4 wt',
     'By area',
     'This week',
-    figHtml(AREAS[byArea[0][0]][0], `the busiest area · ${byArea[0][1]} actions`),
+    byArea[0][1] ? figHtml(AREAS[byArea[0][0]][0], `the busiest area · ${byArea[0][1]} actions`) : figHtml('None', 'the busiest area · 0 actions'),
     <div className="hbars">
       {byArea.map(([a, v], __k) => (
         <div key={__k} className="hb">
           <span className="hb-k">{AREAS[a][0]}</span>
           <span className="hb-bar">
-            <i style={css(`width:${(v / byArea[0][1]) * 100}%;${areaDot(a)}`)} />
+            <i style={css(`width:${byArea[0][1] ? (v / byArea[0][1]) * 100 : 0}%;${areaDot(a)}`)} />
           </span>
           <b className="num">{v}</b>
         </div>
@@ -1014,6 +1118,15 @@ export function rLog() {
               </tr>
             </thead>
             <tbody>
+              {list.length ? (
+                ''
+              ) : (
+                <tr>
+                  <td className="l" colSpan="5">
+                    {noneYet}
+                  </td>
+                </tr>
+              )}
               {list.map((l, __k) => (
                 <tr key={__k} className="click" data-rentry={l[0]} tabIndex="0">
                   <td className="l mono">
@@ -1022,7 +1135,7 @@ export function rLog() {
                   <td className="l">
                     <span className="who">
                       <i className={`sg-sq${l[2] === me() ? ' me' : ''}`}>{l[2]}</i>
-                      {WHO.find((w) => w[0] === l[2])[1]}
+                      {WHO.find((w) => w[0] === l[2])?.[1]}
                     </span>
                   </td>
                   <td className="l">
@@ -1060,9 +1173,10 @@ export function rLog() {
     'Last 7 days',
     figHtml(
       String(fresh.length),
-      `new device${fresh.length === 1 ? '' : 's'} this week${fresh[0] ? ` · ${fresh[0][1]}’s ${fresh[0][2].split(' · ')[0]}${/confirmed/.test(fresh[0][5]) ? ', confirmed by Kai' : ''}` : ''}`,
+      `new device${fresh.length === 1 ? '' : 's'} this week${fresh[0] ? ` · ${fresh[0][1]}’s ${fresh[0][2].split(' · ')[0]}${/confirmed/.test(fresh[0][5]) && !REAL ? ', confirmed by Kai' : ''}` : ''}`,
     ),
     <div className="si">
+      {SIGNIN.length ? '' : noneYet}
       {SIGNIN.map(([k, n, dev, days, last, flag], __k) => (
         <div key={__k} className="si-r">
           <i className={`sg-sq${k === me() ? ' me' : ''}`}>{k}</i>
@@ -1119,7 +1233,7 @@ export function rLog() {
             's-6',
             'Who did what',
             'This week',
-            figHtml(busiest ? WHO.find((w) => w[0] === busiest[0])?.[1] : 'Nobody', 'the most actions this week · nearly all in shops and the field'),
+            figHtml(busiest ? WHO.find((w) => w[0] === busiest[0])?.[1] : 'Nobody', REAL ? 'the most actions this week' : 'the most actions this week · nearly all in shops and the field'),
             <>
               {byPerson()}
               {areaKey(true)}
@@ -1182,11 +1296,13 @@ export function recordsPane() {
             ['v1.1', 2],
           ]
         : [[d[6], 2]];
-  const access = [
-    ['Kai', 'Opened', 'Today 08:12'],
-    ['Dana Ruiz', 'Opened', 'Yesterday'],
-    ['Kai', 'Added', fmtD(d[4])],
-  ];
+  const access = REAL
+    ? [[d[7], 'Added', fmtD(d[4])]]
+    : [
+        ['Kai', 'Opened', 'Today 08:12'],
+        ['Dana Ruiz', 'Opened', 'Yesterday'],
+        ['Kai', 'Added', fmtD(d[4])],
+      ];
   const body = (
     <>
       {preview}
@@ -1410,7 +1526,7 @@ export function openRFlow(kind, id) {
         <>
           <label className="field">
             <span className="lbl">What changed</span>
-            <input type="text" defaultValue="Board edits from 4 Nov" autoComplete="off" />
+            <input type="text" {...(REAL ? { placeholder: 'What changed' } : { defaultValue: 'Board edits from 4 Nov' })} autoComplete="off" />
           </label>
           {LIVE ? (
             <label className="field">
@@ -1450,7 +1566,7 @@ export function openRFlow(kind, id) {
           </div>
           <span className="lbl">Entity</span>
           <div className="seg2" role="group" aria-label="Entity">
-            {['coop', 'fin', 'dt', 'hold', 'labs', 'mgr'].map((e, __k) => (
+            {['coop', 'fin', 'dt', 'hold', 'labs', 'mgr'].filter((e) => !REAL || entOf(e)).map((e, __k) => (
               <button key={__k} type="button" aria-pressed={e === 'dt'}>
                 {RPN[e] || entOf(e)[1]}
               </button>
@@ -1468,32 +1584,37 @@ export function openRFlow(kind, id) {
       ],
       btn: 'Add it',
       after: () => {
+        // the prototype files its sample document; with real data only the API adds one
+        if (REAL) return;
         COVER.dt[2] = 'f';
         DCOUNT.filing++;
         DOCS.unshift(['d' + (DOCS.length + 1), 'EIN letter · The Deed & Title Co.', 'filing', 'dt', NOW, 'filed', 'v1.0', 'Kai', 1]);
       },
-      steps: ['Uploaded it', 'Fingerprinted it', 'Filed it under The Deed & Title Co.'],
+      steps: ['Uploaded it', 'Fingerprinted it', REAL ? 'Filed it' : 'Filed it under The Deed & Title Co.'],
       done: ['Added.', 'It counts toward the paperwork for that entity.'],
     };
   } else if (kind === 'signout') {
     f = {
       t: 'Sign someone out everywhere',
       h: 'Pick a person',
-      post: (
-        <div className="seg2" role="group" aria-label="Person">
-          {LIVE
-            ? PEOPLE_T.filter((p) => p.id !== vars.meId && !p.off).map((p, i) => (
-                <button key={p.id} type="button" data-pid={p.id} aria-pressed={i === 0}>
-                  {p.n}
-                </button>
-              ))
-            : ['Dana Ruiz', 'Marcus Lee'].map((x, i) => (
-                <button key={i} type="button" aria-pressed={i === 1}>
-                  {x}
-                </button>
-              ))}
-        </div>
-      ),
+      post:
+        REAL && !PEOPLE_T.some((p) => p.id !== vars.meId && !p.off) ? (
+          noneYet
+        ) : (
+          <div className="seg2" role="group" aria-label="Person">
+            {REAL
+              ? PEOPLE_T.filter((p) => p.id !== vars.meId && !p.off).map((p, i) => (
+                  <button key={p.id} type="button" data-pid={p.id} aria-pressed={i === 0}>
+                    {p.n}
+                  </button>
+                ))
+              : ['Dana Ruiz', 'Marcus Lee'].map((x, i) => (
+                  <button key={i} type="button" aria-pressed={i === 1}>
+                    {x}
+                  </button>
+                ))}
+          </div>
+        ),
       rows: [
         ['Ends', 'Every session on every device'],
         ['They’ll need', 'To sign in again'],

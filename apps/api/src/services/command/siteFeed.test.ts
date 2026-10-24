@@ -9,43 +9,65 @@ import { seedCommand } from './seed.js';
 import { siteFeed, sourceOf } from './siteFeed.js';
 
 /*
- * Phase 7c: useclear.org's visits from Plausible's Stats API (a stand-in here), in the shapes Growth
- * and Home draw, with the forms, the join rate and the activations from Command's own records; and
- * every section's member counts from the member app once Members is live.
+ * useclear.org's visits from Umami's API (a stand-in here), in the shapes Growth and Home draw, with
+ * the forms, the join rate and the activations from Command's own records; and every section's
+ * member counts from the member app once Members is live.
  */
 
 const NOW = Date.parse('2026-10-24T15:30:00Z');
-const asked: any[] = [];
+const asked: URL[] = [];
 const auth: Array<string | null> = [];
-const JOINED = (b: any) => JSON.stringify(b.filters ?? []).includes('Join');
-const results = (b: any): Array<[string[], number[]]> => {
-  const d = b.dimensions ?? [];
-  const [from, to] = Array.isArray(b.date_range) ? b.date_range : [b.date_range, b.date_range];
-  if (!d.length) return [[[], [150, 205]]];
-  if (d[0] === 'time:hour') {
-    // 4 weeks: one visit at 09:00 every day; a single day: 10 visits an hour (5 the week before)
-    if (from !== to) return Array.from({ length: 28 }, (_, i) => [[`${new Date(Date.parse(to) - i * 86_400_000).toISOString().slice(0, 10)} 09:00:00`], [1]]);
-    return Array.from({ length: 24 }, (_, h) => [[`${from} ${String(h).padStart(2, '0')}:00:00`], [from === '2026-10-24' ? 10 : 5]]);
+let logins = 0;
+let expireOnce = false;
+const day = (t: number) => new Date(t).toISOString().slice(0, 10);
+const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status });
+const rows = (r: Array<[string | null, number]>) => r.map(([x, y]) => ({ x, y }));
+const answer = (u: URL) => {
+  const p = Object.fromEntries(u.searchParams);
+  const joined = p.event === 'Join';
+  const from = Number(p.startAt),
+    to = Number(p.endAt) + 1;
+  const current = day(to) === '2026-10-25';
+  if (u.pathname.endsWith('/stats')) return joined ? { pageviews: 8, visitors: 8, visits: 8 } : { pageviews: '300', visitors: '150', visits: '205' };
+  if (u.pathname.endsWith('/pageviews')) {
+    const n = Math.round((to - from) / 86_400_000);
+    if (p.unit === 'hour' && n > 1) return { pageviews: [], sessions: Array.from({ length: n }, (_, i) => ({ x: `${day(from + i * 86_400_000)}T09:00:00Z`, y: 1 })) };
+    if (p.unit === 'hour') return { pageviews: [], sessions: Array.from({ length: 24 }, (_, h) => ({ x: `${day(from)}T${String(h).padStart(2, '0')}:00:00Z`, y: current ? 10 : 5 })) };
+    return { pageviews: [], sessions: Array.from({ length: n }, (_, i) => ({ x: `${day(from + i * 86_400_000)}T00:00:00Z`, y: current ? 100 : 80 })) };
   }
-  if (d[0] === 'time:day') {
-    const n = Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1;
-    return Array.from({ length: n }, (_, i) => [[new Date(Date.parse(from) + i * 86_400_000).toISOString().slice(0, 10)], [to === '2026-10-24' ? 100 : 80]]);
+  switch (p.type) {
+    case 'referrer':
+      return joined ? [] : rows([['google.com', 50], ['instagram.com', 20], ['www.someblog.net', 5], [null, 75]]);
+    case 'utmSource':
+      return rows([['poster', joined ? 6 : 30]]);
+    case 'city':
+      return rows([['Redlands', 80], ['Riverside', 40], ['Fontana', 10], [null, 3]]);
+    case 'entry':
+      return joined ? rows([['/join', 8]]) : p.limit === '1' ? rows([['/join', 120]]) : rows([['/join', 120], ['/', 60]]);
+    case 'device':
+      return rows([['mobile', 150], ['desktop', 50], ['tablet', 5]]);
+    case 'path':
+      return rows([['/join', 300], ['/how', 40]]);
   }
-  if (d[0] === 'time:week') return d[1] === 'visit:source' ? [[['2026-10-12', 'poster'], [30]], [['2026-10-19', 'Google'], [50]], [['2026-10-19', 'poster'], [10]]] : [[['2026-10-12', 'Mobile'], [3]], [['2026-10-12', 'Desktop'], [1]], [['2026-10-19', 'Mobile'], [1]]];
-  if (d[0] === 'visit:source') return JOINED(b) ? [[['poster'], [6]], [['Direct / None'], [2]]] : [[['Direct / None'], [100]], [['Google'], [50]], [['poster'], [30]], [['Instagram'], [20]], [['Some Blog'], [5]]];
-  if (d[0] === 'visit:city_name') return [[['Redlands'], [80]], [['Riverside'], [40]], [['Fontana'], [10]], [['(none)'], [3]]];
-  if (d[0] === 'visit:entry_page') return JOINED(b) ? [[['/join'], [8]]] : b.pagination?.limit === 1 ? [[['/join'], [120]]] : [[['/join'], [120]], [['/'], [60]]];
-  if (d[0] === 'visit:referrer') return [[['https://www.instagram.com/clear'], [12]], [['instagram.com'], [8]], [['google.com'], [50]], [['Direct / None'], [100]]];
-  if (d[0] === 'visit:device') return [[['Mobile'], [150]], [['Desktop'], [50]], [['Tablet'], [5]]];
-  if (d[0] === 'event:page') return [[['/join'], [300]], [['/how'], [40]]];
   return [];
 };
-const plausible = (async (_u: string, init?: RequestInit) => {
-  const b = JSON.parse(String(init!.body));
-  asked.push(b);
-  auth.push(new Headers(init!.headers).get('authorization'));
-  return new Response(JSON.stringify({ results: results(b).map(([dimensions, metrics]) => ({ dimensions, metrics })) }));
+const umami = (async (url: string, init?: RequestInit) => {
+  const u = new URL(url);
+  if (u.pathname === '/api/auth/login') {
+    const b = JSON.parse(String(init!.body));
+    logins++;
+    return b.username === 'command' && b.password === 'pw' ? json({ token: `tok${logins}` }) : json({ error: 'no' }, 401);
+  }
+  asked.push(u);
+  const a = new Headers(init?.headers).get('authorization');
+  auth.push(a);
+  if (expireOnce) {
+    expireOnce = false;
+    return json({ error: 'expired' }, 401);
+  }
+  return json(answer(u));
 }) as unknown as typeof fetch;
+const ENV = { UMAMI_API_URL: 'https://umami.test/', UMAMI_WEBSITE_ID: 'site-1', UMAMI_USERNAME: 'command', UMAMI_PASSWORD: 'pw' };
 
 let db: Db;
 const env = { growth: process.env.PROVIDER_GROWTH, members: process.env.PROVIDER_MEMBERS };
@@ -58,41 +80,45 @@ afterAll(() => {
 });
 
 describe('the site feed', () => {
-  test('off without a Stats API key', () => {
-    expect(siteFeed({}).off()).toBe('PLAUSIBLE_API_KEY isn’t set');
+  test('off until Umami is set up', () => {
+    expect(siteFeed({}).off()).toBe('UMAMI_API_URL and UMAMI_WEBSITE_ID aren’t set');
+    expect(siteFeed({ UMAMI_API_URL: 'https://umami.test', UMAMI_WEBSITE_ID: 'site-1' }).off()).toBe('UMAMI_USERNAME and UMAMI_PASSWORD aren’t set');
+    expect(siteFeed(ENV).off()).toBeNull();
   });
 
   test('a visit’s source, as the prototype groups them', () => {
-    expect(['poster', 'Google', 'DuckDuckGo', 'Instagram', 'Nextdoor', 't.co', 'Direct / None', 'Some Blog'].map(sourceOf)).toEqual(['Posters', 'Search', 'Search', 'Social', 'Social', 'Social', 'Direct', 'Direct']);
+    expect(['poster', 'google.com', 'duckduckgo.com', 'instagram.com', 'nextdoor.com', 't.co', '', 'someblog.net'].map(sourceOf)).toEqual(['Posters', 'Search', 'Search', 'Social', 'Social', 'Social', 'Direct', 'Direct']);
   });
 
-  test('reads the site’s visits into Growth’s shapes', async () => {
-    expect(await runFeed(db, siteFeed({ PLAUSIBLE_API_KEY: 'key', PLAUSIBLE_SITE_ID: 'useclear.org' }, plausible, () => NOW))).toBe('ok');
-    expect(auth.every((a) => a === 'Bearer key')).toBe(true);
-    expect(asked.every((b) => b.site_id === 'useclear.org')).toBe(true);
-    // two dozen queries or so: well inside the 600 an hour
-    expect(asked.length).toBeLessThan(30);
+  test('reads the site’s visits into Growth’s shapes, signing in again when the token lapses', async () => {
+    expireOnce = true;
+    expect(await runFeed(db, siteFeed(ENV, umami, () => NOW))).toBe('ok');
+    // one sign-in shared by the calls at once, and one more after the 401
+    expect(logins).toBe(2);
+    expect(auth).toContain('Bearer tok2');
+    expect(asked.every((u) => u.origin === 'https://umami.test' && u.pathname.startsWith('/api/websites/site-1/'))).toBe(true);
     const f = (await feedRows(db)).get('site')!.figures;
     // today runs to 15:00, at 10 an hour, against 5 an hour the same day last week
     expect(f.range.today).toMatchObject({ name: 'Today', visits: 160, delta: '+100.0% on last Saturday', prevName: 'Last Sat', page: ['/join', 120] });
     expect(f.range.today.spark).toHaveLength(16);
     expect(f.range.week).toMatchObject({ visits: 700, delta: '+25.0% on the 7 days before', axis: ['Sun 18', 'Wed 21', 'Sat 24'], prevVisits: 560 });
     expect(f.range.month.spark).toHaveLength(30);
-    // posters, direct (with the blog), social, search; the three cities, then the rest
-    expect(f.range.week.src).toEqual([30, 105, 20, 50]);
-    expect(f.range.week.cities).toEqual([80, 0, 40, 85]);
-    expect(f['growth.sources_30d']).toEqual([['Posters', 30, 6, 0], ['Direct', 105, 2, 0], ['Social', 20, 0, 0], ['Search', 50, 0, 0]]);
-    expect(f['growth.referrers']).toEqual([['google.com', 50], ['instagram.com', 20]]);
+    // posters by their tag, search and social by the referring site, the rest direct; the three cities, then the rest
+    expect(f.range.week.src).toEqual([30, 50, 20, 50]);
+    expect(f.range.week.cities).toEqual([80, 0, 40, 30]);
+    expect(f['growth.sources_30d']).toEqual([['Posters', 30, 6, 0], ['Direct', 50, 2, 0], ['Social', 20, 0, 0], ['Search', 50, 0, 0]]);
+    expect(f['growth.referrers']).toEqual([['google.com', 50], ['instagram.com', 20], ['someblog.net', 5]]);
     expect(f['growth.landing']).toEqual([['/join', 120, 8], ['/', 60, 0]]);
     expect(f['growth.cities']).toEqual({ Redlands: 80, Riverside: 40, Fontana: 10 });
     expect(f['growth.devices']).toEqual([['Phone', 150], ['Desktop', 50], ['Tablet', 5]]);
     expect(f['growth.returning']).toEqual([['New', 150], ['Returning', 55]]);
+    expect(f['growth.site.pages']).toEqual([['/join', 300], ['/how', 40]]);
     // the hour of the week: every visit at 9, so each day's 9 o'clock holds a seventh
     expect(f['growth.heat']).toHaveLength(7);
     expect(f['growth.heat'][0].v[9]).toBeCloseTo(4 / 28, 6);
     expect(f['growth.heat'].reduce((a: number, d: any) => a + d.v.reduce((x: number, y: number) => x + y, 0), 0)).toBeCloseTo(1, 6);
-    expect(f['growth.weekly.visits_by_source'].Posters.slice(-2)).toEqual([30, 10]);
-    expect(f['growth.phone_share'].slice(-2)).toEqual([75, 100]);
+    expect(f['growth.weekly.visits_by_source'].Posters).toEqual(Array(12).fill(30));
+    expect(f['growth.phone_share'].slice(-2)).toEqual([73.2, 73.2]);
   });
 });
 
@@ -119,7 +145,7 @@ describe('Growth and Home, live', () => {
     expect(r.week.joinPrev).toBe(0.4);
     expect(r.today.forms).toEqual([1, 0, 0, 0]);
     expect(r.week.prevVisits).toBeUndefined();
-    expect(g.figures['growth.referrers']).toEqual([['google.com', 50], ['instagram.com', 20]]);
+    expect(g.figures['growth.referrers']).toEqual([['google.com', 50], ['instagram.com', 20], ['someblog.net', 5]]);
     // the seed's sample submissions aren't counted or listed: only what the site sent
     const listed: any = await growthSection(db, { level: 2 as any, reveal: false, now: new Date(NOW) });
     expect(listed.INBOX).toHaveLength(5);

@@ -249,6 +249,13 @@ describe('the two-person rule', () => {
     expect((await call(second, 'POST', `/proposals/${id}/approve`)).status).toBe(200);
     expect(mail.at(-1)!.to).toBe('dana@useclear.org');
     expect((await call(second, 'POST', `/proposals/${id}/approve`)).status).toBe(404);
+    // approved, it leaves what's waiting and counts in the last 30 days, with when
+    const waiting = await call(kai, 'GET', '/proposals?area=access');
+    expect(waiting.body.proposals.some((p: { id: string }) => p.id === id)).toBe(false);
+    const done = await call(kai, 'GET', '/proposals?area=all&approved=30');
+    const p = done.body.proposals.find((x: { id: string }) => x.id === id);
+    expect(p.approvedAt).toBeTruthy();
+    expect(p.approvedBy).toBeTruthy();
   });
 
   test('editing a group with people in it to add Approve waits too', async () => {

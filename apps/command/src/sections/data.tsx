@@ -7,6 +7,7 @@ import { T } from './merchants';
 import { yApr, yApy, yBorrowBps } from './money';
 import { H2 } from './records';
 import { u4, unitCost } from './shop';
+import { REAL } from '../live/env';
 
 export const vars = {};
 /* ── Icons: square, single weight ────────────────────────── */
@@ -829,7 +830,8 @@ export const DESIGNS = {
   },
 };
 /* Dates: demo "today" is Wed 21 Oct 2026 */
-export const TODAY = Date.UTC(2026, 9, 21);
+/* the prototype's day; live (REAL), today's */
+export const TODAY = REAL ? Math.floor(Date.now() / 864e5) * 864e5 : Date.UTC(2026, 9, 21);
 export const DAY = 864e5;
 export const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /* Build the 102 posters once */
@@ -936,7 +938,13 @@ export const ST = {
    Read top to bottom: this week at a glance, the one trend that matters (joins vs invites),
    what to do about it, then where growth comes from. Charts draw their shapes in SVG and their
    words in HTML, so labels stay 11px at every width and never collide with lines. */
-export const WEEKS = ['4 Aug', '11 Aug', '18 Aug', '25 Aug', '1 Sep', '8 Sep', '15 Sep', '22 Sep', '29 Sep', '6 Oct', '13 Oct', '20 Oct'];
+/* twelve weeks to this one; live, starting where the API's weekly figures start each week */
+export const WEEKS = REAL
+  ? Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(Math.floor(Date.now() / (7 * 864e5)) * 7 * 864e5 - (11 - i) * 7 * 864e5);
+      return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
+    })
+  : ['4 Aug', '11 Aug', '18 Aug', '25 Aug', '1 Sep', '8 Sep', '15 Sep', '22 Sep', '29 Sep', '6 Oct', '13 Oct', '20 Oct'];
 export const W_JOIN = [20, 28, 40, 30, 75, 95, 130, 204, 270, 290, 300, 318];
 /* sums to 1,800 */
 export const W_INV = [0, 0, 0, 0, 0, 0, 25, 25, 50, 75, 75, 50];
@@ -2035,7 +2043,7 @@ export const CS = {
   ag: null,
   ct: null,
 };
-export const NOW = TODAY + 14 * 3600e3;
+export const NOW = REAL ? Date.now() : TODAY + 14 * 3600e3;
 /* 21 Oct, 14:00 */
 export const YEAR = 365 * DAY;
 export const AST = {

@@ -297,9 +297,21 @@ export interface Proposal {
   status: string;
   approvedBy: string | null;
   createdAt: string;
+  approvedAt: string | null;
 }
 
-type ProposalRow = { id: string; kind: string; area: string; summary: string; payload: Record<string, unknown>; proposed_by: string; status: string; approved_by: string | null; created_at: Date };
+type ProposalRow = {
+  id: string;
+  kind: string;
+  area: string;
+  summary: string;
+  payload: Record<string, unknown>;
+  proposed_by: string;
+  status: string;
+  approved_by: string | null;
+  created_at: Date;
+  approved_at: Date | null;
+};
 const proposal = (r: ProposalRow): Proposal => ({
   id: r.id,
   kind: r.kind,
@@ -310,6 +322,7 @@ const proposal = (r: ProposalRow): Proposal => ({
   status: r.status,
   approvedBy: r.approved_by,
   createdAt: new Date(r.created_at).toISOString(),
+  approvedAt: r.approved_at ? new Date(r.approved_at).toISOString() : null,
 });
 
 export async function propose(db: Queryable, p: { kind: string; area: string; summary: string; payload: unknown; by: string }): Promise<Proposal> {
@@ -322,6 +335,15 @@ export async function propose(db: Queryable, p: { kind: string; area: string; su
 
 export async function proposals(db: Queryable, area: string, status = 'waiting'): Promise<Proposal[]> {
   const { rows } = await db.query<ProposalRow>('SELECT * FROM command.proposals WHERE area = $1 AND status = $2 ORDER BY created_at', [area, status]);
+  return rows.map(proposal);
+}
+
+/** What a second person approved since a time, for the two-person rule's counts and waits. */
+export async function approvedSince(db: Queryable, area: string, since: Date): Promise<Proposal[]> {
+  const { rows } = await db.query<ProposalRow>(
+    `SELECT * FROM command.proposals WHERE area = $1 AND status = 'approved' AND approved_at >= $2 ORDER BY approved_at`,
+    [area, since],
+  );
   return rows.map(proposal);
 }
 
