@@ -1,4 +1,5 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { live } from '../live/actions';
 import { LIVE } from '../live/env';
 import { fig } from '../live/figures';
 import { SEED_NEXT_BATCH } from '@clear/command-types';
@@ -996,6 +997,9 @@ export function openMemberFlow(kind, id) {
     'Every change is logged',
   );
   document.addEventListener('keydown', onKey);
+  if (kind === 'resend' || kind === 'off') live(f, 'members', kind, () => ({ id: Number(id) }));
+  else if (kind === 'nudge1') live(f, 'members', 'nudge', () => ({ id: Number(id) }));
+  else if (kind === 'batch') live(f, 'members', 'batch', () => ({ size: MS.size, order: String(MS.order || 'longest') }));
   openMemberFlow.f = f;
 }
 

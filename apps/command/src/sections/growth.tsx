@@ -1,4 +1,5 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { live } from '../live/actions';
 import { LIVE } from '../live/env';
 import { fig } from '../live/figures';
 import { Fragment } from 'react';
@@ -2003,6 +2004,9 @@ export function openMove(kind, city) {
     'Every change is logged',
   );
   document.addEventListener('keydown', onKey);
+  if (kind === 'swap') live(f, 'growth', 'swap', () => ({ shop: city || 'A shop' }));
+  else if (kind === 'nudge') live(f, 'growth', 'nudge', () => ({ who: 'opened', count: MEMBERS.filter((m) => m.status === 'opened').length }));
+  else if (kind === 'pace') live(f, 'growth', 'pace', () => ({ perBatch: 50 }));
   openMove.f = f;
 }
 export function openAdd(prefill) {

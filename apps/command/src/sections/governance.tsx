@@ -39,6 +39,7 @@ import {
   vars,
 } from './data';
 import { G, chart, columns, figHtml, fmtD, gCell, px } from './growth';
+import { live, picked, typed } from '../live/actions';
 import { mkey, vizTrack } from './home';
 import { ddHtml } from './kit';
 import { evRows, strip } from './money';
@@ -2482,7 +2483,34 @@ export function openVFlow(kind, id) {
     };
   }
   if (!f) return;
+  govLive(f, kind, id);
   vModal(f, kind);
+}
+
+/** Live, each Governance flow saves through the API, reading what's typed and picked when confirmed. */
+function govLive(f, kind, id) {
+  if (!f) return;
+  if (kind === 'filing') {
+    const f0 = filOf(id),
+      at = { id: f0[0], position: FILINGS.indexOf(f0) };
+    if (f0[4] === 'ready') live(f, 'governance', 'filing-filed', () => at);
+    else if (f0[4] === 'draft') live(f, 'governance', 'filing-ready', () => ({ ...at, note: typed()[0] ?? '' }));
+    else if (f0[4] === 'none') live(f, 'governance', 'filing-start', () => ({ ...at, ...(picked()[0]?.[0] ? { owner: picked()[0][0] } : {}) }));
+  } else if (kind === 'rp') live(f, 'governance', RP[+id][5] ? 'rp-agenda' : 'rp-payment', () => ({ position: +id }));
+  else if (kind === 'matter') live(f, 'governance', 'matter', () => ({ position: +id, what: MATTERS[+id][0] }));
+  else if (kind === 'form') live(f, 'governance', 'formation-step', () => ({ entity: id }));
+  else if (kind === 'remind' || kind === 'packet') live(f, 'governance', kind, () => ({}));
+  else if (kind === 'minutes') live(f, 'governance', 'minutes', () => ({ title: `Minutes · Co-op board, ${fmtD(nextBoard())}`, entity: 'coop' }));
+  else if (kind === 'item')
+    live(f, 'governance', 'agenda-item', () => ({
+      title: (document.getElementById('vi-what')?.value || '').trim() || 'New item',
+      kind: (picked()[0]?.[0] || 'Vote').toLowerCase(),
+    }));
+  else if (kind === 'log')
+    live(f, 'governance', 'decision', () => {
+      const k = VS.logKind || 'reso';
+      return { kind: k === 'reso' ? 'other' : k, what: (document.getElementById('vl-what')?.value || '').trim() || 'A decision', body: 'Co-op board' };
+    });
 }
 
 /* ══ Records ════════════════════════════════════════════════════════════

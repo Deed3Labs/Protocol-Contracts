@@ -1,6 +1,8 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { LIVE } from '../live/env';
 import * as live from '../live/account';
+import { act, addFile, picked, typed } from '../live/actions';
+import { api, apiUrl, saveDownload } from '../live/api';
 import { css, swapClass } from '../runtime/dom';
 import { D, pctX } from './contracts';
 import { compBar, head, ic, pct, rng } from './core';
@@ -37,6 +39,40 @@ import { ddHtml } from './kit';
 import { strip } from './money';
 import { vLevel } from './shell';
 
+/** The file picked in the open flow, or a clear error. */
+const pickedFile = () => {
+  const f = document.getElementById('ru-file')?.files?.[0];
+  if (!f) throw new Error('Pick a file to add');
+  return f;
+};
+/** Live, Records' flows store files, log downloads and make links that expire. */
+function recLive(f, kind, d) {
+  if (!LIVE || !f) return;
+  const ENT = ['coop', 'fin', 'dt', 'hold', 'labs', 'mgr'];
+  if (kind === 'download' && d) f.api = () => saveDownload(`/documents/${d[0]}/file`, d[1]);
+  else if (kind === 'share' && d)
+    f.api = async () => {
+      const days = Number((picked()[0]?.[0] || '7').split(' ')[0]),
+        forWhom = typed()[0] || 'Someone outside';
+      const r = await api('POST', `/documents/${d[0]}/share`, { days, forWhom });
+      const url = apiUrl(r.path);
+      const copied = await navigator.clipboard?.writeText(url).then(() => true, () => false);
+      f.steps = ['Made a view-only link', `Set it to expire in ${days} day${days === 1 ? '' : 's'}`, 'Logged who it’s for'];
+      f.done = ['Link ready.', `${copied ? 'Copied to your clipboard' : url}. It stops working in ${days} day${days === 1 ? '' : 's'}.`];
+    };
+  else if (kind === 'version' && d)
+    f.api = async () => {
+      const file = await addFile('records', pickedFile());
+      return act('records', 'document-version', { id: d[0], file, note: typed()[0] ?? '' });
+    };
+  else if (kind === 'upload')
+    f.api = async () => {
+      const pick = pickedFile(),
+        groups = [...document.querySelectorAll('#modalRoot .seg2')].map((g) => [...g.children].findIndex((b) => b.getAttribute('aria-pressed') === 'true')),
+        file = await addFile('records', pick);
+      return act('records', 'document-add', { title: pick.name.replace(/\.[a-z0-9]+$/i, ''), kind: Object.keys(DT)[groups[0]] ?? 'filing', entity: ENT[groups[1]] ?? 'coop', file });
+    };
+}
 /* on file, draft, waiting */
 export function docOf(id) {
   return DOCS.find((d) => d[0] === id);
@@ -1371,10 +1407,20 @@ export function openRFlow(kind, id) {
       t: 'Add a new version',
       h: d[1],
       post: (
-        <label className="field">
-          <span className="lbl">What changed</span>
-          <input type="text" defaultValue="Board edits from 4 Nov" autoComplete="off" />
-        </label>
+        <>
+          <label className="field">
+            <span className="lbl">What changed</span>
+            <input type="text" defaultValue="Board edits from 4 Nov" autoComplete="off" />
+          </label>
+          {LIVE ? (
+            <label className="field">
+              <span className="lbl">File</span>
+              <input id="ru-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.txt,.csv,.docx,.xlsx" />
+            </label>
+          ) : (
+            ''
+          )}
+        </>
       ),
       rows: [
         ['Now', d[6]],
@@ -1412,7 +1458,7 @@ export function openRFlow(kind, id) {
           </div>
           <label className="field">
             <span className="lbl">File</span>
-            <input id="ru-name" type="text" defaultValue="EIN letter · The Deed & Title Co..pdf" autoComplete="off" />
+            {LIVE ? <input id="ru-file" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.txt,.csv,.docx,.xlsx" /> : <input id="ru-name" type="text" defaultValue="EIN letter · The Deed & Title Co..pdf" autoComplete="off" />}
           </label>
         </>
       ),
@@ -1464,6 +1510,7 @@ export function openRFlow(kind, id) {
     };
   }
   if (!f) return;
+  recLive(f, kind, d);
   vModal(f, 'r:' + kind);
   openRFlow.f = f;
 }

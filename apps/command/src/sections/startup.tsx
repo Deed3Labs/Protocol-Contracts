@@ -1,10 +1,12 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { LIVE } from '../live/env';
 import * as live from '../live/account';
+import * as acts from '../live/actions';
 import { css, hasHtml, html } from '../runtime/dom';
 import { D, merchantAgreements, openCFlow } from './contracts';
 import { $, closePf, money, openPf, pfAct, setRail, setTheme } from './core';
 import {
+  MON,
   AGR,
   CS,
   DAY,
@@ -44,6 +46,26 @@ import { closeModal, finish, go, openItem, render, runSteps, toast, vLevel, view
 import { openSFlow } from './shop';
 import { sgnIn, sgnStep, sgnTimer, showLogin } from './signin';
 import { accOf, openTFlow } from './team';
+
+/** Live, a confirmed flow with an API call runs it, then its steps; a failure shows and the button comes back. */
+function liveGo(t, f, title) {
+  if (!LIVE || !f?.api) return false;
+  t.disabled = true;
+  f.api().then(
+    () => stepFlow(title, f.steps, f.done, () => render()),
+    (e) => {
+      t.disabled = false;
+      toast(e.message);
+    },
+  );
+  return true;
+}
+/** "21 Oct" as the date a poster went up, in the year it's for. */
+function hungOn(v) {
+  const m = /^(\d{1,2}) ([A-Z][a-z]{2})/.exec(String(v || '').trim()),
+    i = m ? MON.indexOf(m[2]) : -1;
+  return i < 0 ? {} : { hungOn: new Date(Date.UTC(new Date(TODAY).getUTCFullYear(), i, Number(m[1]))).toISOString().slice(0, 10) };
+}
 export function startup() {
   try {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
@@ -268,6 +290,7 @@ export function startup() {
         c.stage = to;
         XS.board = [...ids.map((id) => XS.board.find((x) => x.id === id)), ...rest];
         render();
+        acts.saveOrder(c);
         if (prev.stage !== to) kcLog(c, `Moved to ${KST.find((s) => s[0] === to)[1]}`);
         if (prev.stage !== to)
           toast(`${c.name} moved to ${KST.find((s) => s[0] === to)[1]} · logged`, {
@@ -276,6 +299,7 @@ export function startup() {
               c.stage = prev.stage;
               XS.board = prev.order;
               render();
+              acts.saveOrder(c);
             },
           });
       };
@@ -411,12 +435,15 @@ export function startup() {
       return kcDraw();
     } else if (k.startsWith('c.')) {
       c.contact[k.slice(2)] = t.value.trim();
+      acts.saveCard(c);
       kcSaved('Saved');
       return kcDraw();
     } else if (k === 'note') {
       c.note = t.value;
+      acts.saveCard(c);
     } else {
       c[k] = t.value.trim();
+      acts.saveCard(c);
     }
     kcSaved();
   });
@@ -548,6 +575,7 @@ export function startup() {
         why = vars.KE.offReason;
       kcLog(c, `Taken off the board · ${why}`);
       XS.board = XS.board.filter((x) => x !== c);
+      acts.removeCard(c, why || 'Taken off');
       vars.KE = null;
       closeModal();
       render();
@@ -555,6 +583,7 @@ export function startup() {
         label: 'Undo',
         fn: () => {
           XS.board = prev;
+          acts.restoreCard(c);
           render();
         },
       });
@@ -589,6 +618,7 @@ export function startup() {
         same = rest.filter((x) => x.stage === n.stage);
       rest.splice(same.length ? rest.indexOf(same[0]) : rest.length, 0, n);
       XS.board = rest;
+      acts.saveOrder(n);
       vars.KE = null;
       closeModal();
       XS.pane = 'pipeline';
@@ -617,6 +647,7 @@ export function startup() {
         label: 'Undo',
         fn: () => {
           XS.board = XS.board.filter((x) => x !== n);
+          acts.removeCard(n, 'Added by mistake');
           render();
         },
       });
@@ -753,6 +784,7 @@ export function startup() {
     if (t.dataset.fsave) return fSave(Number(t.dataset.fsave));
     if (t.dataset.fdev) {
       const [sid, i] = t.dataset.fdev.split(':');
+      if (LIVE) return acts.run('field', 'task-done', { stop: sid, position: Number(i) }, () => render());
       const tk = STOPS.find((x) => x.id === sid).tasks[i];
       if (!tk.done) {
         tk.done = '10:3' + (4 + Math.floor(Math.random() * 5));
@@ -761,12 +793,21 @@ export function startup() {
       return render();
     }
     if (t.dataset.fskip) {
+      if (LIVE) return acts.run('field', 'skip', { stop: t.dataset.fskip }, () => render());
       const i = STOPS.findIndex((x) => x.id === t.dataset.fskip);
       STOPS.push(STOPS.splice(i, 1)[0]);
       return render();
     }
     if (t.dataset.fadd || t.dataset.faddAll !== undefined) {
       const names = t.dataset.fadd ? [t.dataset.fadd] : LATER.map((l) => l[0]);
+      if (LIVE) {
+        // one after another, so the route keeps their order
+        names.reduce((p, shop) => p.then(() => acts.act('field', 'add-later', { shop })), Promise.resolve()).then(
+          () => render(),
+          (e) => toast(e.message),
+        );
+        return;
+      }
       names.forEach((nm) => {
         const i = LATER.findIndex((l) => l[0] === nm),
           l = LATER.splice(i, 1)[0];
@@ -1047,6 +1088,16 @@ export function startup() {
     if (t.dataset.cgo) {
       const f = openCFlow.f,
         v = (document.getElementById('cp-what') || {}).value;
+      if (LIVE && f.api) {
+        t.disabled = true;
+        return f.api().then(
+          () => stepFlow(f.ext ? 'Handing off' : 'Working', f.steps, f.done, () => render()),
+          (e) => {
+            t.disabled = false;
+            toast(e.message);
+          },
+        );
+      }
       return stepFlow(f.ext ? 'Handing off' : 'Working', f.steps, f.done, f.after ? () => f.after(v) : null);
     }
     if (t.dataset.npane) {
@@ -1105,6 +1156,7 @@ export function startup() {
     if (t.dataset.xadd !== undefined) return kcNew();
     if (t.dataset.xgo) {
       const f = openXFlow.f;
+      if (liveGo(t, f, t.dataset.xgo === 'cap' ? 'Handing off' : 'Working')) return;
       return stepFlow(t.dataset.xgo === 'cap' ? 'Handing off' : 'Working', f.steps, f.done);
     }
     if (t.dataset.mpane) {
@@ -1146,6 +1198,7 @@ export function startup() {
     if (t.dataset.mturnoff) return openMemberFlow('off', Number(t.dataset.mturnoff));
     if (t.dataset.mgo) {
       const f = openMemberFlow.f;
+      if (liveGo(t, f, 'Working')) return;
       return stepFlow('Working', f.steps, f.done);
     }
     if (t.dataset.gpane) {
@@ -1193,6 +1246,7 @@ export function startup() {
     if (t.dataset.doreplace) {
       const n = Number(t.dataset.doreplace),
         p = POSTERS.find((x) => x.n === n);
+      if (liveGo(t, { api: () => acts.act('growth', 'poster-replaced', { n }), steps: ['Retired the old poster', 'Set the next swap'], done: ['Poster replaced.', pid(n) + ' is back up at ' + p.shop + '.'] }, 'Replacing')) return;
       return stepFlow(
         'Replacing',
         ['Retired the old poster', 'Linked the new one to useclear.org/s/' + slug(p.shop), 'Set the next swap for ' + fmtD(TODAY + 60 * DAY)],
@@ -1205,13 +1259,20 @@ export function startup() {
         },
       );
     }
-    if (t.dataset.addposter !== undefined) return openAdd();
+    if (t.dataset.addposter !== undefined) {
+      openAdd.city = null;
+      return openAdd();
+    }
     if (t.dataset.move) {
-      if (t.dataset.move === 'add') return openAdd('A shop in ' + t.dataset.city);
+      if (t.dataset.move === 'add') {
+        openAdd.city = t.dataset.city;
+        return openAdd('A shop in ' + t.dataset.city);
+      }
       return openMove(t.dataset.move);
     }
     if (t.dataset.domove) {
       const f = openMove.f;
+      if (liveGo(t, f, 'Working')) return;
       return stepFlow('Working', f.steps, f.done);
     }
     if (t.dataset.apd) {
@@ -1222,6 +1283,14 @@ export function startup() {
       const shop = ($('#ap-shop').value || 'New shop').trim(),
         des = (document.querySelector('[data-apd][aria-pressed="true"]') || {}).dataset?.apd || 'A',
         n = POSTERS.length + 1;
+      if (
+        liveGo(
+          t,
+          { api: () => acts.act('growth', 'poster-add', { place: shop, city: openAdd.city || 'Inland Empire', design: des, ...hungOn(($('#ap-date') || {}).value) }), steps: ['Gave it the next number', 'Made its code', 'Set the first swap'], done: ['Poster added.', shop + ' is in the inventory.'] },
+          'Adding',
+        )
+      )
+        return;
       return stepFlow(
         'Adding',
         ['Gave it the number ' + pid(n), 'Made its code useclear.org/s/' + slug(shop), 'Set the first swap for ' + fmtD(TODAY + 60 * DAY)],

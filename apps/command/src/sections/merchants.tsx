@@ -1,4 +1,5 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { boardFromApi, live, saveCard } from '../live/actions';
 import { LIVE } from '../live/env';
 import { fig } from '../live/figures';
 import { Fragment } from 'react';
@@ -954,8 +955,8 @@ export function xOverview() {
 export function kbInit() {
   if (XS.board) return;
   // the live app's board comes from the API, card by card (merchant_stage)
-  if (LIVE && BOARD.length) {
-    XS.board = BOARD.map((c) => ({ ...c, contact: { ...c.contact } }));
+  if (LIVE) {
+    XS.board = boardFromApi();
     return;
   }
   XS.board = [
@@ -1113,6 +1114,8 @@ export function kWho() {
 export function kcLog(c, t, type = 'edit') {
   (c.log = c.log || []).unshift([TODAY, t, kWho(), type]);
   if (['call', 'visit', 'demo', 'note'].includes(type)) c.last = TODAY;
+  // live, every logged change saves the card (and its new log lines) through the API
+  saveCard(c);
 }
 export function kbTeam() {
   return PEOPLE_T.filter((p) => !p.off && p.role !== 'investors')
@@ -3137,6 +3140,12 @@ export function openXFlow(kind, id) {
     'Every change is logged',
   );
   document.addEventListener('keydown', onKey);
+  if (kind === 'cap') live(f, 'merchants', 'cap', () => ({ id, cap: next }));
+  else if (kind === 'off' || kind === 'on') live(f, 'merchants', kind, () => ({ id }));
+  else if (kind === 'run') {
+    const run = (fig('money.payout.queue') || []).find((q) => /^Monthly run/.test(q[1]));
+    live(f, 'merchants', 'run', () => ({ total: run?.[2] ?? 0, shops: Number(/(\d+) shops/.exec(run?.[1] ?? '')?.[1] ?? 0) }));
+  }
   openXFlow.f = f;
 }
 

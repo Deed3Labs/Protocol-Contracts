@@ -1,4 +1,5 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { dollars, live, picked, typed } from '../live/actions';
 import { LIVE } from '../live/env';
 import { attrs, css } from '../runtime/dom';
 import { D, laneFrame, pctX } from './contracts';
@@ -2414,7 +2415,55 @@ export function openSFlow(kind, id) {
     };
   }
   if (!f) return;
+  shopLive(f, kind, p, o, id);
   vModal(f, 's:' + kind);
+}
+
+/** Live, each Shop flow saves through the API: what's typed and picked in it, read when it's confirmed. */
+function shopLive(f, kind, p, o, id) {
+  const WHY = { stock: 'Out of stock', fix: 'Fixing the page', season: 'Out of season', pause: 'Pausing it' };
+  const nameOf = (s) => {
+    const [n, ...v] = String(s).split(' · ');
+    return { name: n.trim(), variant: v.join(' · ').trim() };
+  };
+  if (kind === 'add')
+    live(f, 'shop', 'product-add', () => {
+      const [name, price, cost] = typed(),
+        ln = SS.line,
+        sizes = ln === 'hw' ? [''] : (picked()[1] ?? []).map((x) => (x === 'One size' ? '' : x));
+      return { ...nameOf(name), line: ln, glyph: ln === 'patch' ? 'patch' : ln === 'hw' ? 'point' : 'gtee', price: dollars(price), cost: ln === 'hw' ? null : [dollars(cost), 0, 0, 0], options: ['Black'], sizes: sizes.length ? sizes : [''] };
+    });
+  else if (kind === 'edit' && p)
+    live(f, 'shop', 'product-edit', () => {
+      const [name, price, cost] = typed(),
+        c = dollars(cost);
+      return { id: p.id, ...nameOf(name), price: dollars(price), cost: p.dep || Math.abs(c - unitCost(p)) < 0.005 ? null : [c, 0, 0, 0] };
+    });
+  else if (kind === 'shelf-off' && p) live(f, 'shop', 'shelf-off', () => ({ id: p.id, why: WHY[SS.why] ?? 'Off the shelf' }));
+  else if (kind === 'shelf-on' && p) live(f, 'shop', 'shelf-on', () => ({ id: p.id }));
+  else if (kind === 'archive' && p) live(f, 'shop', 'archive', () => ({ id: p.id, why: p.why || 'Archived' }));
+  else if (kind === 'restore' && p) live(f, 'shop', 'restore', () => ({ id: p.id }));
+  else if (kind === 'restock' && p)
+    live(f, 'shop', 'restock', () => {
+      const v = typed().map((x) => Math.max(0, Math.round(dollars(x)))),
+        sizes = v.length ? SIZES : [''],
+        n = v.length ? v : [100],
+        units = sizes.map((size, i) => ({ option: Object.keys(STK[p.id] || { Black: 0 })[0], size, n: n[i] })).filter((u) => u.n > 0);
+      return { id: p.id, units, cost: units.reduce((a, u) => a + u.n, 0) * unitCost(p) };
+    });
+  else if (['pack', 'ship', 'ready', 'picked', 'remind'].includes(kind) && o) live(f, 'shop', kind, () => ({ order: o[0] }));
+  else if (kind === 'labels') live(f, 'shop', 'labels', () => ({ orders: ORDERS.filter((x) => x[8] === 'paid' && x[6] === 'ship').map((x) => x[0]) }));
+  else if (kind === 'refund' && o)
+    live(f, 'shop', 'refund', () => {
+      const r = picked()[0]?.[0] ?? 'Wrong size';
+      return { order: o[0], reason: r === 'Damaged' ? 'Damaged in shipping' : r, amount: ordTotal(o) };
+    });
+  else if (kind === 'refundwait' && o) live(f, 'shop', 'refund-nudge', () => ({ order: o[0] }));
+  else if (kind === 'preorder') {
+    const r = PRE.find((x) => x[0] === id);
+    if (r?.[5] === 'held') live(f, 'shop', 'deposit-refund', () => ({ id: r[0], amount: prOf(r[2]).price * r[4] }));
+    else if (r?.[5] === 'signup') live(f, 'shop', 'signup-link', () => ({ id: r[0] }));
+  }
 }
 
 /* ── Render ──────────────────────────────────────────────── */
