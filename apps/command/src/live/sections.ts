@@ -334,6 +334,8 @@ export async function loadSection(route: string, opts: { reveal?: boolean } = {}
   if (route === 'contracts') await import('./safe').then((m) => m.loadSafe().then(m.loadSafeQueue)).catch(() => undefined);
   vars.asOf = d.asOf;
   ready.add(route);
+  // the feeds' health rides along with every section (Phase 6a)
+  void import('./feeds').then((m) => m.loadFeeds()).catch(() => undefined);
 }
 
 /** Signing out forgets what was loaded, so the next person's view loads their own. */

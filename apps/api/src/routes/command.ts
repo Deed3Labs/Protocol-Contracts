@@ -26,6 +26,8 @@ import { BUILDERS, BuildError, onChain, safeTxFor, safeTxHash, typedDataFor, typ
 import { indexStatus } from '../services/command/indexer.js';
 import type { ChainReader } from '../services/command/onchain.js';
 import { codeStatus } from '../services/command/github.js';
+import { feedStatus, requestSync, type Feed } from '../services/command/feeds.js';
+import { liveFeeds, plaidWebhook, plaidWebhookKey } from '../services/command/feedSources.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
 /*
@@ -55,6 +57,8 @@ export interface CommandDeps {
   chain?: ChainReader;
   /** The GitHub poller: a catch-up when someone opens Contracts. */
   code?: { catchUp(): void };
+  /** The sandbox feeds, for their status (Phase 6a): the live four unless given. */
+  feeds?: Feed[];
   /** The Ops Safe: which one (env unless given), and how it's read. */
   safe?: { config: () => SafeConfig | null; reader: SafeReader };
   /** Where files people add are kept (Postgres unless given). */
@@ -99,6 +103,10 @@ const name = z.string().trim().min(1).max(80);
 export function commandRouter(deps: CommandDeps) {
   const router = forwardAsyncErrors(express.Router());
   const now = () => deps.now?.() ?? new Date();
+  const feedList = (() => {
+    let list: Feed[] | null = deps.feeds ?? null;
+    return () => (list ??= liveFeeds());
+  })();
   const limits = deps.limits ?? { signIn: passThrough, write: passThrough };
 
   router.use(deps.identify);
@@ -433,6 +441,11 @@ export function commandRouter(deps: CommandDeps) {
   /** Where the indexer is: how far it's read, how far behind the head, its last error. */
   router.get('/chain/status', need('contracts', SEE), async (req, res) => {
     res.json(await indexStatus(req.command!.db));
+  });
+
+  /** Each feed's health and freshness, and the menu's line: the same for everyone signed in. */
+  router.get('/feeds', need('home', TOTALS), async (req, res) => {
+    res.json(await feedStatus(req.command!.db, feedList(), now().getTime()));
   });
 
   /** Where the GitHub poller is: how many commits it holds, how many want their files, its last error. */
@@ -1060,6 +1073,25 @@ interface ActionPayload {
  * Opening a shared link: no sign-in, so it's mounted ahead of the Command Center's own router. The
  * link is the only key; it works until it expires or is revoked, and each open is logged.
  */
+/**
+ * Webhooks from the sandbox providers, mounted ahead of the signed-in router. Plaid's says the co-op's
+ * bank has news: checked against Plaid's signature, then the bank feed syncs at the next tick.
+ */
+export function commandWebhookRouter(deps: { db: () => Promise<Db | null>; plaidKey?: Parameters<typeof plaidWebhook>[3]; now?: () => Date }) {
+  const router = forwardAsyncErrors(express.Router());
+  router.post('/plaid', async (req, res) => {
+    const db = await deps.db();
+    if (!db) return res.status(503).end();
+    const raw = (req as any).rawBody as Buffer | undefined;
+    if (!raw) return res.status(400).json({ error: 'no body' });
+    const r = await plaidWebhook(db, req.header('plaid-verification'), raw, deps.plaidKey ?? plaidWebhookKey(), (deps.now?.() ?? new Date()).getTime()).catch((e) => ({ ok: false as const, why: (e as Error).message }));
+    if (!r.ok) return res.status(400).json({ error: r.why });
+    if (r.wake) await requestSync(db, 'plaid', 'Plaid webhook');
+    res.json({ ok: true });
+  });
+  return router;
+}
+
 export function commandSharedRouter(deps: { db: () => Promise<Db | null>; files?: FileStore; now?: () => Date }) {
   const router = forwardAsyncErrors(express.Router());
   router.get('/:token', async (req, res) => {

@@ -4,6 +4,7 @@ import type { Queryable } from '../../db/db.js';
 import { PROPOSE, type Level, type Section } from './levels.js';
 import { providerFor } from './sections.js';
 import type { Person } from './store.js';
+import { requestSync } from './feeds.js';
 
 /*
  * Each section's own actions (docs/command-center-plan.md: the step after Phase 3).
@@ -393,7 +394,13 @@ const shop: Record<string, Action> = {
 
 const moneyActions: Record<string, Action> = {
   top: { body: z.object({ amount: money.positive(), from: text(40).default('ops') }), summary: (b) => `Top up the PayoutPool · $${b.amount.toFixed(2)}`, second: () => true, outbox: true },
-  sync: { body: z.object({ source: z.enum(['plaid', 'bridge', 'chain']).default('plaid') }), summary: (b) => `Sync ${b.source} now`, outbox: true },
+  // a sandbox feed syncs at the next tick (Phase 6a); the chain's catch-up is the indexer's own
+  sync: {
+    body: z.object({ source: z.enum(['plaid', 'bridge', 'lithic', 'stripe', 'chain']).default('plaid') }),
+    summary: (b) => `Sync ${b.source} now`,
+    apply: async ({ tx, person }, b) => (b.source === 'chain' ? undefined : requestSync(tx, b.source, who(person))),
+    outbox: (b) => b.source === 'chain',
+  },
   reserve: { body: z.object({}).default({}), summary: () => 'Run the reserve check again', outbox: true },
   vote: { body: z.object({ what: text(300).min(1), amount: money.nullable().default(null) }), summary: (b) => `Propose a member vote on the co-op balance · ${b.what}`, second: () => true, outbox: true },
 };

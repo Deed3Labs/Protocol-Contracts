@@ -452,3 +452,45 @@ Contracts (the map's layout, notes, changes) are still the tables' until their s
 - **The page**, live, draws its change lanes around the API's now rather than the prototype's
   fixed dates, and takes whichever changes exist rather than the first five by index.
 - **Status:** `GET /api/command/code/status`.
+
+## Phase 6: the sandboxes
+
+Decided 2026-10-24 (Kai): Command makes the co-op's own Plaid sandbox link; the reserve check
+compares CLRUSD with the vault's USDC on chain, Bridge being the deposit rail (6b); Lithic, Bridge
+and Stripe every 5 minutes, Plaid once a day plus whenever something says the bank moved.
+
+### 6a: the feeds
+
+`services/command/feeds.ts`, `feedSources.ts`, `jobs/commandFeeds.ts`, migration `0046_command_feeds`.
+
+- **One row per provider** in `command.feeds`: state, when it last synced, how fresh its data is
+  (Plaid's own last update from the bank; the sync time for the rest), the last error, and what it
+  read. `GET /api/command/feeds` gives each one's health and the menu's line.
+- **Sandboxes only.** Each feed refuses anything else and its row says why: `PLAID_ENV` must be
+  `sandbox`, `BRIDGE_ENV` `sandbox` (with `BRIDGE_SANDBOX_API_KEY`), Lithic's environment sandbox,
+  Stripe's key `sk_test_`/`rk_test_` (`COMMAND_STRIPE_KEY`, else `STRIPE_SECRET_KEY`).
+- **Reads only**, but for one sandbox-only write: the first Plaid sync makes the co-op's test bank
+  link (`/sandbox/public_token/create`, `COMMAND_PLAID_INSTITUTION`, default First Platypus Bank),
+  its access token envelope-encrypted like the members' (`PLAID_TOKEN_MASTER_KEY`).
+- **What each reads:** Plaid the link's accounts and transactions (`/transactions/sync` from its
+  cursor, into `command.bank_transactions`); Bridge its wallets' balances and the transfers still in
+  flight; Lithic this month's card spend by merchant, declines and voids left out; Stripe the balance
+  and the last 20 payouts.
+- **When:** a tick a minute runs what's due. Lithic, Bridge, Stripe every 5 minutes
+  (`COMMAND_FEEDS_MINUTES`); Plaid every 24 hours (`COMMAND_PLAID_HOURS`), and at the next tick when:
+  - Plaid's webhook says the link has news (`COMMAND_PLAID_WEBHOOK_URL`, set on the link when it's
+    made, pointing at `/api/command/webhooks/plaid`). Believed only with Plaid's signature: an ES256
+    JWT with a key Plaid serves by id, issued in the last 5 minutes, over this exact body.
+  - a Stripe payout has landed since the bank was last read.
+  - someone presses Sync (Money's action now asks the feed instead of only recording it).
+  An asked-for sync never runs twice a minute; a failed feed waits a tenth of its schedule.
+- **Health:** behind once its data is older than twice its schedule; failing when the last attempt
+  failed; off or never run. The chain is the indexer's (Phase 5a), on the same line.
+- **The page**, live: the menu's foot is the worst feed ("Plaid is 3h behind · 3 other feeds
+  synced"), each figure's freshness label is its feed's real age, Money's late chips follow the
+  feeds, and Home's sources list them. Read with every section load and every 5 minutes.
+- **Checked against the Lithic sandbox** (the one key on this machine): a sync is one request,
+  202 ms. The other three need Railway's keys.
+- **6b next:** the figures into Money (operating cash from Plaid, the reserve check against the vault
+  on chain and the copy that says so, Stripe's payouts into the operating account's lines, Lithic's
+  spend into "Where it was spent").
