@@ -10,6 +10,8 @@ const out = new URL('../../../packages/command-types/src/chain/base-sepolia.json
 const contracts: Record<string, { address: string; functions: unknown[] }> = {};
 for (const f of readdirSync(dir).filter((f) => f.endsWith('.json')).sort()) {
   const j = JSON.parse(readFileSync(new URL(f, dir), 'utf8'));
+  // some deployment files keep the ABI as a JSON string
+  if (typeof j.abi === 'string') j.abi = JSON.parse(j.abi);
   if (!j.address || !Array.isArray(j.abi)) continue;
   contracts[f.replace(/\.json$/, '')] = {
     address: j.address,

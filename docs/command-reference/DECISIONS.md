@@ -307,3 +307,27 @@ the app with their own wallet; the admin handover is written now and run by him 
 - **Not yet:** executing happens in Safe{Wallet} (linked); the prototype's 24-hour wait needs a
   delay module on the Safe; shops need their wallet on Command's merchant row
   (`command.merchants.wallet_address`) until the live provider reads the merchant app's.
+
+### 4c: handing admin to the Safe
+
+- **`scripts/command/safe-handover.ts`** (Kai runs it; Command never does). Dry run by default,
+  needing no key: every deployed contract, who holds each role and `owner()` now, and the exact
+  plan. `MODE=run CONFIRM=handover` carries it out with the deployer's key from Kai's own env.
+- **What moves:** admin roles (`DEFAULT_ADMIN_ROLE`, `ADMIN_ROLE`, `UPGRADER_ROLE`,
+  `REGISTRY_ADMIN_ROLE`, `PAUSER_ROLE`) and ownership. Grants and transfers first; each renounce
+  only after the Safe is seen to hold that role, a contract's default admin last. The Safe is also
+  granted the operational roles its own proposals need (MerchantRegistry `OPERATOR_ROLE`,
+  PayoutPool `FUNDER_ROLE`) without taking them from anyone.
+- **Three kinds of handover, all found by rehearsing it:** a plain grant; ClearUSDUpgradeable's
+  timed default-admin transfer (begun by the deployer, accepted by the Safe after its 48-hour
+  delay); and two-step ownership on CLRUSDTokenPool (Chainlink-style, no `pendingOwner()`), which
+  the Safe accepts. `owner()` alone isn't ownership: on ClearUSDUpgradeable it only reports the
+  default admin.
+- **The drill** (`FORK_RPC_URL=https://sepolia.base.org npx hardhat run
+  scripts/command/drill_safe_handover.ts`) makes a 2-of-3 Safe through Safe's own factory on a fork,
+  runs the handover as the impersonated deployer, has the Safe accept what it must, and checks the
+  Safe holds all 31 admin roles and owns all 14 contracts, the deployer holds none and can't grant
+  roles, two signers can make the Safe call MerchantRegistry, and one can't. It passes.
+- **Worth knowing:** the deployer wallet also holds every operational role (operators, settlers,
+  minters, the funder). The handover leaves those where they are, so the deployer stays a powerful
+  key until they're moved to dedicated service wallets (or the Safe, with `INCLUDE_ROLES`).
