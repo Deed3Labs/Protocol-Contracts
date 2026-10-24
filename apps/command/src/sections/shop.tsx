@@ -1,6 +1,7 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { dollars, live, picked, typed } from '../live/actions';
 import { LIVE } from '../live/env';
+import { api } from '../live/api';
 import { attrs, css } from '../runtime/dom';
 import { D, laneFrame, pctX } from './contracts';
 import { compBar, head, ic, money } from './core';
@@ -1539,14 +1540,21 @@ export function shopPane() {
               </span>
             </span>
           </div>
-          {kv([
-            ['Blank or base', money(p.c[0])],
-            ['Making', p.c[1] ? money(p.c[1]) : '—'],
-            ['Label and packing', money(p.c[2] + p.c[3])],
-            ['Cost', money(cost)],
-            ['Price', money(p.price)],
-            ['Margin', `${money(m)} · ${((m / p.price) * 100).toFixed(1)}%`, 1],
-          ])}
+          {/* live, a product the site sells that Command has no costs for says so, rather than a 100% margin */}
+          {p.nc
+            ? kv([
+                ['Costs', 'Not entered yet'],
+                ['Price', money(p.price)],
+                ['Margin', '—', 1],
+              ])
+            : kv([
+                ['Blank or base', money(p.c[0])],
+                ['Making', p.c[1] ? money(p.c[1]) : '—'],
+                ['Label and packing', money(p.c[2] + p.c[3])],
+                ['Cost', money(cost)],
+                ['Price', money(p.price)],
+                ['Margin', `${money(m)} · ${((m / p.price) * 100).toFixed(1)}%`, 1],
+              ])}
         </>,
         p.st !== 'arch' ? (
           <button type="button" className="pn-link" data-sflow="edit" data-sid={p.id}>
@@ -1843,6 +1851,24 @@ export function orderPane() {
 }
 
 /* ── modals ───────────────────────────────────────────────────────────── */
+/* the address for packing a live order: asked for once a visit (each ask is logged), then written into the open flow */
+const PACK_ADDR = new Map();
+function packAddress(o) {
+  if (PACK_ADDR.has(o[0])) return PACK_ADDR.get(o[0]);
+  void api('GET', `/shop/orders/${o[0]}/address`).then(
+    (a) => {
+      const text = [a.name, ...a.lines].filter(Boolean).join(' · ') || `Ship to ${o[9]}`;
+      PACK_ADDR.set(o[0], text);
+      const el = document.querySelector(`[data-pack-addr="${o[0]}"]`);
+      if (el) el.textContent = text;
+    },
+    (e) => {
+      const el = document.querySelector(`[data-pack-addr="${o[0]}"]`);
+      if (el) el.textContent = `Ship to ${o[9]} · the address couldn’t be read (${e.message})`;
+    },
+  );
+  return `Ship to ${o[9]} · reading the address…`;
+}
 export function openSFlow(kind, id) {
   vars.lastFocus = document.activeElement;
   let f = null;
@@ -2214,7 +2240,11 @@ export function openSFlow(kind, id) {
         </div>
       ),
       rows: [
-        ['Getting it', o[6] === 'ship' ? `Ship to ${o[9]}, CA` : `Pickup at ${o[7]}`],
+        [
+          'Getting it',
+          // live, the full address is read from Stripe for this order as it's packed, and never kept (Phase 7a)
+          LIVE && o[6] === 'ship' ? <span data-pack-addr={o[0]}>{packAddress(o)}</span> : o[6] === 'ship' ? `Ship to ${o[9]}, CA` : `Pickup at ${o[7]}`,
+        ],
         ['Paid', `${fmtD(o[1])} · ${ordAge(o).toFixed(1)} days ago`],
         ['Insert', 'Thank-you card and returns slip', 1],
       ],

@@ -252,4 +252,138 @@ export function stripeFeed(env: Env = process.env, f: typeof fetch = fetch): Fee
   };
 }
 
-export const liveFeeds = (env: Env = process.env): Feed[] => [plaidFeed(env), bridgeFeed(env), lithicFeed(env), stripeFeed(env)];
+
+
+// ── The shop (Phase 7a): live, read-only ────────────────────────────────────
+
+/** The shop's Stripe account, read with a restricted key: GETs only, and an unrestricted key is refused. */
+function shopStripe(env: Env, f: typeof fetch) {
+  const key = env.COMMAND_SHOP_STRIPE_KEY?.trim() ?? '';
+  const off = !key ? 'COMMAND_SHOP_STRIPE_KEY isn’t set' : /^rk_(live|test)_/.test(key) ? null : 'the shop’s key must be a restricted, read-only key (rk_…)';
+  const get = async (path: string, q: Record<string, string | string[]> = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(q)) for (const x of [v].flat()) qs.append(k, x);
+    const r = await f(`https://api.stripe.com/v1${path}${qs.size ? `?${qs}` : ''}`, { headers: { Authorization: `Bearer ${key}` } });
+    if (!r.ok) throw await fail(r, `Shop Stripe ${path}`);
+    return (await r.json()) as any;
+  };
+  return { off, get };
+}
+
+const SIZES = new Set(['xs', 's', 'm', 'l', 'xl', 'xxl']);
+const title = (s: string) => s.replace(/(^|-)([a-z])/g, (_m, sep, c) => (sep ? ' ' : '') + c.toUpperCase());
+/** A variant id as the page shows it: "black-m" is Black, M; "circle" is Circle, no size. */
+export function variantParts(variant: string): [string, string] {
+  const parts = variant.split('-');
+  const size = SIZES.has(parts.at(-1)!) ? parts.pop()!.toUpperCase() : '';
+  return [title(parts.join('-')) || 'One size', size];
+}
+/** "Ana Ruiz" → "Ana R.": buyers show by first name. */
+export const maskBuyer = (name: string | null | undefined) => {
+  const [first, ...rest] = String(name ?? '').trim().split(/\s+/);
+  return first ? `${first}${rest.length ? ` ${rest.at(-1)![0].toUpperCase()}.` : ''}` : 'A buyer';
+};
+
+/**
+ * The shop's orders, pre-orders and refunds from its Stripe Checkout. Each completed, paid session is
+ * an order (its goods, from the session's items) or a reservation (its hardware, from the payment's
+ * reserved lines). Command numbers the orders and keeps their packing; the sync only adds orders and
+ * marks refunds. The shipping address is never stored.
+ */
+export function shopFeed(env: Env = process.env, f: typeof fetch = fetch): Feed {
+  const s = shopStripe(env, f);
+  return {
+    id: 'shop',
+    everyMs: minutes(env.COMMAND_FEEDS_MINUTES, 5),
+    off: () => s.off,
+    async sync(db, last) {
+      // a session can complete up to a day after it was opened: ask from a day before the newest
+      const since = Math.max(0, Number(last.figures?.since ?? 0) - 86_400);
+      const sessions: any[] = [];
+      let after: string | undefined;
+      for (let page = 0; page < 20; page++) {
+        const j = await s.get('/checkout/sessions', { status: 'complete', limit: '100', 'created[gte]': String(since), 'expand[]': ['data.payment_intent'], ...(after ? { starting_after: after } : {}) });
+        sessions.push(...j.data);
+        if (!j.has_more || !j.data.length) break;
+        after = j.data.at(-1).id;
+      }
+      let orders = 0,
+        reserved = 0,
+        newest = Number(last.figures?.since ?? 0);
+      for (const x of sessions.filter((x) => x.payment_status === 'paid')) {
+        newest = Math.max(newest, x.created);
+        const pi = typeof x.payment_intent === 'object' ? x.payment_intent : null;
+        if (x.metadata?.kind === 'reservation' && pi) {
+          for (let n = 1; pi.metadata?.[`r${n}`]; n++) {
+            const [slug, variant, qty, , dep] = String(pi.metadata[`r${n}`]).split('/');
+            if (!slug || !Number(qty)) continue;
+            const status = pi.metadata[`s${n}`] ?? 'reserved';
+            const r = await db.query(
+              `INSERT INTO command.shop_live_preorders (payment_intent, line, shop, slug, variant, units, deposit_cents, state, placed_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (payment_intent, line) DO UPDATE SET state = $8 RETURNING (xmax = 0) AS added`,
+              [pi.id, n, String(pi.metadata.shop || pi.metadata.shop_id || 'A shop'), slug, variant, Number(qty), Number(dep) || 0, status === 'reserved' ? 'held' : status, new Date(x.created * 1000)],
+            );
+            if (r.rows[0]?.added) reserved++;
+          }
+        }
+        if (x.metadata?.items) {
+          const items = String(x.metadata.items)
+            .split(',')
+            .map((line) => /^([^/]+)\/(.+)x(\d+)$/.exec(line))
+            .filter(Boolean)
+            .map((m) => [m![1], ...variantParts(m![2]), Number(m![3])]);
+          const ship = pi?.shipping ?? x.shipping_details ?? x.collected_information?.shipping_details ?? null;
+          const r = await db.query(
+            `INSERT INTO command.shop_orders (id, paid_at, buyer, member, items, paid_with, fulfilment, pickup_at, state, city, source, stripe_session, payment_intent, total_cents)
+             VALUES (nextval('command.shop_order_number')::text, $1, $2, false, $3, 'card', 'ship', '', 'paid', $4, 'stripe', $5, $6, $7)
+             ON CONFLICT (stripe_session) DO NOTHING RETURNING 1`,
+            [new Date(x.created * 1000), maskBuyer(ship?.name ?? x.customer_details?.name), JSON.stringify(items), ship?.address?.city ?? x.customer_details?.address?.city ?? '', x.id, pi?.id ?? x.payment_intent ?? null, x.amount_total],
+          );
+          orders += r.rows.length;
+        }
+      }
+      // refunds since then: each refunded payment's total refunded, as its charge says
+      const refunds = await s.get('/refunds', { limit: '100', 'created[gte]': String(since) });
+      const touched = [...new Set((refunds.data ?? []).filter((r: any) => r.status === 'succeeded').map((r: any) => String(r.payment_intent)))];
+      for (const id of touched) {
+        const pi = await s.get(`/payment_intents/${id}`, { 'expand[]': 'latest_charge' });
+        const refunded = Number(pi.latest_charge?.amount_refunded ?? 0);
+        await db.query(`UPDATE command.shop_orders SET refunded_cents = $2, state = CASE WHEN $2 >= coalesce(total_cents, 0) AND $2 > 0 THEN 'refund' ELSE state END WHERE payment_intent = $1`, [id, refunded]);
+      }
+      return { figures: { since: newest, orders, reserved, refunds: touched.length } };
+    },
+  };
+}
+
+/** One live order's shipping address, read from Stripe when someone packs it: never stored. */
+export async function shopAddress(db: Queryable, orderId: string, env: Env = process.env, f: typeof fetch = fetch) {
+  const s = shopStripe(env, f);
+  if (s.off) throw new Error(s.off);
+  const { rows } = await db.query<{ payment_intent: string | null; stripe_session: string }>(`SELECT payment_intent, stripe_session FROM command.shop_orders WHERE id = $1 AND source = 'stripe'`, [orderId]);
+  if (!rows.length) return null;
+  const pi = rows[0].payment_intent ? await s.get(`/payment_intents/${rows[0].payment_intent}`) : null;
+  const ship = pi?.shipping ?? (await s.get(`/checkout/sessions/${rows[0].stripe_session}`)).shipping_details ?? null;
+  if (!ship?.address) return { name: ship?.name ?? null, lines: [] as string[] };
+  const a = ship.address;
+  return { name: ship.name ?? null, lines: [a.line1, a.line2, [a.city, a.state].filter(Boolean).join(', ') + (a.postal_code ? ` ${a.postal_code}` : ''), a.country === 'US' ? '' : a.country].filter(Boolean) as string[] };
+}
+
+/** What the shop sells, as the site serves it (clearpath-website /api/shop/catalog); drafts with the shared token. */
+export function catalogFeed(env: Env = process.env, f: typeof fetch = fetch): Feed {
+  const url = env.COMMAND_SHOP_CATALOG_URL?.trim() || 'https://useclear.org/api/shop/catalog';
+  const token = env.COMMAND_CATALOG_TOKEN?.trim();
+  return {
+    id: 'catalog',
+    everyMs: minutes(env.COMMAND_FEEDS_MINUTES, 5),
+    off: () => (url === 'off' ? 'COMMAND_SHOP_CATALOG_URL is off' : null),
+    async sync() {
+      const r = await f(url, { headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
+      if (!r.ok) throw await fail(r, 'Shop catalog');
+      const j: any = await r.json();
+      if (!Array.isArray(j.products)) throw new Error('Shop catalog: no products in the answer');
+      return { figures: { products: j.products, moved: j.moved ?? {}, drafts: !!token } };
+    },
+  };
+}
+
+export const liveFeeds = (env: Env = process.env): Feed[] => [plaidFeed(env), bridgeFeed(env), lithicFeed(env), stripeFeed(env), shopFeed(env), catalogFeed(env)];

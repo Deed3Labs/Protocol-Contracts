@@ -5,14 +5,22 @@ import type { Queryable } from '../../db/db.js';
  * synced on its own schedule into one row of command.feeds, which the menu's feed-status line, Home's
  * sources and each figure's freshness label read.
  *
- * Sandboxes only. A feed whose keys are for anything else (production Plaid, live Bridge, live
- * Lithic, a live Stripe key) doesn't run: its row says it's off and why, so Command can't touch a
- * live account in this phase.
+ * Sandboxes only, but for the shop (Phase 7a), which is live and read with a restricted, read-only
+ * key. A feed whose keys are for anything else (production Plaid, live Bridge, live Lithic, a live
+ * Stripe key, an unrestricted shop key) doesn't run: its row says it's off and why.
  */
 
-export type FeedId = 'plaid' | 'bridge' | 'lithic' | 'stripe';
-export const FEED_IDS: FeedId[] = ['plaid', 'bridge', 'lithic', 'stripe'];
-export const FEED_NAMES: Record<FeedId | 'protocol', string> = { plaid: 'Plaid', bridge: 'Bridge', lithic: 'Lithic', stripe: 'Stripe', protocol: 'Clear protocol' };
+export type FeedId = 'plaid' | 'bridge' | 'lithic' | 'stripe' | 'shop' | 'catalog';
+export const FEED_IDS: FeedId[] = ['plaid', 'bridge', 'lithic', 'stripe', 'shop', 'catalog'];
+export const FEED_NAMES: Record<FeedId | 'protocol', string> = {
+  plaid: 'Plaid',
+  bridge: 'Bridge',
+  lithic: 'Lithic',
+  stripe: 'Stripe',
+  shop: 'Shop orders',
+  catalog: 'Shop catalog',
+  protocol: 'Clear protocol',
+};
 
 export interface FeedRun {
   figures: unknown;

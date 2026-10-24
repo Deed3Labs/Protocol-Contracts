@@ -284,10 +284,15 @@ new blocks are read); GitHub polled with a read-only token; every deployed contr
 - **6b · Their figures in Money.** Operating cash from Plaid, the reserve check against the vault on
   chain, Stripe's payouts, Lithic's card spend. Built: `services/command/moneyFeeds.ts`.
 
-### Phase 7: live shop and the rest
+### Phase 7: live shop and the rest (in progress)
 
 - The shop read-only from Stripe live with a restricted key. Members from the member tables. Site
   and forms depending on question 10. Map style URL and token to env.
+- **7a · The shop.** Catalog from the site's `/api/shop/catalog` (clearpath-website #94), orders,
+  reservations and refunds from the shop's Stripe Checkout with a restricted key, addresses read on
+  demand and never stored.
+- **7b · Members**, with the waitlist and batches. **7c · Site visits and forms**, with the site's
+  PR. **7d · The map's style** in env.
 
 ### Phase 8: launch
 
