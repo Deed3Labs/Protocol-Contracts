@@ -387,3 +387,42 @@ token; every deployed contract's events kept).
 - **The public RPC first, Alchemy only on a rate limit**, as the API does elsewhere. Any other
   refusal is the public RPC's answer.
 - **Status:** `GET /api/command/chain/status`: how far it's read, how far behind, the last error.
+
+### 5b: the yield pool and releases, live
+
+`PROVIDER_MONEY=live` and `PROVIDER_CONTRACTS=live` (`services/command/onchain.ts`). Only the parts
+with a source so far switch: the rest of Money (the bank accounts, bonds, the credit book) and of
+Contracts (the map's layout, notes, changes) are still the tables' until their sources come.
+
+- **The contract says where it stands; the events say how it got there.** Assets, shares, what's
+  lent, cash, the queue, utilization and both rates are the LendingPool's own views, read on the
+  server in one multicall with each holder's `balanceOf` and `encumberedOf`. The events (Deposit,
+  Withdraw, the queue, Borrowed, Repaid, LossAbsorbed) are replayed for the daily history and the
+  account's lines. Today's point is always the read, so a token sent to the pool outside any event
+  still counts.
+- **Depositors are whoever holds shares now**, from the Transfer events, worth the share price,
+  masked to the last four characters of the address. Since: their first deposit, or when shares
+  first came to them.
+- **Principal is deposits less withdrawals** (paid at once or queued); earned is the assets above
+  it. The share price is assets over shares (the seed, having no shares, keeps assets over
+  principal).
+- **The rates are the contract's.** The curve (base, both slopes, the kink) is read too, only to say
+  what a draw for shop payouts would do to them. The cycle is `RevolvingIssuer.cycleLength()`, 30
+  days until the issuer has a tier.
+- **The PayoutPool's draws** show as "Lent to shop payouts", its repayments as "Repaid", and a
+  repayment in the same transaction as the PayoutPool's `InterestPaid` to the pool as "Interest
+  from credit". What it owes the pool now is `borrowedFromYield`, and what it would draw next is its
+  own `shortfall()` (queued claims beyond what it holds), never the tables' sample gap set against
+  real cash: that showed a 219% rate on Base Sepolia's $335 pool.
+- **Releases are each proxy's `Upgraded` events**, the implementation and when. The contracts don't
+  name their versions, so they're counted: v1.0 is the first. The same implementation twice in a
+  row (an initializer run again) is one release. A contract with no proxy is v1.0. Real version
+  names can come with 5c's commits.
+- **Map names find deployed contracts by name, never by address:** `<name>Upgradeable`, then the
+  name, then `<name>Factory` (ClearUSD is ClearUSDUpgradeable; SavingsIntent its factory).
+- **Nothing is pending live**: Command doesn't propose upgrades yet.
+- **Measured against Base Sepolia on 2026-10-23**, a fresh database indexed from scratch: 3,359
+  events from the explorer, then one RPC run to the head. The pool is $335 from one member (31
+  deposits, one $5 withdrawal), which the lines reconcile to the cent; nothing lent; 0.25% a cycle
+  to borrow. 51 `Upgraded` events give 30 contracts their versions (RevolvingIssuer and TermIssuer
+  are at v1.5).

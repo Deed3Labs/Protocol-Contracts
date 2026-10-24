@@ -1,6 +1,7 @@
 import { DAY, SEED_TODAY, mask, type FieldPayload, type FormRow, type GrowthPayload, type MemberRow, type MembersPayload, type NextBatch, type PosterRow } from '@clear/command-types';
 import type { Queryable } from '../../db/db.js';
 import { SEE, TOTALS, type Level } from './levels.js';
+import { deployedName, inventory, releasesLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 
 /*
  * What each section draws, built from the database (docs/command-center-plan.md, Phase 3).
@@ -27,7 +28,14 @@ export interface ReadOptions {
   /** Names in full: only at See and above, and only when asked. */
   reveal: boolean;
   now: Date;
+  /** The contracts' own reads, for the sections that are live from the chain. */
+  chain?: ChainReader;
 }
+
+const chainOf = (o: ReadOptions, source: string) => {
+  if (!o.chain) throw new Error(`PROVIDER_${source.toUpperCase()}=live reads the chain, and no chain reader was given`);
+  return o.chain;
+};
 
 /** The day a section is read for: the prototype's for the seed, today for live data. */
 const asOfFor = (provider: Provider, now: Date) => (provider === 'seed' ? SEED_TODAY : Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -353,7 +361,6 @@ const ms_ = (d: Date) => new Date(d).getTime();
  */
 export async function moneySection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const provider = providerFor('money');
-  if (provider === 'live') throw new NotLiveYet('money');
   const f = await figures(db, 'money');
   const book = f['money.book'] as { credit: number; savingsBacked: number; unsecured: number; limits: number; lost: number };
   const due = f['money.payouts_due'] as { owed14: number; dueMembers: number };
@@ -367,8 +374,12 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const bal = (id: string) => weeks(id).at(-1) ?? 0;
   const { rows: bondRows } = await db.query<{ id: string; face_cents: string; issued_on: Date; matures_on: Date; term_months: number; rate_pct: string; holder: string }>('SELECT * FROM command.bonds ORDER BY issued_on');
   const BONDS = bondRows.map((b) => [b.id, Number(b.face_cents) / 100, dayMon(ms_(b.issued_on)), dayMon(ms_(b.matures_on)), b.term_months, Number(b.rate_pct), b.holder]);
-  const { rows: pos } = await db.query<{ depositor: string; assets_cents: string; first_deposit: Date; pledged_cents: string }>('SELECT * FROM command.yield_positions ORDER BY assets_cents DESC, position');
-  const Y_DEP = pos.map((p) => [p.depositor, Number(p.assets_cents) / 100, dayMon(ms_(p.first_deposit)), Number(p.pledged_cents) / 100]);
+  // live, the yield pool is the LendingPool's (Phase 5b); the rest of Money is still the tables' until its sources come
+  const chainPool = provider === 'live' ? await yieldPoolLive(db, chainOf(o, 'money'), o.now.getTime()) : null;
+  const { rows: pos } = chainPool ? { rows: [] } : await db.query<{ depositor: string; assets_cents: string; first_deposit: Date; pledged_cents: string }>('SELECT * FROM command.yield_positions ORDER BY assets_cents DESC, position');
+  const Y_DEP = chainPool
+    ? chainPool.depositors.map((d) => [d.id, d.assets, dayMon(d.since), d.pledged])
+    : pos.map((p) => [p.depositor, Number(p.assets_cents) / 100, dayMon(ms_(p.first_deposit)), Number(p.pledged_cents) / 100]);
 
   // the headline numbers, as the prototype's M
   const M: Record<string, number> = {
@@ -376,19 +387,32 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
     ...book, ...due, bonds: BONDS.reduce((a, b) => a + (b[1] as number), 0), floor,
   };
   // the yield pool, as the prototype's Y: assets and pledges are the depositors'; it lends to unsecured credit
-  const Y: Record<string, any> = {
-    assets: Y_DEP.reduce((a, r) => a + (r[1] as number), 0), principal: pool.principal, lent: M.unsecured, depositors: Y_DEP.length,
-    pledged: Y_DEP.reduce((a, r) => a + (r[3] as number), 0), queued: pool.queued, opened: pool.opened, cycleDays: pool.cycleDays, curve: pool.curve,
-  };
-  Y.cash = Y.assets - Y.lent; Y.util = Y.lent / Y.assets; Y.earned = Y.assets - Y.principal; Y.price = Y.assets / Y.principal;
+  const pledged = Y_DEP.reduce((a, r) => a + (r[3] as number), 0);
+  const Y: Record<string, any> = chainPool
+    ? {
+        assets: chainPool.assets, principal: chainPool.principal, lent: chainPool.lent, depositors: Y_DEP.length, pledged, queued: chainPool.queued,
+        opened: chainPool.opened == null ? '—' : dayMon(chainPool.opened), cycleDays: chainPool.cycleDays, curve: chainPool.curve,
+        cash: chainPool.cash, util: chainPool.utilBps / 10000, toPayouts: chainPool.toPayouts,
+      }
+    : {
+        assets: Y_DEP.reduce((a, r) => a + (r[1] as number), 0), principal: pool.principal, lent: M.unsecured, depositors: Y_DEP.length,
+        pledged, queued: pool.queued, opened: pool.opened, cycleDays: pool.cycleDays, curve: pool.curve,
+      };
+  if (!chainPool) { Y.cash = Y.assets - Y.lent; Y.util = Y.lent / Y.assets; }
+  Y.earned = Y.assets - Y.principal;
+  // live, the price of a share; the seed has no shares, so its principal stands in
+  Y.price = chainPool ? (chainPool.supply ? chainPool.assets / chainPool.supply : 1) : Y.assets / Y.principal;
   const borrowBps = (u: number) => (u <= Y.curve.kink ? Y.curve.base + (Y.curve.s1 * u) / Y.curve.kink : Y.curve.base + Y.curve.s1 + (Y.curve.s2 * (u - Y.curve.kink)) / (1 - Y.curve.kink));
   const apr = (bps: number) => ((bps / 10000) * 365) / Y.cycleDays;
   const apy = (bps: number) => Math.pow(1 + bps / 10000, 365 / Y.cycleDays) - 1;
-  Y.borrowBps = borrowBps(Y.util); Y.supplyBps = Y.borrowBps * Y.util; Y.apy = apy(Y.supplyBps); Y.apr = apr(Y.borrowBps);
+  // live, the rates are the contract's own reads; the curve is only for what a draw would do to them
+  Y.borrowBps = chainPool ? chainPool.borrowBps : borrowBps(Y.util); Y.supplyBps = chainPool ? chainPool.supplyBps : Y.borrowBps * Y.util;
+  Y.apy = apy(Y.supplyBps); Y.apr = apr(Y.borrowBps);
   M.rtd = M.assurance / M.unsecured;
   M.room = M.assurance / M.floor - M.unsecured;
   M.short = Math.max(0, M.owed14 - M.payout - M.dueMembers);
-  Y.toPayout = Math.min(M.short, Y.cash); Y.utilAfter = (Y.lent + Y.toPayout) / Y.assets; Y.apyAfter = apy(borrowBps(Y.utilAfter) * Y.utilAfter);
+  // live, the gap is the PayoutPool's own shortfall, never the tables' sample against real cash
+  Y.toPayout = Math.min(chainPool ? chainPool.payoutShort : M.short, Y.cash); Y.utilAfter = Y.assets ? (Y.lent + Y.toPayout) / Y.assets : 0; Y.apyAfter = apy(borrowBps(Y.utilAfter) * Y.utilAfter);
 
   const AP_BAL = [...(f['money.ap.balance_weeks'] as number[]), M.assurance];
   const UNSEC = [...(f['money.credit.unsecured_weeks'] as number[]), M.unsecured];
@@ -396,21 +420,33 @@ export async function moneySection(db: Queryable, o: ReadOptions): Promise<Recor
   const ACCTS = accts.map((a) => {
     const w = weeks(a.id);
     const now = live[a.id] ?? w.at(-1)!;
-    return [a.id, a.name, a.purpose, a.owner_group, a.source, now, a.id === 'ap' ? AP_BAL : [...w.slice(0, -1), now], a.swatch];
+    const series = a.id === 'ap' ? AP_BAL : a.id === 'yld' && chainPool ? chainPool.cashWeeks : [...w.slice(0, -1), now];
+    return [a.id, a.name, a.purpose, a.owner_group, a.source, now, series, a.swatch];
   });
   const { rows: ent } = await db.query<{ account_id: string; at: Date; what: string; detail: string; amount_cents: string }>('SELECT * FROM command.account_entries ORDER BY at DESC, id');
   const ENTRIES: Record<string, unknown[]> = {};
   for (const e of ent) (ENTRIES[e.account_id] ??= []).push({ at: ms_(e.at), what: e.what, detail: e.detail, amount: Number(e.amount_cents) / 100 });
+  if (chainPool) ENTRIES.yld = chainPool.entries;
 
   const { rows: m } = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM command.members WHERE status = 'active'`);
   return {
-    M, Y, YD: hist.days, Y_ASSETS: [...hist.assets, Y.assets], Y_LENT: [...hist.lent, Y.lent], Y_DEP,
+    M, Y, Y_DEP,
+    ...(chainPool
+      ? { YD: chainPool.days.map(dayMon), Y_ASSETS: chainPool.assetsByDay, Y_LENT: chainPool.lentByDay }
+      : { YD: hist.days, Y_ASSETS: [...hist.assets, Y.assets], Y_LENT: [...hist.lent, Y.lent] }),
     AP_BAL, UNSEC, AP_REQ: UNSEC.map((v) => v * M.floor), RTD_W: AP_BAL.map((v, i) => (UNSEC[i] ? v / UNSEC[i] : null)),
     COOP_W: f['money.coop.weekly'], FLOWS: f['money.flows'], BONDS, ACCTS, ENTRIES,
     TX: (await partnerRows(db)).TX,
     MEMBER_SUMMARY: { active: m[0].n },
     SET_ASIDE: await shopSetAside(db),
-    figures: f,
+    // live, what the yield pane lists since the opening is the pool's own deposits and withdrawals
+    figures: chainPool
+      ? {
+          ...f,
+          'money.yield.since_opened': chainPool.entries.filter((e) => /^(Opened|Deposits|Withdrawals)$/.test(e.what)).reverse().map((e) => [e.at, e.what, e.detail, e.amount]),
+          'money.yield.joined_this_week': chainPool.depositors.filter((d) => d.since >= o.now.getTime() - 7 * DAY).length,
+        }
+      : f,
     asOf: asOfFor(provider, o.now),
   };
 }
@@ -519,7 +555,10 @@ const msOr = (d: Date | null, empty: number | null = null) => (d == null ? empty
  */
 export async function contractsSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const provider = providerFor('contracts');
-  if (provider === 'live') throw new NotLiveYet('contracts');
+  // live, each contract's address, version and releases are the chain's (Phase 5b); the map and the changes are still the tables'
+  const deployed = provider === 'live' ? await inventory(db) : null;
+  const releases = provider === 'live' ? await releasesLive(db) : null;
+  const onChain = (name: string) => (deployed ? deployedName(name, new Set(deployed.keys())) : null);
   const NOW = nowFor(provider, o.now);
   const { rows: agr } = await db.query<any>('SELECT * FROM command.agreements ORDER BY position');
   const AGR = agr.map((a) => ({
@@ -529,17 +568,28 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     ...(a.events ? { ev: evAt(a.events, NOW) } : {}),
   }));
   const { rows: ctr } = await db.query<any>('SELECT * FROM command.contracts ORDER BY position');
-  const CTR = ctr.map((c) => [c.id, c.name, c.version, c.layer, c.status, c.address, c.purpose, Number(c.map_x), Number(c.map_y), c.band]);
+  const CTR = ctr.map((c) => {
+    const n = onChain(c.name);
+    const [version, address] = n ? [releases!.get(n)?.at(-1)?.version ?? 'v1.0', shortAddress(deployed!.get(n)!.address)] : [c.version, c.address];
+    return [c.id, c.name, version, c.layer, c.status, address, c.purpose, Number(c.map_x), Number(c.map_y), c.band];
+  });
   const CTR_NOTE = Object.fromEntries(ctr.filter((c) => c.note).map((c) => [c.id, c.note]));
   const { rows: links } = await db.query<any>('SELECT * FROM command.contract_links ORDER BY position');
   const REL = links.map((l) => [l.from_id, l.to_id, l.kind, l.verb, l.label, ...(l.label_side != null ? [Number(l.label_side)] : [])]);
   const { rows: rel } = await db.query<any>('SELECT r.* FROM command.contract_releases r JOIN command.contracts c ON c.id = r.contract_id ORDER BY r.released_at, c.position');
   const RELEASES: Record<string, unknown[]> = {};
   const PENDING: Record<string, unknown> = {};
-  for (const r of rel) {
-    if (r.pending) PENDING[r.contract_id] = [r.version, ms_(r.released_at)];
-    else (RELEASES[r.contract_id] ??= []).push([r.version, ms_(r.released_at)]);
-  }
+  if (releases) {
+    // nothing Command proposes upgrades a contract yet, so live there's nothing pending
+    for (const c of ctr) {
+      const list = releases.get(onChain(c.name) ?? '');
+      if (list) RELEASES[c.id] = list.map((r) => [r.version, r.at, r.implementation]);
+    }
+  } else
+    for (const r of rel) {
+      if (r.pending) PENDING[r.contract_id] = [r.version, ms_(r.released_at)];
+      else (RELEASES[r.contract_id] ??= []).push([r.version, ms_(r.released_at)]);
+    }
   const { rows: ch } = await db.query<any>('SELECT * FROM command.contract_changes ORDER BY done, position');
   const change = (c: any) => ({ id: c.id, t: c.title, c: c.contract, ...(c.proposed_by ? { by: c.proposed_by } : {}), ...c.detail, ev: evAt(c.events, NOW) });
   const { rows: sg } = await db.query<any>('SELECT * FROM command.signers ORDER BY position');

@@ -64,13 +64,15 @@ const HISTORY_MARGIN = 1_000;
 /** Base and Base Sepolia make a block every 2 seconds, so a block's time follows from one other's. */
 const STEADY_BLOCK_SECONDS: Record<number, number> = { 84532: 2, 8453: 2 };
 
-export function liveChainSource(chainId = 84532): ChainSource {
-  // the public RPC first; the backup (Alchemy) only when the public one rate-limits, as the API does
-  // elsewhere. Any other refusal (a range too wide) is the public RPC's answer, and comes back as is.
+/**
+ * The public RPC first; the backup (Alchemy) only when the public one rate-limits, as the API does
+ * elsewhere. Any other refusal (a range too wide) is the public RPC's answer, and comes back as is.
+ */
+export function publicFirst(chainId = 84532) {
   const pub = createPublicClient({ chain: baseSepolia, transport: http(process.env.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org', { retryCount: 1 }) });
   const backupUrl = backupRpcUrl(chainId);
   const backup = backupUrl ? createPublicClient({ chain: baseSepolia, transport: http(backupUrl, { retryCount: 1 }) }) : null;
-  const ask = async <T>(run: (c: typeof pub) => Promise<T>): Promise<T> => {
+  return async <T>(run: (c: typeof pub) => Promise<T>): Promise<T> => {
     try {
       return await run(pub);
     } catch (e) {
@@ -78,6 +80,10 @@ export function liveChainSource(chainId = 84532): ChainSource {
       throw e;
     }
   };
+}
+
+export function liveChainSource(chainId = 84532): ChainSource {
+  const ask = publicFirst(chainId);
   const client = {
     getBlockNumber: () => ask((c) => c.getBlockNumber()),
     getBlock: (a: { blockNumber: bigint }) => ask((c) => c.getBlock(a)),
