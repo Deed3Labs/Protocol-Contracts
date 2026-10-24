@@ -82,13 +82,15 @@ each feed is doing; a feed whose keys aren't set says it's off and why.
 
 ## Deploying
 
-A Vercel project in the deed3 team, `clear-command`: root directory `apps/command`, `vercel.json`
-here (install, build, the ignore step, the headers). Its production branch is `dev`, so
-`command.useclear.org` follows dev, on testnet and the sandboxes; `main` is for when it's ready for
+A Vercel project in the deed3 team, `clear-command`: root directory `apps/command`, Node 22,
+`vercel.json` here (install, build, the ignore step, the headers). Like `clear-merchant`, the
+project's production branch is the repository's (`main`) and `command.useclear.org` is assigned to
+the `dev` branch, so it follows dev, on testnet and the sandboxes; `main` is for when it's ready for
 real money.
 
-**DNS:** `command` is a CNAME to `cname.vercel-dns.com` at Namecheap, the same way `api.useclear.org`
-was added. Privy's dashboard needs `https://command.useclear.org` (and `http://localhost:5230`) under
+**DNS:** `command` is a CNAME at Namecheap (useclear.org's DNS is there), the same way
+`api.useclear.org` was added: to the target Vercel gives under the project's Domains
+(`959a2191de2aa52a.vercel-dns-016.com`, or `cname.vercel-dns.com`). Privy's dashboard needs `https://command.useclear.org` (and `http://localhost:5230`) under
 allowed origins, or sign-in won't load.
 
 **The Content-Security-Policy** is enforced (`vercel.json`): the app, its API, Privy's published

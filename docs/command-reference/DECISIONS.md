@@ -641,9 +641,12 @@ and `liveRange` in `sections.ts`. clearpath-website PR #95.
 Decided 2026-10-24 (Kai): Claude creates the Vercel project and adds the domain; the
 Content-Security-Policy is enforced from the first deploy.
 
-- **The Vercel project** `clear-command` (deed3), root `apps/command`, production branch `dev`, so
-  `command.useclear.org` follows dev: testnet and the sandboxes. Env: `VITE_PRIVY_APP_ID`,
-  `VITE_API_BASE_URL` (the dev API). DNS is a CNAME at Namecheap, as `api.useclear.org` was.
+- **The Vercel project** `clear-command` (deed3), root `apps/command`, Node 22, made by Claude through
+  the Vercel CLI. As with `clear-merchant`, its production branch is the repository's (`main`, which
+  has no `apps/` yet) and `command.useclear.org` is assigned to the `dev` branch, so it follows dev:
+  testnet and the sandboxes (Vercel's API can't set a project's production branch; the dashboard
+  can, if that's ever wanted). Env: `VITE_PRIVY_APP_ID`, `VITE_API_BASE_URL` (the dev API). DNS is a
+  CNAME at Namecheap, as `api.useclear.org` was, to `959a2191de2aa52a.vercel-dns-016.com`.
 - **Headers** (`vercel.json`): an enforced CSP built from Privy's published list (Cloudflare
   Turnstile, Privy's auth frame and RPC, WalletConnect) plus the app's own hosts (the dev API and
   `api.useclear.org`, Google Fonts, OpenFreeMap and Mapbox for the map); `img-src` allows any
