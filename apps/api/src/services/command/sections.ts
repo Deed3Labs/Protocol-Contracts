@@ -2,6 +2,7 @@ import { DAY, SEED_TODAY, mask, type FieldPayload, type FormRow, type GrowthPayl
 import type { Queryable } from '../../db/db.js';
 import { SEE, TOTALS, type Level } from './levels.js';
 import { deployedName, inventory, releasesLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
+import { codeChanges, codeConfig } from './github.js';
 
 /*
  * What each section draws, built from the database (docs/command-center-plan.md, Phase 3).
@@ -592,10 +593,17 @@ export async function contractsSection(db: Queryable, o: ReadOptions): Promise<R
     }
   const { rows: ch } = await db.query<any>('SELECT * FROM command.contract_changes ORDER BY done, position');
   const change = (c: any) => ({ id: c.id, t: c.title, c: c.contract, ...(c.proposed_by ? { by: c.proposed_by } : {}), ...c.detail, ev: evAt(c.events, NOW) });
+  // live, the code changes are GitHub's (Phase 5c): commits since a release in flight, the commits before it what it shipped
+  const code = releases
+    ? await codeChanges(db, codeConfig(), ctr.map((c) => {
+        const n = onChain(c.name);
+        return { name: c.name, deployed: n, deployedAt: n ? deployed!.get(n)!.deployedAt : null };
+      }), releases, NOW)
+    : { open: [], done: [] };
   const { rows: sg } = await db.query<any>('SELECT * FROM command.signers ORDER BY position');
   return {
     AGR, CTR, CTR_NOTE, REL, RELEASES, PENDING,
-    CH: ch.filter((c) => !c.done).map(change), CH_DONE: ch.filter((c) => c.done).map(change),
+    CH: [...ch.filter((c) => !c.done).map(change), ...code.open], CH_DONE: [...code.done, ...ch.filter((c) => c.done).map(change)],
     SIGNERS: sg.map((s) => [s.key, s.name, s.who, Number(s.median_hours), s.idle_note]),
     NOW, figures: await figures(db, 'contracts'), asOf: asOfFor(provider, o.now),
   };

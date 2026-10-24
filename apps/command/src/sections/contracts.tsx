@@ -111,6 +111,8 @@ function writeFns(name) {
   return fns.filter((f) => f.stateMutability !== 'view' && f.stateMutability !== 'pure').map((f) => ({ sig: `${f.name}(${f.inputs.map((i) => i.type).join(',')})` }));
 }
 /** When the other side signed an agreement that's out for signature. */
+/* live, the lanes are drawn around the API's now, not the prototype's */
+const liveNow = () => vars.contractsNow ?? NOW;
 export const theySigned = (a) => a.ev?.find((e) => e[0] === 'sign' && e[2] !== 'K')?.[1];
 /** A signer by key, and how many signatures wait on them. */
 export const signer = (k) => SIGNERS.find((s) => s[0] === k);
@@ -811,7 +813,9 @@ export function cOverview() {
       </header>
       <div className="c-fig">{figHtml(String(waitingOn('K').length), `waiting on your signature${other ? ` · ${signer(other[2])[1]} signed ${mine.t} ${dayWord(other[1])}` : ''}`)}</div>
       <div className="c-body">
-        {sigLanes([CH[0], CH[1], CH[2], CH[3], CH[4], CH_DONE[0]], D(10, 13), D(10, 31), 3)}
+        {LIVE
+          ? sigLanes([...CH.slice(0, 5), ...CH_DONE.slice(0, 1)], liveNow() - 8 * DAY, liveNow() + 10 * DAY, 3)
+          : sigLanes([CH[0], CH[1], CH[2], CH[3], CH[4], CH_DONE[0]], D(10, 13), D(10, 31), 3)}
         {sigKey()}
       </div>
       <div className="c-ft split">
@@ -1190,11 +1194,11 @@ export function cChanges() {
     <section className="cell s-12">
       <header className="c-hd">
         <span className="lbl">Every change</span>
-        <span className="tag">18 Sep – 1 Nov</span>
+        <span className="tag">{LIVE ? `${fmtD(liveNow() - 33 * DAY)} – ${fmtD(liveNow() + 11 * DAY)}` : '18 Sep – 1 Nov'}</span>
       </header>
       <div className="c-fig">{figHtml(String(CH.length), `in flight · ${CH_DONE.length} went live in the last 30 days`)}</div>
       <div className="c-body">
-        {sigLanes(all, D(9, 18), D(11, 1), 7)}
+        {LIVE ? sigLanes(all, liveNow() - 33 * DAY, liveNow() + 11 * DAY, 7) : sigLanes(all, D(9, 18), D(11, 1), 7)}
         {sigKey()}
       </div>
       {strip([
