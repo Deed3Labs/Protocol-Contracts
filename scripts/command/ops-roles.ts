@@ -67,10 +67,33 @@ export async function checkContracts(runner: ContractRunner, list: Deployed[]) {
 
 /** Each job's wallet, from env: credit-operator → CREDIT_OPERATOR_ADDRESS. */
 export const envName = (job: string) => `${job.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_ADDRESS`;
+/** The names the repo's env already uses for some jobs' wallets (the relayers' CDP accounts). */
+const ALIASES: Record<string, string[]> = {
+  "savings-relayer": ["SAVINGS_RELAYER_ADDRESS_84532", "SAVINGS_CDP_EVM_ACCOUNT_ADDRESS_84532", "SAVINGS_CDP_EVM_ACCOUNT_ADDRESS"],
+  "send-relayer": ["SEND_RELAYER_ADDRESS_84532", "SEND_CDP_EVM_ACCOUNT_ADDRESS_84532", "SEND_CDP_EVM_ACCOUNT_ADDRESS"],
+  "card-settler": ["CARD_SETTLER_ADDRESS_84532"],
+  "credit-operator": ["CREDIT_OPERATOR_ADDRESS_84532"],
+  "membership-registrar": ["MEMBERSHIP_REGISTRAR_ADDRESS_84532"],
+};
+/** Addresses (never keys) the API's own env names, so the script finds the wallets it signs with. */
+function apiAddresses(): Record<string, string> {
+  try {
+    const out: Record<string, string> = {};
+    for (const line of readFileSync(path.join(__dirname, "../../apps/api/.env"), "utf8").split("\n")) {
+      const m = /^([A-Z0-9_]*ADDRESS[A-Z0-9_]*)=\s*(0x[0-9a-fA-F]{40})\s*$/.exec(line.trim());
+      if (m) out[m[1]] = m[2];
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 export function walletFor(job: string, env: Record<string, string | undefined> = process.env): string | null {
   if (job === "renounce") return null;
-  const raw = (job === "safe" ? env.SAFE_ADDRESS : env[envName(job)])?.trim() ?? "";
-  return isAddress(raw) ? getAddress(raw) : null;
+  const all = { ...apiAddresses(), ...env };
+  const names = job === "safe" ? ["SAFE_ADDRESS", "COMMAND_SAFE_ADDRESS"] : [envName(job), ...(ALIASES[job] ?? [])];
+  const raw = names.map((n) => all[n]?.trim()).find((v) => v && isAddress(v)) ?? "";
+  return raw ? getAddress(raw) : null;
 }
 
 export interface Move {
