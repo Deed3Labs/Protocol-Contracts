@@ -269,7 +269,8 @@ new blocks are read); GitHub polled with a read-only token; every deployed contr
   Withdraw; the PayoutPool's loans and draws; releases from each proxy's `Upgraded` events; rates
   read on the server (`utilizationBps`, `borrowRatePerCycle`, `supplyRatePerCycle`,
   `RevolvingIssuer.cycleLength()`). Money's yield pool and Contracts' releases switch to these live
-  (`PROVIDER_MONEY`, `PROVIDER_CONTRACTS`).
+  (`PROVIDER_MONEY`, `PROVIDER_CONTRACTS`). Built: `services/command/onchain.ts`; the rest of each
+  section stays on the tables until its source comes.
 - **5c · Changes from GitHub.** A job asks GitHub for commits touching `contracts/` on `dev` every
   few minutes, with a fine-grained read-only `GITHUB_TOKEN` in Railway, into Contracts' changes.
 

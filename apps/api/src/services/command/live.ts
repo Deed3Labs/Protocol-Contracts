@@ -3,6 +3,7 @@ import { requireIdentity } from '../../middleware/auth.js';
 import { limitByAddress } from '../../middleware/rateLimiter.js';
 import { commandRouter, commandSharedRouter } from '../../routes/command.js';
 import { indexerCatchUp } from '../../jobs/commandIndexer.js';
+import { liveChainReader } from './onchain.js';
 import { memberStore } from '../memberStore.js';
 
 /**
@@ -33,6 +34,7 @@ export function liveCommandRouter() {
       })),
     mail: sendMail,
     indexer: { catchUp: indexerCatchUp },
+    chain: liveChainReader(),
     adminEmails: () => (process.env.COMMAND_ADMIN_EMAILS ?? '').split(',').map((e) => e.trim()).filter(Boolean),
     appUrl: () => process.env.COMMAND_APP_URL || 'https://command.useclear.org',
     limits: {

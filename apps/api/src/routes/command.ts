@@ -24,6 +24,7 @@ import { liveSafeReader, safeAppUrl, safeConfig, SafeServiceError, type SafeConf
 import { getAddress, isAddress, recoverTypedDataAddress, verifyMessage, type Hex } from 'viem';
 import { BUILDERS, BuildError, onChain, safeTxFor, safeTxHash, typedDataFor, type SafeTxData } from '../services/command/safeTx.js';
 import { indexStatus } from '../services/command/indexer.js';
+import type { ChainReader } from '../services/command/onchain.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
 /*
@@ -49,6 +50,8 @@ export interface CommandDeps {
   appUrl: () => string;
   /** The indexer: a catch-up when someone opens a section that reads the chain. */
   indexer?: { catchUp(): void };
+  /** The contracts' own reads, for Money and Contracts when they're live from the chain. */
+  chain?: ChainReader;
   /** The Ops Safe: which one (env unless given), and how it's read. */
   safe?: { config: () => SafeConfig | null; reader: SafeReader };
   /** Where files people add are kept (Postgres unless given). */
@@ -365,7 +368,7 @@ export function commandRouter(deps: CommandDeps) {
     const c = req.command!;
     deps.indexer?.catchUp();
     try {
-      res.json(await moneySection(c.db, { level: c.levels.money, reveal: false, now: now() }));
+      res.json(await moneySection(c.db, { level: c.levels.money, reveal: false, now: now(), chain: deps.chain }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
@@ -386,7 +389,7 @@ export function commandRouter(deps: CommandDeps) {
     const c = req.command!;
     deps.indexer?.catchUp();
     try {
-      res.json(await contractsSection(c.db, { level: c.levels.contracts, reveal: false, now: now() }));
+      res.json(await contractsSection(c.db, { level: c.levels.contracts, reveal: false, now: now(), chain: deps.chain }));
     } catch (e) {
       if (e instanceof NotLiveYet) return fail(res, 501, 'NOT_LIVE_YET', e.message);
       throw e;
