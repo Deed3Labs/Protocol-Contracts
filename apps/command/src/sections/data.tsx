@@ -1609,6 +1609,7 @@ export const CM_GEO = {
   ],
 };
 /* the live map: MapLibre (the open-source Mapbox GL) on free OpenFreeMap tiles. One instance, moved into each render. */
+/* the style is env's now (live/map.ts, Phase 7d); this was the prototype's, kept for reference */
 export const ML_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 /* ── Pipeline board: one list of shops, each with a stage. Drag a card between columns (press and drag with a mouse, touch and hold on a phone). ── */
 export const KST = [
