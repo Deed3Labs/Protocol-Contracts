@@ -284,7 +284,7 @@ new blocks are read); GitHub polled with a read-only token; every deployed contr
 - **6b · Their figures in Money.** Operating cash from Plaid, the reserve check against the vault on
   chain, Stripe's payouts, Lithic's card spend. Built: `services/command/moneyFeeds.ts`.
 
-### Phase 7: live shop and the rest (in progress)
+### Phase 7: live shop and the rest (built)
 
 - The shop read-only from Stripe live with a restricted key. Members from the member tables. Site
   and forms depending on question 10. Map style URL and token to env.
@@ -296,7 +296,8 @@ new blocks are read); GitHub polled with a read-only token; every deployed contr
   Built: `services/command/waitlist.ts`, `memberSource.ts`.
 - **7c · Site visits and forms.** Plausible on useclear.org (clearpath-website #95) read back through
   its Stats API as the `site` feed; forms from the join form. Built: `services/command/siteFeed.ts`.
-- **7d · The map's style** in env.
+- **7d · The map's style** in env: `VITE_MAP_STYLE_URL` and a public `VITE_MAPBOX_TOKEN`
+  (`apps/command/src/live/map.ts`).
 
 ### Phase 8: launch
 

@@ -618,3 +618,20 @@ and `liveRange` in `sections.ts`. clearpath-website PR #95.
 - **Every section's member counts** (Growth, Home, Money) are the member app's once Members is live,
   which closes 7b's follow-up.
 - **Not checked against Plausible** from here: the key isn't on this machine.
+
+### 7d: the map's style in env
+
+`apps/command/src/live/map.ts`.
+
+- **The merchants map's style is env's:** `VITE_MAP_STYLE_URL`, OpenFreeMap's positron unless set, so
+  moving to Mapbox later is configuration. The brief's `MAP_STYLE_URL` and `MAPBOX_TOKEN` are
+  `VITE_` here, since the page reads them.
+- **A Mapbox style's token** (`VITE_MAPBOX_TOKEN`) is used only if it's a public `pk.` token (a
+  secret one never reaches the page) and goes only on requests to `api.mapbox.com`, never on
+  OpenFreeMap's. The `mapbox://` addresses inside a Mapbox style (styles, sprites, fonts, tilesets)
+  are turned into the API's, as Mapbox's own library does.
+- **Mapbox's terms** say which libraries may draw its tiles: check them before pointing this at a
+  Mapbox style.
+- **The drawn map** still takes over when tiles fail, as before.
+- **Checked in the browser:** the map draws OpenFreeMap's style, tiles and sprites through the new
+  request hook, and asks Mapbox for nothing.

@@ -16,7 +16,6 @@ import {
   INVITES,
   KST,
   LOGT,
-  ML_STYLE,
   MON,
   NEXT_ACT,
   OWED,
@@ -39,6 +38,7 @@ import { daysAgo, stageFlow } from './members';
 import { strip } from './money';
 import { modalShell, onKey, render, vLevel } from './shell';
 import { accOf, grpName } from './team';
+import { mapRequest, mapStyle } from '../live/map';
 export function T(r) {
   return {
     id: r[0],
@@ -590,7 +590,9 @@ export function cmInit() {
   try {
     vars.CMAP.map = new maplibregl.Map({
       container: vars.CMAP.el,
-      style: ML_STYLE,
+      // the style from env (Phase 7d): OpenFreeMap unless VITE_MAP_STYLE_URL says otherwise; a Mapbox style's token on its requests only
+      style: mapStyle(),
+      transformRequest: (url) => mapRequest(url),
       bounds: cmBounds(),
       fitBoundsOptions: {
         padding: 40,
