@@ -308,10 +308,12 @@ export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<M
   const OWED = Object.fromEntries(owedRows.map((r) => [r.merchant_id, dollars(r.owed_cents)!]));
 
   const { rows: cards } = await db.query<{ id: string; merchant_id: string | null; name: string; kind: string; city: string; stage: string; owner: string | null; per_month_cents: number | null; next_step: string | null; due_on: Date | null; last_contact_at: Date | null; contact: Record<string, string>; source: string; address: string; flag: boolean; founding: boolean; posters: number | null }>(
-    'SELECT * FROM command.merchant_stage ORDER BY position',
+    'SELECT * FROM command.merchant_stage WHERE removed_at IS NULL ORDER BY position',
   );
   // a shop's contact is a person: at Totals the board keeps its cards, not their details
   const blank = { name: '', role: '', phone: '', email: '' };
+  // what was logged on each card in the app, newest first, as the panel draws it
+  const { rows: acts } = await db.query<{ stage_id: string; at: Date; kind: string; text: string; who: string }>('SELECT stage_id, at, kind, text, who FROM command.merchant_activity ORDER BY at DESC, id DESC');
   const BOARD = cards.map((c) => {
     const base: Record<string, unknown> = { id: c.id, name: c.name, kind: c.kind, city: c.city };
     if (c.stage === 'prospect' || c.stage === 'talking') Object.assign(base, { val: dollars(c.per_month_cents), owner: c.owner, next: c.next_step, stage: c.stage, flag: c.flag });
@@ -323,6 +325,8 @@ export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<M
       contact: o.level <= TOTALS ? blank : c.contact,
       source: c.source,
       addr: o.level <= TOTALS ? '' : c.address,
+      ...(c.notes && o.level > TOTALS ? { note: c.notes } : {}),
+      ...(acts.some((a) => a.stage_id === c.id) && o.level > TOTALS ? { log: acts.filter((a) => a.stage_id === c.id).map((a) => [ms_(a.at), a.text, a.who, a.kind]) } : {}),
     });
   });
   const PROSPECTS = cards.filter((c) => !c.merchant_id).map((c) => [c.name, c.kind, c.city, dollars(c.per_month_cents), c.owner, c.next_step, c.stage]);

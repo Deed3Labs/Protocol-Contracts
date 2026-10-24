@@ -19,6 +19,8 @@ import {
 } from '../services/command/levels.js';
 import { NotLiveYet, fieldSection, growthSection, membersSection, merchantsSection, moneySection, shopSection, contractsSection, governanceSection, recordsSection, homeSection } from '../services/command/sections.js';
 import * as store from '../services/command/store.js';
+import { ActionError, actionFor, actionTime, levelFor, type Action } from '../services/command/actions.js';
+import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
 /*
  * The Command Center's API (docs/command-center-plan.md, Phase 2): sign-in sessions, who you are and
@@ -41,6 +43,8 @@ export interface CommandDeps {
   /** Emails that become Admin on first sign-in (COMMAND_ADMIN_EMAILS): how the first admin gets in. */
   adminEmails: () => string[];
   appUrl: () => string;
+  /** Where files people add are kept (Postgres unless given). */
+  files?: FileStore;
   /** Rate limits: sign-in attempts, and writes. */
   limits?: { signIn: RequestHandler; write: RequestHandler };
   now?: () => Date;
@@ -281,8 +285,13 @@ export function commandRouter(deps: CommandDeps) {
     res.json({ people: team });
   });
 
-  router.get('/proposals', need('access', SEE), async (req, res) => {
-    res.json({ proposals: await store.proposals(req.command!.db, String(req.query.area ?? 'access')) });
+  /** What's waiting for a second person: in one area, or (area=all) every area you can see. */
+  router.get('/proposals', async (req, res) => {
+    const c = req.command!;
+    const area = String(req.query.area ?? 'access');
+    const areas = area === 'all' ? (Object.keys(c.levels) as Section[]).filter((s) => c.levels[s] >= SEE) : [area as Section];
+    if (!areas.length || areas.some((a) => !(a in c.levels) || c.levels[a] < SEE)) return fail(res, 403, 'FORBIDDEN', 'You can’t see what’s waiting there');
+    res.json({ proposals: (await Promise.all(areas.map((a) => store.proposals(c.db, a)))).flat() });
   });
 
   router.get('/audit', need('records', SEE), async (req, res) => {
@@ -634,7 +643,8 @@ export function commandRouter(deps: CommandDeps) {
       if (!p || p.status !== 'waiting') return { status: 404, code: 'NO_PROPOSAL', message: 'Nothing waiting with that id' };
       if (c.levels[p.area as Section] < APPROVE) return { status: 403, code: 'FORBIDDEN', message: 'You can’t approve here' };
       if (p.proposedBy === c.person.id) return { status: 403, code: 'OWN_PROPOSAL', message: 'Someone else has to approve what you proposed' };
-      const result = await apply(tx, p.payload as Change, (await store.personById(tx, p.proposedBy))!);
+      const proposer = (await store.personById(tx, p.proposedBy))!;
+      const result = p.kind === 'action' ? await runAction(tx, p.payload as unknown as ActionPayload, proposer, c.person, p.id) : await apply(tx, p.payload as Change, proposer);
       await store.settleProposal(tx, p.id, 'approved', c.person.id, now());
       await auditFrom(req, { area: p.area, action: p.summary, detail: 'Approved by a second person', after: p.payload, result: 'approved', approver: c.person.id }, tx);
       return { status: 200, result };
@@ -659,6 +669,178 @@ export function commandRouter(deps: CommandDeps) {
     res.json({ done: true });
   });
 
+  // ── each section's own actions ───────────────────────────────────────────
+
+  /**
+   * One action of a section's (services/command/actions.ts). It runs now, recording anything for an
+   * outside system in the outbox, or, when its rule asks for a second person, waits as a proposal
+   * until someone else approves it.
+   */
+  router.post('/actions/:section/:kind', limits.write, async (req, res) => {
+    const c = req.command!;
+    const section = req.params.section as Section;
+    const a = actionFor(section, req.params.kind);
+    if (!a) return fail(res, 404, 'NO_ACTION', 'No such action');
+    if ((c.levels[section] ?? 0) < levelFor(a)) return fail(res, 403, 'FORBIDDEN', 'You can see this but not change it');
+    const b = a.body.safeParse(req.body ?? {});
+    if (!b.success) return fail(res, 400, 'BAD_REQUEST', b.error.issues[0]?.message ?? 'Something’s missing');
+    try {
+      const summary = await a.summary(b.data, c.db);
+      const payload: ActionPayload = { section, kind: req.params.kind, body: b.data };
+      if (a.second && (await a.second(b.data, c.db))) {
+        const proposal = await c.db.transaction(async (tx) => {
+          const pr = await store.propose(tx, { kind: 'action', area: section, summary, payload, by: c.person.id });
+          await auditFrom(req, { area: section, action: summary, detail: 'Needs a second person', after: b.data, result: 'waiting' }, tx);
+          return pr;
+        });
+        return res.status(202).json({ proposal, needs: 'a second person' });
+      }
+      const out = await c.db.transaction(async (tx) => {
+        const r = await runAction(tx, payload, c.person, null, null);
+        await auditFrom(req, { area: section, action: summary, detail: r.queued ? 'Recorded for the outside system; nothing sent yet' : '', after: b.data, result: 'done' }, tx);
+        return r;
+      });
+      res.json({ done: true, ...out });
+    } catch (e) {
+      if (e instanceof ActionError) return fail(res, e.status, e.code, e.message);
+      throw e;
+    }
+  });
+
+  /** Runs an action as the person who asked for it (and the second person, when approved). */
+  async function runAction(tx: Queryable, p: ActionPayload, by: store.Person, approver: store.Person | null, proposalId: string | null) {
+    const a = actionFor(p.section, p.kind) as Action;
+    const at = actionTime(p.section, now());
+    const result = a.apply ? await a.apply({ tx, person: by, approver, at }, p.body) : undefined;
+    const queued = typeof a.outbox === 'function' ? a.outbox(p.body) : !!a.outbox;
+    if (queued) {
+      await tx.query('INSERT INTO command.outbox (section, kind, summary, payload, requested_by, approved_by, proposal_id) VALUES ($1, $2, $3, $4, $5, $6, $7)', [
+        p.section,
+        p.kind,
+        await a.summary(p.body, tx),
+        JSON.stringify(p.body),
+        by.id,
+        approver?.id ?? null,
+        proposalId,
+      ]);
+    }
+    return { result: result ?? null, queued };
+  }
+
+  /** What's waiting for an outside system, newest first. */
+  router.get('/outbox', need('records', SEE), async (req, res) => {
+    const { rows } = await req.command!.db.query(
+      'SELECT o.id, o.section, o.kind, o.summary, o.status, o.created_at, p.name AS requested_by, q.name AS approved_by FROM command.outbox o JOIN command.people p ON p.id = o.requested_by LEFT JOIN command.people q ON q.id = o.approved_by ORDER BY o.created_at DESC LIMIT 200',
+    );
+    res.json({ outbox: rows });
+  });
+
+  // ── files ────────────────────────────────────────────────────────────────
+
+  const files: FileStore = deps.files ?? postgresFiles;
+  const raw = express.raw({ type: () => true, limit: MAX_FILE_BYTES });
+
+  /** Adds a file for a section that keeps them (records, field). The body is the file itself. */
+  router.post('/files', limits.write, raw, async (req, res) => {
+    const c = req.command!;
+    const section = String(req.query.section ?? '') as Section;
+    if (!['records', 'field'].includes(section)) return fail(res, 400, 'BAD_REQUEST', 'Files belong to Records or Field');
+    if ((c.levels[section] ?? 0) < PROPOSE) return fail(res, 403, 'FORBIDDEN', 'You can see this but not add to it');
+    const mime = String(req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();
+    if (!FILE_TYPES[mime]) return fail(res, 415, 'BAD_TYPE', 'Add a PDF, an image, a Word or Excel file, or plain text');
+    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (!bytes.length) return fail(res, 400, 'EMPTY', 'That file is empty');
+    const f = await c.db.transaction(async (tx) => {
+      const stored = await files.put(tx, { name: String(req.query.name ?? 'file'), mime, bytes, by: c.person.id });
+      await auditFrom(req, { area: section, action: `Added a file · ${stored.name}`, detail: `${Math.ceil(stored.size / 1024)} KB · sha256 ${stored.sha256.slice(0, 12)}`, result: 'done' }, tx);
+      return stored;
+    });
+    res.status(201).json({ file: f });
+  });
+
+  const sendFile = (res: Response, f: { name: string; mime: string; bytes: Buffer }, disposition: 'attachment' | 'inline') => {
+    res.setHeader('Content-Type', f.mime);
+    res.setHeader('Content-Disposition', `${disposition}; filename*=UTF-8''${encodeURIComponent(f.name)}`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    res.end(f.bytes);
+  };
+
+  /** A document's file, logged. */
+  router.get('/documents/:id/file', need('records', SEE), async (req, res) => {
+    const c = req.command!;
+    const { rows } = await c.db.query<{ title: string; file_id: string | null }>('SELECT title, file_id FROM command.documents WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return fail(res, 404, 'NOT_FOUND', 'No such document');
+    if (!rows[0].file_id) return fail(res, 404, 'NO_FILE', 'There’s no file on record for this document yet');
+    const f = await files.get(c.db, rows[0].file_id);
+    if (!f) return fail(res, 404, 'NO_FILE', 'The file is missing');
+    await auditFrom(req, { area: 'records', action: `Downloaded ${rows[0].title}`, result: 'done' });
+    sendFile(res, f, 'attachment');
+  });
+
+  /** A field photo or any file by id, for someone who can see the section it belongs to. */
+  router.get('/files/:id', async (req, res) => {
+    const c = req.command!;
+    if (!/^[0-9a-f-]{36}$/.test(req.params.id)) return fail(res, 404, 'NOT_FOUND', 'No such file');
+    const { rows } = await c.db.query<{ area: string }>(
+      `SELECT 'records' AS area FROM command.documents WHERE file_id = $1 UNION SELECT 'records' FROM command.document_versions WHERE file_id = $1 UNION SELECT 'field' FROM command.route_tasks WHERE photo_file = $1`,
+      [req.params.id],
+    );
+    if (!rows.some((r) => (c.levels[r.area as Section] ?? 0) >= SEE)) return fail(res, 404, 'NOT_FOUND', 'No such file');
+    const f = await files.get(c.db, req.params.id);
+    if (!f) return fail(res, 404, 'NOT_FOUND', 'No such file');
+    sendFile(res, f, 'inline');
+  });
+
+  const shareBody = z.object({ days: z.union([z.literal(1), z.literal(7), z.literal(30)]), forWhom: z.string().trim().min(1).max(120) });
+  /** A view-only link to a document, for someone outside: it expires, and every open is logged. */
+  router.post('/documents/:id/share', limits.write, need('records', PROPOSE), async (req, res) => {
+    const c = req.command!;
+    const b = shareBody.safeParse(req.body);
+    if (!b.success) return fail(res, 400, 'BAD_REQUEST', b.error.issues[0]?.message ?? 'Say who it’s for and how long');
+    const { rows } = await c.db.query<{ title: string; file_id: string | null }>('SELECT title, file_id FROM command.documents WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return fail(res, 404, 'NOT_FOUND', 'No such document');
+    if (!rows[0].file_id) return fail(res, 409, 'NO_FILE', 'Add the file before sharing it');
+    const { token, hash } = newShareToken();
+    const expiresAt = new Date(now().getTime() + b.data.days * 86400_000);
+    await c.db.transaction(async (tx) => {
+      await tx.query('INSERT INTO command.share_links (document_id, token_hash, for_whom, expires_at, created_by) VALUES ($1, $2, $3, $4, $5)', [req.params.id, hash, b.data.forWhom, expiresAt, c.person.id]);
+      await auditFrom(req, { area: 'records', action: `Shared ${rows[0].title}`, detail: `View-only link for ${b.data.forWhom} · ${b.data.days} day${b.data.days === 1 ? '' : 's'}`, result: 'done' }, tx);
+    });
+    res.status(201).json({ path: `/api/command/shared/${token}`, expiresAt });
+  });
+
+  return router;
+}
+
+interface ActionPayload {
+  section: Section;
+  kind: string;
+  body: unknown;
+}
+
+/**
+ * Opening a shared link: no sign-in, so it's mounted ahead of the Command Center's own router. The
+ * link is the only key; it works until it expires or is revoked, and each open is logged.
+ */
+export function commandSharedRouter(deps: { db: () => Promise<Db | null>; files?: FileStore; now?: () => Date }) {
+  const router = forwardAsyncErrors(express.Router());
+  router.get('/:token', async (req, res) => {
+    const db = await deps.db();
+    if (!db) return res.status(503).end();
+    const link = await openShare(db, req.params.token, deps.now?.() ?? new Date());
+    const f = link?.file_id ? await (deps.files ?? postgresFiles).get(db, link.file_id) : null;
+    if (!link || !f) return res.status(404).type('text/plain').send('This link has expired or doesn’t exist.');
+    await store.audit(db, { personId: null, who: `Link · ${link.for_whom}`, area: 'records', action: `Opened ${link.title}`, detail: 'Shared view-only link', fromWhere: 'Link', result: 'done' });
+    res.setHeader('Content-Type', f.mime);
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(f.name)}`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+    res.end(f.bytes);
+  });
   return router;
 }
 

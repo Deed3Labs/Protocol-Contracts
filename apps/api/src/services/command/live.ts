@@ -1,7 +1,7 @@
 import { merchantDb } from '../../config/merchantDb.js';
 import { requireIdentity } from '../../middleware/auth.js';
 import { limitByAddress } from '../../middleware/rateLimiter.js';
-import { commandRouter } from '../../routes/command.js';
+import { commandRouter, commandSharedRouter } from '../../routes/command.js';
 import { memberStore } from '../memberStore.js';
 
 /**
@@ -12,6 +12,11 @@ import { memberStore } from '../memberStore.js';
  * (where invite links point, default https://command.useclear.org), and the API's RESEND_API_KEY and
  * RESEND_FROM.
  */
+/** Shared document links: opened without signing in, so mounted ahead of the Command Center's router. */
+export function liveCommandSharedRouter() {
+  return commandSharedRouter({ db: merchantDb });
+}
+
 export function liveCommandRouter() {
   return commandRouter({
     db: merchantDb,

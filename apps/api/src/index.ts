@@ -10,7 +10,7 @@ import { closePostgresPool } from './config/postgres.js';
 import { merchantDb, runMerchantMigrations } from './config/merchantDb.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { requireAuth } from './middleware/auth.js';
-import { liveCommandRouter } from './services/command/live.js';
+import { liveCommandRouter, liveCommandSharedRouter } from './services/command/live.js';
 import { seedCommand } from './services/command/seed.js';
 import { requireMemberCapability } from './middleware/memberCapabilities.js';
 import pricesRouter from './routes/prices.js';
@@ -288,6 +288,8 @@ async function startServer() {
     app.use('/api/session', requireAuth, sessionRouter);
     // The Command Center: its own sign-in check (Privy, no wallet needed), sessions and access
     // levels, enforced per endpoint inside. See services/command/live.ts.
+    // a document shared by view-only link opens without signing in: the link is the key
+    app.use('/api/command/shared', liveCommandSharedRouter());
     app.use('/api/command', liveCommandRouter());
     // Deliberately not `requireAuth` at the mount: `POST /api/charges` is a merchant device
     // authenticating by signature, with no member session to check. The member-facing routes
