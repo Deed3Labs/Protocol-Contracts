@@ -1085,6 +1085,21 @@ export function startup() {
     if (t.dataset.cflow) {
       return openCFlow(t.dataset.cflow, t.dataset.cid);
     }
+    if (t.dataset.linkwallet !== undefined && LIVE) {
+      t.disabled = true;
+      return import('../live/safe')
+        .then((m) => m.linkWallet())
+        .then(
+          (w) => {
+            toast(`Linked ${w.slice(0, 6)}…${w.slice(-4)} · logged`);
+            render();
+          },
+          (e) => {
+            t.disabled = false;
+            toast(e.message);
+          },
+        );
+    }
     if (t.dataset.cgo) {
       const f = openCFlow.f,
         v = (document.getElementById('cp-what') || {}).value;

@@ -219,11 +219,37 @@ more step saves each section's own actions (a scan, a stage move, a document upl
 - Money: `yield_position` (per depositor: shares, assets, pledged, first deposit), and the yield
   pool's sample data in the seed: 18 depositors, daily balances since 15 Oct, the 4 Nov loan.
 
-### Phase 4: two-person rule and the Safe
+### Phase 4: two-person rule and the Safe (in progress)
 
-- `command.proposal` with a DB check that `approved_by <> proposed_by`, enforced in the API too.
-- On-chain proposals become Safe transactions through the Safe Transaction Service on Base Sepolia.
-  The app proposes and reads; it never holds a key. Links out to Safe{Wallet}.
+Kai, 2026-10-23: Kai creates the Ops Safe (2 of 3 on Base Sepolia, the signers' own wallets) in
+Safe{Wallet}; Command is built address-agnostic and tested against a throwaway Safe on a fork until
+then. Signers sign in the app with their own wallet; Command never holds a key. The admin-role
+handover is written and fork-tested now, and run by Kai later.
+
+Already true: `command.proposals` refuses self-approval in the database and the API (Phase 2), and
+the section actions' outbox records every on-chain act without carrying it out.
+
+- **4a · Reading the Safe.** Config by env, never in code: `COMMAND_SAFE_ADDRESS`,
+  `COMMAND_SAFE_CHAIN_ID` (84532), `SAFE_TX_SERVICE_URL` (default
+  `https://api.safe.global/tx-service/basesep`, so a self-hosted service works too) and
+  `SAFE_API_KEY` (Railway only; the hosted service wants one for real use). Owners, threshold and
+  nonce read from the chain, pending and executed transactions and their confirmations from the
+  service. Each Command person can link a wallet; a signer is a person whose linked wallet is an
+  owner. Contracts' signers, "waiting on you" and signing speed come from here. Unset, Contracts
+  says no Safe is connected and keeps the seeded rows.
+- **4b · Proposing.** Each on-chain outbox kind gets a builder that ABI-encodes the call from
+  `deployments/base-sepolia` (MerchantRegistry caps and on/off, the PayoutPool top-up as a USDC
+  transfer, the monthly run, and a contract change picked by contract, function and arguments,
+  checked against the ABI). Command builds the SafeTx and its EIP-712 hash at the Safe's next
+  nonce; the signer signs it with their wallet in the browser; Command posts it to the service and
+  marks the outbox row sent. Further signers confirm the same way, or in Safe{Wallet}. Executing
+  links out to Safe{Wallet} at first. The prototype's "24-hour wait" needs a delay module on the
+  Safe: noted, not built.
+- **4c · Handing admin to the Safe.** `scripts/command/safe-handover.ts`: a dry run that lists
+  every AccessControl role and Ownable owner across the deployed contracts and who holds it, and a
+  run that grants each to the Safe and renounces it from the deployer, in that order, refusing to
+  renounce anything the Safe doesn't hold yet. A fork test makes a 2-of-3 Safe with the canonical
+  factory, runs the handover, and has the Safe execute an admin call with two test signers.
 
 ### Phase 5: indexer and contracts
 

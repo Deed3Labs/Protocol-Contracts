@@ -23,6 +23,8 @@ export interface Person {
   name: string;
   email: string | null;
   title: string;
+  /** The wallet they sign with, once linked (lowercase). */
+  wallet?: string | null;
 }
 
 export interface Access {
@@ -35,8 +37,8 @@ export interface Access {
 
 type GroupRow = { id: string; key: string; name: string; description: string; levels: unknown; auto: boolean };
 const group = (r: GroupRow): Group => ({ id: r.id, key: r.key, name: r.name, description: r.description, levels: parseLevels(r.levels) ?? zero(), auto: r.auto });
-type PersonRow = { id: string; privy_id: string | null; name: string; email: string | null; title: string };
-const person = (r: PersonRow): Person => ({ id: r.id, privyId: r.privy_id, name: r.name, email: r.email, title: r.title });
+type PersonRow = { id: string; privy_id: string | null; name: string; email: string | null; title: string; wallet_address?: string | null };
+const person = (r: PersonRow): Person => ({ id: r.id, privyId: r.privy_id, name: r.name, email: r.email, title: r.title, wallet: r.wallet_address ?? null });
 
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 export const newToken = () => randomBytes(24).toString('base64url');
@@ -52,19 +54,19 @@ export async function groupByKey(db: Queryable, key: string): Promise<Group | nu
 }
 
 export async function personByPrivy(db: Queryable, privyId: string): Promise<Person | null> {
-  const { rows } = await db.query<PersonRow>('SELECT id, privy_id, name, email, title FROM command.people WHERE privy_id = $1', [privyId]);
+  const { rows } = await db.query<PersonRow>('SELECT id, privy_id, name, email, title, wallet_address FROM command.people WHERE privy_id = $1', [privyId]);
   return rows[0] ? person(rows[0]) : null;
 }
 
 export async function personById(db: Queryable, id: string): Promise<Person | null> {
-  const { rows } = await db.query<PersonRow>('SELECT id, privy_id, name, email, title FROM command.people WHERE id = $1', [id]);
+  const { rows } = await db.query<PersonRow>('SELECT id, privy_id, name, email, title, wallet_address FROM command.people WHERE id = $1', [id]);
   return rows[0] ? person(rows[0]) : null;
 }
 
 /** Someone invited by email, or added before they ever signed in, who isn't tied to a login yet. */
 export async function unboundPersonByEmail(db: Queryable, emails: string[]): Promise<Person | null> {
   if (!emails.length) return null;
-  const { rows } = await db.query<PersonRow>('SELECT id, privy_id, name, email, title FROM command.people WHERE privy_id IS NULL AND email = ANY($1) LIMIT 1', [emails]);
+  const { rows } = await db.query<PersonRow>('SELECT id, privy_id, name, email, title, wallet_address FROM command.people WHERE privy_id IS NULL AND email = ANY($1) LIMIT 1', [emails]);
   return rows[0] ? person(rows[0]) : null;
 }
 
@@ -74,7 +76,7 @@ export async function bindPrivy(db: Queryable, personId: string, privyId: string
 
 export async function createPerson(db: Queryable, p: { privyId?: string | null; name?: string; email?: string | null; title?: string }): Promise<Person> {
   const { rows } = await db.query<PersonRow>(
-    'INSERT INTO command.people (privy_id, name, email, title) VALUES ($1, $2, $3, $4) RETURNING id, privy_id, name, email, title',
+    'INSERT INTO command.people (privy_id, name, email, title) VALUES ($1, $2, $3, $4) RETURNING id, privy_id, name, email, title, wallet_address',
     [p.privyId ?? null, p.name ?? '', p.email?.toLowerCase() ?? null, p.title ?? ''],
   );
   return person(rows[0]);
