@@ -3,10 +3,10 @@
 The co-op's internal app, the members' read-only view and the investors' data room, at
 `command.useclear.org`. The design is [`docs/command-reference/clear-command-center.html`](../../docs/command-reference/clear-command-center.html);
 the plan is [`docs/command-center-plan.md`](../../docs/command-center-plan.md); where the build departs
-from the design is [`docs/command-reference/DECISIONS.md`](../../docs/command-reference/DECISIONS.md).
+from the design, and why, is [`docs/command-reference/DECISIONS.md`](../../docs/command-reference/DECISIONS.md).
 
-Phase 1 (this state): the whole prototype as a React app, on the prototype's demo data, with its
-simulated sign-in. Auth, permissions and the API come in Phase 2.
+The app is this folder. Its API is `/api/command/*` in [`apps/api`](../api) (Railway), with its tables
+in Postgres's `command` schema.
 
 ## Run it
 
@@ -20,19 +20,97 @@ npm install --workspace=@clear/command
 npm run dev --workspace=@clear/command
 ```
 
-It serves on http://localhost:5230. `#login` opens the sign-in page; `#members`, `#merchants` and so
-on open a section.
+It serves on http://localhost:5230.
+
+- `http://localhost:5230/?preview=1` is the prototype as drawn: its simulated sign-in, its demo team and
+  its demo data, with no API. The visual checks run on it.
+- `http://localhost:5230/` is the live app: Privy sign-in against the API in `VITE_API_BASE_URL`.
+  Against a local API (`npm run dev --workspace=@clear/api` with `COMMAND_SEED=on`), every section
+  draws the seed, which is the prototype's rows loaded into the database.
+
+`#login`, `#members`, `#merchants` and so on open a page.
+
+## The app's variables
+
+`apps/command/.env.local` locally (copy `.env.example`); the Vercel project's env when deployed.
+
+| Variable | What |
+|---|---|
+| `VITE_PRIVY_APP_ID` | The Clear app's Privy app, the same one `apps/member` uses |
+| `VITE_API_BASE_URL` | The API: `http://localhost:3001`, or `https://protocol-contracts-dev.up.railway.app` |
+| `VITE_MAP_STYLE_URL` | The merchants map's style. OpenFreeMap's positron unless set |
+| `VITE_MAPBOX_TOKEN` | A Mapbox style's public `pk.` token (a secret `sk.` one is never used) |
+
+## The API's variables (Railway)
+
+| Variable | What |
+|---|---|
+| `COMMAND_ADMIN_EMAILS` | Comma-separated. Each becomes Admin on first sign-in. |
+| `COMMAND_APP_URL` | Where invite links point. Default `https://command.useclear.org`. |
+| `CORS_ORIGIN` | Must include `https://command.useclear.org`, and `https://www.useclear.org` for the join form. |
+| `RESEND_API_KEY`, `RESEND_FROM` | Team invites and waitlist invites go by email. |
+| `COMMAND_SEED` | `on` seeds empty tables with the prototype's rows (dev). |
+| `PROVIDER_<SECTION>` | `seed` (default) or `live`, per section: see below. |
+
+Each live source has its own, all listed with their reasons in `DECISIONS.md`:
+
+| Source | Variables |
+|---|---|
+| The Ops Safe (Phase 4) | `COMMAND_SAFE_ADDRESS`, `COMMAND_SAFE_CHAIN_ID`, `SAFE_TX_SERVICE_URL`, `SAFE_API_KEY` |
+| The indexer (5a) | `ETHERSCAN_API_KEY`, `BASE_SEPOLIA_RPC_URL`; `COMMAND_INDEXER=off`, `COMMAND_INDEXER_MINUTES` |
+| GitHub (5c) | `GITHUB_TOKEN` (read-only, Contents); `COMMAND_GITHUB_REPO`, `_BRANCH`, `_PATH`, `_MINUTES` |
+| Plaid (6a) | `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV=sandbox`, `PLAID_TOKEN_MASTER_KEY`, `COMMAND_PLAID_WEBHOOK_URL`, `COMMAND_PLAID_HOURS` |
+| Bridge, Lithic, Stripe (6a) | `BRIDGE_ENV=sandbox` + `BRIDGE_SANDBOX_API_KEY`; `LITHIC_API_KEY`; `STRIPE_SECRET_KEY` or `COMMAND_STRIPE_KEY` (test keys only) |
+| The shop (7a) | `COMMAND_SHOP_STRIPE_KEY` (restricted, read-only), `COMMAND_CATALOG_TOKEN`, `COMMAND_SHOP_CATALOG_URL` |
+| Waitlist invites (7b) | `COMMAND_INVITE_URL` (else `APP_PUBLIC_URL`); `COMMAND_INVITES=off` |
+| Site visits (7c) | `PLAUSIBLE_API_KEY`, `PLAUSIBLE_SITE_ID`, `COMMAND_SITE_MINUTES` |
+
+## Turning a section live
+
+Each section reads its seed until its source is switched on, so going live is configuration:
+
+| Section | Live from |
+|---|---|
+| `PROVIDER_MONEY=live` | The yield pool and the savings reserve on chain; the bank (Plaid), card spend (Lithic), payouts (Stripe) |
+| `PROVIDER_CONTRACTS=live` | Addresses, versions and releases on chain; changes from GitHub |
+| `PROVIDER_SHOP=live` | The catalog from useclear.org; orders, reservations and refunds from the shop's Stripe |
+| `PROVIDER_MEMBERS=live` | The member app's accounts; the waitlist from the join form; batches that send invites |
+| `PROVIDER_GROWTH=live` | Site visits from Plausible; forms from the join form |
+
+The menu's foot ("Plaid is 3h behind · 3 other feeds synced") and `GET /api/command/feeds` say how
+each feed is doing; a feed whose keys aren't set says it's off and why.
+
+## Deploying
+
+A Vercel project in the deed3 team, `clear-command`: root directory `apps/command`, `vercel.json`
+here (install, build, the ignore step, the headers). Its production branch is `dev`, so
+`command.useclear.org` follows dev, on testnet and the sandboxes; `main` is for when it's ready for
+real money.
+
+**DNS:** `command` is a CNAME to `cname.vercel-dns.com` at Namecheap, the same way `api.useclear.org`
+was added. Privy's dashboard needs `https://command.useclear.org` (and `http://localhost:5230`) under
+allowed origins, or sign-in won't load.
+
+**The Content-Security-Policy** is enforced (`vercel.json`): the app, its API, Privy's published
+list, WalletConnect, Google Fonts and the map's tiles. A new outside host the page talks to has to be
+added there, or the browser refuses it. The page can't be framed anywhere (`frame-ancestors 'none'`).
+
+**It installs as an app** (`public/manifest.webmanifest`). Its service worker (`public/sw.js`) keeps
+only the shell, so it opens fast and opens offline; nothing the API says is ever cached, since a
+cached page of members or money would outlive the sign-out that should hide it. Each build is a new
+worker with its own cache. The icons are drawn from the Clear mark by `node scripts/icons.mjs`.
 
 ## Where things are
 
-- `src/App.tsx`: the shell's fixed parts (top bar, menu footer, empty containers).
+- `src/App.tsx`: the shell's fixed parts (top bar, menu foot, empty containers).
 - `src/runtime/dom.tsx`: how the sections draw into those containers.
-- `src/sections/`: generated from the prototype. `data.tsx` is every figure, each section file is
-  that section's functions, `startup.tsx` wires the events and draws the first page.
-- `src/styles/command.css`: the prototype's stylesheet, unchanged.
-- `scripts/port/`: the generator. `npm run port` rebuilds `src/sections` from the prototype. Once a
-  section has been edited by hand (Phase 2 on), use `npm run port -- --to /tmp/port` and diff
-  instead of regenerating over it.
+- `src/sections/`: the prototype, as React, now edited by hand. `data.tsx` is every figure, each
+  section file is that section's functions, `startup.tsx` wires the events and draws the first page.
+- `src/live/`: what makes it live: Privy, the API client, sections loading from the API, actions,
+  the Safe, the feeds, the map's style, the service worker.
+- `src/styles/command.css`: the prototype's stylesheet.
+- `scripts/port/`: the generator that first turned the prototype into `src/sections`. The sections
+  are edited by hand now: diff with `npm run port -- --to /tmp/port`, never regenerate over them.
 
 ## Checks
 
@@ -48,48 +126,11 @@ npm run test:visual --workspace=@clear/command
 npm run test:crawl --workspace=@clear/command
 ```
 
-`test` is the unit tests. `test:visual` runs the DOM, sign-in and pixel checks against the prototype
-at 1500, 1100 and 390 px in Paper and Ink; it starts its own servers on 5231 (the app) and 5233 (the
-prototype). `test:crawl` clicks every button on every page in both and compares what opens; it takes
-a few minutes.
+`test` is the unit tests; CI runs them and the typecheck. `test:visual` runs the DOM, sign-in and
+pixel checks against the prototype at 1500, 1100 and 390 px in Paper and Ink; it starts its own
+servers on 5231 (the app) and 5233 (the prototype). `test:crawl` clicks every button on every page in
+both and compares what opens; it takes a while, so run it with `--workers=1` and on its own.
 
-## Live and preview (Phase 2)
-
-- `http://localhost:5230/` is the live app: Privy sign-in against the API in `VITE_API_BASE_URL`.
-- `http://localhost:5230/?preview=1` is the prototype's simulated sign-in and demo team. The checks
-  above run on it.
-
-`apps/command/.env.local` (copy `.env.example`):
-
-| Variable | What |
-|---|---|
-| `VITE_PRIVY_APP_ID` | The Clear app's Privy app, the same one `apps/member` uses |
-| `VITE_API_BASE_URL` | The API: `http://localhost:3001`, or the dev API on Railway |
-
-The API (`apps/api`, Railway) needs:
-
-| Variable | What |
-|---|---|
-| `COMMAND_ADMIN_EMAILS` | Comma-separated. Each becomes Admin on first sign-in. |
-| `COMMAND_APP_URL` | Where invite links point. Default `https://command.useclear.org`. |
-| `CORS_ORIGIN` | Must include the Command Center's origin. |
-| `RESEND_API_KEY`, `RESEND_FROM` | Invites go by email (already set for receipts). |
-
-Privy's dashboard needs the Command Center's origins (`http://localhost:5230`, its Vercel previews,
-`https://command.useclear.org`) under allowed origins, or Privy refuses to load.
-
-## Data (Phase 3)
-
-Sections the API serves (`src/live/sections.ts`, `SERVED`) load their rows and figures from
-`GET /api/command/sections/:name` the first time they're opened. The rest still draw the prototype's
-demo data.
-
-The sample data the API seeds comes from the prototype:
-
-```bash
-npm run fixtures --workspace=@clear/command
-```
-
-That writes `packages/command-types/src/fixtures/*.json`. The API copies the package into its own
-`node_modules`, so run `bun install` in `apps/api` afterwards. The API seeds empty tables at start-up
-when `COMMAND_SEED=on` (dev); each source's provider is picked with `PROVIDER_<SOURCE>=seed|live`.
+The sample data the API seeds comes from the prototype: `npm run fixtures --workspace=@clear/command`
+writes `packages/command-types/src/fixtures/*.json`; run `bun install` in `apps/api` afterwards (it
+copies the package into its own `node_modules`).

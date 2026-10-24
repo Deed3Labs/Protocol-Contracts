@@ -635,3 +635,28 @@ and `liveRange` in `sections.ts`. clearpath-website PR #95.
 - **The drawn map** still takes over when tiles fail, as before.
 - **Checked in the browser:** the map draws OpenFreeMap's style, tiles and sprites through the new
   request hook, and asks Mapbox for nothing.
+
+## Phase 8: launch
+
+Decided 2026-10-24 (Kai): Claude creates the Vercel project and adds the domain; the
+Content-Security-Policy is enforced from the first deploy.
+
+- **The Vercel project** `clear-command` (deed3), root `apps/command`, production branch `dev`, so
+  `command.useclear.org` follows dev: testnet and the sandboxes. Env: `VITE_PRIVY_APP_ID`,
+  `VITE_API_BASE_URL` (the dev API). DNS is a CNAME at Namecheap, as `api.useclear.org` was.
+- **Headers** (`vercel.json`): an enforced CSP built from Privy's published list (Cloudflare
+  Turnstile, Privy's auth frame and RPC, WalletConnect) plus the app's own hosts (the dev API and
+  `api.useclear.org`, Google Fonts, OpenFreeMap and Mapbox for the map); `img-src` allows any
+  `https:` image (wallet and map icons come from many places); no inline scripts, `object-src
+  'none'`, `frame-ancestors 'none'`. Also `X-Frame-Options: DENY`, `nosniff`, a strict referrer,
+  HSTS, and a Permissions-Policy that turns off what Command never uses and keeps passkeys (for the
+  page and Privy's frame) and clipboard writes (share links).
+- **The PWA:** a manifest with icons drawn from the Clear mark, unaltered, on the paper ground
+  (`scripts/icons.mjs`); a service worker that keeps only the shell and the hashed assets, one cache
+  per build, and never anything the API says: Command's data is personal, and a cached page would
+  outlive the sign-out that should hide it. Registered in production builds only, never the preview.
+- **CI** now checks `apps/command` (its typecheck and tests): its path wasn't in the filter, so a
+  change only to the app skipped the apps job.
+- **Checked:** the production build served with exactly these headers, in Chrome: nothing refused by
+  the CSP (only Privy's own frame policy refuses localhost, as it will until the origin is allowed),
+  the worker activates and caches only the shell, the app opens offline, and the manifest is read.
