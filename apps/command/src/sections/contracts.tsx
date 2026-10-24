@@ -37,6 +37,7 @@ import { G, chart, columns, figHtml, fmtD, gCell, px } from './growth';
 import { mkey, vizTrack } from './home';
 import { ddHtml } from './kit';
 import { evRows, strip } from './money';
+import CHAIN_ABIS from '@clear/command-types/src/chain/base-sepolia.json';
 import { live } from '../live/actions';
 import { LIVE } from '../live/env';
 import { safeWaitingOn } from '../live/safe';
@@ -104,11 +105,61 @@ export function merchantAgreements() {
   for (const x of out) x.ver = !x.a || x.a >= D(9, 15) ? 'v1.1' : 'v1.0';
   return out;
 }
+/** A deployed contract's functions that change something, as "name(type,type)". */
+function writeFns(name) {
+  const fns = CHAIN_ABIS.contracts[name]?.functions || [];
+  return fns.filter((f) => f.stateMutability !== 'view' && f.stateMutability !== 'pure').map((f) => ({ sig: `${f.name}(${f.inputs.map((i) => i.type).join(',')})` }));
+}
 /** When the other side signed an agreement that's out for signature. */
 export const theySigned = (a) => a.ev?.find((e) => e[0] === 'sign' && e[2] !== 'K')?.[1];
 /** A signer by key, and how many signatures wait on them. */
 export const signer = (k) => SIGNERS.find((s) => s[0] === k);
 export const waitingOn = (k) => (LIVE && safeWaitingOn(k)) || CH.filter((c) => c.ev.some((e) => e[0] === 'sign' && e[2] === k && e[3]));
+/**
+ * Live: what's on its way to the Safe. On-chain acts in the outbox wait for their first signature;
+ * transactions in the Safe's queue wait for more, or to be executed in Safe{Wallet}.
+ */
+function safeCell() {
+  const s = vars.safe,
+    mine = (s.owners.find((o) => o.you) || {}).address,
+    out = (vars.safeOutbox || []).filter((o) => o.status === 'queued'),
+    rows = [
+      ...out.map((o) => [o.summary, `Asked for by ${o.requested_by}`, <button key={o.id} type="button" className="btn btn-p btn-s" data-safeprep={o.id}>Sign and send</button>]),
+      ...s.pending.map((t) => {
+        const signed = t.confirmations.some((c) => c.owner === mine),
+          ready = t.confirmations.length >= t.confirmationsRequired;
+        return [
+          `${t.method || 'Transaction'} · nonce ${t.nonce}`,
+          `${t.confirmations.length} of ${t.confirmationsRequired} signed`,
+          ready ? (
+            <a key={t.safeTxHash} className="btn btn-g btn-s" href={s.link} target="_blank" rel="noopener noreferrer">Execute in Safe{'{'}Wallet{'}'}</a>
+          ) : signed || !mine ? (
+            <span key={t.safeTxHash} className="small quiet">{signed ? 'You’ve signed' : 'Waiting on the others'}</span>
+          ) : (
+            <button key={t.safeTxHash} type="button" className="btn btn-p btn-s" data-safesign={t.safeTxHash}>Sign</button>
+          ),
+        ];
+      }),
+    ];
+  return gCell(
+    's-12',
+    'For the Safe',
+    `${CHAIN.safe} · ${s.threshold} of ${s.owners.length}`,
+    figHtml(String(rows.length), rows.length ? 'waiting on signatures or to be executed · your wallet signs, Command never holds a key' : 'nothing waiting'),
+    <div className="pn-list">
+      {rows.map(([a, b, act], i) => (
+        <div key={i} className="pn-r">
+          <span className="pn-k">
+            <b>{a}</b>
+            <span className="small quiet">{b}</span>
+          </span>
+          {act}
+        </div>
+      ))}
+    </div>,
+    safeFoot(),
+  );
+}
 /** Live: the Ops Safe's own link, and linking the wallet you sign with if you haven't. */
 function safeFoot() {
   return (
@@ -806,6 +857,7 @@ export function cOverview() {
   );
   return (
     <>
+      {LIVE && vars.safe?.configured ? G('The Safe', 'Sign here with your own wallet', '', safeCell()) : ''}
       {G('On-chain', 'Every live contract answers to the Ops Safe', '', map)}
       {G(
         'Paper',
@@ -1621,6 +1673,27 @@ export function openCFlow(kind, id) {
       ) : (
         ''
       )}
+      {f.input && LIVE && c ? (
+        <>
+          <label className="field">
+            <span className="lbl">Function on {c[1]}</span>
+            <select id="cp-fn">
+              <option value="">Decide later, in the Safe</option>
+              {writeFns(c[1]).map((fn) => (
+                <option key={fn.sig} value={fn.sig}>
+                  {fn.sig}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span className="lbl">Arguments, in order</span>
+            <input id="cp-args" type="text" placeholder='e.g. ["0x…", "150000000"]' autoComplete="off" />
+          </label>
+        </>
+      ) : (
+        ''
+      )}
       <div className="rows ledger">
         {f.rows.map(([k, v, t], __k) => (
           <div key={__k} className={`r${t ? ' total' : ''}`}>
@@ -1653,7 +1726,25 @@ export function openCFlow(kind, id) {
   );
   document.addEventListener('keydown', onKey);
   // live, each one saves through the API: a change goes to the Safe, signatures to their tools
-  if (kind === 'propose') live(f, 'contracts', 'propose', () => ({ contract: c ? c[1] : 'Contract', what: (document.getElementById('cp-what')?.value || '').trim() || 'Contract change' }));
+  if (kind === 'propose')
+    live(f, 'contracts', 'propose', () => {
+      const sig = document.getElementById('cp-fn')?.value || '',
+        raw = (document.getElementById('cp-args')?.value || '').trim();
+      let args = [];
+      if (raw) {
+        try {
+          args = JSON.parse(raw);
+        } catch {
+          throw new Error('Write the arguments as a list, like ["0x…", "150"]');
+        }
+        if (!Array.isArray(args)) throw new Error('Write the arguments as a list, like ["0x…", "150"]');
+      }
+      return {
+        contract: c ? c[1] : 'Contract',
+        what: (document.getElementById('cp-what')?.value || '').trim() || 'Contract change',
+        ...(sig ? { fn: sig.split('(')[0], args: args.map((a) => (Array.isArray(a) ? a.map(String) : String(a))) } : {}),
+      };
+    });
   else if (kind === 'sign' && ch) live(f, 'contracts', 'sign', () => ({ id: ch.id }));
   else if (kind === 'esign' && a) live(f, 'contracts', 'esign', () => ({ id: a.id }));
   else if (kind === 'renew' && a) live(f, 'contracts', 'renew', () => ({ id: a.id }));

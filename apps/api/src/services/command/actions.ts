@@ -402,7 +402,13 @@ const moneyActions: Record<string, Action> = {
 
 const contracts: Record<string, Action> = {
   propose: {
-    body: z.object({ contract: text(80).min(1), what: text(200).min(1) }),
+    body: z.object({
+      contract: text(80).min(1),
+      what: text(200).min(1),
+      /** The call itself, checked against the contract's ABI when the Safe transaction is built. */
+      fn: text(80).optional(),
+      args: z.array(z.union([z.string().max(2000), z.array(z.string().max(2000)).max(50)])).max(20).optional(),
+    }),
     summary: (b) => `Proposed “${b.what}” on ${b.contract}`,
     apply: async ({ tx, person, at }, b) => {
       const n = (await one<{ n: number }>(tx, 'SELECT count(*)::int AS n FROM command.contract_changes', []))!.n;
