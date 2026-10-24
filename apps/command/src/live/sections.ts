@@ -194,6 +194,8 @@ const apply = {
     replace(PROSPECTS, d.PROSPECTS);
     assign(OWED, d.OWED);
     replace(BOARD, d.BOARD);
+    // the board is the API's from now on, even when it's empty
+    vars.boardLoaded = true;
     replace(FLEET, d.FLEET);
     // the board is built from BOARD the next time it's drawn
     XS.board = null;
@@ -327,6 +329,8 @@ export async function loadSection(route: string, opts: { reveal?: boolean } = {}
   const d = await api('GET', `/sections/${route}${opts.reveal ? '?reveal=1' : ''}`);
   apply[route](d);
   setFigures(d.figures);
+  // Contracts' signers and their queue come from the Ops Safe, when one is configured
+  if (route === 'contracts') await import('./safe').then((m) => m.loadSafe()).catch(() => undefined);
   vars.asOf = d.asOf;
   ready.add(route);
 }

@@ -307,7 +307,7 @@ export async function merchantsSection(db: Queryable, o: ReadOptions): Promise<M
   const { rows: owedRows } = await db.query<{ merchant_id: string; owed_cents: number }>('SELECT * FROM command.redemptions_owed');
   const OWED = Object.fromEntries(owedRows.map((r) => [r.merchant_id, dollars(r.owed_cents)!]));
 
-  const { rows: cards } = await db.query<{ id: string; merchant_id: string | null; name: string; kind: string; city: string; stage: string; owner: string | null; per_month_cents: number | null; next_step: string | null; due_on: Date | null; last_contact_at: Date | null; contact: Record<string, string>; source: string; address: string; flag: boolean; founding: boolean; posters: number | null }>(
+  const { rows: cards } = await db.query<{ id: string; merchant_id: string | null; name: string; kind: string; city: string; stage: string; owner: string | null; per_month_cents: number | null; next_step: string | null; due_on: Date | null; last_contact_at: Date | null; contact: Record<string, string>; source: string; address: string; flag: boolean; founding: boolean; posters: number | null; notes: string }>(
     'SELECT * FROM command.merchant_stage WHERE removed_at IS NULL ORDER BY position',
   );
   // a shop's contact is a person: at Totals the board keeps its cards, not their details

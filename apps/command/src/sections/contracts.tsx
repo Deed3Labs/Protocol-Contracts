@@ -38,6 +38,8 @@ import { mkey, vizTrack } from './home';
 import { ddHtml } from './kit';
 import { evRows, strip } from './money';
 import { live } from '../live/actions';
+import { LIVE } from '../live/env';
+import { safeWaitingOn } from '../live/safe';
 import { modalShell, onKey } from './shell';
 export function D(m, d, y = 2026, h = 0) {
   return Date.UTC(y, m - 1, d, h);
@@ -106,7 +108,27 @@ export function merchantAgreements() {
 export const theySigned = (a) => a.ev?.find((e) => e[0] === 'sign' && e[2] !== 'K')?.[1];
 /** A signer by key, and how many signatures wait on them. */
 export const signer = (k) => SIGNERS.find((s) => s[0] === k);
-export const waitingOn = (k) => CH.filter((c) => c.ev.some((e) => e[0] === 'sign' && e[2] === k && e[3]));
+export const waitingOn = (k) => (LIVE && safeWaitingOn(k)) || CH.filter((c) => c.ev.some((e) => e[0] === 'sign' && e[2] === k && e[3]));
+/** Live: the Ops Safe's own link, and linking the wallet you sign with if you haven't. */
+function safeFoot() {
+  return (
+    <div className="c-ft split">
+      <a href={vars.safe.link} target="_blank" rel="noopener noreferrer">
+        <span className="t">Open the Safe</span>
+        {ic('out', 'sm')}
+      </a>
+      <span className="rule" aria-hidden="true" />
+      {vars.me?.wallet ? (
+        footItem({ t: `Signing as ${vars.me.wallet.slice(0, 6)}…${vars.me.wallet.slice(-4)}` })
+      ) : (
+        <button type="button" data-linkwallet="">
+          <span className="t">Link the wallet you sign with</span>
+          {ic('chev', 'sm')}
+        </button>
+      )}
+    </div>
+  );
+}
 /** "today", "yesterday" or the date, for an event. */
 export function dayWord(t) {
   const d = Math.round((TODAY - (t - (t % DAY))) / DAY);
@@ -777,7 +799,7 @@ export function cOverview() {
         )}
       </div>
     </>,
-    strip([
+    LIVE && vars.safe?.configured ? safeFoot() : strip([
       ['Signed, 30 days', String(tot30)],
       ['Waiting on you', String(waitingOn('K').length)],
     ]),

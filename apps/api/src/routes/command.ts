@@ -20,6 +20,8 @@ import {
 import { NotLiveYet, fieldSection, growthSection, membersSection, merchantsSection, moneySection, shopSection, contractsSection, governanceSection, recordsSection, homeSection } from '../services/command/sections.js';
 import * as store from '../services/command/store.js';
 import { ActionError, actionFor, actionTime, levelFor, type Action } from '../services/command/actions.js';
+import { liveSafeReader, safeAppUrl, safeConfig, SafeServiceError, type SafeConfig, type SafeReader } from '../services/command/safe.js';
+import { getAddress, isAddress, verifyMessage } from 'viem';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
 /*
@@ -43,6 +45,8 @@ export interface CommandDeps {
   /** Emails that become Admin on first sign-in (COMMAND_ADMIN_EMAILS): how the first admin gets in. */
   adminEmails: () => string[];
   appUrl: () => string;
+  /** The Ops Safe: which one (env unless given), and how it's read. */
+  safe?: { config: () => SafeConfig | null; reader: SafeReader };
   /** Where files people add are kept (Postgres unless given). */
   files?: FileStore;
   /** Rate limits: sign-in attempts, and writes. */
@@ -811,6 +815,82 @@ export function commandRouter(deps: CommandDeps) {
     res.status(201).json({ path: `/api/command/shared/${token}`, expiresAt });
   });
 
+  // ── your wallet, and the Ops Safe ────────────────────────────────────────
+
+  /** A one-time message to sign with the wallet you want to link. */
+  router.post('/me/wallet/challenge', limits.write, async (req, res) => {
+    const c = req.command!;
+    const at = now();
+    const message = `Link this wallet to the Clear Command Center as ${c.person.email || c.person.name}.\n\nOne-time code: ${store.newToken()}\nIssued: ${at.toISOString()}`;
+    const { rows } = await c.db.query<{ id: string }>('INSERT INTO command.wallet_challenges (person_id, message, expires_at) VALUES ($1, $2, $3) RETURNING id', [c.person.id, message, new Date(at.getTime() + 10 * 60_000)]);
+    res.json({ id: rows[0].id, message });
+  });
+
+  const walletBody = z.object({ id: z.string().uuid(), address: z.string().refine((a) => isAddress(a), 'Not a wallet address'), signature: z.string().regex(/^0x[0-9a-fA-F]+$/) });
+  /** Links a wallet: the signature over the challenge proves it's yours. A Safe owner's wallet makes you a signer. */
+  router.post('/me/wallet', limits.write, async (req, res) => {
+    const c = req.command!;
+    const b = walletBody.safeParse(req.body);
+    if (!b.success) return fail(res, 400, 'BAD_REQUEST', b.error.issues[0]?.message ?? 'A signed challenge is needed');
+    const address = getAddress(b.data.address);
+    const out = await c.db.transaction(async (tx) => {
+      const { rows } = await tx.query<{ message: string }>(
+        'UPDATE command.wallet_challenges SET used_at = $3 WHERE id = $1 AND person_id = $2 AND used_at IS NULL AND expires_at > $3 RETURNING message',
+        [b.data.id, c.person.id, now()],
+      );
+      if (!rows[0]) return { status: 400, code: 'BAD_CHALLENGE', message: 'That code has expired or been used. Start again.' };
+      const ok = await verifyMessage({ address, message: rows[0].message, signature: b.data.signature as `0x${string}` }).catch(() => false);
+      if (!ok) return { status: 400, code: 'BAD_SIGNATURE', message: 'That signature isn’t from this wallet' };
+      const taken = await tx.query<{ id: string }>('SELECT id FROM command.people WHERE wallet_address = $1 AND id <> $2', [address.toLowerCase(), c.person.id]);
+      if (taken.rows[0]) return { status: 409, code: 'WALLET_TAKEN', message: 'That wallet is linked to someone else' };
+      await tx.query('UPDATE command.people SET wallet_address = $2, wallet_linked_at = $3, updated_at = $3 WHERE id = $1', [c.person.id, address.toLowerCase(), now()]);
+      await auditFrom(req, { area: 'access', action: 'Linked a wallet', detail: `${address.slice(0, 6)}…${address.slice(-4)}`, result: 'done' }, tx);
+      return { status: 200 };
+    });
+    if (out.status !== 200) return fail(res, out.status, out.code!, out.message!);
+    res.json({ wallet: address.toLowerCase() });
+  });
+
+  router.delete('/me/wallet', limits.write, async (req, res) => {
+    const c = req.command!;
+    await c.db.transaction(async (tx) => {
+      await tx.query('UPDATE command.people SET wallet_address = NULL, wallet_linked_at = NULL, updated_at = $2 WHERE id = $1', [c.person.id, now()]);
+      await auditFrom(req, { area: 'access', action: 'Unlinked a wallet', result: 'done' }, tx);
+    });
+    res.json({ wallet: null });
+  });
+
+  const safeDeps = deps.safe ?? { config: () => safeConfig(), reader: liveSafeReader() };
+  /**
+   * The Ops Safe: owners (and which Command person each is), threshold, nonce, what's waiting and
+   * who has signed it, and the latest executed. Without a configured Safe, says so.
+   */
+  router.get('/safe', need('contracts', SEE), async (req, res) => {
+    const c = req.command!;
+    const cfg = safeDeps.config();
+    if (!cfg) return res.json({ configured: false });
+    try {
+      const [info, pending, done] = await Promise.all([safeDeps.reader.info(cfg), safeDeps.reader.transactions(cfg, { executed: false }), safeDeps.reader.transactions(cfg, { executed: true, limit: 20 })]);
+      const { rows } = await c.db.query<{ id: string; name: string; email: string | null; wallet_address: string }>('SELECT id, name, email, wallet_address FROM command.people WHERE wallet_address = ANY($1)', [info.owners.map((o) => o.toLowerCase())]);
+      const who = (a: string) => rows.find((r) => r.wallet_address === a.toLowerCase());
+      res.json({
+        configured: true,
+        address: cfg.address,
+        chainId: cfg.chainId,
+        link: safeAppUrl(cfg),
+        threshold: info.threshold,
+        nonce: info.nonce,
+        owners: info.owners.map((a) => ({ address: a, person: who(a) ? { id: who(a)!.id, name: who(a)!.name || who(a)!.email } : null, you: c.person.wallet === a.toLowerCase() })),
+        // stale queue entries (a nonce already used) are left out
+        pending: pending.filter((t) => t.nonce >= info.nonce).sort((a, b) => a.nonce - b.nonce),
+        executed: done,
+      });
+    } catch (e) {
+      if (e instanceof SafeServiceError) return fail(res, 502, 'SAFE_SERVICE', e.message);
+      return fail(res, 502, 'SAFE_UNREACHABLE', 'Couldn’t read the Safe right now');
+    }
+  });
+
   return router;
 }
 
@@ -857,5 +937,6 @@ function me(person: store.Person, c: { levels: Levels; group: store.Group | null
     member: !!c.member,
     expiresAt: c.access?.expiresAt?.toISOString() ?? null,
     terms: { required: c.termsRequired, version: store.TERMS_VERSION },
+    wallet: person.wallet ?? null,
   };
 }

@@ -955,7 +955,7 @@ export function xOverview() {
 export function kbInit() {
   if (XS.board) return;
   // the live app's board comes from the API, card by card (merchant_stage)
-  if (LIVE) {
+  if (LIVE && vars.boardLoaded) {
     XS.board = boardFromApi();
     return;
   }
