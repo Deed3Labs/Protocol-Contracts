@@ -21,7 +21,8 @@ import { NotLiveYet, fieldSection, growthSection, membersSection, merchantsSecti
 import * as store from '../services/command/store.js';
 import { ActionError, actionFor, actionTime, levelFor, type Action } from '../services/command/actions.js';
 import { liveSafeReader, safeAppUrl, safeConfig, SafeServiceError, type SafeConfig, type SafeReader } from '../services/command/safe.js';
-import { getAddress, isAddress, verifyMessage } from 'viem';
+import { getAddress, isAddress, recoverTypedDataAddress, verifyMessage, type Hex } from 'viem';
+import { BUILDERS, BuildError, onChain, safeTxFor, safeTxHash, typedDataFor, type SafeTxData } from '../services/command/safeTx.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
 /*
@@ -888,6 +889,139 @@ export function commandRouter(deps: CommandDeps) {
     } catch (e) {
       if (e instanceof SafeServiceError) return fail(res, 502, 'SAFE_SERVICE', e.message);
       return fail(res, 502, 'SAFE_UNREACHABLE', 'Couldn’t read the Safe right now');
+    }
+  });
+
+  // ── proposing to the Ops Safe ────────────────────────────────────────────
+
+  /** The outbox's on-chain acts, each with the Safe transaction built for it, if any. */
+  router.get('/safe/outbox', need('contracts', SEE), async (req, res) => {
+    const { rows } = await req.command!.db.query<any>(
+      `SELECT o.id, o.section, o.kind, o.summary, o.status, o.created_at, p.name AS requested_by, sp.safe_tx_hash, sp.nonce, sp.status AS safe_status
+       FROM command.outbox o JOIN command.people p ON p.id = o.requested_by
+       LEFT JOIN LATERAL (SELECT * FROM command.safe_proposals s WHERE s.outbox_id = o.id AND s.status <> 'superseded' ORDER BY created_at DESC LIMIT 1) sp ON true
+       WHERE o.status IN ('queued', 'sent') ORDER BY o.created_at`,
+    );
+    res.json({ outbox: rows.filter((r) => onChain(r.section, r.kind)) });
+  });
+
+  /** You, as a Safe owner: your linked wallet and whether it's one of the Safe's owners. */
+  const asOwner = async (c: NonNullable<Request['command']>, cfg: SafeConfig) => {
+    if (!c.person.wallet) return { error: 'Link the wallet you sign with first' };
+    const info = await safeDeps.reader.info(cfg);
+    if (!info.owners.some((o) => o.toLowerCase() === c.person.wallet)) return { error: 'Your linked wallet isn’t one of the Safe’s owners' };
+    return { info, wallet: getAddress(c.person.wallet) };
+  };
+  const signerOf = (cfg: SafeConfig, tx: SafeTxData, signature: string) => recoverTypedDataAddress({ ...(typedDataFor(cfg, tx) as any), signature: signature as Hex }).catch(() => null);
+  const safeFail = (res: Response, e: unknown) => {
+    if (e instanceof BuildError) return fail(res, 422, e.code, e.message);
+    if (e instanceof SafeServiceError) return fail(res, 502, 'SAFE_SERVICE', e.message);
+    throw e;
+  };
+
+  /**
+   * Builds the Safe transaction for an outbox row at the Safe's next free nonce, and what the
+   * signer's wallet signs. Building again supersedes what was built before and not yet proposed.
+   */
+  router.post('/safe/prepare', limits.write, need('contracts', PROPOSE), async (req, res) => {
+    const c = req.command!;
+    const cfg = safeDeps.config();
+    if (!cfg) return fail(res, 409, 'NO_SAFE', 'No Safe is connected yet');
+    const id = z.object({ outboxId: z.string().uuid() }).safeParse(req.body);
+    if (!id.success) return fail(res, 400, 'BAD_REQUEST', 'Which outbox row?');
+    const { rows } = await c.db.query<{ section: string; kind: string; summary: string; payload: any; status: string }>('SELECT section, kind, summary, payload, status FROM command.outbox WHERE id = $1', [id.data.outboxId]);
+    const o = rows[0];
+    if (!o) return fail(res, 404, 'NOT_FOUND', 'No such outbox row');
+    if (!onChain(o.section, o.kind)) return fail(res, 400, 'NOT_ON_CHAIN', 'That isn’t something the Safe does');
+    if (o.status !== 'queued') return fail(res, 409, 'ALREADY_SENT', 'That’s already in the Safe’s queue');
+    try {
+      const calls = await BUILDERS[`${o.section}.${o.kind}`](o.payload, { db: c.db, chain: { read: (a, abi, fn, args) => safeDeps.reader.read(cfg, a, abi, fn, args) } });
+      const [info, pending] = await Promise.all([safeDeps.reader.info(cfg), safeDeps.reader.transactions(cfg, { executed: false })]);
+      const nonce = Math.max(info.nonce, ...pending.filter((t) => t.nonce >= info.nonce).map((t) => t.nonce + 1));
+      const tx = safeTxFor(calls, nonce);
+      const hash = safeTxHash(cfg, tx);
+      await c.db.transaction(async (q) => {
+        await q.query(`UPDATE command.safe_proposals SET status = 'superseded' WHERE outbox_id = $1 AND status = 'prepared'`, [id.data.outboxId]);
+        await q.query(
+          'INSERT INTO command.safe_proposals (safe_tx_hash, outbox_id, safe_address, chain_id, nonce, tx, summary, prepared_by) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (safe_tx_hash) DO UPDATE SET status = \'prepared\'',
+          [hash, id.data.outboxId, cfg.address, cfg.chainId, nonce, JSON.stringify(tx), o.summary, c.person.id],
+        );
+      });
+      res.json({ safeTxHash: hash, nonce, calls: calls.map((x) => ({ to: x.to, label: x.label })), typedData: typedDataFor(cfg, tx) });
+    } catch (e) {
+      return safeFail(res, e);
+    }
+  });
+
+  const signedBody = z.object({ safeTxHash: z.string().regex(/^0x[0-9a-f]{64}$/i), signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/) });
+
+  /** The first signature: checks it's your owner wallet's over this exact transaction, then puts it in the Safe's queue. */
+  router.post('/safe/propose', limits.write, need('contracts', PROPOSE), async (req, res) => {
+    const c = req.command!;
+    const cfg = safeDeps.config();
+    if (!cfg) return fail(res, 409, 'NO_SAFE', 'No Safe is connected yet');
+    const b = signedBody.safeParse(req.body);
+    if (!b.success) return fail(res, 400, 'BAD_REQUEST', 'A transaction hash and a signature are needed');
+    const hash = b.data.safeTxHash.toLowerCase();
+    const { rows } = await c.db.query<{ tx: SafeTxData; outbox_id: string; summary: string; status: string; safe_address: string }>('SELECT tx, outbox_id, summary, status, safe_address FROM command.safe_proposals WHERE safe_tx_hash = $1', [hash]);
+    const sp = rows[0];
+    if (!sp || sp.status !== 'prepared' || sp.safe_address !== cfg.address) return fail(res, 404, 'NOT_PREPARED', 'Build it again: that transaction isn’t waiting to be proposed');
+    try {
+      const owner = await asOwner(c, cfg);
+      if ('error' in owner) return fail(res, 403, 'NOT_A_SIGNER', owner.error!);
+      if (safeTxHash(cfg, sp.tx) !== hash) return fail(res, 409, 'HASH_MISMATCH', 'What was built doesn’t match its hash');
+      const signer = await signerOf(cfg, sp.tx, b.data.signature);
+      if (!signer || signer !== owner.wallet) return fail(res, 403, 'BAD_SIGNATURE', 'That signature isn’t your wallet’s, over this transaction');
+      await safeDeps.reader.propose(cfg, { ...sp.tx, contractTransactionHash: hash, sender: owner.wallet, signature: b.data.signature, origin: 'Clear Command Center' });
+      await c.db.transaction(async (q) => {
+        await q.query(`UPDATE command.safe_proposals SET status = 'proposed', proposed_by = $2, proposed_at = $3 WHERE safe_tx_hash = $1`, [hash, c.person.id, now()]);
+        await q.query(`UPDATE command.outbox SET status = 'sent' WHERE id = $1`, [sp.outbox_id]);
+        await auditFrom(req, { area: 'contracts', action: `Proposed to the Safe: ${sp.summary}`, detail: `Nonce ${sp.tx.nonce} · ${hash.slice(0, 10)}… · 1 of ${owner.info.threshold} signed`, result: 'waiting' }, q);
+      });
+      res.json({ proposed: true, safeTxHash: hash });
+    } catch (e) {
+      return safeFail(res, e);
+    }
+  });
+
+  /** What to sign to add your signature to a transaction already in the Safe's queue. */
+  router.get('/safe/tx/:hash', need('contracts', SEE), async (req, res) => {
+    const cfg = safeDeps.config();
+    if (!cfg) return fail(res, 409, 'NO_SAFE', 'No Safe is connected yet');
+    try {
+      const t = await safeDeps.reader.transaction(cfg, req.params.hash);
+      if (!t) return fail(res, 404, 'NOT_FOUND', 'The Safe has no such transaction');
+      const tx: SafeTxData = { to: t.to, value: t.value, data: (t.data ?? '0x') as Hex, operation: t.operation, safeTxGas: t.safeTxGas, baseGas: t.baseGas, gasPrice: t.gasPrice, gasToken: t.gasToken, refundReceiver: t.refundReceiver, nonce: t.nonce };
+      res.json({ ...t, typedData: typedDataFor(cfg, tx), hashMatches: safeTxHash(cfg, tx) === req.params.hash.toLowerCase() });
+    } catch (e) {
+      return safeFail(res, e);
+    }
+  });
+
+  /** Another signature on a queued transaction: checked against your owner wallet, then sent to the service. */
+  router.post('/safe/confirm', limits.write, need('contracts', SEE), async (req, res) => {
+    const c = req.command!;
+    const cfg = safeDeps.config();
+    if (!cfg) return fail(res, 409, 'NO_SAFE', 'No Safe is connected yet');
+    const b = signedBody.safeParse(req.body);
+    if (!b.success) return fail(res, 400, 'BAD_REQUEST', 'A transaction hash and a signature are needed');
+    const hash = b.data.safeTxHash.toLowerCase();
+    try {
+      const owner = await asOwner(c, cfg);
+      if ('error' in owner) return fail(res, 403, 'NOT_A_SIGNER', owner.error!);
+      const t = await safeDeps.reader.transaction(cfg, hash);
+      if (!t || t.executed) return fail(res, 404, 'NOT_FOUND', 'Nothing waiting with that hash');
+      if (t.confirmations.some((x) => x.owner === owner.wallet)) return fail(res, 409, 'ALREADY_SIGNED', 'You’ve signed this one already');
+      const tx: SafeTxData = { to: t.to, value: t.value, data: (t.data ?? '0x') as Hex, operation: t.operation, safeTxGas: t.safeTxGas, baseGas: t.baseGas, gasPrice: t.gasPrice, gasToken: t.gasToken, refundReceiver: t.refundReceiver, nonce: t.nonce };
+      if (safeTxHash(cfg, tx) !== hash) return fail(res, 409, 'HASH_MISMATCH', 'The service’s transaction doesn’t match its hash');
+      const signer = await signerOf(cfg, tx, b.data.signature);
+      if (!signer || signer !== owner.wallet) return fail(res, 403, 'BAD_SIGNATURE', 'That signature isn’t your wallet’s, over this transaction');
+      const n = t.confirmations.length + 1;
+      await safeDeps.reader.confirm(cfg, hash, b.data.signature);
+      await auditFrom(req, { area: 'contracts', action: `Signed in the Safe: ${t.method ?? 'transaction'} · nonce ${t.nonce}`, detail: `${n} of ${t.confirmationsRequired} signed${n >= t.confirmationsRequired ? ' · ready to execute' : ''}`, result: n >= t.confirmationsRequired ? 'approved' : 'done' });
+      res.json({ confirmed: true, signatures: n, required: t.confirmationsRequired });
+    } catch (e) {
+      return safeFail(res, e);
     }
   });
 

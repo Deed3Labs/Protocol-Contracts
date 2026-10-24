@@ -40,6 +40,10 @@ const reader: SafeReader = {
     if (serviceDown) throw new SafeServiceError(503, 'The Safe Transaction Service said 503');
     return executed ? [tx(6, [kaiWallet.address, danaWallet.address], true)] : [tx(8, [danaWallet.address]), tx(5, [kaiWallet.address]), tx(7, [])];
   },
+  transaction: async () => null,
+  propose: async () => undefined,
+  confirm: async () => undefined,
+  read: async () => 0n,
 };
 
 beforeAll(async () => {

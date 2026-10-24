@@ -280,3 +280,30 @@ what's typed, not the prototype's samples).
   kind and entity from the flow; the prototype's sample rows only appear in the preview.
 - **Not yet:** the download isn't watermarked (the flow still says it is), share links can't be
   revoked from the page, and the outbox has no page of its own (`GET /outbox` lists it).
+
+## Phase 4: the two-person rule and the Safe
+
+Decided 2026-10-23 (Kai: he creates the Ops Safe, Command stays address-agnostic; signers sign in
+the app with their own wallet; the admin handover is written now and run by him later).
+
+- **The Safe is config.** `COMMAND_SAFE_ADDRESS`, `COMMAND_SAFE_CHAIN_ID`, `SAFE_TX_SERVICE_URL`
+  (hosted at `api.safe.global/tx-service/basesep`, or self-hosted) and `SAFE_API_KEY` (Railway; the
+  hosted service wants a key for real use). Without them Contracts says no Safe is connected.
+- **Command never holds a key.** It builds each Safe transaction and its EIP-712 hash; the signer's
+  own wallet signs it (Privy shows the prompt); Command checks the signature recovers to that
+  person's linked wallet and that the wallet is an owner, then hands it to the Transaction Service.
+- **A signer is a person with a linked wallet that owns the Safe.** Linking signs a one-time,
+  10-minute message; one wallet per person.
+- **Calls come from the deployed ABIs** (`packages/command-types/src/chain`, written by
+  `apps/command/scripts/abis.ts` from `deployments/base-sepolia`; functions only, no Solidity).
+  Builders: a shop's cap (`updateTerms`, keeping its window and fee as they are on chain), shop
+  on/off (`setActive`), the payout run (`payQueue`), the PayoutPool top-up (the reserve token's
+  `approve` then `fund`, as one transaction through MultiSendCallOnly 1.4.1), and a contract change
+  picked by contract, function and arguments, checked against the ABI.
+- **Nonces:** the next after the chain's nonce and anything already queued. Building again
+  supersedes what was built and not yet proposed.
+- **Checked against the chain:** the Safe contracts' own `getTransactionHash` on Base Sepolia (1.4.1
+  and 1.3.0) matches Command's hash for one call and for a batch (`CHAIN_CHECK=1`).
+- **Not yet:** executing happens in Safe{Wallet} (linked); the prototype's 24-hour wait needs a
+  delay module on the Safe; shops need their wallet on Command's merchant row
+  (`command.merchants.wallet_address`) until the live provider reads the merchant app's.

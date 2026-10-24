@@ -1,4 +1,4 @@
-import { createPublicClient, getAddress, http, isAddress, type Address } from 'viem';
+import { createPublicClient, getAddress, http, isAddress, type Abi, type Address } from 'viem';
 import { baseSepolia } from 'viem/chains';
 
 /*
@@ -63,6 +63,14 @@ export interface SafeTx {
 export interface SafeReader {
   info(c: SafeConfig): Promise<SafeInfo>;
   transactions(c: SafeConfig, opts: { executed: boolean; limit?: number }): Promise<SafeTx[]>;
+  /** One transaction in the service, by its hash, with what's needed to sign it again. */
+  transaction(c: SafeConfig, safeTxHash: string): Promise<(SafeTx & { operation: 0 | 1; safeTxGas: string; baseGas: string; gasPrice: string; gasToken: Address; refundReceiver: Address }) | null>;
+  /** Puts a signed transaction in the Safe's queue. */
+  propose(c: SafeConfig, body: Record<string, unknown>): Promise<void>;
+  /** Adds a signer's signature to a queued transaction. */
+  confirm(c: SafeConfig, safeTxHash: string, signature: string): Promise<void>;
+  /** A contract read a builder needs first. */
+  read(c: SafeConfig, address: Address, abi: Abi, functionName: string, args: unknown[]): Promise<unknown>;
 }
 
 const SAFE_ABI = [
@@ -136,6 +144,25 @@ export function liveSafeReader(f: typeof fetch = fetch): SafeReader {
     async transactions(c, { executed, limit = 50 }) {
       const out = await serviceFetch(c, `/api/v1/safes/${c.address}/multisig-transactions/?executed=${executed}&ordering=-nonce&limit=${limit}`, {}, f);
       return ((out?.results ?? []) as ServiceTx[]).map(toSafeTx);
+    },
+    async transaction(c, hash) {
+      try {
+        const t = await serviceFetch(c, `/api/v1/multisig-transactions/${hash}/`, {}, f);
+        return { ...toSafeTx(t), operation: t.operation, safeTxGas: String(t.safeTxGas), baseGas: String(t.baseGas), gasPrice: String(t.gasPrice), gasToken: getAddress(t.gasToken), refundReceiver: getAddress(t.refundReceiver) };
+      } catch (e) {
+        if (e instanceof SafeServiceError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    async propose(c, body) {
+      await serviceFetch(c, `/api/v1/safes/${c.address}/multisig-transactions/`, { method: 'POST', body: JSON.stringify(body) }, f);
+    },
+    async confirm(c, hash, signature) {
+      await serviceFetch(c, `/api/v1/multisig-transactions/${hash}/confirmations/`, { method: 'POST', body: JSON.stringify({ signature }) }, f);
+    },
+    async read(c, address, abi, functionName, args) {
+      const client = createPublicClient({ chain: c.chainId === baseSepolia.id ? baseSepolia : undefined, transport: http(c.rpcUrl) });
+      return client.readContract({ address, abi, functionName, args });
     },
   };
 }

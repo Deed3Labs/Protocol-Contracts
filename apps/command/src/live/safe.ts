@@ -60,3 +60,39 @@ export async function linkWallet() {
   await loadSafe().catch(() => undefined);
   return r.wallet;
 }
+
+// ── proposing (Phase 4b) ────────────────────────────────────────────────────
+
+/** The outbox's on-chain acts, and what's in the Safe's queue: what the "For the Safe" list draws. */
+export async function loadSafeQueue() {
+  if (!vars.safe?.configured) return;
+  vars.safeOutbox = (await api('GET', '/safe/outbox')).outbox;
+}
+
+const wallet = () => {
+  const w = vars.me?.wallet;
+  if (!w) throw new Error('Link the wallet you sign with first');
+  if (!privy.wallets().some((a) => a.toLowerCase() === w)) throw new Error('Connect your linked wallet here to sign');
+  return privy.wallets().find((a) => a.toLowerCase() === w);
+};
+
+/** Builds the Safe transaction for an outbox row, has your wallet sign it, and puts it in the Safe's queue. */
+export async function signAndSend(outboxId: string) {
+  const address = wallet();
+  const p = await api('POST', '/safe/prepare', { outboxId });
+  const signature = await privy.signTypedData(address, p.typedData);
+  await api('POST', '/safe/propose', { safeTxHash: p.safeTxHash, signature });
+  await Promise.all([loadSafe(), loadSafeQueue()]);
+  return p;
+}
+
+/** Adds your signature to a transaction already in the Safe's queue. */
+export async function signQueued(safeTxHash: string) {
+  const address = wallet();
+  const t = await api('GET', `/safe/tx/${safeTxHash}`);
+  if (!t.hashMatches) throw new Error('The Safe’s copy doesn’t match its hash, so it isn’t safe to sign here');
+  const signature = await privy.signTypedData(address, t.typedData);
+  const r = await api('POST', '/safe/confirm', { safeTxHash, signature });
+  await loadSafe();
+  return r;
+}

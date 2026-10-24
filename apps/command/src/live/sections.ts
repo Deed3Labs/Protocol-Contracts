@@ -330,7 +330,7 @@ export async function loadSection(route: string, opts: { reveal?: boolean } = {}
   apply[route](d);
   setFigures(d.figures);
   // Contracts' signers and their queue come from the Ops Safe, when one is configured
-  if (route === 'contracts') await import('./safe').then((m) => m.loadSafe()).catch(() => undefined);
+  if (route === 'contracts') await import('./safe').then((m) => m.loadSafe().then(m.loadSafeQueue)).catch(() => undefined);
   vars.asOf = d.asOf;
   ready.add(route);
 }

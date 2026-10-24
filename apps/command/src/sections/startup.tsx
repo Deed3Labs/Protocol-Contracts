@@ -1085,6 +1085,22 @@ export function startup() {
     if (t.dataset.cflow) {
       return openCFlow(t.dataset.cflow, t.dataset.cid);
     }
+    if ((t.dataset.safeprep || t.dataset.safesign) && LIVE) {
+      t.disabled = true;
+      const prep = t.dataset.safeprep;
+      return import('../live/safe')
+        .then((m) => (prep ? m.signAndSend(prep) : m.signQueued(t.dataset.safesign)))
+        .then(
+          (r) => {
+            toast(prep ? 'In the Safe’s queue · 1 signature so far · logged' : `Signed · ${r.signatures} of ${r.required}${r.signatures >= r.required ? ' · ready to execute' : ''}`);
+            render();
+          },
+          (e) => {
+            t.disabled = false;
+            toast(e.message);
+          },
+        );
+    }
     if (t.dataset.linkwallet !== undefined && LIVE) {
       t.disabled = true;
       return import('../live/safe')
