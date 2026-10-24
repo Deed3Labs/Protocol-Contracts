@@ -257,6 +257,7 @@ const apply = {
     assign(PENDING, d.PENDING);
     replace(CH, d.CH);
     replace(CH_DONE, d.CH_DONE);
+    vars.contractsNow = d.NOW;
     replace(SIGNERS, d.SIGNERS);
     const f = d.figures;
     assign(CHAIN, f['contracts.chain']);

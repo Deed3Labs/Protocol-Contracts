@@ -426,3 +426,29 @@ Contracts (the map's layout, notes, changes) are still the tables' until their s
   deposits, one $5 withdrawal), which the lines reconcile to the cent; nothing lent; 0.25% a cycle
   to borrow. 51 `Upgraded` events give 30 contracts their versions (RevolvingIssuer and TermIssuer
   are at v1.5).
+
+### 5c: changes from GitHub
+
+`services/command/github.ts`, `jobs/commandGithub.ts`, migration `0045_command_code`.
+
+- **The commits on `dev` that touch `contracts/`**, polled every 5 minutes (`COMMAND_GITHUB_MINUTES`)
+  plus a catch-up when someone opens Contracts, at most once a minute. Repository, branch and path
+  are env (`COMMAND_GITHUB_REPO`, `_BRANCH`, `_PATH`), defaulting to Deed3Labs/Protocol-Contracts,
+  `dev`, `contracts`. Off with `COMMAND_GITHUB=off`.
+- **Cheap by design.** The list is asked for with the last answer's ETag: unchanged is a 304, which
+  costs nothing against the token's rate limit. It asks from a week before the newest commit it has,
+  so a merge that lands with an older time is still seen. Each new commit's files are asked for once.
+- **`GITHUB_TOKEN`** (Railway): fine-grained, read-only, Contents on this repository. The repository
+  is public, so without one it still runs at 60 requests an hour; the first backfill then spreads
+  over a few runs, a commit's files being read by whichever run has the budget (20 a run).
+- **A commit's contracts** are the Solidity files it changed under the path, by name, leaving out
+  mocks, tests and interfaces. A library's name is kept but matches no contract on the map.
+- **Changes, live (`PROVIDER_CONTRACTS=live`):** a commit goes to the first release after it landed
+  (a proxy's `Upgraded`; a contract with no proxy releases once, when it was deployed, its time
+  worked out from its deploy block). The commits after a contract's last release are one change in
+  flight, a draft of the next version; each release in the last 30 days is a change done, by whoever
+  wrote its commits (Command's name for them when their email is a person here). Command's own
+  changes (`command.contract_changes`, from the propose action) stay, before GitHub's.
+- **The page**, live, draws its change lanes around the API's now rather than the prototype's
+  fixed dates, and takes whichever changes exist rather than the first five by index.
+- **Status:** `GET /api/command/code/status`.

@@ -273,6 +273,7 @@ new blocks are read); GitHub polled with a read-only token; every deployed contr
   section stays on the tables until its source comes.
 - **5c · Changes from GitHub.** A job asks GitHub for commits touching `contracts/` on `dev` every
   few minutes, with a fine-grained read-only `GITHUB_TOKEN` in Railway, into Contracts' changes.
+  Built: `services/command/github.ts`, `jobs/commandGithub.ts`.
 
 ### Phase 6: sandboxes
 

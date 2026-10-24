@@ -263,10 +263,15 @@ export function deployedName(name: string, deployed: Set<string>): string | null
   return [`${name}Upgradeable`, name, `${name}Factory`].find((n) => deployed.has(n)) ?? null;
 }
 
-/** Where each deployed contract is, by name, from the indexer's inventory. */
-export async function inventory(db: Queryable): Promise<Map<string, { address: Address; deployed: boolean }>> {
+/**
+ * Where each deployed contract is, by name, from the indexer's inventory, and when it was deployed:
+ * worked out from its deploy block and the newest event's time, Base's blocks being 2 seconds apart.
+ */
+export async function inventory(db: Queryable): Promise<Map<string, { address: Address; deployed: boolean; deployedAt: number | null }>> {
   const { rows } = await db.query<{ name: string; address: string; deploy_block: string | null }>('SELECT name, address, deploy_block FROM command.chain_contracts WHERE chain_id = $1', [chain.chainId]);
-  return new Map(rows.map((r) => [r.name, { address: getAddress(r.address), deployed: r.deploy_block != null }]));
+  const { rows: anchor } = await db.query<{ block_number: string; block_time: Date }>('SELECT block_number, block_time FROM command.chain_events WHERE chain_id = $1 ORDER BY block_number DESC LIMIT 1', [chain.chainId]);
+  const at = (b: string | null) => (b == null || !anchor.length ? null : new Date(anchor[0].block_time).getTime() - (Number(anchor[0].block_number) - Number(b)) * 2000);
+  return new Map(rows.map((r) => [r.name, { address: getAddress(r.address), deployed: r.deploy_block != null, deployedAt: at(r.deploy_block) }]));
 }
 
 export { short as shortAddress };
