@@ -1,5 +1,6 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
 import { SEED_ROUTE } from '@clear/command-types';
+import { act, addFile } from '../live/actions';
 import { LIVE } from '../live/env';
 import { Fragment } from 'react';
 import { attrs, css } from '../runtime/dom';
@@ -8,6 +9,7 @@ import { DAY, DESIGNS, FS, LATER, OUT, POSTERS, SHOP_INFO, STOPS, TODAY, vars } 
 import { G, dayName, designThumb, figHtml, fmtD, gCell, pid, slug } from './growth';
 import { mkey } from './home';
 import { ddHtml, stepFlow } from './kit';
+import { render, toast } from './shell';
 export function posterAt(shop, n) {
   return n ? POSTERS.find((p) => p.n === n) : POSTERS.find((p) => p.shop === shop);
 }
@@ -729,6 +731,17 @@ export function fSave(n) {
         : out === 'Damaged'
           ? ['Marked ' + pid(n) + ' damaged', 'Added a swap to tomorrow’s route']
           : ['Logged a check on ' + pid(n)];
+  // live: the photo is stored first, then the scan saves with it, and the route draws from the server
+  if (LIVE) {
+    const file = (document.getElementById('f-photo') || {}).files?.[0];
+    (file ? addFile('field', file) : Promise.resolve(null))
+      .then((photo) => act('field', 'scan', { n, outcome: out.toLowerCase(), note, photo }))
+      .then(
+        () => stepFlow('Saving', steps, [`${out}.`, `${pid(n)} at ${p.shop} is logged.`], () => render()),
+        (e) => toast(e.message),
+      );
+    return;
+  }
   stepFlow('Saving', steps, [`${out}.`, `${pid(n)} at ${p.shop} is logged.`], () => {
     if (task) {
       task.done = '10:3' + (4 + Math.floor(Math.random() * 5));

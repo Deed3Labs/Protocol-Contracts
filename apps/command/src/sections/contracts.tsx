@@ -37,6 +37,7 @@ import { G, chart, columns, figHtml, fmtD, gCell, px } from './growth';
 import { mkey, vizTrack } from './home';
 import { ddHtml } from './kit';
 import { evRows, strip } from './money';
+import { live } from '../live/actions';
 import { modalShell, onKey } from './shell';
 export function D(m, d, y = 2026, h = 0) {
   return Date.UTC(y, m - 1, d, h);
@@ -1629,6 +1630,11 @@ export function openCFlow(kind, id) {
     'Every change is logged',
   );
   document.addEventListener('keydown', onKey);
+  // live, each one saves through the API: a change goes to the Safe, signatures to their tools
+  if (kind === 'propose') live(f, 'contracts', 'propose', () => ({ contract: c ? c[1] : 'Contract', what: (document.getElementById('cp-what')?.value || '').trim() || 'Contract change' }));
+  else if (kind === 'sign' && ch) live(f, 'contracts', 'sign', () => ({ id: ch.id }));
+  else if (kind === 'esign' && a) live(f, 'contracts', 'esign', () => ({ id: a.id }));
+  else if (kind === 'renew' && a) live(f, 'contracts', 'renew', () => ({ id: a.id }));
   openCFlow.f = f;
 }
 

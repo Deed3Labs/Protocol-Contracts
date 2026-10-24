@@ -46,6 +46,7 @@ export async function startSession(method) {
     keepSession(out.session.id, !!SG.keep);
     applyMe(out.me);
     if (out.me.levels.access >= 2) await loadTeam().catch(() => undefined);
+    else await loadWaiting().catch(() => undefined);
     applyMe(out.me);
     if (out.me.terms.required) return sgnStep('terms');
     sgnIn();
@@ -176,6 +177,7 @@ export async function liveBoot(start) {
       const { me } = await api('GET', '/me');
       applyMe(me);
       if (me.levels.access >= 2) await loadTeam().catch(() => undefined);
+      else await loadWaiting().catch(() => undefined);
       applyMe(me);
       if (me.terms.required) {
         sgnStep('terms');
@@ -303,38 +305,46 @@ export const customLevels = (levels) => (levels ? levelsObject(levels) : null);
 
 // ── waiting on a second admin ───────────────────────────────────────────────
 
-/** Access changes waiting for a second admin, as Needs-you items the prototype's modal already draws. */
+const AREA_NAME = { access: 'Access', growth: 'Growth', field: 'Field', members: 'Members', merchants: 'Merchants', shop: 'Shop', money: 'Money', contracts: 'Contracts', governance: 'Governance', records: 'Records' };
+const AREA_ICON = { access: 'team', shop: 'shop', money: 'money', merchants: 'merchants', contracts: 'contracts', governance: 'governance', members: 'members', growth: 'growth', field: 'field', records: 'records' };
+
+/** Everything waiting for a second person, in every area you can see, as Needs-you items the prototype's modal already draws. */
 export async function loadWaiting() {
-  if (!vars.me || vars.me.levels.access < 2) return;
-  const { proposals } = await api('GET', '/proposals?area=access');
-  S.waiting = S.waiting.filter((w) => !w.live);
+  if (!vars.me || !Object.values(vars.me.levels).some((v) => v >= 2)) return;
+  const { proposals } = await api('GET', '/proposals?area=all');
+  // live, Needs you is only what's really waiting: the prototype's sample items go
+  S.waiting = [];
   proposals.forEach((p, i) => {
     const mine = p.proposedBy === vars.me.id;
     const by = shortOf.get(p.proposedBy) ? PEOPLE_T.find((x) => x.uid === p.proposedBy)?.n : 'Someone';
-    const id = `access-${p.id}`;
+    const area = AREA_NAME[p.area] ?? 'Change',
+      id = `${p.area}-${p.id}`;
     // the tables Home looks a waiting item up in, by its id
-    NEED[id] = { order: 10 + i, verb: mine ? 'Waiting' : 'Approve', meta: `Access · ${mine ? 'you' : by} proposed`, fig: '' };
-    W_ICON[id] = 'team';
+    NEED[id] = { order: 10 + i, verb: mine ? 'Waiting' : 'Approve', meta: `${area} · ${mine ? 'you' : by} proposed`, fig: '' };
+    W_ICON[id] = AREA_ICON[p.area] ?? 'team';
     W_VIZ[id] = () => '';
     FEED_FROM[id] = `Approved: ${p.summary}`;
-    UPD_FROM[id] = ['access changed', 'team'];
+    UPD_FROM[id] = [p.area === 'access' ? 'access changed' : 'approved', p.area === 'access' ? 'team' : p.area];
     S.waiting.push({
       id,
       live: true,
-      kind: 'Access',
+      kind: area,
       tag: 'Two-person',
       title: p.summary,
       fig: '',
-      figSub: mine ? 'waiting on a second admin' : `${by} proposed`,
+      figSub: mine ? 'waiting on a second person' : `${by} proposed`,
       meta: [mine ? 'You proposed' : `${by} proposed`],
       cta: mine ? 'Waiting' : 'Review',
       mode: 'approve',
-      ledger: [['Change', p.summary], ['Proposed', `${by} · ${dayMon(p.createdAt)}`], ['Needs', mine ? 'Another admin' : 'You, as the second person', 1]],
-      rule: [by, 'Access'],
-      primary: mine ? 'Only another admin can approve' : 'Approve',
+      ledger: [['Change', p.summary], ['Proposed', `${by} · ${dayMon(p.createdAt)}`], ['Needs', mine ? 'Someone else' : 'You, as the second person', 1]],
+      rule: [by, area],
+      primary: mine ? 'Only someone else can approve' : 'Approve',
       steps: ['Checked the two-person rule', 'Recorded your approval', 'Applied the change'],
       done: ['Approved.', 'The change is live and logged.'],
-      api: mine ? () => Promise.reject(new Error('Someone else has to approve what you proposed')) : () => api('POST', `/proposals/${p.id}/approve`),
+      // once approved, every section loads afresh, so what it changed shows
+      api: mine
+        ? () => Promise.reject(new Error('Someone else has to approve what you proposed'))
+        : () => api('POST', `/proposals/${p.id}/approve`).then((r) => import('./sections').then((m) => (m.forgetSections(), r))),
     });
   });
   render();

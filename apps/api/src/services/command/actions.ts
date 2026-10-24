@@ -135,19 +135,26 @@ const field: Record<string, Action> = {
     },
   },
   'add-later': {
-    body: z.object({ id: z.number().int().positive(), poster: z.number().int().positive().nullable().default(null) }),
-    summary: () => 'Added a shop to today’s route',
+    body: z.object({ shop: text(120).min(1) }),
+    summary: (b) => `Added ${b.shop} to today’s route`,
     apply: async ({ tx, at }, b) => {
       const d = dayStart(at);
-      const l = await must<any>(tx, 'DELETE FROM command.route_later WHERE id = $1 RETURNING *', [b.id], 'shop due later');
       await must(tx, 'SELECT day FROM command.routes WHERE day = $1', [d], 'route for today');
-      const sid = 'x' + b.id;
+      const l = await must<any>(tx, 'DELETE FROM command.route_later WHERE id = (SELECT id FROM command.route_later WHERE shop = $1 ORDER BY id LIMIT 1) RETURNING *', [b.shop], 'shop due later');
+      const poster = Number(/P-(\d+)/.exec(l.poster)?.[1]) || null;
+      const sid = 'x' + l.id;
       await tx.query(
         `INSERT INTO command.route_stops (day, id, position, name, city, street, eta, closes, contact, last_visit)
          VALUES ($1, $2, (SELECT coalesce(max(position), 0) + 1 FROM command.route_stops WHERE day = $1), $3, $4, '', '', NULL, NULL, NULL)`,
         [d, sid, l.shop, l.city],
       );
-      await tx.query(`INSERT INTO command.route_tasks (day, stop_id, position, kind, poster, title, note) VALUES ($1, $2, 0, 'poster', $3, $4, $5)`, [d, sid, b.poster, l.todo, l.note]);
+      await tx.query(`INSERT INTO command.route_tasks (day, stop_id, position, kind, poster, title, note) VALUES ($1, $2, 0, 'poster', $3, $4, $5)`, [
+        d,
+        sid,
+        poster,
+        `${l.state === 'missing' ? 'Replace' : 'Swap'} ${l.poster}`,
+        l.state === 'missing' ? 'Missing' : 'Faded',
+      ]);
     },
   },
 };

@@ -1,4 +1,5 @@
 // @ts-nocheck: generated from the prototype's templates (see docs/command-reference/DECISIONS.md). Typed when Phase 3 puts API rows behind it.
+import { live } from '../live/actions';
 import { LIVE } from '../live/env';
 import { fig } from '../live/figures';
 import { Fragment } from 'react';
@@ -551,6 +552,10 @@ export function openNFlow(kind) {
       done: ['Drafted.', 'It shows under Votes in Governance.'],
     };
   if (!f) return;
+  if (kind === 'top') live(f, 'money', 'top', () => ({ amount: M.short }));
+  else if (kind === 'sync') live(f, 'money', 'sync', () => ({ source: 'plaid' }));
+  else if (kind === 'reserve') live(f, 'money', 'reserve', () => ({}));
+  else if (kind === 'vote') live(f, 'money', 'vote', () => ({ what: (document.querySelector('#modalRoot input[type="text"]')?.value || '').trim() || 'A use for the co-op balance', amount: M.coop }));
   vModal(f, 'n:' + kind);
 }
 

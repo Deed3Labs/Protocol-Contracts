@@ -244,3 +244,39 @@ Decided 2026-10-23 (Kai: stored figures, one PR per section group).
   gets. The preview's simulated Totals view still scrubs, as the prototype did.
 - **Actions** (sign, renew, log a decision, send the packet, upload) still change only the page; the
   next step saves them through the API.
+
+## Saving each section's actions
+
+Decided 2026-10-23 (Kai: record outside acts without carrying them out; store files for real; save
+what's typed, not the prototype's samples).
+
+- **One endpoint, three outcomes.** `POST /api/command/actions/:section/:kind`
+  (`services/command/actions.ts`) needs Propose on that section, validates the body, and then:
+  - **Command's own record** (a poster replaced or added, a field scan, a route task, a board card,
+    the shelf, an order's packing state, a filing's status, the agenda, a formation step, a
+    related-party payment, documents): saved, with an audit row.
+  - **An outside act** (a payout or payout run, a refund, a restock order, postage, a PayoutPool
+    top-up, a Safe signature, e-signature, invites and member messages, a Plaid sync, the live shop's
+    catalog): recorded in `command.outbox` and **not carried out**. Phases 4–7 connect the Safe,
+    Stripe, Shippo, the e-signature tool and messaging, and work through the outbox. The flow's
+    closing words say so.
+  - **A second person first**, where the action's own copy says so: money over $50 (refunds,
+    restocks, deposits), every on-chain change (caps, the payout run, a top-up), invite batches and
+    pace, a member vote, a reserved matter. It waits as a proposal in Needs you and runs when someone
+    else approves it; the proposer can't, by the API and by the database.
+- **Needs you is real.** Live, it lists every waiting proposal in every area the person can see
+  (`GET /proposals?area=all`), not the prototype's four samples.
+- **A seeded section's actions happen on the prototype's day** (21 Oct, 14:00), so a replaced poster
+  reads "today" on the seeded pages; the audit log keeps the real time.
+- **The board saves card by card.** Its cards are edited on the page as before; each change saves the
+  whole card and the log lines added since, and a drag saves the order. A card taken off the board is
+  kept (`removed_at`, with why) and Undo puts it back.
+- **Files are stored.** `command.files` in Postgres for now, behind one interface
+  (`services/command/files.ts`) so a bucket can take over: PDF, images, Word, Excel and text, up to
+  25 MB, fingerprinted. Documents keep every version. Downloads are logged. A share link is
+  view-only, expires after 1, 7 or 30 days, keeps only the token's hash, opens without signing in at
+  `/api/command/shared/:token`, and logs each open. Field scans keep their photo.
+- **What's typed is saved.** Adding a product, a poster or a document takes its name, price, city,
+  kind and entity from the flow; the prototype's sample rows only appear in the preview.
+- **Not yet:** the download isn't watermarked (the flow still says it is), share links can't be
+  revoked from the page, and the outbox has no page of its own (`GET /outbox` lists it).

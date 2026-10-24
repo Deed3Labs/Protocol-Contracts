@@ -333,3 +333,11 @@ export async function loadSection(route: string, opts: { reveal?: boolean } = {}
 
 /** Signing out forgets what was loaded, so the next person's view loads their own. */
 export const forgetSections = () => ready.clear();
+
+/** Loads a section again after it changed, if it's one the API serves and it was already loaded. */
+export async function reloadSection(route: string) {
+  if (!LIVE || !SERVED.has(route)) return;
+  // a change shows elsewhere too (a poster on Home, a refund in Money): every other section loads afresh when next opened
+  ready.clear();
+  await loadSection(route);
+}

@@ -99,3 +99,44 @@ export async function api<T = Record<string, unknown>>(method: string, path: str
   }
   return data as T;
 }
+
+/** Sends a file as the request body (POST /files): the bytes themselves, typed by the file. */
+export async function apiFile<T = Record<string, unknown>>(path: string, file: Blob): Promise<T> {
+  const token = await privy.token();
+  const headers: Record<string, string> = { 'Content-Type': file.type || 'application/octet-stream' };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const sid = sessionId();
+  if (sid) headers['X-Command-Session'] = sid;
+  let r: Response;
+  try {
+    r = await fetch(`${API_BASE}/api/command${path}`, { method: 'POST', headers, body: file });
+  } catch {
+    throw new ApiError(0, 'OFFLINE', 'Can’t reach Clear right now. Check the connection and try again.');
+  }
+  const data = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!r.ok) throw new ApiError(r.status, String(data.code ?? 'ERROR'), String(data.error ?? data.message ?? 'Something went wrong'), data);
+  return data as T;
+}
+
+/** Downloads a file the API serves behind sign-in, and hands it to the browser to save. */
+export async function saveDownload(path: string, fallbackName: string): Promise<void> {
+  const token = await privy.token();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const sid = sessionId();
+  if (sid) headers['X-Command-Session'] = sid;
+  const r = await fetch(`${API_BASE}/api/command${path}`, { headers }).catch(() => null);
+  if (!r) throw new ApiError(0, 'OFFLINE', 'Can’t reach Clear right now. Check the connection and try again.');
+  if (!r.ok) {
+    const data = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    throw new ApiError(r.status, String(data.code ?? 'ERROR'), String(data.error ?? 'Couldn’t download it'), data);
+  }
+  const name = /filename\*=UTF-8''([^;]+)/.exec(r.headers.get('content-disposition') ?? '')?.[1];
+  const url = URL.createObjectURL(await r.blob());
+  const a = Object.assign(document.createElement('a'), { href: url, download: name ? decodeURIComponent(name) : fallbackName });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}
+
+/** The API's own address, for links the API serves (a shared document). */
+export const apiUrl = (path: string) => `${API_BASE}${path}`;
