@@ -4,6 +4,7 @@ import { SEE, TOTALS, type Level } from './levels.js';
 import { deployedName, inventory, releasesLive, reserveLive, shortAddress, yieldPoolLive, type ChainReader } from './onchain.js';
 import { feedRows } from './feeds.js';
 import { bankLive, cardSpend, depositRail } from './moneyFeeds.js';
+import { variantParts } from './feedSources.js';
 import { codeChanges, codeConfig } from './github.js';
 
 /*
@@ -499,6 +500,13 @@ async function shopProducts(db: Queryable, f: Record<string, unknown>): Promise<
 /** What the shop's money holds for others: sales tax on the last 4 weeks' sales, and the hardware deposits. */
 async function shopSetAside(db: Queryable): Promise<{ salesTax: number; preorderDeposits: number }> {
   const f = await figures(db, 'shop');
+  if (providerFor('shop') === 'live') {
+    // live, the deposits the shop holds for reserved hardware, and the tax on the last 4 weeks' orders
+    const C = f['shop.costs'] as { taxRate: number; taxable: number };
+    const { rows: dep } = await db.query<{ cents: string }>(`SELECT coalesce(sum(deposit_cents * units), 0) AS cents FROM command.shop_live_preorders WHERE state = 'held'`);
+    const { rows: rev } = await db.query<{ cents: string }>(`SELECT coalesce(sum(total_cents - refunded_cents), 0) AS cents FROM command.shop_orders WHERE source = 'stripe' AND paid_at > now() - interval '28 days'`);
+    return { salesTax: (Number(rev[0].cents) / 100) * C.taxRate * C.taxable, preorderDeposits: Number(dep[0].cents) / 100 };
+  }
   const PR = await shopProducts(db, f);
   const C = f['shop.costs'] as { taxRate: number; taxable: number };
   const weeks = Math.max(0, ...PR.map((p) => p.wk.length));
@@ -516,7 +524,7 @@ async function shopSetAside(db: Queryable): Promise<{ salesTax: number; preorder
  */
 export async function shopSection(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
   const provider = providerFor('shop');
-  if (provider === 'live') throw new NotLiveYet('shop');
+  if (provider === 'live') return shopLive(db, o);
   const asOf = asOfFor(provider, o.now);
   // the prototype's "now" is 2pm on its day
   const NOW = provider === 'seed' ? SEED_TODAY + 14 * 3600e3 : o.now.getTime();
@@ -563,6 +571,129 @@ export async function shopSection(db: Queryable, o: ReadOptions): Promise<Record
   }));
 
   return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, NOW, figures: f, asOf };
+}
+
+// ── Shop, live (Phase 7a) ───────────────────────────────────────────────────
+
+/** A product as the site's catalog serves it (clearpath-website /api/shop/catalog). */
+interface SiteProduct {
+  slug: string;
+  section: 'goods' | 'for-shops';
+  name: string;
+  kind: string;
+  category: string;
+  alsoIn: string[];
+  priceCents: number;
+  status: 'live' | 'draft';
+  colours: Array<{ id: string; label: string }>;
+  variants: Array<{ id: string; label: string; depositCents?: number }>;
+}
+const SITE_GLYPH: Record<string, string> = { tee: 'tee', 'tee-ls': 'ls', turtleneck: 'turtle', hoodie: 'hood', patch: 'psq', point: 'point', counter: 'tab', kit: 'tab' };
+const WEEK = 7 * DAY;
+
+/** The site's product in the page's shape, with Command's own record of it (costs, glyph, lead time) where it has one. */
+function siteProduct(p: SiteProduct, own: ShopProduct | undefined, wk: number[]): ShopProduct & { full?: number; nc?: number } {
+  const hw = p.section === 'for-shops';
+  const graphic = p.category === 'Graphic Tees' || p.alsoIn.includes('Graphic Tees');
+  const line = hw ? 'hw' : graphic ? 'graphic' : p.kind === 'patch' ? 'patch' : p.kind === 'tee' || p.kind === 'tee-ls' ? 'logo' : 'layers';
+  const v = graphic ? p.name.replace(/^Graphic Tee\s*[·:–—-]?\s*/i, '') : line === 'logo' ? (p.kind === 'tee' ? 'Short sleeve' : 'Long sleeve') : line === 'patch' ? 'Logo' : '';
+  const deposits = p.variants.map((x) => x.depositCents).filter((d): d is number => d != null);
+  return {
+    id: own?.id ?? p.slug.replace(/[^a-z0-9]/g, ''),
+    n: line === 'logo' ? 'Logo Tee' : p.name,
+    v,
+    line,
+    g: own?.g ?? (graphic ? 'gtee' : (SITE_GLYPH[p.kind] ?? (hw ? 'tab' : 'tee'))),
+    // a deposit product's price is what it reserves now, as the prototype's is; its full price rides along
+    price: hw && deposits.length ? Math.min(...deposits) / 100 : p.priceCents / 100,
+    ...(hw ? { dep: 1, full: p.priceCents / 100 } : own?.c ? { c: own.c } : { c: [0, 0, 0, 0], nc: 1 }),
+    st: p.status === 'live' ? 'on' : 'draft',
+    cols: p.colours.length ? p.colours.map((c) => c.label) : p.variants.map((x) => x.label),
+    wk,
+    ...(own?.lead != null ? { lead: own.lead } : {}),
+    slug: p.slug,
+    ...(own?.why ? { why: own.why } : {}),
+  };
+}
+
+/**
+ * The shop, live and read-only (Kai, 2026-10-22 and 2026-10-24): what it sells from the site's
+ * catalog, its orders and hardware reservations from its Stripe Checkout (synced by the shop feed),
+ * and Command's own records for the rest: each product's costs and lead time, stock, the shelf, what's
+ * on the way, returns. The weekly sales, the order mix and the set-asides are worked out from the
+ * live orders. Until the catalog has been read, the products are Command's own.
+ */
+async function shopLive(db: Queryable, o: ReadOptions): Promise<Record<string, unknown>> {
+  const NOW = o.now.getTime();
+  const f = await figures(db, 'shop');
+  const own = await shopProducts(db, f);
+  const feeds = await feedRows(db);
+  const cat = feeds.get('catalog')?.figures as { products?: SiteProduct[]; moved?: Record<string, string> } | undefined;
+  const moved = cat?.moved ?? {};
+  // Command's records by the site's slug, old slugs followed to their new ones
+  const ownBy = new Map(own.map((p) => [moved[p.slug] ?? p.slug, p]));
+  const slugOf = (s: string) => moved[s] ?? s;
+
+  const { rows: ord } = await db.query<{ id: string; paid_at: Date; buyer: string; member: boolean; items: Array<[string, string, string, number]>; paid_with: string; fulfilment: string; pickup_at: string; state: string; city: string }>(
+    `SELECT * FROM command.shop_orders WHERE source = 'stripe' ORDER BY paid_at DESC`,
+  );
+  const thisWeek = Math.floor(NOW / WEEK) * WEEK;
+  const weekOf = (t: number) => 7 - Math.floor((thisWeek - Math.floor(t / WEEK) * WEEK) / WEEK);
+  const units = new Map<string, number[]>();
+  for (const r of ord.filter((r) => r.state !== 'refund')) {
+    const w = weekOf(new Date(r.paid_at).getTime());
+    if (w < 0 || w > 7) continue;
+    for (const [slug, , , q] of r.items) ((units.get(slugOf(slug)) ?? units.set(slugOf(slug), Array(8).fill(0)).get(slugOf(slug))!)[w] += q);
+  }
+
+  const PR = cat?.products
+    ? cat.products.map((p) => siteProduct(p, ownBy.get(p.slug), units.get(p.slug) ?? Array(8).fill(0)))
+    : own.map((p) => ({ ...p, wk: units.get(slugOf(p.slug)) ?? Array(8).fill(0) }));
+  const idOf = new Map(PR.map((p) => [p.slug, p.id]));
+  const pid = (slug: string) => idOf.get(slugOf(slug)) ?? slugOf(slug);
+
+  const { rows: stock } = await db.query<{ product_id: string; option: string; on_hand: number }>('SELECT s.product_id, s.option, s.on_hand FROM command.shop_stock s JOIN command.shop_products p ON p.id = s.product_id ORDER BY p.position, s.option_pos, s.size_pos');
+  const STK: Record<string, Record<string, number[]>> = {};
+  for (const s of stock) ((STK[s.product_id] ??= {})[s.option] ??= []).push(s.on_hand);
+  const { rows: shelf } = await db.query<{ product_id: string; state: string; starts_at: Date | null; ends_at: Date | null }>('SELECT * FROM command.shop_shelf ORDER BY product_id, position');
+  const SHELF_EV: Record<string, unknown[]> = {};
+  for (const e of shelf) (SHELF_EV[e.product_id] ??= []).push([e.state, e.starts_at ? ms_(e.starts_at) : NOW, e.ends_at ? ms_(e.ends_at) : NOW]);
+  const { rows: hist } = await db.query<{ product_id: string; at: Date; what: string; who: string }>('SELECT * FROM command.shop_history ORDER BY id DESC');
+  const SHIST: Record<string, unknown[]> = {};
+  for (const h of hist) (SHIST[h.product_id] ??= []).push([ms_(h.at), h.what, h.who]);
+
+  const totals = o.level <= TOTALS;
+  const ORDERS = ord.map((r) => {
+    const items = r.items.map(([slug, col, sz, q]) => [pid(slug), col, sz, q]);
+    return totals ? [r.id, 0, '', 0, items, r.paid_with, r.fulfilment, r.pickup_at, r.state, ''] : [r.id, ms_(r.paid_at), r.buyer, r.member ? 1 : 0, items, r.paid_with, r.fulfilment, r.pickup_at, r.state, r.city];
+  });
+  const { rows: pre } = await db.query<{ payment_intent: string; line: number; shop: string; slug: string; variant: string; units: number; state: string; placed_at: Date }>('SELECT * FROM command.shop_live_preorders ORDER BY placed_at');
+  const PRE = pre.map((r) => [`${r.payment_intent.slice(-6)}-${r.line}`, r.shop, pid(r.slug), variantParts(r.variant)[0], r.units, r.state, ms_(r.placed_at)]);
+
+  const { rows: inc } = await db.query<{ what: string; units_label: string; stages: Array<[string, number | null, number | null]>; lands: string; product_id: string }>('SELECT * FROM command.shop_incoming ORDER BY position');
+  const INCOMING = inc.map((r) => [r.what, r.units_label, r.stages.map(([k, a, b]) => [k, a ?? NOW, b ?? NOW]), r.lands, r.product_id]);
+  const { rows: ret } = totals ? { rows: [] } : await db.query<any>('SELECT * FROM command.shop_returns ORDER BY proposed_at DESC');
+  const RETURNS = ret.map((r) => ({
+    order: r.order_id, item: r.item, reason: r.reason, returned: ms_(r.returned_on), condition: r.condition, proposedBy: r.proposed_by, proposedAt: ms_(r.proposed_at),
+    second: r.second_person, refundedAt: r.refunded_at == null ? null : ms_(r.refunded_at), amount: r.amount_cents == null ? null : r.amount_cents / 100,
+  }));
+
+  // the order figures, from the live orders: the rest are Command's own until a source has them
+  const kept = ord.filter((r) => r.state !== 'refund');
+  const sizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+  const ordersWeekly = Array(8).fill(0);
+  for (const r of kept) {
+    const w = weekOf(new Date(r.paid_at).getTime());
+    if (w >= 0 && w <= 7) ordersWeekly[w]++;
+  }
+  const live = {
+    'shop.units_weekly': Object.fromEntries(PR.map((p) => [p.id, p.wk])),
+    'shop.orders_weekly': ordersWeekly,
+    'shop.size_mix': sizes.map((z) => [z, kept.reduce((a, r) => a + r.items.filter(([, , sz]) => sz === z).reduce((b, [, , , q]) => b + q, 0), 0)]),
+    'shop.paid_with': [['Card', kept.length]],
+    'shop.buyers': [['Buyers', kept.length]],
+  };
+  return { PR, STK, SHELF_EV, SHIST, ORDERS, PRE, INCOMING, RETURNS, NOW, figures: { ...f, ...live }, asOf: asOfFor('live', o.now) };
 }
 
 // ── Contracts ───────────────────────────────────────────────────────────────

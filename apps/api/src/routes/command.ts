@@ -27,7 +27,7 @@ import { indexStatus } from '../services/command/indexer.js';
 import type { ChainReader } from '../services/command/onchain.js';
 import { codeStatus } from '../services/command/github.js';
 import { feedStatus, requestSync, type Feed } from '../services/command/feeds.js';
-import { liveFeeds, plaidWebhook, plaidWebhookKey } from '../services/command/feedSources.js';
+import { liveFeeds, plaidWebhook, plaidWebhookKey, shopAddress } from '../services/command/feedSources.js';
 import { FILE_TYPES, MAX_FILE_BYTES, newShareToken, openShare, postgresFiles, type FileStore } from '../services/command/files.js';
 
 /*
@@ -59,6 +59,8 @@ export interface CommandDeps {
   code?: { catchUp(): void };
   /** The sandbox feeds, for their status (Phase 6a): the live four unless given. */
   feeds?: Feed[];
+  /** A live order's address, read from the shop's Stripe (Phase 7a): Stripe's unless given. */
+  shopAddress?: typeof shopAddress;
   /** The Ops Safe: which one (env unless given), and how it's read. */
   safe?: { config: () => SafeConfig | null; reader: SafeReader };
   /** Where files people add are kept (Postgres unless given). */
@@ -441,6 +443,19 @@ export function commandRouter(deps: CommandDeps) {
   /** Where the indexer is: how far it's read, how far behind the head, its last error. */
   router.get('/chain/status', need('contracts', SEE), async (req, res) => {
     res.json(await indexStatus(req.command!.db));
+  });
+
+  /**
+   * One live order's shipping address, for packing it (Phase 7a): Shop at Propose or above, read from
+   * Stripe for this order only, never stored, and logged.
+   */
+  router.get('/shop/orders/:id/address', need('shop', PROPOSE), async (req, res) => {
+    const db = req.command!.db;
+    const a = await (deps.shopAddress ?? shopAddress)(db, req.params.id);
+    if (!a) return fail(res, 404, 'NOT_FOUND', 'No live order with that number');
+    await auditFrom(req, { area: 'shop', action: `Showed the address for order #${req.params.id}`, detail: 'To pack it', result: 'done' });
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(a);
   });
 
   /** Each feed's health and freshness, and the menu's line: the same for everyone signed in. */

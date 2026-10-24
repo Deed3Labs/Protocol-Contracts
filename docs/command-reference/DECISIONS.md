@@ -513,3 +513,43 @@ and Stripe every 5 minutes, Plaid once a day plus whenever something says the ba
 - **Where it was spent** is Lithic's card spend this month, by merchant; "no card spend yet" when
   there's none.
 - **A feed that hasn't read anything gives nothing**, and Money keeps its own records there.
+
+## Phase 7: the live shop and the rest
+
+Split like Phases 5 and 6: 7a the shop, 7b members with the waitlist and batches, 7c site visits and
+forms (with the site's PR), 7d the map's style in env. The answers to questions 10, 10b and 11 (above)
+stand.
+
+### 7a: the shop, live and read-only
+
+`PROVIDER_SHOP=live`. Migration `0047_command_shop_live`; `feedSources.ts` (`shopFeed`,
+`catalogFeed`, `shopAddress`); `shopLive` in `sections.ts`.
+
+- **What it sells is the site's** (Kai, 2026-10-24: the site serves it rather than Command keeping a
+  copy that would drift). clearpath-website PR #94 adds `GET /api/shop/catalog`, read from
+  `content/shop.ts`: live products for anyone, drafts too with `COMMAND_CATALOG_TOKEN` (same value
+  in both envs), and the renamed slugs. Command reads it every 5 minutes (`COMMAND_SHOP_CATALOG_URL`,
+  default `https://useclear.org/api/shop/catalog`). The site's price, status, colours and variants
+  win; Command's own record of a product (costs, glyph, lead time, stock), matched by slug or a
+  renamed slug, rides along. A product with no costs here says "Not entered yet" rather than showing
+  a 100% margin. Hardware's price is the smallest deposit it reserves, as the prototype's is, with
+  its full price alongside.
+- **Orders, reservations and refunds are the shop's Stripe Checkout**, read with
+  `COMMAND_SHOP_STRIPE_KEY`, which must be a restricted key (`rk_…`): a full secret key is refused.
+  Its scopes, all read: Checkout Sessions, Payment Intents, Refunds, Charges. GETs only.
+  - A paid session with items is an order. Command numbers it (from 1001) and keeps its packing and
+    shipping; the sync only adds orders and marks refunds (a full refund is state `refund`).
+  - A paid reservation's reserved lines (the payment's `r1…`, as the site writes them) are
+    hardware pre-orders, in `command.shop_live_preorders`, by the site's slug.
+  - It asks from a day before the newest order it has: a session can complete up to a day after it
+    opened.
+- **Addresses are never stored** (Kai). The buyer is kept masked ("Ana R.") with the city. Packing a
+  live order at Shop ≥ 3 reads its address from Stripe for that order (`GET
+  /api/command/shop/orders/:id/address`), logs it, and writes it into the open flow; the page asks
+  once a visit.
+- **Worked out from the live orders:** each product's weekly units, orders a week, the size mix,
+  how buyers paid, and Money's set-asides (the deposits held, the sales tax on 4 weeks). Still
+  Command's own until a source has them: stock, the shelf, what's on the way, returns, ship times,
+  pickups. Whether a buyer is a member waits for 7b.
+- **Checked against the real catalog** (the site's dev server): 18 products at the site's prices;
+  Command's records found for the Logo Tee, Turtleneck, Hoodie (by its old slug) and Clear Point.
