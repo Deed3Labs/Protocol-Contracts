@@ -47,6 +47,10 @@ export function dayD(d) {
 export function sgn(k, v) {
   return (k === 'in' ? '+' : '−') + money(v);
 }
+/* live, the USDC behind savings is the vault's on chain (Phase 6b); the prototype said Bridge */
+const vaultLive = () => LIVE && M.clrusd != null;
+const vaultWord = () => (vaultLive() ? 'USDC in the savings vault' : 'USDC at Bridge');
+const reserveGap = () => (!vaultLive() || !M.reserveDiff ? 'None' : `${money(Math.abs(M.reserveDiff))} ${M.reserveDiff < 0 ? 'short' : 'over'}`);
 export function srcTxt(k) {
   // live, how old each source's figures really are (Phase 6a)
   if (LIVE && hasFeeds()) return feedLabel(k);
@@ -325,7 +329,7 @@ export function moneyPane() {
       ['Members', String(activeMembers())],
       ['Tied to credit', money(M.savingsBacked)],
       ['Free to withdraw', money(M.savings - M.savingsBacked)],
-      ['USDC at Bridge', money(M.savings) + ' · 2 min'],
+      [vaultWord(), money(M.savings) + (vaultLive() ? ' · on chain' : ' · 2 min')],
       ['Reserve', fig('money.reserve').ratio, 1],
     ],
     yld: [
@@ -493,7 +497,7 @@ export function openNFlow(kind) {
       t: 'Sync from Plaid',
       h: 'Operating cash',
       rows: [
-        ['Last sync', '3 hours ago'],
+        ['Last sync', LIVE && hasFeeds() ? feedLabel('plaid').replace(/^Plaid · (\d.*)$/, '$1 ago') : '3 hours ago'],
         ['Bank', 'Business checking'],
         ['Takes', 'About a minute', 1],
       ],
@@ -506,12 +510,12 @@ export function openNFlow(kind) {
       t: 'Reserve check',
       h: 'Member savings',
       rows: [
-        ['CLRUSD issued', money(M.savings)],
-        ['USDC at Bridge', money(M.savings)],
-        ['Difference', 'None', 1],
+        ['CLRUSD issued', money(vaultLive() ? M.clrusd : M.savings)],
+        [vaultWord(), money(M.savings)],
+        ['Difference', reserveGap(), 1],
       ],
       btn: 'Run it again',
-      steps: ['Read CLRUSD supply on Base Sepolia', 'Read the USDC balance at Bridge', 'Compared them'],
+      steps: ['Read CLRUSD supply on Base Sepolia', vaultLive() ? 'Read the USDC the savings vault holds' : 'Read the USDC balance at Bridge', 'Compared them'],
       done: ['Fully reserved.', '1 : 1, checked just now.'],
     };
   else if (kind === 'yrate')
@@ -668,7 +672,7 @@ export function nOverview() {
 
   /* claims in priority order, each against what backs it, never summed */
   const claims = [
-    ['Member savings', 'USDC reserve at Bridge', M.savings, M.savings],
+    ['Member savings', vaultLive() ? 'USDC in the savings vault' : 'USDC reserve at Bridge', vaultLive() ? M.clrusd : M.savings, M.savings],
     ['Shops, by 4 Nov', 'Payout pool, then the yield pool', M.owed14, M.payout + M.dueMembers + YLD.toPayout],
     [
       'Bondholders',
@@ -1007,7 +1011,7 @@ export function nReserves() {
   const esa = cellR(
     'Member savings',
     money(M.savings),
-    'CLRUSD, backed 1:1 by USDC at Bridge',
+    vaultLive() ? 'CLRUSD, backed 1:1 by USDC in the savings vault' : 'CLRUSD, backed 1:1 by USDC at Bridge',
     <>
       <div className="ablock">
         <span className="lbl">Free or tied to credit</span>
@@ -1020,9 +1024,17 @@ export function nReserves() {
         <span className="lbl">Reserve check</span>
         <div className="how two">
           <span className="k">CLRUSD issued</span>
+          <b className="num">{money(vaultLive() ? M.clrusd : M.savings)}</b>
+          <span className="k">{vaultLive() ? 'USDC in the savings vault · on chain' : 'USDC at Bridge · 2 min'}</span>
           <b className="num">{money(M.savings)}</b>
-          <span className="k">USDC at Bridge · 2 min</span>
-          <b className="num">{money(M.savings)}</b>
+          {LIVE && vars.depositRail ? (
+            <>
+              <span className="k">On its way through Bridge · {srcTxt('bridge').replace(/^Bridge · /, '')}</span>
+              <b className="num">{vars.depositRail.count ? `${money(vars.depositRail.amount)} · ${vars.depositRail.count}` : 'None'}</b>
+            </>
+          ) : (
+            ''
+          )}
         </div>
       </div>
     </>,
@@ -1516,15 +1528,19 @@ export function nCredit() {
       ['Recovered', money(fig('money.credit.recovered'))],
     ]),
   );
-  const shops = TXO.slice()
+  /* live, the card spend is Lithic's own, by merchant (Phase 6b) */
+  const spend = LIVE && vars.cardSpend ? vars.cardSpend.merchants.map((m) => ({ name: m.name, oct: m.amount, lost: 0 })) : TXO,
+    month = LIVE && vars.cardSpend ? new Date(`${vars.cardSpend.month}-01T00:00:00Z`).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' }) : 'October';
+  const shops = spend
+      .slice()
       .sort((a, b) => b.oct - a.oct)
       .slice(0, 6),
-    octAll = TXO.reduce((a, m) => a + m.oct, 0);
+    octAll = spend.reduce((a, m) => a + m.oct, 0);
   const byShop = gCell(
     's-8',
     'Where it was spent',
     srcTxt('lithic'),
-    figHtml(money(octAll), `of credit spent at ${TXO.length} shops in October`),
+    figHtml(money(octAll), shops.length ? `of credit spent at ${spend.length} shops in ${month}` : `no card spend yet in ${month}`),
     <>
       <div className="hbars">
         {shops.map((m, __k) => (
@@ -1542,7 +1558,7 @@ export function nCredit() {
         ['var(--underway)', 'A loss on its book'],
       ])}
     </>,
-    strip([
+    !shops.length ? '' : strip([
       ['Top shop', pct(shops[0].oct, octAll)],
       [
         'Top 3',
@@ -1551,7 +1567,7 @@ export function nCredit() {
           octAll,
         ),
       ],
-      [`${TXO.length - shops.length} others`, money(octAll - shops.reduce((a, m) => a + m.oct, 0))],
+      [`${spend.length - shops.length} others`, money(octAll - shops.reduce((a, m) => a + m.oct, 0))],
     ]),
   );
   const limits = gCell(

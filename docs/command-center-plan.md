@@ -282,7 +282,7 @@ new blocks are read); GitHub polled with a read-only token; every deployed contr
 - **6a · The feeds.** One row per provider, synced on its schedule (Plaid daily plus its webhook and
   Stripe payouts), sandboxes only, and the feed-status line. Built: `services/command/feeds.ts`.
 - **6b · Their figures in Money.** Operating cash from Plaid, the reserve check against the vault on
-  chain, Stripe's payouts, Lithic's card spend.
+  chain, Stripe's payouts, Lithic's card spend. Built: `services/command/moneyFeeds.ts`.
 
 ### Phase 7: live shop and the rest
 

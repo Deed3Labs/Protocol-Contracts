@@ -494,3 +494,22 @@ and Stripe every 5 minutes, Plaid once a day plus whenever something says the ba
 - **6b next:** the figures into Money (operating cash from Plaid, the reserve check against the vault
   on chain and the copy that says so, Stripe's payouts into the operating account's lines, Lithic's
   spend into "Where it was spent").
+
+### 6b: the feeds' figures in Money
+
+`services/command/moneyFeeds.ts`, `onchain.ts` (`reserveLive`), with `PROVIDER_MONEY=live`.
+
+- **The savings reserve is the vault's, on chain** (Kai): CLRUSD's supply against the USDC
+  ESADepositVault holds, the comparison the vault itself makes. The USDC is the protocol's reserve
+  token (`LendingPool.asset()`), so no address is written down. Member savings' balance is the
+  vault's USDC; its weeks are CLRUSD's mints and burns from the indexer; the reserve figure is the
+  vault's USDC per CLRUSD ("1 : 1" to the cent), checked with the page. The copy that said "USDC at
+  Bridge" says "USDC in the savings vault" when live, and Money shows Bridge for what it is: the
+  deposits still on their way through it.
+- **Operating cash is the bank's**, from Plaid: the balance of the link's depository accounts (a
+  credit card at the same bank isn't the operating account), each week before it worked back from
+  the posted transactions, and the account's lines its transactions, pending ones marked. Stripe's
+  payouts not yet in the bank come first, as on their way; paid ones are already the bank's.
+- **Where it was spent** is Lithic's card spend this month, by merchant; "no card spend yet" when
+  there's none.
+- **A feed that hasn't read anything gives nothing**, and Money keeps its own records there.

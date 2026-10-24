@@ -43,10 +43,19 @@ const views: Record<string, string> = {
 };
 const held: Record<string, [number, number]> = { [getAddress(A)]: [800, 100], [getAddress(B)]: [400, 0], [getAddress(Cc)]: [200, 0] };
 const asked: ChainCall[][] = [];
+// the savings reserve: CLRUSD in issue, and the USDC the vault holds (50 cents short)
+const USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
+const reserve = { clrusd: 900, vault: 899.5 };
 const reader: ChainReader = {
   read: async (calls) => {
     asked.push(calls);
     return calls.map((c) => {
+      if (c.contract === 'ClearUSDUpgradeable') return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.clrusd));
+      if (c.contract === 'LendingPool' && c.fn === 'asset') return USDC;
+      if (c.contract === 'ERC20') {
+        expect([c.address, ...(c.fn === 'balanceOf' ? [c.args![0]] : [])]).toEqual([USDC, ...(c.fn === 'balanceOf' ? [getAddress(C.ESADepositVault.address)] : [])]);
+        return c.fn === 'decimals' ? 6n : BigInt(usdc(reserve.vault));
+      }
       if (c.fn === 'balanceOf') return BigInt(usdc(held[c.args![0] as string][0]));
       if (c.fn === 'encumberedOf') return BigInt(usdc(held[c.args![0] as string][1]));
       return BigInt(views[c.fn]);
@@ -84,6 +93,10 @@ beforeAll(async () => {
   await put('RevolvingIssuer', 'Upgraded', { implementation: impl('3') }, '21T09:00:00');
   await put('RevolvingIssuer', 'Upgraded', { implementation: impl('3') }, '21T09:05:00');
   await put('ClearUSDUpgradeable', 'Upgraded', { implementation: impl('4') }, '02T09:00:00');
+  // CLRUSD minted for savings, and some redeemed: 900 in issue
+  await put('ClearUSDUpgradeable', 'Transfer', { from: ZERO, to: A, value: usdc(500) }, '10T12:00:00');
+  await put('ClearUSDUpgradeable', 'Transfer', { from: ZERO, to: B, value: usdc(450) }, '20T12:00:00');
+  await put('ClearUSDUpgradeable', 'Transfer', { from: B, to: ZERO, value: usdc(50) }, '21T12:00:00');
   process.env.PROVIDER_MONEY = 'live';
   process.env.PROVIDER_CONTRACTS = 'live';
 });
@@ -100,7 +113,7 @@ describe('the yield pool, live', () => {
     expect(m.Y.curve).toEqual({ base: 25, s1: 75, s2: 900, kink: 0.8 });
     expect(m.Y.price).toBeCloseTo(1406 / 1400, 10);
     // every read in one request: the pool's views, the cycle, the payout draw, and each holder's shares and pledge
-    expect(asked.at(-1)!.length).toBe(16 + 3 * 2);
+    expect([...asked].reverse().find((a) => a.some((c) => c.fn === 'totalAssets'))!.length).toBe(16 + 3 * 2);
     // the payout gap is the PayoutPool's: a tenth of the pool, so a tenth lent after
     expect(m.Y.toPayout).toBe(140.6);
     expect(m.Y.utilAfter).toBeCloseTo(0.1, 10);
@@ -148,7 +161,9 @@ describe('the yield pool, live', () => {
   });
 
   test('a pool nobody has deposited in yet: zeros, not NaN', async () => {
-    const empty: ChainReader = { read: async (calls) => calls.map((c) => (c.fn === 'decimals' ? 6n : c.fn === 'borrowRatePerCycle' || c.fn === 'baseRatePerCycle' ? 25n : 0n)) };
+    const empty: ChainReader = {
+      read: async (calls) => calls.map((c) => (c.fn === 'asset' ? USDC : c.fn === 'decimals' ? 6n : c.fn === 'borrowRatePerCycle' || c.fn === 'baseRatePerCycle' ? 25n : 0n)),
+    };
     const fresh = (await testDb()).db;
     await seedCommand(fresh);
     const m: any = await moneySection(fresh, { ...read(), chain: empty });
@@ -190,5 +205,55 @@ describe('releases, live', () => {
   test('a map name finds its deployed contract', () => {
     const d = new Set(['ClearUSD', 'ClearUSDUpgradeable', 'SavingsIntentFactory', 'RevolvingIssuer', 'RevolvingIssuerV1']);
     expect(['ClearUSD', 'SavingsIntent', 'RevolvingIssuer', 'CreditPool'].map((x) => deployedName(x, d))).toEqual(['ClearUSDUpgradeable', 'SavingsIntentFactory', 'RevolvingIssuer', null]);
+  });
+});
+
+describe('the savings reserve, live (6b)', () => {
+  test('CLRUSD in issue against the USDC the vault holds, as the vault itself compares them', async () => {
+    const m: any = await moneySection(db, read());
+    expect([m.M.clrusd, m.M.savings, m.M.reserveDiff]).toEqual([900, 899.5, -0.5]);
+    expect(m.figures['money.reserve']).toEqual({ ratio: '0.9994 : 1', checked: 'just now' });
+    const sav = m.ACCTS.find((a: any[]) => a[0] === 'sav');
+    // the USDC is in the vault on chain, not at Bridge
+    expect([sav[2], sav[4], sav[5]]).toEqual(['CLRUSD, backed 1:1 by USDC in the savings vault', 'protocol', 899.5]);
+    // the weeks are CLRUSD's mints and burns; now is the vault's USDC
+    expect(sav[6]).toEqual([0, 0, 0, 0, 0, 500, 899.5]);
+  });
+});
+
+describe('the feeds in Money, live (6b)', () => {
+  beforeAll(async () => {
+    await db.query(`INSERT INTO command.plaid_items (id, item_id, access_token) VALUES ('coop', 'item-1', '{}')`);
+    const t = (id: string, on: string, name: string, amount: number, pending = false) =>
+      db.query(`INSERT INTO command.bank_transactions (id, item, account_id, posted_on, name, amount, pending) VALUES ($1, 'coop', $2, $3, $4, $5, $6)`, [id, 'chk', on, name, amount, pending]);
+    await t('t1', '2026-10-15', 'Stripe transfer', -500);
+    await t('t2', '2026-10-22', 'Poster printing', 200);
+    await t('t3', '2026-10-23', 'Pending card', 30, true);
+    // a credit card at the same bank isn't the operating account
+    await db.query(`INSERT INTO command.bank_transactions (id, item, account_id, posted_on, name, amount) VALUES ('c1', 'coop', 'card', '2026-10-22', 'Card', 99)`);
+    const set = (id: string, figures: unknown) => db.query(`UPDATE command.feeds SET state = 'ok', synced_at = now(), as_of = now(), figures = $2 WHERE id = $1`, [id, JSON.stringify(figures)]);
+    await set('plaid', { balance: 1000, accounts: [{ id: 'chk', type: 'depository' }, { id: 'card', type: 'credit' }] });
+    await set('stripe', { available: 0, pending: 0, payouts: [{ id: 'po_2', amount: 75, arrival: Date.parse('2026-10-25T00:00:00Z'), status: 'in_transit' }, { id: 'po_1', amount: 500, arrival: Date.parse('2026-10-15T00:00:00Z'), status: 'paid' }] });
+    await set('lithic', { month: '2026-10', spent: 40, count: 3, declined: 0, merchants: [{ name: 'Rosa’s Tacos', amount: 20, count: 2 }] });
+    await set('bridge', { wallets: [], usdc: 0, inFlight: { count: 2, amount: 60 }, transfers: 3 });
+  });
+
+  test('operating cash is the bank’s: its balance, its weeks worked back, its lines, Stripe’s payouts on their way first', async () => {
+    const m: any = await moneySection(db, read());
+    expect(m.M.cash).toBe(1000);
+    const ops = m.ACCTS.find((a: any[]) => a[0] === 'ops');
+    expect([ops[5], ops[6]]).toEqual([1000, [700, 700, 700, 700, 700, 1200, 1000]]);
+    expect(m.ENTRIES.ops.map((e: any) => [e.what, e.detail, e.amount])).toEqual([
+      ['Card sales', 'Stripe payout · on its way', 75],
+      ['Pending card', 'Plaid · pending', -30],
+      ['Poster printing', 'Plaid', -200],
+      ['Stripe transfer', 'Plaid', 500],
+    ]);
+  });
+
+  test('Lithic’s card spend and Bridge’s deposits in flight ride along', async () => {
+    const m: any = await moneySection(db, read());
+    expect(m.CARD_SPEND).toEqual({ month: '2026-10', spent: 40, count: 3, merchants: [{ name: 'Rosa’s Tacos', amount: 20, count: 2 }] });
+    expect(m.DEPOSIT_RAIL).toEqual({ count: 2, amount: 60 });
   });
 });
