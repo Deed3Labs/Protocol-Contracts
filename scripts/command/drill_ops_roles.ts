@@ -70,7 +70,7 @@ async function main() {
   const am = new Contract(byName.AccessManager.address, byName.AccessManager.abi, ethers.provider);
   check(!(await am.isOperator(deployer)) && (await am.isOperator(wallets["credit-operator"])), "AccessManager: the credit operator is an operator, the deployer isn't");
   const reg = new Contract(byName.MembershipRegistry.address, byName.MembershipRegistry.abi, ethers.provider);
-  check(await reg.hasRole(await reg.REGISTRAR_ROLE(), wallets["membership-registrar"]), "MembershipRegistry: the registrar can register members");
+  check(await reg.hasRole(await reg.REGISTRAR_ROLE(), wallets["credit-operator"]), "MembershipRegistry: the credit operator can register members");
   const mr = new Contract(byName.MerchantRegistry.address, byName.MerchantRegistry.abi, sf);
   const w = Number(await mr.defaultPayoutWindow()) + 60;
   await (await mr.setDefaultPayoutWindow(w)).wait();

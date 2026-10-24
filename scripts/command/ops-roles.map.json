@@ -1,5 +1,7 @@
 {
   "about": "Where each operational role the deployer holds belongs. A job's wallet is <JOB>_ADDRESS in env (credit-operator → CREDIT_OPERATOR_ADDRESS); \"safe\" is SAFE_ADDRESS; \"renounce\" is used by nothing off-chain. Mapped 2026-10-23 from apps/api and contracts/; see docs/command-reference/DECISIONS.md, \"Moving the operational roles\".",
+  "walletsAbout": "Wallets known from the chain, used when env names none: the card settler is the one RevolvingIssuer approved (CardSettlerUpdated, block 46997232).",
+  "wallets": { "card-settler": "0x1b535bbe4bc5f1a4152dfbd1d1215d9435ead4f3" },
   "roles": [
     { "contract": "AccessManager", "role": "OPERATOR", "to": "credit-operator", "why": "openLine, credit periods, term limits, openPlan, refund closes, reinstate (CREDIT_OPERATOR_PRIVATE_KEY)" },
     { "contract": "ESADepositVault", "role": "OPERATOR_ROLE", "to": "savings-relayer", "why": "deposits, redemptions and autopay mandates (savings relayer, CDP by default)" },
@@ -7,8 +9,7 @@
     { "contract": "CollateralRegistry", "role": "OPERATOR_ROLE", "to": "savings-relayer", "why": "pledges and releases from the savings sync, which the savings relayer signs unless COLLATERAL_SIGNER_MODE=local_key" },
     { "contract": "ClaimEscrow", "role": "SETTLER_ROLE", "to": "send-relayer", "why": "sends by link: escrow, claim, claim to payout (SEND_RELAYER_PRIVATE_KEY or its CDP account)" },
     { "contract": "LendingPool", "role": "BORROWER_ROLE", "to": "card-settler", "why": "card funding borrows from the pool (CARD_SETTLER_PRIVATE_KEY)" },
-    { "contract": "MembershipRegistry", "role": "REGISTRAR_ROLE", "to": "membership-registrar", "why": "registering members and their status (MEMBERSHIP_REGISTRAR_PRIVATE_KEY)" },
-
+    { "contract": "MembershipRegistry", "role": "REGISTRAR_ROLE", "to": "credit-operator", "why": "registering members and their status: the credit operator signs it (MEMBERSHIP_REGISTRAR_PRIVATE_KEY, else CREDIT_OPERATOR_PRIVATE_KEY)" },
     { "contract": "MerchantRegistry", "role": "OPERATOR_ROLE", "to": "safe", "why": "shop terms and on/off: Command proposes these to the Safe" },
     { "contract": "PayoutPool", "role": "FUNDER_ROLE", "to": "safe", "why": "top-ups: Command proposes these to the Safe" },
     { "contract": "PayoutPool", "role": "OPERATOR_ROLE", "to": "safe", "why": "lenders, treasury and co-op income settings: config, no service uses it" },
@@ -22,7 +23,6 @@
     { "contract": "Validator", "role": "FEE_MANAGER_ROLE", "to": "safe", "why": "validator fees and whitelist: config and money" },
     { "contract": "Validator", "role": "METADATA_ROLE", "to": "safe", "why": "operating-agreement records: config" },
     { "contract": "Validator", "role": "VALIDATOR_ROLE", "to": "safe", "why": "validating deeds: no service does it yet" },
-
     { "contract": "AccessManager", "role": "MEMBER", "to": "renounce", "why": "only makes the holder a member" },
     { "contract": "LendingPool", "role": "LOSS_REPORTER_ROLE", "to": "renounce", "why": "absorbLoss: called by nothing" },
     { "contract": "LimitCalculator", "role": "ATTESTOR_ROLE", "to": "renounce", "why": "attest: called by nothing" },
