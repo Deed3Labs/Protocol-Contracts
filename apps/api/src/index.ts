@@ -184,6 +184,8 @@ const corsOptions = {
     'X-Step-Up',
     // Pay with Clear's modal: its payment-scoped sign-in (routes/payLinks.ts).
     'X-Pay-Session',
+    // The Command Center's session, on every request it makes once signed in (routes/command.ts).
+    'X-Command-Session',
   ],
   exposedHeaders: ['Content-Length', 'X-Request-Id'],
   maxAge: 86400, // 24 hours
